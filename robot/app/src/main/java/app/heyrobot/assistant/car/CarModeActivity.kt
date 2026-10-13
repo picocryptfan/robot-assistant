@@ -8,7 +8,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.mutableStateOf
 import app.heyrobot.assistant.handsfree.HandsFreeHub
 import app.heyrobot.core.car.CarScreen
-import app.heyrobot.core.car.ParkList
 import app.heyrobot.core.car.CarPhase
 import app.heyrobot.core.output.SpokenLang
 import app.heyrobot.sys.HandsFreeFiles
@@ -61,9 +60,8 @@ class CarModeActivity : ComponentActivity() {
         setShowWhenLocked(trusted)
         if (HandsFreeHub.car.settings.keepScreenOn) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        val kept = HandsFreeFiles.store(this).parked().size
         val home = HandsFreeFiles.store(this).places().home != null
-        val status = said.ifEmpty { ParkList.status(kept, lang) ?: if (lang == SpokenLang.FR) "Dis « hey robot »" else "Say “hey robot”" }
+        val status = said.ifEmpty { if (lang == SpokenLang.FR) "Dis « hey robot »" else "Say “hey robot”" }
         ui.value = CarScreenState(CarScreen.title(trusted, lang), trusted, status, CarScreen.buttons(messages = false, home = home))
     }
 }

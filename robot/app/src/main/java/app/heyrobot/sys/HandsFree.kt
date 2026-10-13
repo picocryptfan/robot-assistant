@@ -21,9 +21,8 @@ import app.heyrobot.core.output.SeenDevice
 
 // Main and voice processes (0.8). Headset and car mode's files are core HandsFreeStore's, in files/robot next to
 // settings.json (which stays schema 13), changed under a lock both processes take: the main app's Settings › Headset and
-// Settings › Car mode, and the :voice process (a headset's first use, your answer to "Is it headphones only you can hear?",
-// what car mode keeps for when you park). The :voice classes are named here as strings: the main process never refers to
-// the assistant's classes.
+// Settings › Car mode, and the :voice process (a headset's first use, your answer to "Is it headphones only you can
+// hear?"). The :voice classes are named here as strings: the main process never refers to the assistant's classes.
 
 object HandsFreeFiles {
     fun store(ctx: Context): HandsFreeStore = HandsFreeStore(Paths.dir(ctx))

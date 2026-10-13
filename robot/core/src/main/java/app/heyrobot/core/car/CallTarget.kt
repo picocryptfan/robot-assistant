@@ -5,8 +5,6 @@ import app.heyrobot.core.CardAnswer
 import app.heyrobot.core.LogCode
 import app.heyrobot.core.PhoneNumbers
 import app.heyrobot.core.output.Line
-import app.heyrobot.core.output.OutputLines
-import app.heyrobot.core.output.SessionKind
 import app.heyrobot.core.output.SpokenAnswer
 import app.heyrobot.core.output.SpokenCard
 import app.heyrobot.core.output.SpokenCards
@@ -24,8 +22,9 @@ import java.util.Locale
 //   direct call only after a spoken yes, with the Phone permission and both switches on; emergency numbers always the
 //   dialer, with a sentence saying so.
 // - No call is placed without a spoken yes after a read-back of who and which number ("Call Martine Martin, mobile,
-//   ending 0101?"). Several matches: up to three spoken choices, then the read-back. A name learned from Cheogram, or more
-//   than three: kept for parking. A Cheogram-only person has an XMPP address, which tel: can't call.
+//   ending 0101?"). Several matches: up to three spoken choices, then the read-back. A name learned from Cheogram, more
+//   than three, or no usable answer twice: the call tool's own card on the screen, as when you type "call Mom" (it shows
+//   the choices and the learned name for a tap). A Cheogram-only person has an XMPP address, which tel: can't call.
 // - Locked: only in a trusted car session ("Unlock to call").
 
 /** How a call was placed. Also the voice log's CAR_CALL a. */
@@ -72,7 +71,8 @@ data class CallRules(val setting: CallSetting = CallSetting.OPEN_DIALER, val has
 }
 
 enum class CallRefuse { NOT_FOUND, XMPP_ONLY, LOCKED }
-enum class CallHold { LEARNED, TOO_MANY }
+/** Why a call goes to the screen's card: a name learned from a notification, more than three numbers, or no usable answer. */
+enum class CallOnScreen { LEARNED, TOO_MANY, NO_ANSWER }
 
 sealed class CallPlan {
     /** Read back [target] and wait for a yes; then call it [way]. */
@@ -84,8 +84,8 @@ sealed class CallPlan {
     /** An emergency number: the dialer with it (never ACTION_CALL), and [say]. */
     data class Emergency(val number: String, val say: String) : CallPlan()
 
-    /** Kept for parking ([say]). */
-    data class Hold(val say: String, val why: CallHold) : CallPlan()
+    /** Not by voice: say [say], and the call tool's card shows on the screen (choices, the learned name), as outside a session. */
+    data class OnScreen(val say: String, val why: CallOnScreen) : CallPlan()
 
     data class Refuse(val say: String, val why: CallRefuse) : CallPlan()
 }
@@ -98,7 +98,8 @@ sealed class CallNext {
     data class Cancelled(val say: String) : CallNext()
     data object Reread : CallNext()
     data class AskAgain(val say: String) : CallNext()
-    data class Held(val say: String) : CallNext()
+    /** No usable answer twice: say [say], and the call tool's card shows on the screen. */
+    data class OnScreen(val say: String) : CallNext()
 }
 
 object CallTarget {
@@ -109,7 +110,9 @@ object CallTarget {
     val UNLOCK_TO_CALL = Line("Unlock to call.", "Déverrouille pour appeler.")
     val NO_XMPP = Line("Robot can't call that address.", "Robot ne peut pas appeler cette adresse.")
     val NO_CALL = Line("Okay, no call.", "D'accord, pas d'appel.")
-    val TOO_MANY = Line("Several people match. I'll keep that for when you park.", "Plusieurs personnes correspondent. Je garde ça pour quand tu seras stationné.")
+    val TOO_MANY = Line("Several people match. Pick one on the screen.", "Plusieurs personnes correspondent. Choisis à l'écran.")
+    val CHECK_ON_SCREEN = Line("Check who it is on the screen.", "Vérifie qui c'est à l'écran.")
+    val ON_SCREEN = Line("It's on the screen.", "C'est à l'écran.")
 
     fun notFound(name: String, lang: SpokenLang): String =
         if (lang == SpokenLang.FR) "Je n'ai pas de numéro pour $name." else "I don't have a number for $name."
@@ -138,8 +141,8 @@ object CallTarget {
             return if (all.any { it.xmpp }) CallPlan.Refuse(NO_XMPP.get(lang), CallRefuse.XMPP_ONLY)
             else CallPlan.Refuse(notFound(asked.trim(), lang), CallRefuse.NOT_FOUND)
         }
-        if (phones.any { it.learned }) return CallPlan.Hold(OutputLines.KEEP_FOR_PARK.get(lang), CallHold.LEARNED)
-        if (phones.size > 3) return CallPlan.Hold(TOO_MANY.get(lang), CallHold.TOO_MANY)
+        if (phones.any { it.learned }) return CallPlan.OnScreen(CHECK_ON_SCREEN.get(lang), CallOnScreen.LEARNED)
+        if (phones.size > 3) return CallPlan.OnScreen(TOO_MANY.get(lang), CallOnScreen.TOO_MANY)
         if (phones.size == 1) return confirm(phones[0], rules.way, lang)
         val labels = phones.map { label(it, lang) }
         val options = phones.mapIndexed { i, p ->
@@ -174,7 +177,7 @@ object CallTarget {
     /** [a], the answer to [plan] (Confirm or Choose), after [tries] unusable answers and [rereads] re-reads. */
     fun answer(plan: CallPlan, a: SpokenAnswer, tries: Int, rereads: Int, lang: SpokenLang): CallNext {
         val choices = (plan as? CallPlan.Choose)?.options?.size ?: 0
-        return when (val step = SpokenChoice.next(a, tries, rereads, choices, SessionKind.CAR, lang)) {
+        return when (val step = SpokenChoice.next(a, tries, rereads, choices, lang)) {
             SpokenStep.Confirm -> when (plan) {
                 is CallPlan.Confirm -> CallNext.Place(plan.target.dialable, plan.way)
                 else -> CallNext.AskAgain(SpokenCards.hint(choices, lang))
@@ -187,7 +190,7 @@ object CallTarget {
             SpokenStep.Decline -> CallNext.Cancelled(NO_CALL.get(lang))
             SpokenStep.Reread -> CallNext.Reread
             is SpokenStep.AskAgain -> CallNext.AskAgain(step.say)
-            is SpokenStep.Hold -> CallNext.Held(step.say)
+            is SpokenStep.Hold -> CallNext.OnScreen(ON_SCREEN.get(lang))
         }
     }
 

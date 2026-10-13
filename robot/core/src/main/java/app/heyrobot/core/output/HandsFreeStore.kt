@@ -1,13 +1,9 @@
 package app.heyrobot.core.output
 
 import app.heyrobot.core.car.CarSettings
-import app.heyrobot.core.car.ParkCode
-import app.heyrobot.core.car.ParkItem
-import app.heyrobot.core.car.ParkList
 import app.heyrobot.core.car.SavedPlace
 import app.heyrobot.core.headset.HeadsetSettings
 import app.heyrobot.core.writeAtomic
-import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.nio.channels.FileChannel
@@ -16,14 +12,14 @@ import java.nio.file.StandardOpenOption
 // Pure (java.io, org.json). Where headset mode and car mode keep what they remember (0.8): files/robot/ next to
 // settings.json, which stays schema 13 (their settings have files of their own, as routines' do), each change written
 // whole under one lock both app processes take (the PeopleStore pattern): the main app's Settings › Headset and Settings ›
-// Car mode, and the :voice process (a headset's first use, your answer to "Is it headphones only you can hear?", what car
-// mode keeps for when you park).
+// Car mode, and the :voice process (a headset's first use, your answer to "Is it headphones only you can hear?").
 //
 //   devices.json   your headsets and cars (DeviceMemory, schema 1); routines' device triggers read it too
 //   headset.json   Settings › Headset (HeadsetSettings) and the hands-free Safety & privacy rows (HandsFreeSafety)
 //   car.json       Settings › Car mode (CarSettings without the places), and whether car mode is on at all (off)
 //   places.json    Home and Work for "navigate home" (SavedPlace): never logged, never sent anywhere
-//   park.json      what car mode kept for when you park, with what to ask again then (the panel offers it as a tip)
+//
+// park.json, what 1.0's test builds kept for when you park, is gone with that list: [dropLegacy] deletes one left behind.
 //
 // A file that can't be read reads as its defaults (devices.json: no device; a damaged one is never written over until you
 // change something, and then it is kept aside as devices.json.bad). Nothing here is logged: a device is its number.
@@ -84,41 +80,6 @@ data class Places(val home: SavedPlace? = null, val work: SavedPlace? = null) {
     }
 }
 
-/**
- * One thing kept for when you park: [item] (why, its card's words, when) and [ask], your words to ask again once parked
- * ("Text Bob I'm late"): the panel offers them, and a tap asks as if you typed them, through every gate again.
- */
-data class Parked(val item: ParkItem, val ask: String? = null) {
-    override fun toString(): String = "Parked(${item.code}, ask=${ask != null})"
-}
-
-/** park.json: what car mode kept, oldest first (at most [ParkList.MAX]). */
-object ParkFile {
-    const val VERSION = 1
-
-    fun encode(list: List<Parked>): String = JSONObject().put("v", VERSION).put("items", JSONArray().apply {
-        for (p in list) put(JSONObject().put("code", p.item.code.id).put("summary", p.item.summary).put("at", p.item.at).apply {
-            p.ask?.let { put("ask", it) }
-        })
-    }).toString()
-
-    fun decode(json: String?): List<Parked> {
-        val a = try { json?.let(::JSONObject)?.optJSONArray("items") } catch (_: Exception) { null } ?: return emptyList()
-        return (0 until a.length()).mapNotNull { i ->
-            val o = a.optJSONObject(i) ?: return@mapNotNull null
-            val code = ParkCode.entries.firstOrNull { it.id == o.optInt("code") } ?: return@mapNotNull null
-            val summary = o.optString("summary").takeIf { it.isNotBlank() } ?: return@mapNotNull null
-            Parked(ParkItem(code, summary.take(MAX_SUMMARY), o.optLong("at")), o.optString("ask").takeIf { it.isNotBlank() }?.take(MAX_SUMMARY))
-        }.takeLast(ParkList.MAX)
-    }
-
-    /** [list] with [p] (the same thing once, at most [ParkList.MAX], the oldest dropped). */
-    fun add(list: List<Parked>, p: Parked): List<Parked> =
-        (list.filterNot { it.item.code == p.item.code && it.item.summary == p.item.summary } + p).takeLast(ParkList.MAX)
-
-    const val MAX_SUMMARY = 200
-}
-
 class HandsFreeStore(private val dir: File) {
     private fun f(name: String) = File(dir, name)
 
@@ -168,9 +129,10 @@ class HandsFreeStore(private val dir: File) {
     /** Car mode's settings with its places: what CarModeMachine, CarNavigate and the call flow read. */
     fun carSettings(): CarSettings = places().let { p -> car().settings.copy(home = p.home, work = p.work) }
 
-    fun parked(): List<Parked> = ParkFile.decode(read(f(PARK)))
-
-    fun editParked(change: (List<Parked>) -> List<Parked>): List<Parked>? = update(::parked, change) { writeAtomic(f(PARK), ParkFile.encode(it)) }
+    /** Deletes park.json if an earlier 1.0 test build left one (it held what you said, so it doesn't stay behind). */
+    fun dropLegacy() {
+        try { locked { f(LEGACY_PARK).delete() } } catch (_: Exception) {}
+    }
 
     private fun <T> update(read: () -> T, change: (T) -> T, write: (T) -> Unit): T? = try {
         locked {
@@ -198,11 +160,12 @@ class HandsFreeStore(private val dir: File) {
         const val HEADSET = "headset.json"
         const val CAR = "car.json"
         const val PLACES = "places.json"
-        const val PARK = "park.json"
+        /** 1.0's test builds' "When you park" list: never written now ([dropLegacy]). */
+        const val LEGACY_PARK = "park.json"
         const val LOCK_FILE = "handsfree.lock"
         private val LOCK = Any()
 
         /** Every file it writes (backups and "Delete everything" use the list). */
-        val FILES = listOf(DEVICES, HEADSET, CAR, PLACES, PARK)
+        val FILES = listOf(DEVICES, HEADSET, CAR, PLACES)
     }
 }

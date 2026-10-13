@@ -21,8 +21,6 @@ import app.heyrobot.core.Action
 import app.heyrobot.core.Abort
 import app.heyrobot.core.RLog
 import app.heyrobot.core.RoutineStep
-import app.heyrobot.core.TextCommand
-import app.heyrobot.core.Tip
 import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
 import app.heyrobot.core.WhenParser
@@ -32,15 +30,11 @@ import app.heyrobot.core.car.CallFlowState
 import app.heyrobot.core.car.CallTarget
 import app.heyrobot.core.car.CallWay
 import app.heyrobot.core.car.CarGate
-import app.heyrobot.core.car.CarMessages
 import app.heyrobot.core.car.CarNavigate
 import app.heyrobot.core.car.CarSpeech
 import app.heyrobot.core.car.FlowEffect
 import app.heyrobot.core.car.NavDestination
 import app.heyrobot.core.car.NavPlan
-import app.heyrobot.core.car.NewTexts
-import app.heyrobot.core.car.ParkCode
-import app.heyrobot.core.car.ParkItem
 import app.heyrobot.core.car.WhatsNext
 import app.heyrobot.core.headset.EntryKind
 import app.heyrobot.core.output.AnswerCode
@@ -52,8 +46,6 @@ import app.heyrobot.core.output.OutputContext
 import app.heyrobot.core.output.OutputDecision
 import app.heyrobot.core.output.OutputGuard
 import app.heyrobot.core.output.OutputLines
-import app.heyrobot.core.output.ParkFile
-import app.heyrobot.core.output.Parked
 import app.heyrobot.core.output.PlaceWord
 import app.heyrobot.core.output.SessionKind
 import app.heyrobot.core.output.SpeechClass
@@ -74,14 +66,15 @@ import java.time.ZonedDateTime
 // listening"; in car mode navigate, call, what's next, music; anywhere "call Mom", the call tool's own words), each
 // sentence through OutputGuard while a session runs, and what is said once the answer is over: "Is it headphones only
 // you can hear?" the first time a personal sentence would play on a Bluetooth headset, and in the car "Want more?" after
-// two sentences. Calls in a session are spoken (CallFlow: choices, read-back, yes); new texts in the car wait for when
-// you park. 0.7's messages: a new one announced in private headphones or the car (HandsFreeMessages, which opens the
+// two sentences. Calls in a session are spoken (CallFlow: choices, read-back, yes), or the call tool's card shows when
+// they can't be. 0.7's messages: a new one announced in private headphones or the car (HandsFreeMessages, which opens the
 // panel for it), "read my messages" through 0.7's reading with each piece through OutputGuard, and in the car a reply
-// only a tap may send kept for parking. Main thread, except handle (the panel's turn).
+// only a tap may send goes to the screen's reply card. 1.0 (the user, 13 Oct 2026): nothing waits for when you park; new
+// texts and everything else go on as outside the car. Main thread, except handle (the panel's turn).
 
 object PanelHandsFree {
-    /** What a hands-free show asks of the panel: replies spoken or not, and tips to offer (what you kept for parking). */
-    data class Show(val speak: Boolean, val tips: List<Tip>? = null, val listenNow: Boolean = false)
+    /** What a hands-free show asks of the panel: replies spoken or not. */
+    data class Show(val speak: Boolean, val listenNow: Boolean = false)
 
     /** A phrase for hands-free, decided before the model. */
     sealed class Cmd {
@@ -89,8 +82,6 @@ object PanelHandsFree {
         data class Private(val yes: Boolean) : Cmd()
         data class More(val yes: Boolean) : Cmd()
         data class CallAnswer(val heard: String) : Cmd()
-        /** Kept for parking: [ask] is asked again then. */
-        data class Park(val code: ParkCode, val summary: String, val ask: String?) : Cmd()
         /** The answer to an announced message's question ("Read it?", "Reply?", the read-back). */
         data class MessageAnswer(val heard: String) : Cmd()
     }
@@ -118,11 +109,10 @@ object PanelHandsFree {
     // ------------------------------------------------------------------ the panel opens
 
     /**
-     * The panel opened ([source], [args]): a headset's button, "hey robot" with car mode on, or the "From your drive"
-     * notification's tap. Null for anything else (the panel as always).
+     * The panel opened ([source], [args]): a headset's button, "hey robot" with car mode on, or an announcement. Null for
+     * anything else (the panel as always).
      */
     fun onShow(source: String?, args: Bundle?, locked: Boolean): Show? {
-        args?.getString(ARG_PARKED)?.let { return parked() }
         // 0.8: a new message to announce (HandsFreeMessages opened the panel for it): a session, then its question.
         args?.getString(HandsFreeMessages.ARG_ANNOUNCE)?.let { key ->
             reset()
@@ -151,16 +141,13 @@ object PanelHandsFree {
 
     fun takeIntro(): String? = intro.also { intro = null } ?: session?.let(HandsFreeMessages::intro)
 
-    /** A headset or car session runs for the car: what the car may hear, and what waits for parking. */
+    /** A headset or car session runs for the car: what the car may hear, and its short answers. */
     val inCar: Boolean get() = session?.kind == SessionKind.CAR
 
     /** "No" to an announcement: nothing more is said, and the session ends once this reply is over. */
     fun endQuietly() {
         endAfterReply = true
     }
-
-    /** A reply kept for when you park ([ask]: asked again then, through every gate). */
-    fun keepReply(summary: String, ask: String?) = keep(ParkItem(ParkCode.REPLY, summary, System.currentTimeMillis()), ask)
 
     /** The panel closed: the session ends and lets go of the headset. */
     fun onHide() {
@@ -288,11 +275,7 @@ object PanelHandsFree {
         when {
             c == HandsFreeCommand.Repeat || c == HandsFreeCommand.StopListening -> if (session != null) Cmd.Voice(c) else null
             c != null -> Cmd.Voice(c)
-            // New texts while driving wait for when you park only with "Hold screen actions until I park" on and "Keep for
-            // when I park"; otherwise, unlocked, they go on as always (core CarMessages.newText).
-            car && TextCommand.route(q, null, locked = false, typed = false, wakePhrases = wake) == TextCommand.Route.PARSE &&
-                CarMessages.newText(HandsFreeHub.car.settings, HandsFreeHub.phone().locked) == NewTexts.KEEP_FOR_PARKING ->
-                Cmd.Park(ParkCode.NEW_TEXT, q.trim(), q.trim())
+            // New texts ("text Bob I'm late") go on as outside the car, in car mode too (1.0): the panel's own text flow.
             // The call tool's own words, outside car mode too ("call Mom", "appelle maman"): never the model's.
             else -> (HandsFreeRouter.route(q, carMode = true, wakePhrases = wake) as? HandsFreeCommand.Call)?.let { Cmd.Voice(it) }
         }
@@ -310,7 +293,6 @@ object PanelHandsFree {
                 is Cmd.Private -> private(replyId, cmd.yes, host)
                 is Cmd.More -> more(replyId, cmd.yes, host)
                 is Cmd.CallAnswer -> callAnswer(replyId, cmd.heard, host)
-                is Cmd.Park -> park(replyId, cmd, host)
                 is Cmd.MessageAnswer -> HandsFreeMessages.answer(replyId, cmd.heard, host)
             }
         } finally {
@@ -406,8 +388,13 @@ object PanelHandsFree {
                 text.append(if (text.isEmpty()) "" else " ").append(r.detail)
                 if (!direct) host.leave()
             }
-            is FlowEffect.Park -> keep(ParkItem(e.code, e.summary, System.currentTimeMillis()), "call $callAsked")
-            is FlowEffect.Send, is FlowEffect.OnScreen -> Unit // 0.7's replies: not in this version.
+            // Not by voice (a name learned from a notification, more than three numbers, no answer): the call tool's own card,
+            // as when you type "call Mom", with its choices, its learned-name check and the lock screen's rules.
+            is FlowEffect.CallCard -> {
+                if (text.isNotEmpty()) host.text(replyId, text.toString().also { text.clear() })
+                host.tool(replyId, RoutineStep.Tool(Action.Call(callAsked)))
+            }
+            is FlowEffect.Send, is FlowEffect.OnScreen -> Unit // 0.7's replies: HandsFreeMessages.
         }
         if (text.isNotEmpty()) host.text(replyId, text.toString())
     }
@@ -421,7 +408,7 @@ object PanelHandsFree {
             PlaceWord.OTHER -> {
                 VoiceLog.add(VoiceEvent.CAR_NAV, NavKind.SEARCH)
                 host.tool(replyId, RoutineStep.Tool(Action.MapsSearch(c.what)))
-                host.say(CarNavigate.PICK_WHEN_STOPPED.get(lang))
+                host.say(CarNavigate.PICK_IN_MAPS.get(lang))
             }
             PlaceWord.HOME, PlaceWord.WORK -> {
                 val phone = HandsFreeHub.phone()
@@ -474,7 +461,7 @@ object PanelHandsFree {
         host.text(replyId, "♪")
     }
 
-    // ------------------------------------------------------------------ the private question, "Want more?", parking
+    // ------------------------------------------------------------------ the private question, "Want more?"
 
     private fun private(replyId: String, yes: Boolean, host: PanelRoutines.Host) {
         val p = pendingPrivate ?: (session?.headsetNumber() ?: 0).let { it to emptyList<String>() }
@@ -499,27 +486,6 @@ object PanelHandsFree {
         rest.forEachIndexed { i, s -> if (i < CarSpeech.MAX_SENTENCES) { spoken += s; VoiceHub.tts.speak(s) } else more += s }
     }
 
-    private fun park(replyId: String, c: Cmd.Park, host: PanelRoutines.Host) {
-        keep(ParkItem(c.code, c.summary, System.currentTimeMillis()), c.ask)
-        reply(replyId, host, CarMessages.KEEP_TEXT.get(lang))
-    }
-
-    internal fun keep(item: ParkItem, ask: String?) {
-        HandsFreeFiles.store(app).editParked { ParkFile.add(it, Parked(item, ask)) }
-        VoiceLog.add(VoiceEvent.CAR_PARKED, item.code)
-        CarModeController.parkChanged()
-    }
-
-    /** The "From your drive" notification's tap: what you kept, as tips to ask again (each through every gate). */
-    private fun parked(): Show {
-        val list = HandsFreeFiles.store(app).parked()
-        HandsFreeFiles.store(app).editParked { emptyList() }
-        VoiceLog.add(VoiceEvent.CAR_PARKED, 0, list.size)
-        // 1.0: a tip only fills the text field: it holds a sender's name (core CarMessages.parkedTips).
-        return Show(speak = false, tips = CarMessages.parkedTips(list.map { it.ask }))
-    }
-
-    const val ARG_PARKED = "robot_parked"
     /** The car screen's Call: "Who should I call?", then who you say. */
     const val ARG_CALL = "robot_handsfree_call"
     private val CALL_WHO = Line("Who should I call?", "Qui veux-tu appeler?")

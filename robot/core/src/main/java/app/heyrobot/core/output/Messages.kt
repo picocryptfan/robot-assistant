@@ -15,7 +15,7 @@ import app.heyrobot.core.TextCommand
 //
 // Hands-free replies differ from the panel's on purpose: in the car or a headset there is no card to tap, so the reply
 // is read back word for word and sent after a spoken "send" or "yes" ("Send a reply after a spoken yes (car, headset)",
-// Safety & privacy, on; off: every reply waits for parking or the screen). What the Reply action receives is exactly
+// Safety & privacy, on; off: every reply goes to the screen's card). What the Reply action receives is exactly
 // the read-back string (car ReplyFlow), never a model's draft. Groups, apps without a Reply action and replies the
 // model wrote are never sent by voice.
 

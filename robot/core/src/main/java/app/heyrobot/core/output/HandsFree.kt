@@ -22,7 +22,7 @@ import java.util.Locale
 // 208 ANNOUNCE (a = headset AnnounceCode, b = 1 if the text was read),
 // 209 SPOKEN_CARD (a = [CardVoiceCode], b = attempts, c = [AnswerCode]),
 // 210 CAR_MODE (a = 1 on, 0 off, b = car CarWhy), 211 CAR_TRUSTED (a = 1 on, 0 off, b = car TrustEnd),
-// 212 CAR_PARKED (a = car ParkCode), 213 CAR_CALL (a = car CallWay, b = 1 for an emergency number),
+// 212 retired (1.0's test builds' CAR_PARKED), 213 CAR_CALL (a = car CallWay, b = 1 for an emergency number),
 // 214 CAR_REPLY (a = 1 handed over, 0 not, b = car ReplyEnd), 215 CAR_DND (a = 1 set, 0 cleared, b = 1 if Android took it),
 // 216 CAR_NAV (a = car NavKind), 217 CAR_MUSIC (a = MusicAction ordinal + 1), 218 HEADSET_END (a = headset EndWhy, b = seconds,
 // c = [SessionKind] id), 219 spare.

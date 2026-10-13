@@ -9,6 +9,7 @@ import app.heyrobot.helpers.anthropic.AnthropicSession
 import java.io.File
 import javax.xml.parsers.DocumentBuilderFactory
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.w3c.dom.Element
@@ -808,8 +809,8 @@ class ProcessIsolationTest {
 
     /**
      * 1.0 audit, prompt injection, where the panel meets core: the brief's and "what's next"'s reply carries core Quoted's
-     * content record; QueryCheck gets what read tools returned; memory items recalled in answers count; a parked reply only
-     * fills the text field.
+     * content record; QueryCheck gets what read tools returned; memory items recalled in answers count. (1.0's parked reply
+     * tips, which held a sender's name, are gone with the park list.)
      */
     @Test fun injectionMarksReachThePanel() {
         val panel = code(File(java("app"), "app/heyrobot/assistant/PanelController.kt"))
@@ -821,7 +822,7 @@ class ProcessIsolationTest {
         val hf = code(File(java("app"), "app/heyrobot/assistant/handsfree/PanelHandsFree.kt"))
         val next = hf.substringAfter("private suspend fun whatsNext(").substringBefore("\n    }\n")
         assertTrue(next.indexOf("host.quoted(replyId)") in 0 until next.indexOf("host.text(replyId, line)"))
-        assertTrue(hf.contains("tips = CarMessages.parkedTips(list.map { it.ask })"))
+        assertFalse(hf.contains("tips ="))
         // What every read tool returned (not only its card) goes to QueryCheck, until the conversation changes.
         assertTrue(panel.contains("override suspend fun run(action: Action): Executed = runAction(action).also(::noteRead)"))
         assertTrue(panel.contains("WebQueryContext.of(chat.toList(), turnSaid.orEmpty(), screen, bodies + reads, memory, fresh = readsAllKnown)"))
@@ -845,8 +846,10 @@ class ProcessIsolationTest {
             val body = notices.substringAfter(f).substringBefore("\n    }\n")
             assertTrue(f, body.contains(".setVisibility(Notification.VISIBILITY_SECRET)") && !body.contains("VISIBILITY_PRIVATE"))
         }
-        val car = withoutComments(File(java("app"), "app/heyrobot/assistant/car/CarNotices.kt")).substringAfter("fun parked(ctx: Context) {").substringBefore("\n    }\n")
-        assertTrue(car, car.contains(".setVisibility(Notification.VISIBILITY_SECRET)"))
+        // Car mode's notifications hold no words of yours (1.0: the "From your drive" list is gone, only ever cancelled).
+        val car = withoutComments(File(java("app"), "app/heyrobot/assistant/car/CarNotices.kt"))
+        assertFalse(car, car.contains("fun parked(") || car.contains("BigTextStyle"))
+        assertTrue(car.contains("cancel(ctx, LEGACY_PARKED_ID)") && !car.contains("notify(ctx, LEGACY_PARKED_ID"))
         val memory = code(File(java("app"), "app/heyrobot/ui/settings/MemorySettings.kt"))
         val screen = memory.substringAfter("fun MemorySettingsScreen(").substringBefore("\ninternal fun problem(")
         assertTrue(screen.contains("SecureWindow()\n    NoImeLearning {\n    PreferenceScreen(\"\", onBack, snackbar = snackbar) {"))
@@ -1587,7 +1590,7 @@ class ProcessIsolationTest {
      * read does. 0.7's router keeps its echo check first, then lets an announcement's answer go to HandsFreeMessages; every
      * piece of a message the panel says passes OutputGuard in a session; an announcement plays only after OutputGuard says
      * so; the car sends a reply only after the read-back, only where 0.7's rules let a spoken yes send it, and only through
-     * the bridge; a reply only a tap may send waits for parking instead of a card; the brief gets counts by app only.
+     * the bridge; any other reply goes to the screen's own reply card, as outside the car; the brief gets counts by app only.
      */
     @Test fun messagesHandsFree() {
         val tap = code(File(java("app"), "app/heyrobot/people/MessageTap.kt"))
@@ -1601,12 +1604,9 @@ class ProcessIsolationTest {
         assertTrue(echo in 0 until yields)
         assertTrue(pm.contains("if (!guarded && !app.heyrobot.assistant.handsfree.PanelHandsFree.allow(clean) { true }) continue"))
         assertEquals(1, Regex("""speak\([^)]*guarded = true\)""").findAll(pm).count())
-        // In the car a card only a tap sends, or a chat Robot would open, waits for parking.
-        assertTrue(pm.contains("if (plan.confirm == app.heyrobot.core.messages.Confirm.TAP && parkInCar(p)) return"))
-        assertTrue(pm.contains("if (parkInCar(p)) return false"))
-        // 1.0: only with Settings › Car mode › "Hold screen actions until I park" on; off, the card or the chat comes now.
-        val park = pm.substring(pm.indexOf("private fun parkInCar(p: Pending): Boolean {"))
-        assertTrue(park.indexOf("if (!app.heyrobot.assistant.handsfree.HandsFreeHub.car.settings.holdWhileDriving) return false") in 0 until park.indexOf("keepReply("))
+        // 1.0 (the user, 13 Oct 2026: no driving restrictions): in the car a card only a tap sends, or a chat Robot would
+        // open, comes now, exactly as outside the car; nothing in 0.7's reply looks at car mode.
+        assertFalse(pm.contains("parkInCar") || pm.contains("inCar") || pm.contains("KEEP_FOR_PARK"))
         val hf = code(File(java("app"), "app/heyrobot/assistant/handsfree/HandsFreeMessages.kt"))
         assertTrue(hf.contains("if (!s.on || !s.announce) return"))
         assertTrue(hf.contains("if (phone.locked && s.locked != MessagesLocked.READ_AND_REPLY) return log(AnnounceCode.LOCKED)"))
@@ -1621,15 +1621,22 @@ class ProcessIsolationTest {
         assertEquals(1, Regex("""PanelMessages\.handsFreeReply\(""").findAll(hf).count())
         assertTrue(hf.contains("is FlowEffect.Send -> {\n                val answer = PanelMessages.handsFreeReply(ReplyRequest(e.conversationKey, e.text, f.thread.newestIncoming))"))
         assertEquals(listOf("app/assistant/PanelMessages.kt", "app/assistant/handsfree/HandsFreeMessages.kt"), usersOf(Regex("""\bhandsFreeReply\(""")))
-        // The holds off: what the car can't send by voice goes to the panel's own reply (its card, tap or chat) for the
-        // conversation the car announced, with exactly your words; it never sends anything itself.
+        // What the car doesn't send by voice goes to the panel's own reply (its card, tap, chat or refusal) for the
+        // conversation the car announced, with exactly your words; it never sends anything itself. So does a reply the
+        // Reply action didn't take (but for the lock screen's refusal).
         assertTrue(hf.contains("is FlowEffect.OnScreen -> {"))
-        assertTrue(hf.contains("PanelMessages.handsFreeOnScreen(replyId, f.thread, e.text, msgLang(lang))"))
+        assertEquals(2, Regex("""PanelMessages\.handsFreeOnScreen\(replyId, f\.thread, e\.text, msgLang\(lang\)\)""").findAll(hf).count())
+        assertTrue(hf.contains("if (r != ReplyResult.HANDED_OVER && r != ReplyResult.LOCKED) {"))
         assertEquals(listOf("app/assistant/PanelMessages.kt", "app/assistant/handsfree/HandsFreeMessages.kt"), usersOf(Regex("""\bhandsFreeOnScreen\(""")))
         assertTrue(pm.contains("run(replyId, Routed.Command(MessageCommand.Reply(null, words, lang)))"))
-        // New texts in the car: core CarMessages.newText decides (kept only with the holds on, or locked).
+        // New texts in the car go on as outside the car (the panel's own text flow), and a call that can't be decided by
+        // voice shows the call tool's own card, as a typed "call Mom".
         val phf = code(File(java("app"), "app/heyrobot/assistant/handsfree/PanelHandsFree.kt"))
-        assertTrue(phf.contains("CarMessages.newText(HandsFreeHub.car.settings, HandsFreeHub.phone().locked) == NewTexts.KEEP_FOR_PARKING ->"))
+        assertFalse(phf.contains("Cmd.Park") || phf.contains("newText(") || phf.contains("TextCommand"))
+        assertTrue(phf.contains("is FlowEffect.CallCard -> {"))
+        assertTrue(phf.contains("host.tool(replyId, RoutineStep.Tool(Action.Call(callAsked)))"))
+        // Nothing anywhere keeps, parks or refuses because you are driving.
+        assertEquals(emptyList<String>(), usersOf(Regex("""\b(ParkItem|ParkCode|ParkList|ParkFile|editParked|holdWhileDriving|NewTexts|newTexts|KEEP_FOR_PARK|DRIVING_HOLD|NO_HELPER_APP_DRIVING|ACTION_PARKED|ARG_PARKED|parkInCar|keepReply|ParkNotice)\b""")))
         // The brief: counts by app, never a thread, from the main process.
         val bridge = code(File(java("app"), "app/heyrobot/people/MessagesBridge.kt"))
         assertTrue(bridge.contains("MessagesProtocol.REQ_UNREAD -> app.heyrobot.core.messages.MessageUnread.toJson("))

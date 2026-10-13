@@ -10,6 +10,10 @@ import org.json.JSONObject
 // default. Your cars are DeviceMemory's cars (devices.json): car mode is off until one is added. They become RobotSettings
 // fields under the next settings schema when the Car mode screen is wired (Settings.kt is not changed on this branch):
 // [toJson] and [fromJson] are the fragment as it would sit there (under "car"), an absent field reading as its default.
+//
+// 1.0 (the user, 13 Oct 2026: "I do not want any driving related restrictions"): car mode never holds, parks or refuses
+// anything because you are driving. The 0.8 row "New texts while driving" ("newTexts") and the 1.0 test builds' "Hold
+// screen actions until I park" ("holdWhileDriving") are gone; a file that still has them loads, and they are ignored.
 
 /** "Use car mode without unlocking" (§4.6). */
 enum class CarLockUse(val title: String) {
@@ -23,15 +27,6 @@ enum class CarLockUse(val title: String) {
 enum class CallSetting(val title: String) {
     OPEN_DIALER("Open the dialer"),
     CALL_AFTER_YES("Call directly after a spoken yes"),
-}
-
-/**
- * "New texts while driving": kept for parking, or Cheogram opened now (it needs a tap there). Only with
- * [CarSettings.holdWhileDriving] on; off, they open now as outside the car.
- */
-enum class NewTexts(val title: String) {
-    KEEP_FOR_PARKING("Keep for when I park"),
-    OPEN_CHEOGRAM("Open Cheogram now"),
 }
 
 /** "Announce new messages" (0.7). */
@@ -77,7 +72,6 @@ data class CarSettings(
     /** "Trusted session lasts": until the car disconnects, at most this many hours. */
     val trustedHours: Int = 4,
     val calls: CallSetting = CallSetting.OPEN_DIALER,
-    val newTexts: NewTexts = NewTexts.KEEP_FOR_PARKING,
     val announce: CarAnnounce = CarAnnounce.SENDER_THEN_ASK,
     val announceFrom: CarAnnounceFrom = CarAnnounceFrom.DND_ALLOWS,
     /** "Replies by voice" (0.7): always read back, then "send". */
@@ -93,14 +87,6 @@ data class CarSettings(
     val work: SavedPlace? = null,
     /** "Drive brief when the car connects": the preset routine "what's next" plus the weather (DriveBrief). */
     val driveBrief: Boolean = false,
-    /**
-     * "Hold screen actions until I park" (1.0, off by default, the user's decision of 13 Oct 2026): while car mode runs,
-     * what needs the screen or a tap waits for parking (opening an app, a new text, an email or event draft, freeing
-     * space, a reply only a tap sends or one that opens the chat) and a helper's app is never opened. Off, all of it works
-     * as outside the car, since Robot can't tell the driver from a passenger. Lock rules and consent cards are the same
-     * either way.
-     */
-    val holdWhileDriving: Boolean = false,
 ) {
     val endGraceMs: Long get() = clampGrace(endGraceSeconds) * 1_000L
     val trustedMs: Long get() = clampHours(trustedHours) * 3_600_000L
@@ -113,7 +99,6 @@ data class CarSettings(
         put("lockUse", lockUse.name)
         put("trustedHours", trustedHours)
         put("calls", calls.name)
-        put("newTexts", newTexts.name)
         put("announce", announce.name)
         put("announceFrom", announceFrom.name)
         put("voiceReplies", voiceReplies)
@@ -124,7 +109,6 @@ data class CarSettings(
         home?.let { put("home", place(it)) }
         work?.let { put("work", place(it)) }
         put("driveBrief", driveBrief)
-        put("holdWhileDriving", holdWhileDriving)
     }
 
     companion object {
@@ -152,7 +136,6 @@ data class CarSettings(
                 lockUse = o.enumOr("lockUse", d.lockUse),
                 trustedHours = clampHours(o.optInt("trustedHours", d.trustedHours)),
                 calls = o.enumOr("calls", d.calls),
-                newTexts = o.enumOr("newTexts", d.newTexts),
                 announce = o.enumOr("announce", d.announce),
                 announceFrom = o.enumOr("announceFrom", d.announceFrom),
                 voiceReplies = o.optBoolean("voiceReplies", d.voiceReplies),
@@ -163,8 +146,6 @@ data class CarSettings(
                 home = place(o.optJSONObject("home")),
                 work = place(o.optJSONObject("work")),
                 driveBrief = o.optBoolean("driveBrief", d.driveBrief),
-                // Missing (every settings file before 1.0.0): off.
-                holdWhileDriving = o.optBoolean("holdWhileDriving", d.holdWhileDriving),
             )
         }
     }

@@ -67,7 +67,7 @@ class VoiceLogTest {
             app.heyrobot.core.output.HoldWhy.entries, app.heyrobot.core.output.SessionKind.entries, app.heyrobot.core.headset.Gesture.entries,
             app.heyrobot.core.headset.ButtonAction.entries, app.heyrobot.core.headset.RobotPhase.entries, app.heyrobot.core.headset.AnnounceCode.entries,
             app.heyrobot.core.output.CardVoiceCode.entries, app.heyrobot.core.output.AnswerCode.entries, app.heyrobot.core.car.CarWhy.entries,
-            app.heyrobot.core.car.TrustEnd.entries, app.heyrobot.core.car.ParkCode.entries, app.heyrobot.core.car.CallWay.entries,
+            app.heyrobot.core.car.TrustEnd.entries, app.heyrobot.core.car.CallWay.entries,
             app.heyrobot.core.car.ReplyEnd.entries, app.heyrobot.core.car.NavKind.entries, app.heyrobot.core.headset.EndWhy.entries,
             // 0.7, memory and feedback.
             app.heyrobot.core.memory.MemOrigin.entries, app.heyrobot.core.memory.MemKindCode.entries, app.heyrobot.core.memory.MemForget.entries,
@@ -116,9 +116,12 @@ class VoiceLogTest {
         val headset = listOf(VoiceEvent.HEADSET_ENTRY, VoiceEvent.HEADSET_ROUTE, VoiceEvent.HEADSET_ROUTE_FAILED, VoiceEvent.OUTPUT_HELD, VoiceEvent.BVRA_ACK,
             VoiceEvent.DEVICE_PRESENCE, VoiceEvent.PRIVATE_ASKED, VoiceEvent.BUTTON, VoiceEvent.ANNOUNCE, VoiceEvent.SPOKEN_CARD)
         assertEquals((200..209).toList(), headset.map { it.id })
-        val car = listOf(VoiceEvent.CAR_MODE, VoiceEvent.CAR_TRUSTED, VoiceEvent.CAR_PARKED, VoiceEvent.CAR_CALL, VoiceEvent.CAR_REPLY, VoiceEvent.CAR_DND,
+        // 212 (CAR_PARKED, 1.0's test builds' park list) is retired, never reused.
+        val car = listOf(VoiceEvent.CAR_MODE, VoiceEvent.CAR_TRUSTED, VoiceEvent.CAR_CALL, VoiceEvent.CAR_REPLY, VoiceEvent.CAR_DND,
             VoiceEvent.CAR_NAV, VoiceEvent.CAR_MUSIC, VoiceEvent.HEADSET_END)
-        assertEquals((210..218).toList(), car.map { it.id })
+        assertEquals((210..218).toList() - 212, car.map { it.id })
+        // An old log's 212 line is skipped, never fatal.
+        assertEquals(emptyList<VoiceLogEntry>(), VoiceLogCodec.decode(VoiceLogCodec.HEADER + "\n1 212 1 0 0\n"))
         assertEquals(headset + car, VoiceEvent.entries.filter { it.id in 200..219 })
         // 0.7's memory events use 180 to 189; 183 (the search model) and 186 to 187 (transcripts) stay reserved for 7.4 and 7.5.
         val memory = listOf(VoiceEvent.MEM_SAVE, VoiceEvent.MEM_FORGET, VoiceEvent.MEM_RECALL, VoiceEvent.MEM_SUGGEST, VoiceEvent.MEM_LOCKED,

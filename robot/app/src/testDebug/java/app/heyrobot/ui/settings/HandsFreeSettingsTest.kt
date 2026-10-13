@@ -152,37 +152,28 @@ class HandsFreeSettingsTest {
         rule.onNodeWithText("Not set").assertExists()
     }
 
-    @Test fun holdScreenActionsUntilIParkIsOffAndHidesNewTexts() {
-        // 1.0: off by default (a passenger may be the one asking), at the top of "While you drive".
+    @Test fun nothingWaitsForWhenYouPark() {
+        // 1.0 (the user, 13 Oct 2026: no driving restrictions): no row holds anything while you drive; Do Not Disturb stays.
         var file by mutableStateOf(CarFile(on = true))
         val act = actions()
         val write = HandsFreeActions(car = { file = it; act.car(it) })
         rule.show { CarSettingsScreen(CarPageData(file, facts = facts(dnd = true), announce = true), write, SnackbarHostState(), onBack = {}) }
         rule.scrollToText("Nearby devices")
-        rule.onRow("Hold screen actions until I park").assert(SemanticsMatcher.expectValue(SemanticsProperties.ToggleableState, ToggleableState.Off))
-        rule.onNodeWithText("Off: anything that needs the screen opens now, as outside the car. Robot can't tell who is speaking").assertExists()
-        // Off, new texts open now: the row that would keep them is not shown.
+        rule.onRow("Do Not Disturb while driving").assertExists()
+        rule.onNodeWithText("Hold screen actions until I park").assertDoesNotExist()
         rule.onNodeWithText("New texts while driving").assertDoesNotExist()
         assertEquals(emptyList<String>(), rule.touchTargetProblems())
         rule.shot("settings_car_drive")
-        // On: today's holds, and "New texts while driving" back under it with its own choice.
-        rule.onRow("Hold screen actions until I park").performClick()
-        assertTrue(car!!.settings.holdWhileDriving)
-        assertEquals(CarSettings(holdWhileDriving = true), car!!.settings)
-        rule.onNodeWithText("Opening apps, drafts, new texts and replies that need a tap wait for when you park").assertExists()
-        rule.scrollToText("New texts while driving")
-        rule.onRow("New texts while driving").performClick()
-        rule.inDialog(app.heyrobot.core.car.NewTexts.OPEN_CHEOGRAM.title).performClick()
-        assertEquals(CarSettings(holdWhileDriving = true, newTexts = app.heyrobot.core.car.NewTexts.OPEN_CHEOGRAM), car!!.settings)
-        // "Replies by voice" says where a reply that needs a tap goes.
-        rule.scrollToText("Replies by voice")
-        rule.onNodeWithText("otherwise kept for when you park", substring = true).assertExists()
-        rule.scrollToText("Hold screen actions until I park")
-        rule.onRow("Hold screen actions until I park").performClick()
-        assertFalse(car!!.settings.holdWhileDriving)
-        rule.onNodeWithText("New texts while driving").assertDoesNotExist()
+        // "Replies by voice" says the screen's reply card takes what isn't sent by voice, on or off.
         rule.scrollToText("Replies by voice")
         rule.onNodeWithText("otherwise the reply card shows", substring = true).assertExists()
+        rule.onRow("Replies by voice").performClick()
+        assertFalse(car!!.settings.voiceReplies)
+        rule.onNodeWithText("Off: the reply card shows, as outside the car").assertExists()
+        // The footer promises no parking and no "when you're stopped".
+        rule.scrollToText("Robot doesn't hold or refuse anything because you're driving", substring = true)
+        for (w in listOf("park", "stopped", "From your drive")) rule.onNodeWithText(w, substring = true).assertDoesNotExist()
+        assertEquals(CarSettings(voiceReplies = false), car!!.settings)
     }
 
     @Test fun newMessagesWaitForSettingsMessages() {
@@ -232,7 +223,7 @@ class HandsFreeSettingsTest {
     @Test fun theCarScreenHasBigButtonsAndOneLine() {
         val taps = ArrayList<String>()
         rule.show(dark = true) {
-            CarModeScreen(CarScreenState("Car mode · unlocked features", trusted = true, status = "2 things for when you park and a line far too long to fit",
+            CarModeScreen(CarScreenState("Car mode · unlocked features", trusted = true, status = "Calling Martine Martin, mobile, on a line far too long to fit",
                 buttons = CarScreen.buttons(messages = false, home = true)), CarScreenActions(talk = { taps += "talk" }, call = { taps += "call" },
                 navigateHome = { taps += "home" }, end = { taps += "end" }))
         }
@@ -245,8 +236,8 @@ class HandsFreeSettingsTest {
         assertEquals(listOf("talk", "call", "home", "end"), taps)
         rule.onNodeWithContentDescription("Unlocked features on").assertExists()
         // One status line of at most 40 characters.
-        rule.onNodeWithText(CarScreen.status("2 things for when you park and a line far too long to fit")).assertExists()
-        assertTrue(CarScreen.status("2 things for when you park and a line far too long to fit").length <= CarScreen.MAX_STATUS)
+        rule.onNodeWithText(CarScreen.status("Calling Martine Martin, mobile, on a line far too long to fit")).assertExists()
+        assertTrue(CarScreen.status("Calling Martine Martin, mobile, on a line far too long to fit").length <= CarScreen.MAX_STATUS)
         assertEquals(CarSettings(), CarSettings.fromJson(null))
     }
 }

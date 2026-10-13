@@ -9,7 +9,7 @@ import org.json.JSONObject
 // Pure. Where 0.7's messages meet 0.8's routines, headset and car mode: the brief's unread count (counts by app only,
 // never who or what), which posted notification is a new message worth announcing, who "People you choose" lets
 // through, and whether a reply may be sent after a spoken yes at all (0.7's reply rules: a reply that needs a tap still
-// needs one, so in the car it waits for parking instead).
+// needs one, so in the car the screen's reply card takes it, as outside the car).
 
 object MessageUnread {
     /**
@@ -82,9 +82,9 @@ object AnnounceSenders {
 enum class VoiceReply {
     /** A spoken read-back and "send" or "yes" may send it ("Answer reply cards by voice", or a person you chose for no card). */
     BY_VOICE,
-    /** Only a tap sends it (the default card, a group, a locked phone): in the car it waits for parking. */
+    /** Only a tap sends it (the default card, a group, a locked phone): in the car the screen's reply card takes it. */
     TAP_ONLY,
-    /** Robot sends nothing itself ("Open the chat; I press Send", or no Reply action): it waits for parking too. */
+    /** Robot sends nothing itself ("Open the chat; I press Send", or no Reply action): in the car the chat opens, as outside it. */
     OPEN_CHAT,
     /** Not now (Settings › Messages off, or locked without "Read and reply"). */
     REFUSED,

@@ -294,7 +294,7 @@ object MessagesRouter {
     /** "my mom" → "mom", "maman" stays, a trailing "'s" goes. */
     private fun cleanWho(s: String): String = s.trim().trimEnd('?', '.', '!', ',', ':').trim()
         .replace(Regex("^(?i)(?:my|ma|mon|the|la|le)\\s+"), "").replace(Regex("(?:'s|’s)$"), "").trim()
-        // 1.0: a parked reply quotes the sender's name ("reply to “Marie”: …", CarMessages.parkedAsk).
+        // A name in quotes ("reply to “Marie”: …") is the name.
         .removeSurrounding("“", "”").removeSurrounding("\"").removeSurrounding("«", "»").trim()
 
     private fun langOf(w: String): Lang = if (w.startsWith("fr")) Lang.FR else Lang.EN

@@ -2,9 +2,6 @@ package app.heyrobot.core.output
 
 import app.heyrobot.core.car.CallSetting
 import app.heyrobot.core.car.CarSettings
-import app.heyrobot.core.car.ParkCode
-import app.heyrobot.core.car.ParkItem
-import app.heyrobot.core.car.ParkList
 import app.heyrobot.core.car.SavedPlace
 import app.heyrobot.core.headset.HeadsetSettings
 import app.heyrobot.core.headset.ListenWith
@@ -26,7 +23,7 @@ class HandsFreeStoreTest {
 
     @Test fun nothingSavedReadsAsTheDesignsDefaults() {
         val s = HandsFreeStore(dir())
-        // Car mode off, the headset button on, no device, no place, nothing parked.
+        // Car mode off, the headset button on, no device, no place.
         assertFalse(s.car().on)
         assertEquals(CarSettings(), s.car().settings)
         assertTrue(s.headset().settings.buttonOpensRobot)
@@ -35,7 +32,6 @@ class HandsFreeStoreTest {
         assertFalse(s.headset().noticeSeen)
         assertEquals(DeviceMemory(), s.devices())
         assertEquals(Places(), s.places())
-        assertTrue(s.parked().isEmpty())
     }
 
     @Test fun eachFileRoundTripsAndStaysApart() {
@@ -59,7 +55,9 @@ class HandsFreeStoreTest {
         assertEquals(listOf(DeviceRole.HEADSET, DeviceRole.CAR), again.devices().devices.map { it.role })
         // settings.json is never touched.
         assertFalse(File(d, "settings.json").exists())
-        assertEquals(HandsFreeStore.FILES.toSet() - HandsFreeStore.PARK, d.list()!!.filter { it.endsWith(".json") }.toSet())
+        assertEquals(HandsFreeStore.FILES.toSet(), d.list()!!.filter { it.endsWith(".json") }.toSet())
+        // 1.0: no park.json any more.
+        assertFalse(HandsFreeStore.LEGACY_PARK in HandsFreeStore.FILES)
     }
 
     @Test fun aDamagedFileReadsAsDefaultsAndADamagedDeviceListIsKeptAside() {
@@ -84,23 +82,21 @@ class HandsFreeStoreTest {
         assertTrue(File(d, HandsFreeStore.DEVICES).readText().contains("99"))
     }
 
-    @Test fun theParkListKeepsWhatToAskAgainOnceEach() {
-        val s = HandsFreeStore(dir())
-        val text = Parked(ParkItem(ParkCode.NEW_TEXT, "Text Bob: I'm late", 5), "Text Bob I'm late")
-        s.editParked { ParkFile.add(it, text) }
-        s.editParked { ParkFile.add(it, text.copy(item = text.item.copy(at = 6))) }
-        s.editParked { ParkFile.add(it, Parked(ParkItem(ParkCode.MUST_SEE, "Open Signal", 7))) }
-        val list = s.parked()
-        assertEquals(2, list.size)
-        assertEquals("Text Bob I'm late", list[0].ask)
-        assertNull(list[1].ask)
-        // Never more than the list's limit, the oldest dropped; toString never shows the words.
-        var many = emptyList<Parked>()
-        for (i in 0 until ParkList.MAX + 5) many = ParkFile.add(many, Parked(ParkItem(ParkCode.NEEDS_SCREEN, "thing $i", i.toLong())))
-        assertEquals(ParkList.MAX, many.size)
-        assertEquals("thing 5", many.first().item.summary)
-        assertFalse(text.toString().contains("Bob"))
+    @Test fun placesNeverShowTheirWords() {
         assertFalse(Places(SavedPlace("12 Main St", 1.0, 2.0)).toString().contains("Main"))
+    }
+
+    /** 1.0's test builds' park.json held what you said: it is deleted, never read, and nothing writes it again. */
+    @Test fun anOldParkFileIsDeleted() {
+        val d = dir()
+        File(d, HandsFreeStore.LEGACY_PARK).writeText("""{"v":1,"items":[{"code":1,"summary":"Text Bob: I'm late","at":5,"ask":"Text Bob I'm late"}]}""")
+        val s = HandsFreeStore(d)
+        s.editCar { it.copy(on = true) }
+        assertTrue(File(d, HandsFreeStore.LEGACY_PARK).isFile)
+        s.dropLegacy()
+        assertFalse(File(d, HandsFreeStore.LEGACY_PARK).exists())
+        s.dropLegacy()
+        assertTrue(s.car().on)
     }
 
     @Test fun theNoticeShowsOnlyAfterAnUpdateUntilClosed() {

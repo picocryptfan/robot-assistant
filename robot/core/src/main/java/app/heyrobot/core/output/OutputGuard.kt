@@ -111,8 +111,6 @@ enum class Keep {
     SCREEN,
     /** Until you unlock: the panel says "Unlock to see the answer". */
     UNLOCK,
-    /** The "When you park" list (car mode). */
-    PARK,
     /** Nowhere: a message stays in its app. */
     NONE,
 }
@@ -167,7 +165,7 @@ object OutputGuard {
     fun decide(u: Utterance, ctx: OutputContext, s: GuardSettings): OutputDecision {
         val phone = ctx.phone
         // 1. Nothing that came by itself talks over a call (CallAudio: never during another app's call).
-        if (phone.callActive && u.source.unattended) return OutputDecision.Hold(HoldWhy.CALL, if (u.source == SpeechSource.MESSAGE) Keep.NONE else later(ctx))
+        if (phone.callActive && u.source.unattended) return OutputDecision.Hold(HoldWhy.CALL, if (u.source == SpeechSource.MESSAGE) Keep.NONE else screenOrUnlock(phone))
         // 2. The headset or car went away: stop. A public line may go on where sound goes now only with "Stop when the
         //    headset disconnects" off (never in the car: you left it).
         if (ctx.deviceGone) {
@@ -193,7 +191,7 @@ object OutputGuard {
             SessionKind.CAR -> if (u.personal && u.source.unattended) when (s.readAloud) {
                 ReadAloud.ALWAYS -> Unit
                 ReadAloud.ASK -> return OutputDecision.Ask(AskWhat.READ_ALOUD)
-                ReadAloud.NEVER -> return OutputDecision.Hold(HoldWhy.NOT_PRIVATE, if (u.source == SpeechSource.MESSAGE) Keep.NONE else Keep.PARK)
+                ReadAloud.NEVER -> return OutputDecision.Hold(HoldWhy.NOT_PRIVATE, if (u.source == SpeechSource.MESSAGE) Keep.NONE else screenOrUnlock(phone))
             }
             SessionKind.PHONE -> Unit
         }
@@ -207,9 +205,6 @@ object OutputGuard {
         (ctx.session == SessionKind.CAR && ctx.carTrusted) || ctx.lockAllowsPersonal || (u.source == SpeechSource.MESSAGE && s.announceLocked)
 
     private fun screenOrUnlock(phone: PhoneState): Keep = if (phone.locked) Keep.UNLOCK else Keep.SCREEN
-
-    /** A routine held during a call: on screen, after the unlock, or for parking. */
-    private fun later(ctx: OutputContext): Keep = if (ctx.session == SessionKind.CAR) Keep.PARK else screenOrUnlock(ctx.phone)
 
     fun volume(u: Utterance, ctx: OutputContext): VolumePolicy = when {
         ctx.commRoute && !ctx.phone.callActive -> VolumePolicy.CALL
@@ -255,7 +250,6 @@ object OutputLines {
     val UNLOCK_TO_SEE = Line("Unlock to see the answer.", "Déverrouille pour voir la réponse.")
     val READ_ALOUD = Line("Others may hear it. Read it aloud?", "D'autres pourraient l'entendre. Je le lis à voix haute?")
     val KEEP_FOR_LOOK = Line("I'll keep that for when you can look at the phone.", "Je garde ça pour quand tu pourras regarder le téléphone.")
-    val KEEP_FOR_PARK = Line("I'll keep that for when you park.", "Je garde ça pour quand tu seras stationné.")
 
     /** "Is “Pixel Buds Pro” headphones only you can hear? Say yes or no." The name is the device's own (never logged). */
     fun privateQuestion(name: String, lang: SpokenLang): String {

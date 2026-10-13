@@ -1,6 +1,5 @@
 package app.heyrobot.assistant.routines
 
-import app.heyrobot.assistant.car.CarNotices
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -27,8 +26,6 @@ class RoutineAlarmReceiver : BroadcastReceiver() {
                         intent.getStringExtra(RoutineIntents.EXTRA_SLOT)?.let { try { LocalDateTime.parse(it) } catch (_: Exception) { null } },
                         intent.getLongExtra(RoutineIntents.EXTRA_AT, 0L))
                     RoutineIntents.ACTION_READY -> RoutineHub.openReady(intent.getStringExtra(RoutineIntents.ARG_READY) ?: RoutineIntents.ALL_READY)
-                    // 0.8: car mode's "From your drive" notification.
-                    RoutineIntents.ACTION_PARKED -> CarNotices.openParked()
                     Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_TIME_CHANGED, Intent.ACTION_TIMEZONE_CHANGED, Intent.ACTION_MY_PACKAGE_REPLACED ->
                         RoutineHub.onClockChanged()
                 }

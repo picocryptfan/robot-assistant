@@ -48,8 +48,8 @@ import app.heyrobot.voice.SessionRoute
 // second; it ends 30 s after the car goes. On: the speaking service in the foreground with the car's notification
 // (routines' RoutineSpeakingService, mediaPlayback: car mode speaks with the screen off for the whole drive), "Car mode
 // on." through the car, the car screen if the screen is on, the trusted session after one unlock in the car (in memory
-// only: a :voice restart ends it), Do Not Disturb's "Driving (Robot)" rule only with that switch and its access. Off:
-// "From your drive: n things" if something was kept for when you park. Main thread.
+// only: a :voice restart ends it), Do Not Disturb's "Driving (Robot)" rule only with that switch and its access. Nothing
+// waits for when you park (1.0): what needs the screen opens as it would outside the car. Main thread.
 
 object CarModeController {
     private val app: Context get() = VoiceHub.app
@@ -137,7 +137,10 @@ object CarModeController {
     private fun apply(e: CarEffect) {
         when (e) {
             CarEffect.StartService -> if (!RoutineSpeakingService.startCar(app)) input(CarInput.StartRefused(now()))
-            CarEffect.StopService -> RoutineSpeakingService.carEnded()
+            CarEffect.StopService -> {
+                RoutineSpeakingService.carEnded()
+                CarNotices.ended(app)
+            }
             is CarEffect.Notify -> CarNotices.startNotice(app)
             is CarEffect.Say -> CarVoice.say(e.line.get(HandsFreeHub.lang))
             CarEffect.ShowCarScreen -> if (screenOn()) openScreen()
@@ -151,7 +154,6 @@ object CarModeController {
                 VoiceLog.add(VoiceEvent.CAR_TRUSTED, if (e.on) 1 else 0, e.why.id)
                 RoutineSpeakingService.refreshCar()
             }
-            CarEffect.ParkNotice -> CarNotices.parked(app)
             is CarEffect.Logged -> VoiceLog.add(VoiceEvent.CAR_MODE, if (e.on) 1 else 0, e.why.id)
             is CarEffect.WakeAt -> main.postDelayed({ input(CarInput.Tick(now())) }, (e.at - now()).coerceAtLeast(0) + 50)
         }
@@ -166,9 +168,6 @@ object CarModeController {
     fun serviceRefused() {
         if (state.phase == CarPhase.CONNECTED) input(CarInput.StartRefused(now()))
     }
-
-    /** Something was kept for when you park: the notification's line counts it. */
-    fun parkChanged() = RoutineSpeakingService.refreshCar()
 
     private fun screenOn(): Boolean = try { app.getSystemService(PowerManager::class.java).isInteractive } catch (_: Throwable) { false }
 

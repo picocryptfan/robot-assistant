@@ -23,8 +23,6 @@ import app.heyrobot.core.car.MessageFlow
 import app.heyrobot.core.car.MessageFlowContext
 import app.heyrobot.core.car.MessageFlowState
 import app.heyrobot.core.car.MessageStep
-import app.heyrobot.core.car.ParkCode
-import app.heyrobot.core.car.ParkItem
 import app.heyrobot.core.car.ReplyEnd
 import app.heyrobot.core.headset.AnnounceAnswer
 import app.heyrobot.core.headset.AnnounceCode
@@ -77,8 +75,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 // here before 0.7's router (after its echo check). "Yes" reads it as "read my messages" would (0.7's reading: History's
 // placeholder, the quarantine, the echo check, marked read by Robot and "After Robot reads"); "no" is quiet and the
 // session ends. In the car a reply follows core MessageFlow (read back word for word, then "send" or "yes"), and only
-// where 0.7's rules let a spoken yes send it (HandsFreeReplies): a reply only a tap may send waits for parking with your
-// words. A message's words never act: the words heard while Robot reads them are the message's (0.7's echo check), and
+// where 0.7's rules let a spoken yes send it (HandsFreeReplies): any other reply goes to the screen's own reply card with
+// your words, as outside the car (1.0: nothing waits for when you park). A message's words never act: the words heard while Robot reads them are the message's (0.7's echo check), and
 // a "send" within 3 s of them doesn't count. Nothing here writes a message; its words live in RAM until the session ends.
 // Main thread, except [answer] (the panel's turn).
 
@@ -340,31 +338,28 @@ object HandsFreeMessages {
                     ReplyResult.NEW_MESSAGES -> ReplyEnd.NEW_MESSAGES
                     ReplyResult.LOCKED -> ReplyEnd.LOCKED
                     ReplyResult.NO_REPLY_ACTION, ReplyResult.GONE -> ReplyEnd.NOT_REPLYABLE
-                    ReplyResult.FAILED -> ReplyEnd.HELD
+                    ReplyResult.FAILED -> ReplyEnd.FAILED
                 }.id)
-                // Not handed over: your words wait for parking, where the panel's card sends them with a tap.
-                if (r != ReplyResult.HANDED_OVER) PanelHandsFree.keep(ParkItem(ParkCode.REPLY, replyTo(f), System.currentTimeMillis()),
-                    CarMessages.parkedAsk(f.notice, e.text, lang))
                 val line = CarMessages.result(r, f.notice.app, lang)
                 shown.append(if (shown.isEmpty()) "" else " ").append(line)
                 VoiceHub.tts.speak(line)
+                // Not handed over (but for the lock screen): the screen's own reply card takes your words, as outside the car.
+                if (r != ReplyResult.HANDED_OVER && r != ReplyResult.LOCKED) {
+                    host.text(replyId, shown.toString().also { shown.clear() })
+                    PanelMessages.handsFreeOnScreen(replyId, f.thread, e.text, msgLang(lang))
+                }
             }
-            is FlowEffect.Park -> {
-                PanelHandsFree.keep(ParkItem(e.code, e.summary, System.currentTimeMillis()), e.ask)
-                VoiceLog.add(VoiceEvent.CAR_REPLY, 0, ReplyEnd.HELD.id)
-            }
-            // "Hold screen actions until I park" off: the screen's own reply card (or the chat) now, as outside the car.
+            // What the car doesn't read back and send by voice: the screen's own reply card (or the chat, or 0.7's refusal)
+            // with your words, as outside the car.
             is FlowEffect.OnScreen -> {
                 VoiceLog.add(VoiceEvent.CAR_REPLY, 0, ReplyEnd.ON_SCREEN.id)
                 if (shown.isNotEmpty()) host.text(replyId, shown.toString().also { shown.clear() })
                 PanelMessages.handsFreeOnScreen(replyId, f.thread, e.text, msgLang(lang))
             }
-            is FlowEffect.Place -> Unit
+            is FlowEffect.Place, is FlowEffect.CallCard -> Unit
         }
         if (shown.isNotEmpty()) host.text(replyId, shown.toString())
     }
-
-    private fun replyTo(f: Flow) = (if (lang == SpokenLang.FR) "Répondre à " else "Reply to ") + f.notice.sender
 
     private fun say(replyId: String, host: PanelRoutines.Host, text: String, listen: Boolean) {
         host.text(replyId, text)
