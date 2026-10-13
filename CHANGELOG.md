@@ -28,7 +28,7 @@ Features:
 - Helpers work with any AI company. With your API key Robot asks it itself; without one, a helper whose company has an Android app opens that app with your question, and you press Send there. No helper is set up until you add one. Each helper answers to its own name, which you can change ("ask Jarvis …"). "Summarize with a stronger AI" can use any helper with an API key, with that helper's model, price and spending caps.
 - Search in your browser with nothing to set up: "search DuckDuckGo for …" or « cherche sur Startpage … » opens the engine in your browser (Startpage by default, or Brave Search, Mojeek, Qwant, Ecosia, Google or Bing). Robot never reads the results. Web search also gains DuckDuckGo's Instant Answers and a short list of public SearXNG servers. Settings › Web search and the setup guide show every engine and service with a High, Medium or Low privacy level.
 - Memory import. Settings › Memory › Import reads a memory export from 0.9 or 1.0 and shows what it would add before anything is written. Items you already have, and any that hold a password, a PIN, a code or a card number, are skipped. Imported items count as something Robot read, so actions they lead to ask first, until you say they are yours.
-- Car mode no longer holds actions while you drive, since Robot can't tell the driver from a passenger: opening an app, drafts, new texts and replies that need a tap open now, as outside the car. If you drive alone, turn on Settings › Car mode › Hold screen actions until I park to keep them for when you park. Lock-screen rules and consent cards are the same either way.
+- Car mode doesn't hold or refuse anything while you drive, since a passenger may be the one asking. Opening an app, drafts, new texts, a helper's app and replies that need a tap work as they do outside the car, and a call or reply Robot can't finish by voice shows its card on the screen. Settings › Car mode › New texts while driving and the "From your drive" list are gone. Lock-screen rules and consent cards are the same as outside the car.
 - Termux: a weekly check for Termux updates (Robot never downloads or installs it), Termux paused after an update until you trust that version, and the ADB fixes without a computer, through Shizuku. A command or argument holding one of Robot's own keys is refused.
 
 Look and wording:
@@ -50,7 +50,7 @@ Security:
 - Termux's safety rules now apply to every call, and `git` left the list of commands that may skip the card.
 - Your calendar read out in the brief and a note's text count as content Robot didn't write, so actions and searches they lead to ask first. Memory kept from something Robot read stays content when it comes back, and a message sender's name is never taken as your words.
 - A "remember that …" Robot refused isn't kept in History.
-- The brief's, Ready cards', routine summaries' and From your drive's notifications are hidden on the lock screen.
+- The brief's, Ready cards' and routine summaries' notifications are hidden on the lock screen.
 - Settings › Memory and a private answer can't be captured, and Memory's fields don't teach your keyboard.
 - A web search names Wikipedia and Open Library on its card, its answer's "Sent to" line and History when they get your words.
 - Your own `.litertlm` file is checked strictly before it is read, and importing one warns you first. The model process's replies have a size cap.

@@ -197,12 +197,12 @@ Each finding of the 1.0 audit (its ids in brackets) is fixed with a test; the se
   and checks word by word: while a source's words aren't all known, any word you didn't say needs a card.
 - **Memory from content stays content** [injection-memory-recall-taint]: items recalled in Robot's answers count for later
   questions, and what is remembered in a turn that went with a content item is saved as content (core `MemoryTaint`).
-- **A sender's name is never your question** [injection-parked-reply-sender-name]: a reply kept for parking quotes and
-  cleans the name, and From your drive's tips only fill the text field.
+- **A sender's name is never your question** [injection-parked-reply-sender-name]: fixed by removal. Car mode keeps
+  nothing for when you park any more, so there is no parked reply and no tip that could carry a sender's name.
 - **History** [secrets-history-refused-remember]: a refused "remember that …" (locked, Memory off) is saved as
   "Remember: [not saved, not kept in History]", never its words.
 - **Lock screen notifications** [secrets-lockscreen-notification-content]: the brief's, Ready cards', routine summaries'
-  and From your drive's notifications are `VISIBILITY_SECRET`.
+  notifications are `VISIBILITY_SECRET`. Car mode's "From your drive" was too, until 1.0 removed it.
 - **Private memory on screen** [secrets-memory-private-items-not-secure]: Settings › Memory and a panel showing a private
   answer are `FLAG_SECURE`; Memory's dialogs are secure and its fields ask the keyboard for no personalized learning.
 - **Who gets a search's words** [network-1]: the consent card, the action's line, the answer card's "Sent to" line and
@@ -565,13 +565,14 @@ Settings file schema 13, as 0.7.0: the new parts keep their own files in `files/
   209 and 218.
 - **Car mode** ([Car mode (0.8)](#car-mode-08)): when your car connects (once you added it in Settings › Car mode, off by
   default), Robot talks through the car with short answers, a car screen of big buttons, calls read back before the
-  dialer opens, Organic Maps' preview home or to work, "what's next", music keys, and a list of what waits for when you
-  park; after one unlock in the car, car functions work locked until it goes. Voice log events 210 to 217.
+  dialer opens, Organic Maps' preview home or to work, "what's next" and music keys; after one unlock in the car, car
+  functions work locked until it goes. Voice log events 210 to 217. (1.0: car mode no longer keeps anything for when you
+  park; everything else works as outside the car.)
 - **New messages, announced** (in both sections): with Settings › Messages › **Announce new messages** on (off by
   default), a new message from someone you chose (People › a person) is announced in private headphones ("Message from
   Marie. Read it?": "yes" reads it, "no" is quiet), never on the speaker or while locked by default; in car mode it is
   announced in the car, read after "yes", and a reply you dictate is read back word for word and sent after "send", only
-  where 0.7's rules let a spoken yes send it: otherwise it waits for when you park, with your words. A message's words
+  where 0.7's rules let a spoken yes send it: otherwise its card shows on the screen with your words (1.0). A message's words
   still never act (0.7's quarantine and echo check), and "read my messages" in a headset or the car passes OutputGuard.
 - **Tensor G6 (Pixel 11) in beta**: Fast on a Pixel 11 is Google's Tensor G6 build of Gemma 4 E2B on the TPU
   (`gemma-4-E2B-it_Google_Tensor_G6.litertlm`, pinned at Fast's commit by size and SHA-256), marked beta, its speed an
@@ -5612,9 +5613,9 @@ turn on "Announce messages from Mom". *Done when:*
 ## Car mode (0.8)
 
 Robot's own hands-free mode over your car's Bluetooth (not Android Auto): when your car connects, car mode starts, Robot
-talks through the car, the car screen shows big buttons and answers are short. Since 1.0, what needs the screen opens as
-it would outside the car, since Robot can't tell the driver from a passenger; with "Hold screen actions until I park"
-on, it waits for when you park. Design: `../docs/plans/routines-headset-car-design.md` §1 and §4; the pure logic is in `core/car` and
+talks through the car, the car screen shows big buttons and answers are short. Everything else works as it does outside
+the car: since 1.0, car mode never holds, parks or refuses anything because you're driving, since a passenger may be the
+one asking. Design: `../docs/plans/routines-headset-car-design.md` §1 and §4; the pure logic is in `core/car` and
 `core/output` with JVM tests, the wiring in `assistant/car/` and `assistant/handsfree/` (`:voice`) and
 `ui/settings/HandsFreeSettings.kt`, `ui/car/CarModeScreen.kt`. Settings live in `files/robot/car.json`, `places.json` and
 `devices.json`.
@@ -5626,7 +5627,7 @@ on, it waits for when you park. Design: `../docs/plans/routines-headset-car-desi
   if Android refuses to start it in the background, "Car connected · Start car mode" waits for a tap.
 - **Talking:** "Car mode on." through the car; then your car's voice button, "hey robot", or the car screen's Talk.
   Robot speaks through the car as a call (cars lower the radio), at most two sentences, then "Want more?". The model's
-  prompt gets one short line for driving.
+  prompt gets one short line asking for short spoken answers (style only: no tool or card is held back).
 - **The lock screen:** after one unlock in the car, car functions work locked until the car goes or 4 hours (the
   trusted session; the notification and screen say "unlocked features"); without it, "Unlock once to use car features".
 - **Calls** ("call Mom", "appelle maman", the screen's Call): spoken choices ("Mom: mobile, or work?"), the number read
@@ -5636,28 +5637,33 @@ on, it waits for when you park. Design: `../docs/plans/routines-headset-car-desi
   Emergency numbers always open the dialer and are never called by Robot. A call placed after a spoken yes is car mode's
   alone. Outside car mode, "call Mom" is the call tool's card (never described to the model, which can't call it); in a
   headset session on headphones you confirmed private, unlocked, the choices and the read-back are spoken instead and
-  the yes opens the dialer with the number, where you tap Call (anywhere else in a headset session, the card).
+  the yes opens the dialer with the number, where you tap Call (anywhere else in a headset session, the card). A name
+  learned from a notification, more than three numbers, or no usable answer twice: the call tool's own card shows on
+  the screen ("Check who it is on the screen.", "Several people match. Pick one on the screen.", "It's on the screen."),
+  as when you type "call Mom" (1.0; it was kept for when you park).
 - **Navigation** ("navigate home", "take me to work", "le poste d'essence le plus proche"): Organic Maps' route preview
-  to your saved Home or Work (tap Start when stopped), the nearest place's 0.4.0 flow, or a search.
+  to your saved Home or Work ("Route ready in your maps app. Tap Start to go.": a link can't start navigation by
+  itself), the nearest place's 0.4.0 flow, or a search you pick from in the maps app.
 - **What's next** (your calendar), **music** (play, pause, next, previous: a media key to the current player), "repeat",
   "stop listening", "end car mode".
-- **Hold screen actions until I park** (1.0, Settings › Car mode › While you drive, off by default; `holdWhileDriving`
-  in `car.json`, missing in older files and read as off). The user's decision of 13 Oct 2026: a passenger may be the one
-  asking, so car mode doesn't hold things back unless you choose it.
+- **No driving restrictions** (1.0, the user's decision of 13 Oct 2026: "I do not want any driving related
+  restrictions. Period."). In the car every request behaves as it would outside the car with the phone in the same lock
+  state; the trusted session still loosens car functions on the lock screen. 0.8 to 0.9 held some things for when you
+  park; 1.0's test builds made that a switch. The switch, "New texts while driving" and the park list are gone:
 
-  | While car mode runs | Off (the default) | On (0.8 to 0.9's behaviour) |
+  | In the car | 0.8 to 0.9 | 1.0 |
   |---|---|---|
-  | Opening an app, an email or event draft, a text, freeing memory or storage | The card, answered as in a headset: a spoken yes where one counts outside the car, a tap where outside the car needs one | Kept for when you park ("I'll keep that for when you park.") |
-  | A helper's app hand-off | The normal card and its consent | Refused: "I can't open another app while you drive." |
-  | "Text Bob I'm late" | Goes on as outside the car (unlocked; locked, it is kept) | Kept, unless New texts while driving is "Open … now" (that row shows only when the switch is on) |
-  | A reply only a tap sends, or one that opens the chat | Its card shows, or the chat opens, now | Kept with your words |
+  | Opening an app, an email or event draft, a text, freeing memory or storage | Kept for when you park | The card, as in a headset: a spoken yes where one counts, a tap where one is needed |
+  | A helper's app hand-off | Refused: "I can't open another app while you drive." | The normal card and its consent |
+  | "Text Bob I'm late" | Kept, unless New texts while driving was "Open … now" | The panel's own text flow, as outside the car (locked: as on a locked phone) |
+  | A reply only a tap sends, one that opens the chat, Replies by voice off, a locked phone, 0.7's refusal | Kept with your words | The screen's own reply card, chat or refusal, with your words |
+  | A reply nobody confirmed, or one the app didn't take | Kept with your words | The screen's reply card with your words ("Your reply is on the screen.") |
+  | A call with a learned name, more than three numbers, or no answer | Kept | The call tool's card on the screen |
+  | "From your drive: 2 things" when car mode ends | Shown | Gone |
 
-  Either way: short spoken answers, the car screen, Do Not Disturb while driving (its own switch), car-trusted calls,
-  every lock-screen rule, every consent card, and what must be seen (a learned name, deleting, personal content to a
-  helper) stay as they are. Nothing is looser than outside the car.
-- **When you park** (with the switch on): new texts ("text Bob I'm late"), what needs the screen and replies that need a
-  tap are kept; when car mode ends, "From your drive: 2 things" opens the panel with them to ask again, each through every
-  gate. Either way, what must be seen, a call with too many matches, and a reply nobody answered are kept the same way.
+  Old `car.json` files with `holdWhileDriving` or `newTexts` load and ignore them; the next save leaves them out. A
+  `park.json` left by a 1.0 test build is deleted when car mode stops, and its old notification cancelled. Voice log 212
+  (`CAR_PARKED`) is retired.
 - **New messages** (0.7's messages, C3): with Settings › Messages › Announce new messages on (off by default), a new
   message is announced in the car while car mode runs, as Settings › Car mode says (Sender only, then ask; Announce
   from: whoever Do Not Disturb lets through). "Yes" reads it (0.7's reading: translated, marked read by Robot, and "After
@@ -5666,20 +5672,20 @@ on, it waits for when you park. Design: `../docs/plans/routines-headset-car-desi
   the main process: "Handed to Cheogram." "No" sends nothing. **0.7's reply rules hold:** a spoken yes sends only where
   Settings › Messages lets one ("Answer reply cards by voice", or a person you chose for replies without a card); a
   reply only a tap may send (0.7's default card, a group, a locked phone) or one Robot never sends itself ("Open the
-  chat; I press Send") shows its card or opens the chat now, as outside the car (1.0); with "Hold screen actions until I
-  park" on it is kept for when you park with your words, and nothing opens while you drive. "Replies by voice" off,
-  "Send a reply after a spoken yes" off, and a locked phone without the trusted session keep it either way. Messages are
+  chat; I press Send") shows its card or opens the chat now, with your words, as outside the car (1.0). So do "Replies
+  by voice" off and "Send a reply after a spoken yes" off; locked without the trusted session, 0.7's own lock-screen rule
+  decides, as on a locked phone anywhere. Messages are
   announced locked only in the trusted session **and** with Messages on the lock screen at "Read and reply". The
   message's words never act (0.7's echo check, and a "send" within 3 s of them doesn't count).
 - **Do Not Disturb while driving** (off; needs Do Not Disturb access): Robot's own "Driving (Robot)" rule while car mode
   is on; your own override wins.
-- **Voice log** 210–217 (`CAR_MODE`, `CAR_TRUSTED`, `CAR_PARKED`, `CAR_CALL`, `CAR_REPLY`, `CAR_DND`, `CAR_NAV`,
-  `CAR_MUSIC`): codes and numbers only.
+- **Voice log** 210–217 (`CAR_MODE`, `CAR_TRUSTED`, `CAR_CALL`, `CAR_REPLY`, `CAR_DND`, `CAR_NAV`, `CAR_MUSIC`; 212
+  retired in 1.0): codes and numbers only.
 
 **Defaults:** Use car mode: off. Start car mode when my car connects: on. End car mode: 30 s after it disconnects. Speak
 through the car as a call: on. After "hey robot" in the car, listen with: the phone microphone. Use car mode without
-unlocking: after one unlock in the car, for at most 4 hours. Calls: open the dialer. Hold screen actions until I park:
-off (1.0). New texts while driving: keep for when I park (shown and used only with the switch on). Announce new messages: sender only, then ask (nothing until Settings › Messages announces); Announce from:
+unlocking: after one unlock in the car, for at most 4 hours. Calls: open the dialer. Announce new messages: sender
+only, then ask (nothing until Settings › Messages announces); Announce from:
 whoever Do Not Disturb lets through; Read message text aloud when others may hear: ask each time; Replies by voice: on.
 Do Not Disturb while driving: off. Keep the screen on: off.
 
@@ -5713,8 +5719,6 @@ Nothing of this has run in a car. Install the debug build with Robot as the digi
 - The car connecting starts car mode in under 5 s, 10 of 10; disconnecting ends it after 30 s.
 - With the phone locked and no unlock, "what's next" says "Unlock once to use car features"; after one unlock it works
   locked until the car disconnects.
-- With "Hold screen actions until I park" on, "Text Bob I'm late" is kept, and "From your drive" shows when car mode
-  ends; its tap offers it again.
 - No answer is longer than two sentences without "Want more?".
 
 **C2, calls and navigation.** *Done when:*
@@ -5728,24 +5732,28 @@ Nothing of this has run in a car. Install the debug build with Robot as the digi
 **C3, 0.7 messages.** Settings › Messages on with Cheogram, Announce new messages on. *Done when:*
 - A Cheogram message is announced, read after "yes", and, with "Answer reply cards by voice" on, replied after the
   read-back; the reply arrives in that chat (check on the other phone) and Robot says "Handed to Cheogram".
-- With "Answer reply cards by voice" off (the default), the reply is kept: "From your drive" offers "reply to …: …",
-  whose card sends it with a tap after you park.
+- With "Answer reply cards by voice" off (the default), the reply's card shows on the screen with your words, and a tap
+  sends it; nothing is kept for later.
 - "No" at the read-back sends nothing.
-- A Signal or Molly message (if installed): the reply works or is kept, per its notification.
+- A Signal or Molly message (if installed): the reply is sent by voice or shows its card, per its notification.
 - With "Do Not Disturb while driving" on, only senders Do Not Disturb allows are announced.
 
-**C4, no holds by default (1.0).** Fresh install, car mode on, phone unlocked. *Done when:*
-- Settings › Car mode › While you drive: "Hold screen actions until I park" is first and off; "New texts while driving"
-  is not shown; turning the switch on shows it.
-- Switch off: "open the calculator" opens it; "text Bob I'm late" goes on as outside the car (the texting app opens with
-  the draft, Send is yours); "add lunch with Bob tomorrow at noon" shows the event card; "ask the helper …" shows the
-  helper's card and nothing leaves before its yes or tap. "From your drive" stays empty.
-- Switch off, Answer reply cards by voice off: a reply to an announced message shows its card on the screen and waits
-  for a tap; with "Open the chat; I press Send", the chat opens with your words. Nothing is sent by voice.
-- Switch off, locked without the trusted session: the same requests ask for the unlock as before.
-- Switch on: each of the above is kept for when you park, and "ask the helper …" says "I can't open another app while
-  you drive."
-- An old settings file (0.9's car settings restored): the switch reads off.
+**C4, no driving restrictions (1.0).** Car mode on, in the car (or started by "car mode" with the car connected). *Done
+when:*
+- Settings › Car mode has no "Hold screen actions until I park" and no "New texts while driving"; "Do Not Disturb while
+  driving" is still there. The footer says Robot doesn't hold or refuse anything because you're driving.
+- Unlocked: "open the calculator" opens it; "text Bob I'm late" goes on as outside the car (the texting app opens with
+  the draft, Send is yours); "add lunch with Bob tomorrow at noon" shows the event card; "free up memory" shows its card;
+  "ask the helper …" shows the helper's card and nothing leaves before its yes or tap. Nothing says "when you park".
+- Answer reply cards by voice off: a reply to an announced message shows its card on the screen with your words and
+  waits for a tap; with "Open the chat; I press Send", the chat opens with your words. Nothing is sent by voice.
+- At a read-back, say nothing twice: "Your reply is on the screen." and its card shows with your words.
+- "Call" someone with more than three numbers: "Several people match. Pick one on the screen." and the call card shows.
+- Locked without the trusted session: each request above does what it does on a locked phone outside car mode (compare
+  the same request with car mode ended).
+- Car mode ends: no "From your drive" notification.
+- A `car.json` from a 1.0 test build with "Hold screen actions until I park" on: car mode starts, and none of the above
+  is held.
 
 ## Web search (0.9)
 
@@ -6397,8 +6405,8 @@ and `DeviceTriggers.matches` takes a routine's `RoutineTrigger.Device` (`DeviceR
 ids); a 0.7 `MessageThread` is the `MessageNotice` the headset and the car speak through `notice()`, and the
 `MessageBuffer` their `MessageFeed` through `BufferFeed` (`output/DevicePresence.kt`, `output/MessageThreads.kt`). 0.8
 settled what was open: a hands-free reply is sent after its spoken read-back only where `ReplyPlanner` would let a spoken
-yes send it (`core/messages/MessageHandsFree.kt`: `HandsFreeReplies`), else it waits for parking; a message that came
-after the read-back is `ReplyResult.NEW_MESSAGES` (the reply waits for parking); the brief's count is
+yes send it (`core/messages/MessageHandsFree.kt`: `HandsFreeReplies`), else the screen's reply card takes it (1.0); a
+message that came after the read-back is `ReplyResult.NEW_MESSAGES` (the reply card shows with your words); the brief's count is
 `MessageUnread` (by app, counts only). Messages' `Lang` is still the hands-free side's `SpokenLang` and the brief's
 `BriefLang` by name only.
 
@@ -6411,7 +6419,7 @@ search); hearing aids count as private; unattended speech never talks over anoth
 on the phone alone; in the car, a personal answer you asked for is said, and what came by itself follows "Read message
 text aloud when others may hear"; music in the car is a media key to the current player; the call tool is never
 described to the model ("call Mom" is heard before it); and 0.7's reply rules decide whether a spoken yes may send a
-reply (a reply only a tap may send waits for parking).
+reply (a reply only a tap may send shows its card on the screen, 1.0).
 
 ### Memory and messages (0.7, core only)
 

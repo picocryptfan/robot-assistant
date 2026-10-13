@@ -407,6 +407,17 @@ class CarFlowMachinesTest {
         assertEquals(MessageStep.OFFERED, MessageFlow.read(marie, c).first.step)
     }
 
+    /**
+     * 1.0: "text Bob I'm late" in the car is not a car command, so the panel's own text flow takes it, exactly as outside the
+     * car, unlocked and locked (the app's route no longer keeps it for parking: ProcessIsolationTest).
+     */
+    @Test fun newTextsAreNotACarCommand() {
+        for (q in listOf("text Bob I'm late", "texte à Marie que j'arrive", "send a text to Mom saying I'm on my way")) {
+            assertNull(q, app.heyrobot.core.output.HandsFreeRouter.route(q, carMode = true))
+            assertEquals(q, app.heyrobot.core.output.HandsFreeRouter.route(q, carMode = false), app.heyrobot.core.output.HandsFreeRouter.route(q, carMode = true))
+        }
+    }
+
     /** 1.0: in the car a reply that can't go by voice is the screen's, unlocked and locked, as outside the car; nothing is parked. */
     @Test fun theScreenTakesWhatTheCarDoesntSendByVoice() {
         // "Reply …" for an app without a Reply action: the screen's own reply, with the words.
