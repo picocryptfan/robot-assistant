@@ -246,7 +246,7 @@ class ClaudeSessionTest {
         assertEquals(app.heyrobot.core.ClaudeEnd.END.id, events[2].b)
         assertEquals("Fine.".length, events[2].c)
         assertEquals(app.heyrobot.core.ClaudeFail.RATE_LIMITED.id, events[4].a)
-        assertEquals("Claude failed: rate limited", app.heyrobot.core.VoiceLogText.describe(events[4]))
+        assertEquals("The helper failed: rate limited", app.heyrobot.core.VoiceLogText.describe(events[4]))
     }
 
     @Test fun haikuSearchesWithTheBasicWebSearchTool() = runBlocking {
