@@ -232,7 +232,7 @@ sentence in `bench/test-clip.txt`. No person's voice. Used only by Settings › 
 While a sherpa-onnx voice is not downloaded, or when it is chosen, Robot speaks through Android's TextToSpeech API,
 which on GrapheneOS is the system's GrapheneOS Speech Services; nothing is packaged.
 
-### Anthropic Java SDK 2.71.0 (MIT): Ask Claude's API client (`:claude` module)
+### Anthropic Java SDK 2.71.0 (MIT): the API client of one of the helpers (`:claude` module)
 
 The official SDK for the Claude API (https://github.com/anthropics/anthropic-sdk-java), from Maven Central, used only
 by the `:claude` module, which only the assistant package (the `:voice` process) depends on; the main process never
