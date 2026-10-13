@@ -1,8 +1,5 @@
 # Robot's privacy policy
 
-> Draft for review. Brought up to date with Robot 0.9.0 and the 1.0 hardening (conversation mode, helpers, memory,
-> messages, routines, headset and car mode, web search, Termux and its update check, the updater and feedback).
-
 ## The short version
 
 Robot does not collect anything about you. There is no account, no analytics, no ads, no crash reporting and no tracking.

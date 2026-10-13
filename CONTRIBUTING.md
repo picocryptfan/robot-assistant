@@ -1,7 +1,5 @@
 # Contributing to Robot
 
-> Draft for review.
-
 Thank you for helping. Robot is a small project: bug reports, ideas and focused pull requests are all welcome. For a
 security problem, please don't open an issue: see [`SECURITY.md`](SECURITY.md).
 

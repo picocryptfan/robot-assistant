@@ -1,8 +1,5 @@
 # Security policy
 
-> **Draft for review.** Turn on private vulnerability reporting for the public repository (Settings › Advanced Security ›
-> Private vulnerability reporting) before publishing.
-
 ## Reporting a security problem
 
 Please report it privately: use **Report a vulnerability** on this repository's Security tab (GitHub's private

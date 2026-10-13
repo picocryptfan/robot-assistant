@@ -13,7 +13,7 @@ memories" for your own file), then delete the file; let 1.0 download its models 
 model › Import a file); make 1.0 your digital assistant; uninstall 0.9; then do the ADB fixes again in 1.0. Settings,
 History, notes, transcripts, keys and routines don't move: share or save what you want to keep first.
 
-## 1.0.0 (unreleased)
+## 1.0.0 (2026-10-13)
 
 Setup and updates:
 
@@ -25,6 +25,7 @@ Setup and updates:
 Features:
 
 - Ask a helper. Say "ask the helper …", "ask a helper …" or "ask my helper …" (« demande à l'assistant … », « demande à un assistant … ») and Robot asks the helper it checks with (Settings › Helpers › When Robot needs help › Ask). The old spoken phrase still works.
+- Helpers work with any AI company. With your API key Robot asks it itself; without one, a helper whose company has an Android app opens that app with your question, and you press Send there. No helper is set up until you add one. Each helper answers to its own name, which you can change ("ask Jarvis …"). "Summarize with a stronger AI" can use any helper with an API key, with that helper's model, price and spending caps.
 - Search in your browser with nothing to set up: "search DuckDuckGo for …" or « cherche sur Startpage … » opens the engine in your browser (Startpage by default, or Brave Search, Mojeek, Qwant, Ecosia, Google or Bing). Robot never reads the results. Web search also gains DuckDuckGo's Instant Answers and a short list of public SearXNG servers. Settings › Web search and the setup guide show every engine and service with a High, Medium or Low privacy level.
 - Memory import. Settings › Memory › Import reads a memory export from 0.9 or 1.0 and shows what it would add before anything is written. Items you already have, and any that hold a password, a PIN, a code or a card number, are skipped. Imported items count as something Robot read, so actions they lead to ask first, until you say they are yours.
 - Car mode no longer holds actions while you drive, since Robot can't tell the driver from a passenger: opening an app, drafts, new texts and replies that need a tap open now, as outside the car. If you drive alone, turn on Settings › Car mode › Hold screen actions until I park to keep them for when you park. Lock-screen rules and consent cards are the same either way.

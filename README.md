@@ -1,8 +1,5 @@
 # Robot™
 
-> Draft for review (written for 1.0 against Robot 0.9.0's code). Check the repository links, the certificate
-> fingerprint and the sizes against the release before publishing.
-
 I made Robot because I couldn't find a complete voice assistant that doesn't come from Google or Apple.
 
 Robot is a private voice assistant for GrapheneOS on Google Pixel phones. I start with Pixels because GrapheneOS runs
