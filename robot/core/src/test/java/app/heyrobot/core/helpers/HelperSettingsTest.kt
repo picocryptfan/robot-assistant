@@ -135,6 +135,42 @@ class HelperSettingsTest {
         assertNull(HelperSettings.target(RobotSettings(helpers = listOf(gemini())), keys()))
     }
 
+    @Test fun askTheHelperGoesOnlyToOneThatCanAnswer() {
+        fun keys(vararg ids: String): (HelperConfig) -> Boolean = { it.id in ids }
+        fun apps(vararg pkgs: String): (String) -> Boolean = { it in pkgs }
+        val claudeApp = Presets.ANTHROPIC.app!!
+        // A default install: Claude on, the app route, no key. Without the app nothing can take it: none, so Robot says so.
+        val d = RobotSettings()
+        assertNull(HelperSettings.askTarget(d, keys(), apps()))
+        // Its key saved: Claude through its API. Its app installed: Claude through the app.
+        assertEquals("claude", HelperSettings.askTarget(d, keys("claude"), apps())?.id)
+        assertEquals("claude", HelperSettings.askTarget(d, keys(), apps(claudeApp))?.id)
+        // Claude off: neither counts.
+        val off = d.withHelper(d.claude!!.copy(enabled = false))
+        assertNull(HelperSettings.askTarget(off, keys("claude"), apps(claudeApp)))
+        // A helper with a key wins over an app to open; a home server needs no key.
+        val s = d.withHelper(gemini()).withHelper(home())
+        assertEquals("h2", HelperSettings.askTarget(s, keys(), apps(claudeApp))?.id)
+        assertEquals("h1abcde", HelperSettings.askTarget(d.withHelper(gemini()), keys("h1abcde"), apps(claudeApp))?.id)
+        // Your "Ask:" choice wins whenever it can answer…
+        assertEquals("h1abcde", HelperSettings.askTarget(s.copy(helpDefault = "h1abcde"), keys("h1abcde"), apps())?.id)
+        assertEquals("claude", HelperSettings.askTarget(s.copy(helpDefault = "claude"), keys(), apps(claudeApp))?.id)
+        // …and not when it can't (no key, or its app missing): the next one that can.
+        assertEquals("h2", HelperSettings.askTarget(s.copy(helpDefault = "h1abcde"), keys(), apps())?.id)
+        assertEquals("h2", HelperSettings.askTarget(s.copy(helpDefault = "claude"), keys(), apps())?.id)
+        // Claude set to the API without a key, its app installed: not ready either way.
+        val apiOnly = d.withHelper(d.claude!!.copy(route = app.heyrobot.core.ClaudeRoute.API))
+        assertNull(HelperSettings.askTarget(apiOnly, keys(), apps(claudeApp)))
+        // No helpers at all.
+        assertNull(HelperSettings.askTarget(RobotSettings(helpers = emptyList()), keys(), apps(claudeApp)))
+    }
+
+    @Test fun whatAHelperStillNeedsIsSaid() {
+        assertEquals("Claude can't answer yet. Add its API key in Robot's settings, under Helpers, or install the Claude app.",
+            HelperWords(HelperWho.of(HelperConfig.claude())).notReady)
+        assertEquals("Gemini can't answer yet. Add its API key in Robot's settings, under Helpers.", HelperWords(HelperWho.of(gemini())).notReady)
+    }
+
     @Test fun escalationForAnyHelper() {
         val s = RobotSettings().withHelper(home()).withHelper(gemini())
         val h = home()
