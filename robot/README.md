@@ -3028,11 +3028,46 @@ helper. "Don't ask the helper", "not the helper" and « ne demande pas à l'assi
 Claude" does, and "yes, ask the helper" answers an offer. Routines refuse the new phrases as they refuse "ask Claude".
 No helper can be called "Helper" or "Assistant". With no helper on, Robot says so and where to turn one on.
 
+### Any AI, with a key or with its app (1.0)
+
+The helpers work the same whichever company you pick. Without an API key, a helper whose company ships an Android app
+opens that app with your question, as the Claude app route always did; with a key, Robot asks it itself.
+
+| Helper | Its app (package) | Without a key |
+|---|---|---|
+| Anthropic (Claude) | Claude (`com.anthropic.claude`) | its `claude://` and `claude.ai` links, else a share, else the app |
+| OpenAI (GPT) | ChatGPT (`com.openai.chatgpt`) | a share of the question, else the app |
+| xAI (Grok) | Grok (`ai.x.grok`) | the same |
+| Google (Gemini) | Gemini (`com.google.android.apps.bard`) | the same |
+| Mistral | Vibe by Mistral, once Le Chat (`ai.mistral.chat`) | the same |
+| DeepSeek | DeepSeek (`com.deepseek.chat`) | the same |
+| Groq, OpenRouter, your server, another company | none | its API only |
+
+- The card says "Open the ChatGPT app with: «…»" and "Nothing is sent until you press
+  Send in ChatGPT". After your tap the app opens with the text (`ACTION_SEND` `text/plain` to its package), and the
+  question is on the clipboard too, for an app that ignores the share. Robot never types into, drives or reads another
+  company's app; reading an answer back with the corner swipe stays the Claude app's only. Never on the lock screen,
+  as before. The app is always looked up from your settings when the card is made, never taken from a model's call.
+- A new install has no helper: Settings › Helpers and the setup guide offer to add one (any
+  company, its app or its API, or your server). A settings file keeps its helpers exactly as they are, and one from
+  before 0.6.0 still gets Claude from its `claude*` fields.
+- Each helper answers to its name and the ways people say it: "ChatGPT", "chat GPT" and "GPT"; "Grok";
+  "Gemini"; "Mistral"; "DeepSeek" and "deep seek"; "Claude" (and its curated mishearings). Rename it on its page and it
+  answers to the new name instead ("ask Jarvis …", "go get Jarvis", "Jarvis, …", « demande à Jarvis … »), plus any
+  "Also answers to" names.
+- "Summarize with a stronger AI" uses the helper you pick: the one under "Ask:" first, the others a tap
+  away on the card ("Send to Grok instead"), each through its own client and the model chosen for it. The consent card
+  names the company and model, and shows its price the way the panel's cost line does (published, yours, the provider's
+  report, free for your server, or "cost unknown"); it counts against that helper's cap and the budget for all helpers,
+  and the card says when today's budget is already used up (as an ask you make yourself, Send still sends). Only a
+  helper with its API can summarize; "Share it with the ChatGPT app instead" hands the transcript to an app you send it
+  from.
+
 ### What you can add (Settings › Helpers › Add a helper)
 
 | Helper | How Robot talks to it | Models it lists first | Web search |
 | --- | --- | --- | --- |
-| Anthropic (Claude) | the Anthropic Java SDK, as since 0.3.0 (or the Claude app without a key) | Opus 5.5, Sonnet 5.5, Haiku 5.5, Fable 5.1 | yes, $10 per 1,000 |
+| Anthropic (Claude) | the Anthropic Java SDK, as since 0.3.0 (or its app without a key, as every helper with an app since 1.0) | Opus 5.5, Sonnet 5.5, Haiku 5.5, Fable 5.1 | yes, $10 per 1,000 |
 | OpenAI (GPT) | the Responses API (`store: false`, reasoning sent back encrypted) | gpt-6.1-sol, gpt-6-astra, gpt-6-luna | yes, $10 per 1,000 |
 | Google (Gemini) | its OpenAI-compatible Chat Completions | gemini-3.8-flash, gemini-3.1-pro-preview, gemini-3.5-flash-lite | no (not through this connection) |
 | Mistral | Chat Completions | mistral-medium-3-5, mistral-large-4-0, mistral-small-latest | no (Agents API only) |

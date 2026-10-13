@@ -121,8 +121,9 @@ Robot for you, it follows 0.9's app ID: remove that entry and add the repository
   search in your browser with Startpage, DuckDuckGo, Google and five others, each listed with its privacy level.
 - Termux runs your own scripts and short commands. You approve each command on a card first, and it is off until you
   set it up.
-- Helpers take a question to a paid AI service with your own API key, or to a model on your own computer. They do
-  that only when you ask or allow it.
+- Helpers take a question to a paid AI service with your own API key, to another AI's app on your phone (you press
+  Send there), or to a model on your own computer. None is set up until you add one, and they do that only when you
+  ask or allow it.
 - Send feedback writes a bug report or an idea for you to send yourself. Robot sends nothing on its own.
 
 The full description of every feature, with its checks, is in [`robot/README.md`](robot/README.md).
