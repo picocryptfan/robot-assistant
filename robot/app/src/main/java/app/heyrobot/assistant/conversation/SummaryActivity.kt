@@ -49,8 +49,6 @@ import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
 import app.heyrobot.assistant.HelperLink
 import app.heyrobot.assistant.VoiceHub
-import app.heyrobot.core.ClaudeCost
-import app.heyrobot.core.ClaudeSettings
 import app.heyrobot.core.ConsentCard
 import app.heyrobot.core.ConversationSettings
 import app.heyrobot.core.Disclosure
@@ -63,21 +61,28 @@ import app.heyrobot.core.TranscriptMeta
 import app.heyrobot.core.TranscriptTitles
 import app.heyrobot.sys.AppPages
 import app.heyrobot.sys.Assistant
-import app.heyrobot.sys.ClaudeAppIntents
+import app.heyrobot.core.helpers.HelperConfig
+import app.heyrobot.core.helpers.HelperPrice
+import app.heyrobot.core.helpers.HelperSettings
+import app.heyrobot.core.helpers.Pricing
+import app.heyrobot.sys.HandOffIntents
+import app.heyrobot.sys.HelperSpendStore
 import app.heyrobot.sys.SettingsStore
 import app.heyrobot.sys.Transcripts
 import app.heyrobot.ui.common.RIcons
 import app.heyrobot.ui.theme.RobotTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZonedDateTime
 
-// VOICE PROCESS (Robot's model and the Claude key are reached from here only). The summary screen (docs/conversation-mode.md
+// VOICE PROCESS (Robot's model and the helpers' keys are reached from here only). The summary screen (docs/conversation-mode.md
 // 7, phase 5.6), for one transcript, unlocked only: Robot's own summary, made on this phone part by part with a progress
 // bar and Cancel, labelled as Robot's, its [14:03] references linked to their lines in Robot › Transcripts, and what the
 // number check couldn't find in the transcript listed under it; or "Summarize with a stronger AI": the consent card
-// (what goes, where, its price), then your Send. A long or important conversation, or a summary whose check flagged
+// (what goes, to which helper, its price), then your Send. 1.0.0: any helper with its API (the one you chose under "Ask:"
+// first, the others a tap away), through its own client, model and price; or a share to a helper's app. A long or important conversation, or a summary whose check flagged
 // something, offers the stronger AI first. Nothing leaves the phone before Send.
 
 class SummaryActivity : ComponentActivity() {
@@ -103,7 +108,7 @@ class SummaryActivity : ComponentActivity() {
         if (Assistant.locked(this)) getSystemService(KeyguardManager::class.java).requestDismissKeyguard(this, null)
     }
 
-    /** Settings › Helpers in Robot's app (0.6.0), where Claude's key is added. */
+    /** Settings › Helpers in Robot's app (0.6.0), where a helper and its key are added. */
     private fun openHelpers() {
         try {
             startActivity(Intent().setClassName(packageName, "app.heyrobot.ui.MainActivity").putExtra(AppPages.EXTRA, AppPages.HELPERS)
@@ -121,7 +126,8 @@ class SummaryActivity : ComponentActivity() {
 
     private sealed class Ask {
         data object Offer : Ask()
-        data class Card(val card: ConsentCard, val toApp: Boolean) : Ask()
+        /** [helper]: the helper's id ([others]: the other helpers that could summarize instead). */
+        data class Card(val card: ConsentCard, val toApp: Boolean, val helper: String, val others: List<HelperConfig> = emptyList()) : Ask()
     }
 
     @OptIn(ExperimentalMaterial3Api::class)
@@ -180,27 +186,32 @@ class SummaryActivity : ComponentActivity() {
                     busy && !job.helper -> item { Progress(job, onCancel = { SummaryJobs.cancel() }) }
                     busy -> item {
                         Card {
-                            Text("Claude is summarizing…", style = MaterialTheme.typography.titleMedium)
+                            Text("${job.helperName.ifEmpty { "The helper" }} is summarizing…", style = MaterialTheme.typography.titleMedium)
                             if (job.streaming.isNotEmpty()) Text(job.streaming, style = MaterialTheme.typography.bodyMedium)
                             TextButton(onClick = { SummaryJobs.cancel() }) { Text("Stop") }
                         }
                     }
                     ask is Ask.Card -> item {
                         val c = ask as Ask.Card
-                        ConsentCardView(c.card, c.toApp, onNames = { ask = Ask.Card(c.card.withNames(it), c.toApp) }, onCancel = { ask = null }, onSend = {
-                            ask = null
-                            if (c.toApp) shareToApp(c.card)?.let { note = it } else {
-                                val chars = c.card.blocks.sumOf { b -> b.text.length }
-                                SummaryJobs.send(this@SummaryActivity, c.card, ClaudeApiHelper(applicationContext, s.claudeModelChoice, chars))
-                            }
-                        })
+                        val h = s.helper(c.helper)
+                        if (h == null) ask = null else ConsentCardView(c.card, c.toApp, h, onNames = { ask = c.copy(card = c.card.withNames(it)) }, onCancel = { ask = null },
+                            onSend = {
+                                ask = null
+                                if (c.toApp) shareToApp(c.card, h).let { note = it } else {
+                                    val chars = c.card.blocks.sumOf { b -> b.text.length }
+                                    SummaryJobs.send(this@SummaryActivity, c.card, ClaudeApiHelper(applicationContext, h, chars, budgetUsed(s, h)))
+                                }
+                            })
+                        // Several helpers could summarize: the others, a tap away (each opens its own card, with its own price).
+                        if (!c.toApp) for (o in c.others) TextButton(onClick = { ask = cardFor(meta, tr, o) }) { Text("Send to ${o.name} instead") }
                     }
                     ask == Ask.Offer -> item {
                         Card {
                             Text(SummaryOffer.CARD, style = MaterialTheme.typography.bodyLarge)
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Button(onClick = { ask = cardFor(meta, tr, toApp = false) ?: cardFor(meta, tr, toApp = true) ?: Ask.Offer.also { note = NO_HELPER } }) {
-                                    Text("Summarize with Claude")
+                                val first = summarizers(s).firstOrNull()
+                                Button(onClick = { ask = cardFor(meta, tr) ?: Ask.Offer.also { note = NO_HELPER } }) {
+                                    Text(first?.let { "Summarize with ${it.name}" } ?: "Summarize with a stronger AI")
                                 }
                                 OutlinedButton(onClick = { ask = null; SummaryJobs.local(this@SummaryActivity, t) }) { Text("Robot's summary anyway") }
                             }
@@ -217,11 +228,11 @@ class SummaryActivity : ComponentActivity() {
                                     if (SummaryOffer.helperFirst(s, parts, meta.important, flagged = false)) ask = Ask.Offer
                                     else SummaryJobs.local(this@SummaryActivity, t)
                                 }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Robot's summary") }
-                                OutlinedButton(onClick = { ask = cardFor(meta, tr, toApp = false) ?: cardFor(meta, tr, toApp = true) ?: run { note = NO_HELPER; null } },
+                                OutlinedButton(onClick = { ask = cardFor(meta, tr) ?: run { note = NO_HELPER; null } },
                                     modifier = Modifier.heightIn(min = 48.dp)) { Text("A stronger AI") }
                             }
-                            if (ClaudeAppIntents.installed(this@SummaryActivity) && HelperLink.keySaved(this@SummaryActivity, app.heyrobot.core.helpers.HelperConfig.CLAUDE_ID))
-                                TextButton(onClick = { ask = cardFor(meta, tr, toApp = true) }) { Text("Share it with the Claude app instead") }
+                            // A helper's app (installed): a share you send there yourself; Robot doesn't get the summary back.
+                            appHelper(s)?.let { a -> TextButton(onClick = { ask = appCard(meta, tr, a) }) { Text("Share it with the ${a.presetOf.defaultName} app instead") } }
                         }
                     }
                 }
@@ -234,10 +245,13 @@ class SummaryActivity : ComponentActivity() {
                 val fresh = job.record?.takeIf { job.id == t && !busy }
                 if (fresh != null) item {
                     SummaryView(fresh, meta, tr, job.misses, zone, onLine = { openLine(t, it) })
-                    if (fresh.via == SummaryRecord.VIA_API && job.spentDollars > 0) Text("Cost: ${ClaudeCost.line(job.spentDollars)}",
+                    // The cost line as under a helper's reply in the panel: "≈ 9¢", "cost unknown", nothing for a free server.
+                    val by = s.helpers.firstOrNull { it.name == fresh.helperName }
+                    val cost = if (!job.costKnown) "cost unknown" else Pricing.line(job.spentDollars, free = by?.price is HelperPrice.Free || job.spentDollars == 0.0)
+                    if (fresh.via == SummaryRecord.VIA_API && s.helperShowCost && cost != null) Text("Cost: $cost",
                         style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (fresh.via == SummaryRecord.VIA_PHONE && job.misses.isNotEmpty() && s.convAutoOfferHelper) TextButton(onClick = {
-                        ask = cardFor(meta, tr, toApp = false) ?: cardFor(meta, tr, toApp = true)
+                        ask = cardFor(meta, tr) ?: run { note = NO_HELPER; null }
                     }) { Text("Summarize with a stronger AI") }
                 }
                 val older = saved.filter { (n, _) -> n != job.number || job.id != t }.asReversed()
@@ -250,40 +264,63 @@ class SummaryActivity : ComponentActivity() {
         }
     }
 
-    /** The consent card for sending [tr] to Claude: the API (a key saved, Ask Claude on) or the app; null if that way isn't there. */
-    private fun cardFor(meta: TranscriptMeta, tr: Transcript, toApp: Boolean): Ask.Card? {
+    private fun keySaved(h: HelperConfig): Boolean = HelperLink.keySaved(this, h)
+
+    /** The helpers that can summarize (their API: a key saved, or none needed), the one you chose under "Ask:" first. */
+    private fun summarizers(s: app.heyrobot.core.RobotSettings): List<HelperConfig> = HelperSettings.summarizers(s, ::keySaved)
+
+    /** The helper whose app a share would open, when it is installed (null: none). */
+    private fun appHelper(s: app.heyrobot.core.RobotSettings): HelperConfig? =
+        HelperSettings.appHelper(s, null, ::keySaved)?.takeIf { h -> h.presetOf.app?.let { HandOffIntents.installed(this, it) } == true }
+
+    /** Today's budget for helpers, or [h]'s own cap, is used up: the card says so (as an ask you make yourself, it still sends). */
+    private fun budgetUsed(s: app.heyrobot.core.RobotSettings, h: HelperConfig): Boolean = try {
+        (HelperSpendStore.cached() ?: HelperSpendStore.current(this)).reached(LocalDate.now(), s.helperBudgetCents, h.id, h.budgetCents)
+    } catch (_: Throwable) { false }
+
+    /**
+     * The consent card for sending [tr] to helper [pick] (null: the first that can summarize), through its API, with its
+     * model and its price; null when no helper can.
+     */
+    private fun cardFor(meta: TranscriptMeta, tr: Transcript, pick: HelperConfig? = null): Ask.Card? {
+        val s = SettingsStore.load(this)
+        val all = summarizers(s)
+        val h = pick?.takeIf { p -> all.any { it.id == p.id } } ?: all.firstOrNull() ?: return null
+        val zone = ZoneId.systemDefault()
+        val lang = ConversationSettings.summaryLang(s)
+        val region = s.regionFor(app.heyrobot.sys.Phones.deviceRegion(this))
+        val id = ClaudeApiHelper.idFor(h)
+        // The price on the card is estimated from the very text it would send, at the helper's own price.
+        val first = ConsentCard.build(id, h.name, Disclosure(h.presetOf.company, null, ""), meta, tr, ZonedDateTime.now(zone), region, lang, zone)
+        val chars = first.blocks.sumOf { it.text.length }
+        val card = ConsentCard.build(id, h.name, ClaudeApiHelper(this, h, chars, budgetUsed(s, h)).disclosure, meta, tr, ZonedDateTime.now(zone), region, lang, zone)
+        return Ask.Card(card, false, h.id, all.filter { it.id != h.id })
+    }
+
+    /** The consent card for sharing [tr] with helper [h]'s app. */
+    private fun appCard(meta: TranscriptMeta, tr: Transcript, h: HelperConfig): Ask.Card {
         val s = SettingsStore.load(this)
         val zone = ZoneId.systemDefault()
         val lang = ConversationSettings.summaryLang(s)
         val region = s.regionFor(app.heyrobot.sys.Phones.deviceRegion(this))
-        return if (toApp) {
-            if (!ClaudeAppIntents.installed(this)) null
-            else Ask.Card(ConsentCard.build(ClaudeAppHelper.ID, "the Claude app", ClaudeAppHelper(this).disclosure, meta, tr, ZonedDateTime.now(zone), region, lang, zone), true)
-        } else {
-            if (!HelperLink.keySaved(this, app.heyrobot.core.helpers.HelperConfig.CLAUDE_ID) || !ClaudeSettings.enabled(s, true)) null
-            else {
-                // The price on the card is estimated from the very text it would send.
-                val first = ConsentCard.build(ClaudeApiHelper.ID, "Claude", Disclosure("Anthropic", null, ""), meta, tr, ZonedDateTime.now(zone), region, lang, zone)
-                val chars = first.blocks.sumOf { it.text.length }
-                Ask.Card(ConsentCard.build(ClaudeApiHelper.ID, "Claude", ClaudeApiHelper(this, s.claudeModelChoice, chars).disclosure, meta, tr, ZonedDateTime.now(zone),
-                    region, lang, zone), false)
-            }
-        }
+        val a = ClaudeAppHelper(this, h)
+        return Ask.Card(ConsentCard.build(a.id, "the ${h.presetOf.defaultName} app", a.disclosure, meta, tr, ZonedDateTime.now(zone), region, lang, zone), true, h.id)
     }
 
-    /** The Claude app: its share (or the clipboard and the app); what to tell you. */
-    private fun shareToApp(card: ConsentCard): String {
+    /** A helper's app: its share (or the clipboard and the app); what to tell you. */
+    private fun shareToApp(card: ConsentCard, h: HelperConfig): String {
+        val name = h.presetOf.defaultName
         if (ConsentCard.appShare(card) == null) {
             SummaryJobs.shared(card, app.heyrobot.core.AppShareCode.TOO_LONG)
             return ConsentCard.TOO_LONG_FOR_APP
         }
         val job = card.approve(System.currentTimeMillis())
-        val (i, how) = ClaudeAppHelper(this).intent(job) ?: return "The Claude app isn't there, or doesn't take a share."
+        val (i, how) = ClaudeAppHelper(this, h).intent(job) ?: return "The $name app isn't there, or doesn't take a share."
         return try {
             startActivity(i)
             SummaryJobs.shared(card, how)
-            if (how == app.heyrobot.core.AppShareCode.CLIPBOARD) "It's copied: paste it in Claude and press Send there." else "Press Send in Claude. Robot doesn't hear Claude's answer."
-        } catch (_: Throwable) { "The Claude app didn't open." }
+            if (how == app.heyrobot.core.AppShareCode.CLIPBOARD) "It's copied: paste it in $name and press Send there." else "Press Send in $name. Robot doesn't hear $name's answer."
+        } catch (_: Throwable) { "The $name app didn't open." }
     }
 
     @Composable
@@ -306,7 +343,7 @@ class SummaryActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun ConsentCardView(card: ConsentCard, toApp: Boolean, onNames: (Boolean) -> Unit, onCancel: () -> Unit, onSend: () -> Unit) {
+    private fun ConsentCardView(card: ConsentCard, toApp: Boolean, h: HelperConfig, onNames: (Boolean) -> Unit, onCancel: () -> Unit, onSend: () -> Unit) {
         Card {
             Text(card.title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
             Text(card.stats + " " + card.includes, style = MaterialTheme.typography.bodyMedium)
@@ -315,7 +352,7 @@ class SummaryActivity : ComponentActivity() {
                 Checkbox(checked = card.anonymized, onCheckedChange = onNames)
                 Text(ConsentCard.TOGGLE, style = MaterialTheme.typography.bodyMedium)
             }
-            val tooLong = if (toApp) ConsentCard.appShare(card) == null else !ConsentCard.apiFits(card.blocks, ClaudeApiHelper.MAX_INPUT_TOKENS)
+            val tooLong = if (toApp) ConsentCard.appShare(card) == null else !ConsentCard.apiFits(card.blocks, ClaudeApiHelper.maxInputTokens(h))
             if (tooLong) Text(if (toApp) ConsentCard.TOO_LONG_FOR_APP else ConsentCard.TOO_LONG_FOR_API, style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.error)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End)) {
@@ -347,7 +384,7 @@ class SummaryActivity : ComponentActivity() {
     }
 
     companion object {
-        private const val NO_HELPER = "To use a stronger AI, add your Claude API key in Settings › Helpers › Claude, or install the Claude app."
+        private const val NO_HELPER = "To use a stronger AI, add a helper with its API key (or your own server) in Settings › Helpers."
     }
 }
 

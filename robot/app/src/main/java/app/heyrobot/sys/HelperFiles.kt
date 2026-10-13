@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.PersistableBundle
+import app.heyrobot.core.AppHandOff
 import app.heyrobot.core.ClaudeAppLink
 import app.heyrobot.core.ClaudeSpend
 import app.heyrobot.core.helpers.HelperConfig
@@ -142,46 +143,64 @@ object HelperSpendStore {
     }
 }
 
-/** What the Assistant setup screen shows about the Claude app: installed, and which hand-off resolves (a, b, c). */
+/**
+ * What the Assistant setup screen shows about a helper's app (the Claude app before 1.0.0): installed, and which hand-off
+ * resolves (a, b only for the Claude app; c, a share, for every app).
+ */
 data class ClaudeAppFacts(val installed: Boolean, val appLink: Boolean, val webLink: Boolean, val send: Boolean)
 
 /**
- * The Claude app (closed source; its intent filters are unverified): the hand-off intents and which of them resolve to
- * its package on this phone, checked at run time (resolveActivity with setPackage). Robot only prefills; you press
- * Send. Never accessibility, never reading the app in the background.
+ * 1.0.0: any helper's app, by package ([AppHandOff]): the hand-off intents and which of them resolve to its package on
+ * this phone, checked at run time (queryIntentActivities with setPackage). The apps are closed source and their intent
+ * filters unverified. Robot only prefills; you press Send. Never accessibility, never reading an app in the background.
  */
-object ClaudeAppIntents {
-    fun installed(ctx: Context): Boolean = HandOffApps.installed(ctx, ClaudeAppLink.PACKAGE)
+object HandOffIntents {
+    fun installed(ctx: Context, pkg: String): Boolean = HandOffApps.installed(ctx, pkg)
 
-    fun intent(ctx: Context, way: ClaudeAppLink.Way, text: String): Intent? = when (way) {
-        ClaudeAppLink.Way.APP_LINK -> Intent(Intent.ACTION_VIEW, Uri.parse(ClaudeAppLink.appLink(text))).setPackage(ClaudeAppLink.PACKAGE)
-        ClaudeAppLink.Way.WEB_LINK -> Intent(Intent.ACTION_VIEW, Uri.parse(ClaudeAppLink.webLink(text))).addCategory(Intent.CATEGORY_BROWSABLE).setPackage(ClaudeAppLink.PACKAGE)
-        ClaudeAppLink.Way.SEND -> Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, ClaudeAppLink.cap(text)).setPackage(ClaudeAppLink.PACKAGE)
-        ClaudeAppLink.Way.LAUNCH -> ctx.packageManager.getLaunchIntentForPackage(ClaudeAppLink.PACKAGE)
+    fun intent(ctx: Context, pkg: String, way: ClaudeAppLink.Way, text: String): Intent? = when (way) {
+        // The links are the Claude app's own (claude://, claude.ai): no other app is sent them.
+        ClaudeAppLink.Way.APP_LINK -> if (pkg != ClaudeAppLink.PACKAGE) null else Intent(Intent.ACTION_VIEW, Uri.parse(ClaudeAppLink.appLink(text))).setPackage(pkg)
+        ClaudeAppLink.Way.WEB_LINK -> if (pkg != ClaudeAppLink.PACKAGE) null
+            else Intent(Intent.ACTION_VIEW, Uri.parse(ClaudeAppLink.webLink(text))).addCategory(Intent.CATEGORY_BROWSABLE).setPackage(pkg)
+        ClaudeAppLink.Way.SEND -> Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, ClaudeAppLink.cap(text)).setPackage(pkg)
+        ClaudeAppLink.Way.LAUNCH -> ctx.packageManager.getLaunchIntentForPackage(pkg)
     }
 
-    fun resolves(ctx: Context, way: ClaudeAppLink.Way): Boolean = try {
-        val i = intent(ctx, way, "test") ?: return false
-        ctx.packageManager.queryIntentActivities(i, PackageManager.MATCH_DEFAULT_ONLY).any { it.activityInfo?.packageName == ClaudeAppLink.PACKAGE }
+    fun resolves(ctx: Context, pkg: String, way: ClaudeAppLink.Way): Boolean = try {
+        val i = intent(ctx, pkg, way, "test") ?: return false
+        ctx.packageManager.queryIntentActivities(i, PackageManager.MATCH_DEFAULT_ONLY).any { it.activityInfo?.packageName == pkg }
     } catch (_: Exception) { false }
 
-    fun facts(ctx: Context): ClaudeAppFacts {
-        val installed = installed(ctx)
-        return ClaudeAppFacts(installed, installed && resolves(ctx, ClaudeAppLink.Way.APP_LINK), installed && resolves(ctx, ClaudeAppLink.Way.WEB_LINK),
-            installed && resolves(ctx, ClaudeAppLink.Way.SEND))
+    fun facts(ctx: Context, pkg: String): ClaudeAppFacts {
+        val installed = installed(ctx, pkg)
+        val claude = pkg == ClaudeAppLink.PACKAGE
+        return ClaudeAppFacts(installed, installed && claude && resolves(ctx, pkg, ClaudeAppLink.Way.APP_LINK),
+            installed && claude && resolves(ctx, pkg, ClaudeAppLink.Way.WEB_LINK), installed && resolves(ctx, pkg, ClaudeAppLink.Way.SEND))
     }
 
-    /** The way to hand off now (a, b, c, then d), or null when the app isn't installed. */
-    fun choose(ctx: Context): ClaudeAppLink.Way? = ClaudeAppLink.choose(installed(ctx)) { resolves(ctx, it) }
+    /** The way to hand off to [pkg] now, or null when it isn't installed. */
+    fun choose(ctx: Context, pkg: String): ClaudeAppLink.Way? = AppHandOff.choose(pkg, installed(ctx, pkg)) { resolves(ctx, pkg, it) }
 
-    /** Way d: the question on the clipboard (your own words, so not marked sensitive) before the app opens. */
-    fun copy(ctx: Context, text: String) {
+    /**
+     * The question on the clipboard (your own words, so not marked sensitive) before the app opens: always, so it can be
+     * pasted when the app ignores the share. [app]: the app's name, as the clipboard's label.
+     */
+    fun copy(ctx: Context, text: String, app: String) {
         try {
-            val clip = ClipData.newPlainText("Question for Claude", text)
+            val clip = ClipData.newPlainText("Question for $app", text)
             clip.description.extras = PersistableBundle().apply { putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, false) }
             ctx.getSystemService(ClipboardManager::class.java).setPrimaryClip(clip)
         } catch (t: Throwable) {
-            RLog.w("claude_clip", t)
+            RLog.w("handoff_clip", t)
         }
     }
+}
+
+/** The Claude app, as [HandOffIntents] with its package (the Claude-only callers from before 1.0.0). */
+object ClaudeAppIntents {
+    fun installed(ctx: Context): Boolean = HandOffIntents.installed(ctx, ClaudeAppLink.PACKAGE)
+
+    fun resolves(ctx: Context, way: ClaudeAppLink.Way): Boolean = HandOffIntents.resolves(ctx, ClaudeAppLink.PACKAGE, way)
+
+    fun facts(ctx: Context): ClaudeAppFacts = HandOffIntents.facts(ctx, ClaudeAppLink.PACKAGE)
 }

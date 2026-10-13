@@ -101,11 +101,11 @@ class CardActions(
 
 /**
  * "Ask Claude?" under a reply (any helper, by its [name]): what Send would send ([sends], with the start of the screen's
- * text in [preview]), or, without an API key ([api] false), the Claude app opened with [text]. [asWell]: under Robot's
+ * text in [preview]), or, without an API key ([api] false), its [app] opened with [text]. [asWell]: under Robot's
  * own answer, after the local model first handed the question over.
  */
 data class OfferView(val api: Boolean, val text: String, val sends: List<String>, val preview: String? = null, val asWell: Boolean = false,
-    val name: String = "Claude")
+    val name: String = "Claude", val app: String = "Claude")
 
 fun toolIcon(t: ToolName?): ImageVector = when (t) {
     ToolName.SET_TIMER -> RIcons.Timer
@@ -224,7 +224,7 @@ fun OfferCard(o: OfferView, onAccept: () -> Unit, onDismiss: () -> Unit, modifie
     PanelCard(modifier, style = cardStyle(CardKind.OFFER)) {
         CardHeader(
             headline = when {
-                !o.api -> "Ask in the Claude app?"
+                !o.api -> "Ask in the ${o.app} app?"
                 o.asWell -> "Also ask ${o.name}?"
                 else -> "Ask ${o.name}?"
             },

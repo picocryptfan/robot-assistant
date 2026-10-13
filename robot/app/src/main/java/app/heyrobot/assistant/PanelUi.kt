@@ -357,7 +357,7 @@ internal fun UiTurn.toTurnUi() = TurnUi(
     },
     streaming = streaming, stopped = stopped, error = error, helper = claude, readBack = readBack, by = by, home = home,
     footer = if (role == TurnRole.USER) emptyList() else claudeFooter(sources, cost, by),
-    offer = offer?.let { OfferView(it.api, it.text, it.sends, it.preview, it.asWell, it.name) },
+    offer = offer?.let { OfferView(it.api, it.text, it.sends, it.preview, it.asWell, it.name, it.app) },
     reply = reply,
     web = web,
 )

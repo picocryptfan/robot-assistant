@@ -112,7 +112,7 @@ private fun status(h: HelperConfig, f: AssistantFacts?): Pair<Mark, String> {
         !h.on -> Mark.TODO to "Off"
         f?.keysUnreadable?.contains(h.id) == true -> Mark.WARN to "The saved key couldn't be read and was removed: add it again"
         p.app != null && HelperSettings.route(h, key) == ClaudeRoute.APP ->
-            if (f?.claudeApp?.installed == false) Mark.TODO to "No key, and the ${p.defaultName} app isn't installed" else Mark.OK to "Opens the ${p.defaultName} app"
+            if (f?.app(p.app)?.installed == false) Mark.TODO to "No key, and the ${p.defaultName} app isn't installed" else Mark.OK to "Opens the ${p.defaultName} app"
         p.keyRequired && !key -> Mark.TODO to "No key"
         p.protocol == Protocol.ANTHROPIC -> Mark.OK to "Ready"
         facts.address(h) == null -> Mark.TODO to "Test connection to find the server"
@@ -152,7 +152,7 @@ fun HelpersScreen(s: RobotSettings, snap: Snapshot, update: (RobotSettings) -> U
         preferenceGroup("Your helpers", "helpers") {
             if (s.helpers.isEmpty()) PreferenceItem("No helpers", "Robot answers everything itself")
             for (h in s.helpers) HelperRow(h, f) { a.openPage(Page.Helper(h.id)) }
-            PreferenceItem("Add a helper", "A company's model, or one on your own computer", RIcons.Add, onClick = { a.openPage(Page.AddHelper) })
+            PreferenceItem("Add a helper", "A company's model or its app, or a model on your own computer", RIcons.Add, onClick = { a.openPage(Page.AddHelper) })
         }
         preferenceGroup("When Robot needs help", "help") {
             ListPreference("When Robot needs help", help, Escalation.entries, ::escalationLabel, { e ->
@@ -222,7 +222,8 @@ fun AddHelperScreen(s: RobotSettings, update: (RobotSettings) -> Unit, a: AppAct
     PreferenceScreen("Add a helper", onBack, snackbar = snackbar) {
         preferenceGroup("Companies", "companies") {
             for (p in Presets.ALL.filter { !it.needsAddress }) {
-                val detail = p.models.take(3).joinToString(", ") { it.title }.ifEmpty { "Hundreds of models from many companies, with one key" }
+                val detail = p.models.take(3).joinToString(", ") { it.title }.ifEmpty { "Hundreds of models from many companies, with one key" } +
+                    (if (p.app != null) " · or the ${p.defaultName} app, without a key" else "")
                 PreferenceItem(p.title, detail, RIcons.Cloud, onClick = { add(p, null) })
             }
         }
@@ -234,7 +235,8 @@ fun AddHelperScreen(s: RobotSettings, update: (RobotSettings) -> Unit, a: AppAct
         }
         preferenceFooter(
             "Who should Robot be able to ask? A company's model needs an API key from that company (paid separately from any app " +
-                "subscription). A model on your own computer needs no key and costs nothing, and is private when the computer is yours. " +
+                "subscription). Without a key, a company with an app on this phone gets your question in its app: you press Send there, " +
+                "and Robot doesn't hear the answer. A model on your own computer needs no key and costs nothing, and is private when the computer is yours. " +
                 "For another company, you enter its OpenAI-compatible address (https).",
         )
     }
@@ -376,9 +378,9 @@ fun HelperScreen(id: String, s: RobotSettings, snap: Snapshot, update: (RobotSet
         if (p.app != null) {
             preferenceGroup(null, "route") {
                 val route = HelperSettings.route(h, key)
-                ListPreference("Use", route, ClaudeRoute.entries, { it.title }, { r ->
-                    r.detail + when {
-                        r == ClaudeRoute.APP && f?.claudeApp?.installed == false -> " The ${p.defaultName} app isn't installed."
+                ListPreference("Use", route, ClaudeRoute.entries, { HelperSettings.routeTitle(p, it) }, { r ->
+                    HelperSettings.routeDetail(p, r) + when {
+                        r == ClaudeRoute.APP && f?.app(p.app)?.installed == false -> " The ${p.defaultName} app isn't installed."
                         r == ClaudeRoute.API && !key -> " Add a key first."
                         else -> ""
                     }

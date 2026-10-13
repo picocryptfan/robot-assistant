@@ -719,7 +719,7 @@ fun ClassicOfferCard(o: OfferView, onDismiss: () -> Unit, onAccept: () -> Unit) 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(RIcons.Cloud, null, Modifier.size(22.dp))
                 Spacer(Modifier.width(10.dp))
-                Text(if (!o.api) "Open the Claude app with: «${o.text.take(120)}${if (o.text.length > 120) "…" else ""}»"
+                Text(if (!o.api) "Open the ${o.app} app with: «${o.text.take(120)}${if (o.text.length > 120) "…" else ""}»"
                     else if (o.asWell) "Want ${o.name}'s take as well?" else "Want me to check with ${o.name}?",
                     style = MaterialTheme.typography.titleSmall)
             }

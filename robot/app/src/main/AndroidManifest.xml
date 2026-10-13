@@ -163,8 +163,14 @@
         <package android:name="im.molly.app" />
         <package android:name="com.android.messaging" />
         <package android:name="com.google.android.apps.messaging" />
-        <!-- Ask Claude's app route: the official Claude app, resolved at run time (claude://, https claude.ai, a share). -->
+        <!-- A helper's app route: the official Claude app, resolved at run time (claude://, https claude.ai, a share), and
+             since 1.0.0 the other companies' apps a helper can open with a share of your question (core Presets). -->
         <package android:name="com.anthropic.claude" />
+        <package android:name="com.openai.chatgpt" />
+        <package android:name="ai.x.grok" />
+        <package android:name="com.google.android.apps.bard" />
+        <package android:name="ai.mistral.chat" />
+        <package android:name="com.deepseek.chat" />
         <!-- 0.9, the Termux agent: Termux's signer, version and RunCommandService (RUN_COMMAND doesn't work without it). -->
         <package android:name="com.termux" />
         <intent>

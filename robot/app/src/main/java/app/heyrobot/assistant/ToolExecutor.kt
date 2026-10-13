@@ -22,7 +22,9 @@ import app.heyrobot.core.AppEntry
 import app.heyrobot.core.AppMatcher
 import app.heyrobot.core.BrainModel
 import app.heyrobot.core.CalendarFormat
+import app.heyrobot.core.AppHandOff
 import app.heyrobot.core.ClaudeAppLink
+import app.heyrobot.core.helpers.HelperSettings
 import app.heyrobot.core.CalendarPick
 import app.heyrobot.core.CheogramRoute
 import app.heyrobot.core.ContactIds
@@ -86,7 +88,7 @@ import app.heyrobot.sys.NominatimClient
 import app.heyrobot.sys.OpenMeteoClient
 import app.heyrobot.sys.PhoneInfo
 import app.heyrobot.sys.SettingsIntents
-import app.heyrobot.sys.ClaudeAppIntents
+import app.heyrobot.sys.HandOffIntents
 import app.heyrobot.sys.Contacts
 import app.heyrobot.sys.HandOffApps
 import app.heyrobot.sys.ModelStore
@@ -145,8 +147,9 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
             // Settings' "Find the nearest place online" (or the panel's newer answer): Ask the first time shows its card.
             is Action.MapsSearch -> Nearby.prepare(action, action.query, nearestWanted(action.query, action.nearest), nearestMode(), settings.nearbyServer)
             is Action.MapsNavigate -> Nearby.prepare(action, action.destination, nearestWanted(action.destination, action.nearest), nearestMode(), settings.nearbyServer)
-            // The Claude app: installed or "Install Claude" before any card.
-            is Action.AskClaude -> if (ClaudeAppIntents.installed(ctx)) Prepared.Ready(action) else Prepared.Refused(ActionStatus.NO_APP, "Install Claude.")
+            // A helper's app (1.0.0, any helper with one): which app from your settings, installed or "Install …" before any
+            // card, and the card says what goes and that you press Send there.
+            is Action.AskClaude -> prepareHandOff(action)
             is Action.WebSearch -> web.prepare(action)
             // 1.0: a search in your browser: your own words open at once, the model's show their card (core web BrowserGate).
             is app.heyrobot.core.BrowserSearchAction -> BrowserSearchTool.prepare(ctx, action, said, webContext())
@@ -824,26 +827,41 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
     /** A settings page: the first of [intents] that opens (the Settings app may not be visible to Robot's queries). */
     private fun page(intents: List<Intent>): Boolean = intents.any { i -> try { launch(i) } catch (_: Exception) { false } }
 
-    // ------------------------------------------------------------------ the Claude app
+    // ------------------------------------------------------------------ a helper's app
 
     /**
-     * Opens the Claude app with the question by the first way that resolves on this phone (docs/ask-claude.md "The
-     * Claude app route"): its claude:// link, its claude.ai link, a share, or just the app with the question on the
-     * clipboard. Robot only prefills; you press Send there. The log has the way, never the words.
+     * The app [a] opens, always from your settings (HelperSettings.appHelper): the helper it names when that one is on and
+     * has an app, else the one Robot checks with. Never a package or a name from the call itself. Null: none.
+     */
+    private fun handOff(a: Action.AskClaude): Action.AskClaude? {
+        val h = HelperSettings.appHelper(settings, a.helper) { HelperLink.keySaved(ctx, it) } ?: return null
+        val pkg = h.presetOf.app ?: return null
+        return a.copy(helper = h.id, app = pkg, appName = h.presetOf.defaultName)
+    }
+
+    private fun prepareHandOff(a: Action.AskClaude): Prepared {
+        val r = handOff(a) ?: return Prepared.Refused(ActionStatus.NO_APP, AppHandOff.install(null))
+        if (!HandOffIntents.installed(ctx, r.app!!)) return Prepared.Refused(ActionStatus.NO_APP, AppHandOff.install(r.appName))
+        return Prepared.Ready(r, note = AppHandOff.note(r.appName!!, r.text))
+    }
+
+    /**
+     * Opens a helper's app with the question by the first way that resolves on this phone (docs/ask-claude.md "The
+     * Claude app route", 1.0.0 for every helper's app): the Claude app's claude:// or claude.ai link, a share to the app,
+     * or just the app. The question goes on the clipboard every time, for an app that ignores the share. Robot only
+     * prefills; you press Send there. The log has the way, never the words.
      */
     private fun openClaude(a: Action.AskClaude): Executed {
-        val way = ClaudeAppIntents.choose(ctx) ?: return Executed(ActionStatus.NO_APP, "Install Claude.")
+        val r = handOff(a) ?: return Executed(ActionStatus.NO_APP, AppHandOff.install(null))
+        val pkg = r.app!!
+        val name = r.appName!!
+        val way = HandOffIntents.choose(ctx, pkg) ?: return Executed(ActionStatus.NO_APP, AppHandOff.install(name))
         val text = ClaudeAppLink.cap(a.text)
-        if (way == ClaudeAppLink.Way.LAUNCH && text.isNotEmpty()) ClaudeAppIntents.copy(ctx, text)
-        val i = ClaudeAppIntents.intent(ctx, way, text) ?: return Executed(ActionStatus.NO_APP, "Install Claude.")
-        RLog.i("claude_app", "way" to way)
-        if (!start(i)) return Executed(ActionStatus.FAILED, "Claude didn't open.")
-        val detail = when {
-            text.isEmpty() -> "Opened Claude."
-            way == ClaudeAppLink.Way.LAUNCH -> "Opened Claude. Paste your question in Claude: it's on the clipboard."
-            else -> "Opened Claude with your question: press Send there if it isn't sent."
-        }
-        return Executed(ActionStatus.DONE, detail, launchedApp = true)
+        if (text.isNotEmpty()) HandOffIntents.copy(ctx, text, name)
+        val i = HandOffIntents.intent(ctx, pkg, way, text) ?: return Executed(ActionStatus.NO_APP, AppHandOff.install(name))
+        RLog.i("claude_app", "way" to way, "claude" to (pkg == ClaudeAppLink.PACKAGE))
+        if (!start(i)) return Executed(ActionStatus.FAILED, "$name didn't open.")
+        return Executed(ActionStatus.DONE, AppHandOff.done(name, way, text), launchedApp = true)
     }
 
     private companion object {

@@ -160,6 +160,7 @@ import app.heyrobot.sys.WebAnswers
 import app.heyrobot.sys.WebStore
 import app.heyrobot.sys.AppPages
 import app.heyrobot.sys.ClaudeAppIntents
+import app.heyrobot.sys.HandOffIntents
 import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.HelperSpendStore
 import app.heyrobot.sys.ConversationStore
@@ -277,12 +278,12 @@ data class UiAction(
 /**
  * "Want me to check with Claude?" under a reply (docs/ask-claude.md "When Robot needs help"; any helper since 0.6.0, by
  * its [name]): a tap (or a yes, when nothing personal would go) asks the helper through its API ([api], listing what
- * goes: [sends], with the start of the screen's text in [preview]) or opens the Claude app with [text]. Nothing happens
+ * goes: [sends], with the start of the screen's text in [preview]) or opens its [app] with [text]. Nothing happens
  * without it. [asWell]: it sits under Robot's own answer, given after the local model first handed the question over
  * ("Want Claude's take as well?").
  */
 data class Offer(val api: Boolean, val text: String, val sends: List<String>, val preview: String? = null, val asWell: Boolean = false,
-    val name: String = "Claude")
+    val name: String = "Claude", val app: String = "Claude")
 
 data class UiTurn(
     val id: String,
@@ -1570,7 +1571,7 @@ object PanelController {
         // itself first, and a follow-up keeps the live conversation that still holds the screen (AskClaudeTool).
         val api = target != null && HelperSettings.apiReady(target, keySaved)
         val localTool = ClaudeSettings.localTool(s, target, keySaved)
-        val reachable = localTool && (api || (target?.presetOf?.app != null && withContext(Dispatchers.IO) { ClaudeAppIntents.installed(VoiceHub.app) }))
+        val reachable = localTool && (api || (target?.presetOf?.app?.let { pkg -> withContext(Dispatchers.IO) { HandOffIntents.installed(VoiceHub.app, pkg) } } == true))
         val leftOut = AskClaudeTool.leftOut(localTool, reachable, claudeDeclined, AskClaudeTool.picture(attachment, history))
         if (leftOut != null && leftOut != ClaudeLeftOut.OFF && leftOut != ClaudeLeftOut.NOWHERE) {
             RLog.i("claude_left_out", "why" to leftOut)
@@ -1777,7 +1778,7 @@ object PanelController {
                 target!!
                 val api = HelperSettings.apiReady(target, keySaved)
                 // No API to ask and no app to open: nothing to offer.
-                if (!api && (target.presetOf.app == null || !withContext(Dispatchers.IO) { ClaudeAppIntents.installed(app) })) {
+                if (!api && target.presetOf.app?.let { pkg -> withContext(Dispatchers.IO) { HandOffIntents.installed(app, pkg) } } != true) {
                     if (saidNothing(replyId)) sayInto(replyId, "I'm not sure about that one.")
                     if (ranOwn) finishReply(replyId, DoneReason.END) else finishOrDrop(replyId)
                     return RLog.i("claude_escalation", "trigger" to trigger, "decision" to EscalationDecision.NONE)
@@ -1832,7 +1833,7 @@ object PanelController {
 
     /**
      * Shows "Want me to check with Claude?" under [replyId] (any helper, by its name), or "Want Claude's take as well?"
-     * under Robot's own answer (the Claude app: "Open Claude with: «…»").
+     * under Robot's own answer (a helper's app: "Open the ChatGPT app with: «…»").
      */
     private fun offer(replyId: String, o: PendingOffer) {
         dropOffers()
@@ -1840,10 +1841,11 @@ object PanelController {
         offers[replyId] = o
         val text = if (o.api) o.question else ClaudeAppLink.cap(o.question)
         _state.update { st ->
-            st.copy(turns = st.turns.map { if (it.id == replyId) it.copy(offer = Offer(o.api, text, o.payload?.sends.orEmpty(), o.payload?.preview, o.asWell, h.name)) else it })
+            st.copy(turns = st.turns.map { if (it.id == replyId) it.copy(offer = Offer(o.api, text, o.payload?.sends.orEmpty(), o.payload?.preview, o.asWell, h.name,
+                h.presetOf.defaultName)) else it })
         }
         // Said too, so you know a yes will do.
-        if (_state.value.speak) VoiceHub.tts.speak(if (!o.api) "Want me to open the Claude app?" else if (o.asWell) words(h).offerAsWell else words(h).offer)
+        if (_state.value.speak) VoiceHub.tts.speak(if (!o.api) "Want me to open the ${h.presetOf.defaultName} app?" else if (o.asWell) words(h).offerAsWell else words(h).offer)
     }
 
     private fun dropOffers() {
@@ -1880,11 +1882,11 @@ object PanelController {
         VoiceHub.stopVoice(TtsStop.NEW_QUESTION)
         RLog.i("claude_offer", "accepted" to true, "api" to o.api, "tapped" to tapped, "kind" to h.kind)
         if (!o.api) {
-            // The offer was the card: the Claude app opens now (never on the lock screen).
-            if (Assistant.locked(VoiceHub.app)) return notify("Unlock your phone to open the Claude app.")
+            // The offer was the card: the helper's app opens now (never on the lock screen).
+            if (Assistant.locked(VoiceHub.app)) return notify("Unlock your phone to open the ${h.presetOf.defaultName} app.")
             lastToApp = o.question
             scope.launch {
-                val r = withContext(Dispatchers.IO) { executor().run(Action.AskClaude(o.question)) }
+                val r = withContext(Dispatchers.IO) { executor().run(Action.AskClaude(o.question, helper = h.id)) }
                 if (r.launchedApp && r.status.succeeded) leaveForApp() else notify(r.detail)
             }
             return
@@ -2037,8 +2039,8 @@ object PanelController {
             else -> said
         }
         if (HelperSettings.route(h, keySaved) == ClaudeRoute.APP) {
-            // The Claude app: the question, or for "go get Claude" a short summary of the conversation so far.
-            return handOff(replyId, question ?: ClaudeAppLink.summary(history).orEmpty())
+            // Its app (the Claude app, ChatGPT, …): the question, or for "go get …" a short summary of the conversation so far.
+            return handOff(replyId, question ?: ClaudeAppLink.summary(history).orEmpty(), h)
         }
         if (h.presetOf.keyRequired && !keySaved) return localReply(replyId, ClaudeFailure.NO_KEY.say(who(h)))
         if (Assistant.locked(app) && !h.locked) {
@@ -2256,14 +2258,15 @@ object PanelController {
     }
 
     /**
-     * The Claude app route: the card "Open Claude with: «…»", then the app opens with the question and the panel steps
-     * aside (the launchedApp path). Robot never hears the answer; you can read it back with the corner swipe.
+     * The app route (any helper with an app, 1.0.0): the card "Open the ChatGPT app with: «…»", then [h]'s app opens with
+     * the question and the panel steps aside (the launchedApp path). Robot never hears the answer; with the Claude app you
+     * can read it back with the corner swipe.
      */
-    private suspend fun handOff(replyId: String, text: String) {
+    private suspend fun handOff(replyId: String, text: String, h: HelperConfig) {
         lastToApp = text.takeIf { it.isNotBlank() }
         markHelper(replyId, null)
         val scripted = object : TurnModel {
-            override suspend fun ask(): ModelOutcome = ModelOutcome.Calls(listOf(RawToolCall(ToolName.ASK_CLAUDE.id, mapOf("question" to text))))
+            override suspend fun ask(): ModelOutcome = ModelOutcome.Calls(listOf(RawToolCall(ToolName.ASK_CLAUDE.id, mapOf("question" to text, "helper" to h.id))))
             override suspend fun answer(results: List<Pair<String, Map<String, Any?>>>): ModelOutcome = ModelOutcome.Done(DoneReason.END)
             override fun close() {}
         }

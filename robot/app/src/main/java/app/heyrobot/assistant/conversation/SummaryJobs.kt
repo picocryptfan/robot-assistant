@@ -38,7 +38,7 @@ import java.time.ZoneId
 // VOICE PROCESS. Summaries being made (docs/conversation-mode.md 7, phase 5.6), one at a time, outliving the summary
 // screen (turning the phone, leaving and coming back): Robot's own (core LocalSummary over :brain's one-shot requests at
 // SUMMARY priority, with the model held loaded meanwhile, its notes kept as they come so a stopped one goes on), and the
-// Claude API's after your Send on the card. Each result is saved in the transcript's folder as summary-<n>.json and
+// chosen helper's API after your Send on the card (1.0.0: any helper with its API; Claude's before). Each result is saved in the transcript's folder as summary-<n>.json and
 // checked for numbers, names and times the transcript doesn't have. The voice log gets counts and codes only.
 
 object SummaryJobs {
@@ -52,13 +52,16 @@ object SummaryJobs {
         /** A helper's answer as it streams. */
         val streaming: String = "",
         val helper: Boolean = false,
+        /** 1.0.0: the helper's name while it summarizes ("ChatGPT is summarizing…"). */
+        val helperName: String = "",
         /** The last summary made, its number in the folder, and what the number check found. */
         val record: SummaryRecord? = null,
         val number: Int? = null,
         val misses: List<SummaryMiss> = emptyList(),
         val error: String? = null,
-        /** The estimated price of the last helper request, and what it cost. */
+        /** The estimated price of the last helper request, and what it cost ([costKnown] false: the helper's price isn't known). */
         val spentDollars: Double = 0.0,
+        val costKnown: Boolean = true,
     )
 
     private val _state = MutableStateFlow(Ui())
@@ -137,7 +140,8 @@ object SummaryJobs {
         if (running) return
         val app = ctx.applicationContext
         val job = card.approve(System.currentTimeMillis())
-        _state.value = Ui(id = card.transcriptId, running = true, helper = true)
+        val h = helper.h
+        _state.value = Ui(id = card.transcriptId, running = true, helper = true, helperName = h.name)
         this.job = scope.launch {
             var end = ClaudeEnd.OTHER
             try {
@@ -146,7 +150,8 @@ object SummaryJobs {
                 })
                 when (r) {
                     is HelperResult.Done -> {
-                        val rec = SummaryRecord(r.by, r.by, SummaryRecord.VIA_API, System.currentTimeMillis(), r.text, consent = true, sentAt = job.approvedAt)
+                        val rec = SummaryRecord(r.by, r.by, SummaryRecord.VIA_API, System.currentTimeMillis(), r.text, consent = true, sentAt = job.approvedAt,
+                            helperName = h.name, company = helper.disclosure.provider)
                         val store = Transcripts.store(app)
                         val n = store.addSummary(card.transcriptId, rec)
                         val meta = store.meta(card.transcriptId)
@@ -154,26 +159,26 @@ object SummaryJobs {
                         val misses = if (meta != null && t != null && !card.anonymized) SummaryCheckFor.misses(r.text, meta, t, ZoneId.systemDefault(), people(app))
                             else emptyList()
                         end = ClaudeEnd.END
-                        _state.update { it.copy(running = false, record = rec, number = n, misses = misses, spentDollars = helper.spent,
-                            error = if (n == null) "Claude's summary came, but it couldn't be saved on this phone." else null) }
+                        _state.update { it.copy(running = false, record = rec, number = n, misses = misses, spentDollars = helper.spent, costKnown = helper.costKnown,
+                            error = if (n == null) "${h.name}'s summary came, but it couldn't be saved on this phone." else null) }
                     }
-                    is HelperResult.Failed -> _state.update { it.copy(running = false, error = r.reason, spentDollars = helper.spent) }
+                    is HelperResult.Failed -> _state.update { it.copy(running = false, error = r.reason, spentDollars = helper.spent, costKnown = helper.costKnown) }
                     is HelperResult.Shared -> _state.update { it.copy(running = false) }
                 }
             } catch (e: CancellationException) {
                 end = ClaudeEnd.STOPPED
-                _state.update { it.copy(running = false, error = "Stopped.", spentDollars = helper.spent) }
+                _state.update { it.copy(running = false, error = "Stopped.", spentDollars = helper.spent, costKnown = helper.costKnown) }
                 throw e
             } finally {
                 // Event 114: which helper, words ÷ 100, how it ended.
-                VoiceLog.add(VoiceEvent.SUMMARY_HELPER, HelperCode.CLAUDE_API.id, card.words / 100, end.id)
+                VoiceLog.add(VoiceEvent.SUMMARY_HELPER, (if (helper.id == ClaudeApiHelper.ID) HelperCode.CLAUDE_API else HelperCode.HELPER_API).id, card.words / 100, end.id)
             }
         }
     }
 
-    /** The Claude app got the transcript (or the clipboard did): logged, nothing kept. */
+    /** A helper's app got the transcript (or the clipboard did): logged, nothing kept. */
     fun shared(card: ConsentCard, how: app.heyrobot.core.AppShareCode) {
-        VoiceLog.add(VoiceEvent.SUMMARY_HELPER, HelperCode.CLAUDE_APP.id, card.words / 100, how.id)
+        VoiceLog.add(VoiceEvent.SUMMARY_HELPER, (if (card.helper == ClaudeAppHelper.ID) HelperCode.CLAUDE_APP else HelperCode.HELPER_APP).id, card.words / 100, how.id)
     }
 
     fun cancel() {

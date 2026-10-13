@@ -131,18 +131,25 @@ object HelperLink {
     }
 
     /**
-     * 0.5.0 (docs/conversation-mode.md 7.2): a session with Claude's API (your Claude key) for one transcript summary, with
-     * its own fixed prompt, no tools and no web search, or null without a key. Only the summary screen's Claude helper asks
-     * for one, after your Send on its card. Background thread.
+     * 0.5.0 (docs/conversation-mode.md 7.2): a session with a helper's API for one transcript summary, with its own fixed
+     * prompt, no tools and no web search, or null without a key (1.0.0: any helper with its API, through its own client
+     * and the model chosen for it; Claude's before). Only the summary screen's helper asks for one, after your Send on its
+     * card. Background thread.
      */
     @Synchronized
-    fun transcriptSession(ctx: Context, model: ClaudeModel): ClaudeSession? {
-        val h = HelperConfig.claude()
-        if (held(ctx, h, HelperFactsStore.load(ctx, h.id)) is Made.Not) return null
+    fun transcriptSession(ctx: Context, h: HelperConfig): HelperSession? {
+        val facts = HelperFactsStore.load(ctx, h.id)
+        if (held(ctx, h, facts) is Made.Not) return null
         val held = current.getValue(h.id)
         held.users++
-        return ClaudeSession(held.claude!!, model, emptyList(), search = false, conversation = false, system = ClaudePrompt.TRANSCRIPT_SYSTEM)
-            .also { sessions[it] = held }
+        val session: HelperSession = if (h.presetOf.protocol == Protocol.ANTHROPIC) {
+            ClaudeSession(held.claude!!, ClaudeModel.of(h.model), emptyList(), search = false, conversation = false, system = ClaudePrompt.TRANSCRIPT_SYSTEM)
+        } else {
+            OpenAiSession(held.http!!, h.copy(search = false), emptyList(), conversation = false, vision = false, dropped = facts.dropped(h.model),
+                system = ClaudePrompt.transcriptSystem(h.name))
+        }
+        sessions[session] = held
+        return session
     }
 
     /** Robot's actions for [h]: none when you turned them off for it, or its model can't take them (the server said so). */

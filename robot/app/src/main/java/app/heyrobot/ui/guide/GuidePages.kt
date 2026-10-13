@@ -482,9 +482,12 @@ private fun LazyListScope.headsetCar(g: GuideCtx) {
 
 // --------------------------------------------------------------------------------------------------------- 14. Helpers
 
-/** A helper can answer: its key is saved, or it needs none (your own server). */
+/** A helper can take a question: its key is saved, it needs none (your own server), or (1.0.0) it opens its app. */
 internal fun helpersSetUp(g: GuideCtx): Boolean =
-    g.s.helpers.any { h -> h.on && HelperSettings.apiReady(h, g.snap.facts?.keys?.containsKey(h.id) == true) }
+    g.s.helpers.any { h ->
+        val key = g.snap.facts?.keys?.containsKey(h.id) == true
+        h.on && (HelperSettings.apiReady(h, key) || HelperSettings.route(h, key) == app.heyrobot.core.ClaudeRoute.APP)
+    }
 
 private fun LazyListScope.helpers(g: GuideCtx) {
     title(R.string.guide_helpers_title)

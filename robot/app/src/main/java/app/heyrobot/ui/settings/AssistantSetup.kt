@@ -13,7 +13,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import app.heyrobot.core.RepairWhen
 import app.heyrobot.core.ScreenAccess
-import app.heyrobot.core.ClaudeAppLink
 import app.heyrobot.core.ClaudeRoute
 import app.heyrobot.core.helpers.HelperConfig
 import app.heyrobot.core.helpers.HelperSettings
@@ -167,8 +166,9 @@ private fun PeopleRows(f: AssistantFacts, a: AppActions) {
 }
 
 /**
- * Assistant setup › Helpers: GrapheneOS's Network toggle, each helper's key, and the Claude app with which hand-off its
- * installed version accepts (a claude:// link, a claude.ai link, a share), in words, so you can tell without adb.
+ * Assistant setup › Helpers: GrapheneOS's Network toggle, each helper's key, and (1.0.0) the app of each helper that opens
+ * one, with which hand-off its installed version accepts (the Claude app's claude:// and claude.ai links, a share), in
+ * words, so you can tell without adb.
  */
 @Composable
 private fun HelperRows(f: AssistantFacts, helpers: List<HelperConfig>, a: AppActions) {
@@ -183,14 +183,16 @@ private fun HelperRows(f: AssistantFacts, helpers: List<HelperConfig>, a: AppAct
             else "None (Settings › Helpers › ${h.name})",
             if (f.keys[h.id] != null) Mark.OK else Mark.TODO)
     }
-    // The app's row only for a helper that opens it (on, without a key or set to its app): nobody else needs it installed.
-    val viaApp = helpers.firstOrNull { it.on && it.presetOf.app == ClaudeAppLink.PACKAGE && HelperSettings.route(it, f.keys[it.id] != null) == ClaudeRoute.APP }
-        ?: return
-    val c = f.claudeApp
-    val ways = listOfNotNull("claude:// link".takeIf { c.appLink }, "claude.ai link".takeIf { c.webLink }, "share".takeIf { c.send })
-    StatusPreference("${viaApp.presetOf.defaultName} app",
-        if (!c.installed) "Not installed"
-        else if (ways.isEmpty()) "Installed. Robot opens the app and puts your question on the clipboard."
-        else "Installed · opens with: " + ways.joinToString(", "),
-        if (c.installed) Mark.OK else Mark.TODO)
+    // An app's row only for a helper that opens it (on, without a key or set to its app): nobody else needs it installed.
+    val viaApp = helpers.filter { it.on && it.presetOf.app != null && HelperSettings.route(it, f.keys[it.id] != null) == ClaudeRoute.APP }
+        .distinctBy { it.presetOf.app }
+    for (h in viaApp) {
+        val c = f.app(h.presetOf.app) ?: continue
+        val ways = listOfNotNull("claude:// link".takeIf { c.appLink }, "claude.ai link".takeIf { c.webLink }, "share".takeIf { c.send })
+        StatusPreference("${h.presetOf.defaultName} app",
+            if (!c.installed) "Not installed"
+            else if (ways.isEmpty()) "Installed. Robot opens the app and puts your question on the clipboard."
+            else "Installed · opens with: " + ways.joinToString(", "),
+            if (c.installed) Mark.OK else Mark.TODO)
+    }
 }
