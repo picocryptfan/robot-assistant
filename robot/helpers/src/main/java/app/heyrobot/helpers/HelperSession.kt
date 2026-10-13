@@ -14,8 +14,7 @@ import app.heyrobot.helpers.anthropic.AnthropicSession
 // (openai/OpenAiSession). Every implementation keeps the same promises: a question that fails, is declined or is stopped
 // leaves no trace; tool rounds that really ran stay, with their results; the helper's own turns go back exactly as they
 // came; a history the server would refuse ends the conversation with a plain message instead of a request; usage is
-// counted however a request ends; one retry for an overloaded or failing server before anything was shown. The
-// outcome, listener and report types keep their Claude names from when Claude was the only helper.
+// counted however a request ends; one retry for an overloaded or failing server before anything was shown.
 
 interface HelperSession {
     /** Nothing has been said to the helper in this conversation yet (a joined conversation's first question carries what came before). */
@@ -45,13 +44,13 @@ interface HelperSession {
  * (the panel's main thread).
  */
 interface HelperTurnListener {
-    /** More of Claude's reply. */
+    /** More of the helper's reply. */
     fun text(delta: String)
 
-    /** Claude declined (`stop_reason == "refusal"`): what was shown of this reply is withdrawn. */
+    /** The helper declined (Anthropic's `stop_reason == "refusal"`): what was shown of this reply is withdrawn. */
     fun declined()
 
-    /** Claude started thinking (a thinking block opened): "Claude is thinking…" until its words arrive. */
+    /** The helper started thinking (a thinking block opened): "Jarvis is thinking…" until its words arrive. */
     fun thinking() {}
 
     /** 0.6.0: a server on your network sent nothing for a while: it is probably loading its model ("… is loading its model…"). */
@@ -69,7 +68,7 @@ sealed class HelperOutcome {
     /** [cut]: stopped at max_tokens (or the context window), or after too many search continuations. */
     data class Done(val cut: Boolean = false) : HelperOutcome()
 
-    /** Claude asks Robot to act; the results go back through [AnthropicSession.answer]. */
+    /** The helper asks Robot to act; the results go back through [HelperSession.answer]. */
     data class Calls(val calls: List<RawToolCall>) : HelperOutcome()
 
     data object Declined : HelperOutcome()
@@ -82,7 +81,7 @@ data class HelperTurnReport(
     val dollars: Double = 0.0,
     val usage: TokenUsage = TokenUsage(),
     val requests: Int = 0,
-    /** The web domains Claude's searches returned ("Claude searched the web"). */
+    /** The web domains the helper's searches returned ("Jarvis searched the web"). */
     val domains: List<String> = emptyList(),
     val searches: Int = 0,
     /** Web search results that came back as an error object. */

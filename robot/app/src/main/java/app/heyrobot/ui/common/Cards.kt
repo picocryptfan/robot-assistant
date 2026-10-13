@@ -41,7 +41,7 @@ import app.heyrobot.ui.theme.LocalLook
 import app.heyrobot.ui.theme.LookStyle
 import app.heyrobot.ui.theme.RobotTokens
 
-// Main and voice processes. The panel's cards (an action waiting for "Do it", an offer to ask Claude, a notice) and
+// Main and voice processes. The panel's cards (an action waiting for "Do it", an offer to ask a helper, a notice) and
 // History's, as standard Material parts: a filled card (surfaceContainerHighest, 12 dp corners) whose first row reads
 // like a list item (a symbol, what it is, its state under it), an inset for the text it carries, choices as 56 dp rows
 // like a system chooser, and the buttons at the end. In the Classic look the same card keeps Robot 0.4's tonal colours

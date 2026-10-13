@@ -245,7 +245,7 @@ object RoutineVoice {
         }
     }
 
-    /** One line in Robot's voice; a French line in Kokoro's French voice, as Claude's French sentences are. */
+    /** One line in Robot's voice; a French line in Kokoro's French voice, as a helper's French sentences are. */
     private fun say(line: String) {
         val clean = SpeechText.clean(line)
         if (clean.isEmpty()) return

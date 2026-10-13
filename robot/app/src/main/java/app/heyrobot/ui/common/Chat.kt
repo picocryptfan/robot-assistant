@@ -100,7 +100,7 @@ class CardActions(
 )
 
 /**
- * "Ask Claude?" under a reply (any helper, by its [name]): what Send would send ([sends], with the start of the screen's
+ * "Ask Jarvis?" under a reply (any helper, by its [name]): what Send would send ([sends], with the start of the screen's
  * text in [preview]), or, without an API key ([api] false), its [app] opened with [text]. [asWell]: under Robot's
  * own answer, after the local model first handed the question over.
  */
@@ -215,8 +215,8 @@ fun ActionCard(a: ActionView, onConfirm: ((String, Boolean) -> Unit)?, more: Car
 }
 
 /**
- * "Ask Claude?" (any helper, by its name; "Also ask Claude?" under Robot's own answer), what Send would send and the
- * start of the screen's text; or, without an API key, the Claude app opened with the question. Nothing goes until a tap
+ * "Ask Jarvis?" (any helper, by its name; "Also ask Jarvis?" under Robot's own answer), what Send would send and the
+ * start of the screen's text; or, without an API key, the helper's app opened with the question. Nothing goes until a tap
  * on Send (or a yes, when nothing personal goes).
  */
 @Composable

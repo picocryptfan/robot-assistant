@@ -174,7 +174,7 @@ data class RobotSettings(
     // Settings › Safety & privacy (0.4.0, schema 6): each rule that makes an action ask first is a switch.
     /** "Safety cards": when content Robot read makes an action ask first (older files: the new default too). */
     val safetyCards: SafetyCards = SafetyCards.UNASKED,
-    /** "Card when Claude asks Robot to do something". */
+    /** "Card when a helper asks Robot to do something" (saved as "claudeActionCards", its name since 0.4.0). */
     val helperActionCards: Boolean = true,
     /** "Card when who-to isn't certain": several people, a near match, a number or address the model wrote, a loose app name. */
     val whoCards: Boolean = true,
@@ -185,9 +185,9 @@ data class RobotSettings(
     /** "Works on the lock screen": the actions allowed while locked (questions always). */
     val lockedTools: Set<ToolName> = LockScreen.DEFAULT,
     /**
-     * "Send personal content to helpers automatically" (off): Robot checking with Claude by itself may send the
-     * conversation's personal content and this question's screen or photo, and what a read tool finds for Claude goes
-     * without "Share with Claude". Claude joining ("go get Claude") still asks first.
+     * "Send personal content to helpers automatically" (off): Robot checking with a helper by itself may send the
+     * conversation's personal content and this question's screen or photo, and what a read tool finds for a helper goes
+     * without "Share with …". A helper joining ("go get Jarvis") still asks first.
      */
     val personalToHelpers: Boolean = false,
     /** "Voice yes can send personal content" (off): a spoken or typed yes may send what otherwise needs a tap. */
@@ -199,7 +199,7 @@ data class RobotSettings(
     val keepMedia: Boolean = false,
     /**
      * "Answer cards by voice" (on): while a card waits, Robot listens for "yes" or "no" when replies are spoken or the
-     * question came by voice. A yes never sends personal content to Claude unless [voiceYesPersonal].
+     * question came by voice. A yes never sends personal content to a helper unless [voiceYesPersonal].
      */
     val voiceCards: Boolean = true,
     /**
@@ -312,7 +312,8 @@ data class RobotSettings(
         put("helperBudgetCents", helperBudgetCents)
         put("helperShowCost", helperShowCost)
         // The 0.4/0.5 fields, written from the Claude helper for one release: an older Robot reading this file keeps
-        // Claude as it was set (and off when you removed it). The other helpers are new to it and ignored.
+        // Claude as it was set (and off when you removed it). The other helpers are new to it and ignored. Stored names
+        // kept from 0.3 to 0.5 (claude*): renaming them would lose these settings for a downgrade.
         val c = claude
         if (c == null) put("claudeEnabled", false) else {
             c.enabled?.let { put("claudeEnabled", it) }
@@ -341,6 +342,7 @@ data class RobotSettings(
         put("meVoiceprint", meVoiceprint)
         if (convReminderAt > 0) put("convReminderAt", convReminderAt)
         put("safetyCards", safetyCards.name)
+        // Stored name kept from 0.4.0; renaming it would lose your choice.
         put("claudeActionCards", helperActionCards)
         put("whoCards", whoCards)
         put("learnedCards", learnedCards)
@@ -421,7 +423,7 @@ data class RobotSettings(
             ToolName.WEB_SEARCH to Approval.AUTO,
             // 1.0: not a level you set: your own words open at once, the model's show their card (BrowserGate).
             ToolName.BROWSER_SEARCH to Approval.AUTO,
-            // Not a level you set: Ask Claude's own settings decide (EscalationPolicy), and the hand-off always asks.
+            // Not a level you set: the helpers' own settings decide (EscalationPolicy), and the hand-off always asks.
             ToolName.ASK_HELPER to Approval.ASK,
             // 0.7, not levels you set either (Settings › Memory): remember runs when you asked for it (a card otherwise,
             // ApprovalGate), forget always shows its card.

@@ -39,9 +39,9 @@ internal object AnthropicRequests {
 
     private val EPHEMERAL: BetaCacheControlEphemeral = BetaCacheControlEphemeral.builder().build()
 
-    private val SYSTEM: List<BetaTextBlockParam> = system(HelperPrompt.SYSTEM)
+    private val SYSTEM: List<BetaTextBlockParam> = system(HelperPrompt.CLAUDE_SYSTEM)
     /** 0.5.0: the transcript summary's own fixed prompt (docs/conversation-mode.md 7.2), cached the same way. */
-    private val TRANSCRIPT: List<BetaTextBlockParam> = system(HelperPrompt.TRANSCRIPT_SYSTEM)
+    private val TRANSCRIPT: List<BetaTextBlockParam> = system(HelperPrompt.CLAUDE_TRANSCRIPT_SYSTEM)
 
     private fun system(text: String): List<BetaTextBlockParam> = listOf(BetaTextBlockParam.builder().text(text).cacheControl(EPHEMERAL).build())
 
@@ -50,12 +50,12 @@ internal object AnthropicRequests {
      * (the API's default differs by model). Forced tool_choice is a 400 on these models: auto.
      */
     fun params(model: AnthropicModel, plan: HelperPlan, tools: List<ToolSpec>, search: Boolean, cacheLast: Boolean, messages: List<BetaMessageParam>,
-        system: String = HelperPrompt.SYSTEM): MessageCreateParams {
+        system: String = HelperPrompt.CLAUDE_SYSTEM): MessageCreateParams {
         val b = MessageCreateParams.builder()
             .model(model.id)
             .maxTokens(plan.maxTokens)
             // Only Robot's two fixed prompts: the spoken-answer one, or the transcript summary's.
-            .systemOfBetaTextBlockParams(if (system == HelperPrompt.TRANSCRIPT_SYSTEM) TRANSCRIPT else SYSTEM)
+            .systemOfBetaTextBlockParams(if (system == HelperPrompt.CLAUDE_TRANSCRIPT_SYSTEM) TRANSCRIPT else SYSTEM)
             .outputConfig(BetaOutputConfig.builder().effort(effort(plan.effort)).build())
             .messages(messages)
         for (t in tools) b.addTool(tool(t))

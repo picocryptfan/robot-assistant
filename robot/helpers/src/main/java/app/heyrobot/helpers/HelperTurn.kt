@@ -8,7 +8,7 @@ import app.heyrobot.core.ModelOutcome
 import app.heyrobot.core.TurnModel
 
 /**
- * A helper as a [TurnModel] (Claude's, and every helper's since 0.6.0): the turn runner shows the helper's calls as cards
+ * A helper as a [TurnModel] (every helper since 0.6.0; Claude only before): the turn runner shows the helper's calls as cards
  * (remote = true) and sends their results back. [first]: the question's blocks.
  */
 class HelperTurn(
@@ -16,7 +16,7 @@ class HelperTurn(
     private val first: List<HelperBlock>,
     private val plan: HelperPlan,
     private val listener: HelperTurnListener,
-    /** How a failure is said: Claude's words, or another helper's (HelperWho). */
+    /** How a failure is said, in the helper's name (HelperWho; the Claude helper's words by default). */
     private val say: (HelperFailure) -> String = { it.text },
 ) : TurnModel {
     /** Why the last request failed, if it did (a server that can't be reached may give the question back to Robot). */
@@ -36,7 +36,7 @@ class HelperTurn(
     private fun outcome(o: HelperOutcome): ModelOutcome = when (o) {
         is HelperOutcome.Done -> ModelOutcome.Done(if (o.cut) DoneReason.LENGTH else DoneReason.END)
         is HelperOutcome.Calls -> ModelOutcome.Calls(o.calls)
-        // The listener already put "Claude declined that one." in place of the reply.
+        // The listener already put "Jarvis declined that one." in place of the reply.
         HelperOutcome.Declined -> ModelOutcome.Done(DoneReason.END)
         is HelperOutcome.Failed -> {
             failure = o.failure

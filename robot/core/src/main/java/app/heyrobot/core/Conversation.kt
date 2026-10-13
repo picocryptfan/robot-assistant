@@ -7,7 +7,7 @@ import org.json.JSONObject
 // Pure. Conversation history in app-private storage (one JSON file per conversation). Pictures and screen text are not
 // stored by default: a turn records only that one was attached. With Settings › Safety & privacy › "Keep screenshots and
 // photos in history" on (0.4.0), a question keeps its picture's thumbnail and the screen's text too, for you to see in
-// History; neither is ever replayed to the model or sent to Claude.
+// History; neither is ever replayed to the model or sent to a helper.
 
 enum class Attachment { NONE, PHOTO, SCREEN }
 
@@ -112,7 +112,7 @@ fun List<ChatTurn>.toPromptTurns(notes: (List<String>) -> String? = { null }): L
         TurnRole.ASSISTANT -> {
             if (t.error) return@mapNotNull null
             val acts = t.actions.joinToString(" ") { "(${Markdown.plain(it.summary)}: ${it.status.label.lowercase()}.)" }
-            // Claude's answer joins Robot's context cut to about 600 tokens, marked as Claude's (information, not Robot's);
+            // A helper's answer joins Robot's context cut to about 600 tokens, marked as its own (information, not Robot's);
             // one read off the Claude app's screen is screen content, framed as such. A reply 0.2.1 saved starting with the
             // clock is replayed without it.
             val said = when {
@@ -124,7 +124,7 @@ fun List<ChatTurn>.toPromptTurns(notes: (List<String>) -> String? = { null }): L
                 // ("Robot read 2 messages from Mom (Cheogram)"), never Robot's own words. Robot's later answers aren't.
                 t.messages && t.text.isNotBlank() && t.kept != MessageReading.ANSWER_NOT_KEPT ->
                     MessageReading.FRAME + " " + if (t.text == t.kept) MessageReading.cleanKept(t.text) else ClockEcho.strip(t.text)
-                // 0.9: a web answer joins as Claude's do, cut to about 600 tokens, without its [n] marks or links.
+                // 0.9: a web answer joins as a helper's do, cut to about 600 tokens, without its [n] marks or links.
                 t.actions.any { it.tool == ToolName.WEB_SEARCH && it.content } && t.text.isNotBlank() ->
                     HelperContext.forLocal(app.heyrobot.core.web.Citations.forSpeech(t.text))
                 // 1.0: the brief or "what's next" read out your calendar and reminders as they are (core Quoted): information.

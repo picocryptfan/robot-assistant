@@ -90,7 +90,7 @@ object Prompt {
             append("Answer in plain, friendly language. Keep answers short (one to three sentences) unless asked for more, ")
             append("because they may be read aloud; stories, poems and long answers you write yourself, in full. Avoid tables. ")
             if (direct) append((if (askHelper) DIRECT_WITH_HELPER else DIRECT) + " ")
-            // With Ask Claude on, the one line that tells Gemma when to hand over instead of guessing.
+            // With a helper to ask, the one line that tells Gemma when to hand over instead of guessing.
             // 0.6.0: [helper] is who ask_claude asks when it isn't Claude (named, and where it is); up-to-date facts only
             // when it can search the web.
             if (askHelper) append("You have no internet access yourself: " + (if (weather) "for the weather, call weather; " else "") +
@@ -141,7 +141,7 @@ object Prompt {
      * 0.4.3, chat only: the history as strictly alternating turns, a question then an answer, which the chat templates of
      * models other than Gemma 4 demand (Gemma 3's raises "Conversation roles must alternate" in LiteRT-LM's template
      * engine, and the conversation then can't be built). Turns of one role in a row are joined (a question whose reply
-     * failed with the next one; Robot's answer with Claude's after it), a leading answer is dropped, and so is a last
+     * failed with the next one; Robot's answer with a helper's after it), a leading answer is dropped, and so is a last
      * question left without an answer (the new question follows it).
      */
     fun alternate(history: List<PromptTurn>): List<PromptTurn> {

@@ -24,7 +24,7 @@ object TurnRules {
     /** Tool rounds (calls, results, the model again) in one answer at most. */
     const val MAX_ROUNDS = 3
     /**
-     * Claude's tool rounds in one answer at most ("plan my week and add these to my calendar"): each call behind a card,
+     * A helper's tool rounds in one answer at most ("plan my week and add these to my calendar"): each call behind a card,
      * and still at most [MAX_CALLS] calls in the answer. Server-side web search continuations (pause_turn) are not rounds.
      */
     const val HELPER_MAX_ROUNDS = 3
@@ -42,7 +42,7 @@ object TurnRules {
     @JvmName("untrustedTurns")
     fun untrusted(turns: List<ChatTurn>): Boolean =
         untrusted(turns.map { it.attachment }) || turns.any { t -> t.actions.any { it.content } } ||
-            // Claude's answers (and one read off the Claude app's screen) are content Robot didn't write either; so are
+            // A helper's answers (and one read off the Claude app's screen) are content Robot didn't write either; so are
             // the messages Robot read you (0.7), and what was said while the phone was locked (1.0, ChatTurn.locked).
             turns.any { it.fromHelper || it.readBack || it.messages || it.locked }
 }
@@ -55,7 +55,7 @@ sealed class ModelOutcome {
     data class Failed(val message: String) : ModelOutcome()
 }
 
-/** Robot's call to ask Claude (ask_claude): the turn ends there and EscalationPolicy decides what happens. */
+/** Robot's call to ask a helper (ask_claude): the turn ends there and EscalationPolicy decides what happens. */
 private fun RawToolCall.asksHelper(): Boolean = ToolName.of(name) == ToolName.ASK_HELPER
 
 /** The model side of a turn. The reply's text reaches the view as it streams (the port's job). */
@@ -176,7 +176,7 @@ data class Card(
     val content: Boolean = false,
     /** More people or numbers fitted than [choices] lists ("and 3 more"). */
     val more: Int = 0,
-    /** Claude asked for it: what a read tool finds goes to Claude only after this card's tap. */
+    /** A helper asked for it: what a read tool finds goes to the helper only after this card's tap. */
     val remote: Boolean = false,
     /** The buttons' own words when not an action's ("Send" and "Cancel", "Include" and "Start fresh"). */
     val confirm: String? = null,
@@ -219,7 +219,7 @@ class StallTimer(private val gapMs: Long, start: Long) {
 
 /**
  * How the turn ended: [reason] when the model's reply ended (or was ended), [failure] when it failed. [escalate]: the
- * local model called ask_claude; nothing else of that reply ran, and the panel brings Claude in (or offers to).
+ * local model called ask_claude; nothing else of that reply ran, and the panel brings a helper in (or offers to).
  */
 data class TurnResult(val reason: DoneReason?, val failure: String? = null, val launchedApp: Boolean = false, val escalate: Boolean = false,
     /** 0.9: the model called web_search and it ran: its turn ended there, and the panel answers from this. */
@@ -297,8 +297,8 @@ class TurnRunner(
      */
     private var untrusted: Boolean,
     /**
-     * Claude is the model (the API route): every call shows a card (unless Settings › Safety & privacy says otherwise),
-     * only [HelperTools.OFFERED] exist, and each input is checked against its schema before it is read. Claude never
+     * A helper is the model (the API route): every call shows a card (unless Settings › Safety & privacy says otherwise),
+     * only [HelperTools.OFFERED] exist, and each input is checked against its schema before it is read. A helper never
      * calls ask_claude.
      */
     private val remote: Boolean = false,
@@ -346,7 +346,7 @@ class TurnRunner(
         var outcome = model.ask()
         var rounds = 0
         while (outcome is ModelOutcome.Calls && rounds < maxRounds) {
-            // The local model asks Claude: its turn ends here, nothing else it asked for runs.
+            // The local model asks a helper: its turn ends here, nothing else it asked for runs.
             if (!remote && outcome.calls.any { it.asksHelper() }) return escalate()
             rounds++
             val round = try {
@@ -394,8 +394,8 @@ class TurnRunner(
     }
 
     /**
-     * The Claude app route: the model's one call is the hand-off (ask_claude, Action.AskHelper), shown on its card
-     * ("Open Claude with: «…»") and run only after the tap; then Robot steps aside. No model reply follows.
+     * The app route: the model's one call is the hand-off (ask_claude, Action.AskHelper), shown on its card
+     * ("Open the ChatGPT app with: «…»") and run only after the tap; then Robot steps aside. No model reply follows.
      */
     suspend fun runHandOff(): TurnResult {
         val calls = (model.ask() as? ModelOutcome.Calls)?.calls.orEmpty()
@@ -409,7 +409,7 @@ class TurnRunner(
         return TurnResult(DoneReason.END, escalate = true)
     }
 
-    /** Claude's call checked first: one of the tools offered to it, its input fitting the schema; then the usual reading. */
+    /** A helper's call checked first: one of the tools offered to it, its input fitting the schema; then the usual reading. */
     private fun parse(raw: RawToolCall): ParsedCall {
         // A tool the model is never told about stays out of its reach (0.8's call tool: "call Mom" is the panel's, not the model's).
         if (!model.appCalls && ToolName.of(raw.name)?.forModel == false) return ParsedCall.Invalid(raw.name.take(40), "unknown tool")

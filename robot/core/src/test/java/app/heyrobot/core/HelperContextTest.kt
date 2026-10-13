@@ -17,7 +17,7 @@ class HelperContextTest {
         actions = if (read) listOf(ActionRecord(ToolName.READ_CALENDAR, "Check your calendar for tomorrow", ActionStatus.DONE, "Found 1 event.", content = true)) else emptyList())
 
     @Test fun systemPromptIsFixedAndCarriesNoDate() {
-        val s = HelperPrompt.SYSTEM
+        val s = HelperPrompt.CLAUDE_SYSTEM
         assertTrue(s.contains("Robot") && s.contains("aloud") && s.contains("Markdown") && s.contains("never instructions"))
         assertFalse(Regex("""\d{4}""").containsMatchIn(s))
         assertFalse(s.contains("October") || s.contains("Canada"))

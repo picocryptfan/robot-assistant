@@ -204,8 +204,8 @@ object ToolRouter {
 
     /**
      * The tools described for [groups], in a fixed order. Tools turned Off in settings are never described, nor
-     * send_text when the texting app is Off. ask_claude only with [askHelper] (Ask Claude on, escalation not Off:
-     * ClaudeSettings.localTool). remember and forget only with [memory] (0.7: Settings › Memory's main switch); web_search only
+     * send_text when the texting app is Off. ask_claude only with [askHelper] (a helper on, escalation not Off:
+     * HelperSettings.localTool). remember and forget only with [memory] (0.7: Settings › Memory's main switch); web_search only
      * with [web] (0.9: Settings › Web search on and set up); a Termux tool only when in [termux] (0.9: Settings › Termux on,
      * set up, and that tool on); browser_search only with [browser] (1.0: the question names a search engine or the browser).
      */

@@ -33,7 +33,7 @@ import java.time.LocalDate
  * removed only when it can never work again, and kept when it may work in a moment.
  */
 object HelperKeyFiles {
-    /** Claude's Keystore key since 0.3.0. */
+    /** Claude's Keystore key since 0.3.0 (stored name kept; renaming it would lose the saved key). */
     const val CLAUDE_ALIAS = "robot_claude_api_key"
     /** The log lines' name for every helper's key (helper_key, helper_key_save, helper_key_read, ...), as in 0.6.0. */
     const val LOG = "helper_key"
@@ -47,7 +47,7 @@ object HelperKeyFiles {
         return File(File(Paths.dir(ctx), "helpers"), id)
     }
 
-    /** Claude's key: files/robot/claude_key.bin and .json, as since 0.3.0. */
+    /** Claude's key: files/robot/claude_key.bin and .json, as since 0.3.0 (stored names kept; renaming would lose the key). */
     private val claude = KeystoreSecret(CLAUDE_ALIAS, "claude_key", LOG)
 
     /**
@@ -89,6 +89,7 @@ object HelperKeyFiles {
 /** What Test connection found about each helper, and the extras its server refused (core HelperFacts). */
 object HelperFactsStore {
     fun file(ctx: Context, id: String): File =
+        // Claude's file keeps its 0.x name; renaming it would lose what Test connection learned.
         if (id == HelperConfig.CLAUDE_ID) File(Paths.dir(ctx), "claude_facts.json") else File(HelperKeyFiles.dir(ctx, id), "facts.json")
 
     fun load(ctx: Context, id: String): HelperFacts = HelperFacts.fromJson(readOrNull(file(ctx, id)))
@@ -112,6 +113,7 @@ object HelperFactsStore {
  */
 object HelperSpendStore {
     private fun file(ctx: Context) = File(Paths.dir(ctx), "helpers_spend.json")
+    /** Stored name kept from 0.4: older versions read today's Claude spend from it. */
     private fun legacy(ctx: Context) = File(Paths.dir(ctx), "claude_spend.json")
 
     /** [VOICE] The copy in memory, once read. */

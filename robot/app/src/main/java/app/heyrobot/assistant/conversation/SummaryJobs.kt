@@ -171,14 +171,14 @@ object SummaryJobs {
                 throw e
             } finally {
                 // Event 114: which helper, words ÷ 100, how it ended.
-                VoiceLog.add(VoiceEvent.SUMMARY_HELPER, (if (helper.id == ApiHelper.ID) HelperCode.CLAUDE_API else HelperCode.HELPER_API).id, card.words / 100, end.id)
+                VoiceLog.add(VoiceEvent.SUMMARY_HELPER, (if (helper.id == ApiHelper.CLAUDE_JOB_ID) HelperCode.CLAUDE_API else HelperCode.HELPER_API).id, card.words / 100, end.id)
             }
         }
     }
 
     /** A helper's app got the transcript (or the clipboard did): logged, nothing kept. */
     fun shared(card: ConsentCard, how: app.heyrobot.core.AppShareCode) {
-        VoiceLog.add(VoiceEvent.SUMMARY_HELPER, (if (card.helper == AppShareHelper.ID) HelperCode.CLAUDE_APP else HelperCode.HELPER_APP).id, card.words / 100, how.id)
+        VoiceLog.add(VoiceEvent.SUMMARY_HELPER, (if (card.helper == AppShareHelper.CLAUDE_JOB_ID) HelperCode.CLAUDE_APP else HelperCode.HELPER_APP).id, card.words / 100, how.id)
     }
 
     fun cancel() {
@@ -187,7 +187,7 @@ object SummaryJobs {
 
     /**
      * The app deleted transcript [id] (null: all of them; Cmd.TRANSCRIPTS_DELETED): a summary of it being made stops
-     * (Robot's model reads no more of it, Claude's answer isn't waited for), and what was made of it is forgotten.
+     * (Robot's model reads no more of it, the helper's answer isn't waited for), and what was made of it is forgotten.
      */
     @Synchronized
     fun deleted(id: String?) {

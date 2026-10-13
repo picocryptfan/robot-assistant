@@ -12,7 +12,7 @@ import java.util.Locale
 // app you name it opens that app's info page, where you tap Force stop. Storage: Android's own "Free up space" screen,
 // an app's info page to clear its cache, a large photo or video deleted through Android's own confirmation, or Robot's
 // cache. Every step that deletes or stops shows a card first. A file's name is shown on the card only: never saved,
-// never sent to the model or to Claude, never logged.
+// never sent to the model or to a helper, never logged.
 
 /** free_storage's ways, as its `what` argument names them. */
 enum class StorageWay {

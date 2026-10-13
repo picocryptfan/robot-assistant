@@ -10,8 +10,8 @@
     <uses-permission android:name="${applicationId}.permission.INTERNAL" />
 
     <!-- Six uses only: the model downloads (DownloadManager: huggingface.co, and since 0.5.0 the fast translation
-         engine's files from Mozilla's storage.googleapis.com bucket); when you ask, a helper (the :voice process: Claude at
-         api.anthropic.com, or the company you added, 0.6.0); your own AI server, if you add one (0.6.0, the :voice process,
+         engine's files from Mozilla's storage.googleapis.com bucket); when you ask, a helper (the :voice process: the company you
+         added, api.anthropic.com for Claude, 0.6.0); your own AI server, if you add one (0.6.0, the :voice process,
          only addresses on your own network or https); when you ask for the weather or the nearest place (0.4.0),
          Open-Meteo and a Nominatim server (the :voice process, and the main app once to look up your Home for weather);
          Settings › Updates (the main app, GitHub: api.github.com and its download servers); and, 0.9, when you set up web
@@ -288,7 +288,7 @@
             android:excludeFromRecents="true"
             android:noHistory="true"
             android:theme="@style/Theme.Robot.Translucent" />
-        <!-- A helper's connection window (0.6.0; Ask Claude's key window before): its API key is pasted here, in the :voice
+        <!-- A helper's connection window (0.6.0; Claude's key window before): its API key is pasted here, in the :voice
              process, encrypted there and never passes through the main app (which opens this window by class name), and Test
              connection runs here. -->
         <activity
@@ -386,7 +386,7 @@
             android:taskAffinity="${applicationId}.check"
             android:windowSoftInputMode="adjustResize" />
         <!-- 0.5.0, phase 5.6: a transcript's summary, Robot's own or a stronger AI's after the consent card (in :voice: Robot's
-             model and the Claude key are reached from there only; the main app opens it by name). -->
+             model and the helpers' keys are reached from there only; the main app opens it by name). -->
         <activity
             android:name=".assistant.conversation.SummaryActivity"
             android:process=":voice"

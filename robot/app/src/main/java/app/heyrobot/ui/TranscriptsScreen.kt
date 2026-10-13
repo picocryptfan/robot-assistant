@@ -101,7 +101,7 @@ import java.time.ZoneId
 // then the voice process is the transcript's only writer, and its own screen makes these changes. Phase 5.4 and 5.6:
 // each line's translation under it ("fast" for the fast engine), the summaries kept with the transcript (each with its
 // label, its [14:03] references taking you to their lines, and Delete), and Summarize, which opens the summary screen in
-// the voice process (Robot's model and the Claude key are reached from there only).
+// the voice process (Robot's model and the helpers' keys are reached from there only).
 
 private data class Row(val meta: TranscriptMeta, val live: Boolean, val bytes: Long)
 

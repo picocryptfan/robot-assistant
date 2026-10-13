@@ -39,7 +39,7 @@ import kotlinx.coroutines.withContext
 // 7.2, phase 5.6): a helper's API (one question to a transcript-only session: its own prompt, no tools, no search,
 // 16,000 tokens of room) and a helper's app (a share you send yourself). Both act only on a SummaryJob, which only your
 // Send on the consent card makes (HelperGate checks it again before anything leaves). 1.0.0: any helper you set up,
-// through its own client, its own model and its own price (the class names are from when Claude was the only one).
+// through its own client, its own model and its own price.
 // Nothing here logs content.
 
 /** A helper's API ([h]): Robot gets the summary back and keeps it with the transcript. [chars]: what the card sends. */
@@ -107,9 +107,9 @@ class ApiHelper(private val ctx: Context, val h: HelperConfig, chars: Int, budge
     }
 
     companion object {
-        /** Claude's id as before 1.0.0 (its log code and saved jobs); another helper's from its own id. */
-        const val ID = "claude_api"
-        fun idFor(h: HelperConfig): String = if (h.id == HelperConfig.CLAUDE_ID) ID else "api_${h.id}"
+        /** Claude's id as before 1.0.0 (its log code and saved jobs: stored name kept); another helper's from its own id. */
+        const val CLAUDE_JOB_ID = "claude_api"
+        fun idFor(h: HelperConfig): String = if (h.id == HelperConfig.CLAUDE_ID) CLAUDE_JOB_ID else "api_${h.id}"
         const val MAX_TOKENS = 16_000L
         /** A transcript of up to about 150,000 tokens goes to Claude in one request (about 10 hours of talk). */
         const val MAX_INPUT_TOKENS = 150_000
@@ -157,7 +157,8 @@ class AppShareHelper(private val ctx: Context, val h: HelperConfig) : Helper {
     }
 
     companion object {
-        const val ID = "claude_app"
-        fun idFor(h: HelperConfig): String = if (h.id == HelperConfig.CLAUDE_ID) ID else "app_${h.id}"
+        /** Claude's id as before 1.0.0 (its log code and saved jobs: stored name kept); another helper's from its own id. */
+        const val CLAUDE_JOB_ID = "claude_app"
+        fun idFor(h: HelperConfig): String = if (h.id == HelperConfig.CLAUDE_ID) CLAUDE_JOB_ID else "app_${h.id}"
     }
 }

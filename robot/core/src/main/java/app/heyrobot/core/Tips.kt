@@ -1,9 +1,9 @@
 package app.heyrobot.core
 
 // Pure. The empty panel's tips (0.4.0): three things Robot can do, a different three each time the panel opens, from
-// the features that are on and can work right now (an action turned Off, texting off, the lock screen, no Claude, no
+// the features that are on and can work right now (an action turned Off, texting off, the lock screen, no helper, no
 // screen this time: not offered). A question is asked at once, as if typed; a tip that would do something (an alarm, a
-// note, the flashlight, a text) or go online (the weather, the nearest place, Claude) only fills the text field: its
+// note, the flashlight, a text) or go online (the weather, the nearest place, a helper) only fills the text field: its
 // details are an example, and nothing happens until you send it.
 
 /**
@@ -18,11 +18,11 @@ object Tips {
     /** Shown only when the screen came with this panel (it may come a moment after the panel opens: [withScreen]). */
     val SCREEN = Tip("What's on my screen?", TipKind.SCREEN)
 
-    /** What the panel can do right now. [claude]: Ask Claude is on and reachable; [screen]: the screen came with this panel. */
+    /** What the panel can do right now. [claude]: the Claude helper is on and reachable (the helper tip's condition); [screen]: the screen came with this panel. */
     data class Can(val settings: RobotSettings, val locked: Boolean, val claude: Boolean = false, val screen: Boolean = false)
 
     /**
-     * [tool]: what tapping it would do; [online]: it goes online without a tool of its own (Ask Claude). One that writes,
+     * [tool]: what tapping it would do; [online]: it goes online without a tool of its own (a helper). One that writes,
      * leaves the phone or goes online only fills the text field ([TipKind.FILL]).
      */
     private class Entry(tip: Tip, val tool: ToolName? = null, online: Boolean = false, val needs: (Can) -> Boolean = { true }) {

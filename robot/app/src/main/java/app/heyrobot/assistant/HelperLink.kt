@@ -36,12 +36,12 @@ import java.util.concurrent.ConcurrentHashMap
 
 object HelperLink {
     /** A helper's client and how many sessions use it; [retired]: its key or address changed, or it was removed. */
-    private class Held(val claude: AnthropicClient?, val http: HelperHttp?, val stamp: Long, val address: String?) {
+    private class Held(val anthropic: AnthropicClient?, val http: HelperHttp?, val stamp: Long, val address: String?) {
         var users = 0
         var retired = false
 
         fun close() {
-            claude?.close()
+            anthropic?.close()
             http?.close()
         }
     }
@@ -121,7 +121,7 @@ object HelperLink {
         held.users++
         val tools = tools(s, h, facts)
         val session: HelperSession = if (h.presetOf.protocol == Protocol.ANTHROPIC) {
-            AnthropicSession(held.claude!!, AnthropicModel.of(h.model), tools, h.searching, conversation)
+            AnthropicSession(held.anthropic!!, AnthropicModel.of(h.model), tools, h.searching, conversation)
         } else {
             OpenAiSession(held.http!!, h, tools, conversation, vision = h.catalogModel?.vision ?: true, dropped = facts.dropped(h.model),
                 onDropped = { e -> Thread({ HelperFactsStore.update(ctx, h.id) { it.withDropped(h.model, e) } }, "robot-helper-facts").start() })
@@ -143,7 +143,7 @@ object HelperLink {
         val held = current.getValue(h.id)
         held.users++
         val session: HelperSession = if (h.presetOf.protocol == Protocol.ANTHROPIC) {
-            AnthropicSession(held.claude!!, AnthropicModel.of(h.model), emptyList(), search = false, conversation = false, system = HelperPrompt.TRANSCRIPT_SYSTEM)
+            AnthropicSession(held.anthropic!!, AnthropicModel.of(h.model), emptyList(), search = false, conversation = false, system = HelperPrompt.CLAUDE_TRANSCRIPT_SYSTEM)
         } else {
             OpenAiSession(held.http!!, h.copy(search = false), emptyList(), conversation = false, vision = false, dropped = facts.dropped(h.model),
                 system = HelperPrompt.transcriptSystem(h.name))
@@ -226,8 +226,8 @@ object HelperLink {
     @Volatile private var warmed = false
 
     /**
-     * The panel opened: whether keys are saved and today's spend are read off the main thread, and with Claude's API
-     * ready the SDK's classes load (no network), once.
+     * The panel opened: whether keys are saved and today's spend are read off the main thread, and with the Claude helper's API
+     * ready the Anthropic SDK's classes load (no network), once.
      */
     fun warm(ctx: Context, s: RobotSettings) {
         Thread({

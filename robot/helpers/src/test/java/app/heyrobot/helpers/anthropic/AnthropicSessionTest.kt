@@ -170,7 +170,7 @@ class AnthropicSessionTest {
         assertEquals("auto", b.getJSONObject("tool_choice").getString("type"))
         // The system prompt: fixed, with its cache breakpoint; no date in it.
         val sys = b.getJSONArray("system").getJSONObject(0)
-        assertEquals(app.heyrobot.core.HelperPrompt.SYSTEM, sys.getString("text"))
+        assertEquals(app.heyrobot.core.HelperPrompt.CLAUDE_SYSTEM, sys.getString("text"))
         assertEquals("ephemeral", sys.getJSONObject("cache_control").getString("type"))
         // A one-shot question: no breakpoint on the last message.
         assertFalse(b.has("cache_control"))
@@ -207,7 +207,7 @@ class AnthropicSessionTest {
     @Test fun aTranscriptSummaryGoesWithItsOwnPromptAndNoTools() = runBlocking {
         server.enqueue(textReply("Overview: they planned dinner."))
         val s = AnthropicSession(client, AnthropicModel.OPUS, emptyList(), search = false, conversation = false, idleMs = 10_000, retryDelayMs = 10,
-            system = app.heyrobot.core.HelperPrompt.TRANSCRIPT_SYSTEM)
+            system = app.heyrobot.core.HelperPrompt.CLAUDE_TRANSCRIPT_SYSTEM)
         val heard = Heard()
         val blocks = listOf(HelperBlock.Text("[Today is Saturday, 10 October 2026. The user is in Canada.]"),
             HelperBlock.Text("[Conversation of 10 October 2026, 2 minutes. Speakers: S1 = the user, S2 = Marie.]"),
@@ -215,7 +215,7 @@ class AnthropicSessionTest {
         assertEquals(HelperOutcome.Done(), s.ask(blocks, HelperPlan(HelperEffort.MEDIUM, 16_000), heard))
         assertEquals("Overview: they planned dinner.", heard.text.toString())
         val b = take()
-        assertEquals(app.heyrobot.core.HelperPrompt.TRANSCRIPT_SYSTEM, b.getJSONArray("system").getJSONObject(0).getString("text"))
+        assertEquals(app.heyrobot.core.HelperPrompt.CLAUDE_TRANSCRIPT_SYSTEM, b.getJSONArray("system").getJSONObject(0).getString("text"))
         assertFalse(b.has("tools"))
         assertFalse(b.has("tool_choice"))
         assertEquals(16_000, b.getInt("max_tokens"))

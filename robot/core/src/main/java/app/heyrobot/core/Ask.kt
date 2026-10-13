@@ -23,7 +23,7 @@ enum class HelperEffortSetting(val title: String, val level: HelperEffort?) {
     HIGH("High", HelperEffort.HIGH),
 }
 
-/** How hard Claude thinks and how long it may answer, for one question. */
+/** How hard a helper thinks and how long it may answer, for one question. */
 data class HelperPlan(val effort: HelperEffort, val maxTokens: Long) {
     companion object {
         /** A spoken answer: short, and thinking counts towards it too (never lowball it). */
@@ -47,7 +47,7 @@ data class HelperPlan(val effort: HelperEffort, val maxTokens: Long) {
     }
 
     /**
-     * This question's plan in a Claude-mode conversation whose first question had [first]: the effort stays the same
+     * This question's plan in a helper's conversation whose first question had [first]: the effort stays the same
      * for the whole conversation (a change would restart the prompt cache); the length still follows this question.
      */
     fun keeping(first: HelperPlan): HelperPlan =
@@ -79,9 +79,9 @@ object CostText {
 }
 
 /**
- * Why a helper's request failed, as Robot says it (0.6.0: every helper; [HelperFailure] is the same type). Mapped from the
- * SDK's typed exceptions (most specific first) in the :helpers module, or from an HTTP status and the error body's type and
- * code for the other wire formats; the words are fixed here so they are tested once. [text] is Claude's, word for word as
+ * Why a helper's request failed, as Robot says it (every helper since 0.6.0). Mapped from the Anthropic SDK's typed
+ * exceptions (most specific first) in the :helpers module, or from an HTTP status and the error body's type and
+ * code for the other wire formats; the words are fixed here so they are tested once. [text] is the Claude helper's, word for word as
  * before; [say] puts in another helper's name. [retry]: worth one more try (overloaded or 5xx).
  */
 enum class HelperFailure(val retry: Boolean = false) {
@@ -96,9 +96,9 @@ enum class HelperFailure(val retry: Boolean = false) {
     TOO_LONG,
     NO_INTERNET,
     NO_NETWORK_PERMISSION,
-    /** 60 seconds without anything from Claude (a thinking block in progress counts as something). */
+    /** 60 seconds without anything from the helper (a thinking block in progress counts as something). */
     TIMEOUT,
-    /** Robot's copy of the conversation with Claude no longer made a request the API takes: Claude mode starts over. */
+    /** Robot's copy of the conversation with the helper no longer made a request the API takes: the conversation starts over. */
     RESET,
     NO_KEY,
     UNKNOWN,
@@ -111,7 +111,7 @@ enum class HelperFailure(val retry: Boolean = false) {
     /** 0.6.0: your server's address names no single place yet (a bare IP: Test connection finds the port). */
     NO_ADDRESS;
 
-    /** Claude's words. */
+    /** The Claude helper's words (as 0.3 to 0.5 said them). */
     val text: String get() = say(HelperWho.CLAUDE)
 
     /** The words for helper [w]. */
@@ -168,9 +168,9 @@ enum class HelperFailure(val retry: Boolean = false) {
 }
 
 /**
- * Claude's voice: another voice of the same model as Robot's, so you hear who is talking without a second model
+ * A helper's voice: another voice of the same model as Robot's, so you hear who is talking without a second model
  * load. Kokoro speaks the chosen [KOKORO] voice; Kitten its other voice of the same pair; the phone's voice reads
- * Claude at a lower pitch (no speaker id).
+ * the helper at a lower pitch (no speaker id).
  */
 object HelperVoices {
     /** The Kokoro v1.0 English voices docs/voice-plan.md lists, with their speaker ids. */
@@ -178,7 +178,7 @@ object HelperVoices {
         "am_michael" to 16, "am_fenrir" to 14, "am_puck" to 18, "bf_emma" to 21, "af_bella" to 2, "af_heart" to 3,
     )
     const val DEFAULT = "am_michael"
-    /** The phone's own voice: Claude's sentences at this pitch (Robot's at 1.0). */
+    /** The phone's own voice: a helper's sentences at this pitch (Robot's at 1.0). */
     const val SYSTEM_PITCH = 0.82f
 
     fun title(name: String): String = when (name) {
@@ -194,33 +194,33 @@ object HelperVoices {
     fun of(name: String?): String = KOKORO.firstOrNull { it.first == name }?.first ?: DEFAULT
 
     /**
-     * Claude's voice for one [sentence]: its speaker id and its language. A French sentence gets Kokoro's French voice
-     * (Siwis) when Robot speaks with Kokoro (or, if Robot's own voice is Siwis, Claude's voice reading French);
-     * everything else Claude's own voice in English. Null speaker: the phone's voice at a lower pitch.
+     * The helper's voice ([voice]) for one [sentence]: its speaker id and its language. A French sentence gets Kokoro's
+     * French voice (Siwis) when Robot speaks with Kokoro (or, if Robot's own voice is Siwis, the helper's voice reading
+     * French); everything else the helper's own voice in English. Null speaker: the phone's voice at a lower pitch.
      */
-    fun forSentence(robot: VoiceChoice, claude: String?, sentence: String): Pair<Int?, String?> {
+    fun forSentence(robot: VoiceChoice, voice: String?, sentence: String): Pair<Int?, String?> {
         val french = robot.bundle == VoiceBundle.KOKORO && SpeechLang.french(sentence)
         return when {
-            !french -> speaker(robot, claude) to null
+            !french -> speaker(robot, voice) to null
             robot != VoiceChoice.SIWIS -> VoiceChoice.SIWIS.speaker to "fr"
-            else -> speaker(robot, claude) to "fr"
+            else -> speaker(robot, voice) to "fr"
         }
     }
 
     /**
-     * The speaker id Claude's sentences use with Robot's [robot] voice, or null for the phone's voice. Never Robot's
-     * own speaker: if you picked Robot's voice for Claude, Claude gets the default instead.
+     * The speaker id a helper's sentences use in its [voice] with Robot's [robot] voice, or null for the phone's voice.
+     * Never Robot's own speaker: if you picked Robot's voice for a helper, it gets the default instead.
      */
-    fun speaker(robot: VoiceChoice, claude: String?): Int? = when (robot.bundle) {
-        VoiceBundle.KOKORO -> KOKORO.first { it.first == of(claude) }.second.let { id -> if (id != robot.speaker) id else KOKORO.first { it.second != robot.speaker }.second }
-        // Kitten nano 0.8: pairs of voices (2*k male, 2*k+1 female); Claude speaks the other one of Robot's pair.
+    fun speaker(robot: VoiceChoice, voice: String?): Int? = when (robot.bundle) {
+        VoiceBundle.KOKORO -> KOKORO.first { it.first == of(voice) }.second.let { id -> if (id != robot.speaker) id else KOKORO.first { it.second != robot.speaker }.second }
+        // Kitten nano 0.8: pairs of voices (2*k male, 2*k+1 female); a helper speaks the other one of Robot's pair.
         VoiceBundle.KITTEN -> robot.speaker xor 1
         else -> null
     }
 }
 
 /**
- * A cheap check of a sentence's language, to read Claude's French in a French voice: common French words, elisions
+ * A cheap check of a sentence's language, to read a helper's French in a French voice: common French words, elisions
  * ("l'", "qu'") and accents against common English words. Pure.
  */
 object SpeechLang {
@@ -242,7 +242,7 @@ object SpeechLang {
     }
 }
 
-/** Which way a question to Claude goes. */
+/** Which way a question to a helper goes. The titles are the Claude helper's (HelperSettings.routeTitle words the others'). */
 enum class AskRoute(val title: String, val detail: String) {
     APP("Claude app", "Opens the Claude app with your question; uses your claude.ai plan. Robot doesn't hear the answer."),
     API("Claude API", "Robot asks Claude itself and speaks the answer. Needs an API key with credits."),
@@ -255,7 +255,7 @@ enum class Escalation(val title: String, val detail: String) {
     AUTO("Automatic", "Robot checks with the helper by itself for hard questions (only through its API, at a price it knows)."),
 }
 
-/** Why ask_claude is left out of a question for the local model (logged as this code only, never the words). */
+/** Why the hand-over tool (ask_claude) is left out of a question for the local model (logged as this code only, never the words). */
 enum class HelperLeftOut(override val id: Int, override val title: String) : LogCode {
     OFF(1, "Ask a helper or “When Robot needs help” is off"),
     NOWHERE(2, "no API key and no app to open"),
@@ -265,16 +265,16 @@ enum class HelperLeftOut(override val id: Int, override val title: String) : Log
 }
 
 /**
- * Whether the local model is told about ask_claude for one question: the tool and its one line in the system prompt go
+ * Whether the local model is told about the hand-over tool (ask_claude) for one question: the tool and its one line in the system prompt go
  * together, or neither does (docs/ask-claude.md "When Robot needs help"). Pure.
  */
 object AskHelperTool {
     /**
-     * Null when ask_claude is described, otherwise why not, first reason first: Ask Claude off or escalation Off
-     * ([ClaudeSettings.localTool]); nowhere for the question to go ([reachable]: the API with a key, or the Claude app
-     * installed); you said "not Claude" in this conversation ([declined]); or the question is about the screen or a photo
-     * ([attachment], see [picture]): Robot answers those itself first, and "ask Claude about this screen" still goes to
-     * Claude.
+     * For the Claude helper, as before 0.6.0: null when ask_claude is described, otherwise why not, first reason first:
+     * Ask Claude off or escalation Off ([ClaudeSettings.localTool]); nowhere for the question to go ([reachable]: the API
+     * with a key, or the Claude app installed); you said "not Claude" in this conversation ([declined]); or the question is
+     * about the screen or a photo ([attachment], see [picture]): Robot answers those itself first, and "ask Claude about
+     * this screen" still goes to Claude.
      */
     fun leftOut(s: RobotSettings, keySaved: Boolean, reachable: Boolean, declined: Boolean, attachment: Attachment): HelperLeftOut? = when {
         !ClaudeSettings.localTool(s, keySaved) -> HelperLeftOut.OFF
@@ -310,9 +310,9 @@ object AskHelperTool {
 }
 
 /**
- * Personal content in a conversation (docs/ask-claude.md "What Claude receives"). From the first turn that carries one,
- * the conversation is personal: Robot checking with Claude by itself sends only the question, and Claude joining it
- * sees what came before only after a tap on Include. [label] completes "It contains …".
+ * Personal content in a conversation (docs/ask-claude.md "What Claude receives", for every helper). From the first turn
+ * that carries one, the conversation is personal: Robot checking with a helper by itself sends only the question, and a
+ * helper joining it sees what came before only after a tap on Include. [label] completes "It contains …".
  */
 enum class Personal(val label: String) {
     SCREEN("screen text"),
@@ -330,8 +330,8 @@ enum class Personal(val label: String) {
     /** Another read tool's findings (none today besides the three above). */
     READ("what Robot read on your phone"),
     /**
-     * 0.5.0: a transcript from conversation mode, other people's words included. It reaches Claude only through the
-     * "Summarize with a stronger AI" card, never through an escalation, Claude mode or "include the conversation".
+     * 0.5.0: a transcript from conversation mode, other people's words included. It reaches a helper only through the
+     * "Summarize with a stronger AI" card, never through an escalation, a helper's conversation or "include the conversation".
      */
     CONVERSATION("a recorded conversation"),
     /**
@@ -381,17 +381,17 @@ enum class Personal(val label: String) {
 }
 
 enum class EscalationDecision {
-    /** Robot doesn't bring Claude in. */
+    /** Robot doesn't bring a helper in. */
     NONE,
-    /** Ask Claude now, without a tap (API key, Automatic, nothing personal, within budget, allowed here). */
+    /** Ask the helper now, without a tap (API key, Automatic, nothing personal, within budget, allowed here). */
     AUTO,
-    /** Offer it: a card under the reply ("Want me to check with Claude?" or "Open Claude with: «…»"), a tap or a yes. */
+    /** Offer it: a card under the reply ("Want me to check with Jarvis?" or "Open the ChatGPT app with: «…»"), a tap or a yes. */
     OFFER,
-    /** The phone is locked and Claude isn't allowed on the lock screen. */
+    /** The phone is locked and the helper isn't allowed on the lock screen. */
     NEEDS_UNLOCK,
 }
 
-/** Why Robot thought of Claude (logged as this enum only, never the words). */
+/** Why Robot thought of a helper (logged as this enum only, never the words). */
 enum class EscalationTrigger { PRE_ROUTER, LOCAL_TOOL, HEDGE }
 
 /** The escalation policy: pure, so its whole matrix is tested (EscalationTest). */
@@ -400,8 +400,8 @@ object EscalationPolicy {
      * [personal]: what would be sent includes this question's screen text or picture: always asks first, with a card
      * listing it (earlier personal turns are never sent by an escalation, so they don't need one). [budgetReached]:
      * Automatic drops to Ask first for the rest of the day. [alreadyEscalated]: at most one escalation per turn.
-     * [fromHelper]: a Claude answer is never re-escalated. [declined]: you said "not Claude" in this conversation, so
-     * Robot neither asks Claude nor offers to.
+     * [fromHelper]: a helper's answer is never re-escalated. [declined]: you turned the helper down in this conversation
+     * ("not Claude"), so Robot neither asks it nor offers to. This overload decides for the Claude helper, as before 0.6.0.
      */
     fun decide(
         s: RobotSettings,
@@ -446,19 +446,19 @@ object EscalationPolicy {
 
     /**
      * The local model handed the question over (ask_claude, [handedOver]) without a word or an action ([said] false), and
-     * Claude won't answer right now ([decision] isn't AUTO: an offer, the lock screen, or no Claude at all): Robot runs
+     * the helper won't answer right now ([decision] isn't AUTO: an offer, the lock screen, or no helper at all): Robot runs
      * the model once more on the same question without ask_claude for its own short answer, and any offer goes under
-     * it. Never an answer of nothing but "I'd rather check that with Claude.".
+     * it. Never an answer of nothing but "I'd rather check that with Jarvis.".
      */
     fun ownAnswerFirst(decision: EscalationDecision, handedOver: Boolean, said: Boolean): Boolean =
         handedOver && !said && decision != EscalationDecision.AUTO
 }
 
-/** At most one escalation per turn, and never one from a Claude answer (the "no loops" rule). */
+/** At most one escalation per turn, and never one from a helper's answer (the "no loops" rule). */
 class EscalationGuard {
     var used = false; private set
 
-    /** True the first time only; false for a Claude answer. */
+    /** True the first time only; false for a helper's answer. */
     fun take(fromHelper: Boolean): Boolean {
         if (fromHelper || used) return false
         used = true

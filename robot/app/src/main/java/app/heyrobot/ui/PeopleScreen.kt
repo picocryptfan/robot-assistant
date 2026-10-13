@@ -119,7 +119,7 @@ import org.json.JSONObject
 // isn't in the phone's contacts, or whom you call something else ("mom"). Ways in: by hand, a contacts file (.vcf, as
 // Proton Mail's web app exports it), Cheogram's contact list and the phone's contact picker, none of which needs a
 // permission. Ways out: a .vcf export and, per person, the Contacts app's own "new contact" screen. Everything stays on
-// the phone and is never sent to Claude; the assistant changes the list too (a Cheogram pick, "Always use this"), so the
+// the phone and is never sent to a helper; the assistant changes the list too (a Cheogram pick, "Always use this"), so the
 // screen reads it again whenever it comes back to the front.
 
 /** A contacts file Robot reads at most (a few thousand cards). */

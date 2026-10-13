@@ -5,19 +5,19 @@ import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
 
-// Pure. Exactly what Claude receives (docs/ask-claude.md "What Claude receives"): a short fixed system prompt (byte-stable
+// Pure. Exactly what a helper receives (docs/ask-claude.md "What Claude receives"): a short fixed system prompt (byte-stable
 // so it caches), today's date and the user's region in the first user turn (never in the system prompt, never a
 // per-turn clock), then the question.
 //
 // A conversation becomes personal from the first turn that carries screen text, a picture, what a read tool found
 // (contacts, calendar, notes, the weather and so where you are, your phone's status), Claude's answer read off the Claude
-// app, or an "ask Claude about my screen" question.
-// Robot checking with Claude on its own sends only the question from then on. Claude joining a personal conversation
+// app, or an "ask Jarvis about my screen" question.
+// Robot checking with a helper on its own sends only the question from then on. A helper joining a personal conversation
 // sees what came before only after a tap on Include ("Start fresh" sends none of it). Never sent: audio, the wake-word
 // stream, the contacts list, Robot's People (names learned from Cheogram notifications included), the calendar,
 // settings or logs. The :helpers module turns these plain blocks into the SDK's request.
 
-/** A piece of a user message to Claude. */
+/** A piece of a user message to a helper. */
 sealed class HelperBlock {
     data class Text(val text: String) : HelperBlock()
 
@@ -25,7 +25,7 @@ sealed class HelperBlock {
     class Image(val jpeg: ByteArray) : HelperBlock()
 }
 
-/** What the user tapped to share with Claude this time (each needs its own tap on a card). */
+/** What the user tapped to share with a helper this time (each needs its own tap on a card). */
 data class Shared(val screenText: String? = null, val image: ByteArray? = null)
 
 object HelperPrompt {
@@ -42,10 +42,11 @@ object HelperPrompt {
     private const val SEARCH: String = "Use web search for anything recent or likely to have changed."
 
     /**
-     * The system prompt: fixed, with no date, name or setting in it, so tools and system cache together across every
-     * conversation (prompt caching is a prefix match over tools, then system, then messages).
+     * The Claude helper's system prompt: fixed, with no date or setting in it, so tools and system cache together across
+     * every conversation (prompt caching is a prefix match over tools, then system, then messages). The same words as
+     * [system] with Claude's name, tools and search.
      */
-    const val SYSTEM: String = "You are Claude. " + SPOKEN + TOOLS + SEARCH
+    const val CLAUDE_SYSTEM: String = "You are Claude. " + SPOKEN + TOOLS + SEARCH
 
     /**
      * Another helper's system prompt (0.6.0): the same fixed words with its [name], and the lines about Robot's actions and
@@ -61,10 +62,10 @@ object HelperPrompt {
             "Use the speaker names given. Where the transcript looks garbled, say so instead of guessing."
 
     /**
-     * The system prompt for "Summarize with a stronger AI" (docs/conversation-mode.md 7.2): a one-shot request with no
-     * tools and no web search. Its own fixed prompt, because [SYSTEM] is for spoken answers.
+     * The Claude helper's system prompt for "Summarize with a stronger AI" (docs/conversation-mode.md 7.2): a one-shot
+     * request with no tools and no web search. Its own fixed prompt, because [CLAUDE_SYSTEM] is for spoken answers.
      */
-    const val TRANSCRIPT_SYSTEM: String = "You are Claude. " + TRANSCRIPT
+    const val CLAUDE_TRANSCRIPT_SYSTEM: String = "You are Claude. " + TRANSCRIPT
 
     /** The same for another helper (0.6.0). */
     fun transcriptSystem(name: String): String = "You are $name. " + TRANSCRIPT
@@ -82,7 +83,7 @@ object HelperPrompt {
 }
 
 /**
- * Exactly what checking with Claude sends, fixed when Robot decides to (an offer's tap or yes sends this and nothing
+ * Exactly what checking with a helper sends, fixed when Robot decides to (an offer's tap or yes sends this and nothing
  * newer). [sends]: the card's list. [personal]: what in it needs a tap (a spoken yes can't send it).
  */
 class HelperPayload(val question: String, val blocks: List<HelperBlock>, val sends: List<String>, val personal: Set<Personal>, val preview: String? = null)
@@ -90,7 +91,7 @@ class HelperPayload(val question: String, val blocks: List<HelperBlock>, val sen
 object HelperContext {
     /** Turns of plain conversation an escalation may carry (with the user's question), when nothing in it is personal. */
     const val RECENT_TURNS = 2
-    /** A Claude answer joins Robot's local conversation cut to about this many tokens (Gemma has about 4,200 in all). */
+    /** A helper's answer joins Robot's local conversation cut to about this many tokens (Gemma has about 4,200 in all). */
     const val LOCAL_TOKENS = 600
 
     /** One question: the context line, what the user shared (after a tap), the question. */
@@ -98,9 +99,9 @@ object HelperContext {
         listOf(HelperBlock.Text(HelperPrompt.context(now, region))) + sharedBlocks(shared) + HelperBlock.Text(question.trim())
 
     /**
-     * Claude joins the conversation ("go get Claude"): the context line, the conversation so far as text, then the first
-     * question if there is one. A personal conversation goes only when the user tapped Include ([include]); otherwise
-     * Claude starts fresh and sees none of it.
+     * A helper joins the conversation ("go get Jarvis"): the context line, the conversation so far as text, then the
+     * first question if there is one. A personal conversation goes only when the user tapped Include ([include]);
+     * otherwise the helper starts fresh and sees none of it.
      */
     fun join(history: List<ChatTurn>, question: String?, now: ZonedDateTime, region: String, shared: Shared = Shared(), include: Boolean = false,
         misheard: Boolean = false): List<HelperBlock> = buildList {
@@ -113,10 +114,10 @@ object HelperContext {
     }
 
     /**
-     * The card Claude mode shows before joining, or null when the conversation goes without one: "Include the
-     * conversation so far? It contains screen text and your calendar." for a personal conversation, and "Include the
-     * conversation so far?" for any conversation when Claude mode came from a word that only sounded like the name
-     * ([misheard]: "get cloud" may not have meant Claude at all).
+     * The card a helper's conversation shows before joining, or null when the conversation goes without one: "Include
+     * the conversation so far? It contains screen text and your calendar." for a personal conversation, and "Include the
+     * conversation so far?" for any conversation when it came from a word that only sounded like the name ([misheard]:
+     * "get cloud" may not have meant Claude at all).
      */
     fun includeQuestion(history: List<ChatTurn>, misheard: Boolean = false): String? {
         val p = personal(history)
@@ -128,7 +129,7 @@ object HelperContext {
     }
 
     /**
-     * Robot checks with Claude: the user's question (their own words, never text the local model wrote for Claude) and
+     * Robot checks with a helper: the user's question (their own words, never text the local model wrote for it) and
      * the last [RECENT_TURNS] turns of plain text. In a personal conversation ([personal] of everything so far, this turn
      * included) only the question goes, unless [includePersonal] (Settings › Safety & privacy › "Send personal content to
      * helpers automatically"). What the user shared with this question ([shared]) goes only after a tap, or with that
@@ -166,7 +167,7 @@ object HelperContext {
         return HelperPayload(question, blocks, sends, sharing, screen?.let { ToolCalls.safeTake(it, 600) })
     }
 
-    /** A later question in Claude mode: the question only (the conversation is already Claude's). */
+    /** A later question in a helper's conversation: the question only (the conversation is already the helper's). */
     fun next(question: String, shared: Shared = Shared()): List<HelperBlock> = sharedBlocks(shared) + HelperBlock.Text(question.trim())
 
     private fun sharedBlocks(s: Shared): List<HelperBlock> = buildList {
@@ -180,7 +181,7 @@ object HelperContext {
     fun recent(history: List<ChatTurn>, n: Int = RECENT_TURNS): List<ChatTurn> = history.filter { !it.error && it.text.isNotBlank() }.takeLast(n)
 
     /**
-     * "User: …" / "Robot: …" / "Claude: …" lines. Pictures and screen text are never part of it (even when kept for
+     * "User: …" / "Robot: …" / "Jarvis: …" lines. Pictures and screen text are never part of it (even when kept for
      * History, ChatTurn.picture and screenText), so a turn that had one says so in brackets. Action cards are never described: their summaries carry names and numbers from the contacts.
      */
     fun transcript(turns: List<ChatTurn>): String? = turns.mapNotNull { t ->
@@ -197,7 +198,7 @@ object HelperContext {
     }.joinToString("\n").ifEmpty { null }
 
     /**
-     * The personal content in a conversation: a screen or photo question (asked of Robot or of Claude), what a read tool
+     * The personal content in a conversation: a screen or photo question (asked of Robot or of a helper), what a read tool
      * found, Claude's answer read off the Claude app. [attachment]: the question being asked now. Any of it makes the
      * whole conversation personal from that turn on, including replies that only repeat it.
      */
@@ -213,7 +214,7 @@ object HelperContext {
     }
 
     /**
-     * A Claude answer as it joins Robot's local conversation: cut on a sentence to about [LOCAL_TOKENS] (by Gemma's token
+     * A helper's answer as it joins Robot's local conversation: cut on a sentence to about [LOCAL_TOKENS] (by Gemma's token
      * estimate), so "add that to my calendar" works locally afterwards.
      */
     fun forLocal(answer: String, maxTokens: Int = LOCAL_TOKENS): String {
@@ -230,9 +231,9 @@ object HelperContext {
 }
 
 /**
- * Robot's tools as Claude sees them: the same schemas as Gemma's, for timers, alarms, maps, notes, the calendar and
+ * Robot's tools as a helper sees them: the same schemas as Gemma's, for timers, alarms, maps, notes, the calendar and
  * drafts of texts and emails. Not open_app, the flashlight or lookup_contact (the contacts list and People are never sent), and never
- * ask_claude. Every call Claude makes shows a card ([ApprovalGate.decide] with remote = true).
+ * ask_claude. Every call a helper makes shows a card ([ApprovalGate.decide] with remote = true).
  */
 object HelperTools {
     /** 0.6.0: a helper's call whose arguments weren't a JSON object (the wire readers put this key in; the check refuses it). */
@@ -249,7 +250,7 @@ object HelperTools {
     }.map(ToolSpecs::of)
 
     /**
-     * Claude's input checked against the tool's schema before anything else looks at it: an object whose keys are the
+     * The helper's input checked against the tool's schema before anything else looks at it: an object whose keys are the
      * schema's properties, every required one present, each of its declared JSON type (an integer a whole number).
      * Null when it fits; otherwise why, for an `is_error` tool result.
      */

@@ -10,7 +10,7 @@ import android.os.Process
 
 // :LLAMA PROCESS ONLY (android:process=":llama", android:isolatedProcess="true", not exported). llama.cpp for your own
 // GGUF file (0.4.5), the one place that reaches its bridge (LlamaNative). Android runs this service under an isolated
-// uid of its own: no permission at all (contacts, calendar, the network…), none of Robot's files (the Claude key, the
+// uid of its own: no permission at all (contacts, calendar, the network…), none of Robot's files (the helpers' keys, the
 // settings, the notes), and no file it could open by name. A memory-safety bug in llama.cpp's GGUF parser, its Jinja
 // engine or ggml, reached through a hostile file, runs code here, not as Robot.
 //

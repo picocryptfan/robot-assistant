@@ -99,7 +99,7 @@ object UpdateStore {
 }
 
 /**
- * The access token for a private repository (Settings › Updates › Advanced): encrypted exactly as Ask Claude's key is
+ * The access token for a private repository (Settings › Updates › Advanced): encrypted exactly as a helper's API key is
  * (sys/KeystoreSecret, AES-GCM with its own non-exportable Android Keystore key), entered in a window that can't be
  * captured, decrypted only by GitHubClient just before a request to api.github.com, and sent nowhere else.
  */

@@ -58,7 +58,7 @@ class SummaryByHelperTest {
         assertEquals(ApiHelper.OTHER_INPUT_TOKENS, g.maxInputTokens())
         // Claude keeps its id and its room.
         val c = ApiHelper(ctx, HelperConfig.claude(), 35_000)
-        assertEquals(ApiHelper.ID, c.id)
+        assertEquals(ApiHelper.CLAUDE_JOB_ID, c.id)
         assertEquals(ApiHelper.MAX_INPUT_TOKENS, c.maxInputTokens())
         // A price Robot doesn't know: said on the card. Over budget: said too.
         assertTrue(ApiHelper(ctx, mistral, 35_000).disclosure.line.contains("Cost unknown"))
@@ -67,7 +67,7 @@ class SummaryByHelperTest {
 
     @Test fun aJobForOneHelperNeverRunsOnAnother() = runBlocking {
         val g = ApiHelper(ctx, gpt, 1_000)
-        val forClaude = ConsentCard.build(ApiHelper.ID, "Claude", g.disclosure, meta, t, now, "CA", "en", zone).approve(System.currentTimeMillis())
+        val forClaude = ConsentCard.build(ApiHelper.CLAUDE_JOB_ID, "Claude", g.disclosure, meta, t, now, "CA", "en", zone).approve(System.currentTimeMillis())
         val r = g.summarize(forClaude, object : HelperListener {})
         assertEquals(HelperResult.Failed("Nothing was sent: Robot needs your OK on the card."), r)
     }
@@ -89,7 +89,7 @@ class SummaryByHelperTest {
         assertEquals(pkg, i.`package`)
         assertEquals(card.appText, i.getStringExtra(Intent.EXTRA_TEXT))
         // Another helper's card is never shared with this app; an app that isn't installed gets nothing.
-        val other = ConsentCard.build(AppShareHelper.ID, "the Claude app", a.disclosure, meta, t, now, "CA", "en", zone)
+        val other = ConsentCard.build(AppShareHelper.CLAUDE_JOB_ID, "the Claude app", a.disclosure, meta, t, now, "CA", "en", zone)
         assertNull(a.intent(other.approve(System.currentTimeMillis())))
         val grok = AppShareHelper(ctx, HelperConfig.of(Presets.XAI, "hgrk", "am_fenrir"))
         assertNull(grok.intent(ConsentCard.build(grok.id, "the Grok app", grok.disclosure, meta, t, now, "CA", "en", zone).approve(System.currentTimeMillis())))

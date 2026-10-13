@@ -128,9 +128,10 @@ enum class VoiceEvent(val id: Int) {
     SCREEN(33),
     /** Robot set voice_recognition_service to its recognizer (it keeps it the assistant at boot): a = [RepairWhen], b = 1 if it worked. */
     RECOGNIZER_SET(34),
-    /** A request to Claude (Ask Claude, 0.3.0): a = request number in the turn (0: the question), b = [AnthropicModelCode]. */
+    // CLAUDE_*: names kept from 0.3 (Send feedback's diagnostics print them); since 0.6.0 they log every helper.
+    /** A request to a helper (0.3.0): a = request number in the turn (0: the question), b = [AnthropicModelCode] (0: not Anthropic). */
     CLAUDE_SENT(35),
-    /** a = ms from the request to Claude's first stream event. */
+    /** a = ms from the request to the helper's first stream event. */
     CLAUDE_FIRST(36),
     /** a = ms in all, b = [HelperEnd], c = characters shown. */
     CLAUDE_DONE(37),
@@ -169,12 +170,12 @@ enum class VoiceEvent(val id: Int) {
      */
     SCREEN_SHARED(60),
     /**
-     * ask_claude was left out of a question for the local model although Ask Claude could take it (0.3.1): a =
-     * [HelperLeftOut] (you said "not Claude" in this conversation, or the question is about the screen or a photo).
+     * ask_claude was left out of a question for the local model although a helper could take it (0.3.1): a =
+     * [HelperLeftOut] (you turned the helper down in this conversation, or the question is about the screen or a photo).
      */
     CLAUDE_LEFT_OUT(120),
     /**
-     * The local model handed a question to Claude without a word, and Claude wasn't asking right away, so Robot asked
+     * The local model handed a question to a helper without a word, and the helper wasn't asked right away, so Robot asked
      * the model again without ask_claude for its own answer (0.3.1): a = 1 if that gave an answer, 0 if not.
      */
     OWN_ANSWER(121),

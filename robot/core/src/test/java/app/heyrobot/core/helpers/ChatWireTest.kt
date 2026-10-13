@@ -100,7 +100,7 @@ class ChatWireTest {
         val sys = bare.getJSONArray("messages").getJSONObject(0).getString("content")
         assertTrue(sys.startsWith("You are Groq. "))
         assertFalse(sys.contains("tools") || sys.contains("web search"))
-        assertEquals(HelperPrompt.SYSTEM, HelperPrompt.system("Claude", tools = true, search = true))
+        assertEquals(HelperPrompt.CLAUDE_SYSTEM, HelperPrompt.system("Claude", tools = true, search = true))
     }
 
     @Test fun refusedExtrasAreDroppedInOrder() {

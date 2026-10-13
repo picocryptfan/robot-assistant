@@ -501,7 +501,7 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
         val e = engine ?: throw IllegalStateException("not loaded")
         val cfg = ConversationConfig(
             systemInstruction = Contents.of(plan.system(if (mode == ToolMode.TEXT_CALLS) system + Prompt.textCallHint(tools) else system)),
-            // Robot's own system prompt as it is; the turns (your questions with the screen's text, Robot's and Claude's
+            // Robot's own system prompt as it is; the turns (your questions with the screen's text, Robot's and the helpers'
             // replies) without the file's special tokens.
             initialMessages = history.map { if (it.role == PromptRole.USER) Message.user(controls.defuse(it.text)) else Message.model(controls.defuse(it.text)) },
             // Only the tool API's levels describe tools: never chat only (its list is empty anyway, BrainPolicy.toolsFor).

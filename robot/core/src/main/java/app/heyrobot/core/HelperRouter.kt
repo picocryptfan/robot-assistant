@@ -3,7 +3,7 @@ package app.heyrobot.core
 import java.text.Normalizer
 import java.util.Locale
 
-// Pure. What your words mean for Claude, decided by code and never by the local model (docs/ask-claude.md "How it is
+// Pure. What your words mean for a helper, decided by code and never by the local model (docs/ask-claude.md "How it is
 // triggered"). The router runs on the transcript or the typed text before anything reaches Gemma. Matching is anchored
 // at the start of the utterance, with only filler words ("hey robot", "please", "can you", "okay") in front, so "what's
 // the weather like on Claude's birthday" stays local. Parakeet's mishearings of "Claude" ("cloud", "clod", "clawed",
@@ -16,21 +16,22 @@ import java.util.Locale
 // seek"), and a "*" slot takes the longest name that fits. Curated mishearings ship for Claude only; any other name of
 // five letters or more (or two syllables) also matches a word that sounds like it ([Phonetic]), but only where a
 // mishearing may count (after a command verb), so it is marked misheard and its conversation asks before anything earlier goes.
+// The examples below use Claude's name: the first helper, and still the only one with curated mishearings.
 
 sealed class HelperCommand {
     /**
-     * One question for Claude. [deep]: you asked for depth ("think hard about", "take your time"). [extra]: you asked
+     * One question for a helper ([helper]: its id). [deep]: you asked for depth ("think hard about", "take your time"). [extra]: you asked
      * about the screen or a photo; it goes only after a tap on a card.
      */
     data class Ask(val question: String, val deep: Boolean = false, val extra: Attachment = Attachment.NONE, val helper: String = HelperName.CLAUDE_ID) : HelperCommand()
 
     /**
-     * Claude mode: the following turns go to Claude. [question]: said in the same breath ("go get Claude and ask …").
+     * A helper's conversation: the following turns go to it. [question]: said in the same breath ("go get Claude and ask …").
      * [misheard]: a word that only sounded like the name ("get cloud"): the conversation so far goes only after a tap.
      */
     data class Join(val question: String? = null, val misheard: Boolean = false, val helper: String = HelperName.CLAUDE_ID) : HelperCommand()
 
-    /** Leave Claude mode, or any helper's ("thanks Claude", "back to Robot"); outside it, ordinary talk. */
+    /** Leave a helper's conversation ("thanks Claude", "back to Robot"); outside one, ordinary talk. */
     data object Leave : HelperCommand()
 
     /** "Read Claude's answer": the Claude app's last answer, from the corner swipe's screen data. */
@@ -201,7 +202,7 @@ object HelperRouter {
     /** After a mishearing only polite words may follow a bare "get cloud" ("get Clyde in here" is about a person). */
     private val BARE_TAIL = setOf("please", "now", "sil", "te", "vous", "plait", "maintenant")
 
-    /** Claude mode. A mishearing ("*") counts after "get" and "va chercher" only; the rest need the name ("="). */
+    /** A helper's conversation. A mishearing ("*") counts after "get" and "va chercher" only; the rest need the name ("="). */
     private val JOINS: List<Array<String>> = listOf(
         arrayOf("go", "get", "*"), arrayOf("go", "and", "get", "*"), arrayOf("get", "*"), arrayOf("va", "chercher", "*"),
         arrayOf("bring", "in", "="), arrayOf("bring", "=", "in"), arrayOf("bring", "="),
@@ -223,7 +224,7 @@ object HelperRouter {
     /** After a request to "my helper", these words are a message for a person ("ask my helper to pick up milk"). */
     private val FOR_A_PERSON = setOf("to", "if", "whether", "si", "de", "d")
 
-    /** The command at the start of [text] for one of [names] (Claude alone by default), or null: ordinary talk for Robot. */
+    /** The command at the start of [text] for one of [names] (Claude alone by default, as before 0.6.0), or null: ordinary talk for Robot. */
     fun route(text: String, names: List<HelperName> = CLAUDE): HelperCommand? {
         val ws = words(text)
         val i = head(ws)
@@ -354,10 +355,10 @@ object HelperRouter {
         }
     }
 
-    // ------------------------------------------------------------------ "not Claude"
+    // ------------------------------------------------------------------ "not Claude" (any helper by its name)
 
     /**
-     * You turned Claude down (any helper, by its name, since 0.6.0): "not Claude", "no Claude", "don't ask Claude",
+     * You turned a helper down (any helper, by its name, since 0.6.0): "not Claude", "no Claude", "don't ask Claude",
      * "don't check with Claude", "without Claude", "leave Claude out of it", "you tell me", "tell me yourself", "answer it
      * yourself", "on your own", "pas Claude", "sans Claude", "ne demande pas à Claude", "réponds toi-même". Anywhere in
      * what you said, not only at the start ("tell me about this screen. Not Claude"). Robot then answers itself and
@@ -662,9 +663,9 @@ object Phonetic {
 }
 
 /**
- * What answers a question before the local model is asked, in this order: Ask Claude's phrases (and Claude mode), then
- * texting without the model ("text mom I'm running late", [TextCommand]), then the model. A Claude command always wins,
- * so "ask Claude to text mom …" goes to Claude, never to the texting shortcut. "Thanks Claude" and "read Claude's
+ * What answers a question before the local model is asked, in this order: the helpers' phrases (and a helper's
+ * conversation), then texting without the model ("text mom I'm running late", [TextCommand]), then the model. A helper
+ * command always wins, so "ask Claude to text mom …" goes to Claude, never to the texting shortcut. "Thanks Claude" and "read Claude's
  * answer" are handled before this.
  */
 object FastPath {
@@ -678,14 +679,14 @@ object FastPath {
 }
 
 /**
- * Strong signals that a question needs Claude, checked before Gemma spends a prefill (escalation trigger a). Kept
+ * Strong signals that a question needs a helper, checked before Gemma spends a prefill (escalation trigger a). Kept
  * conservative: a question with a local action in it (a timer, an alarm, a text, a note, the calendar, an app, the maps,
  * the flashlight) never escalates; Robot handles it.
  */
 object PreRouter {
     enum class Signal { REASONING, WRITING, CODE, MATH, CURRENT_INFO, LONG }
 
-    /** More words than this: a long question goes to Claude. */
+    /** More words than this: a long question goes to a helper. */
     const val LONG_WORDS = 40
 
     /** Local actions in English and (0.4.6) French: "mets une alarme", "rappelle-moi", "ouvre la météo". */
@@ -750,7 +751,7 @@ object PreRouter {
         if (t.isEmpty() || LOCAL.containsMatchIn(t)) return null
         val rest = EVERYDAY.fold(t) { acc, r -> r.replace(acc, " ") }.let { if (localWeather) WEATHER_WORDS.replace(it, " ") else it }
         SIGNALS.firstOrNull { it.second.containsMatchIn(rest) }?.let { (signal, _) ->
-            // Stories, poems and jokes are Robot's own to write (0.4.0); letters, speeches and essays still go to Claude.
+            // Stories, poems and jokes are Robot's own to write (0.4.0); letters, speeches and essays still go to a helper.
             if (signal == Signal.WRITING && CREATIVE.containsMatchIn(rest)) return null
             if (signal == Signal.CURRENT_INFO && localWeb) return null
             return signal
@@ -764,8 +765,8 @@ object PreRouter {
  * can't help with that", "I'm unable to provide…", "je ne peux pas faire ça"), or nothing at all. Only near the start or
  * in a short reply, so a long answer that says "I'm not sure you meant X, but…" in passing is not a hedge. A reply that
  * says its facts may be out of date ("I don't have access to real-time information", "my knowledge cutoff", "for the
- * latest information, check…", "je n'ai pas accès à Internet") counts wherever it says so (0.4.6): Claude, with web
- * search, can answer that from today's sources.
+ * latest information, check…", "je n'ai pas accès à Internet") counts wherever it says so (0.4.6): a helper with web
+ * search can answer that from today's sources.
  */
 object Hedge {
     /** Words that say Robot's model can't or won't answer: only near the start or in a short reply. */
@@ -822,7 +823,7 @@ object Hedge {
      * A reply [detect] found to hedge says the answer needs today's sources: its facts may be out of date, it can't go
      * online, it has no current information (0.6.0, with 0.4.6's hedges). Like the pre-router's current information, the
      * question then goes to a helper by itself only if that helper can search the web (EscalationPolicy's needsSearch);
-     * otherwise Robot offers. Claude, which searches, is asked as in 0.4.6. An empty reply or a plain refusal ("I can't
+     * otherwise Robot offers. Claude, which searches, is asked by itself as in 0.4.6. An empty reply or a plain refusal ("I can't
      * help with that") needs no search.
      */
     fun needsSearch(reply: String): Boolean {

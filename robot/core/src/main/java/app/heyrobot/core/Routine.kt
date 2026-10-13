@@ -257,7 +257,7 @@ object RoutineCheck {
 
     /**
      * What is wrong with [r], in fixed words for the editor and the card; empty when it may be saved and run. A step
-     * Robot never does without you ([StepClass.NEVER]: freeing memory or storage, Ask Claude) is refused here as well as by
+     * Robot never does without you ([StepClass.NEVER]: freeing memory or storage, asking a helper) is refused here as well as by
      * the router, and each tool step's fixed arguments must read back the same through the tool's own validation
      * (ToolCalls.parse): a timer over 24 hours or an alarm at 25:00 can't be saved.
      */

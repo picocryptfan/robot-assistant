@@ -306,7 +306,7 @@ private fun orbMood(p: Phase): OrbMood = when (p) {
 private fun classicStatusLine(st: PanelState): String = when (st.phase) {
     Phase.LISTENING -> "Listening…"
     Phase.TRANSCRIBING -> "Writing it down…"
-    // "Claude is thinking…" (or "Checking with Claude…", "My server is loading its model…") until the helper's first words.
+    // "ChatGPT is thinking…" (or "Checking with ChatGPT…", "My server is loading its model…") until the helper's first words.
     Phase.THINKING -> st.helperStatus ?: if (st.brain.readiness == BrainKeeper.Readiness.LOADING) "Waking up the model…" else "Thinking…"
     Phase.ANSWERING -> st.turns.lastOrNull()?.takeIf { it.fromHelper }?.let { "${it.by ?: "The helper"} is answering…" } ?: "Answering…"
     Phase.CONFIRMING -> if (st.cardHearing != null) "Say yes or no…" else "Waiting for you: tap the card, or answer yes or no"

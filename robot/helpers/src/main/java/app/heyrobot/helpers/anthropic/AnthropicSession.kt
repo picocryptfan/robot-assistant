@@ -66,10 +66,10 @@ class AnthropicSession(
     private val idleMs: Long = IDLE_MS,
     private val retryDelayMs: Long = 1_000,
     /**
-     * The system prompt: HelperPrompt.SYSTEM (spoken answers), or HelperPrompt.TRANSCRIPT_SYSTEM for a transcript's
+     * The system prompt: HelperPrompt.CLAUDE_SYSTEM (spoken answers), or HelperPrompt.CLAUDE_TRANSCRIPT_SYSTEM for a transcript's
      * summary (0.5.0, docs/conversation-mode.md 7.2: one question, no tools, no search).
      */
-    private val system: String = HelperPrompt.SYSTEM,
+    private val system: String = HelperPrompt.CLAUDE_SYSTEM,
 ) : HelperSession {
     private val messages = mutableListOf<BetaMessageParam>()
     /** Each message's thinking blocks as they came ([AnthropicHistory.seal]); empty for the user's. */

@@ -19,9 +19,9 @@ import kotlin.math.roundToLong
 // in levels when there are more than 12 parts; every call fits the loaded model's window by TokenEstimate (4,096 tokens,
 // or a short-context file's own since 0.4.3: its parts are smaller, and its reply room a quarter of its context). A
 // deterministic check then flags numbers, names and [times] in the summary that the transcript doesn't have. For a long
-// or important conversation Robot offers a stronger AI first, through the Helper interface: the Claude API or the Claude
-// app now, any helper from 0.6.0. A transcript goes to a helper only from a consent card listing exactly what it sends,
-// after a tap on Send: a SummaryJob can't be made any other way.
+// or important conversation Robot offers a stronger AI first, through the Helper interface: a helper's API or its app
+// (the Claude API and the Claude app in 0.5.0, any helper since 0.6.0). A transcript goes to a helper only from a
+// consent card listing exactly what it sends, after a tap on Send: a SummaryJob can't be made any other way.
 
 /** One call to Gemma: its system prompt, the user turn, and the reply's cap in streamed chunks (about tokens). */
 data class SummaryCall(val system: String, val user: String, val maxChunks: Int)
@@ -414,12 +414,12 @@ interface Helper {
 
 /**
  * Exactly what goes to a helper, and the card that says so (docs/conversation-mode.md 7.2). [blocks] are the first user
- * turn for the API (context line, the conversation line, the transcript, the request); [appText] is what the Claude app
+ * turn for the API (context line, the conversation line, the transcript, the request); [appText] is what the helper's app
  * gets. Built from the same parts, so the card can't list something the payload doesn't hold, or the other way round.
  */
 class ConsentCard private constructor(
     val transcriptId: String,
-    /** The helper's id, and its name in "Send this conversation to Claude?". */
+    /** The helper's id, and its name in "Send this conversation to Jarvis?". */
     val helper: String,
     val to: String,
     val disclosure: Disclosure,
@@ -445,7 +445,7 @@ class ConsentCard private constructor(
 
     companion object {
         const val TOGGLE = "Replace names with “Speaker 1, 2”"
-        /** The Claude app takes at most this much text in a share (about 1.5 h of talk). */
+        /** A helper's app takes at most this much text in a share (about 1.5 h of talk; the Claude app's limit). */
         const val APP_MAX_CHARS = 100_000
         const val TOO_LONG_FOR_APP = "Too long for the app; export and attach the file."
 
@@ -491,7 +491,7 @@ class ConsentCard private constructor(
             return ((end - meta.createdAt + 30_000) / 60_000).coerceAtLeast(if (t.lines.isEmpty()) 0 else 1)
         }
 
-        /** The share text for the Claude app, or null when it is too long (the card offers export instead). */
+        /** The share text for the helper's app, or null when it is too long (the card offers export instead). */
         fun appShare(card: ConsentCard): String? = card.appText.takeIf { it.length <= APP_MAX_CHARS }
 
         /** Too long for one request to a helper's API (Helper.maxInputTokens): nothing is sent, the card offers export. */
