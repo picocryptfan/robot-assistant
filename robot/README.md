@@ -5612,8 +5612,9 @@ turn on "Announce messages from Mom". *Done when:*
 ## Car mode (0.8)
 
 Robot's own hands-free mode over your car's Bluetooth (not Android Auto): when your car connects, car mode starts, Robot
-talks through the car, the car screen shows big buttons, answers are short, and what needs the screen waits for when
-you park. Design: `../docs/plans/routines-headset-car-design.md` §1 and §4; the pure logic is in `core/car` and
+talks through the car, the car screen shows big buttons and answers are short. Since 1.0, what needs the screen opens as
+it would outside the car, since Robot can't tell the driver from a passenger; with "Hold screen actions until I park"
+on, it waits for when you park. Design: `../docs/plans/routines-headset-car-design.md` §1 and §4; the pure logic is in `core/car` and
 `core/output` with JVM tests, the wiring in `assistant/car/` and `assistant/handsfree/` (`:voice`) and
 `ui/settings/HandsFreeSettings.kt`, `ui/car/CarModeScreen.kt`. Settings live in `files/robot/car.json`, `places.json` and
 `devices.json`.
@@ -5640,8 +5641,23 @@ you park. Design: `../docs/plans/routines-headset-car-design.md` §1 and §4; th
   to your saved Home or Work (tap Start when stopped), the nearest place's 0.4.0 flow, or a search.
 - **What's next** (your calendar), **music** (play, pause, next, previous: a media key to the current player), "repeat",
   "stop listening", "end car mode".
-- **When you park:** new texts ("text Bob I'm late"), what needs the screen and replies that need a tap are kept; when car
-  mode ends, "From your drive: 2 things" opens the panel with them to ask again, each through every gate.
+- **Hold screen actions until I park** (1.0, Settings › Car mode › While you drive, off by default; `holdWhileDriving`
+  in `car.json`, missing in older files and read as off). The user's decision of 13 Oct 2026: a passenger may be the one
+  asking, so car mode doesn't hold things back unless you choose it.
+
+  | While car mode runs | Off (the default) | On (0.8 to 0.9's behaviour) |
+  |---|---|---|
+  | Opening an app, an email or event draft, a text, freeing memory or storage | The card, answered as in a headset: a spoken yes where one counts outside the car, a tap where outside the car needs one | Kept for when you park ("I'll keep that for when you park.") |
+  | A helper's app hand-off | The normal card and its consent | Refused: "I can't open another app while you drive." |
+  | "Text Bob I'm late" | Goes on as outside the car (unlocked; locked, it is kept) | Kept, unless New texts while driving is "Open … now" (that row shows only when the switch is on) |
+  | A reply only a tap sends, or one that opens the chat | Its card shows, or the chat opens, now | Kept with your words |
+
+  Either way: short spoken answers, the car screen, Do Not Disturb while driving (its own switch), car-trusted calls,
+  every lock-screen rule, every consent card, and what must be seen (a learned name, deleting, personal content to a
+  helper) stay as they are. Nothing is looser than outside the car.
+- **When you park** (with the switch on): new texts ("text Bob I'm late"), what needs the screen and replies that need a
+  tap are kept; when car mode ends, "From your drive: 2 things" opens the panel with them to ask again, each through every
+  gate. Either way, what must be seen, a call with too many matches, and a reply nobody answered are kept the same way.
 - **New messages** (0.7's messages, C3): with Settings › Messages › Announce new messages on (off by default), a new
   message is announced in the car while car mode runs, as Settings › Car mode says (Sender only, then ask; Announce
   from: whoever Do Not Disturb lets through). "Yes" reads it (0.7's reading: translated, marked read by Robot, and "After
@@ -5650,7 +5666,9 @@ you park. Design: `../docs/plans/routines-headset-car-design.md` §1 and §4; th
   the main process: "Handed to Cheogram." "No" sends nothing. **0.7's reply rules hold:** a spoken yes sends only where
   Settings › Messages lets one ("Answer reply cards by voice", or a person you chose for replies without a card); a
   reply only a tap may send (0.7's default card, a group, a locked phone) or one Robot never sends itself ("Open the
-  chat; I press Send") is kept for when you park with your words, and nothing opens while you drive. Messages are
+  chat; I press Send") shows its card or opens the chat now, as outside the car (1.0); with "Hold screen actions until I
+  park" on it is kept for when you park with your words, and nothing opens while you drive. "Replies by voice" off,
+  "Send a reply after a spoken yes" off, and a locked phone without the trusted session keep it either way. Messages are
   announced locked only in the trusted session **and** with Messages on the lock screen at "Read and reply". The
   message's words never act (0.7's echo check, and a "send" within 3 s of them doesn't count).
 - **Do Not Disturb while driving** (off; needs Do Not Disturb access): Robot's own "Driving (Robot)" rule while car mode
@@ -5660,8 +5678,8 @@ you park. Design: `../docs/plans/routines-headset-car-design.md` §1 and §4; th
 
 **Defaults:** Use car mode: off. Start car mode when my car connects: on. End car mode: 30 s after it disconnects. Speak
 through the car as a call: on. After "hey robot" in the car, listen with: the phone microphone. Use car mode without
-unlocking: after one unlock in the car, for at most 4 hours. Calls: open the dialer. New texts while driving: keep for
-when I park. Announce new messages: sender only, then ask (nothing until Settings › Messages announces); Announce from:
+unlocking: after one unlock in the car, for at most 4 hours. Calls: open the dialer. Hold screen actions until I park:
+off (1.0). New texts while driving: keep for when I park (shown and used only with the switch on). Announce new messages: sender only, then ask (nothing until Settings › Messages announces); Announce from:
 whoever Do Not Disturb lets through; Read message text aloud when others may hear: ask each time; Replies by voice: on.
 Do Not Disturb while driving: off. Keep the screen on: off.
 
@@ -5695,7 +5713,8 @@ Nothing of this has run in a car. Install the debug build with Robot as the digi
 - The car connecting starts car mode in under 5 s, 10 of 10; disconnecting ends it after 30 s.
 - With the phone locked and no unlock, "what's next" says "Unlock once to use car features"; after one unlock it works
   locked until the car disconnects.
-- "Text Bob I'm late" is kept, and "From your drive" shows when car mode ends; its tap offers it again.
+- With "Hold screen actions until I park" on, "Text Bob I'm late" is kept, and "From your drive" shows when car mode
+  ends; its tap offers it again.
 - No answer is longer than two sentences without "Want more?".
 
 **C2, calls and navigation.** *Done when:*
@@ -5714,6 +5733,19 @@ Nothing of this has run in a car. Install the debug build with Robot as the digi
 - "No" at the read-back sends nothing.
 - A Signal or Molly message (if installed): the reply works or is kept, per its notification.
 - With "Do Not Disturb while driving" on, only senders Do Not Disturb allows are announced.
+
+**C4, no holds by default (1.0).** Fresh install, car mode on, phone unlocked. *Done when:*
+- Settings › Car mode › While you drive: "Hold screen actions until I park" is first and off; "New texts while driving"
+  is not shown; turning the switch on shows it.
+- Switch off: "open the calculator" opens it; "text Bob I'm late" goes on as outside the car (the texting app opens with
+  the draft, Send is yours); "add lunch with Bob tomorrow at noon" shows the event card; "ask the helper …" shows the
+  helper's card and nothing leaves before its yes or tap. "From your drive" stays empty.
+- Switch off, Answer reply cards by voice off: a reply to an announced message shows its card on the screen and waits
+  for a tap; with "Open the chat; I press Send", the chat opens with your words. Nothing is sent by voice.
+- Switch off, locked without the trusted session: the same requests ask for the unlock as before.
+- Switch on: each of the above is kept for when you park, and "ask the helper …" says "I can't open another app while
+  you drive."
+- An old settings file (0.9's car settings restored): the switch reads off.
 
 ## Web search (0.9)
 
