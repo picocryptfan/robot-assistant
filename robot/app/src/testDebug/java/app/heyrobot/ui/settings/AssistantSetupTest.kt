@@ -51,6 +51,28 @@ class AssistantSetupTest {
         rule.scrollToText("Robot checks 3 minutes after every restart", substring = true)
     }
 
+    @Test fun theAppRowOnlyForAHelperThatOpensIt() {
+        // Claude with its key goes through the API: nobody needs its app, so there is no row (and no to-do) for it.
+        val keyed = facts().copy(keys = mapOf("claude" to "sk-ant-…AB12"))
+        rule.show { SetupScreen(keyed, log.actions, SnackbarHostState(), onBack = {}, helpers = RobotSettings().helpers) }
+        rule.scrollToText("Claude API key")
+        rule.onNode(hasText("sk-ant-…AB12")).assertExists()
+        rule.scrollToText("ADB fixes")
+        rule.onNode(hasText("Claude app")).assertDoesNotExist()
+    }
+
+    @Test fun noHelpersNoAppRow() {
+        rule.show { SetupScreen(facts(), log.actions, SnackbarHostState(), onBack = {}, helpers = emptyList()) }
+        rule.scrollToText("ADB fixes")
+        rule.onNode(hasText("Claude app")).assertDoesNotExist()
+    }
+
+    @Test fun withoutAKeyTheAppRowSaysItIsMissing() {
+        rule.show { SetupScreen(facts(), log.actions, SnackbarHostState(), onBack = {}, helpers = RobotSettings().helpers) }
+        rule.scrollToText("Claude app")
+        rule.onNode(hasText("Claude app") and hasText("Not installed")).assertExists()
+    }
+
     @Test fun fromACardsAllowThePermissionsComeFirst() {
         rule.show { SetupScreen(facts(), log.actions, SnackbarHostState(), onBack = {}, peopleFirst = true) }
         // At the top, before anything is scrolled.
