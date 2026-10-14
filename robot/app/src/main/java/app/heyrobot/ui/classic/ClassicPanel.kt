@@ -177,7 +177,7 @@ fun ClassicHeader(
                         Text("Keep")
                     }
                 }
-                // A toggle, so TalkBack says "Speak replies, on" or "off"; drawn as before (no colour when on).
+                // A toggle, so TalkBack says "Speak replies, checked" or "not checked"; drawn as before (no colour when on).
                 IconToggleButton(checked = speak, onCheckedChange = { onToggleSpeak() }, modifier = Modifier.size(48.dp),
                     colors = IconButtonDefaults.iconToggleButtonColors(checkedContentColor = LocalContentColor.current)) {
                     Icon(if (speak) RIcons.VolumeUp else RIcons.VolumeOff, "Speak replies")

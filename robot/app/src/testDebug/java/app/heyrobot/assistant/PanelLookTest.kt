@@ -134,6 +134,15 @@ class PanelLookTest {
         assertEquals(1, closed)
     }
 
+    /** 1.0: the photo or the screen waiting for the next question is removed by a button that says which. */
+    @Test fun removeSaysWhatItRemoves() {
+        val show = showChanging(PanelFixtures.idle.copy(draft = Draft(app.heyrobot.core.Attachment.PHOTO, null)))
+        rule.onNodeWithContentDescription("Remove photo").assertExists()
+        show(PanelFixtures.idle.copy(draft = Draft(app.heyrobot.core.Attachment.SCREEN, null)))
+        rule.onNodeWithContentDescription("Remove screen").assertExists()
+        noProblems()
+    }
+
     /** look.json from before 1.0 with the Classic look off (the standard panel then): it loads, and the panel is the classic one. */
     @Test fun anOldLookFileStillOpensTheClassicPanel() {
         val ctx: Context = ApplicationProvider.getApplicationContext()
