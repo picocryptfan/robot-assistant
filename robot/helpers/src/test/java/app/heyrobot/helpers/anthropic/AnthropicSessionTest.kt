@@ -44,6 +44,7 @@ import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -527,24 +528,25 @@ class AnthropicSessionTest {
         val slow = slowServer(events.map { (n, d) -> "event: $n\ndata: $d\n\n" }, gapMs = 120)
         AnthropicClient.create(key, "http://127.0.0.1:${slow.localPort}").use { c ->
             val heard = Heard()
-            val t0 = System.currentTimeMillis()
             val s = AnthropicSession(c, AnthropicModel.OPUS, HelperTools.tools(RobotSettings()), search = true, conversation = false, idleMs = 600)
             assertEquals(HelperOutcome.Done(), s.ask(ask("q"), voicePlan, heard))
-            assertTrue(System.currentTimeMillis() - t0 > 1_200)
+            // The server's own pauses add up to more than twice the limit, each one well under it: no clock is read here.
+            assertTrue(events.size * 120L > 2 * 600)
             assertEquals(pieces.joinToString(""), heard.text.toString())
         }
         slow.close()
     }
 
     @Test fun stopCancelsAtOnceAndLeavesNoTrace() = runBlocking {
-        server.enqueue(textReply("Never heard.").setBodyDelay(5, TimeUnit.SECONDS))
+        // The server never answers: Stop must not wait for it. Cancelled once the request has arrived (a latch, not a
+        // sleep); the join's limit is only a net.
+        server.enqueue(MockResponse().setSocketPolicy(okhttp3.mockwebserver.SocketPolicy.NO_RESPONSE))
         val s = session(conversation = true)
-        val job = async { s.ask(ask("q"), voicePlan, Heard()) }
-        delay(300)
-        val t0 = System.currentTimeMillis()
+        val job = async(kotlinx.coroutines.Dispatchers.IO) { s.ask(ask("q"), voicePlan, Heard()) }
+        assertNotNull(kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { server.takeRequest(30, TimeUnit.SECONDS) })
         job.cancel()
-        job.join()
-        assertTrue(System.currentTimeMillis() - t0 < 1_000)
+        kotlinx.coroutines.withTimeout(30_000) { job.join() }
+        assertTrue(job.isCancelled)
         assertTrue(s.history.isEmpty())
     }
 

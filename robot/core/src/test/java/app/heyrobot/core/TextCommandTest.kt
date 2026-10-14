@@ -270,7 +270,8 @@ class TextCommandTest {
     }
 
     @Test fun theSystemPromptSaysToTextByNameWhenTextsAreOffered() {
-        val now = java.time.ZonedDateTime.now()
+        // A fixed moment, the longest day and month names' week (a Wednesday in September): the count never depends on today.
+        val now = java.time.ZonedDateTime.of(2026, 9, 30, 23, 59, 0, 0, java.time.ZoneId.of("America/Toronto"))
         val s = Prompt.system(now, locked = false, texting = true)
         assertTrue(s.contains("To text someone, always call send_text with their name, even if they aren't in the phone's contacts."))
         assertFalse(Prompt.system(now, locked = false).contains("send_text"))

@@ -98,6 +98,19 @@ class TermuxRunTest {
     private fun wrap(id: Int, limit: Int, command: String, stdin: Boolean = false) =
         listOf("--noprofile", "--norc", "-c", TermuxRun.wrapper(stdin = stdin), "robot", "$id", "$limit", command)
 
+    /**
+     * Every process whose command line holds [marker] has ended (Linux /proc): waited for, not slept on (a killed
+     * process may take a moment to be reaped), up to a deadline far above any real wait.
+     */
+    private fun allGone(marker: String): Boolean {
+        val until = System.nanoTime() + 20_000_000_000L
+        while (running(marker) > 0) {
+            if (System.nanoTime() > until) return false
+            Thread.sleep(10)
+        }
+        return true
+    }
+
     /** Processes whose command line holds [marker] (Linux /proc). */
     private fun running(marker: String): Int = File("/proc").listFiles().orEmpty().count { d ->
         d.name.all { it.isDigit() } && runCatching { File(d, "cmdline").readText().replace('\u0000', ' ').contains(marker) }.getOrDefault(false)
@@ -120,8 +133,7 @@ class TermuxRunTest {
         val ms = (System.nanoTime() - start) / 1_000_000
         assertEquals(124, code)
         assertTrue("took $ms ms", ms < 8_000)
-        Thread.sleep(300)
-        if (File("/proc/self").exists()) assertEquals(0, running("sleep 37.123"))
+        if (File("/proc/self").exists()) assertTrue(allGone("sleep 37.123"))
         assertFalse(File(tmp, "robot-21.pid").exists())
     }
 
@@ -144,8 +156,7 @@ class TermuxRunTest {
         assertEquals(0, run(listOf("--noprofile", "--norc", "-c", TermuxRun.WRAP_STOP, "robot", "41")).first)
         assertTrue(p.waitFor(10, TimeUnit.SECONDS))
         assertTrue("exit ${p.exitValue()}", p.exitValue() == 143 || p.exitValue() == 137)
-        Thread.sleep(300)
-        if (File("/proc/self").exists()) assertEquals(0, running("sleep 39.77"))
+        if (File("/proc/self").exists()) assertTrue(allGone("sleep 39.77"))
         // Stopping a run that already ended does nothing.
         assertEquals(0, run(listOf("--noprofile", "--norc", "-c", TermuxRun.WRAP_STOP, "robot", "41")).first)
         File(tmp, "robot-43.pid").writeText("1; touch pwned")

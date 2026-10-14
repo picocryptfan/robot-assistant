@@ -283,25 +283,8 @@ class CarGateTest {
     private val settings = RobotSettings()
 
     @Test fun carFunctionsInATrustedSession() {
-        // What's next and saved places: as if unlocked in a trusted session; locked otherwise.
-        assertEquals(GateDecision.RUN, CarGate.decide(ToolName.READ_CALENDAR, CarFunction.WHATS_NEXT, locked = true, trusted = true, settings = settings))
-        assertEquals(GateDecision.NEEDS_UNLOCK, CarGate.decide(ToolName.READ_CALENDAR, CarFunction.WHATS_NEXT, locked = true, trusted = false, settings = settings))
-        assertEquals(GateDecision.RUN, CarGate.decide(ToolName.MAPS_NAVIGATE, CarFunction.NAVIGATE_SAVED, locked = true, trusted = true, settings = settings))
-        // The tool must be the function's own.
-        assertEquals(GateDecision.NEEDS_UNLOCK, CarGate.decide(ToolName.FIND_NOTES, CarFunction.WHATS_NEXT, locked = true, trusted = true, settings = settings))
-        // Not loosened: notes, email, deleting, opening apps, Ask Claude, anything without a car function.
-        for (t in listOf(ToolName.ADD_NOTE, ToolName.FIND_NOTES, ToolName.DRAFT_EMAIL, ToolName.FREE_STORAGE, ToolName.OPEN_APP, ToolName.SEND_TEXT)) {
-            assertEquals(t.id, GateDecision.NEEDS_UNLOCK, CarGate.decide(t, null, locked = true, trusted = true, settings = settings))
-        }
-        assertEquals(GateDecision.CONFIRM, CarGate.decide(ToolName.ASK_HELPER, null, locked = false, trusted = true, settings = settings.withClaude { it.copy(locked = true) }))
-        // Every other rule still applies: an action at "Ask first" asks, "Off" is off, a remote call isn't loosened.
-        val ask = settings.copy(approvals = settings.approvals + (ToolName.READ_CALENDAR to Approval.ASK))
-        assertEquals(GateDecision.CONFIRM, CarGate.decide(ToolName.READ_CALENDAR, CarFunction.WHATS_NEXT, locked = true, trusted = true, settings = ask))
-        val off = settings.copy(approvals = settings.approvals + (ToolName.READ_CALENDAR to Approval.OFF))
-        assertEquals(GateDecision.DISABLED, CarGate.decide(ToolName.READ_CALENDAR, CarFunction.WHATS_NEXT, locked = true, trusted = true, settings = off))
-        assertEquals(GateDecision.NEEDS_UNLOCK, CarGate.decide(ToolName.READ_CALENDAR, CarFunction.WHATS_NEXT, locked = true, trusted = true, settings = settings, remote = true))
-        // Unlocked: exactly ApprovalGate.
-        assertEquals(GateDecision.RUN, CarGate.decide(ToolName.FIND_NOTES, null, locked = false, trusted = false, settings = settings))
+        // What car mode loosens is decided in PanelHandsFree (a car function locked, outside the trusted session: "Unlock
+        // once"); actions themselves go through ApprovalGate as anywhere else.
         assertTrue(CarGate.allowed(CarFunction.CALL, locked = true, trusted = true))
         assertFalse(CarGate.allowed(CarFunction.CALL, locked = true, trusted = false))
         assertTrue(CarGate.allowed(CarFunction.CALL, locked = false, trusted = false))

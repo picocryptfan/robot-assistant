@@ -1,10 +1,6 @@
 package app.heyrobot.core.car
 
-import app.heyrobot.core.ApprovalGate
-import app.heyrobot.core.AskWhy
-import app.heyrobot.core.GateDecision
 import app.heyrobot.core.LogCode
-import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.ToolName
 import app.heyrobot.core.output.BtClass
 import app.heyrobot.core.output.DeviceMemory
@@ -273,20 +269,13 @@ enum class CarFunction(val tools: Set<ToolName>) {
 }
 
 /**
- * ApprovalGate for car mode (an adapter: ApprovalGate itself is unchanged). A car function in a trusted session is
- * decided as if the phone were unlocked; everything else keeps the normal lock rules (§4.6 "Not loosened": asking a helper,
- * notes, email, deleting, opening apps, anything outside car mode). Every other rule (levels, cards, content) applies as
- * always.
+ * Car mode on the lock screen (§4.6): its words, and whether a car function may run. The decision itself is
+ * PanelHandsFree's (1.0.1: the unused ApprovalGate adapter that was here is gone); actions go through ApprovalGate as
+ * anywhere else. Robot puts no limits of its own on using the phone while driving.
  */
 object CarGate {
     val UNLOCK_ONCE = Line("Unlock once to use car features.", "Déverrouille une fois pour utiliser les fonctions de l'auto.")
     val INDICATOR = Line("Car mode · unlocked features", "Mode auto · fonctions déverrouillées")
-
-    fun decide(tool: ToolName, function: CarFunction?, locked: Boolean, trusted: Boolean, settings: RobotSettings, why: Set<AskWhy> = emptySet(),
-        content: Boolean = false, asked: Boolean = false, remote: Boolean = false): GateDecision {
-        val loosened = locked && trusted && function != null && tool in function.tools && !remote
-        return ApprovalGate.decide(tool, if (loosened) false else locked, settings, why, content, asked, remote)
-    }
 
     /** A car function may run now: unlocked, or locked in a trusted session. */
     fun allowed(function: CarFunction, locked: Boolean, trusted: Boolean): Boolean = !locked || trusted
