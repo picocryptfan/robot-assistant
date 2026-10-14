@@ -15,8 +15,9 @@ import app.heyrobot.core.LogCode
 //
 // android.speech.action.WEB_SEARCH (RecognizerIntent) is not android.intent.action.WEB_SEARCH (Intent), which browsers
 // handle; Robot declares only the speech one. These are ordinary implicit activity starts: if another app handles one
-// too, Android shows a chooser (which apps do on stock GrapheneOS is UNVERIFIED: H0.1). A spoofed start can only open
-// Robot's own session under the same gates, so the referrer is logged as a code for diagnostics, never trusted.
+// too, Android shows a chooser (which apps do on stock GrapheneOS is UNVERIFIED: H0.1). 1.0.1: the activity shows over
+// the lock screen, so only those paths and Robot itself may start it (EntryCaller): the caller Android recorded (the
+// referrer, when the start doesn't name its own) is the system, Bluetooth or Robot; any other start does nothing.
 
 /** Which button press started the session. Also the voice log's HEADSET_ENTRY a. */
 enum class EntryKind(override val id: Int, override val title: String) : LogCode {
@@ -36,10 +37,25 @@ enum class EntryReferrer(override val id: Int, override val title: String) : Log
         /** From the referrer's package (never logged itself). */
         fun of(pkg: String?): EntryReferrer = when {
             pkg.isNullOrBlank() -> NONE
-            pkg == "com.android.bluetooth" || pkg.startsWith("com.android.bluetooth.") -> BLUETOOTH
+            pkg == "com.android.bluetooth" || pkg == "com.google.android.bluetooth" -> BLUETOOTH
             pkg == "android" || pkg == "com.android.systemui" || pkg == "com.android.server.telecom" -> SYSTEM
             else -> OTHER
         }
+    }
+}
+
+/**
+ * 1.0.1: whether HeadsetEntryActivity's caller may open Robot over the lock screen. [referrer]: the package Android recorded
+ * as starting it (Activity.getReferrer, read only when the start names no referrer of its own); [claimed]: the start carries
+ * EXTRA_REFERRER or EXTRA_REFERRER_NAME, which any app can set (never trusted, whatever it says); [fromOwnUid]: Android says
+ * Robot itself started it (Activity.getLaunchedFromUid).
+ */
+object EntryCaller {
+    fun trusted(referrer: String?, claimed: Boolean, ownPackage: String, fromOwnUid: Boolean): Boolean = when {
+        fromOwnUid -> true
+        claimed -> false
+        !referrer.isNullOrBlank() && referrer == ownPackage -> true
+        else -> EntryReferrer.of(referrer) == EntryReferrer.BLUETOOTH || EntryReferrer.of(referrer) == EntryReferrer.SYSTEM
     }
 }
 
@@ -52,6 +68,9 @@ sealed class EntryDecision {
 
     /** Not for Robot (an unknown action), or "Headset button opens Robot" is off. Nothing happens. */
     data object Ignore : EntryDecision()
+
+    /** 1.0.1: started by another app, not the system's button paths ([EntryCaller]). Nothing happens. */
+    data object NotTrusted : EntryDecision()
 }
 
 object HeadsetEntry {
@@ -79,12 +98,13 @@ object HeadsetEntry {
      * keyguard is up. [assistantRunning]: RobotVoiceService.instance exists. [buttonOn]: "Headset button opens Robot"
      * (the activity is disabled when off, so this only guards a stale start). [carMode]: car mode is on, so a voice
      * button is the car's. [mayAck]: "Answer the headset's voice button properly" is on and BLUETOOTH_CONNECT is granted:
-     * then a BVRA start is acknowledged with startVoiceRecognition within [BVRA_ACK_MS].
-     * Robot never turns the screen on for it, and the activity shows nothing of its own.
+     * then a BVRA start is acknowledged with startVoiceRecognition within [BVRA_ACK_MS]. [callerTrusted]: [EntryCaller]
+     * (1.0.1). Robot never turns the screen on for it, and the activity shows nothing of its own.
      */
     fun decide(action: String?, secure: Boolean, locked: Boolean, assistantRunning: Boolean, buttonOn: Boolean = true,
-        carMode: Boolean = false, mayAck: Boolean = false): EntryDecision {
+        carMode: Boolean = false, mayAck: Boolean = false, callerTrusted: Boolean = true): EntryDecision {
         val kind = kind(action) ?: return EntryDecision.Ignore
+        if (!callerTrusted) return EntryDecision.NotTrusted
         if (!buttonOn) return EntryDecision.Ignore
         if (!assistantRunning) return EntryDecision.NotAssistant
         // VOICE_SEARCH_HANDS_FREE comes when locked or with the screen off; EXTRA_SECURE says locked and secure.

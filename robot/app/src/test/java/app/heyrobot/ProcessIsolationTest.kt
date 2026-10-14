@@ -381,6 +381,12 @@ class ProcessIsolationTest {
         assertEquals(3, entry.getElementsByTagName("intent-filter").length)
         assertTrue(entry.getElementsByTagName("data").length == 0)
         for (a in listOf("noHistory", "excludeFromRecents", "showWhenLocked")) assertEquals(a, "true", entry.getAttributeNS(ns, a))
+        // 1.0.1: its caller is checked as Android recorded it (core EntryCaller): a start naming its own referrer is never
+        // believed, and an untrusted one is passed to HeadsetEntry.decide, which then does nothing.
+        val hub = code(File(java("app"), "app/heyrobot/assistant/handsfree/HandsFreeHub.kt")).substringAfter("fun onButton(").substringBefore("\n    }\n")
+        for (k in listOf("Intent.EXTRA_REFERRER)", "Intent.EXTRA_REFERRER_NAME)", "if (claimed) null else", "a.launchedFromUid == android.os.Process.myUid()",
+            "EntryCaller.trusted(from, claimed, ctx.packageName, fromOwnUid)", "CarModeController.on, mayAck, trusted)", "EntryDecision.NotTrusted -> return"))
+            assertTrue(k, hub.contains(k))
         assertEquals(0, c("app.heyrobot.assistant.car.CarModeActivity").getElementsByTagName("intent-filter").length)
         // 0.8: routines speak from a mediaPlayback foreground service (Android 17's background audio), never a short one;
         // the receiver hears only the system's broadcasts that make the exact alarm wrong, after the first unlock.

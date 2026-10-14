@@ -24,6 +24,7 @@ import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
 import app.heyrobot.core.headset.EntryDecision
 import app.heyrobot.core.headset.EntryKind
+import app.heyrobot.core.headset.EntryCaller
 import app.heyrobot.core.headset.EntryReferrer
 import app.heyrobot.core.headset.HeadsetEntry
 import app.heyrobot.core.output.CarFile
@@ -123,16 +124,22 @@ object HandsFreeHub {
      */
     fun onButton(a: Activity, intent: Intent) {
         val ctx = a.applicationContext
-        val referrer = EntryReferrer.of(try { a.referrer?.host } catch (_: Throwable) { null })
+        // 1.0.1: who started it, as Android recorded it (core EntryCaller). A start that names its own referrer could name
+        // anyone, so it is never read; Activity.getReferrer gives Android's own only without those extras.
+        val claimed = try { intent.hasExtra(Intent.EXTRA_REFERRER) || intent.hasExtra(Intent.EXTRA_REFERRER_NAME) } catch (_: Throwable) { true }
+        val from = if (claimed) null else try { a.referrer?.takeIf { it.scheme == "android-app" }?.host } catch (_: Throwable) { null }
+        val fromOwnUid = try { a.launchedFromUid == android.os.Process.myUid() } catch (_: Throwable) { false }
+        val trusted = EntryCaller.trusted(from, claimed, ctx.packageName, fromOwnUid)
+        val referrer = if (claimed) EntryReferrer.OTHER else EntryReferrer.of(from)
         val locked = Assistant.locked(ctx)
         val secure = intent.getBooleanExtra(HeadsetEntry.EXTRA_SECURE, false)
         val vis = RobotVoiceService.instance
         val file = HandsFreeFiles.store(ctx).headset()
         val mayAck = file.settings.answerVoiceButton && AudioDevices.exactBluetooth(ctx)
-        val d = HeadsetEntry.decide(intent.action, secure, locked, vis != null, file.settings.buttonOpensRobot, CarModeController.on, mayAck)
+        val d = HeadsetEntry.decide(intent.action, secure, locked, vis != null, file.settings.buttonOpensRobot, CarModeController.on, mayAck, trusted)
         RLog.i("headset_entry", "decision" to RLog.Code(d.javaClass.simpleName.lowercase()), "referrer" to referrer)
         when (d) {
-            EntryDecision.Ignore -> return
+            EntryDecision.Ignore, EntryDecision.NotTrusted -> return
             EntryDecision.NotAssistant -> {
                 android.widget.Toast.makeText(ctx, HeadsetEntry.NOT_ASSISTANT, android.widget.Toast.LENGTH_SHORT).show()
                 return

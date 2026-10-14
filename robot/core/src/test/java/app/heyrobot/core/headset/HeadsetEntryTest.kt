@@ -31,7 +31,8 @@ class HeadsetEntryTest {
     }
 
     @Test fun decide() {
-        val d = HeadsetEntry::decide
+        fun d(action: String?, secure: Boolean, locked: Boolean, running: Boolean, buttonOn: Boolean, car: Boolean, ack: Boolean) =
+            HeadsetEntry.decide(action, secure, locked, running, buttonOn, car, ack)
         assertEquals(EntryDecision.Show(EntryKind.BVRA, false, false, false), d(HeadsetEntry.VOICE_COMMAND, false, false, true, true, false, false))
         assertEquals(EntryDecision.Show(EntryKind.BVRA, false, false, true), d(HeadsetEntry.VOICE_COMMAND, false, false, true, true, false, true))
         assertEquals(EntryDecision.Show(EntryKind.HOOK, false, false, false), d(HeadsetEntry.WEB_SEARCH, false, false, true, true, false, true))
@@ -49,6 +50,28 @@ class HeadsetEntryTest {
         assertEquals(EntryReferrer.SYSTEM, EntryReferrer.of("android"))
         assertEquals(EntryReferrer.OTHER, EntryReferrer.of("com.example.spoof"))
         assertEquals(EntryReferrer.NONE, EntryReferrer.of(null))
+    }
+
+    @Test fun onlyTheSystemsButtonPathsAndRobotItselfMayStartIt() {
+        // 1.0.1: the activity shows over the lock screen and is exported, so its caller is checked as Android records it:
+        // the system (the wired or USB long-press, a voice-assist key), Bluetooth (a headset's or car's voice button), Robot.
+        val own = "app.heyrobot"
+        fun t(referrer: String?, claimed: Boolean = false, fromOwnUid: Boolean = false) = EntryCaller.trusted(referrer, claimed, own, fromOwnUid)
+        assertTrue(t("android"))
+        assertTrue(t("com.android.bluetooth"))
+        assertTrue(t("com.google.android.bluetooth"))
+        assertTrue(t("com.android.systemui"))
+        assertTrue(t(own))
+        assertTrue(t(null, fromOwnUid = true))
+        // Any other app, no caller at all, or a start that names its own referrer (EXTRA_REFERRER can say "android").
+        assertFalse(t("com.example.spoof"))
+        assertFalse(t(null))
+        assertFalse(t(""))
+        assertFalse(t("android", claimed = true))
+        assertFalse(t("com.android.bluetooth.evil"))
+        // An untrusted caller gets nothing: no panel, no toast.
+        assertEquals(EntryDecision.NotTrusted, HeadsetEntry.decide(HeadsetEntry.VOICE_SEARCH_HANDS_FREE, true, true, true, callerTrusted = false))
+        assertEquals(EntryDecision.Ignore, HeadsetEntry.decide("android.intent.action.MAIN", false, false, true, callerTrusted = false))
     }
 
     @Test fun settingsDefaultsAndJson() {
