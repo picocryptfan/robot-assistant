@@ -1,0 +1,48 @@
+Robot™ is a complete voice assistant that doesn't come from Google or Apple. Say "hey robot", ask for what you need, and it answers out loud. What you say is heard, understood and answered on the phone. Nothing you say is sent anywhere unless you ask for it.
+
+I built it because there wasn't one. My phone runs GrapheneOS with no Google account, and every assistant that could actually do things came from Google or Apple.
+
+WHAT IT DOES
+• Timers and alarms, also from the lock screen, and your calendar
+• Drafts texts and emails in the apps you choose; you press Send
+• Opens your maps app with a search or route ready
+• Keeps notes and finds them again
+• Answers questions about what's on your screen, or a photo, once the phone is unlocked
+• Answers everyday questions with an AI model that runs on the phone
+• The weather from Open-Meteo, only when you ask
+• Checks battery, storage and memory, and helps free space
+• Conversation mode: transcripts with speaker names, live French and English translation, summaries
+• Your own wake words, voice speed, and a People list for the names you use
+• Checks GitHub for its own updates once a day and downloads them on Wi-Fi. You install them, and both can be turned off
+
+LANGUAGES
+Understands and speaks English and Québec French. Reads other languages and answers in English or French.
+
+PRIVATE BY DEFAULT
+• Wake word, speech recognition, the AI model and the voice all run on the phone
+• Works offline once its model files are downloaded
+• Goes online only for what you ask (the weather, a search, a download), for the daily update check and its download on Wi-Fi, and for routines you allow to. Each can be turned off in Settings
+• Each action can be set to Just do it, Ask first, or Off
+• No analytics, no crash reporting, no ads, no account, no Google Play services
+• Audio is never saved; message and screen content is never logged
+
+OPTIONAL: HELPERS
+For a question that needs a bigger model, Robot can pass that one question to an AI you choose: a paid AI service with your own API key, another AI's app on your phone (you press Send there), or your own server. None is set up until you add one, and a helper only gets what you ask or allow it to.
+
+REQUIREMENTS
+• Pixel 10 phones run the model on the TPU (tested on the Pixel 10 Pro)
+• Pixel 6 to 9, their a models, the 10a, Fold and Tablet work more slowly on the GPU or CPU
+• Pixel 11 in beta. Snapdragon and other Android phones are planned
+• Pixels come first because GrapheneOS runs on them, and keeping Google off the phone is the point
+• Android 14 or newer; built and tested on GrapheneOS
+• 3.6 to 4.3 GB free for model and voice files, depending on the phone, downloaded once and checked by SHA-256
+• The model uses about 2 GB of memory while it's loaded
+
+SETUP
+Robot becomes your default digital assistant (Settings › Apps › Default apps). Its setup screen checks everything and explains an optional one-time step that keeps Robot set as the assistant after a restart.
+
+FREE AND OPEN SOURCE
+Robot is GPL-3.0 and I make it alone. Nothing is locked. If it's useful to you, you can donate on Ko-fi (https://ko-fi.com/picocryptfan), once or monthly, or in Bitcoin, Lightning, Monero or Ethereum: https://robot-app.ai/#donate
+
+Source code, issue tracker and model hashes: https://github.com/picocryptfan/robot-assistant
+Contact: hey@robot-app.ai
