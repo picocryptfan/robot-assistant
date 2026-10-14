@@ -98,8 +98,8 @@ class QueryCheckTest {
     }
 
     @Test fun emailsNeverGoEvenInYourOwnWords() {
-        for (q in listOf("john.doe@gmail.com", "who is jdoe@proton.me", "john dot doe at gmail dot com", "jdoe (at) proton (dot) me", "jdoe [at] proton [dot] me",
-            "marie chez videotron point ca", "jdoe＠gmail.com", "x﹫y.com", "@handle")) {
+        for (q in listOf("john.doe@example.com", "who is jdoe@example.org", "john dot doe at example dot com", "jdoe (at) example (dot) org", "jdoe [at] example [dot] org",
+            "marie chez example point org", "jdoe＠example.com", "x﹫y.com", "@handle")) {
             assertEquals(q, QueryRefusal.EMAIL, refused(q))
         }
         assertEquals("That search looked like it contained personal details, so Robot didn't send it.", QueryRefusal.EMAIL.text)

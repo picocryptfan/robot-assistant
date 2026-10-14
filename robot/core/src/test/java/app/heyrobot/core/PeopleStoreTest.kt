@@ -17,7 +17,7 @@ class PeopleStoreTest {
     private var n = 0
     private val ids: () -> String = { "id${++n}" }
 
-    private val mom = Person("p1", "Mom Martin", aliases = listOf("Mom"), xmpp = listOf(XmppAddress("+15145550101@cheogram.com", "me@jmp.chat")),
+    private val mom = Person("p1", "Mom Martin", aliases = listOf("Mom"), xmpp = listOf(XmppAddress("+15145550101@cheogram.com", "me@example.net")),
         source = PersonSource.CHEOGRAM_PICK, updatedAt = 1)
     private val bob = Person("p2", "Bob Tremblay", phones = listOf(ContactPhone("+1 514 555 0199", PhoneKind.MOBILE, "Mobile")),
         emails = listOf("bob@example.org", "bob@work.example.com"), source = PersonSource.VCARD, updatedAt = 2)
@@ -27,13 +27,13 @@ class PeopleStoreTest {
     @Test fun onlyAnAddressPickedInCheogramOpensInItsAccount() {
         // Review 0.4.0 #4: Cheogram opens a chat in a named account only for a contact of that account (its list);
         // anyone else goes by the plain link.
-        val card = ContactCard("r:x", "Zoé", xmpp = listOf(XmppAddress("zoe@example.org", "me@jmp.chat", picked = true), XmppAddress("z2@example.org", "me@jmp.chat")))
-        assertEquals(listOf("me@jmp.chat", null), Recipients.forText(listOf(card), xmppOk = true).map { it.account })
+        val card = ContactCard("r:x", "Zoé", xmpp = listOf(XmppAddress("zoe@example.org", "me@example.net", picked = true), XmppAddress("z2@example.org", "me@example.net")))
+        assertEquals(listOf("me@example.net", null), Recipients.forText(listOf(card), xmppOk = true).map { it.account })
         // A pick refreshes the account and marks it picked; accounts are kept in lower case, as Cheogram compares them.
         val old = listOf(Person("z", "Zoé", xmpp = listOf(XmppAddress("zoe@example.org", "old@example.org"))))
-        val (_, p) = PeopleEdit.rememberPick(old, "zoé", CheogramPick("Zoé", "zoe@example.org", "me@jmp.chat"), 1, ids)
-        assertEquals(XmppAddress("zoe@example.org", "me@jmp.chat", picked = true), p.xmpp.single())
-        assertEquals("me@jmp.chat", People.clean(Person("y", "Y", xmpp = listOf(XmppAddress("y@example.org", " Me@JMP.chat ", picked = true)))).xmpp.single().account)
+        val (_, p) = PeopleEdit.rememberPick(old, "zoé", CheogramPick("Zoé", "zoe@example.org", "me@example.net"), 1, ids)
+        assertEquals(XmppAddress("zoe@example.org", "me@example.net", picked = true), p.xmpp.single())
+        assertEquals("me@example.net", People.clean(Person("y", "Y", xmpp = listOf(XmppAddress("y@example.org", " Me@EXAMPLE.net ", picked = true)))).xmpp.single().account)
         // No account, nothing picked.
         assertEquals(XmppAddress("y@example.org"), People.clean(Person("y", "Y", xmpp = listOf(XmppAddress("y@example.org", " ", picked = true)))).xmpp.single())
         val back = PeopleCodec.fromJson(PeopleCodec.toJson(listOf(p)))
@@ -100,11 +100,11 @@ class PeopleStoreTest {
     // ------------------------------------------------------------------ Cheogram pick
 
     @Test fun aPickInCheogramIsRememberedUnderTheNameYouSaid() {
-        val pick = CheogramPick("Maman Martin", "+15145550101@cheogram.com", "me@jmp.chat")
+        val pick = CheogramPick("Maman Martin", "+15145550101@cheogram.com", "me@example.net")
         val (l1, p1) = PeopleEdit.rememberPick(emptyList(), "mom", pick, 10, ids)
         assertEquals(listOf("mom"), p1.aliases)
         assertEquals("Maman Martin", p1.name)
-        assertEquals(listOf(XmppAddress("+15145550101@cheogram.com", "me@jmp.chat", picked = true)), p1.xmpp)
+        assertEquals(listOf(XmppAddress("+15145550101@cheogram.com", "me@example.net", picked = true)), p1.xmpp)
         assertEquals(PersonSource.CHEOGRAM_PICK, p1.source)
         assertTrue(p1.confirmed)
         assertEquals(listOf(p1), l1)
@@ -120,7 +120,7 @@ class PeopleStoreTest {
         val (_, p4) = PeopleEdit.rememberPick(listOf(learned), "mom", pick, 13, ids)
         assertEquals("Maman Martin", p4.name)
         assertTrue(p4.confirmed)
-        assertEquals("me@jmp.chat", p4.xmpp.single().account)
+        assertEquals("me@example.net", p4.xmpp.single().account)
         // An alias moves: "mom" now means only the one you picked.
         val other = Person("o", "Old Mom", aliases = listOf("Mom"), phones = listOf(ContactPhone("5145550000", PhoneKind.MOBILE, "Mobile")))
         val (l5, _) = PeopleEdit.rememberPick(listOf(other), "mom", pick, 14, ids)
@@ -328,7 +328,7 @@ class PeopleStoreTest {
         // Nor by the SMS app (it can't text an XMPP address).
         assertTrue(book.best("bob", reach = Reachable.text(xmppOk = false)).none { it.kind == NameMatch.ALIAS })
         // An email-only person with an alias doesn't hide the phone's numbers from "text bob".
-        val proton = AddressBook(phoneBob, listOf(Person("p", "Robert Smith", aliases = listOf("Bob"), emails = listOf("bob@proton.me"))))
+        val proton = AddressBook(phoneBob, listOf(Person("p", "Robert Smith", aliases = listOf("Bob"), emails = listOf("bob@example.com"))))
         assertEquals(2, proton.best("bob", reach = Reachable.text(xmppOk = true)).size)
         assertEquals(listOf(ContactIds.people("p")), proton.best("bob", reach = Reachable.email).map { it.id })
     }
@@ -355,7 +355,7 @@ class PeopleStoreTest {
         assertEquals("parents", People.aliasName("mes parents"))
         assertEquals("ma", People.aliasName("ma"))
         assertEquals("Always use this for “mom”", Recipients.rememberLabel("my mom"))
-        val pick = CheogramPick("Maman Martin", "+15145550101@cheogram.com", "me@jmp.chat")
+        val pick = CheogramPick("Maman Martin", "+15145550101@cheogram.com", "me@example.net")
         val (_, p) = PeopleEdit.rememberPick(emptyList(), "my mom", pick, 1, ids)
         assertEquals(listOf("mom"), p.aliases)
         val book = AddressBook(emptyList(), listOf(p.copy(aliases = listOf("mom", "mère"))))

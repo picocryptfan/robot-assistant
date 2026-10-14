@@ -16,7 +16,7 @@ class VCardTest {
         FN;PREF=1:Zoé Lefèvre
         UID:proton-web-3b5f6c1e-0d1a-4c2b-9f5e-7a1b2c3d4e5f
         N:Lefèvre;Zoé;;;
-        item1.EMAIL;PREF=1:zoe@proton.me
+        item1.EMAIL;PREF=1:zoe@example.com
         item1.CATEGORIES:Famille
         item2.EMAIL;PREF=2:zoe.lefevre@example.fr
         TEL;PREF=1;TYPE=cell:+33 6 12 34 56 78
@@ -45,7 +45,7 @@ class VCardTest {
         assertEquals(1, f.skipped)
         val z = f.entries[0]
         assertEquals("Zoé Lefèvre", z.name)
-        assertEquals(listOf("zoe@proton.me", "zoe.lefevre@example.fr"), z.emails)
+        assertEquals(listOf("zoe@example.com", "zoe.lefevre@example.fr"), z.emails)
         assertEquals(listOf(ContactPhone("+33 6 12 34 56 78", PhoneKind.MOBILE, "Mobile")), z.phones)
         // Addresses, birthdays, notes and categories are not kept.
         assertEquals(emptyList<String>(), z.nicknames)
@@ -57,7 +57,7 @@ class VCardTest {
         val book = AddressBook(emptyList(), f.entries.mapIndexed { i, e -> VCard.person(e, "v$i", 1) })
         val m = book.best("zoe")
         assertEquals("Zoé Lefèvre", m.single().name)
-        assertEquals(listOf("zoe@proton.me", "zoe.lefevre@example.fr"), Recipients.forEmail(book.cards(m) { emptyList() }).map { it.address })
+        assertEquals(listOf("zoe@example.com", "zoe.lefevre@example.fr"), Recipients.forEmail(book.cards(m) { emptyList() }).map { it.address })
     }
 
     @Test fun vCard21WithQuotedPrintableAndSoftBreaks() {
@@ -201,7 +201,7 @@ class VCardTest {
         val people = listOf(
             Person("a", "Hélène Côté-Desrosiers de la Montagne, avec un nom très long pour plier la ligne", aliases = listOf("maman", "mom; ma"),
                 phones = listOf(ContactPhone("+1 514-555-0101", PhoneKind.MOBILE, "Mobile"), ContactPhone("514 555 0199", PhoneKind.OTHER, "Other")),
-                emails = listOf("helene@example.org"), xmpp = listOf(XmppAddress("+15145550101@cheogram.com", "me@jmp.chat"))),
+                emails = listOf("helene@example.org"), xmpp = listOf(XmppAddress("+15145550101@cheogram.com", "me@example.net"))),
             Person("b", "Bob", emails = listOf("bob@example.org")),
         )
         val text = VCard.write(people)
@@ -217,7 +217,7 @@ class VCardTest {
         assertEquals(listOf(PhoneKind.MOBILE, PhoneKind.OTHER), a.phones.map { it.kind })
         assertEquals(listOf("helene@example.org"), a.emails)
         // The Cheogram account survives the round trip (Robot's own IMPP parameter).
-        assertEquals(listOf(XmppAddress("+15145550101@cheogram.com", "me@jmp.chat")), a.xmpp)
+        assertEquals(listOf(XmppAddress("+15145550101@cheogram.com", "me@example.net")), a.xmpp)
         assertEquals("Bob", back.entries[1].name)
         // A person imported back merges with themselves: nothing new.
         val m = PeopleEdit.merge(people, back.entries.mapIndexed { i, e -> VCard.person(e, "n$i", 2) }, 3)

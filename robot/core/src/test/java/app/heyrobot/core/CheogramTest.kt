@@ -10,13 +10,13 @@ import org.junit.Test
 class CheogramTest {
     @Test fun aPickGivesTheNameTheAddressAndTheAccount() {
         // As ShortcutService.getShortcutIntent builds it: "xmpp:" + the bare address, the account's bare address as an extra.
-        assertEquals(CheogramPick("Maman Martin", "+15145550101@cheogram.com", "me@jmp.chat"),
-            CheogramLinks.pick(" Maman  Martin ", "xmpp:+15145550101@cheogram.com", "me@jmp.chat"))
+        assertEquals(CheogramPick("Maman Martin", "+15145550101@cheogram.com", "me@example.net"),
+            CheogramLinks.pick(" Maman  Martin ", "xmpp:+15145550101@cheogram.com", "me@example.net"))
         // No name: the address's local part. No account: Cheogram picks it.
         assertEquals(CheogramPick("bob", "bob@example.org", null), CheogramLinks.pick(null, "xmpp:bob@example.org", null))
         assertEquals(CheogramPick("Bob", "bob@example.org", null), CheogramLinks.pick("Bob", "xmpp:bob@example.org", "not an account"))
         // Accounts in lower case: Cheogram compares them exactly.
-        assertEquals("me@jmp.chat", CheogramLinks.pick("Bob", "xmpp:bob@example.org", "Me@JMP.chat")?.account)
+        assertEquals("me@example.net", CheogramLinks.pick("Bob", "xmpp:bob@example.org", "Me@EXAMPLE.net")?.account)
         // A group chat, another scheme, nothing usable: no pick.
         assertNull(CheogramLinks.pick("Friends", "xmpp:friends@conference.example.org?join", "me@example.org"))
         assertNull(CheogramLinks.pick("X", "sip:x@example.org", null))
@@ -25,17 +25,17 @@ class CheogramTest {
     }
 
     @Test fun aShortcutIdIsTheAccountAndTheContact() {
-        assertEquals("me@jmp.chat" to "+15145550101@cheogram.com", CheogramLinks.shortcut("me@jmp.chat#+15145550101@cheogram.com"))
-        assertNull(CheogramLinks.shortcut("me@jmp.chat"))
+        assertEquals("me@example.net" to "+15145550101@cheogram.com", CheogramLinks.shortcut("me@example.net#+15145550101@cheogram.com"))
+        assertNull(CheogramLinks.shortcut("me@example.net"))
         assertNull(CheogramLinks.shortcut("#a@b.org"))
         assertNull(CheogramLinks.shortcut(null))
     }
 
     @Test fun onlyA1to1ChatsSenderIsLearned() {
-        val id = "me@jmp.chat#zoe@example.org"
+        val id = "me@example.net#zoe@example.org"
         val zoe = "Zoé" to "zoe@example.org"
-        assertEquals(CheogramSender("Zoé", "zoe@example.org", "me@jmp.chat"), CheogramNotices.sender(id, false, listOf(zoe)))
-        assertEquals("me@jmp.chat", CheogramNotices.sender("Me@JMP.chat#zoe@example.org", false, listOf(zoe))?.account)
+        assertEquals(CheogramSender("Zoé", "zoe@example.org", "me@example.net"), CheogramNotices.sender(id, false, listOf(zoe)))
+        assertEquals("me@example.net", CheogramNotices.sender("Me@EXAMPLE.net#zoe@example.org", false, listOf(zoe))?.account)
         // The newest name wins; messages from you (no key, or yours) don't count.
         assertEquals("Zoé L.", CheogramNotices.sender(id, false, listOf(zoe, null to null, "Zoé L." to "ZOE@example.org"))?.name)
         // A group chat, no shortcut (a silent channel), a sender other than the chat's contact: nothing.
@@ -43,9 +43,9 @@ class CheogramTest {
         assertNull(CheogramNotices.sender(null, false, listOf(zoe)))
         assertNull(CheogramNotices.sender(id, false, listOf("Mallory" to "mallory@example.org")))
         // A chat with yourself, or a name that is only the address or a number: nothing to learn.
-        assertNull(CheogramNotices.sender("me@jmp.chat#me@jmp.chat", false, listOf("Me" to "me@jmp.chat")))
+        assertNull(CheogramNotices.sender("me@example.net#me@example.net", false, listOf("Me" to "me@example.net")))
         assertNull(CheogramNotices.sender(id, false, listOf("zoe" to "zoe@example.org")))
-        assertNull(CheogramNotices.sender("me@jmp.chat#+15145550101@cheogram.com", false, listOf("+1 514-555-0101" to "+15145550101@cheogram.com")))
+        assertNull(CheogramNotices.sender("me@example.net#+15145550101@cheogram.com", false, listOf("+1 514-555-0101" to "+15145550101@cheogram.com")))
         assertNull(CheogramNotices.sender(id, false, listOf(" " to "zoe@example.org")))
     }
 
