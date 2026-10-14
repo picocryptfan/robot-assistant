@@ -27,9 +27,11 @@ class ReadOnlyCommandsTest {
         // 1.0.1: -H, -L and -P come before the start paths; they no longer hide those paths from the check.
         for (s in listOf("find -L /", "find -L /etc -name x", "find -H /data", "find -P /", "find -L -P / -name '*.key'", "find -L ~/.ssh",
             // GNU find's -D and -O come there too: refused.
-            "find -O3 /etc", "find -D tree /etc", "find -Dtree ~", "find -O3 ~"))
+            "find -O3 /etc", "find -D tree /etc", "find -Dtree ~", "find -O3 ~",
+            // "--" ends those options: what follows is still a start path.
+            "find -- /etc", "find -L -- /", "find -H -- /data", "find -- ~/.ssh"))
             assertFalse("'$s' shouldn't be allowed", ok(s))
-        for (s in listOf("find -L ~ -name '*.md'", "find -P ~/notes -type f", "find -H -L ~/notes -mtime -1"))
+        for (s in listOf("find -L ~ -name '*.md'", "find -P ~/notes -type f", "find -H -L ~/notes -mtime -1", "find -- ~/notes -name x", "find -L -- ~"))
             assertTrue("'$s' should be allowed", ok(s))
     }
 

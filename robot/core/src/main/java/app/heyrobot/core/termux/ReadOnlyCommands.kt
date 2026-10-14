@@ -133,16 +133,18 @@ object ReadOnlyCommands {
 
     /**
      * find: start paths in ~ or $PREFIX; no -delete, -exec, -execdir, -ok, -okdir, -fprint…, -fls. 1.0.1: the options that
-     * come before the start paths (-H, -L, -P) are skipped first, so "find -L /" has its "/" checked; GNU find's -D and -O
-     * (also before the paths) are refused.
+     * come before the start paths (-H, -L, -P, and a "--" ending them) are skipped first, so "find -L /" and "find -- /" have
+     * their "/" checked; GNU find's -D and -O (also before the paths) are refused.
      */
     private fun find(args: List<ShellWord>): Boolean {
         val forbidden = setOf("-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf", "-fls")
         if (args.any { it.value in forbidden }) return false
         val lead = args.takeWhile { it.value in setOf("-H", "-L", "-P") }.size
-        val rest = args.drop(lead)
+        var rest = args.drop(lead)
         val first = rest.firstOrNull()?.value
         if (first != null && (first.startsWith("-D") || first.startsWith("-O"))) return false
+        // "--" ends those options; the start paths follow it.
+        if (first == "--") rest = rest.drop(1)
         val starts = rest.takeWhile { !it.value.startsWith("-") && it.value != "(" && it.value != "!" }
         return starts.all { pathOk(it, content = false) }
     }
