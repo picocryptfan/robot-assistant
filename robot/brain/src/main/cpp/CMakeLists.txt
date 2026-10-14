@@ -23,6 +23,17 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 # Each function and object in its own section, so the linker drops what Robot's bridge never reaches.
 add_compile_options(-ffunction-sections -fdata-sections -fvisibility=hidden)
 
+# The library doesn't depend on where it was built (tools/repro_check.sh --native): the folders of llama.cpp, KleidiAI,
+# Robot's bridge, the build and the NDK are mapped to fixed names in __FILE__ (ggml's asserts name their source file)
+# and in the unstripped copy's debug info, as mt's CMakeLists.txt does for slimt. None of the folders holds another.
+set(ROBOT_PREFIX_MAPS "${LLAMA_SRC}=llama.cpp" "${CMAKE_CURRENT_SOURCE_DIR}=robot_llama" "${CMAKE_BINARY_DIR}=build" "${CMAKE_ANDROID_NDK}=ndk")
+if(FETCHCONTENT_SOURCE_DIR_KLEIDIAI)
+    list(APPEND ROBOT_PREFIX_MAPS "${FETCHCONTENT_SOURCE_DIR_KLEIDIAI}=kleidiai")
+endif()
+foreach(map ${ROBOT_PREFIX_MAPS})
+    add_compile_options("-ffile-prefix-map=${map}")
+endforeach()
+
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_COMMON ON CACHE BOOL "" FORCE)
 foreach(off LLAMA_BUILD_TESTS LLAMA_BUILD_TOOLS LLAMA_BUILD_EXAMPLES LLAMA_BUILD_SERVER LLAMA_BUILD_APP LLAMA_BUILD_UI
@@ -46,4 +57,4 @@ target_link_libraries(robot_llama PRIVATE llama-common llama)
 target_link_options(robot_llama PRIVATE
     "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/exports.map"
     -Wl,--gc-sections -Wl,--exclude-libs,ALL -Wl,--no-undefined -Wl,-z,max-page-size=16384
-    -Wl,--wrap=fork -Wl,--wrap=execlp)
+    -Wl,--wrap=fork -Wl,--wrap=execlp -Wl,--build-id=sha1)

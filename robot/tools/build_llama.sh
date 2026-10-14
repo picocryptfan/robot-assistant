@@ -12,10 +12,16 @@
 # Then CMake builds llama.cpp, ggml and KleidiAI as static libraries and links them with robot_llama.cpp into one
 # shared library that exports only its JNI functions; the script checks what it exports and imports before copying it.
 #
+# The same sources give the same library wherever they are built (1.0.1): the CMakeLists maps the folders out of it, git
+# can't see Robot's own repository from the sources (llama.cpp's build info would record its commit), and the NDK and
+# CMake are the pinned ones below, never whatever else is installed.
+#
 # Usage: tools/build_llama.sh [--git] [--clean]
 #   --git    fetch llama.cpp with git (the commit, then the same tar check) instead of GitHub's tarball
 #   --clean  delete the CMake build folder afterwards (about 300 MB; the checked sources stay for the next build)
-# Needs: curl, git, tar, gzip, sha256sum, md5sum, cmake (3.22+), ninja, and the NDK (ANDROID_NDK_HOME, or the default below).
+# ROBOT_LLAMA_WORK=<dir> puts the sources and the build there instead of build-native/.
+# Needs: curl, git, tar, gzip, sha256sum, md5sum, and the Android SDK's NDK and CMake (with its ninja) at the versions
+# below (ANDROID_HOME, default /opt/android-sdk; ANDROID_NDK_HOME may point at the same NDK elsewhere).
 set -euo pipefail
 
 LLAMA_TAG=b11200
@@ -36,8 +42,14 @@ KLEIDIAI_TAR_SHA256=7665267ade0042fe158d2a9778c09563f3f93b759c7b0daa82ba28d709af
 KLEIDIAI_GIT=https://github.com/ARM-software/kleidiai
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
-NDK="${ANDROID_NDK_HOME:-${ANDROID_NDK:-/opt/android-sdk/ndk/27.1.12297006}}"
-WORK="$HERE/build-native"
+SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/opt/android-sdk}}"
+NDK_VERSION=27.1.12297006
+CMAKE_VERSION=3.22.1
+NDK="${ANDROID_NDK_HOME:-${ANDROID_NDK:-$SDK/ndk/27.1.12297006}}"
+CM="$SDK/cmake/$CMAKE_VERSION/bin"
+WORK="${ROBOT_LLAMA_WORK:-$HERE/build-native}"
+mkdir -p "$WORK"
+WORK="$(cd "$WORK" && pwd)"
 SRC="$WORK/src"
 BUILD="$WORK/build"
 OUT="$HERE/brain/src/main/jniLibs/arm64-v8a"
@@ -55,7 +67,15 @@ for a in "$@"; do
 done
 
 [ -f "$NDK/build/cmake/android.toolchain.cmake" ] || { echo "No Android NDK at $NDK (set ANDROID_NDK_HOME)"; exit 1; }
-for t in curl git tar gzip sha256sum md5sum cmake ninja; do command -v "$t" >/dev/null || { echo "missing: $t"; exit 1; }; done
+got=$(sed -n 's/^Pkg.Revision *= *//p' "$NDK/source.properties" 2>/dev/null | tr -d '\r')
+[ "$got" = "$NDK_VERSION" ] || { echo "The NDK at $NDK is '$got': Robot's library is built with NDK $NDK_VERSION only (sdkmanager \"ndk;$NDK_VERSION\")"; exit 1; }
+got=$("$CM/cmake" --version 2>/dev/null | sed -n '1s/^cmake version \([0-9.]*\).*/\1/p')
+[ "$got" = "$CMAKE_VERSION" ] && [ -x "$CM/ninja" ] || { echo "No CMake $CMAKE_VERSION with its ninja in $CM (sdkmanager \"cmake;$CMAKE_VERSION\"): Robot's library is built with that one only"; exit 1; }
+for t in curl git tar gzip sha256sum md5sum; do command -v "$t" >/dev/null || { echo "missing: $t"; exit 1; }; done
+# llama.cpp's CMake asks git for the commit and count of the folder its sources are in (its build info). They come from a
+# tarball, so git would walk up to Robot's own repository (build-native/ is inside it) and record Robot's commit: git
+# stops at the sources' folder instead, and the build info says "unknown" wherever it's built.
+export GIT_CEILING_DIRECTORIES="$SRC"
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -121,7 +141,7 @@ fi
 
 # ------------------------------------------------------------------ build
 # FETCHCONTENT_FULLY_DISCONNECTED: CMake uses the checked KleidiAI folder and never downloads anything itself.
-cmake -G Ninja -S "$HERE/brain/src/main/cpp" -B "$BUILD" \
+"$CM/cmake" -G Ninja -DCMAKE_MAKE_PROGRAM="$CM/ninja" -S "$HERE/brain/src/main/cpp" -B "$BUILD" \
   -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
   -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-34 -DANDROID_STL=c++_static \
   -DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON \
@@ -129,7 +149,7 @@ cmake -G Ninja -S "$HERE/brain/src/main/cpp" -B "$BUILD" \
   -DLLAMA_SRC="$LLAMA_DIR" \
   -DFETCHCONTENT_SOURCE_DIR_KLEIDIAI="$KLEIDIAI_DIR" -DFETCHCONTENT_FULLY_DISCONNECTED=ON \
   > "$WORK/cmake-configure.log"
-cmake --build "$BUILD" --target robot_llama -j "$(nproc)" > "$WORK/cmake-build.log" || { tail -30 "$WORK/cmake-build.log"; exit 1; }
+"$CM/cmake" --build "$BUILD" --target robot_llama -j "$(nproc)" > "$WORK/cmake-build.log" || { tail -30 "$WORK/cmake-build.log"; exit 1; }
 grep -q 'Using KleidiAI optimized kernels' "$WORK/cmake-configure.log" && echo "ok  KleidiAI kernels built in" || { echo "KleidiAI was not enabled"; exit 1; }
 
 built="$BUILD/$LIB"
