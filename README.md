@@ -186,6 +186,20 @@ tools/repro_check.sh                    # builds the APK twice and compares them
 Native libraries and models are never stored in git: the scripts fetch the exact pinned files and check them. Details,
 and how a release is made, are in [`robot/README.md`](robot/README.md) ("Building", "Releasing").
 
+## Support Robot
+
+Robot is free, and I make it alone. If it's useful to you, you can support it on Ko-fi, once or monthly, or with one
+of the addresses below. Either way, you get the same app as everyone else.
+
+- Ko-fi: https://ko-fi.com/picocryptfan
+- Bitcoin: `bc1qq9qe5ckwju6dkjddmf2vpfrcu7cakjw7ld2gtk`
+- Bitcoin: `sp1qqf85ltcy8al2flnwm2v8kszm2rplcs8a6xa6uw5rpfqmy7sa7srr6qafj6jwd3jj2fcmq8agna23syl6vjwzpjjg5yhwalyqm7d7ydxjhvqtgt0v`
+- Lightning: `dopeycheese1839@cake.cash`
+- Monero: `46t4rJYd7XgXeCPG24izVW3FwKPgrmhg74E6GMuT8VUG68ZJvCnDQLHaMsHGzT6YTJiVwUqA1Qd9yMKkWw96jDXXTHaBaQm`
+- Ethereum: `0x8245306C33c92630Af30aCFc542307dbD17f47D1`
+
+The same list is on [robot-app.ai](https://robot-app.ai/#donate).
+
 ## Contributing, security and licence
 
 - How to build, test and send changes is in [`CONTRIBUTING.md`](CONTRIBUTING.md). What changed in each version is in
