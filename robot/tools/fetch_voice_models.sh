@@ -2,7 +2,8 @@
 # Downloads the voice models the app downloads itself (Settings › Voice / Model › Voice models) to a directory on
 # a computer and checks every byte count and SHA-256. Same pinned Hugging Face commits, files and hashes as
 # core/.../VoiceModels.kt (ManifestTest keeps the two in step). For checking the manifest, for tools/voice_bench.py
-# and tools/make_test_clip.py; the APK never contains these files. Resumes partial files (curl -C -).
+# and tools/make_test_clip.py; the APK never contains these files. Resumes partial files (curl -C -); a file of the right
+# size with the wrong SHA-256 is downloaded again.
 # Needs curl and sha256sum. Usage: tools/fetch_voice_models.sh <dir> [bundle...]   (default: every bundle)
 set -euo pipefail
 DEST="${1:?usage: fetch_voice_models.sh <dir> [bundle...]}"
@@ -25,17 +26,26 @@ spk-titanet-small csukuangfj/speaker-embedding-models 0743f301363dec56491a490f6d
 LIST
 )
 
+size() { if [ -f "$1" ]; then stat -c %s "$1"; else echo 0; fi; }
+fetch() { curl -sSfL -C - --retry 5 --retry-delay 3 -o "$out" "https://huggingface.co/$repo/resolve/$commit/$file" || true; }
 fails=0
 while read -r bundle repo commit file bytes sha; do
   case "$WANT" in *" $bundle "*) ;; *) continue ;; esac
   dir="$DEST/$bundle"
   mkdir -p "$dir"
   out="$dir/$file"
-  if [ ! -f "$out" ] || [ "$(stat -c %s "$out")" != "$bytes" ]; then
-    curl -sSfL -C - --retry 5 --retry-delay 3 -o "$out" "https://huggingface.co/$repo/resolve/$commit/$file"
+  # A shorter file is a download cut short: curl resumes it. A longer one can't be resumed: it starts again.
+  [ "$(size "$out")" -le "$bytes" ] || rm -f "$out"
+  [ "$(size "$out")" = "$bytes" ] || fetch
+  # The right size isn't enough: a file whose SHA-256 is wrong is deleted and downloaded again from the start, then
+  # checked again (a resume would only have added to it).
+  if [ "$(size "$out")" = "$bytes" ] && [ "$(sha256sum "$out" | cut -d' ' -f1)" != "$sha" ]; then
+    echo "SHA-256 mismatch: downloading $bundle/$file again"
+    rm -f "$out"
+    fetch
   fi
-  got_bytes=$(stat -c %s "$out")
-  got_sha=$(sha256sum "$out" | cut -d' ' -f1)
+  got_bytes=$(size "$out")
+  got_sha=$([ -f "$out" ] && sha256sum "$out" | cut -d' ' -f1 || echo none)
   if [ "$got_bytes" = "$bytes" ] && [ "$got_sha" = "$sha" ]; then
     echo "ok  $bundle/$file $bytes"
   else
