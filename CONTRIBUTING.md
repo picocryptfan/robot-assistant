@@ -16,8 +16,8 @@ See the README's "Build from source" and [`robot/README.md`](robot/README.md) ("
 
 ```
 cd robot
-gradle :core:testReleaseUnitTest :voice:testReleaseUnitTest :helpers:testReleaseUnitTest :app:testReleaseUnitTest
-gradle :app:testDebugUnitTest      # Compose UI tests and screenshots; -Droborazzi.record=true rewrites the goldens
+./gradlew :core:testReleaseUnitTest :voice:testReleaseUnitTest :helpers:testReleaseUnitTest :app:testReleaseUnitTest
+./gradlew :app:testDebugUnitTest   # Compose UI tests and screenshots; -Droborazzi.record=true rewrites the goldens
 ```
 
 The tests run offline. A change to what you see needs its screenshot goldens re-recorded and looked at. A change to
@@ -35,7 +35,8 @@ checks).
   online after Robot read content it didn't write (the screen, a message, a web page, a command's output) asks you first.
 - Wording. Robot speaks to "you"; Robot is "it". Plain sentences.
 - Pin everything. Every dependency has an exact version; every native library, model and data file has a pinned
-  URL or commit, a size and a SHA-256, checked before use. No dynamic versions, no unpinned downloads.
+  URL or commit, a size and a SHA-256, checked before use. No dynamic versions, no unpinned downloads. A new or
+  changed dependency also needs its SHA-256 in `robot/gradle/verification-metadata.xml` (`robot/README.md`, "Building").
 - Licences. A new dependency, model, data file or online service needs a row in
   [`robot/THIRD_PARTY.md`](robot/THIRD_PARTY.md) and an entry in `robot/app/src/main/assets/licenses/components.json`
   with its licence text; `LicencesTest` and `tools/verify_apk.sh` fail otherwise. Its licence must be compatible with

@@ -140,8 +140,9 @@ as `robot-<version>-third-party-sources.tar.gz`. LiteRT-LM's native libraries co
 
 ## Build from source
 
-You need JDK 21 (or 17), the Android SDK (platform 36, build-tools 35.0.0, NDK 27.1.12297006, CMake 3.22.1) and Gradle
-8.14.3.
+You need JDK 21 (or 17) and the Android SDK (platform 36, build-tools 35.0.0, NDK 27.1.12297006, CMake 3.22.1). Gradle
+comes with the repository: `./gradlew` downloads Gradle 8.14.6 the first time and checks it by its SHA-256, and every
+dependency is checked against the SHA-256 in `robot/gradle/verification-metadata.xml`.
 
 ```
 cd robot
@@ -149,9 +150,9 @@ echo "sdk.dir=/path/to/android-sdk" > local.properties
 tools/fetch_third_party.sh --install    # sherpa-onnx libraries, wake-word and VAD models, espeak-ng data, each checked by SHA-256
 tools/build_robotmt.sh                  # librobotmt.so, the fast translation engine, from pinned sources
 tools/build_llama.sh                    # optional: librobot_llama.so, for your own GGUF files
-gradle :core:testReleaseUnitTest :voice:testReleaseUnitTest :helpers:testReleaseUnitTest :app:testReleaseUnitTest
-gradle :app:testDebugUnitTest           # Compose UI tests and screenshots (Robolectric, offline)
-gradle :app:assembleRelease             # unsigned without a key: see robot/README.md, "Building"
+./gradlew :core:testReleaseUnitTest :voice:testReleaseUnitTest :helpers:testReleaseUnitTest :app:testReleaseUnitTest
+./gradlew :app:testDebugUnitTest        # Compose UI tests and screenshots (Robolectric, offline)
+./gradlew :app:assembleRelease          # unsigned without a key: see robot/README.md, "Building"
 tools/verify_apk.sh app/build/outputs/apk/release/app-release.apk
 tools/repro_check.sh                    # builds the APK twice and compares them
 ```

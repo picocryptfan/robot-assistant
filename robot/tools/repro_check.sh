@@ -4,9 +4,9 @@
 # The first build runs in this checkout; the second in a fresh copy of the committed tree (`git archive HEAD`) in another
 # folder, with the git-ignored inputs Gradle packages hard-linked (or copied) in: local.properties, the native libraries
 # (brain/, mt/ and voice/src/main/jniLibs) and voice's models and espeak-ng data. So a difference that comes from the
-# folder, the time or leftovers of an earlier build shows up. Both builds use `--offline` and the same Gradle, JDK and
-# Android SDK, so this proves the build reproducible on this machine; another machine is the next check (README,
-# "Releasing").
+# folder, the time or leftovers of an earlier build shows up. Both builds use `--offline` and the same Gradle (each
+# tree's own ./gradlew, the version the wrapper pins, unless --gradle names another), JDK and Android SDK, so this
+# proves the build reproducible on this machine; another machine is the next check (README, "Releasing").
 #
 # When they differ, it lists the APK entries whose bytes differ. With apksigcopier (pip install apksigcopier) and a signed
 # APK it also checks the way F-Droid does: copies the signed APK's signature onto the rebuild and compares.
@@ -26,7 +26,7 @@
 #   --libs-only  with --native: stop after comparing the libraries (no APKs)
 #   --keep       keep the second copy's folder (printed at the end)
 #   --signed     a published, signed APK of this commit: also run `apksigcopier compare` against the rebuild
-#   --gradle     the Gradle to use (default: gradle on the PATH, else /opt/gradle/bin/gradle)
+#   --gradle     the Gradle to use (default: each tree's ./gradlew, Gradle 8.14.6 checked by its SHA-256)
 # Needs git, unzip, sha256sum and cmp (--native: what the two build scripts need). Run it by hand (no test runs it).
 # The second build goes in a new folder under $TMPDIR (default /tmp; point it at a disk when /tmp is in memory, as
 # --native's builds need about 2 GB). Uncommitted changes are left out of the second build, so commit first: the script
@@ -38,7 +38,7 @@ KEEP=0
 NATIVE=0
 LIBS_ONLY=0
 SIGNED=""
-GRADLE=$(command -v gradle || echo /opt/gradle/bin/gradle)
+GRADLE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --native) NATIVE=1; shift ;;
@@ -52,7 +52,7 @@ while [ $# -gt 0 ]; do
 done
 [ "$LIBS_ONLY" = 0 ] || [ "$NATIVE" = 1 ] || { echo "--libs-only goes with --native" >&2; exit 2; }
 for t in git unzip sha256sum cmp; do command -v "$t" >/dev/null || { echo "needs $t" >&2; exit 2; }; done
-[ "$LIBS_ONLY" = 1 ] || [ -x "$GRADLE" ] || { echo "no Gradle at $GRADLE (--gradle)" >&2; exit 2; }
+[ "$LIBS_ONLY" = 1 ] || [ -x "${GRADLE:-$HERE/gradlew}" ] || { echo "no Gradle at ${GRADLE:-$HERE/gradlew} (--gradle)" >&2; exit 2; }
 TOP=$(git -C "$HERE" rev-parse --show-toplevel)
 SUB=${HERE#"$TOP"/}
 [ -z "$(git -C "$TOP" status --porcelain --untracked-files=no)" ] || { echo "commit your changes first: the second build uses the committed tree" >&2; exit 2; }
@@ -64,7 +64,7 @@ cleanup() { rm -rf "$OUT/w2"; [ "$KEEP" = 1 ] || rm -rf "$COPY"; }
 trap cleanup EXIT
 
 build() { # dir out.apk
-  (cd "$1" && "$GRADLE" --offline -q clean :app:assembleRelease)
+  (cd "$1" && "${GRADLE:-./gradlew}" --offline -q clean :app:assembleRelease)
   local apk="$1/$APK_REL"
   [ -f "$apk" ] || apk="$1/app/build/outputs/apk/release/app-release.apk"
   [ -f "$apk" ] || { echo "no release APK in $1/app/build/outputs/apk/release" >&2; exit 1; }

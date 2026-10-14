@@ -826,10 +826,15 @@ helpers, the engine hardening and the built-in updater; each has its section bel
 ## Building
 
 Needs JDK 17+ (21 used for the releases), the Android SDK (platform 36, build-tools 35.0.0, pinned in `build.gradle`
-since 1.0; NDK 27.1.12297006 and CMake 3.22.1 for the native scripts) and Gradle 8.14.3. There is no Gradle wrapper yet:
-the build machine has no copy of Gradle's distribution to pin its checksum from offline (add one with
-`gradle wrapper --gradle-version 8.14.3 --gradle-distribution-sha256-sum <sha256 from gradle.org>` on a machine with the
-network). Dependency verification metadata (`gradle/verification-metadata.xml`) is not generated for the same reason.
+since 1.0; NDK 27.1.12297006 and CMake 3.22.1 for the native scripts). Gradle comes with the repository (1.0.1): `./gradlew`
+downloads Gradle 8.14.6 the first time and checks it against the SHA-256 Gradle publishes for it
+(`gradle/wrapper/gradle-wrapper.properties`); the wrapper's jar is Gradle's own, matching its published checksum. Every
+dependency is checked too: `gradle/verification-metadata.xml` holds the SHA-256 of each artifact, POM and module file the
+build, the tests and lint use, and an artifact that differs or isn't listed fails the build. The repositories are
+declared only in `settings.gradle`: Google's Maven serves the AndroidX, Android tools and LiteRT groups and nothing else,
+Maven Central the rest. The first build needs the network, for Gradle and the dependencies; after that, `--offline`
+builds. A changed dependency needs its checksums: `./gradlew --write-verification-metadata sha256` with the tasks below,
+then read the diff of the file before committing it.
 
 ```
 cd robot
@@ -837,10 +842,10 @@ echo "sdk.dir=/path/to/android-sdk" > local.properties
 tools/fetch_third_party.sh --install          # sherpa-onnx libs, wake-word and VAD models (and its bpe.model), espeak-ng subset, SHA-256 checked
 tools/build_llama.sh                          # optional (0.4.5): llama.cpp b11200 from its checked source, for GGUF files
 tools/build_robotmt.sh                        # 0.5.0: librobotmt.so, the fast translation engine (NDK 27.1.12297006, CMake 3.22.1; a 0.6.0 release needs it)
-gradle :core:testReleaseUnitTest :voice:testReleaseUnitTest :helpers:testReleaseUnitTest :app:testReleaseUnitTest
-gradle :app:testDebugUnitTest                  # also the Compose UI tests and screenshots (Robolectric, offline)
-gradle :app:assembleRelease -Probot.keystore=/path/outside/repo/robot-release.p12 \
-                            -Probot.keystorePassFile=/path/outside/repo/robot-release.pass
+./gradlew :core:testReleaseUnitTest :voice:testReleaseUnitTest :helpers:testReleaseUnitTest :app:testReleaseUnitTest
+./gradlew :app:testDebugUnitTest               # also the Compose UI tests and screenshots (Robolectric, offline)
+./gradlew :app:assembleRelease -Probot.keystore=/path/outside/repo/robot-release.p12 \
+                               -Probot.keystorePassFile=/path/outside/repo/robot-release.pass
 tools/verify_apk.sh app/build/outputs/apk/release/app-release.apk
 tools/repro_check.sh                           # 1.0: builds the unsigned APK twice (here and in a clean copy) and compares
 ```
@@ -1949,7 +1954,7 @@ Assistant setup as Android-style pages (next section). (c) the assistant panel a
   at least 48 dp and no overlap, and Roborazzi screenshots compared with the goldens in `app/src/testDebug/screenshots/`
   (the building blocks in light, dark and at 200 % text, the cards in both looks, the icon set). Screenshots use
   Robot's own colours, since Robolectric has no wallpaper. To accept a deliberate change, record them again:
-  `gradle :app:testDebugUnitTest -Droborazzi.record=true`.
+  `./gradlew :app:testDebugUnitTest -Droborazzi.record=true`.
 
 ### On the phone (0.4.5, the look)
 
@@ -2691,7 +2696,7 @@ models are installed, nothing is recording.
 ### On the phone (0.5.0 translation engine)
 
 Phase 5.0(b) is done when steps 2 to 4 pass (design §9.1).
-1. **Build with the engine.** Run `tools/build_robotmt.sh` before `gradle :app:assembleRelease`; `tools/verify_apk.sh`
+1. **Build with the engine.** Run `tools/build_robotmt.sh` before `./gradlew :app:assembleRelease`; `tools/verify_apk.sh`
    then shows "packages librobotmt.so (the fast translation engine)", "librobotmt.so exports only its three JNI
    functions" and "only app.heyrobot.mt.Slimt loads librobotmt (dex)". (Without the script it prints a NOTE instead.)
 2. **Download.** Settings › Conversation › Fast translation › Download (52 MB): progress, then "Checking and installing", then
