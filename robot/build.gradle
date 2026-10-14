@@ -14,3 +14,24 @@ ext {
     robotMinSdk = 34
     robotTargetSdk = 36
 }
+
+// Unit tests also read files by path (the robot.rootDir property, or their module's folder): Robot's sources and assets
+// in every module, and :app's also the README, fastlane/, LICENSE and .gitignore at the top of the repository,
+// THIRD_PARTY.md, support-addresses.txt, the build files, tools/ and third_party/. Gradle only tracks a test task's
+// classes, so those are declared as its inputs too: a change to one reruns the tests instead of leaving them up to date
+// (or handing back a cached result). Compared by path within the checkout, wherever it is.
+def robotModules = ['core', 'brain', 'voice', 'helpers', 'mt', 'app']
+subprojects {
+    tasks.withType(Test).configureEach { t ->
+        t.inputs.files(robotModules.collect { rootProject.file("$it/src/main") })
+            .withPropertyName('robotModuleSources').withPathSensitivity(PathSensitivity.RELATIVE)
+        if (project.name == 'app') {
+            def top = rootProject.projectDir.parentFile
+            t.inputs.files(['README.md', 'LICENSE', '.gitignore', 'fastlane'].collect { new File(top, it) })
+                .withPropertyName('robotRepositoryFiles').withPathSensitivity(PathSensitivity.RELATIVE)
+            t.inputs.files(['THIRD_PARTY.md', 'support-addresses.txt', 'build.gradle', 'tools', 'third_party']
+                    .collect { rootProject.file(it) } + robotModules.collect { rootProject.file("$it/build.gradle") })
+                .withPropertyName('robotBuildFiles').withPathSensitivity(PathSensitivity.RELATIVE)
+        }
+    }
+}
