@@ -105,10 +105,12 @@ class ApprovalGateTest {
             // Not asked for: as before, a card.
             assertEquals(t.name, if (level == Approval.OFF) GateDecision.DISABLED else GateDecision.CONFIRM,
                 ApprovalGate.decide(t, false, s, content = true, asked = false))
-            // Asked for in your own words: the level decides, as in a conversation without content.
-            assertEquals(t.name, ApprovalGate.decide(t, false, s), ApprovalGate.decide(t, false, s, content = true, asked = true))
+            // Asked for in your own words: the level decides, as in a conversation without content; 1.0.1: except for an
+            // action that writes, whose details content could have chosen: a card.
+            assertEquals(t.name, if (ApprovalGate.writes(t) && level != Approval.OFF) GateDecision.CONFIRM else ApprovalGate.decide(t, false, s),
+                ApprovalGate.decide(t, false, s, content = true, asked = true))
         }
-        assertEquals(GateDecision.RUN, ApprovalGate.decide(ToolName.SET_TIMER, false, defaults, content = true, asked = true))
+        assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(ToolName.SET_TIMER, false, defaults, content = true, asked = true))
         assertEquals(GateDecision.RUN, ApprovalGate.decide(ToolName.WEATHER, false, defaults, content = true, asked = true))
         // Texts still ask first: their level is Ask first.
         assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(ToolName.SEND_TEXT, false, defaults, content = true, asked = true))
@@ -145,17 +147,21 @@ class ApprovalGateTest {
     @Test fun claudesActionsHaveTheirOwnSwitch() {
         // On (the default): every call Claude makes shows a card, read tools included.
         for (t in HelperTools.OFFERED) assertEquals(t.name, GateDecision.CONFIRM, ApprovalGate.decide(t, false, allAuto, content = true, asked = true, remote = true))
-        // Off: the usual rules; Claude's words are content, so what you didn't ask for still asks (under the default).
+        // Off: the usual rules; Claude's words are content, so what you didn't ask for still asks (under the default), and
+        // (1.0.1) so does an action that writes, asked for or not; a read that stays on the phone doesn't.
         val off = allAuto.copy(helperActionCards = false)
-        assertEquals(GateDecision.RUN, ApprovalGate.decide(ToolName.SET_TIMER, false, off, content = true, asked = true, remote = true))
+        assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(ToolName.SET_TIMER, false, off, content = true, asked = true, remote = true))
+        assertEquals(GateDecision.RUN, ApprovalGate.decide(ToolName.SET_TIMER, false, off.copy(safetyCards = SafetyCards.UNSURE_ONLY), content = true, asked = true,
+            remote = true))
         assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(ToolName.SET_TIMER, false, off, content = true, asked = false, remote = true))
         // What a read finds for Claude goes to Claude: a tap first, unless personal content may go by itself.
         assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(ToolName.READ_CALENDAR, false, off, content = true, asked = true, remote = true))
         assertEquals(GateDecision.RUN, ApprovalGate.decide(ToolName.READ_CALENDAR, false, off.copy(personalToHelpers = true), content = true, asked = true, remote = true))
         // So does what the nearest place found online says (where you are): the maps action going online asks like a read.
         assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(ToolName.MAPS_NAVIGATE, false, off, content = true, asked = true, remote = true, online = true))
-        assertEquals(GateDecision.RUN, ApprovalGate.decide(ToolName.MAPS_NAVIGATE, false, off, content = true, asked = true, remote = true, online = false))
-        assertEquals(GateDecision.RUN, ApprovalGate.decide(ToolName.MAPS_NAVIGATE, false, off.copy(personalToHelpers = true), content = true, asked = true,
+        val unsure = off.copy(safetyCards = SafetyCards.UNSURE_ONLY)
+        assertEquals(GateDecision.RUN, ApprovalGate.decide(ToolName.MAPS_NAVIGATE, false, unsure, content = true, asked = true, remote = true, online = false))
+        assertEquals(GateDecision.RUN, ApprovalGate.decide(ToolName.MAPS_NAVIGATE, false, unsure.copy(personalToHelpers = true), content = true, asked = true,
             remote = true, online = true))
         // Robot's own model looking it up for you is no hand-over to Claude.
         assertEquals(GateDecision.RUN, ApprovalGate.decide(ToolName.MAPS_NAVIGATE, false, off, online = true))
@@ -198,7 +204,9 @@ class ApprovalGateTest {
                         AskWhy.WHO in why && who,
                         AskWhy.LEARNED in why && learned,
                         AskWhy.DELETE in why && delete,
-                        content && (!t.reads || t.online) && (mode == SafetyCards.AFTER_READING || (mode == SafetyCards.UNASKED && !asked)),
+                        content && (!t.reads || t.online) && (mode == SafetyCards.AFTER_READING || (mode == SafetyCards.UNASKED && (!asked ||
+                            // 1.0.1: an action that writes asks with content even when you asked for it (not texts, emails or calls).
+                            (!t.reads && t !in setOf(ToolName.SEND_TEXT, ToolName.DRAFT_EMAIL, ToolName.CALL))))),
                         t == ToolName.REMEMBER && (!asked || content),
                         why.any { it in termuxWhy },
                     )
@@ -219,6 +227,33 @@ class ApprovalGateTest {
                 }
             }
         assertTrue(n > 1_000_000)
+    }
+
+    @Test fun contentNeverChoosesAWritingActionsDetails() {
+        // 1.0.1: after a web result or a helper's reply, your words naming the tool no longer let it run without a card:
+        // injected text could have set its details (the event, the note, the app, the place). The default mode.
+        val s = allAuto.copy(safetyCards = SafetyCards.UNASKED)
+        val writing = listOf(ToolName.ADD_EVENT, ToolName.ADD_NOTE, ToolName.OPEN_APP, ToolName.MAPS_SEARCH, ToolName.MAPS_NAVIGATE, ToolName.SET_TIMER,
+            ToolName.SET_ALARM, ToolName.FLASHLIGHT, ToolName.BROWSER_SEARCH, ToolName.FREE_MEMORY, ToolName.FREE_STORAGE, ToolName.FORGET)
+        for (t in writing) {
+            assertEquals(t.name, GateDecision.CONFIRM, ApprovalGate.decide(t, false, s, content = true, asked = true))
+            // Without content, your words decide as before.
+            assertEquals(t.name, GateDecision.RUN, ApprovalGate.decide(t, false, s, content = false, asked = true))
+        }
+        // Reading tools are unchanged: an offline read never asks for content, an online one only when you didn't ask.
+        for (t in listOf(ToolName.FIND_NOTES, ToolName.READ_CALENDAR, ToolName.LOOKUP_CONTACT, ToolName.PHONE_STATUS))
+            assertEquals(t.name, GateDecision.RUN, ApprovalGate.decide(t, false, s, content = true, asked = false))
+        for (t in listOf(ToolName.WEATHER, ToolName.WEB_SEARCH)) {
+            assertEquals(t.name, GateDecision.RUN, ApprovalGate.decide(t, false, s, content = true, asked = true))
+            assertEquals(t.name, GateDecision.CONFIRM, ApprovalGate.decide(t, false, s, content = true, asked = false))
+        }
+        // Texts, emails and calls keep their own protection (a draft or the dialer you finish there), as before.
+        for (t in listOf(ToolName.SEND_TEXT, ToolName.DRAFT_EMAIL, ToolName.CALL)) {
+            assertEquals(t.name, GateDecision.RUN, ApprovalGate.decide(t, false, s, content = true, asked = true))
+            assertEquals(t.name, GateDecision.CONFIRM, ApprovalGate.decide(t, false, s, content = true, asked = false))
+        }
+        // "Only when Robot isn't sure who" is your choice: content never asks there.
+        assertEquals(GateDecision.RUN, ApprovalGate.decide(ToolName.ADD_NOTE, false, s.copy(safetyCards = SafetyCards.UNSURE_ONLY), content = true, asked = true))
     }
 
     @Test fun allSevenPhaseTwoToolsNeedUnlockOnTheLockScreen() {

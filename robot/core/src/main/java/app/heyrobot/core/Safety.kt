@@ -13,9 +13,12 @@ enum class SafetyCards(val title: String, val detail: String) {
     /** Before 0.4.0's switch, the only rule: any content in the conversation, every such action asks. */
     AFTER_READING("Always after Robot reads something",
         "Once a conversation has screen text, a photo, or something Robot read or a helper said, every action that writes or leaves the phone asks first."),
-    /** The default: content only forces a card for an action you didn't ask for in your own words this time. */
+    /**
+     * The default: content forces a card for an action you didn't ask for in your own words this time, and (1.0.1) for
+     * any action that changes or opens something, since content could have chosen its details.
+     */
     UNASKED("When you didn't ask for it",
-        "Content Robot read makes an action ask first only when you didn't ask for that kind of action yourself this time. Text on a screen, in a photo or in what Robot found never counts as your words."),
+        "Content Robot read makes an action ask first when you didn't ask for that kind of action yourself this time, and always when it would change or open something. Text on a screen, in a photo or in what Robot found never counts as your words."),
     /** Content never forces a card; only not being sure who (or which) does. */
     UNSURE_ONLY("Only when Robot isn't sure who",
         "Content never makes an action ask first. Cards still show for actions set to Ask first, and when Robot isn't sure who or which."),

@@ -762,13 +762,24 @@ class TurnTest {
         assertEquals(listOf(ActionStatus.NEEDS_UNLOCK), v2.statuses())
     }
 
-    /** "Safety cards: When you didn't ask for it" (the default): content no longer stops what your own words asked for. */
-    @Test fun whatYouAskedForRunsInAConversationWithContent() = runBlocking {
+    /**
+     * "Safety cards: When you didn't ask for it" (the default). 1.0.1: content could have chosen an action's details, so an
+     * action that writes asks even when your own words asked for it; without content your words decide, no card.
+     */
+    @Test fun whatYouAskedForAsksInAConversationWithContentWhenItWrites() = runBlocking {
         val actions = FakeActions()
         val view = FakeView()
-        TurnRunner(FakeModel(ModelOutcome.Calls(listOf(timer))), actions, view, Confirmations(), untrusted = true, asked = setOf(ToolName.SET_TIMER)) { "s${++ids}" }.run()
+        val c0 = Confirmations()
+        val t0 = async { TurnRunner(FakeModel(ModelOutcome.Calls(listOf(timer))), actions, view, c0, untrusted = true, asked = setOf(ToolName.SET_TIMER)) { "s${++ids}" }.run() }
+        c0.answer(withTimeout(5_000) { view.pending.receive() }, true)
+        t0.await()
         assertEquals(listOf<Action>(Action.SetTimer(300)), actions.ran)
         assertEquals(listOf(ActionStatus.DONE), view.statuses())
+        val plain = FakeActions()
+        val v1 = FakeView()
+        withTimeout(5_000) { TurnRunner(FakeModel(ModelOutcome.Calls(listOf(timer))), plain, v1, Confirmations(), untrusted = false, asked = setOf(ToolName.SET_TIMER)) { "s${++ids}" }.run() }
+        assertEquals(listOf<Action>(Action.SetTimer(300)), plain.ran)
+        assertEquals(listOf(ActionStatus.DONE), v1.statuses())
         // The same timer, not asked for (the page said so): a card first.
         val v2 = FakeView()
         val conf = Confirmations()
@@ -829,8 +840,9 @@ class TurnTest {
         conf.answer(withTimeout(5_000) { view.pending.receive() }, false)
         turn.await()
         assertEquals(emptyList<Action>(), actions.ran)
-        // Personal content may go by itself: no tap.
-        val free = FakeActions(settings.copy(personalToHelpers = true))
+        // Personal content may go by itself: no tap (with Safety cards at "Only when Robot isn't sure who": since 1.0.1 the
+        // default asks before content sets where an action goes).
+        val free = FakeActions(settings.copy(personalToHelpers = true, safetyCards = SafetyCards.UNSURE_ONLY))
         free.prepare = actions.prepare
         TurnRunner(FakeModel(ModelOutcome.Calls(listOf(go))), free, FakeView(), Confirmations(), untrusted = true, remote = true,
             asked = setOf(ToolName.MAPS_NAVIGATE)) { "o${++ids}" }.run()

@@ -30,7 +30,9 @@ object ApprovalGate {
      * - [content]: the conversation carries screen text, a picture, a read tool's findings or a helper's words (content Robot
      *   didn't write and the person didn't type). "Safety cards" decides: every action that writes or leaves asks
      *   (Always after Robot reads something), only one the person didn't ask for in their own words this turn ([asked]; When
-     *   you didn't ask for it, the default), or none (Only when Robot isn't sure who). The read tools ([ToolName.reads]:
+     *   you didn't ask for it, the default), or none (Only when Robot isn't sure who). 1.0.1: under the default, an action
+     *   that writes ([writes]) asks with content even when you asked for it: your words named the tool, but injected text
+     *   could have chosen its details (the event, the note, the app, the place). The read tools ([ToolName.reads]:
      *   lookup_contact, find_notes, read_calendar, phone_status) never ask for content: they only bring more to read; a
      *   read that goes online ([ToolName.online], the weather) does, since injected text could send a word or where you
      *   are to Open-Meteo.
@@ -67,7 +69,7 @@ object ApprovalGate {
             asks(why, settings) -> GateDecision.CONFIRM
             messages && !(tool.reads && !online) -> GateDecision.CONFIRM
             saidLocked && !asked && !(tool.reads && !online) -> GateDecision.CONFIRM
-            content && !(tool.reads && !online) && contentAsks(settings.safetyCards, asked) -> GateDecision.CONFIRM
+            content && !(tool.reads && !online) && contentAsks(settings.safetyCards, asked, writes(tool)) -> GateDecision.CONFIRM
             else -> GateDecision.RUN
         }
     }
@@ -93,12 +95,24 @@ object ApprovalGate {
         AskWhy.PICK in why || AskWhy.ONLINE in why || AskWhy.MESSAGE in why || AskWhy.SEARCH in why || AskWhy.SEARCH_PERSONAL in why || (AskWhy.WHO in why && s.whoCards) || (AskWhy.LEARNED in why && s.learnedCards) || (AskWhy.DELETE in why && s.deleteCards) ||
             AskWhy.TERMUX in why || AskWhy.COMMAND in why || AskWhy.FROM_CONTENT in why
 
-    /** Content in the conversation makes this action ask first, under [mode] ([asked]: the person asked for it this turn). */
-    fun contentAsks(mode: SafetyCards, asked: Boolean): Boolean = when (mode) {
+    /**
+     * Content in the conversation makes this action ask first, under [mode] ([asked]: the person asked for it this turn;
+     * [writes]: it writes something whose details content could have chosen, 1.0.1).
+     */
+    fun contentAsks(mode: SafetyCards, asked: Boolean, writes: Boolean = false): Boolean = when (mode) {
         SafetyCards.AFTER_READING -> true
-        SafetyCards.UNASKED -> !asked
+        SafetyCards.UNASKED -> !asked || writes
         SafetyCards.UNSURE_ONLY -> false
     }
+
+    /**
+     * 1.0.1: [tool] writes or opens something with details the model chose (an event, a note, an app, a place, a timer):
+     * with content in the conversation it asks even when you asked for it. Not the read tools; not texts, emails and calls,
+     * which open a draft or the dialer you finish yourself (and ask first by default); not Termux, which TermuxPolicy decides.
+     */
+    fun writes(tool: ToolName): Boolean = !tool.reads && !tool.termux && tool !in DRAFTS
+
+    private val DRAFTS = setOf(ToolName.SEND_TEXT, ToolName.DRAFT_EMAIL, ToolName.CALL)
 }
 
 /** What happened to one action; also what the model is told about it. */
