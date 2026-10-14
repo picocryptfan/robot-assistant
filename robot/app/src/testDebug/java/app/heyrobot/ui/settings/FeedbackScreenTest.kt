@@ -90,7 +90,7 @@ class FeedbackScreenTest {
         share = { outs += it; taps += "share ${it.kind} ${it.bits}"; true },
         copy = { outs += it; taps += "copy ${it.kind} ${it.bits}" },
         textIt = { outs += it; taps += "text ${it.kind} ${it.bits}"; true },
-        github = { k, link -> taps += "github $k ${link.url.substringBefore("&body=")}"; true },
+        github = { k, link -> taps += "github $k ${link.url.substringBefore("&template=")}"; true },
         saveNumber = { taps += "number $it" },
     )
 

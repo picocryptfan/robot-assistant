@@ -202,7 +202,7 @@ class FeedbackPrivacyTest {
         try {
             plant(files)
             val (c, link, _) = report(files)
-            val body = URLDecoder.decode(link.url.substringAfter("&body="), "UTF-8")
+            val body = URLDecoder.decode(link.url.substringAfter("&report="), "UTF-8")
             for ((where, m) in markers) {
                 assertFalse("$where reached the report", c.text.contains(m, ignoreCase = true))
                 assertFalse("$where reached a preview", c.blocks.values.any { it.contains(m, ignoreCase = true) })

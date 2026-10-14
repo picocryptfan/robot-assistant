@@ -177,7 +177,7 @@ class FeedbackReportTest {
         val d = FeedbackDraft(FeedbackKind.BUG, "The timer didn't ring & the panel froze?", ticked = Diagnostic.entries.toSet())
         val link = FeedbackReport.issue(repo, d, ref, facts, blocks)
         assertTrue(link.url.startsWith("https://github.com/picocryptfan/robot-assistant/issues/new?title=Bug%20report%3A%20The%20timer%20didn%27t%20ring%20%26"))
-        val body = link.url.substringAfter("&body=")
+        val body = link.url.substringAfter("&report=")
         assertTrue(body.length.toString(), body.length <= FeedbackReport.GITHUB_MAX)
         assertTrue(link.cut)
         val text = URLDecoder.decode(body, "UTF-8")
@@ -185,12 +185,14 @@ class FeedbackReportTest {
         assertEquals(text.length, link.chars)
         // Your words are cut only for a link, last, and it says so.
         val long = FeedbackReport.issue(repo, d.copy(text = "é".repeat(5_000)), ref, facts, blocks)
-        assertTrue(long.url.substringAfter("&body=").length <= FeedbackReport.GITHUB_MAX)
-        assertTrue(URLDecoder.decode(long.url.substringAfter("&body="), "UTF-8").contains(FeedbackReport.TEXT_CUT))
+        assertTrue(long.url.substringAfter("&report=").length <= FeedbackReport.GITHUB_MAX)
+        assertTrue(URLDecoder.decode(long.url.substringAfter("&report="), "UTF-8").contains(FeedbackReport.TEXT_CUT))
         // A short idea goes whole, and the title is the kind with the start of your words.
         val idea = FeedbackReport.issue(repo, FeedbackDraft(FeedbackKind.IDEA, "Read my calendar in the brief\nand the weather"), ref, facts, blocks)
         assertFalse(idea.cut)
-        assertEquals("Idea: Read my calendar in the brief", URLDecoder.decode(idea.url.substringAfter("title=").substringBefore("&body="), "UTF-8"))
+        assertEquals("Idea: Read my calendar in the brief", URLDecoder.decode(idea.url.substringAfter("title=").substringBefore("&template="), "UTF-8"))
+        assertTrue(link.url.contains("&template=bug_report.yml&labels=bug&report="))
+        assertTrue(idea.url.contains("&template=idea.yml&labels=idea&idea="))
         assertEquals("Bug report: RFB-ABCD2345", FeedbackReport.issueTitle(FeedbackDraft(FeedbackKind.BUG, ""), ref))
     }
 

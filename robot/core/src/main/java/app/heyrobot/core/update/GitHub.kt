@@ -39,9 +39,15 @@ data class GitHubRepo(val owner: String, val name: String) {
     /**
      * 0.7, Send feedback's "Open a GitHub issue": this repository's new-issue page with [title] and [body] filled in, opened in
      * the browser, where you sign in (a private repository needs it) and submit it yourself; Robot sends nothing. Built here,
-     * where every GitHub address is.
+     * where every GitHub address is. With a [form] (the file name of an issue form in .github/ISSUE_TEMPLATE, such as
+     * "bug_report.yml"), its [label] and the id of its [field] that takes the text, the page opens that form with the text in
+     * the field; without one, the text is the plain issue body.
      */
-    fun newIssueUrl(title: String, body: String): String = "https://github.com/$owner/$name/issues/new?title=" + encode(title) + "&body=" + encode(body)
+    fun newIssueUrl(title: String, body: String, form: String? = null, field: String = "body", label: String? = null): String =
+        "https://github.com/$owner/$name/issues/new?title=" + encode(title) +
+            (if (form != null) "&template=" + encode(form) else "") +
+            (if (form != null && label != null) "&labels=" + encode(label) else "") +
+            "&" + (if (form != null) field else "body") + "=" + encode(body)
 
     override fun toString(): String = slug
 

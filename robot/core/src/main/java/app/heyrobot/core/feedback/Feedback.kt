@@ -291,7 +291,12 @@ object FeedbackReport {
     fun issue(repo: GitHubRepo, draft: FeedbackDraft, ref: String, facts: FeedbackFacts, blocks: List<DiagnosticBlock>,
         secrets: Collection<String> = emptyList()): IssueLink {
         val c = compose(draft, ref, facts, blocks, secrets, GITHUB_MAX, { GitHubRepo.encode(it).length }, cutText = true)
-        return IssueLink(repo.newIssueUrl(issueTitle(draft, ref), c.text), c.text.length, c.cut.isNotEmpty() || c.textCut)
+        val link = when (draft.kind) {
+            FeedbackKind.BUG -> repo.newIssueUrl(issueTitle(draft, ref), c.text, "bug_report.yml", "report", "bug")
+            FeedbackKind.IDEA -> repo.newIssueUrl(issueTitle(draft, ref), c.text, "idea.yml", "idea", "idea")
+            FeedbackKind.OTHER -> repo.newIssueUrl(issueTitle(draft, ref), c.text)
+        }
+        return IssueLink(link, c.text.length, c.cut.isNotEmpty() || c.textCut)
     }
 
     /** A GitHub issue's title: the kind and the start of your first line (the whole report is the body). */
