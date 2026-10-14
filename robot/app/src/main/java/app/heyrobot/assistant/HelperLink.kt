@@ -198,7 +198,9 @@ object HelperLink {
             }
         }
         val made = if (h.presetOf.protocol == Protocol.ANTHROPIC) Held(AnthropicClient.create(key!!), null, stamp, null)
-        else Held(null, HelperHttp.create(address!!, key, h.home) ?: return Made.Not(HelperFailure.NOT_LOCAL), stamp, address)
+        // 1.0.1: a key saved for an http:// address is kept, and refused here with why (HelperFailure.KEY_OVER_HTTP).
+        else Held(null, HelperHttp.create(address!!, key, h.home) ?: return Made.Not(HelperHttp.refusal(address, key, h.home) ?: HelperFailure.NOT_LOCAL),
+            stamp, address)
         current[h.id] = made
         return null
     }

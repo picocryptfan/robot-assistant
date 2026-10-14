@@ -470,6 +470,7 @@ class OpenAiSession(
          */
         fun failure(t: Throwable, home: Boolean, opened: Boolean = false): HelperFailure = when (t) {
             is NotLocalException -> HelperFailure.NOT_LOCAL
+            is app.heyrobot.helpers.http.KeyOverHttpException -> HelperFailure.KEY_OVER_HTTP
             // OkHttp: http:// to a client that only speaks TLS.
             is UnknownServiceException -> HelperFailure.NOT_LOCAL
             is SSLPeerUnverifiedException, is SSLHandshakeException -> HelperFailure.CERTIFICATE

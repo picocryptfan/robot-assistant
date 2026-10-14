@@ -97,6 +97,25 @@ class SearchClientTest {
         assertTrue((System.nanoTime() - t0) / 1_000_000 < 3_000)
     }
 
+    @Test fun aKeyNeverGoesOverHttpEvenToYourServer() {
+        // 1.0.1: no search service of Robot's sends a key over http; a request that carries one anyway (a header other than
+        // the plain ones, or a key in the URL) is refused before connecting.
+        server.enqueue(MockResponse().setBody("{}"))
+        server.enqueue(MockResponse().setBody("{}"))
+        val base = "http://127.0.0.1:${server.port}/search"
+        val inHeader = SearchRequest("GET", "$base?q=x", listOf("User-Agent" to "Robot", "X-Subscription-Token" to "k"))
+        val inUrl = SearchRequest("GET", "$base?api_key=k&q=x", listOf("User-Agent" to "Robot"))
+        for (r in listOf(inHeader, inUrl)) {
+            val e = runCatching { WebTransport().send(r, WebTransport.Route.HOME, Abort()) }.exceptionOrNull()
+            assertEquals(WebFail.KEY_OVER_HTTP, (e as WebFailure).why)
+        }
+        assertEquals(0, server.requestCount)
+        assertEquals("Robot won't send a key over plain http: use an https address, or remove the key", WebFail.KEY_OVER_HTTP.text(SearchService.SEARXNG_HOME))
+        // Your SearXNG's own request carries none.
+        assertFalse(app.heyrobot.core.web.SearxngWire.request(app.heyrobot.core.web.SearxngWire.base("192.168.1.20:8888", false)!!, "x", null,
+            SafeSearch.MODERATE, "Robot").carriesKey)
+    }
+
     /** A service that answers [body] and keeps what it was sent. */
     private class Fake(private val status: Int = 200, private val body: String = "{}") : WebSender {
         val sent = mutableListOf<Pair<SearchRequest, WebTransport.Route>>()

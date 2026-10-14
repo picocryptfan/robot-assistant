@@ -632,7 +632,9 @@ enum class HelperFail(override val id: Int, override val title: String) : LogCod
     UNKNOWN(14, "other error"), RESET(15, "conversation reset"),
     // 0.6.0: helpers on your network and other companies.
     UNREACHABLE(16, "server not answering"), NOT_LOCAL(17, "address not on your network"), CERTIFICATE(18, "certificate not trusted"),
-    NO_ADDRESS(19, "server's port not found yet");
+    NO_ADDRESS(19, "server's port not found yet"),
+    // 1.0.1.
+    KEY_OVER_HTTP(20, "key not sent over http");
 
     companion object {
         fun of(f: HelperFailure): HelperFail = entries.firstOrNull { it.name == f.name } ?: UNKNOWN

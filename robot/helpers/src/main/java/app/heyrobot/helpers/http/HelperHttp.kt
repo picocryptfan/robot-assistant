@@ -1,5 +1,6 @@
 package app.heyrobot.helpers.http
 
+import app.heyrobot.core.HelperFailure
 import app.heyrobot.core.helpers.LanRule
 import okhttp3.Call
 import okhttp3.ConnectionSpec
@@ -28,6 +29,8 @@ import java.util.concurrent.TimeUnit
 //   typed, every address its name resolves to (a DNS filter that drops public ones), and the socket actually connected
 //   (a network interceptor), so a name that rebinds to a public host can't take Robot's words there. Never through a
 //   proxy. Short connect timeout (a wrong address fails fast), long reads (a cold model may load for minutes).
+// - 1.0.1: a key never goes over http, not even on your own network (core LanRule.keyOverHttp): a client for http with a
+//   key is never made ([refusal] says why), and the network interceptor refuses an http request carrying one anyway.
 // - Everyone: no redirects (a server can't bounce Robot elsewhere), no automatic retries (Robot retries by its own
 //   rules), no cookies or cache, and a neutral User-Agent ("Robot") instead of OkHttp's, without device details. The
 //   key goes in an Authorization header only, and never into a log: Robot logs status codes and exception class names.
@@ -41,6 +44,9 @@ fun BufferedSource.textUpTo(max: Long): String {
 /** The connection is refused because the address isn't on your network (core LanRule). */
 class NotLocalException : UnknownHostException("not on your network")
 
+/** 1.0.1: an http request that carries a key: refused before anything is sent (core LanRule.keyOverHttp). */
+class KeyOverHttpException : IOException("key over http")
+
 class HelperHttp private constructor(val client: OkHttpClient, val base: HttpUrl, private val key: String?) : AutoCloseable {
     /** A streamed POST of [body] to [path] under the base URL ("chat/completions"). */
     fun post(path: String, body: JSONObject, stream: Boolean = true): Call =
@@ -53,6 +59,7 @@ class HelperHttp private constructor(val client: OkHttpClient, val base: HttpUrl
         else base.newBuilder().addPathSegments(path).build()
 
     private fun request(path: String): Request.Builder = Request.Builder().url(url(path)).header("User-Agent", USER_AGENT).apply {
+        // Never made for http with a key ([refusal]); and if it were, LanGuard refuses the request before it is sent.
         if (!key.isNullOrEmpty()) header("Authorization", "Bearer $key")
     }
 
@@ -68,11 +75,29 @@ class HelperHttp private constructor(val client: OkHttpClient, val base: HttpUrl
         private val JSON = "application/json".toMediaType()
 
         /**
+         * Why Robot won't make a client for [baseUrl] with [key], or null when it will: [HelperFailure.NOT_LOCAL] for an
+         * address it never uses (not http or https, http for a company, http to a public or unreadable address),
+         * [HelperFailure.KEY_OVER_HTTP] for a key over http (1.0.1). Nothing is connected to find out.
+         */
+        fun refusal(baseUrl: String, key: String?, home: Boolean): HelperFailure? {
+            val base = baseUrl.trimEnd('/').toHttpUrlOrNull() ?: return HelperFailure.NOT_LOCAL
+            if (base.isHttps) return null
+            if (!home) return HelperFailure.NOT_LOCAL
+            // An address typed as a number is never looked up: check it now. One in a form the rule doesn't read
+            // ("3232235777", "10.1") would skip the DNS filter too: refused.
+            if (LanRule.numericNotQuad(base.host)) return HelperFailure.NOT_LOCAL
+            LanRule.literal(base.host)?.let { if (!LanRule.classify(it).cleartext) return HelperFailure.NOT_LOCAL }
+            if (LanRule.keyOverHttp(https = false, key = key)) return HelperFailure.KEY_OVER_HTTP
+            return null
+        }
+
+        /**
          * A client for [baseUrl] with [key] (none for a server that doesn't ask for one). [home]: a server on your network
-         * (cleartext allowed on private addresses only). [dns]: the system's in the app, a fake in tests. Null when the
-         * address isn't one Robot will use at all (not http or https, or http to a public address for a company).
+         * (cleartext allowed on private addresses only, and never with a key). [dns]: the system's in the app, a fake in
+         * tests. Null when [refusal] gives a reason.
          */
         fun create(baseUrl: String, key: String?, home: Boolean, dns: Dns = Dns.SYSTEM, connectMs: Long = if (home) HOME_CONNECT_MS else CLOUD_CONNECT_MS): HelperHttp? {
+            if (refusal(baseUrl, key, home) != null) return null
             val base = baseUrl.trimEnd('/').toHttpUrlOrNull() ?: return null
             val https = base.isHttps
             val b = OkHttpClient.Builder()
@@ -91,12 +116,6 @@ class HelperHttp private constructor(val client: OkHttpClient, val base: HttpUrl
                 else -> return null
             }
             if (home && https) b.proxy(Proxy.NO_PROXY)
-            if (!https) {
-                // An address typed as a number is never looked up: check it now. One in a form the rule doesn't read
-                // ("3232235777", "10.1") would skip the DNS filter too: refused.
-                if (LanRule.numericNotQuad(base.host)) return null
-                LanRule.literal(base.host)?.let { if (!LanRule.classify(it).cleartext) return null }
-            }
             return HelperHttp(b.build(), base, key)
         }
 
@@ -117,11 +136,17 @@ class LanDns(private val delegate: Dns) : Dns {
     }
 }
 
-/** The socket really connected (an address typed as a number skips the DNS filter): cleartext only to your network. */
+/**
+ * The socket really connected (an address typed as a number skips the DNS filter): cleartext only to your network, and
+ * never with a key (1.0.1: an Authorization header, or one named like a key, over http is refused unsent).
+ */
 object LanGuard : Interceptor {
+    private val SECRET = Regex("authorization|key|token|secret|auth|cookie", RegexOption.IGNORE_CASE)
+
     override fun intercept(chain: Interceptor.Chain): Response {
         val req = chain.request()
         if (!req.url.isHttps) {
+            if (req.headers.names().any { SECRET.containsMatchIn(it) }) throw KeyOverHttpException()
             val addr = chain.connection()?.route()?.socketAddress?.address ?: throw NotLocalException()
             if (!LanRule.classify(addr.address).cleartext) throw NotLocalException()
         }

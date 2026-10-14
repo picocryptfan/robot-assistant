@@ -63,7 +63,8 @@ class OpenAiSessionTest {
     private fun home(model: String = "qwen3.8:27b", protocol: String = "home") =
         HelperConfig.of(Presets.of(protocol)!!, "h1", "am_puck", "Jarvis", base).copy(model = model)
 
-    private fun http(h: HelperConfig = home()) = HelperHttp.create(base, key, home = true)!!
+    /** Your server over http on 127.0.0.1: no key (1.0.1: a key never goes over http; [aKeyIsNeverSentOverHttp]). */
+    private fun http(h: HelperConfig = home()) = HelperHttp.create(base, null, home = true)!!
 
     private fun session(h: HelperConfig = home(), tools: Boolean = false, conversation: Boolean = false, timing: Timing = Timing(2_000, 2_000, 2_000, 2_000, 500),
         dropped: Set<Extra> = emptySet(), onDropped: (Extra) -> Unit = {}) =
@@ -107,7 +108,7 @@ class OpenAiSessionTest {
         assertEquals("The sky is blue.", h.text.toString())
         val r = take()
         assertEquals("/v1/chat/completions", r.path)
-        assertEquals("Bearer $key", r.getHeader("Authorization"))
+        assertNull(r.getHeader("Authorization"))
         assertEquals("Robot", r.getHeader("User-Agent"))
         val b = body(r)
         assertEquals("qwen3.8:27b", b.getString("model"))
@@ -293,7 +294,7 @@ class OpenAiSessionTest {
         assertNull(HelperHttp.create("http://8.8.8.8:11434/v1", key, home = true))
         // A name that resolves to a public address: the DNS filter refuses it, nothing is sent.
         val publicDns = object : Dns { override fun lookup(hostname: String) = listOf(InetAddress.getByName("93.184.216.34")) }
-        val viaName = HelperHttp.create("http://my.server.example:${server.port}/v1", key, home = true, dns = publicDns)!!
+        val viaName = HelperHttp.create("http://my.server.example:${server.port}/v1", null, home = true, dns = publicDns)!!
         val h = HelperConfig.of(Presets.HOME, "h3", "am_puck", "Jarvis", "http://my.server.example:${server.port}/v1").copy(model = "m")
         val s = OpenAiSession(viaName, h, emptyList(), false, retryDelayMs = 10)
         assertEquals(HelperOutcome.Failed(HelperFailure.NOT_LOCAL), s.ask(q, voice, Heard()))
@@ -343,6 +344,46 @@ class OpenAiSessionTest {
         assertNull(HelperHttp.create("http://10.1:11434/v1", key, home = true))
     }
 
+    @Test fun aKeyIsNeverSentOverHttp() = runBlocking {
+        // 1.0.1: your server over http with a key: no client, nothing sent, the key kept where it is.
+        assertNull(HelperHttp.create(base, key, home = true))
+        assertEquals(HelperFailure.KEY_OVER_HTTP, HelperHttp.refusal(base, key, home = true))
+        val p = HelperProbe.run(home(), key, listOf(base))
+        assertFalse(p.ok)
+        assertEquals(HelperFailure.KEY_OVER_HTTP, p.failure)
+        assertEquals(0, server.requestCount)
+        // Said in one sentence, with the fix.
+        assertEquals("Robot won't send your Jarvis key over plain http: use an https address, or remove the key.",
+            HelperFailure.KEY_OVER_HTTP.say(app.heyrobot.core.helpers.HelperWho.of(home())))
+        // A public address stays "not on your network"; an empty key is no key.
+        assertEquals(HelperFailure.NOT_LOCAL, HelperHttp.refusal("http://8.8.8.8:11434/v1", key, home = true))
+        assertNull(HelperHttp.refusal(base, "", home = true))
+        // The interceptor's backstop: an http request with a key never leaves, even on your network.
+        val lan = object : okhttp3.Interceptor.Chain {
+            override fun request() = okhttp3.Request.Builder().url("http://192.168.1.20/v1/models").header("Authorization", "Bearer $key").build()
+            override fun proceed(request: okhttp3.Request): okhttp3.Response = throw AssertionError("sent")
+            override fun connection(): okhttp3.Connection? = null
+            override fun call(): okhttp3.Call = throw UnsupportedOperationException()
+            override fun connectTimeoutMillis() = 0
+            override fun withConnectTimeout(timeout: Int, unit: TimeUnit) = this
+            override fun readTimeoutMillis() = 0
+            override fun withReadTimeout(timeout: Int, unit: TimeUnit) = this
+            override fun writeTimeoutMillis() = 0
+            override fun withWriteTimeout(timeout: Int, unit: TimeUnit) = this
+        }
+        val e = runCatching { app.heyrobot.helpers.http.LanGuard.intercept(lan) }.exceptionOrNull()
+        assertTrue(e is app.heyrobot.helpers.http.KeyOverHttpException)
+        assertEquals(HelperFailure.KEY_OVER_HTTP, OpenAiSession.failure(e!!, home = true))
+        // Without a key it works on your network as before, and sends no Authorization header.
+        server.enqueue(answer("Fine."))
+        assertEquals(HelperOutcome.Done(), session().ask(q, voice, Heard()))
+        assertNull(take().getHeader("Authorization"))
+        // Over https the key goes, in the Authorization header only.
+        val tls = HelperHttp.create("https://box.tail1234.ts.net/v1", key, home = true)!!
+        assertEquals("Bearer $key", tls.post("chat/completions", JSONObject()).request().header("Authorization"))
+        tls.close()
+    }
+
     @Test fun eventsAreReadWhateverTheirPiecesAndNeverTooLong() = runBlocking {
         val r = app.heyrobot.helpers.http.SseReader(okio.Buffer().writeUtf8(": keep-alive\n\ndata: {\"a\":1}\r\n\ndata: x\ndata: y\n\nevent: done\ndata: [DONE]"))
         assertEquals("""{"a":1}""", r.next())
@@ -380,8 +421,8 @@ class OpenAiSessionTest {
             """{"type":"response.completed","response":{"status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Done.","annotations":[]}]}],"usage":{"input_tokens":1100,"output_tokens":5}}}""",
         ))
         val gpt = HelperConfig.of(Presets.OPENAI, "h5", "am_puck").copy(model = "gpt-6.1-sol")
-        // The Responses session against the mock (a home-style client so the test can use http on 127.0.0.1).
-        val s = OpenAiSession(HelperHttp.create(base, key, home = true)!!, gpt, HelperTools.tools(RobotSettings()), conversation = true, retryDelayMs = 10)
+        // The Responses session against the mock (a home-style client so the test can use http on 127.0.0.1, without a key).
+        val s = OpenAiSession(HelperHttp.create(base, null, home = true)!!, gpt, HelperTools.tools(RobotSettings()), conversation = true, retryDelayMs = 10)
         val h = Heard()
         assertEquals(HelperOutcome.Calls(listOf(RawToolCall("set_timer", mapOf("minutes" to 5)))), s.ask(q, HelperPlan(HelperEffort.MEDIUM, 16_000), h))
         val first = take()

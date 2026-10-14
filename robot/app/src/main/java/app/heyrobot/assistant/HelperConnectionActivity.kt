@@ -167,7 +167,8 @@ class HelperConnectionActivity : ComponentActivity() {
                             Text(r?.let { words(h, it) }.orEmpty(), style = MaterialTheme.typography.bodyMedium)
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End)) {
                                 if (r?.ok == true && h.actions) OutlinedButton(onClick = { test(actions = true) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Check actions") }
-                                if (r?.needsKey == true) OutlinedButton(onClick = { step = Step.KEY }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Add key") }
+                                // 1.0.1: never for an http server (a key never goes over http): the words say what to do instead.
+                                if (r?.needsKey == true && !cleartext(h, r)) OutlinedButton(onClick = { step = Step.KEY }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Add key") }
                                 Button(onClick = { setResult(Activity.RESULT_OK); finish() }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Done") }
                             }
                         }
@@ -237,7 +238,7 @@ class HelperConnectionActivity : ComponentActivity() {
         val failure = r.failure
         if (failure != null) {
             append(failure.say(HelperWho.of(h)))
-            if (r.needsKey) append(" This server asks for a key.")
+            if (r.needsKey) append(if (cleartext(h, r)) " This server asks for a key, which Robot sends only over https." else " This server asks for a key.")
             if (r.base != null && r.models.isNotEmpty()) append(" It lists ${r.models.size} model${if (r.models.size == 1) "" else "s"}.")
             return@buildString
         }
@@ -250,8 +251,11 @@ class HelperConnectionActivity : ComponentActivity() {
             null -> {}
         }
         if (r.dropped.isNotEmpty()) append(" Robot will leave out what the server didn't take: ${r.dropped.joinToString { it.name.lowercase().replace('_', ' ') }}.")
-        if (h.baseUrl?.startsWith("http://") == true || r.base?.startsWith("http://") == true) append(" This connection isn't encrypted: anyone on your network can read it.")
+        if (cleartext(h, r)) append(" This connection isn't encrypted: anyone on your network can read it.")
     }
+
+    /** The address you gave, or the one found, is http:// (no key ever goes there: core LanRule.keyOverHttp). */
+    private fun cleartext(h: HelperConfig, r: ProbeResult): Boolean = h.baseUrl?.startsWith("http://") == true || r.base?.startsWith("http://") == true
 
     companion object {
         const val EXTRA_HELPER = HelperWindow.EXTRA_HELPER

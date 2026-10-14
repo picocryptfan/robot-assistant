@@ -12,6 +12,22 @@ class LanRuleTest {
     private fun ip(s: String): ByteArray = LanRule.literal(s) ?: throw AssertionError("not an address: $s")
     private fun range(s: String) = LanRule.classify(ip(s))
 
+    @Test fun aKeyNeverGoesOverHttp() {
+        // 1.0.1: http with a key is refused whatever the address; http without one, and https with one, go.
+        assertTrue(LanRule.keyOverHttp(https = false, key = "sk-1"))
+        assertFalse(LanRule.keyOverHttp(https = false, key = null))
+        assertFalse(LanRule.keyOverHttp(https = false, key = ""))
+        assertFalse(LanRule.keyOverHttp(https = true, key = "sk-1"))
+        // A search request carries a key in a header other than the plain ones, in the URL, or as a user.
+        fun req(url: String, vararg h: Pair<String, String>) = app.heyrobot.core.web.SearchRequest("GET", url, listOf("User-Agent" to "Robot", "Accept" to "application/json") + h)
+        assertFalse(req("http://192.168.1.20:8888/search?q=key%20lime&format=json").carriesKey)
+        assertTrue(req("http://192.168.1.20/search?q=x", "Authorization" to "Bearer k").carriesKey)
+        assertTrue(req("http://192.168.1.20/search?q=x", "X-Subscription-Token" to "k").carriesKey)
+        assertTrue(req("http://192.168.1.20/search?api_key=k&q=x").carriesKey)
+        assertTrue(req("http://192.168.1.20/search?q=x&token=k").carriesKey)
+        assertTrue(req("http://me:pw@192.168.1.20/search?q=x").carriesKey)
+    }
+
     @Test fun everyRange() {
         assertEquals(Range.LOOPBACK, range("127.0.0.1"))
         assertEquals(Range.LOOPBACK, range("127.255.0.9"))

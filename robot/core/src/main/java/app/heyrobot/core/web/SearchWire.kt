@@ -55,7 +55,19 @@ class SearchRequest(val method: String, val url: String, val headers: List<Pair<
 
     fun header(name: String): String? = headers.firstOrNull { it.first.equals(name, ignoreCase = true) }?.second
 
+    /**
+     * 1.0.1: it carries a key, so it never goes over http (core LanRule.keyOverHttp): any header but the plain ones (a
+     * service's key header, Authorization), a parameter named like a key in the URL (Mojeek's api_key), or a user in it.
+     */
+    val carriesKey: Boolean get() = headers.any { it.first.lowercase(java.util.Locale.ROOT) !in PLAIN_HEADERS } ||
+        KEY_PARAM.containsMatchIn(url.substringAfter('?', "")) || url.substringAfter("://").substringBefore('/').contains('@')
+
     override fun toString(): String = "SearchRequest($method $host)"
+
+    private companion object {
+        val PLAIN_HEADERS = setOf("user-agent", "accept", "accept-language", "content-type")
+        val KEY_PARAM = Regex("(^|&)[^=&]*(key|token|auth|secret|password)[^=&]*=", RegexOption.IGNORE_CASE)
+    }
 }
 
 /** What a search answered: results (possibly none: "No results"), or why it failed. */

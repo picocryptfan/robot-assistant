@@ -109,7 +109,9 @@ enum class HelperFailure(val retry: Boolean = false) {
     /** 0.6.0: the server's certificate isn't one Robot trusts (self-signed, or not for that name). */
     CERTIFICATE,
     /** 0.6.0: your server's address names no single place yet (a bare IP: Test connection finds the port). */
-    NO_ADDRESS;
+    NO_ADDRESS,
+    /** 1.0.1: a key is saved for an http:// address: Robot never sends a key over http (core LanRule), so nothing was sent. */
+    KEY_OVER_HTTP;
 
     /** The Claude helper's words (as 0.3 to 0.5 said them). */
     val text: String get() = say(HelperWho.CLAUDE)
@@ -138,6 +140,7 @@ enum class HelperFailure(val retry: Boolean = false) {
             NOT_LOCAL -> "That address isn't on your home network, so Robot won't send to it without https."
             CERTIFICATE -> "$n's certificate isn't one Robot can trust. Use https with a real certificate (Tailscale's HTTPS gives one), or http on your home network."
             NO_ADDRESS -> "Robot doesn't know where $n is yet. Open its page in Robot's settings, under Helpers, and tap Test connection."
+            KEY_OVER_HTTP -> app.heyrobot.core.helpers.LanRule.keyOverHttp("your $n key")
         }
     }
 

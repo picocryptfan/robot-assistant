@@ -418,6 +418,8 @@ enum class WebFail(override val id: Int, override val title: String) : LogCode {
     DAILY_CAP(14, "daily cap"),
     QUERY_REFUSED(15, "query refused"),
     OFF(16, "off"),
+    /** 1.0.1: a request with a key, over http (core LanRule.keyOverHttp): refused before connecting. */
+    KEY_OVER_HTTP(17, "key over http"),
     ;
 
     /** What Robot says and the card shows, naming [service] where it matters. */
@@ -441,6 +443,7 @@ enum class WebFail(override val id: Int, override val title: String) : LogCode {
             DAILY_CAP -> "That's today's limit of web searches"
             QUERY_REFUSED -> "That search looked like it contained personal details, so Robot didn't send it."
             OFF -> "Web search is off"
+            KEY_OVER_HTTP -> app.heyrobot.core.helpers.LanRule.keyOverHttp("a key").removeSuffix(".")
         }
     }
 }

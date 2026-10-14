@@ -83,7 +83,8 @@ object HelperProbe {
                 config.home -> HelperHttp.HOME_CONNECT_MS
                 else -> HelperHttp.CLOUD_CONNECT_MS
             }
-            val http = HelperHttp.create(c, key, config.home, dns, connect) ?: return ProbeResult(failure = HelperFailure.NOT_LOCAL)
+            val http = HelperHttp.create(c, key, config.home, dns, connect)
+                ?: return ProbeResult(failure = HelperHttp.refusal(c, key, config.home) ?: HelperFailure.NOT_LOCAL)
             try {
                 val f = models(http)
                 if (f.base != null) { found = f.copy(http = http); break }

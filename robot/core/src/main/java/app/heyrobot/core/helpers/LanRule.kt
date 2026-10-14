@@ -74,6 +74,16 @@ object LanRule {
         return Decision.Allow(ok, ok.mapNotNull { classify(it).warning }.firstOrNull())
     }
 
+    /**
+     * 1.0.1: an API key or bearer token never goes over http, not even to your own network (anyone on it could read it).
+     * True when [key] would be sent ([key] not empty, as the Authorization header is added) over a connection that isn't
+     * [https]: then Robot refuses before connecting and says [keyOverHttp]. A server set up with http and no key still works.
+     */
+    fun keyOverHttp(https: Boolean, key: String?): Boolean = !https && !key.isNullOrEmpty()
+
+    /** Why nothing was sent, with the fix, in one sentence: [whose] is "your Jarvis key", "a key". */
+    fun keyOverHttp(whose: String): String = "Robot won't send $whose over plain http: use an https address, or remove the key."
+
     /** The private ones of [resolved], for a cleartext connection's DNS filter. */
     fun cleartextOnly(resolved: List<ByteArray>): List<ByteArray> = resolved.filter { classify(it).cleartext }
 

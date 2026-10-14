@@ -32,7 +32,8 @@ import javax.net.ssl.SSLException
 //   own network (a DNS filter that drops public ones, and a network interceptor on the socket really connected), never
 //   through a proxy; https:// (Tailscale) anywhere.
 // Everyone: no redirects, no retries, no cookies or cache, the honest API User-Agent the request carries. A request's
-// URL can hold a key (Mojeek): nothing here logs a URL, a header or a body. Stop disconnects (Abort).
+// URL can hold a key (Mojeek): nothing here logs a URL, a header or a body. Stop disconnects (Abort). 1.0.1: a request
+// that carries a key (SearchRequest.carriesKey) never goes over http, even to your own SearXNG (core LanRule.keyOverHttp).
 
 /** A service's answer: its HTTP status, the body (at most [WebTransport.MAX_BODY]) and its Retry-After. */
 data class Reply(val status: Int, val body: String?, val retryAfter: String? = null)
@@ -73,6 +74,7 @@ class WebTransport(private val dns: Dns = Dns.SYSTEM, private val connectMs: Lon
         val client = when {
             url.isHttps -> if (route == Route.HOME) homeTls else cloud
             route == Route.CLOUD -> throw WebFailure(WebFail.SERVICE)
+            LanRule.keyOverHttp(https = false, key = if (req.carriesKey) "key" else null) -> throw WebFailure(WebFail.KEY_OVER_HTTP)
             else -> {
                 // Your SearXNG over http: an address typed as a number is checked now (the DNS filter never sees it).
                 if (LanRule.numericNotQuad(url.host)) throw WebFailure(WebFail.NOT_HOME)
@@ -109,6 +111,7 @@ class WebTransport(private val dns: Dns = Dns.SYSTEM, private val connectMs: Lon
         fun why(e: IOException, route: Route): WebFail = when (e) {
             is WebFailure -> e.why
             is NotLocalException -> WebFail.NOT_HOME
+            is app.heyrobot.helpers.http.KeyOverHttpException -> WebFail.KEY_OVER_HTTP
             is UnknownHostException -> if (route == Route.HOME) WebFail.NOT_HOME else WebFail.NO_INTERNET
             is ConnectException -> if (route == Route.HOME) WebFail.NOT_ANSWERING else WebFail.NO_INTERNET
             is InterruptedIOException -> WebFail.TIMEOUT
