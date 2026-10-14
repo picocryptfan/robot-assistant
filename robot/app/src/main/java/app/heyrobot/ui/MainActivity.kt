@@ -351,6 +351,8 @@ fun RobotAppUi(activity: MainActivity) {
     var snap by remember { mutableStateOf(Snapshot()) }
     var historyTick by remember { mutableIntStateOf(0) }
     var busy by remember { mutableStateOf<String?>(null) }
+    /** 1.0.1: models whose one-time move into internal storage was tried since the app opened (ModelStore.moveIn). */
+    val moveTried = remember { mutableSetOf<BrainModel>() }
     var voiceInstalling by remember { mutableStateOf<VoiceBundle?>(null) }
     var mtInstalling by remember { mutableStateOf(false) }
     /** The model the file picker is choosing a file for. */
@@ -468,6 +470,16 @@ fun RobotAppUi(activity: MainActivity) {
                             say(checkedText(u.model, ok))
                         }
                     }
+                }
+            }
+            // 1.0.1: a checked model still outside internal storage (1.0's place) moves in once, hashed as it is copied,
+            // when there's room (ModelStore.moveIn); tried once each time the app opens.
+            if (busy == null) snap.models.firstOrNull { it.status == ModelStatus.VERIFIED && it.outside && it.model !in moveTried }?.let { o ->
+                moveTried += o.model
+                busy = "move"
+                scope.launch(Dispatchers.IO) {
+                    ModelStore.moveIn(ctx, o.model)
+                    withContext(Dispatchers.Main) { busy = null }
                 }
             }
             delay(1_000)

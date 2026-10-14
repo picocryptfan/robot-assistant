@@ -27,7 +27,9 @@ import app.heyrobot.core.LoadFailure
 import app.heyrobot.core.ModelBackend
 import app.heyrobot.core.ModelFiles
 import app.heyrobot.core.ModelFormat
+import app.heyrobot.core.ModelMove
 import app.heyrobot.core.OneShotRules
+import app.heyrobot.core.OwnModel
 import app.heyrobot.core.Phone
 import app.heyrobot.core.Priority
 import app.heyrobot.core.Prompt
@@ -62,6 +64,7 @@ import com.google.ai.edge.litertlm.ThinkingConfig
 import com.google.ai.edge.litertlm.ToolProvider
 import com.google.ai.edge.litertlm.tool
 import java.io.File
+import java.io.FileInputStream
 import java.util.concurrent.CancellationException
 
 // :BRAIN PROCESS ONLY. The one file that uses LiteRT-LM (ProcessIsolationTest enforces that).
@@ -246,12 +249,21 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
         // for this very file, or your own file's record (unchanged since its check; the TPU only once you allowed it); and
         // the context Robot's prompts are made for with it (4,096, or a short file's own: 0.4.3).
         val records = File(ctx.filesDir, "robot")
+        val ownRecord = if (req.model == BrainModel.OWN) readOrNull(File(records, ModelFiles.OWN_RECORD)) else null
         LoadCheck.refuse(
             req.model, req.backend, ModelFiles.fingerprint(f.length(), f.lastModified()),
             mark = if (req.model.builtIn) readOrNull(File(records, ModelFiles.verifiedMark(req.model))) else null,
-            ownRecord = if (req.model == BrainModel.OWN) readOrNull(File(records, ModelFiles.OWN_RECORD)) else null,
+            ownRecord = ownRecord,
             maxTokens = req.maxTokens, format = ModelFormat.LITERT_LM, phone = phone,
         )?.let { return failed(req, LoadFailure.NOT_ALLOWED, it) }
+        // 1.0.1: a file still outside internal storage (1.0's place, until the app moves it in) is trusted on its whole
+        // SHA-256, read now, not on its size and time (core ModelMove).
+        if (ModelMove.hashBeforeLoad(f, ctx.filesDir)) {
+            val want = if (req.model.builtIn) req.model.sha256 else OwnModel.fromJson(ownRecord)?.sha256
+            val got = try { FileInputStream(f).use { ModelMove.sha256(it) } } catch (_: Exception) { null }
+            RLog.i("brain_hash", "model" to RLog.Code(req.model.id), "ok" to (want != null && got == want))
+            if (want == null || got != want) return failed(req, LoadFailure.NOT_ALLOWED, LoadCheck.CHANGED)
+        }
         // The TPU only for a built-in TPU build's pinned file (its SHA-256 mark, just above; LoadCheck matched its chip to
         // this phone's) or a file whose contents prove a TPU build for this phone's own chip and that you allowed there; and
         // never TPU code on the CPU. Read here again, from the file about to load, with its context: never a KV cache larger

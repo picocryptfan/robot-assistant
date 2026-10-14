@@ -27,6 +27,7 @@ import app.heyrobot.core.LoadFailure
 import app.heyrobot.core.ModelBackend
 import app.heyrobot.core.ModelFiles
 import app.heyrobot.core.ModelFormat
+import app.heyrobot.core.ModelMove
 import app.heyrobot.core.OneShotRules
 import app.heyrobot.core.OwnModel
 import app.heyrobot.core.Priority
@@ -200,6 +201,14 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
             maxTokens = req.maxTokens, format = ModelFormat.GGUF)?.let { return failed(req, LoadFailure.NOT_ALLOWED, it) }
         // The file open is the one whose size and time were just compared: the one at the path now.
         if (!sameFile(pfd, f)) return failed(req, LoadFailure.NOT_ALLOWED, LoadCheck.CHANGED)
+        // 1.0.1: a file still outside internal storage (until the app moves it in) is trusted on its whole SHA-256, read
+        // through the very descriptor llama.cpp gets (core ModelMove).
+        if (ModelMove.hashBeforeLoad(f, ctx.filesDir)) {
+            val want = OwnModel.fromJson(record)?.sha256
+            val got = try { ModelMove.sha256(channel) } catch (_: Exception) { null }
+            RLog.i("brain_hash", "model" to RLog.Code(req.model.id), "ok" to (want != null && got == want))
+            if (want == null || got != want) return failed(req, LoadFailure.NOT_ALLOWED, LoadCheck.CHANGED)
+        }
         // The header read again through the open file, and the same as the one the app checked and showed you; its
         // context too (never a cache larger than the model was trained for, nor a short one for a file that isn't).
         val r = GgufCheck.check(ChannelByteSource(channel), totalRam())
