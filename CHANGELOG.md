@@ -33,6 +33,7 @@ Features:
 
 Look and wording:
 
+- The assistant panel always uses the classic look (round mic, chat bubbles), and History shows conversations the same way. The Classic look switch in Settings › Display is gone.
 - New icon: a robot head shaped as a speech bubble, on blue, with a themed version and the same head in notifications. The robot on the panel shows whether it is listening, thinking or speaking.
 - Explanations describe the kind of app ("your messaging app", "your maps app") instead of naming one. A name stays only on a row or step that checks, opens or sets up that app.
 - Settings › Voice and the guide say once that Robot works in English and Québec French, and only writes down and reads other languages.
