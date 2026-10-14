@@ -220,7 +220,7 @@ fun Phase.afterTurn(speaking: Boolean): Phase = when (this) {
 fun Phase.stopEndsTurn(turnRunning: Boolean): Boolean = turnRunning && (this == Phase.THINKING || this == Phase.ANSWERING)
 
 /**
- * 1.0: which robot the panel's header shows in this phase (both looks). Listening wins, a card's "yes" or "no" included
+ * 1.0: which robot the panel's orb shows in this phase. Listening wins, a card's "yes" or "no" included
  * ([cardHearing]); then Robot's voice ([talking]: reading aloud, also while the reply is still being written or a card
  * is read out); then writing the reply; otherwise idle, a card waiting for a tap included.
  */

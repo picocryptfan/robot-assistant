@@ -255,16 +255,6 @@ class UpdatesSettingsTest {
         assertEquals(emptyList<String>(), rule.touchTargetProblems())
     }
 
-    @Test fun theUpdatesPageIsTheSameInTheClassicLook() {
-        // The Classic look changes the panel only (ui-stock-design 4): the Updates page and its taps work alike.
-        val taps = ArrayList<String>()
-        rule.show(classic = true) { UpdatesScreen(base, UpdatesActions(download = { taps += "download" }, skip = { taps += "skip" }), onBack = {}) }
-        rule.onNodeWithText("Download").performClick()
-        rule.onNodeWithText("Skip this version").performClick()
-        assertEquals(listOf("download", "skip"), taps)
-        assertEquals(emptyList<String>(), rule.touchTargetProblems())
-    }
-
     @Test fun light() {
         rule.show { UpdatesScreen(base, UpdatesActions(), {}) }
         rule.shot("updates_light")

@@ -25,11 +25,10 @@ import app.heyrobot.core.web.CardSource
 import app.heyrobot.core.web.WikipediaWire
 import app.heyrobot.ui.theme.RobotTokens
 
-// Main and voice processes (0.9 web search, design A4.4 and A9). A web answer's card under its text, in both looks (the
-// card's style is the look's, ui/common Cards.kt): which service searched and what it was sent, the numbered sources
-// the answer cites (title · domain; a tap opens it in the browser, nothing loads by itself, no image ever), the others
-// it found, the pages skipped and why, how many pages were read and from where, and the credits (Wikipedia's licence,
-// Brave's line). Shown in the panel only: History keeps the card's saved line (the domains), never titles or links.
+// Main and voice processes (0.9 web search, design A4.4 and A9). A web answer's card under its bubble (a tonal card,
+// ui/common Cards.kt): which service searched and what it was sent, the numbered sources the answer cites (title ·
+// domain; a tap opens it in the browser, nothing loads by itself, no image ever), the others it found, the pages skipped
+// and why, how many pages were read and from where, and the credits (Wikipedia's licence, Brave's line). Shown in the panel only: History keeps the card's saved line (the domains), never titles or links.
 
 /** The answer card for [card]; [onOpen] gets a source's URL (or Wikipedia's licence) when tapped. */
 @Composable

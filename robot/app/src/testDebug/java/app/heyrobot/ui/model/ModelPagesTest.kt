@@ -61,7 +61,7 @@ import org.robolectric.annotation.GraphicsMode
  * The Model tab (radio rows with a details button each, thinking, memory, the voice models) and its pages: a model's
  * Download and Import (with its publisher's terms first when it has them), your own file's TPU dialog, a voice model's Delete.
  * 0.4.7's parts: only this phone's Fast, this phone and its chip, "Use the GPU" and "Try the GPU again" on a Pixel 9a, the
- * last model problem's report, the memory warning, in both looks.
+ * last model problem's report, the memory warning.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -102,9 +102,9 @@ class ModelPagesTest {
     private val problem = ModelProblem(1_760_000_000_000L, BrainModel.GENERAL, ModelBackend.GPU, ProblemStage.WRITING, null,
         BrainModel.GENERAL, ModelBackend.CPU)
 
-    private fun tab(start: RobotSettings = RobotSettings(), snap: Snapshot = this.snap, classic: Boolean = false): SettingsHost {
+    private fun tab(start: RobotSettings = RobotSettings(), snap: Snapshot = this.snap): SettingsHost {
         val host = SettingsHost(start)
-        rule.show(classic = classic) { ModelScreen(host.now, host::update, snap, null, log.actions) }
+        rule.show { ModelScreen(host.now, host::update, snap, null, log.actions) }
         return host
     }
 
@@ -299,16 +299,6 @@ class ModelPagesTest {
         rule.onNodeWithText("Model problem").assertDoesNotExist()
         rule.scrollToText("Last model problems")
         rule.onRow(":brain · writing the answer · Fast on the GPU").assertExists()
-    }
-
-    @Test fun theModelTabIsTheSameInTheClassicLook() {
-        // The Classic look changes the panel only (ui-stock-design 4): the Model tab, its problem and the GPU rows work alike.
-        tab(snap = nineA.copy(problem = problem), classic = true)
-        rule.onRow("Copy report").performClick()
-        rule.scrollToText("Use the GPU")
-        rule.onRow("Use the GPU").assertIsOn()
-        assertEquals(listOf("copyReport REPORT for e2b"), log)
-        assertEquals(emptyList<String>(), rule.touchTargetProblems())
     }
 
     @Test fun theGeneralFastsPageSaysItsCachesAndThisPhonesSpeeds() {

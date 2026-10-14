@@ -1,6 +1,5 @@
 package app.heyrobot.ui.theme
 
-import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
@@ -26,9 +25,8 @@ object RobotTokens {
     val prefPaddingH = 16.dp
     val prefPaddingV = 12.dp
 
-    /** Space between a page's edge and its content; the panel sheet's widest. */
+    /** Space between a page's edge and its content. */
     val pagePadding = 16.dp
-    val sheetMaxWidth = 640.dp
 
     /** The smallest touch target (Android accessibility). */
     val minTouch = 48.dp
@@ -37,15 +35,6 @@ object RobotTokens {
     val choiceRowHeight = 56.dp
     val cardPadding = 16.dp
 
-    /** Material's scrim over the app behind a sheet or dialog. */
-    const val scrimAlpha = 0.32f
-
     /** Settings' row titles: its titleMedium, 20 sp on 24, regular (SettingsTypography). Summaries are bodyMedium. */
     val prefTitle = TextStyle(fontSize = 20.sp, lineHeight = 24.sp, letterSpacing = 0.02.em)
 }
-
-/** The panel's two looks (Settings › Display › Classic look). Every other screen is standard in both. */
-enum class LookStyle { STOCK, CLASSIC }
-
-/** Which look the screen is drawn in, set by RobotTheme. */
-val LocalLook = staticCompositionLocalOf { LookStyle.STOCK }

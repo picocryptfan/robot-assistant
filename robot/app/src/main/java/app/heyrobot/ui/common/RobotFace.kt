@@ -20,9 +20,9 @@ import androidx.compose.ui.res.painterResource
 import app.heyrobot.R
 import kotlinx.coroutines.delay
 
-// Main and voice processes. 1.0: the robot at the top of the assistant panel, in both looks and on the lock screen. One
-// of four one-colour drawings (res/drawable/ic_robot_*), by what Robot is doing; the caller tints it. Decorative: the
-// status line beside it says the same in words (in the standard look a polite live region), so TalkBack hears it once.
+// Main and voice processes. 1.0: the robot in the assistant panel's orb, also on the lock screen. One of four one-colour
+// drawings (res/drawable/ic_robot_*), by what Robot is doing; the caller tints it. Decorative: the status line beside it
+// says the same in words (a polite live region), so TalkBack hears it once.
 
 /** What the robot in the panel shows (the panel picks it from its phase: assistant Phase.face). */
 enum class RobotFace {

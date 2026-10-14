@@ -1,20 +1,7 @@
 package app.heyrobot.ui.common
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.SnackbarHostState
-import android.content.ClipboardManager
-import android.content.Context
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.doubleClick
-import androidx.compose.ui.test.performKeyInput
-import androidx.compose.ui.test.pressKey
-import androidx.compose.ui.test.performMouseInput
-import androidx.test.core.app.ApplicationProvider
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
@@ -22,11 +9,9 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.isHeading
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
-import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.unit.dp
 import app.heyrobot.core.ActionRecord
 import app.heyrobot.core.ActionStatus
 import app.heyrobot.core.Attachment
@@ -52,9 +37,9 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * A conversation's turns (ui/common Transcript.kt) in the panel and History: your words as one TalkBack heading per
- * exchange, "You: …"; Robot's answer selectable for copying; a helper's answer under its name; no caret or typing dots
- * in the standard look; the kept screen text opens and closes by name; the Classic look's bubbles in both places.
+ * A conversation's turns (ui/common Transcript.kt) in the panel and History, as 0.6.0's chat bubbles: your words as one
+ * TalkBack heading per exchange, "You: …"; a helper's answer under its name; the caret and typing dots while a reply is
+ * written; an error said in words; the kept screen text opens and closes by name; the offer asks before anything goes.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -69,26 +54,10 @@ class TranscriptTest {
 
     @Test fun yourWordsAreAHeadingThatSaysWhoSaidThem() {
         rule.show { Column { TurnView(hello, TurnActions.None); TurnView(hi, TurnActions.None) } }
+        rule.onAllNodesWithTag("classic-bubble").assertCountEquals(2)
         rule.onNodeWithContentDescription("You: Hello").assert(isHeading())
         // Robot's answer is plain text, not a heading.
         rule.onNodeWithText("Hi. What do you need?").assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.Heading))
-    }
-
-    @OptIn(ExperimentalTestApi::class)
-    @Test fun robotsAnswerCanBeSelectedAndCopied() {
-        rule.show { Column(Modifier.padding(16.dp)) { TurnView(hello, TurnActions.None); TurnView(hi, TurnActions.None) } }
-        // A mouse double click selects a word and Ctrl+C copies it. (A long press does the same with a finger; Robolectric
-        // can't show the magnifier a finger's selection opens.)
-        rule.onNodeWithText("Hi. What do you need?").performMouseInput { doubleClick(centerLeft + Offset(12f, 0f)) }
-        rule.waitForIdle()
-        rule.onNodeWithText("Hi. What do you need?").performKeyInput {
-            keyDown(Key.CtrlLeft)
-            pressKey(Key.C)
-            keyUp(Key.CtrlLeft)
-        }
-        rule.waitForIdle()
-        val clip = ApplicationProvider.getApplicationContext<Context>().getSystemService(ClipboardManager::class.java).primaryClip
-        assertEquals("Hi", clip?.getItemAt(0)?.text?.toString()?.trim()?.trimEnd('.'))
     }
 
     @Test fun aHelpersAnswerIsUnderItsName() {
@@ -98,16 +67,16 @@ class TranscriptTest {
         rule.onNodeWithText("Claude, from the Claude app").assertExists()
     }
 
-    @Test fun noCaretAndNoDotsWhileItIsWritten() {
+    @Test fun theCaretAndTheDotsWhileItIsWritten() {
         rule.show { Column { TurnView(hi.copy(text = "Hi. What", streaming = true), TurnActions.None); TurnView(hi.copy(id = "r9", text = "", streaming = true), TurnActions.None) } }
-        rule.onNodeWithText("Hi. What").assertExists()
-        rule.onAllNodesWithText("▍", substring = true).assertCountEquals(0)
+        // 0.6.0's caret while a reply is written, and its typing dots before the first word.
+        rule.onNodeWithText("Hi. What ▍").assertExists()
+        rule.onAllNodesWithTag("classic-bubble").assertCountEquals(2)
     }
 
     @Test fun anErrorSaysSoBesidesItsColour() {
         rule.show { TurnView(hi.copy(text = "The model stopped.", error = true), TurnActions.None) }
-        rule.onNodeWithContentDescription("Error").assertExists()
-        rule.onNodeWithText("The model stopped.").assertExists()
+        rule.onNodeWithText("The model stopped.").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Error"))
     }
 
     @Test fun theKeptScreenTextOpensAndClosesByName() {
@@ -124,18 +93,12 @@ class TranscriptTest {
         val log = ArrayList<String>()
         val offer = hi.copy(offer = OfferView(api = true, text = "Why?", sends = listOf("your question", "the screen's text"), preview = "Line 1", name = "Jarvis"))
         rule.show { TurnView(offer, TurnActions(acceptOffer = { log += "accept $it" }, dismissOffer = { log += "dismiss $it" })) }
-        rule.onNodeWithText("Ask Jarvis?").assertExists()
-        rule.onNodeWithText("Sends: your question, the screen's text.").assertExists()
-        rule.onNodeWithText("Not now").performClick()
+        rule.onNodeWithText("Want me to check with Jarvis?").assertExists()
+        rule.onNodeWithText("Sends: Your question, the screen's text.").assertExists()
+        rule.onNodeWithText("No thanks").performClick()
         rule.onNodeWithText("Send").performClick()
         assertEquals(listOf("dismiss r1", "accept r1"), log)
-    }
-
-    @Test fun classicDrawsBubbles() {
-        rule.show(classic = true) { Column { TurnView(hello, TurnActions.None); TurnView(hi.copy(streaming = true), TurnActions.None) } }
-        rule.onAllNodesWithTag("classic-bubble").assertCountEquals(2)
-        // 0.6.0's caret while a reply is written.
-        rule.onNodeWithText("Hi. What do you need? ▍").assertExists()
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
     }
 
     // ------------------------------------------------------------------ History › a conversation
@@ -153,21 +116,15 @@ class TranscriptTest {
     @Before fun utc() = java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("UTC"))
     @After fun back() = java.util.TimeZone.setDefault(zone)
 
-    @Test fun historyShowsTheTranscript() {
+    @Test fun historyShowsTheBubbles() {
         rule.show { ConversationScreen(saved, NO_ACTIONS, SnackbarHostState(), showCost = false) {} }
+        assertTrue(rule.onAllNodesWithTag("classic-bubble").fetchSemanticsNodes().size >= 4)
         rule.onNodeWithContentDescription("You: Why is the sky blue?").assert(isHeading())
         rule.onNodeWithContentDescription("Done").assertExists()
         rule.onNodeWithText("Claude").assertExists()
-        rule.onAllNodesWithTag("classic-bubble").assertCountEquals(0)
         // Every button has a name (the Continue button's is on its icon: Material hides an extended button's text).
         assertEquals(emptyList<String>(), rule.touchTargetProblems())
         rule.onNodeWithContentDescription("Continue").assertExists()
-        rule.shot("history_conversation")
-    }
-
-    @Test fun historyInTheClassicLookShowsBubbles() {
-        rule.show(classic = true) { ConversationScreen(saved, NO_ACTIONS, SnackbarHostState(), showCost = false) {} }
-        assertTrue(rule.onAllNodesWithTag("classic-bubble").fetchSemanticsNodes().size >= 4)
         rule.shot("history_conversation_classic")
     }
 

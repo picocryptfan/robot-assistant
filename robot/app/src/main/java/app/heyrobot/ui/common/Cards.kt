@@ -26,64 +26,38 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import app.heyrobot.ui.theme.LocalLook
-import app.heyrobot.ui.theme.LookStyle
 import app.heyrobot.ui.theme.RobotTokens
 
-// Main and voice processes. The panel's cards (an action waiting for "Do it", an offer to ask a helper, a notice) and
-// History's, as standard Material parts: a filled card (surfaceContainerHighest, 12 dp corners) whose first row reads
-// like a list item (a symbol, what it is, its state under it), an inset for the text it carries, choices as 56 dp rows
-// like a system chooser, and the buttons at the end. In the Classic look the same card keeps Robot 0.4's tonal colours
-// and 20 dp corners: CardStyle is the only difference, so there is one card, not two.
-
-/** A card's container: its colour, the colour of what is on it, and its shape. */
-@Immutable
-data class CardStyle(val container: Color, val content: Color, val shape: Shape)
-
-/** What a card is, for its Classic colours (the standard look uses one style for all). */
-enum class CardKind { ACTION, OFFER, NOTICE }
-
-/** The style for [kind] in [look] (the theme's look by default). */
-@Composable
-fun cardStyle(kind: CardKind = CardKind.ACTION, look: LookStyle = LocalLook.current): CardStyle {
-    val c = MaterialTheme.colorScheme
-    return when (look) {
-        LookStyle.STOCK -> CardStyle(c.surfaceContainerHighest, c.onSurface, MaterialTheme.shapes.medium)
-        LookStyle.CLASSIC -> when (kind) {
-            CardKind.ACTION -> CardStyle(c.secondaryContainer, c.onSecondaryContainer, RoundedCornerShape(20.dp))
-            CardKind.OFFER -> CardStyle(c.tertiaryContainer, c.onTertiaryContainer, RoundedCornerShape(20.dp))
-            CardKind.NOTICE -> CardStyle(c.tertiaryContainer, c.onTertiaryContainer, RoundedCornerShape(16.dp))
-        }
-    }
-}
+// Main and voice processes. The cards the panel's bubbles share with ui/common's own parts (a web answer, a reply, a
+// Termux command; ui/classic draws the rest): a filled card in the classic look's tonal colours with 20 dp corners, whose
+// first row reads like a list item (a symbol, what it is, its state under it), an inset for the text it carries, choices
+// as 56 dp rows like a system chooser, and the buttons at the end. And NoticeRow, a standard notice for Settings' pages.
 
 /** A filled card, 16 dp padding, its parts in [content] top to bottom (TalkBack reads them in that order). */
 @Composable
-fun PanelCard(modifier: Modifier = Modifier, style: CardStyle = cardStyle(), content: @Composable ColumnScope.() -> Unit) {
+fun PanelCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    val c = MaterialTheme.colorScheme
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = style.shape,
-        colors = CardDefaults.cardColors(containerColor = style.container, contentColor = style.content),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = c.secondaryContainer, contentColor = c.onSecondaryContainer),
     ) {
         Column(Modifier.padding(RobotTokens.cardPadding), content = content)
     }
 }
 
-/** A card's own symbol: 24 dp, onSurfaceVariant in the standard look (never the primary colour for decoration). */
+/** A card's own symbol: 24 dp, in the card's content colour unless [tint] (never the primary colour for decoration). */
 @Composable
-fun CardIcon(icon: ImageVector, modifier: Modifier = Modifier) {
-    val tint = if (LocalLook.current == LookStyle.STOCK) MaterialTheme.colorScheme.onSurfaceVariant else LocalContentColor.current
+fun CardIcon(icon: ImageVector, modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) {
     Icon(icon, null, modifier.size(24.dp), tint = tint)
 }
 
@@ -140,10 +114,9 @@ fun CardHeader(
 /** The text a card carries (a message, a note), in a quieter inset, at most [maxHeight] tall, scrolling inside. */
 @Composable
 fun CardInset(text: String, modifier: Modifier = Modifier, maxHeight: Dp = CARD_BODY_MAX) {
-    val stock = LocalLook.current == LookStyle.STOCK
     Surface(
-        color = if (stock) MaterialTheme.colorScheme.surfaceContainer else MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
-        shape = if (stock) MaterialTheme.shapes.small else RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
+        shape = RoundedCornerShape(14.dp),
         modifier = modifier.fillMaxWidth().padding(top = 12.dp),
     ) {
         Text(text, style = MaterialTheme.typography.bodyMedium,
@@ -185,8 +158,8 @@ fun CardButtons(modifier: Modifier = Modifier, content: @Composable RowScope.() 
 }
 
 /**
- * A one-line notice above the conversation or a list ("Robot isn't the assistant any more"): an info symbol, the text,
- * an optional action ([action] then [onAction]) and a 48 dp close button labelled "Dismiss".
+ * A one-line notice above a Settings list ("Robot isn't the assistant any more"), in the standard look: an info symbol,
+ * the text, an optional action ([action] then [onAction]) and a 48 dp close button labelled "Dismiss".
  */
 @Composable
 fun NoticeRow(
@@ -197,10 +170,10 @@ fun NoticeRow(
     action: String? = null,
     onAction: () -> Unit = {},
 ) {
-    val style = cardStyle(CardKind.NOTICE)
-    Surface(color = style.container, contentColor = style.content, shape = style.shape, modifier = modifier.fillMaxWidth()) {
+    val c = MaterialTheme.colorScheme
+    Surface(color = c.surfaceContainerHighest, contentColor = c.onSurface, shape = MaterialTheme.shapes.medium, modifier = modifier.fillMaxWidth()) {
         Row(Modifier.padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            CardIcon(icon)
+            CardIcon(icon, tint = c.onSurfaceVariant)
             Spacer(Modifier.width(12.dp))
             Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).padding(vertical = 8.dp))
             if (action != null) TextButton(onClick = onAction, modifier = Modifier.heightIn(min = RobotTokens.minTouch)) { Text(action) }

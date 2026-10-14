@@ -63,10 +63,10 @@ import app.heyrobot.ui.common.ActionView
 import app.heyrobot.ui.common.RIcons
 import app.heyrobot.ui.common.TurnActions
 import app.heyrobot.ui.common.TurnUi
+import app.heyrobot.ui.common.TURN_GAP
 import app.heyrobot.ui.common.TurnView
 import app.heyrobot.ui.common.replyFooter
 import app.heyrobot.ui.common.keptPicture
-import app.heyrobot.ui.common.transcriptGap
 
 // MAIN PROCESS. Home, history and one saved conversation.
 
@@ -280,7 +280,7 @@ fun ConversationScreen(c: StoredConversation?, a: AppActions, snackbar: Snackbar
         LazyColumn(
             Modifier.fillMaxSize().padding(pad),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
-            verticalArrangement = Arrangement.spacedBy(transcriptGap()),
+            verticalArrangement = Arrangement.spacedBy(TURN_GAP),
         ) {
             item {
                 Text(DateUtils.formatDateTime(ctx, c.created, DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_SHOW_TIME),
@@ -291,12 +291,12 @@ fun ConversationScreen(c: StoredConversation?, a: AppActions, snackbar: Snackbar
                 val user = t.role == TurnRole.USER
                 // A picture and screen text kept with it ("Keep screenshots and photos in history"); usually neither.
                 val pic = remember(t.id, t.picture) { if (user) keptPicture(t.picture) else null }
-                // The panel's look: a transcript, or the Classic look's bubbles. No buttons on the cards here.
+                // The panel's chat bubbles. No buttons on the cards here.
                 TurnView(TurnUi(t.id, user, t.text, attachment = if (user) t.attachment else Attachment.NONE, thumb = pic, screenText = t.screenText,
                     actions = t.actions.mapIndexed { i, x -> ActionView("$i", x.tool, x.summary, x.status, x.detail) },
                     stopped = t.stopped, error = t.error, helper = t.fromHelper, readBack = t.readBack, by = t.by, home = t.home,
                     footer = if (user) emptyList() else replyFooter(t.sources, t.costMicros.takeIf { showCost && it > 0 }?.let { CostText.line(it / 1e6) }, t.by)),
-                    TurnActions.None, startsExchange = user && t.id != c.turns.first().id)
+                    TurnActions.None)
             }
         }
     }

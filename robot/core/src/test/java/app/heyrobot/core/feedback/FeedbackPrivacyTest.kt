@@ -117,7 +117,8 @@ class FeedbackPrivacyTest {
             brainModel = BrainModel.OWN.id,
         )
         writeAtomic(File(robot, FeedbackSources.SETTINGS), s.toJson().toString(1))
-        writeAtomic(File(robot, LookSettings.FILE), LookSettings(classic = true).toJson())
+        // A look.json from before 1.0, with the Classic look switch it no longer has.
+        writeAtomic(File(robot, LookSettings.FILE), """{"v": 1, "wallpaperColors": false, "classic": true}""")
         writeAtomic(File(robot, UpdateSettings.FILE), UpdateSettings(repo = repo, skipped = "0.6.1").toJson())
         val found = FoundRelease(repo, "v0.7.1", "0.7.1", true, "2026-10-11T09:30:00Z", "ZQX-NOTES for $repo", FileRef(1, "Robot-0.7.1.apk", 9), FileRef(2, "SHA256SUMS", 9))
         writeAtomic(File(robot, UpdateState.FILE), UpdateState(lastCheck = t, outcome = CheckOutcome.FAILED, fail = UpdateFail.TOKEN_REFUSED, failHttp = 401,
@@ -189,7 +190,7 @@ class FeedbackPrivacyTest {
         val secrets = FeedbackPrivacy.secrets(inputs.settings, inputs.updates, "picocryptfan/robot-assistant", listOf("+15145550199"))
         val facts = FeedbackFacts(FeedbackFacts.robot("0.7.0", 70, false), FeedbackFacts.phone(Phone("Google", "Pixel 9a", "Google", "Tensor G4"), "16",
             "BP2A.250805.005", "2025081900"), FeedbackFacts.model(BrainModel.OWN, ModelBackend.CPU, inputs.gpuFailure, app.heyrobot.core.ModelFormat.GGUF),
-            FeedbackFacts.look(inputs.look.classic), "en-CA")
+            FeedbackFacts.look(inputs.look.wallpaperColors), "en-CA")
         val draft = FeedbackDraft(FeedbackKind.BUG, "Robot stopped mid-answer.", "Asked a long question.", "A whole answer.", Diagnostic.entries.toSet())
         val composed = FeedbackReport.compose(draft, "RFB-ABCD2345", facts, blocks, secrets)
         val link = FeedbackReport.issue(GitHubRepo("someone", "elsewhere"), draft, "RFB-ABCD2345", facts, blocks, secrets)
@@ -208,7 +209,7 @@ class FeedbackPrivacyTest {
                 assertFalse("$where reached the GitHub link", body.contains(m, ignoreCase = true))
             }
             // What it does hold: the codes, the switches, the phrase's number.
-            for (w in listOf("Kind: Bug report", "Robot stopped mid-answer.", "Your own model file (.gguf) · CPU", "Look: classic",
+            for (w in listOf("Kind: Bug report", "Robot stopped mid-answer.", "Your own model file (.gguf) · CPU", "Look: Robot's colours",
                 "WAKE 2 91 0  Wake word #2: opened the panel", "phrases=[#1 MEDIUM on, #2 MEDIUM on]", "Helpers: count=2", "OTHER on",
                 "smsGateway=another", "home=set", "server=another", "repository=another", "error=TOKEN_REFUSED · http=401", "refusedFile=OTHER_SIGNER",
                 "found=0.7.1", "CRASH_NATIVE (6)", "“[left out] to [left out] crashed in …/liblitertlm_jni.so”", "“reading …”",

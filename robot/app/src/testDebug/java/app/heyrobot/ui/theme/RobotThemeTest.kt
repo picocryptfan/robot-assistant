@@ -15,42 +15,47 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-/** RobotTheme follows Settings › Display: the standard type or 0.4's, the wallpaper's colours or Robot's own. */
+/**
+ * RobotTheme follows Settings › Display (the wallpaper's colours or Robot's own) in the standard type everywhere; the
+ * panel and History's turns get Robot 0.4's type from ClassicTheme, in the same colours.
+ */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class RobotThemeTest {
     @get:Rule val rule = createComposeRule()
 
-    private class Seen(var typography: Typography? = null, var colors: ColorScheme? = null, var look: LookStyle? = null)
+    private class Seen(var typography: Typography? = null, var colors: ColorScheme? = null)
 
-    private fun seen(dark: Boolean, look: LookSettings): Seen {
+    private fun seen(dark: Boolean, look: LookSettings, classic: Boolean = false): Seen {
         val s = Seen()
         rule.setContent {
             RobotTheme(dark = dark, look = look) {
-                s.typography = MaterialTheme.typography
-                s.colors = MaterialTheme.colorScheme
-                s.look = LocalLook.current
+                if (classic) ClassicTheme {
+                    s.typography = MaterialTheme.typography
+                    s.colors = MaterialTheme.colorScheme
+                } else {
+                    s.typography = MaterialTheme.typography
+                    s.colors = MaterialTheme.colorScheme
+                }
             }
         }
         rule.waitForIdle()
         return s
     }
 
-    @Test fun theStandardLookUsesTheDefaultTypeScale() {
-        val s = seen(false, LookSettings())
-        assertEquals(Typography(), s.typography)
-        assertEquals(LookStyle.STOCK, s.look)
+    @Test fun everyScreenUsesTheDefaultTypeScale() {
+        assertEquals(Typography(), seen(false, LookSettings()).typography)
     }
 
-    @Test fun theClassicLookBringsBackRobot04sType() {
-        val s = seen(false, LookSettings(classic = true))
+    @Test fun thePanelBringsBackRobot04sTypeInTheSameColours() {
+        val s = seen(false, LookSettings(wallpaperColors = false), classic = true)
         val t = s.typography!!
         assertEquals(17.sp, t.bodyLarge.fontSize)
         assertEquals(24.sp, t.bodyLarge.lineHeight)
         assertEquals(0.2.sp, t.bodyLarge.letterSpacing)
         assertEquals(FontWeight.SemiBold, t.headlineMedium.fontWeight)
         assertEquals(FontWeight.SemiBold, t.titleLarge.fontWeight)
-        assertEquals(LookStyle.CLASSIC, s.look)
+        assertEquals(RobotColors.Light, s.colors)
     }
 
     @Test fun wallpaperColoursOffGivesRobotsOwnSchemeLightAndDark() {
@@ -58,7 +63,7 @@ class RobotThemeTest {
     }
 
     @Test fun robotsDarkScheme() {
-        assertEquals(RobotColors.Dark, seen(true, LookSettings(wallpaperColors = false, classic = true)).colors)
+        assertEquals(RobotColors.Dark, seen(true, LookSettings(wallpaperColors = false), classic = true).colors)
     }
 
     @Test fun wallpaperColoursOnStillGivesAFullScheme() {

@@ -10,7 +10,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -55,11 +54,9 @@ import app.heyrobot.core.ActionStatus
 import app.heyrobot.core.termux.CommandAnalyzer
 import app.heyrobot.core.termux.TERMUX_LIMITS
 import app.heyrobot.core.termux.limitLabel
-import app.heyrobot.ui.theme.LocalLook
-import app.heyrobot.ui.theme.LookStyle
 import app.heyrobot.ui.theme.RobotTokens
 
-// Main and voice processes. A Termux command's card (0.9, docs/plans/websearch-termux-design.md B5.2), in both looks: the
+// Main and voice processes. A Termux command's card (0.9, docs/plans/websearch-termux-design.md B5.2), in the panel's bubbles: the
 // command in monospace (Edit makes it a text field, read again for warnings as you type), Robot's own warnings as chips
 // and a red line for one that sends right away, Gemma's reason labelled as Gemma's, how Robot splits the arguments when
 // quotes or spaces matter, the folder and the time limit (changeable for this run); Run / Edit / Cancel, and Open in
@@ -130,7 +127,6 @@ private const val OUTPUT_LINES = 12
 @Composable
 fun TermuxCard(a: ActionView, t: TermuxCardView, onConfirm: ((String, Boolean) -> Unit)?, change: ((String, TermuxCardChange) -> Unit)?, modifier: Modifier = Modifier) {
     val c = MaterialTheme.colorScheme
-    val classic = LocalLook.current == LookStyle.CLASSIC
     // Waiting for Run (not once it runs: the card stays the turn's pending one until the result is in).
     val waiting = a.status == ActionStatus.PENDING && onConfirm != null && !t.running
     var editing by rememberSaveable(a.id) { mutableStateOf(false) }
@@ -139,7 +135,7 @@ fun TermuxCard(a: ActionView, t: TermuxCardView, onConfirm: ((String, Boolean) -
     var limits by remember { mutableStateOf(false) }
     var all by rememberSaveable(a.id) { mutableStateOf(false) }
     val ctx = LocalContext.current
-    PanelCard(modifier.then(if (classic) Modifier.widthIn(max = 340.dp) else Modifier)) {
+    PanelCard(modifier.widthIn(max = 340.dp)) {
         val bad = a.status in setOf(ActionStatus.FAILED, ActionStatus.INVALID, ActionStatus.NEEDS_UNLOCK, ActionStatus.DISABLED, ActionStatus.NEEDS_PERMISSION,
             ActionStatus.NOT_FOUND, ActionStatus.NO_APP)
         CardHeader(
@@ -169,8 +165,8 @@ fun TermuxCard(a: ActionView, t: TermuxCardView, onConfirm: ((String, Boolean) -
             Chips(analysis.chips(), analysis.warnings.firstOrNull { it.red }?.en)
         } else {
             Surface(
-                color = if (classic) c.surface.copy(alpha = 0.6f) else c.surfaceContainer,
-                shape = if (classic) RoundedCornerShape(14.dp) else MaterialTheme.shapes.small,
+                color = c.surface.copy(alpha = 0.6f),
+                shape = RoundedCornerShape(14.dp),
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
             ) {
                 Text("$ " + (t.edited ?: t.command), style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
@@ -180,7 +176,7 @@ fun TermuxCard(a: ActionView, t: TermuxCardView, onConfirm: ((String, Boolean) -
             if (t.edited == null) Chips(t.chips, t.red) else Chips(CommandAnalyzer.analyze(t.edited).chips(), null)
         }
         val small = MaterialTheme.typography.bodySmall
-        val quiet = c.onSurfaceVariant.takeIf { !classic } ?: c.onSecondaryContainer.copy(alpha = 0.8f)
+        val quiet = c.onSecondaryContainer.copy(alpha = 0.8f)
         if (!editing) t.readsAs?.let { Text("Robot reads it as: $it", style = small, color = quiet, modifier = Modifier.padding(top = 6.dp)) }
         if (t.why != null && t.edited == null) {
             Text("Gemma: “${t.why}”", style = small.copy(fontStyle = FontStyle.Italic), color = quiet, modifier = Modifier.padding(top = 6.dp)
@@ -204,8 +200,7 @@ fun TermuxCard(a: ActionView, t: TermuxCardView, onConfirm: ((String, Boolean) -
         // While it waits: Cancel, Edit, Run; Open in Termux for a command that needs a terminal.
         if (waiting) {
             Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End), verticalAlignment = Alignment.CenterVertically) {
-                if (classic) OutlinedButton(onClick = { onConfirm!!(a.id, false) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Cancel") }
-                else TextButton(onClick = { onConfirm!!(a.id, false) }) { Text("Cancel") }
+                OutlinedButton(onClick = { onConfirm!!(a.id, false) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Cancel") }
                 if (t.editable && !editing && change != null) {
                     TextButton(onClick = { editing = true; change(a.id, TermuxCardChange.Editing) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Edit") }
                 }
@@ -231,8 +226,8 @@ fun TermuxCard(a: ActionView, t: TermuxCardView, onConfirm: ((String, Boolean) -
             val lines = remember(out) { out.lines() }
             val shown = if (all || lines.size <= OUTPUT_LINES) out else lines.take(OUTPUT_LINES).joinToString("\n")
             Surface(
-                color = if (classic) c.surface.copy(alpha = 0.6f) else c.surfaceContainer,
-                shape = if (classic) RoundedCornerShape(14.dp) else MaterialTheme.shapes.small,
+                color = c.surface.copy(alpha = 0.6f),
+                shape = RoundedCornerShape(14.dp),
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
             ) {
                 Box(Modifier.heightIn(max = if (all) 360.dp else 240.dp).verticalScroll(rememberScrollState())) {

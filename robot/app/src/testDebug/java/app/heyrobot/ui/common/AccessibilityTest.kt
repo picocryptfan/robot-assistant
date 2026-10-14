@@ -51,9 +51,9 @@ class AccessibilityTest {
     private val liveRegion = SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite)
     private val noLiveRegion = SemanticsMatcher.keyNotDefined(SemanticsProperties.LiveRegion)
 
-    private fun answerIsALiveRegionOnceComplete(classic: Boolean) {
+    @Test fun thePanelsAnswerIsALiveRegionOnceComplete() {
         var streaming by mutableStateOf(true)
-        rule.show(classic = classic) { TurnView(TurnUi("r1", user = false, text = answer, streaming = streaming, announce = true), TurnActions.None) }
+        rule.show { TurnView(TurnUi("r1", user = false, text = answer, streaming = streaming, announce = true), TurnActions.None) }
         // While it streams TalkBack isn't told each word; once complete, the whole answer is one polite live region.
         rule.onNodeWithText(answer, substring = true).assert(noLiveRegion)
         streaming = false
@@ -61,10 +61,6 @@ class AccessibilityTest {
         rule.onNodeWithText(answer, substring = true).assert(liveRegion)
         rule.onAllNodesWithText(answer, substring = true).assertCountEquals(1)
     }
-
-    @Test fun thePanelsAnswerIsALiveRegionOnceComplete() = answerIsALiveRegionOnceComplete(classic = false)
-
-    @Test fun theClassicPanelsAnswerToo() = answerIsALiveRegionOnceComplete(classic = true)
 
     @Test fun historyAndSpokenRepliesAreNotAnnounced() {
         rule.show { TurnView(TurnUi("r1", user = false, text = answer), TurnActions.None) }

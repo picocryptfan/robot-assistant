@@ -61,7 +61,7 @@ import java.time.ZoneId
 /**
  * 0.7, Settings › About › Send feedback: what each kind asks and ticks, Preview showing exactly what goes, Share, Copy,
  * Text it and the GitHub issue reaching the app, Done clearing the draft, the panel's words, the draft surviving a
- * recreation, TalkBack and touch targets in both looks, and its screenshots (light, dark, text at 200 %).
+ * recreation, TalkBack and touch targets, and its screenshots (light, dark, text at 200 %).
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -94,8 +94,8 @@ class FeedbackScreenTest {
         saveNumber = { taps += "number $it" },
     )
 
-    private fun page(args: FeedbackArgs = about, u: FeedbackUi? = ui, prefill: String? = null, classic: Boolean = false, dark: Boolean = false) =
-        rule.show(dark = dark, classic = classic) { FeedbackScreen(args, u, actions, onBack = { backs++ }, prefill = prefill, newRef = { "RFB-ABCD2345" }) }
+    private fun page(args: FeedbackArgs = about, u: FeedbackUi? = ui, prefill: String? = null, dark: Boolean = false) =
+        rule.show(dark = dark) { FeedbackScreen(args, u, actions, onBack = { backs++ }, prefill = prefill, newRef = { "RFB-ABCD2345" }) }
 
     private fun box(title: String) = rule.onNode(hasText(title) and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Checkbox))
 
@@ -257,15 +257,6 @@ class FeedbackScreenTest {
         rule.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("Share"))
         rule.onNodeWithText("Share").performClick()
         assertTrue(outs.single().text.contains("Kind: Idea\nRef: RFB-") && outs.single().text.contains("The idea:\nRead my calendar in the brief\n"))
-    }
-
-    @Test fun theClassicLookIsTheSame() {
-        // The Classic look changes the panel only (ui-stock-design 4): the page and its taps work alike.
-        page(classic = true)
-        scrollTo("Share")
-        rule.onNodeWithText("Share").performClick()
-        assertEquals(listOf("share BUG 7"), taps)
-        assertEquals(emptyList<String>(), rule.touchTargetProblems())
     }
 
     @Test fun aboutHasTheSendFeedbackRow() {

@@ -7,14 +7,12 @@ import org.json.JSONObject
 
 /**
  * [wallpaperColors]: Material You colours from the wallpaper (the default), or Robot's own blue scheme when off.
- * [classic]: the panel as in Robot 0.4 (its type, the round mic, the chat bubbles) instead of the standard Android look.
- * Classic is temporary: once it goes, [fromJson] ignores the key and the switch disappears.
+ * 1.0 dropped the Classic look switch (the panel is always the classic one): an older file's "classic" key is ignored.
  */
-data class LookSettings(val wallpaperColors: Boolean = true, val classic: Boolean = false) {
+data class LookSettings(val wallpaperColors: Boolean = true) {
     fun toJson(): String = JSONObject()
         .put("v", VERSION)
         .put("wallpaperColors", wallpaperColors)
-        .put("classic", classic)
         .toString()
 
     companion object {
@@ -29,10 +27,7 @@ data class LookSettings(val wallpaperColors: Boolean = true, val classic: Boolea
                 is Boolean -> v
                 else -> default
             }
-            return LookSettings(
-                wallpaperColors = flag("wallpaperColors", d.wallpaperColors),
-                classic = flag("classic", d.classic),
-            )
+            return LookSettings(wallpaperColors = flag("wallpaperColors", d.wallpaperColors))
         }
     }
 }

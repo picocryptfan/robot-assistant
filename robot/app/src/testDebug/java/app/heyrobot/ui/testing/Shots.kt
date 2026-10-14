@@ -9,6 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.onRoot
 import app.heyrobot.core.LookSettings
+import app.heyrobot.ui.theme.ClassicTheme
 import app.heyrobot.ui.theme.RobotTheme
 import com.github.takahirom.roborazzi.captureRoboImage
 
@@ -21,11 +22,16 @@ const val SHOTS = "src/testDebug/screenshots"
 /** The phone the screenshots are taken on: about a Pixel's width in dp, at 2x. */
 const val PHONE = "w411dp-h891dp-xhdpi"
 
-/** Shows [content] in Robot's theme ([dark] or light, standard look unless [classic]) on the theme's surface. */
+/**
+ * Shows [content] in Robot's theme ([dark] or light) on the theme's surface; in the classic look's type when [classic],
+ * as the panel's parts are drawn.
+ */
 fun ComposeContentTestRule.show(dark: Boolean = false, classic: Boolean = false, content: @Composable () -> Unit) {
     setContent {
-        RobotTheme(dark = dark, look = LookSettings(wallpaperColors = false, classic = classic)) {
-            Surface(color = MaterialTheme.colorScheme.surface) { Box(Modifier.fillMaxWidth()) { content() } }
+        RobotTheme(dark = dark, look = LookSettings(wallpaperColors = false)) {
+            Surface(color = MaterialTheme.colorScheme.surface) {
+                Box(Modifier.fillMaxWidth()) { if (classic) ClassicTheme(content) else content() }
+            }
         }
     }
 }

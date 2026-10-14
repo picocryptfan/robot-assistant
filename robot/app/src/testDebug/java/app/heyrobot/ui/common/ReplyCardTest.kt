@@ -36,7 +36,8 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * 0.7, the reply card (design §B5): who and which app, your words in quotes, the tick box that sends them in her language
  * with what Robot made of them, the notes, and Send, Edit, Open chat, Cancel; the 3 seconds' Stop; a pick when several
- * conversations fit; what's left when it went or failed; History's has no buttons. In both looks and at twice the size.
+ * conversations fit; what's left when it went or failed; History's has no buttons. In the panel's tonal colours and type,
+ * and at twice the size.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -59,7 +60,7 @@ class ReplyCardTest {
         choices = listOf("Marc · Cheogram", "Marc · Signal"))
 
     private fun card(r: ReplyCardView, history: Boolean = false) =
-        rule.show { Column(Modifier.padding(16.dp)) { ReplyCard(r, if (history) null else { op: ReplyOp -> ops += op }) } }
+        rule.show(classic = true) { Column(Modifier.padding(16.dp)) { ReplyCard(r, if (history) null else { op: ReplyOp -> ops += op }) } }
 
     @Test fun aWaitingCardSaysWhatGoesWhereAndItsButtonsAnswer() {
         card(waiting)
@@ -87,7 +88,7 @@ class ReplyCardTest {
     }
 
     @Test fun theOtherStates() {
-        rule.show {
+        rule.show(classic = true) {
             Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 for (r in listOf(group, window, gone, sent, pick)) ReplyCard(r, { op -> ops += op })
             }
@@ -109,18 +110,14 @@ class ReplyCardTest {
         assertTrue(ops.isEmpty())
     }
 
-    /** In a conversation, in both looks: the card under the reply, its taps handed back with the reply's id; History's has none. */
-    private fun underAReply(classic: Boolean) {
+    /** In a conversation: the card under the reply, its taps handed back with the reply's id; History's has none. */
+    @Test fun underAReply() {
         val got = ArrayList<String>()
         val turn = TurnUi("r1", user = false, text = "Reply to Mom · Cheogram.", reply = waiting)
-        rule.show(classic = classic) { TurnView(turn, TurnActions(reply = { id, op -> got += "$id $op" })) }
+        rule.show { TurnView(turn, TurnActions(reply = { id, op -> got += "$id $op" })) }
         rule.onNodeWithText("Send").performClick()
         assertEquals(listOf("r1 Send"), got)
     }
-
-    @Test fun underAReply() = underAReply(classic = false)
-
-    @Test fun underAReplyClassic() = underAReply(classic = true)
 
     @Test fun historysTurnShowsTheCardWithoutButtons() {
         rule.show { TurnView(TurnUi("r1", user = false, text = "Reply to Mom · Cheogram.", reply = sent), TurnActions.None) }
@@ -129,7 +126,7 @@ class ReplyCardTest {
     }
 
     @Test fun light() {
-        rule.show {
+        rule.show(classic = true) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 ReplyCard(waiting.copy(notes = listOf("Robot hasn't checked yet how this app sends a reply.")), { ops += it })
                 ReplyCard(window, { ops += it })
@@ -151,7 +148,7 @@ class ReplyCardTest {
 
     @Test @Config(fontScale = 2f)
     fun atTwiceTheTextSize() {
-        rule.show { Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState())) { ReplyCard(waiting.copy(translate = true), { ops += it }) } }
+        rule.show(classic = true) { Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState())) { ReplyCard(waiting.copy(translate = true), { ops += it }) } }
         assertEquals(emptyList<String>(), rule.touchTargetProblems())
         rule.shot("reply_card_font200")
     }

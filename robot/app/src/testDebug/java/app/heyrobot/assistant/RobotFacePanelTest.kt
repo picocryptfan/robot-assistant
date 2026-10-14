@@ -15,6 +15,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.unit.dp
 import app.heyrobot.core.LookSettings
 import app.heyrobot.core.TurnRole
+import app.heyrobot.ui.classic.ClassicHeader
 import app.heyrobot.ui.common.RobotFace
 import app.heyrobot.ui.common.RobotFaceIcon
 import app.heyrobot.ui.testing.PHONE
@@ -31,9 +32,9 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * 1.0: the robot at the top of the panel changes with what Robot is doing, in both looks and on the lock screen. It is
- * decorative (the status line says it in words), the speaking robot waits out the pause between two sentences, and the
- * screenshots show the standard header in each state, light and dark.
+ * 1.0: the robot in the panel's orb changes with what Robot is doing, also on the lock screen. It is decorative (the
+ * status line says it in words), the speaking robot waits out the pause between two sentences, and the screenshots show
+ * the header in each state, light and dark.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -55,15 +56,13 @@ class RobotFacePanelTest {
 
     private fun tag(f: RobotFace) = "robot-face-" + f.name.lowercase()
 
-    @Test fun bothLooksAndTheLockScreenShowTheFaceForTheState() {
+    @Test fun thePanelAndTheLockScreenShowTheFaceForTheState() {
         var st by mutableStateOf(PanelFixtures.idle)
-        var classic by mutableStateOf(false)
-        rule.setContent { RobotTheme(dark = false, look = LookSettings(wallpaperColors = false, classic = classic)) { AssistantPanel(st, RecordingActions()) {} } }
-        for ((face, s) in states) for (c in listOf(false, true)) for (locked in listOf(false, true)) {
+        rule.setContent { RobotTheme(dark = false, look = LookSettings(wallpaperColors = false)) { AssistantPanel(st, RecordingActions()) {} } }
+        for ((face, s) in states) for (locked in listOf(false, true)) {
             st = s.copy(locked = locked)
-            classic = c
             rule.waitForIdle()
-            rule.onNodeWithTag(tag(face), useUnmergedTree = true).assertExists("$face classic=$c locked=$locked")
+            rule.onNodeWithTag(tag(face), useUnmergedTree = true).assertExists("$face locked=$locked")
         }
     }
 
@@ -84,10 +83,16 @@ class RobotFacePanelTest {
         }
     }
 
-    // ------------------------------------------------------------------ screenshots: the standard header in each state
+    // ------------------------------------------------------------------ screenshots: the header in each state
 
     private fun header(face: RobotFace, dark: Boolean) {
-        rule.show(dark = dark) { Box(Modifier.testTag("shot")) { PanelHeader(states.getValue(face), RecordingActions()) {} } }
+        val st = states.getValue(face)
+        rule.show(dark = dark, classic = true) {
+            Box(Modifier.testTag("shot")) {
+                ClassicHeader(orbMood(st.phase), statusLine(st), showKeep = false, speak = st.speak, onKeep = {}, onToggleSpeak = {}, onNew = {},
+                    onClose = {}, face = st.face)
+            }
+        }
         rule.waitForIdle()
         rule.onNodeWithTag("shot").captureRoboImage("$SHOTS/robot_face_${face.name.lowercase()}_${if (dark) "dark" else "light"}.png")
     }

@@ -86,7 +86,7 @@ class RobotSession(ctx: Context) : VoiceInteractionSession(ctx), LifecycleOwner,
 
     override fun onShow(args: Bundle?, showFlags: Int) {
         super.onShow(args, showFlags)
-        // Settings › Display, as the main app last saved it (a small file): each panel opens in the current look.
+        // Settings › Display, as the main app last saved it (a small file): each panel opens in the current colours.
         LookStore.reload(context)
         registry.currentState = Lifecycle.State.RESUMED
         PanelController.attach(this)
