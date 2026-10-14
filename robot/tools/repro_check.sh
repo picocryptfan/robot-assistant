@@ -19,7 +19,7 @@
 #             (tools/build_llama.sh, tools/build_robotmt.sh), each in a work folder at another path, compares the two
 #             builds' libraries, and packages each build's own libraries into its APK. The second build starts from the
 #             first one's checked sources (copied, so it needs no network; build_robotmt.sh checks its tars again).
-#             About 15 more minutes on 8 cores; this checkout's libraries are replaced by the ones it builds.
+#             About 9 more minutes on 8 cores; this checkout's libraries are replaced by the ones it builds.
 #
 # Usage: tools/repro_check.sh [--native [--libs-only]] [--keep] [--signed Robot-x.y.z.apk] [--gradle /path/to/gradle]
 #   --native     rebuild and compare the native libraries too (above)
