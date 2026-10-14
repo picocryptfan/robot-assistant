@@ -66,7 +66,7 @@ Three checks, each proving something different. None replaces the others.
 |---|---|---|
 | The signing certificate: `apksigner verify --print-certs Robot-<version>.apk` shows the fingerprint above | The APK is signed with the key that signed every Robot release, and Android and Robot's updater refuse an update signed with another key. | That the code is the code in this repository. |
 | In the folder with your downloads: `sha256sum -c --ignore-missing SHA256SUMS` | The APK is the file the release lists, and the download isn't damaged. | `SHA256SUMS` comes from the same release, so it doesn't protect you from someone who can publish to the repository. The signing key does that. |
-| In `robot/`: `tools/repro_check.sh` | This repository's code builds the same unsigned APK twice on your machine, byte for byte. With `--signed Robot-<version>.apk` it also copies the release's signature onto your build and compares the two (needs apksigcopier), which ties the published APK to the code. | That the build is reproducible on another machine, or that the libraries it pins are free of bugs. |
+| In `robot/`: `tools/repro_check.sh` | This repository's code builds the same unsigned APK twice on your machine, byte for byte. With `--signed Robot-<version>.apk` it also copies the release's signature onto your build and compares the two (needs apksigcopier), which ties the published APK to the code. | That the native libraries rebuild the same: it builds them once and uses them in both builds. Nor that the build is reproducible on another machine, or that the libraries it pins are free of bugs. |
 
 Coming from 0.9? Robot 1.0 installs beside it under a new app ID, and you move your data by hand: see
 [`MIGRATING-0.9.md`](MIGRATING-0.9.md).
