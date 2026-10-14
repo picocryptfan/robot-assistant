@@ -69,6 +69,21 @@ class ProcessIsolationTest {
     }
 
     /**
+     * 1.0.1: the APK carries no dependency-info block in its signing block (0x504b4453, which only Google can read) and no
+     * META-INF/version-control-info.textproto (the commit it was built from), so a build from a source tarball can match
+     * it; tools/verify_apk.sh checks the built APK for both.
+     */
+    @Test fun theApkCarriesNoDependencyOrVcsInfo() {
+        val gradle = File(root, "app/build.gradle").readText().replace(Regex("//[^\n]*"), "")
+        assertTrue(Regex("""dependenciesInfo \{\s*includeInApk = false\s*includeInBundle = false\s*\}""").containsMatchIn(gradle))
+        val release = gradle.substringAfter("buildTypes {").substringAfter("release {").substringBefore("\n        }")
+        assertTrue(release, Regex("""vcsInfo \{\s*include = false\s*\}""").containsMatchIn(release))
+        assertTrue(!gradle.contains("include = true") && !gradle.contains("includeInApk = true") && !gradle.contains("includeInBundle = true"))
+        val verify = File(root, "tools/verify_apk.sh").readText()
+        assertTrue(verify.contains("grep -qw 0x504b4453") && verify.contains("'META-INF/version-control-info.textproto'"))
+    }
+
+    /**
      * 0.9, the Termux agent: the RUN_COMMAND intent is built and sent only by the
      * :voice process's TermuxSend (startForegroundService, nowhere else), its result receiver is :voice's and not exported,
      * the permission is asked for by the main app only (MainActivity, for Settings › Termux), the runner and its cards

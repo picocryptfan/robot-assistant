@@ -50,7 +50,16 @@ android {
         release {
             minifyEnabled false
             if (ksPath != null && ksPassFile != null) signingConfig signingConfigs.release
+            // No META-INF/version-control-info.textproto: it holds the commit the APK was built from, so the same source
+            // built from a tarball or another clone would differ (tools/verify_apk.sh checks it's absent).
+            vcsInfo { include = false }
         }
+    }
+    // No dependency-info block in the APK's signing block (id 0x504b4453, encrypted with Google's key, readable by Google
+    // Play alone) and none in a bundle: IzzyOnDroid and F-Droid ask for it removed (tools/verify_apk.sh checks it).
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
     }
     buildFeatures { compose true; buildConfig true }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }

@@ -43,6 +43,27 @@ cert=$("$BT/apksigner" verify --print-certs "$APK" 2>/dev/null | sed -n 's/.*cer
 # minSdk 34: AGP signs with v3 (API 28+) and may skip v2; either covers every phone Robot installs on.
 sigv=$("$BT/apksigner" verify -v "$APK" 2>/dev/null)
 grep -qE "Verified using v[23] scheme \(APK Signature Scheme v[23]\): true" <<<"$sigv" && pass "v2/v3 signature verifies" || fail "v2/v3 signature"
+# 1.0.1: no dependency-info block (id 0x504b4453, Google's encrypted list of the libraries) in the signing block, and no
+# META-INF/version-control-info.textproto (the commit the APK came from): app/build.gradle's dependenciesInfo and vcsInfo.
+# The signing block ends just before the central directory, whose offset the zip's end record gives (an APK has no zip
+# comment): its id-value pairs, then its size again and its magic. An unsigned APK has no block, so no ids to check.
+u() { od -An -t "u$2" -j "$1" -N "$2" "$APK" | tr -d ' \n'; }
+eocd=$(( $(stat -c %s "$APK") - 22 ))
+blockids=""
+if [ "$(u "$eocd" 4)" = $((0x06054b50)) ]; then
+  cdir=$(u $((eocd + 16)) 4)
+  if [ "$(od -An -c -j $((cdir - 16)) -N 16 "$APK" | tr -d ' \n')" = "APKSigBlock42" ]; then
+    p=$((cdir - $(u $((cdir - 24)) 8)))
+    while [ "$p" -lt $((cdir - 24)) ]; do
+      blockids="$blockids $(printf '0x%08x' "$(u $((p + 8)) 4)")"; p=$((p + 8 + $(u "$p" 8)))
+    done
+  fi
+  pass "signing block read (ids:${blockids:- none, unsigned})"
+else
+  fail "no zip end record in the last 22 bytes (a zip comment?): the signing block isn't checked"
+fi
+grep -qw 0x504b4453 <<<"$blockids" && fail "dependency-info block 0x504b4453 in the signing block" || pass "no dependency-info block (0x504b4453) in the signing block"
+grep -qx 'META-INF/version-control-info.textproto' <<<"$(unzip -Z1 "$APK")" && fail "META-INF/version-control-info.textproto in the APK" || pass "no META-INF/version-control-info.textproto"
 badging=$("$BT/aapt2" dump badging "$APK" 2>/dev/null)
 has "package: name='ai.robot_app' versionCode='1000099' versionName='1.0.0'" "$badging" "package ai.robot_app 1.0.0 (1000099)"
 has "minSdkVersion:'34'" "$badging" "minSdk 34"
