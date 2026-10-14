@@ -2,9 +2,6 @@ plugins {
     id 'com.android.library'
     id 'org.jetbrains.kotlin.android'
 }
-// Declared here too: a Gradle init script that adds a mirror to project repositories would otherwise make
-// Gradle ignore the settings' repositories.
-repositories { google(); mavenCentral() }
 android {
     namespace 'app.heyrobot.core'
     compileSdk rootProject.ext.robotCompileSdk

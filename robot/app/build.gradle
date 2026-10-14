@@ -3,10 +3,6 @@ plugins {
     id 'org.jetbrains.kotlin.android'
     id 'org.jetbrains.kotlin.plugin.compose'
 }
-// Declared here too: a Gradle init script that adds a mirror to project repositories would otherwise make
-// Gradle ignore the settings' repositories.
-repositories { google(); mavenCentral() }
-
 // Release signing: the keystore and its password stay outside the repository. Point at them with
 // Gradle properties (-Probot.keystore=... -Probot.keystorePassFile=...) or the environment variables
 // ROBOT_KEYSTORE / ROBOT_KEYSTORE_PASS_FILE. The password file holds the password on its first line.
