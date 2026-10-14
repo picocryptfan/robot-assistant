@@ -58,6 +58,8 @@ internal object LlamaIpc {
     const val PREP_TEMPLATE_FAILED = -1
     const val PREP_TOKENIZE_FAILED = -2
     const val PREP_TOO_LONG = -3
+    /** 1.0.1: a message other than the system prompt holds a control token's text: refused (robot_llama.cpp's backstop). */
+    const val PREP_CONTROL_TEXT = -4
 
     // load()'s failed part.
     const val LOAD_MODEL = 1

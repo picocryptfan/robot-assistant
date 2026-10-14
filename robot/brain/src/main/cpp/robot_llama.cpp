@@ -28,6 +28,7 @@
 #include <cstring>
 #include <exception>
 #include <new>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -53,6 +54,8 @@ constexpr jint LOAD_TEMPLATE = 3;
 constexpr jint PREP_TEMPLATE_FAILED = -1;
 constexpr jint PREP_TOKENIZE_FAILED = -2;
 constexpr jint PREP_TOO_LONG = -3;
+// 1.0.1: a message other than the system prompt holds a control or unknown token's text (the backstop behind Kotlin's ControlText).
+constexpr jint PREP_CONTROL_TEXT = -4;
 
 // Stats slots (LlamaNative.STATS_*).
 enum Stat { S_PROMPT = 0, S_REUSED, S_PROMPT_MS, S_GEN, S_GEN_MS, S_FIRST_MS, S_POSITION, S_COUNT };
@@ -304,10 +307,35 @@ JNIEXPORT jint JNICALL Java_app_heyrobot_brain_LlamaNative_trainContext(JNIEnv *
     return r == nullptr ? 0 : llama_model_n_ctx_train(r->model);
 }
 
+/** [text] alone as tokens (no BOS), reading control and unknown tokens' texts as those tokens only when [special]. */
+static std::vector<llama_token> tokens(const llama_vocab * vocab, const std::string & text, bool special) {
+    std::vector<llama_token> out(text.size() + 8);
+    int32_t got = llama_tokenize(vocab, text.data(), static_cast<int32_t>(text.size()), out.data(), static_cast<int32_t>(out.size()), false, special);
+    if (got < 0 && got != INT32_MIN) {
+        out.resize(static_cast<size_t>(-got));
+        got = llama_tokenize(vocab, text.data(), static_cast<int32_t>(text.size()), out.data(), static_cast<int32_t>(out.size()), false, special);
+    }
+    if (got < 0) throw std::runtime_error("tokenize");
+    out.resize(static_cast<size_t>(got));
+    return out;
+}
+
+/**
+ * 1.0.1: [text] holds the text of one of the vocabulary's control or unknown tokens, of any length. llama.cpp reads those
+ * as tokens only with its special tokens on (the whole prompt is read so, for the template's markers), and reads its
+ * user-defined ones either way: so the two readings of the text alone differ exactly when it holds such a text.
+ */
+static bool controlText(const llama_vocab * vocab, const std::string & text) {
+    if (text.empty()) return false;
+    return tokens(vocab, text, true) != tokens(vocab, text, false);
+}
+
 /**
  * Formats a conversation ([roles]: "system", "user", "assistant"; [texts]: UTF-8) with the model's chat template and the
  * generation prompt, tokenizes it with the model's tokenizer and keeps it for generate(). [think]: the template's
- * enable_thinking. Returns the token count, or a negative PREP_* code. [flags] (out, 1 element): bit 0 the generation
+ * enable_thinking. Every message but the system prompt (Robot's own) is read alone first: one that holds a control or
+ * unknown token's text refuses the prompt (PREP_CONTROL_TEXT), whatever Kotlin's ControlText broke or missed. Returns the
+ * token count, or a negative PREP_* code. [flags] (out, 1 element): bit 0 the generation
  * prompt opens a <think> block the model is to close, bit 1 the template supports enable_thinking.
  */
 JNIEXPORT jint JNICALL Java_app_heyrobot_brain_LlamaNative_prepare(JNIEnv * env, jclass, jlong h, jobjectArray roles,
@@ -330,6 +358,7 @@ JNIEXPORT jint JNICALL Java_app_heyrobot_brain_LlamaNative_prepare(JNIEnv * env,
             m.content = bytes(env, text);
             env->DeleteLocalRef(role);
             env->DeleteLocalRef(text);
+            if (m.role != "system" && controlText(r->vocab, m.content)) return PREP_CONTROL_TEXT;
             in.messages.push_back(std::move(m));
         }
         const common_chat_params p = common_chat_templates_apply(r->templates.get(), in);

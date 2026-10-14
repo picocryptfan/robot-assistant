@@ -470,7 +470,12 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
                     }
                     if (tokens < 0 && tokens != LlamaIpc.PREP_TOO_LONG) {
                         run.nativeEnded = true
-                        handler.post { fail(run, BrainError.ENGINE, "template") }
+                        // 1.0.1: a control token's text that ControlText didn't break (robot_llama.cpp read each message alone).
+                        val detail = when (tokens) {
+                            LlamaIpc.PREP_CONTROL_TEXT -> "control"
+                            else -> "template"
+                        }
+                        handler.post { fail(run, BrainError.ENGINE, detail) }
                         return@execute
                     }
                     val real = if (tokens == LlamaIpc.PREP_TOO_LONG) Int.MAX_VALUE / 2 else tokens
