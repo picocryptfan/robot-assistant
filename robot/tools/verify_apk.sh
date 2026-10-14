@@ -16,8 +16,13 @@
 # entry and result receiver (:voice, not exported).
 # Usage: tools/verify_apk.sh <apk>
 set -u -o pipefail
+# Byte order for every sort (the allowlists below are written in it), whatever the shell's locale.
+unset LC_ALL; export LC_COLLATE=C
 APK="$1"
-BT="${ANDROID_HOME:-/opt/android-sdk}/build-tools/36.0.0"
+ROBOT="$(cd "$(dirname "$0")/.." && pwd)"
+# The build tools the build itself uses (build.gradle's robotBuildTools).
+BT="${ANDROID_HOME:-/opt/android-sdk}/build-tools/$(sed -n "s/^ *robotBuildTools = '\([^']*\)'.*/\1/p" "$ROBOT/build.gradle")"
+[ -x "$BT/aapt2" ] || { echo "No build tools at $BT (set ANDROID_HOME)"; exit 1; }
 NDK_BIN="${ANDROID_NDK_HOME:-${ANDROID_HOME:-/opt/android-sdk}/ndk/27.1.12297006}/toolchains/llvm/prebuilt/linux-x86_64/bin"
 EXPECT_CERT=402557a46a491750688a3dff714100fe1d20b2f61193a912358c2edd341a6b6a
 fails=0
