@@ -97,8 +97,8 @@ inputs="local.properties voice/src/main/jniLibs voice/src/main/assets/espeak-ng-
 for p in $inputs; do
   [ -e "$HERE/$p" ] || continue
   mkdir -p "$(dirname "$DEST/$p")"
-  if [ -d "$HERE/$p" ] && [ ! -L "$HERE/$p" ]; then cp -al "$HERE/$p/." "$DEST/$p/" 2>/dev/null || cp -a "$HERE/$p/." "$DEST/$p/"
-  else cp -al "$HERE/$p" "$DEST/$p" 2>/dev/null || cp -a "$HERE/$p" "$DEST/$p"; fi
+  if [ -d "$HERE/$p" ] && [ ! -L "$HERE/$p" ]; then cp -alf "$HERE/$p/." "$DEST/$p/" 2>/dev/null || cp -af "$HERE/$p/." "$DEST/$p/"
+  else cp -alf "$HERE/$p" "$DEST/$p" 2>/dev/null || cp -af "$HERE/$p" "$DEST/$p"; fi
 done
 
 status=0
