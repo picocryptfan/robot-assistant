@@ -103,8 +103,8 @@ object Phones {
 
     /**
      * The Tensor G5 runs Robot's TPU build (Fast, pinned since 0.1). 0.8: the Tensor G6 runs Google's Tensor G6 build
-     * (gemma-4-E2B-it_Google_Tensor_G6.litertlm, at the same commit), as a beta until Robot has run it on a Pixel 11
-     * (../docs/ops/research/tensor-g6.md): the content check takes a build for this phone's chip only.
+     * (gemma-4-E2B-it_Google_Tensor_G6.litertlm, at the same commit), as a beta until Robot has run it on a Pixel 11:
+     * the content check takes a build for this phone's chip only.
      */
     fun tpu(chip: Chip): TpuSupport = when (chip) {
         Chip.TENSOR_G5 -> TpuSupport.SUPPORTED

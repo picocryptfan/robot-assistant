@@ -3,7 +3,7 @@ plugins {
     id 'org.jetbrains.kotlin.android'
     id 'org.jetbrains.kotlin.plugin.compose'
 }
-// As in the probe: a session init script adds a mirror to project repositories, which would otherwise make
+// Declared here too: a Gradle init script that adds a mirror to project repositories would otherwise make
 // Gradle ignore the settings' repositories.
 repositories { google(); mavenCentral() }
 
@@ -45,7 +45,7 @@ android {
         }
     }
     buildTypes {
-        // No minify, as in the probe: sherpa-onnx's JNI reads the Kotlin config classes' fields by name, and
+        // No minify: sherpa-onnx's JNI reads the Kotlin config classes' fields by name, and
         // LiteRT-LM calls back into its Kotlin classes from native code.
         release {
             minifyEnabled false
@@ -56,7 +56,7 @@ android {
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = '17' }
     androidResources { noCompress += ['onnx'] }
-    // Same native packaging as the probe and the lab (Off Grid PR #702): extracted libraries, so
+    // Native packaging as in my earlier test apps (Off Grid PR #702): extracted libraries, so
     // Backend.NPU(nativeLibraryDir) finds the dispatch library (and the manifest's extractNativeLibs="true"): the libraries
     // are compressed in the APK and Android unpacks them into nativeLibraryDir at install, where System.loadLibrary,
     // LiteRT's dispatch library lookup, sherpa-onnx, librobotmt and the isolated :llama process find them. 0.8: the dex
@@ -72,7 +72,7 @@ android {
             excludes.add('**/libLiteRtCompilerPlugin_google_tensor.so')
             pickFirsts.add('**/libLiteRtDispatch_GoogleTensor.so')
         }
-        // META-INF/AL2.0 and LGPL2.1 used to be excluded here, copied from the probe's template: older kotlinx-coroutines
+        // META-INF/AL2.0 and LGPL2.1 used to be excluded here, copied from an early template: older kotlinx-coroutines
         // jars each carried a copy, and duplicates fail the packaging. No jar Robot uses today has them (coroutines 1.11.0
         // doesn't). A licence text a library ships is kept, one copy (pickFirst), never dropped; Settings › About ›
         // Licences has the full texts and notices anyway (assets/licenses/, and :brain's AAR notices).

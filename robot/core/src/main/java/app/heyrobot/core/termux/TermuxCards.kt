@@ -2,7 +2,7 @@ package app.heyrobot.core.termux
 
 import java.util.Locale
 
-// Pure. What a Termux card shows (docs/plans/websearch-termux-design.md B5.2) and what is said, saved and given to Gemma
+// Pure. What a Termux card shows and what is said, saved and given to Gemma
 // after a run (B5.2, B5.3, B7.4). The card shows the exact command (invisible characters written out), Robot's own
 // warnings from the parsed command, Gemma's one-line "why" labelled as Gemma's, how Robot splits arguments when quotes or
 // spaces matter, the folder and the time limit; after the run, "Exit 0 · 0.8 s" and the cleaned, masked output. History

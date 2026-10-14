@@ -1,6 +1,6 @@
 package app.heyrobot.core.termux
 
-// Pure. Secrets in Termux commands and their output (docs/plans/websearch-termux-design.md B7.5): private keys, API-key
+// Pure. Secrets in Termux commands and their output: private keys, API-key
 // and token shapes, passwords in web addresses and after "password=" or "token:", and Robot's own keys by exact value.
 // In output they are replaced before Gemma, the card, History or a helper sees it; in a command they make a warning, and
 // one of Robot's own keys (or its shape, in a command Robot didn't take from your typing) stops the command (rule 7).

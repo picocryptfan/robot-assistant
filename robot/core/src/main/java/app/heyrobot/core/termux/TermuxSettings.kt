@@ -4,7 +4,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
 
-// Pure. Settings › Termux (docs/plans/websearch-termux-design.md B6), a type of its own until it joins RobotSettings.
+// Pure. Settings › Termux, a type of its own until it joins RobotSettings.
 // Wiring, when the agent lands (Settings.kt is shared, so not here): settings.json schema 11 (EST, after web search's 10)
 // gets a "termux" object; RobotSettings gains `val termux: TermuxSettings = TermuxSettings()`, its toJson puts
 // `termux.toJson()` under "termux" and fromJson reads `TermuxSettings.fromJson(o.optJSONObject("termux"))`. A file

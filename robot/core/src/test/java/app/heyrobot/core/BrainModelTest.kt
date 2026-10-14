@@ -58,7 +58,7 @@ class BrainModelTest {
         assertEquals(listOf(BrainModel.GENERAL), BrainModel.entries.filter { it.gpu })
     }
 
-    /** 0.8, beta: Google's Tensor G6 build, pinned at Fast's commit, by its size and SHA-256 (../docs/ops/research/tensor-g6.md). */
+    /** 0.8, beta: Google's Tensor G6 build, pinned at Fast's commit, by its size and SHA-256. */
     @Test fun theTensorG6BuildIsPinned() {
         val g6 = BrainModel.FAST_G6
         assertEquals("e2b_tpu_g6", g6.id)

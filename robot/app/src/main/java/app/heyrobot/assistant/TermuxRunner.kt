@@ -17,7 +17,7 @@ import java.security.SecureRandom
 import java.util.Random
 import java.util.concurrent.ConcurrentHashMap
 
-// VOICE PROCESS. One Termux run from sending to its result (docs/plans/websearch-termux-design.md B8.2, B8.3): a random
+// VOICE PROCESS. One Termux run from sending to its result: a random
 // 31-bit id unique while it is pending, the plan sent through [TermuxTransport] (the RUN_COMMAND intent, TermuxSend), the
 // result awaited until the plan's deadline (its limit, timeout's 5 s and 10 s more). Stop (the turn cancelled: the Stop
 // button, "stop", the panel closed) and the deadline send the fixed Stop run, which ends the run's whole process group;

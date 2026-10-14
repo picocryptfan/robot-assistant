@@ -5,7 +5,7 @@ import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 import java.util.Locale
 
-// Pure. A Termux result made fit to show and to give Gemma (docs/plans/websearch-termux-design.md B7.4, B5.2, B8.3):
+// Pure. A Termux result made fit to show and to give Gemma:
 // ANSI escapes and control characters removed (newline and tab kept), invalid UTF-8 replaced, secrets masked, at most
 // 100 KB kept (the end, as Termux keeps it), 16 KB for the card (its first and last 8 KB) and 40 lines / 1,500 characters
 // for Gemma (the first 15 and last 25 lines), and the exit code in plain English and French. Termux's own error message

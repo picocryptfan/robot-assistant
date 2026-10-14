@@ -2,7 +2,7 @@ package app.heyrobot.core.termux
 
 import java.util.EnumSet
 
-// Pure. Robot's own reading of a Termux command (docs/plans/websearch-termux-design.md B7.2, B3, B5.4): the warnings the
+// Pure. Robot's own reading of a Termux command: the warnings the
 // card shows as chips, in plain English and French, from the parsed command and never from the model's explanation.
 // Anything Robot can't follow (nested shells, substitutions, keywords, a program known only by running something, a
 // script) makes the command "complex": always a card, answered by a tap, its warnings still shown. TermuxPolicy decides

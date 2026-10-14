@@ -69,7 +69,7 @@ class ProcessIsolationTest {
     }
 
     /**
-     * 0.9, the Termux agent (docs/plans/websearch-termux-design.md B8.1): the RUN_COMMAND intent is built and sent only by the
+     * 0.9, the Termux agent: the RUN_COMMAND intent is built and sent only by the
      * :voice process's TermuxSend (startForegroundService, nowhere else), its result receiver is :voice's and not exported,
      * the permission is asked for by the main app only (MainActivity, for Settings › Termux), the runner and its cards
      * stay in the assistant, and no Termux code logs a command, a path, an argument, a name or output.
@@ -1070,7 +1070,7 @@ class ProcessIsolationTest {
     }
 
     /**
-     * 0.9 web search (docs/plans/websearch-termux-design.md A6.1, A12): the HTTP clients, the page fetcher, jsoup and the
+     * 0.9 web search: the HTTP clients, the page fetcher, jsoup and the
      * copy of Readability4J live only in the :helpers module (app.heyrobot.helpers.web), which only the assistant (the :voice
      * process) uses; the main process never refers to them (mainProcessCodeNeverReachesEngines) and its Settings page
      * opens the set-up window by class name. A search key is read only by WebKeys, for a search (WebTool) or Test (the

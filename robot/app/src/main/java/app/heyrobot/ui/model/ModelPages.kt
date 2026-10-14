@@ -82,7 +82,7 @@ import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-// MAIN PROCESS. The Model tab (0.4.1; 0.4.x redesign, docs/plans ui-stock-design 3.6): which model Robot uses as radio rows,
+// MAIN PROCESS. The Model tab (0.4.1; 0.4.x redesign): which model Robot uses as radio rows,
 // each with a button to its own page (download, import, check, delete, where it comes from), "Let the model think first",
 // how long the model stays loaded, and the voice models, each with its page. Your own model file's page says what Robot's
 // check found in it, and runs it on the TPU only after its warning dialog, bound to that file's SHA-256 (0.4.1). 0.4.5:

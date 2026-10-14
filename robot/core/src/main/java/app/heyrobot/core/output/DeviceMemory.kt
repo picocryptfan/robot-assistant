@@ -9,7 +9,7 @@ import org.json.JSONObject
 // product name and the last two bytes of its address; with BLUETOOTH_CONNECT also its whole address, which then wins
 // (a renamed headset stays itself). The voice log names a device only by [RememberedDevice.number] ("device #2").
 //
-// Routines (feature/routines-core) wait for "a headset or car connecting or disconnecting" with
+// Routines wait for "a headset or car connecting or disconnecting" with
 // RoutineTrigger.Device(type, deviceId, connect): [DeviceRole.id] is the same string as its DeviceKind.id ("headset",
 // "car"), [RememberedDevice.id] is the deviceId it stores, and DeviceTriggers.matches (DevicePresence.kt) answers whether
 // an event starts such a routine, a null deviceId meaning any remembered device of that role.

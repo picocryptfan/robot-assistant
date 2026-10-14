@@ -23,7 +23,7 @@ import java.security.MessageDigest
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
-// Main and voice processes. The Termux agent's files (0.9, docs/plans/websearch-termux-design.md B6, B7.6): Settings ›
+// Main and voice processes. The Termux agent's files (0.9): Settings ›
 // Termux in files/robot/termux.json of its own (never settings.json, whose schema stays 13), written by the main app only
 // and read by the :voice process before each use; and what the :voice process's set-up runs found (the Test, your
 // scripts) in files/robot/termux_status.json, written by :voice only. And what Android says about the installed Termux:

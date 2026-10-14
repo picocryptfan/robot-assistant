@@ -14,7 +14,7 @@ import app.heyrobot.core.termux.TermuxResult
 import app.heyrobot.core.termux.TermuxRun
 import app.heyrobot.core.termux.TermuxRunPlan
 
-// VOICE PROCESS. The Android side of a Termux run (docs/plans/websearch-termux-design.md B1, B8.2): the explicit RUN_COMMAND
+// VOICE PROCESS. The Android side of a Termux run: the explicit RUN_COMMAND
 // intent to com.termux/.app.RunCommandService, sent with startForegroundService as Termux's own plugins do, and the one-shot
 // mutable PendingIntent (explicit, to this receiver, which isn't exported and runs in :voice) that Termux fills with the
 // result bundle. The label Termux logs is always "Robot".

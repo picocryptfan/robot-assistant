@@ -10,7 +10,7 @@ import app.heyrobot.core.termux.TermuxSettings
 import app.heyrobot.ui.common.TermuxCardChange
 import app.heyrobot.ui.common.TermuxCardView
 
-// VOICE PROCESS. A Termux action's card in the panel (0.9, docs/plans/websearch-termux-design.md B5.2): what TermuxTool
+// VOICE PROCESS. A Termux action's card in the panel (0.9): what TermuxTool
 // prepared (the command, Robot's warnings, Gemma's reason) and its live state (running, the outcome), drawn by ui/common
 // TermuxCard in the panel's bubbles; and what the card's buttons ask for besides Run and Cancel (an edited command,
 // another limit, Open in Termux). Once it ran, the card's summary is History's saved line ("Ran a command in Termux (exit 0)"): the

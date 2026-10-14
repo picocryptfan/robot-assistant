@@ -392,7 +392,7 @@ enum class VoiceEvent(val id: Int) {
     FEEDBACK_TEXTED(224),
     /** The panel heard a feedback phrase: a = [FeedbackKind], b = 1 when words came after it, c = 1 when the phone was locked (nothing opened). */
     FEEDBACK_ASKED(225),
-    // Web search (0.9, docs/plans/websearch-termux-design.md A10.5): 160 to 169. Never the query, a URL, a domain or a title.
+    // Web search (0.9): 160 to 169. Never the query, a URL, a domain or a title.
     /** A search answered: a = the service (core web SearchService.code), b = results, c = ms. */
     WEB_SEARCH(160),
     /** Pages read for an answer: a = read, b = skipped (the units; the first skip's PageSkip.code in the tens), c = ms. */

@@ -14,7 +14,7 @@ import app.heyrobot.core.output.RememberedDevice
 import app.heyrobot.core.output.SeenDevice
 import app.heyrobot.core.output.SpokenLang
 
-// Pure. Car mode (docs/plans/routines-headset-car-design.md §4): Robot's own hands-free mode over the car's standard
+// Pure. Car mode: Robot's own hands-free mode over the car's standard
 // Bluetooth (HFP for the microphone and Robot's voice, A2DP optionally). It is not Android Auto, which GrapheneOS offers
 // only through sandboxed Google Play and which shows only Play apps with Android Auto support (PUBLISHED, GrapheneOS
 // usage guide). Being connected to your car is what turns car mode on; Robot never tries to tell whether the car is

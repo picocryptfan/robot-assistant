@@ -3,7 +3,7 @@ package app.heyrobot.core.termux
 import java.text.Normalizer
 import java.util.Locale
 
-// Pure. Your scripts in ~/robot as Robot knows them (docs/plans/websearch-termux-design.md B5.1 step 6, B5.3): the list
+// Pure. Your scripts in ~/robot as Robot knows them: the list
 // Robot's fixed listing run writes (each executable file's name, its first comment line and its aliases), and which one
 // your own words name ("run backup", "run my backup script", "lance mon script de sauvegarde"), so a script named in your
 // words runs as termux_script without the model. Anything else ("run to the store") stays with Gemma.

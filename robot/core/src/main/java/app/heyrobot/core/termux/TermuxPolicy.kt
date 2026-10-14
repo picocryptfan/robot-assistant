@@ -1,7 +1,6 @@
 package app.heyrobot.core.termux
 
-// Pure. Whether a Termux command or script runs now, shows its card, needs a tap, or is refused (docs/plans/
-// websearch-termux-design.md B7.1). The fixed rules, which no setting loosens:
+// Pure. Whether a Termux command or script runs now, shows its card, needs a tap, or is refused. The fixed rules, which no setting loosens:
 //  - every command shows a Run / Edit / Cancel card; the only exceptions are your own scripts set to Just do it and,
 //    with "Read-only commands without a card" on, commands on the parsed read-only allowlist (both off by default);
 //  - with content Robot didn't write anywhere in the conversation (or a command taken from such content), every command

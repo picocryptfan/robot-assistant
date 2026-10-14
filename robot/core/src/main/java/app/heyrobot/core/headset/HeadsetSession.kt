@@ -75,7 +75,7 @@ sealed class SessionEffect {
     data class Say(val line: Line) : SessionEffect()
     /** Say the last answer again. */
     data object Repeat : SessionEffect()
-    /** The brief's next item (feature/routines-core's BriefControl.NEXT). */
+    /** The brief's next item (routines' BriefControl.NEXT). */
     data object Next : SessionEffect()
     data class StartTimer(val kind: TimerKind, val ms: Long) : SessionEffect()
     data object CancelTimers : SessionEffect()

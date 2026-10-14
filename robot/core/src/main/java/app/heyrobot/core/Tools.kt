@@ -52,7 +52,7 @@ enum class ToolName(val id: String, val title: String, val group: ToolGroup, val
     /** 0.4.0: Android's Free up space screen, an app's cache, a large photo or video, Robot's cache. */
     FREE_STORAGE("free_storage", "Storage clean-ups", ToolGroup.PHONE),
     /**
-     * 0.9: private web search (core web, docs/plans/websearch-termux-design.md Part A): your search service's results,
+     * 0.9: private web search (core web): your search service's results,
      * answered by a tool-free one-shot. Described only with Settings › Web search on; goes online like the weather.
      */
     WEB_SEARCH("web_search", "Web searches", ToolGroup.WEB, reads = true, online = true),

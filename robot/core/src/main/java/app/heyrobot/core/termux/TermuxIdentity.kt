@@ -1,6 +1,6 @@
 package app.heyrobot.core.termux
 
-// Pure. Which Termux is installed (docs/plans/websearch-termux-design.md B2, B5.1, B7.6). :app (main process, with
+// Pure. Which Termux is installed. :app (main process, with
 // <queries> for com.termux) reads the package's signing certificates' SHA-256 (GET_SIGNING_CERTIFICATES), its version,
 // whether it declares RunCommandService, and which package defines com.termux.permission.RUN_COMMAND; this decides what
 // Settings › Termux says and whether the agent may use it. The pinned signer follows the Cheogram precedent

@@ -2,7 +2,7 @@ package app.heyrobot.core.termux
 
 import app.heyrobot.core.LogCode
 
-// Pure. What the voice log will record about Termux runs (docs/plans/websearch-termux-design.md B9): codes and small
+// Pure. What the voice log will record about Termux runs: codes and small
 // numbers only, never the command, a path, an argument, a script name or output.
 //
 // Voice log ids 170–179 are the Termux agent's (VoiceEvent.TERMUX_SENT to TERMUX_LATE, 0.9):

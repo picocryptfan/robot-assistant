@@ -1,6 +1,6 @@
 package app.heyrobot.core.termux
 
-// Pure. The strict read-only allowlist (docs/plans/websearch-termux-design.md B7.3): with "Read-only commands without a
+// Pure. The strict read-only allowlist: with "Read-only commands without a
 // card" on (off by default) and nothing in the conversation Robot didn't write, a command on it runs without a card. A
 // command passes only if every part is understood and allowed: one simple command, optionally piped into head, tail,
 // wc, grep, sort, uniq or cut; no ;, &&, ||, &, redirection, $( ), backticks, $VAR other than ~ and $HOME, here-doc or

@@ -152,8 +152,8 @@ object DriveBrief {
     /**
      * The preset routine's parts in the car ([ctx]: a car session; [guard]: the car's read-aloud choice). The weather is
      * said without the town (public); the next event is personal: OutputGuard decides (a trusted session when locked,
-     * "Read message text aloud when others may hear" for a routine nobody asked for right then). It becomes a routine of
-     * feature/routines-core: RoutineTrigger.Device(CAR, null, connect = true) with the weather and today's calendar,
+     * "Read message text aloud when others may hear" for a routine nobody asked for right then). It becomes a routine:
+     * RoutineTrigger.Device(CAR, null, connect = true) with the weather and today's calendar,
      * next event only.
      */
     fun plan(s: CarSettings, ctx: OutputContext, guard: GuardSettings): DriveBriefPlan? {

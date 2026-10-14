@@ -4,7 +4,7 @@ import app.heyrobot.core.LogCode
 import org.json.JSONObject
 import java.util.Locale
 
-// Pure. What headset mode and car mode share (docs/plans/routines-headset-car-design.md §1): the language Robot speaks
+// Pure. What headset mode and car mode share: the language Robot speaks
 // in, the kind of session a sentence belongs to, and the Safety & privacy rows of §1.5 that are theirs.
 //
 // Voice log ids 200–219 are reserved for headset and car mode (the design proposed 150–169, which routines (140–159) and

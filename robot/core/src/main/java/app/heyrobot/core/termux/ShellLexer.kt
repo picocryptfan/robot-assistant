@@ -2,7 +2,7 @@ package app.heyrobot.core.termux
 
 import java.util.EnumSet
 
-// Pure. A small bash lexer for the Termux agent (docs/plans/websearch-termux-design.md B7.2), good enough to classify a
+// Pure. A small bash lexer for the Termux agent, good enough to classify a
 // command before anything runs it: words with quotes and escapes, pipes, &&, ||, ;, &, redirections, here-docs,
 // subshells, { } groups, $( ), backticks, ${ }, $(( )), process substitution, globs, assignments, comments, keywords and
 // function definitions. It never runs or expands anything. Whatever it can't follow is a [ShellProblem], and the command

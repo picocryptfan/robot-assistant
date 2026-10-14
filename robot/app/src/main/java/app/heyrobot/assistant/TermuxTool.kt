@@ -60,7 +60,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
 
-// VOICE PROCESS. The Termux agent's tools (0.9, docs/plans/websearch-termux-design.md B5, B7, B8): which ones Gemma is told
+// VOICE PROCESS. The Termux agent's tools (0.9): which ones Gemma is told
 // about, each call prepared through TermuxPolicy (Settings › Termux, the lock, rules 1 to 6) into a card or a refusal,
 // and run through [TermuxRunner] once its card was answered: the wrapper under GNU timeout in its own process group, the
 // result cleaned, masked and capped for the card and for Gemma. Settings › Termux's set-up runs (the Test, ~/robot and

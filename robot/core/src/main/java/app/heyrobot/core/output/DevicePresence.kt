@@ -85,7 +85,7 @@ object DevicePresence {
 }
 
 /**
- * For routines (feature/routines-core): whether [event] starts a RoutineTrigger.Device(type, deviceId, connect), passed
+ * For routines: whether [event] starts a RoutineTrigger.Device(type, deviceId, connect), passed
  * here as [kind] (its DeviceKind.id, "headset" or "car"), [deviceId] (RememberedDevice.id; null, a routine made by voice
  * before you picked one: any remembered device of that kind) and [connect]. Only remembered devices make events, so an
  * unknown device never starts a routine.

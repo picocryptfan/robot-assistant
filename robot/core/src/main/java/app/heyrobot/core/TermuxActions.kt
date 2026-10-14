@@ -5,7 +5,7 @@ import app.heyrobot.core.termux.CommandSource
 import app.heyrobot.core.termux.TermuxCardInfo
 import app.heyrobot.core.termux.TermuxScripts
 
-// Pure. The Termux agent's two tools (docs/plans/websearch-termux-design.md B8.4, 0.9): termux_script runs one of your
+// Pure. The Termux agent's two tools: termux_script runs one of your
 // scripts in ~/robot by name (its arguments split by Robot's own lexer, never by a shell), termux_command one short
 // command. Both are in the TERMUX group, described only while Settings › Termux is on and the words call for it, and
 // TermuxPolicy (with ApprovalGate's Termux branch) decides whether each one runs, shows its Run / Edit / Cancel card or

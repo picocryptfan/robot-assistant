@@ -79,7 +79,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-// MAIN PROCESS. Settings › Termux (0.9, docs/plans/websearch-termux-design.md B5.1, B6): the set-up checklist (Termux from
+// MAIN PROCESS. Settings › Termux (0.9): the set-up checklist (Termux from
 // F-Droid, opened once, Robot's permission asked from here only, allow-external-apps, the Test, your scripts folder,
 // trusting this Termux's signer) and, once every line is green, the switch that lets Robot use it and its settings, kept
 // in files/robot/termux.json. Off by default. The Test and the folder runs happen in the :voice process (Cmd.TERMUX);

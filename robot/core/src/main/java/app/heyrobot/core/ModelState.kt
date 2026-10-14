@@ -102,7 +102,7 @@ enum class BrainModel(
     ),
     /**
      * 0.8, beta: Gemma 4 E2B compiled by Google for the Tensor G6's TPU (the Pixel 11 series), from the same repository and
-     * commit as [FAST] (Google uploaded it there on 31 August 2026; ../docs/ops/research/tensor-g6.md). Fast on a Tensor
+     * commit as [FAST] (Google uploaded it there on 31 August 2026). Fast on a Tensor
      * G6. Its stamp, sections, metadata and 4,096-token KV cache match the Tensor G5 build's; it hasn't run on a Pixel 11
      * yet, so it is a beta, its speed is the Tensor G5's estimate, and its memory the Tensor G5 build's. If it doesn't
      * load on the TPU, Robot runs [GENERAL] instead and remembers that (TpuFailure) until you try the TPU again.

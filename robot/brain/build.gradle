@@ -14,7 +14,7 @@ android {
 // The :brain process. The only module that links LiteRT-LM; its classes load only in BrainService's process.
 dependencies {
     implementation project(':core')
-    // Same versions as the probe and the GPU lab's lm0180 flavor (Google Maven).
+    // LiteRT-LM versions from Google Maven, as in my earlier GPU test app's lm0180 flavor.
     implementation 'com.google.ai.edge.litertlm:litertlm-android:0.18.0'
     implementation('com.google.ai.edge.litert:litert-npu-runtime-google-tensor:2.3.0') { transitive = false }
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0'

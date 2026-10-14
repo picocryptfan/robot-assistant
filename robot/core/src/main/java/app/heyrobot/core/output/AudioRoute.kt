@@ -2,8 +2,7 @@ package app.heyrobot.core.output
 
 import java.util.Locale
 
-// Pure. What Android reports about where sound goes, as plain data (docs/plans/routines-headset-car-design.md §1.3, §3.1,
-// §4.1), so the rules about where personal speech may play (OutputGuard), which headset or car is which (DeviceMemory)
+// Pure. What Android reports about where sound goes, as plain data, so the rules about where personal speech may play (OutputGuard), which headset or car is which (DeviceMemory)
 // and how a headset session routes its microphone (headset RoutePlanner) are decided and tested here, on the JVM. The
 // :voice process turns AudioDeviceInfo, BluetoothClass, KeyguardManager, PowerManager, AudioManager.getMode and
 // NotificationManager.getCurrentInterruptionFilter into these snapshots; nothing here calls Android.

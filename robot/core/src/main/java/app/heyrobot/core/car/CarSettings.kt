@@ -6,7 +6,7 @@ import app.heyrobot.core.output.ReadAloud
 import app.heyrobot.core.output.enumOr
 import org.json.JSONObject
 
-// Pure (org.json). Settings › Car mode (docs/plans/routines-headset-car-design.md §4.4), every row with the design's
+// Pure (org.json). Settings › Car mode, every row with its
 // default. Your cars are DeviceMemory's cars (devices.json): car mode is off until one is added. They become RobotSettings
 // fields under the next settings schema when the Car mode screen is wired (Settings.kt is not changed on this branch):
 // [toJson] and [fromJson] are the fragment as it would sit there (under "car"), an absent field reading as its default.

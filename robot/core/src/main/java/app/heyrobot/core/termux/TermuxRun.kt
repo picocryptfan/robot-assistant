@@ -1,6 +1,6 @@
 package app.heyrobot.core.termux
 
-// Pure. How one run is sent to Termux's RunCommandService (docs/plans/websearch-termux-design.md B8.2, B8.3): the
+// Pure. How one run is sent to Termux's RunCommandService: the
 // executable and argv, the working folder, stdin, and the intent's extras as plain data; :app builds the Intent and the
 // PendingIntent from a [TermuxRunPlan] and sends it from the :voice process. The command never becomes part of a script
 // Robot writes: it is an argument ("$3") of a fixed wrapper, which runs it under GNU timeout in a process group of its

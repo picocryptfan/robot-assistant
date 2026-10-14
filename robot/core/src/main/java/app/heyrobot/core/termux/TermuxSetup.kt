@@ -3,7 +3,7 @@ package app.heyrobot.core.termux
 import org.json.JSONArray
 import org.json.JSONObject
 
-// Pure. Settings › Termux's set-up checklist (docs/plans/websearch-termux-design.md B5.1): Termux installed (from where),
+// Pure. Settings › Termux's set-up checklist: Termux installed (from where),
 // opened once, Robot's permission, allow-external-apps, the Test, your scripts folder and trusting this Termux. Nothing
 // runs until every line is green (B7.1 rule 1). The Test, the folder and the listing run in the :voice process (where the
 // result receiver is); what they found is written to files/robot/termux_status.json ([TermuxSetupStatus]) for the main app.

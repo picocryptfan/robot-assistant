@@ -4,9 +4,8 @@ import app.heyrobot.core.HelperRouter
 import app.heyrobot.core.LogCode
 import app.heyrobot.core.TextCommand
 
-// Pure. The hooks headset and car mode need from 0.7's messages (design §3.6 "0.7 announcements", §4.5 "Messages",
-// §4.8): announcing a new message, reading it after a yes, and replying through the notification's own Reply action
-// after a spoken read-back. 0.7 (feature/memory-core's app.heyrobot.core.messages: MessageThread, ReplyPlanner) supplies
+// Pure. The hooks headset and car mode need from 0.7's messages (announcements, messages in car mode): announcing a new message, reading it after a yes, and replying through the notification's own Reply action
+// after a spoken read-back. 0.7 (app.heyrobot.core.messages: MessageThread, ReplyPlanner) supplies
 // them: a MessageThread maps onto a [MessageNotice] (its key, its newest incoming message's sender and text, its title,
 // replyKind != NONE, isGroup, hidden != null), its notification listener in the main process implements
 // [ReplyChannel] over the internal command path (it owns the StatusBarNotification and its PendingIntent, checks the

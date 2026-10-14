@@ -8,7 +8,7 @@ import app.heyrobot.core.TextCommand
 // "please", "can you", "peux-tu" and the like in front, and only "please", "now", "merci" after. The short commands must
 // be the whole utterance, so "I'm driving to Montreal tomorrow, what's the weather there" and "my car mode button is
 // broken" stay questions. Car mode's own phrases (navigate, call, messages, what's next, music) count only while car mode
-// is on; outside it they go to the model and the tools as today. While the brief speaks, feature/routines-core's
+// is on; outside it they go to the model and the tools as today. While the brief speaks, the routines'
 // BriefControl ("next", "skip", "repeat", "stop") is asked first.
 
 /** A media key sent to the current player (AudioManager.dispatchMediaKeyEvent, which needs no permission). */

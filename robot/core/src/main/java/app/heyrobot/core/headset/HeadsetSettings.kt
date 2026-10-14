@@ -6,8 +6,8 @@ import app.heyrobot.core.output.ReadAloud
 import app.heyrobot.core.output.enumOr
 import org.json.JSONObject
 
-// Pure (org.json). Settings › Headset (docs/plans/routines-headset-car-design.md §3.4), every row a switch with the
-// design's default. They become RobotSettings fields under the next settings schema when the Headset screen is wired
+// Pure (org.json). Settings › Headset, every row a switch with its
+// default. They become RobotSettings fields under the next settings schema when the Headset screen is wired
 // (Settings.kt is not changed on this branch): [toJson] and [fromJson] are the fragment as it would sit there (under
 // "headset"), an absent field reading as its default, so an older file reads as "headset button on, everything else as
 // the design says". "Personal answers only in private headphones" is a Safety & privacy row (output HandsFreeSafety).

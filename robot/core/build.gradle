@@ -2,7 +2,7 @@ plugins {
     id 'com.android.library'
     id 'org.jetbrains.kotlin.android'
 }
-// As in the probe: a session init script adds a mirror to project repositories, which would otherwise make
+// Declared here too: a Gradle init script that adds a mirror to project repositories would otherwise make
 // Gradle ignore the settings' repositories.
 repositories { google(); mavenCentral() }
 android {

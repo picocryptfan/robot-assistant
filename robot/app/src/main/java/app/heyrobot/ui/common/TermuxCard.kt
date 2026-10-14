@@ -56,7 +56,7 @@ import app.heyrobot.core.termux.TERMUX_LIMITS
 import app.heyrobot.core.termux.limitLabel
 import app.heyrobot.ui.theme.RobotTokens
 
-// Main and voice processes. A Termux command's card (0.9, docs/plans/websearch-termux-design.md B5.2), in the panel's bubbles: the
+// Main and voice processes. A Termux command's card (0.9), in the panel's bubbles: the
 // command in monospace (Edit makes it a text field, read again for warnings as you type), Robot's own warnings as chips
 // and a red line for one that sends right away, Gemma's reason labelled as Gemma's, how Robot splits the arguments when
 // quotes or spaces matter, the folder and the time limit (changeable for this run); Run / Edit / Cancel, and Open in

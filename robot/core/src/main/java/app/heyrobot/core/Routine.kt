@@ -7,7 +7,7 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeParseException
 
-// Pure (org.json, java.time). Routines (docs/plans/routines-headset-car-design.md §2): a trigger and a fixed list of steps,
+// Pure (org.json, java.time). Routines: a trigger and a fixed list of steps,
 // each one of Robot's tools with arguments fixed when the routine is saved. No model ever picks a step or an argument
 // when a routine runs, so text a routine reads (a calendar title, a note) can't create an action. A routine is saved
 // only through its card (RoutineDraft); RoutineGate decides what may run without you. Stored in
