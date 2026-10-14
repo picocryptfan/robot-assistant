@@ -30,8 +30,8 @@ OPTIONAL: HELPERS
 For a question that needs a bigger model, Robot can pass that one question to an AI you choose: a paid AI service with your own API key, another AI's app on your phone (you press Send there), or your own server. None is set up until you add one, and a helper only gets what you ask or allow it to.
 
 REQUIREMENTS
-• Pixel 10 phones run the model on the TPU (tested on the Pixel 10 Pro)
-• Pixel 6 to 9, their a models, the 10a, Fold and Tablet work more slowly on the GPU or CPU
+• Pixel 10, 10 Pro, 10 Pro XL and 10 Pro Fold run the model on the TPU (tested on the Pixel 10 Pro)
+• Pixel 6 to 9, their a models including the 10a, Fold and Tablet work more slowly on the GPU or CPU
 • Pixel 11 in beta. Snapdragon and other Android phones are planned
 • Pixels come first because GrapheneOS runs on them, and keeping Google off the phone is the point
 • Android 14 or newer; built and tested on GrapheneOS

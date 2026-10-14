@@ -18,8 +18,8 @@ crash reporting.
 
 | Phone | Status |
 |---|---|
-| Pixel 10 Pro with GrapheneOS | Where I test. Robot's fast model (Gemma 4 E2B) runs on the Tensor G5's TPU. |
-| Other Pixels (Pixel 9a and the Tensor G1 to G4 phones) | The same model runs on the CPU or GPU. It works, more slowly. I've tested these phones less. |
+| Pixel 10, 10 Pro, 10 Pro XL and 10 Pro Fold (Tensor G5) with GrapheneOS | Robot's fast model (Gemma 4 E2B) runs on the Tensor G5's TPU. I test on the Pixel 10 Pro; the others have the same chip, and I haven't tried them. |
+| Other Pixels (Pixel 6 to 9 and their a models, the 10a, Fold and Tablet: Tensor G1 to G4) | The same model runs on the CPU or GPU. It works, more slowly. I've tested these phones less. The 10a has a Tensor G4, so it is in this row. |
 | Pixel 11 (Tensor G6) | The TPU build is in beta. |
 | Snapdragon and other Android phones | Planned, after the Pixels. Other Android builds are untested for now. |
 

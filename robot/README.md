@@ -3,8 +3,9 @@
 These are my notes as the developer: the design, the checks and the history of each version. The features, for
 users, are described in [`README.md`](../README.md).
 
-A private voice assistant for GrapheneOS on the Pixel 10 Pro (since 0.4.7 also the Pixel 9a and other Pixels: "What's new
-in 0.4.7" below). Open it with the corner swipe, from the lock
+A private voice assistant for GrapheneOS on Pixels. I test on the Pixel 10 Pro; the TPU build runs on every Tensor G5 phone
+(Pixel 10, 10 Pro, 10 Pro XL, 10 Pro Fold), and the other Pixels, the 10a (a Tensor G4) among them, run the model on the GPU
+or CPU, more slowly (since 0.4.7: "What's new in 0.4.7" below). Open it with the corner swipe, from the lock
 screen, or by saying "hey robot" (or wake phrases of your own); talk, type, or show it a photo or the screen; Gemma 4 E2B on the Tensor G5
 TPU answers, streams the reply and reads it aloud (since 0.4.1 you can choose a smarter but slower model instead, or
 your own model file: "Model choice" below; since 0.4.3 also a file built for a shorter context, such as MedGemma, as chat
