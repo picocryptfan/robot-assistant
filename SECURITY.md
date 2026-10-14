@@ -39,7 +39,7 @@ Only the latest release is supported. There is no bug bounty.
 **Out of scope:** the models' answers themselves (what a model says, or refuses to say, is not a vulnerability unless it
 gets past Robot's cards), what your own Termux scripts do, and third-party services and apps (Hugging Face, Mozilla's
 model storage, Open-Meteo, OpenStreetMap's Nominatim, the search services, the helpers' providers,
-Termux, Cheogram, Proton Mail, Organic Maps, GitHub): report those to them. A problem in a library Robot ships
+Termux, your messaging, email and maps apps, GitHub): report those to them. A problem in a library Robot ships
 (sherpa-onnx, ONNX Runtime, LiteRT-LM, llama.cpp, slimt, the helper's Java SDK, OkHttp, Jackson, jsoup) is welcome here
 too, so Robot can update it; please also tell its maintainers.
 
