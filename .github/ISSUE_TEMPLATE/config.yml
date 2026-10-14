@@ -3,3 +3,6 @@ contact_links:
   - name: Report a security problem privately
     url: https://github.com/picocryptfan/robot-assistant/security/advisories/new
     about: Please report security problems privately, not in a public issue (see SECURITY.md).
+  - name: Ask a question
+    url: https://robot-app.ai
+    about: For a question that isn't a bug or an idea, write to hey@robot-app.ai.
