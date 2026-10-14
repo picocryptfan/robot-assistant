@@ -1,5 +1,7 @@
 # Robot's privacy policy
 
+This policy applies to Robot 1.0.0 and later. Last changed 14 Oct 2026.
+
 ## The short version
 
 Robot does not collect anything about you. There is no account, no analytics, no ads, no crash reporting and no tracking.
@@ -177,7 +179,7 @@ working, and the online features above say they can't connect.
 
 ## Permissions, and why
 
-Robot asks for the ones you can refuse when you turn on or first use the feature, never at first launch. The alarm and
+Robot asks for the ones you can refuse only when you turn a feature on or tap Allow in the setup guide. The alarm and
 network permissions are granted at install; GrapheneOS lets you turn the network off for Robot.
 
 - Microphone: wake words and speech.
