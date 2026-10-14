@@ -65,7 +65,11 @@ fi
 grep -qw 0x504b4453 <<<"$blockids" && fail "dependency-info block 0x504b4453 in the signing block" || pass "no dependency-info block (0x504b4453) in the signing block"
 grep -qx 'META-INF/version-control-info.textproto' <<<"$(unzip -Z1 "$APK")" && fail "META-INF/version-control-info.textproto in the APK" || pass "no META-INF/version-control-info.textproto"
 badging=$("$BT/aapt2" dump badging "$APK" 2>/dev/null)
-has "package: name='ai.robot_app' versionCode='1000099' versionName='1.0.0'" "$badging" "package ai.robot_app 1.0.0 (1000099)"
+# The version is app/build.gradle's (tools/bump_version.sh sets it), never repeated here.
+vcode=$(sed -nE "s/^ +versionCode ([0-9]+)$/\1/p" "$ROBOT/app/build.gradle")
+vname=$(sed -nE "s/^ +versionName '([^']+)'$/\1/p" "$ROBOT/app/build.gradle")
+[ -n "$vcode" ] && [ -n "$vname" ] || fail "no versionCode and versionName in app/build.gradle"
+has "package: name='ai.robot_app' versionCode='$vcode' versionName='$vname'" "$badging" "package ai.robot_app $vname ($vcode, app/build.gradle's)"
 has "minSdkVersion:'34'" "$badging" "minSdk 34"
 has "targetSdkVersion:'36'" "$badging" "targetSdk 36"
 has "application-label:'Robot'" "$badging" "label Robot"

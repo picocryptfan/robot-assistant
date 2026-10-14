@@ -453,8 +453,11 @@ class ProcessIsolationTest {
             assertEquals(BuildConfig.APPLICATION_ID, e.getAttributeNS(ns, "targetPackage"))
             assertTrue(comps.containsKey(e.getAttributeNS(ns, "targetClass")))
         }
-        assertEquals("1000099", m.getAttributeNS(ns, "versionCode"))
-        assertEquals("1.0.0", m.getAttributeNS(ns, "versionName"))
+        // The version is app/build.gradle's alone (tools/bump_version.sh sets it), as written there.
+        val gradle = File(root, "app/build.gradle").readText()
+        assertEquals(Regex("""(?m)^ +versionCode (\d+)$""").find(gradle)!!.groupValues[1], m.getAttributeNS(ns, "versionCode"))
+        assertEquals(Regex("""(?m)^ +versionName '([^']+)'$""").find(gradle)!!.groupValues[1], m.getAttributeNS(ns, "versionName"))
+        assertEquals(BuildConfig.VERSION_NAME, m.getAttributeNS(ns, "versionName"))
         val sdk = doc.getElementsByTagName("uses-sdk").item(0) as Element
         assertEquals("34", sdk.getAttributeNS(ns, "minSdkVersion"))
         assertEquals("36", sdk.getAttributeNS(ns, "targetSdkVersion"))
