@@ -19,6 +19,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import app.heyrobot.core.ActionStatus
 import app.heyrobot.core.ToolName
+import app.heyrobot.ui.classic.ClassicActionCard
 import app.heyrobot.ui.testing.PHONE
 import app.heyrobot.ui.testing.shot
 import app.heyrobot.ui.testing.show
@@ -32,9 +33,9 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * The standard look's action card: a card waiting for a choice lists the people or numbers as 56 dp rows, Cancel and
- * "Do it" say no and yes, a finished card says how it went in words under its check, the extra buttons do what they say,
- * History's cards have no buttons, and everything stays usable at twice the text size.
+ * The panel's action card (ui/classic ClassicActionCard): a card waiting for a choice lists the people or numbers as
+ * 48 dp buttons, Cancel and "Do it" say no and yes, a finished card says how it went in words under its check, the extra
+ * buttons do what they say, History's cards have no buttons, and everything stays usable at twice the text size.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -61,15 +62,15 @@ class ActionCardTest {
     @Composable
     private fun Cards(onConfirm: ((String, Boolean) -> Unit)? = confirm, actions: CardActions? = more, all: Boolean = true) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            for (a in listOfNotNull(text, pick.takeIf { all }, done, note, noContacts, include)) ActionCard(a, onConfirm, actions)
+            for (a in listOfNotNull(text, pick.takeIf { all }, done, note, noContacts, include)) ClassicActionCard(a, onConfirm, actions)
         }
     }
 
-    @Test fun choicesAreRowsAndTheButtonsAnswer() {
-        rule.show { Column(Modifier.padding(16.dp)) { ActionCard(text, confirm, more); ActionCard(pick, confirm, more) } }
+    @Test fun choicesAreButtonsAndTheButtonsAnswer() {
+        rule.show(classic = true) { Column(Modifier.padding(16.dp)) { ClassicActionCard(text, confirm, more); ClassicActionCard(pick, confirm, more) } }
         assertEquals(emptyList<String>(), rule.touchTargetProblems())
         for (c in listOf("Mom · mobile", "Mom · work")) {
-            rule.onNodeWithText(c).assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button)).assertHeightIsAtLeast(56.dp)
+            rule.onNodeWithText(c).assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button)).assertHeightIsAtLeast(48.dp)
         }
         rule.onNodeWithText("…and 3 more. Say the full name to pick one of those.").assertExists()
         // "Always use this for “mom”" is ticked before a choice is tapped.
@@ -89,14 +90,14 @@ class ActionCardTest {
     }
 
     @Test fun aDoneCardSaysSoInWords() {
-        rule.show { ActionCard(done, confirm, more) }
+        rule.show(classic = true) { ClassicActionCard(done, confirm, more) }
         rule.onNodeWithContentDescription("Done").assertExists()
         rule.onNodeWithText("Done").assertExists()
         rule.onNodeWithText("Do it").assertDoesNotExist()
     }
 
     @Test fun theOtherButtonsDoWhatTheySay() {
-        rule.show { Column { ActionCard(note, confirm, more); ActionCard(noContacts, confirm, more); ActionCard(include, confirm, more) } }
+        rule.show(classic = true) { Column { ClassicActionCard(note, confirm, more); ClassicActionCard(noContacts, confirm, more); ClassicActionCard(include, confirm, more) } }
         rule.onNodeWithText("Undo").performClick()
         rule.onNodeWithText("Allow").performClick()
         rule.onNodeWithText("Include").performClick()
@@ -106,19 +107,19 @@ class ActionCardTest {
     }
 
     @Test fun historysCardsHaveNoButtons() {
-        rule.show { Cards(onConfirm = null, actions = null) }
+        rule.show(classic = true) { Cards(onConfirm = null, actions = null) }
         for (b in listOf("Do it", "Cancel", "Mom · mobile", "Undo", "Allow", "Include")) rule.onNodeWithText(b).assertDoesNotExist()
     }
 
     @Test fun light() {
-        rule.show { Cards(all = false) }
+        rule.show(classic = true) { Cards(all = false) }
         assertEquals(emptyList<String>(), rule.touchTargetProblems())
         rule.shot("action_cards_light")
     }
 
     @Test @Config(fontScale = 2f)
     fun atTwiceTheTextSize() {
-        rule.show { Column(Modifier.padding(16.dp)) { ActionCard(pick, confirm, more); ActionCard(text, confirm, more) } }
+        rule.show(classic = true) { Column(Modifier.padding(16.dp)) { ClassicActionCard(pick, confirm, more); ClassicActionCard(text, confirm, more) } }
         assertEquals(emptyList<String>(), rule.touchTargetProblems())
         rule.shot("action_cards_font200")
     }

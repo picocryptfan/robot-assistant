@@ -23,12 +23,10 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.shape.ZeroCornerSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -46,8 +44,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -62,7 +58,6 @@ import androidx.compose.ui.unit.dp
 import app.heyrobot.core.KeyboardPad
 import app.heyrobot.core.LockScreen
 import app.heyrobot.core.SettingsPage
-import app.heyrobot.core.Tip
 import app.heyrobot.core.TipKind
 import app.heyrobot.core.TurnRole
 import app.heyrobot.core.VoiceEvent
@@ -82,25 +77,23 @@ import app.heyrobot.ui.classic.ClassicNoticeBar
 import app.heyrobot.ui.classic.ClassicSuggestions
 import app.heyrobot.ui.classic.OrbMood
 import app.heyrobot.ui.common.ActionView
-import app.heyrobot.ui.common.LockedDivider
 import app.heyrobot.ui.common.WithLockedDivider
 import app.heyrobot.ui.common.lockedDividerAbove
 import app.heyrobot.ui.common.CardActions
 import app.heyrobot.ui.common.OfferView
+import app.heyrobot.ui.common.TURN_GAP
 import app.heyrobot.ui.common.TurnActions
 import app.heyrobot.ui.common.TurnUi
 import app.heyrobot.ui.common.TurnView
 import app.heyrobot.ui.common.replyFooter
-import app.heyrobot.ui.common.transcriptGap
-import app.heyrobot.ui.theme.LocalLook
-import app.heyrobot.ui.theme.LookStyle
-import app.heyrobot.ui.theme.RobotTokens
+import app.heyrobot.ui.theme.ClassicTheme
 import kotlinx.coroutines.delay
 
 // VOICE PROCESS. The assistant panel: a bottom sheet over whatever is on screen, with the conversation,
-// a text field, push-to-talk, the camera, "Ask about this screen" and a stop button. One panel for both looks (the
-// slots at the end pick each look's leaves); keyboardPad() and the sheet's size and drag are the 0.4.2 keyboard fix,
-// confirmed on the phone: leave them as they are.
+// a text field, push-to-talk, the camera, "Ask about this screen" and a stop button. 1.0: always the classic look
+// (Robot 0.6.0's orb, chat bubbles and round mic, ui/classic), in its type (ClassicTheme); the parts take plain values and
+// what each tap does. keyboardPad() and the sheet's size and drag are the 0.4.2 keyboard fix, confirmed on the phone:
+// leave them as they are.
 
 @Composable
 fun AssistantPanel(onClose: () -> Unit) {
@@ -110,7 +103,10 @@ fun AssistantPanel(onClose: () -> Unit) {
 
 /** The panel for [st]; its parts ask [actions] for everything they do (PanelActions.Default on screen). */
 @Composable
-fun AssistantPanel(st: PanelState, actions: PanelActions, onClose: () -> Unit) {
+fun AssistantPanel(st: PanelState, actions: PanelActions, onClose: () -> Unit) = ClassicTheme { Panel(st, actions, onClose) }
+
+@Composable
+private fun Panel(st: PanelState, actions: PanelActions, onClose: () -> Unit) {
     var input by rememberSaveable(st.convId) { mutableStateOf("") }
     // The session (and this composition) survives a hide: a drag offset or an open attach row must not carry over
     // into the next show, or the panel opens shifted down with its input row off-screen.
@@ -154,21 +150,19 @@ fun AssistantPanel(st: PanelState, actions: PanelActions, onClose: () -> Unit) {
     }
 
     val (bottomPad, slidUp) = keyboardPad()
-    val chrome = sheetChrome()
+    val c = MaterialTheme.colorScheme
     BoxWithConstraints(Modifier.fillMaxSize()) {
         // A window Android slid up for the keyboard shows that much less of the panel's top.
         val maxSheet = (maxHeight - slidUp) * 0.88f
-        // Tapping outside the panel closes it.
-        Box(Modifier.fillMaxSize().background(chrome.scrim).pointerInput(Unit) { detectTapGestures { onClose() } })
+        // Tapping outside the panel closes it (0.6.0's 36 % scrim).
+        Box(Modifier.fillMaxSize().background(c.scrim.copy(alpha = 0.36f)).pointerInput(Unit) { detectTapGestures { onClose() } })
+        // 0.6.0's sheet: surfaceContainer with a 2 dp tonal tint, 28 dp top corners, the whole width.
         Surface(
-            shape = chrome.shape,
-            color = chrome.container,
-            tonalElevation = chrome.tonalElevation,
-            shadowElevation = chrome.shadowElevation,
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            color = c.surfaceContainer,
+            tonalElevation = 2.dp,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                // Landscape and large screens: centred, at most 640 dp wide.
-                .widthIn(max = chrome.maxWidth)
                 .fillMaxWidth()
                 .heightIn(max = maxSheet)
                 .graphicsLayer { translationY = dragY.coerceAtLeast(0f) }
@@ -191,7 +185,7 @@ fun AssistantPanel(st: PanelState, actions: PanelActions, onClose: () -> Unit) {
                 // Listening for a question, or for the waiting card's "yes" or "no".
                 val hearing = st.phase == Phase.LISTENING || st.phase == Phase.TRANSCRIBING || st.cardHearing != null
                 if (st.turns.isEmpty() && !hearing) {
-                    Tips(st.tips) { tip ->
+                    ClassicSuggestions(st.tips) { tip ->
                         when (tip.kind) {
                             TipKind.ASK -> { input = tip.text; send() }
                             // It would do something or go online: its words wait in the field, to change or send.
@@ -249,61 +243,29 @@ private fun keyboardPad(): Pair<Dp, Dp> {
     return with(density) { pad.toDp() to slid.coerceAtLeast(0).toDp() }
 }
 
-/** The sheet's scrim, container, corners and widest width. */
-private class SheetChrome(val scrim: Color, val container: Color, val shape: Shape, val tonalElevation: Dp, val shadowElevation: Dp, val maxWidth: Dp)
+// ------------------------------------------------------------------ the parts (ui/classic)
 
+/** The handle, and the header with the orb. */
 @Composable
-private fun sheetChrome(): SheetChrome {
-    val c = MaterialTheme.colorScheme
-    return when (LocalLook.current) {
-        // Material's modal bottom sheet: a 32 % scrim, surfaceContainerLow without a tonal tint (a level 1 shadow), the
-        // 28 dp top corners, at most 640 dp wide.
-        LookStyle.STOCK -> SheetChrome(
-            scrim = c.scrim.copy(alpha = RobotTokens.scrimAlpha), container = c.surfaceContainerLow,
-            shape = MaterialTheme.shapes.extraLarge.copy(bottomStart = ZeroCornerSize, bottomEnd = ZeroCornerSize),
-            tonalElevation = 0.dp, shadowElevation = 1.dp, maxWidth = RobotTokens.sheetMaxWidth,
-        )
-        // 0.6.0's: a 36 % black scrim, surfaceContainer with a 2 dp tonal tint, the whole width.
-        LookStyle.CLASSIC -> SheetChrome(
-            scrim = c.scrim.copy(alpha = 0.36f), container = c.surfaceContainer,
-            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-            tonalElevation = 2.dp, shadowElevation = 0.dp, maxWidth = Dp.Unspecified,
-        )
-    }
+private fun PanelTop(st: PanelState, actions: PanelActions, onClose: () -> Unit) {
+    ClassicDragHandle()
+    ClassicHeader(
+        mood = orbMood(st.phase), status = statusLine(st), showKeep = !st.keep && st.turns.isNotEmpty(), speak = st.speak,
+        onKeep = actions::keepConversation, onToggleSpeak = actions::toggleSpeak, onNew = actions::newConversation, onClose = onClose,
+        onSettings = actions::openSettings, face = st.face,
+    )
 }
 
-// ------------------------------------------------------------------ the look's slots
-// The panel above is the same in both looks (state, focus, keyboard, drag, send). Only these leaves differ, by the
-// look in LocalLook (Settings › Display › Classic look): the standard parts (PanelParts.kt, ui/common Transcript.kt
-// and Chat.kt) or Robot 0.6.0's (ui/classic), which take plain values and what each tap does.
-
-/** The handle and the header (with the progress bar), or the Classic handle and orb. */
-@Composable
-private fun PanelTop(st: PanelState, actions: PanelActions, onClose: () -> Unit) = when (LocalLook.current) {
-    LookStyle.STOCK -> {
-        SheetHandle(onClose)
-        PanelHeader(st, actions, onClose)
-    }
-    LookStyle.CLASSIC -> {
-        ClassicDragHandle()
-        ClassicHeader(
-            mood = orbMood(st.phase), status = classicStatusLine(st), showKeep = !st.keep && st.turns.isNotEmpty(), speak = st.speak,
-            onKeep = actions::keepConversation, onToggleSpeak = actions::toggleSpeak, onNew = actions::newConversation, onClose = onClose,
-            onSettings = actions::openSettings, face = st.face,
-        )
-    }
-}
-
-/** How the Classic orb groups the phases. */
-private fun orbMood(p: Phase): OrbMood = when (p) {
+/** How the orb groups the phases. */
+internal fun orbMood(p: Phase): OrbMood = when (p) {
     Phase.IDLE -> OrbMood.IDLE
     Phase.LISTENING, Phase.TRANSCRIBING -> OrbMood.HEARING
     Phase.THINKING, Phase.ANSWERING -> OrbMood.WORKING
     Phase.SPEAKING, Phase.CONFIRMING -> OrbMood.TALKING
 }
 
-/** The Classic header's words, as 0.6.0 said them (the standard look's are panelStatus). */
-private fun classicStatusLine(st: PanelState): String = when (st.phase) {
+/** The header's words, as 0.6.0 said them. */
+internal fun statusLine(st: PanelState): String = when (st.phase) {
     Phase.LISTENING -> "Listening…"
     Phase.TRANSCRIBING -> "Writing it down…"
     // "ChatGPT is thinking…" (or "Checking with ChatGPT…", "My server is loading its model…") until the helper's first words.
@@ -319,35 +281,31 @@ private fun classicStatusLine(st: PanelState): String = when (st.phase) {
     }
 }
 
+/** A notice's button: its words and what it does, or null. */
+private fun noticeAction(a: NoticeAction, actions: PanelActions): Pair<String, () -> Unit>? = when (a) {
+    NoticeAction.OPEN_APP -> "Open Robot" to actions::openRobotApp
+    NoticeAction.OPEN_ASSIST_SETTINGS -> "Open settings" to actions::openAssistSettings
+    NoticeAction.OPEN_MODEL -> "Open Model" to actions::openModelSettings
+    NoticeAction.NONE -> null
+}
+
 /** A notice, the missing model, and a helper's conversation ("Back to Robot"). */
 @Composable
 private fun ColumnScope.PanelNotices(st: PanelState, actions: PanelActions) {
-    val look = LocalLook.current
     AnimatedVisibility(st.notice != null, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
         st.notice?.let { n ->
-            if (look == LookStyle.STOCK) PanelNotice(n, actions)
-            else {
-                val a = noticeAction(n.action, actions)
-                ClassicNoticeBar(n.text, a?.first, onAction = a?.second ?: {}, onDismiss = actions::dismissNotice)
-            }
+            val a = noticeAction(n.action, actions)
+            ClassicNoticeBar(n.text, a?.first, onAction = a?.second ?: {}, onDismiss = actions::dismissNotice)
         }
     }
-    when (look) {
-        LookStyle.STOCK -> {
-            ModelProblem(st, actions)
-            if (st.inHelperMode) HelperModeChip(actions)
-        }
-        LookStyle.CLASSIC -> {
-            val b = st.brain
-            if (st.notice == null && (b.readiness == BrainKeeper.Readiness.NO_MODEL || b.readiness == BrainKeeper.Readiness.FAILED)) {
-                ClassicBrainBanner(b.problem, openRobot = b.readiness == BrainKeeper.Readiness.NO_MODEL, onOpenRobot = actions::openRobotApp)
-            }
-            if (st.inHelperMode) ClassicHelperModeChip(st.helperName ?: "Helper", actions::endHelperMode)
-        }
+    val b = st.brain
+    if (st.notice == null && (b.readiness == BrainKeeper.Readiness.NO_MODEL || b.readiness == BrainKeeper.Readiness.FAILED)) {
+        ClassicBrainBanner(b.problem, openRobot = b.readiness == BrainKeeper.Readiness.NO_MODEL, onOpenRobot = actions::openRobotApp)
     }
+    if (st.inHelperMode) ClassicHelperModeChip(st.helperName ?: "Helper", actions::endHelperMode)
 }
 
-/** A panel turn as both looks draw it (ui/common TurnUi). */
+/** A panel turn as the panel draws it (ui/common TurnUi). */
 internal fun UiTurn.toTurnUi() = TurnUi(
     id = id, user = role == TurnRole.USER, text = text, attachment = attachment, thumb = thumb,
     actions = actions.map {
@@ -365,10 +323,7 @@ internal fun UiTurn.toTurnUi() = TurnUi(
 @Composable
 private fun Messages(st: PanelState, actions: PanelActions, modifier: Modifier) {
     if (st.turns.isEmpty()) {
-        when (LocalLook.current) {
-            LookStyle.STOCK -> PanelEmptyState(st, modifier)
-            LookStyle.CLASSIC -> ClassicEmptyState(st.locked, st.lockedTools, st.screenAvailable, modifier)
-        }
+        ClassicEmptyState(st.locked, st.lockedTools, st.screenAvailable, modifier)
         return
     }
     val turnActions = remember(actions) {
@@ -383,7 +338,6 @@ private fun Messages(st: PanelState, actions: PanelActions, modifier: Modifier) 
         )
     }
     val reversed = remember(st.turns) { st.turns.asReversed() }
-    val first = st.turns.first().id
     // 1.0: what was said while the phone was locked, set apart (ui/common LockedTurns).
     val saidLocked = remember(st.turns) { st.turns.map { it.locked } }
     val list = rememberLazyListState()
@@ -413,31 +367,22 @@ private fun Messages(st: PanelState, actions: PanelActions, modifier: Modifier) 
         },
         reverseLayout = true,
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(transcriptGap()),
+        verticalArrangement = Arrangement.spacedBy(TURN_GAP),
     ) {
         itemsIndexed(reversed, key = { _, t -> t.id }) { i, t ->
             // 1.0: with replies not spoken, TalkBack reads each answer once it is complete (ui/common answerSemantics).
             val turn = remember(t, st.speak) { t.toTurnUi().copy(announce = !st.speak) }
             val divider = lockedDividerAbove(saidLocked, reversed.size - 1 - i)
-            WithLockedDivider(divider) { TurnView(turn, turnActions, startsExchange = turn.user && t.id != first && divider != LockedDivider.LABEL) }
+            WithLockedDivider(divider) { TurnView(turn, turnActions) }
         }
     }
 }
 
-/** The empty panel's tips. */
+/** While listening: the pulsing mic, the words so far, and "Done". */
 @Composable
-private fun Tips(tips: List<Tip>, onPick: (Tip) -> Unit) = when (LocalLook.current) {
-    LookStyle.STOCK -> PanelTips(tips, onPick)
-    LookStyle.CLASSIC -> ClassicSuggestions(tips, onPick)
-}
-
-/** While listening: the words so far as your pending line, or the Classic pulsing mic with "Done". */
-@Composable
-private fun ListeningIndicator(st: PanelState, actions: PanelActions) = when (LocalLook.current) {
-    LookStyle.STOCK -> PendingLine(st.partial)
-    LookStyle.CLASSIC -> ClassicListeningRow(st.partial, transcribing = st.phase == Phase.TRANSCRIBING || st.cardHearing == Phase.TRANSCRIBING,
+private fun ListeningIndicator(st: PanelState, actions: PanelActions) =
+    ClassicListeningRow(st.partial, transcribing = st.phase == Phase.TRANSCRIBING || st.cardHearing == Phase.TRANSCRIBING,
         card = st.cardHearing != null, onDone = actions::micReleased)
-}
 
 /** What goes with the next question, the camera's choices, the text field and the main button. */
 @Composable
@@ -451,26 +396,18 @@ private fun ColumnScope.PanelInputArea(
     focus: FocusRequester,
     actions: PanelActions,
 ) {
-    when (LocalLook.current) {
-        LookStyle.STOCK -> {
-            ContextRow(st, actions)
-            PanelInput(st, input, onInput, onSend, attachOpen, onAttachOpen, focus, actions)
-        }
-        LookStyle.CLASSIC -> {
-            ClassicContextRow(st.draft?.kind, st.draft?.thumb, readClaude = st.claudeScreen && !st.busy, onRemove = actions::removeDraft,
-                onReadClaude = actions::readClaudeAnswer)
-            AnimatedVisibility(attachOpen && st.draft == null && !st.busy) {
-                ClassicAttachRow(st.locked, onDone = { onAttachOpen(false) },
-                    onCamera = { actions.openCapture(CaptureActivity.MODE_CAMERA) }, onPhotos = { actions.openCapture(CaptureActivity.MODE_PHOTOS) })
-            }
-            val state = ClassicInputState(
-                busy = st.busy, confirming = st.phase == Phase.CONFIRMING, speaking = st.phase == Phase.SPEAKING,
-                listening = st.phase == Phase.LISTENING || st.phase == Phase.TRANSCRIBING, cardListening = st.cardHearing != null,
-                hasDraft = st.draft != null, screenChip = st.screenChip, micHint = st.micHint,
-            )
-            val buttons = ClassicInputActions(attach = { onAttachOpen(!attachOpen) }, attachScreen = actions::attachScreen, stop = actions::stopGenerating,
-                stopSpeaking = actions::stopSpeaking, micPressed = actions::micPressed, micReleased = actions::micReleased)
-            ClassicInputRow(state, input, onInput, onSend, focus, buttons)
-        }
+    ClassicContextRow(st.draft?.kind, st.draft?.thumb, readClaude = st.claudeScreen && !st.busy, onRemove = actions::removeDraft,
+        onReadClaude = actions::readClaudeAnswer)
+    AnimatedVisibility(attachOpen && st.draft == null && !st.busy) {
+        ClassicAttachRow(st.locked, onDone = { onAttachOpen(false) },
+            onCamera = { actions.openCapture(CaptureActivity.MODE_CAMERA) }, onPhotos = { actions.openCapture(CaptureActivity.MODE_PHOTOS) })
     }
+    val state = ClassicInputState(
+        busy = st.busy, confirming = st.phase == Phase.CONFIRMING, speaking = st.phase == Phase.SPEAKING,
+        listening = st.phase == Phase.LISTENING || st.phase == Phase.TRANSCRIBING, cardListening = st.cardHearing != null,
+        hasDraft = st.draft != null, screenChip = st.screenChip, micHint = st.micHint,
+    )
+    val buttons = ClassicInputActions(attach = { onAttachOpen(!attachOpen) }, attachScreen = actions::attachScreen, stop = actions::stopGenerating,
+        stopSpeaking = actions::stopSpeaking, micPressed = actions::micPressed, micReleased = actions::micReleased)
+    ClassicInputRow(state, input, onInput, onSend, focus, buttons)
 }

@@ -18,7 +18,7 @@ interface PanelActions {
     fun openAssistSettings()
     fun openModelSettings()
     fun openPermissions()
-    /** 0.7.0: the header's Settings button (both looks): Robot's Settings, or "unlock first" on the lock screen. */
+    /** 0.7.0: the header's Settings button: Robot's Settings, or "unlock first" on the lock screen. */
     fun openSettings() {}
 
     fun attachScreen()

@@ -41,7 +41,7 @@ class LockedTurnsDividerTest {
     )
 
     /** The panel's list, oldest first, each turn with the divider the panel puts above it. */
-    private fun show(turns: List<Pair<TurnUi, Boolean>>, classic: Boolean = false) = rule.show(classic = classic) {
+    private fun show(turns: List<Pair<TurnUi, Boolean>>) = rule.show(classic = true) {
         Column {
             val locked = turns.map { it.second }
             turns.forEachIndexed { i, (t, _) -> WithLockedDivider(lockedDividerAbove(locked, i)) { TurnView(t, TurnActions.None) } }
@@ -70,12 +70,6 @@ class LockedTurnsDividerTest {
         assertTrue(unlock.bottom <= end.top)
         assertTrue(end.bottom <= yours.top)
         assertEquals(emptyList<String>(), rule.touchTargetProblems())
-    }
-
-    @Test fun theClassicLookHasThemToo() {
-        show(turns, classic = true)
-        rule.onNodeWithText("Said while the phone was locked").assert(isHeading())
-        rule.onAllNodesWithTag(LOCKED_END_TAG).assertCountEquals(1)
     }
 
     @Test fun aConversationWithNoneHasNoDivider() {

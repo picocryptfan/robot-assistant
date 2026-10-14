@@ -420,7 +420,7 @@ private fun load(app: android.content.Context, args: FeedbackArgs, snap: Snapsho
         robot = FeedbackFacts.robot(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE, BuildConfig.DEBUG),
         phone = FeedbackFacts.phone(phone, Build.VERSION.RELEASE.orEmpty(), Build.ID.orEmpty(), Build.VERSION.INCREMENTAL.orEmpty()),
         model = FeedbackFacts.model(chosen, backend, inputs.gpuFailure, own?.format, using),
-        look = FeedbackFacts.look(LookStore.current(app).classic),
+        look = FeedbackFacts.look(LookStore.current(app).wallpaperColors),
         language = FeedbackFacts.language(Locale.getDefault().toLanguageTag()),
     )
     // The problem asked about, else the open one, else one from the last day.

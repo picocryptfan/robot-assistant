@@ -3,15 +3,19 @@ package app.heyrobot.ui.common
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
 import app.heyrobot.core.ActionStatus
 import app.heyrobot.core.SettingsPage
 import app.heyrobot.core.ToolName
 import app.heyrobot.core.memory.MemoryReplies
+import app.heyrobot.ui.classic.ClassicActionCard
 import app.heyrobot.ui.testing.PHONE
 import app.heyrobot.ui.testing.show
 import app.heyrobot.ui.testing.touchTargetProblems
@@ -48,15 +52,15 @@ class MemoryCardTest {
             choices = listOf("Julie likes tulips", "Julie is vegetarian"))
         val all = ActionView("m4", ToolName.REMEMBER, "Delete everything Robot remembers", ActionStatus.SKIPPED,
             "Only Settings › Memory deletes everything.", openApp = openMemory)
-        rule.show {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                for (a in listOf(saved, gone, pick, all)) ActionCard(a, confirm, more)
+        rule.show(classic = true) {
+            Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                for (a in listOf(saved, gone, pick, all)) ClassicActionCard(a, confirm, more)
             }
         }
         assertEquals(emptyList<String>(), rule.touchTargetProblems())
         rule.onNodeWithText("My sister's birthday is May 3").assertExists()
         rule.onNodeWithText("Not done. Only Settings › Memory deletes everything.").assertExists()
-        rule.onNodeWithText("Julie is vegetarian").performClick()
+        rule.onNodeWithText("Julie is vegetarian").performScrollTo().performClick()
         assertEquals("choose m3 1 false", log.last())
         assertEquals("Open Memory", openMemory)
         rule.onNodeWithText("• Léo has hockey on Tuesdays").assertExists()

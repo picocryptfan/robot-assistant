@@ -30,7 +30,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * The Termux command card (0.9, B5.2) in both looks: the command in monospace, Robot's warnings as chips, Gemma's reason
+ * The Termux command card (0.9, B5.2) in the panel's bubbles: the command in monospace, Robot's warnings as chips, Gemma's reason
  * labelled as Gemma's, the folder and the time limit, Run / Edit / Cancel and Open in Termux while it waits, Stop while it
  * runs, the exit line and the output after; History's card has no buttons.
  */
@@ -60,14 +60,14 @@ class TermuxCardTest {
         termux = TermuxCardView("k6", "sleep 120", exitLine = "Exit 124 · 75 s: took longer than 60 s and was stopped", fromContent = true))
 
     @Composable
-    private fun Cards(classic: Boolean, all: List<ActionView>) {
+    private fun Cards(all: List<ActionView>) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            for (a in all) if (classic) ClassicActionCard(a, confirm, more) else ActionCard(a, confirm, more)
+            for (a in all) ClassicActionCard(a, confirm, more)
         }
     }
 
     @Test fun runEditAndCancelAnswerTheCard() {
-        rule.show { Cards(false, listOf(pull)) }
+        rule.show(classic = true) { Cards(listOf(pull)) }
         assertEquals(emptyList<String>(), rule.touchTargetProblems())
         rule.onNodeWithText("Gemma: “Gets the latest changes of your notes repository.”").assertExists()
         rule.onNodeWithContentDescription("Command: git -C ~/notes pull --ff-only").assertExists()
@@ -83,7 +83,7 @@ class TermuxCardTest {
     }
 
     @Test fun theLimitOpenInTermuxAndStop() {
-        rule.show { Cards(false, listOf(top, running)) }
+        rule.show(classic = true) { Cards(listOf(top, running)) }
         rule.onNodeWithText("Open in Termux instead").performClick()
         rule.onNodeWithText("Stop").performClick()
         // Another limit for this run only.
@@ -94,25 +94,19 @@ class TermuxCardTest {
     }
 
     @Test fun historysCardHasNoButtons() {
-        rule.show { Column { ActionCard(pull, null, null); ActionCard(done, null, null) } }
+        rule.show(classic = true) { Column { ClassicActionCard(pull, null, null); ClassicActionCard(done, null, null) } }
         for (b in listOf("Run", "Edit", "Cancel", "Copy")) rule.onNodeWithText(b).assertDoesNotExist()
         rule.onNodeWithText("Ran a command in Termux (exit 0)").assertExists()
     }
 
-    @Test fun light() {
-        rule.show { Cards(false, listOf(pull, script, done, stopped)) }
-        assertEquals(emptyList<String>(), rule.touchTargetProblems())
-        rule.shot("termux_card_light")
-    }
-
     @Test fun classic() {
-        rule.show(classic = true) { Cards(true, listOf(pull, script, done, stopped)) }
+        rule.show(classic = true) { Cards(listOf(pull, script, done, stopped)) }
         assertEquals(emptyList<String>(), rule.touchTargetProblems())
         rule.shot("termux_card_classic")
     }
 
     @Test fun dark() {
-        rule.show(dark = true) { Cards(false, listOf(top, running, done)) }
+        rule.show(dark = true, classic = true) { Cards(listOf(top, running, done)) }
         rule.shot("termux_card_dark")
     }
 }

@@ -1,8 +1,6 @@
 package app.heyrobot.ui.settings
 
-import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -27,7 +25,6 @@ import app.heyrobot.ui.testing.PHONE
 import app.heyrobot.ui.testing.shot
 import app.heyrobot.ui.testing.show
 import app.heyrobot.ui.testing.touchTargetProblems
-import app.heyrobot.ui.theme.LocalLook
 import app.heyrobot.ui.theme.RobotTheme
 import org.junit.Assert.assertEquals
 import org.junit.Before
@@ -38,7 +35,10 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
-/** Settings › Display: its two switches, what they write to look.json, and that the theme follows at once. */
+/**
+ * Settings › Display: its one switch (the colours), what it writes to look.json, and that a look.json from before 1.0,
+ * with the Classic look switch, still loads. The Classic look switch and its Look group are gone.
+ */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35], qualifiers = PHONE)
@@ -51,44 +51,47 @@ class DisplaySettingsTest {
         LookStore.reload(ctx)
     }
 
-    @Test fun theSwitchesShowAndChangeTheLook() {
+    @Test fun theSwitchShowsAndChangesTheColours() {
         val seen = ArrayList<LookSettings>()
         rule.show {
             var look by remember { mutableStateOf(LookSettings()) }
             DisplaySettingsScreen(look, onChange = { look = it; seen += it }, onBack = {})
         }
         val colours = rule.onNodeWithText("Use wallpaper colours")
-        val classic = rule.onNodeWithText("Classic look")
         colours.assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Switch)).assertIsOn().assert(hasText("Match your wallpaper"))
-        classic.assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Switch)).assertIsOff()
+        rule.onNodeWithText("Classic look").assertDoesNotExist()
+        rule.onNodeWithText("Look").assertDoesNotExist()
+        rule.onNodeWithText("Light or dark follows your phone.").assertExists()
         assertEquals(emptyList<String>(), rule.touchTargetProblems())
         colours.performClick()
         colours.assertIsOff().assert(hasText("Robot's blue"))
-        classic.performClick()
-        classic.assertIsOn()
-        assertEquals(listOf(LookSettings(wallpaperColors = false), LookSettings(wallpaperColors = false, classic = true)), seen)
+        assertEquals(listOf(LookSettings(wallpaperColors = false)), seen)
     }
 
-    @Test fun turningClassicOnWritesLookJsonAndTheThemeFollows() {
+    @Test fun aChangeWritesLookJson() {
         rule.setContent {
-            // The app's own theme, reading LookStore, around the page as in MainActivity.
-            RobotTheme(dark = false) {
-                Column {
-                    Text("look: " + LocalLook.current.name)
-                    SettingsNav(SettingsRoutes.DISPLAY, RobotSettings(), Snapshot(), emptyList(), {}, NO_ACTIONS, SnackbarHostState(), onBack = {})
-                }
-            }
+            RobotTheme(dark = false) { SettingsNav(SettingsRoutes.DISPLAY, RobotSettings(), Snapshot(), emptyList(), {}, NO_ACTIONS, SnackbarHostState(), onBack = {}) }
         }
-        rule.onNodeWithText("look: STOCK").assertExists()
-        rule.onNodeWithText("Classic look").performClick()
-        rule.onNodeWithText("look: CLASSIC").assertExists()
-        LookStore.awaitWrites()
-        assertEquals(LookSettings(classic = true), LookSettings.fromJson(LookStore.file(ctx).readText()))
-        // The panel (the voice process) reads it again when it opens.
-        assertEquals(LookSettings(classic = true), LookStore.reload(ctx))
         rule.onNodeWithText("Use wallpaper colours").performClick()
         LookStore.awaitWrites()
-        assertEquals(LookSettings(wallpaperColors = false, classic = true), LookStore.reload(ctx))
+        assertEquals(LookSettings(wallpaperColors = false), LookSettings.fromJson(LookStore.file(ctx).readText()))
+        // The panel (the voice process) reads it again when it opens.
+        assertEquals(LookSettings(wallpaperColors = false), LookStore.reload(ctx))
+    }
+
+    @Test fun aLookJsonFromBefore10StillLoads() {
+        // 0.9 with the Classic look on and Robot's own colours.
+        LookStore.file(ctx).apply { parentFile?.mkdirs() }.writeText("""{"v": 1, "wallpaperColors": false, "classic": true}""")
+        assertEquals(LookSettings(wallpaperColors = false), LookStore.reload(ctx))
+        rule.setContent {
+            RobotTheme(dark = false) { SettingsNav(SettingsRoutes.DISPLAY, RobotSettings(), Snapshot(), emptyList(), {}, NO_ACTIONS, SnackbarHostState(), onBack = {}) }
+        }
+        rule.onNodeWithText("Use wallpaper colours").assertIsOff()
+        // The next save writes the file without the old key.
+        rule.onNodeWithText("Use wallpaper colours").performClick()
+        LookStore.awaitWrites()
+        assertEquals(false, LookStore.file(ctx).readText().contains("classic"))
+        assertEquals(LookSettings(), LookStore.reload(ctx))
     }
 
     @Test fun anUnknownRouteGoesBack() {
@@ -100,8 +103,7 @@ class DisplaySettingsTest {
 
     @Test fun theSummaryOnTheSettingsRow() {
         assertEquals("Wallpaper colours", displaySummary(LookSettings()))
-        assertEquals("Robot's colours · Classic look", displaySummary(LookSettings(wallpaperColors = false, classic = true)))
-        assertEquals("Wallpaper colours · Classic look", displaySummary(LookSettings(classic = true)))
+        assertEquals("Robot's colours", displaySummary(LookSettings(wallpaperColors = false)))
     }
 
     @Test fun light() {
@@ -110,7 +112,7 @@ class DisplaySettingsTest {
     }
 
     @Test fun dark() {
-        rule.show(dark = true) { DisplaySettingsScreen(LookSettings(wallpaperColors = false, classic = true), {}, {}) }
+        rule.show(dark = true) { DisplaySettingsScreen(LookSettings(wallpaperColors = false), {}, {}) }
         rule.shot("display_dark")
     }
 

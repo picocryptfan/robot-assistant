@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -41,6 +42,8 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -75,11 +78,15 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
@@ -94,25 +101,29 @@ import app.heyrobot.core.Tip
 import app.heyrobot.core.ToolName
 import app.heyrobot.ui.common.ActionView
 import app.heyrobot.ui.common.CardActions
-import app.heyrobot.ui.common.TermuxCard
 import app.heyrobot.ui.common.MarkdownText
 import app.heyrobot.ui.common.OfferView
 import app.heyrobot.ui.common.RIcons
 import app.heyrobot.ui.common.RobotFace
 import app.heyrobot.ui.common.RobotFaceIcon
-import app.heyrobot.ui.common.answerSemantics
+import app.heyrobot.ui.common.TermuxCard
 import app.heyrobot.ui.common.TurnActions
 import app.heyrobot.ui.common.TurnUi
+import app.heyrobot.ui.common.answerSemantics
 import app.heyrobot.ui.common.spans
 import app.heyrobot.ui.common.toolIcon
 import kotlinx.coroutines.launch
 
-// Main and voice processes. The Classic look (Settings › Display): Robot 0.6.0's assistant panel and chat bubbles,
-// copied here as they were (the round robot orb, chat bubbles, typing dots and caret, the pill text box, the round mic,
-// the attach row and the tonal cards), so whoever prefers them gets them back exactly. A frozen copy: no new features;
-// a new card or notice is drawn by the standard part in both looks. Like every ui/ file it never touches the
-// assistant's classes: the panel (assistant/PanelUi.kt) passes plain values and what each tap does. The test tags
-// (classic-orb, classic-bubble) let the tests tell the looks apart; they change nothing on screen.
+// Main and voice processes. The classic look, the only one the assistant panel has since 1.0: Robot 0.6.0's panel and
+// chat bubbles (the round robot orb, chat bubbles, typing dots and caret, the pill text box, the round mic, the attach row
+// and the tonal cards), also History's turns. A web answer, a reply and a Termux command are drawn by ui/common's cards
+// in the same tonal colours. Like every ui/ file it never touches the assistant's classes: the panel
+// (assistant/PanelUi.kt) passes plain values and what each tap does. The test tags (classic-orb, classic-bubble) let the
+// tests find the orb and the bubbles; they change nothing on screen. 1.0's accessibility fixes from the standard panel
+// are carried over: the speaker is a toggle, the status line a polite live region under the header's buttons, so it is never cut, the listening mic
+// says so, an error reply says so in words, your words are a "You: …" heading for TalkBack, "Remove photo" or "Remove
+// screen" says which, the screen kept with a question opens at a 48 dp target, and a card's state line is in the card's
+// own text colour (4.5:1 or more, ui/common AccessibilityTest).
 
 // ------------------------------------------------------------------ the sheet's top
 
@@ -151,26 +162,35 @@ fun ClassicHeader(
     /** 1.0: the robot inside the orb, by what Robot is doing. */
     face: RobotFace = RobotFace.IDLE,
 ) {
-    Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+    // 1.0: the status line runs under the name and the buttons, so its words are read whole ("On this phone, private",
+    // "Waiting for you: tap the card, or answer yes or no"); before, it shared the row with four buttons and was cut.
+    Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         StatusOrb(mood, face)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text("Robot", style = MaterialTheme.typography.titleLarge)
-            Text(status, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        if (showKeep) {
-            TextButton(onClick = onKeep, modifier = Modifier.heightIn(min = 48.dp)) {
-                Icon(RIcons.Bookmark, null, Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("Keep")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Robot", style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                if (showKeep) {
+                    TextButton(onClick = onKeep, modifier = Modifier.heightIn(min = 48.dp)) {
+                        Icon(RIcons.Bookmark, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Keep")
+                    }
+                }
+                // A toggle, so TalkBack says "Speak replies, checked" or "not checked"; drawn as before (no colour when on).
+                IconToggleButton(checked = speak, onCheckedChange = { onToggleSpeak() }, modifier = Modifier.size(48.dp),
+                    colors = IconButtonDefaults.iconToggleButtonColors(checkedContentColor = LocalContentColor.current)) {
+                    Icon(if (speak) RIcons.VolumeUp else RIcons.VolumeOff, "Speak replies")
+                }
+                IconButton(onClick = onNew, modifier = Modifier.size(48.dp)) { Icon(RIcons.Add, "New conversation") }
+                IconButton(onClick = onSettings, modifier = Modifier.size(48.dp)) { Icon(RIcons.Settings, "Settings") }
+                IconButton(onClick = onClose, modifier = Modifier.size(48.dp)) { Icon(RIcons.Close, "Close") }
             }
+            // A polite live region, so TalkBack says each new state once. Drawn 6 dp higher, close under "Robot" (the
+            // buttons' 48 dp row leaves room), with the header's 6 dp below it.
+            Text(status, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.offset(y = (-6).dp).padding(end = 8.dp).semantics { liveRegion = LiveRegionMode.Polite })
         }
-        IconButton(onClick = onToggleSpeak, modifier = Modifier.size(48.dp)) {
-            Icon(if (speak) RIcons.VolumeUp else RIcons.VolumeOff, if (speak) "Speaking replies: on" else "Speaking replies: off")
-        }
-        IconButton(onClick = onNew, modifier = Modifier.size(48.dp)) { Icon(RIcons.Add, "New conversation") }
-        IconButton(onClick = onSettings, modifier = Modifier.size(48.dp)) { Icon(RIcons.Settings, "Settings") }
-        IconButton(onClick = onClose, modifier = Modifier.size(48.dp)) { Icon(RIcons.Close, "Close") }
     }
 }
 
@@ -309,7 +329,7 @@ fun ClassicContextRow(draft: Attachment?, thumb: Bitmap?, readClaude: Boolean, o
                 Text(if (draft == Attachment.SCREEN) "Your screen" else "Photo", style = MaterialTheme.typography.titleSmall)
                 Text("Goes with your next question", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            IconButton(onClick = onRemove, modifier = Modifier.size(48.dp)) { Icon(RIcons.Close, "Remove") }
+            IconButton(onClick = onRemove, modifier = Modifier.size(48.dp)) { Icon(RIcons.Close, if (draft == Attachment.SCREEN) "Remove screen" else "Remove photo") }
         }
     } else if (readClaude) {
         // Over the Claude app (your corner swipe): its last answer, read aloud in Claude's voice.
@@ -450,6 +470,7 @@ private fun MicButton(listening: Boolean, hint: String?, actions: ClassicInputAc
                 .background(if (listening) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer)
                 .semantics {
                     contentDescription = if (hint != null) "Talk to Robot. $hint" else "Talk to Robot"
+                    if (listening) stateDescription = "Listening"
                     role = Role.Button
                     onClick(label = "Talk") { actions.micPressed(); true }
                 }
@@ -471,7 +492,7 @@ private fun MicButton(listening: Boolean, hint: String?, actions: ClassicInputAc
 
 // ------------------------------------------------------------------ the conversation: bubbles
 
-/** One turn as 0.6.0's bubbles: the Classic look of ui/common TurnView, in the panel and in History. */
+/** One turn as 0.6.0's bubbles (ui/common TurnView), in the panel and in History. */
 @Composable
 fun ClassicBubbleTurn(t: TurnUi, actions: TurnActions, modifier: Modifier = Modifier) {
     if (t.user) UserBubble(t.text, t.attachment, t.thumb, modifier, screenText = t.screenText)
@@ -483,7 +504,7 @@ fun ClassicBubbleTurn(t: TurnUi, actions: TurnActions, modifier: Modifier = Modi
         )
         t.web?.let { app.heyrobot.ui.common.WebAnswerCard(it, onOpen = { url -> actions.openSource(t.id, url) }, modifier = Modifier.padding(top = 6.dp)) }
         t.offer?.let { ClassicOfferCard(it, onDismiss = { actions.dismissOffer(t.id) }, onAccept = { actions.acceptOffer(t.id) }) }
-        // 0.7: the reply card, the same card in Classic's colours.
+        // 0.7: the reply card, in the same tonal colours.
         t.reply?.let { r -> app.heyrobot.ui.common.ReplyCard(r, actions.reply?.let { f -> { op: app.heyrobot.ui.common.ReplyOp -> f(t.id, op) } },
             Modifier.padding(top = 8.dp)) }
     }
@@ -507,7 +528,7 @@ fun UserBubble(text: String, attachment: Attachment, thumb: Bitmap?, modifier: M
             Surface(
                 color = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                 shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.padding(bottom = 4.dp).widthIn(max = 320.dp)
+                modifier = Modifier.padding(bottom = 4.dp).widthIn(max = 320.dp).heightIn(min = 48.dp)
                     .clickable(onClickLabel = if (open) "Show less" else "Show all") { open = !open },
             ) {
                 Text(screenText, style = MaterialTheme.typography.bodySmall, maxLines = if (open) Int.MAX_VALUE else 4,
@@ -521,7 +542,9 @@ fun UserBubble(text: String, attachment: Attachment, thumb: Bitmap?, modifier: M
                 shape = RoundedCornerShape(22.dp, 22.dp, 6.dp, 22.dp),
                 modifier = Modifier.widthIn(max = 320.dp).testTag("classic-bubble"),
             ) {
-                Text(text, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(horizontal = 16.dp, vertical = 11.dp))
+                // One TalkBack heading per exchange, "You: …", so a swipe by headings goes from question to question.
+                Text(text, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(horizontal = 16.dp, vertical = 11.dp)
+                    .semantics { contentDescription = "You: $text"; heading() })
             }
         }
     }
@@ -589,7 +612,9 @@ fun AssistantBubble(
                 shape = RoundedCornerShape(22.dp, 22.dp, 22.dp, 6.dp),
                 modifier = Modifier.widthIn(max = 340.dp).testTag("classic-bubble"),
             ) {
-                Box(Modifier.padding(horizontal = 16.dp, vertical = 11.dp).answerSemantics(streaming, announce && text.isNotBlank())) {
+                // An error says so in words too, not only by its colour.
+                Box(Modifier.padding(horizontal = 16.dp, vertical = 11.dp).answerSemantics(streaming, announce && text.isNotBlank())
+                    .then(if (error) Modifier.semantics(mergeDescendants = true) { stateDescription = "Error" } else Modifier)) {
                     if (text.isBlank()) TypingDots() else MarkdownText(text, streaming)
                 }
             }
@@ -641,7 +666,7 @@ fun ClassicActionCard(a: ActionView, onConfirm: ((String, Boolean) -> Unit)?, mo
                         else -> listOfNotNull(a.status.label, a.detail).joinToString(". ")
                     }
                     Text(line, style = MaterialTheme.typography.bodyMedium,
-                        color = if (bad) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f))
+                        color = if (bad) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSecondaryContainer)
                 }
                 if (a.status.succeeded) Icon(RIcons.Check, a.status.label, Modifier.size(22.dp))
                 if (a.status == ActionStatus.NEEDS_UNLOCK) Icon(RIcons.Lock, "Locked", Modifier.size(22.dp))
@@ -666,7 +691,7 @@ fun ClassicActionCard(a: ActionView, onConfirm: ((String, Boolean) -> Unit)?, mo
                         }
                         if (a.more > 0) {
                             Text("…and ${a.more} more. Say the full name to pick one of those.", style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f))
+                                color = MaterialTheme.colorScheme.onSecondaryContainer)
                         }
                         OutlinedButton(onClick = { onConfirm(a.id, false) }, modifier = Modifier.align(Alignment.End).heightIn(min = 48.dp)) { Text("Cancel") }
                     }

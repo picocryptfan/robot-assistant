@@ -19,7 +19,7 @@ class LookStoreTest {
     }
 
     @Test fun whatIsWrittenIsReadBack() {
-        val l = LookSettings(wallpaperColors = false, classic = true)
+        val l = LookSettings(wallpaperColors = false)
         LookStore.write(f, l)
         assertEquals(l, LookStore.read(f))
         LookStore.write(f, LookSettings())
@@ -29,10 +29,20 @@ class LookStoreTest {
     }
 
     @Test fun aDamagedFileGivesTheDefaultsAndIsReplacedByTheNextSave() {
-        f.writeText("{\"classic\": tru")
+        f.writeText("{\"wallpaperColors\": fal")
         assertEquals(LookSettings(), LookStore.read(f))
-        LookStore.write(f, LookSettings(classic = true))
-        assertTrue(LookStore.read(f).classic)
+        LookStore.write(f, LookSettings(wallpaperColors = false))
+        assertFalse(LookStore.read(f).wallpaperColors)
+    }
+
+    @Test fun aFileFromBefore10WithTheClassicLookLoadsAndLosesTheKeyOnTheNextSave() {
+        // 0.9's look.json, with the Classic look switch on and Robot's own colours.
+        f.writeText("""{"v": 1, "wallpaperColors": false, "classic": true}""")
+        val l = LookStore.read(f)
+        assertEquals(LookSettings(wallpaperColors = false), l)
+        LookStore.write(f, l)
+        assertFalse(f.readText().contains("classic"))
+        assertEquals(l, LookStore.read(f))
     }
 
     @Test fun theFileLivesBesideSettingsJson() {

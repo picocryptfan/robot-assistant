@@ -110,7 +110,7 @@ object FeedbackDiagnostics {
             "wakeDuring" to s.convWakeDuring, "startLocked" to s.convStartLocked, "keepAudio" to s.convKeepAudio,
             "summaryLang" to (s.convSummaryLang?.takeIf { it == "fr" || it == "en" } ?: "default"), "offerStrongerAi" to s.convAutoOfferHelper,
             "yourVoice" to s.meVoiceprint)
-        add("Look", "classic" to look.classic, "wallpaperColours" to look.wallpaperColors)
+        add("Look", "wallpaperColours" to look.wallpaperColors)
         add("Updates", "automatic" to updates.autoCheck, "wifiDownload" to updates.wifiDownload, "testBuilds" to updates.testBuilds,
             "installWithoutAsking" to updates.installWithoutAsking, "repository" to (if (updates.repo == null) "Robot's own" else "another"),
             "skipped" to (if (updates.skipped == null) "none" else "a version"))

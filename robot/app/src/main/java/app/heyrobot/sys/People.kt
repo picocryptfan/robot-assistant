@@ -383,7 +383,7 @@ object AppPages {
     const val ROUTINES = "routines"
     /** Settings › Updates (the updater's notifications). */
     const val UPDATES = "updates"
-    /** 0.7.0: the Settings tab, from the panel's Settings button (both looks). */
+    /** 0.7.0: the Settings tab, from the panel's Settings button. */
     const val SETTINGS = "settings"
     /** 0.7: Settings › Memory (a memory card's "Open Memory" in the panel). */
     const val MEMORY = "memory"

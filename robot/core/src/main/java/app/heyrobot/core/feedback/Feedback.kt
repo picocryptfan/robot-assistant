@@ -88,7 +88,7 @@ data class FeedbackDraft(
 
 /**
  * The header's facts besides the kind and the reference: Robot's version and build, this phone, its chip and Android build
- * with whether it runs GrapheneOS, the model and where it runs, the look and the language. Every line is made by the
+ * with whether it runs GrapheneOS, the model and where it runs, the colours and the language. Every line is made by the
  * builders below from Android's fixed strings and Robot's own codes ([line] strips what could break the header).
  */
 data class FeedbackFacts(
@@ -133,7 +133,8 @@ data class FeedbackFacts(
             return "$name · $where$meanwhile"
         }
 
-        fun look(classic: Boolean): String = if (classic) "classic" else "stock"
+        /** The colours Settings › Display chose: "wallpaper colours" or "Robot's colours" (1.0: the panel has one look). */
+        fun look(wallpaperColors: Boolean): String = if (wallpaperColors) "wallpaper colours" else "Robot's colours"
 
         /** A language tag ("en-CA"), or "unknown". */
         fun language(tag: String): String = tag.filter { it.isLetterOrDigit() || it == '-' }.take(24).ifEmpty { "unknown" }

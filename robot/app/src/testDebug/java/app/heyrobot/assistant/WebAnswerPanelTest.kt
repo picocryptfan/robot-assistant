@@ -28,9 +28,9 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * A web answer in the panel (0.9, design A4.4 and A9), in both looks: the answer's text, then its card (which service
- * searched and what it was sent, the numbered sources, the pages read and skipped, Wikipedia's licence line) standing in
- * for the search's own action card; a source opens in the browser only on a tap.
+ * A web answer in the panel (0.9, design A4.4 and A9): the answer's text, then its card (which service searched and
+ * what it was sent, the numbered sources, the pages read and skipped, Wikipedia's licence line) standing in for the
+ * search's own action card; a source opens in the browser only on a tap.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -72,13 +72,8 @@ class WebAnswerPanelTest {
         assertTrue(card.historySources(KeepSources.DOMAINS).none { it.contains("/") })
     }
 
-    @Test fun standard() {
-        rule.showPanel(state)
-        rule.shot("panel_web_answer")
-    }
-
     @Test fun classic() {
-        rule.showPanel(state, classic = true)
+        rule.showPanel(state)
         assertEquals(emptyList<String>(), rule.touchTargetProblems())
         rule.shot("panel_classic_web_answer")
     }

@@ -346,7 +346,7 @@ guide version you last saw, the page Finish later left it on, the version you fi
 
 Every word of the guide (and of its Home and About rows) is in `res/values/strings.xml`, ready for 1.1's French; the
 names of values (a voice, an app, a chip) are core's, as Settings shows them. Each page uses Settings' rows
-(`ui/pref`), so it looks like Android's Settings in both the standard and the Classic look and in dark mode; each
+(`ui/pref`), so it looks like Android's Settings, light or dark; each
 example and each privacy line is one TalkBack stop, titles are headings, every target is 48 dp or more.
 
 **Code and tests.** Core `guide/SetupGuide.kt` (the pages' order and moves, the file, what Home offers, the summary's
@@ -354,8 +354,8 @@ lines) with `SetupGuideTest`; the app's `ui/guide/` (`SetupGuideScreen`, `GuideP
 `PhoneGuideStores`) and `sys/SetupGuideStore.kt`; `Page.Guide` ("guide" in the saved page stack). `SetupGuideScreenTest`
 (Robolectric) walks every page with Next and Back (a heading, a privacy line and "Find it later" on each, no target
 problems, nothing written by looking), Skip this step, Finish later and resuming, each page's choice reaching its store,
-the summary, Home's and About's rows, and five goldens: What Robot can do (light), Voice (dark), How Robot asks first at
-200 % font, Opening Robot in the Classic look, the summary.
+the summary, Home's and About's rows, and four goldens: What Robot can do (light), Voice (dark), How Robot asks first at
+200 % font, the summary.
 
 **On the phone (setup guide):**
 
@@ -486,6 +486,54 @@ token, no download or install in the check, the two addresses, the Shizuku run's
    a restart" turns Done by itself; with Shizuku stopped, the result says to start it. (Locked, nothing is sent:
    `ShizukuRunTest` checks it. Settings never shows over the lock screen, so on the phone that needs the power button
    pressed right after Run; optional.)
+
+## One look for the panel (1.0)
+
+1.0 ships the assistant panel in one look, the classic one: the round robot orb, chat bubbles, the pill text box and
+the round mic, as 0.9's Settings › Display › Classic look drew it. History's conversations are bubbles too. The
+standard panel of step (c) ("Step (c): the assistant panel" below) and the switch are gone; Settings and every other
+screen keep the standard look, unchanged.
+
+- **Removed**: `assistant/PanelParts.kt` (the standard header with its progress bar, the floating action button, the
+  camera menu, the suggestion row), the transcript turn in `ui/common/Transcript.kt`, the standard action and offer cards
+  in `ui/common/Chat.kt`, `cardStyle` and `CardKind`, `LookStyle` and `LocalLook`, the sheet's 640 dp limit and scrim
+  token, `LookSettings.classic`, and their tests (`MicFabTest`) and goldens (`panel_idle`, `panel_listening`,
+  `panel_thinking`, `panel_answer_card`, `panel_done_card`, `panel_helper_offer`, `panel_dark`, `panel_font200`,
+  `panel_web_answer`, `history_conversation`, `cards_classic`, `termux_card_light`, `guide_opening_classic`).
+- **Theme**: `RobotTheme` is always the standard type. `ClassicTheme` puts 0.4's type around the panel and around each
+  turn in History (`TurnView`). The cards the panel shares with `ui/common` (a web answer, a reply, a Termux command) are
+  always the tonal ones: `secondaryContainer`, 20 dp corners.
+- **Settings › Display**: only Colours (Use wallpaper colours) and the footer "Light or dark follows your phone." Its row
+  on Settings says "Wallpaper colours" or "Robot's colours". `look.json` keeps its version 1: a file from 0.9 or an rc,
+  with `"classic"` on or off, loads without error, the key is ignored, and the next save leaves it out
+  (`LookSettingsTest`, `LookStoreTest`, `DisplaySettingsTest`, `PanelLookTest`).
+- **Feedback**: the header's Look line names the colours ("wallpaper colours" or "Robot's colours"), and the settings
+  summary no longer has `classic`.
+- **Accessibility, from the standard panel's 1.0 audit**: the speaker is a toggle ("Speak replies", checked or not checked); the
+  status line is a polite live region and runs under the header's buttons, on up to two lines, so it is never cut ("On
+  this phone, priv…" before); the listening mic says "Listening"; your words are a "You: …" heading; an error reply says
+  "Error" in words; the close button on a photo or screen says "Remove photo" or "Remove screen"; the screen text kept
+  with a question opens from a 48 dp target; the screen button's "not ready" colour is the theme's outline (3:1). A
+  card's state line, a web answer's sources and a Termux card's notes are in the card's own text colour: the 80 % they
+  had measured 4.48:1 on the light card in Robot's colours, now 7.3:1 (`AccessibilityTest`).
+- **Tests**: `PanelLookTest` (the orb and bubbles, every control named, 48 dp targets, the toggle, the live region, each
+  tap's action, an old `look.json`, Remove photo and screen; goldens `panel_classic_idle`, `_listening`,
+  `_answer_card`, `_helper_offer`, `_dark`, `_font200`), `PanelStatusTest` (each phase's words), `TranscriptTest`,
+  `RobotFacePanelTest`, `WebAnswerPanelTest`, `ActionCardTest`, `CardsTest`, `ReplyCardTest`, `TermuxCardTest`.
+
+### On the phone (one look, 1.0)
+
+1. **An old setting.** Install over an rc that had Settings › Display › Classic look off, open the panel: *done when* it
+   is the classic panel (orb, "Ask me anything.", round mic) and Settings › Display has only Use wallpaper colours, its
+   choice kept. The same after an rc with Classic look on.
+2. **TalkBack.** Open the panel with TalkBack: "Robot", the status ("On this phone, private"), "Speak replies, checked",
+   "New conversation", "Settings", "Close", the tips, "Add a photo", "Ask Robot…", "Talk to Robot". Ask by voice:
+   "Listening…" once, then "Thinking…", the answer once complete. Headings jump from question to question ("You: …").
+3. **The status line.** "Text mom I'm running late" with two numbers for Mom: under the buttons it reads "Waiting for
+   you: tap the card, or answer yes or no" whole; at the largest font size too, on two lines.
+4. **History.** History › a conversation: bubbles, cards without buttons, the Continue button.
+5. **Landscape.** Rotate and open the panel: it is the whole width, as 0.9's Classic look was; the keyboard sits on the
+   field (P-8 below).
 
 ## What's new in 0.9.0
 
@@ -643,7 +691,7 @@ as 0.6.0: memory, messages and feedback keep their own files (`memory.json`, `me
   delete shows at once, without closing Settings); "free up memory" and "close apps" are answered by Robot itself with
   how much memory is free, what unloading its model gives and, with Usage access, the apps likely still in memory, each
   opening its App info for Force stop ([Freeing memory and storage](#freeing-memory-and-storage)); the panel has a
-  Settings button in both looks; the Settings root is categories only (it has been since the redesigned Settings, which
+  Settings button (in both looks then; 1.0 keeps only the classic one); the Settings root is categories only (it has been since the redesigned Settings, which
   0.6.0 didn't have yet).
 - **Not in 0.7.0:** the memory search model (7.4) and suggestions and transcripts in memory (7.5); "Announce new
   messages" (headset mode); messages to trusted helpers without a card; other helpers summarizing a transcript. Nothing of
@@ -655,7 +703,7 @@ as 0.6.0: memory, messages and feedback keep their own files (`memory.json`, `me
      is free and names them; the card lists "Unload Robot's model · about 2 GB" and each app; tap YouTube: its App info
      opens (tap Force stop yourself). « Libère de la mémoire »: the same in French. Turn Usage access off: the card offers
      "Turn on Usage access…". Locked: only what is free.
-  3. **Settings from the panel.** Both looks (Settings › Display › Classic look): the panel's header has a gear; it opens
+  3. **Settings from the panel.** The panel's header has a gear (1.0: the classic panel is the only one); it opens
      Robot's Settings tab. On the lock screen: "Unlock your phone, then tap Settings again."
 
 ## What's new in 0.6.0
@@ -1101,7 +1149,7 @@ Ref: RFB-7K2QD4XZ
 Robot: 0.6.0 (60) · release build
 Phone: Pixel 9a · Tensor G4 · Android 16 (BP2A.250805.005) · GrapheneOS
 Model: Fast · Gemma 4 E2B · GPU (fell back to CPU on 2026-10-11)
-Look: stock · Language: en-CA
+Look: wallpaper colours · Language: en-CA
 ---
 What happened:
 <your words>
@@ -1190,7 +1238,7 @@ panel hold it), `FeedbackRouterTest` (English and French, the words after, quest
 `TombstoneTest` (a tombstone written by hand field by field, with paths, registers, memory, maps, logs and the command
 line in it), `ModelProblemsTest` and `VoiceLogTest`. App: `ui/settings/FeedbackSettings.kt` (the page and its route),
 `sys/Feedback.kt` (the files, the clipboard, the intents), `sys/Problems.kt`; `FeedbackScreenTest` (debug unit tests:
-the kinds, Preview, Share, Copy, Text it, the GitHub issue, Done, the panel's words, a recreation, both looks, and the
+the kinds, Preview, Share, Copy, Text it, the GitHub issue, Done, the panel's words, a recreation, and the
 screenshots `feedback_light`, `feedback_dark`, `feedback_font200`), `ModelPagesTest`, `UpdatesSettingsTest`,
 `AppRoutesTest` and `PageSaverTest`. `ProcessIsolationTest` checks that no feedback code has network code or a log but
 codeless RLog events, that only the page sends and only the panel hands over words, that the tombstone is read only into
@@ -1255,7 +1303,6 @@ Not yet checked. A debug build for steps 14 and 15 (`run-as`); watch Settings �
     SIGSEGV (11), code SI_USER (0)", "Abort message: none" and "Backtrace, the crashing thread's first 16 of N frames:"
     with lines like "#00 libc.so +0x… (…)": library names only, no `/data/app/…` path, no register, no memory, no file of
     yours. Compare `am crash` (step 14), which leaves no tombstone.
-16. **Both looks.** Settings › Display › Classic look on: Send feedback looks and works the same.
 
 ## What's new in 0.4.7
 
@@ -1887,8 +1934,8 @@ Assistant setup as Android-style pages (next section). (c) the assistant panel a
 - **Classic look** (Settings › Display, off by default): brings back Robot 0.4's assistant panel (the round robot orb,
   chat bubbles, the pill text box and round mic) and its type, for whoever prefers it: since step (c) (below) the
   panel and History's conversations are 0.6.0's exactly in it. Settings and the other screens are standard in
-  both, and the icons are Material Symbols in both. Colours are a separate switch (Classic with wallpaper colours is 0.4.3 exactly). It may be removed after a
-  release or two.
+  both, and the icons are Material Symbols in both. Colours are a separate switch (Classic with wallpaper colours is 0.4.3 exactly). 1.0 removed
+  the switch: the panel is always the classic one ("One look for the panel (1.0)" above).
 - **Storage**: the two switches are in `files/robot/look.json` (`core/Look.kt`, `sys/LookStore.kt`), not in
   `settings.json`: the main app writes it, and the panel's process reads it again each time the panel opens.
 - **The old UI is kept**: the branch `backup/ui-classic-0.4.2` on GitHub (commit `8e5a5ac`, Robot 0.4.2, before any of this) and the
@@ -1921,7 +1968,7 @@ rounded groups under a small header, the current state on one line under each ti
 bar where a page is on or off as a whole (turning it off greys out the rest), single choices in a radio dialog that closes on
 a pick (no segmented buttons or chips left in Settings), text in an edit dialog whose Save stays off while the text is
 wrong, status rows with the button that fixes them, and the long explanations in each page's footer. Settings are stock-only:
-the Classic look changes the panel, never these pages. No setting changed its meaning, default or storage (`settings.json`
+the panel's look never changes these pages. No setting changed its meaning, default or storage (`settings.json`
 stays schema 13).
 
 - **Settings** is a list of pages (`ui/settings/SettingsRoot.kt`), fourteen rows, each saying its state: Wake word
@@ -1969,7 +2016,7 @@ stays schema 13).
   phone and the general build's page both caches. Your own Tensor G5 build says it can't run on a phone without that TPU,
   and offers no "Run on the TPU" there. The TPU list, the GPU's trade-off and "Fast on this phone is Gemma 4 E2B's general
   build" (for a file that names the Pixel 10's Fast) are in the footer. Settings › Model's row says "Fast on the GPU" or
-  "on the CPU" there. Like every Settings page, these are the same in the standard and the Classic look.
+  "on the CPU" there.
 - **Settings › About › Updates** (the built-in updater, merged from 0.6.0): a row of About's group with its state ("Checks
   once a day", "Checked today at 14:05", "Robot 0.7.1 is available"), opening the Updates page ("Updates" above), built
   from the same `ui/pref/` rows. Its notifications open it alone, and Back then goes to About.
@@ -2042,7 +2089,7 @@ colours" on for all of them unless a step says otherwise.
 - With them: **Back.** Settings › Voice › Barge-in test, then Back twice: Voice, then Settings. Assistant setup › Fix,
   then Back: Assistant setup. Rotate the phone on Settings › Helpers › Claude: the same page stays, and Back still goes
   to Helpers.
-- **0.6.0's parts in the new pages**, in the standard look and again with Settings › Display › Classic look on:
+- **0.6.0's parts in the new pages**:
   1. Pixel 9a, Model tab: "Robot uses" lists one Fast ("Gemma 4 E2B"); This phone says "Pixel 9a (Tensor G4)"; Use the
      GPU is on and "Fast on the GPU (now)" shows its estimate. Turn it off: "Fast on the CPU (now)", and Settings › Model's
      row reads "Fast on the CPU · …". Turn it back on.
@@ -2055,6 +2102,9 @@ colours" on for all of them unless a step says otherwise.
      About.
 
 ### Step (c): the assistant panel
+
+1.0 removed this standard panel: the panel is always the classic one ("One look for the panel (1.0)" above). This
+section records what step (c) built; its accessibility fixes moved to the classic panel.
 
 The panel is now drawn like a system bottom sheet, not a chat app. One panel serves both looks: its state, focus,
 keyboard, drag and sending are shared (`assistant/PanelUi.kt`), and only the leaves differ by the look, the standard ones
@@ -2137,8 +2187,9 @@ it goes to PanelController as before, which this step doesn't change.
 
 ### On the phone (the look, step c: the panel)
 
-Not yet checked: the design document's phone checks P-5 to P-10, P-12 and P-13 (section 6). Classic look off and wallpaper
-colours on unless a step says otherwise.
+Not yet checked: the design document's phone checks P-5 to P-10, P-12 and P-13 (section 6). 1.0 removed the standard
+panel these were written for: P-5, P-6, P-7, P-9, P-10 and P-13 are replaced by "On the phone (one look, 1.0)" above;
+P-8 and P-12 still apply as written. Wallpaper colours on unless a step says otherwise.
 
 **P-5 TalkBack in the panel**
 

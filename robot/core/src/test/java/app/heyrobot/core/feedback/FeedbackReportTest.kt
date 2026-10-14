@@ -36,7 +36,7 @@ class FeedbackReportTest {
         robot = FeedbackFacts.robot("0.7.0", 70, debug = false),
         phone = FeedbackFacts.phone(nineA, "16", "BP2A.250805.005", "2025081900"),
         model = FeedbackFacts.model(BrainModel.GENERAL, ModelBackend.CPU, GpuFailure(BrainModel.GENERAL, t, ProblemStage.WRITING, null), null, zone = utc),
-        look = FeedbackFacts.look(false),
+        look = FeedbackFacts.look(wallpaperColors = true),
         language = FeedbackFacts.language("en-CA"),
     )
     private val ref = "RFB-ABCD2345"
@@ -60,7 +60,7 @@ class FeedbackReportTest {
             "Robot: 0.7.0 (70) · release build",
             "Phone: Pixel 9a · Tensor G4 · Android 16 (BP2A.250805.005) · GrapheneOS",
             "Model: Fast · Gemma 4 E2B · GPU (fell back to CPU on 2026-10-03)",
-            "Look: stock · Language: en-CA",
+            "Look: wallpaper colours · Language: en-CA",
             "---",
             "What happened:",
             "The timer didn't ring.",
@@ -130,7 +130,7 @@ class FeedbackReportTest {
         assertEquals("Smarter, slower · Gemma 4 E4B (CPU) · CPU · not ready: Robot uses Fast · Gemma 4 E2B",
             FeedbackFacts.model(BrainModel.SMARTER, ModelBackend.CPU, GpuFailure(BrainModel.GENERAL, t, ProblemStage.LOADING, LoadFailure.ENGINE), null,
                 using = BrainModel.GENERAL))
-        assertEquals("classic", FeedbackFacts.look(true))
+        assertEquals("Robot's colours", FeedbackFacts.look(wallpaperColors = false))
         assertEquals("fr-CA", FeedbackFacts.language("fr-CA"))
         // A line of the header never breaks it.
         assertEquals("ab", FeedbackFacts.line("a\nb", 10))

@@ -123,8 +123,8 @@ class SetupGuideScreenTest {
 
     private var closed = 0
 
-    private fun guide(stores: Stores, host: SettingsHost = SettingsHost(), snap: Snapshot = fresh, dark: Boolean = false, classic: Boolean = false) {
-        rule.show(dark = dark, classic = classic) {
+    private fun guide(stores: Stores, host: SettingsHost = SettingsHost(), snap: Snapshot = fresh, dark: Boolean = false) {
+        rule.show(dark = dark) {
             SetupGuideScreen(host.now, snap, host::update, log.actions, stores, SnackbarHostState(), onClose = { closed++ })
         }
     }
@@ -478,8 +478,7 @@ class SetupGuideScreenTest {
         assertEquals(emptyList<String>(), rule.touchTargetProblems())
     }
 
-    // Goldens: What Robot can do (light), Voice (dark), How Robot asks first at 200 % font, Opening Robot in the Classic look,
-    // the summary (light).
+    // Goldens: What Robot can do (light), Voice (dark), How Robot asks first at 200 % font, the summary (light).
 
     @Test fun canDoLight() {
         guide(Stores(GuideStep.CAN_DO))
@@ -497,11 +496,6 @@ class SetupGuideScreenTest {
         assertEquals(emptyList<String>(), rule.touchTargetProblems())
         rule.scrollToText("Find it later: ", substring = true)
         rule.shot("guide_asks_font200")
-    }
-
-    @Test fun openingClassic() {
-        guide(Stores(GuideStep.OPENING), classic = true)
-        rule.shot("guide_opening_classic")
     }
 
     @Test fun summaryLight() {

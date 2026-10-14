@@ -85,11 +85,10 @@ object PanelFixtures {
     ), speak = true)
 }
 
-/** Shows the panel for [st] in Robot's theme (Robot's own colours, as every screenshot), standard look unless [classic]. */
-fun ComposeContentTestRule.showPanel(st: PanelState, actions: PanelActions = RecordingActions(), dark: Boolean = false, classic: Boolean = false,
-    onClose: () -> Unit = {}) {
+/** Shows the panel for [st] in Robot's theme (Robot's own colours, as every screenshot). */
+fun ComposeContentTestRule.showPanel(st: PanelState, actions: PanelActions = RecordingActions(), dark: Boolean = false, onClose: () -> Unit = {}) {
     setContent {
-        RobotTheme(dark = dark, look = LookSettings(wallpaperColors = false, classic = classic)) {
+        RobotTheme(dark = dark, look = LookSettings(wallpaperColors = false)) {
             // The app underneath, behind the scrim.
             Surface(color = MaterialTheme.colorScheme.background) { AssistantPanel(st, actions, onClose) }
         }
