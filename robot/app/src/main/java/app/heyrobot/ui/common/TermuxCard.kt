@@ -176,7 +176,7 @@ fun TermuxCard(a: ActionView, t: TermuxCardView, onConfirm: ((String, Boolean) -
             if (t.edited == null) Chips(t.chips, t.red) else Chips(CommandAnalyzer.analyze(t.edited).chips(), null)
         }
         val small = MaterialTheme.typography.bodySmall
-        val quiet = c.onSecondaryContainer.copy(alpha = 0.8f)
+        val quiet = c.onSecondaryContainer
         if (!editing) t.readsAs?.let { Text("Robot reads it as: $it", style = small, color = quiet, modifier = Modifier.padding(top = 6.dp)) }
         if (t.why != null && t.edited == null) {
             Text("Gemma: “${t.why}”", style = small.copy(fontStyle = FontStyle.Italic), color = quiet, modifier = Modifier.padding(top = 6.dp)

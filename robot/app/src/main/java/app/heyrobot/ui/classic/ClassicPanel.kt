@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -119,8 +120,10 @@ import kotlinx.coroutines.launch
 // in the same tonal colours. Like every ui/ file it never touches the assistant's classes: the panel
 // (assistant/PanelUi.kt) passes plain values and what each tap does. The test tags (classic-orb, classic-bubble) let the
 // tests find the orb and the bubbles; they change nothing on screen. 1.0's accessibility fixes from the standard panel
-// are carried over: the speaker is a toggle, the status line a polite live region, the listening mic says so, an error
-// reply says so in words, and your words are a "You: …" heading for TalkBack.
+// are carried over: the speaker is a toggle, the status line a polite live region under the header's buttons, so it is never cut, the listening mic
+// says so, an error reply says so in words, your words are a "You: …" heading for TalkBack, "Remove photo" or "Remove
+// screen" says which, the screen kept with a question opens at a 48 dp target, and a card's state line is in the card's
+// own text colour (4.5:1 or more, ui/common AccessibilityTest).
 
 // ------------------------------------------------------------------ the sheet's top
 
@@ -159,30 +162,35 @@ fun ClassicHeader(
     /** 1.0: the robot inside the orb, by what Robot is doing. */
     face: RobotFace = RobotFace.IDLE,
 ) {
-    Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+    // 1.0: the status line runs under the name and the buttons, so its words are read whole ("On this phone, private",
+    // "Waiting for you: tap the card, or answer yes or no"); before, it shared the row with four buttons and was cut.
+    Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         StatusOrb(mood, face)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text("Robot", style = MaterialTheme.typography.titleLarge)
-            // A polite live region, so TalkBack says each new state once.
-            Text(status, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
-        }
-        if (showKeep) {
-            TextButton(onClick = onKeep, modifier = Modifier.heightIn(min = 48.dp)) {
-                Icon(RIcons.Bookmark, null, Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("Keep")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Robot", style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                if (showKeep) {
+                    TextButton(onClick = onKeep, modifier = Modifier.heightIn(min = 48.dp)) {
+                        Icon(RIcons.Bookmark, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Keep")
+                    }
+                }
+                // A toggle, so TalkBack says "Speak replies, on" or "off"; drawn as before (no colour when on).
+                IconToggleButton(checked = speak, onCheckedChange = { onToggleSpeak() }, modifier = Modifier.size(48.dp),
+                    colors = IconButtonDefaults.iconToggleButtonColors(checkedContentColor = LocalContentColor.current)) {
+                    Icon(if (speak) RIcons.VolumeUp else RIcons.VolumeOff, "Speak replies")
+                }
+                IconButton(onClick = onNew, modifier = Modifier.size(48.dp)) { Icon(RIcons.Add, "New conversation") }
+                IconButton(onClick = onSettings, modifier = Modifier.size(48.dp)) { Icon(RIcons.Settings, "Settings") }
+                IconButton(onClick = onClose, modifier = Modifier.size(48.dp)) { Icon(RIcons.Close, "Close") }
             }
+            // A polite live region, so TalkBack says each new state once. Drawn 6 dp higher, close under "Robot" (the
+            // buttons' 48 dp row leaves room), with the header's 6 dp below it.
+            Text(status, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.offset(y = (-6).dp).padding(end = 8.dp).semantics { liveRegion = LiveRegionMode.Polite })
         }
-        // A toggle, so TalkBack says "Speak replies, on" or "off"; drawn as before (no colour when on).
-        IconToggleButton(checked = speak, onCheckedChange = { onToggleSpeak() }, modifier = Modifier.size(48.dp),
-            colors = IconButtonDefaults.iconToggleButtonColors(checkedContentColor = LocalContentColor.current)) {
-            Icon(if (speak) RIcons.VolumeUp else RIcons.VolumeOff, "Speak replies")
-        }
-        IconButton(onClick = onNew, modifier = Modifier.size(48.dp)) { Icon(RIcons.Add, "New conversation") }
-        IconButton(onClick = onSettings, modifier = Modifier.size(48.dp)) { Icon(RIcons.Settings, "Settings") }
-        IconButton(onClick = onClose, modifier = Modifier.size(48.dp)) { Icon(RIcons.Close, "Close") }
     }
 }
 
@@ -658,7 +666,7 @@ fun ClassicActionCard(a: ActionView, onConfirm: ((String, Boolean) -> Unit)?, mo
                         else -> listOfNotNull(a.status.label, a.detail).joinToString(". ")
                     }
                     Text(line, style = MaterialTheme.typography.bodyMedium,
-                        color = if (bad) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f))
+                        color = if (bad) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSecondaryContainer)
                 }
                 if (a.status.succeeded) Icon(RIcons.Check, a.status.label, Modifier.size(22.dp))
                 if (a.status == ActionStatus.NEEDS_UNLOCK) Icon(RIcons.Lock, "Locked", Modifier.size(22.dp))
@@ -683,7 +691,7 @@ fun ClassicActionCard(a: ActionView, onConfirm: ((String, Boolean) -> Unit)?, mo
                         }
                         if (a.more > 0) {
                             Text("…and ${a.more} more. Say the full name to pick one of those.", style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f))
+                                color = MaterialTheme.colorScheme.onSecondaryContainer)
                         }
                         OutlinedButton(onClick = { onConfirm(a.id, false) }, modifier = Modifier.align(Alignment.End).heightIn(min = 48.dp)) { Text("Cancel") }
                     }

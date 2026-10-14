@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -33,30 +32,29 @@ import app.heyrobot.ui.theme.RobotTokens
 /** The answer card for [card]; [onOpen] gets a source's URL (or Wikipedia's licence) when tapped. */
 @Composable
 fun WebAnswerCard(card: AnswerCard, onOpen: (String) -> Unit, modifier: Modifier = Modifier) {
-    val muted = LocalContentColor.current.copy(alpha = 0.8f)
     PanelCard(modifier) {
         CardHeader(
             headline = card.header,
             supporting = "“${card.query}”",
             leading = { CardIcon(RIcons.Search) },
-            trailing = card.cost?.let { cost -> { Text(cost, style = MaterialTheme.typography.labelMedium, color = muted) } },
+            trailing = card.cost?.let { cost -> { Text(cost, style = MaterialTheme.typography.labelMedium) } },
         )
         Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
             for (s in card.cited) SourceRow(s, numbered = true, onOpen = onOpen)
             if (card.alsoFound.isNotEmpty()) {
-                Text("Also found", style = MaterialTheme.typography.labelLarge, color = muted, modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 4.dp))
+                Text("Also found", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 4.dp))
                 for (s in card.alsoFound) SourceRow(s, numbered = false, onOpen = onOpen)
             }
         }
         val small = MaterialTheme.typography.bodySmall
-        for (line in card.skippedLines) Text(line, style = small, color = muted, modifier = Modifier.padding(top = 4.dp))
-        Text(listOfNotNull(card.readLine, card.sent).joinToString(" · "), style = small, color = muted, modifier = Modifier.padding(top = 8.dp))
+        for (line in card.skippedLines) Text(line, style = small, modifier = Modifier.padding(top = 4.dp))
+        Text(listOfNotNull(card.readLine, card.sent).joinToString(" · "), style = small, modifier = Modifier.padding(top = 8.dp))
         for (credit in card.credits) {
             if (credit.startsWith("From Wikipedia")) {
                 // The reuse page's form: the article (a source above) and a link to the licence.
                 LinkRow("$credit (licence)", onClick = { onOpen(WikipediaWire.LICENCE_URL) })
             } else {
-                Text(credit, style = small, color = muted, modifier = Modifier.padding(top = 4.dp))
+                Text(credit, style = small, modifier = Modifier.padding(top = 4.dp))
             }
         }
     }
@@ -81,7 +79,7 @@ private fun SourceRow(s: CardSource, numbered: Boolean, onOpen: (String) -> Unit
         }
         Text(s.title, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(vertical = 6.dp))
         Spacer(Modifier.width(8.dp))
-        Text(s.domain, style = MaterialTheme.typography.labelMedium, color = LocalContentColor.current.copy(alpha = 0.8f), maxLines = 1)
+        Text(s.domain, style = MaterialTheme.typography.labelMedium, maxLines = 1)
     }
 }
 

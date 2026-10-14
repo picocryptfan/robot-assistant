@@ -102,4 +102,19 @@ class AccessibilityTest {
         val light = RobotColors.Light
         assertTrue(contrast(light.onSurfaceVariant.copy(alpha = 0.38f).compositeOver(light.surfaceContainerLow), light.surfaceContainerLow) < 3.0)
     }
+
+    /**
+     * 1.0, the classic panel's tonal cards: a card's state line ("Which one?", "Done"), a web answer's sources and a
+     * Termux card's notes are in the card's own text colour, its problems in the error colour, its links in the primary
+     * colour, all 4.5:1 or more. The 80 % text they had before was 4.48:1 on the light card.
+     */
+    @Test fun theClassicCardsTextKeepsFourAndAHalfToOne() {
+        for (c in listOf(RobotColors.Light, RobotColors.Dark)) {
+            for (fg in listOf(c.onSecondaryContainer, c.error, c.primary)) {
+                assertTrue("$fg on ${c.secondaryContainer}: ${contrast(fg, c.secondaryContainer)}", contrast(fg, c.secondaryContainer) >= 4.5)
+            }
+        }
+        val light = RobotColors.Light
+        assertTrue(contrast(light.onSecondaryContainer.copy(alpha = 0.8f).compositeOver(light.secondaryContainer), light.secondaryContainer) < 4.5)
+    }
 }

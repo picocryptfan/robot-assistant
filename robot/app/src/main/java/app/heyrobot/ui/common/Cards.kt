@@ -90,7 +90,7 @@ fun CardHeader(
                         Spacer(Modifier.width(4.dp))
                     }
                     Text(supporting, style = MaterialTheme.typography.bodyMedium,
-                        color = if (error) c.error else LocalContentColor.current.copy(alpha = 0.8f))
+                        color = if (error) c.error else LocalContentColor.current)
                 }
             }
         }
