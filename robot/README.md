@@ -165,9 +165,9 @@ does with your words.
    window shows once; Send feedback opens a bug report whose "Crash report" preview names the crash.
 4. **TalkBack.** Spoken replies off, ask a question: *done when* TalkBack reads the answer once, when it is complete.
 
-## The 1.0 security audit's fixes
+## The fixes from my security review before 1.0
 
-Each finding of the 1.0 audit (its ids in brackets) is fixed with a test; the sections below say more where they change.
+Before 1.0 I reviewed Robot's security myself. It was my own review, not an outside audit. Each finding of that review (its ids in brackets) is fixed with a test; the sections below say more where they change.
 
 - **Another app can't drive the panel** [ipc-1, ipc-2]: any app on top can open the assistant with `showAssist` and
   arguments of its choosing. The session now keeps a show's own arguments only when Robot's assistant service made the
@@ -222,7 +222,7 @@ Each finding of the 1.0 audit (its ids in brackets) is fixed with a test; the se
 - **Calls** [physical-call-e164-plus-dropped, physical-car-trusted-any-number]: a contact's number is dialled with its "+";
   the locked trusted car session calls People and contacts only.
 
-**On the phone (1.0 audit, the lock screen's turns):**
+**On the phone (my pre-1.0 security review, the lock screen's turns):**
 
 1. **A new conversation.** Lock the phone, "hey robot, what's 12 times 12?". Unlock, "hey robot" within a minute: *done
    when* the panel is empty, and History lists the locked conversation on its own.
@@ -250,7 +250,7 @@ siblings.
 - **One version in every User-Agent**: `Robot/<versionName>`, its "-" kept (a token character), for the downloads, the
   updater, Termux's update check, the search APIs, Wikipedia, Open Library and Nominatim alike (core `AppId.product`).
   Before, the last four dropped it: `Robot/1.0.0rc1` beside the downloads' `Robot/1.0.0-rc1`. `DownloadPolicyTest`.
-- **Who got a search's words** (the audit's network-1, finished): the answer card's "Sent to" line and History's line
+- **Who got a search's words** (the review's network-1, finished): the answer card's "Sent to" line and History's line
   name Wikipedia and Open Library when the search asked them (`WebOutcome.Found.also`, set by `WebSearch` from what it
   sent), so at Ask before searching: Never ask something on screen still says so. Before, only the consent card and the
   action's line, which the answer replaces, did. `WebAnswerTest`, `SearchClientTest`.
@@ -422,7 +422,7 @@ test-key block, an update check and, for the ADB fixes, a way without a computer
   Test says why it can't run ("Robot runs nothing in the GitHub build, not even the Test: …"; the update lock and
   another signer have their own line) instead of hiding its button. Once a Termux set up with the Test is paused (an
   update, Run anyway off again), its tools stay described, so a call says why.
-- **Robot's own keys by exact value** (left over from the 1.0 audit): every Termux call passes `ownSecrets` to
+- **Robot's own keys by exact value** (left over from my pre-1.0 security review): every Termux call passes `ownSecrets` to
   TermuxPolicy, read in `:voice` just before (`TermuxSecrets`: each helper's key and each web search key, which `:voice`
   already reads for its helpers and searches), so a command or script argument holding one is refused with "This holds
   one of Robot's own keys…", whoever wrote it; with "Hide secrets in output" on (the default) the output is masked with
@@ -512,7 +512,7 @@ screen keep the standard look, unchanged.
   (`LookSettingsTest`, `LookStoreTest`, `DisplaySettingsTest`, `PanelLookTest`).
 - **Feedback**: the header's Look line names the colours ("wallpaper colours" or "Robot's colours"), and the settings
   summary no longer has `classic`.
-- **Accessibility, from the standard panel's 1.0 audit**: the speaker is a toggle ("Speak replies", checked or not checked); the
+- **Accessibility, from my review of the standard panel before 1.0**: the speaker is a toggle ("Speak replies", checked or not checked); the
   status line is a polite live region and runs under the header's buttons, on up to two lines, so it is never cut ("On
   this phone, priv…" before); the listening mic says "Listening"; your words are a "You: …" heading; an error reply says
   "Error" in words; the close button on a photo or screen says "Remove photo" or "Remove screen"; the screen text kept
@@ -3499,7 +3499,7 @@ It reads the file Export writes, `robot-memory.json`: 0.9's and 1.0's are the sa
   yourself with Add something, where it stays private); had ended, couldn't be read, or found no room (Memory holds
   2,000), when there are any; how many will be added, and how many of those are private; and the list, a private item
   masked ("Private: tap to show") until tapped. Import (a tap, never by voice) and Cancel.
-- **Content until you say otherwise** (the audit's `MemoryTaint`): a file can be made by someone else, so imported items
+- **Content until you say otherwise** (the review's `MemoryTaint`): a file can be made by someone else, so imported items
   count as content, as memory kept from something Robot read does. A question they go with makes the conversation
   content (what the model then asks for follows When Robot asks first), and the model is told they were "imported from a file,
   not confirmed as the user's own words". The preview's "These are my own memories, from my own export" (off) imports
@@ -3921,7 +3921,7 @@ what it found.
 - Since 0.4.5 the same card takes a GGUF file too, told apart by its first bytes ("GGUF models" above).
 - **1.0: checked strictly, and a known limitation.** Unlike a GGUF file (llama.cpp runs it in the isolated `:llama`
   process), a `.litertlm` file is read by LiteRT-LM inside `:brain`, which runs with Robot's own uid and permissions:
-  LiteRT-LM needs the GPU and the TPU, which an isolated process can't reach, so it stays there (1.0 audit native-01 and
+  LiteRT-LM needs the GPU and the TPU, which an isolated process can't reach, so it stays there (my pre-1.0 security review, native-01 and
   ipc-5). So before LiteRT-LM ever sees an imported file, its container is checked strictly in Kotlin
   (`LiteRtLmCheck.strictProblem`, run by the app's check and again by `:brain` before the load), and anything odd refuses
   it: the magic and a 1.x format; a header that fits the file; one to 64 sections, each of a known data type, non-empty,
@@ -5934,7 +5934,7 @@ Read 1 page from this phone · Sent to your SearXNG and Wikipedia: “who won th
 From Wikipedia's article “2026 Stanley Cup Final”, CC BY-SA 4.0 (licence)
 ```
 
-The "Sent to" line names everyone the words went to (1.0, the audit's network-1): Wikipedia when Encyclopedia lookups
+The "Sent to" line names everyone the words went to (1.0, the review's network-1): Wikipedia when Encyclopedia lookups
 asked it (a who, what or where question, here "who won …"), Open Library when Book lookups did; History's line too
 ("Searched the web (your SearXNG and Wikipedia) · nhl.com, …"), whatever Ask before searching says.
 
