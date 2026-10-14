@@ -4,12 +4,9 @@ Robot itself is GPL-3.0-only (see `../LICENSE`; Copyright (C) 2026 the Robot aut
 licence; all of them (Apache-2.0, MIT, BSD-2-Clause, BSD-3-Clause, MPL-2.0, CC-BY-4.0 for model weights and data, CC0 for
 the language ID data, GPL-3.0-or-later for espeak-ng, GPL-2.0-or-later with MPL-2.0 parts for slimt, MPL-2.0 for the
 translation models) are compatible with GPL-3.0. Native libraries, models and the espeak-ng data are not stored in git:
-`tools/fetch_third_party.sh` downloads the exact files below and checks every SHA-256 (same sources and hashes as the
-phase 0 probe). The speech recognition and voice models are not in the APK at all: the app
+`tools/fetch_third_party.sh` downloads the exact files below and checks every SHA-256. The speech recognition and voice models are not in the APK at all: the app
 downloads them on request (see "Downloaded by the app" below); `tools/fetch_voice_models.sh` fetches the same files on a
 computer and checks them.
-
-The design documents linked under `docs/` in this file are private and are not in this repository.
 
 ## In the app: Settings › About › Licences
 
@@ -139,7 +136,7 @@ the archive always matches what they build. See the README's "Releasing".
 - Kotlin API copied verbatim from the repository at that tag (`sherpa-onnx/kotlin-api/`, commit
   `11afbd009a7f8c08f4bcf2fc1b265d0df4670fbf`), package `com.k2fsa.sherpa.onnx` kept because the JNI binds to those
   names: `FeatureConfig.kt`, `HomophoneReplacerConfig.kt`, `KeywordSpotter.kt`, `OnlineRecognizer.kt`,
-  `OnlineStream.kt`, `QnnConfig.kt`, `Vad.kt`, and for speech to text and text to speech (docs/voice-plan.md 4.1):
+  `OnlineStream.kt`, `QnnConfig.kt`, `Vad.kt`, and for speech to text and text to speech:
 
 | file | sha256 |
 |---|---|
@@ -197,7 +194,7 @@ the archive always matches what they build. See the README's "Releasing".
 From https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/espeak-ng-data.tar.bz2 (sha256
 `4135ccf82e1f40613491c0874d4945ae9e9c7840933d8e25a6f9e003d9ebf533`; identical to the copies inside the Kokoro and
 Kitten archives). Only the 17 files espeak reads for English and French are packaged, unchanged, in
-`voice/src/main/assets/espeak-ng-data/` (880,227 bytes; docs/voice-plan.md 2.5). The app copies them to its private
+`voice/src/main/assets/espeak-ng-data/` (880,227 bytes). The app copies them to its private
 storage and checks each hash before a voice is created.
 
 | file | bytes | sha256 |
@@ -232,12 +229,12 @@ sentence in `bench/test-clip.txt`. No person's voice. Used only by Settings › 
 While a sherpa-onnx voice is not downloaded, or when it is chosen, Robot speaks through Android's TextToSpeech API,
 which on GrapheneOS is the system's GrapheneOS Speech Services; nothing is packaged.
 
-### Anthropic Java SDK 2.71.0 (MIT): the API client of one of the helpers (`:helpers` module)
+### Anthropic Java SDK 2.71.0 (MIT): the client library of one paid AI service, used by one helper (`:helpers` module)
 
-The official SDK for the Claude API (https://github.com/anthropics/anthropic-sdk-java), from Maven Central, used only
+The service provider's official Java client library (https://github.com/anthropics/anthropic-sdk-java), from Maven Central, used only
 by the `:helpers` module, which only the assistant package (the `:voice` process) depends on; the main process never
-loads it (`ProcessIsolationTest`, `tools/verify_apk.sh`). It talks to `api.anthropic.com` only when you ask for
-Claude, or let Robot check a hard question with Claude (docs/ask-claude.md). Built in as Java/Kotlin classes (no native code). Licence: MIT.
+loads it (`ProcessIsolationTest`, `tools/verify_apk.sh`). It talks to `api.anthropic.com` only when you ask that
+helper, or let Robot check a hard question with it. Built in as Java/Kotlin classes (no native code). Licence: MIT.
 
 | artifact | licence | sha256 of the jar |
 |---|---|---|
@@ -260,7 +257,7 @@ What it brings with it at run time (resolved by Gradle, versions as built):
 | `com.standardwebhooks:standardwebhooks:1.2.0` | MIT |
 
 Since 0.6.0 the `:helpers` module also uses OkHttp 4.12.0 (and its Okio) directly, the same jars as above, for the other
-helpers' clients (OpenAI Chat Completions and Responses, `app.heyrobot.helpers`, in the `:voice` process only); no other
+helpers' clients (the Chat Completions and Responses wire formats, `app.heyrobot.helpers`, in the `:voice` process only); no other
 SDK is added.
 
 Tests only (not in the APK): `com.squareup.okhttp3:mockwebserver:4.12.0` (Apache-2.0), the local mock server the
@@ -288,7 +285,7 @@ copied). The NOTICE is in the APK (`licenses/notices/readability4j-NOTICE.txt`) 
 
 Single files from Hugging Face mirrors made by the sherpa-onnx project, at pinned commits
 (`https://huggingface.co/<repo>/resolve/<commit>/<file>`), each checked against the size and SHA-256 below before
-the voice process may load it (core `VoiceModels.kt`; docs/voice-plan.md 2.4). Stored in Robot's private storage,
+the voice process may load it (core `VoiceModels.kt`). Stored in Robot's private storage,
 `files/models/<bundle>/`. All hashes were re-checked on the build machine on 2026-10-10 with
 `tools/fetch_voice_models.sh`.
 
@@ -344,7 +341,7 @@ KittenML (https://huggingface.co/KittenML), Apache-2.0. Voice used: `expr-voice-
 > sherpa-onnx project; Robot uses it unchanged from that export.
 
 Downloaded only when you turn on speaker labels (Settings › Conversation › Tell speakers apart), for conversation mode's
-transcripts (docs/conversation-mode.md 3). Repo `csukuangfj/speaker-embedding-models` @
+transcripts. Repo `csukuangfj/speaker-embedding-models` @
 `0743f301363dec56491a490f6d6cbc9d67f9a3bf` (bundle `spk-titanet-small`, 40,257,283 bytes; size and hash re-checked on
 the build machine on 2026-10-11, equal to Hugging Face's LFS record).
 
@@ -393,7 +390,7 @@ each path; `models.json` generated 2026-10-10), downloaded only when you tap Dow
 `files/models/mt-fr-en/` (73,135,034 bytes; 51,577,481 to download). The two vocabularies are byte-identical, so only
 fr-en's is downloaded. Re-checked on the build machine on 2026-10-11 with `tools/build_robotmt.sh --check`. Licence:
 MPL-2.0, the licence of `mozilla/firefox-translations-models` and `mozilla/translations`; that it covers the bucket's
-current files is still UNVERIFIED (no per-file notice in the bucket, docs/translation-plan.md 1.4).
+current files is still UNVERIFIED (no per-file notice in the bucket).
 
 | file (as installed) | .gz bytes | .gz sha256 | bytes | sha256 |
 |---|---|---|---|---|
@@ -415,7 +412,7 @@ was written for Robot.
   Its LICENSE and THIRD_PARTY_NOTICE.txt ship inside the AAR; `:brain`'s `aarNotices` task copies both into the APK's
   assets (as it does the NPU runtime's two).
 - `com.google.ai.edge.litert:litert-npu-runtime-google-tensor:2.3.0` (Apache-2.0), non-transitive;
-  `libLiteRtDispatch_GoogleTensor.so` is packaged, `libLiteRtCompilerPlugin_google_tensor.so` excluded (as in the probe and the lab).
+  `libLiteRtDispatch_GoogleTensor.so` is packaged, `libLiteRtCompilerPlugin_google_tensor.so` excluded.
 - The Tensor TPU vendor libraries (`libedgetpu_*`) are the phone's own, declared with `<uses-native-library required="false">`, not bundled.
 - 0.4.7: the phone's OpenCL (`libOpenCL.so`, `libOpenCL-pixel.so`, `libvndksupport.so`) is the phone's own too, declared the
   same way for the GPU, not bundled.
@@ -506,7 +503,7 @@ Gemma 4 licence page is the Apache-2.0 text; the repositories below say `apache-
 
 `core/src/main/assets/langid/fr-en.tsv` (in git, generated; 172,247 bytes, sha256
 `e58cc22e749e8b6479e17e2c2c22958194f64c7cc42551d629a17355fc1a38d4`) is the French/English word and character n-gram
-table core `LangId.kt` uses to tag each transcript line with its language (`../docs/conversation-mode.md` 2.3). It holds
+table core `LangId.kt` uses to tag each transcript line with its language. It holds
 rounded log-probabilities only, no sentence. `tools/make_langid.py` builds it from **Tatoeba's CC0 export only**:
 
 - https://downloads.tatoeba.org/exports/sentences_CC0.tar.bz2, downloaded 2026-10-11, sha256
@@ -549,7 +546,7 @@ no code of it is in the app.
 
 Phase 2 adds no dependency. Robot hands drafts to apps you install (Cheogram, Proton Mail, an SMS app, a
 calendar app) through Android intents only; nothing of them is bundled. Their source (Cheogram: GPL-3.0; Proton Mail
-for Android: GPL-3.0) was read to match what they accept (`../docs/phase-2.md`); no code was copied.
+for Android: GPL-3.0) was read to match what they accept; no code was copied.
 
 Build and test only (not in the APK): Android Gradle Plugin 8.8.2, Kotlin and its Compose compiler plugin
 2.4.0, JUnit 4.13.2 (EPL-1.0), org.json 20180813 (JSON licence, tests only). The UI tests (debug unit tests, 0.4.x
@@ -596,15 +593,12 @@ on the build machine only; `tools/make_langid.py` uses Python's standard library
   DuckDuckGo, Brave Search, Mojeek, Qwant, Ecosia, Google, Bing) is your browser's: Robot only opens the engine's search
   address and uses none of its results.
 
-## Code adapted from the phase 0 probe and the GPU lab (same author, GPL-3.0)
+## Code adapted from two early test apps (same author, GPL-3.0)
 
-The probe and the lab were early test apps; they are not in the public repository.
-
-The listener and wake word (probe `Listener.kt`, `WakeWord.kt`), the assistant service, recognizer stub and
-session (probe `ProbeVoiceService.kt`, `ProbeSession.kt`), the brain binding and TPU load (probe
-`BrainKeeper.kt`, `BrainClient.kt`, `BrainService.kt`, `Gemma.kt`, lab `Workload.kt` / `Configs.T`), the model
-store (probe `ModelStore.kt`), the restart check (probe `BootReceiver.kt`, `BootCheck.kt`), the fetch,
-keyword and APK check scripts, and the process isolation test.
+I wrote two early test apps, a first prototype and a GPU test app, before Robot. They are not in this repository.
+From them Robot adapts the listener and wake word, the assistant service, recognizer stub and session, the brain
+binding and TPU load, the model store, the restart check, the fetch, keyword and APK check scripts, and the process
+isolation test.
 
 **Termux's constant strings (0.9).** The Termux agent (core `termux/TermuxIntents.kt` and `TermuxIdentity.kt`) copies
 about a dozen constant strings from Termux's `TermuxConstants.java` (termux/termux-app, `termux-shared`, at 8629e63): its
