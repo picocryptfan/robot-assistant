@@ -162,8 +162,8 @@ you pick one: only import files you trust. See [`SECURITY.md`](SECURITY.md).
 
 Settings › About › Licences lists every part of Robot with its version, licence and full licence text, and
 [`robot/THIRD_PARTY.md`](robot/THIRD_PARTY.md) lists them with their pins and hashes. Each release also attaches the
-complete source of the native code Robot ships (sherpa-onnx with espeak-ng, ONNX Runtime, slimt and llama.cpp) as
-`robot-<version>-third-party-sources.tar.gz`.
+complete source of the copyleft native code Robot ships (sherpa-onnx with espeak-ng, ONNX Runtime, slimt and llama.cpp)
+as `robot-<version>-third-party-sources.tar.gz`. LiteRT-LM's native libraries come as Google's prebuilt files, not as source.
 
 ## Build from source
 
