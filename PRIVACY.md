@@ -3,7 +3,7 @@
 ## The short version
 
 Robot does not collect anything about you. There is no account, no analytics, no ads, no crash reporting and no tracking.
-The people who make Robot receive nothing from your phone. Robot goes online only for the things listed below, and only
+I, who make Robot, receive nothing from your phone. Robot goes online only for the things listed below, and only
 when you start them, except the daily check for updates and, on Wi-Fi, the download of an update it found, and, once
 you set up Termux, a weekly check for a newer Termux, which you can each turn off.
 

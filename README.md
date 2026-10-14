@@ -128,7 +128,7 @@ My development notes, with the design, the checks and the history, are in [`robo
 ## Privacy
 
 - Your voice is turned into text on the phone and never recorded. Answers are made on the phone.
-- Nothing about you is collected. The people who make Robot receive nothing from your phone.
+- Nothing about you is collected. I receive nothing from your phone.
 - Robot goes online for what you start (a download, the weather, the nearest place, a web search, a helper), for the
   daily update check and its download on Wi-Fi, for the weekly Termux check once Termux is set up, and for routines
   you allow to; each of those can be turned off. You can turn off Robot's Network permission in GrapheneOS and
