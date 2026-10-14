@@ -8,12 +8,12 @@ WHAT IT DOES
 • Opens your maps app with a search or route ready
 • Keeps notes and finds them again
 • Answers questions about what's on your screen, or a photo, once the phone is unlocked
-• Answers everyday questions with an AI model that runs on the phone
+• Answers everyday questions with Gemma, Google's open model, running on the phone
 • The weather from Open-Meteo, only when you ask
 • Checks battery, storage and memory, and helps free space
 • Conversation mode: transcripts with speaker names, live French and English translation, summaries
 • Your own wake words, voice speed, and a People list for the names you use
-• Checks GitHub for its own updates once a day and downloads them on Wi-Fi. You install them, and both can be turned off
+• Checks GitHub for its own updates once a day and downloads them on Wi-Fi, and checks for Termux updates once a week after you set Termux up. You install updates yourself, unless you turn on "Install updates without asking" (off by default). Each check can be turned off
 
 LANGUAGES
 Understands and speaks English and Québec French. Reads other languages and answers in English or French.
@@ -21,7 +21,7 @@ Understands and speaks English and Québec French. Reads other languages and ans
 PRIVATE BY DEFAULT
 • Wake word, speech recognition, the AI model and the voice all run on the phone
 • Works offline once its model files are downloaded
-• Goes online only for what you ask (the weather, a search, a download), for the daily update check and its download on Wi-Fi, and for routines you allow to. Each can be turned off in Settings
+• Goes online only for what you ask (the weather, a search, a download), for the daily update check and its download on Wi-Fi, for the weekly Termux check once Termux is set up, and for routines you allow to. Each can be turned off in Settings
 • Each action can be set to Just do it, Ask first, or Off
 • No analytics, no crash reporting, no ads, no account, no Google Play services
 • Audio is never saved; message and screen content is never logged
