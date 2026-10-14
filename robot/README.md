@@ -1,4 +1,7 @@
-# Robot (phases 1 and 2, Ask a helper, Helpers)
+# Robot development notes
+
+These are my notes as the developer: the design, the checks and the history of each version. The features, for
+users, are described in [`README.md`](../README.md).
 
 A private voice assistant for GrapheneOS on the Pixel 10 Pro (since 0.4.7 also the Pixel 9a and other Pixels: "What's new
 in 0.4.7" below). Open it with the corner swipe, from the lock

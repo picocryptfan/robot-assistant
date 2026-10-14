@@ -123,7 +123,7 @@ Robot for you, it follows 0.9's app ID: remove that entry and add the repository
   ask or allow it.
 - Send feedback writes a bug report or an idea for you to send yourself. Robot sends nothing on its own.
 
-The full description of every feature, with its checks, is in [`robot/README.md`](robot/README.md).
+My development notes, with the design, the checks and the history, are in [`robot/README.md`](robot/README.md).
 
 ## Privacy
 
