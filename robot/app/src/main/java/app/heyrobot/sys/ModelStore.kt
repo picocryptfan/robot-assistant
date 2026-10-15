@@ -586,7 +586,7 @@ object ModelStore {
         val checked = verifiedPath(ctx, m)?.let(::File) ?: return false
         if (outside(ctx, checked) || loadedNow(ctx) == m) return false
         val names = if (m == BrainModel.OWN) ModelFormat.entries.map { ModelFiles.ownFile(it) } else listOf(m.file)
-        outsideDir.listFiles { f -> names.any { f.name.startsWith(it) } }?.forEach { it.deleteRecursively() }
+        outsideDir.listFiles { f -> names.any { n -> ModelFiles.besideFile(f.name, n) } }?.forEach { it.deleteRecursively() }
         return names.none { File(outsideDir, it).exists() }
     }
 
@@ -602,8 +602,8 @@ object ModelStore {
         part(ctx, m).delete()
         verifiedMark(ctx, m).delete()
         cacheDir(ctx, m).deleteRecursively()
-        // Anything LiteRT-LM may have left beside the file (its name first: no other model's file starts like it), inside and out.
-        for (d in dirs(ctx)) d.listFiles { f -> f.name.startsWith(m.file) }?.forEach { it.deleteRecursively() }
+        // Anything LiteRT-LM may have left beside the file (ModelFiles.besideFile), inside and out.
+        for (d in dirs(ctx)) d.listFiles { f -> ModelFiles.besideFile(f.name, m.file) }?.forEach { it.deleteRecursively() }
         if (m == BrainModel.OWN) {
             ownRecord(ctx).delete()
             prefs(ctx).edit().remove(OWN_NAME).apply()

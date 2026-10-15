@@ -313,6 +313,14 @@ object ModelFiles {
     /** Your own file's name in Robot's storage for its [format]. */
     fun ownFile(format: ModelFormat): String = if (format == ModelFormat.GGUF) OWN_GGUF else BrainModel.OWN.file
 
+    /**
+     * Whether [name], in a folder of model files, is [file] itself or what LiteRT-LM left beside it (its caches are named
+     * after the file, then "_" or ".": "….litertlm_1791942466_3113545589.vision_adapter.xnnpack_cache"). Never a file
+     * whose name merely begins the same way, such as another model called "<file>-v2.litertlm" (the 1.0.1 review).
+     */
+    fun besideFile(name: String, file: String): Boolean =
+        name == file || name.startsWith(file + "_") || name.startsWith(file + ".")
+
     /** A file's size and modification time: what the verified marks and your own file's record keep of the file checked. */
     fun fingerprint(bytes: Long, modified: Long): String = "$bytes|$modified"
 

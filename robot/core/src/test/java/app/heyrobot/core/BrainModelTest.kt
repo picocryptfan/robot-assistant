@@ -248,4 +248,19 @@ class BrainModelTest {
             }
         }
     }
+
+    /**
+     * Tidying and deleting a model's files outside take the file and what LiteRT-LM left beside it, never another model's
+     * file whose name begins the same way (the 1.0.1 review).
+     */
+    @Test fun onlyTheModelsOwnFilesAreBesideIt() {
+        val f = BrainModel.FAST.file
+        assertTrue(ModelFiles.besideFile(f, f))
+        assertTrue(ModelFiles.besideFile("${f}_1791942466_3113545589.vision_adapter.xnnpack_cache", f))
+        assertTrue(ModelFiles.besideFile("$f.xnnpack_cache", f))
+        assertFalse(ModelFiles.besideFile(f.removeSuffix(".litertlm") + "-v2.litertlm", f))
+        assertFalse(ModelFiles.besideFile("${f}x", f))
+        assertFalse(ModelFiles.besideFile(BrainModel.UNCENSORED.file, BrainModel.SMARTER.file))
+        for (a in BrainModel.entries) for (b in BrainModel.entries) if (a != b) assertFalse("${a.file} beside ${b.file}", ModelFiles.besideFile(a.file, b.file))
+    }
 }
