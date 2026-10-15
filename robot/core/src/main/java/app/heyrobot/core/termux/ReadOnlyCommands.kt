@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.termux
 
 // Pure. The strict read-only allowlist: with "Read-only commands without a

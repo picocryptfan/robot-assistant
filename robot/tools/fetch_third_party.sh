@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-only
 # Re-downloads the third-party files listed in THIRD_PARTY.md into a fresh temp directory, checks every
 # SHA-256, and (with --install) copies them into the :voice module. Needs curl, tar (bzip2) and sha256sum.
 # Same files and hashes as the phase 0 probe; Robot packages only the fp32 keyword models it loads and (since 0.2.3)

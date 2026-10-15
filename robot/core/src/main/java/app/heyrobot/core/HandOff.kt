@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
 // Pure. The links that hand a draft to another app (docs/phase-2.md "What the hand-off apps accept"): Cheogram's

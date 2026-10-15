@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.messages
 
 // Pure. The messaging apps Robot may read and answer (design §B3, §B11), and what each one's notification actions do,

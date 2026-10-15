@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
 // Pure. The Claude app route (docs/ask-claude.md "The Claude app route"): Robot opens the official Claude Android app with

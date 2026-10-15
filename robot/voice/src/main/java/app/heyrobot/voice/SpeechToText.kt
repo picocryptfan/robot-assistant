@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.voice
 
 // VOICE PROCESS. Speech to text for push-to-talk in the panel and the question after a wake word

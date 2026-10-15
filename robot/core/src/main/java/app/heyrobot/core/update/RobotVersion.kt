@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.update
 
 // Pure. Settings › Updates: Robot's versions as its release tags and versionName write them ("v0.4.6", "0.6.0-rc1"), and

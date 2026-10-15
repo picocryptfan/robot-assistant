@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
 // Pure. How conversation mode cuts speech into segments to decode (docs/conversation-mode.md 2.1, 2.2, 1.3). Fed one

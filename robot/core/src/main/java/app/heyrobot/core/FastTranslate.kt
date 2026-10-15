@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
 // Pure. The fast engine as the voice process offers it to a session's translations (docs/conversation-mode.md 4.1, 4.5,

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-only
 # Builds librobotmt.so, the fast translation engine of the :mt process (docs/conversation-mode.md 4.3), for arm64-v8a
 # from Robot's own sources in mt/src/main/cpp and pinned third-party sources:
 #   - slimt (DavidVentura's fork, GPL-2.0-or-later with MPL-2.0 and Apache-2.0 parts), with the commits its submodules

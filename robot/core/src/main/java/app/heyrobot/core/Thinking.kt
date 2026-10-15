@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
 // Pure. Settings › Model › "Let the model think first" (0.4.5, off by default): some models can reason in a hidden block

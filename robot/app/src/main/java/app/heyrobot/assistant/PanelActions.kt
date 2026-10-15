@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.assistant
 
 // VOICE PROCESS. Everything the assistant panel's parts can ask for, in one interface: the panel passes

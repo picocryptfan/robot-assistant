@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Runs a language's translation test set through the desk engines, for a person to mark (docs/languages.md 4.3).
 
 The test set is a TSV like tools/lang/fr-CA/mt-test.tsv: lines starting with "#" are comments, the rest

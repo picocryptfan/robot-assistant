@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
 // Pure. How :brain serves several clients with one model (docs/conversation-mode.md 4.2, phase 5.4): BrainQueue's order

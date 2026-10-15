@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
 // Pure. Turning decoded audio into what the speech model takes (16 kHz mono floats), for the Transcription check's

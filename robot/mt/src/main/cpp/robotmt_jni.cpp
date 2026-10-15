@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 // The JNI surface of librobotmt.so: three functions for app.heyrobot.mt.Slimt (the :mt process only).
 // Paths and text cross as UTF-8 byte arrays, never through GetStringUTFChars (modified UTF-8 mangles emoji).
 // Nothing is logged; a failure is the robotmt::Error code written into err[0], and no C++ exception leaves a function.

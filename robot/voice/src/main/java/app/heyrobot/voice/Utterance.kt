@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.voice
 
 // Pure (no Android, no sherpa-onnx): when a spoken question ends, and when to show the words so far. Time is

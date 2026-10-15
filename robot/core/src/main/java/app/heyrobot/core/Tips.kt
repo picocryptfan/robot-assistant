@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
 // Pure. The empty panel's tips (0.4.0): three things Robot can do, a different three each time the panel opens, from

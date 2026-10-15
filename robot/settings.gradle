@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 // Every repository the build uses is declared here, and only here: a module that declares its own fails the build.
 // Google's Maven serves only the groups Robot takes from it (AndroidX, the Android Gradle plugin and its tools, lint and
 // test platform, LiteRT), and those groups come from nowhere else; Maven Central serves everything else.

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-only
 # Downloads the voice models the app downloads itself (Settings › Voice / Model › Voice models) to a directory on
 # a computer and checks every byte count and SHA-256. Same pinned Hugging Face commits, files and hashes as
 # core/.../VoiceModels.kt (ManifestTest keeps the two in step). For checking the manifest, for tools/voice_bench.py

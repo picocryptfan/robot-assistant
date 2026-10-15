@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 // :LLAMA PROCESS ONLY (an android:isolatedProcess service). Robot's JNI bridge to llama.cpp (0.4.5, GGUF model files), built by
 // tools/build_llama.sh into librobot_llama.so together with llama.cpp, ggml and KleidiAI from their pinned sources
 // (THIRD_PARTY.md). Loaded only by brain/LlamaNative.kt, inside LlamaService's isolated process, for a file you imported

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 // Build-machine check (tools/build_robotmt.sh --check): the same wrapper as the phone's librobotmt.so, built for the
 // computer, runs a translation test set (tools/lang/<tag>/mt-test.tsv: direction, source, meaning, Bergamot output, ...,
 // fast engine output) and compares each output with the fast engine's reference column, as Settings › Conversation ›

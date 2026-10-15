@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-only
 # Builds Robot's release APK twice, unsigned, and checks that the two are byte for byte the same (reproducible builds).
 #
 # The first build runs in this checkout; the second in a fresh copy of the committed tree (`git archive HEAD`) in another

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
 // Pure. Hearing the user while Robot speaks (0.2.3): the microphone mode while Robot talks, how her voice is played,

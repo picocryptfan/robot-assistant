@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.termux
 
 // Pure. Secrets in Termux commands and their output: private keys, API-key

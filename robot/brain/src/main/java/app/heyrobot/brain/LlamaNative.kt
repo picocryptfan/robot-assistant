@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.brain
 
 // :LLAMA PROCESS ONLY (LlamaService, android:isolatedProcess). The JNI surface of librobot_llama.so

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.messages
 
 // Pure. Settings › Messages (design §B11). The defaults are the design's answers to its open questions: replies are

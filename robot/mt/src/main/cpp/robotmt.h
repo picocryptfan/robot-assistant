@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 // Robot's fast translation engine (docs/conversation-mode.md 4.3): one translation direction of a Mozilla Bergamot
 // model, run by slimt (DavidVentura's fork, pinned in tools/build_robotmt.sh). Robot's own wrapper over slimt's C++
 // API, used instead of slimt-sys's C wrapper, which logs input text when a translation fails.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
 // Pure. Spells a wake phrase the way the keyword model wants it: sherpa-onnx's text2token(..., tokens_type="bpe")

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-only
 # Robot's source offer for the copyleft native code it ships (GPL-3.0 section 6), made once per release.
 #
 # Robot's APK holds native code built outside Gradle:

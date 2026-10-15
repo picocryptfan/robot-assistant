@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """The phone's "Test voice speed" (Settings › Voice) on a computer, with the same models, settings and clip.
 
 Runs on the sherpa-onnx 1.13.8 Python wheel (same commit as the app's libsherpa-onnx-jni.so), so the numbers are a

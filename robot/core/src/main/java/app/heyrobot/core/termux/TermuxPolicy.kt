@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.termux
 
 // Pure. Whether a Termux command or script runs now, shows its card, needs a tap, or is refused. The fixed rules, which no setting loosens:

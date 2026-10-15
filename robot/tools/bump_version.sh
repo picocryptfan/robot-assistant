@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-only
 # Sets Robot's version in its one place, app/build.gradle (versionName and versionCode), and makes sure fastlane has a
 # changelog for the new versionCode (IzzyOnDroid and F-Droid show it; FastlaneMetadataTest needs it). tools/verify_apk.sh
 # and ProcessIsolationTest read the version from app/build.gradle, so nothing else changes by hand.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.assistant.routines
 
 import app.heyrobot.core.RLog

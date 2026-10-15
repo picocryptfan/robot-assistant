@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
 // Pure. Speaker labels in a transcript (docs/conversation-mode.md 3, 5.3, phase 5.3): the labels themselves (S1, S2…,

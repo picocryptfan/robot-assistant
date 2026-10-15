@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.termux
 
 // Pure. The strings another app needs to run a command in Termux, and Termux's folders. Copied from Termux's

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Writes voice/src/main/assets/kws/keywords.txt and kws/stop.txt for the keyword model.
 
 - keywords.txt: the keyword spotter's own list, one empty line on purpose. sherpa-onnx adds a stream's keywords to

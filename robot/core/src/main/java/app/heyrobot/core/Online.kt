@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
 // Pure. An online tool's blocking work (0.4.0, the weather) that Stop or its deadline can end: whoever waits on the

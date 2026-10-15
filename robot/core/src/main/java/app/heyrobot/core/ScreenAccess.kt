@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
 // Pure. "Ask about this screen" (0.3.1). Android gives the assistant the screen's text and a screenshot only when you

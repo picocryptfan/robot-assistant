@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Writes the Material Symbols path data in app/src/main/java/app/heyrobot/ui/common/Icons.kt (RIcons).
 
 Robot draws its icons from path data in the source instead of a multi-megabyte icon library. This fetches each symbol

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.web
 
 // Pure. 1.0: the search engines Robot can hand your words to in your browser, and every engine and service with its

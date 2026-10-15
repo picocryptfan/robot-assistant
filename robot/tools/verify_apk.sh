@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-only
 # Checks a built Robot APK: signer (Robot's release key), package and version, SDK levels, the assistant
 # components and their processes, the recognizer that keeps the assistant across restarts, permissions,
 # the arm64-only native libraries, and (phase 2) the Robot Notes launcher entry, the hand-off apps' <queries>

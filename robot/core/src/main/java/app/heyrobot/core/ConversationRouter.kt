@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
 // Pure. Conversation mode's voice commands (docs/conversation-mode.md 5.4), decided by code before anything reaches

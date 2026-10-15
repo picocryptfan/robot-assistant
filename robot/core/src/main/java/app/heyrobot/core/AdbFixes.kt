@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
 // Pure. Staying the assistant across restarts (0.2.3), and the one-time ADB fixes screen.

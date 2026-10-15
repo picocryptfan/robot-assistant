@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.messages
 
 // Pure. A message someone sent you, as Robot keeps it: read from the app's notification (never from an SMS database,

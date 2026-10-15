@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 // See robotmt.h. Robot's wrapper over slimt's synchronous frontend (slimt::Blocking): no worker threads, no cache, so
 // memory is the model and the decode of one line at a time, and the caller decides when to stop between lines.
 #include "robotmt.h"

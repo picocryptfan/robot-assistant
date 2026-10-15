@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.helpers.wire
 
 // Pure. Some models write their reasoning into the answer between <think> and </think> (DeepSeek-R1 on some hosts,

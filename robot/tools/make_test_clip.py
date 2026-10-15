@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Writes the built-in speech clip for Settings › Voice › "Test voice speed".
 
 The clip is synthetic speech: Kokoro v1.0 fp32 (voice af_heart, sid 3) reads SENTENCE on this computer through

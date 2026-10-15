@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.helpers.http
 
 import app.heyrobot.core.HelperFailure

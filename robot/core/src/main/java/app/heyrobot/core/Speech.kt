@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
 // Pure. Replies are spoken sentence by sentence while they stream (spec item 4): the splitter hands

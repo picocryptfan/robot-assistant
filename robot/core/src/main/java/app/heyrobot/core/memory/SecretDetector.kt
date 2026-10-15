@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.memory
 
 // Pure. What looks like a secret (design §A10): a PIN or NIP, a password or mot de passe, a door code, a card, SIN/NAS,

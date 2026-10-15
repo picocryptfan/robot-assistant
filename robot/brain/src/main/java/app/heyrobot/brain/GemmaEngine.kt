@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 @file:OptIn(ExperimentalApi::class)
 
 package app.heyrobot.brain

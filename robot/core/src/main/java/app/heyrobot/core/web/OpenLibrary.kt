@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.web
 
 // Pure (org.json). Book lookups through Open Library (design A2.2, A5 "Book lookups", off by default): its search API,

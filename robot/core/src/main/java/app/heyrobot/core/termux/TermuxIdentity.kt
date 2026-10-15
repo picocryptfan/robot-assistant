@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.termux
 
 // Pure. Which Termux is installed. :app (main process, with

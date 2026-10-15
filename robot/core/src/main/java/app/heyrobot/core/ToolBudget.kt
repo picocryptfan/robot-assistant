@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
 // Pure. 0.9: with every tool group a conversation can call for (memory, car mode, web search, Termux, a helper), Gemma's
