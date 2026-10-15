@@ -1666,7 +1666,7 @@ object PanelController {
             controlRefused = null
             // 0.7: notes kept from content (not your own words) make the turn content too (MemoryTurn.content).
             return TurnRunner(model, PanelActions, PanelView(replyId), slot.confirmations, untrusted || mem.content,
-                asked = askedNow, messages = PanelMessages.taint(chat), newId = ::newId).run().also { leaveOutRefused(history) }
+                asked = askedNow, messages = PanelMessages.taint(chat), newId = ::newId).run().also { leaveOutRefused(replyId, history) }
         }
         // ask_claude is a tool: a chat-only model gets none (the escalation triggers outside the model still apply).
         val result = gemma(askHelper = leftOut == null && !chatOnly)
@@ -3189,11 +3189,13 @@ object PanelController {
 
     /**
      * After such a refusal: the turns that held the text (by [sent], the history the request was made from) are never given
-     * to the model again, so the conversation goes on; the reply's failure says so. The live conversation is rebuilt.
+     * to the model again, so the conversation goes on; the reply's failure says so. The live conversation is rebuilt. Not
+     * once the conversation moved on ([replyId] isn't this conversation's any more).
      */
-    private fun leaveOutRefused(sent: List<ChatTurn>) {
+    private fun leaveOutRefused(replyId: String, sent: List<ChatTurn>) {
         val f = controlRefused ?: return
         controlRefused = null
+        if (!current(replyId)) return
         val next = ControlRefusal.recover(chat, sent, f)
         RLog.i("control_text_left_out", "question" to f.question, "turns" to next.count { it.leftOut } - chat.count { it.leftOut })
         chat.clear()
