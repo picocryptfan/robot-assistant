@@ -20,7 +20,7 @@ cd robot
 ./gradlew :app:testDebugUnitTest   # Compose UI tests and screenshots; -Droborazzi.record=true rewrites the goldens
 ```
 
-The tests run offline. A change to what you see needs its screenshot goldens re-recorded and looked at. A change to
+Pull requests run these unit tests on GitHub (`.github/workflows/tests.yml`). The tests run offline. A change to what you see needs its screenshot goldens re-recorded and looked at. A change to
 behaviour on the phone should say how you checked it there (the feature sections of `robot/README.md` list their phone
 checks).
 
