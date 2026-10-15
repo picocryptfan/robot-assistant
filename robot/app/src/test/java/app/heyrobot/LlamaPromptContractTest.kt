@@ -51,8 +51,12 @@ class LlamaPromptContractTest {
         assertTrue(build, build.contains("""add(if (t.role == PromptRole.USER) "user" else "assistant", controls.defuse(t.text))"""))
         assertTrue(build, build.contains("""add("user", controls.defuse(question))"""))
         assertEquals(3, Regex("""\badd\(""").findAll(build).count())
-        // A refusal is the turn's failure, never a prompt to shorten.
-        assertTrue(engine.contains("LlamaIpc.PREP_CONTROL_TEXT -> \"control\""))
+        // A refusal is the turn's failure, never a prompt to shorten; 1.0.2: its detail names what held the text, each
+        // text read alone again as it was sent, never as Robot's system prompt (core ControlRefusal).
+        assertTrue(engine.contains("LlamaIpc.PREP_CONTROL_TEXT -> ControlRefusal.detail(heldControlText(l, h, run, controls.defuse(question), history.map { controls.defuse(it.text) }))"))
+        val probe = engine.substringAfter("private fun heldControlText(").substringBefore("override fun toolResult(")
+        assertTrue(probe, probe.contains("""val role = listOf("user".toByteArray())"""))
+        assertFalse(probe, probe.contains("system"))
         // What Kotlin can't break, the native side refuses: ControlText leaves a one-character token's text alone.
         assertEquals("a|b", ControlText(listOf("|")).defuse("a|b"))
         assertFalse(ControlText(listOf("<x>")).defuse("<x>").contains("<x>"))
