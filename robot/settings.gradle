@@ -1,7 +1,7 @@
 // Every repository the build uses is declared here, and only here: a module that declares its own fails the build.
-// Google's Maven serves only the groups Robot takes from it (AndroidX, the Android Gradle plugin and its tools, lint,
-// LiteRT), and those groups come from nowhere else; Maven Central serves everything else. pluginManagement can't share
-// a variable with the rest of this file, so both lists say the same.
+// Google's Maven serves only the groups Robot takes from it (AndroidX, the Android Gradle plugin and its tools, lint and
+// test platform, LiteRT), and those groups come from nowhere else; Maven Central serves everything else.
+// pluginManagement can't share a variable with the rest of this file, so both lists say the same.
 pluginManagement {
     repositories {
         exclusiveContent {

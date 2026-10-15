@@ -825,16 +825,17 @@ helpers, the engine hardening and the built-in updater; each has its section bel
 
 ## Building
 
-Needs JDK 17+ (21 used for the releases), the Android SDK (platform 36, build-tools 35.0.0, pinned in `build.gradle`
-since 1.0; NDK 27.1.12297006 and CMake 3.22.1 for the native scripts). Gradle comes with the repository (1.0.1): `./gradlew`
-downloads Gradle 8.14.6 the first time and checks it against the SHA-256 Gradle publishes for it
+Needs JDK 17+ (21 used for the releases) and the Android SDK (platform 36, build-tools 35.0.0, pinned in `build.gradle`
+since 1.0; NDK 27.1.12297006 and CMake 3.22.1 for the native scripts). Gradle comes with the repository (1.0.1):
+`./gradlew` downloads Gradle 8.14.6 the first time and checks it against the SHA-256 Gradle publishes for it
 (`gradle/wrapper/gradle-wrapper.properties`); the wrapper's jar is Gradle's own, matching its published checksum. Every
-dependency is checked too: `gradle/verification-metadata.xml` holds the SHA-256 of each artifact, POM and module file the
-build, the tests and lint use, and an artifact that differs or isn't listed fails the build. The repositories are
-declared only in `settings.gradle`: Google's Maven serves the AndroidX, Android tools and LiteRT groups and nothing else,
-Maven Central the rest. The first build needs the network, for Gradle and the dependencies; after that, `--offline`
-builds. A changed dependency needs its checksums: `./gradlew --write-verification-metadata sha256` with the tasks below,
-then read the diff of the file before committing it.
+dependency is checked too: `gradle/verification-metadata.xml` holds the SHA-256 of each artifact, POM and module file
+the build, the tests and lint use, and an artifact that differs or isn't listed fails the build. The repositories are
+declared only in `settings.gradle`: Google's Maven serves the AndroidX, Android tools (with their test platform) and
+LiteRT groups and nothing else, Maven Central the rest. The first build needs the network, for Gradle and the
+dependencies; after that, `--offline` builds. A changed dependency needs its checksums:
+`./gradlew --write-verification-metadata sha256` with the tasks below, then read the diff of the file before committing
+it.
 
 ```
 cd robot
