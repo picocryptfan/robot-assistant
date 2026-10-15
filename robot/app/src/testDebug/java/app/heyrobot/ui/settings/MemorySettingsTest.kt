@@ -48,6 +48,8 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import java.io.File
 import java.nio.file.Files
 import java.time.LocalDate
@@ -89,6 +91,9 @@ class MemorySettingsTest {
         override fun locked() = false
         override fun readImport(uri: Uri): ByteArray? = null
         override fun deleteImport(uri: Uri) = false
+        /** 1.0.2: the vault changed elsewhere (the panel, in the voice process). */
+        val changes = MutableSharedFlow<Long>(extraBufferCapacity = 4)
+        override fun changes(): Flow<Long> = changes
         fun items(): List<MemoryItem> = (vault.load() as? MemoryLoad.Loaded)?.file?.items.orEmpty()
     }
 
@@ -114,6 +119,29 @@ class MemorySettingsTest {
     private fun open() {
         rule.show { MemorySettingsScreen(store, log.actions, SnackbarHostState(), onBack = {}, now = { now }) }
         rule.waitUntil(5_000) { runCatching { rule.onNodeWithText("Use memory").assertExists() }.isSuccess && runCatching { rule.onNodeWithText("Opening…").assertDoesNotExist() }.isSuccess }
+    }
+
+    /**
+     * 1.0.2, from the phone: two items forgotten from the panel still showed here until the page was opened again. The
+     * list now follows the file while the page is open.
+     */
+    @Test fun theListFollowsWhatThePanelChanges() {
+        seed()
+        open()
+        fun says(n: String) = rule.waitUntil(5_000) { runCatching { rule.onNodeWithText("Robot remembers $n.", substring = true).assertExists() }.isSuccess }
+        says("6 things")
+        // The panel forgets two items (the voice process writes the same vault).
+        store.vault.update { f -> f.copy(items = f.items.filter { it.id != "m_fact00000002" && it.id != "m_fact00000003" }) }
+        store.changes.tryEmit(1)
+        says("4 things")
+        rule.onNodeWithText("Léo has hockey on Tuesdays and Thursdays").assertDoesNotExist()
+        // And remembers a new one.
+        store.vault.update { f -> f.copy(items = f.items + item("m_fact00000009", "The recycling goes out on Mondays", daysAgo = 0)) }
+        store.changes.tryEmit(2)
+        says("5 things")
+        rule.scrollToText("The recycling goes out on Mondays")
+        // Reading the page again changes nothing and tells nobody.
+        assertEquals(emptyList<String>(), store.events)
     }
 
     @Test fun theListPinnedFirstThenNewestWithEachItemsState() {

@@ -45,6 +45,9 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import app.heyrobot.R
 import app.heyrobot.core.RLog
 import app.heyrobot.core.VoiceEvent
@@ -92,7 +95,10 @@ import app.heyrobot.ui.pref.TwoTargetPreference
 import app.heyrobot.ui.pref.preferenceFooter
 import app.heyrobot.ui.pref.preferenceGroup
 import app.heyrobot.ui.pref.preferenceItems
+import app.heyrobot.ui.stampChanges
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -124,6 +130,11 @@ interface MemoryStore {
     fun log(e: VoiceEvent, a: Int, b: Int = 0, c: Int = 0)
     /** 1.0: the phone is locked now. Import refuses then ("Unlock first"), as every memory write does. */
     fun locked(): Boolean
+    /**
+     * 1.0.2: emits when the file changed (the panel saved or forgot something in the voice process while this page is
+     * open). None by default.
+     */
+    fun changes(): Flow<Long> = emptyFlow()
     /** Import's file: at most [MemoryImport.MAX_BYTES] + 1 bytes (one more says it is too big); null when it can't be read. */
     fun readImport(uri: Uri): ByteArray?
     /** After an import, when you agree: the file deleted where it is (its app may not allow it). */
@@ -150,6 +161,8 @@ class PhoneMemoryStore(ctx: Context) : MemoryStore {
     }
     override fun changed() = Cmd.send(app, Cmd.MEMORY_CHANGED)
     override fun locked() = Assistant.locked(app)
+    /** The vault's stamp, read once a second (ui/HistoryWatch's stampChanges, as History follows its folder). */
+    override fun changes(): Flow<Long> = stampChanges({ vault.stamp() })
     override fun readImport(uri: Uri): ByteArray? = try {
         app.contentResolver.openInputStream(uri)?.use { readUpTo(it, MemoryImport.MAX_BYTES + 1) }
     } catch (t: Exception) {
@@ -203,6 +216,17 @@ fun MemorySettingsScreen(store: MemoryStore, a: AppActions, snackbar: SnackbarHo
     var importedCount by rememberSaveable { mutableIntStateOf(0) }
     val ctx = LocalContext.current
     LaunchedEffect(tick) { load = withContext(Dispatchers.IO) { store.load() } }
+    // 1.0.2: the list follows the file while the page is in view (the panel adds or forgets items over it); back in view, it
+    // is read again for what changed meanwhile.
+    val owner = LocalLifecycleOwner.current
+    LaunchedEffect(store, owner) {
+        var first = true
+        owner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            if (!first) tick++
+            first = false
+            store.changes().collect { tick++ }
+        }
+    }
 
     /** Codes and counts for the voice log, off the main thread. */
     fun log(e: VoiceEvent, a1: Int, b: Int = 0, c: Int = 0) {
