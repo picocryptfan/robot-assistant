@@ -226,6 +226,23 @@ class MemoryPanelTest {
         assertEquals(2, items().size)
     }
 
+    /**
+     * 1.0.2: a question's ids include the pinned items (PanelController keeps MemoryTurn.recall.ids, so a helper sees the
+     * conversation as personal), but those in the system prompt's pinned line never come back as notes in the history.
+     */
+    @Test fun pinnedIdsAreKeptButNeverGivenAgainAsNotes() {
+        say("Remember that my sister Julie's birthday is May 3")
+        say("Remember that I prefer Celsius")
+        MemoryPanel.newConversation()
+        val t = MemoryPanel.forTurn("When is Julie's birthday?", locked = false, given = emptySet(), maxTokens = 4096)
+        val pref = items().first { it.pinned }
+        val julie = items().first { it.text.contains("Julie") }
+        assertEquals(listOf(pref.id), t.packed.pinnedIds)
+        assertEquals(listOf(pref.id, julie.id), t.recall.ids)
+        assertEquals(null, t.notes(listOf(pref.id)))
+        assertEquals(t.notes(listOf(julie.id)), t.notes(listOf(pref.id, julie.id)))
+    }
+
     @Test fun aChatQuestionGetsItsNotesAndHistoryKeepsTheIds() {
         say("Remember that my sister Julie's birthday is May 3")
         say("Remember that you should call me Sam")

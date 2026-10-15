@@ -200,8 +200,9 @@ object HelperContext {
 
     /**
      * The personal content in a conversation: a screen or photo question (asked of Robot or of a helper), what a read tool
-     * found, Claude's answer read off the Claude app. [attachment]: the question being asked now. Any of it makes the
-     * whole conversation personal from that turn on, including replies that only repeat it.
+     * found, Claude's answer read off the Claude app, what Robot remembers (given to the model, pinned or found, or saved).
+     * [attachment]: the question being asked now. Any of it makes the whole conversation personal from that turn on,
+     * including replies that only repeat it.
      */
     fun personal(turns: List<ChatTurn>, attachment: Attachment = Attachment.NONE): Set<Personal> = buildSet {
         Personal.of(attachment)?.let(::add)
@@ -210,6 +211,8 @@ object HelperContext {
             for (a in t.actions) if (a.content) Personal.of(a.tool)?.let(::add)
             if (t.readBack) add(Personal.CLAUDE_APP)
             if (t.memoryIds.isNotEmpty()) add(Personal.MEMORY)
+            // 1.0.2: something the model's remember card saved (the router's "remember that …" marks its reply with the id).
+            if (t.actions.any { it.tool == ToolName.REMEMBER && it.status == ActionStatus.DONE }) add(Personal.MEMORY)
             if (t.messages) add(Personal.MESSAGES)
         }
     }

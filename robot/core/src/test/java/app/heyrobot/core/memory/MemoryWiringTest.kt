@@ -231,6 +231,72 @@ class MemoryWiringTest {
         assertTrue(HelperTrust.conversation(s, trusted, emptySet()))
     }
 
+    /**
+     * 1.0.2 (the phone's "What's the garage code?" escalated by itself): with Automatic, "Send personal content to helpers
+     * automatically" and "Voice yes can send personal content" all on, an escalation from a turn that was given an item
+     * carries the context line and the question only: never the item's words, never Robot's answer, never the last turns.
+     */
+    @Test fun anAutomaticEscalationAfterAMemoryTurnSendsOnlyTheQuestion() {
+        val all = RobotSettings().copy(personalToHelpers = true, voiceYesPersonal = true)
+        val earlier = listOf(ChatTurn("u0", TurnRole.USER, "What's the weather like?", 1), ChatTurn("r0", TurnRole.ASSISTANT, "Sunny, 18 degrees.", 2))
+        // The turn as PanelController holds it when Gemma calls ask_claude: the question carries the ids it was given.
+        val r = MemoryRecall.forTurn("What's the door code at the cottage?", file, on, locked = false, now = now, zone = utc)
+        assertTrue(door.id in r.ids)
+        val question = ChatTurn("u1", TurnRole.USER, "What's the door code at the cottage?", 3, memoryIds = r.ids)
+        val reply = ChatTurn("r1", TurnRole.ASSISTANT, "The door code at the cottage is 4512.", 4)
+        val p = HelperContext.personal(earlier + question + reply)
+        assertEquals(setOf(Personal.MEMORY), p)
+        for (h in listOf(HelperConfig.claude(), HelperConfig.claude().copy(trust = true))) {
+            val include = HelperTrust.conversation(all, h, p)
+            assertFalse(include)
+            // The escalation's history is what came before the question (PanelController's snapshot), and none of it goes.
+            val blocks = HelperContext.escalation("What's the door code at the cottage?", earlier, java.time.ZonedDateTime.now(utc), "CA", personal = p,
+                includePersonal = include)
+            val sent = blocks.joinToString("\n") { (it as app.heyrobot.core.HelperBlock.Text).text }
+            assertEquals(2, blocks.size)
+            assertFalse(sent.contains("4512"))
+            assertFalse(sent.contains("Sunny"))
+            assertTrue(sent.endsWith("What's the door code at the cottage?"))
+        }
+        // A trusted helper with "Share memory with helpers: With helpers I trust": the last turns, never a private item
+        // (only unlocked and named does one reach the model, and its answer is kept as a line: MemoryHygiene).
+        assertTrue(HelperTrust.conversation(all, HelperConfig.claude().copy(trust = true), p, memoryToTrusted = true))
+    }
+
+    /**
+     * 1.0.2: the pinned items are in every turn's system prompt, so Robot's answer may repeat one: a turn given only pinned
+     * items is personal as well (PackedMemory.personal), and a later escalation sends the question alone. Their ids on the
+     * question never give the model their notes again.
+     */
+    @Test fun pinnedItemsMakeTheConversationPersonalWithoutNotesAgain() {
+        val r = MemoryRecall.forTurn("What should we do this weekend?", file, on, locked = false, now = now, zone = utc)
+        assertEquals(emptyList<String>(), r.packed.retrievedIds)
+        assertEquals(listOf(sam.id), r.ids)
+        assertTrue(r.packed.personal)
+        val turns = listOf(ChatTurn("u1", TurnRole.USER, "What should we do this weekend?", 1, memoryIds = r.ids),
+            ChatTurn("r1", TurnRole.ASSISTANT, "Sam, how about a hike?", 2))
+        val p = HelperContext.personal(turns)
+        assertEquals(setOf(Personal.MEMORY), p)
+        assertFalse(HelperTrust.conversation(RobotSettings().copy(personalToHelpers = true), HelperConfig.claude(), p))
+        assertEquals(2, HelperContext.escalation("And next weekend?", turns, java.time.ZonedDateTime.now(utc), "CA", personal = p).size)
+        // The history the model gets is byte for byte what it was before the pinned ids were kept (MemoryPanel.forTurn).
+        val pinned = r.packed.pinnedIds.toSet()
+        val notes = { ids: List<String> -> PromptPacking.notesFor(ids.filter { it !in pinned }, file.items, now, utc) }
+        val before = listOf(turns[0].copy(memoryIds = emptyList()), turns[1]).toPromptTurns(notes)
+        assertEquals(before, turns.toPromptTurns(notes))
+        val withJulie = listOf(turns[0].copy(memoryIds = listOf(sam.id, julie.id)), turns[1])
+        assertEquals(listOf(turns[0].copy(memoryIds = listOf(julie.id)), turns[1]).toPromptTurns(notes), withJulie.toPromptTurns(notes))
+    }
+
+    /** 1.0.2: what the model's remember card saved makes the conversation personal, as the router's "remember that …" does. */
+    @Test fun aRememberCardDoneMakesTheConversationPersonal() {
+        fun reply(status: app.heyrobot.core.ActionStatus) = ChatTurn("r1", TurnRole.ASSISTANT, "I'll remember your test word is banana.", 2,
+            actions = listOf(app.heyrobot.core.ActionRecord(ToolName.REMEMBER, "Remembered", status)))
+        val q = ChatTurn("u1", TurnRole.USER, "Keep in mind my test word is banana", 1)
+        assertEquals(setOf(Personal.MEMORY), HelperContext.personal(listOf(q, reply(app.heyrobot.core.ActionStatus.DONE))))
+        assertEquals(emptySet<Personal>(), HelperContext.personal(listOf(q, reply(app.heyrobot.core.ActionStatus.DECLINED))))
+    }
+
     // ------------------------------------------------------------------ what goes with a question
 
     @Test fun recallPacksPinnedAndFoundItems() {

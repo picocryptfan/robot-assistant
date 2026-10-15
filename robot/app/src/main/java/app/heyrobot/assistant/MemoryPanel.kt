@@ -369,7 +369,10 @@ object MemoryPanel {
         val quiet = r.secret && f.items.filter { it.id in r.packed.retrievedIds && it.secret }.any { !app.heyrobot.core.memory.MemoryAccess.speak(it, question, s, locked) }
         // Notes from content, now or in this conversation's earlier questions (a rebuilt conversation gets those again).
         val content = r.packed.content || f.items.any { it.id in given && it.tainted }
-        return MemoryTurn(r, { ids -> PromptPacking.notesFor(ids, f.items, now, z) }, tools = true, quiet = quiet, content = content)
+        // 1.0.2: a past question's ids include the items pinned then (helpers see the conversation as personal); those in this
+        // system prompt's pinned line are never given again as notes, so the history the model gets is as before.
+        val pinned = r.packed.pinnedIds.toSet()
+        return MemoryTurn(r, { ids -> PromptPacking.notesFor(ids.filter { it !in pinned }, f.items, now, z) }, tools = true, quiet = quiet, content = content)
     }
 
     /**

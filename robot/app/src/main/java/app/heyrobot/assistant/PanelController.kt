@@ -1590,8 +1590,10 @@ object PanelController {
         val given = app.heyrobot.core.memory.MemoryTaint.given(chat)
         val mem = withContext(Dispatchers.IO) { MemoryPanel.forTurn(question, locked0, given, maxTokens) }
         turnMemContent = mem.content
-        if (mem.packed.retrievedIds.isNotEmpty()) chat.indexOfLast { it.role == TurnRole.USER }.takeIf { it >= 0 }?.let { i ->
-            chat[i] = chat[i].copy(memoryIds = mem.packed.retrievedIds)
+        // 1.0.2: the pinned items too (they are in this turn's system prompt), so a reply that repeats one keeps the
+        // conversation personal for helpers (core PackedMemory.personal); their notes are never rendered again (MemoryPanel.forTurn).
+        if (mem.recall.ids.isNotEmpty()) chat.indexOfLast { it.role == TurnRole.USER }.takeIf { it >= 0 }?.let { i ->
+            chat[i] = chat[i].copy(memoryIds = mem.recall.ids)
         }
         MemoryPanel.mark(replyId, mem.packed.retrievedIds, secret = mem.recall.secret)
         // A private item went in: the live conversation goes after this answer, so no later answer can repeat it (spoken, or
