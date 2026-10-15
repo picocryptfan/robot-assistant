@@ -639,6 +639,9 @@ enum class HelperFail(override val id: Int, override val title: String) : LogCod
 
     companion object {
         fun of(f: HelperFailure): HelperFail = entries.firstOrNull { it.name == f.name } ?: UNKNOWN
+
+        /** 1.0.2: the ids of refusals made before anything was sent (no session could be made: PanelController.noKey). */
+        val NOT_ASKED: Set<Int> = setOf(NO_KEY.id, NOT_LOCAL.id, NO_ADDRESS.id, KEY_OVER_HTTP.id)
     }
 }
 
@@ -951,7 +954,8 @@ object VoiceLogText {
             VoiceEvent.CLAUDE_SENT -> (if (a == 0) "Question sent to the helper" else "More sent to the helper (request ${a + 1})") + " (" + code(AnthropicModelCode.entries, b) + ")"
             VoiceEvent.CLAUDE_FIRST -> "The helper's first event after $a ms"
             VoiceEvent.CLAUDE_DONE -> "The helper's answer ended after " + secs(a) + " (" + code(HelperEnd.entries, b) + ") · $c characters"
-            VoiceEvent.CLAUDE_FAILED -> "The helper failed: " + code(HelperFail.entries, a)
+            // 1.0.2: refused before anything was sent (a key over http, no key, an address Robot won't use): not asked at all.
+            VoiceEvent.CLAUDE_FAILED -> (if (a in HelperFail.NOT_ASKED) "The helper wasn't asked: " else "The helper failed: ") + code(HelperFail.entries, a)
             VoiceEvent.KWS_HIT -> "Spotter: " + keyword(a) + (if (b == KwsSpotterCode.IDLE.id) "" else " " + code(KwsSpotterCode.entries, b)) +
                 " · mic: " + code(MicKind.entries, c / 10) + " · echo cancellation " + code(AecState.entries, c % 10)
             VoiceEvent.KWS_SET -> "Wake phrases set: $a listened for" + (if (b > 0) " · $b the model can't spell" else "") +

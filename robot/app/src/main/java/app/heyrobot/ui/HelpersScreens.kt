@@ -368,9 +368,7 @@ fun HelperScreen(id: String, s: RobotSettings, snap: Snapshot, update: (RobotSet
                     }
                 })
             if (p.protocol != Protocol.ANTHROPIC) {
-                val checked = if (facts.checkedAt > 0) "Last checked: " + (if (facts.answered) "a test question was answered" else "the server answered") +
-                    (if (facts.models.isNotEmpty()) ", ${facts.models.size} models listed" else "") + "." else "Robot hasn't reached ${h.name} yet."
-                PreferenceItem("Test connection", checked, RIcons.Refresh, enabled = on, onClick = { a.helperWindow(h.id, HelperWindow.MODE_TEST) })
+                PreferenceItem("Test connection", facts.checkedLine(h.name), RIcons.Refresh, enabled = on, onClick = { a.helperWindow(h.id, HelperWindow.MODE_TEST) })
             }
             if (p.quirks.zdr) {
                 SwitchPreference("Only providers that keep nothing", "Zero data retention", h.zdr, enabled = on) { set(h.copy(zdr = it)) }

@@ -62,6 +62,7 @@ import app.heyrobot.core.Hedge
 import app.heyrobot.core.HelperBlock
 import app.heyrobot.core.HelperCommand
 import app.heyrobot.core.HelperContext
+import app.heyrobot.core.HelperFail
 import app.heyrobot.core.HelperFailure
 import app.heyrobot.core.HelperLeftOut
 import app.heyrobot.core.HelperName
@@ -2014,7 +2015,9 @@ object PanelController {
             failure == HelperFailure.NO_KEY && HelperLink.unreadable(h.id) -> words(h).keyUnreadable
             else -> failure.say(who(h))
         }
-        failReply(replyId, text)
+        // 1.0.2: the voice log says why the helper wasn't asked ("key not sent over http"), not that the model failed.
+        VoiceLog.add(VoiceEvent.CLAUDE_FAILED, HelperFail.of(failure).id, h.kind.id)
+        failReply(replyId, text, noReply = false)
     }
 
     /** A question for helper [h] ("ask ChatGPT …", "go get Jarvis", or any question in a helper's conversation). */
@@ -3267,10 +3270,10 @@ object PanelController {
         }
     }
 
-    private fun failReply(replyId: String, message: String, action: NoticeAction = NoticeAction.NONE) {
+    private fun failReply(replyId: String, message: String, action: NoticeAction = NoticeAction.NONE, noReply: Boolean = true) {
         if (!current(replyId)) return
         voice.finish(replyId, cancelled = true, speak = false)
-        VoiceLog.add(VoiceEvent.NO_REPLY, NoReply.FAILED)
+        if (noReply) VoiceLog.add(VoiceEvent.NO_REPLY, NoReply.FAILED)
         if (spokenTurn) cue(Cue.SORRY_NO_ANSWER)
         // Actions that ran before the failure stay on record.
         val actions = settled(_state.value.turns.firstOrNull { it.id == replyId }?.actions.orEmpty())

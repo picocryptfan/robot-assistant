@@ -163,6 +163,8 @@ class HelperConnectionActivity : ComponentActivity() {
                             Text(when {
                                 r?.ok == true -> "${h.name} is ready"
                                 keyNote != null -> "${h.name}: API key"
+                                // 1.0.2: refused before connecting, so nothing was asked (not "didn't answer").
+                                r?.failure == app.heyrobot.core.HelperFailure.KEY_OVER_HTTP -> "${h.name}: key not sent"
                                 else -> "${h.name} didn't answer"
                             }, style = MaterialTheme.typography.headlineSmall)
                             Text(r?.let { words(h, it) }.orEmpty(), style = MaterialTheme.typography.bodyMedium)
