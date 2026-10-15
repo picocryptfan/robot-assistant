@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.assistant
 
+import android.content.res.Configuration
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -44,9 +46,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -151,10 +155,16 @@ private fun Panel(st: PanelState, actions: PanelActions, onClose: () -> Unit) {
     }
 
     val (bottomPad, slidUp) = keyboardPad()
+    // 1.0.2: in landscape the keyboard leaves little height (the phone's report: it covered the text field). While it is up
+    // there, the sheet may reach the status bar and the suggestions step aside; portrait is as it was.
+    val density = LocalDensity.current
+    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val tight = landscape && WindowInsets.ime.getBottom(density) > WindowInsets.navigationBars.getBottom(density)
+    val statusTop = with(density) { WindowInsets.statusBars.getTop(density).toDp() }
     val c = MaterialTheme.colorScheme
     BoxWithConstraints(Modifier.fillMaxSize()) {
         // A window Android slid up for the keyboard shows that much less of the panel's top.
-        val maxSheet = (maxHeight - slidUp) * 0.88f
+        val maxSheet = if (tight) maxHeight - slidUp - statusTop else (maxHeight - slidUp) * 0.88f
         // Tapping outside the panel closes it (0.6.0's 36 % scrim).
         Box(Modifier.fillMaxSize().background(c.scrim.copy(alpha = 0.36f)).pointerInput(Unit) { detectTapGestures { onClose() } })
         // 0.6.0's sheet: surfaceContainer with a 2 dp tonal tint, 28 dp top corners, the whole width.
@@ -171,32 +181,37 @@ private fun Panel(st: PanelState, actions: PanelActions, onClose: () -> Unit) {
                 .pointerInput(Unit) { detectTapGestures { } },
         ) {
             Column(Modifier.padding(bottom = bottomPad)) {
-                // Handle and header: drag down to close.
-                Column(
-                    Modifier.fillMaxWidth().draggable(
-                        orientation = Orientation.Vertical,
-                        state = rememberDraggableState { d -> dragY += d },
-                        onDragStopped = { if (dragY > 140f) { dragY = 0f; onClose() } else dragY = 0f },
-                    ),
-                ) {
-                    PanelTop(st, actions, onClose)
-                }
-                PanelNotices(st, actions)
-                Messages(st, actions, Modifier.weight(1f, fill = false))
                 // Listening for a question, or for the waiting card's "yes" or "no".
                 val hearing = st.phase == Phase.LISTENING || st.phase == Phase.TRANSCRIBING || st.cardHearing != null
-                if (st.turns.isEmpty() && !hearing) {
-                    ClassicSuggestions(st.tips) { tip ->
-                        when (tip.kind) {
-                            TipKind.ASK -> { input = tip.text; send() }
-                            // It would do something or go online: its words wait in the field, to change or send.
-                            TipKind.FILL -> {
-                                input = tip.text
-                                try { focus.requestFocus() } catch (_: Exception) {}
-                                keyboard?.show()
+                // 1.0.2: everything above the input row takes what room is left after it (when all fits, as before), so the
+                // text field is never squeezed under the keyboard; short of room, the top gives way.
+                Column(Modifier.weight(1f, fill = false).clipToBounds()) {
+                    // Handle and header: drag down to close.
+                    Column(
+                        Modifier.fillMaxWidth().draggable(
+                            orientation = Orientation.Vertical,
+                            state = rememberDraggableState { d -> dragY += d },
+                            onDragStopped = { if (dragY > 140f) { dragY = 0f; onClose() } else dragY = 0f },
+                        ),
+                    ) {
+                        PanelTop(st, actions, onClose)
+                    }
+                    PanelNotices(st, actions)
+                    // Landscape with the keyboard up: no room for the empty page's words or the suggestions.
+                    if (st.turns.isNotEmpty() || !tight) Messages(st, actions, Modifier.weight(1f, fill = false))
+                    if (st.turns.isEmpty() && !hearing && !tight) {
+                        ClassicSuggestions(st.tips) { tip ->
+                            when (tip.kind) {
+                                TipKind.ASK -> { input = tip.text; send() }
+                                // It would do something or go online: its words wait in the field, to change or send.
+                                TipKind.FILL -> {
+                                    input = tip.text
+                                    try { focus.requestFocus() } catch (_: Exception) {}
+                                    keyboard?.show()
+                                }
+                                TipKind.SCREEN -> actions.askAboutScreen(tip.text)
+                                TipKind.PHOTO -> attachOpen = true
                             }
-                            TipKind.SCREEN -> actions.askAboutScreen(tip.text)
-                            TipKind.PHOTO -> attachOpen = true
                         }
                     }
                 }
