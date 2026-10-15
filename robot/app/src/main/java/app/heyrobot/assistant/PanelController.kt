@@ -37,6 +37,7 @@ import app.heyrobot.core.ClaudeWords
 import app.heyrobot.core.ClockEcho
 import app.heyrobot.core.ConsentRecord
 import app.heyrobot.core.ContextWindow
+import app.heyrobot.core.ControlRefusal
 import app.heyrobot.core.ConvEntry
 import app.heyrobot.core.ConvMode
 import app.heyrobot.core.ConvStop
@@ -1662,9 +1663,10 @@ object PanelController {
             toolRoom = budget - ContextWindow.fit(gen.history, budget).sumOf(TokenEstimate::turn) - TOOL_CALL_TOKENS
             // Chat only: whatever the model emits, no call reaches the approval gate (core ChatOnlyTurn; :brain drops them too).
             val model = BrainTurn(c, convId, replyId, gen, img).let { if (chatOnly) ChatOnlyTurn(it) else it }
+            controlRefused = null
             // 0.7: notes kept from content (not your own words) make the turn content too (MemoryTurn.content).
             return TurnRunner(model, PanelActions, PanelView(replyId), slot.confirmations, untrusted || mem.content,
-                asked = askedNow, messages = PanelMessages.taint(chat), newId = ::newId).run()
+                asked = askedNow, messages = PanelMessages.taint(chat), newId = ::newId).run().also { leaveOutRefused(history) }
         }
         // ask_claude is a tool: a chat-only model gets none (the escalation triggers outside the model still apply).
         val result = gemma(askHelper = leftOut == null && !chatOnly)
@@ -3019,7 +3021,10 @@ object PanelController {
                         VoiceLog.add(VoiceEvent.BRAIN_DONE, (SystemClock.elapsedRealtime() - t0).toInt(), DoneCode.of(m.reason).id, chars)
                     }
                     is BrainMsg.Error -> {
-                        out = ModelOutcome.Failed(m.code.text())
+                        // 1.0.2: a control token's text llama.cpp refused: what held it, for the turn to leave out (gemma()).
+                        val refused = if (m.code == BrainError.ENGINE) ControlRefusal.parse(m.detail) else null
+                        if (refused != null) controlRefused = refused
+                        out = ModelOutcome.Failed(refused?.let(ControlRefusal::text) ?: m.code.text())
                         VoiceLog.add(VoiceEvent.BRAIN_FAILED, if (timedOut) BrainFail.TIMEOUT else BrainFail.of(m.code))
                     }
                     else -> {}
@@ -3178,6 +3183,23 @@ object PanelController {
 
     /** False once the conversation moved on (a new or loaded conversation replaced the one this reply belonged to). */
     private fun current(replyId: String) = _state.value.turns.any { it.id == replyId } && chat.none { it.id == replyId }
+
+    /** 1.0.2: what llama.cpp refused for a control token's text in this turn's request (core ControlRefusal), until it is left out. */
+    @Volatile private var controlRefused: ControlRefusal.Found? = null
+
+    /**
+     * After such a refusal: the turns that held the text (by [sent], the history the request was made from) are never given
+     * to the model again, so the conversation goes on; the reply's failure says so. The live conversation is rebuilt.
+     */
+    private fun leaveOutRefused(sent: List<ChatTurn>) {
+        val f = controlRefused ?: return
+        controlRefused = null
+        val next = ControlRefusal.recover(chat, sent, f)
+        RLog.i("control_text_left_out", "question" to f.question, "turns" to next.count { it.leftOut } - chat.count { it.leftOut })
+        chat.clear()
+        chat += next
+        closeConvAfterTurn = true
+    }
 
     /** [costMicros]: a helper's reply's estimated price, kept with it in the history. */
     private fun finishReply(replyId: String, reason: DoneReason, costMicros: Long = 0) {
