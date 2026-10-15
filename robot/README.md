@@ -40,6 +40,39 @@ The design documents linked under `docs/` in this file (and `docs/plans/`) are p
 
 Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `THIRD_PARTY.md`.
 
+## The fixes from my security review after 1.0 (1.0.1)
+
+After 1.0.0 shipped I reviewed Robot's security again. It was my own review, not an outside audit. Each fix comes with
+tests.
+
+- **Keys over http**: helpers, their connection test and web search refuse to send a key over plain http and say why
+  (core `LanRule`, helpers `HelperHttp`, `WebTransport`). A keyless http server on your network works as before, and a
+  saved key is kept.
+- **The model file**: models live in internal storage (`filesDir`), which only Robot can write. A download or an import is
+  hashed as it's copied in. A 1.0 model in `Android/data` moves in once, when Robot is opened and there's room for a
+  second copy (the model's size plus 0.5 GB, app `ModelStore.moveIn`, core `ModelMove`); until then the whole file is
+  hashed before each load.
+- **Content choosing details**: with content in the conversation (a web page, a helper's reply, the screen, a photo),
+  every action that writes or opens something shows its card, even when your own words named it (core `Approval`).
+- **The headset entry**: `HeadsetEntryActivity` opens only for the system, Bluetooth or Robot itself; a referrer an app
+  declares about itself is never believed.
+- **find**: `-H`, `-L`, `-P` and `--` no longer hide the start path from its check, `-D` and `-O` are refused, and a
+  `find` that follows links always shows its card (core `ReadOnlyCommands`).
+- **Prompt control tokens**: the native side reads each message with and without special tokens; a difference refuses
+  the prompt (`robot_llama.cpp`, code -4), behind Kotlin's `ControlText`.
+
+### On the phone (1.0.1)
+
+1. Update from 1.0.0 with the model in place: Settings › About › Updates › Check now offers 1.0.1; after the install,
+   opening Robot shows "Moving into Robot's own storage: N%", and the model file is gone from
+   `Android/data/ai.robot_app/files` afterwards.
+2. A helper at an http address with a key: Robot's sentence, the key still saved; without a key, and on https with a
+   key, it works.
+3. After a web result or "what does this say?" on a page, "add a note …" and "set a timer …" show their cards.
+4. Headset buttons open Robot, locked and unlocked; `adb shell am start -a android.intent.action.VOICE_COMMAND`, with or
+   without `--eu android.intent.extra.REFERRER android-app://android`, doesn't.
+5. Your own GGUF file: everyday messages aren't refused; one holding `<|im_start|>` is.
+
 ## The app ID: ai.robot_app (1.0)
 
 1.0's application ID is `ai.robot_app` (robot-app.ai reversed: a package name can't hold the hyphen); 0.9 and every test

@@ -108,6 +108,7 @@ My development notes, with the design, the checks and the history, are in [`robo
   everything on the phone keeps working.
 - The nearest-place search uses OpenStreetMap's Nominatim server unless you pick another one in Settings › Actions ›
   Search server. You can switch servers there at any time without an update, or choose Never.
+- A helper's or web search key only ever goes over https.
 - Logs hold codes and numbers only, never what you said.
 
 The full policy is in [`PRIVACY.md`](PRIVACY.md).

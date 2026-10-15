@@ -1,6 +1,6 @@
 # Robot's privacy policy
 
-This policy applies to Robot 1.0.0 and later. Last changed 14 Oct 2026.
+This policy applies to Robot 1.0.0 and later. Last changed 15 Oct 2026.
 
 ## The short version
 
@@ -65,6 +65,7 @@ you set up Termux, a weekly check for a newer Termux, which you can each turn of
 - API keys you add for a helper, and the access token you may add for a private update
   repository (Settings › About › Updates › Advanced). They are encrypted with a key that never leaves your phone's secure
   hardware (Android Keystore, AES-GCM), and decrypted only when Robot calls that helper, or GitHub's API for the token.
+  Since 1.0.1 a key goes only over https: for an http address with a key, Robot refuses before it connects and says why.
   Since 1.0 a helper's or web search key is also compared, on the phone, with a Termux command about to be sent, so one
   holding it is refused; the update token never is (a command holding a GitHub token is refused by its shape).
 - Robot's diagnostic logs (Settings › Voice › Voice log, and Android's log) hold codes and numbers only, never what
@@ -91,7 +92,7 @@ you set up Termux, a weekly check for a newer Termux, which you can each turn of
 1. Downloading a model or a voice, when you tap Download (Settings › Model, Voice or Conversation). The files come
    from Hugging Face (huggingface.co and its download servers), and the fast translation engine's from Mozilla's
    storage (storage.googleapis.com), through Android's download manager. They see your IP address and the request, whose
-   User-Agent names only Robot and its version ("Robot/1.0.0"). Nothing you say or type is sent. Before a download over
+   User-Agent names only Robot and its version ("Robot/1.0.1"). Nothing you say or type is sent. Before a download over
    200 MB Robot asks whether to wait for Wi-Fi or download anyway. Robot checks every file against a fingerprint
    (SHA-256) before using it.
 2. The weather, when you ask about it. Robot sends the place you named, or your approximate position (rounded to two
@@ -136,7 +137,7 @@ you set up Termux, a weekly check for a newer Termux, which you can each turn of
    or of the one you set in Advanced, and downloads an update through api.github.com from GitHub's servers
    (objects.githubusercontent.com, release-assets.githubusercontent.com, or github.com if GitHub sends it there) when you
    tap Download, or by itself on Wi-Fi if "Download updates on Wi-Fi" is on (the default). To GitHub: your IP address and
-   Robot's version in the request ("Robot/1.0.0"); nothing else is sent. An access token, if you add one, goes to
+   Robot's version in the request ("Robot/1.0.1"); nothing else is sent. An access token, if you add one, goes to
    api.github.com only. GitHub handles the requests under its own privacy statement. Turn the automatic check off and
    Robot asks GitHub only when you tap Check now (and downloads only when you tap Download).
 
@@ -169,7 +170,7 @@ you set up Termux, a weekly check for a newer Termux, which you can each turn of
 9. Checking for Termux updates (Settings › Termux › "Check for Termux updates"): once Termux is set up (on by
    default then; the set-up says so), once a week, and when you tap Check now. Robot asks two addresses and nothing
    else, over HTTPS: GitHub (api.github.com) for Termux's newest releases, without any token, and F-Droid (f-droid.org)
-   for Termux's entry. Each sees your IP address and Robot's version in the request ("Robot/1.0.0"), no cookie and
+   for Termux's entry. Each sees your IP address and Robot's version in the request ("Robot/1.0.1"), no cookie and
    nothing about you; the answers are compared on the phone with the Termux you have. Robot never downloads or installs
    Termux or any other app: it tells you to update from your F-Droid app. GitHub and F-Droid handle the requests under
    their own policies. Turn the switch off and Robot doesn't ask.

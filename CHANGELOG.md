@@ -13,6 +13,21 @@ memories" for your own file), then delete the file; let 1.0 download its models 
 model › Import a file); make 1.0 your digital assistant; uninstall 0.9; then do the ADB fixes again in 1.0. Settings,
 History, notes, transcripts, keys and routines don't move: share or save what you want to keep first.
 
+## 1.0.1 (2026-10-15)
+
+Fixes from my own security review after 1.0, and an APK that's easier to check. It updates 1.0.0 in place. After the
+update, open Robot once: it moves its model into its own storage, and until it has, each model load takes 10 to 30
+seconds longer.
+
+- A key never goes over plain http. If a helper or your own search server has an http:// address and a key, Robot refuses before connecting and tells you to use an https address or remove the key. Your key stays saved. A server on your own network with no key works as before.
+- Robot's model lives in its own private storage, which only Robot can write. A new download is copied in as it's checked. A model from 1.0 moves in once, the first time you open Robot after updating, when there's room for a second copy (the model's size plus 0.5 GB). Until it has moved, Robot checks the whole file before each load. Your own model file is imported the same way.
+- After Robot reads something in a conversation (a web page, a helper's answer, the screen or a photo), every action that writes or opens something asks first, even when you asked for it. Text you didn't type could have chosen its details. Settings › Safety & privacy › Safety cards has the other choices.
+- The headset button's way into Robot over the lock screen opens only for your headset, your car or Robot itself, never for another app.
+- Termux's read-only commands: a `find` that follows links (`-L`, `-H`) shows its card first, since a link can lead out of your home folder.
+- Your own GGUF model: a message that holds one of the model's control texts is refused before the model reads it. The rest of that conversation fails too; start a new one.
+- The APK no longer carries Google's encrypted dependency block, and the llama.cpp library builds byte for byte the same in any folder. The source builds with a pinned Gradle (8.14.6), and every library it downloads is checked against a recorded SHA-256.
+- Send feedback's "Open a GitHub issue" opens the bug report or idea form with your report filled in.
+
 ## 1.0.0 (2026-10-13)
 
 Setup and updates:
