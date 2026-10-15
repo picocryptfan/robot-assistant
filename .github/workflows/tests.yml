@@ -1,0 +1,58 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      # The runner image already carries an Android SDK; this only adds what is missing.
+      - name: Android SDK platform 36 and build-tools 35.0.0
+        run: |
+          set +o pipefail
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          set -o pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;35.0.0"
+          echo "sdk.dir=$ANDROID_HOME" > robot/local.properties
+
+      # The unit tests read the keyword model, the espeak data and the voice libraries. They are not in git; this
+      # downloads them and checks every SHA-256 (the same script as on the developer's machine).
+      - name: Fetch the pinned third-party files
+        run: robot/tools/fetch_third_party.sh --install
+
+      - name: Unit tests
+        working-directory: robot
+        run: >
+          ./gradlew --no-daemon
+          :core:testReleaseUnitTest :voice:testReleaseUnitTest :helpers:testReleaseUnitTest
+          :app:testReleaseUnitTest :app:testDebugUnitTest
+
+      - name: Test reports
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-reports
+          path: robot/*/build/reports/tests/
+          if-no-files-found: ignore
+          retention-days: 14
