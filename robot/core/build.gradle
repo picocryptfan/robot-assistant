@@ -3,13 +3,13 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 android {
-    namespace 'app.heyrobot.core'
-    compileSdk rootProject.ext.robotCompileSdk
-    buildToolsVersion rootProject.ext.robotBuildTools
-    defaultConfig { minSdk rootProject.ext.robotMinSdk }
+    namespace = 'app.heyrobot.core'
+    compileSdk = rootProject.ext.robotCompileSdk
+    buildToolsVersion = rootProject.ext.robotBuildTools
+    defaultConfig { minSdk = rootProject.ext.robotMinSdk }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
-    kotlinOptions { jvmTarget = '17' }
 }
+kotlin { compilerOptions { jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17 } }
 // Pure Kotlin plus a few Android helpers (logging, storage). No engines: this module runs in every process.
 // Coroutines for the turn runner (Turn.kt), the same version the app and :brain already use.
 dependencies {

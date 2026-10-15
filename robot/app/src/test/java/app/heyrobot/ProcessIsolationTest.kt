@@ -434,7 +434,7 @@ class ProcessIsolationTest {
         assertEquals("ai.robot_app", m.getAttribute("package"))
         assertEquals("ai.robot_app", BuildConfig.APPLICATION_ID)
         assertEquals(BuildConfig.APPLICATION_ID, app.heyrobot.core.AppId.PACKAGE)
-        assertTrue(File(root, "app/build.gradle").readText().contains("namespace 'app.heyrobot'"))
+        assertTrue(File(root, "app/build.gradle").readText().contains("namespace = 'app.heyrobot'"))
         // The recognizer the ADB fixes set is the manifest's, package and class (written in full: the classes aren't in
         // the package, so ".assistant.…" would name nothing).
         val comps = components(doc)

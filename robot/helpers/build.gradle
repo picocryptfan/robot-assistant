@@ -3,17 +3,17 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 android {
-    namespace 'app.heyrobot.helpers'
-    compileSdk rootProject.ext.robotCompileSdk
-    buildToolsVersion rootProject.ext.robotBuildTools
+    namespace = 'app.heyrobot.helpers'
+    compileSdk = rootProject.ext.robotCompileSdk
+    buildToolsVersion = rootProject.ext.robotBuildTools
     defaultConfig {
-        minSdk rootProject.ext.robotMinSdk
+        minSdk = rootProject.ext.robotMinSdk
         // Applies only if the app is ever minified (it isn't today): keeps the SDK's Jackson-bound models intact.
         consumerProguardFiles 'consumer-rules.pro'
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
-    kotlinOptions { jvmTarget = '17' }
 }
+kotlin { compilerOptions { jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17 } }
 // The :voice process's link to the helpers (docs/ask-claude.md; every helper since 0.6.0): the only module that uses the
 // official Anthropic Java SDK (MIT; its OkHttp client, Jackson and Kotlin reflection come with it, see THIRD_PARTY.md),
 // and the only one with network code for the other helpers (app.heyrobot.helpers: Chat Completions and the Responses API

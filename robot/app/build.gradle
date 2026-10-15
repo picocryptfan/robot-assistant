@@ -10,15 +10,15 @@ def ksPath = project.findProperty('robot.keystore') ?: System.getenv('ROBOT_KEYS
 def ksPassFile = project.findProperty('robot.keystorePassFile') ?: System.getenv('ROBOT_KEYSTORE_PASS_FILE')
 
 android {
-    namespace 'app.heyrobot'
-    compileSdk rootProject.ext.robotCompileSdk
-    buildToolsVersion rootProject.ext.robotBuildTools
+    namespace = 'app.heyrobot'
+    compileSdk = rootProject.ext.robotCompileSdk
+    buildToolsVersion = rootProject.ext.robotBuildTools
     defaultConfig {
         // 1.0: robot-app.ai reversed (a package name can't hold the hyphen); 0.9 and earlier were app.heyrobot, so 1.0 installs
         // beside them as another app (README, "Moving from 0.9 to 1.0"). The namespace and the Kotlin packages stay app.heyrobot.
         applicationId 'ai.robot_app'
-        minSdk rootProject.ext.robotMinSdk
-        targetSdk rootProject.ext.robotTargetSdk
+        minSdk = rootProject.ext.robotMinSdk
+        targetSdk = rootProject.ext.robotTargetSdk
         // From 1.0 (a new app ID, so no earlier codes to follow): major*1000000 + minor*10000 + patch*100, plus the release
         // candidate's number (rc1 = 1) or 99 for the release itself. 1.0.0-rc1 = 1000001, 1.0.0 = 1000099, 1.0.1 = 1000199.
         // tools/bump_version.sh sets both, and makes the fastlane changelog; nothing else repeats them.
@@ -35,9 +35,9 @@ android {
                 storePassword pw
                 keyAlias 'robot'
                 keyPassword pw
-                enableV1Signing false
-                enableV2Signing true
-                enableV3Signing true
+                enableV1Signing = false
+                enableV2Signing = true
+                enableV3Signing = true
             }
         }
     }
@@ -46,7 +46,7 @@ android {
         // LiteRT-LM calls back into its Kotlin classes from native code.
         release {
             minifyEnabled false
-            if (ksPath != null && ksPassFile != null) signingConfig signingConfigs.release
+            if (ksPath != null && ksPassFile != null) signingConfig = signingConfigs.release
             // No META-INF/version-control-info.textproto: it holds the commit the APK was built from, so the same source
             // built from a tarball or another clone would differ (tools/verify_apk.sh checks it's absent).
             vcsInfo { include = false }
@@ -58,9 +58,8 @@ android {
         includeInApk = false
         includeInBundle = false
     }
-    buildFeatures { compose true; buildConfig true }
+    buildFeatures { compose = true; buildConfig = true }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
-    kotlinOptions { jvmTarget = '17' }
     androidResources { noCompress += ['onnx'] }
     // Native packaging as in my earlier test apps (Off Grid PR #702): extracted libraries, so
     // Backend.NPU(nativeLibraryDir) finds the dispatch library (and the manifest's extractNativeLibs="true"): the libraries
@@ -97,6 +96,7 @@ android {
         }
     }
 }
+kotlin { compilerOptions { jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17 } }
 
 // Robolectric's Android runtime (SDK 35) is an ordinary Gradle dependency, cached like any other, and Robolectric runs
 // offline from it: nothing is fetched while the tests run. Screenshots are checked against the goldens in

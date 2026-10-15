@@ -3,13 +3,13 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 android {
-    namespace 'app.heyrobot.brain'
-    compileSdk rootProject.ext.robotCompileSdk
-    buildToolsVersion rootProject.ext.robotBuildTools
-    defaultConfig { minSdk rootProject.ext.robotMinSdk }
+    namespace = 'app.heyrobot.brain'
+    compileSdk = rootProject.ext.robotCompileSdk
+    buildToolsVersion = rootProject.ext.robotBuildTools
+    defaultConfig { minSdk = rootProject.ext.robotMinSdk }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
-    kotlinOptions { jvmTarget = '17' }
 }
+kotlin { compilerOptions { jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17 } }
 // The :brain process. The only module that links LiteRT-LM; its classes load only in BrainService's process.
 dependencies {
     implementation project(':core')
