@@ -5,10 +5,13 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.ZoneId
+import java.time.ZonedDateTime
 
 /**
  * 1.0.2, from a 1.0.1 phone run: Robot claimed a note it never saved after you cancelled it, an email to Bob when no contact
- * matched, and a draft to "[Recipient Name]" when you named no one.
+ * matched, and a draft to "[Recipient Name]" when you named no one; and the weather lost the town of every question that
+ * named a day.
  */
 class ActionOutcomeTest {
     // ------------------------------------------------------------------ claims
@@ -102,5 +105,38 @@ class ActionOutcomeTest {
             assertEquals(call.name, ParsedCall.Invalid(call.name, ToolCalls.NO_RECIPIENT), ToolCalls.parse(call))
         }
         assertTrue(ToolCalls.parse(RawToolCall("draft_email", mapOf("to" to "Bob", "body" to "Lunch?"))) is ParsedCall.Ok)
+    }
+
+    // ------------------------------------------------------------------ the order of a tool's arguments
+
+    /**
+     * Gemma 4's template shows a tool's parameters, and writes a call's arguments, in alphabetical order; LiteRT-LM's
+     * constrained decoding follows the order a spec declares them. An optional one declared before one that sorts before
+     * it is skipped whenever the model writes that one: on the phone, the weather's place whenever a day came with it
+     * ("Check the weather here for Fri Oct 16" for Paris tomorrow; "Springfield, Atlantis", with no day, kept its place).
+     */
+    @Test fun noOptionalParameterIsDeclaredBeforeOneThatSortsBeforeIt() {
+        val specs = ToolSpecs.ALL + TermuxCalls.SPECS + BrowserCalls.SPEC
+        for (spec in specs) {
+            for ((i, p) in spec.params.withIndex()) {
+                if (p.required) continue
+                for (later in spec.params.drop(i + 1)) {
+                    assertTrue("${spec.tool.id}: ${p.name} is optional and declared before ${later.name}", p.name < later.name)
+                }
+            }
+        }
+        assertEquals(listOf("day", "place"), ToolSpecs.of(ToolName.WEATHER).params.map { it.name })
+    }
+
+    /** The other way a place could be lost: the model writing it into the day. That day can't be read, so the card would say so. */
+    @Test fun aPlaceInsideTheDayIsNeverReadAsADay() {
+        val now = ZonedDateTime.of(2026, 10, 15, 9, 0, 0, 0, ZoneId.of("America/Toronto"))
+        assertTrue(WeatherAsk.days("tomorrow", now) is Read.Ok)
+        for (d in listOf("tomorrow in Paris", "tomorrow in London Ontario", "demain à Québec")) assertTrue(d, WeatherAsk.days(d, now) is Read.Unreadable)
+        // A weather call with the day alone is here; with both, a named place.
+        assertEquals(WeatherWhere.HERE, (ToolCalls.parse(RawToolCall("weather", mapOf("day" to "tomorrow"))) as ParsedCall.Ok).action.let { WeatherAsk.where((it as Action.Weather).place).first })
+        val both = (ToolCalls.parse(RawToolCall("weather", mapOf("day" to "tomorrow", "place" to "Paris, France"))) as ParsedCall.Ok).action as Action.Weather
+        assertEquals(WeatherWhere.NAMED to "Paris, France", WeatherAsk.where(both.place))
+        assertTrue(both.describe().contains("in **Paris, France**"))
     }
 }

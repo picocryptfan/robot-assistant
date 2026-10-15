@@ -136,9 +136,10 @@ object ToolSpecs {
             ToolParam("message", "string", "The text", true),
         )),
         ToolSpec(ToolName.DRAFT_EMAIL, "Draft an email; the person sends it.", listOf(
+            // 1.0.2: the subject (optional) after the body, which sorts before it, as for the weather.
             ToolParam("to", "string", "Name or email address", true),
-            ToolParam("subject", "string", "Subject", false),
             ToolParam("body", "string", "The text", true),
+            ToolParam("subject", "string", "Subject", false),
         )),
         ToolSpec(ToolName.LOOKUP_CONTACT, "Find someone's numbers and emails in the contacts.", listOf(
             ToolParam("name", "string", "Their name", true),
@@ -162,10 +163,12 @@ object ToolSpecs {
         ToolSpec(ToolName.READ_CALENDAR, "List calendar events for a day or a week.", listOf(
             ToolParam("day", "string", "e.g. today, Friday, next week", true),
         )),
-        // 0.4.0, as short as the others: no place is where you are (or your Home for weather), no day is today.
+        // 0.4.0, as short as the others: no place is where you are (or your Home for weather), no day is today. 1.0.2: the
+        // day first, as Gemma 4 writes a call's arguments (in alphabetical order): with the place declared first, constrained
+        // decoding lost it whenever a day came with it (ActionOutcomeTest).
         ToolSpec(ToolName.WEATHER, "Weather forecast (online).", listOf(
-            ToolParam("place", "string", "Town, or omit for here", false),
             ToolParam("day", "string", "e.g. tomorrow, Friday, this week", false),
+            ToolParam("place", "string", "Town, or omit for here", false),
         )),
         ToolSpec(ToolName.PHONE_STATUS, "Read this phone's storage, battery and memory.", listOf(
             ToolParam("about", "string", "storage, battery, memory or all", false),
