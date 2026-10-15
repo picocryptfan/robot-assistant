@@ -171,13 +171,6 @@ fun ClassicHeader(
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Robot", style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                if (showKeep) {
-                    TextButton(onClick = onKeep, modifier = Modifier.heightIn(min = 48.dp)) {
-                        Icon(RIcons.Bookmark, null, Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Keep")
-                    }
-                }
                 // A toggle, so TalkBack says "Speak replies, checked" or "not checked"; drawn as before (no colour when on).
                 IconToggleButton(checked = speak, onCheckedChange = { onToggleSpeak() }, modifier = Modifier.size(48.dp),
                     colors = IconButtonDefaults.iconToggleButtonColors(checkedContentColor = LocalContentColor.current)) {
@@ -188,9 +181,19 @@ fun ClassicHeader(
                 IconButton(onClick = onClose, modifier = Modifier.size(48.dp)) { Icon(RIcons.Close, "Close") }
             }
             // A polite live region, so TalkBack says each new state once. Drawn 6 dp higher, close under "Robot" (the
-            // buttons' 48 dp row leaves room), with the header's 6 dp below it.
-            Text(status, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.offset(y = (-6).dp).padding(end = 8.dp).semantics { liveRegion = LiveRegionMode.Polite })
+            // buttons' 48 dp row leaves room), with the header's 6 dp below it. 1.0.2: it wraps whole (the lock screen's list of
+            // actions was cut), and Keep sits beside it rather than beside "Robot" (which read "Rob…").
+            Row(verticalAlignment = Alignment.Top) {
+                Text(status, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f).offset(y = (-6).dp).padding(end = 8.dp).semantics { liveRegion = LiveRegionMode.Polite })
+                if (showKeep) {
+                    TextButton(onClick = onKeep, modifier = Modifier.heightIn(min = 48.dp)) {
+                        Icon(RIcons.Bookmark, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Keep")
+                    }
+                }
+            }
         }
     }
 }
