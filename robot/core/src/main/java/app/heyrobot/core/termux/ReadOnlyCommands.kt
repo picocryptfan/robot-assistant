@@ -132,14 +132,18 @@ object ReadOnlyCommands {
     }
 
     /**
-     * find: start paths in ~ or $PREFIX; no -delete, -exec, -execdir, -ok, -okdir, -fprint…, -fls. 1.0.1: the options that
-     * come before the start paths (-H, -L, -P, and a "--" ending them) are skipped first, so "find -L /" and "find -- /" have
-     * their "/" checked; GNU find's -D and -O (also before the paths) are refused.
+     * find: start paths in ~ or $PREFIX; no -delete, -exec, -execdir, -ok, -okdir, -fprint…, -fls. 1.0.1: -H and -L (they
+     * follow links out of ~) and GNU find's -D and -O are refused; -P and a "--" before the start paths are skipped first, so
+     * "find -P /" and "find -- /" have their "/" checked.
      */
     private fun find(args: List<ShellWord>): Boolean {
         val forbidden = setOf("-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf", "-fls")
         if (args.any { it.value in forbidden }) return false
-        val lead = args.takeWhile { it.value in setOf("-H", "-L", "-P") }.size
+        val leadArgs = args.takeWhile { it.value in setOf("-H", "-L", "-P") }
+        // -L follows every link and -H a start path that is a link (~/link to /etc): either can read outside ~ and
+        // $PREFIX, so they aren't read-only here (the command shows its card). -P, never following links, is.
+        if (leadArgs.any { it.value == "-L" || it.value == "-H" }) return false
+        val lead = leadArgs.size
         var rest = args.drop(lead)
         val first = rest.firstOrNull()?.value
         if (first != null && (first.startsWith("-D") || first.startsWith("-O"))) return false

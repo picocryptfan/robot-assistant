@@ -31,7 +31,10 @@ class ReadOnlyCommandsTest {
             // "--" ends those options: what follows is still a start path.
             "find -- /etc", "find -L -- /", "find -H -- /data", "find -- ~/.ssh"))
             assertFalse("'$s' shouldn't be allowed", ok(s))
-        for (s in listOf("find -L ~ -name '*.md'", "find -P ~/notes -type f", "find -H -L ~/notes -mtime -1", "find -- ~/notes -name x", "find -L -- ~"))
+        // -L and -H follow links out of ~ (a link to /etc), so they always show the card, even for a path in ~.
+        for (s in listOf("find -L ~ -name '*.md'", "find -H -L ~/notes -mtime -1", "find -L -- ~", "find -H ~/link"))
+            assertFalse("'$s' follows links, so it shouldn't be read-only", ok(s))
+        for (s in listOf("find -P ~/notes -type f", "find -- ~/notes -name x", "find -P -- ~"))
             assertTrue("'$s' should be allowed", ok(s))
     }
 
