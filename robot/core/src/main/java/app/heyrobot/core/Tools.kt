@@ -634,12 +634,12 @@ object ToolCalls {
                 else ParsedCall.Ok(Action.Flashlight(values.first()!!))
             }
             ToolName.SEND_TEXT -> {
-                val to = textArg(a, MAX_NAME, "to", "recipient", "contact", "name", "number") ?: return bad("to is required")
+                val to = recipient(textArg(a, MAX_NAME, "to", "recipient", "contact", "name", "number")) ?: return bad(NO_RECIPIENT)
                 val message = longArg(a, MAX_MESSAGE, "message", "text", "body") ?: return bad("message is required")
                 ParsedCall.Ok(Action.SendText(to, message))
             }
             ToolName.DRAFT_EMAIL -> {
-                val to = textArg(a, MAX_NAME, "to", "recipient", "email", "address") ?: return bad("to is required")
+                val to = recipient(textArg(a, MAX_NAME, "to", "recipient", "email", "address")) ?: return bad(NO_RECIPIENT)
                 val subject = textArg(a, MAX_TEXT, "subject", "title").orEmpty()
                 val body = longArg(a, MAX_LONG, "body", "text", "message").orEmpty()
                 if (subject.isEmpty() && body.isEmpty()) return bad("give the email a body")
@@ -647,8 +647,8 @@ object ToolCalls {
             }
             ToolName.LOOKUP_CONTACT -> textArg(a, MAX_NAME, "name", "query", "contact", "who")?.let { ParsedCall.Ok(Action.LookupContact(it)) }
                 ?: bad("name is required")
-            ToolName.CALL -> textArg(a, MAX_NAME, "to", "name", "who", "number", "contact", "recipient")?.let { ParsedCall.Ok(Action.Call(it)) }
-                ?: bad("to is required")
+            ToolName.CALL -> recipient(textArg(a, MAX_NAME, "to", "name", "who", "number", "contact", "recipient"))?.let { ParsedCall.Ok(Action.Call(it)) }
+                ?: bad(NO_RECIPIENT)
             ToolName.ADD_NOTE -> {
                 val text = longArg(a, MAX_LONG, "text", "note", "content", "body") ?: return bad("text is required")
                 ParsedCall.Ok(Action.AddNote(text, textArg(a, MAX_TITLE, "title")))
@@ -720,6 +720,29 @@ object ToolCalls {
         }
         return NumArg(first)
     }
+
+    /** 1.0.2: what the model is told when it named no one (or only a placeholder): it asks who, never guesses. */
+    const val NO_RECIPIENT = "to is required: ask who it's for"
+
+    private val PLACEHOLDER_WORDS = setOf("recipient", "recipient name", "recipients name", "recipient s name", "contact s name", "person s name", "recipient email", "recipient email address",
+        "recipient address", "name", "contact", "contact name", "person", "person name", "someone", "somebody", "unknown", "their name",
+        "email", "email address", "address", "number", "phone number", "to", "user", "none", "n a", "na", "tbd", "nom", "destinataire",
+        "nom du destinataire", "quelqu un")
+
+    /**
+     * 1.0.2: a recipient that is a template's placeholder ("[Recipient Name]", "<name>", "{contact}", "Recipient") is no
+     * recipient: a model with no one to address (constrained decoding makes it write something) filled the blank.
+     */
+    fun placeholder(to: String): Boolean {
+        val t = to.trim()
+        if (t.length >= 2 && (t.first() == '[' && t.last() == ']' || t.first() == '<' && t.last() == '>' || t.first() == '{' && t.last() == '}' ||
+                t.first() == '(' && t.last() == ')')) return true
+        val k = java.text.Normalizer.normalize(t, java.text.Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "").lowercase(Locale.ROOT)
+            .replace(Regex("[^a-z0-9]+"), " ").trim()
+        return k.isEmpty() || k in PLACEHOLDER_WORDS
+    }
+
+    private fun recipient(to: String?): String? = to?.takeUnless(::placeholder)
 
     /** The first present name's text; null when it's missing, blank or not text (a present but empty name is not skipped). */
     private fun textArg(a: Map<String, Any?>, max: Int, vararg names: String): String? =

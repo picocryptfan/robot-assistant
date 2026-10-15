@@ -548,7 +548,8 @@ class TurnTest {
             runner(model, actions, view).run()
             assertTrue(actions.ran.isEmpty())
             assertEquals(listOf(status), view.statuses())
-            assertEquals(mapOf("status" to response, "detail" to "why"), model.answers.single().single().second)
+            // 1.0.2: and in plain words that nothing was done.
+            assertEquals(mapOf("status" to response, "detail" to "why", "outcome" to ActionOutcome.FOR_MODEL), model.answers.single().single().second)
         }
     }
 
@@ -913,5 +914,131 @@ class TurnTest {
         actions.lockedNow = true
         runner(FakeModel(ModelOutcome.Calls(listOf(timer))), actions, v2).run()
         assertEquals(listOf(ActionStatus.NEEDS_UNLOCK), v2.statuses())
+    }
+
+    // ------------------------------------------------------------------ 1.0.2: the reply matches what happened
+
+    /** A model that writes [reply] into the view as its follow-up after the results (what Gemma did on the phone). */
+    private class Claiming(private val first: ModelOutcome, private val view: FakeView, private val reply: String) : TurnModel {
+        val answers = mutableListOf<List<Pair<String, Map<String, Any?>>>>()
+        var abandoned: List<Pair<String, Map<String, Any?>>>? = null
+        override suspend fun ask() = first
+        override suspend fun answer(results: List<Pair<String, Map<String, Any?>>>): ModelOutcome {
+            answers += results
+            view.text += reply
+            return ModelOutcome.Done(DoneReason.END)
+        }
+        override fun close() {}
+        override fun abandon(results: List<Pair<String, Map<String, Any?>>>) { abandoned = results }
+    }
+
+    private val note = call("add_note", "text" to "Milk, eggs, bread", "title" to "ROBOT TEST Kitchen list")
+
+    /** "save that as a note" after Robot read a page: the card, Cancel, and on 1.0.1 "I have saved that as a note titled …". */
+    @Test fun aNoteYouAskedForAndCancelledIsNeverClaimed() = runBlocking {
+        val view = FakeView()
+        val model = Claiming(ModelOutcome.Calls(listOf(note)), view, "I have saved that as a note titled \"ROBOT TEST Kitchen list.\"")
+        val actions = FakeActions()
+        val conf = Confirmations()
+        val turn = async { TurnRunner(model, actions, view, conf, untrusted = true, asked = setOf(ToolName.ADD_NOTE)) { "n${++ids}" }.run() }
+        conf.answer(withTimeout(5_000) { view.pending.receive() }, false)
+        assertEquals(TurnResult(DoneReason.END), turn.await())
+        assertTrue(actions.ran.isEmpty())
+        assertEquals(listOf(ActionStatus.DECLINED), view.statuses())
+        // No follow-up was asked for: the model has the result, Robot says what happened, aloud too.
+        assertTrue(model.answers.isEmpty())
+        val told = model.abandoned!!.single().second
+        assertEquals("cancelled_by_user", told["status"])
+        assertEquals(ActionOutcome.FOR_MODEL, told["outcome"])
+        assertEquals(ActionOutcome.CANCELLED, view.text)
+        assertEquals(listOf(ActionOutcome.CANCELLED), view.said)
+    }
+
+    /** "email Bob about lunch" with no Bob in the contacts: on 1.0.1, "I drafted an email to Bob…" under a card saying Not found. */
+    @Test fun anEmailToNobodyFoundIsNeverClaimed() = runBlocking {
+        val view = FakeView()
+        val model = Claiming(ModelOutcome.Calls(listOf(call("draft_email", "to" to "Bob", "subject" to "Lunch", "body" to "Lunch on Friday?"))), view,
+            "I drafted an email to Bob about lunch.")
+        val actions = FakeActions().apply { prepare = { Prepared.Refused(ActionStatus.NOT_FOUND, "No contact matches “Bob”.") } }
+        TurnRunner(model, actions, view, Confirmations(), untrusted = false, asked = setOf(ToolName.DRAFT_EMAIL)) { "e${++ids}" }.run()
+        assertTrue(actions.ran.isEmpty())
+        assertEquals(listOf(ActionStatus.NOT_FOUND), view.statuses())
+        assertTrue(model.answers.isEmpty())
+        assertEquals("No contact matches “Bob”.", view.text)
+        assertFalse(ActionOutcome.claims(view.text))
+    }
+
+    /**
+     * The backstop: an action you didn't ask for in your words, cancelled. The model answers (it may have more to say, as
+     * after the spurious "Open Settings" card on the phone), but a sentence of it that claims the action goes, and Robot's
+     * line follows.
+     */
+    @Test fun aClaimInTheFollowUpGoesWhenNothingWasDone() = runBlocking {
+        val view = FakeView()
+        val model = Claiming(ModelOutcome.Calls(listOf(note)), view, "Here is your list: milk, eggs and bread. I have saved that list as a note for you.")
+        val conf = Confirmations()
+        val turn = async { TurnRunner(model, FakeActions(), view, conf, untrusted = true) { "c${++ids}" }.run() }
+        conf.answer(withTimeout(5_000) { view.pending.receive() }, false)
+        turn.await()
+        assertEquals(1, model.answers.size)
+        assertEquals("Here is your list: milk, eggs and bread.\n\n" + ActionOutcome.CANCELLED, view.text)
+        assertEquals(listOf(ActionOutcome.CANCELLED), view.said)
+        // A follow-up that doesn't claim anything stays as written.
+        val v2 = FakeView()
+        val m2 = Claiming(ModelOutcome.Calls(listOf(note)), v2, "OK, I won't save it. The settings page lists Wi-Fi first.")
+        val c2 = Confirmations()
+        val t2 = async { TurnRunner(m2, FakeActions(), v2, c2, untrusted = true) { "d${++ids}" }.run() }
+        c2.answer(withTimeout(5_000) { v2.pending.receive() }, false)
+        t2.await()
+        assertEquals("OK, I won't save it. The settings page lists Wi-Fi first.", v2.text)
+        assertTrue(v2.said.isEmpty())
+    }
+
+    /** A note that was saved may be said to be saved: nothing changes for an action that happened. */
+    @Test fun aClaimAboutWhatHappenedStays() = runBlocking {
+        val view = FakeView()
+        val model = Claiming(ModelOutcome.Calls(listOf(note)), view, "I have saved that as a note.")
+        val conf = Confirmations()
+        val turn = async { TurnRunner(model, FakeActions(), view, conf, untrusted = true, asked = setOf(ToolName.ADD_NOTE)) { "s${++ids}" }.run() }
+        conf.answer(withTimeout(5_000) { view.pending.receive() }, true)
+        turn.await()
+        assertEquals(1, model.answers.size)
+        assertEquals("I have saved that as a note.", view.text)
+    }
+
+    /**
+     * A request with no one to email: on the phone the model wrote "[Recipient Name]". It is no recipient: nothing is looked
+     * up or opened, the model is told to ask who, and a reply that claims a draft anyway is put right.
+     */
+    @Test fun aPlaceholderRecipientOpensNothing() = runBlocking {
+        val view = FakeView()
+        val model = Claiming(ModelOutcome.Calls(listOf(call("draft_email", "to" to "[Recipient Name]", "body" to "Lunch on Friday?"))), view,
+            "I drafted an email about lunch for you.")
+        val actions = FakeActions()
+        TurnRunner(model, actions, view, Confirmations(), untrusted = false, asked = setOf(ToolName.DRAFT_EMAIL)) { "p${++ids}" }.run()
+        assertTrue(actions.prepared.isEmpty())
+        assertTrue(actions.ran.isEmpty())
+        assertEquals(listOf(ActionStatus.INVALID), view.statuses())
+        val told = model.answers.single().single().second
+        assertEquals(ToolCalls.NO_RECIPIENT, told["detail"])
+        assertEquals(ActionOutcome.NO_ONE, view.text)
+        assertFalse(ActionOutcome.claims(view.text))
+    }
+
+    /** The panel's own calls ("text Mom …", a routine's step) have no follow-up to put right: their cards say it, as before. */
+    @Test fun anAppCallsCancelledCardAddsNoText() = runBlocking {
+        val view = FakeView()
+        val panel = object : TurnModel {
+            override val appCalls: Boolean get() = true
+            override suspend fun ask(): ModelOutcome = ModelOutcome.Calls(listOf(note))
+            override suspend fun answer(results: List<Pair<String, Map<String, Any?>>>): ModelOutcome = ModelOutcome.Done(DoneReason.END)
+            override fun close() {}
+        }
+        val conf = Confirmations()
+        val turn = async { TurnRunner(panel, FakeActions(), view, conf, untrusted = true, asked = setOf(ToolName.ADD_NOTE)) { "q${++ids}" }.run() }
+        conf.answer(withTimeout(5_000) { view.pending.receive() }, false)
+        turn.await()
+        assertEquals("", view.text)
+        assertTrue(view.said.isEmpty())
     }
 }

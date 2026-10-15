@@ -331,8 +331,16 @@ class TurnRunner(
 ) {
     private var budget = TurnRules.MAX_CALLS
 
-    /** [spoken]: what the round's actions say (their cards' text), for when no reply can follow them. */
-    private class Round(val responses: List<Pair<String, Map<String, Any?>>>, val launched: Boolean, val spoken: List<String> = emptyList())
+    /**
+     * [spoken]: what the round's actions say (their cards' text), for when no reply can follow them. [outcomes]: how each
+     * card ended (1.0.2, ActionOutcome).
+     */
+    private class Round(val responses: List<Pair<String, Map<String, Any?>>>, val launched: Boolean, val spoken: List<String> = emptyList(),
+        val outcomes: List<Outcome> = emptyList())
+
+    /** 1.0.2: every card of this turn as it ended, and the round under way's ([Round.outcomes]). */
+    private val outcomes = mutableListOf<Outcome>()
+    private val outcomesThisRound = mutableListOf<Outcome>()
 
     /** The round under way's spoken texts ([Round.spoken]). */
     private val spokenThisRound = mutableListOf<String>()
@@ -366,6 +374,13 @@ class TurnRunner(
                 model.close()
                 return TurnResult(DoneReason.END, web = it)
             }
+            // 1.0.2: an action you asked for didn't happen (you cancelled it, no contact matched): Robot says so from its card,
+            // and the model, told what happened, writes no follow-up that could claim it was done. A helper still answers.
+            if (!remote && !model.appCalls && ActionOutcome.settles(round.outcomes)) {
+                model.abandon(round.responses)
+                writeOutcome(round.outcomes)
+                return TurnResult(DoneReason.END)
+            }
             view.phase(TurnPhase.THINKING)
             view.paragraphBreak()
             val before = view.text.length
@@ -383,7 +398,10 @@ class TurnRunner(
             is ModelOutcome.Done -> {
                 // Only in text-call mode, and only a reply that is nothing but calls: prose that quotes a call never runs.
                 val found = if (outcome.reason == DoneReason.END && outcome.textCalls) ToolCalls.wholeReplyCalls(view.text) else emptyList()
-                if (found.isEmpty()) return TurnResult(outcome.reason)
+                if (found.isEmpty()) {
+                    keepHonest()
+                    return TurnResult(outcome.reason)
+                }
                 view.replaceText("")
                 if (found.any { it.call.asksHelper() }) return escalate()
                 val round = runCalls(found.map { it.call }, speak = true)
@@ -403,6 +421,30 @@ class TurnRunner(
         val round = runCalls(calls, speak = false)
         model.close()
         return TurnResult(DoneReason.END, launchedApp = round.launched)
+    }
+
+    /**
+     * 1.0.2: Robot's own lines for [round] after the reply so far, without any sentence of it that claims an action was done
+     * when none of this turn's was; said too when replies are spoken.
+     */
+    private fun writeOutcome(round: List<Outcome>) {
+        val lines = ActionOutcome.lines(round)
+        val before = if (outcomes.any { it.acts && it.status.succeeded }) view.text else ActionOutcome.withoutClaims(view.text)
+        view.replaceText(listOf(before.trimEnd(), lines.joinToString(" ")).filter { it.isNotBlank() }.joinToString("\n\n"))
+        lines.forEach(view::say)
+    }
+
+    /**
+     * 1.0.2, the backstop: the model answered after actions of which none happened (a card you cancelled that you hadn't asked
+     * for in your words, a call it got wrong) and its reply still says one was done. That sentence goes, and Robot's line
+     * for each card says what really happened (said too: the claim may have been read out already). The local model only.
+     */
+    private fun keepHonest() {
+        if (remote || model.appCalls) return
+        val acts = outcomes.filter { it.acts }
+        if (acts.isEmpty() || acts.any { it.status.succeeded || it.status == ActionStatus.PENDING }) return
+        if (!ActionOutcome.claims(view.text)) return
+        writeOutcome(acts)
     }
 
     private fun escalate(): TurnResult {
@@ -425,6 +467,7 @@ class TurnRunner(
         val out = mutableListOf<Pair<String, Map<String, Any?>>>()
         inRound = out
         spokenThisRound.clear()
+        outcomesThisRound.clear()
         for (raw in calls) {
             val parsed = parse(raw)
             // After a web search, nothing else of this reply runs: the answer comes from the search (design A6.2).
@@ -436,6 +479,7 @@ class TurnRunner(
                 }
                 view.card(Card(newId(), tool, summary, ActionStatus.SKIPPED, why, remote = remote))
                 out += raw.name to ActionStatus.SKIPPED.toolResponse(why)
+                record(Outcome(tool, ActionStatus.SKIPPED, why))
                 continue
             }
             if (budget <= 0) {
@@ -446,23 +490,31 @@ class TurnRunner(
                 }
                 view.card(Card(newId(), tool, summary, ActionStatus.SKIPPED, why, remote = remote))
                 out += raw.name to ActionStatus.SKIPPED.toolResponse(why)
+                record(Outcome(tool, ActionStatus.SKIPPED, why))
                 continue
             }
             budget--
             when (parsed) {
                 is ParsedCall.Invalid -> {
                     view.card(Card(newId(), ToolName.of(parsed.tool), "Couldn't do “${parsed.tool}”", ActionStatus.INVALID, parsed.reason, remote = remote))
-                    out += raw.name to ActionStatus.INVALID.toolResponse(parsed.reason)
+                    val o = Outcome(ToolName.of(parsed.tool), ActionStatus.INVALID, parsed.reason)
+                    out += raw.name to ActionOutcome.forModel(ActionStatus.INVALID.toolResponse(parsed.reason), o)
+                    record(o)
                 }
                 is ParsedCall.Ok -> {
                     val (response, launched) = decideAndRun(parsed.action, speak)
                     out += response
                     // The panel is leaving for another app: nothing more is done in this answer.
-                    if (launched) return Round(out, launched = true, spokenThisRound.toList())
+                    if (launched) return Round(out, launched = true, spokenThisRound.toList(), outcomesThisRound.toList())
                 }
             }
         }
-        return Round(out, launched = false, spokenThisRound.toList())
+        return Round(out, launched = false, spokenThisRound.toList(), outcomesThisRound.toList())
+    }
+
+    private fun record(o: Outcome) {
+        outcomesThisRound += o
+        outcomes += o
     }
 
     private suspend fun decideAndRun(asked: Action, speak: Boolean): Pair<Pair<String, Map<String, Any?>>, Boolean> {
@@ -470,7 +522,10 @@ class TurnRunner(
         fun done(a: Action, status: ActionStatus, detail: String?, launched: Boolean = false, r: Executed? = null): Pair<Pair<String, Map<String, Any?>>, Boolean> {
             view.card(Card(id, a.tool, a.describe(), status, detail, a, body = r?.body ?: a.body(), undo = r?.undo, content = r?.content == true, remote = remote,
                 handOff = r?.handOff))
-            return (a.tool.id to status.toolResponse(r?.forModel ?: detail, r?.results)) to launched
+            // 1.0.2: an action that didn't happen is said so in plain words too, beside its status code.
+            val o = Outcome(a.tool, status, detail, asked = a.tool in this.asked, content = r?.content == true, spoken = r?.spoken)
+            record(o)
+            return (a.tool.id to ActionOutcome.forModel(status.toolResponse(r?.forModel ?: detail, r?.results), o)) to launched
         }
         // 0.7: what a message's quarantine forbids outright (a memory the model proposes once a message is in the
         // conversation) gets no card and runs nothing.
