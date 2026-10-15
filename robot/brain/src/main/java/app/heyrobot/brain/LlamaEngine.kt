@@ -14,6 +14,7 @@ import app.heyrobot.core.BrainProtocol
 import app.heyrobot.core.BrainScheduler
 import app.heyrobot.core.ChannelByteSource
 import app.heyrobot.core.ContextWindow
+import app.heyrobot.core.ControlRefusal
 import app.heyrobot.core.ControlText
 import app.heyrobot.core.DoneReason
 import app.heyrobot.core.EngineTeardown
@@ -44,6 +45,7 @@ import app.heyrobot.core.ToolMode
 import app.heyrobot.core.readOrNull
 import java.io.File
 import java.nio.channels.FileChannel
+import java.util.concurrent.CancellationException
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -480,8 +482,10 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
                     if (tokens < 0 && tokens != LlamaIpc.PREP_TOO_LONG) {
                         run.nativeEnded = true
                         // 1.0.1: a control token's text that ControlText didn't break (robot_llama.cpp read each message alone).
+                        // 1.0.2: the refusal stands; each message is read alone once more to name the ones that held it, so the
+                        // panel leaves them out and the conversation goes on (core ControlRefusal).
                         val detail = when (tokens) {
-                            LlamaIpc.PREP_CONTROL_TEXT -> "control"
+                            LlamaIpc.PREP_CONTROL_TEXT -> ControlRefusal.detail(heldControlText(l, h, run, controls.defuse(question), history.map { controls.defuse(it.text) }))
                             else -> "template"
                         }
                         handler.post { fail(run, BrainError.ENGINE, detail) }
@@ -528,6 +532,23 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
             }
         }
     }
+
+    /**
+     * 1.0.2, after a PREP_CONTROL_TEXT refusal, on the worker (under the prepare watchdog): which of the texts sent held a
+     * control token's text, each read alone by robot_llama.cpp's own check ([question], then [history]: Generate.history's
+     * turns, after ControlText as they were sent). Its check comes before the template, so any other answer means the text
+     * is clean. A stop or a failed call: nothing found.
+     */
+    private fun heldControlText(l: LlamaLink, h: Long, run: Run, question: String, history: List<String>): ControlRefusal.Found = try {
+        val role = listOf("user".toByteArray())
+        val flags = IntArray(1)
+        ControlRefusal.find(question, history) { text ->
+            if (run.stop) throw CancellationException()
+            l.prepare(h, role, listOf(text.toByteArray(Charsets.UTF_8)), false, flags) == LlamaIpc.PREP_CONTROL_TEXT
+        }
+    } catch (_: Exception) {
+        ControlRefusal.Found()
+    }.also { RLog.i("brain_control_text", "question" to it.question, "turns" to it.history.size, "of" to history.size, "format" to ModelFormat.GGUF) }
 
     override fun toolResult(key: BrainScheduler.Key, req: BrainMsg.ToolResult, sink: BrainEngine.Sink) {
         // Text calls only: the app runs them and the conversation goes on from the history; no results come back here.
