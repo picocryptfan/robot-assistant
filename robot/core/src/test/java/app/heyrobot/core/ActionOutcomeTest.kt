@@ -39,6 +39,9 @@ class ActionOutcomeTest {
             "Would you like me to save it as a note?", "Who should I email?", "You cancelled it, so I haven't saved anything.",
             "Tomorrow in Paris: light rain, high 8°C, low 4°C.", "Je n'ai rien enregistré.", "La note n'a pas été enregistrée.",
             "Here is the list: milk, eggs, bread.",
+            // What Robot read on a screen, described after a card you didn't ask for was cancelled: never a claim.
+            "Wi-Fi is turned on.", "Bluetooth is set to off.", "The page says your order was sent.", "Notifications are turned off for this app.",
+            "La mise à jour est installée.", "I see Bluetooth is turned on.", "Location is set to approximate.", "It's set to approximate.",
         )) assertFalse(s, ActionOutcome.claims(s))
     }
 
@@ -62,6 +65,15 @@ class ActionOutcomeTest {
         // Two cards that say the same thing: one line.
         assertEquals(listOf(ActionOutcome.CANCELLED), ActionOutcome.lines(listOf(Outcome(ToolName.ADD_NOTE, ActionStatus.DECLINED, null),
             Outcome(ToolName.SET_TIMER, ActionStatus.DECLINED, null))))
+    }
+
+    /** The phone run's requests count as asked for in your words: Robot answers for their cards itself. */
+    @Test fun theRequestsFromThePhoneRunAreAskedFor() {
+        for (q in listOf("save that as a note", "note that down", "add a note: call the garage tomorrow")) assertTrue(q, ToolName.ADD_NOTE in ToolRouter.asked(q))
+        assertTrue(ToolName.DRAFT_EMAIL in ToolRouter.asked("email Bob about lunch"))
+        // What Robot read or saw is not: "what's on my screen?" asks for no action.
+        assertFalse(ToolName.OPEN_APP in ToolRouter.asked("what's on my screen?"))
+        assertFalse(ToolName.ADD_NOTE in ToolRouter.asked("what does this note say?"))
     }
 
     @Test fun robotSpeaksForTheRoundOnlyWhenAnActionYouAskedForDidntHappen() {
@@ -90,6 +102,9 @@ class ActionOutcomeTest {
         assertEquals(done, ActionOutcome.forModel(done, Outcome(ToolName.ADD_NOTE, ActionStatus.DONE, "Saved.")))
         val draft = ActionStatus.DRAFT_OPENED.toolResponse("Opened.")
         assertEquals(draft, ActionOutcome.forModel(draft, Outcome(ToolName.DRAFT_EMAIL, ActionStatus.DRAFT_OPENED, "Opened.")))
+        // A call with bad arguments: the model may call again with them put right, its reason says what was missing.
+        val bad = ActionStatus.INVALID.toolResponse(ToolCalls.NO_RECIPIENT)
+        assertEquals(bad, ActionOutcome.forModel(bad, Outcome(ToolName.DRAFT_EMAIL, ActionStatus.INVALID, ToolCalls.NO_RECIPIENT)))
         val none = ActionStatus.NOT_FOUND.toolResponse("No notes match.")
         assertEquals(none, ActionOutcome.forModel(none, Outcome(ToolName.FIND_NOTES, ActionStatus.NOT_FOUND, "No notes match.")))
     }
