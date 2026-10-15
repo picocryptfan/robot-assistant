@@ -70,6 +70,12 @@ data class ChatTurn(
      * ([Quoted.LOCKED]), and content (every action you didn't ask for asks first).
      */
     val locked: Boolean = false,
+    /**
+     * 1.0.2: holds text the loaded model treats as one of its control tokens, which llama.cpp refused (core
+     * ControlRefusal): never given to the model again ([toPromptTurns]), still shown and saved as it is. Not saved itself:
+     * a conversation opened again from History finds such a turn again the same way, after one more refusal.
+     */
+    val leftOut: Boolean = false,
 ) {
     /** Who wrote this reply, for labels and transcripts: the helper's name, "Claude" for a reply saved before 0.6.0. */
     val author: String get() = by ?: if (fromHelper) "Claude" else "Robot"
@@ -103,6 +109,8 @@ data class StoredConversation(val id: String, val created: Long, val updated: Lo
  * memory notes block for a turn's item ids (PromptPacking), or null.
  */
 fun List<ChatTurn>.toPromptTurns(notes: (List<String>) -> String? = { null }): List<PromptTurn> = mapNotNull { t ->
+    // 1.0.2: a turn that held a control token's text llama.cpp refused (ControlRefusal) is never replayed.
+    if (t.leftOut) return@mapNotNull null
     when (t.role) {
         // 0.7: a question that went with remembered items gets them again, as they are now ([notes]; none if they're gone).
         // A message's words the microphone heard back (0.7) are never replayed as your question: their placeholder is.
