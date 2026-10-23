@@ -4,7 +4,15 @@ What changed in each version of Robot, newest first. Each version's full notes, 
 [`robot/README.md`](robot/README.md) ("What's new in …" and the feature sections). Versions before 1.0 were test
 builds.
 
-## 1.1.0 (date filled at release)
+## 1.1.1 (2026-10-23)
+
+- During a phone lock, asking Robot to call an emergency number (typed, or said outside car mode) opens the phone's own
+  emergency dialer with the number filled in; you tap Call. In 1.1.0 it answered "Unlock to do this". The same on
+  Android's lock screen. When a call you typed opens a dialer, Robot's panel steps aside.
+- Phone lock's edit session ends when you leave Robot by Home, Recents, the power button or another app, and at
+  screen-off; a code pad left unfinished closes. During a lock nothing is put over Android's lock screen.
+
+## 1.1.0 (2026-10-23)
 
 Everything built since 1.0.1, in one release: Robot Files, the groundwork for other Android phones, Québec French,
 Phone lock, Back up and restore, Skills, a few settings, fixes, web search working on phones again, and automatic

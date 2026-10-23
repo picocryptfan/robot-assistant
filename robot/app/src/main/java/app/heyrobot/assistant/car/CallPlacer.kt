@@ -138,8 +138,9 @@ object CallPlacer {
     fun run(ctx: Context, a: Action.Call, launch: (Intent) -> Boolean): Executed {
         val number = a.number ?: return Executed(ActionStatus.FAILED, ToolStrings.noOneToCall())
         val way = if (a.direct && !a.emergency && Assistant.granted(ctx, Manifest.permission.CALL_PHONE) && lockAllows(ctx, number)) CallWay.CALL else CallWay.DIAL
+        // On Android's lock screen too: its emergency dialer shows over the lock, where the dialer would ask for an unlock.
         val locked = a.emergency && PhoneLockNow.on(ctx)
-        val sos = locked && LockSignals.emergencyDialer(ctx, Uri.fromParts("tel", CallTarget.dialable(number), null))?.let { i ->
+        val sos = (locked || a.emergency && Assistant.keyguard(ctx)) && LockSignals.emergencyDialer(ctx, Uri.fromParts("tel", CallTarget.dialable(number), null))?.let { i ->
             try { launch(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (t: Throwable) { RLog.w("call_sos", t); false }
         } == true
         val ok = sos || try { launch(intentFor(number, way, a.emergency).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (t: Throwable) { RLog.w("call_start", t); false }

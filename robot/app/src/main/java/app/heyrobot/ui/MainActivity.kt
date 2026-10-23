@@ -161,11 +161,14 @@ class MainActivity : ComponentActivity() {
 
     /**
      * FX1 (files-1.4-review.md finding 9): hidden drawers shown with your PIN go out of sight again when Robot leaves the
-     * screen, as at screen-off and after 10 minutes (sys/TravelReveal); a rotation isn't leaving.
+     * screen, as at screen-off and after 10 minutes (sys/TravelReveal); a rotation isn't leaving. Phone lock's edit session
+     * ends then too (§8.2), unless Robot's own code pad is what covers this window.
      */
     override fun onStop() {
         super.onStop()
-        if (!isChangingConfigurations) app.heyrobot.sys.TravelReveal.end()
+        if (isChangingConfigurations) return
+        app.heyrobot.sys.TravelReveal.end()
+        app.heyrobot.ui.settings.PhoneLockPages.left(this)
     }
 
     override fun onNewIntent(intent: Intent) {

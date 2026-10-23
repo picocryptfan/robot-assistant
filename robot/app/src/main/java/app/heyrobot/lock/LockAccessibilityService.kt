@@ -7,6 +7,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.PixelFormat
 import android.os.Handler
@@ -17,6 +18,7 @@ import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import app.heyrobot.core.RLog
 import app.heyrobot.core.lock.GateDecision
+import app.heyrobot.core.lock.GateFacts
 import app.heyrobot.core.lock.LockGate
 import app.heyrobot.core.lock.LockSchedule
 import app.heyrobot.sys.ProtectedBroadcasts
@@ -27,7 +29,7 @@ import app.heyrobot.sys.ProtectedBroadcasts
 // text, the source node or a description (ProcessIsolationTest scans this file for that). While no lock is on or due
 // within 10 minutes it asks for no events at all. During a lock, a window that isn't allowed (core LockGate) gets the
 // curtain at once and the cover right after; the curtain comes off when the cover shows, on any allowed window, or after
-// a second.
+// a second. While the keyguard is locked neither comes: the lock screen is never covered, and the unlock decides.
 
 class LockAccessibilityService : AccessibilityService() {
     private val main = Handler(Looper.getMainLooper())
@@ -36,15 +38,33 @@ class LockAccessibilityService : AccessibilityService() {
     /** The last allowed app's package (§5.2): on unlock during a lock, the cover shows unless it is still allowed. */
     private var lastAllowed: String? = null
     private var lastAllowedClass: String? = null
+    /**
+     * The window in front as the last event showed it, known only while window events are on. The gate looks at it again
+     * when the edit session or car mode your car started ends, and at the unlock. The keyboard, the system's windows (the
+     * lock screen, the shade) and Robot's own dialogs and panel sit above it, so they don't replace it.
+     */
+    private var frontPkg: String? = null
+    private var frontCls: String? = null
+    /** What the last engine change said of the edit session and of car mode your car started (main thread). */
+    private var wasEdit = false
+    private var wasCar = false
+    /** Robot's activities by class (an event names an activity-alias's window by its target's class). */
+    private val ownActivities: Set<String> by lazy {
+        try { packageManager.getPackageInfo(packageName, PackageManager.GET_ACTIVITIES).activities.orEmpty().map { it.name }.toSet() } catch (_: Throwable) { emptySet() }
+    }
 
     private val screen = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
             when (i.action) {
-                Intent.ACTION_SCREEN_OFF -> Thread({ LockEngine.refresh(applicationContext, alive = true) }, "robot-lock").start()
+                Intent.ACTION_SCREEN_OFF -> Thread({
+                    // The edit session ends at screen-off (§8.2), whatever is in front: the phone may be handed on now.
+                    if (LockStore.readState(applicationContext).edit > 0) try { LockEngine.endEdit(applicationContext) } catch (t: Throwable) { RLog.w("lock_edit_end", t) }
+                    LockEngine.refresh(applicationContext, alive = true)
+                }, "robot-lock").start()
                 Intent.ACTION_USER_PRESENT -> Thread({
                     // Phase B: also where a missed alarm's lock starts (the first unlock within 3 hours).
                     val s = LockEngine.refresh(applicationContext, unlocked = true)
-                    if (s.active) main.post { decide(lastAllowed, lastAllowedClass, fromUnlock = true) }
+                    if (s.active) main.post { unlocked() }
                 }, "robot-lock").start()
                 else -> Thread({ LockEngine.refresh(applicationContext) }, "robot-lock").start()
             }
@@ -100,15 +120,21 @@ class LockAccessibilityService : AccessibilityService() {
     /** Main thread: what [pkg]'s window gets during a lock. */
     private fun decide(pkg: String?, cls: String?, fromUnlock: Boolean) {
         val s = try { LockEngine.current(applicationContext) } catch (t: Throwable) { RLog.w("lock_current", t); return }
-        if (!s.active) return removeCurtain()
         val facts = LockEngine.facts(applicationContext, s)
+        if (!fromUnlock && inFront(pkg, cls, facts)) { frontPkg = pkg; frontCls = cls }
+        if (!s.active) return removeCurtain()
         // Phase B (§9.3): car mode your car started, during your own lock: no cover, whatever comes up.
         if (facts.carOwnLock) return removeCurtain()
         // Unlocked during a ringing or active call: the call screen stays; the next window decides (§5.2, §6).
         if (fromUnlock && facts.inCall) return
         if (fromUnlock && pkg == null) return showCover()
         when (LockGate.decide(pkg, cls, facts)) {
-            GateDecision.COVER -> { LockEngine.foreground(applicationContext, packageName); showCover() }
+            GateDecision.COVER -> {
+                // The lock screen is never covered: no curtain over it, no cover behind it. The unlock decides.
+                if (!fromUnlock && keyguard()) return removeCurtain()
+                LockEngine.foreground(applicationContext, packageName)
+                showCover()
+            }
             GateDecision.ALLOW -> {
                 if (pkg != packageName) { lastAllowed = pkg; lastAllowedClass = cls }
                 LockEngine.foreground(applicationContext, pkg)
@@ -118,9 +144,31 @@ class LockAccessibilityService : AccessibilityService() {
         }
     }
 
+    /** [pkg]'s window replaces the one in front: not the keyboard, a system window, or one of Robot's dialogs or its panel. */
+    private fun inFront(pkg: String?, cls: String?, facts: GateFacts): Boolean =
+        pkg != null && pkg != facts.keyboard && pkg !in LockGate.SYSTEM && (pkg != packageName || cls in ownActivities)
+
+    /**
+     * Main thread, at the unlock during a lock: the window in front decides when the gate covers it (Settings › Phone lock
+     * once its edit session ended at screen-off, an app that came up over the lock screen). Otherwise the cover shows
+     * unless the last allowed app is still allowed (§5.2).
+     */
+    private fun unlocked() {
+        val pkg = frontPkg
+        val cls = frontCls
+        val covered = pkg != null && try {
+            LockGate.decide(pkg, cls, LockEngine.facts(applicationContext, LockEngine.current(applicationContext))) == GateDecision.COVER
+        } catch (t: Throwable) {
+            RLog.w("lock_current", t)
+            false
+        }
+        if (covered) decide(pkg, cls, fromUnlock = true) else decide(lastAllowed, lastAllowedClass, fromUnlock = true)
+    }
+
     /**
      * The engine changed. Window events only while a lock is on or due soon; when a lock starts with the screen on and
-     * unlocked, the cover shows at once, unless a call is on or Clock is ringing (the next window decides then).
+     * unlocked, the cover shows at once, unless a call is on or Clock is ringing (the next window decides then). When the
+     * edit session or car mode your car started ends, the window in front is looked at again.
      */
     fun onEngine(s: LockEngine.Snapshot, startedNow: Boolean) {
         main.post {
@@ -132,9 +180,15 @@ class LockAccessibilityService : AccessibilityService() {
             } catch (t: Throwable) {
                 RLog.w("lock_events", t)
             }
-            if (!s.active) return@post removeCurtain()
+            // Without window events, the window in front isn't known any more.
+            if (!want) { frontPkg = null; frontCls = null }
             val facts = LockEngine.facts(this, s)
+            val ended = (wasEdit && !facts.editSession) || (wasCar && !facts.carOwnLock)
+            wasEdit = facts.editSession
+            wasCar = facts.carOwnLock
+            if (!s.active) return@post removeCurtain()
             if (startedNow && interactive() && !keyguard() && !facts.inCall && !facts.carOwnLock) showCover()
+            else if (ended) frontPkg?.let { decide(it, frontCls, fromUnlock = false) }
         }
     }
 

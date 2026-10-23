@@ -93,6 +93,20 @@ class LockCodeActivity : ComponentActivity() {
         setContent { RobotTheme { Pad() } }
     }
 
+    /**
+     * Left without finishing (Home, Recents, the power button, a call): an edit session ends here, as it does when Robot's
+     * app is left (§8.2), and a pad for a new code closes, so nobody else types one on it. A rotation isn't leaving.
+     */
+    override fun onStop() {
+        super.onStop()
+        if (isFinishing || isChangingConfigurations) return
+        val ctx = applicationContext
+        Thread({
+            try { if (LockStore.readState(ctx).edit > 0) LockEngine.endEdit(ctx) } catch (t: Throwable) { RLog.w("lock_edit_end", t) }
+        }, "robot-lock").start()
+        if (purpose == LockSignals.PURPOSE_SET) finish()
+    }
+
     /** The code was right: what [purpose] asked for, saved in state.json (it throws when that failed; CodePad says so). */
     private fun right() {
         val ctx = applicationContext

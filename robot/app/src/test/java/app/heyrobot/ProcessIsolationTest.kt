@@ -1491,6 +1491,13 @@ class ProcessIsolationTest {
         assertEquals(listOf("app/lock/LockClock.kt", "app/lock/LockEngine.kt"), usersOf(Regex("""\b(UsageReader|queryEvents)\b""")).filter { it.startsWith("app/lock/") || it == "app/assistant/PanelLock.kt" })
         // Car mode your car started, during your own lock: the service's own cover paths (a lock starting, the unlock) skip it too.
         assertHas(flatText(kt("app", "lock/LockAccessibilityService.kt")), "if (facts.carOwnLock) return removeCurtain()", "!facts.carOwnLock) showCover()")
+        // §8.2: the edit session ends when you leave: Robot's app leaving the screen (not a rotation, not its own code pad over
+        // it, which the main process names only by LockSignals' name), the code pad left without finishing, and screen-off.
+        // EditSessionLeaveTest and LockGateAgainTest run them; the lock screen gets no curtain and no cover behind it.
+        assertHas(flatCode(kt("app", "ui/MainActivity.kt")), "if (isChangingConfigurations) return", "PhoneLockPages.left(this)")
+        assertHas(flatCode(kt("app", "ui/settings/PhoneLockSettings.kt")), "topActivity?.className == LockSignals.CODE", "LockSignals.editEnded(ctx)")
+        assertHas(flatCode(kt("app", "lock/LockCodeActivity.kt")), "if (isFinishing || isChangingConfigurations) return", "LockEngine.endEdit(ctx)")
+        assertHas(flatCode(kt("app", "lock/LockAccessibilityService.kt")), "LockEngine.endEdit(applicationContext)", "if (!fromUnlock && keyguard()) return removeCurtain()")
         val panelLock = code(kt("app", "assistant/PanelLock.kt"))
         assertFalse(Regex("""\b(LockCodeRules|LockCodeVault|codeSet|digits)\b""").containsMatchIn(panelLock))
         // The lock code goes nowhere near a log or the voice log.

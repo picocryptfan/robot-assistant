@@ -59,6 +59,8 @@ class CallPlacerTest {
         assertTrue(call.indexOf("personalPlays(s0)") < call.indexOf("CallTarget.plan("))
         assertTrue(call, call.contains("CallTarget.plan(c.who, candidates, rules, phone.locked, inCar && CarModeController.trusted"))
         assertEquals(1, Regex("CallPlacer\\.rules\\(").findAll(panel).count())
+        // 1.1.1: the call tool's card opened a dialer (the emergency one too): the panel steps aside, as for any app.
+        assertEquals(2, Regex("""RoutineStep\.Tool\(Action\.Call\((asked|callAsked)\)\)\)\?\.let \{ if \(it\.launchedApp && it\.status\.succeeded\) host\.leave\(\) \}""").findAll(panel).count())
         // The model can't reach the call tool (core TurnRunner refuses a tool it isn't told about): only the panel's own
         // DirectCall, made from your words, says its calls are the app's.
         val apps = root.walkTopDown().filter { it.isFile && it.extension == "kt" }.filter { it.readText().contains("override val appCalls") }.map { it.name }.toList()
@@ -77,7 +79,7 @@ class CallPlacerTest {
         // an emergency number goes there first, and to the ordinary dialer only when it can't open, saying so.
         assertInOrder(flat("assistant/car/CallPlacer.kt").body("fun run("),
             "val locked = a.emergency && PhoneLockNow.on(ctx)",
-            "val sos = locked && LockSignals.emergencyDialer(ctx, Uri.fromParts(\"tel\", CallTarget.dialable(number), null))",
+            "val sos = (locked || a.emergency && Assistant.keyguard(ctx)) && LockSignals.emergencyDialer(ctx, Uri.fromParts(\"tel\", CallTarget.dialable(number), null))",
             "val ok = sos || try { launch(intentFor(number, way, a.emergency)",
             "locked && !sos -> ToolStrings.dialerCovered()",
             "a.emergency -> ToolStrings.dialerWithNumber()")

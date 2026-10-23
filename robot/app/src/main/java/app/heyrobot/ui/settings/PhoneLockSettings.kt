@@ -2,6 +2,7 @@
 package app.heyrobot.ui.settings
 
 import android.app.Activity
+import android.app.ActivityManager
 import android.app.NotificationManager
 import android.content.Context
 import android.os.Handler
@@ -79,7 +80,8 @@ import java.time.ZonedDateTime
 // and What a lock can't stop; the Time of day editor is PhoneLockEditor.kt. This process writes locks.json only
 // (LockStore.editLocks, which tells :lock); it reads state.json for what is on, whether a code is set and whether an edit
 // session is open, and asks :lock's code pad (by class name) for the code. With a code set, every change but turning
-// something on needs the code first (§8.2): the code opens a 5-minute edit session, which ends when you leave these pages.
+// something on needs the code first (§8.2): the code opens a 5-minute edit session, which ends when you leave these pages
+// or Robot's app, or the screen goes off (PhoneLockPages).
 
 object PhoneLockRoutes {
     const val SETUP = SettingsRoutes.PHONE_LOCK + "/setup"
@@ -104,8 +106,11 @@ class PhoneLockData(val read: LockFileRead, val state: LockState, val access: Bo
     }
 }
 
-/** The edit session ends when the last Phone lock page closes (a page opening another doesn't end it). */
-private object PhoneLockPages {
+/**
+ * The edit session ends when you leave (§8.2): when the last Phone lock page closes (a page opening another doesn't end
+ * it), when Robot's app leaves the screen ([left]), and at screen-off (:lock).
+ */
+internal object PhoneLockPages {
     private var open = 0
     private val main = Handler(Looper.getMainLooper())
 
@@ -113,6 +118,25 @@ private object PhoneLockPages {
     fun closed(ctx: Context) {
         open--
         main.postDelayed({ if (open == 0 && LockStore.readState(ctx).edit > 0) LockSignals.editEnded(ctx) }, 1_000)
+    }
+
+    /**
+     * MainActivity's onStop, never for a rotation: Home, Recents, the power button or another app's window (Android's
+     * settings pages too) ends the session. Robot's code pad, opened from these pages over it, doesn't: the pad reads the
+     * session as it opens (Change the code, Remove the code) or opens one, and leaving the pad ends the session there.
+     * Android's permission dialog doesn't stop the activity under it.
+     */
+    fun left(a: Activity) {
+        if (padOnTop(a)) return
+        val ctx = a.applicationContext
+        if (LockStore.readState(ctx).edit > 0) LockSignals.editEnded(ctx)
+    }
+
+    /** Robot's code pad is at the top of [a]'s task now. */
+    private fun padOnTop(a: Activity): Boolean = try {
+        a.getSystemService(ActivityManager::class.java).appTasks.any { t -> t.taskInfo.let { it.taskId == a.taskId && it.topActivity?.className == LockSignals.CODE } }
+    } catch (_: Throwable) {
+        false
     }
 }
 

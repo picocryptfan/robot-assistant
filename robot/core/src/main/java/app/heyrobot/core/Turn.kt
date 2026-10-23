@@ -786,10 +786,14 @@ class TurnRunner(
         // settings say.
         val unnamed = (asked is Action.SetTimer || asked is Action.SetAlarm) && asked.tool !in this.asked && heard != null && !remote &&
             !model.appCalls && AlarmWords.event(heard)
+        // 1.1.1 (a Pixel 8, 23 Oct: "call 911" during a phone lock said "Unlock to do this"): a call to a number that is an
+        // emergency one everywhere goes past the lock to prepare, which checks it against Android's own list; only a call
+        // prepare marks as an emergency then runs locked, and it only opens the emergency dialer (CallPlacer).
+        val emergencyAsked = asked is Action.Call && app.heyrobot.core.car.EmergencyNumbers.basic(asked.to, null)
         // The lock and the settings first: nothing about the phone (an installed app's name) is looked up for nothing.
         when (ApprovalGate.decide(asked.tool, actions.locked, actions.settings, content = untrusted, asked = asked.tool in this.asked, remote = remote,
             online = asked.online, trusted = trusted, messages = messages.active, saidLocked = messages.saidLocked)) {
-            GateDecision.NEEDS_UNLOCK -> return done(asked, ActionStatus.NEEDS_UNLOCK, unlockText(asked.tool))
+            GateDecision.NEEDS_UNLOCK -> if (!emergencyAsked) return done(asked, ActionStatus.NEEDS_UNLOCK, unlockText(asked.tool))
             GateDecision.DISABLED -> return done(asked, ActionStatus.DISABLED, TurnStrings.turnedOff("what" to asked.tool.titleText))
             else -> {}
         }
@@ -797,6 +801,7 @@ class TurnRunner(
             is Prepared.Refused -> return done(asked, p.status, p.text.orEn(p.detail, langs), model = p.detail, text = p.text)
             is Prepared.Ready -> p
         }
+        val emergency = emergencyAsked && (a.action as? Action.Call)?.emergency == true
         // 1.0 (injection-termux-policy-unwired): a Termux call TermuxPolicy didn't prepare (no card, no key) never runs, and
         // never runs without its card: fail closed rather than trust the gate's Termux branch with no reasons.
         if (a.action.tool.termux && !TermuxCalls.prepared(a.action)) return done(a.action, ActionStatus.FAILED, TermuxCalls.unprepared)
@@ -806,6 +811,7 @@ class TurnRunner(
         val decision = ApprovalGate.decide(a.action.tool, actions.locked, actions.settings, reasons, content = untrusted,
             asked = a.action.tool in this.asked, remote = remote, online = a.action.online, trusted = trusted, messages = messages.active,
             saidLocked = messages.saidLocked).let { if (unnamed && it == GateDecision.RUN) GateDecision.CONFIRM else it }
+            .let { if (emergency && it == GateDecision.NEEDS_UNLOCK) GateDecision.RUN else it }
         if (messages.active && decision == GateDecision.CONFIRM) VoiceLog.add(VoiceEvent.MSG_GUARD,
             if (fromMessage.isEmpty()) app.heyrobot.core.messages.GuardCode.ASKED else app.heyrobot.core.messages.GuardCode.TAP_REQUIRED)
         val chosen = when (decision) {
@@ -817,7 +823,7 @@ class TurnRunner(
             GateDecision.DISABLED -> return done(a.action, ActionStatus.DISABLED, TurnStrings.turnedOff("what" to a.action.tool.titleText))
         } ?: return done(a.action, ActionStatus.DECLINED, null)
         // The phone may have locked while the card waited.
-        if (ApprovalGate.lockedOut(chosen, actions.locked, actions.settings)) {
+        if (!emergency && ApprovalGate.lockedOut(chosen, actions.locked, actions.settings)) {
             return done(chosen, ActionStatus.NEEDS_UNLOCK, unlockText(chosen.tool))
         }
         fun finish(r: Executed): Pair<Pair<String, Map<String, Any?>>, Boolean> {

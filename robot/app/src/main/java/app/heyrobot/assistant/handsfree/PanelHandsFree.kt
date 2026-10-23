@@ -369,8 +369,9 @@ object PanelHandsFree {
         // session where a personal sentence may not play (the read-back names who and their number): headphones Robot doesn't
         // know are private, or the lock screen; the card shows it instead.
         val s0 = session
+        // 1.1.1 (a Pixel 8, 23 Oct: the panel stayed over the emergency dialer): it steps aside when the card opens a dialer.
         if (s0 == null || (!inCar && !personalPlays(s0))) {
-            host.tool(replyId, RoutineStep.Tool(Action.Call(asked)))
+            host.tool(replyId, RoutineStep.Tool(Action.Call(asked)))?.let { if (it.launchedApp && it.status.succeeded) host.leave() }
             return
         }
         val s = VoiceHub.settings
@@ -432,7 +433,7 @@ object PanelHandsFree {
             // as when you type "call Mom", with its choices, its learned-name check and the lock screen's rules.
             is FlowEffect.CallCard -> {
                 if (text.isNotEmpty()) host.text(replyId, text.toString().also { text.clear() })
-                host.tool(replyId, RoutineStep.Tool(Action.Call(callAsked)))
+                host.tool(replyId, RoutineStep.Tool(Action.Call(callAsked)))?.let { if (it.launchedApp && it.status.succeeded) host.leave() }
             }
             is FlowEffect.Send, is FlowEffect.OnScreen -> Unit // 0.7's replies: HandsFreeMessages.
         }

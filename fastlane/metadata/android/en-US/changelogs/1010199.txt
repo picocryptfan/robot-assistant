@@ -1,0 +1,1 @@
+1.1.1: During a phone lock, asking Robot to call an emergency number opens the phone's own emergency dialer with the number filled in; you tap Call. Leaving Phone lock's settings by Home, another app or the power button now ends the edit session, so the code is asked again. Notes: https://github.com/picocryptfan/robot-assistant/releases/tag/v1.1.1
