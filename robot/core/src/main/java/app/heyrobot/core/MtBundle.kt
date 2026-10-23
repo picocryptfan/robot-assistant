@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.ConversationStrings
+import app.heyrobot.core.i18n.Phrase
 import java.io.File
 import java.io.FileInputStream
 import java.security.MessageDigest
@@ -30,12 +32,13 @@ enum class MtBundle(
     /** Directory under filesDir/models/ (also the download keys). */
     val id: String,
     val pair: LangPair,
-    val title: String,
+    /** Its name ("Fast translation engine", « Moteur de traduction rapide »); [title] its English. */
+    val titleText: Phrase,
     val files: List<MtFile>,
     val directions: List<MtDirection>,
 ) {
     FR_EN(
-        "mt-fr-en", LangPair.FR_EN, "Fast translation engine",
+        "mt-fr-en", LangPair.FR_EN, ConversationStrings.fastEngine(),
         listOf(
             MtFile("model.fren.intgemm.alphas.bin", "fr-en/retrain_hr_EFgIftH_RrCyzl5gjemVNg/exported/model.fren.intgemm.alphas.bin.gz",
                 23_175_075, "06b1eeedd3944260d00a393d12ec7192490c5b7c930b97212faf4d5f5c90a2ee",
@@ -58,6 +61,8 @@ enum class MtBundle(
             MtDirection("en", "fr", "model.enfr.intgemm.alphas.bin", "vocab.fren.spm", "lex.50.50.enfr.s2t.bin"),
         ),
     );
+
+    val title: String get() = titleText.en()
 
     /** What is downloaded (the .gz files): 51,577,481 bytes for fr↔en. */
     val downloadBytes: Long get() = files.sumOf { it.gzBytes }
@@ -158,12 +163,18 @@ object MtModelLogic {
         return flying.sumOf { (it.gzBytes - rows.getValue(it.name).soFar.coerceAtLeast(0)).coerceAtLeast(0) } + remaining.sumOf { it.bytes }
     }
 
-    fun refuseDownload(b: MtBundle, status: ModelStatus, remaining: List<MtFile>, freeBytes: Long, staged: Set<String> = emptySet(), pendingBytes: Long = 0): String? =
-        VoiceModelLogic.refuseDownload(status) { VoiceModelLogic.spaceProblem(b.title, needBytes(remaining, staged), freeBytes, pendingBytes) }
+    fun refuseDownloadText(b: MtBundle, status: ModelStatus, remaining: List<MtFile>, freeBytes: Long, staged: Set<String> = emptySet(), pendingBytes: Long = 0): Phrase? =
+        VoiceModelLogic.refuseDownloadText(status) { VoiceModelLogic.spaceProblemText(b.titleText, needBytes(remaining, staged), freeBytes, pendingBytes) }
 
     /** The download line and percent, counted in .gz bytes ([doneBytes]: those of the files already installed). */
-    fun downloadText(b: MtBundle, doneBytes: Long, rows: List<FileDownload>): Pair<String, Int> = VoiceModelLogic.downloadText(b.downloadBytes, doneBytes, rows)
+    fun downloadPhrase(b: MtBundle, doneBytes: Long, rows: List<FileDownload>): Pair<Phrase, Int> = VoiceModelLogic.downloadPhrase(b.downloadBytes, doneBytes, rows)
 
-    /** "Fast translation engine (52 MB)". */
-    fun label(b: MtBundle): String = "${b.title} (${VoiceModelLogic.size(b.downloadBytes)})"
+    /** "Fast translation engine (52 MB)", « Moteur de traduction rapide (52 Mo) ». */
+    fun labelText(b: MtBundle): Phrase = ConversationStrings.engineWithSize("title" to b.titleText, "size" to sizeText(b.downloadBytes))
+
+    /** [labelText] in English. */
+    fun label(b: MtBundle): String = labelText(b).en()
+
+    /** A download's size as the voice models write it: "52 MB", "1.23 GB" / « 52 Mo », « 1,23 Go » (1.1, WP7: VoiceModelLogic.sizeText). */
+    fun sizeText(bytes: Long): Phrase = VoiceModelLogic.sizeText(bytes)
 }

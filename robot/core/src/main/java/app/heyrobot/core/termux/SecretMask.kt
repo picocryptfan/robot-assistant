@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.termux
 
+import app.heyrobot.core.i18n.Lang
+import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.i18n.Msg
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.TermuxStrings
+
 // Pure. Secrets in Termux commands and their output: private keys, API-key
 // and token shapes, passwords in web addresses and after "password=" or "token:", and Robot's own keys by exact value.
 // In output they are replaced before Gemma, the card, History or a helper sees it; in a command they make a warning, and
@@ -9,13 +15,19 @@ package app.heyrobot.core.termux
 // private-key blocks are found with indexOf, not a regular expression.
 
 object SecretMask {
-    enum class Kind(val en: String, val fr: String) {
-        PRIVATE_KEY("looks like a private key", "ressemble à une clé privée"),
-        API_KEY("looks like an API key", "ressemble à une clé d'API"),
-        TOKEN("looks like a token", "ressemble à un jeton"),
-        PASSWORD("looks like a password", "ressemble à un mot de passe"),
+    /** What a hidden secret looks like ([text]; [en] and [fr] its English and French). */
+    enum class Kind(val label: Msg) {
+        PRIVATE_KEY(TermuxStrings.hiddenPrivateKey),
+        API_KEY(TermuxStrings.hiddenApiKey),
+        TOKEN(TermuxStrings.hiddenToken),
+        PASSWORD(TermuxStrings.hiddenPassword),
         /** One of Robot's own keys, by its exact value. */
-        ROBOT_KEY("one of Robot's own keys", "une des clés de Robot"),
+        ROBOT_KEY(TermuxStrings.hiddenRobotKey),
+        ;
+
+        val text: Phrase get() = label()
+        val en: String get() = text.en()
+        val fr: String get() = text.render(Langs.of(Lang.FR))
     }
 
     /**
@@ -110,20 +122,23 @@ object SecretMask {
     /** [text] holds one of Robot's own secrets, by exact value. */
     fun hasOwn(text: String, own: Collection<String>): Boolean = own.any { it.length >= MIN_OWN && text.contains(it) }
 
-    /** [text] with every secret replaced by "[hidden: looks like a private key]" (French: "[masqué : …]"). */
-    fun mask(text: String, own: Collection<String> = emptyList(), fr: Boolean = false): String {
+    /** [text] with every secret replaced by "[hidden: looks like a private key]" (French: « [masqué : …] ») in [l]'s language. */
+    fun mask(text: String, own: Collection<String> = emptyList(), l: Langs = Langs.EN): String {
         val found = find(text, own)
         if (found.isEmpty()) return text
         val sb = StringBuilder(text.length)
         var at = 0
         for (f in found) {
             sb.append(text, at, f.start)
-            sb.append(if (fr) "[masqué : ${f.kind.fr}]" else "[hidden: ${f.kind.en}]")
+            sb.append(TermuxStrings.hidden("what" to f.kind.text).render(l))
             at = f.end
         }
         sb.append(text, at, text.length)
         return sb.toString()
     }
+
+    /** [mask] in English ([fr]: in French). */
+    fun mask(text: String, own: Collection<String> = emptyList(), fr: Boolean): String = mask(text, own, Langs.of(if (fr) Lang.FR else Lang.EN))
 
     /**
      * "-----BEGIN … PRIVATE KEY-----" (PEM, OpenSSH, PGP's "PRIVATE KEY BLOCK") through its END line; a block whose END
@@ -132,25 +147,25 @@ object SecretMask {
      */
     private fun privateKeys(text: String, out: MutableList<Found>) {
         // Output Termux cut from its start can begin inside a key: its END line with no BEGIN before it hides all before.
-        val firstBegin = text.indexOf("-----BEGIN ")
-        var e = text.indexOf("-----END ")
+        val firstBegin = text.indexOf("-----BEGIN ") // l10n: not text (what it looks for)
+        var e = text.indexOf("-----END ") // l10n: not text (what it looks for)
         while (e >= 0 && (firstBegin < 0 || e < firstBegin)) {
             val close = text.indexOf("-----", e + 9)
-            if (close in 0..e + 89 && text.substring(e + 9, close).contains("PRIVATE KEY")) {
+            if (close in 0..e + 89 && text.substring(e + 9, close).contains("PRIVATE KEY")) { // l10n: not text (what it looks for)
                 out += Found(0, close + 5, Kind.PRIVATE_KEY)
                 break
             }
-            e = text.indexOf("-----END ", e + 9)
+            e = text.indexOf("-----END ", e + 9) // l10n: not text (what it looks for)
         }
         var from = 0
         while (true) {
-            val begin = text.indexOf("-----BEGIN ", from)
+            val begin = text.indexOf("-----BEGIN ", from) // l10n: not text (what it looks for)
             if (begin < 0) return
             val headerEnd = text.indexOf("-----", begin + 11)
             if (headerEnd < 0 || headerEnd - begin > 80) { from = begin + 11; continue }
             val label = text.substring(begin + 11, headerEnd)
-            if (!label.contains("PRIVATE KEY")) { from = headerEnd + 5; continue }
-            val endMark = text.indexOf("-----END ", headerEnd + 5)
+            if (!label.contains("PRIVATE KEY")) { from = headerEnd + 5; continue } // l10n: not text (what it looks for)
+            val endMark = text.indexOf("-----END ", headerEnd + 5) // l10n: not text (what it looks for)
             val stop = if (endMark < 0) text.length else {
                 val close = text.indexOf("-----", endMark + 9)
                 if (close < 0) text.length else close + 5

@@ -28,6 +28,7 @@ import android.telecom.TelecomManager
 import app.heyrobot.core.AppSize
 import app.heyrobot.core.BatteryFacts
 import app.heyrobot.core.FreeUp
+import app.heyrobot.core.i18n.InfoStrings
 import app.heyrobot.core.RecentApp
 import app.heyrobot.core.MediaFile
 import app.heyrobot.core.MediaFacts
@@ -105,7 +106,8 @@ object PhoneInfo {
             try {
                 val st = ssm.queryStatsForPackage(StorageManager.UUID_DEFAULT, pkg, user)
                 // Robot itself: most of it is its models, which clearing its storage would delete.
-                AppSize(if (pkg == ctx.packageName) FreeUp.ROBOT_LABEL else label(ctx, pkg), st.appBytes + st.dataBytes, st.cacheBytes, pkg)
+                if (pkg == ctx.packageName) AppSize(InfoStrings.robotModels().en(), st.appBytes + st.dataBytes, st.cacheBytes, pkg, labelText = InfoStrings.robotModels())
+                else AppSize(label(ctx, pkg), st.appBytes + st.dataBytes, st.cacheBytes, pkg)
             } catch (_: Exception) {
                 null
             }

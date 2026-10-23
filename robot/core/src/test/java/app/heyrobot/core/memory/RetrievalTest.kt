@@ -12,7 +12,7 @@ import kotlin.math.abs
 class RetrievalTest {
     private class Question(val kind: String, val gold: List<String>, val text: String)
 
-    /** The design's bilingual set (§A6.2), in core/src/test/resources/memory. */
+    /** The bilingual set, in core/src/test/resources/memory. */
     private val set: Pair<List<Pair<String, String>>, List<Question>> by lazy {
         val lines = javaClass.classLoader!!.getResourceAsStream("memory/bilingual-set.tsv")!!.readBytes().toString(Charsets.UTF_8).lines()
         val items = lines.filter { it.startsWith("item\t") }.map { it.split('\t').let { p -> p[1] to p[2] } }
@@ -33,6 +33,25 @@ class RetrievalTest {
         assertEquals(emptyList<String>(), MemoryText.tokens("What is the, and est-ce que c'est le"))
         // "May" the month is kept.
         assertTrue(MemoryText.tokens("May 3").containsAll(listOf("may", "3")))
+    }
+
+    /** « thé » folds to "the": it stays a search word, and "the" (no accent) stays a stop word. */
+    @Test fun accentedWordsThatFoldOntoStopWords() {
+        assertEquals(emptyList<String>(), MemoryText.tokens("the"))
+        assertEquals(emptyList<String>(), MemoryText.tokens("THE The the"))
+        assertEquals(listOf("the"), MemoryText.tokens("thé"))
+        assertEquals(listOf("the"), MemoryText.tokens("Thé"))
+        assertEquals(listOf("the"), MemoryText.tokens("the\u0301")) // decomposed: e and a combining accent
+        assertEquals(listOf("the", "vert"), MemoryText.tokens("le thé vert"))
+        assertEquals(listOf("mais"), MemoryText.tokens("du maïs"))
+        assertEquals(listOf("ne", "3", "mai"), MemoryText.tokens("né le 3 mai"))
+        // The accented stop words stay stop words.
+        assertEquals(emptyList<String>(), MemoryText.tokens("à où là ça très était être êtes jusqu'à"))
+        // English memory search: "the" in a question still matches nothing, « thé » finds the note about tea.
+        val idx = Bm25Index.build(listOf("tea" to "J'aime le thé vert", "keys" to "The keys are in the drawer"))
+        assertEquals(emptyList<Bm25Index.Hit>(), idx.search("the"))
+        assertEquals(listOf("tea"), idx.search("du thé").map { it.id })
+        assertEquals(listOf("keys"), idx.search("where are the keys").map { it.id })
     }
 
     @Test fun lightStemming() {
@@ -92,8 +111,7 @@ class RetrievalTest {
 
     /**
      * The design's bilingual set: BM25 alone finds the right item first for every question that shares a key word,
-     * and seldom across languages (design §A6.2: 26/48 right first with the x86 script's tokenizer, 6/20 across
-     * languages). This tokenizer finds 28/48 first (15/15 key word, 6/20 other language); the floors catch a regression.
+     * and seldom across languages. This tokenizer finds 28/48 first (15/15 key word, 6/20 other language); the floors catch a regression.
      */
     @Test fun goldenRanksOnTheBilingualSet() {
         val (items, qs) = set

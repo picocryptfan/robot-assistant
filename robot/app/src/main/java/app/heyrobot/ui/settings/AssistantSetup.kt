@@ -10,9 +10,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import app.heyrobot.R
 import app.heyrobot.core.RepairWhen
+import app.heyrobot.core.i18n.AndroidPath
+import app.heyrobot.core.i18n.UiStrings
+import app.heyrobot.ui.theme.LocalLangs
+import app.heyrobot.ui.theme.str
 import app.heyrobot.core.ScreenAccess
 import app.heyrobot.core.AskRoute
 import app.heyrobot.core.helpers.HelperConfig
@@ -22,7 +29,6 @@ import app.heyrobot.sys.RecognizerKeeper
 import app.heyrobot.ui.AppActions
 import app.heyrobot.ui.Mark
 import app.heyrobot.ui.Page
-import app.heyrobot.ui.TOOLS_SETUP_NOTE
 import app.heyrobot.ui.ToolsSetupRows
 import app.heyrobot.ui.common.RIcons
 import app.heyrobot.ui.pref.IntroPreference
@@ -55,114 +61,133 @@ fun SetupScreen(f: AssistantFacts?, a: AppActions, snackbar: SnackbarHostState, 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) { RecognizerKeeper.check(ctx, RepairWhen.SETUP) }
     }
-    PreferenceScreen("Assistant setup", onBack, snackbar = snackbar) {
-        if (f == null) {
-            item(key = "checking") { IntroPreference("Checking…") }
+    val langs = LocalLangs.current
+    val peopleTitle = UiStrings.peopleNotesCalendar().str()
+    val toolsTitle = stringResource(R.string.settings_setup_tools)
+    val assistantTitle = stringResource(R.string.settings_setup_assistant)
+    val permissionsTitle = stringResource(R.string.settings_setup_permissions)
+    val helpersTitle = UiStrings.helpers().str()
+    val termuxTitle = UiStrings.termux().str()
+    // 1.2: with another installed recognizer (a stock phone's own) the restart paragraph and its fix don't apply.
+    val restart = if (f?.restartKept == app.heyrobot.core.RecognizerRepair.Kept.OTHER) ""
+        else stringResource(R.string.settings_setup_footer_restart, UiStrings.inSettings(UiStrings.advanced, UiStrings.adbFixes).render(langs.ui, pseudo = langs.pseudo)) + "\n\n"
+    val footer = f?.let {
+        restart + stringResource(R.string.settings_setup_footer_people) + " " +
+            (if (f.learnFromCheogram) "" else stringResource(R.string.settings_setup_footer_cheogram)) + "\n\n" +
+            stringResource(R.string.settings_tools_note) + "\n\n" + stringResource(R.string.settings_setup_footer_helpers)
+    }
+    val checking = stringResource(R.string.settings_root_setup_checking)
+    PreferenceScreen(UiStrings.assistantSetup().str(), onBack, snackbar = snackbar) {
+        if (f == null || footer == null) {
+            item(key = "checking") { IntroPreference(checking) }
             return@PreferenceScreen
         }
         // Opened from a card's "Allow": the permissions first.
-        fun people() = preferenceGroup("People, notes and calendar", "people") { PeopleRows(f, a) }
-        fun tools() = preferenceGroup("Weather and phone status", "tools") { ToolsSetupRows(f, a) }
+        fun people() = preferenceGroup(peopleTitle, "people") { PeopleRows(f, a) }
+        fun tools() = preferenceGroup(toolsTitle, "tools") { ToolsSetupRows(f, a) }
         if (peopleFirst) { people(); tools() }
-        preferenceGroup("Assistant", "assistant") {
-            StatusPreference("Robot is the digital assistant",
-                if (f.roleHeld) "Android lists Robot as your assistant" else "Pick Robot in Settings › Apps › Default apps › Digital assistant app",
+        preferenceGroup(assistantTitle, "assistant") {
+            StatusPreference(stringResource(R.string.settings_setup_role),
+                if (f.roleHeld) stringResource(R.string.settings_setup_role_ok)
+                else stringResource(R.string.settings_setup_role_todo, AndroidPath.DIGITAL_ASSISTANT.render(langs.system)),
                 if (f.roleHeld) Mark.OK else Mark.TODO)
-            StatusPreference("The assistant is running",
+            StatusPreference(stringResource(R.string.settings_setup_running),
                 when (f.active) {
-                    true -> "The corner swipe and “hey robot” open Robot"
-                    false -> if (f.roleHeld) "Android chose Robot but isn't running it. This happens after a restart: pick Robot again." else "Not yet"
-                    null -> "Android didn't say"
+                    true -> stringResource(R.string.settings_setup_running_ok)
+                    false -> stringResource(if (f.roleHeld) R.string.settings_setup_running_lost else R.string.settings_setup_not_yet)
+                    null -> stringResource(R.string.settings_setup_unknown)
                 },
                 when (f.active) { true -> Mark.OK; false -> if (f.roleHeld) Mark.WARN else Mark.TODO; null -> Mark.TODO })
             // "Ask about this screen" needs both of the assistant's screen settings (core ScreenAccess).
             val screen = ScreenAccess.setup(f.screenTextOn, f.screenshotOn)
-            StatusPreference("Screen sharing", screen.text,
+            val screenOpen = stringResource(R.string.settings_setup_screen_open)
+            StatusPreference(stringResource(R.string.settings_setup_screen), screen.phrase.str(),
                 when (screen.level) { ScreenAccess.Level.OK -> Mark.OK; ScreenAccess.Level.INFO -> Mark.TODO; ScreenAccess.Level.WARN -> Mark.WARN },
                 action = if (screen.level == ScreenAccess.Level.OK) null else ({ TextButton(onClick = a.openAssistantSettings,
-                    modifier = Modifier.semantics { contentDescription = "Open the assistant's screen settings" }) { Text("Open") } }))
-            StatusPreference("Default speech recognizer",
-                if (f.recognizerIsRobot) "Set to Robot, so Android keeps Robot as the assistant after a restart"
-                else "Not set to Robot (${if (f.recognizer == "unset") "none set" else "another app"}; ${f.recognizersFound} installed). " +
-                    "After a restart Android may turn Robot off.",
-                if (f.recognizerIsRobot) Mark.OK else Mark.WARN)
-            StatusPreference("Survives restarts",
-                (if (f.recognizerIsRobot) "Yes: Robot is the speech recognizer, so Android keeps it the assistant."
-                else "Not yet: Android may turn Robot off at the next restart. A one-time fix with a computer solves it.") +
-                    (if (f.secureSettingsGranted) " Robot keeps this set itself." else ""),
-                if (f.recognizerIsRobot) Mark.OK else Mark.WARN,
-                action = if (f.recognizerIsRobot && f.secureSettingsGranted) null else ({
-                    RowButton("Fix", "Fix it with ADB fixes") { a.openPage(Page.AdbFixes) }
+                    modifier = Modifier.semantics { contentDescription = screenOpen }) { Text(UiStrings.open().str()) } }))
+            // 1.2: another installed recognizer (a stock phone's own) keeps Robot the assistant too: no warning, no fix to replace it.
+            val other = !f.recognizerIsRobot && f.restartKept == app.heyrobot.core.RecognizerRepair.Kept.OTHER
+            StatusPreference(stringResource(R.string.settings_setup_recognizer),
+                if (f.recognizerIsRobot) stringResource(R.string.settings_setup_recognizer_ok)
+                else if (other) pluralStringResource(R.plurals.settings_setup_recognizer_other_kept, f.recognizersFound, f.recognizersFound)
+                else pluralStringResource(if (f.recognizer == "unset") R.plurals.settings_setup_recognizer_none else R.plurals.settings_setup_recognizer_other,
+                    f.recognizersFound, f.recognizersFound),
+                if (f.recognizerIsRobot || other) Mark.OK else Mark.WARN)
+            StatusPreference(stringResource(R.string.settings_setup_survives),
+                if (other) stringResource(R.string.settings_setup_survives_other)
+                else stringResource(if (f.recognizerIsRobot) R.string.settings_setup_survives_yes else R.string.settings_setup_survives_no) +
+                    (if (f.secureSettingsGranted) " " + stringResource(R.string.settings_setup_keeps_itself) else ""),
+                if (f.recognizerIsRobot || other) Mark.OK else Mark.WARN,
+                action = if (other || f.recognizerIsRobot && f.secureSettingsGranted) null else ({
+                    RowButton(stringResource(R.string.settings_setup_fix), stringResource(R.string.settings_setup_fix_label)) { a.openPage(Page.AdbFixes) }
                 }))
-            StatusPreference("Listening for wake words",
-                when (f.listening) { true -> "Yes"; false -> f.listeningNote ?: "No"; null -> "Starts when Robot is the running assistant" },
+            StatusPreference(stringResource(R.string.settings_setup_listening),
+                when (f.listening) {
+                    true -> stringResource(R.string.settings_setup_yes)
+                    false -> f.listeningNote ?: stringResource(R.string.settings_setup_no)
+                    null -> stringResource(R.string.settings_setup_listening_later)
+                },
                 if (f.listening == true) Mark.OK else Mark.TODO)
-            PreferenceItem("Assistant settings", "Android's Digital assistant app page", RIcons.SettingsVoice, onClick = a.openAssistantSettings)
+            PreferenceItem(stringResource(R.string.settings_setup_android), stringResource(R.string.settings_setup_android_detail), RIcons.SettingsVoice,
+                onClick = a.openAssistantSettings)
             // 0.8: who answers the headset button's three intents; Test presses it (VOICE_COMMAND), so Android's chooser shows if it would.
             f.headsetButton?.let { h ->
                 val row = HeadsetSetup.row(f.headsetButtonOn, h)
-                StatusPreference(row.title, row.text.removePrefix("Headset button "), when (row.ok) { true -> Mark.OK; false -> Mark.TODO; null -> Mark.TODO },
+                val title = row.titleText.str()
+                StatusPreference(title, row.textPhrase.str().removePrefix("$title "), when (row.ok) { true -> Mark.OK; false -> Mark.TODO; null -> Mark.TODO },
                     onClick = { a.openPage(Page.Settings(SettingsRoutes.HEADSET)) },
-                    action = if (!f.headsetButtonOn) null else ({ RowButton("Test", "Test the headset button") {
+                    action = if (!f.headsetButtonOn) null else ({ RowButton(stringResource(R.string.settings_setup_test), stringResource(R.string.settings_setup_test_label)) {
                         try { ctx.startActivity(Intent(HeadsetEntry.VOICE_COMMAND).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {}
                     } }))
             }
         }
-        preferenceGroup("Permissions", "permissions") {
-            StatusPreference("Microphone", if (f.micGranted) "Allowed" else "Needed for wake words and voice questions",
+        preferenceGroup(permissionsTitle, "permissions") {
+            val allowed = stringResource(R.string.settings_setup_allowed)
+            val allow = UiStrings.allow().str()
+            StatusPreference(stringResource(R.string.settings_setup_mic), if (f.micGranted) allowed else stringResource(R.string.settings_setup_mic_todo),
                 if (f.micGranted) Mark.OK else Mark.TODO,
-                action = if (f.micGranted) null else ({ RowButton("Allow", "Allow the microphone", a.askPermissions) }))
-            StatusPreference("Notifications", if (f.notificationsGranted) "Allowed" else "Needed for the restart reminder",
+                action = if (f.micGranted) null else ({ RowButton(allow, stringResource(R.string.settings_setup_mic_allow), a.askPermissions) }))
+            StatusPreference(stringResource(R.string.settings_setup_notifications),
+                if (f.notificationsGranted) allowed else stringResource(R.string.settings_setup_notifications_todo),
                 if (f.notificationsGranted) Mark.OK else Mark.TODO,
-                action = if (f.notificationsGranted) null else ({ RowButton("Allow", "Allow notifications", a.askPermissions) }))
+                action = if (f.notificationsGranted) null else ({ RowButton(allow, stringResource(R.string.settings_setup_notifications_allow), a.askPermissions) }))
         }
         if (!peopleFirst) { people(); tools() }
-        preferenceGroup("Helpers", "helpers") { HelperRows(f, helpers, a) }
+        preferenceGroup(helpersTitle, "helpers") { HelperRows(f, helpers, a) }
         // 0.9: the Termux agent, optional (its checklist is Settings › Termux's).
-        preferenceGroup("Termux", "termux") { TermuxSetupRow(a) }
+        preferenceGroup(termuxTitle, "termux") { TermuxSetupRow(a) }
         preferenceGroup(null, "adb") {
-            PreferenceItem("ADB fixes", "Make Robot stay the assistant after a restart", RIcons.Terminal, onClick = { a.openPage(Page.AdbFixes) })
+            PreferenceItem(UiStrings.adbFixes().str(), stringResource(R.string.settings_setup_adb_detail), RIcons.Terminal, onClick = { a.openPage(Page.AdbFixes) })
         }
-        preferenceFooter(
-            "After a restart: Android 17 keeps a non-system assistant across a restart only when a default speech recognizer is set, and " +
-                "it never picks one from an app like Robot by itself. GrapheneOS has no screen to choose one. So after a restart, Android " +
-                "may quietly turn Robot off as your assistant. Robot checks 3 minutes after every restart. If it was turned off, you get a " +
-                "notification: tap it, choose “Digital assistant app” and pick Robot again. To make it stay, use the one-time fix in " +
-                "Settings › Advanced › ADB fixes.\n\n" +
-                "People, notes and calendar: Robot asks for these only when you tap Allow. What it reads stays on the phone; texts and " +
-                "emails open as drafts and you press Send. " + (if (f.learnFromCheogram) "" else "Optional: Settings › People can learn " +
-                "names from your messaging app's notifications. It is off, and needs no access while it is off.") + "\n\n" + TOOLS_SETUP_NOTE + "\n\n" +
-                "Helpers: Robot uses the network for four things only: downloading its models, a helper when you ask for one, the " +
-                "weather (Open-Meteo) when you ask for it, and your own AI server, if you add one.",
-        )
+        preferenceFooter(footer)
     }
 }
 
 /** Assistant setup › People, notes and calendar: the two permissions with Allow, the hand-off apps, and message notifications. */
 @Composable
 private fun PeopleRows(f: AssistantFacts, a: AppActions) {
-    StatusPreference("Contacts",
-        if (f.contactsGranted) "Allowed: Robot finds the person you name" else "To text or email someone by name, and to look up a number",
+    val allow = UiStrings.allow().str()
+    StatusPreference(stringResource(R.string.settings_setup_contacts),
+        stringResource(if (f.contactsGranted) R.string.settings_setup_contacts_ok else R.string.settings_setup_contacts_todo),
         if (f.contactsGranted) Mark.OK else Mark.TODO,
-        action = if (f.contactsGranted) null else ({ RowButton("Allow", "Allow contacts", a.askContacts) }))
-    StatusPreference("Calendar",
-        if (f.calendarGranted) "Allowed: Robot reads your events and adds new ones"
-        else "To read your events and add new ones (without it, your calendar app opens to add one)",
+        action = if (f.contactsGranted) null else ({ RowButton(allow, stringResource(R.string.settings_setup_contacts_allow), a.askContacts) }))
+    StatusPreference(stringResource(R.string.settings_setup_calendar),
+        stringResource(if (f.calendarGranted) R.string.settings_setup_calendar_ok else R.string.settings_setup_calendar_todo),
         if (f.calendarGranted) Mark.OK else Mark.TODO,
-        action = if (f.calendarGranted) null else ({ RowButton("Allow", "Allow the calendar", a.askCalendar) }))
-    StatusPreference("Cheogram", if (f.cheogramInstalled) "Installed: texts open there as drafts" else "Not installed: texts use the SMS app",
+        action = if (f.calendarGranted) null else ({ RowButton(allow, stringResource(R.string.settings_setup_calendar_allow), a.askCalendar) }))
+    StatusPreference("Cheogram", stringResource(if (f.cheogramInstalled) R.string.settings_setup_cheogram_ok else R.string.settings_setup_cheogram_todo),
         if (f.cheogramInstalled) Mark.OK else Mark.TODO)
-    StatusPreference("Proton Mail", if (f.protonInstalled) "Installed: emails open there as drafts" else "Not installed: Android asks which email app to use",
+    StatusPreference("Proton Mail", stringResource(if (f.protonInstalled) R.string.settings_setup_proton_ok else R.string.settings_setup_proton_todo),
         if (f.protonInstalled) Mark.OK else Mark.TODO)
     // 0.4.0: notification access is asked for only once "Learn names from Cheogram notifications" is on (Settings › People).
+    val cheogram = stringResource(R.string.settings_setup_cheogram_notifications)
     when {
-        f.learnFromCheogram && f.notificationAccess -> StatusPreference("Message notifications",
-            "Notification access allowed: Robot keeps who messages you, never the text", Mark.OK)
-        f.learnFromCheogram -> StatusPreference("Message notifications", "Needs notification access: three steps", Mark.TODO,
+        f.learnFromCheogram && f.notificationAccess -> StatusPreference(cheogram, stringResource(R.string.settings_setup_cheogram_notifications_ok), Mark.OK)
+        f.learnFromCheogram -> StatusPreference(cheogram, stringResource(R.string.settings_setup_cheogram_notifications_todo), Mark.TODO,
             onClick = { a.openPage(Page.Settings(SettingsRoutes.NOTIFICATION_ACCESS)) })
     }
     if (!f.contactsGranted || !f.calendarGranted) {
-        PreferenceItem("Android doesn't ask?", "Open Robot's app settings", RIcons.Settings, onClick = a.openAppSettings)
+        PreferenceItem(stringResource(R.string.settings_setup_no_ask), stringResource(R.string.settings_setup_app_settings), RIcons.Settings, onClick = a.openAppSettings)
     }
 }
 
@@ -173,27 +198,29 @@ private fun PeopleRows(f: AssistantFacts, a: AppActions) {
  */
 @Composable
 private fun HelperRows(f: AssistantFacts, helpers: List<HelperConfig>, a: AppActions) {
-    StatusPreference("Network",
-        if (f.networkGranted) "Allowed, as Android reports it. If a helper says “No internet” while you're online, check Robot's Network permission."
-        else "Turned off for Robot: no helper can be reached",
+    StatusPreference(stringResource(R.string.settings_setup_network),
+        stringResource(if (f.networkGranted) R.string.settings_setup_network_ok else R.string.settings_setup_network_off),
         if (f.networkGranted) Mark.OK else Mark.WARN,
-        action = if (f.networkGranted) null else ({ RowButton("Open", "Open Robot's app settings", a.openAppSettings) }))
+        action = if (f.networkGranted) null else ({ RowButton(UiStrings.open().str(), stringResource(R.string.settings_setup_app_settings), a.openAppSettings) }))
     for (h in helpers.filter { it.presetOf.keyRequired }) {
-        StatusPreference("${h.name} API key", f.keys[h.id]
-            ?: if (h.presetOf.app != null) "None: questions open the ${h.presetOf.defaultName} app instead (Settings › Helpers › ${h.name})"
-            else "None (Settings › Helpers › ${h.name})",
+        StatusPreference(stringResource(R.string.settings_setup_key, h.name), f.keys[h.id]
+            ?: if (h.presetOf.app != null) stringResource(R.string.settings_setup_key_none_app, h.presetOf.defaultName, h.name)
+            else stringResource(R.string.settings_setup_key_none, h.name),
             if (f.keys[h.id] != null) Mark.OK else Mark.TODO)
     }
     // An app's row only for a helper that opens it (on, without a key or set to its app): nobody else needs it installed.
     val viaApp = helpers.filter { it.on && it.presetOf.app != null && HelperSettings.route(it, f.keys[it.id] != null) == AskRoute.APP }
         .distinctBy { it.presetOf.app }
+    val wayApp = stringResource(R.string.settings_setup_way_app)
+    val wayWeb = stringResource(R.string.settings_setup_way_web)
+    val wayShare = stringResource(R.string.settings_setup_way_share)
     for (h in viaApp) {
         val c = f.app(h.presetOf.app) ?: continue
-        val ways = listOfNotNull("claude:// link".takeIf { c.appLink }, "claude.ai link".takeIf { c.webLink }, "share".takeIf { c.send })
-        StatusPreference("${h.presetOf.defaultName} app",
-            if (!c.installed) "Not installed"
-            else if (ways.isEmpty()) "Installed. Robot opens the app and puts your question on the clipboard."
-            else "Installed · opens with: " + ways.joinToString(", "),
+        val ways = listOfNotNull(wayApp.takeIf { c.appLink }, wayWeb.takeIf { c.webLink }, wayShare.takeIf { c.send })
+        StatusPreference(stringResource(R.string.settings_setup_helper_app, h.presetOf.defaultName),
+            if (!c.installed) stringResource(R.string.settings_setup_not_installed)
+            else if (ways.isEmpty()) stringResource(R.string.settings_setup_claude_clipboard)
+            else stringResource(R.string.settings_setup_claude_ways, ways.joinToString(", ")),
             if (c.installed) Mark.OK else Mark.TODO)
     }
 }

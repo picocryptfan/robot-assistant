@@ -68,6 +68,11 @@ import app.heyrobot.ui.common.TURN_GAP
 import app.heyrobot.ui.common.TurnView
 import app.heyrobot.ui.common.replyFooter
 import app.heyrobot.ui.common.keptPicture
+import app.heyrobot.ui.common.replyFooterText
+import app.heyrobot.core.i18n.Lang
+import app.heyrobot.core.i18n.UiStrings
+import app.heyrobot.ui.theme.LocalLangs
+import app.heyrobot.ui.theme.str
 
 // MAIN PROCESS. Home, history and one saved conversation.
 
@@ -86,8 +91,8 @@ fun HomeScreen(snap: Snapshot, recent: List<StoredConversation>, a: AppActions, 
             }
             Spacer(Modifier.width(16.dp))
             Column {
-                Text("Hi, I'm Robot", style = MaterialTheme.typography.headlineMedium)
-                Text("Your assistant runs entirely on this phone.", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.home_hi), style = MaterialTheme.typography.headlineMedium)
+                Text(stringResource(R.string.home_runs_here), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         Button(
@@ -97,7 +102,7 @@ fun HomeScreen(snap: Snapshot, recent: List<StoredConversation>, a: AppActions, 
         ) {
             Icon(RIcons.Mic, null)
             Spacer(Modifier.width(10.dp))
-            Text("Talk to Robot", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.home_talk_to_robot), style = MaterialTheme.typography.titleMedium)
         }
         // 1.0: the setup guide left with Finish later: where it was, and Continue.
         val underWay = guide.at?.takeIf { SetupGuide.home(guide) == HomeGuide.CONTINUE }
@@ -109,17 +114,17 @@ fun HomeScreen(snap: Snapshot, recent: List<StoredConversation>, a: AppActions, 
             }
         }
         if (!ready || !f.micGranted || !f.notificationsGranted) {
-            SectionCard("Get started") {
+            SectionCard(stringResource(R.string.home_get_started)) {
                 StatusRow(
                     if (snap.model == ModelStatus.VERIFIED) Mark.OK else if (snap.model == ModelStatus.BAD) Mark.WARN else Mark.TODO,
-                    "Download Gemma, Robot's brain",
+                    stringResource(R.string.home_download_gemma),
                     when (snap.model) {
-                        ModelStatus.VERIFIED -> "Ready on this phone"
-                        ModelStatus.DOWNLOADING, ModelStatus.IMPORTING, ModelStatus.VERIFYING -> snap.progress ?: ModelLogic.headline(snap.model)
+                        ModelStatus.VERIFIED -> stringResource(R.string.home_ready_here)
+                        ModelStatus.DOWNLOADING, ModelStatus.IMPORTING, ModelStatus.VERIFYING -> snap.progress ?: ModelLogic.headlineText(snap.model).str()
                         // 0.4.7: this phone's Fast (2.6 GB on a Pixel 9a, 3.1 GB for a Pixel 10's TPU build).
-                        else -> "${app.heyrobot.core.PhoneStatus.size(snap.fast.bytes)}, once. Wi-Fi recommended."
+                        else -> stringResource(R.string.home_size_once, app.heyrobot.core.PhoneStatus.sizeText(snap.fast.bytes).str())
                     },
-                ) { if (snap.model != ModelStatus.VERIFIED) FilledTonalButton(onClick = { a.openTab(Tab.MODEL) }) { Text("Open") } }
+                ) { if (snap.model != ModelStatus.VERIFIED) FilledTonalButton(onClick = { a.openPage(Page.Settings(app.heyrobot.ui.settings.SettingsRoutes.MODEL)) }) { Text(stringResource(R.string.home_open)) } }
                 val stt = snap.voice(VoiceBundle.STT)
                 val voice = snap.voice(VoiceBundle.KOKORO)
                 StatusRow(
@@ -128,50 +133,50 @@ fun HomeScreen(snap: Snapshot, recent: List<StoredConversation>, a: AppActions, 
                         stt?.status == ModelStatus.BAD || voice?.status == ModelStatus.BAD -> Mark.WARN
                         else -> Mark.TODO
                     },
-                    "Download voice models",
+                    stringResource(R.string.home_download_voice),
                     when {
-                        snap.voiceReady -> "Robot can hear you and answer out loud"
-                        stt?.progress != null -> "Speech recognition: ${stt.progress}"
-                        voice?.progress != null -> "Voice: ${voice.progress}"
-                        else -> "${VoiceModelLogic.size(VoiceBundle.STT.bytes + VoiceBundle.KOKORO.bytes)}, once, to talk to Robot. Wi-Fi recommended."
+                        snap.voiceReady -> stringResource(R.string.home_voice_works)
+                        stt?.progress != null -> stringResource(R.string.home_stt_progress, stt.progress)
+                        voice?.progress != null -> stringResource(R.string.home_voice_progress, voice.progress)
+                        else -> stringResource(R.string.home_voice_size, voiceSize(VoiceBundle.STT.bytes + VoiceBundle.KOKORO.bytes))
                     },
-                ) { if (!snap.voiceReady) FilledTonalButton(onClick = { a.openTab(Tab.MODEL) }) { Text("Open") } }
+                ) { if (!snap.voiceReady) FilledTonalButton(onClick = { a.openPage(Page.Settings(app.heyrobot.ui.settings.SettingsRoutes.MODEL)) }) { Text(stringResource(R.string.home_open)) } }
                 StatusRow(
                     if (f?.micGranted == true && f.notificationsGranted) Mark.OK else Mark.TODO,
-                    "Allow the microphone and notifications",
-                    "For “hey robot”, and to tell you if Android turns Robot off after a restart.",
-                ) { if (f?.micGranted != true || !f.notificationsGranted) FilledTonalButton(onClick = a.askPermissions) { Text("Allow") } }
+                    stringResource(R.string.home_allow_mic),
+                    stringResource(R.string.home_allow_mic_why),
+                ) { if (f?.micGranted != true || !f.notificationsGranted) FilledTonalButton(onClick = a.askPermissions) { Text(stringResource(R.string.home_allow)) } }
                 StatusRow(
                     if (f?.active == true) Mark.OK else Mark.TODO,
-                    "Make Robot your digital assistant",
-                    if (f?.active == true) "Done" else "Settings › Digital assistant app › Robot",
-                ) { if (f?.active != true) FilledTonalButton(onClick = a.openAssistantSettings) { Text("Set") } }
+                    stringResource(R.string.home_make_assistant_row),
+                    stringResource(if (f?.active == true) R.string.home_done else R.string.home_assistant_path),
+                ) { if (f?.active != true) FilledTonalButton(onClick = a.openAssistantSettings) { Text(stringResource(R.string.home_set)) } }
             }
         }
         // 0.5.0: conversation mode.
-        SectionCard("Conversation") {
-            Text("Robot writes down a conversation, in French and English, translates it face to face, and summarizes it, on this phone.",
+        SectionCard(stringResource(R.string.home_conversation)) {
+            Text(stringResource(R.string.home_conversation_detail),
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 FilledTonalButton(onClick = a.transcribe, modifier = Modifier.heightIn(min = 48.dp)) {
                     Icon(RIcons.Mic, null)
                     Spacer(Modifier.width(8.dp))
-                    Text("Transcribe")
+                    Text(stringResource(R.string.home_transcribe))
                 }
-                FilledTonalButton(onClick = a.interpret, modifier = Modifier.heightIn(min = 48.dp)) { Text("Translate") }
+                FilledTonalButton(onClick = a.interpret, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.home_translate)) }
             }
-            TextButton(onClick = { a.openPage(Page.Transcripts) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Transcripts") }
+            TextButton(onClick = { a.openPage(Page.Transcripts) }, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.home_transcripts)) }
         }
-        SectionCard("Ways to ask") {
-            Tip(RIcons.Phone, "Swipe up from a bottom corner", "Works on the lock screen too. Once the phone is unlocked, Robot can see the screen you're on.")
-            Tip(RIcons.Mic, "Say “hey robot”", "Even with the screen off. Turn it off in Settings.")
-            Tip(RIcons.Camera, "Show it a photo", "Tap the camera in the assistant panel.")
-            Tip(RIcons.Message, "Texts, email, notes and your calendar", "“Text Mom I'm running late”, “note: buy coffee filters”, “what's on my calendar tomorrow”.")
+        SectionCard(stringResource(R.string.home_ways_to_ask)) {
+            Tip(RIcons.Phone, stringResource(R.string.home_swipe), stringResource(R.string.home_swipe_detail))
+            Tip(RIcons.Mic, stringResource(R.string.home_say_hey), stringResource(R.string.home_say_hey_detail))
+            Tip(RIcons.Camera, stringResource(R.string.home_show_photo), stringResource(R.string.home_show_photo_detail))
+            Tip(RIcons.Message, stringResource(R.string.home_texts), stringResource(R.string.home_texts_detail))
         }
         if (recent.isNotEmpty()) {
-            SectionCard("Recent") {
+            SectionCard(stringResource(R.string.home_recent)) {
                 for (c in recent) ConversationRow(c) { a.openConversation(c.id) }
-                TextButton(onClick = { a.openTab(Tab.HISTORY) }) { Text("All conversations") }
+                TextButton(onClick = { a.openTab(Tab.HISTORY) }) { Text(stringResource(R.string.home_all_conversations)) }
             }
         }
         if (underWay == null) {
@@ -204,10 +209,10 @@ private fun ConversationRow(c: StoredConversation, onClick: () -> Unit) {
                 // A helper took part: a small cloud, or a house when only your own server did.
                 if (c.fromHelper) {
                     val names = c.turns.filter { it.fromHelper }.map { it.author }.distinct().joinToString(", ")
-                    Icon(if (c.homeOnly) RIcons.Home else RIcons.Cloud, "With $names", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.tertiary)
+                    Icon(if (c.homeOnly) RIcons.Home else RIcons.Cloud, stringResource(R.string.home_with, names), Modifier.size(16.dp), tint = MaterialTheme.colorScheme.tertiary)
                     Spacer(Modifier.width(6.dp))
                 }
-                Text(c.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(c.titleText.str(), style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             if (c.preview.isNotEmpty()) Text(c.preview, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
@@ -221,16 +226,16 @@ fun HistoryScreen(list: List<StoredConversation>, a: AppActions, modifier: Modif
     var confirmAll by remember { mutableStateOf(false) }
     Column(modifier.fillMaxSize().padding(horizontal = 20.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.weight(1f)) { ScreenTitle("History", "Saved on this phone only.") }
-            if (list.isNotEmpty()) TextButton(onClick = { confirmAll = true }) { Text("Delete all") }
+            Box(Modifier.weight(1f)) { ScreenTitle(UiStrings.history().str(), stringResource(R.string.home_saved_here)) }
+            if (list.isNotEmpty()) TextButton(onClick = { confirmAll = true }) { Text(stringResource(R.string.home_delete_all)) }
         }
         if (list.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(RIcons.History, null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(12.dp))
-                    Text("No conversations yet", style = MaterialTheme.typography.titleMedium)
-                    Text("They appear here after you ask Robot something.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.home_no_conversations), style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.home_no_conversations_detail), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         } else {
@@ -246,10 +251,10 @@ fun HistoryScreen(list: List<StoredConversation>, a: AppActions, modifier: Modif
     if (confirmAll) {
         AlertDialog(
             onDismissRequest = { confirmAll = false },
-            title = { Text("Delete all conversations?") },
-            text = { Text("This removes every saved conversation from this phone. It can't be undone.") },
-            confirmButton = { TextButton(onClick = { confirmAll = false; a.deleteAllConversations() }) { Text("Delete all") } },
-            dismissButton = { TextButton(onClick = { confirmAll = false }) { Text("Cancel") } },
+            title = { Text(stringResource(R.string.home_delete_all_title)) },
+            text = { Text(stringResource(R.string.home_delete_all_detail)) },
+            confirmButton = { TextButton(onClick = { confirmAll = false; a.deleteAllConversations() }) { Text(stringResource(R.string.home_delete_all)) } },
+            dismissButton = { TextButton(onClick = { confirmAll = false }) { Text(stringResource(R.string.home_cancel)) } },
         )
     }
 }
@@ -260,22 +265,22 @@ fun ConversationScreen(c: StoredConversation?, a: AppActions, snackbar: Snackbar
     var confirm by remember { mutableStateOf(false) }
     Scaffold(
         topBar = {
-            BackBar(c?.title ?: "Conversation", onBack) {
-                if (c != null) IconButton(onClick = { confirm = true }) { Icon(RIcons.Delete, "Delete") }
+            BackBar(c?.titleText?.str() ?: stringResource(R.string.home_conversation), onBack) {
+                if (c != null) IconButton(onClick = { confirm = true }) { Icon(RIcons.Delete, stringResource(R.string.home_delete)) }
             }
         },
         floatingActionButton = {
             if (c != null) ExtendedFloatingActionButton(
                 onClick = { a.talk(c.id) },
                 // Material hides the button's text from TalkBack (it can collapse to the icon), so the icon carries the name.
-                icon = { Icon(RIcons.Mic, "Continue") },
-                text = { Text("Continue") },
+                icon = { Icon(RIcons.Mic, stringResource(R.string.home_continue)) },
+                text = { Text(stringResource(R.string.home_continue)) },
             )
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { pad ->
         if (c == null) {
-            Box(Modifier.fillMaxSize().padding(pad), contentAlignment = Alignment.Center) { Text("This conversation was deleted.") }
+            Box(Modifier.fillMaxSize().padding(pad), contentAlignment = Alignment.Center) { Text(stringResource(R.string.home_conversation_deleted)) }
             return@Scaffold
         }
         LazyColumn(
@@ -289,6 +294,7 @@ fun ConversationScreen(c: StoredConversation?, a: AppActions, snackbar: Snackbar
                     modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp))
             }
             items(c.turns, key = { it.id }) { t ->
+                val langs = LocalLangs.current
                 val user = t.role == TurnRole.USER
                 // A picture and screen text kept with it ("Keep screenshots and photos in history"); usually neither.
                 val pic = remember(t.id, t.picture) { if (user) keptPicture(t.picture) else null }
@@ -296,7 +302,7 @@ fun ConversationScreen(c: StoredConversation?, a: AppActions, snackbar: Snackbar
                 TurnView(TurnUi(t.id, user, t.text, attachment = if (user) t.attachment else Attachment.NONE, thumb = pic, screenText = t.screenText,
                     actions = t.actions.mapIndexed { i, x -> ActionView("$i", x.tool, x.summary, x.status, x.detail) },
                     stopped = t.stopped, error = t.error, helper = t.fromHelper, readBack = t.readBack, by = t.by, home = t.home,
-                    footer = if (user) emptyList() else replyFooter(t.sources, t.costMicros.takeIf { showCost && it > 0 }?.let { CostText.line(it / 1e6) }, t.by)),
+                    footer = if (user) emptyList() else replyFooterText(t.sources, t.costMicros.takeIf { showCost && it > 0 }?.let { CostText.line(it / 1e6) }, t.by).map { it.render(langs) }),
                     TurnActions.None)
             }
         }
@@ -304,9 +310,17 @@ fun ConversationScreen(c: StoredConversation?, a: AppActions, snackbar: Snackbar
     if (confirm && c != null) {
         AlertDialog(
             onDismissRequest = { confirm = false },
-            title = { Text("Delete this conversation?") },
-            confirmButton = { TextButton(onClick = { confirm = false; a.deleteConversation(c.id) }) { Text("Delete") } },
-            dismissButton = { TextButton(onClick = { confirm = false }) { Text("Cancel") } },
+            title = { Text(stringResource(R.string.home_delete_this)) },
+            confirmButton = { TextButton(onClick = { confirm = false; a.deleteConversation(c.id) }) { Text(stringResource(R.string.home_delete)) } },
+            dismissButton = { TextButton(onClick = { confirm = false }) { Text(stringResource(R.string.home_cancel)) } },
         )
     }
 }
+
+/**
+ * The voice models' size: 1.0's "1.02 GB" in English (VoiceModelLogic.size); in French core's « 1 Go » (PhoneStatus's), as
+ * the other sizes on Home.
+ */
+@Composable
+private fun voiceSize(bytes: Long): String =
+    if (LocalLangs.current.ui == Lang.FR) app.heyrobot.core.PhoneStatus.sizeText(bytes).str() else VoiceModelLogic.sizeText(bytes).en()

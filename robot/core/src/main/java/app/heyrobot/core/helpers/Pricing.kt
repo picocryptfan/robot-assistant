@@ -4,12 +4,16 @@ package app.heyrobot.core.helpers
 import app.heyrobot.core.AnthropicCost
 import app.heyrobot.core.AnthropicModel
 import app.heyrobot.core.CostText
+import app.heyrobot.core.i18n.HelperStrings
+import app.heyrobot.core.i18n.Lang
+import app.heyrobot.core.i18n.Phrase
+import org.json.JSONObject
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
+import java.util.Locale
 import kotlin.math.roundToLong
-import org.json.JSONObject
 
 // Pure. What a helper's reply costs (docs/ask-claude.md "Cost", 0.6.0 for every helper). Prices are never guessed: a
 // model's price comes, in this order, from what the provider reported for the request itself (OpenRouter's usage.cost),
@@ -56,7 +60,8 @@ data class UtcWindow(val days: Set<DayOfWeek>, val fromHour: Int, val toHour: In
  * [longFrom] tokens ([long] then prices every token of the request, as OpenAI, xAI, Google and Anthropic bill it); the
  * request starts in one of [peakHours] ([peak]); or the day (UTC) is after [until], when [then] takes over (a dated price
  * change, such as a promotion ending). [perSearch]: dollars per web search (null: the provider's search price isn't
- * known, so a reply that searched has an unknown cost). [asOf] and [source]: when and where the prices were read.
+ * known, so a reply that searched has an unknown cost). [asOf] and [source]: when and where the prices were read (Settings
+ * says "Prices as of 11 Oct 2026 from …", [asOfText]).
  */
 data class PriceCard(
     val rates: Rates,
@@ -67,7 +72,7 @@ data class PriceCard(
     val until: LocalDate? = null,
     val then: PriceCard? = null,
     val perSearch: Double? = null,
-    val asOf: String = "",
+    val asOf: LocalDate? = null,
     val source: String = "",
 ) {
     /** The card in force on [at]'s day (UTC). */
@@ -84,8 +89,8 @@ data class PriceCard(
         return c.rates
     }
 
-    /** "Prices as of 11 Oct 2026 from platform.openai.com". */
-    val line: String get() = listOfNotNull(asOf.takeIf { it.isNotEmpty() }?.let { "as of $it" }, source.takeIf { it.isNotEmpty() }?.let { "from $it" }).joinToString(" ")
+    /** The day the prices were read: "11 Oct 2026", « 11 octobre 2026 » (1.1: Settings shows it in the menus' language). */
+    val asOfText: Phrase? get() = asOf?.let(Pricing::dateText)
 }
 
 /**
@@ -157,11 +162,47 @@ object Pricing {
     fun micros(dollars: Double): Long = (dollars * 1_000_000).roundToLong().coerceAtLeast(0)
 
     /** "≈ 1¢" for a known cost, "cost unknown" for one that isn't, nothing for free (a home server). */
-    fun line(dollars: Double?, free: Boolean = false): String? = when {
-        dollars == null -> "cost unknown"
+    fun line(dollars: Double?, free: Boolean = false): String? = lineText(dollars, free)?.en()
+
+    /** [line] as words without a language yet (1.1); the amount is written as in English. */
+    fun lineText(dollars: Double?, free: Boolean = false): Phrase? = when {
+        dollars == null -> HelperStrings.costUnknown()
         free && dollars == 0.0 -> null
-        else -> CostText.line(dollars)
+        else -> Phrase.plain(CostText.line(dollars))
     }
+
+    /** A day as the price table writes it: "11 Oct 2026", « 11 octobre 2026 », « 1er janvier 2027 ». */
+    fun dateText(d: LocalDate): Phrase = HelperStrings.date("day" to (if (d.dayOfMonth == 1) HelperStrings.dayFirst() else Phrase.plain(d.dayOfMonth.toString())),
+        "month" to HelperStrings.months[d.monthValue - 1](), "year" to d.year.toString())
+}
+
+/**
+ * Amounts as Settings › Helpers and the connection window write them, in the menus' language [lang]: English exactly as 1.0
+ * wrote it ("$0.15", "$12.50", "1.2"); French with its comma and « $ US » (« 0,15 $ US »), with no-break spaces.
+ */
+object HelperFormat {
+    private const val NBSP = '\u00A0'
+
+    /** A price per million tokens: "$2", "$0.15", "$0.075", "$12.50". */
+    fun perMillion(d: Double, lang: Lang): String = usd(when {
+        d >= 1 && d == Math.floor(d) -> String.format(Locale.US, "%.0f", d)
+        d >= 0.1 -> String.format(Locale.US, "%.2f", d)
+        else -> String.format(Locale.US, "%.3f", d).trimEnd('0').let { if (it.endsWith(".")) it + "0" else it }
+    }, lang)
+
+    /** Today's spend: "$0.42" (as [CostText.dollarsText]). */
+    fun dollars(micros: Long, lang: Lang): String = usd(String.format(Locale.US, "%.2f", micros / 1_000_000.0), lang)
+
+    /** A budget or a cap: "$1", "$0.50" (".00" left out). */
+    fun budget(micros: Long, lang: Lang): String = usd(String.format(Locale.US, "%.2f", micros / 1_000_000.0).removeSuffix(".00"), lang)
+
+    /** [c] cents, written as in English ("1", "0.5"): "1¢", « 0,5 ¢ ». */
+    fun cents(c: String, lang: Lang): String = if (lang == Lang.FR) c.replace('.', ',') + NBSP + "¢" else c + "¢"
+
+    /** A number with one decimal, as seconds are shown: "1.2", « 1,2 ». */
+    fun oneDecimal(x: Double, lang: Lang): String = String.format(Locale.US, "%.1f", x).let { if (lang == Lang.FR) it.replace('.', ',') else it }
+
+    private fun usd(amount: String, lang: Lang): String = if (lang == Lang.FR) amount.replace('.', ',') + NBSP + "$" + NBSP + "US" else "$" + amount
 }
 
 /**
@@ -179,7 +220,7 @@ object Pricing {
  *   each request's cost itself.
  */
 object PriceTable {
-    const val AS_OF = "11 Oct 2026"
+    val AS_OF: LocalDate = LocalDate.of(2026, 10, 11)
 
     private const val OPENAI = "developers.openai.com/api/docs/pricing"
     private const val GOOGLE = "ai.google.dev/gemini-api/docs/pricing"

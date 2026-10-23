@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.UiStrings
+import app.heyrobot.core.i18n.UiLabel
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.Msg
+import app.heyrobot.core.i18n.HelperStrings
+import app.heyrobot.core.i18n.AndroidPath
 import app.heyrobot.core.helpers.HelperConfig
 import app.heyrobot.core.helpers.HelperSettings
 import app.heyrobot.core.helpers.HelperWho
@@ -17,11 +23,14 @@ import kotlin.math.roundToLong
 enum class HelperEffort(val wire: String) { LOW("low"), MEDIUM("medium"), HIGH("high") }
 
 /** The effort setting: automatic, or one level for every question (a setting overrides both automatic rules). */
-enum class HelperEffortSetting(val title: String, val level: HelperEffort?) {
-    AUTO("Automatic", null),
-    LOW("Low", HelperEffort.LOW),
-    MEDIUM("Medium", HelperEffort.MEDIUM),
-    HIGH("High", HelperEffort.HIGH),
+enum class HelperEffortSetting(private val titleMsg: Msg, val level: HelperEffort?) {
+    AUTO(HelperStrings.effortAuto, null),
+    LOW(HelperStrings.effortLow, HelperEffort.LOW),
+    MEDIUM(HelperStrings.effortMedium, HelperEffort.MEDIUM),
+    HIGH(HelperStrings.effortHigh, HelperEffort.HIGH);
+
+    /** Its name, as words without a language yet (1.1). */
+    val titleText: Phrase get() = titleMsg()
 }
 
 /** How hard a helper thinks and how long it may answer, for one question. */
@@ -117,31 +126,33 @@ enum class HelperFailure(val retry: Boolean = false) {
     /** The Claude helper's words (as 0.3 to 0.5 said them). */
     val text: String get() = say(HelperWho.CLAUDE)
 
-    /** The words for helper [w]. */
-    fun say(w: HelperWho): String {
-        val n = w.name
+    /** The words for helper [w], in English. */
+    fun say(w: HelperWho): String = sayText(w).en()
+
+    /** [say] as words without a language yet (1.1: the panel says them in the turn's reply language). */
+    fun sayText(w: HelperWho): Phrase {
+        val n = "name" to w.name
         return when (this) {
-            KEY_REFUSED -> "Your $n key was refused. Check it in Robot's settings."
-            NO_CREDITS -> "Your ${w.company} account is out of API credits." + (w.console?.let { " Add credits at $it." } ?: "")
-            NOT_ALLOWED -> if (w.home) "$n refused that request. Check the server's settings." else "Your $n key isn't allowed to do that. Check your ${w.company} account."
-            MODEL_UNAVAILABLE -> if (w.home) "$n doesn't have that model any more. Pick another one in Robot's settings, under Helpers."
-                else "That $n model isn't available to your key. Pick another one in Robot's settings."
-            RATE_LIMITED -> "$n is busy, try again in a minute."
-            OVERLOADED -> "$n is overloaded right now. Try again in a minute."
-            SERVER -> "$n isn't answering right now. Try again in a minute."
-            BAD_REQUEST -> "$n couldn't take that request."
-            TOO_LONG -> "That was too long for $n."
-            NO_INTERNET -> "No internet. If you're online, check that Robot's Network permission is on (Settings › Apps › Robot › Permissions)."
-            NO_NETWORK_PERMISSION -> "Robot isn't allowed to use the network. Turn on Network for Robot in Android's app settings."
-            TIMEOUT -> "$n took too long to answer."
-            RESET -> "Robot lost track of the conversation with $n, so $n mode has ended. Ask again to start fresh."
-            NO_KEY -> "Add your $n API key in Robot's settings first" + (w.app?.let { ", or choose the $it app there" } ?: "") + "."
-            UNKNOWN -> "Something went wrong with $n."
-            UNREACHABLE -> if (w.home) "$n isn't answering. Is the computer on, and is the phone on the same network?" else "$n can't be reached right now."
-            NOT_LOCAL -> "That address isn't on your home network, so Robot won't send to it without https."
-            CERTIFICATE -> "$n's certificate isn't one Robot can trust. Use https with a real certificate (Tailscale's HTTPS gives one), or http on your home network."
-            NO_ADDRESS -> "Robot doesn't know where $n is yet. Open its page in Robot's settings, under Helpers, and tap Test connection."
-            KEY_OVER_HTTP -> app.heyrobot.core.helpers.LanRule.keyOverHttp("your $n key")
+            KEY_REFUSED -> HelperStrings.keyRefused(n)
+            NO_CREDITS -> w.console?.let { HelperStrings.noCreditsAt("company" to w.companyText, "console" to it) } ?: HelperStrings.noCredits("company" to w.companyText)
+            NOT_ALLOWED -> if (w.home) HelperStrings.serverRefused(n) else HelperStrings.notAllowed(n, "company" to w.companyText)
+            MODEL_UNAVAILABLE -> if (w.home) HelperStrings.serverModelGone(n) else HelperStrings.modelUnavailable(n)
+            RATE_LIMITED -> HelperStrings.rateLimited(n)
+            OVERLOADED -> HelperStrings.overloaded(n)
+            SERVER -> HelperStrings.serverError(n)
+            BAD_REQUEST -> HelperStrings.badRequest(n)
+            TOO_LONG -> HelperStrings.tooLong(n)
+            NO_INTERNET -> HelperStrings.noInternet("path" to AndroidPath.APP_PERMISSIONS)
+            NO_NETWORK_PERMISSION -> HelperStrings.noNetworkPermission()
+            TIMEOUT -> HelperStrings.timeout(n)
+            RESET -> HelperStrings.reset(n)
+            NO_KEY -> w.app?.let { HelperStrings.noKeyOrApp(n, "appName" to it) } ?: HelperStrings.noKey(n)
+            UNKNOWN -> HelperStrings.unknown(n)
+            UNREACHABLE -> if (w.home) HelperStrings.homeUnreachable(n) else HelperStrings.unreachable(n)
+            NOT_LOCAL -> HelperStrings.notLocal()
+            CERTIFICATE -> HelperStrings.certificate(n)
+            NO_ADDRESS -> HelperStrings.noAddress(n, "button" to UiLabel(UiStrings.testConnection))
+            KEY_OVER_HTTP -> HelperStrings.keyOverHttp(n)
         }
     }
 
@@ -185,14 +196,15 @@ object HelperVoices {
     /** The phone's own voice: a helper's sentences at this pitch (Robot's at 1.0). */
     const val SYSTEM_PITCH = 0.82f
 
-    fun title(name: String): String = when (name) {
-        "am_michael" -> "Michael (American, male)"
-        "am_fenrir" -> "Fenrir (American, male)"
-        "am_puck" -> "Puck (American, male)"
-        "bf_emma" -> "Emma (British, female)"
-        "af_bella" -> "Bella (American, female)"
-        "af_heart" -> "Heart (American, female)"
-        else -> name
+    /** A voice's name and what it sounds like ("Emma (British, female)"), as words without a language yet (1.1: Settings shows them in the menus' language); an unknown one by its id. */
+    fun titleText(name: String): Phrase = when (name) {
+        "am_michael" -> HelperStrings.voiceMichael()
+        "am_fenrir" -> HelperStrings.voiceFenrir()
+        "am_puck" -> HelperStrings.voicePuck()
+        "bf_emma" -> HelperStrings.voiceEmma()
+        "af_bella" -> HelperStrings.voiceBella()
+        "af_heart" -> HelperStrings.voiceHeart()
+        else -> Phrase.plain(name)
     }
 
     fun of(name: String?): String = KOKORO.firstOrNull { it.first == name }?.first ?: DEFAULT
@@ -246,17 +258,28 @@ object SpeechLang {
     }
 }
 
-/** Which way a question to a helper goes. The titles are the Claude helper's (HelperSettings.routeTitle words the others'). */
-enum class AskRoute(val title: String, val detail: String) {
-    APP("Claude app", "Opens the Claude app with your question; uses your claude.ai plan. Robot doesn't hear the answer."),
-    API("Claude API", "Robot asks Claude itself and speaks the answer. Needs an API key with credits."),
+/** Which way a question to Claude goes. */
+enum class AskRoute(private val titleMsg: Msg, private val detailMsg: Msg) {
+    APP(HelperStrings.routeApp, HelperStrings.routeAppDetail),
+    API(HelperStrings.routeApi, HelperStrings.routeApiDetail);
+
+    /** Its name and what it does, as words without a language yet (1.1: Settings shows them in the menus' language). */
+    val titleText: Phrase get() = titleMsg()
+    val detailText: Phrase get() = detailMsg()
 }
 
 /** When Robot may bring a helper in without being asked (docs/ask-claude.md "When Robot needs help"; every helper since 0.6.0). */
-enum class Escalation(val title: String, val detail: String) {
-    OFF("Off", "Robot never suggests a helper."),
-    ASK("Ask me first", "Robot offers to check with the helper and waits for a yes or a tap."),
-    AUTO("Automatic", "Robot checks with the helper by itself for hard questions (only through its API, at a price it knows)."),
+enum class Escalation(private val titleMsg: Msg, private val labelMsg: Msg, private val detailMsg: Msg) {
+    OFF(HelperStrings.escalationOff, HelperStrings.escalationOff, HelperStrings.escalationOffDetail),
+    ASK(HelperStrings.escalationAsk, HelperStrings.escalationAskFirst, HelperStrings.escalationAskDetail),
+    AUTO(HelperStrings.escalationAuto, HelperStrings.escalationAuto, HelperStrings.escalationAutoDetail);
+
+    /** Its name as you'd say it ("Ask me first") and what it does, as words without a language yet (1.1). */
+    val titleText: Phrase get() = titleMsg()
+    val detailText: Phrase get() = detailMsg()
+
+    /** Its name in Settings' words ("Ask first"), as the app's escalationText writes it. */
+    val labelText: Phrase get() = labelMsg()
 }
 
 /** Why the hand-over tool (ask_claude) is left out of a question for the local model (logged as this code only, never the words). */
@@ -318,39 +341,48 @@ object AskHelperTool {
  * that carries one, the conversation is personal: Robot checking with a helper by itself sends only the question, and a
  * helper joining it sees what came before only after a tap on Include. [label] completes "It contains …".
  */
-enum class Personal(val label: String) {
-    SCREEN("screen text"),
-    PHOTO("a photo"),
-    CALENDAR("your calendar"),
-    NOTES("your notes"),
+enum class Personal(val msg: Msg) {
+    SCREEN(HelperStrings.personalScreen),
+    PHOTO(HelperStrings.personalPhoto),
+    CALENDAR(HelperStrings.personalCalendar),
+    NOTES(HelperStrings.personalNotes),
     /** What a lookup found: the phone's contacts and Robot's People (names learned from notifications included). */
-    CONTACTS("your contacts"),
+    CONTACTS(HelperStrings.personalContacts),
     /** 0.4.0: a weather lookup or the nearest place found online, which say where you are (or where your Home for weather is). */
-    LOCATION("your location"),
+    LOCATION(HelperStrings.personalLocation),
     /** 0.4.0: phone_status, your phone's storage, battery and memory and its biggest apps. */
-    PHONE("your phone's status"),
+    PHONE(HelperStrings.personalPhone),
     /** Claude's answer read off the Claude app's screen. */
-    CLAUDE_APP("text from the Claude app"),
+    CLAUDE_APP(HelperStrings.personalClaudeApp),
     /** Another read tool's findings (none today besides the three above). */
-    READ("what Robot read on your phone"),
+    READ(HelperStrings.personalRead),
     /**
      * 0.5.0: a transcript from conversation mode, other people's words included. It reaches a helper only through the
      * "Summarize with a stronger AI" card, never through an escalation, a helper's conversation or "include the conversation".
      */
-    CONVERSATION("a recorded conversation"),
+    CONVERSATION(HelperStrings.personalConversation),
     /**
      * 0.7: what Robot remembers about you (core memory/), given to the local model with a turn or saved in it. It reaches a
      * helper only through a card, even a trusted one (HelperTrust), and a secret item never does.
      */
-    MEMORY("what Robot remembers about you"),
+    MEMORY(HelperStrings.personalMemory),
     /**
      * 0.7: messages you received, other people's words. Like a screen or a photo, never sent to a helper on trust alone
      * or by "Send personal content to helpers automatically": only through a card that lists them (core helpers HelperTrust).
      */
-    MESSAGES("messages you received"),
+    MESSAGES(HelperStrings.personalMessages),
     /** 0.9: what a Termux command or script printed. */
-    TERMUX("your Termux output"),
+    TERMUX(HelperStrings.personalTermux),
+    /**
+     * 1.4, Robot Files (files-1.4-plan.md §5.2): what find_files found or read_file answered from a file. Like messages, it
+     * reaches a helper only through a card a tap answers: never by "Send personal content to helpers automatically", trust
+     * or a spoken yes (core helpers HelperTrust). Medical files and IDs never reach one at all (core files FilesForHelper).
+     */
+    FILES(HelperStrings.personalFiles),
     ;
+
+    /** What [this] is, in English ("your calendar"); [msg] the words without a language yet (1.1). */
+    val label: String get() = msg().en()
 
     companion object {
         fun of(a: Attachment): Personal? = when (a) {
@@ -369,8 +401,12 @@ enum class Personal(val label: String) {
             ToolName.WEATHER, ToolName.MAPS_SEARCH, ToolName.MAPS_NAVIGATE -> LOCATION
             ToolName.PHONE_STATUS, ToolName.FREE_MEMORY, ToolName.FREE_STORAGE -> PHONE
             ToolName.TERMUX_SCRIPT, ToolName.TERMUX_COMMAND -> TERMUX
+            ToolName.FIND_FILES, ToolName.READ_FILE -> FILES
             else -> READ
         }
+
+        /** [list] as words without a language yet: « le texte de l'écran, une photo et ton agenda ». */
+        fun listText(p: Set<Personal>): Phrase = Phrase.ListOf(entries.filter { it in p }.map { it.msg() })
 
         /** "screen text, a photo and your calendar", in the enum's order. */
         fun list(p: Set<Personal>): String {
@@ -449,13 +485,24 @@ object EscalationPolicy {
     }
 
     /**
-     * The local model handed the question over (ask_claude, [handedOver]) without a word or an action ([said] false), and
-     * the helper won't answer right now ([decision] isn't AUTO: an offer, the lock screen, or no helper at all): Robot runs
-     * the model once more on the same question without ask_claude for its own short answer, and any offer goes under
-     * it. Never an answer of nothing but "I'd rather check that with Jarvis.".
+     * The local model handed the question over (ask_claude, [handedOver]) without a word or an action ([said] false): Robot
+     * runs the model once more on the same question without ask_claude for its own short answer, with what it has on the
+     * phone (Memory's notes, its tools). With an offer, the lock screen or no helper, any offer goes under it: never an
+     * answer of nothing but "I'd rather check that with Jarvis.". 1.1, with Automatic too (the user, 19 Oct: "own notes
+     * first then helper"): the helper is asked only when that answer is missing or unsure ([afterOwnAnswer]).
      */
-    fun ownAnswerFirst(decision: EscalationDecision, handedOver: Boolean, said: Boolean): Boolean =
-        handedOver && !said && decision != EscalationDecision.AUTO
+    fun ownAnswerFirst(handedOver: Boolean, said: Boolean): Boolean = handedOver && !said
+
+    /**
+     * Robot's own answer ([ownAnswerFirst]) is in: [answered] it said or did something, [hedged] its words don't know, can't
+     * or won't ([ownAnswerHedged]). With Automatic ([decision] AUTO) the helper is asked only when that answer is missing or
+     * hedged; an answer that stands ends the turn (NONE). Every other decision is as it was.
+     */
+    fun afterOwnAnswer(decision: EscalationDecision, answered: Boolean, hedged: Boolean): EscalationDecision =
+        if (decision == EscalationDecision.AUTO && answered && !hedged) EscalationDecision.NONE else decision
+
+    /** Robot's own answer, its [text] and whether it [acted] (a card): hedged as the HEDGE trigger counts a reply ([Hedge.detect]). */
+    fun ownAnswerHedged(text: String, acted: Boolean): Boolean = !acted && Hedge.detect(text)
 }
 
 /** At most one escalation per turn, and never one from a helper's answer (the "no loops" rule). */

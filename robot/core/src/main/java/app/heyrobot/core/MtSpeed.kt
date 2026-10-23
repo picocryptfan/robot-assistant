@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.ConversationStrings
+import app.heyrobot.core.i18n.Phrase
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
@@ -55,31 +57,40 @@ data class MtSpeedReport(
     val outputsOk: Boolean get() = error == null && lines.isNotEmpty() && same == lines.size
     val passed: Boolean get() = speedOk && memoryOk && outputsOk
 
-    /** The result in plain lines: the three parts of the gate, then the load. */
-    fun summary(total: Int): List<String> {
-        error?.let { return listOf(it.text()) }
-        fun mark(ok: Boolean) = if (ok) "passes" else "misses"
+    /** One line of the result: [text], and [missed] when it is a part of the gate that wasn't met (or why the test couldn't run). */
+    data class Line(val text: Phrase, val missed: Boolean)
+
+    /** The result in plain lines: the three parts of the gate, then the load (core ConversationStrings). */
+    fun summaryLines(total: Int): List<Line> {
+        error?.let { return listOf(Line(it.textPhrase(), true)) }
+        fun mark(ok: Boolean) = if (ok) ConversationStrings.markPasses() else ConversationStrings.markMisses()
+        val outputs = outputsOk && lines.size == total
+        val memory = if (peakMb >= 0) ConversationStrings.memoryNow("peak" to "$peakMb", "now" to "$rssMb") else ConversationStrings.memoryUnknown()
         return listOf(
-            "Speed: median $medianMs ms, slowest $maxMs ms a line (the mark is $MEDIAN_GATE_MS ms or less): ${mark(speedOk)}.",
-            "Memory: ${if (peakMb >= 0) "$peakMb MB at most, $rssMb MB now" else "unknown"} with both directions loaded " +
-                "(the mark is $RSS_GATE_MB MB or less): ${mark(memoryOk)}.",
-            "Translations: $same of $total the same as on the build machine (the mark is all of them): ${mark(outputsOk && lines.size == total)}.",
-            if (loadMs.isEmpty()) "The engine was loaded already." else "Loaded in " + loadMs.entries.joinToString(", ") { "${it.value} ms (${it.key})" } + ".",
+            Line(ConversationStrings.speedLine("median" to "$medianMs", "max" to "$maxMs", "gate" to "$MEDIAN_GATE_MS", "mark" to mark(speedOk)), !speedOk),
+            Line(ConversationStrings.memoryLine("memory" to memory, "gate" to "$RSS_GATE_MB", "mark" to mark(memoryOk)), !memoryOk),
+            Line(ConversationStrings.outputsLine("same" to "$same", "total" to "$total", "mark" to mark(outputs)), !outputs),
+            Line(if (loadMs.isEmpty()) ConversationStrings.loadedAlready()
+                else ConversationStrings.loadedIn("list" to Phrase.Join(loadMs.entries.map { ConversationStrings.loadTime("ms" to "${it.value}", "direction" to it.key) }, ", ")),
+                false),
         )
     }
 
-    /** The report as text for Copy: the summary, then each line that wasn't the same as the reference. */
+    /** [summaryLines] in English (the copied report). */
+    fun summary(total: Int): List<String> = summaryLines(total).map { it.text.en() }
+
+    /** The report as text for Copy (a diagnostic: English): the summary, then each line that wasn't the same as the reference. */
     fun plain(set: List<MtTestLine>, header: String): String = buildString {
         append(header).append('\n')
         summary(set.size).forEach { append(it).append('\n') }
-        append("Also the same as the bergamot 0.4.5 wheel's phase-4 outputs: $sameAsBergamot of ${set.size} (another build of the engine; not part of the mark).\n")
+        append("Also the same as the bergamot 0.4.5 wheel's phase-4 outputs: $sameAsBergamot of ${set.size} (another build of the engine; not part of the mark).\n") // l10n: not text (the copied report, a diagnostic: English)
         lines.forEachIndexed { i, l ->
             val t = set.getOrNull(i) ?: return@forEachIndexed
             append(String.format(Locale.US, "%2d. %s %4d ms %s\n", i + 1, l.direction, l.ms, if (l.same) "same" else "DIFFERENT"))
             if (!l.same) {
                 append("    source:   ").append(t.source).append('\n')
                 append("    expected: ").append(t.reference).append('\n')
-                append("    got:      ").append(l.output ?: "(no translation)").append('\n')
+                append("    got:      ").append(l.output ?: "(no translation)").append('\n') // l10n: not text (the copied report, a diagnostic: English)
             }
         }
     }
@@ -97,6 +108,15 @@ data class MtSpeedReport(
     companion object {
         const val MEDIAN_GATE_MS = 60L
         const val RSS_GATE_MB = 450L
+
+        /** How long ago the last test ran: "now", "40 s ago", "5 min ago", "2 h ago", "3 d ago" (« il y a 5 min »). */
+        fun agoText(ms: Long): Phrase = when {
+            ms < 5_000 -> ConversationStrings.agoNow()
+            ms < 60_000 -> ConversationStrings.agoSeconds("n" to "${ms / 1000}")
+            ms < 3_600_000 -> ConversationStrings.agoMinutes("n" to "${ms / 60_000}")
+            ms < 86_400_000 -> ConversationStrings.agoHours("n" to "${ms / 3_600_000}")
+            else -> ConversationStrings.agoDays("n" to "${ms / 86_400_000}")
+        }
 
         fun median(xs: List<Long>): Long {
             if (xs.isEmpty()) return 0

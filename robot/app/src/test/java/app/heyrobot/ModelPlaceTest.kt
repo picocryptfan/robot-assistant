@@ -41,7 +41,7 @@ class ModelPlaceTest {
         for (e in listOf("GemmaEngine", "LlamaEngine")) {
             val load = code("brain/src/main/java/app/heyrobot/brain/$e.kt")
             assertTrue(e, load.contains("if (ModelMove.hashBeforeLoad(f, ctx.filesDir)) {"))
-            assertTrue(e, load.contains("if (want == null || got != want) return failed(req, LoadFailure.NOT_ALLOWED, LoadCheck.CHANGED)"))
+            assertTrue(e, load.contains("if (want == null || got != want) return failed(req, LoadFailure.NOT_ALLOWED, LoadCheck.changedText)"))
         }
         assertTrue(code("brain/src/main/java/app/heyrobot/brain/LlamaEngine.kt").contains("ModelMove.sha256(channel)"))
     }

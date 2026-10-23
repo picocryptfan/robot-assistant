@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.car
 
+import app.heyrobot.core.i18n.HandsFreeStrings
+import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.i18n.Phrase
 import app.heyrobot.core.LogCode
 import app.heyrobot.core.ToolName
 import app.heyrobot.core.output.BtClass
@@ -9,7 +12,7 @@ import app.heyrobot.core.output.DeviceRole
 import app.heyrobot.core.output.Line
 import app.heyrobot.core.output.RememberedDevice
 import app.heyrobot.core.output.SeenDevice
-import app.heyrobot.core.output.SpokenLang
+import app.heyrobot.core.i18n.Lang
 
 // Pure. Car mode: Robot's own hands-free mode over the car's standard
 // Bluetooth (HFP for the microphone and Robot's voice, A2DP optionally). It is not Android Auto, which GrapheneOS offers
@@ -126,9 +129,9 @@ object CarModeMachine {
     /** Car mode started without a car ends after this long (no disconnect will end it). */
     const val MANUAL_MAX_MS = 4 * 3_600_000L
 
-    val CAR_ON = Line("Car mode on.", "Mode auto activé.")
-    val CAR_OFF = Line("Car mode off.", "Mode auto désactivé.")
-    val START_NOTICE = Line("Car connected · Start car mode", "Auto connectée · Démarrer le mode auto")
+    val CAR_ON = Line(HandsFreeStrings.carOn())
+    val CAR_OFF = Line(HandsFreeStrings.carOff())
+    val START_NOTICE = Line(HandsFreeStrings.startNotice())
 
     fun on(s: CarState, input: CarInput, settings: CarSettings): Pair<CarState, List<CarEffect>> {
         val st = when (input) {
@@ -245,10 +248,13 @@ object CarDetect {
     }
 
     /** Settings › Car mode › Add your car, while connected: "Robot sees “MyCar” (…EE:FF). Is this your car?" */
-    fun question(seen: SeenDevice, lang: SpokenLang): String {
-        val name = DeviceMemory.clean(seen.name).ifEmpty { if (lang == SpokenLang.FR) "un appareil" else "a device" }
+    fun question(seen: SeenDevice, lang: Lang): String = questionText(seen).render(Langs.of(lang))
+
+    /** 1.1: [question] without a language yet (Settings shows it in the menus' language). */
+    fun questionText(seen: SeenDevice): Phrase {
+        val name: Any = DeviceMemory.clean(seen.name).ifEmpty { null } ?: HandsFreeStrings.aDevice()
         val tail = seen.tail?.let { " (…$it)" } ?: ""
-        return if (lang == SpokenLang.FR) "Robot voit « $name »$tail. Est-ce ton auto?" else "Robot sees “$name”$tail. Is this your car?"
+        return HandsFreeStrings.isThisYourCar("name" to name, "tail" to tail)
     }
 
     /** Bluetooth says it is surely a car (not just hands-free). */
@@ -275,8 +281,8 @@ enum class CarFunction(val tools: Set<ToolName>) {
  * anywhere else. Robot puts no limits of its own on using the phone while driving.
  */
 object CarGate {
-    val UNLOCK_ONCE = Line("Unlock once to use car features.", "Déverrouille une fois pour utiliser les fonctions de l'auto.")
-    val INDICATOR = Line("Car mode · unlocked features", "Mode auto · fonctions déverrouillées")
+    val UNLOCK_ONCE = Line(HandsFreeStrings.unlockOnce())
+    val INDICATOR = Line(HandsFreeStrings.indicator())
 
     /** A car function may run now: unlocked, or locked in a trusted session. */
     fun allowed(function: CarFunction, locked: Boolean, trusted: Boolean): Boolean = !locked || trusted

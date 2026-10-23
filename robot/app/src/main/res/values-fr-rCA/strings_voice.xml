@@ -1,0 +1,128 @@
+<!-- Voice and its models, in Québec French (tu): the l10n work package WP7. The ids of values/strings_voice.xml;
+     each value written with the glossary (robot/l10n/glossary.tsv) and the OQLF's spaces (tools/fr_typo.py,
+     FrenchTypographyTest). -->
+<resources>
+    <!-- Settings › Voice. -->
+    <string name="voice_speak_voice">Voix seulement</string>
+    <string name="voice_speak_always">Toujours</string>
+    <string name="voice_speak_never">Jamais</string>
+    <string name="voice_speak_voice_detail">Quand tu as demandé de vive voix ou avec un mot d’éveil</string>
+    <string name="voice_speak_always_detail">Aussi quand tu as écrit</string>
+    <string name="voice_speak_never_detail">Seulement les mots à l’écran</string>
+    <string name="voice_barge_echo_detail">Par défaut. Mode appel avec annulation d’écho pendant que Robot parle</string>
+    <string name="voice_barge_off_detail">Le micro entend Robot par-dessus toi</string>
+    <string name="voice_barge_always_detail">Mode appel tout le temps que le panneau est ouvert</string>
+    <string name="voice_stop_down_detail">Par défaut</string>
+    <string name="voice_stop_either_detail">Volume haut ou bas</string>
+    <string name="voice_stop_off_detail">Les touches changent seulement le volume</string>
+    <string name="voice_download_models">Télécharger les modèles de voix</string>
+    <string name="voice_download_models_summary">%1$s · d’ici là, la saisie et la voix du téléphone</string>
+    <string name="voice_open">Ouvrir</string>
+    <string name="voice_group_voice">La voix de Robot</string>
+    <string name="voice_languages_note">Robot fonctionne en anglais et en français québécois. Il peut aussi transcrire et lire d’autres langues, mais il répond en anglais ou en français.</string>
+    <string name="voice_voice">Voix</string>
+    <string name="voice_not_downloaded_detail">%1$s. Pas téléchargée&#160;: la voix du téléphone parle à sa place.</string>
+    <string name="voice_not_downloaded_summary">%1$s · pas téléchargée, la voix du téléphone parle</string>
+    <string name="voice_speed">Vitesse</string>
+    <string name="voice_test_summary">Robot dit une phrase</string>
+    <string name="voice_group_replies">Réponses</string>
+    <string name="voice_speak_replies">Lire les réponses à voix haute</string>
+    <string name="voice_show_words">Afficher les mots pendant que tu parles</string>
+    <string name="voice_more_battery">Utilise plus de batterie</string>
+    <string name="voice_wait">Attendre avant de répondre</string>
+    <string name="voice_wait_summary">%1$s · combien de temps Robot attend après que tu as arrêté de parler. Choisis Long s’il te coupe la parole.</string>
+    <string name="voice_wait_short">Court</string>
+    <string name="voice_wait_normal">Normal</string>
+    <string name="voice_wait_long">Long</string>
+    <string name="voice_wait_very_long">Très long</string>
+    <string name="voice_wait_short_detail">0,6&#160;s de silence</string>
+    <string name="voice_wait_normal_detail">Par défaut. 1&#160;s de silence</string>
+    <string name="voice_wait_long_detail">1,6&#160;s de silence</string>
+    <string name="voice_wait_very_long_detail">2,5&#160;s de silence</string>
+    <string name="voice_group_talks">Pendant que Robot parle</string>
+    <string name="voice_hear_you">T’entendre pendant que Robot parle</string>
+    <string name="voice_plays_as">La voix joue comme</string>
+    <string name="voice_default_detail">Par défaut. %1$s</string>
+    <string name="voice_stop_key">La touche de volume arrête Robot</string>
+    <string name="voice_group_trouble">Dépannage</string>
+    <string name="voice_try_again">Réessayer les modèles de voix</string>
+    <string name="voice_try_again_summary">Après un plantage ou un chargement raté</string>
+    <string name="voice_test_speed">Tester la vitesse de la voix</string>
+    <string name="voice_testing">Test en cours…</string>
+    <string name="voice_test_speed_summary">Chronomètre les modèles sur un enregistrement intégré</string>
+    <string name="voice_barge_test">Test d’interruption</string>
+    <string name="voice_barge_test_summary">Robot entend-il «&#160;stop&#160;» par-dessus sa propre voix&#8239;?</string>
+    <string name="voice_transcription_check_summary">À quel point Robot transcrit bien le français du Québec et l’anglais</string>
+    <string name="voice_log_summary">Ce que la partie voix a fait</string>
+    <string name="voice_footer">Lire les réponses à voix haute&#160;: «&#160;Voix seulement&#160;» parle quand tu as demandé de vive voix ou avec un mot d’éveil, pas quand tu as écrit. Touche la conversation, presse la touche volume bas ou dis «&#160;stop&#160;» (quand le mot d’éveil est activé) pour que Robot arrête de parler. Afficher les mots pendant que tu parles écrit ta question pendant que tu la dis. Attendre avant de répondre&#160;: combien de temps Robot attend après que tu as arrêté de parler avant de répondre&#8239;; une pause plus courte ne termine pas ta question. Garde le bouton du micro enfoncé et Robot écoute jusqu’à ce que tu le relâches.\n\nT’entendre pendant que Robot parle. Annulation d’écho, par défaut&#160;: pendant que Robot parle, le micro passe au mode appel du téléphone avec annulation d’écho, pour que «&#160;stop&#160;» et tes mots d’éveil passent, puis revient au meilleur mode pour les questions quand Robot a fini. Désactivé&#160;: l’ancienne façon, le micro entend Robot par-dessus toi&#8239;; touche la conversation ou presse la touche de volume pour l’arrêter. Annulation d’écho tout le temps&#160;: mode appel avec annulation d’écho tout le temps que le panneau est ouvert, sans changement, des questions un peu moins précises.\n\nSensibilité d’interruption&#160;: à quel point Robot entend facilement «&#160;stop&#160;» et tes phrases d’éveil pendant qu’il parle&#8239;; la sensibilité propre des phrases d’éveil reste la même.\n\nLa touche de volume arrête Robot&#160;: pendant que Robot parle et que le panneau est à l’écran, la touche arrête Robot et ne change pas le volume. Écran éteint ou panneau fermé, elle fonctionne comme toujours.\n\nTester la vitesse de la voix charge les modèles téléchargés et les chronomètre sur un enregistrement intégré et deux phrases fixes (rien n’est joué ni enregistré). Le test d’interruption vérifie ce que Robot entend pendant qu’il parle. La vérification de la transcription montre à quel point Robot transcrit bien le français du Québec et l’anglais&#160;: lis des phrases, ou dis n’importe quoi et corrige-le&#8239;; noté comme les conversations sont décodées. Le journal vocal liste ce que la partie voix a fait, pour les fois où Robot n’a pas répondu.</string>
+
+    <!-- Interrupt sensitivity. -->
+    <string name="voice_interrupt">Sensibilité d’interruption</string>
+    <string name="voice_interrupt_text">À quel point Robot entend facilement «&#160;stop&#160;» et tes phrases d’éveil pendant qu’il parle. %1$s.</string>
+    <string name="voice_interrupt_text_default">À quel point Robot entend facilement «&#160;stop&#160;» et tes phrases d’éveil pendant qu’il parle. %1$s. (par défaut)</string>
+
+    <!-- Settings › Wake word. -->
+    <string name="voice_kws_missing">Robot ne peut pas vérifier les mots d’éveil&#160;: son fichier d’épellation manque dans cette version.</string>
+    <string name="voice_use_wake_words">Utiliser les mots d’éveil</string>
+    <string name="voice_only_charging">Seulement pendant la recharge</string>
+    <string name="voice_saves_battery">Économise la batterie</string>
+    <string name="voice_wake_phrases">Phrases d’éveil</string>
+    <string name="voice_no_phrase_on">Aucune phrase d’éveil n’est activée</string>
+    <string name="voice_no_phrase_on_detail">Seul le balayage depuis un coin du bas ouvre Robot. «&#160;Stop&#160;» fonctionne encore pendant que Robot parle.</string>
+    <string name="voice_phrase_refused">Inutilisable&#160;: touche pour savoir pourquoi</string>
+    <string name="voice_phrase_note">Sensibilité %1$s · touche pour une note</string>
+    <string name="voice_phrase_sensitivity">Sensibilité %1$s</string>
+    <string name="voice_listen_for">Écouter «&#160;%1$s&#160;»</string>
+    <string name="voice_add_phrase">Ajouter une phrase d’éveil</string>
+    <string name="voice_add_phrase_summary">1 à 4 mots</string>
+    <string name="voice_test_wake">Tester les mots d’éveil</string>
+    <string name="voice_test_wake_summary">Voir quelle phrase Robot entend, pendant que tu la dis</string>
+    <string name="voice_phrase">Phrase</string>
+    <string name="voice_phrase_rules">1 à 4 mots&#160;: lettres, espaces et apostrophes, jusqu’à 24 caractères. «&#160;Stop&#160;» est réservé.</string>
+    <string name="voice_add">Ajouter</string>
+    <string name="voice_starts_low">%1$s Elle commence à la sensibilité la plus basse.</string>
+    <string name="voice_wake_footer">Dis n’importe laquelle de ces phrases pour ouvrir Robot. Chacune fonctionne sur le téléphone&#160;: le micro reste allumé pendant que Robot écoute, et rien n’est enregistré ni gardé. Une phrase plus longue réveille Robot par accident moins souvent. Seulement pendant la recharge économise la batterie.</string>
+    <string name="voice_wake_footer_level">%1$s&#160;: %2$s. (Seuil %3$s, amplification %4$s.)</string>
+    <string name="voice_wake_footer_try">Essaie une nouvelle phrase dans Tester les mots d’éveil, aussi depuis l’autre bout de la pièce, avant de t’y fier.</string>
+    <string name="voice_sensitivity">Sensibilité</string>
+    <string name="voice_not_listened">%1$s Robot n’écoute pas celle-ci.</string>
+    <string name="voice_phrase_number">N°&#160;%1$d dans le journal vocal</string>
+    <string name="voice_cancel">Annuler</string>
+    <string name="voice_remove">Retirer</string>
+
+    <!-- The barge-in test (its results stay English: a diagnostic, as the voice log). -->
+    <string name="voice_barge_setup">T’entendre pendant que Robot parle&#160;: %1$s · Sensibilité d’interruption&#160;: %2$s · La voix de Robot joue comme %3$s</string>
+    <string name="voice_barge_phone_voice">la voix du téléphone</string>
+    <string name="voice_barge_phone_voice_missing">la voix du téléphone (%1$s n’est pas installé)</string>
+    <string name="voice_barge_runs">Essais</string>
+    <string name="voice_barge_run">Lancer le test</string>
+    <string name="voice_barge_run_summary">Dis «&#160;stop&#160;» ou une phrase d’éveil, une fois</string>
+    <string name="voice_barge_count">Essai de comptage</string>
+    <string name="voice_barge_count_summary">Dis-les aussi souvent que tu veux</string>
+    <string name="voice_barge_silent">Essai silencieux</string>
+    <string name="voice_barge_silent_summary">Reste silencieux</string>
+    <string name="voice_barge_tricky">Mots piégés</string>
+    <string name="voice_barge_tricky_summary">Reste silencieux pendant que Robot lit des mots comme «&#160;stop&#160;»</string>
+    <string name="voice_barge_last">Dernier résultat</string>
+    <string name="voice_barge_footer">Robot lit un paragraphe d’environ 20 secondes. Lancer le test&#160;: dis «&#160;stop&#160;» ou une phrase d’éveil, une fois&#8239;; Robot s’arrête quand il l’entend, et le résultat dit ce qu’il a entendu et à quelle vitesse il s’est tu. Essai de comptage&#160;: Robot lit jusqu’à la fin pendant que tu dis «&#160;stop&#160;» et tes phrases d’éveil aussi souvent que tu veux, à quelques secondes d’intervalle&#8239;; le résultat liste chacune de celles qu’il a entendues. Essai silencieux&#160;: reste silencieux&#8239;; il compte tout ce que Robot entend quand même. Mots piégés&#160;: reste silencieux pendant que Robot lit des mots comme «&#160;stop&#160;» (step, steep, stamp, bus stop)&#8239;; il montre à quelle fréquence ses propres mots déclenchent, et combien sont mis de côté. Essaie chaque mode et chaque sensibilité d’interruption dans Réglages › Voix&#160;: le résultat dit avec lesquels il a fonctionné. Les résultats restent en anglais, comme le journal vocal.</string>
+
+    <!-- Test wake words. -->
+    <string name="voice_listening">À l’écoute</string>
+    <string name="voice_not_listening">Pas à l’écoute</string>
+    <string name="voice_listening_detail">Dis une phrase d’éveil. Robot ne s’ouvrira pas tant que cet écran est affiché.</string>
+    <string name="voice_not_listening_detail">Robot doit être l’assistant actif, avec le mot d’éveil activé.</string>
+    <string name="voice_wake_on">Activées&#160;: %1$s</string>
+    <string name="voice_wake_on_none">aucune</string>
+    <string name="voice_nothing_heard">Rien d’entendu pour l’instant.</string>
+    <string name="voice_phrase_removed">Phrase n°&#160;%1$d (retirée)</string>
+
+    <!-- The voice log's page (its lines stay English: a diagnostic). -->
+    <string name="voice_log_copied">Copié. Colle-le dans un message, ou fais une capture d’écran.</string>
+    <string name="voice_log_copy">Copier le journal</string>
+    <string name="voice_log_intro">Les derniers événements de la partie voix (%1$d), les plus récents d’abord&#160;: aucun mot, aucun son, seulement ce qui s’est passé et combien de temps ça a pris. Ils restent en anglais. Quand Robot n’a pas répondu, fais une capture d’écran ou touche Copier le journal tout de suite.</string>
+    <string name="voice_log_send">Envoyer comme rapport de bogue</string>
+    <string name="voice_log_empty">Rien pour l’instant. La partie voix de Robot écrit ici dès qu’elle fonctionne comme assistant.</string>
+
+    <!-- A voice model's download (Android's download notification). -->
+    <string name="voice_download_title">Robot&#160;: %1$s</string>
+</resources>

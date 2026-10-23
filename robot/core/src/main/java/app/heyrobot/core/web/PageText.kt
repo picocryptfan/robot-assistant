@@ -539,7 +539,7 @@ object PageText {
         if (listOf("width", "height", "max-width", "max-height").any { zero(decl[it]) }) return true
         decl["clip"]?.let { if (it.replace(" ", "").let { c -> c.startsWith("rect(0") || c.startsWith("rect(1px,1px,1px,1px") }) return true }
         decl["clip-path"]?.let { if (it.contains("inset(50%") || it.contains("inset(100%") || it.contains("circle(0")) return true }
-        decl["transform"]?.let { if (it.contains("scale(0)") || it.contains("scale(0,") || it.contains("scalex(0)") || it.contains("scaley(0)")) return true }
+        decl["transform"]?.let { if (it.contains("scale(0)") || it.contains("scale(0,") || it.contains("scalex(0)") || it.contains("scaley(0)")) return true } // l10n: not text (CSS values)
         val positioned = decl["position"] == "absolute" || decl["position"] == "fixed"
         if (positioned && listOf("left", "top", "right", "bottom").any { num(decl[it])?.let { (n, unit) -> n <= -999 && unit != "%" } == true }) return true
         num(decl["text-indent"])?.let { (n, _) -> if (n <= -999) return true }

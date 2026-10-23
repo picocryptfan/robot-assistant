@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.messages
 
-// Pure. Settings › Messages (design §B11). The defaults are the design's answers to its open questions: replies are
+import app.heyrobot.core.i18n.Lang
+import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.i18n.MessageStrings
+import app.heyrobot.core.i18n.Msg
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.UiStrings
+
+// Pure. Settings › Messages. The defaults are the design's answers to its open questions: replies are
 // sent by Robot after a card, with "Open the chat; I press Send" as the switch back (1); after reading, the notification
 // is left as it was (2); messages are kept in RAM only until their notification goes (3); nothing on the lock screen
 // (4); and messages reach a helper only through a card listing what goes.
@@ -10,38 +17,50 @@ package app.heyrobot.core.messages
 // People's "Send my replies to … without a card" is [MessagesFile.noCard] by People id. The voice log's events 190–199
 // (VoiceEvent.MSG_*, codes in MessageLog.kt) record counts and codes only, never a name or a word of a message.
 
-/** How long a message stays in RAM: never on disk, whatever this says. */
-enum class KeepMessages(val title: String, val afterGoneMs: Long) {
+/** How long a message stays in RAM: never on disk, whatever this says. [text]: its name (core i18n); [title] its English. */
+enum class KeepMessages(private val msg: Msg, val afterGoneMs: Long) {
     /** The default: while its notification is there (read in the app, dismissed or cleared: gone). */
-    UNTIL_GONE("Until the notification goes away", 0),
-    ONE_HOUR("1 hour", 3_600_000),
-    ONE_DAY("24 hours", 86_400_000),
+    UNTIL_GONE(MessageStrings.keepUntilGone, 0),
+    ONE_HOUR(MessageStrings.keepHour, 3_600_000),
+    ONE_DAY(MessageStrings.keepDay, 86_400_000);
+
+    val text: Phrase get() = msg()
+    val title: String get() = text.en()
 }
 
 /** How a reply goes out. */
-enum class ReplyRoute(val title: String) {
+enum class ReplyRoute(private val msg: Msg) {
     /** The default: through the app's own reply action (RemoteInput), after the card. */
-    SEND_AFTER_CARD("Robot sends after you confirm"),
+    SEND_AFTER_CARD(MessageStrings.routeSend),
     /** Phase 2's rule: the chat opens with your reply as a draft and nothing is sent until you press Send there. */
-    OPEN_CHAT("Open the chat with my reply; I press Send"),
+    OPEN_CHAT(MessageStrings.routeOpen);
+
+    val text: Phrase get() = msg()
+    val title: String get() = text.en()
 }
 
 /** What happens to a notification after Robot reads its messages to you. */
-enum class AfterReading(val title: String) {
+enum class AfterReading(private val msg: Msg) {
     /** The default: nothing changes; Robot only remembers, in RAM, that it read them. */
-    LEAVE("Leave it"),
+    LEAVE(MessageStrings.afterLeave),
     /** Dismiss the notification; the chat stays unread in the app. */
-    CLEAR("Clear the notification"),
+    CLEAR(MessageStrings.afterClear),
     /** Fire the app's mark-as-read: the sender may see you read it (Cheogram's displayed marker, Signal's receipts). */
-    MARK_READ("Mark as read"),
+    MARK_READ(MessageStrings.afterMarkRead);
+
+    val text: Phrase get() = msg()
+    val title: String get() = text.en()
 }
 
 /** Messages on the lock screen. */
-enum class MessagesLocked(val title: String) {
+enum class MessagesLocked(private val msg: Msg) {
     /** The default: "Unlock first". */
-    OFF("Off"),
-    WHO_MESSAGED("Who messaged"),
-    READ_AND_REPLY("Read and reply"),
+    OFF(MessageStrings.lockedOff),
+    WHO_MESSAGED(MessageStrings.lockedWho),
+    READ_AND_REPLY(MessageStrings.lockedRead);
+
+    val text: Phrase get() = msg()
+    val title: String get() = text.en()
 }
 
 data class MessageSettings(
@@ -75,10 +94,14 @@ data class MessageSettings(
 enum class LockedMessages { READ, NAMES_ONLY, UNLOCK_FIRST }
 
 object MessageAccess {
-    const val UNLOCK_FIRST = "Unlock first: your messages stay private while the phone is locked."
-    const val UNLOCK_FIRST_FR = "Déverrouille d'abord : tes messages restent privés quand le téléphone est verrouillé."
-    const val OFF = "Reading messages is off. Turn it on in Settings › Messages."
-    const val OFF_FR = "La lecture des messages est désactivée. Active-la dans Réglages › Messages."
+    val UNLOCK_FIRST: String get() = unlockFirstText().en()
+    val UNLOCK_FIRST_FR: String get() = unlockFirstText().render(Langs.of(Lang.FR))
+    val OFF: String get() = offText().en()
+    val OFF_FR: String get() = offText().render(Langs.of(Lang.FR))
+
+    /** These lines in words without a language yet (1.1). */
+    fun unlockFirstText(): Phrase = MessageStrings.unlockFirst()
+    fun offText(): Phrase = MessageStrings.off("page" to UiStrings.inSettings(UiStrings.messages))
 
     fun whenLocked(locked: Boolean, s: MessageSettings): LockedMessages = when {
         !locked -> LockedMessages.READ

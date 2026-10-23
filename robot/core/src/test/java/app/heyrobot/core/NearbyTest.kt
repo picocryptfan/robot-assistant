@@ -77,6 +77,21 @@ class NearbyTest {
         }
     }
 
+    /**
+     * A town named for the weather goes to Open-Meteo's geocoder by the same rule. What follows a comma stays on the phone
+     * (it only picks among the answers), so a long country name after one is fine.
+     */
+    @Test fun onlyATownsNameGoesToTheWeathersGeocoder() {
+        for (p in listOf("Montreal", "Saint-Jean-sur-Richelieu", "Paris, TX", "Kansas City", "Quebec City", "Rio de Janeiro",
+            "Kansas City, Missouri, United States of America", "Trois-Rivières", "New York")) {
+            assertTrue(p, Nearby.weatherSendable(p))
+        }
+        for (p in listOf("5692 Avenue du Parc, Montreal", "90210", "514 555 0199", "sam@example.com", "jo at example dot com in the city of Laval today",
+            "Mom's place on the street where she lives now", "x".repeat(61), "Laval 4521 boulevard")) {
+            assertFalse(p, Nearby.weatherSendable(p))
+        }
+    }
+
     @Test fun nearestInTheModelsWordsOrYourOwn() {
         for (s in listOf("the nearest pharmacy", "closest gas station", "Nearest Tim Hortons to me", "la pharmacie la plus proche", "le dépanneur le plus près")) {
             assertTrue(s, NearestAsk.said(s))

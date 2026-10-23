@@ -2,6 +2,13 @@
 package app.heyrobot.core.update
 
 import app.heyrobot.core.AppId
+import app.heyrobot.core.i18n.AndroidPath
+import app.heyrobot.core.i18n.Fmt
+import app.heyrobot.core.i18n.Lang
+import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.UiStrings
+import app.heyrobot.core.i18n.UpdateStrings
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -225,102 +232,118 @@ enum class InstallOutcome {
     }
 }
 
-/** Every word the updater shows, in one place. "You" is the person holding the phone. */
+/**
+ * Every word the updater shows, in one place. "You" is the person holding the phone. 1.1: the sentences come from core's
+ * catalog (UpdateStrings): the `…Text` functions give them without a language yet, the others render them in a language
+ * ([Lang.EN] by default, 1.0's words; the app passes the menus'), with times and dates in that language's way ("14:05",
+ * « 14 h 05 »). Its String functions (fail, whenText, lastCheck, published, size) stay: English keeps 1.0's "09:05" and
+ * "12 Oct", where Fmt's typed time and date arguments write "9:05" and "Monday October 12".
+ */
 object UpdateText {
-    const val CHANNEL_NAME = "Updates"
-    const val CHANNEL_DESCRIPTION = "Tells you when a new version of Robot is available or ready to install."
-    const val UP_TO_DATE = "You're up to date."
-    const val NEVER_CHECKED = "Not checked yet"
+    fun availableTitleText(v: String): Phrase = UpdateStrings.availableTitle("version" to v)
+    fun readyTitleText(v: String): Phrase = UpdateStrings.readyTitle("version" to v)
+    val availableText: Phrase get() = UpdateStrings.availableText("page" to UiStrings.inSettings(UiStrings.updates))
+    val readyText: Phrase get() = UpdateStrings.readyText("page" to UiStrings.inSettings(UiStrings.updates))
+    fun updatedTitleText(v: String): Phrase = UpdateStrings.updatedTitle("version" to v)
 
-    fun availableTitle(v: String) = "Robot $v is available"
-    fun readyTitle(v: String) = "Robot $v is ready to install"
-    const val AVAILABLE_TEXT = "Tap to see what's new in Settings › Updates."
-    const val READY_TEXT = "Downloaded and checked. Tap to install it from Settings › Updates."
-    fun updatedTitle(v: String) = "Robot updated to $v"
-    const val UPDATED_TEXT = "Robot restarted its services after the update."
-    const val CONFIRM_TITLE = "Finish updating Robot"
-    const val CONFIRM_TEXT = "Tap to confirm the update in Android's window."
+    /** "Robot updated to 1.1.0.": said once in the app when no notification said it. */
+    fun updatedLine(v: String): Phrase = UpdateStrings.updatedLine("version" to v)
 
-    /** One line for a failure; [retryAt] (a rate limit's end) in [zone]. */
-    fun fail(f: UpdateFail, retryAt: Long? = null, zone: ZoneId = ZoneId.systemDefault()): String = when (f) {
-        UpdateFail.NO_NETWORK_PERMISSION -> "Robot's Network permission is off. Turn it on in Settings › Apps › Robot › Permissions to check for updates."
-        UpdateFail.NO_INTERNET -> "No internet. Robot will try again later."
-        UpdateFail.RATE_LIMITED -> "GitHub's limit on checks from your network was reached (60 an hour without a token)." +
-            (retryAt?.let { " Try again after ${time(it, zone)}." } ?: " Try again in an hour.")
-        UpdateFail.NOT_FOUND_NO_TOKEN -> "GitHub didn't find the repository. If it's private, add an access token in Advanced below; otherwise check its name."
-        UpdateFail.NOT_FOUND -> "GitHub didn't find the repository or its file. Check the repository's name and that the token can read it."
-        UpdateFail.TOKEN_REFUSED -> "GitHub refused the access token. It may have expired: add a new one, or remove it for a public repository."
-        UpdateFail.FORBIDDEN -> "GitHub refused the request. If you use an access token, check that it can read this repository's contents."
-        UpdateFail.SERVICE -> "GitHub didn't answer properly. Robot will try again later."
-        UpdateFail.BAD_ANSWER -> "GitHub's answer couldn't be read. Robot will try again later."
-        UpdateFail.TOO_BIG -> "The file is larger than Robot accepts, so it wasn't downloaded."
-        UpdateFail.REDIRECT_REFUSED -> "GitHub sent the download somewhere Robot doesn't download from, so it stopped."
-        UpdateFail.NO_REPOSITORY -> "No repository to check. Set one in Advanced below."
-        UpdateFail.NO_SPACE -> "Not enough free space for the update. Free some space and try again."
-        UpdateFail.STORAGE -> "The update couldn't be saved on this phone."
-        UpdateFail.SUMS_BAD -> "The release's SHA256SUMS file is missing or damaged, so Robot won't install this update."
-        UpdateFail.SUMS_NO_LINE -> "The release's SHA256SUMS file doesn't list the APK, so Robot won't install this update."
-        UpdateFail.CHECKSUM_MISMATCH -> "The downloaded file doesn't match its SHA-256 in SHA256SUMS, so Robot deleted it and won't install it."
-        UpdateFail.SIZE_MISMATCH -> "The download didn't have the size GitHub gave for it. Try again."
-        UpdateFail.NOT_AN_APK -> "The downloaded file isn't an app Android can read, so Robot won't install it."
-        UpdateFail.WRONG_PACKAGE -> "The downloaded app isn't Robot, so it won't be installed."
-        UpdateFail.WRONG_VERSION -> "The downloaded app's version isn't the release's, so it won't be installed."
-        UpdateFail.NOT_NEWER -> "The downloaded app isn't newer than the Robot you have, so it won't be installed."
-        UpdateFail.UNSIGNED -> "The downloaded app isn't signed, so it won't be installed."
-        UpdateFail.OTHER_SIGNER -> "The downloaded app isn't signed with Robot's key, so it won't be installed. Android would refuse it too."
-        UpdateFail.STOPPED -> "Stopped. Robot keeps what it downloaded and continues next time."
-        UpdateFail.BUSY -> "Robot is already working on the update."
-        UpdateFail.TOKEN_UNAVAILABLE -> "Robot couldn't read your access token just now. It's still saved, and Robot will try again later."
+    /** One line for a failure; [retryAt] (a rate limit's end) in [zone]; in [lang]. */
+    fun fail(f: UpdateFail, retryAt: Long? = null, zone: ZoneId = ZoneId.systemDefault(), lang: Lang = Lang.EN): String =
+        if (f == UpdateFail.RATE_LIMITED && retryAt != null) UpdateStrings.failRateLimitedAt("time" to time(retryAt, zone, lang)).render(Langs.of(lang))
+        else failText(f).render(Langs.of(lang))
+
+    /** A failure's line without a language yet (a rate limit says "in an hour"). */
+    fun failText(f: UpdateFail): Phrase = when (f) {
+        UpdateFail.NO_NETWORK_PERMISSION -> UpdateStrings.failNoNetwork("path" to AndroidPath.APP_PERMISSIONS)
+        UpdateFail.NO_INTERNET -> UpdateStrings.failNoInternet()
+        UpdateFail.RATE_LIMITED -> UpdateStrings.failRateLimited()
+        UpdateFail.NOT_FOUND_NO_TOKEN -> UpdateStrings.failNotFoundNoToken()
+        UpdateFail.NOT_FOUND -> UpdateStrings.failNotFound()
+        UpdateFail.TOKEN_REFUSED -> UpdateStrings.failTokenRefused()
+        UpdateFail.FORBIDDEN -> UpdateStrings.failForbidden()
+        UpdateFail.SERVICE -> UpdateStrings.failService()
+        UpdateFail.BAD_ANSWER -> UpdateStrings.failBadAnswer()
+        UpdateFail.TOO_BIG -> UpdateStrings.failTooBig()
+        UpdateFail.REDIRECT_REFUSED -> UpdateStrings.failRedirectRefused()
+        UpdateFail.NO_REPOSITORY -> UpdateStrings.failNoRepository()
+        UpdateFail.NO_SPACE -> UpdateStrings.failNoSpace()
+        UpdateFail.STORAGE -> UpdateStrings.failStorage()
+        UpdateFail.SUMS_BAD -> UpdateStrings.failSumsBad()
+        UpdateFail.SUMS_NO_LINE -> UpdateStrings.failSumsNoLine()
+        UpdateFail.CHECKSUM_MISMATCH -> UpdateStrings.failChecksum()
+        UpdateFail.SIZE_MISMATCH -> UpdateStrings.failSize()
+        UpdateFail.NOT_AN_APK -> UpdateStrings.failNotAnApk()
+        UpdateFail.WRONG_PACKAGE -> UpdateStrings.failWrongPackage()
+        UpdateFail.WRONG_VERSION -> UpdateStrings.failWrongVersion()
+        UpdateFail.NOT_NEWER -> UpdateStrings.failNotNewer()
+        UpdateFail.UNSIGNED -> UpdateStrings.failUnsigned()
+        UpdateFail.OTHER_SIGNER -> UpdateStrings.failOtherSigner()
+        UpdateFail.STOPPED -> UpdateStrings.failStopped()
+        UpdateFail.BUSY -> UpdateStrings.failBusy()
+        UpdateFail.TOKEN_UNAVAILABLE -> UpdateStrings.failTokenUnavailable()
     }
 
-    fun install(o: InstallOutcome, v: String?): String = when (o) {
-        InstallOutcome.SUCCESS -> if (v != null) "Robot $v is installed." else "The update is installed."
-        InstallOutcome.CANCELLED -> "The update was cancelled. Robot stays as it is."
-        InstallOutcome.CONFLICT -> "Android refused the update: it conflicts with the Robot installed (another key, or another copy of Robot)."
-        InstallOutcome.STORAGE -> "Not enough storage to install the update. Free some space and try again."
-        InstallOutcome.INCOMPATIBLE -> "Android says this update isn't compatible with this phone."
-        InstallOutcome.INVALID -> "Android found the update's file invalid, so it wasn't installed."
-        InstallOutcome.BLOCKED -> "Android blocked the update (a policy or another app store keeps Robot's updates)."
-        InstallOutcome.TIMEOUT -> "The update took too long and Android stopped it. Try again."
-        InstallOutcome.FAILED -> "The update couldn't be installed. Try again."
+    /** How an install ended, without a language yet. */
+    fun installText(o: InstallOutcome, v: String?): Phrase = when (o) {
+        InstallOutcome.SUCCESS -> if (v != null) UpdateStrings.installed("version" to v) else UpdateStrings.installedNoVersion()
+        InstallOutcome.CANCELLED -> UpdateStrings.installCancelled()
+        InstallOutcome.CONFLICT -> UpdateStrings.installConflict()
+        InstallOutcome.STORAGE -> UpdateStrings.installStorage()
+        InstallOutcome.INCOMPATIBLE -> UpdateStrings.installIncompatible()
+        InstallOutcome.INVALID -> UpdateStrings.installInvalid()
+        InstallOutcome.BLOCKED -> UpdateStrings.installBlocked()
+        InstallOutcome.TIMEOUT -> UpdateStrings.installTimeout()
+        InstallOutcome.FAILED -> UpdateStrings.installFailed()
     }
 
-    /** "Today at 14:05", "Yesterday at 09:10", "12 Oct at 14:05". */
-    fun whenText(ms: Long, now: Long, zone: ZoneId = ZoneId.systemDefault()): String {
+    /** "Today at 14:05", "Yesterday at 09:10", "12 Oct at 14:05"; « Aujourd'hui à 14 h 05 », « lundi 12 octobre à 14 h 05 ». */
+    fun whenText(ms: Long, now: Long, zone: ZoneId = ZoneId.systemDefault(), lang: Lang = Lang.EN): String {
         val t = Instant.ofEpochMilli(ms).atZone(zone)
         val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
-        val day = when (t.toLocalDate()) {
-            today -> "Today"
-            today.minusDays(1) -> "Yesterday"
-            else -> t.format(DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH))
+        val day: Phrase = when (t.toLocalDate()) {
+            today -> UpdateStrings.today()
+            today.minusDays(1) -> UpdateStrings.yesterday()
+            else -> Phrase.plain(if (lang == Lang.FR) Fmt.day(t.toLocalDate(), lang) else t.format(DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH)))
         }
-        return "$day at ${time(ms, zone)}"
+        return UpdateStrings.dayAt("day" to day, "time" to time(ms, zone, lang)).render(Langs.of(lang))
     }
 
-    /** "Last checked today at 14:05: You're up to date." */
-    fun lastCheck(s: UpdateState, now: Long, zone: ZoneId = ZoneId.systemDefault()): String {
-        if (s.lastCheck <= 0) return NEVER_CHECKED
-        val result = when (s.outcome) {
-            CheckOutcome.UP_TO_DATE -> UP_TO_DATE
-            CheckOutcome.AVAILABLE -> s.found?.let { "Robot ${it.version} is available." } ?: "An update is available."
-            CheckOutcome.SKIPPED -> s.found?.let { "Robot ${it.version} is available (you skipped it)." } ?: "You skipped the latest version."
-            CheckOutcome.FAILED -> s.fail?.let { fail(it, s.retryAt, zone) } ?: "The check didn't work."
-            null -> ""
+    /** "Last checked today at 14:05. You're up to date." */
+    fun lastCheck(s: UpdateState, now: Long, zone: ZoneId = ZoneId.systemDefault(), lang: Lang = Lang.EN): String {
+        val l = Langs.of(lang)
+        if (s.lastCheck <= 0) return UpdateStrings.neverChecked().render(l)
+        val result: String? = when (s.outcome) {
+            CheckOutcome.UP_TO_DATE -> UpdateStrings.upToDate().render(l)
+            CheckOutcome.AVAILABLE -> (s.found?.let { UpdateStrings.availableLine("version" to it.version) } ?: UpdateStrings.availableAny()).render(l)
+            CheckOutcome.SKIPPED -> (s.found?.let { UpdateStrings.skippedLine("version" to it.version) } ?: UpdateStrings.skippedAny()).render(l)
+            CheckOutcome.FAILED -> s.fail?.let { fail(it, s.retryAt, zone, lang) } ?: UpdateStrings.checkFailed().render(l)
+            null -> null
         }
-        return ("Last checked " + whenText(s.lastCheck, now, zone).replaceFirstChar { it.lowercase() } + ". " + result).trim()
+        val at = whenText(s.lastCheck, now, zone, lang).replaceFirstChar { it.lowercase() }
+        return (if (result == null) UpdateStrings.lastCheckedOnly("when" to at) else UpdateStrings.lastChecked("when" to at, "result" to result)).render(l)
     }
 
-    /** "12 October 2026" from GitHub's ISO time, or null. */
-    fun published(iso: String?, zone: ZoneId = ZoneId.systemDefault()): String? = try {
-        iso?.let { Instant.parse(it).atZone(zone).format(DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.ENGLISH)) }
+    /** "12 October 2026" (« lundi 12 octobre 2026 ») from GitHub's ISO time, or null. */
+    fun published(iso: String?, zone: ZoneId = ZoneId.systemDefault(), lang: Lang = Lang.EN): String? = try {
+        iso?.let {
+            val d = Instant.parse(it).atZone(zone)
+            if (lang == Lang.FR) Fmt.day(d.toLocalDate(), lang) + " " + d.year else d.format(DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.ENGLISH))
+        }
     } catch (_: Exception) { null }
 
-    /** "152 MB", "900 KB". */
-    fun size(bytes: Long): String = when {
+    /** "152 MB", "900 KB"; « 152 Mo », « 900 ko ». */
+    fun size(bytes: Long, lang: Lang = Lang.EN): String = when {
+        lang == Lang.FR -> Fmt.bytes(bytes, lang)
         bytes >= 1_000_000 -> "${(bytes + 500_000) / 1_000_000} MB"
         bytes >= 1_000 -> "${(bytes + 500) / 1_000} KB"
-        else -> "$bytes bytes"
+        else -> UpdateStrings.bytes(bytes).en()
     }
 
-    private fun time(ms: Long, zone: ZoneId): String = Instant.ofEpochMilli(ms).atZone(zone).format(DateTimeFormatter.ofPattern("HH:mm", Locale.ENGLISH))
+    /** "14:05"; « 14 h 05 » in French. */
+    private fun time(ms: Long, zone: ZoneId, lang: Lang): String {
+        val t = Instant.ofEpochMilli(ms).atZone(zone)
+        return if (lang == Lang.FR) Fmt.clock(t.toLocalTime(), lang) else t.format(DateTimeFormatter.ofPattern("HH:mm", Locale.ENGLISH))
+    }
 }

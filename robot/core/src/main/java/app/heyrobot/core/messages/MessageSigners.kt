@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.messages
 
+import app.heyrobot.core.i18n.MessageStrings
+import app.heyrobot.core.i18n.Phrase
+
 import java.util.Locale
 
 // Pure. Which build of an app may hand Robot your messages (0.7): a package name alone proves nothing, since anyone can
@@ -17,7 +20,7 @@ import java.util.Locale
  * package that installed it, when Android said ("org.fdroid.fdroid", "com.android.vending").
  */
 data class AppPin(val digests: Set<String>, val installer: String? = null) {
-    override fun toString(): String = "AppPin(signers=${digests.size}, installer=$installer)"
+    override fun toString(): String = "AppPin(signers=${digests.size}, installer=$installer)" // l10n: not text (toString for logs and tests)
 }
 
 /** A package as Android describes it now: its signers' digests (null: unreadable, or not installed) and its installer. */
@@ -68,19 +71,25 @@ object MessageSigners {
     fun installer(s: String?): String? = s?.trim()?.takeIf { it.length in 1..200 && Regex("^[A-Za-z0-9_.]+$").matches(it) }
 
     /** A package's name for you: the app's title, with which build it is when the app has several. */
-    fun label(pkg: String): String {
-        val app = MessageApp.of(pkg) ?: return pkg
-        if (app.packages.size < 2 || pkg == app.packages.first()) return app.title
+    fun label(pkg: String): String = labelText(pkg).en()
+
+    /** [label] in words without a language yet. */
+    fun labelText(pkg: String): Phrase {
+        val app = MessageApp.of(pkg) ?: return Phrase.plain(pkg)
+        if (app.packages.size < 2 || pkg == app.packages.first()) return app.titleText
         return when {
-            pkg.endsWith(".playstore") -> "${app.title} (Play Store build)"
-            else -> "${app.title} ($pkg)"
+            pkg.endsWith(".playstore") -> MessageStrings.playStoreBuild("appName" to app.titleText)
+            else -> Phrase.plain("${app.title} ($pkg)")
         }
     }
 
     /** What Settings › Messages says about a package of an app you turned on, or null when it is trusted (or not installed). */
-    fun problem(pkg: String, verdict: PinVerdict): String? = when (verdict) {
-        PinVerdict.CHANGED -> "${label(pkg)} changed its signing key: turn it on again to trust it"
-        PinVerdict.NOT_PINNED -> "${label(pkg)} was installed after you turned it on: turn it on again to trust it"
+    fun problem(pkg: String, verdict: PinVerdict): String? = problemText(pkg, verdict)?.en()
+
+    /** [problem] in words without a language yet (Settings › Messages: the menus' language). */
+    fun problemText(pkg: String, verdict: PinVerdict): Phrase? = when (verdict) {
+        PinVerdict.CHANGED -> MessageStrings.signerChanged("appName" to labelText(pkg))
+        PinVerdict.NOT_PINNED -> MessageStrings.installedAfter("appName" to labelText(pkg))
         PinVerdict.TRUST, PinVerdict.PIN_NOW -> null
     }
 }

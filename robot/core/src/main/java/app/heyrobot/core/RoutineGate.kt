@@ -1,33 +1,42 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.Lang
+import app.heyrobot.core.i18n.Msg
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.RoutineStrings
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Duration
 import java.time.LocalDate
 import java.time.ZonedDateTime
 
-// Pure. What a routine's step may do without you (design §2.5 `RoutineGate`), before the existing ApprovalGate, and what
+// Pure. What a routine's step may do without you, before the existing ApprovalGate, and what
 // the morning brief may say on the lock screen (§2.4, §2.6). A routine never asks a model which action to take, so the
 // rules depend only on the step's class, who started the run, the lock, and settings.
 
-/** A step's class for a run nobody asked for (design §2.5). The editor shows [badge] beside each step. */
-enum class StepClass(val badge: String) {
+/** A step's class for a run nobody asked for. The editor shows [badge] beside each step. */
+enum class StepClass(private val msg: Msg) {
     /** The brief, a fixed sentence: spoken, with the lock filter. */
-    SPEAK("runs by itself"),
+    SPEAK(RoutineStrings.runsByItself),
     /** The calendar, notes, phone status, brief reminders, unread count (0.7): personal, so locked only at "Everything". */
-    READ_LOCAL("runs by itself"),
+    READ_LOCAL(RoutineStrings.runsByItself),
     /** The weather: only if routines may go online and the save card listed the service ("goes online: Open-Meteo"). */
-    READ_ONLINE("runs by itself"),
+    READ_ONLINE(RoutineStrings.runsByItself),
     /** Timers, alarms, the flashlight, a note with fixed text; locked only those that work on the lock screen. */
-    LOCAL_ACTION("runs by itself"),
+    LOCAL_ACTION(RoutineStrings.runsByItself),
     /** Opening an app or a draft, maps, a new event: never unattended, a Ready card you tap. */
-    NEEDS_YOU("waits for you"),
-    /** Freeing memory or storage, deleting, asking a helper, anything that sends personal content to a helper. */
-    NEVER("not offered"),
+    NEEDS_YOU(RoutineStrings.waitsForYou),
+    /** Freeing memory or storage, deleting, Ask Claude, anything that sends personal content to a helper. */
+    NEVER(RoutineStrings.notOffered),
+    ;
+
+    /** 1.1: the editor's badge without a language yet; [badge] is its English. */
+    val badgeText: Phrase get() = msg()
+    val badge: String get() = badgeText.en()
 }
 
-/** Who started the run (design §2.5 "Origins"). */
+/** Who started the run. */
 enum class RunOrigin {
     /** A trigger fired. */
     UNATTENDED,
@@ -67,11 +76,15 @@ enum class SkipWhy(override val id: Int, override val title: String) : LogCode {
     NOT_CLOCKS_ALARM(10, "not Clock's own alarm, ignored"),
 }
 
-/** Routines › Morning brief › "On the lock screen" (design §2.3). */
-enum class BriefLock(val id: String, val title: String) {
-    TIME_WEATHER("time_weather", "Time and weather"),
-    EVERYTHING("everything", "Everything"),
-    NOTHING("nothing", "Nothing until I unlock");
+/** Routines › Morning brief › "On the lock screen". */
+enum class BriefLock(val id: String, private val msg: Msg) {
+    TIME_WEATHER("time_weather", RoutineStrings.lockTimeWeather),
+    EVERYTHING("everything", RoutineStrings.lockEverything),
+    NOTHING("nothing", RoutineStrings.lockNothing);
+
+    /** 1.1: Settings' words without a language yet; [title] is their English. */
+    val text: Phrase get() = msg()
+    val title: String get() = text.en()
 
     companion object {
         fun of(id: String?): BriefLock = entries.firstOrNull { it.id == id } ?: TIME_WEATHER
@@ -79,7 +92,7 @@ enum class BriefLock(val id: String, val title: String) {
 }
 
 /**
- * The routine and brief settings (design §1.5 and §2.9), with their defaults. 0.8 keeps them in their own small file,
+ * The routine and brief settings, with their defaults. 0.8 keeps them in their own small file,
  * files/robot/routine_settings.json ([RoutineSettingsCodec], RoutineStore), not in settings.json (whose schema stays as
  * it is). "Personal answers only in private headphones" comes with headset mode (OutputGuard).
  */
@@ -97,7 +110,7 @@ data class RoutineSettings(
     /** `briefFinishOnUnlock`: the held part continues when you unlock soon after ([RoutineGate.resumes]). */
     val finishOnUnlock: Boolean = true,
     /** `briefLang`: null follows the phone. */
-    val briefLang: BriefLang? = null,
+    val briefLang: Lang? = null,
     /** `briefPrepare`: "Get ready while the alarm rings" (weather and the voice loaded on ALARM_ALERT). */
     val briefPrepare: Boolean = true,
     /** `clockSilenceMinutes`: Clock's auto-silence (not readable from Clock), for telling a missed alarm. */
@@ -131,6 +144,8 @@ object RoutineGate {
         // and never runs a Termux command or script (nobody is there to check its card).
         ToolName.FREE_MEMORY, ToolName.FREE_STORAGE, ToolName.ASK_HELPER, ToolName.REMEMBER, ToolName.FORGET, ToolName.CALL,
         ToolName.WEB_SEARCH, ToolName.TERMUX_SCRIPT, ToolName.TERMUX_COMMAND, ToolName.BROWSER_SEARCH -> StepClass.NEVER
+        // 1.4: a routine never searches or reads Robot Files (it may run on the lock screen, where files never show).
+        ToolName.FIND_FILES, ToolName.READ_FILE -> StepClass.NEVER
     }
 
     /** The steps the editor offers ("Do"): everything but [StepClass.NEVER]. */
@@ -240,7 +255,14 @@ object BriefPrivacy {
      * messages wait (the design allows the bare unread count once 0.7 exists; until then it waits too), and the closing
      * goes with the held part. Locked at "Nothing until I unlock": all of it waits.
      */
-    fun plan(items: List<BriefItem>, locked: Boolean, level: BriefLock): BriefPlan = when {
+    fun plan(all: List<BriefItem>, locked: Boolean, level: BriefLock): BriefPlan {
+        // 1.4: Robot Files' part is never said on a locked phone, whatever the level (files-1.4-plan.md §5.3), nor held for the
+        // unlock here: its key needs the phone unlocked, so the routine reads it again then (RoutineRunner).
+        val items = if (locked) all.filter { it != BriefItem.FILES } else all
+        return planOf(items, locked, level)
+    }
+
+    private fun planOf(items: List<BriefItem>, locked: Boolean, level: BriefLock): BriefPlan = when {
         !locked || level == BriefLock.EVERYTHING -> BriefPlan(items, emptyList(), placeName = true)
         level == BriefLock.NOTHING -> BriefPlan(emptyList(), items, placeName = false)
         else -> {
@@ -266,8 +288,18 @@ data class ReadyCard(val routineId: String, val routineName: String, val step: R
      * "Your “Leaving work” routine is ready to: Search Organic Maps for “home”. Tap to do it." / "Your “Morning” routine
      * didn't run at 07:00. Tap to run it now."
      */
-    fun text(): String = if (missed != null) "Your “$routineName” routine didn't run at ${java.lang.String.format(java.util.Locale.US, "%02d:%02d", missed.hour, missed.minute)}. Tap to run it now."
-        else "Your “$routineName” routine is ready to: ${step.describe()}. Tap to do it."
+    fun text(): String = phrase().en()
+
+    /** 1.1: [text] without a language yet (the built-in brief's name in it too: « Résumé du matin »). */
+    fun phrase(): Phrase = Phrase.join(line(), if (missed != null) RoutineStrings.tapToRunNow() else RoutineStrings.tapToDoIt())
+
+    /** [phrase] without "Tap to …": Settings' Ready list, whose rows say it under the line. */
+    fun line(): Phrase {
+        val name = RoutineTexts.name(routineId, routineName)
+        return if (missed != null) RoutineStrings.readyMissed("name" to name, "time" to EventText.clock(missed.hour, missed.minute))
+        else RoutineStrings.readyStep("name" to name, "step" to step.summary())
+    }
+
 
     /** Names this card in a tap (a notification's, Settings' Ready list): stable for as long as it waits. */
     val key: String get() = "$routineId|$created|" + (missed?.toString() ?: step.code.id.toString())
@@ -278,7 +310,10 @@ object ReadyCards {
     const val VERSION = 1
 
     /** The notification's public version (and its text on the lock screen). */
-    fun publicLine(n: Int): String = if (n == 1) "Robot has 1 thing ready for you" else "Robot has $n things ready for you"
+    fun publicLine(n: Int): String = publicText(n).en()
+
+    /** 1.1: [publicLine] without a language yet. */
+    fun publicText(n: Int): Phrase = RoutineStrings.readyCount(n)
 
     /** The cards still due on [today]. */
     fun live(cards: List<ReadyCard>, today: LocalDate): List<ReadyCard> = cards.filter { it.day == today }
@@ -298,11 +333,14 @@ object ReadyCards {
      * The silent notification after a run, only when a step was held or failed ("Ran “Leaving work” · 2 done, 1 ready");
      * null when everything ran.
      */
-    fun runSummary(name: String, done: Int, ready: Int, held: Int, failed: Int): String? {
+    fun runSummary(name: String, done: Int, ready: Int, held: Int, failed: Int): String? = runSummaryText(Phrase.plain(name), done, ready, held, failed)?.en()
+
+    /** 1.1: [runSummary] without a language yet ([name]: the routine's, the built-in brief's in the reader's language). */
+    fun runSummaryText(name: Phrase, done: Int, ready: Int, held: Int, failed: Int): Phrase? {
         if (ready == 0 && held == 0 && failed == 0) return null
-        val parts = listOfNotNull("$done done", ready.takeIf { it > 0 }?.let { "$it ready" }, held.takeIf { it > 0 }?.let { "$it waiting for unlock" },
-            failed.takeIf { it > 0 }?.let { "$it didn't work" })
-        return "Ran “$name” · " + parts.joinToString(", ")
+        val parts = listOfNotNull(RoutineStrings.nDone(done), ready.takeIf { it > 0 }?.let { RoutineStrings.nReady(it) },
+            held.takeIf { it > 0 }?.let { RoutineStrings.nWaitingUnlock(it) }, failed.takeIf { it > 0 }?.let { RoutineStrings.nFailed(it) })
+        return RoutineStrings.ranSummary("name" to name, "counts" to Phrase.Join(parts, ", "))
     }
 
     fun encode(cards: List<ReadyCard>): String = JSONObject().put("v", VERSION).put("cards", JSONArray().apply {

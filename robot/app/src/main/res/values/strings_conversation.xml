@@ -1,0 +1,394 @@
+<!-- Conversation mode and translation (the l10n work package WP5): the transcript screen, the interpreter's chrome, its
+     notifications and Quick Settings tile, the summary screen, the Transcription check, Your voice, Settings › Conversation,
+     Transcripts, the speakers' dialogs, the fast translation engine's download and speed test, and the launcher shortcuts.
+     Ids start with conv_, shortcut_, tile_, and the French is in values-fr-rCA/strings_conversation.xml. What core says
+     (an export's words, a summary's labels and consent card, the interpreter's halves, the check's results, the engine's
+     problems) is core's ConversationStrings; what a model or a helper reads stays English. -->
+<resources>
+    <!-- Launcher shortcuts and the Quick Settings tile (0.5.0). -->
+    <string name="shortcut_transcribe">Transcribe</string>
+    <string name="shortcut_transcribe_long">Transcribe a conversation</string>
+    <string name="shortcut_transcripts">Transcripts</string>
+    <string name="tile_transcribe">Transcribe</string>
+    <string name="tile_paused">Paused</string>
+    <string name="tile_on">On</string>
+
+    <!-- Words several screens share. -->
+    <string name="conv_back">Back</string>
+    <string name="conv_cancel">Cancel</string>
+    <string name="conv_delete">Delete</string>
+    <string name="conv_save">Save</string>
+    <string name="conv_open">Open</string>
+    <string name="conv_stop">Stop</string>
+    <string name="conv_start">Start</string>
+    <string name="conv_record">Record</string>
+    <string name="conv_ok">OK</string>
+    <string name="conv_close">Close</string>
+    <string name="conv_not_now">Not now</string>
+    <string name="conv_download">Download</string>
+    <string name="conv_summarize">Summarize</string>
+    <string name="conv_more_options">More options</string>
+    <string name="conv_transcripts">Transcripts</string>
+    <string name="conv_french">French</string>
+    <string name="conv_english">English</string>
+    <string name="conv_speaker">Speaker</string>
+    <string name="conv_change_who">Change who said it</string>
+    <string name="conv_running_stop_first">A transcription is running. Stop it first.</string>
+    <string name="conv_no_mic">Robot can\'t use the microphone (allow it in the Robot app, or close the app that is recording).</string>
+    <string name="conv_deleted">This transcript was deleted.</string>
+    <plurals name="conv_lines">
+        <item quantity="one">%1$d line</item>
+        <item quantity="other">%1$d lines</item>
+    </plurals>
+
+    <!-- The transcript screen (ConversationActivity, voice process). -->
+    <string name="conv_status_paused">Paused</string>
+    <string name="conv_status_recording">Recording</string>
+    <string name="conv_transcribe">Transcribe</string>
+    <string name="conv_interpreter">Interpreter</string>
+    <string name="conv_translate_on_desc">Translate %1$s: on</string>
+    <string name="conv_translate_off_desc">Translate %1$s: off</string>
+    <string name="conv_translating">Translating</string>
+    <string name="conv_translate">Translate</string>
+    <string name="conv_speak_on_desc">Speak translations: on</string>
+    <string name="conv_speak_off_desc">Speak translations: off</string>
+    <string name="conv_speak_on">Speak: on</string>
+    <string name="conv_speak_off">Speak: off</string>
+    <string name="conv_resume">Resume</string>
+    <string name="conv_pause">Pause</string>
+    <string name="conv_transcript_view">Transcript view</string>
+    <string name="conv_interpreter_face">Interpreter (face to face)</string>
+    <string name="conv_their_language">Their language: %1$s (change)</string>
+    <string name="conv_screen_may_sleep">Let the screen turn off</string>
+    <string name="conv_screen_keep_on">Keep the screen on</string>
+    <string name="conv_help">Help</string>
+    <string name="conv_model_translates">Translated by Robot\'s model on this phone (the fast engine isn\'t installed).</string>
+    <string name="conv_nothing_leaves">Transcribed on this phone. Nothing leaves it unless you send it.</string>
+    <string name="conv_which_language">Which language is this line?</string>
+    <string name="conv_guessed">Robot couldn\'t tell from so few words, so it guessed from the line before.</string>
+    <string name="conv_help_title">Transcribing</string>
+    <string name="conv_help_text">Robot writes down what it hears, on this phone, line by line, and saves each line as it goes. It keeps working with the screen off; the notification is on the whole time, with Pause and Stop. “FR?” means the line was too short to tell its language: tap it to fix. With speaker labels on (Settings › Conversation), each line says who spoke: S1, S2… or the name you give (tap the chip; long-press a line if someone else said it). Very short replies go to whoever spoke just before, two people talking at once go to one of them, and the same person near and far from the phone can become two speakers: merge them. Translate shows each line in the other language (fast first when the fast engine is installed, then Robot\'s model; tap a translation for a better one); Speak reads the translations aloud, and Robot doesn\'t listen while it speaks. The Interpreter (in the menu) is for two people face to face: the top half turns to them. Nothing said to Robot while its panel is open is transcribed, and “hey robot” sleeps during the session unless you turn on Settings › Conversation › “Hey robot works during a conversation”. The audio is never kept.</string>
+    <string name="conv_lang_unsure_desc">Language: %1$s, not sure. Tap to fix.</string>
+    <string name="conv_lang_desc">Language: %1$s</string>
+    <string name="conv_heard_again">heard again</string>
+    <string name="conv_better_translation">Better translation</string>
+    <string name="conv_translating_dots">Translating…</string>
+    <string name="conv_speakers_offer_title">Tell speakers apart?</string>
+    <string name="conv_speakers_offer_text">Robot can label who says what (S1, S2…, or the names you give) by their voices, on this phone. It needs the speaker model: %1$s, downloaded once in Robot › Settings › Conversation.</string>
+    <string name="conv_download_size">Download (%1$s)</string>
+    <string name="conv_before_you_start">Before you start</string>
+    <string name="conv_start_title">Transcribe a conversation</string>
+    <string name="conv_start_text">Robot writes down what it hears, in French and English, and saves it on this phone. It keeps going with the screen off. Or translate face to face: the phone between you, each half in one language, the translations read aloud.</string>
+    <string name="conv_saved">Saved</string>
+    <string name="conv_saved_locked">Unlock your phone to read, export or delete it in Robot › Transcripts.</string>
+    <string name="conv_saved_where">It\'s in Robot › Transcripts, to read, export or delete.</string>
+    <string name="conv_similar_one">Two speakers sounded alike: open it to merge them if they are one person.</string>
+    <string name="conv_similar_pairs">%1$d pairs of speakers sounded alike: open it to merge the ones who are one person.</string>
+    <string name="conv_new">New</string>
+    <string name="conv_paused_user">Paused. Tap Resume to go on.</string>
+    <string name="conv_paused_mic">Paused: another app is using the microphone. It goes on by itself when the microphone is free.</string>
+    <string name="conv_paused_call">Paused for a call. It goes on by itself after.</string>
+    <string name="conv_paused_hot">Paused: the phone is too hot. It goes on when it cools down.</string>
+    <string name="conv_paused_panel">Paused while you talk to Robot.</string>
+
+    <!-- Why a session didn't start or stopped, and what it says while it runs (ConversationSession). -->
+    <string name="conv_start_failed">Transcribing couldn\'t start.</string>
+    <string name="conv_needs_mic">Robot needs the microphone permission (Robot app › Get started).</string>
+    <string name="conv_needs_asr">Transcribing needs the speech recognition model: download it in the Robot app (Model › Voice models).</string>
+    <string name="conv_storage_full">Storage is nearly full (under 200 MB free): Robot can\'t save a transcript.</string>
+    <string name="conv_unlock_to_start">Unlock your phone to start transcribing (Settings › Conversation › Start from the lock screen).</string>
+    <string name="conv_resume_gone">That transcript was deleted or can\'t be opened.</string>
+    <string name="conv_create_failed">Robot couldn\'t create the transcript on this phone.</string>
+    <string name="conv_vad_failed">The voice detector couldn\'t start.</string>
+    <string name="conv_stopped_disk">Stopped: storage is nearly full. The transcript is saved.</string>
+    <string name="conv_stopped_error">Stopped after an error. What was heard is saved.</string>
+    <string name="conv_asr_stopped">Speech recognition stopped working. What was heard before is saved.</string>
+    <string name="conv_not_while_speaking">Robot doesn\'t listen while it speaks: what is said meanwhile isn\'t transcribed.</string>
+    <string name="conv_still_hours">Still transcribing — %1$d h.</string>
+    <string name="conv_still_hours_free">Still transcribing — %1$d h, %2$d MB free.</string>
+
+    <!-- The notifications (ConversationNotices). -->
+    <string name="conv_channel">Transcribing a conversation</string>
+    <string name="conv_channel_desc">Shown the whole time Robot transcribes a conversation, with Pause and Stop.</string>
+    <string name="conv_transcription_stopped">Transcription stopped</string>
+    <string name="conv_channel_stopped_desc">When a transcription stopped unexpectedly: Resume.</string>
+    <string name="conv_notif_paused">Transcribing paused</string>
+    <string name="conv_notif_running">Robot is transcribing</string>
+    <string name="conv_notif_mic">Another app is using the microphone.</string>
+    <string name="conv_notif_call">Paused for a call.</string>
+    <string name="conv_notif_hot">The phone is too hot.</string>
+    <string name="conv_stopped_saved_up_to">Transcription stopped unexpectedly. Saved up to %1$s.</string>
+    <string name="conv_not_started">Transcribing didn\'t start</string>
+    <string name="conv_not_started_text">Android didn\'t let Robot use the microphone from here. Tap to open the transcript screen and start there.</string>
+
+    <!-- The summary screen (SummaryActivity) and the Claude app's share. -->
+    <string name="conv_summary_title">Summary</string>
+    <string name="conv_summary_unlock">Unlock your phone to summarize a conversation.</string>
+    <string name="conv_unlock_screen">Unlock your phone to use this screen.</string>
+    <string name="conv_no_transcript">No transcript.</string>
+    <string name="conv_transcript_unreadable">This transcript was deleted, or can\'t be read.</string>
+    <!-- 1.0's English says "1 lines" here; kept as it was. -->
+    <plurals name="conv_summary_lines">
+        <item quantity="one">%1$d lines</item>
+        <item quantity="other">%1$d lines</item>
+    </plurals>
+    <plurals name="conv_summary_parts">
+        <item quantity="one">about %1$d part for Robot\'s model</item>
+        <item quantity="other">about %1$d parts for Robot\'s model</item>
+    </plurals>
+    <string name="conv_summary_busy_other">Robot is summarizing another conversation. This one can start when it\'s done.</string>
+    <string name="conv_helper_summarizing">%1$s is summarizing…</string>
+    <string name="conv_the_helper_summarizing">The helper is summarizing…</string>
+    <string name="conv_summarize_with">Summarize with %1$s</string>
+    <string name="conv_send_to_instead">Send to %1$s instead</string>
+    <string name="conv_robot_summary_anyway">Robot\'s summary anyway</string>
+    <string name="conv_summary_choice">Robot makes its own summary on this phone; a stronger AI summarizes more accurately, but the transcript leaves the phone.</string>
+    <string name="conv_robot_summary">Robot\'s summary</string>
+    <string name="conv_stronger_ai">A stronger AI</string>
+    <string name="conv_share_with_app">Share it with the %1$s app instead</string>
+    <string name="conv_open_helpers">Open Settings › Helpers</string>
+    <string name="conv_cost">Cost: %1$s</string>
+    <string name="conv_cost_unknown">cost unknown</string>
+    <string name="conv_summarize_stronger">Summarize with a stronger AI</string>
+    <string name="conv_kept_with">Kept with this transcript</string>
+    <string name="conv_open_transcript">Open the transcript</string>
+    <string name="conv_app_missing">The %1$s app isn\'t there, or doesn\'t take a share.</string>
+    <string name="conv_copied_paste">It\'s copied: paste it in %1$s and press Send there.</string>
+    <string name="conv_press_send">Press Send in %1$s. Robot doesn\'t hear %1$s\'s answer.</string>
+    <string name="conv_app_not_opened">The %1$s app didn\'t open.</string>
+    <string name="conv_merging_notes">Putting the notes together…</string>
+    <string name="conv_reading_part">Reading part %1$d…</string>
+    <string name="conv_model_getting_ready">Getting Robot\'s model ready…</string>
+    <string name="conv_model_works">Robot\'s model works on it between other things (your questions, translations come first). It can stop and go on later.</string>
+    <string name="conv_send">Send</string>
+    <string name="conv_no_helper">To use a stronger AI, add a helper with its API key (or your own server) in Settings › Helpers.</string>
+    <string name="conv_card_changed">This helper\'s settings changed since the card was made: check it again, then press Send.</string>
+    <string name="conv_clip_for">Conversation for %1$s</string>
+
+    <!-- The Transcription check (TranscriptionCheckActivity). -->
+    <string name="conv_check_title">Transcription check</string>
+    <string name="conv_check_session_on">A headset or car session is on: end it first.</string>
+    <string name="conv_check_call_on">A call is on: its audio stays as it is.</string>
+    <string name="conv_check_no_headset_mic">Android didn\'t give Robot the headset\'s microphone.</string>
+    <string name="conv_check_no_headset">No headset with a microphone is connected.</string>
+    <string name="conv_check_connecting">Connecting the headset\'s microphone…</string>
+    <string name="conv_check_headset_failed">The headset\'s microphone didn\'t connect. Try again, or use the phone\'s.</string>
+    <string name="conv_check_needs_asr">The check needs the speech recognition model: download it in the Robot app (Model › Voice models).</string>
+    <string name="conv_check_decoding">Decoding…</string>
+    <string name="conv_check_decode_failed">Robot couldn\'t decode that. Try again.</string>
+    <string name="conv_check_intro">How well Robot writes down Québec French and English, decoded the way a conversation is. The recordings stay in memory and are dropped once scored. The gate: at most %1$d%% of words wrong over at least %2$d French lines from at least %3$d readers, and at most %4$d%% in English.</string>
+    <string name="conv_check_read">Read</string>
+    <string name="conv_check_free">Say anything</string>
+    <string name="conv_check_clips">Clips</string>
+    <string name="conv_check_reader">Reader</string>
+    <string name="conv_check_microphone">Microphone</string>
+    <string name="conv_check_phone">Phone</string>
+    <string name="conv_check_headset">Headset</string>
+    <string name="conv_check_too_short">That was too short.</string>
+    <string name="conv_check_sentence">Sentence %1$d of %2$d · %3$s</string>
+    <string name="conv_check_read_hint">Tap Record, read it as you\'d say it, tap Stop.</string>
+    <string name="conv_check_skip">Skip</string>
+    <string name="conv_check_free_hint">Say anything, then correct what Robot wrote to exactly what was said. That is the realistic test.</string>
+    <string name="conv_check_robot_heard">Robot heard: %1$s</string>
+    <string name="conv_check_nothing">(nothing)</string>
+    <string name="conv_check_really_said">What was really said</string>
+    <string name="conv_check_score">Score it</string>
+    <string name="conv_check_discard">Discard</string>
+    <string name="conv_check_clips_hint">Pick audio clips and a .txt with one line per clip (in the order of the clips\' names), or lines of “name&lt;tab&gt;sentence” as in a Common Voice list. Robot reads only the files you pick; nothing is copied or kept.</string>
+    <string name="conv_check_pick_clips">Pick clips</string>
+    <plurals name="conv_check_clips_count">
+        <item quantity="one">%1$d clip</item>
+        <item quantity="other">%1$d clips</item>
+    </plurals>
+    <string name="conv_check_pick_txt">Pick the .txt</string>
+    <string name="conv_check_lines_picked">Lines picked</string>
+    <string name="conv_check_clips_in">The clips are in</string>
+    <string name="conv_check_run">Run</string>
+    <string name="conv_check_reading_clips">Reading the clips…</string>
+    <string name="conv_check_txt_unreadable">The text file couldn\'t be read.</string>
+    <string name="conv_check_clip_progress">Clip %1$d of %2$d…</string>
+    <plurals name="conv_check_clips_failed">
+        <item quantity="one">%1$d clip couldn\'t be decoded.</item>
+        <item quantity="other">%1$d clips couldn\'t be decoded.</item>
+    </plurals>
+    <string name="conv_check_results">Results</string>
+    <string name="conv_check_fr_failed">Québec French didn\'t pass. The README lists what to try next (Robot\'s own fallbacks for the gate).</string>
+    <string name="conv_check_heard">Heard: %1$s</string>
+    <string name="conv_check_include">Include sentences (what was said and heard)</string>
+    <string name="conv_check_copy">Copy report</string>
+    <string name="conv_check_clear">Clear</string>
+
+    <!-- Your voice (VoiceprintActivity). -->
+    <string name="conv_vp_title">Your voice</string>
+    <string name="conv_vp_left">The recording stopped when you left. Read that sentence again.</string>
+    <string name="conv_vp_needs_model">This needs the speaker model: download it in Robot › Settings › Conversation.</string>
+    <string name="conv_vp_too_short">That was too short. Read the whole sentence, then tap Stop.</string>
+    <string name="conv_vp_listening">Listening to your voice…</string>
+    <string name="conv_vp_model_failed">Robot couldn\'t use the speaker model. Try again in a moment.</string>
+    <string name="conv_vp_too_little">Robot heard too little speech. Read the sentence again, a little closer to the phone.</string>
+    <string name="conv_vp_saving">Saving…</string>
+    <string name="conv_vp_not_alike">The three recordings don\'t sound like one voice (someone else spoke, or it was noisy). Read them again, alone, somewhere quiet.</string>
+    <string name="conv_vp_not_saved">Your voiceprint couldn\'t be saved on this phone.</string>
+    <string name="conv_vp_needs_three">Robot needs all three sentences. Read them again.</string>
+    <string name="conv_vp_intro">Read three short sentences so Robot knows your voice: in transcripts, your lines then say “You”. Optional.</string>
+    <string name="conv_vp_privacy">Robot keeps only a voiceprint (192 numbers made from your recordings, not the recordings), encrypted on this phone. A voiceprint is biometric data: it is used only to label your lines, never sent anywhere, and one tap deletes it. The recordings stay in memory and are dropped right away.</string>
+    <string name="conv_vp_saved_now">Saved. Your lines will say “You” from the next transcript.</string>
+    <string name="conv_vp_saved">Your voiceprint is saved.</string>
+    <string name="conv_vp_again_replaces">Reading the sentences again replaces it.</string>
+    <string name="conv_vp_delete_mine">Delete my voiceprint</string>
+    <string name="conv_vp_sentence">Sentence %1$d of %2$d</string>
+    <string name="conv_vp_hold">Hold the phone as you would at a table, and read in your normal voice. Recording stops by itself after %1$d seconds.</string>
+    <string name="conv_vp_record_again">Record again</string>
+    <string name="conv_vp_start_over">Start over</string>
+    <string name="conv_vp_delete_title">Delete your voiceprint?</string>
+    <string name="conv_vp_delete_text">Robot stops recognising your voice at once; lines already labelled “You” stay as they are. You can read the sentences again any time.</string>
+
+    <!-- The fast translation engine's download and speed test (MtModelStore, MtSpeedRun). -->
+    <string name="conv_mt_downloaded">Downloaded. Checking the files next.</string>
+    <string name="conv_mt_bad">A downloaded file didn\'t match its checksum, so Robot deleted it. Tap Download to fetch it again.</string>
+    <string name="conv_mt_no_storage">The phone\'s storage isn\'t available right now.</string>
+    <string name="conv_mt_download_title">Robot: fast translation engine</string>
+    <string name="conv_mt_download_failed">The download couldn\'t start.</string>
+    <string name="conv_mt_unpack_failed">Robot couldn\'t unpack the files into its storage (is the phone full?). Free some space, then tap Download to try again.</string>
+    <string name="conv_mt_install_failed">Installing failed. Tap Download to try again.</string>
+    <string name="conv_mt_loading">Loading the engine…</string>
+    <string name="conv_mt_warming">Warming up…</string>
+    <string name="conv_mt_translating">Translating %1$d lines, %2$s…</string>
+
+    <!-- Settings › Conversation (ui/ConversationSettings.kt). -->
+    <string name="conv_settings_title">Conversation</string>
+    <string name="conv_settings_intro">Robot writes down a conversation in French and English, on this phone, and saves each line as it goes.</string>
+    <string name="conv_group_transcribing">Transcribing</string>
+    <string name="conv_live_words">Live words</string>
+    <string name="conv_live_words_summary">The line being spoken, in grey · uses more battery</string>
+    <string name="conv_wake_during">“Hey robot” works during a conversation</string>
+    <string name="conv_wake_during_on">Pauses the transcript and opens Robot</string>
+    <string name="conv_wake_during_off">The wake word sleeps while Robot transcribes</string>
+    <string name="conv_start_locked">Start from the lock screen</string>
+    <string name="conv_start_locked_summary">The tile and “hey robot” can start one while locked</string>
+    <string name="conv_group_speakers">Speakers</string>
+    <string name="conv_tell_apart">Tell speakers apart</string>
+    <string name="conv_tell_apart_off">Off: every line is “Speaker”</string>
+    <string name="conv_tell_apart_on">On: each line says who spoke</string>
+    <string name="conv_tell_apart_needs">Needs the speaker model (%1$s)</string>
+    <string name="conv_speaker_model">Speaker model · %1$s</string>
+    <string name="conv_speaker_model_download">Download the speaker model</string>
+    <string name="conv_speaker_model_cancel">Cancel the speaker model\'s download</string>
+    <string name="conv_speaker_model_delete">Delete the speaker model</string>
+    <string name="conv_most_speakers">Most speakers in a transcript</string>
+    <string name="conv_the_default">The default</string>
+    <string name="conv_voiceprint_saved">Your voiceprint is saved</string>
+    <string name="conv_lines_say_you">Your lines say “You”</string>
+    <string name="conv_record_voice_again">Record your voice again</string>
+    <string name="conv_three_sentences">Three short sentences</string>
+    <string name="conv_needs_speaker_model">Needs the speaker model first</string>
+    <string name="conv_delete_voiceprint">Delete your voiceprint</string>
+    <string name="conv_stops_recognising">Robot stops recognising your voice</string>
+    <string name="conv_set_up_voice">Set up your voice</string>
+    <string name="conv_set_up_voice_summary">Optional: your lines say “You”</string>
+    <string name="conv_group_translation">Translation and summaries</string>
+    <string name="conv_translate_transcripts">Translate transcripts</string>
+    <string name="conv_translate_transcripts_summary">Each line in the other language (%1$s)</string>
+    <string name="conv_summaries_in">Summaries in</string>
+    <string name="conv_your_language">Your language</string>
+    <string name="conv_offer_stronger">Offer a stronger AI first</string>
+    <string name="conv_offer_stronger_summary">For a long or important conversation</string>
+    <string name="conv_group_fast">Fast translation</string>
+    <string name="conv_mt_download_desc">Download the fast translation engine</string>
+    <string name="conv_mt_cancel_desc">Cancel the fast translation engine\'s download</string>
+    <string name="conv_mt_delete_desc">Delete the fast translation engine\'s files</string>
+    <string name="conv_mt_not_in_build">Not in this build</string>
+    <string name="conv_mt_not_in_build_text">This build of Robot doesn\'t include the fast engine (%1$s), so it can\'t translate with it even once the files are downloaded.</string>
+    <string name="conv_test_speed">Test translation speed</string>
+    <string name="conv_test_speed_summary">Robot\'s %1$d test lines, Québec French and English</string>
+    <string name="conv_test_starting">Starting…</string>
+    <string name="conv_last_test">Last test: %1$s.</string>
+    <string name="conv_last_test_passed">Last test: %1$s, passed.</string>
+    <string name="conv_test_copied">Copied: the result and every line that wasn\'t the same.</string>
+    <string name="conv_test_copy">Copy the result</string>
+    <string name="conv_group_telling">Telling people</string>
+    <string name="conv_reminder_again">Show the reminder again</string>
+    <string name="conv_reminder_again_summary">Before the next transcript</string>
+    <string name="conv_reminder_shows">The reminder shows before the next transcript.</string>
+    <string name="conv_consent_footer">Robot shows this before your first transcript, and the notification says “%1$s” the whole time.</string>
+    <string name="conv_transcripts_summary">Read, search, rename, export, share and delete</string>
+    <string name="conv_check_summary">How well Robot writes down Québec French and English</string>
+    <string name="conv_delete_model_title">Delete the speaker model?</string>
+    <string name="conv_delete_model_text">Transcripts stop telling speakers apart (every line is “Speaker”) until you download it again (%1$s). Names you gave in transcripts stay. Your voiceprint, if you made one, stays until you delete it below.</string>
+    <string name="conv_delete_voiceprint_text">Robot stops recognising your voice at once, also in a transcript being recorded; lines already labelled “You” stay as they are.</string>
+    <string name="conv_delete_mt_title">Delete the fast translation engine\'s files?</string>
+    <string name="conv_delete_mt_text">Robot can\'t translate with the fast engine until you download them again (%1$s).</string>
+    <string name="conv_footer_start">Start a transcript from Home, the Quick Settings tile “Transcribe”, a long press on Robot\'s icon, or say “hey robot, transcribe this conversation”. Transcripts are kept in Robot\'s private storage on this phone and never backed up. The audio is never kept.</string>
+    <string name="conv_footer_live">Live words: the words of the line being spoken, in grey, while the transcript is on screen (uses more battery; off when the phone is warm). “Hey robot” during a conversation: on, it pauses the transcript and opens Robot, and what you say to Robot isn\'t transcribed; off, the wake word sleeps while Robot transcribes, so nobody\'s “hey robot” opens it, “stop” still works while Robot talks, and the wake word is back when you stop. Start from the lock screen: the tile and “hey robot” can start a transcript while the phone is locked; that screen shows only what it hears from then on, and reading, exporting and deleting transcripts need the phone unlocked.</string>
+    <string name="conv_footer_speakers">Speakers: Robot can label who says what in a transcript, by their voices: S1, S2… or the names you give (tap a line\'s speaker). It all happens on this phone; the voices are forgotten when the transcript stops. The speaker model is a pinned file, checked (SHA-256) before Robot uses it. %1$s Past the most speakers, a new voice goes to the nearest speaker; the interpreter always tells two people apart. Your voice, optional: read three short sentences so your lines say “You” instead of S1 or S2. Robot keeps a voiceprint (numbers made from your voice, not the recording), encrypted on this phone, used only for this and never sent anywhere. A voiceprint is biometric data; delete it here any time.</string>
+    <string name="conv_footer_translate">Translate transcripts: each line in the other language (%1$s), under it, on this phone: at once by the fast engine when it is downloaded, then better by Robot\'s model. The transcript screen\'s Translate turns it on or off for one transcript. The interpreter always translates. Offer a stronger AI first: for a long conversation (about half an hour or more), one marked important, or a summary whose check found something missing, Robot offers a stronger AI first. Nothing is sent before you tap Send on its card.</string>
+    <string name="conv_footer_fast">Fast translation: Robot\'s fast translation engine translates French ↔ English on this phone in a fraction of a second, in a process of its own: Mozilla\'s Bergamot models, run by slimt. Once it is downloaded, each transcript line gets its translation at once (marked “fast”) and Robot\'s model then replaces it with a better one; in the interpreter it stands in when Robot\'s model is slow, and leads when the model runs on the CPU. Without it, Robot\'s model translates alone, more slowly. From Mozilla\'s servers, the files each direction needs: %1$s to download, %2$s in Robot\'s private storage. Each is checked (SHA-256) before Robot uses it. Wi-Fi recommended.</string>
+    <string name="conv_footer_test">Test translation speed translates Robot\'s %1$d test lines (Québec French and English) and compares each with what the same engine gave on the build machine. The mark: a median of %2$d ms a line or less, %3$d MB or less with both directions loaded, and every line the same. Only the test\'s own sentences are translated. While this page shows, the engine stays loaded: `adb shell dumpsys meminfo %4$s:mt` shows its memory.</string>
+
+    <!-- Transcripts (ui/TranscriptsScreen.kt). -->
+    <string name="conv_recording_now">Recording now</string>
+    <string name="conv_stopped_unexpectedly">Stopped unexpectedly</string>
+    <string name="conv_delete_all">Delete all</string>
+    <string name="conv_library_intro">Conversations transcribed on this phone. They stay here unless you export or share them.</string>
+    <string name="conv_search_words">Search the words</string>
+    <string name="conv_nothing_found">Nothing found.</string>
+    <string name="conv_transcript">Transcript</string>
+    <string name="conv_no_transcripts">No transcripts yet</string>
+    <string name="conv_no_transcripts_hint">Tap Transcribe, or say “hey robot, transcribe this conversation”.</string>
+    <string name="conv_delete_all_title">Delete all transcripts?</string>
+    <string name="conv_delete_all_text">This removes every transcript from this phone, and stops one being recorded. It can\'t be undone. (Deleting on flash storage isn\'t a secure erase.)</string>
+    <plurals name="conv_deleted_count">
+        <item quantity="one">%1$d transcript deleted.</item>
+        <item quantity="other">%1$d transcripts deleted.</item>
+    </plurals>
+    <string name="conv_being_recorded">It\'s being recorded: change it on the transcript screen, or after it stops.</string>
+    <string name="conv_share_chooser">Share the transcript (the app you pick keeps its own copy)</string>
+    <string name="conv_share">Share</string>
+    <string name="conv_not_important">Not important</string>
+    <string name="conv_mark_important">Mark important</string>
+    <string name="conv_rename">Rename</string>
+    <string name="conv_save_md">Save as Markdown (.md)</string>
+    <string name="conv_save_txt">Save as text (.txt)</string>
+    <string name="conv_copy">Copy</string>
+    <string name="conv_stop_and_delete">Stop and delete</string>
+    <string name="conv_none_yet">none yet</string>
+    <string name="conv_credit_nothing_leaves">%1$s Nothing leaves the phone unless you share or export it.</string>
+    <string name="conv_title_hint">Title (empty: the date)</string>
+    <string name="conv_rename_failed">It couldn\'t be renamed (it may be recording).</string>
+    <string name="conv_stop_delete_title">Stop and delete this transcript?</string>
+    <string name="conv_delete_title">Delete this transcript?</string>
+    <string name="conv_delete_text">It is removed from this phone. Copies you shared or saved elsewhere stay where they are.</string>
+    <string name="conv_delete_summary">Delete this summary</string>
+    <string name="conv_delete_summary_title">Delete this summary?</string>
+    <string name="conv_delete_summary_text">The transcript stays.</string>
+    <string name="conv_saved_there">Saved.</string>
+    <string name="conv_not_saved_there">It couldn\'t be saved there.</string>
+
+    <!-- The speakers' chips and dialogs (ui/SpeakerUi.kt). -->
+    <string name="conv_speaker_tap_desc">Speaker: %1$s. Tap to name or merge.</string>
+    <string name="conv_speaker_desc">Speaker: %1$s</string>
+    <string name="conv_sounds_like">%1$s sounds like %2$s. The same person?</string>
+    <string name="conv_merging_gives">Merging gives all of %1$s\'s lines to %2$s. Robot never merges by itself.</string>
+    <string name="conv_merge">Merge</string>
+    <string name="conv_not_the_same">Not the same</string>
+    <string name="conv_someone_else_label">Someone else (%1$s)</string>
+    <string name="conv_name_speaker">Name this speaker</string>
+    <string name="conv_same_person_as">Same person as…</string>
+    <string name="conv_this_is_me">This is me</string>
+    <string name="conv_unknown_speaker">Robot couldn\'t tell who said these lines (too short, nobody just before). Long-press a line to give it to someone.</string>
+    <string name="conv_your_name_here">Your name here</string>
+    <string name="conv_name_label">Name %1$s</string>
+    <string name="conv_name">Name</string>
+    <string name="conv_name_kept">Kept in this transcript only, never linked to a voice. Empty: back to %1$s.</string>
+    <string name="conv_who_else_is_you">Who else is you?</string>
+    <string name="conv_same_person_title">%1$s is the same person as…</string>
+    <string name="conv_lines_become_yours">Their lines become yours.</string>
+    <string name="conv_lines_go_to">All of %1$s\'s lines go to the one you pick.</string>
+    <string name="conv_this_line">This line</string>
+    <string name="conv_someone_else_said">Someone else said it</string>
+    <string name="conv_two_people_split">Two people said it: split</string>
+    <string name="conv_who_said_it">Who said it?</string>
+    <string name="conv_where_other_started">Where did the other person start?</string>
+    <string name="conv_who_said_rest">Who said the rest?</string>
+    <string name="conv_quoted">“%1$s”</string>
+</resources>

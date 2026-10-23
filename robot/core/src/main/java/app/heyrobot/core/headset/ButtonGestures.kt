@@ -3,7 +3,7 @@ package app.heyrobot.core.headset
 
 import app.heyrobot.core.LogCode
 
-// Pure. What a headset button press means to Robot (design §3.1, §3.3, §3.7 rule 3): a long press listens, a single press
+// Pure. What a headset button press means to Robot: a long press listens, a single press
 // stops, a double press repeats. What Android lets through decides what can be seen:
 //
 // - The voice button (an activity start, HeadsetEntry) is the only press Robot gets by default. It counts as a long

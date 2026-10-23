@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.messages
 
+import app.heyrobot.core.i18n.Lang
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test

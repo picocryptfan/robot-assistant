@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.ui.guide
 
+import app.heyrobot.sys.AppLanguage
+import app.heyrobot.sys.Menus
 import android.content.Context
 import app.heyrobot.core.RoutineSettings
 import app.heyrobot.core.guide.GuideState
 import app.heyrobot.core.headset.HeadsetSettings
+import app.heyrobot.core.memory.MemoryEnvelope
+import java.io.File
 import app.heyrobot.core.memory.MemoryLoad
 import app.heyrobot.core.memory.MemorySettings
 import app.heyrobot.core.messages.MessageApp
@@ -24,6 +28,12 @@ import app.heyrobot.ui.settings.announceMessages
 import app.heyrobot.ui.settings.installedMessageApps
 import app.heyrobot.ui.settings.turnMessagesOn
 import app.heyrobot.update.Updater
+import app.heyrobot.sys.BackupFiles
+import app.heyrobot.sys.NotesFiles
+import app.heyrobot.sys.Paths
+import app.heyrobot.sys.MemoryFiles
+import app.heyrobot.sys.PeopleFiles
+import app.heyrobot.update.BackupReminders
 
 // MAIN PROCESS (1.0). What the setup guide reads and writes besides settings.json (which comes in as the app's settings,
 // as on every Settings page): the files Settings › Messages, Memory, Routines, Headset, Car mode, Updates, Web search and
@@ -42,6 +52,10 @@ data class GuideFiles(
     val termuxOn: Boolean = false,
     /** 1.0: Settings › Web search's default engine for a search in your browser. */
     val browserEngine: BrowserEngine = BrowserEngine.DEFAULT,
+    /** 1.1: Settings › Back up and restore's monthly reminder. */
+    val backupRemind: Boolean = false,
+    /** 1.1: nothing of yours yet (no People, Memory, notes or History): Welcome offers Restore from a backup. */
+    val freshPhone: Boolean = false,
 )
 
 /** The guide's stores; the phone's are [PhoneGuideStores], tests keep theirs in memory. */
@@ -65,6 +79,11 @@ interface GuideStores {
     fun updates(s: UpdateSettings)
     /** 1.0: Settings › Web search's default engine for a search in your browser (web.json). */
     fun browserEngine(e: BrowserEngine)
+    /** 1.1: the menus' language (Android's per-app language), and choosing it (Android recreates the guide in it). */
+    fun menus(): Menus = Menus.PHONE
+    fun setMenus(m: Menus) {}
+    /** 1.1: Settings › Back up and restore's "Remind me to back up every month". */
+    fun backupReminder(on: Boolean) {}
 }
 
 class PhoneGuideStores(ctx: Context) : GuideStores {
@@ -85,8 +104,13 @@ class PhoneGuideStores(ctx: Context) : GuideStores {
             webOn = WebStore.current(app).on,
             termuxOn = TermuxStore.load(app).enabled,
             browserEngine = WebStore.current(app).browserEngine,
+            backupRemind = BackupFiles.prefs(app).remind,
+            freshPhone = PeopleFiles.store(app).list().isEmpty() && NotesFiles.dir(app).list().isNullOrEmpty() &&
+                Paths.conversations(app).list().isNullOrEmpty() && !File(MemoryFiles.dir(app), MemoryEnvelope.FILE).isFile,
         )
     }
+
+    override fun backupReminder(on: Boolean) = BackupReminders.set(app, on)
 
     override fun messages(on: Boolean) = turnMessagesOn(app, on)
 
@@ -116,4 +140,6 @@ class PhoneGuideStores(ctx: Context) : GuideStores {
     override fun updates(s: UpdateSettings) = Updater.setSettings(app, s)
 
     override fun browserEngine(e: BrowserEngine) = WebStore.save(app, WebStore.current(app).copy(browserEngine = e))
+    override fun menus(): Menus = AppLanguage.menus(app)
+    override fun setMenus(m: Menus) = AppLanguage.setMenus(app, m)
 }

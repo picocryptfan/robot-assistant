@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.headset
 
+import app.heyrobot.core.car.CarMessages
+import app.heyrobot.core.i18n.HandsFreeStrings
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.output.spoken
 import app.heyrobot.core.LogCode
 import app.heyrobot.core.output.AnswerCode
 import app.heyrobot.core.output.MessageNotice
@@ -8,10 +12,10 @@ import app.heyrobot.core.output.PhoneState
 import app.heyrobot.core.output.SpokenCard
 import app.heyrobot.core.output.SpokenCards
 import app.heyrobot.core.output.SpokenChoice
-import app.heyrobot.core.output.SpokenLang
+import app.heyrobot.core.i18n.Lang
 import app.heyrobot.core.output.Trust
 
-// Pure. New messages announced in the headset (0.7's messages, wired in 0.8; design §3.2 story 5, §3.6, §3.7 rule 5):
+// Pure. New messages announced in the headset (0.7's messages, wired in 0.8):
 // opt-in (Settings › Messages › Announce new messages, off), private headphones only, never on the lock screen unless
 // "Announce while locked" is on, only senders Do Not Disturb and "Announce from" let through, the sender's name first and the text only after a yes (or at once with "Read the text: always"). Never on
 // the speaker, a car or a Bluetooth speaker: the car has its own announcements (car mode). Each sentence still passes
@@ -41,7 +45,7 @@ object HeadsetAnnounce {
      * the SenderFilter's answer.
      */
     fun decide(n: MessageNotice, s: HeadsetSettings, headsetRouted: Boolean, trust: Trust, phone: PhoneState, robotBusy: Boolean,
-        senderAllowed: Boolean, lang: SpokenLang): AnnounceDecision = when {
+        senderAllowed: Boolean, lang: Lang): AnnounceDecision = when {
         !s.announceMessages -> AnnounceDecision.Skip(AnnounceCode.OFF)
         !headsetRouted || trust != Trust.PRIVATE -> AnnounceDecision.Skip(AnnounceCode.NOT_PRIVATE)
         phone.callActive -> AnnounceDecision.Skip(AnnounceCode.CALL)
@@ -55,23 +59,17 @@ object HeadsetAnnounce {
     }
 
     /** "Message from Marie. Read it?", "Message from Marie in Famille. Read it?"; without the question for a hidden text. */
-    fun announce(n: MessageNotice, lang: SpokenLang, ask: Boolean): String {
-        val from = when (lang) {
-            SpokenLang.EN -> "Message from ${n.sender}" + (n.group?.let { " in $it" } ?: "") + "."
-            SpokenLang.FR -> "Message de ${n.sender}" + (n.group?.let { " dans $it" } ?: "") + "."
-        }
-        return when {
-            ask -> from + if (lang == SpokenLang.FR) " Je te le lis?" else " Read it?"
-            n.hidden -> from + if (lang == SpokenLang.FR) " L'app ne montre pas le texte." else " The app doesn't show the text."
+    fun announce(n: MessageNotice, lang: Lang, ask: Boolean): String {
+        val from = CarMessages.fromText(n)
+        return spoken(when {
+            ask -> Phrase.join(from, HandsFreeStrings.readIt())
+            n.hidden -> Phrase.join(from, HandsFreeStrings.noText())
             else -> from
-        }
+        }, lang)
     }
 
     /** "Marie says: I'm on my way." / "Marie dit : J'arrive." */
-    fun read(n: MessageNotice, lang: SpokenLang): String = when (lang) {
-        SpokenLang.EN -> "${n.sender} says: ${n.text.trim()}"
-        SpokenLang.FR -> "${n.sender} dit : ${n.text.trim()}"
-    }
+    fun read(n: MessageNotice, lang: Lang): String = CarMessages.says(n, lang)
 }
 
 /** What the answer to "Message from Marie. Read it?" in the headset does. */
@@ -92,7 +90,7 @@ object AnnounceAnswer {
      * most SpokenChoice.MAX_REREADS times, [rereads] so far); anything else asks how to answer, until SpokenChoice.MAX_TRIES
      * tries ([tries] so far), then nothing more. Robot's own question heard back is never an answer (SpokenChoice).
      */
-    fun next(heard: String, said: String, tries: Int, rereads: Int, lang: SpokenLang, wakePhrases: List<String> = emptyList()): AnnounceNext {
+    fun next(heard: String, said: String, tries: Int, rereads: Int, lang: Lang, wakePhrases: List<String> = emptyList()): AnnounceNext {
         val a = SpokenChoice.answer(heard, SpokenCard(said.removeSuffix("?")), said, wakePhrases)
         return when {
             a.sure && a.kind == AnswerCode.YES -> AnnounceNext.Read

@@ -13,7 +13,7 @@ import javax.crypto.AEADBadTagException
 sealed interface SecretRead {
     /** Decrypted. [toString] never shows it (a log line, a crash text). */
     data class Present(val value: String) : SecretRead {
-        override fun toString() = "Present(…)"
+        override fun toString() = "Present(…)" // l10n: not text (log only)
     }
 
     /** None is saved. */

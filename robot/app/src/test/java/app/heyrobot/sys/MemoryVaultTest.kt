@@ -12,17 +12,20 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.After
 import org.junit.Test
 import java.io.File
 import java.nio.file.Files
 
 /**
- * files/memory/memory.enc on disk (0.7, design §A5 and §A8), with a software AES-GCM key standing in for the Keystore's:
+ * files/memory/memory.enc on disk (0.7), with a software AES-GCM key standing in for the Keystore's:
  * no plain text in the file, nothing written over a file that couldn't be read (locked, key gone, damaged, newer), a
  * Keystore that can't answer read as "not now", the lock screen's key and back, Start over and Delete all.
  */
 class MemoryVaultTest {
     private val dir: File = Files.createTempDirectory("memory").toFile()
+
+    @After fun removeTemp() { dir.deleteRecursively() }
 
     private val keys = SoftMemoryKeys()
     private var lockScreen = false

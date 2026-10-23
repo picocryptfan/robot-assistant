@@ -20,7 +20,7 @@ class PanelLaunchActivity : Activity() {
             for (k in KEYS) intent?.getStringExtra(k)?.let { extras.putString(k, it) }
             VoiceHub.init(this)
             val shown = RobotVoiceService.instance?.show(RobotVoiceService.SRC_APP, extras) == true
-            if (!shown) Toast.makeText(this, "Couldn't open the assistant.", Toast.LENGTH_SHORT).show()
+            if (!shown) Toast.makeText(this, getString(app.heyrobot.R.string.panel_couldnt_open_assistant), Toast.LENGTH_SHORT).show()
         }
         finish()
     }

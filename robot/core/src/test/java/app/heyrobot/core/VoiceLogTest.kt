@@ -98,12 +98,14 @@ class VoiceLogTest {
         assertEquals(LangCode.OTHER, LangCode.of("de"))
         // 0.4.1's model choice events use 130 to 139 (100 to 129 are taken by conversation mode and Ask Claude).
         val model = listOf(VoiceEvent.MODEL_CHOSEN, VoiceEvent.MODEL_LOADED, VoiceEvent.MODEL_LOAD_FAILED, VoiceEvent.MODEL_FALLBACK, VoiceEvent.MODEL_SWITCH,
-            VoiceEvent.GPU_FALLBACK, VoiceEvent.TPU_FALLBACK)
+            VoiceEvent.GPU_FALLBACK, VoiceEvent.TPU_FALLBACK, VoiceEvent.MODEL_CHECK)
         for (e in model) assertTrue(e.name, e.id in 130..139)
         // 0.4.7's GPU fallback keeps the id it shipped with: 0.6.0 left 135 free.
         assertEquals(135, VoiceEvent.GPU_FALLBACK.id)
         // 0.8's beta TPU fallback (the Tensor G6 build) is next to it.
         assertEquals(136, VoiceEvent.TPU_FALLBACK.id)
+        // 1.2's self-test of the GPU or a beta TPU build, after them.
+        assertEquals(137, VoiceEvent.MODEL_CHECK.id)
         assertEquals(model, VoiceEvent.entries.filter { it.id in 130..139 })
         // 0.8's routines use 140 to 159, in the order Routine.kt lists them; never a routine's name or words (the enums
         // and counts only, as the recording API's test checks).
@@ -153,6 +155,25 @@ class VoiceLogTest {
         assertEquals((220..225).toList(), feedback.map { it.id })
         assertEquals(feedback, VoiceEvent.entries.filter { it.id in 220..229 })
         assertTrue(VoiceEvent.entries.none { it.name.startsWith("FEEDBACK_") && it.id !in 220..229 })
+        // 1.4, Robot Files: 270 to 279 (D16), in the plan's order, and nothing else there; each described with codes only.
+        val files = listOf(VoiceEvent.FILE_IN, VoiceEvent.FILE_READ, VoiceEvent.FILE_FILED, VoiceEvent.FILE_PARSE, VoiceEvent.FILE_MOVE,
+            VoiceEvent.FILE_RULE, VoiceEvent.FILE_FIND, VoiceEvent.FILE_DELETE, VoiceEvent.FILE_KEY, VoiceEvent.FILE_OUT)
+        assertEquals((270..279).toList(), files.map { it.id })
+        assertEquals(files, VoiceEvent.entries.filter { it.id in 270..279 })
+        assertTrue(VoiceEvent.entries.none { it.name.startsWith("FILE_") && it.id !in 270..279 })
+        assertEquals("Robot Files: 3 files shared · 1 dangerous", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.FILE_IN, 1, 3, 1)))
+        assertEquals("Robot Files, filing: waits for you · receipt · total", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.FILE_FILED,
+            app.heyrobot.core.files.FileFiledCode.ASKED.id, app.heyrobot.core.files.FileKind.RECEIPT.ordinal + 1, app.heyrobot.core.files.FilingWhy.TOTAL.ordinal + 1)))
+        for (e in files) assertTrue(e.name, VoiceLogText.describe(VoiceLogEntry(0, e, 1, 1, 1)).startsWith("Robot Files"))
+        for (codes in listOf(app.heyrobot.core.files.FileInCode.entries, app.heyrobot.core.files.FileParseCode.entries, app.heyrobot.core.files.FileReadCode.entries,
+            app.heyrobot.core.files.FileFiledCode.entries, app.heyrobot.core.files.FileMoveCode.entries, app.heyrobot.core.files.FileDeleteCode.entries,
+            app.heyrobot.core.files.FileOutCode.entries))
+            assertEquals(codes.size, codes.map { it.id }.toSet().size)
+        // F7: a delete you tapped and a copy that left, codes and counts only.
+        assertEquals("Robot Files: deleted (its key destroyed) · 2 files", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.FILE_DELETE,
+            app.heyrobot.core.files.FileDeleteCode.DELETED.id, 2, 0)))
+        assertEquals("Robot Files: shared · without its metadata", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.FILE_OUT,
+            app.heyrobot.core.files.FileOutCode.SHARED.id, 1, 0)))
         // Routines' (140 to 159), memory's (180 to 189), messages' (190 to 199), headset's (200 to 209), car's (210 to 219)
         // and feedback's (220 to 229) events never share an id with each other or with any other event, and no id is used twice.
         assertEquals(VoiceEvent.entries.size, VoiceEvent.entries.map { it.id }.toSet().size)

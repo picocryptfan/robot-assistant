@@ -11,7 +11,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-/** Headset and car mode by voice (design §4.3 phrases), anchored like the other routers, with misfires. */
+/** Headset and car mode by voice, anchored like the other routers, with misfires. */
 class HandsFreeRouterTest {
     private fun r(s: String, car: Boolean = true) = HandsFreeRouter.route(s, car)
 

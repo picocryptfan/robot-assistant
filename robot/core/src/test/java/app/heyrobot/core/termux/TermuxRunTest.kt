@@ -5,7 +5,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.nio.file.Files
 import java.util.concurrent.TimeUnit
@@ -78,7 +80,8 @@ class TermuxRunTest {
     // --- The wrappers in a real bash (GNU coreutils' timeout, as Termux's bootstrap has) ----------------------------------
 
     private val bash = listOf("/bin/bash", "/usr/bin/bash").map(::File).firstOrNull { it.canExecute() }
-    private val tmp: File by lazy { Files.createTempDirectory("robot-termux").toFile() }
+    @get:Rule val tmpRoot = TemporaryFolder()
+    private val tmp: File by lazy { Files.createTempDirectory(tmpRoot.root.toPath(), "robot-termux").toFile() }
 
     private fun haveTools() {
         assumeTrue(bash != null)

@@ -165,6 +165,18 @@ class PanelLookTest {
     @Test fun classicIdle() { rule.showPanel(PanelFixtures.idle); noProblems(); rule.shot("panel_classic_idle") }
     @Test fun classicListening() { rule.showPanel(PanelFixtures.listening); noProblems(); rule.shot("panel_classic_listening") }
     @Test fun classicAnswerWithCard() { rule.showPanel(PanelFixtures.choices); noProblems(); rule.shot("panel_classic_answer_card") }
+
+    /** 1.4 F6: "file this": filed, with the file's card, Move and Undo (a tap on each asks the panel for it). */
+    @Test fun filedWithMoveAndUndo() {
+        val a = RecordingActions()
+        rule.showPanel(PanelFixtures.filed(), a)
+        noProblems()
+        rule.onNodeWithText("2026-08-14 Costco 84.12 CAD").assertExists()
+        rule.shot("panel_files_filed")
+        rule.onNodeWithText("Move").performClick()
+        rule.onNodeWithText("Undo").performClick()
+        assertEquals(listOf("openHandOff files-1", "undo files-1"), a.calls)
+    }
     @Test fun classicHelperOffer() { rule.showPanel(PanelFixtures.helperOffer); noProblems(); rule.shot("panel_classic_helper_offer") }
     @Test fun classicDark() { rule.showPanel(PanelFixtures.choices, dark = true); rule.shot("panel_classic_dark") }
 

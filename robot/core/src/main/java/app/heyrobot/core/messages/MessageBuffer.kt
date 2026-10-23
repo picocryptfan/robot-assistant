@@ -4,7 +4,7 @@ package app.heyrobot.core.messages
 import java.text.Normalizer
 import java.util.Locale
 
-// Pure. The messages Robot holds, in RAM only (design §B4): the active notifications are the source of truth. A
+// Pure. The messages Robot holds, in RAM only: the active notifications are the source of truth. A
 // conversation enters when its notification is posted, is replaced when the app posts it again (what Robot already read
 // to you stays marked), and leaves when the notification goes (read in the app, dismissed, cleared), at once by default
 // or after "Keep messages for" 1 or 24 hours (still RAM only). Process death or a reboot empties it; the listener
@@ -102,7 +102,7 @@ class MessageBuffer(keep: KeepMessages = KeepMessages.UNTIL_GONE, private val ma
         return threads(now).filter { t -> t.incoming.any { it.senderKey?.lowercase(Locale.ROOT) in k } }
     }
 
-    override fun toString(): String = "MessageBuffer(conversations=$size, keep=$keep)"
+    override fun toString(): String = "MessageBuffer(conversations=$size, keep=$keep)" // l10n: not text (toString for logs and tests)
 
     companion object {
         const val MAX_THREADS = 40

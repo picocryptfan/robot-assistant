@@ -1,0 +1,301 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- 1.4, Robot Files (docs/plans/files-1.4-plan.md §2.4, §6.6): Settings › Files. Its title is core's UiStrings.files. -->
+<resources>
+    <string name="files_intro">Robot keeps your files on this phone, each one encrypted with a key that only works while the phone is unlocked.</string>
+    <string name="files_opening">Opening your files…</string>
+    <string name="files_storage">Storage</string>
+    <string name="files_none_yet">No files yet</string>
+    <plurals name="files_usage">
+        <item quantity="one">%1$d file · %2$s</item>
+        <item quantity="other">%1$d files · %2$s</item>
+    </plurals>
+    <string name="files_yours">Your files</string>
+    <string name="files_delete_all">Delete them all</string>
+    <string name="files_delete_all_detail">Every file in Robot Files, and the key that opens them</string>
+    <string name="files_delete_all_title">Delete all your files?</string>
+    <string name="files_delete_all_text">Robot deletes every file in Robot Files and the key that opens them. Copies stay in backups you made before. This can\'t be undone.</string>
+    <string name="files_all_deleted">Your files are deleted.</string>
+    <string name="files_not_deleted">Robot couldn\'t delete your files. Try again.</string>
+
+    <!-- What Robot Files can't do now (§2.4). -->
+    <string name="files_locked">Unlock your phone to use your files.</string>
+    <string name="files_try_again">Try again</string>
+    <string name="files_key_gone">Robot\'s files key is gone, so your files can\'t be read. Robot keeps them until you choose: restore them from a backup, or delete them.</string>
+    <string name="files_restore">Restore from a backup</string>
+    <!-- %s: the page's title, Back up and restore. -->
+    <string name="files_restore_detail">In %s</string>
+    <string name="files_unreadable">Robot couldn\'t read your files\' list. Start over makes a new one from your files.</string>
+    <string name="files_too_new">Your files\' list is from a newer Robot, so this one can\'t read or change it. Update Robot, or start over.</string>
+    <string name="files_start_over">Start over</string>
+    <string name="files_start_over_detail">Your files come back in Inbox, without their names</string>
+    <string name="files_start_over_title">Start over?</string>
+    <string name="files_start_over_text">Robot keeps the list it couldn\'t read aside as index.enc.bad and makes a new one from your files. They come back in Inbox, without their names.</string>
+    <plurals name="files_started_over">
+        <item quantity="one">Robot made a new list: %d file is in Inbox.</item>
+        <item quantity="other">Robot made a new list: %d files are in Inbox.</item>
+    </plurals>
+    <string name="files_not_started_over">Nothing changed. Try again.</string>
+
+    <!-- %s: the page's title, Back up and restore. -->
+    <string name="files_backup">Backup reminder</string>
+    <string name="files_backup_detail">%s can remind you every month</string>
+    <string name="files_footer">Your files never show on the lock screen, and Android\'s own backup never takes them. Medical files and IDs never go to a helper.</string>
+    <!-- F5, getting files in (§3): the share window ("Robot Files" in another app's Share), its buttons and lines. -->
+    <string name="files_share_label">Robot Files</string>
+    <string name="files_share_title">Add to Robot Files</string>
+    <string name="files_share_add">Add</string>
+    <string name="files_share_close">Close</string>
+    <string name="files_share_done">Done</string>
+    <string name="files_share_note">They wait in your Inbox until Robot files them.</string>
+    <string name="files_share_size_unknown">Size unknown</string>
+    <!-- %1$d: the file being added, %2$d: how many. -->
+    <string name="files_share_adding">Adding %1$d of %2$d…</string>
+    <string name="files_share_text">Shared text</string>
+    <string name="files_add_anyway">Add it anyway</string>
+    <string name="files_dont_add">Don\'t add</string>
+    <!-- F5, scanning (§3.2): Settings › Files › Scan a document, until the Files screen (F7) has its button. -->
+    <string name="files_scan">Scan a document</string>
+    <string name="files_scan_start">Take a photo of the first page, flat and in good light. You set its corners next.</string>
+    <string name="files_scan_next">Take the next page, or add the scan to Robot Files.</string>
+    <plurals name="files_scan_pages">
+        <item quantity="one">%d page ready</item>
+        <item quantity="other">%d pages ready</item>
+    </plurals>
+    <string name="files_scan_take">Take a photo</string>
+    <string name="files_scan_add_page">Add a page</string>
+    <string name="files_scan_add">Add to Robot Files</string>
+    <string name="files_scan_corners">Drag the four corners to the corners of the page.</string>
+    <string name="files_scan_retake">Retake</string>
+    <string name="files_scan_use">Use this page</string>
+    <string name="files_scan_working">One moment…</string>
+    <string name="files_scan_no_camera">The camera didn\'t open.</string>
+    <!-- F5: a transcript's menu. -->
+    <string name="files_save_transcript">Save to Robot Files</string>
+    <!-- F7, the Files tab (files-1.4-plan.md §6.2 to §6.5): Inbox, Recently filed, the drawers, a file's page, search,
+         Share and Open with another app. Its title is core's UiStrings.files; the drawers' and kinds' words in sentences are core's FilesStrings. -->
+    <string name="files_search_hint">Search your files</string>
+    <string name="files_being_read">Being read</string>
+    <string name="files_recent">Recently filed</string>
+    <string name="files_drawers">Drawers</string>
+    <string name="files_new_drawer">New drawer</string>
+    <string name="files_drawer_name">Drawer\'s name</string>
+    <string name="files_create">Create</string>
+    <string name="files_cancel">Cancel</string>
+    <string name="files_scan_button">Scan</string>
+    <string name="files_empty">Nothing here yet. Share a file to Robot Files from any app, scan a receipt, or say “file this”.</string>
+    <string name="files_open_settings">Open %s</string>
+    <string name="files_check_total">Check the total</string>
+    <string name="files_kind_receipt">Receipt</string>
+    <string name="files_kind_bill">Bill</string>
+    <string name="files_kind_document">Document</string>
+    <string name="files_kind_id">ID</string>
+    <string name="files_kind_tax_slip">Tax slip</string>
+    <string name="files_kind_ticket">Ticket or booking</string>
+    <string name="files_kind_medical">Medical</string>
+    <string name="files_kind_photo">Photo</string>
+    <string name="files_kind_video">Video</string>
+    <string name="files_kind_note">Note</string>
+    <string name="files_kind_transcript">Transcript</string>
+    <string name="files_kind_other">Something else</string>
+    <string name="files_all">All</string>
+    <string name="files_drawer_empty">No files in this drawer yet. Move a file here from its page.</string>
+    <string name="files_rename_drawer">Rename drawer</string>
+    <string name="files_delete_drawer">Delete drawer</string>
+    <string name="files_drawer_not_empty">Move its files to another drawer first.</string>
+    <string name="files_drawer_taken">There\'s already a drawer with that name.</string>
+    <string name="files_drawer_name_unused">Robot can\'t use that name for a drawer. Try another.</string>
+    <string name="files_more">More options</string>
+    <string name="files_page_of">Page %1$d of %2$d</string>
+    <string name="files_previous">Previous page</string>
+    <string name="files_next">Next page</string>
+    <string name="files_no_preview">Robot doesn\'t show this kind of file. Open it with another app to see it.</string>
+    <string name="files_preview_failed">Robot couldn\'t show this page.</string>
+    <string name="files_damaged">This file is damaged.</string>
+    <string name="files_name">Name</string>
+    <string name="files_named_by_you">Named by you</string>
+    <string name="files_rename">Rename</string>
+    <string name="files_save">Save</string>
+    <string name="files_details">Details</string>
+    <string name="files_field_merchant">Merchant</string>
+    <string name="files_field_date">Date</string>
+    <string name="files_field_total">Total</string>
+    <string name="files_field_currency">Currency</string>
+    <string name="files_field_due">Due</string>
+    <string name="files_field_expiry">Expires</string>
+    <string name="files_field_account">Account (last 4 digits)</string>
+    <string name="files_field_card">Card (last 4 digits)</string>
+    <string name="files_field_slip">Slip</string>
+    <string name="files_field_year">Year</string>
+    <string name="files_field_period">Period</string>
+    <string name="files_field_category">Category</string>
+    <string name="files_field_tax">Tax (%s)</string>
+    <string name="files_read_by_robot">Read by Robot</string>
+    <string name="files_set_by_you">Set by you</string>
+    <string name="files_field_hint_amount">An amount, like 84.12</string>
+    <string name="files_field_hint_date">A date, like 2026-08-14</string>
+    <string name="files_field_invalid">Robot couldn\'t read that. Check it and try again.</string>
+    <string name="files_add_detail">Add a detail</string>
+    <string name="files_remove_detail">Remove</string>
+    <string name="files_drawer">Drawer</string>
+    <string name="files_kind">Kind</string>
+    <string name="files_tags">Tags</string>
+    <string name="files_add_tag">Add a tag</string>
+    <string name="files_tag">Tag</string>
+    <string name="files_remove_named">Remove %s</string>
+    <string name="files_link_person">Link a person</string>
+    <string name="files_no_people">No one in People yet: add people in %s.</string>
+    <string name="files_where_from">Where it came from</string>
+    <string name="files_source">Source</string>
+    <string name="files_from_scan">Scanned</string>
+    <string name="files_from_panel">Filed from a conversation with Robot</string>
+    <string name="files_from_transcript">Saved from a transcript</string>
+    <string name="files_from_backup">From a backup that isn\'t yours</string>
+    <string name="files_from_recovered">Found by Robot: its name and source were lost</string>
+    <string name="files_from_unknown">Not known</string>
+    <string name="files_added">Added</string>
+    <string name="files_size">Size</string>
+    <string name="files_file_type">File type</string>
+    <string name="files_opened">Opened with another app</string>
+    <string name="files_yes">Yes</string>
+    <string name="files_no">No</string>
+    <string name="files_filed">Filed</string>
+    <string name="files_filed_by_robot">By Robot, %s</string>
+    <string name="files_filed_by_rule">By your rule, %s</string>
+    <string name="files_filed_by_you">By you, %s</string>
+    <string name="files_share">Share</string>
+    <string name="files_open_with">Open with another app</string>
+    <string name="files_open_with_title">Open with</string>
+    <string name="files_delete">Delete</string>
+    <string name="files_open_title">Open with another app?</string>
+    <string name="files_open_text">This gives the app a copy of the file. Robot deletes its copy when you come back, but the app may keep one.</string>
+    <string name="files_open">Open</string>
+    <string name="files_dangerous_open">This could install or run something. Open it only if you know where it came from.</string>
+    <string name="files_cant_strip_title">Send it with its location?</string>
+    <string name="files_cant_strip_text">Robot can\'t remove the location and other details from this file. The app gets it as you added it.</string>
+    <string name="files_send_anyway">Send it as it is</string>
+    <string name="files_out_failed">Robot couldn\'t make a copy to send. Try again.</string>
+    <string name="files_out_low_space">Not enough space on the phone to make a copy.</string>
+    <string name="files_no_app">No app on this phone can take this file.</string>
+    <string name="files_delete_title">Delete “%s”?</string>
+    <string name="files_delete_text">It stays in backups you made before.</string>
+    <string name="files_keep">Keep</string>
+    <string name="files_deleted">File deleted.</string>
+    <string name="files_not_deleted_one">Robot couldn\'t delete it. Try again.</string>
+    <string name="files_undeleted">The file is back.</string>
+    <string name="files_move_to">Move to</string>
+    <string name="files_search_none">Nothing found.</string>
+    <string name="files_not_now">Robot couldn\'t do that now. Try again.</string>
+    <string name="files_file_it">File it</string>
+    <!-- F11: a file from someone else's backup, filed where it was in theirs (your tap). %s: the drawer's name. -->
+    <string name="files_file_in">File in %s</string>
+    <string name="files_in_inbox">Inbox</string>
+    <plurals name="files_need_you">
+        <item quantity="one">%d needs you</item>
+        <item quantity="other">%d need you</item>
+    </plurals>
+    <plurals name="files_count">
+        <item quantity="one">%d file</item>
+        <item quantity="other">%d files</item>
+    </plurals>
+    <plurals name="files_total_receipts">
+        <item quantity="one">%1$s in %2$d receipt</item>
+        <item quantity="other">%1$s in %2$d receipts</item>
+    </plurals>
+    <plurals name="files_total_bills">
+        <item quantity="one">%1$s in %2$d bill</item>
+        <item quantity="other">%1$s in %2$d bills</item>
+    </plurals>
+    <plurals name="files_to_check">
+        <item quantity="one">%d total to check</item>
+        <item quantity="other">%d totals to check</item>
+    </plurals>
+    <plurals name="files_found">
+        <item quantity="one">%d file found</item>
+        <item quantity="other">%d files found</item>
+    </plurals>
+    <!-- F10: reminders, the brief and clean-up suggestions (files-1.4-plan.md §6.6, §7). -->
+    <string name="files_field_return_by">Return by</string>
+    <string name="files_field_warranty">Warranty until</string>
+    <string name="files_reminders_title">Reminders</string>
+    <string name="files_add_to_brief">Add to my brief</string>
+    <string name="files_add_to_calendar">Add to calendar</string>
+    <string name="files_in_brief">In your brief on %1$s</string>
+    <string name="files_remove_reminder">Remove</string>
+    <string name="files_reminders_row">Reminders from files</string>
+    <string name="files_reminders_ask">Ask me first</string>
+    <string name="files_reminders_brief">Add to my brief on its own</string>
+    <string name="files_reminders_off">Off</string>
+    <string name="files_reminders_detail">Adding to your calendar always takes a card.</string>
+    <string name="files_brief_row">Show in morning brief</string>
+    <string name="files_brief_detail">What Robot filed and your reminders, only while the phone is unlocked.</string>
+    <string name="files_cleanup_row">Clean-up suggestions</string>
+    <string name="files_cleanup_detail">Files that look no longer needed. Deleting always asks.</string>
+    <string name="files_cleanup_list">Files that could go</string>
+    <string name="files_not_saved">Robot couldn\'t save that setting. Try again.</string>
+    <!-- FX2 (files-1.4-review.md finding 4): §6.6's rows for Robot Files on or off, the filing levels, reading text in images and stripping location. -->
+    <string name="files_on_row">Robot Files</string>
+    <string name="files_on_detail">Off, Robot takes no new files. The files you have stay as they are.</string>
+    <string name="files_filing_title">Filing</string>
+    <string name="files_level_receipts">Receipts</string>
+    <string name="files_level_bills">Bills</string>
+    <string name="files_level_documents">Documents</string>
+    <string name="files_level_documents_detail">IDs, tax slips, tickets and medical files too</string>
+    <string name="files_level_photos">Photos and videos</string>
+    <string name="files_level_other">Other files</string>
+    <string name="files_level_other_detail">Notes, transcripts and everything else</string>
+    <string name="files_level_auto">File it on its own</string>
+    <string name="files_level_ask">Ask me first</string>
+    <string name="files_level_off">Off: it stays in your Inbox, unread</string>
+    <string name="files_read_text_row">Read text in images</string>
+    <string name="files_read_text_detail">With Robot\'s own model, on this phone. Off, a photo is filed as a photo and Robot asks what a scan is.</string>
+    <string name="files_strip_row">Strip location from photos I send</string>
+    <string name="files_strip_detail">A photo you share or open with another app goes without its location and other details. Exports too.</string>
+    <!-- Technical: the same in every language. -->
+    <string name="files_sha256" translatable="false">SHA-256</string>
+    <!-- F12: business and personal, a tax pack and an expense report, travel mode (files-1.4-plan.md §4.4, §6.6, §7.2). -->
+    <string name="files_tag_business">Business</string>
+    <string name="files_tag_personal">Personal</string>
+    <string name="files_export">Export</string>
+    <string name="files_pack_tax">Tax pack</string>
+    <string name="files_pack_tax_detail">Slips and tax files for one year, with a table of their details</string>
+    <string name="files_pack_expenses">Expense report</string>
+    <string name="files_pack_expenses_detail">Files tagged business for one year, with a table of their details</string>
+    <string name="files_pack_what">What goes: %1$s, and a table of their details (a CSV file).</string>
+    <string name="files_pack_not_encrypted">The copies aren\'t encrypted: anyone who can open the folder you pick can read them.</string>
+    <string name="files_pack_export">Export to a folder</string>
+    <string name="files_pack_no_folder">Robot couldn\'t make a folder there. Pick another one.</string>
+    <string name="files_pack_failed">Robot couldn\'t finish the export. Try another folder.</string>
+    <plurals name="files_pack_damaged">
+        <item quantity="one">%d file can\'t be read, so it\'s left out.</item>
+        <item quantity="other">%d files can\'t be read, so they\'re left out.</item>
+    </plurals>
+    <plurals name="files_pack_done">
+        <item quantity="one">Copied %1$d file and its table to “%2$s”.</item>
+        <item quantity="other">Copied %1$d files and their table to “%2$s”.</item>
+    </plurals>
+    <plurals name="files_pack_left_out">
+        <item quantity="one">%d file wasn\'t copied: the table says which.</item>
+        <item quantity="other">%d files weren\'t copied: the table says which.</item>
+    </plurals>
+    <plurals name="files_pack_stopped">
+        <item quantity="one">Robot stopped because the phone locked. %d file was copied.</item>
+        <item quantity="other">Robot stopped because the phone locked. %d files were copied.</item>
+    </plurals>
+    <string name="files_travel_title">Travel mode</string>
+    <string name="files_travel_detail">Hidden drawers and their files stay out of sight everywhere until you confirm with your PIN.</string>
+    <string name="files_travel_note">A privacy screen, not encryption: anyone who knows your PIN can show them again. While travel mode is on, backups and restores leave Robot Files out, and Robot\'s voice and your brief never mention hidden drawers.</string>
+    <string name="files_hidden_title">Hidden drawers</string>
+    <string name="files_hidden_more">Other drawers may be hidden. Show them to change them.</string>
+    <string name="files_show_hidden">Show hidden drawers</string>
+    <string name="files_show_hidden_detail">With your PIN, for 10 minutes, until you leave Robot or the screen goes off</string>
+    <string name="files_hidden_shown">Hidden drawers show in Files for 10 minutes, until you leave Robot or the screen goes off.</string>
+    <string name="files_travel_need_lock">Set a screen lock first: travel mode needs your PIN to show hidden drawers again.</string>
+    <string name="files_travel_choose">Choose at least one drawer to hide first.</string>
+    <string name="files_confirm_title">Confirm it\'s you</string>
+    <string name="files_confirm_off">Turn travel mode off and show your hidden drawers</string>
+    <string name="files_confirm_unhide">Stop hiding a drawer</string>
+    <string name="files_confirm_show">Show your hidden drawers</string>
+    <string name="files_not_confirmed">Not confirmed: nothing changed.</string>
+    <string name="files_no_pin_screen">Robot couldn\'t open the screen that asks for your PIN. Nothing changed.</string>
+</resources>

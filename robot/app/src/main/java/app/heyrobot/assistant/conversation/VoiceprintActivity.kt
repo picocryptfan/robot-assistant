@@ -41,13 +41,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.heyrobot.assistant.VoiceHub
 import app.heyrobot.core.Enrolment
-import app.heyrobot.core.LangLabel
+import app.heyrobot.R
 import app.heyrobot.core.Pcm
 import app.heyrobot.core.RLog
 import app.heyrobot.core.VoiceBundle
+import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.Cmd
 import app.heyrobot.sys.VoiceprintFiles
 import app.heyrobot.ui.common.RIcons
@@ -95,13 +97,33 @@ class VoiceprintActivity : ComponentActivity() {
     private val done = mutableIntStateOf(0)
     private val saved = mutableStateOf(false)
     private val justSaved = mutableStateOf(false)
+    /** The phone is locked: read again when the screen comes back, and at each action (a lock can begin meanwhile). */
+    private val lockedNow = mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         VoiceHub.init(this)
+        lockedNow.value = Assistant.locked(this)
         saved.value = VoiceprintFiles.saved(this)
         setContent { RobotTheme { Screen() } }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        lockedNow.value = Assistant.locked(this)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        lockedNow.value = Assistant.locked(this)
+    }
+
+    /** Read now, at an action: false (and the screen shows "Unlock your phone…") while the phone is locked. */
+    private fun unlocked(): Boolean {
+        val l = Assistant.locked(this)
+        lockedNow.value = l
+        return !l
     }
 
     override fun onPause() {
@@ -109,7 +131,7 @@ class VoiceprintActivity : ComponentActivity() {
         // Never recording in the background: a recording you didn't finish is dropped.
         if (recording.value) {
             stopRecording()
-            problem.value = "The recording stopped when you left. Read that sentence again."
+            problem.value = getString(R.string.conv_vp_left)
         }
     }
 
@@ -131,12 +153,13 @@ class VoiceprintActivity : ComponentActivity() {
     private fun modelReady(): Boolean = VoiceEngines.speakerEmbedder()?.available == true
 
     private fun startRecording() {
+        if (!unlocked()) return
         if (ConversationSession.running) {
-            problem.value = "A transcription is running. Stop it first."
+            problem.value = getString(R.string.conv_running_stop_first)
             return
         }
         if (!modelReady()) {
-            problem.value = "This needs the speaker model: download it in Robot › Settings › Conversation."
+            problem.value = getString(R.string.conv_vp_needs_model)
             return
         }
         synchronized(recLock) { recorded = ArrayList(); recSamples = 0 }
@@ -148,7 +171,7 @@ class VoiceprintActivity : ComponentActivity() {
             val l = Listener(this, ListenerConfig(wakeWord = false), null, onWake = { _, _ -> })
             if (!l.start()) {
                 l.stop()
-                problem.value = "Robot can't use the microphone (allow it in the Robot app, or close the app that is recording)."
+                problem.value = getString(R.string.conv_no_mic)
                 return
             }
             l.addSink(sink)
@@ -184,11 +207,16 @@ class VoiceprintActivity : ComponentActivity() {
     /** Stop: the speech of this recording becomes one embedding (work thread); the audio goes. */
     private fun finishClip() {
         val audio = stopRecording()
-        if (audio.size < Pcm.RATE * Enrolment.MIN_CLIP_MS / 1000) {
-            problem.value = "That was too short. Read the whole sentence, then tap Stop."
+        // Locked meanwhile: the recording is dropped, as when you leave the screen.
+        if (!unlocked()) {
+            audio.fill(0f)
             return
         }
-        busy.value = "Listening to your voice…"
+        if (audio.size < Pcm.RATE * Enrolment.MIN_CLIP_MS / 1000) {
+            problem.value = getString(R.string.conv_vp_too_short)
+            return
+        }
+        busy.value = getString(R.string.conv_vp_listening)
         work.execute {
             val speech = try { ConversationEngine.speechOnly(this, audio) } catch (t: Throwable) { RLog.w("voiceprint_vad", t); null }
             audio.fill(0f)
@@ -200,8 +228,8 @@ class VoiceprintActivity : ComponentActivity() {
             runOnUiThread {
                 busy.value = null
                 when {
-                    speech == null || e == null && enough -> problem.value = "Robot couldn't use the speaker model. Try again in a moment."
-                    e == null -> problem.value = "Robot heard too little speech. Read the sentence again, a little closer to the phone."
+                    speech == null || e == null && enough -> problem.value = getString(R.string.conv_vp_model_failed)
+                    e == null -> problem.value = getString(R.string.conv_vp_too_little)
                     else -> {
                         done.intValue = n
                         if (n >= Enrolment.CLIPS) makeVoiceprint()
@@ -213,7 +241,12 @@ class VoiceprintActivity : ComponentActivity() {
 
     /** The recordings, checked to be one voice, averaged, encrypted and saved. */
     private fun makeVoiceprint() {
-        busy.value = "Saving…"
+        if (!unlocked()) {
+            work.execute { forget() }
+            done.intValue = 0
+            return
+        }
+        busy.value = getString(R.string.conv_vp_saving)
         val app = applicationContext
         work.execute {
             val r = synchronized(voices) { Enrolment.make(VoiceBundle.SPEAKERS.id, voices.toList()) }
@@ -228,16 +261,16 @@ class VoiceprintActivity : ComponentActivity() {
                         saved.value = true
                         justSaved.value = true
                     }
-                    r is Enrolment.Result.NotAlike -> problem.value = "The three recordings don't sound like one voice (someone else spoke, or it was " +
-                        "noisy). Read them again, alone, somewhere quiet."
-                    r is Enrolment.Result.Ok -> problem.value = "Your voiceprint couldn't be saved on this phone."
-                    else -> problem.value = "Robot needs all three sentences. Read them again."
+                    r is Enrolment.Result.NotAlike -> problem.value = getString(R.string.conv_vp_not_alike)
+                    r is Enrolment.Result.Ok -> problem.value = getString(R.string.conv_vp_not_saved)
+                    else -> problem.value = getString(R.string.conv_vp_needs_three)
                 }
             }
         }
     }
 
     private fun deleteVoiceprint() {
+        if (!unlocked()) return
         val app = applicationContext
         work.execute {
             VoiceprintFiles.delete(app)
@@ -251,26 +284,27 @@ class VoiceprintActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     private fun Screen() {
-        val sentences = remember { Enrolment.sentences(LangLabel.yours()) }
+        val sentences = remember { Enrolment.sentences(ConversationSession.yourLanguage(this)) }
         var confirmDelete by remember { mutableStateOf(false) }
         Scaffold(topBar = {
-            TopAppBar(title = { Text("Your voice") }, navigationIcon = { IconButton(onClick = { finish() }) { Icon(RIcons.Back, "Back") } })
+            TopAppBar(title = { Text(stringResource(R.string.conv_vp_title)) },
+                navigationIcon = { IconButton(onClick = { finish() }) { Icon(RIcons.Back, stringResource(R.string.conv_back)) } })
         }) { pad ->
             Column(Modifier.fillMaxSize().padding(pad).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text("Read three short sentences so Robot knows your voice: in transcripts, your lines then say “You”. Optional.",
-                    style = MaterialTheme.typography.bodyLarge)
-                Text("Robot keeps only a voiceprint (192 numbers made from your recordings, not the recordings), encrypted on this phone. " +
-                    "A voiceprint is biometric data: it is used only to label your lines, never sent anywhere, and one tap deletes it. " +
-                    "The recordings stay in memory and are dropped right away.",
+                if (lockedNow.value) {
+                    Text(stringResource(R.string.conv_unlock_screen), style = MaterialTheme.typography.bodyLarge)
+                    return@Column
+                }
+                Text(stringResource(R.string.conv_vp_intro), style = MaterialTheme.typography.bodyLarge)
+                Text(stringResource(R.string.conv_vp_privacy),
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (saved.value) Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(if (justSaved.value) "Saved. Your lines will say “You” from the next transcript." else "Your voiceprint is saved.",
-                            style = MaterialTheme.typography.bodyLarge)
-                        Text("Reading the sentences again replaces it.", style = MaterialTheme.typography.bodyMedium)
+                        Text(stringResource(if (justSaved.value) R.string.conv_vp_saved_now else R.string.conv_vp_saved), style = MaterialTheme.typography.bodyLarge)
+                        Text(stringResource(R.string.conv_vp_again_replaces), style = MaterialTheme.typography.bodyMedium)
                         OutlinedButton(onClick = { confirmDelete = true }, modifier = Modifier.heightIn(min = 48.dp)) {
-                            Icon(RIcons.Delete, null); Spacer(Modifier.width(6.dp)); Text("Delete my voiceprint")
+                            Icon(RIcons.Delete, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.conv_vp_delete_mine))
                         }
                     }
                 }
@@ -281,30 +315,29 @@ class VoiceprintActivity : ComponentActivity() {
                 }
                 val k = done.intValue
                 if (k < sentences.size) {
-                    Text("Sentence ${k + 1} of ${sentences.size}", style = MaterialTheme.typography.titleSmall)
+                    Text(stringResource(R.string.conv_vp_sentence, k + 1, sentences.size), style = MaterialTheme.typography.titleSmall)
                     Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth()) {
                         Text(sentences[k], Modifier.padding(16.dp), style = MaterialTheme.typography.headlineSmall)
                     }
-                    Text("Hold the phone as you would at a table, and read in your normal voice. Recording stops by itself after " +
-                        "${Enrolment.MAX_CLIP_MS / 1000} seconds.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.conv_vp_hold, Enrolment.MAX_CLIP_MS / 1000), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                         if (!recording.value) Button(onClick = { startRecording() }, enabled = busy.value == null, modifier = Modifier.heightIn(min = 56.dp)) {
-                            Icon(RIcons.Mic, null); Spacer(Modifier.width(8.dp)); Text(if (saved.value && k == 0) "Record again" else "Record")
+                            Icon(RIcons.Mic, null); Spacer(Modifier.width(8.dp)); Text(stringResource(if (saved.value && k == 0) R.string.conv_vp_record_again else R.string.conv_record))
                         } else Button(onClick = { finishClip() }, modifier = Modifier.heightIn(min = 56.dp)) {
-                            Icon(RIcons.Stop, null); Spacer(Modifier.width(8.dp)); Text("Stop")
+                            Icon(RIcons.Stop, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.conv_stop))
                         }
-                        if (k > 0 && !recording.value) TextButton(onClick = { work.execute { forget() }; done.intValue = 0 }, enabled = busy.value == null) { Text("Start over") }
+                        if (k > 0 && !recording.value) TextButton(onClick = { work.execute { forget() }; done.intValue = 0 }, enabled = busy.value == null) { Text(stringResource(R.string.conv_vp_start_over)) }
                     }
                 }
                 Spacer(Modifier.heightIn(min = 24.dp))
             }
         }
-        if (confirmDelete) AlertDialog(
+        if (confirmDelete && !lockedNow.value) AlertDialog(
             onDismissRequest = { confirmDelete = false },
-            title = { Text("Delete your voiceprint?") },
-            text = { Text("Robot stops recognising your voice at once; lines already labelled “You” stay as they are. You can read the sentences again any time.") },
-            confirmButton = { TextButton(onClick = { confirmDelete = false; deleteVoiceprint() }) { Text("Delete") } },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
+            title = { Text(stringResource(R.string.conv_vp_delete_title)) },
+            text = { Text(stringResource(R.string.conv_vp_delete_text)) },
+            confirmButton = { TextButton(onClick = { confirmDelete = false; deleteVoiceprint() }) { Text(stringResource(R.string.conv_delete)) } },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(stringResource(R.string.conv_cancel)) } },
         )
     }
 

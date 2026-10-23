@@ -74,13 +74,18 @@ import app.heyrobot.ui.settings.RoutineRoutes
 import app.heyrobot.ui.settings.engineLine
 import app.heyrobot.ui.settings.serviceLine
 import app.heyrobot.ui.settings.SettingsRoutes
+import app.heyrobot.ui.settings.menusLabel
+import app.heyrobot.core.ToolName
+import app.heyrobot.sys.Menus
+import app.heyrobot.ui.theme.LocalLangs
+import app.heyrobot.ui.theme.str
 import java.util.Locale
 
 // MAIN PROCESS (1.0). The setup guide's pages (SetupGuideScreen draws the frame): each says what the feature does, a
 // privacy line, its choices as Settings' rows with what is set now, and where Settings has it.
 
 internal fun LazyListScope.guidePage(step: GuideStep, g: GuideCtx) = when (step) {
-    GuideStep.WELCOME -> welcome()
+    GuideStep.WELCOME -> welcome(g)
     GuideStep.CAN_DO -> canDo()
     GuideStep.PHONE -> phone(g)
     GuideStep.VOICE -> voice(g)
@@ -92,6 +97,7 @@ internal fun LazyListScope.guidePage(step: GuideStep, g: GuideCtx) = when (step)
     GuideStep.WEATHER -> weather(g)
     GuideStep.CONVERSATION -> conversation(g)
     GuideStep.ROUTINES -> routines(g)
+    GuideStep.PHONE_LOCK -> phoneLock(g)
     GuideStep.HEADSET_CAR -> headsetCar(g)
     GuideStep.HELPERS -> helpers(g)
     GuideStep.WEB_TERMUX -> webTermux(g)
@@ -101,7 +107,7 @@ internal fun LazyListScope.guidePage(step: GuideStep, g: GuideCtx) = when (step)
 
 /** A button at the end of a status row, named for TalkBack ([label]: "Allow contacts"). */
 @Composable
-private fun RowButton(@StringRes text: Int, @StringRes label: Int, onClick: () -> Unit) {
+internal fun RowButton(@StringRes text: Int, @StringRes label: Int, onClick: () -> Unit) {
     val l = stringResource(label)
     FilledTonalButton(onClick = onClick, modifier = Modifier.semantics { contentDescription = l }) { Text(stringResource(text)) }
 }
@@ -123,11 +129,27 @@ private fun DownloadRow(title: String, status: ModelStatus?, progress: String?, 
 
 // ------------------------------------------------------------------------------------------------------- 1. Welcome
 
-private fun LazyListScope.welcome() {
+private fun LazyListScope.welcome(g: GuideCtx) {
     title(R.string.guide_welcome_title)
     para(R.string.guide_welcome_1)
     para(R.string.guide_welcome_2)
     para(R.string.guide_welcome_3)
+    // 1.1: the menus' language, as Settings › Language has it. Choosing it recreates the guide in that
+    // language, on this page (the guide's step is in its file).
+    group(R.string.lang_title) {
+        var menus by remember { mutableStateOf(g.stores.menus()) }
+        val labels = Menus.entries.associateWith { menusLabel(it) }
+        ListPreference(stringResource(R.string.lang_menus), menus, Menus.entries, { labels.getValue(it) }, icon = RIcons.Message) {
+            menus = it
+            g.stores.setMenus(it)
+        }
+    }
+    // 1.1: on a phone with nothing of yours yet, a backup made on your other phone.
+    if (g.files.freshPhone) group(null) {
+        val ctx = androidx.compose.ui.platform.LocalContext.current
+        PreferenceItem(stringResource(R.string.guide_welcome_restore), stringResource(R.string.guide_welcome_restore_detail), RIcons.Folder,
+            onClick = { ctx.startActivity(app.heyrobot.sys.BackupWindow.restore(ctx)) })
+    }
     privacy(R.string.guide_welcome_privacy)
     findIt(R.string.guide_path_guide)
 }
@@ -195,23 +217,64 @@ private fun LazyListScope.phone(g: GuideCtx) {
     val p = snap.phone
     val fast = snap.fast
     val backend = ModelCatalogue.backend(fast, p, g.s.modelGpu, snap.gpuFailure?.model == fast)
-    val speed = if (fast == BrainModel.GENERAL) Speeds.of(fast, backend, p)?.text() ?: fast.speed else fast.speed
+    // 1.2: what this phone measured, once it has (Settings › Model's figures), else the estimate.
+    val speed = if (fast == BrainModel.GENERAL) Speeds.of(fast, backend, p, app.heyrobot.ui.model.measuredHere(fast, backend, snap))?.textPhrase()
+        ?: fast.speedText else fast.speedText
     title(R.string.guide_phone_title)
     para(R.string.guide_phone_intro)
     group(R.string.guide_phone_this) {
-        StatusPreference(Phones.line(p).removePrefix("This phone: "), Phones.tpuLine(p), if (p.tpu != TpuSupport.NONE) Mark.OK else Mark.TODO)
-        PreferenceItem(stringResource(R.string.guide_phone_fast, fast.modelName, backend.title),
-            stringResource(R.string.guide_phone_size, ModelLogic.gb(fast.bytes), speed), RIcons.Chip)
+        StatusPreference(Phones.phoneText(p).str(), Phones.tpuLineText(p).str(), if (p.tpu != TpuSupport.NONE) Mark.OK else Mark.TODO)
+        PreferenceItem(stringResource(R.string.guide_phone_fast, fast.modelName, backend.titleOn(p.chip)),
+            stringResource(R.string.guide_phone_size, ModelLogic.gbText(fast.bytes).str(), speed.str()), RIcons.Chip)
         if (fast == BrainModel.FAST_G6) StatusPreference(stringResource(R.string.guide_phone_beta), stringResource(R.string.guide_phone_beta_detail), Mark.TODO)
+        CheckRow(g, backend)
     }
+    // 1.2 (design Step 8): on a slow or small phone, what to expect and what to change.
+    fitWarning(g)
     group(R.string.guide_phone_download) {
         val m = snap.model(fast)
-        DownloadRow(stringResource(R.string.guide_phone_brain, ModelLogic.gb(fast.bytes)), m?.status, m?.progress, m?.percent ?: -1,
+        DownloadRow(stringResource(R.string.guide_phone_brain, ModelLogic.gbText(fast.bytes).str()), m?.status, m?.progress, m?.percent ?: -1,
             R.string.guide_phone_download_label) { g.a.download(fast) }
     }
     para(R.string.guide_phone_later)
     privacy(R.string.guide_phone_privacy)
     findIt(R.string.guide_path_model)
+}
+
+/**
+ * 1.2 (design Step 2): Robot's self-test of the GPU (or a beta TPU build), asked for as soon as Fast's download is checked
+ * and the check is due here (never on the CPU, never on the Tensor G5's TPU): "Checking this phone's GPU" while it runs, then
+ * what it found, with its numbers: passed; passed with a note (a miss, core GpuVerdict.miss: an answer that was off or slow,
+ * and the GPU stays in use); or failed (a fault: the CPU, or Fast's general build). It never blocks the guide; one the app
+ * leaves early runs again at the next load.
+ */
+@Composable
+private fun CheckRow(g: GuideCtx, backend: app.heyrobot.core.ModelBackend) {
+    val snap = g.snap
+    val chip = snap.phone.chip
+    val due = snap.checkDue(g.s.modelGpu)
+    androidx.compose.runtime.LaunchedEffect(due, snap.checking) { if (due && !snap.checking) g.a.checkModel() }
+    val last = snap.lastCheck
+    when {
+        due && snap.checking -> StatusPreference(stringResource(R.string.guide_phone_check_running, backend.titleOn(chip)),
+            stringResource(R.string.guide_phone_check_running_detail, app.heyrobot.core.GpuCheck.EST_SECONDS), Mark.TODO)
+        last == null || due -> {}
+        last.verdict.passed -> {
+            val secs = Math.round(last.ms / 1000.0).toInt()
+            StatusPreference(stringResource(R.string.guide_phone_check_passed, last.key.backend.titleOn(chip)),
+                if (last.readTps > 0 && last.writeTps > 0) stringResource(R.string.guide_phone_check_passed_detail, secs, Math.round(last.readTps).toInt(),
+                    Math.round(last.writeTps).toInt())
+                else stringResource(R.string.guide_phone_check_passed_plain, secs), Mark.OK)
+        }
+        last.verdict.miss -> {
+            val device = last.key.backend.titleOn(chip)
+            StatusPreference(stringResource(R.string.guide_phone_check_noted, device, last.verdict.titleText.str()),
+                stringResource(R.string.guide_phone_check_noted_detail, Math.round(last.ms / 1000.0).toInt(), device), Mark.OK)
+        }
+        else -> StatusPreference(stringResource(R.string.guide_phone_check_failed, last.key.backend.titleOn(chip), last.verdict.titleText.str()),
+            stringResource(if (last.key.backend == app.heyrobot.core.ModelBackend.TPU) R.string.guide_phone_check_failed_tpu else R.string.guide_phone_check_failed_gpu),
+            Mark.WARN)
+    }
 }
 
 // --------------------------------------------------------------------------------------------------------- 4. Voice
@@ -224,12 +287,14 @@ private fun LazyListScope.voice(g: GuideCtx) {
     group(R.string.guide_voice_downloads) {
         for (b in listOf(VoiceBundle.STT, VoiceBundle.KOKORO)) {
             val v = snap.voice(b)
-            DownloadRow("${b.title} · ${VoiceModelLogic.size(b.bytes)}", v?.status, v?.progress, v?.percent ?: -1,
+            DownloadRow("${b.titleText.str()} · ${VoiceModelLogic.sizeText(b.bytes).str()}", v?.status, v?.progress, v?.percent ?: -1,
                 if (b == VoiceBundle.STT) R.string.guide_voice_download_stt else R.string.guide_voice_download_voice) { g.a.voiceDownload(b) }
         }
     }
     group(R.string.guide_voice_choice) {
-        ListPreference(stringResource(R.string.guide_voice_voice), s.voiceChoice, VoiceChoice.entries, { it.title }, { it.detail }, RIcons.RecordVoiceOver) {
+        val langs = LocalLangs.current
+        ListPreference(stringResource(R.string.guide_voice_voice), s.voiceChoice, VoiceChoice.entries, { it.titleText.render(langs) }, { it.detailText(snap.systemVoice).render(langs) },
+            RIcons.RecordVoiceOver) {
             g.update(s.copy(voice = it.id))
         }
         PreferenceItem(stringResource(R.string.guide_voice_sample), stringResource(R.string.guide_voice_sample_detail), RIcons.VolumeUp, onClick = g.a.speakTest)
@@ -256,8 +321,11 @@ private fun LazyListScope.opening(g: GuideCtx) {
         StatusPreference(stringResource(R.string.guide_open_mic), stringResource(if (allowed) R.string.guide_allowed else R.string.guide_open_mic_todo),
             if (allowed) Mark.OK else Mark.TODO,
             action = if (allowed) null else ({ RowButton(R.string.guide_allow, R.string.guide_open_mic_label, g.a.askPermissions) }))
-        // 1.0: the recognizer fix, with a computer or (Shizuku) without one.
-        PreferenceItem(stringResource(R.string.guide_open_fix), stringResource(R.string.guide_open_fix_detail), RIcons.Settings,
+        // 1.0: the recognizer fix, with a computer or (Shizuku) without one. 1.2: not asked for where another installed
+        // recognizer is set (a stock phone's own), which keeps Robot the assistant too and which the fix would replace.
+        if (f?.restartKept == app.heyrobot.core.RecognizerRepair.Kept.OTHER)
+            StatusPreference(stringResource(R.string.guide_open_fix), stringResource(R.string.guide_open_fix_other), Mark.OK)
+        else PreferenceItem(stringResource(R.string.guide_open_fix), stringResource(R.string.guide_open_fix_detail), RIcons.Settings,
             onClick = { g.a.openPage(Page.AdbFixes) })
     }
     group(R.string.guide_open_ways) {
@@ -267,7 +335,7 @@ private fun LazyListScope.opening(g: GuideCtx) {
         }
         SwitchPreference(stringResource(R.string.guide_open_charging), stringResource(R.string.guide_open_charging_detail), s.wakeOnlyWhileCharging,
             enabled = s.wakeWord) { g.update(s.copy(wakeOnlyWhileCharging = it)) }
-        PreferenceItem(stringResource(R.string.guide_open_locked), LockScreen.allowed(s.lockedTools).replaceFirstChar { it.uppercase() }, RIcons.Lock)
+        PreferenceItem(stringResource(R.string.guide_open_locked), LockScreen.allowed(s.lockedTools, LocalLangs.current).replaceFirstChar { it.uppercase() }, RIcons.Lock)
     }
     group(R.string.guide_open_try) {
         PreferenceItem(stringResource(R.string.guide_open_try_row), stringResource(R.string.guide_open_try_detail), RIcons.Robot, onClick = { g.a.talk(null) })
@@ -284,13 +352,15 @@ private fun LazyListScope.asksFirst(g: GuideCtx) {
     title(R.string.guide_ask_title)
     para(R.string.guide_ask_intro)
     group(R.string.guide_ask_cards) {
-        ListPreference(stringResource(R.string.guide_ask_when), s.safetyCards, SafetyCards.entries, { it.title }, { it.detail }, RIcons.Shield) {
+        val langs = LocalLangs.current
+        ListPreference(stringResource(R.string.guide_ask_when), s.safetyCards, SafetyCards.entries, { it.titleText.render(langs) }, { it.detailText.render(langs) },
+            RIcons.Shield) {
             g.update(s.copy(safetyCards = it))
         }
         SwitchPreference(stringResource(R.string.guide_ask_voice), stringResource(R.string.guide_ask_voice_detail), s.voiceCards, icon = RIcons.Mic) {
             g.update(s.copy(voiceCards = it))
         }
-        PreferenceItem(stringResource(R.string.guide_ask_locked), LockScreen.allowed(s.lockedTools).replaceFirstChar { it.uppercase() }, RIcons.Lock,
+        PreferenceItem(stringResource(R.string.guide_ask_locked), LockScreen.allowed(s.lockedTools, langs).replaceFirstChar { it.uppercase() }, RIcons.Lock,
             onClick = { g.a.openPage(Page.Safety) })
     }
     group(null) {
@@ -317,10 +387,11 @@ private fun LazyListScope.people(g: GuideCtx) {
     para(R.string.guide_people_intro)
     group(R.string.guide_people_apps) {
         val cheogram = f?.cheogramInstalled == true
-        ListPreference(stringResource(R.string.guide_people_text), s.textAppFor(cheogram), TextApp.entries, { it.title }, icon = RIcons.Message) {
+        val langs = LocalLangs.current
+        ListPreference(stringResource(R.string.guide_people_text), s.textAppFor(cheogram), TextApp.entries, { it.titleText.render(langs) }, icon = RIcons.Message) {
             g.update(s.copy(textApp = it))
         }
-        ListPreference(stringResource(R.string.guide_people_email), s.emailAppFor(f?.protonInstalled == true), EmailApp.entries, { it.title }, icon = RIcons.Email) {
+        ListPreference(stringResource(R.string.guide_people_email), s.emailAppFor(f?.protonInstalled == true), EmailApp.entries, { it.titleText.render(langs) }, icon = RIcons.Email) {
             g.update(s.copy(emailApp = it))
         }
     }
@@ -353,6 +424,7 @@ private fun LazyListScope.messages(g: GuideCtx) {
         // of them installed, Messages stays off and the page says so.
         var choose by rememberSaveable { mutableStateOf(false) }
         var noApp by rememberSaveable { mutableStateOf(false) }
+        val langs = LocalLangs.current
         val here = remember(choose) { if (choose) g.stores.messageApps() else emptySet() }
         SwitchPreference(stringResource(R.string.guide_messages_read), stringResource(R.string.guide_messages_read_detail), m.on, icon = RIcons.Message) { on ->
             when {
@@ -362,7 +434,7 @@ private fun LazyListScope.messages(g: GuideCtx) {
             }
         }
         if (noApp && !m.on) StatusPreference(stringResource(R.string.guide_messages_no_app_title),
-            stringResource(R.string.guide_messages_no_app, MessageApp.entries.joinToString(", ") { it.title }), Mark.WARN)
+            stringResource(R.string.guide_messages_no_app, MessageApp.entries.joinToString(", ") { it.titleText.render(langs) }), Mark.WARN)
         if (choose) MessagesSetupDialog({ it in here }, onDismiss = { choose = false }, needsApp = true) { apps ->
             choose = false
             g.stores.turnMessagesOn(apps); g.changed()
@@ -371,7 +443,7 @@ private fun LazyListScope.messages(g: GuideCtx) {
             StatusPreference(stringResource(R.string.guide_messages_access),
                 stringResource(if (access) R.string.guide_allowed else R.string.guide_messages_access_todo), if (access) Mark.OK else Mark.TODO,
                 onClick = if (access) null else ({ g.a.openPage(Page.Settings(SettingsRoutes.NOTIFICATION_ACCESS)) }))
-            PreferenceItem(stringResource(R.string.guide_messages_apps), m.allowlist.apps.joinToString(", ") { it.title }.ifEmpty { stringResource(R.string.guide_none) },
+            PreferenceItem(stringResource(R.string.guide_messages_apps), m.allowlist.apps.joinToString(", ") { it.titleText.render(langs) }.ifEmpty { stringResource(R.string.guide_none) },
                 RIcons.Apps, onClick = { g.a.openPage(Page.Settings(SettingsRoutes.MESSAGES)) })
         }
         SwitchPreference(stringResource(R.string.guide_messages_announce), stringResource(R.string.guide_messages_announce_detail), m.on && m.announce,
@@ -411,9 +483,10 @@ private fun LazyListScope.weather(g: GuideCtx) {
         StatusPreference(stringResource(R.string.guide_weather_location),
             stringResource(if (located) R.string.guide_weather_location_on else R.string.guide_weather_location_why), if (located) Mark.OK else Mark.TODO,
             action = if (located) null else ({ RowButton(R.string.guide_allow, R.string.guide_weather_location_label, g.a.askLocation) }))
-        ListPreference(stringResource(R.string.guide_weather_nearest), Nearby.mode(s, g.snap.nearestAnswer), NearestOnline.entries, { it.title }, { it.detail },
-            RIcons.Search) { g.update(s.copy(nearestOnline = it, nearestOnlineAt = System.currentTimeMillis())) }
-        PreferenceItem(stringResource(R.string.guide_weather_server), s.nearbyServer.label, RIcons.Place,
+        val langs = LocalLangs.current
+        ListPreference(stringResource(R.string.guide_weather_nearest), Nearby.mode(s, g.snap.nearestAnswer), NearestOnline.entries, { it.titleText.render(langs) },
+            { it.detailText.render(langs) }, RIcons.Search) { g.update(s.copy(nearestOnline = it, nearestOnlineAt = System.currentTimeMillis())) }
+        PreferenceItem(stringResource(R.string.guide_weather_server), s.nearbyServer.labelText.str(), RIcons.Place,
             onClick = { g.a.openPage(Page.Settings(SettingsRoutes.ACTIONS)) })
     }
     privacy(R.string.guide_weather_privacy)
@@ -428,17 +501,17 @@ private fun LazyListScope.conversation(g: GuideCtx) {
     title(R.string.guide_conv_title)
     para(R.string.guide_conv_intro)
     group(null) {
-        SwitchPreference(stringResource(R.string.guide_conv_translate), stringResource(R.string.guide_conv_translate_detail, s.convPairChoice.title),
+        SwitchPreference(stringResource(R.string.guide_conv_translate), stringResource(R.string.guide_conv_translate_detail, s.convPairChoice.titleText.str()),
             s.convTranslate, icon = RIcons.Transcribe) { g.update(s.copy(convTranslate = it)) }
     }
     group(R.string.guide_conv_optional) {
         val sp = snap.voice(VoiceBundle.SPEAKERS)
         if (s.convSpeakers != false) {
-            DownloadRow(stringResource(R.string.guide_conv_speakers, VoiceModelLogic.size(VoiceBundle.SPEAKERS.bytes)), sp?.status, sp?.progress,
+            DownloadRow(stringResource(R.string.guide_conv_speakers, VoiceModelLogic.sizeText(VoiceBundle.SPEAKERS.bytes).str()), sp?.status, sp?.progress,
                 sp?.percent ?: -1, R.string.guide_conv_speakers_label) { g.a.voiceDownload(VoiceBundle.SPEAKERS) }
         }
         val mt = snap.mt
-        DownloadRow(MtModelLogic.label(MtBundle.FR_EN), mt?.status, mt?.progress, mt?.percent ?: -1, R.string.guide_conv_mt_label, g.a.mtDownload)
+        DownloadRow(MtModelLogic.labelText(MtBundle.FR_EN).str(), mt?.status, mt?.progress, mt?.percent ?: -1, R.string.guide_conv_mt_label, g.a.mtDownload)
     }
     para(R.string.guide_conv_start)
     privacy(R.string.guide_conv_privacy)
@@ -453,9 +526,13 @@ private fun LazyListScope.routines(g: GuideCtx) {
     para(R.string.guide_routines_intro)
     group(null) {
         SwitchPreference(stringResource(R.string.guide_routines_brief),
-            RoutineCards.whenText(BriefRoutine.of(rs.copy(briefEnabled = true))).replaceFirstChar { it.uppercase() }, rs.briefEnabled, icon = RIcons.Sunny) { on ->
+            RoutineCards.whenPhrase(BriefRoutine.of(rs.copy(briefEnabled = true))).str().replaceFirstChar { it.uppercase() }, rs.briefEnabled, icon = RIcons.Sunny) { on ->
             if (on && !rs.briefOnline) g.askBrief() else { g.stores.routines(rs.copy(briefEnabled = on)); g.changed() }
         }
+        // 1.2: "after your alarm" needs GrapheneOS Clock; on a phone without it the brief would never start (core ClockNeed).
+        val clock = g.snap.facts?.clockInstalled ?: true
+        if (app.heyrobot.core.ClockNeed.unmet(BriefRoutine.of(rs).trigger, clock))
+            StatusPreference(stringResource(R.string.routine_alarm_needs_clock), null, Mark.WARN)
         PreferenceItem(stringResource(R.string.guide_routines_change), stringResource(R.string.guide_routines_change_detail), RIcons.Alarm,
             onClick = { g.a.openPage(Page.Settings(RoutineRoutes.BRIEF)) })
     }
@@ -464,7 +541,23 @@ private fun LazyListScope.routines(g: GuideCtx) {
     findIt(R.string.guide_path_routines)
 }
 
-// ------------------------------------------------------------------------------------------------ 13. Headset and car
+// ------------------------------------------------------------------------------------------------ 13. Phone lock (1.1)
+
+/** Phone lock (docs/plans/phone-lock-design.md §11): what it does and that it is off; the setup is in Settings › Phone lock. */
+private fun LazyListScope.phoneLock(g: GuideCtx) {
+    title(R.string.guide_lock_title)
+    para(R.string.guide_lock_intro)
+    group(null) {
+        val ctx = androidx.compose.ui.platform.LocalContext.current
+        val on = androidx.compose.runtime.remember { app.heyrobot.lock.LockStore.read(ctx).ok?.settings?.on == true }
+        PreferenceItem(stringResource(R.string.guide_lock_row), stringResource(if (on) R.string.guide_on else R.string.guide_lock_off), RIcons.Lock,
+            onClick = { g.a.openPage(Page.Settings(SettingsRoutes.PHONE_LOCK)) })
+    }
+    privacy(R.string.guide_lock_privacy)
+    findIt(R.string.guide_path_lock)
+}
+
+// ------------------------------------------------------------------------------------------------ 14. Headset and car
 
 private fun LazyListScope.headsetCar(g: GuideCtx) {
     val h = g.files.headset
@@ -521,7 +614,7 @@ private fun LazyListScope.webTermux(g: GuideCtx) {
     }
     para(R.string.guide_web_free_intro)
     group(R.string.guide_web_free_group) {
-        for (s in FREE_SERVICES) PreferenceItem(s.title, stringResource(serviceLine(s)), trailing = { PrivacyChip(s.level) })
+        for (s in FREE_SERVICES) PreferenceItem(s.titleText.str(), stringResource(serviceLine(s)), trailing = { PrivacyChip(s.level) })
     }
     group(null) {
         PreferenceItem(stringResource(R.string.guide_web_row), stringResource(if (g.files.webOn) R.string.guide_on else R.string.guide_web_later), RIcons.Search,
@@ -538,6 +631,9 @@ private fun LazyListScope.webTermux(g: GuideCtx) {
 
 // ---------------------------------------------------------------------------------------------- 16. Updates and feedback
 
+/** Robot's public contact (README), the same in every language. */
+private const val FEEDBACK_ADDRESS = "hey@robot-app.ai" // l10n: not text (an email address)
+
 private fun LazyListScope.updates(g: GuideCtx) {
     val u = g.files.updates
     title(R.string.guide_updates_title)
@@ -550,8 +646,14 @@ private fun LazyListScope.updates(g: GuideCtx) {
             g.stores.updates(u.copy(testBuilds = it)); g.changed()
         }
     }
+    // 1.1: the monthly backup reminder, off, as Settings › Back up and restore has it.
+    group(null) {
+        SwitchPreference(stringResource(R.string.backup_remind), stringResource(R.string.backup_remind_detail), g.files.backupRemind, icon = RIcons.Folder) {
+            g.stores.backupReminder(it); g.changed()
+        }
+    }
     group(R.string.guide_feedback) {
-        PreferenceItem(stringResource(R.string.guide_feedback_row), stringResource(R.string.guide_feedback_detail), RIcons.Email,
+        PreferenceItem(stringResource(R.string.guide_feedback_row), stringResource(R.string.guide_feedback_detail, FEEDBACK_ADDRESS), RIcons.Email,
             onClick = { g.a.openPage(Page.Settings(SettingsRoutes.feedback(FeedbackEntry.ABOUT))) })
     }
     privacy(R.string.guide_updates_privacy)
@@ -566,11 +668,11 @@ internal fun choices(g: GuideCtx): GuideChoices {
     val snap = g.snap
     return GuideChoices(
         robot = g.s, messages = g.files.messages, memory = g.files.memory, routines = g.files.routines, headset = g.files.headset, carOn = g.files.carOn,
-        updates = g.files.updates, webOn = g.files.webOn, browserEngine = g.files.browserEngine.title, termuxOn = g.files.termuxOn, helpersSetUp = helpersSetUp(g),
+        updates = g.files.updates, webOn = g.files.webOn, backupRemind = g.files.backupRemind, browserEngine = g.files.browserEngine.title, termuxOn = g.files.termuxOn, helpersSetUp = helpersSetUp(g),
         brainReady = snap.model(snap.fast)?.status == ModelStatus.VERIFIED, voiceReady = snap.voiceReady, assistant = f?.active == true,
         contacts = f?.contactsGranted == true, calendar = f?.calendarGranted == true, location = f?.locationGranted == true,
         fastTranslation = snap.mt?.status == ModelStatus.VERIFIED, cheogramInstalled = f?.cheogramInstalled == true,
-        protonInstalled = f?.protonInstalled == true, nearest = Nearby.mode(g.s, snap.nearestAnswer).title,
+        protonInstalled = f?.protonInstalled == true, nearestText = Nearby.mode(g.s, snap.nearestAnswer).titleText,
     )
 }
 
@@ -606,13 +708,15 @@ private fun itemText(i: GuideItem): Pair<Int, Int> = when (i) {
     GuideItem.BROWSER_ENGINE -> R.string.guide_item_browser to R.string.guide_path_web_only
     GuideItem.TERMUX -> R.string.guide_item_termux to R.string.guide_path_termux
     GuideItem.AUTO_UPDATES -> R.string.guide_item_updates to R.string.guide_path_updates_only
+    GuideItem.BACKUP_REMINDER -> R.string.guide_item_backup to R.string.guide_path_backup
     GuideItem.TEST_BUILDS -> R.string.guide_item_test to R.string.guide_path_updates_only
 }
 
-/** "On", "Off", "Ready", "Allowed", a value, "Not set". */
+/** "On", "Off", "Ready", "Allowed", a value, "Not set"; [locked]: what works on the lock screen, in the menus' language. */
 @Composable
-private fun stateText(l: SummaryLine): String {
-    l.value?.let { return it }
+private fun stateText(l: SummaryLine, locked: Set<ToolName>): String {
+    if (l.item == GuideItem.LOCK_SCREEN) return LockScreen.allowed(locked, LocalLangs.current)
+    l.valueText?.let { return it.str() }
     val on = l.on ?: return stringResource(R.string.guide_not_set)
     return stringResource(when (l.item) {
         GuideItem.BRAIN, GuideItem.VOICE_MODELS, GuideItem.FAST_TRANSLATION -> if (on) R.string.guide_ready else R.string.guide_not_downloaded
@@ -633,10 +737,11 @@ private fun LazyListScope.summary(g: GuideCtx) {
     val lines = GuideSummary.lines(choices(g))
     title(R.string.guide_summary_title)
     para(R.string.guide_summary_intro)
+    fitWarning(g)
     group(R.string.guide_summary_now) {
         for (l in lines) {
             val (t, path) = itemText(l.item)
-            PreferenceItem(stringResource(t), stringResource(R.string.guide_summary_line, stateText(l), stringResource(path)))
+            PreferenceItem(stringResource(t), stringResource(R.string.guide_summary_line, stateText(l, g.s.lockedTools), stringResource(path)))
         }
     }
     privacy(R.string.guide_summary_privacy)

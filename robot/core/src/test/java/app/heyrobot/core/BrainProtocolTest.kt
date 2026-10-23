@@ -78,6 +78,34 @@ class BrainProtocolTest {
         assertEquals(false, (BrainMsg.decode(BrainProtocol.REQ_GENERATE, """{"convId":"c","system":"s","text":"t"}""") as BrainMsg.Generate).think)
     }
 
+    /** 1.2 (job 4): a slow path's compact form and reading budget cross with the request; a fast path's request is as before. */
+    @Test fun theReadingBudgetCrossesWithTheRequest() {
+        val fast = BrainMsg.Generate("c", "s", listOf(PromptTurn(PromptRole.USER, "q"), PromptTurn(PromptRole.MODEL, "a")), 2, "t", false)
+        // The same keys as before 1.2: nothing new in a fast path's JSON.
+        assertEquals(setOf("convId", "system", "historyCount", "text", "hasImage", "history", "tools", "think"), fast.toJson().keys().asSequence().toSet())
+        assertEquals(false, fast.compact)
+        assertEquals(-1, fast.readBudget)
+        assertEquals(fast, roundTrip(BrainProtocol.REQ_GENERATE, fast))
+        val slow = fast.copy(compact = true, readBudget = 856)
+        assertEquals(slow, roundTrip(BrainProtocol.REQ_GENERATE, slow))
+        assertEquals(true, slow.toJson().getBoolean("compact"))
+        assertEquals(856, slow.toJson().getInt("readBudget"))
+        // A budget of 0 is a budget (the floor of history still applies in :brain), not none.
+        assertEquals(0, (roundTrip(BrainProtocol.REQ_GENERATE, fast.copy(readBudget = 0)) as BrainMsg.Generate).readBudget)
+        // Missing, negative or not a number: none; a compact switch that isn't true: the full form.
+        fun dec(extra: String) = BrainMsg.decode(BrainProtocol.REQ_GENERATE, """{"convId":"c","system":"s","text":"t"$extra}""") as BrainMsg.Generate
+        assertEquals(-1, dec("").readBudget)
+        assertEquals(false, dec("").compact)
+        assertEquals(-1, dec(""","readBudget":-500""").readBudget)
+        assertEquals(-1, dec(""","readBudget":"lots"""").readBudget)
+        assertEquals(false, dec(""","compact":"yes"""").compact)
+        assertEquals(true, dec(""","compact":true""").compact)
+        // A request the self-test makes (core GpuCheck) is a fast path's: its turns are fixed, and read whole.
+        val check = GpuCheck.request(0, emptyList())
+        assertEquals(false, check.compact)
+        assertEquals(-1, check.readBudget)
+    }
+
     @Test fun eventsRoundTrip() {
         val events = listOf(
             BrainProtocol.EV_STATUS to BrainMsg.Status(loaded = true, vision = false, constrained = true, busy = false),
@@ -117,6 +145,44 @@ class BrainProtocolTest {
         assertEquals(-1.0, d.decodeTps, 0.0)
     }
 
+    /**
+     * 1.2 (design Step 5): a reply's reading speed and counts cross from :brain with the rest of Done, numbers only. An
+     * older :brain sends none of them: they read as unknown, and the reply itself is unchanged.
+     */
+    @Test fun doneCarriesTheReadingSpeed() {
+        val d = BrainMsg.Done(DoneReason.END, 1630, 3120, 17.4, true, false, prefillTokens = 1502, prefillTps = 481.25, decodeTokens = 96)
+        assertEquals(d, roundTrip(BrainProtocol.EV_DONE, d))
+        // A 1.1 :brain's Done, as it encodes it today.
+        val old = BrainMsg.decode(BrainProtocol.EV_DONE,
+            """{"reason":"END","tokens":1630,"ttftMs":3120,"decodeTps":17.4,"rebuilt":true,"textCalls":false}""") as BrainMsg.Done
+        assertEquals(BrainMsg.Done(DoneReason.END, 1630, 3120, 17.4, true, false), old)
+        assertEquals(-1, old.prefillTokens)
+        assertEquals(-1.0, old.prefillTps, 0.0)
+        assertEquals(-1, old.decodeTokens)
+        // Nothing but numbers rides along: these keys, no more.
+        assertEquals(setOf("reason", "tokens", "ttftMs", "decodeTps", "rebuilt", "textCalls", "prefillTokens", "prefillTps", "decodeTokens"),
+            d.toJson().keys().asSequence().toSet())
+    }
+
+    @Test fun nonsenseSpeedsReadAsUnknown() {
+        // Encoded: NaN, infinity, zero and negatives go as -1.
+        for (x in listOf(Double.NaN, Double.POSITIVE_INFINITY, 0.0, -3.0, 1e9)) {
+            val d = roundTrip(BrainProtocol.EV_DONE, BrainMsg.Done(DoneReason.END, 1, 1, 1.0, false, prefillTps = x)) as BrainMsg.Done
+            assertEquals("$x", -1.0, d.prefillTps, 0.0)
+        }
+        assertEquals(-1, (roundTrip(BrainProtocol.EV_DONE, BrainMsg.Done(DoneReason.END, 1, 1, 1.0, false, prefillTokens = -7)) as BrainMsg.Done).prefillTokens)
+        // Decoded: whatever a payload says past the range, or not a number, is unknown too.
+        val odd = BrainMsg.decode(BrainProtocol.EV_DONE,
+            """{"reason":"END","prefillTokens":2000000,"prefillTps":"fast","decodeTokens":-4}""") as BrainMsg.Done
+        assertEquals(-1, odd.prefillTokens)
+        assertEquals(-1.0, odd.prefillTps, 0.0)
+        assertEquals(-1, odd.decodeTokens)
+        // llama.cpp's count and time: a zero time or an empty read is unknown, never a division by zero.
+        assertEquals(500.0, BrainMsg.Done.Speed.rate(1000L, 2000L), 0.0)
+        assertEquals(-1.0, BrainMsg.Done.Speed.rate(1000L, 0L), 0.0)
+        assertEquals(-1.0, BrainMsg.Done.Speed.rate(0L, 100L), 0.0)
+    }
+
     @Test fun garbageDecodesToNull() {
         assertNull(BrainMsg.decode(BrainProtocol.REQ_GENERATE, "{not json"))
         assertNull(BrainMsg.decode(BrainProtocol.REQ_GENERATE, "{}"))
@@ -151,6 +217,37 @@ class BrainProtocolTest {
         assertNull(BrainMsg.decode(BrainProtocol.REQ_ONE_SHOT, """{"kind":"TRANSLATE","priority":"URGENT","system":"s","text":"t"}"""))
         // Panel first, summaries last.
         assertEquals(listOf(Priority.PANEL, Priority.INTERPRETER, Priority.TRANSCRIPT, Priority.SUMMARY), Priority.entries.sorted())
+    }
+
+    /**
+     * 1.4 (Robot Files, plan §4.2 and §5.1): FILE_READ and FILE_ANSWER are one-shots like the others, appended to the kinds.
+     * A FILE_READ of a page's picture says so with hasImage (the JPEG crosses as KEY_IMAGE, never in the JSON); no other
+     * kind may, and every one-shot without a picture is the same JSON as before 1.4.
+     */
+    @Test fun fileOneShotsCrossAndOnlyAFileReadCarriesAPicture() {
+        assertEquals(listOf("TRANSLATE", "SUMMARY_MAP", "SUMMARY_REDUCE", "WEB_ANSWER", "FILE_READ", "FILE_ANSWER"), OneShotKind.entries.map { it.name })
+        val keys = setOf("kind", "priority", "system", "text", "maxChunks")
+        val translate = BrainMsg.OneShot(OneShotKind.TRANSLATE, Priority.INTERPRETER, Prompt.TRANSLATE_FR_EN, "Salut", 120)
+        assertEquals(keys, translate.toJson().keys().asSequence().toSet())
+        assertEquals(mapOf("kind" to "TRANSLATE", "priority" to "INTERPRETER", "system" to "s", "text" to "t", "maxChunks" to 120),
+            Json.toMap(translate.copy(system = "s", text = "t").toJson()))
+        val picture = BrainMsg.OneShot(OneShotKind.FILE_READ, Priority.SUMMARY, "read", "[frame]", 700, hasImage = true)
+        assertEquals(keys + "hasImage", picture.toJson().keys().asSequence().toSet())
+        assertEquals(picture, roundTrip(BrainProtocol.REQ_ONE_SHOT, picture))
+        val text = picture.copy(hasImage = false, text = "[frame]\n\"\"\"\nTOTAL 84.12\n\"\"\"")
+        assertEquals(keys, text.toJson().keys().asSequence().toSet())
+        assertEquals(text, roundTrip(BrainProtocol.REQ_ONE_SHOT, text))
+        val answer = BrainMsg.OneShot(OneShotKind.FILE_ANSWER, Priority.PANEL, "answer", "Question: total?", 350)
+        assertEquals(answer, roundTrip(BrainProtocol.REQ_ONE_SHOT, answer))
+        // An older one-shot's JSON has no picture.
+        assertEquals(false, (BrainMsg.decode(BrainProtocol.REQ_ONE_SHOT, """{"kind":"FILE_READ","priority":"SUMMARY","system":"s","text":"t"}""") as BrainMsg.OneShot).hasImage)
+        // A picture with any other kind isn't a request; and only JSON's true says there is one.
+        for (k in OneShotKind.entries.filter { it != OneShotKind.FILE_READ })
+            assertNull(k.name, BrainMsg.decode(BrainProtocol.REQ_ONE_SHOT, """{"kind":"${k.name}","priority":"PANEL","system":"s","text":"t","hasImage":true}"""))
+        for (v in listOf("\"true\"", "1", "false", "null"))
+            assertEquals(v, false, (BrainMsg.decode(BrainProtocol.REQ_ONE_SHOT, """{"kind":"FILE_READ","priority":"SUMMARY","system":"s","text":"t","hasImage":$v}""") as BrainMsg.OneShot).hasImage)
+        // NO_VISION is the refusal a FILE_READ's caller gets from a model that can't see.
+        assertEquals(BrainMsg.Error(BrainError.NO_VISION, "text only"), roundTrip(BrainProtocol.EV_ERROR, BrainMsg.Error(BrainError.NO_VISION, "text only")))
     }
 }
 

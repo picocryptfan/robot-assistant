@@ -41,3 +41,7 @@ robot/brain/src/main/jniLibs/
 # builds (packaged by Gradle when present, never stored in git).
 robot/mt/native/
 robot/mt/src/main/jniLibs/
+
+# Python bytecode (tools/*.py run from a script)
+__pycache__/
+*.pyc

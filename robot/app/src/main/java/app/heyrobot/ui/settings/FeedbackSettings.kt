@@ -28,6 +28,12 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+import app.heyrobot.R
+import app.heyrobot.core.i18n.Fmt
+import app.heyrobot.core.i18n.UiStrings
+import app.heyrobot.ui.theme.LocalLangs
+import app.heyrobot.ui.theme.str
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -141,28 +147,22 @@ class FeedbackActions(
     val say: (String) -> Unit = {},
 )
 
-const val FEEDBACK_INTRO = "Tell the developer about a bug or an idea. Robot puts your words and what you tick into one plain-text message, and you " +
-    "send it with the app you choose: your SMS or messaging app, for example. Robot sends nothing itself."
-
-const val FEEDBACK_FOOTER = "What goes is exactly what Preview shows: your words, Robot's version, this phone and its Android build, the model and " +
-    "the look, and only what you tick. What Robot adds is codes, numbers and switches: never your conversations or History, transcripts, " +
-    "messages, memory, People or contacts, notes, calendar, a wake phrase's words (a phrase is its number), a helper's name, address or key, " +
-    "the updater's repository or token, a Wi-Fi or Bluetooth name, or where you are.\n\nShare opens Android's share sheet: pick the app and " +
-    "the developer. Long messages may arrive as several texts. Copy marks the message as sensitive and clears it from the clipboard after a " +
-    "minute if nothing else replaced it. Your draft stays until you tap Done."
-
+/** The problem report's line under its box: Robot's crash or the model problem, and when. */
+@Composable
 private fun Diagnostic.summary(ui: FeedbackUi): String = when (this) {
-    Diagnostic.PROBLEM -> if (ui.crash) "Robot's crash" + (ui.problemDate?.let { " of $it" } ?: "") + ": codes, this phone and its Android build, how Robot's process ended"
-        else "The model problem" + (ui.problemDate?.let { " of $it" } ?: "") + ": codes, this phone and its Android build, the model, how its process ended"
-    else -> detail
+    Diagnostic.PROBLEM -> if (ui.crash) ui.problemDate?.let { stringResource(R.string.feedback_crash_of, it) } ?: stringResource(R.string.feedback_crash)
+        else ui.problemDate?.let { stringResource(R.string.feedback_problem_of, it) } ?: stringResource(R.string.feedback_problem)
+    else -> detailText.str()
 }
 
-private val Diagnostic.what: String get() = when (this) {
-    Diagnostic.PROBLEM -> "the problem report"
-    Diagnostic.VOICE_LOG -> "the voice log"
-    Diagnostic.SETTINGS -> "the settings summary"
-    Diagnostic.UPDATER -> "the updater's codes"
-}
+/** What its Preview button shows, for TalkBack ("Preview the voice log"). */
+@Composable
+private fun Diagnostic.what(): String = stringResource(when (this) {
+    Diagnostic.PROBLEM -> R.string.feedback_what_problem
+    Diagnostic.VOICE_LOG -> R.string.feedback_what_voice_log
+    Diagnostic.SETTINGS -> R.string.feedback_what_settings
+    Diagnostic.UPDATER -> R.string.feedback_what_updater
+})
 
 /** The page. Your draft lives in its saved state; [prefill] (the panel's words) starts your text once, when it is empty. */
 @OptIn(ExperimentalLayoutApi::class)
@@ -199,21 +199,26 @@ fun FeedbackScreen(
     val composed = remember(draft, ref, ui) { ui?.let { FeedbackReport.compose(draft, ref, it.facts, it.blocks, it.secrets) } }
     fun out(): FeedbackOut? = composed?.let { FeedbackOut(kind, it.text, Diagnostic.bits(draft.ticked)) }
 
-    PreferenceScreen("Send feedback", onBack, snackbar = snackbar, actions = {
+    val langs = LocalLangs.current
+    val intro = stringResource(R.string.feedback_intro)
+    val footer = stringResource(R.string.feedback_footer)
+    val addTitle = stringResource(R.string.feedback_add)
+    val sendTitle = UiStrings.send().str()
+    PreferenceScreen(UiStrings.sendFeedback().str(), onBack, snackbar = snackbar, actions = {
         // The number to text: in the overflow, as a setting of the page rather than of the message.
         Box {
-            IconButton(onClick = { menu = true }) { Icon(RIcons.MoreVert, "More options") }
+            IconButton(onClick = { menu = true }) { Icon(RIcons.MoreVert, stringResource(R.string.feedback_more)) }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                DropdownMenuItem(text = { Text(ui?.sendTo?.let { "Send to: $it" } ?: "Send to…") }, leadingIcon = { Icon(RIcons.Message, null) },
-                    onClick = { menu = false; numberOpen = true })
+                DropdownMenuItem(text = { Text(ui?.sendTo?.let { stringResource(R.string.feedback_send_to_number, it) } ?: stringResource(R.string.feedback_send_to_menu)) },
+                    leadingIcon = { Icon(RIcons.Message, null) }, onClick = { menu = false; numberOpen = true })
                 if (ui?.sendTo != null) {
-                    DropdownMenuItem(text = { Text("Remove the number") }, leadingIcon = { Icon(RIcons.Delete, null) },
+                    DropdownMenuItem(text = { Text(stringResource(R.string.feedback_remove_number)) }, leadingIcon = { Icon(RIcons.Delete, null) },
                         onClick = { menu = false; a.saveNumber(null) })
                 }
             }
         }
     }) {
-        item(key = "intro", contentType = "intro") { IntroPreference(FEEDBACK_INTRO) }
+        item(key = "intro", contentType = "intro") { IntroPreference(intro) }
         item(key = "kind", contentType = "group") {
             PreferenceGroup(null) {
                 PreferenceBlock {
@@ -231,7 +236,7 @@ fun FeedbackScreen(
                                 },
                                 shape = SegmentedButtonDefaults.itemShape(i, FeedbackKind.entries.size),
                                 modifier = Modifier.heightIn(min = 48.dp),
-                                label = { Text(k.label) },
+                                label = { Text(k.labelText.str()) },
                             )
                         }
                     }
@@ -241,78 +246,78 @@ fun FeedbackScreen(
         preferenceGroup(null, "words") {
             PreferenceBlock {
                 val words = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences)
-                OutlinedTextField(text, { text = it.take(MAX_FIELD) }, label = { Text(kind.prompt) }, minLines = 3, keyboardOptions = words,
-                    supportingText = if (text.length >= MAX_FIELD) ({ Text("${MAX_FIELD / 1000},000 characters at most") }) else null,
+                OutlinedTextField(text, { text = it.take(MAX_FIELD) }, label = { Text(kind.promptText.str()) }, minLines = 3, keyboardOptions = words,
+                    supportingText = if (text.length >= MAX_FIELD) ({ Text(stringResource(R.string.feedback_max, Fmt.int(MAX_FIELD.toLong(), langs.ui))) }) else null,
                     modifier = Modifier.fillMaxWidth())
                 if (kind == FeedbackKind.BUG) {
-                    OutlinedTextField(steps, { steps = it.take(MAX_FIELD) }, label = { Text("Steps (optional)") }, minLines = 2, keyboardOptions = words,
+                    OutlinedTextField(steps, { steps = it.take(MAX_FIELD) }, label = { Text(stringResource(R.string.feedback_steps)) }, minLines = 2, keyboardOptions = words,
                         modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(expected, { expected = it.take(MAX_FIELD) }, label = { Text("What you expected (optional)") }, keyboardOptions = words,
+                    OutlinedTextField(expected, { expected = it.take(MAX_FIELD) }, label = { Text(stringResource(R.string.feedback_expected)) }, keyboardOptions = words,
                         modifier = Modifier.fillMaxWidth())
                 }
             }
         }
-        preferenceGroup("Add to the message", "diagnostics") {
-            if (ui == null) PreferenceItem("Reading Robot's codes…")
+        preferenceGroup(addTitle, "diagnostics") {
+            if (ui == null) PreferenceItem(stringResource(R.string.feedback_reading))
             else {
                 for (b in ui.blocks) {
                     val d = b.diagnostic
-                    CheckboxPreference(d.title, d.summary(ui), d in draft.ticked, onCheckedChange = { on ->
+                    val previewLabel = stringResource(R.string.feedback_preview_label, d.what())
+                    CheckboxPreference(d.titleText.str(), d.summary(ui), d in draft.ticked, onCheckedChange = { on ->
                         ticks = if (on) ticks or d.bit else ticks and d.bit.inv()
                     }) {
-                        TextButton(onClick = { preview = d.name }, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Preview ${d.what}" }) {
-                            Text("Preview")
+                        TextButton(onClick = { preview = d.name }, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = previewLabel }) {
+                            Text(stringResource(R.string.feedback_preview))
                         }
                     }
                 }
                 composed?.let { c ->
-                    PreferenceItem("Preview the whole message", "About ${c.text.length} characters" + if (c.cut.isNotEmpty()) ", some codes left out to keep it short" else "",
+                    PreferenceItem(stringResource(R.string.feedback_preview_all),
+                        stringResource(if (c.cut.isNotEmpty()) R.string.feedback_chars_cut else R.string.feedback_chars, c.text.length),
                         onClick = { preview = ALL })
                 }
             }
         }
-        preferenceGroup("Send", "send") {
+        preferenceGroup(sendTitle, "send") {
             if (sent) {
-                StatusPreference("Sent it?", "When the message is on its way, tap Done to clear this draft.", Mark.OK,
+                StatusPreference(stringResource(R.string.feedback_sent), stringResource(R.string.feedback_sent_detail), Mark.OK,
                     action = { Button(onClick = { sent = false; text = ""; steps = ""; expected = ""; ref = newRef(); onBack() },
-                        modifier = Modifier.heightIn(min = 48.dp)) { Text("Done") } })
+                        modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.feedback_done)) } })
             }
             PreferenceBlock {
                 val ready = composed != null
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { out()?.let { if (a.share(it)) sent = true } }, enabled = ready, modifier = Modifier.heightIn(min = 48.dp)) { Text("Share") }
-                    OutlinedButton(onClick = { out()?.let { a.copy(it); sent = true } }, enabled = ready, modifier = Modifier.heightIn(min = 48.dp)) { Text("Copy") }
+                    Button(onClick = { out()?.let { if (a.share(it)) sent = true } }, enabled = ready, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.feedback_share)) }
+                    OutlinedButton(onClick = { out()?.let { a.copy(it); sent = true } }, enabled = ready, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.feedback_copy)) }
                     if (ui?.sendTo != null) {
                         OutlinedButton(onClick = { out()?.let { if (a.textIt(it)) sent = true } }, enabled = ready, modifier = Modifier.heightIn(min = 48.dp)) {
-                            Text("Text it")
+                            Text(stringResource(R.string.feedback_text_it))
                         }
                     }
                 }
-                Text("Share opens Android's share sheet: pick your SMS or messaging app, and the developer." +
-                    (ui?.sendTo?.let { " Text it opens your SMS app with $it filled in; you press Send there." } ?: ""),
+                Text(ui?.sendTo?.let { stringResource(R.string.feedback_share_note_text, it) } ?: stringResource(R.string.feedback_share_note),
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 ui?.github?.let { repo ->
                     TextButton(onClick = {
                         val link = FeedbackReport.issue(repo, draft, ref, ui.facts, ui.blocks, ui.secrets)
                         if (a.github(kind, link)) sent = true
-                    }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Open a GitHub issue") }
-                    Text("Opens a new issue in your browser with the message filled in, cut to about 7,000 characters if it is longer. " +
-                        "A private repository needs you signed in to GitHub there.",
+                    }, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.feedback_github)) }
+                    Text(stringResource(R.string.feedback_github_note),
                         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
-        preferenceFooter(FEEDBACK_FOOTER)
+        preferenceFooter(footer)
     }
     preview?.let { which ->
         val title: String
         val body: String?
         if (which == ALL) {
-            title = "The whole message"
+            title = stringResource(R.string.feedback_whole)
             body = composed?.text
         } else {
             val d = Diagnostic.valueOf(which)
-            title = d.title
+            title = d.titleText.str()
             // Exactly what ticking it adds: the message composed with it ticked.
             body = ui?.let { FeedbackReport.compose(draft.copy(ticked = draft.ticked + d), ref, it.facts, it.blocks, it.secrets).blocks[d] }
         }
@@ -321,17 +326,18 @@ fun FeedbackScreen(
             title = { Text(title) },
             text = {
                 SelectionContainer(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())) {
-                    Text(body ?: "Nothing to add.", style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+                    Text(body ?: stringResource(R.string.feedback_nothing), style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
                 }
             },
-            confirmButton = { TextButton(onClick = { preview = null }) { Text("Close") } },
+            confirmButton = { TextButton(onClick = { preview = null }) { Text(stringResource(R.string.feedback_close)) } },
         )
     }
     if (numberOpen) {
+        val invalid = stringResource(R.string.feedback_number_invalid)
         EditDialog(
-            "Send to", ui?.sendTo.orEmpty(), "Phone number",
-            "The developer's number: Text it opens your SMS app with it. Kept on this phone, never in the message.",
-            validate = { t -> if (t.isBlank() || SendTo.valid(t)) null else "Not a phone number" },
+            stringResource(R.string.feedback_number_title), ui?.sendTo.orEmpty(), stringResource(R.string.feedback_number_field),
+            stringResource(R.string.feedback_number_hint),
+            validate = { t -> if (t.isBlank() || SendTo.valid(t)) null else invalid },
             keyboard = KeyboardOptions(keyboardType = KeyboardType.Phone),
             onDismiss = { numberOpen = false },
             onSave = { t -> numberOpen = false; a.saveNumber(SendTo.normalize(t)) },
@@ -363,6 +369,7 @@ internal fun FeedbackRoute(route: String, snap: Snapshot, snackbar: SnackbarHost
     var opened by rememberSaveable { mutableStateOf(false) }
     var tick by remember { mutableIntStateOf(0) }
     fun say(t: String) { scope.launch { snackbar.showSnackbar(t) } }
+    fun sayRes(id: Int, vararg args: Any) = say(ctx.getString(id, *args))
     LaunchedEffect(Unit) {
         if (!opened) {
             opened = true
@@ -374,31 +381,31 @@ internal fun FeedbackRoute(route: String, snap: Snapshot, snackbar: SnackbarHost
     LaunchedEffect(route, tick, snap.models.isNotEmpty()) { ui = withContext(Dispatchers.IO) { load(app, args, snap) } }
     FeedbackScreen(args, ui, FeedbackActions(
         share = { o ->
-            FeedbackSend.start(ctx, FeedbackSend.shareIntent(o.text)).also { ok ->
-                if (ok) FeedbackFiles.log(app, VoiceEvent.FEEDBACK_SHARED, o.kind.id, hundreds(o.text), o.bits) else say("No app on this phone can share text.")
+            FeedbackSend.start(ctx, FeedbackSend.shareIntent(o.text, ctx.getString(R.string.feedback_share_with))).also { ok ->
+                if (ok) FeedbackFiles.log(app, VoiceEvent.FEEDBACK_SHARED, o.kind.id, hundreds(o.text), o.bits) else sayRes(R.string.feedback_no_share)
             }
         },
         copy = { o ->
             FeedbackClipboard.copy(ctx, o.text)
             FeedbackFiles.log(app, VoiceEvent.FEEDBACK_COPIED, o.kind.id, hundreds(o.text), o.bits)
-            say("Copied. Robot clears it from the clipboard in a minute if nothing else replaced it.")
+            sayRes(R.string.feedback_copied)
         },
         textIt = { o ->
             val n = ui?.sendTo
             n != null && FeedbackSend.start(ctx, FeedbackSend.textIntent(n, o.text)).also { ok ->
-                if (ok) FeedbackFiles.log(app, VoiceEvent.FEEDBACK_TEXTED, o.kind.id, hundreds(o.text), o.bits) else say("No SMS app on this phone.")
+                if (ok) FeedbackFiles.log(app, VoiceEvent.FEEDBACK_TEXTED, o.kind.id, hundreds(o.text), o.bits) else sayRes(R.string.feedback_no_sms)
             }
         },
         github = { k, link ->
             FeedbackSend.start(ctx, FeedbackSend.browserIntent(link.url)).also { ok ->
-                if (ok) FeedbackFiles.log(app, VoiceEvent.FEEDBACK_GITHUB, k.id, (link.chars + 99) / 100, if (link.cut) 1 else 0) else say("No browser on this phone.")
+                if (ok) FeedbackFiles.log(app, VoiceEvent.FEEDBACK_GITHUB, k.id, (link.chars + 99) / 100, if (link.cut) 1 else 0) else sayRes(R.string.feedback_no_browser)
             }
         },
         saveNumber = { n ->
             scope.launch {
                 withContext(Dispatchers.IO) { FeedbackFiles.savePrefs(app, FeedbackPrefs(n)) }
                 tick++
-                say(if (n == null) "The number was removed." else "Text it now opens your SMS app with $n.")
+                if (n == null) sayRes(R.string.feedback_number_removed) else sayRes(R.string.feedback_number_saved, n)
             }
         },
         say = ::say,
@@ -423,6 +430,7 @@ private fun load(app: android.content.Context, args: FeedbackArgs, snap: Snapsho
         model = FeedbackFacts.model(chosen, backend, inputs.gpuFailure, own?.format, using),
         look = FeedbackFacts.look(LookStore.current(app).wallpaperColors),
         language = FeedbackFacts.language(Locale.getDefault().toLanguageTag()),
+        chip = FeedbackFacts.chip(phone),
     )
     // The problem asked about, else the open one, else one from the last day.
     val now = System.currentTimeMillis()
@@ -433,7 +441,8 @@ private fun load(app: android.content.Context, args: FeedbackArgs, snap: Snapsho
         else args.problem?.let { t -> listed.firstOrNull { it.time == t } ?: Problems.last(app)?.takeIf { it.time == t } }
             ?: Problems.open(app) ?: listed.firstOrNull { now - it.time in 0..86_400_000L }
     val blocks = listOfNotNull(
-        crash?.let { FeedbackDiagnostics.problem(it, "Crash report:") } ?: problem?.let { FeedbackDiagnostics.problem(Problems.report(app, it)) },
+        crash?.let { FeedbackDiagnostics.problem(it, "Crash report:") } // l10n: not text (the report, a diagnostic: English)
+            ?: problem?.let { FeedbackDiagnostics.problem(Problems.report(app, it)) },
         FeedbackDiagnostics.voiceLog(inputs.voiceLog),
         FeedbackDiagnostics.settings(s, inputs.look, inputs.updates, inputs.memory, inputs.messages),
         if (args.entry == FeedbackEntry.UPDATER || FeedbackDiagnostics.updaterFailed(inputs.updateState)) FeedbackDiagnostics.updater(inputs.updateState) else null,

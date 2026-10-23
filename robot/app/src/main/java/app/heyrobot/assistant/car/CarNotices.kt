@@ -15,7 +15,7 @@ import app.heyrobot.core.car.CarScreen
 import app.heyrobot.core.car.CarModeMachine
 import app.heyrobot.sys.HandsFreeFiles
 
-// VOICE PROCESS (0.8). Car mode's notifications (design §4.4, §4.6): the speaking service's while car mode is on ("Car
+// VOICE PROCESS (0.8). Car mode's notifications: the speaking service's while car mode is on ("Car
 // mode", or "Car mode · unlocked features" in the trusted session, with End; the car screen on a tap), and "Car connected
 // · Start car mode" when Android didn't let car mode start by itself (a tap starts it). On the lock screen each shows only
 // its public version.
@@ -28,21 +28,21 @@ object CarNotices {
 
     private fun channel(ctx: Context) {
         ctx.getSystemService(NotificationManager::class.java).createNotificationChannel(
-            NotificationChannel(CHANNEL, "Car mode", NotificationManager.IMPORTANCE_LOW).apply {
-                description = "Shown while car mode is on, and when your car connected."
+            NotificationChannel(CHANNEL, ctx.getString(R.string.car_channel), NotificationManager.IMPORTANCE_LOW).apply {
+                description = ctx.getString(R.string.car_channel_detail)
                 setSound(null, null)
                 enableVibration(false)
             })
     }
 
-    private fun lang() = HandsFreeHub.lang
+    /** Notifications follow the menus' language. */
+    private fun l() = HandsFreeHub.screen
 
     /** The speaking service's notification while car mode is on. */
     fun notification(ctx: Context): Notification {
         channel(ctx)
-        val title = CarScreen.title(CarModeController.trusted, lang())
-        val text = if (lang() == app.heyrobot.core.output.SpokenLang.FR) "Dis « hey robot », ou appuie sur le bouton vocal de ton auto."
-            else "Say “hey robot”, or press your car's voice button."
+        val title = CarScreen.titleText(CarModeController.trusted).render(l())
+        val text = ctx.getString(R.string.car_notification_text)
         val screen = PendingIntent.getActivity(ctx, 8_442, Intent().setClassName(ctx.packageName, CarModeActivity::class.java.name)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val end = PendingIntent.getService(ctx, 8_443, Intent(ctx, RoutineSpeakingService::class.java).setAction(RoutineSpeakingService.ACTION_CAR_END),
@@ -55,10 +55,10 @@ object CarNotices {
             .setOnlyAlertOnce(true)
             .setCategory(Notification.CATEGORY_SERVICE)
             .setVisibility(Notification.VISIBILITY_PRIVATE)
-            .setPublicVersion(Notification.Builder(ctx, CHANNEL).setSmallIcon(R.drawable.ic_robot).setContentTitle(CarScreen.title(false, lang())).build())
+            .setPublicVersion(Notification.Builder(ctx, CHANNEL).setSmallIcon(R.drawable.ic_robot).setContentTitle(CarScreen.titleText(false).render(l())).build())
             .setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
             .setContentIntent(screen)
-            .addAction(Notification.Action.Builder(null, if (lang() == app.heyrobot.core.output.SpokenLang.FR) "Terminer" else "End", end).build())
+            .addAction(Notification.Action.Builder(null, ctx.getString(R.string.car_end), end).build())
             .build()
     }
 
@@ -67,7 +67,7 @@ object CarNotices {
         channel(ctx)
         val start = PendingIntent.getForegroundService(ctx, 8_444, Intent(ctx, RoutineSpeakingService::class.java).setAction(RoutineSpeakingService.ACTION_CAR),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        val line = CarModeMachine.START_NOTICE.get(lang())
+        val line = CarModeMachine.START_NOTICE.shown(l())
         notify(ctx, START_ID, Notification.Builder(ctx, CHANNEL)
             .setSmallIcon(R.drawable.ic_robot)
             .setContentTitle(line.substringBefore(" · "))

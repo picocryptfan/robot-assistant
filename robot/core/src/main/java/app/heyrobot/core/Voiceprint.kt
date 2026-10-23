@@ -19,7 +19,7 @@ class Voiceprint(val model: String, val vector: FloatArray, val clips: Int) {
     override fun hashCode(): Int = (model.hashCode() * 31 + clips) * 31 + vector.contentHashCode()
 
     /** Never the numbers (this may end up in a crash text). */
-    override fun toString(): String = "Voiceprint($model, ${vector.size} dims, $clips clips)"
+    override fun toString(): String = "Voiceprint($model, ${vector.size} dims, $clips clips)" // l10n: not text (a debug string)
 }
 
 object VoiceprintCodec {
@@ -113,14 +113,14 @@ object Enrolment {
     const val AGREE = 0.45f
 
     val SENTENCES_EN = listOf(
-        "On a quiet morning I like to walk to the market and buy fresh bread and a few apples.",
-        "My phone keeps what I say on this device, and it writes down who is speaking at the table.",
-        "Yesterday the weather changed twice: first a bright blue sky, then heavy rain until the evening.",
+        "On a quiet morning I like to walk to the market and buy fresh bread and a few apples.", // l10n: not text (a sentence you read aloud, in its own language)
+        "My phone keeps what I say on this device, and it writes down who is speaking at the table.", // l10n: not text (a sentence you read aloud, in its own language)
+        "Yesterday the weather changed twice: first a bright blue sky, then heavy rain until the evening.", // l10n: not text (a sentence you read aloud, in its own language)
     )
     val SENTENCES_FR = listOf(
-        "Le matin, j'aime marcher jusqu'au marché pour acheter du pain frais et quelques pommes.",
-        "Mon téléphone garde ce que je dis sur l'appareil et note qui parle autour de la table.",
-        "Hier, le temps a changé deux fois : d'abord un beau ciel bleu, puis une grosse pluie jusqu'au soir.",
+        "Le matin, j'aime marcher jusqu'au marché pour acheter du pain frais et quelques pommes.", // l10n: not text (a sentence you read aloud, in its own language)
+        "Mon téléphone garde ce que je dis sur l'appareil et note qui parle autour de la table.", // l10n: not text (a sentence you read aloud, in its own language)
+        "Hier, le temps a changé deux fois : d'abord un beau ciel bleu, puis une grosse pluie jusqu'au soir.", // l10n: not text (a sentence you read aloud, in its own language)
     )
 
     /** The sentences in your language ("fr" or anything else for English). */

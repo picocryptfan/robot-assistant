@@ -13,7 +13,11 @@ WHAT IT DOES
 • Checks battery, storage and memory, and helps free space
 • Conversation mode: transcripts with speaker names, live French and English translation, summaries
 • Your own wake words, voice speed, and a People list for the names you use
-• Checks GitHub for its own updates once a day and downloads them on Wi-Fi, and checks for Termux updates once a week after you set Termux up. You install updates yourself, unless you turn on "Install updates without asking" (off by default). Each check can be turned off
+• Skills: teach it a short routine by voice, then say its name
+• Phone lock: covers other apps for times you set, by voice or in Settings. Off until you set it up
+• Robot Files: receipts, bills and documents filed on the phone, each one encrypted. Ask what you spent or what's due
+• An encrypted backup in one file you keep, your files included; Robot never uploads it
+• Checks GitHub for its own updates once a day; you install them yourself, unless you turn on "Install updates without asking" (off by default)
 
 LANGUAGES
 Understands and speaks English and Québec French. Reads other languages and answers in English or French.
@@ -25,6 +29,7 @@ PRIVATE BY DEFAULT
 • Each action can be set to Just do it, Ask first, or Off
 • No analytics, no crash reporting, no ads, no account, no Google Play services
 • Audio is never saved; message and screen content is never logged
+• Phone lock's one accessibility service sees only which app is in front, never what's on screen
 
 OPTIONAL: HELPERS
 For a question that needs a bigger model, Robot can pass that one question to an AI you choose: a paid AI service with your own API key, another AI's app on your phone (you press Send there), or your own server. None is set up until you add one, and a helper only gets what you ask or allow it to.
@@ -32,7 +37,7 @@ For a question that needs a bigger model, Robot can pass that one question to an
 REQUIREMENTS
 • Pixel 10, 10 Pro, 10 Pro XL and 10 Pro Fold run the model on the TPU (tested on the Pixel 10 Pro)
 • Pixel 6 to 9, their a models including the 10a, Fold and Tablet work more slowly on the GPU or CPU
-• Pixel 11 in beta. Snapdragon and other Android phones are planned
+• Pixel 11 in beta. Galaxy and other Android 14 phones should run; untested so far
 • Pixels come first because GrapheneOS runs on them, and keeping Google off the phone is the point
 • Android 14 or newer; built and tested on GrapheneOS
 • 3.6 to 4.3 GB free for model and voice files, depending on the phone, downloaded once and checked by SHA-256

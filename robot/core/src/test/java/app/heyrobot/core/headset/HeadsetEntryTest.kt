@@ -10,7 +10,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** The voice button's three intents (design §3.1, §3.9 HeadsetEntry.decide) and Settings › Headset (§3.4). */
+/** The voice button's three intents and Settings › Headset (§3.4). */
 class HeadsetEntryTest {
     @Test fun theActionsAreAndroidsOwn() {
         // Compile-time constants from android.jar: a typo in core fails here, not on the phone.
@@ -77,7 +77,7 @@ class HeadsetEntryTest {
 
     @Test fun settingsDefaultsAndJson() {
         val s = HeadsetSettings()
-        // The design's defaults (§3.4).
+        // The default.
         assertTrue(s.buttonOpensRobot && s.fallbackToPhoneMic && s.speakInHeadset && s.stopOnDisconnect)
         assertEquals(ListenWith.HEADSET_MIC, s.listenWith)
         assertEquals(6, s.followUpSeconds)
@@ -106,7 +106,7 @@ class HeadsetEntryTest {
     }
 }
 
-/** Single, double and long presses (design §3.1 platform facts, §3.7 rule 3). */
+/** Single, double and long presses. */
 class ButtonGesturesTest {
     private fun key(k: MediaKey, down: Boolean, at: Long, src: KeySource = KeySource.BLUETOOTH, long: Boolean = false) = ButtonInput.Key(k, down, at, src, long)
 

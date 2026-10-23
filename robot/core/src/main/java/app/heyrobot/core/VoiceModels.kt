@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.ModelStrings
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.UiLabel
+import app.heyrobot.core.i18n.UiStrings
+import app.heyrobot.core.i18n.VoiceStrings
 import java.io.File
-import java.util.Locale
 
 // Pure. The downloadable voice models (docs/voice-plan.md 2.4): single files from Hugging Face at pinned commits,
 // each with its size and SHA-256, no archives. The main app downloads them (DownloadManager) and installs them into
@@ -14,15 +18,12 @@ data class VoiceFile(val name: String, val bytes: Long, val sha256: String)
 enum class VoiceBundle(
     /** Directory under filesDir/models/ (also the guard and download keys). */
     val id: String,
-    val title: String,
-    val about: String,
     val repo: String,
     val commit: String,
     val files: List<VoiceFile>,
 ) {
     STT(
-        "stt-parakeet-v3", "Speech recognition",
-        "NVIDIA Parakeet TDT 0.6B v3 (int8) turns what you say into text, on this phone. English now, French later.",
+        "stt-parakeet-v3",
         "csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8", "2bda32ec70b097a55adaa07d9a7173915b43cc78",
         listOf(
             VoiceFile("encoder.int8.onnx", 652_184_281, "acfc2b4456377e15d04f0243af540b7fe7c992f8d898d751cf134c3a55fd2247"),
@@ -32,8 +33,7 @@ enum class VoiceBundle(
         ),
     ),
     KOKORO(
-        "tts-kokoro-v1.0", "Voice",
-        "Kokoro 82M v1.0 reads replies aloud in a natural voice (English “Heart”; French “Siwis” for later).",
+        "tts-kokoro-v1.0",
         "csukuangfj/kokoro-multi-lang-v1_0", "f7b96bb6bef5c5da4d3aa4f4e0498fbbf62dc78b",
         listOf(
             VoiceFile("model.onnx", 325_560_556, "b40f62b166ac8164b0627ef48a0b358eda0985e272fb03ef5252e7206305da11"),
@@ -42,8 +42,7 @@ enum class VoiceBundle(
         ),
     ),
     KITTEN(
-        "tts-kitten-nano-0.8", "Fast voice (fallback)",
-        "Kitten TTS nano 0.8: a small English voice, about four times faster than Kokoro and less natural.",
+        "tts-kitten-nano-0.8",
         "csukuangfj2/kitten-nano-en-v0_8-fp32", "eb4fe4f70801b2eb1c3f45be046ccd553c7575e7",
         listOf(
             VoiceFile("model.fp32.onnx", 56_768_002, "2174dbf67b58b7b50d7b65294f89c2c53c172834533519b853c579879a04cc22"),
@@ -56,13 +55,28 @@ enum class VoiceBundle(
      * it, one 192-number voice embedding per line. Only transcripts use it, and only when "Tell speakers apart" is on.
      */
     SPEAKERS(
-        "spk-titanet-small", "Speaker labels",
-        "NVIDIA TitaNet-S tells the people in a conversation apart by their voices, on this phone. Only transcripts use it.",
+        "spk-titanet-small",
         "csukuangfj/speaker-embedding-models", "0743f301363dec56491a490f6d6cbc9d67f9a3bf",
         listOf(
             VoiceFile("nemo_en_titanet_small.onnx", 40_257_283, "ad4a1802485d8b34c722d2a9d04249662f2ece5d28a7a039063ca22f515a789e"),
         ),
     );
+
+    /** Its name in Settings › Model ("Speech recognition", « Reconnaissance vocale »). */
+    val titleText: Phrase get() = when (this) {
+        STT -> VoiceStrings.titleStt()
+        KOKORO -> VoiceStrings.titleKokoro()
+        KITTEN -> VoiceStrings.titleKitten()
+        SPEAKERS -> VoiceStrings.titleSpeakers()
+    }
+
+    /** What it does, in a sentence. */
+    val aboutText: Phrase get() = when (this) {
+        STT -> VoiceStrings.aboutStt()
+        KOKORO -> VoiceStrings.aboutKokoro()
+        KITTEN -> VoiceStrings.aboutKitten()
+        SPEAKERS -> VoiceStrings.aboutSpeakers()
+    }
 
     val bytes: Long get() = files.sumOf { it.bytes }
 
@@ -181,66 +195,72 @@ object VoiceModelLogic {
      * what other downloads under way (Gemma, other voice models) will still take, since DownloadManager does not
      * reserve their space up front.
      */
-    fun spaceProblem(b: VoiceBundle, remaining: List<VoiceFile>, freeBytes: Long, staged: Set<String> = emptySet(), pendingBytes: Long = 0): String? =
-        spaceProblem(b.title, needBytes(remaining, staged), freeBytes, pendingBytes)
+    fun spaceProblemText(b: VoiceBundle, remaining: List<VoiceFile>, freeBytes: Long, staged: Set<String> = emptySet(), pendingBytes: Long = 0): Phrase? =
+        spaceProblemText(b.titleText, needBytes(remaining, staged), freeBytes, pendingBytes)
 
     /** Null when [need] bytes fit in [freeBytes] (< 0: unknown, allowed) beside [pendingBytes], else why not, naming [title]. */
-    fun spaceProblem(title: String, need: Long, freeBytes: Long, pendingBytes: Long): String? {
+    fun spaceProblemText(title: Phrase, need: Long, freeBytes: Long, pendingBytes: Long): Phrase? {
         if (freeBytes < 0) return null
         val pending = pendingBytes.coerceAtLeast(0)
         if (freeBytes - pending >= need) return null
-        val left = if (pending > 0) "only ${size((freeBytes - pending).coerceAtLeast(0))} will be left once the downloads already under way finish"
-        else "${size(freeBytes)} is free"
-        return "Not enough free space: “$title” needs ${size(need)} while it downloads and installs, and $left."
+        val left = if (pending > 0) VoiceStrings.leftPending("size" to sizeText((freeBytes - pending).coerceAtLeast(0)))
+        else ModelStrings.leftFree("size" to sizeText(freeBytes))
+        return VoiceStrings.notEnoughSpace("title" to title, "need" to sizeText(need), "left" to left)
     }
 
-    fun refuseDownload(
+    fun refuseDownloadText(
         b: VoiceBundle, status: ModelStatus, remaining: List<VoiceFile>, freeBytes: Long, staged: Set<String> = emptySet(), pendingBytes: Long = 0,
-    ): String? = refuseDownload(status) { spaceProblem(b, remaining, freeBytes, staged, pendingBytes) }
+    ): Phrase? = refuseDownloadText(status) { spaceProblemText(b, remaining, freeBytes, staged, pendingBytes) }
 
     /** Why a download can't start in [status], or [space]'s answer when nothing is there yet. */
-    fun refuseDownload(status: ModelStatus, space: () -> String?): String? = when (status) {
-        ModelStatus.DOWNLOADING -> "The download is already running."
-        ModelStatus.VERIFYING, ModelStatus.UNVERIFIED -> "The files are being checked and installed."
-        ModelStatus.VERIFIED -> "Already on this phone."
-        ModelStatus.IMPORTING -> "An import is running."
+    fun refuseDownloadText(status: ModelStatus, space: () -> Phrase?): Phrase? = when (status) {
+        ModelStatus.DOWNLOADING -> ModelStrings.alreadyDownloading()
+        ModelStatus.VERIFYING, ModelStatus.UNVERIFIED -> VoiceStrings.beingInstalled()
+        ModelStatus.VERIFIED -> VoiceStrings.alreadyHere()
+        ModelStatus.IMPORTING -> ModelStrings.importRunning()
         ModelStatus.MISSING, ModelStatus.BAD -> space()
     }
 
-    fun headline(status: ModelStatus): String = when (status) {
-        ModelStatus.MISSING -> "Not downloaded"
-        ModelStatus.DOWNLOADING -> "Downloading"
-        ModelStatus.IMPORTING -> "Copying"
-        ModelStatus.UNVERIFIED -> "Downloaded, installing next"
-        ModelStatus.VERIFYING -> "Checking and installing"
-        ModelStatus.VERIFIED -> "Ready"
-        ModelStatus.BAD -> "A file was damaged"
+    fun headlineText(status: ModelStatus): Phrase = when (status) {
+        ModelStatus.MISSING -> ModelStrings.notDownloaded()
+        ModelStatus.DOWNLOADING -> ModelStrings.downloading()
+        ModelStatus.IMPORTING -> VoiceStrings.copying()
+        ModelStatus.UNVERIFIED -> VoiceStrings.installingNext()
+        ModelStatus.VERIFYING -> VoiceStrings.installing()
+        ModelStatus.VERIFIED -> ModelStrings.ready()
+        ModelStatus.BAD -> VoiceStrings.damaged()
     }
 
     /**
      * The download line and percent (-1 = unknown) from the rows of the files still downloading, with
      * [doneBytes] already installed or downloaded. A failed file is reported first: the rest cannot finish the bundle.
      */
-    fun downloadText(b: VoiceBundle, doneBytes: Long, rows: List<FileDownload>): Pair<String, Int> = downloadText(b.bytes, doneBytes, rows)
+    fun downloadPhrase(b: VoiceBundle, doneBytes: Long, rows: List<FileDownload>): Pair<Phrase, Int> = downloadPhrase(b.bytes, doneBytes, rows)
 
-    /** [downloadText] for a download of [total] bytes in all. */
-    fun downloadText(total: Long, doneBytes: Long, rows: List<FileDownload>): Pair<String, Int> {
+    /** [downloadPhrase] for a download of [total] bytes in all. */
+    fun downloadPhrase(total: Long, doneBytes: Long, rows: List<FileDownload>): Pair<Phrase, Int> {
         val soFar = (doneBytes + rows.sumOf { it.soFar.coerceAtLeast(0) }).coerceIn(0, total)
         val pct = (soFar * 100 / total).toInt()
         val failed = rows.firstOrNull { it.status == Download.STATUS_FAILED }
         val paused = rows.firstOrNull { it.status == Download.STATUS_PAUSED }
         return when {
-            failed != null -> "The download failed: ${Download.reasonText(failed.status, failed.reason)}. Tap Download to try again." to -1
-            rows.isNotEmpty() && rows.all { it.status == Download.STATUS_SUCCESSFUL } -> "Downloaded. Checking the files next." to 100
-            rows.any { it.status == Download.STATUS_RUNNING } -> String.format(Locale.US, "%s of %s (%d%%)", size(soFar), size(total), pct) to pct
-            paused != null -> "Paused at ${size(soFar)}: ${Download.reasonText(paused.status, paused.reason)}" to -1
-            else -> "Waiting to start" to -1
+            failed != null -> ModelStrings.downloadFailed("reason" to Download.reasonPhrase(failed.status, failed.reason),
+                "button" to UiLabel(UiStrings.download)) to -1
+            rows.isNotEmpty() && rows.all { it.status == Download.STATUS_SUCCESSFUL } -> VoiceStrings.checkingNext() to 100
+            rows.any { it.status == Download.STATUS_RUNNING } -> ModelStrings.progress("done" to sizeText(soFar), "total" to sizeText(total),
+                "percent" to pct.toString()) to pct
+            paused != null -> ModelStrings.pausedAt("done" to sizeText(soFar), "reason" to Download.reasonPhrase(paused.status, paused.reason)) to -1
+            else -> ModelStrings.waitingToStart() to -1
         }
     }
 
-    fun installText(percent: Int): String = "Checking and installing: $percent%"
+    fun installPhrase(percent: Int): Phrase = VoiceStrings.installPercent("percent" to percent.toString())
 
-    /** "670 MB", "1.02 GB" (decimal units, as the phone's storage settings). */
-    fun size(bytes: Long): String = if (bytes >= 1_000_000_000L) String.format(Locale.US, "%.2f GB", bytes / 1e9)
-    else String.format(Locale.US, "%d MB", Math.round(bytes / 1e6))
+    /**
+     * "670 MB", "1.02 GB" (decimal units, as the phone's storage settings); « 670 Mo », « 1,02 Go ». 1.1: the fast
+     * translation engine's sizes are these too (core MtModelLogic.sizeText).
+     */
+    fun sizeText(bytes: Long): Phrase = if (bytes >= 1_000_000_000L) ModelLogic.gbText(bytes)
+    else VoiceStrings.sizeMb("n" to Math.round(bytes / 1e6).toString())
+
 }

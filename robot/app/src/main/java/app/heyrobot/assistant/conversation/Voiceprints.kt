@@ -76,7 +76,21 @@ object Voiceprints {
      * Your voiceprint for the speaker model [model] (a VoiceBundle id), or null: none, made with another model, or
      * unreadable (then it is deleted, and "Your voice" offers to make it again). Background or session thread.
      */
-    fun read(ctx: Context, model: String): Voiceprint? {
+    fun read(ctx: Context, model: String): Voiceprint? = open(ctx)?.let { v ->
+        if (v.model == model) v else {
+            RLog.i("voiceprint", "op" to RLog.Code("other_model"))
+            v.vector.fill(0f)
+            null
+        }
+    }
+
+    /**
+     * 1.1, Back up now with "Your voiceprint" ticked: the voiceprint
+     * whatever its speaker model, for BackupSecrets only (ProcessIsolationTest). Background thread.
+     */
+    fun forBackup(ctx: Context): Voiceprint? = open(ctx)
+
+    private fun open(ctx: Context): Voiceprint? {
         val f = VoiceprintFiles.file(ctx)
         if (!f.isFile) return null
         return try {
@@ -90,10 +104,6 @@ object Voiceprints {
             if (v == null) {
                 RLog.i("voiceprint", "op" to RLog.Code(if (lost) "unreadable" else "not_now"))
                 if (lost) VoiceprintFiles.delete(ctx)
-                null
-            } else if (v.model != model) {
-                RLog.i("voiceprint", "op" to RLog.Code("other_model"))
-                v.vector.fill(0f)
                 null
             } else v
         } catch (t: Throwable) {

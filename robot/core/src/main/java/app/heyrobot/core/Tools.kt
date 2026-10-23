@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.Arg
+import app.heyrobot.core.i18n.Fmt
+import app.heyrobot.core.i18n.Lang
+import app.heyrobot.core.i18n.Msg
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.ToolStrings
+import app.heyrobot.core.i18n.UiStrings
 import app.heyrobot.core.memory.MemoryCommands
 import app.heyrobot.core.memory.MemoryKind
 import app.heyrobot.core.memory.MemoryLimits
@@ -23,58 +30,72 @@ import kotlin.math.roundToLong
  * [online]: it goes to the internet itself (Settings › Actions says so). 0.9: the Termux tools are [internal] too: Settings ›
  * Termux has their levels (TermuxPolicy decides), never Settings › Actions or the lock screen's list.
  */
-enum class ToolName(val id: String, val title: String, val group: ToolGroup, val reads: Boolean = false, val internal: Boolean = false,
+enum class ToolName(val id: String, private val titleMsg: Msg, val group: ToolGroup, val reads: Boolean = false, val internal: Boolean = false,
     val online: Boolean = false, val forModel: Boolean = true) {
-    SET_TIMER("set_timer", "Timers", ToolGroup.CORE),
-    SET_ALARM("set_alarm", "Alarms", ToolGroup.CORE),
-    OPEN_APP("open_app", "Open apps", ToolGroup.CORE),
-    MAPS_SEARCH("maps_search", "Maps search", ToolGroup.CORE),
-    MAPS_NAVIGATE("maps_navigate", "Maps directions", ToolGroup.CORE),
-    FLASHLIGHT("flashlight", "Flashlight", ToolGroup.CORE),
-    SEND_TEXT("send_text", "Texts", ToolGroup.PEOPLE),
-    DRAFT_EMAIL("draft_email", "Email drafts", ToolGroup.PEOPLE),
-    LOOKUP_CONTACT("lookup_contact", "Contact lookups", ToolGroup.PEOPLE, reads = true),
+    SET_TIMER("set_timer", ToolStrings.titleSetTimer, ToolGroup.CORE),
+    SET_ALARM("set_alarm", ToolStrings.titleSetAlarm, ToolGroup.CORE),
+    OPEN_APP("open_app", ToolStrings.titleOpenApp, ToolGroup.CORE),
+    MAPS_SEARCH("maps_search", ToolStrings.titleMapsSearch, ToolGroup.CORE),
+    MAPS_NAVIGATE("maps_navigate", ToolStrings.titleMapsNavigate, ToolGroup.CORE),
+    FLASHLIGHT("flashlight", ToolStrings.titleFlashlight, ToolGroup.CORE),
+    SEND_TEXT("send_text", ToolStrings.titleSendText, ToolGroup.PEOPLE),
+    DRAFT_EMAIL("draft_email", ToolStrings.titleDraftEmail, ToolGroup.PEOPLE),
+    LOOKUP_CONTACT("lookup_contact", ToolStrings.titleLookupContact, ToolGroup.PEOPLE, reads = true),
     /**
      * 0.8: a phone call. The dialer opens with the number (you tap Call); car mode alone calls after a spoken yes. Never
      * described to the model ([forModel]): "call Mom", "appelle maman" is recognised before it (HandsFreeRouter), so the
      * prompt doesn't grow.
      */
-    CALL("call", "Calls", ToolGroup.PEOPLE, forModel = false),
-    ADD_NOTE("add_note", "New notes", ToolGroup.NOTES),
-    FIND_NOTES("find_notes", "Note searches", ToolGroup.NOTES, reads = true),
-    ADD_EVENT("add_event", "New events", ToolGroup.CALENDAR),
-    READ_CALENDAR("read_calendar", "Calendar lookups", ToolGroup.CALENDAR, reads = true),
+    CALL("call", ToolStrings.titleCall, ToolGroup.PEOPLE, forModel = false),
+    ADD_NOTE("add_note", ToolStrings.titleAddNote, ToolGroup.NOTES),
+    FIND_NOTES("find_notes", ToolStrings.titleFindNotes, ToolGroup.NOTES, reads = true),
+    ADD_EVENT("add_event", ToolStrings.titleAddEvent, ToolGroup.CALENDAR),
+    READ_CALENDAR("read_calendar", ToolStrings.titleReadCalendar, ToolGroup.CALENDAR, reads = true),
     /** 0.4.0: Open-Meteo's forecast for a place you name, your Home for weather, or where the phone is. */
-    WEATHER("weather", "Weather lookups", ToolGroup.WEATHER, reads = true, online = true),
+    WEATHER("weather", ToolStrings.titleWeather, ToolGroup.WEATHER, reads = true, online = true),
     /** 0.4.0: storage, battery and memory, read on the phone (the apps using the most space with Usage access). */
-    PHONE_STATUS("phone_status", "Phone status checks", ToolGroup.PHONE, reads = true),
+    PHONE_STATUS("phone_status", ToolStrings.titlePhoneStatus, ToolGroup.PHONE, reads = true),
     /** 0.4.0: unload Robot's own model, or open an app's info page to force stop it (FreeUp.kt). */
-    FREE_MEMORY("free_memory", "Memory clean-ups", ToolGroup.PHONE),
+    FREE_MEMORY("free_memory", ToolStrings.titleFreeMemory, ToolGroup.PHONE),
     /** 0.4.0: Android's Free up space screen, an app's cache, a large photo or video, Robot's cache. */
-    FREE_STORAGE("free_storage", "Storage clean-ups", ToolGroup.PHONE),
+    FREE_STORAGE("free_storage", ToolStrings.titleFreeStorage, ToolGroup.PHONE),
     /**
      * 0.9: private web search (core web): your search service's results,
      * answered by a tool-free one-shot. Described only with Settings › Web search on; goes online like the weather.
      */
-    WEB_SEARCH("web_search", "Web searches", ToolGroup.WEB, reads = true, online = true),
+    WEB_SEARCH("web_search", ToolStrings.titleWebSearch, ToolGroup.WEB, reads = true, online = true),
     /** 1.0: a search in your browser (BrowserActions.kt): Robot sends nothing itself, never sees the results, never on the lock screen. */
-    BROWSER_SEARCH("browser_search", "Searches in your browser", ToolGroup.WEB, internal = true),
+    BROWSER_SEARCH("browser_search", ToolStrings.titleBrowserSearch, ToolGroup.WEB, internal = true),
     /**
      * Ask a helper (docs/ask-claude.md "When Robot needs help"): described to Gemma only with a helper on and escalation
      * not Off. Through the API it never runs as a tool (the turn hands over to the helper, EscalationPolicy decides);
      * through its app it is the hand-off, always behind a card. "ask_claude" is the name the local model sees and its
      * approval is saved under: kept from 0.3.0, so the prompt and saved settings stay the same.
      */
-    ASK_HELPER("ask_claude", "Ask a helper", ToolGroup.CORE, internal = true),
+    ASK_HELPER("ask_claude", ToolStrings.titleAskClaude, ToolGroup.CORE, internal = true),
     /**
      * 0.7 memory (core memory/): keep something about you for later conversations, or drop it. Robot's own, under
      * Settings › Memory rather than Settings › Actions, described only with Memory on and words that call for them.
      */
-    REMEMBER("remember", "Memory", ToolGroup.MEMORY, internal = true),
-    FORGET("forget", "Memory", ToolGroup.MEMORY, internal = true),
+    REMEMBER("remember", UiStrings.memory, ToolGroup.MEMORY, internal = true),
+    FORGET("forget", UiStrings.memory, ToolGroup.MEMORY, internal = true),
     /** 0.9, the Termux agent (TermuxActions.kt): one of your scripts in ~/robot, and one short command. */
-    TERMUX_SCRIPT("termux_script", "Your Termux scripts", ToolGroup.TERMUX, internal = true),
-    TERMUX_COMMAND("termux_command", "Termux commands", ToolGroup.TERMUX, internal = true);
+    TERMUX_SCRIPT("termux_script", ToolStrings.titleTermuxScript, ToolGroup.TERMUX, internal = true),
+    TERMUX_COMMAND("termux_command", ToolStrings.titleTermuxCommand, ToolGroup.TERMUX, internal = true),
+    /**
+     * 1.4, Robot Files (files-1.4-plan.md §5.1, D7): two reads, Robot's own (Settings › Files governs them, never Settings ›
+     * Actions or the lock screen's list). find_files gives names, drawers, dates, a few fields and totals made by code, never
+     * a file's text; read_file ends the model's turn, and a tool-free FILE_ANSWER one-shot answers from one file's text.
+     * Nothing a file says can move, delete or send one: those are your words and taps only (FilesRouter, the Files screens).
+     */
+    FIND_FILES("find_files", ToolStrings.titleFindFiles, ToolGroup.FILES, reads = true, internal = true),
+    READ_FILE("read_file", ToolStrings.titleReadFile, ToolGroup.FILES, reads = true, internal = true);
+
+    /** Its title in words without a language yet (1.1: Settings shows it with `str()`, a card's line says it in the reply language). */
+    val titleText: Phrase get() = titleMsg()
+
+    /** Its title in English ("Timers"): what the model and History's records read. */
+    val title: String get() = titleText.en()
 
     /** A Termux tool: Settings › Termux and TermuxPolicy decide about it (ApprovalGate's Termux branch). */
     val termux: Boolean get() = group == ToolGroup.TERMUX
@@ -84,15 +105,27 @@ enum class ToolName(val id: String, val title: String, val group: ToolGroup, val
     }
 }
 
-data class ToolParam(val name: String, val type: String, val description: String, val required: Boolean)
+/**
+ * [brief]: 1.2 (design Step 3), the parameter's text in the compact prompt of a slow path ([ToolSpec.compact]): its
+ * [description] without the examples, and shorter, keeping what the model must know to fill it (a range, the words it
+ * takes, "omit"); null keeps [description] as it is.
+ */
+data class ToolParam(val name: String, val type: String, val description: String, val required: Boolean, val brief: String? = null)
 
 data class ToolSpec(val tool: ToolName, val description: String, val params: List<ToolParam>) {
-    init { require(params.size <= MAX_PARAMS) { "tools take at most $MAX_PARAMS arguments" } }
+    init { require(params.size <= MAX_PARAMS) { "tools take at most $MAX_PARAMS arguments" } } // l10n: not text (a programming error)
 
     companion object {
         /** Phase 1 allowed two; draft_email and add_event need three (to, subject, body; title, when, length). */
         const val MAX_PARAMS = 3
     }
+
+    /**
+     * 1.2: this tool as the compact prompt describes it (PrefillBudget.compact): every parameter's text in its [ToolParam.brief]
+     * form; the name, the tool's own line, the parameters' names, types, order and required list exactly as they are, so a
+     * call is read and checked the same way (HelperTools.check, ToolCalls).
+     */
+    fun compact(): ToolSpec = copy(params = params.map { it.copy(description = it.brief ?: it.description, brief = null) })
 
     /** {"name", "description", "parameters": {"type":"object", "properties", "required"}} as LiteRT-LM's OpenApiTool wants it. */
     fun openApiJson(): String = JSONObject().apply {
@@ -111,21 +144,21 @@ data class ToolSpec(val tool: ToolName, val description: String, val params: Lis
 object ToolSpecs {
     val ALL: List<ToolSpec> = listOf(
         ToolSpec(ToolName.SET_TIMER, "Start a countdown timer in the Clock app (minutes, seconds or both).", listOf(
-            ToolParam("minutes", "integer", "Whole minutes of the timer, e.g. 5", false),
-            ToolParam("seconds", "integer", "Extra seconds of the timer, e.g. 30", false),
+            ToolParam("minutes", "integer", "Whole minutes of the timer, e.g. 5", false, "Whole minutes"),
+            ToolParam("seconds", "integer", "Extra seconds of the timer, e.g. 30", false, "Extra seconds"),
         )),
         ToolSpec(ToolName.SET_ALARM, "Set an alarm in the Clock app for the next time the clock shows hour:minute.", listOf(
             ToolParam("hour", "integer", "Hour on a 24-hour clock, 0 to 23", true),
             ToolParam("minute", "integer", "Minute, 0 to 59", false),
         )),
         ToolSpec(ToolName.OPEN_APP, "Open an installed app by its name.", listOf(
-            ToolParam("name", "string", "The app's name as shown on the home screen, e.g. Signal", true),
+            ToolParam("name", "string", "The app's name as shown on the home screen, e.g. Signal", true, "The app's name"),
         )),
         ToolSpec(ToolName.MAPS_SEARCH, "Search for a place or a kind of place in Organic Maps.", listOf(
-            ToolParam("query", "string", "What to look for, e.g. pharmacy or Central Station", true),
+            ToolParam("query", "string", "What to look for, e.g. pharmacy or Central Station", true, "What to look for"),
         )),
         ToolSpec(ToolName.MAPS_NAVIGATE, "Find a destination in Organic Maps to get directions to it.", listOf(
-            ToolParam("destination", "string", "Where to go, e.g. an address or a place name", true),
+            ToolParam("destination", "string", "Where to go, e.g. an address or a place name", true, "Where to go"),
         )),
         ToolSpec(ToolName.FLASHLIGHT, "Turn the phone's flashlight on or off.", listOf(
             ToolParam("on", "boolean", "true to turn it on, false to turn it off", true),
@@ -156,18 +189,18 @@ object ToolSpecs {
             ToolParam("query", "string", "Words to find", true),
         )),
         ToolSpec(ToolName.ADD_EVENT, "Add an event to the calendar.", listOf(
-            ToolParam("title", "string", "What, e.g. Dentist", true),
-            ToolParam("when", "string", "As said, e.g. Friday 9 to 10:30", true),
+            ToolParam("title", "string", "What, e.g. Dentist", true, "What"),
+            ToolParam("when", "string", "As said, e.g. Friday 9 to 10:30", true, "As said"),
             ToolParam("duration_minutes", "integer", "Length if no end was said", false),
         )),
         ToolSpec(ToolName.READ_CALENDAR, "List calendar events for a day or a week.", listOf(
-            ToolParam("day", "string", "e.g. today, Friday, next week", true),
+            ToolParam("day", "string", "e.g. today, Friday, next week", true, "As said"),
         )),
         // 0.4.0, as short as the others: no place is where you are (or your Home for weather), no day is today. 1.0.2: the
         // day first, as Gemma 4 writes a call's arguments (in alphabetical order): with the place declared first, constrained
         // decoding lost it whenever a day came with it (ActionOutcomeTest).
         ToolSpec(ToolName.WEATHER, "Weather forecast (online).", listOf(
-            ToolParam("day", "string", "e.g. tomorrow, Friday, this week", false),
+            ToolParam("day", "string", "e.g. tomorrow, Friday, this week", false, "As said"),
             ToolParam("place", "string", "Town, or omit for here", false),
         )),
         ToolSpec(ToolName.PHONE_STATUS, "Read this phone's storage, battery and memory.", listOf(
@@ -177,7 +210,8 @@ object ToolSpecs {
             ToolParam("app", "string", "App to stop; omit to unload Robot's model", false),
         )),
         ToolSpec(ToolName.FREE_STORAGE, "Help free storage.", listOf(
-            ToolParam("what", "string", "android (its Free up space), apps (an app's cache), files (big photos, videos) or robot (Robot's cache)", false),
+            ToolParam("what", "string", "android (its Free up space), apps (an app's cache), files (big photos, videos) or robot (Robot's cache)", false,
+                "android, apps, files or robot"),
         )),
         // 0.9, the design's two parameters: Gemma's turn ends at the call and a one-shot answers from the results.
         ToolSpec(ToolName.WEB_SEARCH, "Search the web (online).", listOf(
@@ -196,28 +230,47 @@ object ToolSpecs {
         ToolSpec(ToolName.FORGET, "Forget a remembered fact.", listOf(
             ToolParam("query", "string", "Its words", true),
         )),
+        // 1.4, Robot Files (F9): both reads, as short as find_notes and web_search (every token is paid on every rebuild).
+        ToolSpec(ToolName.FIND_FILES, "Find the person's receipts, bills and documents.", listOf(
+            ToolParam("query", "string", "What to find, e.g. Costco receipt", true, "What to find"),
+            ToolParam("drawer", "string", "A drawer, or omit", false),
+            ToolParam("when", "string", "e.g. August, last year", false, "As said"),
+        )),
+        ToolSpec(ToolName.READ_FILE, "Answer a question from one file's text.", listOf(
+            ToolParam("file", "string", "A number find_files gave", true),
+            ToolParam("question", "string", "The question", true),
+        )),
     ) + BrowserCalls.SPEC + TermuxCalls.SPECS
 
     fun of(tool: ToolName): ToolSpec = ALL.first { it.tool == tool }
+
+    /** 1.2: [tool]'s description as LiteRT-LM gets it, in the compact form on a slow path ([compact], [ToolSpec.compact]). */
+    fun json(tool: ToolName, compact: Boolean = false): String = of(tool).let { if (compact) it.compact() else it }.openApiJson()
 }
 
-/** A validated request to do something on the phone. */
+/**
+ * A validated request to do something on the phone. 1.1: its card's words come as words without a language yet
+ * ([summary], [bodyText], [confirmText], rendered in the turn's languages); [describe], [body] and [confirmLabel] are
+ * their English (History's record of 1.0, the routines' lists). An action of another area that gives only the English
+ * shows it as it is until it moves.
+ */
 sealed class Action {
-    private companion object {
-        /** After a person whose name was learned from a Cheogram notification: whoever sent it chose that name. */
-        const val LEARNED = " · name seen in a notification"
-    }
-
     abstract val tool: ToolName
     /**
      * Plain language for the confirmation card and the log-free history ("Set a timer for 5 minutes"). The person or
      * thing it is about may be marked **bold** and the calendar *italic* (the card renders light Markdown).
      */
     abstract fun describe(): String
+    /** [describe] in words without a language yet: the card's summary, in the reply language. */
+    open fun summary(): Phrase = Phrase.plain(describe())
     /** What the card shows under the summary: a message's full text, an email's subject and body, a note. */
     open fun body(): String? = null
+    /** [body] in words without a language yet (an email's "Subject:" line; your words stay yours). */
+    open fun bodyText(): Phrase? = body()?.let(Phrase::plain)
     /** The card's button when it asks first ("Open in Cheogram"); null = "Do it". */
     open val confirmLabel: String? get() = null
+    /** [confirmLabel] in words without a language yet: a button, in the menus' language. */
+    open val confirmText: Phrase? get() = confirmLabel?.let(Phrase::plain)
     /**
      * It goes to the internet when it runs: the weather, or a maps request for the nearest place (0.4.0). Stop ends it at
      * once and it has a deadline (the panel's OnlineRun).
@@ -228,23 +281,31 @@ sealed class Action {
     /** It may run on the lock screen ([lockedTools]: Settings › Safety & privacy › "Works on the lock screen"). */
     open fun worksLocked(lockedTools: Set<ToolName>): Boolean = tool in lockedTools
 
-    data class SetTimer(val seconds: Long) : Action() {
-        override val tool get() = ToolName.SET_TIMER
-        override fun describe() = "Set a timer for ${Durations.spoken(seconds)}"
+    /** A card whose words are this package's: [describe] and [confirmLabel] are [summary]'s and [confirmText]'s English. */
+    sealed class Worded : Action() {
+        abstract override fun summary(): Phrase
+        override fun describe(): String = summary().en()
+        override val confirmLabel: String? get() = confirmText?.en()
+        override val confirmText: Phrase? get() = null
     }
 
-    data class SetAlarm(val hour: Int, val minute: Int) : Action() {
+    data class SetTimer(val seconds: Long) : Worded() {
+        override val tool get() = ToolName.SET_TIMER
+        override fun summary() = ToolStrings.setTimer("duration" to Arg.Seconds(seconds))
+    }
+
+    data class SetAlarm(val hour: Int, val minute: Int) : Worded() {
         override val tool get() = ToolName.SET_ALARM
-        override fun describe() = String.format(Locale.US, "Set an alarm for %02d:%02d", hour, minute)
+        override fun summary() = ToolStrings.setAlarm("time" to EventText.clock(hour, minute))
     }
 
     /**
      * [name] is what the model asked for until the app process resolves it to an installed app: then [name] is
      * that app's real label and [key] its launcher activity (what the card shows is what opens).
      */
-    data class OpenApp(val name: String, val key: String? = null) : Action() {
+    data class OpenApp(val name: String, val key: String? = null) : Worded() {
         override val tool get() = ToolName.OPEN_APP
-        override fun describe() = "Open $name"
+        override fun summary() = ToolStrings.openApp("appName" to name)
     }
 
     /**
@@ -252,9 +313,9 @@ sealed class Action {
      * finds the closest one with OpenStreetMap and opens Organic Maps' route to it (Nearby); otherwise the search, as before.
      * [consent]: the first-use card's answer it carries (Nearby.prepare), kept when it runs.
      */
-    data class MapsSearch(val query: String, val nearest: Boolean = false, val consent: NearestConsent? = null) : Action() {
+    data class MapsSearch(val query: String, val nearest: Boolean = false, val consent: NearestConsent? = null) : Worded() {
         override val tool get() = ToolName.MAPS_SEARCH
-        override fun describe() = if (nearest) Nearby.describe(query) else "Search Organic Maps for “$query”"
+        override fun summary() = if (nearest) Nearby.describeText(query) else ToolStrings.mapsSearch("query" to query)
         override val online get() = nearest
     }
 
@@ -262,52 +323,67 @@ sealed class Action {
      * Organic Maps can't route to a name: this opens a search for [destination], and you pick it and tap Route; or, for the
      * [nearest] one, the route to the closest place OpenStreetMap knows ([MapsSearch.nearest]).
      */
-    data class MapsNavigate(val destination: String, val nearest: Boolean = false, val consent: NearestConsent? = null) : Action() {
+    data class MapsNavigate(val destination: String, val nearest: Boolean = false, val consent: NearestConsent? = null) : Worded() {
         override val tool get() = ToolName.MAPS_NAVIGATE
-        override fun describe() = if (nearest) Nearby.describe(destination) else "Search Organic Maps for “$destination”, then tap Route"
+        override fun summary() = if (nearest) Nearby.describeText(destination) else when (SavedPlace.of(destination)) {
+            // 1.1, D4: the route to your saved Home or Work.
+            app.heyrobot.core.car.NavDestination.Home -> ToolStrings.routeHome()
+            app.heyrobot.core.car.NavDestination.Work -> ToolStrings.routeWork()
+            else -> ToolStrings.mapsNavigate("query" to destination)
+        }
         override val online get() = nearest
     }
 
-    data class Flashlight(val on: Boolean) : Action() {
+    data class Flashlight(val on: Boolean) : Worded() {
         override val tool get() = ToolName.FLASHLIGHT
-        override fun describe() = if (on) "Turn the flashlight on" else "Turn the flashlight off"
+        override fun summary() = if (on) ToolStrings.flashlightOn() else ToolStrings.flashlightOff()
     }
 
     /** [to] as the model gave it until the app resolves it to a [target] (what the card shows is where it goes). */
-    data class SendText(val to: String, val message: String, val target: TextTarget? = null) : Action() {
+    data class SendText(val to: String, val message: String, val target: TextTarget? = null) : Worded() {
         override val tool get() = ToolName.SEND_TEXT
-        override fun describe() = when {
-            target == null -> "Text **$to**"
-            target.via == TextVia.CHEOGRAM_PICK -> "${target.display} Choose who to text in Cheogram"
-            target.via == TextVia.CHEOGRAM_LIST -> "${target.display} Pick who to text in Cheogram"
-            target.name == null -> "Text **${target.display}** in ${target.appName}"
-            else -> "Text **${target.name}** (${target.display}) in ${target.appName}" + if (target.from?.learned == true) LEARNED else ""
+        override fun summary(): Phrase = when {
+            target == null -> ToolStrings.textTo("to" to to)
+            target.via == TextVia.CHEOGRAM_PICK -> ToolStrings.textChoose("why" to target.shown)
+            target.via == TextVia.CHEOGRAM_LIST -> ToolStrings.textPick("why" to target.shown)
+            target.name == null -> ToolStrings.textNumber("to" to target.display, "appName" to target.app)
+            else -> learned(ToolStrings.textPerson("name" to target.name, "to" to target.display, "appName" to target.app), target.from?.learned == true)
         }
         override fun body() = message
         /** The button names the person too: the card's top line may be out of sight on a long message. */
-        override val confirmLabel get() = target?.let {
+        override val confirmText get() = target?.let {
             when (it.via) {
-                TextVia.CHEOGRAM_PICK -> "Choose in Cheogram"
-                TextVia.CHEOGRAM_LIST -> "Pick in Cheogram"
-                else -> "Open in ${it.appName} for ${it.name ?: it.display}"
+                TextVia.CHEOGRAM_PICK -> ToolStrings.chooseInCheogram()
+                TextVia.CHEOGRAM_LIST -> ToolStrings.pickInCheogram()
+                else -> ToolStrings.openInFor("appName" to it.app, "who" to (it.name ?: it.display))
             }
         }
     }
 
-    data class DraftEmail(val to: String, val subject: String, val text: String, val target: MailTarget? = null) : Action() {
+    data class DraftEmail(val to: String, val subject: String, val text: String, val target: MailTarget? = null) : Worded() {
         override val tool get() = ToolName.DRAFT_EMAIL
-        override fun describe(): String {
-            val t = target ?: return "Email **$to**"
-            val who = if (t.name == null) "**${t.address}**" else "**${t.name}** (${t.address})"
-            return (if (t.appName == null) "Email $who" else "Email $who in ${t.appName}") + if (t.from?.learned == true) LEARNED else ""
+        override fun summary(): Phrase {
+            val t = target ?: return ToolStrings.emailTo("to" to to)
+            val p = when {
+                t.name == null && t.appName == null -> ToolStrings.emailTo("to" to t.address)
+                t.name == null -> ToolStrings.emailToIn("to" to t.address, "appName" to t.appName)
+                t.appName == null -> ToolStrings.emailPerson("name" to t.name, "address" to t.address)
+                else -> ToolStrings.emailPersonIn("name" to t.name, "address" to t.address, "appName" to t.appName)
+            }
+            return learned(p, t.from?.learned == true)
         }
-        override fun body() = listOfNotNull(subject.takeIf { it.isNotBlank() }?.let { "Subject: $it" }, text.takeIf { it.isNotBlank() }).joinToString("\n\n")
-        override val confirmLabel get() = target?.let { t -> "${t.appName?.let { "Open in $it" } ?: "Choose the email app"} for ${t.name ?: t.address}" }
+        override fun body() = bodyText()?.en().orEmpty()
+        override fun bodyText(): Phrase = Phrase.Join(listOfNotNull(subject.takeIf { it.isNotBlank() }?.let { ToolStrings.subject("subject" to it) },
+            text.takeIf { it.isNotBlank() }?.let(Phrase::plain)), "\n\n")
+        override val confirmText get() = target?.let { t ->
+            val who = t.name ?: t.address
+            if (t.appName != null) ToolStrings.openInFor("appName" to t.appName, "who" to who) else ToolStrings.chooseEmailAppFor("who" to who)
+        }
     }
 
-    data class LookupContact(val name: String) : Action() {
+    data class LookupContact(val name: String) : Worded() {
         override val tool get() = ToolName.LOOKUP_CONTACT
-        override fun describe() = "Look up **$name** in your contacts"
+        override fun summary() = ToolStrings.lookUp("name" to name)
     }
 
     /**
@@ -318,36 +394,47 @@ sealed class Action {
      * with the number and you tap Call (ACTION_DIAL).
      */
     data class Call(val to: String, val number: String? = null, val who: String? = null, val label: String? = null, val learned: Boolean = false,
-        val emergency: Boolean = false, val direct: Boolean = false) : Action() {
+        val emergency: Boolean = false, val direct: Boolean = false) : Worded() {
         override val tool get() = ToolName.CALL
-        override fun describe(): String {
-            val n = number ?: return "Call **$to**"
-            val name = who?.takeIf { it.isNotBlank() }
-            return (if (name == null) "Call **$n**" else "Call **$name**" + (label?.let { " ($it, $n)" } ?: " ($n)")) + if (learned) LEARNED else ""
+        override fun summary(): Phrase {
+            val n = number ?: return ToolStrings.callTo("to" to to)
+            val name = who?.takeIf { it.isNotBlank() } ?: return learned(ToolStrings.callTo("to" to n), learned)
+            return learned(if (label == null) ToolStrings.callPerson("name" to name, "number" to n)
+                else ToolStrings.callPersonLabel("name" to name, "label" to label, "number" to n), learned)
         }
-        override val confirmLabel get() = if (direct && !emergency) "Call" else "Open the dialer"
+        override val confirmText get() = if (direct && !emergency) UiStrings.call() else ToolStrings.openDialer()
     }
 
-    data class AddNote(val text: String, val title: String? = null) : Action() {
+    data class AddNote(val text: String, val title: String? = null) : Worded() {
         override val tool get() = ToolName.ADD_NOTE
-        override fun describe() = if (title == null) "Save a note in Robot Notes" else "Save the note **$title** in Robot Notes"
+        override fun summary() = if (title == null) ToolStrings.saveNote() else ToolStrings.saveNoteTitled("title" to title)
         override fun body() = text
     }
 
-    data class FindNotes(val query: String) : Action() {
+    data class FindNotes(val query: String) : Worded() {
         override val tool get() = ToolName.FIND_NOTES
-        override fun describe() = "Search your notes for “$query”"
+        override fun summary() = ToolStrings.findNotes("query" to query)
     }
 
-    /** [whenText] in the person's words until the app reads it into a [plan] (the dates and the calendar it goes to). */
-    data class AddEvent(val title: String, val whenText: String, val minutes: Int? = null, val plan: EventPlan? = null) : Action() {
+    /**
+     * [whenText] in the person's words until the app reads it into a [plan] (the dates and the calendar it goes to). 1.1:
+     * [alert], a dated reminder ("remind me to … on the 20th"): the event carries an alert (EventPlan.alertAt), and its card
+     * always asks first (AskWhy.REMINDER).
+     */
+    data class AddEvent(val title: String, val whenText: String, val minutes: Int? = null, val plan: EventPlan? = null, val alert: Boolean = false) : Worded() {
         override val tool get() = ToolName.ADD_EVENT
-        override fun describe(): String {
-            val p = plan ?: return "Add **$title** ($whenText)"
-            val span = EventText.span(p.start, p.end, p.allDay, p.currentYear)
-            return if (p.calendarName != null) "Add **$title** on $span to *${p.calendarName}*" else "Add **$title** on $span in your calendar app"
+        override fun summary(): Phrase {
+            val p = plan ?: return ToolStrings.addEventAsSaid("title" to title, "when" to whenText)
+            val span = EventText.spanText(p.start, p.end, p.allDay, p.currentYear)
+            val alertAt = p.alertAt?.let { EventText.clock(it.hour, it.minute) }
+            return when {
+                p.calendarName != null && alertAt != null -> ToolStrings.addEventToAlert("title" to title, "when" to span, "calendar" to p.calendarName, "alert" to alertAt)
+                p.calendarName != null -> ToolStrings.addEventTo("title" to title, "when" to span, "calendar" to p.calendarName)
+                alertAt != null -> ToolStrings.addEventInAppAlert("title" to title, "when" to span, "alert" to alertAt)
+                else -> ToolStrings.addEventInApp("title" to title, "when" to span)
+            }
         }
-        override val confirmLabel get() = plan?.let { if (it.calendarId == null) "Open the calendar app" else "Add to ${it.calendarName}" }
+        override val confirmText get() = plan?.let { if (it.calendarId == null) ToolStrings.openCalendarApp() else ToolStrings.addTo("calendar" to it.calendarName) }
     }
 
     /**
@@ -356,12 +443,12 @@ sealed class Action {
      * meant (null: the one Robot checks with); [app] its package and [appName] ("ChatGPT"), filled in from your settings
      * when the card is made (ToolExecutor), never by a model.
      */
-    data class AskHelper(val text: String, val helper: String? = null, val app: String? = null, val appName: String? = null) : Action() {
+    data class AskHelper(val text: String, val helper: String? = null, val app: String? = null, val appName: String? = null) : Worded() {
         override val tool get() = ToolName.ASK_HELPER
-        private val where get() = appName?.let { "the $it app" } ?: "the helper's app"
-        override fun describe() = if (text.isBlank()) "Open $where" else "Open $where with: «${short(text)}»"
+        override fun summary() = if (text.isBlank()) ToolStrings.openHelperApp("appName" to where) else ToolStrings.openHelperAppWith("appName" to where, "text" to short(text))
+        private val where: Phrase get() = appName?.let { ToolStrings.theNamedApp("name" to it) } ?: ToolStrings.theHelpersApp()
         override fun body() = text.takeIf { it.length > SHORT }
-        override val confirmLabel get() = "Open the app"
+        override val confirmText get() = ToolStrings.openTheApp()
 
         private companion object {
             const val SHORT = 120
@@ -373,17 +460,18 @@ sealed class Action {
      * [place] as the model gave it (null: where you are). The app reads it into [where] (here, your Home for weather or
      * a named place) and [day] into the [range] of days, before anything goes online.
      */
-    data class Weather(val place: String?, val day: String?, val where: WeatherWhere? = null, val range: DayRange? = null) : Action() {
+    data class Weather(val place: String?, val day: String?, val where: WeatherWhere? = null, val range: DayRange? = null) : Worded() {
         override val tool get() = ToolName.WEATHER
-        override fun describe(): String {
-            val w = where ?: WeatherAsk.where(place).first
-            val at = when (w) {
-                WeatherWhere.HERE -> " here"
-                WeatherWhere.HOME -> " at home"
-                WeatherWhere.NAMED -> " in **${WeatherAsk.where(place).second ?: place}**"
+        override fun summary(): Phrase {
+            val on: Phrase? = range?.let { EventText.rangeText(it) } ?: day?.let(Phrase::plain)
+            return when (where ?: WeatherAsk.where(place).first) {
+                WeatherWhere.HERE -> if (on == null) ToolStrings.weatherHere() else ToolStrings.weatherHereFor("when" to on)
+                WeatherWhere.HOME -> if (on == null) ToolStrings.weatherHome() else ToolStrings.weatherHomeFor("when" to on)
+                WeatherWhere.NAMED -> {
+                    val named = WeatherAsk.where(place).second ?: place
+                    if (on == null) ToolStrings.weatherIn("place" to named) else ToolStrings.weatherInFor("place" to named, "when" to on)
+                }
             }
-            val on = range?.let { " for ${EventText.range(it)}" } ?: day?.let { " for $it" } ?: ""
-            return "Check the weather$at$on"
         }
     }
 
@@ -392,74 +480,74 @@ sealed class Action {
      * which History keeps, never holds it ([MemoryHygiene]).
      */
     data class Remember(val text: String, val kind: MemoryKind = MemoryKind.FACT,
-        val until: Until? = null) : Action() {
+        val until: Until? = null) : Worded() {
         override val tool get() = ToolName.REMEMBER
-        override fun describe() = if (kind == MemoryKind.PREFERENCE) "Remember a preference" else "Remember this"
+        override fun summary() = if (kind == MemoryKind.PREFERENCE) ToolStrings.rememberPreference() else ToolStrings.rememberThis()
         override fun body() = text
-        override val confirmLabel get() = "Remember"
-        override fun toString(): String = "Remember(kind=$kind, until=$until, chars=${text.length})"
+        override val confirmText get() = UiStrings.remember()
+        override fun toString(): String = "Remember(kind=$kind, until=$until, chars=${text.length})" // l10n: not text (log only)
     }
 
     /**
      * forget (0.7): [query] as the model gave it, until the app finds the items it means ([ids], with their words in
      * [shown] for the card's body only).
      */
-    data class Forget(val query: String, val ids: List<String> = emptyList(), val shown: String? = null) : Action() {
+    data class Forget(val query: String, val ids: List<String> = emptyList(), val shown: String? = null) : Worded() {
         override val tool get() = ToolName.FORGET
-        override fun describe() = if (ids.size > 1) "Forget ${ids.size} things from memory" else "Forget from memory"
+        override fun summary() = if (ids.size > 1) ToolStrings.forgetThings(ids.size) else ToolStrings.forgetOne()
         override fun body() = shown
-        override val confirmLabel get() = "Forget"
-        override fun toString(): String = "Forget(ids=${ids.size}, chars=${query.length})"
+        override val confirmText get() = ToolStrings.forget()
+        override fun toString(): String = "Forget(ids=${ids.size}, chars=${query.length})" // l10n: not text (log only)
     }
 
     /** phone_status: what was asked about; the app process reads it. */
-    data class PhoneCheck(val part: PhonePart) : Action() {
+    data class PhoneCheck(val part: PhonePart) : Worded() {
         override val tool get() = ToolName.PHONE_STATUS
-        override fun describe() = PhoneStatus.summary(part)
+        override fun summary() = PhoneStatus.summaryText(part)
     }
 
     /**
      * free_memory: [app] as the model named it (null: unload Robot's own model) until the app process finds it among the
      * installed apps ([pkg]); then [app] is its real label.
      */
-    data class FreeMemory(val app: String?, val pkg: String? = null) : Action() {
+    data class FreeMemory(val app: String?, val pkg: String? = null) : Worded() {
         override val tool get() = ToolName.FREE_MEMORY
-        override fun describe() = when {
-            pkg == SettingsPage.USAGE_ACCESS -> "Open Usage access, so Robot can list the apps you used lately"
-            app == null -> "Unload Robot's model to free about 2 GB of memory (4 GB for an E4B model)"
-            else -> "Open **$app**'s App info to force stop it"
+        override fun summary() = when {
+            pkg == SettingsPage.USAGE_ACCESS -> ToolStrings.openUsageAccess()
+            app == null -> ToolStrings.unloadModel()
+            else -> ToolStrings.forceStop("appName" to app)
         }
-        override val confirmLabel get() = when {
-            pkg == SettingsPage.USAGE_ACCESS -> "Open"
-            app == null -> "Unload"
-            else -> "Open App info"
+        override val confirmText get() = when {
+            pkg == SettingsPage.USAGE_ACCESS -> UiStrings.open()
+            app == null -> ToolStrings.unload()
+            else -> ToolStrings.openAppInfo()
         }
 
         companion object {
             /** 0.7.0: the "free up memory" card's button without Usage access ([pkg] = SettingsPage.USAGE_ACCESS) opens Android's page for it. */
-            const val USAGE_ACCESS_LABEL = "Usage access"
+            const val USAGE_ACCESS_LABEL = "Usage access" // l10n: not text (the action's key: its card names the page itself)
         }
     }
 
     /**
      * free_storage. [target]: the app's package ([StorageWay.APPS]) or the file's content URI ([StorageWay.FILES]) once
      * picked on the card; [label] the app's name; [bytes] Robot's cache ([StorageWay.ROBOT]); [summary] what the card
-     * says of a picked file, without its name (FreeUp.fileSummary).
+     * says of a picked file, without its name (FreeUp.fileSummary), and [summaryText] the same words without a language yet.
      */
     data class FreeStorage(val way: StorageWay, val target: String? = null, val label: String? = null, val bytes: Long? = null,
-        val summary: String? = null) : Action() {
+        val summary: String? = null, val summaryText: Phrase? = null) : Worded() {
         override val tool get() = ToolName.FREE_STORAGE
-        override fun describe() = when (way) {
-            StorageWay.ANDROID -> "Open Android's Free up space screen"
-            StorageWay.APPS -> if (target == null) "Choose an app to clear its cache" else "Open **$label**'s App info to clear its cache"
-            StorageWay.FILES -> summary ?: "Choose a large photo or video to delete"
-            StorageWay.ROBOT -> "Clear Robot's cache" + (bytes?.let { " (${PhoneStatus.size(it)})" } ?: "")
+        override fun summary(): Phrase = when (way) {
+            StorageWay.ANDROID -> ToolStrings.openFreeUp()
+            StorageWay.APPS -> if (target == null) ToolStrings.chooseApp() else ToolStrings.clearAppCache("appName" to label)
+            StorageWay.FILES -> summary?.let { s -> summaryText?.takeIf { it.en() == s } ?: Phrase.plain(s) } ?: ToolStrings.chooseFile()
+            StorageWay.ROBOT -> bytes?.let { ToolStrings.clearRobotCacheSize("size" to PhoneStatus.sizeText(it)) } ?: ToolStrings.clearRobotCache()
         }
-        override val confirmLabel get() = when (way) {
-            StorageWay.ANDROID -> "Open"
-            StorageWay.APPS -> "Open App info"
-            StorageWay.FILES -> "Delete"
-            StorageWay.ROBOT -> "Clear"
+        override val confirmText get() = when (way) {
+            StorageWay.ANDROID -> UiStrings.open()
+            StorageWay.APPS -> ToolStrings.openAppInfo()
+            StorageWay.FILES -> UiStrings.delete()
+            StorageWay.ROBOT -> ToolStrings.clear()
         }
     }
 
@@ -468,16 +556,41 @@ sealed class Action {
      * result pages. [consent]: the first search's card answer it carries (core web WebConsent), kept when it runs; [query]
      * may be changed on the card's way (your Home for weather town for "near me").
      */
-    data class WebSearch(val query: String, val depth: String? = null, val consent: app.heyrobot.core.web.WebConsentChoice? = null) : Action() {
+    data class WebSearch(val query: String, val depth: String? = null, val consent: app.heyrobot.core.web.WebConsentChoice? = null) : Worded() {
         override val tool get() = ToolName.WEB_SEARCH
-        override fun describe() = "Search the web for “$query”"
-        override val confirmLabel get() = "Search"
+        override fun summary() = ToolStrings.searchWeb("query" to query)
+        override val confirmText get() = ToolStrings.search()
+    }
+
+    /**
+     * find_files (1.4, F9): [query] as the model wrote it (or your words), with its [drawer] and [whenText] when given. Its
+     * words never reach a log ([toString]).
+     */
+    data class FindFiles(val query: String, val drawer: String? = null, val whenText: String? = null) : Worded() {
+        override val tool get() = ToolName.FIND_FILES
+        override fun summary() = ToolStrings.findFiles()
+        override fun toString(): String = "FindFiles(chars=${query.length}, drawer=${drawer != null}, when=${whenText != null})" // l10n: not text (log only)
+    }
+
+    /**
+     * read_file (1.4, F9): the file [file] names (a number find_files gave in this conversation, or words) and the [question]
+     * to answer from its text. Its words never reach a log ([toString]).
+     */
+    data class ReadFile(val file: String, val question: String) : Worded() {
+        override val tool get() = ToolName.READ_FILE
+        override fun summary() = ToolStrings.readFile()
+        override fun toString(): String = "ReadFile(chars=${question.length})" // l10n: not text (log only)
     }
 
     /** [day] in the person's words until the app reads it into a [range]. */
-    data class ReadCalendar(val day: String, val range: DayRange? = null) : Action() {
+    data class ReadCalendar(val day: String, val range: DayRange? = null) : Worded() {
         override val tool get() = ToolName.READ_CALENDAR
-        override fun describe() = "Check your calendar for ${range?.let { EventText.range(it) } ?: day}"
+        override fun summary() = ToolStrings.checkCalendar("when" to (range?.let { EventText.rangeText(it) } ?: Phrase.plain(day)))
+    }
+
+    companion object {
+        /** After a person whose name was learned from a Cheogram notification: whoever sent it chose that name. */
+        fun learned(p: Phrase, learned: Boolean): Phrase = if (learned) ToolStrings.learned("what" to p) else p
     }
 }
 
@@ -501,7 +614,15 @@ data class TextTarget(
     val from: Reach? = null,
     /** Tapped with "Always use this for …": Robot remembers this place for the name asked (Action.SendText.to). */
     val remember: Boolean = false,
+    /** 1.1: [display] in words without a language yet, when it says why no contact fitted (the card says it in the reply language). */
+    val displayText: Phrase? = null,
 ) {
+    /** [display] as the card's summary says it. */
+    val shown: Phrase get() = displayText?.takeIf { it.en() == display } ?: Phrase.plain(display)
+
+    /** [appName] as a sentence names it: an app's own name, or "the SMS app" in the reader's language. */
+    val app: Phrase get() = if (appName == ToolStrings.theSmsApp().en()) ToolStrings.theSmsApp() else Phrase.plain(appName)
+
     /**
      * The Cheogram account to open the chat in, for an address picked in Cheogram's list only: Cheogram then opens that
      * account's chat without asking which account.
@@ -540,12 +661,22 @@ data class EventPlan(
     val calendarName: String?,
     /** The year it is now: the card shows the event's year only when it differs. */
     val currentYear: Int,
+    /** 1.1, a dated reminder ([Action.AddEvent.alert]): when its alert rings (EventAlert); null: no alert. */
+    val alertAt: ZonedDateTime? = null,
 )
 
 sealed class ParsedCall {
     data class Ok(val action: Action) : ParsedCall()
-    /** [tool] is the name the model used (maybe unknown); [reason] goes back to the model. */
-    data class Invalid(val tool: String, val reason: String) : ParsedCall()
+    /** [tool] is the name the model used (maybe unknown); [reason] goes back to the model (English). */
+    data class Invalid(val tool: String, val reason: String) : ParsedCall() {
+        /** 1.1: [reason] in words without a language yet: the card says it in the reply language. */
+        var why: Phrase = Phrase.plain(reason)
+            private set
+
+        constructor(tool: String, why: Phrase) : this(tool, why.en()) {
+            this.why = why
+        }
+    }
 }
 
 /** A tool call as the model produced it: a name and loosely typed arguments. */
@@ -554,23 +685,8 @@ data class RawToolCall(val name: String, val args: Map<String, Any?>)
 object Durations {
     const val MAX_TIMER_S = 24 * 3600L
 
-    fun spoken(seconds: Long): String {
-        val h = seconds / 3600
-        val m = seconds % 3600 / 60
-        val s = seconds % 60
-        val parts = buildList {
-            if (h > 0) add(plural(h, "hour"))
-            if (m > 0) add(plural(m, "minute"))
-            if (s > 0 || isEmpty()) add(plural(s, "second"))
-        }
-        return when (parts.size) {
-            1 -> parts[0]
-            2 -> "${parts[0]} and ${parts[1]}"
-            else -> "${parts[0]}, ${parts[1]} and ${parts[2]}"
-        }
-    }
-
-    private fun plural(n: Long, unit: String) = if (n == 1L) "1 $unit" else "$n ${unit}s"
+    /** "1 hour and 5 minutes", "2 hours, 5 minutes and 3 seconds" (core Fmt's English; [Arg.Seconds] in a sentence). */
+    fun spoken(seconds: Long): String = Fmt.seconds(seconds, Lang.EN)
 }
 
 object ToolCalls {
@@ -591,18 +707,20 @@ object ToolCalls {
      * never read as 0.
      */
     fun parse(call: RawToolCall): ParsedCall {
-        val tool = ToolName.of(call.name) ?: return ParsedCall.Invalid(call.name.take(40), "unknown tool")
+        val tool = ToolName.of(call.name) ?: return ParsedCall.Invalid(call.name.take(40), ToolStrings.unknownTool())
         val a = call.args.mapKeys { it.key.trim().lowercase(Locale.ROOT) }
-        fun bad(why: String) = ParsedCall.Invalid(tool.id, why)
+        fun bad(why: Phrase) = ParsedCall.Invalid(tool.id, why)
+        fun number(arg: String) = bad(ToolStrings.mustBeNumber("arg" to arg))
+        fun required(arg: String) = bad(ToolStrings.isRequired("arg" to arg))
         return when (tool) {
             ToolName.SET_TIMER -> {
-                val min = numberArg(a, "minutes", "minute", "mins", "min") ?: return bad("minutes must be a number")
-                val sec = numberArg(a, "seconds", "second", "secs", "sec") ?: return bad("seconds must be a number")
-                if ((min.value ?: 0.0) < 0 || (sec.value ?: 0.0) < 0) return bad("the timer cannot be negative")
+                val min = numberArg(a, "minutes", "minute", "mins", "min") ?: return number("minutes")
+                val sec = numberArg(a, "seconds", "second", "secs", "sec") ?: return number("seconds")
+                if ((min.value ?: 0.0) < 0 || (sec.value ?: 0.0) < 0) return bad(ToolStrings.timerNegative())
                 val total = ((min.value ?: 0.0) * 60 + (sec.value ?: 0.0)).roundToLong()
                 when {
-                    total <= 0 -> bad("give the timer's length in minutes or seconds")
-                    total > Durations.MAX_TIMER_S -> bad("timers can be at most 24 hours")
+                    total <= 0 -> bad(ToolStrings.timerLength())
+                    total > Durations.MAX_TIMER_S -> bad(ToolStrings.timerMax())
                     else -> ParsedCall.Ok(Action.SetTimer(total))
                 }
             }
@@ -610,66 +728,67 @@ object ToolCalls {
                 val rawHour = a["hour"] ?: a["hours"]
                 // "7:30" in the hour argument: small models do this.
                 val clock = (rawHour as? String)?.let { Regex("""^\s*(\d{1,2})\s*[:.h]\s*(\d{2})\s*$""").find(it) }
-                val minuteArg = numberArg(a, "minute", "minutes", "min", "mins") ?: return bad("minute must be a number")
+                val minuteArg = numberArg(a, "minute", "minutes", "min", "mins") ?: return number("minute")
                 val hour = if (clock != null) clock.groupValues[1].toDouble() else {
-                    val h = numberArg(a, "hour", "hours") ?: return bad("hour must be a number")
-                    h.value ?: return bad("hour is required")
+                    val h = numberArg(a, "hour", "hours") ?: return number("hour")
+                    h.value ?: return required("hour")
                 }
                 val minute = clock?.groupValues?.get(2)?.toDouble() ?: minuteArg.value ?: 0.0
-                if (hour % 1.0 != 0.0 || minute % 1.0 != 0.0) return bad("hour and minute must be whole numbers")
-                if (hour !in 0.0..23.0) return bad("hour must be 0 to 23")
-                if (minute !in 0.0..59.0) return bad("minute must be 0 to 59")
+                if (hour % 1.0 != 0.0 || minute % 1.0 != 0.0) return bad(ToolStrings.wholeHourMinute())
+                if (hour !in 0.0..23.0) return bad(ToolStrings.hourRange())
+                if (minute !in 0.0..59.0) return bad(ToolStrings.minuteRange())
                 ParsedCall.Ok(Action.SetAlarm(hour.toInt(), minute.toInt()))
             }
             ToolName.OPEN_APP -> textArg(a, 60, "name", "app", "app_name")?.let { ParsedCall.Ok(Action.OpenApp(it)) }
-                ?: bad("name is required")
+                ?: required("name")
             // Without "near me" (MapsQuery): the card, the record and what Organic Maps searches are the same words.
             // "The nearest …" is kept as a flag: the app may find the closest one online (Nearby).
             ToolName.MAPS_SEARCH -> textArg(a, MAX_TEXT, "query", "q", "place")?.let { ParsedCall.Ok(Action.MapsSearch(MapsQuery.clean(it), NearestAsk.said(it))) }
-                ?: bad("query is required")
+                ?: required("query")
             ToolName.MAPS_NAVIGATE -> textArg(a, MAX_TEXT, "destination", "to", "place")?.let { ParsedCall.Ok(Action.MapsNavigate(MapsQuery.clean(it), NearestAsk.said(it))) }
-                ?: bad("destination is required")
+                ?: required("destination")
             ToolName.FLASHLIGHT -> {
                 val present = listOf("on", "state", "enabled").filter { a.containsKey(it) }
                 val values = present.map { bool(a[it]) }
-                if (values.isEmpty() || values.any { it == null }) bad("on must be true or false")
-                else if (values.distinct().size > 1) bad("on must be true or false")
+                if (values.isEmpty() || values.any { it == null }) bad(ToolStrings.trueOrFalse())
+                else if (values.distinct().size > 1) bad(ToolStrings.trueOrFalse())
                 else ParsedCall.Ok(Action.Flashlight(values.first()!!))
             }
             ToolName.SEND_TEXT -> {
-                val to = recipient(textArg(a, MAX_NAME, "to", "recipient", "contact", "name", "number")) ?: return bad(NO_RECIPIENT)
-                val message = longArg(a, MAX_MESSAGE, "message", "text", "body") ?: return bad("message is required")
+                val to = recipient(textArg(a, MAX_NAME, "to", "recipient", "contact", "name", "number")) ?: return bad(ToolStrings.noRecipient())
+                val message = longArg(a, MAX_MESSAGE, "message", "text", "body") ?: return required("message")
                 ParsedCall.Ok(Action.SendText(to, message))
             }
             ToolName.DRAFT_EMAIL -> {
-                val to = recipient(textArg(a, MAX_NAME, "to", "recipient", "email", "address")) ?: return bad(NO_RECIPIENT)
+                val to = recipient(textArg(a, MAX_NAME, "to", "recipient", "email", "address")) ?: return bad(ToolStrings.noRecipient())
                 val subject = textArg(a, MAX_TEXT, "subject", "title").orEmpty()
                 val body = longArg(a, MAX_LONG, "body", "text", "message").orEmpty()
-                if (subject.isEmpty() && body.isEmpty()) return bad("give the email a body")
+                if (subject.isEmpty() && body.isEmpty()) return bad(ToolStrings.emailBody())
                 ParsedCall.Ok(Action.DraftEmail(to, subject, body))
             }
             ToolName.LOOKUP_CONTACT -> textArg(a, MAX_NAME, "name", "query", "contact", "who")?.let { ParsedCall.Ok(Action.LookupContact(it)) }
-                ?: bad("name is required")
+                ?: required("name")
             ToolName.CALL -> recipient(textArg(a, MAX_NAME, "to", "name", "who", "number", "contact", "recipient"))?.let { ParsedCall.Ok(Action.Call(it)) }
-                ?: bad(NO_RECIPIENT)
+                ?: bad(ToolStrings.noRecipient())
             ToolName.ADD_NOTE -> {
-                val text = longArg(a, MAX_LONG, "text", "note", "content", "body") ?: return bad("text is required")
+                val text = longArg(a, MAX_LONG, "text", "note", "content", "body") ?: return required("text")
                 ParsedCall.Ok(Action.AddNote(text, textArg(a, MAX_TITLE, "title")))
             }
             ToolName.FIND_NOTES -> textArg(a, MAX_NAME, "query", "q", "text", "search")?.let { ParsedCall.Ok(Action.FindNotes(it)) }
-                ?: bad("query is required")
+                ?: required("query")
             ToolName.ADD_EVENT -> {
-                val title = textArg(a, MAX_TITLE, "title", "name", "event", "what") ?: return bad("title is required")
+                val title = textArg(a, MAX_TITLE, "title", "name", "event", "what") ?: return required("title")
                 // Small models split the date and the time ({date: Tuesday, time: 3pm}, {start, end}): all of it counts,
                 // in the order date, day, when, start, time, then "to <end>".
-                val parts = listOf("date", "day", "when", "start", "time").filter { a.containsKey(it) }.map { text(a[it], MAX_NAME) ?: return bad("$it must be text") }
-                if (parts.isEmpty()) return bad("when is required")
-                val endPart = if (a.containsKey("end")) text(a["end"], MAX_NAME) ?: return bad("end must be text") else null
+                val parts = listOf("date", "day", "when", "start", "time").filter { a.containsKey(it) }.map { text(a[it], MAX_NAME) ?: return bad(ToolStrings.mustBeText("arg" to it)) }
+                if (parts.isEmpty()) return required("when")
+                val endPart = if (a.containsKey("end")) text(a["end"], MAX_NAME) ?: return bad(ToolStrings.mustBeText("arg" to "end")) else null
                 val whenText = (parts.joinToString(" ") + (endPart?.let { " to $it" } ?: "")).take(MAX_NAME)
-                val minutes = numberArg(a, "duration_minutes", "duration", "minutes", "length") ?: return bad("duration_minutes must be a number")
+                val minutes = numberArg(a, "duration_minutes", "duration", "minutes", "length") ?: return number("duration_minutes")
                 val m = minutes.value
-                if (m != null && (m % 1.0 != 0.0 || m < 1 || m > MAX_EVENT_MINUTES)) return bad("duration_minutes must be a whole number from 1 to $MAX_EVENT_MINUTES")
-                ParsedCall.Ok(Action.AddEvent(title, whenText, m?.toInt()))
+                if (m != null && (m % 1.0 != 0.0 || m < 1 || m > MAX_EVENT_MINUTES)) return bad(ToolStrings.durationRange("max" to MAX_EVENT_MINUTES.toString()))
+                // 1.1: a dated reminder's alert (the panel's own call from your words; a model's only adds a card).
+                ParsedCall.Ok(Action.AddEvent(title, whenText, m?.toInt(), alert = bool(a["alert"]) == true))
             }
             // Empty: "go get Jarvis" with nothing to summarise opens the app without text.
             // 1.0.0: [helper] names one of your helpers by id (the panel's hand-off to the one you called); the app it opens is
@@ -681,7 +800,7 @@ object ToolCalls {
                 textArg(a, MAX_NAME, "day", "date", "when", "time", "days")))
             ToolName.REMEMBER -> {
                 val text = longArg(a, MemoryLimits.MAX_CHARS, "text", "fact", "memory", "what", "content", "note")
-                    ?.replace(Regex("\\s+"), " ")?.trim() ?: return bad("text is required")
+                    ?.replace(Regex("\\s+"), " ")?.trim() ?: return required("text")
                 val kind = when (textArg(a, MAX_NAME, "kind", "type")?.lowercase(Locale.ROOT)) {
                     "preference", "pref", "preferences" -> MemoryKind.PREFERENCE
                     else -> if (MemoryCommands.prefers(text)) MemoryKind.PREFERENCE else MemoryKind.FACT
@@ -689,10 +808,10 @@ object ToolCalls {
                 ParsedCall.Ok(Action.Remember(text, kind, Until.of(textArg(a, MAX_NAME, "until", "expires", "end"))))
             }
             ToolName.FORGET -> textArg(a, MAX_NAME, "query", "text", "what", "q", "about")?.let { ParsedCall.Ok(Action.Forget(it)) }
-                ?: bad("query is required")
+                ?: required("query")
             // The query as written (QueryCheck decides later whether it may go), and the depth if it gave one.
             ToolName.WEB_SEARCH -> textArg(a, MAX_TEXT, "query", "q", "search", "text", "question")
-                ?.let { ParsedCall.Ok(Action.WebSearch(it, textArg(a, 20, "depth", "mode"))) } ?: bad("query is required")
+                ?.let { ParsedCall.Ok(Action.WebSearch(it, textArg(a, 20, "depth", "mode"))) } ?: required("query")
             // Anything it doesn't name (or nothing) is all of it.
             ToolName.PHONE_STATUS -> ParsedCall.Ok(Action.PhoneCheck(PhonePart.of(textArg(a, MAX_NAME, "about", "part", "what", "topic", "kind"))))
             // Robot's own model when no app (or Robot itself) is named.
@@ -702,10 +821,20 @@ object ToolCalls {
             // 0.9: a command's spaces and quotes are kept as written (TermuxActions.kt).
             ToolName.TERMUX_SCRIPT, ToolName.TERMUX_COMMAND -> TermuxCalls.parse(tool, a)
             ToolName.BROWSER_SEARCH -> BrowserCalls.parse(a) { m, max, names -> textArg(m, max, *names) }
+            // 1.4, Robot Files (F9): the words as written; FileSearch reads them, and the app resolves a file only in its index.
+            ToolName.FIND_FILES -> {
+                val query = textArg(a, MAX_TEXT, "query", "q", "search", "what", "text") ?: return required("query")
+                ParsedCall.Ok(Action.FindFiles(query, textArg(a, 40, "drawer", "folder"), textArg(a, MAX_NAME, "when", "date", "day", "period", "time")))
+            }
+            ToolName.READ_FILE -> {
+                val file = textArg(a, MAX_NAME, "file", "number", "which", "id", "name") ?: return required("file")
+                val question = textArg(a, app.heyrobot.core.files.FilePrompt.QUESTION_CHARS, "question", "q", "ask", "query", "text") ?: return required("question")
+                ParsedCall.Ok(Action.ReadFile(file, question))
+            }
             // No day said: today (the person asked "what's on my calendar").
             ToolName.READ_CALENDAR -> {
                 val present = listOf("day", "date", "when", "range").firstOrNull { a.containsKey(it) }
-                val day = if (present == null) "today" else text(a[present], MAX_NAME) ?: return bad("day must be text like today or Friday")
+                val day = if (present == null) "today" else text(a[present], MAX_NAME) ?: return bad(ToolStrings.dayText())
                 ParsedCall.Ok(Action.ReadCalendar(day))
             }
         }
@@ -724,8 +853,11 @@ object ToolCalls {
         return NumArg(first)
     }
 
-    /** 1.0.2: what the model is told when it named no one (or only a placeholder): it asks who, never guesses. */
-    const val NO_RECIPIENT = "to is required: ask who it's for"
+    /**
+     * 1.0.2: what the model is told when it named no one (or only a placeholder): it asks who, never guesses. 1.1: the
+     * English of ToolStrings.noRecipient (the card says it in the reply language).
+     */
+    val NO_RECIPIENT: String get() = ToolStrings.noRecipient().en()
 
     private val PLACEHOLDER_WORDS = setOf("recipient", "recipient name", "recipients name", "recipient s name", "contact s name", "person s name", "recipient email", "recipient email address",
         "recipient address", "name", "contact", "contact name", "person", "person name", "someone", "somebody", "unknown", "their name",
@@ -815,9 +947,13 @@ object ToolCalls {
      * - a JSON object `{"name":"set_timer","arguments":{"minutes":5}}` (also "parameters"/"args"),
      * - a Python-style call `set_timer(minutes=5)`, typically in a ```tool_code block.
      */
+    /** A skill tool's name in a reply (SkillSpecs: "skill_" and a slug of at most 24 characters). */
+    private const val SKILL_NAME = "skill_[a-z0-9_]{1,24}" // l10n: not text (a pattern)
+
     fun parseText(text: String): List<TextCall> {
         val out = mutableListOf<TextCall>()
-        val names = ToolName.entries.joinToString("|") { it.id }
+        // 1.1, Skills phase B: a skill's tool too (core skills SkillSpecs); TurnRunner refuses one that wasn't described.
+        val names = ToolName.entries.joinToString("|") { it.id } + "|" + SKILL_NAME
         // The body runs to the first '}' outside <escape>...<escape>, so a message may contain a brace.
         Regex("""(?:<start_function_call>\s*)?call:($names)\s*\{((?:<escape>.*?<escape>|[^}])*)\}(?:\s*<end_function_call>)?""", RegexOption.DOT_MATCHES_ALL).findAll(text).forEach { m ->
             out += TextCall(RawToolCall(m.groupValues[1], gemmaArgs(m.groupValues[2])), m.range)

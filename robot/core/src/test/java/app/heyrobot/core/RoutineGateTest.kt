@@ -55,7 +55,7 @@ class RoutineGateTest {
     }
 
     /**
-     * The policy with default settings (design §2.5 and §2.6), one row per step:
+     * The policy with default settings, one row per step:
      * unattended unlocked, unattended locked, asked unlocked, asked locked.
      */
     private val table = """

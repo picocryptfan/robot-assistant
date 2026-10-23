@@ -15,20 +15,22 @@ import android.content.pm.ServiceInfo
 import android.os.IBinder
 import android.service.quicksettings.TileService
 import app.heyrobot.R
+import app.heyrobot.assistant.VoiceHub
 import app.heyrobot.core.ConsentRecord
 import app.heyrobot.core.ConvEntry
 import app.heyrobot.core.ConvMode
 import app.heyrobot.core.ConvPause
 import app.heyrobot.core.ConvStop
+import app.heyrobot.core.ConversationLock
 import app.heyrobot.core.RLog
+import app.heyrobot.core.TranscriptDates
 import app.heyrobot.core.TranscriptTitles
 import app.heyrobot.core.enumOr
+import app.heyrobot.sys.AppLanguage
 import app.heyrobot.sys.Cmd
 import app.heyrobot.sys.Transcripts
 import java.time.Instant
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 // VOICE PROCESS. The conversation session's foreground service (docs/conversation-mode.md 1.1, 8): microphone type, not
 // exported, in the :voice process where the listener and the speech engines live. Its ongoing notification is the
@@ -159,23 +161,26 @@ class ConversationService : Service() {
     }
 }
 
-/** The session's notifications: the ongoing recording indicator, and "stopped unexpectedly · Resume" after a crash. */
+/**
+ * The session's notifications: the ongoing recording indicator, and "stopped unexpectedly · Resume" after a crash. 1.1:
+ * their words, actions and channel names are in the menus' language (strings_conversation.xml; the channels are named
+ * again each time they are made).
+ */
 object ConversationNotices {
     const val ONGOING_ID = 501
     private const val RESUME_ID = 502
     private const val CHANNEL = "conversation"
     private const val CHANNEL_RESUME = "conversation_resume"
-    private val HM = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
 
     private fun channels(ctx: Context) {
         val nm = ctx.getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(NotificationChannel(CHANNEL, "Transcribing a conversation", NotificationManager.IMPORTANCE_HIGH).apply {
-            description = "Shown the whole time Robot transcribes a conversation, with Pause and Stop."
+        nm.createNotificationChannel(NotificationChannel(CHANNEL, ctx.getString(R.string.conv_channel), NotificationManager.IMPORTANCE_HIGH).apply {
+            description = ctx.getString(R.string.conv_channel_desc)
             setSound(null, null)
             enableVibration(false)
         })
-        nm.createNotificationChannel(NotificationChannel(CHANNEL_RESUME, "Transcription stopped", NotificationManager.IMPORTANCE_DEFAULT).apply {
-            description = "When a transcription stopped unexpectedly: Resume."
+        nm.createNotificationChannel(NotificationChannel(CHANNEL_RESUME, ctx.getString(R.string.conv_transcription_stopped), NotificationManager.IMPORTANCE_DEFAULT).apply {
+            description = ctx.getString(R.string.conv_channel_stopped_desc)
         })
     }
 
@@ -191,16 +196,17 @@ object ConversationNotices {
     fun ongoing(ctx: Context, ui: ConversationSession.Ui): Notification {
         channels(ctx)
         val paused = ui.status == ConversationSession.Status.PAUSED
-        val title = if (paused) "Transcribing paused" else "Robot is transcribing"
+        val title = ctx.getString(if (paused) R.string.conv_notif_paused else R.string.conv_notif_running)
         val why = when (ui.pausedFor) {
-            ConvPause.MIC_TAKEN -> "Another app is using the microphone."
-            ConvPause.CALL -> "Paused for a call."
-            ConvPause.THERMAL -> "The phone is too hot."
-            ConvPause.PANEL -> "Paused while you talk to Robot."
+            ConvPause.MIC_TAKEN -> ctx.getString(R.string.conv_notif_mic)
+            ConvPause.CALL -> ctx.getString(R.string.conv_notif_call)
+            ConvPause.THERMAL -> ctx.getString(R.string.conv_notif_hot)
+            ConvPause.PANEL -> ctx.getString(R.string.conv_paused_panel)
             else -> null
         }
-        val lines = if (ui.total == 1) "1 line" else "${ui.total} lines"
-        val text = listOfNotNull(why ?: ui.notice, "$lines · ${ConsentRecord.LINE}").joinToString(" ")
+        val lines = ctx.resources.getQuantityString(R.plurals.conv_lines, ui.total, ui.total)
+        val consent = ConsentRecord.line.render(AppLanguage.langs(ctx))
+        val text = listOfNotNull(why ?: ui.notice, "$lines · $consent").joinToString(" ")
         val start = if (ui.createdAt > 0) ui.createdAt else System.currentTimeMillis()
         val public = Notification.Builder(ctx, CHANNEL)
             .setSmallIcon(R.drawable.ic_robot)
@@ -222,12 +228,14 @@ object ConversationNotices {
             .setContentIntent(openPi(ctx))
             .setDeleteIntent(pi(ctx, 5_005, ConversationService.ACTION_REPOST))
         if (ui.status == ConversationSession.Status.RUNNING || ui.status == ConversationSession.Status.STARTING) {
-            b.addAction(Notification.Action.Builder(null, "Pause", pi(ctx, 5_001, ConversationService.ACTION_PAUSE)).build())
+            b.addAction(Notification.Action.Builder(null, ctx.getString(R.string.conv_pause), pi(ctx, 5_001, ConversationService.ACTION_PAUSE)).build())
         } else if (paused) {
-            b.addAction(Notification.Action.Builder(null, "Resume", pi(ctx, 5_002, ConversationService.ACTION_CONTINUE)).build())
+            // On the lock screen, Resume asks you to unlock first where a new one couldn't start there (ConversationSession checks it again).
+            b.addAction(Notification.Action.Builder(null, ctx.getString(R.string.conv_resume), pi(ctx, 5_002, ConversationService.ACTION_CONTINUE))
+                .setAuthenticationRequired(!ConversationLock.mayStart(true, VoiceHub.settings)).build())
         }
-        b.addAction(Notification.Action.Builder(null, "Stop", pi(ctx, 5_003, ConversationService.ACTION_STOP, ConvStop.NOTIFICATION)).build())
-        b.addAction(Notification.Action.Builder(null, "Open", openPi(ctx)).build())
+        b.addAction(Notification.Action.Builder(null, ctx.getString(R.string.conv_stop), pi(ctx, 5_003, ConversationService.ACTION_STOP, ConvStop.NOTIFICATION)).build())
+        b.addAction(Notification.Action.Builder(null, ctx.getString(R.string.conv_open), openPi(ctx)).build())
         return b.build()
     }
 
@@ -245,20 +253,21 @@ object ConversationNotices {
     fun offerResume(ctx: Context, id: String, savedUpTo: Long) {
         try {
             channels(ctx)
-            val at = HM.format(Instant.ofEpochMilli(savedUpTo).atZone(ZoneId.systemDefault()))
+            val at = TranscriptDates.time(Instant.ofEpochMilli(savedUpTo).atZone(ZoneId.systemDefault()), AppLanguage.langs(ctx).say)
             val resume = PendingIntent.getActivity(ctx, 5_020,
                 Intent(Transcripts.ACTION_RESUME).setClassName(ctx.packageName, Transcripts.ACTIVITY).putExtra(Transcripts.EXTRA_ID, id)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-            val text = "Transcription stopped unexpectedly. Saved up to $at."
+            val text = ctx.getString(R.string.conv_stopped_saved_up_to, at)
+            val title = ctx.getString(R.string.conv_transcription_stopped)
             ctx.getSystemService(NotificationManager::class.java).notify(RESUME_ID, Notification.Builder(ctx, CHANNEL_RESUME)
                 .setSmallIcon(R.drawable.ic_robot)
-                .setContentTitle("Transcription stopped")
+                .setContentTitle(title)
                 .setContentText(text)
                 .setVisibility(Notification.VISIBILITY_PRIVATE)
-                .setPublicVersion(Notification.Builder(ctx, CHANNEL_RESUME).setSmallIcon(R.drawable.ic_robot).setContentTitle("Transcription stopped").build())
+                .setPublicVersion(Notification.Builder(ctx, CHANNEL_RESUME).setSmallIcon(R.drawable.ic_robot).setContentTitle(title).build())
                 .setContentIntent(resume)
-                .addAction(Notification.Action.Builder(null, "Resume", resume).build())
+                .addAction(Notification.Action.Builder(null, ctx.getString(R.string.conv_resume), resume).build())
                 .setExtras(android.os.Bundle().apply { putString(EXTRA_RESUME_ID, id) })
                 .setAutoCancel(true)
                 .build())
@@ -289,8 +298,8 @@ object ConversationNotices {
             channels(ctx)
             ctx.getSystemService(NotificationManager::class.java).notify(RESUME_ID + 1, Notification.Builder(ctx, CHANNEL_RESUME)
                 .setSmallIcon(R.drawable.ic_robot)
-                .setContentTitle("Transcribing didn't start")
-                .setContentText("Android didn't let Robot use the microphone from here. Tap to open the transcript screen and start there.")
+                .setContentTitle(ctx.getString(R.string.conv_not_started))
+                .setContentText(ctx.getString(R.string.conv_not_started_text))
                 .setContentIntent(openPi(ctx))
                 .setAutoCancel(true)
                 .build())

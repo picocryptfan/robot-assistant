@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.car
 
+import app.heyrobot.core.i18n.HandsFreeStrings
+import app.heyrobot.core.i18n.Msg
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.output.spoken
 import app.heyrobot.core.AskWhy
 import app.heyrobot.core.CardAnswer
 import app.heyrobot.core.LogCode
@@ -10,12 +14,12 @@ import app.heyrobot.core.output.SpokenAnswer
 import app.heyrobot.core.output.SpokenCard
 import app.heyrobot.core.output.SpokenCards
 import app.heyrobot.core.output.SpokenChoice
-import app.heyrobot.core.output.SpokenLang
+import app.heyrobot.core.i18n.Lang
 import app.heyrobot.core.output.SpokenOption
 import app.heyrobot.core.output.SpokenStep
 import java.util.Locale
 
-// Pure. "Call Mom" hands-free (design §4.5 flow 2, §4.9 rules 1, 2 and 6). Who: the same who-to resolution as send_text
+// Pure. "Call Mom" hands-free. Who: the same who-to resolution as send_text
 // (People and contacts, numbers only), done by the caller, which passes the candidates here. Robot has no call tool yet
 // (ToolName has none); this is what the new `call` tool (group PEOPLE, schema call(to)) and ToolExecutor.call() will run.
 // - VERIFIED (Intent javadoc): ACTION_CALL can't call emergency numbers and needs CALL_PHONE (which the assistant role
@@ -34,13 +38,19 @@ enum class CallWay(override val id: Int, override val title: String) : LogCode {
 }
 
 /** A number's kind, as read and as a choice's words. */
-enum class PhoneLabel(val en: String, val fr: String, val keys: Set<String>) {
-    MOBILE("mobile", "cellulaire", setOf("mobile", "cell", "cellulaire")),
-    WORK("work", "travail", setOf("work", "travail", "bureau")),
-    HOME("home", "maison", setOf("home", "maison")),
-    OTHER("other", "autre", emptySet());
+enum class PhoneLabel(private val msg: Msg, val keys: Set<String>) {
+    MOBILE(HandsFreeStrings.mobile, setOf("mobile", "cell", "cellulaire")),
+    WORK(HandsFreeStrings.work, setOf("work", "travail", "bureau")),
+    HOME(HandsFreeStrings.home, setOf("home", "maison", "domicile")),
+    OTHER(HandsFreeStrings.other, emptySet());
 
-    fun word(lang: SpokenLang): String = if (lang == SpokenLang.FR) fr else en
+    /** 1.1: its word without a language yet (« cellulaire », « domicile »). */
+    val text: Phrase get() = msg()
+
+    /** Its English word ("mobile"): what the call tool's argument and the router's label are matched with. */
+    val en: String get() = text.en()
+
+    fun word(lang: Lang): String = spoken(text, lang)
 }
 
 /**
@@ -56,7 +66,7 @@ data class PhoneCandidate(val name: String, val number: String, val label: Phone
      */
     val dialable: String get() = CallTarget.dialable(number)
 
-    override fun toString(): String = "PhoneCandidate(label=$label, learned=$learned, xmpp=$xmpp)"
+    override fun toString(): String = "PhoneCandidate(label=$label, learned=$learned, xmpp=$xmpp)" // l10n: not text (toString, for the logs)
 }
 
 /** What the call setting and permission allow. */
@@ -108,26 +118,23 @@ object CallTarget {
     val CALL_WORDS = listOf("call", "call her", "call him", "call them", "call it", "dial", "dial it", "place the call", "appelle", "appelle la", "appelle le",
         "appelle les", "compose", "lance lappel", "fais lappel")
 
-    val UNLOCK_TO_CALL = Line("Unlock to call.", "Déverrouille pour appeler.")
-    val NO_XMPP = Line("Robot can't call that address.", "Robot ne peut pas appeler cette adresse.")
-    val NO_CALL = Line("Okay, no call.", "D'accord, pas d'appel.")
-    val TOO_MANY = Line("Several people match. Pick one on the screen.", "Plusieurs personnes correspondent. Choisis à l'écran.")
-    val CHECK_ON_SCREEN = Line("Check who it is on the screen.", "Vérifie qui c'est à l'écran.")
-    val ON_SCREEN = Line("It's on the screen.", "C'est à l'écran.")
+    val UNLOCK_TO_CALL = Line(HandsFreeStrings.unlockToCall())
+    val NO_XMPP = Line(HandsFreeStrings.noXmpp())
+    val NO_CALL = Line(HandsFreeStrings.noCall())
+    val TOO_MANY = Line(HandsFreeStrings.tooMany())
+    val CHECK_ON_SCREEN = Line(HandsFreeStrings.checkOnScreen())
+    val ON_SCREEN = Line(HandsFreeStrings.onScreen())
 
-    fun notFound(name: String, lang: SpokenLang): String =
-        if (lang == SpokenLang.FR) "Je n'ai pas de numéro pour $name." else "I don't have a number for $name."
+    fun notFound(name: String, lang: Lang): String = spoken(HandsFreeStrings.noNumber("name" to name), lang)
 
     /** "I can't place emergency calls. The dialer is open with 911; tap Call." */
-    fun emergency(number: String, lang: SpokenLang): String = if (lang == SpokenLang.FR)
-        "Je ne peux pas faire d'appels d'urgence. Le composeur est ouvert avec le $number; appuie sur Appeler."
-    else "I can't place emergency calls. The dialer is open with $number; tap Call."
+    fun emergency(number: String, lang: Lang): String = spoken(HandsFreeStrings.emergency("number" to number), lang)
 
     /**
      * The plan for "call [asked]" with [candidates] found for it (People and contacts; empty when [asked] is a number).
      * [isEmergency]: PhoneNumberUtils.isEmergencyNumber in the app, [EmergencyNumbers.basic] where that isn't available.
      */
-    fun plan(asked: String, candidates: List<PhoneCandidate>, rules: CallRules, locked: Boolean, trusted: Boolean, lang: SpokenLang,
+    fun plan(asked: String, candidates: List<PhoneCandidate>, rules: CallRules, locked: Boolean, trusted: Boolean, lang: Lang,
         isEmergency: (String) -> Boolean): CallPlan {
         val spoken = dialable(asked).takeIf { PhoneNumbers.digits(it).length >= 2 && asked.none { c -> c.isLetter() } }
         val all = if (spoken != null) listOf(PhoneCandidate(spoken, spoken)) else candidates
@@ -151,32 +158,31 @@ object CallTarget {
             val l = if (labels.count { it == labels[i] } > 1) "${labels[i]}, ${ending(p, lang)}" else labels[i]
             SpokenOption(l, p.label?.keys ?: emptySet())
         }
-        val action = if (lang == SpokenLang.FR) "Appeler ${asked.trim()}" else "Call ${asked.trim()}"
+        val action = spoken(HandsFreeStrings.callWho("who" to asked.trim()), lang)
         val card = SpokenCard(action, options, CardAnswer.Waiting(options.size, AskWhy.WHO), spokenWho = true, confirmWords = CALL_WORDS, personal = true, carFunction = true)
         return CallPlan.Choose(phones, card, rules.way)
     }
 
     /** The read-back card for [target]. */
-    fun confirm(target: PhoneCandidate, way: CallWay, lang: SpokenLang): CallPlan.Confirm =
+    fun confirm(target: PhoneCandidate, way: CallWay, lang: Lang): CallPlan.Confirm =
         CallPlan.Confirm(target, SpokenCard(readBack(target, lang), confirmWords = CALL_WORDS, personal = true, carFunction = true), way)
 
     /** "Call Martine Martin, mobile, ending 0101" / "Appeler Martine Martin, cellulaire, qui finit par 0101". */
-    fun readBack(c: PhoneCandidate, lang: SpokenLang): String {
-        val label = c.label?.takeIf { it != PhoneLabel.OTHER }?.let { ", " + it.word(lang) } ?: ""
+    fun readBack(c: PhoneCandidate, lang: Lang): String {
         val who = c.name.trim().ifEmpty { c.digits }
-        return if (lang == SpokenLang.FR) "Appeler $who$label, ${ending(c, lang)}" else "Call $who$label, ${ending(c, lang)}"
+        val ending = HandsFreeStrings.ending("digits" to c.digits.takeLast(4))
+        val p = c.label?.takeIf { it != PhoneLabel.OTHER }?.let { HandsFreeStrings.readBackLabel("who" to who, "label" to it.text, "ending" to ending) }
+            ?: HandsFreeStrings.readBack("who" to who, "ending" to ending)
+        return spoken(p, lang)
     }
 
-    private fun label(c: PhoneCandidate, lang: SpokenLang): String =
-        c.name.trim() + (c.label?.takeIf { it != PhoneLabel.OTHER }?.let { ", " + it.word(lang) } ?: "")
+    private fun label(c: PhoneCandidate, lang: Lang): String =
+        c.label?.takeIf { it != PhoneLabel.OTHER }?.let { spoken(HandsFreeStrings.whoLabel("who" to c.name.trim(), "label" to it.text), lang) } ?: c.name.trim()
 
-    private fun ending(c: PhoneCandidate, lang: SpokenLang): String {
-        val last = c.digits.takeLast(4)
-        return if (lang == SpokenLang.FR) "qui finit par $last" else "ending $last"
-    }
+    private fun ending(c: PhoneCandidate, lang: Lang): String = spoken(HandsFreeStrings.ending("digits" to c.digits.takeLast(4)), lang)
 
     /** [a], the answer to [plan] (Confirm or Choose), after [tries] unusable answers and [rereads] re-reads. */
-    fun answer(plan: CallPlan, a: SpokenAnswer, tries: Int, rereads: Int, lang: SpokenLang): CallNext {
+    fun answer(plan: CallPlan, a: SpokenAnswer, tries: Int, rereads: Int, lang: Lang): CallNext {
         val choices = (plan as? CallPlan.Choose)?.options?.size ?: 0
         return when (val step = SpokenChoice.next(a, tries, rereads, choices, lang)) {
             SpokenStep.Confirm -> when (plan) {

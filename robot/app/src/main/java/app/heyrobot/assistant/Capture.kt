@@ -14,6 +14,8 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import kotlin.math.max
 import kotlin.math.roundToInt
+import app.heyrobot.core.i18n.PanelStrings
+import app.heyrobot.sys.AppLanguage
 
 // VOICE PROCESS. Pictures for Gemma: downscaled JPEG bytes kept in memory (spec item 5/6). A camera photo
 // lands in the app cache only until it is read; it is deleted on every way out (read, cancelled, failed, closed).
@@ -59,6 +61,8 @@ class CaptureActivity : Activity() {
     private val shot: File get() = File(File(cacheDir, "capture").apply { mkdirs() }, "photo.jpg")
     /** The picture is being read on its thread: the file must stay until it is. */
     @Volatile private var decoding = false
+    /** The photo's own bytes, as the camera or the picker gave them (at most [MAX_ORIGINAL] + 1). */
+    @Volatile private var original: ByteArray? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -84,10 +88,10 @@ class CaptureActivity : Activity() {
             RLog.w("capture_start", t)
             false
         }
-        if (!ok) done(null, "Couldn't open the camera or the photo picker.")
+        if (!ok) done(null, PanelStrings.cameraDidntOpen().render(AppLanguage.langs(this)))
     }
 
-    @Deprecated("Deprecated in Java")
+    @Deprecated("Deprecated in Java") // l10n: not text (annotation)
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (resultCode != RESULT_OK) return done(null, null)
@@ -95,14 +99,24 @@ class CaptureActivity : Activity() {
         decoding = true
         Thread({
             val (bmp, error) = try {
+                // 1.4, "file this": the photo's own bytes, read before anything decodes it, kept in RAM with the panel.
+                original = try {
+                    when (requestCode) {
+                        REQ_CAMERA -> shot.inputStream().use { it.readNBytes(MAX_ORIGINAL + 1) }
+                        else -> data?.data?.let { u -> app.contentResolver.openInputStream(u)?.use { it.readNBytes(MAX_ORIGINAL + 1) } }
+                    }
+                } catch (t: Exception) {
+                    RLog.w("capture_original", t)
+                    null
+                }
                 val src = when (requestCode) {
                     REQ_CAMERA -> ImageDecoder.createSource(shot)
                     else -> data?.data?.let { ImageDecoder.createSource(app.contentResolver, it) }
                 }
-                (src?.let { Images.decode(it) }) to (if (src == null) "No picture came back." else null)
+                (src?.let { Images.decode(it) }) to (if (src == null) PanelStrings.noPicture().render(AppLanguage.langs(app)) else null)
             } catch (t: Throwable) {
                 RLog.w("capture_decode", t)
-                null to "Couldn't read that picture."
+                null to PanelStrings.unreadablePicture().render(AppLanguage.langs(app))
             } finally {
                 shot.delete()
                 decoding = false
@@ -115,7 +129,9 @@ class CaptureActivity : Activity() {
         // Cancelled, failed or read: the camera's file never outlives the capture.
         if (!decoding) shot.delete()
         if (bmp != null) {
-            PanelController.onImagePicked(Images.jpeg(bmp), Images.scaled(bmp, Images.THUMB_EDGE))
+            val o = original
+            val tooBig = o != null && o.size > MAX_ORIGINAL
+            PanelController.onImagePicked(Images.jpeg(bmp), Images.scaled(bmp, Images.THUMB_EDGE), o?.takeIf { !tooBig }, tooBig)
         } else if (error != null) {
             PanelController.notify(error)
         }
@@ -136,6 +152,8 @@ class CaptureActivity : Activity() {
         /** The manifest's `${applicationId}.capture` (unique on the phone, so 1.0 installs beside 0.9). */
         const val AUTHORITY = app.heyrobot.BuildConfig.APPLICATION_ID + ".capture"
         private const val REQ_CAMERA = 1
+        /** The largest photo kept for "file this": what Robot Files' reader reads of one file. */
+        private const val MAX_ORIGINAL = app.heyrobot.core.parse.ParseLimits.MAX_INPUT
         private const val REQ_PICK = 2
 
         fun intent(ctx: android.content.Context, mode: String): Intent =

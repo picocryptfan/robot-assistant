@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.ModelStrings
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.PhraseWire
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.Closeable
@@ -35,7 +38,7 @@ class FileByteSource(file: File) : ByteSource, Closeable {
 
     override fun read(pos: Long, n: Int): ByteArray {
         // Never pos + n: a position near Long.MAX_VALUE would overflow past the check.
-        if (pos < 0 || n < 0 || pos > size - n) throw LiteRtLmFormat("outside the file")
+        if (pos < 0 || n < 0 || pos > size - n) throw LiteRtLmFormat("outside the file") // l10n: not text (a parser's detail, a diagnostic)
         val b = ByteArray(n)
         raf.seek(pos)
         raf.readFully(b)
@@ -53,13 +56,13 @@ class ChannelByteSource(private val channel: FileChannel) : ByteSource {
     override val size: Long = channel.size()
 
     override fun read(pos: Long, n: Int): ByteArray {
-        if (pos < 0 || n < 0 || pos > size - n) throw LiteRtLmFormat("outside the file")
+        if (pos < 0 || n < 0 || pos > size - n) throw LiteRtLmFormat("outside the file") // l10n: not text (a parser's detail, a diagnostic)
         val b = ByteBuffer.allocate(n)
         var at = pos
         while (b.hasRemaining()) {
             val k = channel.read(b, at)
             // The file shrank under the read (or a read that makes no progress): never a loop, never a short read.
-            if (k <= 0) throw LiteRtLmFormat("outside the file")
+            if (k <= 0) throw LiteRtLmFormat("outside the file") // l10n: not text (a parser's detail, a diagnostic)
             at += k
         }
         return b.array()
@@ -70,7 +73,7 @@ class ArrayByteSource(private val bytes: ByteArray) : ByteSource {
     override val size: Long get() = bytes.size.toLong()
 
     override fun read(pos: Long, n: Int): ByteArray {
-        if (pos < 0 || n < 0 || pos > bytes.size.toLong() - n) throw LiteRtLmFormat("outside the file")
+        if (pos < 0 || n < 0 || pos > bytes.size.toLong() - n) throw LiteRtLmFormat("outside the file") // l10n: not text (a parser's detail, a diagnostic)
         return bytes.copyOfRange(pos.toInt(), pos.toInt() + n)
     }
 }
@@ -99,9 +102,12 @@ data class LiteRtLmReport(
     val maxTokens: Int = 0,
     /** A vision encoder section: it can look at photos. */
     val vision: Boolean = false,
-    /** Why the file couldn't be read ([readable] false). */
-    val problem: String? = null,
+    /** Why the file couldn't be read ([readable] false); 1.1: in words without a language yet ([problem]: its English). */
+    val problemText: Phrase? = null,
 ) {
+    /** [problemText] in English. */
+    val problem: String? get() = problemText?.en()
+
     val gemma4: Boolean get() = modelType == "gemma4"
 
     /** 0.8: the Tensor chip the stamp names ("Tensor_G5", "Tensor_G6"), or null (none, or a chip Robot doesn't know). */
@@ -130,19 +136,19 @@ data class LiteRtLmReport(
     val contextTokens: Int get() = ContextWindow.forFile(maxTokens) ?: 0
 
     /** Why Robot can't run it here at all; null when it can. */
-    val unusable: String? get() = when {
-        !readable -> problem ?: "It isn't a LiteRT-LM model file (.litertlm)."
-        !decoder -> "It holds no language model (no prefill_decode section)."
-        dispatchOp && tensorBuild == null && tensorStamp != null ->
-            "It holds TPU code stamped for the ${tensorStamp!!.title} but not everything a complete ${tensorStamp!!.title} build has (" +
-                listOfNotNull(if (!aux) "the aux section" else null, if (!gemma4) "Gemma 4 metadata" else null).joinToString(" and ") +
-                "), so Robot won't run it on the TPU, and the CPU can't run TPU code."
-        dispatchOp && tensorBuild == null -> "It was compiled for another chip's NPU" + (stamp?.let { " ($it)" } ?: "") +
-            ", so this phone can run it on neither its TPU nor its CPU."
-        maxTokens in 1 until ContextWindow.MIN_TOKENS -> "It was built for only $maxTokens tokens of context; Robot needs at least " +
-            "${ContextWindow.MIN_TOKENS} to chat (${ContextWindow.MAX_TOKENS} for actions)."
+    val unusableText: Phrase? get() = when {
+        !readable -> problemText ?: ModelStrings.notLiteRtLm()
+        !decoder -> ModelStrings.noDecoder()
+        dispatchOp && tensorBuild == null && tensorStamp != null -> ModelStrings.partialTpu("chip" to tensorStamp!!.title,
+            "missing" to Phrase.ListOf(listOfNotNull(if (!aux) ModelStrings.auxSection() else null, if (!gemma4) ModelStrings.gemma4Metadata() else null)))
+        dispatchOp && tensorBuild == null -> stamp?.let { ModelStrings.otherNpuStamp("stamp" to it) } ?: ModelStrings.otherNpu()
+        maxTokens in 1 until ContextWindow.MIN_TOKENS -> ModelStrings.builtShort("n" to maxTokens.toString(),
+            "min" to ContextWindow.MIN_TOKENS.toString(), "max" to ContextWindow.MAX_TOKENS.toString())
         else -> null
     }
+
+    /** [unusableText] in English. */
+    val unusable: String? get() = unusableText?.en()
 
     /** Where it can run: the TPU for a proven TPU build (on its own chip only: [runsOnTpuOf]), else the CPU; null: nowhere. */
     val backend: ModelBackend? get() = when {
@@ -152,41 +158,46 @@ data class LiteRtLmReport(
     }
 
     /** What the check found, a line each, for Settings › Model. */
-    fun lines(): List<String> = buildList {
+    fun linesText(): List<Phrase> = buildList {
         if (!readable) {
-            add(unusable ?: "Robot couldn't read it.")
+            add(unusableText ?: ModelStrings.couldntReadIt())
             return@buildList
         }
-        add("LiteRT-LM file, format $format, ${sections.size} sections.")
+        add(ModelStrings.liteRtLmFile(sections.size, "format" to format))
         add(when {
-            tensorBuild != null -> "Compiled for the ${tensorBuild!!.title}'s TPU (${Phones.seriesOf(tensorBuild!!)}): yes — aux section, " +
-                "DISPATCH_OP and the stamp “${stamp.orEmpty()}”."
-            dispatchOp -> "Compiled for an NPU" + (stamp?.let { " (stamp “$it”)" } ?: "") + ", but not as a complete Tensor TPU build."
-            else -> "Compiled for a TPU: no. It runs on the CPU."
+            tensorBuild != null -> ModelStrings.compiledTpu("chip" to tensorBuild!!.title, "series" to Phones.seriesOf(tensorBuild!!),
+                "stamp" to stamp.orEmpty())
+            dispatchOp -> stamp?.let { ModelStrings.compiledNpuStamp("stamp" to it) } ?: ModelStrings.compiledNpu()
+            else -> ModelStrings.notCompiledTpu()
         })
         // Chat only: no actions whatever the metadata, so the line about them would only confuse.
         add(when {
-            shortContext && gemma4 -> "Gemma 4."
-            shortContext && modelType != null -> "Model type “$modelType”, not Gemma 4: Robot is written for Gemma 4, so answers may be odd."
-            shortContext -> "No model metadata Robot recognises: answers may be odd."
-            gemma4 && toolTokens -> "Gemma 4, with its tool-calling metadata: actions should work."
-            gemma4 -> "Gemma 4, but without its tool-calling metadata: actions (timers, texts, notes…) may not work."
-            modelType != null -> "Model type “$modelType”, not Gemma 4: Robot is written for Gemma 4, so answers may be odd and actions may not work."
-            else -> "No model metadata Robot recognises: answers may be odd and actions may not work."
+            shortContext && gemma4 -> ModelStrings.gemma4()
+            shortContext && modelType != null -> ModelStrings.typeNotGemmaShort("type" to modelType)
+            shortContext -> ModelStrings.noMetadataShort()
+            gemma4 && toolTokens -> ModelStrings.gemma4Tools()
+            gemma4 -> ModelStrings.gemma4NoTools()
+            modelType != null -> ModelStrings.typeNotGemma("type" to modelType)
+            else -> ModelStrings.noMetadata()
         })
-        add(if (vision) "Can see photos: yes." else "Can see photos: no (questions about a photo won't work).")
+        add(if (vision) ModelStrings.photosYes() else ModelStrings.photosNo())
         when {
-            shortContext && unusable == null -> add("Short context ($maxTokens tokens): chat only — no actions, shorter memory.")
-            maxTokens >= ContextWindow.MAX_TOKENS -> add("Context: $maxTokens tokens (Robot uses ${ContextWindow.MAX_TOKENS}).")
+            shortContext && unusableText == null -> add(ModelStrings.shortContext("n" to maxTokens.toString()))
+            maxTokens >= ContextWindow.MAX_TOKENS -> add(ModelStrings.contextLine("n" to maxTokens.toString(), "used" to ContextWindow.MAX_TOKENS.toString()))
         }
-        unusable?.let { add(it) }
+        unusableText?.let { add(it) }
     }
+
+    /** [linesText] in English. */
+    fun lines(): List<String> = linesText().map { it.en() }
 
     fun toJson(): JSONObject = JSONObject().apply {
         put("readable", readable); put("format", format); put("sections", JSONArray(sections)); put("decoder", decoder); put("aux", aux)
         // "tensorG5Stamp" for the records an older Robot reads (0.8 reads the chip from the stamp).
         put("dispatchOp", dispatchOp); stamp?.let { put("stamp", it) }; put("tensorG5Stamp", tensorStamp == Chip.TENSOR_G5); modelType?.let { put("modelType", it) }
-        put("toolTokens", toolTokens); put("maxTokens", maxTokens); put("vision", vision); problem?.let { put("problem", it) }
+        put("toolTokens", toolTokens); put("maxTokens", maxTokens); put("vision", vision)
+        // 1.1: the problem's English for an older Robot, and its words without a language for this one.
+        problemText?.let { put("problem", it.en()); put("problemPhrase", PhraseWire.toJson(it)) }
     }
 
     companion object {
@@ -199,7 +210,8 @@ data class LiteRtLmReport(
                     decoder = o.optBoolean("decoder"), aux = o.optBoolean("aux"), dispatchOp = o.optBoolean("dispatchOp"),
                     stamp = if (o.has("stamp")) o.optString("stamp").take(LiteRtLmCheck.MAX_STAMP) else null,
                     modelType = if (o.has("modelType")) o.optString("modelType").take(32) else null, toolTokens = o.optBoolean("toolTokens"),
-                    maxTokens = o.optInt("maxTokens"), vision = o.optBoolean("vision"), problem = if (o.has("problem")) o.optString("problem") else null,
+                    maxTokens = o.optInt("maxTokens"), vision = o.optBoolean("vision"),
+                    problemText = PhraseWire.fromJson(o.optJSONObject("problemPhrase")) ?: if (o.has("problem")) Phrase.plain(o.optString("problem")) else null,
                 )
             } catch (_: Exception) { null }
         }
@@ -250,7 +262,7 @@ object LiteRtLmCheck {
     fun check(file: File, strict: Boolean = false): LiteRtLmReport = try {
         FileByteSource(file).use { check(it, strict) }
     } catch (_: Exception) {
-        LiteRtLmReport(readable = false, problem = "Robot couldn't read the file.")
+        LiteRtLmReport(readable = false, problemText = ModelStrings.couldntReadFile())
     }
 
     /**
@@ -258,7 +270,8 @@ object LiteRtLmCheck {
      * app's record nor :brain's load ever hands it to LiteRT-LM.
      */
     fun check(src: ByteSource, strict: Boolean): LiteRtLmReport {
-        if (strict) strictProblem(src)?.let { return LiteRtLmReport(readable = false, problem = "Robot won't open this file: $it.") }
+        // The check's detail stays English (a diagnostic, as the voice log's), inside a sentence in your language.
+        if (strict) strictProblem(src)?.let { return LiteRtLmReport(readable = false, problemText = ModelStrings.wontOpen("detail" to it)) }
         return check(src)
     }
 
@@ -282,86 +295,86 @@ object LiteRtLmCheck {
     fun strictProblem(src: ByteSource): String? = try {
         strictOrThrow(src)
     } catch (e: LiteRtLmFormat) {
-        e.message ?: "it can't be read"
+        e.message ?: "it can't be read" // l10n: not text (a parser's detail, a diagnostic)
     } catch (_: Exception) {
-        "it can't be read"
+        "it can't be read" // l10n: not text (a parser's detail, a diagnostic)
     }
 
     private fun strictOrThrow(src: ByteSource): String? {
-        if (src.size < 32) return "it is too short"
+        if (src.size < 32) return "it is too short" // l10n: not text (a parser's detail, a diagnostic)
         val head = src.read(0, 32)
-        if (String(head, 0, 8, Charsets.ISO_8859_1) != MAGIC) return "it isn't a LiteRT-LM file"
+        if (String(head, 0, 8, Charsets.ISO_8859_1) != MAGIC) return "it isn't a LiteRT-LM file" // l10n: not text (a parser's detail, a diagnostic)
         val le = Le(head)
-        if (le.u32(8) != 1L) return "its format version (${le.u32(8)}) isn't one Robot knows"
+        if (le.u32(8) != 1L) return "its format version (${le.u32(8)}) isn't one Robot knows" // l10n: not text (a parser's detail, a diagnostic)
         val headerEnd = le.u64(24)
-        if (headerEnd <= 32 || headerEnd > src.size || headerEnd - 32 > MAX_HEADER) return "its header doesn't fit the file"
-        val (_, sections) = sections(src) ?: return "it isn't a LiteRT-LM file"
-        if (sections.isEmpty()) return "it has no sections"
+        if (headerEnd <= 32 || headerEnd > src.size || headerEnd - 32 > MAX_HEADER) return "its header doesn't fit the file" // l10n: not text (a parser's detail, a diagnostic)
+        val (_, sections) = sections(src) ?: return "it isn't a LiteRT-LM file" // l10n: not text (a parser's detail, a diagnostic)
+        if (sections.isEmpty()) return "it has no sections" // l10n: not text (a parser's detail, a diagnostic)
         for (s in sections) {
-            if (s.dataType !in STRICT_TYPES) return "a section has an unknown type (${s.dataType})"
-            if (s.begin < headerEnd) return "a section overlaps the header"
-            if (s.end <= s.begin) return "a section is empty"
-            if (s.modelType != null && !MODEL_TYPE_NAME.matches(s.modelType)) return "a section's name isn't one Robot accepts"
+            if (s.dataType !in STRICT_TYPES) return "a section has an unknown type (${s.dataType})" // l10n: not text (a parser's detail, a diagnostic)
+            if (s.begin < headerEnd) return "a section overlaps the header" // l10n: not text (a parser's detail, a diagnostic)
+            if (s.end <= s.begin) return "a section is empty" // l10n: not text (a parser's detail, a diagnostic)
+            if (s.modelType != null && !MODEL_TYPE_NAME.matches(s.modelType)) return "a section's name isn't one Robot accepts" // l10n: not text (a parser's detail, a diagnostic)
             val size = s.end - s.begin
             when (s.dataType) {
                 TFLITE -> {
-                    if (s.modelType == null || !s.modelType.startsWith("tf_lite_")) return "a TFLite section isn't named as one"
-                    if (size < 8 || String(src.read(s.begin + 4, 4), Charsets.ISO_8859_1) != "TFL3") return "a TFLite section isn't a TFLite model"
+                    if (s.modelType == null || !s.modelType.startsWith("tf_lite_")) return "a TFLite section isn't named as one" // l10n: not text (a parser's detail, a diagnostic)
+                    if (size < 8 || String(src.read(s.begin + 4, 4), Charsets.ISO_8859_1) != "TFL3") return "a TFLite section isn't a TFLite model" // l10n: not text (a parser's detail, a diagnostic)
                 }
-                LLM_METADATA -> if (size > MAX_LLM_METADATA) return "its metadata is too large"
-                SP_TOKENIZER -> if (size > MAX_TOKENIZER) return "its tokenizer is too large"
+                LLM_METADATA -> if (size > MAX_LLM_METADATA) return "its metadata is too large" // l10n: not text (a parser's detail, a diagnostic)
+                SP_TOKENIZER -> if (size > MAX_TOKENIZER) return "its tokenizer is too large" // l10n: not text (a parser's detail, a diagnostic)
                 HF_TOKENIZER_ZLIB -> {
-                    if (size < 9 || size > MAX_TOKENIZER) return "its tokenizer's size is wrong"
+                    if (size < 9 || size > MAX_TOKENIZER) return "its tokenizer's size is wrong" // l10n: not text (a parser's detail, a diagnostic)
                     val inflated = Le(src.read(s.begin, 8)).u64(0)
-                    if (inflated < 1 || inflated > MAX_TOKENIZER_JSON) return "its tokenizer's size is wrong"
+                    if (inflated < 1 || inflated > MAX_TOKENIZER_JSON) return "its tokenizer's size is wrong" // l10n: not text (a parser's detail, a diagnostic)
                 }
             }
         }
-        if (sections.count { it.modelType == "tf_lite_prefill_decode" && it.dataType == TFLITE } != 1) return "it doesn't have exactly one language model"
-        if (sections.count { it.dataType == LLM_METADATA } > 1) return "it has more than one metadata section"
+        if (sections.count { it.modelType == "tf_lite_prefill_decode" && it.dataType == TFLITE } != 1) return "it doesn't have exactly one language model" // l10n: not text (a parser's detail, a diagnostic)
+        if (sections.count { it.dataType == LLM_METADATA } > 1) return "it has more than one metadata section" // l10n: not text (a parser's detail, a diagnostic)
         val sorted = sections.sortedBy { it.begin }
-        if (sorted.first().begin - headerEnd > MAX_GAP) return "its sections don't follow its header"
+        if (sorted.first().begin - headerEnd > MAX_GAP) return "its sections don't follow its header" // l10n: not text (a parser's detail, a diagnostic)
         for (i in 1 until sorted.size) {
-            if (sorted[i].begin < sorted[i - 1].end) return "two sections overlap"
-            if (sorted[i].begin - sorted[i - 1].end > MAX_GAP) return "its sections leave part of the file unaccounted for"
+            if (sorted[i].begin < sorted[i - 1].end) return "two sections overlap" // l10n: not text (a parser's detail, a diagnostic)
+            if (sorted[i].begin - sorted[i - 1].end > MAX_GAP) return "its sections leave part of the file unaccounted for" // l10n: not text (a parser's detail, a diagnostic)
         }
-        if (src.size - sorted.last().end > MAX_GAP) return "its size doesn't match its sections"
+        if (src.size - sorted.last().end > MAX_GAP) return "its size doesn't match its sections" // l10n: not text (a parser's detail, a diagnostic)
         return null
     }
 
     fun check(src: ByteSource): LiteRtLmReport = try {
         read(src)
     } catch (e: LiteRtLmFormat) {
-        LiteRtLmReport(readable = false, problem = "It isn't a LiteRT-LM model file Robot can read (${e.message}).")
+        LiteRtLmReport(readable = false, problemText = ModelStrings.liteRtLmUnreadableDetail("detail" to e.message.orEmpty()))
     } catch (_: Exception) {
-        LiteRtLmReport(readable = false, problem = "It isn't a LiteRT-LM model file Robot can read.")
+        LiteRtLmReport(readable = false, problemText = ModelStrings.liteRtLmUnreadable())
     }
 
     private class Section(val modelType: String?, val dataType: Int, val begin: Long, val end: Long)
 
     /** The header's format version and sections; null when the file doesn't start with [MAGIC]. */
     private fun sections(src: ByteSource): Pair<String, List<Section>>? {
-        if (src.size < 32) throw LiteRtLmFormat("too short")
+        if (src.size < 32) throw LiteRtLmFormat("too short") // l10n: not text (a parser's detail, a diagnostic)
         val head = src.read(0, 32)
         if (String(head, 0, 8, Charsets.ISO_8859_1) != MAGIC) return null
         val le = Le(head)
         val format = "${le.u32(8)}.${le.u32(12)}.${le.u32(16)}"
         val headerEnd = le.u64(24)
-        if (headerEnd <= 32 || headerEnd > src.size || headerEnd - 32 > MAX_HEADER) throw LiteRtLmFormat("bad header size")
+        if (headerEnd <= 32 || headerEnd > src.size || headerEnd - 32 > MAX_HEADER) throw LiteRtLmFormat("bad header size") // l10n: not text (a parser's detail, a diagnostic)
         val fb = Fb(src, 32, headerEnd)
         val root = fb.root()
         return format to root.table(1)?.tables(0, MAX_SECTIONS).orEmpty().map { s ->
             val type = s.tables(0, MAX_SECTIONS).firstNotNullOfOrNull { kv -> if (kv.string(0) == "model_type") kvString(kv) else null }
             val begin = s.u64(1)
             val end = s.u64(2)
-            if (begin < 0 || end < begin || end > src.size) throw LiteRtLmFormat("a section outside the file")
+            if (begin < 0 || end < begin || end > src.size) throw LiteRtLmFormat("a section outside the file") // l10n: not text (a parser's detail, a diagnostic)
             Section(type, s.u8(3), begin, end)
         }
     }
 
     private fun read(src: ByteSource): LiteRtLmReport {
-        val (format, sections) = sections(src) ?: return LiteRtLmReport(readable = false, problem = "It isn't a LiteRT-LM model file (.litertlm).")
-        val names = sections.map { s -> s.modelType ?: DATA_TYPES.getOrElse(s.dataType) { i -> "type $i" } }
+        val (format, sections) = sections(src) ?: return LiteRtLmReport(readable = false, problemText = ModelStrings.notLiteRtLm())
+        val names = sections.map { s -> s.modelType ?: DATA_TYPES.getOrElse(s.dataType) { i -> "type $i" } } // l10n: not text (a section's type, as the file names it)
         val decoder = sections.firstOrNull { it.modelType == "tf_lite_prefill_decode" && it.dataType == TFLITE }
         var dispatch = false
         var stamp: String? = null
@@ -371,7 +384,7 @@ object LiteRtLmCheck {
             stamp = stampOf(model)
         }
         val meta = sections.firstOrNull { it.dataType == LLM_METADATA }?.let { s ->
-            if (s.end - s.begin > MAX_LLM_METADATA) throw LiteRtLmFormat("metadata too large")
+            if (s.end - s.begin > MAX_LLM_METADATA) throw LiteRtLmFormat("metadata too large") // l10n: not text (a parser's detail, a diagnostic)
             llmMetadata(src.read(s.begin, (s.end - s.begin).toInt()))
         }
         return LiteRtLmReport(
@@ -448,7 +461,7 @@ object LiteRtLmCheck {
      */
     fun huggingFaceTokens(section: ByteArray): ModelTokens {
         val size = Le(section).u64(0)
-        if (size <= 0 || size > MAX_TOKENIZER_JSON) throw LiteRtLmFormat("a tokenizer too large")
+        if (size <= 0 || size > MAX_TOKENIZER_JSON) throw LiteRtLmFormat("a tokenizer too large") // l10n: not text (a parser's detail, a diagnostic)
         val json = ByteArray(size.toInt())
         val inflater = java.util.zip.Inflater()
         try {
@@ -459,7 +472,7 @@ object LiteRtLmCheck {
                 if (k == 0 && (inflater.needsInput() || inflater.needsDictionary())) break
                 n += k
             }
-            if (n != json.size) throw LiteRtLmFormat("a tokenizer cut short")
+            if (n != json.size) throw LiteRtLmFormat("a tokenizer cut short") // l10n: not text (a parser's detail, a diagnostic)
         } finally {
             inflater.end()
         }
@@ -478,7 +491,7 @@ object LiteRtLmCheck {
         }
         // The top level's "normalizer" (an added token has "normalized", and a Sequence "normalizers").
         val noNormalizer = literalAfter(json, "normalizer", "null")
-        val bytes = find(json, "\"ByteLevel\"".toByteArray(), 0) >= 0 || literalAfter(json, "byte_fallback", "true")
+        val bytes = find(json, "\"ByteLevel\"".toByteArray(), 0) >= 0 || literalAfter(json, "byte_fallback", "true") // l10n: not text (what it looks for)
         return ModelTokens(control, user, if (noNormalizer && bytes) ControlText.JOINER else ControlText.SPACE)
     }
 
@@ -522,7 +535,7 @@ object LiteRtLmCheck {
             }
             i++
         }
-        throw LiteRtLmFormat("an added-token list cut short")
+        throw LiteRtLmFormat("an added-token list cut short") // l10n: not text (a parser's detail, a diagnostic)
     }
 
     /** A KeyValuePair's value when it is a string (value_type 9, StringValue). */
@@ -533,7 +546,7 @@ object LiteRtLmCheck {
         val entry = model.tables(6, MAX_METADATA).firstOrNull { it.string(0) == "LiteRtStamp" } ?: return null
         val index = entry.u32(1)
         val (start, count) = model.vector(4) ?: return null
-        if (index >= count) throw LiteRtLmFormat("a stamp outside the buffers")
+        if (index >= count) throw LiteRtLmFormat("a stamp outside the buffers") // l10n: not text (a parser's detail, a diagnostic)
         val buffer = model.fb.tableAt(start + 4 * index + model.fb.u32(start + 4 * index))
         val data = buffer.vector(0)
         val bytes = when {
@@ -541,7 +554,7 @@ object LiteRtLmCheck {
             buffer.u64(1) > 0 -> {
                 val off = buffer.u64(1)
                 val n = minOf(buffer.u64(2), 4096L)
-                if (off < 0 || n < 0) throw LiteRtLmFormat("a bad stamp")
+                if (off < 0 || n < 0) throw LiteRtLmFormat("a bad stamp") // l10n: not text (a parser's detail, a diagnostic)
                 model.fb.bytes(off, n.toInt())
             }
             else -> return null
@@ -563,7 +576,7 @@ object LiteRtLmCheck {
                 field == 5 && wire == 0 -> max = value.coerceIn(0, Int.MAX_VALUE.toLong()).toInt()
                 field == 6 && wire == 2 -> Proto(sub!!).fields { f2, w2, _, inner ->
                     if (w2 == 2 && type == null) {
-                        type = MODEL_TYPES[f2] ?: "type $f2"
+                        type = MODEL_TYPES[f2] ?: "type $f2" // l10n: not text (a section's type, as the file names it)
                         if (f2 == 8) {
                             var call = false
                             var response = false
@@ -590,7 +603,7 @@ object LiteRtLmCheck {
     private class Fb(val src: ByteSource, val base: Long, val limit: Long) {
         fun bytes(off: Long, n: Int): ByteArray {
             // Compared without adding: an offset from the file (a u64) can be near Long.MAX_VALUE.
-            if (off < 0 || n < 0 || off > limit - base - n) throw LiteRtLmFormat("an offset outside its section")
+            if (off < 0 || n < 0 || off > limit - base - n) throw LiteRtLmFormat("an offset outside its section") // l10n: not text (a parser's detail, a diagnostic)
             return src.read(base + off, n)
         }
 
@@ -632,13 +645,13 @@ object LiteRtLmCheck {
 
         fun tables(slot: Int, max: Int): List<Tbl> {
             val (start, n) = vector(slot) ?: return emptyList()
-            if (n > max) throw LiteRtLmFormat("too many entries")
+            if (n > max) throw LiteRtLmFormat("too many entries") // l10n: not text (a parser's detail, a diagnostic)
             return (0 until n.toInt()).map { i -> val e = start + 4L * i; fb.tableAt(e + fb.u32(e)) }
         }
 
         fun string(slot: Int): String? {
             val (start, n) = vector(slot) ?: return null
-            if (n > MAX_STRING) throw LiteRtLmFormat("a string too long")
+            if (n > MAX_STRING) throw LiteRtLmFormat("a string too long") // l10n: not text (a parser's detail, a diagnostic)
             return fb.bytes(start, n.toInt()).toString(Charsets.UTF_8)
         }
 
@@ -655,7 +668,7 @@ object LiteRtLmCheck {
             var r = 0L
             var shift = 0
             while (true) {
-                if (i >= b.size || shift > 63) throw LiteRtLmFormat("a bad varint")
+                if (i >= b.size || shift > 63) throw LiteRtLmFormat("a bad varint") // l10n: not text (a parser's detail, a diagnostic)
                 val c = b[i++].toInt() and 0xff
                 r = r or ((c and 0x7f).toLong() shl shift)
                 if (c < 0x80) return r
@@ -668,25 +681,25 @@ object LiteRtLmCheck {
                 val key = varint()
                 val field = (key ushr 3).toInt()
                 val wire = (key and 7).toInt()
-                if (field <= 0) throw LiteRtLmFormat("a bad field")
+                if (field <= 0) throw LiteRtLmFormat("a bad field") // l10n: not text (a parser's detail, a diagnostic)
                 when (wire) {
                     0 -> each(field, wire, varint(), null)
                     1 -> { skip(8); each(field, wire, 0, null) }
                     5 -> { skip(4); each(field, wire, 0, null) }
                     2 -> {
                         val n = varint()
-                        if (n < 0 || n > b.size - i) throw LiteRtLmFormat("a field past the end")
+                        if (n < 0 || n > b.size - i) throw LiteRtLmFormat("a field past the end") // l10n: not text (a parser's detail, a diagnostic)
                         val sub = b.copyOfRange(i, i + n.toInt())
                         i += n.toInt()
                         each(field, wire, 0, sub)
                     }
-                    else -> throw LiteRtLmFormat("an unknown wire type")
+                    else -> throw LiteRtLmFormat("an unknown wire type") // l10n: not text (a parser's detail, a diagnostic)
                 }
             }
         }
 
         private fun skip(n: Int) {
-            if (n > b.size - i) throw LiteRtLmFormat("a field past the end")
+            if (n > b.size - i) throw LiteRtLmFormat("a field past the end") // l10n: not text (a parser's detail, a diagnostic)
             i += n
         }
     }
@@ -727,7 +740,10 @@ data class OwnModel(
     val tensorBuild: Chip? get() = if (gguf == null) report.tensorBuild else null
 
     /** Why Robot can't run it here at all; null when it can. */
-    val unusable: String? get() = if (gguf != null) gguf.unusable else report.unusable
+    val unusableText: Phrase? get() = if (gguf != null) gguf.unusableText else report.unusableText
+
+    /** [unusableText] in English. */
+    val unusable: String? get() = unusableText?.en()
 
     /** Where its check says it can run, before your say about the TPU: a GGUF file on the CPU only; null: nowhere. */
     val runsOn: ModelBackend? get() = if (gguf != null) (if (gguf.unusable == null) ModelBackend.CPU else null) else report.backend
@@ -751,7 +767,9 @@ data class OwnModel(
     val vision: Boolean get() = gguf == null && report.vision
 
     /** What the check found, a line each, for Settings › Model. */
-    fun lines(): List<String> = gguf?.lines() ?: report.lines()
+    fun linesText(): List<Phrase> = gguf?.linesText() ?: report.linesText()
+
+    fun lines(): List<String> = linesText().map { it.en() }
 
     /**
      * [fingerprintNow]: the file's now (null: no file). A changed file must be checked again. [ggufEngine]: this build of
@@ -774,7 +792,7 @@ data class OwnModel(
         private val SHA = Regex("^[0-9a-f]{64}$")
 
         /** The [report] a GGUF file's record carries (the LiteRT-LM check doesn't read GGUF files). */
-        val NOT_LITERT_LM = LiteRtLmReport(readable = false, problem = "It is a GGUF file, not a LiteRT-LM file.")
+        val NOT_LITERT_LM = LiteRtLmReport(readable = false, problemText = ModelStrings.isGguf())
 
         fun fromJson(text: String?): OwnModel? = try {
             val o = JSONObject(text ?: return null)

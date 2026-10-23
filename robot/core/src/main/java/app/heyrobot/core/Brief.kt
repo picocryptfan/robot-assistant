@@ -1,41 +1,48 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.BriefStrings
+import app.heyrobot.core.i18n.Fmt
+import app.heyrobot.core.i18n.FrTypo
+import app.heyrobot.core.i18n.Lang
+import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.i18n.Phrase
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.Normalizer
-import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.util.Locale
-import kotlin.math.abs
 import kotlin.math.roundToInt
 
-// Pure. The morning brief (design §2.4): fixed sentences in English and Québec French (tu, "7 h 02", "cadran" elsewhere),
+// Pure. The morning brief: fixed sentences in English and Québec French (tu, "7 h 02", "cadran" elsewhere),
 // assembled from the clock, the weather tool's data, today's calendar, the brief reminders and (0.7) the unread count.
 // No model is involved, so a calendar title can only ever be read out, never followed; the same input always gives the
 // same words, and every part has a length limit so the voice never reads a novel. Robot's own words through Gemma
 // ("Phrasing") can come later on top of this.
 
-/** The brief's language: French or English, following the phone by default (Settings `briefLang` null). */
-enum class BriefLang(val id: String) {
-    EN("en"), FR("fr");
+/**
+ * The brief's language: French or English, following the phone by default (Settings `briefLang` null). 1.1: core i18n's
+ * [app.heyrobot.core.i18n.Lang], with the same constants, ids ("en", "fr", saved in routine_settings.json) and `of(tag)`.
+ */
 
-    companion object {
-        /** A language tag ("fr-CA", "en-US"); anything not French is English. */
-        fun of(tag: String?): BriefLang = if (tag?.trim()?.lowercase(Locale.ROOT)?.startsWith("fr") == true) FR else EN
-    }
-}
-
-/** The brief's parts in the order spoken (Settings `briefItems`; reorderable later). */
+/**
+ * The brief's parts (Settings `briefItems`; reorderable later). 1.4: [FILES], appended (an id an older Robot reads as none):
+ * what Robot filed yesterday and the reminders you set from your files. It isn't one of Settings › Routines' switches:
+ * Settings › Files' "Show in morning brief" adds it, and it is said only while the phone is unlocked ([BriefPrivacy]).
+ */
 enum class BriefItem(val id: String) {
-    GREETING("greeting"), WEATHER("weather"), CALENDAR("calendar"), REMINDERS("reminders"), MESSAGES("messages"), CLOSING("closing");
+    GREETING("greeting"), WEATHER("weather"), CALENDAR("calendar"), REMINDERS("reminders"), MESSAGES("messages"), CLOSING("closing"), FILES("files");
 
     companion object {
-        val DEFAULTS: List<BriefItem> = entries.toList()
+        /** Settings › Routines' parts, all on by default (Files' part is Settings › Files'). */
+        val DEFAULTS: List<BriefItem> = entries.filter { it != FILES }
+
+        /** The order they are said in: Files' part after your reminders, before the messages and the closing. */
+        val ORDER: List<BriefItem> = listOf(GREETING, WEATHER, CALENDAR, REMINDERS, FILES, MESSAGES, CLOSING)
 
         fun of(id: String?): BriefItem? = entries.firstOrNull { it.id == id }
     }
@@ -65,7 +72,7 @@ data class AppUnread(val app: String, val count: Int)
 
 data class BriefInput(
     val now: ZonedDateTime,
-    val lang: BriefLang,
+    val lang: Lang,
     val items: List<BriefItem> = BriefItem.DEFAULTS,
     /** Null: none ([weatherMissing] says why; unset means it wasn't available). */
     val weather: BriefWeather? = null,
@@ -76,15 +83,23 @@ data class BriefInput(
     val reminders: List<String> = emptyList(),
     /** Null until 0.7: nothing is said about messages. */
     val unread: UnreadCount? = null,
+    /** 1.1, Phone lock (§9.2): when the phone opens, within the next 12 hours (LockSchedule.briefOpensAt); null: no line. */
+    val phoneOpens: java.time.LocalTime? = null,
+    /** 1.4, Robot Files' part (core files FileBrief), read only while the phone is unlocked; null: nothing about files. */
+    val files: app.heyrobot.core.files.FilesBrief? = null,
 )
 
 /** One sentence (one chunk for the voice). [personal]: it says something from your calendar, notes, messages or the town. */
-data class BriefLine(val item: BriefItem?, val text: String, val personal: Boolean)
+data class BriefLine(val item: BriefItem?, val text: String, val personal: Boolean, val shown: String = text)
 
-/** What is said now, and what waits for an unlock ("Finish when I unlock"). */
+/**
+ * What is said now, and what waits for an unlock ("Finish when I unlock"). [text] is what the voice says; 1.1: [shownText]
+ * is the same in the screen's form (French with its no-break spaces and « », which the voice never gets).
+ */
 data class Brief(val spoken: List<BriefLine>, val held: List<BriefLine>) {
     val text: String get() = spoken.joinToString(" ") { it.text }
     val heldText: String get() = held.joinToString(" ") { it.text }
+    val shownText: String get() = spoken.joinToString(" ") { it.shown }
 }
 
 object BriefComposer {
@@ -101,36 +116,52 @@ object BriefComposer {
     const val MIN_CHANCE = 20
 
     /**
+     * 1.1: [p] as the voice says it in [lang]: English as written, French without its typography (core VoiceForm). The
+     * brief's sentences are phrases (core i18n BriefStrings); a time inside one is already in [lang]'s spoken words.
+     */
+    fun said(p: Phrase, lang: Lang): String = if (lang == Lang.EN) p.render(Langs.of(lang)) else p.render(Langs.of(lang).voice)
+
+    /** [p] as the screen shows it in [lang] (« Rappel : … » with its no-break spaces). */
+    fun shown(p: Phrase, lang: Lang): String = p.render(Langs.of(lang))
+
+    private fun line(item: BriefItem?, p: Phrase, lang: Lang, personal: Boolean) = BriefLine(item, said(p, lang), personal, shown(p, lang))
+
+    /**
      * The brief for [input], with the phone [locked] or not at lock [level] (BriefPrivacy.plan): the public part now,
      * "Unlock to hear your day" when something personal waits, and the rest held (composed as it will be heard, unlocked).
      * At "Nothing until I unlock" nothing is said until then.
      */
     fun compose(input: BriefInput, locked: Boolean = false, level: BriefLock = BriefLock.TIME_WEATHER): Brief {
-        val plan = BriefPrivacy.plan(input.items, locked, level)
+        val plan = BriefPrivacy.plan(input.items.sortedBy { BriefItem.ORDER.indexOf(it) }, locked, level)
         val now = plan.spoken.flatMap { lines(it, input, plan.placeName) }
-        val spoken = if (plan.unlockLine && now.isNotEmpty()) now + BriefLine(null, unlockLine(input.lang), false) else now
+        val spoken = if (plan.unlockLine && now.isNotEmpty()) now + line(null, BriefStrings.unlockToHear(), input.lang, false) else now
         return Brief(bound(spoken), bound(plan.held.flatMap { lines(it, input, place = true) }))
     }
 
     /** The whole brief as heard unlocked. */
     fun full(input: BriefInput): String = compose(input).text
 
-    fun unlockLine(lang: BriefLang): String = when (lang) {
-        BriefLang.EN -> "Unlock to hear your day."
-        BriefLang.FR -> "Déverrouille pour entendre ta journée."
-    }
+    fun unlockLine(lang: Lang): String = shown(BriefStrings.unlockToHear(), lang)
 
     /** The sentences of [item]; none when it has nothing to say (no reminders, no messages before 0.7). */
-    fun lines(item: BriefItem, input: BriefInput, place: Boolean): List<BriefLine> = when (item) {
-        BriefItem.GREETING -> listOf(BriefLine(item, greeting(input.now, input.lang), false), BriefLine(item, timeAndDate(input.now, input.lang), false))
-        BriefItem.WEATHER -> {
-            val town = if (place) input.weather?.place?.substringBefore(',')?.let { BriefText.clean(it, PLACE) }?.takeIf { it.isNotEmpty() } else null
-            listOf(BriefLine(item, weather(input.weather, input.weatherMissing, input.lang, town), town != null && input.weather != null && input.weatherMissing == null))
+    fun lines(item: BriefItem, input: BriefInput, place: Boolean): List<BriefLine> {
+        val lang = input.lang
+        return when (item) {
+            BriefItem.GREETING -> listOf(line(item, greetingText(input.now), lang, false), line(item, timeAndDateText(input.now, lang), lang, false)) +
+                // 1.1: "Your phone opens at 8:00." Not personal: the lock's own screen says as much.
+                listOfNotNull(input.phoneOpens?.let { t -> line(item, BriefStrings.phoneOpens("time" to if (lang == Lang.EN) BriefClock.en(t) else BriefClock.fr(t)), lang, false) })
+            BriefItem.WEATHER -> {
+                val town = if (place) input.weather?.place?.substringBefore(',')?.let { BriefText.clean(it, PLACE) }?.takeIf { it.isNotEmpty() } else null
+                listOf(line(item, weatherText(input.weather, input.weatherMissing, lang, town), lang, town != null && input.weather != null && input.weatherMissing == null))
+            }
+            BriefItem.CALENDAR -> listOf(line(item, calendarText(input.events, input.now, lang), lang, true))
+            BriefItem.REMINDERS -> remindersText(input.reminders, lang)?.let { listOf(line(item, it, lang, true)) } ?: emptyList()
+            BriefItem.MESSAGES -> input.unread?.let { u -> listOf(line(item, messagesText(u), lang, false)) } ?: emptyList()
+            // 1.4: shown without a merchant (the screen, a notification, History), said with one unless the file is private.
+            BriefItem.FILES -> input.files?.let { f -> app.heyrobot.core.files.FileMoneyText.brief(f, input.now.toLocalDate())
+                .map { BriefLine(item, said(it.said, lang), true, shown(it.shown, lang)) } } ?: emptyList()
+            BriefItem.CLOSING -> listOf(line(item, closingText(input.now), lang, false))
         }
-        BriefItem.CALENDAR -> listOf(BriefLine(item, calendar(input.events, input.now, input.lang), true))
-        BriefItem.REMINDERS -> reminders(input.reminders, input.lang)?.let { listOf(BriefLine(item, it, true)) } ?: emptyList()
-        BriefItem.MESSAGES -> input.unread?.let { u -> listOf(BriefLine(item, messages(u, input.lang), false)) } ?: emptyList()
-        BriefItem.CLOSING -> listOf(BriefLine(item, closing(input.now, input.lang), false))
     }
 
     /** Whole lines while they fit in [MAX_CHARS]; a line that doesn't is left out (the closing still fits). */
@@ -144,27 +175,27 @@ object BriefComposer {
 
     // ------------------------------------------------------------------ greeting, time, closing
 
-    fun greeting(now: ZonedDateTime, lang: BriefLang): String = when (lang) {
-        BriefLang.EN -> when (now.hour) { in 4..11 -> "Good morning."; in 12..16 -> "Good afternoon."; else -> "Good evening." }
-        BriefLang.FR -> when (now.hour) { in 4..11 -> "Bon matin."; in 12..16 -> "Bon après-midi."; else -> "Bonsoir." }
+    fun greeting(now: ZonedDateTime, lang: Lang): String = shown(greetingText(now), lang)
+
+    /** "Good morning.", « Bon matin. ». */
+    fun greetingText(now: ZonedDateTime): Phrase = when (now.hour) {
+        in 4..11 -> BriefStrings.goodMorning()
+        in 12..16 -> BriefStrings.goodAfternoon()
+        else -> BriefStrings.goodEvening()
     }
 
     /** "It's 7:02, Monday October 12." / "Il est 7 h 02, lundi 12 octobre." */
-    fun timeAndDate(now: ZonedDateTime, lang: BriefLang): String {
+    fun timeAndDate(now: ZonedDateTime, lang: Lang): String = shown(timeAndDateText(now, lang), lang)
+
+    /** [timeAndDate] as a phrase; the time in [lang]'s spoken words ("7 o'clock", « 7 h »). */
+    fun timeAndDateText(now: ZonedDateTime, lang: Lang): Phrase {
         val t = now.toLocalTime()
-        return when (lang) {
-            BriefLang.EN -> "It's ${BriefClock.nowEn(t)}, ${BriefClock.dateEn(now.toLocalDate())}."
-            BriefLang.FR -> "Il est ${BriefClock.fr(t)}, ${BriefClock.dateFr(now.toLocalDate())}."
-        }
+        return BriefStrings.timeAndDate("time" to if (lang == Lang.EN) BriefClock.nowEn(t) else BriefClock.fr(t), "date" to now.toLocalDate())
     }
 
-    fun closing(now: ZonedDateTime, lang: BriefLang): String {
-        val day = now.hour in 4..16
-        return when (lang) {
-            BriefLang.EN -> if (day) "Have a good day." else "Have a good evening."
-            BriefLang.FR -> if (day) "Bonne journée." else "Bonne soirée."
-        }
-    }
+    fun closing(now: ZonedDateTime, lang: Lang): String = shown(closingText(now), lang)
+
+    fun closingText(now: ZonedDateTime): Phrase = if (now.hour in 4..16) BriefStrings.goodDay() else BriefStrings.goodEveningEnd()
 
     // ------------------------------------------------------------------ weather
 
@@ -173,95 +204,93 @@ object BriefComposer {
      * "En ce moment, 4 degrés et partiellement nuageux; maximum de 12, 30 % de risque de pluie cet après-midi."
      * [town]: said only unlocked ("Right now in Montreal it's …"). Degrees in the phone region's unit, as the tool fetched.
      */
-    fun weather(w: BriefWeather?, missing: BriefWeatherMissing?, lang: BriefLang, town: String?): String {
-        val en = lang == BriefLang.EN
-        if (w == null || missing != null) return missingText(missing ?: BriefWeatherMissing.UNAVAILABLE, lang)
+    fun weather(w: BriefWeather?, missing: BriefWeatherMissing?, lang: Lang, town: String?): String = shown(weatherText(w, missing, lang, town), lang)
+
+    /** [weather] as a phrase (the conditions' words are core Wmo's). */
+    fun weatherText(w: BriefWeather?, missing: BriefWeatherMissing?, lang: Lang, town: String?): Phrase {
+        if (w == null || missing != null) return missingPhrase(missing ?: BriefWeatherMissing.UNAVAILABLE)
         val nowTemp = w.now?.temp?.roundToInt()
-        val nowWords = w.now?.code?.let { words(it, lang) }
-        val nowPart = listOfNotNull(nowTemp?.let { deg(it, lang) }, nowWords).joinToString(if (en) " and " else " et ").ifEmpty { null }
+        val nowWords = w.now?.code?.let { Wmo.text(it) }
+        val nowParts = listOfNotNull(nowTemp?.let { deg(it) }, nowWords)
         val d = w.today
         val dayParts = listOfNotNull(
-            d?.high?.roundToInt()?.let { if (en) "high of ${num(it, lang)}" else "maximum de ${num(it, lang)}" },
-            d?.let { chance(it, w.units, w.wettest, lang) },
+            d?.high?.roundToInt()?.let { if (it < 0) BriefStrings.highOfMinus("n" to -it) else BriefStrings.highOf("n" to it) },
+            d?.let { chance(it, w.units, w.wettest) },
         )
+        val day = Phrase.Join(dayParts, ", ")
         return when {
-            nowPart != null -> {
-                val head = if (en) "Right now" + (town?.let { " in $it" } ?: "") + " it's " else "En ce moment" + (town?.let { " à $it" } ?: "") + ", "
-                head + nowPart + (if (dayParts.isEmpty()) "" else "; " + dayParts.joinToString(", ")) + "."
+            nowParts.isNotEmpty() -> {
+                val now = Phrase.ListOf(nowParts)
+                when {
+                    town == null && dayParts.isEmpty() -> BriefStrings.now("now" to now)
+                    town == null -> BriefStrings.nowAndDay("now" to now, "day" to day)
+                    dayParts.isEmpty() -> BriefStrings.nowIn("town" to town, "now" to now)
+                    else -> BriefStrings.nowInAndDay("town" to town, "now" to now, "day" to day)
+                }
             }
-            d != null && (dayParts.isNotEmpty() || words(d.code, lang) != null) -> {
-                val parts = listOfNotNull(words(d.code, lang)) + dayParts
-                (if (en) "Today" + (town?.let { " in $it" } ?: "") + ": " else "Aujourd'hui" + (town?.let { " à $it" } ?: "") + " : ") + parts.joinToString(", ") + "."
+            d != null && (dayParts.isNotEmpty() || Wmo.text(d.code) != null) -> {
+                val parts = Phrase.Join(listOfNotNull(Wmo.text(d.code)) + dayParts, ", ")
+                if (town == null) BriefStrings.today("day" to parts) else BriefStrings.todayIn("town" to town, "day" to parts)
             }
-            else -> missingText(BriefWeatherMissing.UNAVAILABLE, lang)
+            else -> missingPhrase(BriefWeatherMissing.UNAVAILABLE)
         }
     }
 
-    fun missingText(m: BriefWeatherMissing, lang: BriefLang): String = when (m) {
-        BriefWeatherMissing.UNAVAILABLE -> if (lang == BriefLang.EN) "The weather isn't available right now." else "La météo n'est pas disponible pour le moment."
-        BriefWeatherMissing.NOT_ONLINE -> if (lang == BriefLang.EN) "Weather skipped: routines may not go online." else "Météo sautée : les routines ne peuvent pas aller en ligne."
+    fun missingText(m: BriefWeatherMissing, lang: Lang): String = shown(missingPhrase(m), lang)
+
+    /** "The weather isn't available right now.", "Weather skipped: routines may not go online." */
+    fun missingPhrase(m: BriefWeatherMissing): Phrase = when (m) {
+        BriefWeatherMissing.UNAVAILABLE -> BriefStrings.weatherUnavailable()
+        BriefWeatherMissing.NOT_ONLINE -> BriefStrings.weatherOffline()
     }
 
     /** "30 percent chance of rain this afternoon", or null below [MIN_CHANCE] or without a chance. */
-    private fun chance(d: WeatherDay, u: WeatherUnits, part: DayPart?, lang: BriefLang): String? {
+    private fun chance(d: WeatherDay, u: WeatherUnits, part: DayPart?): Phrase? {
         val c = d.chance?.takeIf { it >= MIN_CHANCE } ?: return null
         val rainMin = if (u == WeatherUnits.IMPERIAL) 0.01 else 0.1
         val snowMin = if (u == WeatherUnits.IMPERIAL) 0.05 else 0.1
         val rain = (d.rain ?: 0.0) + (d.showers ?: 0.0)
         val snow = d.snow ?: 0.0
-        val en = lang == BriefLang.EN
         val kind = when {
-            snow >= snowMin && rain >= rainMin -> if (en) "rain or snow" else "pluie ou neige"
-            snow >= snowMin || (rain < rainMin && Wmo.snowy(d.code)) -> if (en) "snow" else "neige"
-            else -> if (en) "rain" else "pluie"
+            snow >= snowMin && rain >= rainMin -> BriefStrings.rainOrSnow()
+            snow >= snowMin || (rain < rainMin && Wmo.snowy(d.code)) -> BriefStrings.snow()
+            else -> BriefStrings.rain()
         }
-        val whenText = part?.let {
-            if (en) when (it) { DayPart.MORNING -> " this morning"; DayPart.AFTERNOON -> " this afternoon"; DayPart.EVENING -> " this evening"; DayPart.NIGHT -> " tonight" }
-            else when (it) { DayPart.MORNING -> " ce matin"; DayPart.AFTERNOON -> " cet après-midi"; DayPart.EVENING -> " ce soir"; DayPart.NIGHT -> " cette nuit" }
-        } ?: ""
-        return if (en) "$c percent chance of $kind$whenText" else "$c % de risque de $kind$whenText"
+        val whenText = when (part) {
+            DayPart.MORNING -> BriefStrings.thisMorning()
+            DayPart.AFTERNOON -> BriefStrings.thisAfternoon()
+            DayPart.EVENING -> BriefStrings.thisEvening()
+            DayPart.NIGHT -> BriefStrings.tonight()
+            null -> return BriefStrings.chance("n" to c, "kind" to kind)
+        }
+        return BriefStrings.chanceWhen("n" to c, "kind" to kind, "when" to whenText)
     }
 
-    /** "minus 3" / "moins 3". */
-    private fun num(n: Int, lang: BriefLang): String = if (n < 0) (if (lang == BriefLang.EN) "minus ${-n}" else "moins ${-n}") else "$n"
+    /** "1 degree", "4 degrees", "minus 3 degrees" / "1 degré", "0 degré", "4 degrés", "moins 3 degrés" (French counts below 2 as one). */
+    private fun deg(n: Int): Phrase = if (n < 0) BriefStrings.minusDegrees(-n) else BriefStrings.degrees(n)
 
-    /** "1 degree", "4 degrees" / "1 degré", "0 degré", "4 degrés" (French counts below 2 as one). */
-    private fun deg(n: Int, lang: BriefLang): String = when (lang) {
-        BriefLang.EN -> num(n, lang) + if (abs(n) == 1) " degree" else " degrees"
-        BriefLang.FR -> num(n, lang) + if (abs(n) < 2) " degré" else " degrés"
-    }
-
-    /** WMO conditions: Wmo's English words, or their French. */
-    fun words(code: Int?, lang: BriefLang): String? = if (lang == BriefLang.EN) Wmo.words(code) else code?.let { WMO_FR[it] }
-
-    private val WMO_FR = mapOf(
-        0 to "dégagé", 1 to "plutôt dégagé", 2 to "partiellement nuageux", 3 to "couvert",
-        45 to "brouillard", 48 to "brouillard givrant",
-        51 to "faible bruine", 53 to "bruine", 55 to "forte bruine", 56 to "faible bruine verglaçante", 57 to "bruine verglaçante",
-        61 to "faible pluie", 63 to "pluie", 65 to "forte pluie", 66 to "faible pluie verglaçante", 67 to "pluie verglaçante",
-        71 to "faible neige", 73 to "neige", 75 to "forte neige", 77 to "neige en grains",
-        80 to "faibles averses", 81 to "averses", 82 to "fortes averses", 85 to "faibles averses de neige", 86 to "averses de neige",
-        95 to "orages", 96 to "orages avec grêle", 99 to "orages avec forte grêle",
-    )
+    /** WMO conditions: Wmo's words (core Weather.kt), in [lang]. */
+    fun words(code: Int?, lang: Lang): String? = Wmo.text(code)?.let { shown(it, lang) }
 
     // ------------------------------------------------------------------ calendar
 
     /**
      * Today's events that aren't over (all-day ones always): "You have 3 events today: standup at 9:30, lunch with Marie at
-     * noon, dentist at 4." / "Tu as 3 rendez-vous aujourd'hui : standup à 9 h 30, dîner avec Marie à midi, dentiste à 16 h."
+     * noon, dentist at 4." / "Tu as 3 événements aujourd'hui : standup à 9 h 30, dîner avec Marie à midi, dentiste à 16 h."
      * The count covers them all; the first [MAX_EVENTS] are named (titles cut at [TITLE] characters).
      */
-    fun calendar(events: List<CalendarEvent>?, now: ZonedDateTime, lang: BriefLang): String {
-        val en = lang == BriefLang.EN
-        if (events == null) return if (en) "Robot can't read your calendar." else "Robot ne peut pas lire ton agenda."
+    fun calendar(events: List<CalendarEvent>?, now: ZonedDateTime, lang: Lang): String = shown(calendarText(events, now, lang), lang)
+
+    /** [calendar] as a phrase; the events' times in [lang]'s spoken words. */
+    fun calendarText(events: List<CalendarEvent>?, now: ZonedDateTime, lang: Lang): Phrase {
+        if (events == null) return BriefStrings.calendarUnreadable()
         val list = todays(events, now)
         val n = list.size
-        val named = list.take(MAX_EVENTS).joinToString(", ") { event(it, now, lang) }
+        val named = Phrase.Join(list.take(MAX_EVENTS).map { event(it, now, lang) }, ", ")
         return when {
-            n == 0 -> if (en) "Nothing on your calendar today." else "Rien à ton agenda aujourd'hui."
-            n == 1 -> if (en) "You have 1 event today: $named." else "Tu as 1 rendez-vous aujourd'hui : $named."
-            n <= MAX_EVENTS -> if (en) "You have $n events today: $named." else "Tu as $n rendez-vous aujourd'hui : $named."
-            else -> if (en) "You have $n events today. The first $MAX_EVENTS: $named." else "Tu as $n rendez-vous aujourd'hui. Les $MAX_EVENTS premiers : $named."
+            n == 0 -> BriefStrings.calendarEmpty()
+            n <= MAX_EVENTS -> BriefStrings.events(n, "list" to named)
+            else -> BriefStrings.eventsFirst("n" to n, "shown" to MAX_EVENTS, "list" to named)
         }
     }
 
@@ -274,59 +303,51 @@ object BriefComposer {
     }
 
     /** "standup at 9:30", "Thanksgiving all day", "meeting until 10:30" (under way), "conference ongoing" (ends another day). */
-    private fun event(e: CalendarEvent, now: ZonedDateTime, lang: BriefLang): String {
-        val en = lang == BriefLang.EN
-        val title = BriefText.clean(e.title, TITLE).ifEmpty { if (en) "an untitled event" else "un rendez-vous sans titre" }
+    private fun event(e: CalendarEvent, now: ZonedDateTime, lang: Lang): Phrase {
+        val title: Any = BriefText.clean(e.title, TITLE).ifEmpty { null } ?: BriefStrings.untitled()
         val start = Instant.ofEpochMilli(e.begin).atZone(now.zone)
         val end = Instant.ofEpochMilli(e.end).atZone(now.zone)
         val ms = now.toInstant().toEpochMilli()
-        val whenText = when {
-            e.allDay -> if (en) "all day" else "toute la journée"
-            e.begin < ms && end.toLocalDate() != now.toLocalDate() -> if (en) "ongoing" else "en cours"
-            e.begin < ms -> if (en) "until ${BriefClock.en(end.toLocalTime())}" else "jusqu'à ${BriefClock.fr(end.toLocalTime())}"
-            else -> if (en) "at ${BriefClock.en(start.toLocalTime())}" else "à ${BriefClock.fr(start.toLocalTime())}"
+        fun clock(t: LocalTime) = if (lang == Lang.EN) BriefClock.en(t) else BriefClock.fr(t)
+        return when {
+            e.allDay -> BriefStrings.eventAllDay("title" to title)
+            e.begin < ms && end.toLocalDate() != now.toLocalDate() -> BriefStrings.eventOngoing("title" to title)
+            e.begin < ms -> BriefStrings.eventUntil("title" to title, "time" to clock(end.toLocalTime()))
+            else -> BriefStrings.eventAt("title" to title, "time" to clock(start.toLocalTime()))
         }
-        return "$title $whenText"
     }
 
     // ------------------------------------------------------------------ reminders, messages
 
     /** "Reminder: bring the passport." / "Rappels : X; Y; Z; et 2 autres." Null when there are none. */
-    fun reminders(list: List<String>, lang: BriefLang): String? {
+    fun reminders(list: List<String>, lang: Lang): String? = remindersText(list, lang)?.let { shown(it, lang) }
+
+    /** [reminders] as a phrase (the reminders are your words; in French the "; " between them takes its narrow space). */
+    fun remindersText(list: List<String>, lang: Lang): Phrase? {
         val items = list.map { BriefText.clean(it, REMINDER) }.filter { it.isNotEmpty() }
         if (items.isEmpty()) return null
-        val en = lang == BriefLang.EN
+        if (items.size == 1) return BriefStrings.reminder("text" to items[0])
         val shown = items.take(MAX_REMINDERS)
         val more = items.size - shown.size
-        val tail = if (more > 0) (if (en) "; and $more more" else "; et $more autre" + if (more > 1) "s" else "") else ""
-        val head = when {
-            items.size == 1 -> if (en) "Reminder: " else "Rappel : "
-            else -> if (en) "Reminders: " else "Rappels : "
-        }
-        return head + shown.joinToString("; ") + tail + "."
+        val joined = shown.joinToString(if (lang == Lang.FR) FrTypo.FINE + "; " else "; ")
+        return if (more > 0) BriefStrings.remindersMore(more, "list" to joined) else BriefStrings.reminders("list" to joined)
     }
 
     /**
      * "You have 5 unread messages: 3 in Signal and 2 in Cheogram." / "Tu as 5 messages non lus : 3 dans Signal et 2 dans
      * Cheogram." With one app: "You have 1 unread message in Signal." Counts and app names only, never a sender.
      */
-    fun messages(u: UnreadCount, lang: BriefLang): String {
-        val en = lang == BriefLang.EN
+    fun messages(u: UnreadCount, lang: Lang): String = shown(messagesText(u), lang)
+
+    /** [messages] as a phrase. */
+    fun messagesText(u: UnreadCount): Phrase {
         val apps = u.apps.filter { it.count > 0 }.map { it.copy(app = BriefText.clean(it.app, SENDER)) }.filter { it.app.isNotEmpty() }
-        val head = when {
-            u.total <= 0 -> return if (en) "No unread messages." else "Aucun message non lu."
-            u.total == 1 -> if (en) "You have 1 unread message" else "Tu as 1 message non lu"
-            else -> if (en) "You have ${u.total} unread messages" else "Tu as ${u.total} messages non lus"
+        return when {
+            u.total <= 0 -> BriefStrings.noUnread()
+            apps.isEmpty() -> BriefStrings.unread(u.total)
+            apps.size == 1 -> BriefStrings.unreadIn(u.total, "appName" to apps[0].app)
+            else -> BriefStrings.unreadApps(u.total, "list" to Phrase.ListOf(apps.take(MAX_APPS).map { a -> BriefStrings.inApp("n" to a.count, "appName" to a.app) }))
         }
-        val tail = when {
-            apps.isEmpty() -> ""
-            apps.size == 1 -> (if (en) " in " else " dans ") + apps[0].app
-            else -> {
-                val parts = apps.take(MAX_APPS).map { a -> "${a.count} " + (if (en) "in " else "dans ") + a.app }
-                (if (en) ": " else " : ") + parts.dropLast(1).joinToString(", ") + (if (en) " and " else " et ") + parts.last()
-            }
-        }
-        return "$head$tail."
     }
 
     /** Apps named at most in the messages line (Robot reads five). */
@@ -335,11 +356,6 @@ object BriefComposer {
 
 /** Clock times and dates as the brief says them, without the phone's locale (the same words on every phone). */
 object BriefClock {
-    private val DAYS_EN = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
-    private val DAYS_FR = listOf("lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche")
-    private val MONTHS_EN = listOf("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
-    private val MONTHS_FR = listOf("janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre")
-
     /** "9:30", "4", "noon", "midnight": an event's time, on a 12-hour clock without am or pm, as people say it. */
     fun en(t: LocalTime): String = when {
         t.hour == 0 && t.minute == 0 -> "midnight"
@@ -348,24 +364,24 @@ object BriefClock {
     }
 
     /** "7:02", "7 o'clock", "noon": what time it is. */
-    fun nowEn(t: LocalTime): String = if (t.minute == 0 && t.hour != 0 && t.hour != 12) "${h12(t)} o'clock" else en(t)
+    fun nowEn(t: LocalTime): String =
+        if (t.minute == 0 && t.hour != 0 && t.hour != 12) BriefStrings.oclock("h" to h12(t).toString()).render(Langs.EN) else en(t)
 
-    /** "7 h 02", "16 h", "midi", "minuit": Québec's 24-hour clock. */
+    /**
+     * « 7 h 02 », « 16 h », « midi », « minuit »: Québec's 24-hour clock, with no-break spaces (core Fmt.clock's); the voice
+     * is given « 7 heures 2 » (core VoiceForm).
+     */
     fun fr(t: LocalTime): String = when {
         t.hour == 0 && t.minute == 0 -> "minuit"
         t.hour == 12 && t.minute == 0 -> "midi"
-        t.minute == 0 -> "${t.hour} h"
-        else -> String.format(Locale.US, "%d h %02d", t.hour, t.minute)
+        else -> Fmt.clock(t, Lang.FR)
     }
 
-    /** "Monday October 12". */
-    fun dateEn(d: LocalDate): String = "${DAYS_EN[d.dayOfWeek.value - 1]} ${MONTHS_EN[d.monthValue - 1]} ${d.dayOfMonth}"
+    /** "Monday October 12" (core Fmt.day). */
+    fun dateEn(d: LocalDate): String = Fmt.day(d, Lang.EN)
 
     /** "lundi 12 octobre", "jeudi 1er octobre". */
-    fun dateFr(d: LocalDate): String = "${DAYS_FR[d.dayOfWeek.value - 1]} ${if (d.dayOfMonth == 1) "1er" else d.dayOfMonth} ${MONTHS_FR[d.monthValue - 1]}"
-
-    fun dayEn(d: DayOfWeek): String = DAYS_EN[d.value - 1]
-    fun dayFr(d: DayOfWeek): String = DAYS_FR[d.value - 1]
+    fun dateFr(d: LocalDate): String = Fmt.day(d, Lang.FR)
 
     private fun h12(t: LocalTime): Int = (t.hour % 12).let { if (it == 0) 12 else it }
 }
@@ -391,7 +407,7 @@ object BriefText {
 data class BriefReminder(val text: String, val day: LocalDate, val readAt: Long? = null)
 
 /**
- * "Remind me in the morning to bring the passport", "add to my brief: …" (design §2.4): a tiny list read in the brief.
+ * "Remind me in the morning to bring the passport", "add to my brief: …": a tiny list read in the brief.
  * A read item stays until the end of that day, then goes.
  */
 object BriefReminders {
@@ -447,7 +463,7 @@ object BriefReminders {
     } catch (_: Exception) { emptyList() }
 }
 
-/** While the brief speaks (design §2.3): "next", "skip", "repeat", "stop", and "suivant", "passe", "répète", "stop". */
+/** While the brief speaks: "next", "skip", "repeat", "stop", and "suivant", "passe", "répète", "stop". */
 enum class BriefControl {
     NEXT, SKIP, REPEAT, STOP;
 

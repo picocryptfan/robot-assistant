@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.Lang
 import app.heyrobot.core.output.HoldWhy
 import app.heyrobot.core.output.Keep
 import app.heyrobot.core.output.OutputDecision
@@ -74,13 +75,13 @@ class RoutineRuntimeTest {
         assertEquals(listOf(StepGo.RUN_PUBLIC, StepGo.RUN_PUBLIC, StepGo.READY, StepGo.RUN), locked.map { it.go })
         val offline = RoutinePlan.plan(r, RunOrigin.UNATTENDED, false, s, RoutineSettings(online = false))
         assertEquals(StepGo.SKIP_OFFLINE, offline[1].go)
-        assertEquals("Weather skipped: routines may not go online.", RoutinePlan.skipLine(StepGo.SKIP_OFFLINE, r.steps[1], BriefLang.EN))
-        assertEquals("Météo sautée : la carte de cette routine ne l'indiquait pas.", RoutinePlan.skipLine(StepGo.SKIP_NO_CONSENT, r.steps[1], BriefLang.FR))
-        assertNull(RoutinePlan.skipLine(StepGo.READY, r.steps[2], BriefLang.EN))
+        assertEquals("Weather skipped: routines may not go online.", RoutinePlan.skipLine(StepGo.SKIP_OFFLINE, r.steps[1], Lang.EN))
+        assertEquals(app.heyrobot.core.i18n.FrTypo.fix("Météo sautée : la carte de cette routine ne l'indiquait pas."), RoutinePlan.skipLine(StepGo.SKIP_NO_CONSENT, r.steps[1], Lang.FR))
+        assertNull(RoutinePlan.skipLine(StepGo.READY, r.steps[2], Lang.EN))
         assertTrue(RoutinePlan.runs(StepGo.RUN_PUBLIC) && !RoutinePlan.runs(StepGo.WAIT_UNLOCK))
-        assertEquals(listOf("1 thing is ready for you on the phone.", "Unlock to hear the rest."), RoutinePlan.closing(1, 2, BriefLang.EN))
-        assertEquals(listOf("2 choses t'attendent sur le téléphone."), RoutinePlan.closing(2, 0, BriefLang.FR))
-        assertEquals(emptyList<String>(), RoutinePlan.closing(0, 0, BriefLang.EN))
+        assertEquals(listOf("1 thing is ready for you on the phone.", "Unlock to hear the rest."), RoutinePlan.closing(1, 2, Lang.EN))
+        assertEquals(listOf(app.heyrobot.core.i18n.FrTypo.fix("2 choses t'attendent sur le téléphone.")), RoutinePlan.closing(2, 0, Lang.FR))
+        assertEquals(emptyList<String>(), RoutinePlan.closing(0, 0, Lang.EN))
     }
 
     @Test fun nextSkipRepeatAndStopMoveThroughTheParts() {
@@ -111,7 +112,7 @@ class RoutineRuntimeTest {
 
     @Test fun theBriefsLinesBecomeOnePartPerItem() {
         val now = at(2026, 10, 12, 7, 2)
-        val input = BriefInput(now, BriefLang.EN, reminders = listOf("bring the passport"), events = emptyList())
+        val input = BriefInput(now, Lang.EN, reminders = listOf("bring the passport"), events = emptyList())
         val locked = BriefComposer.compose(input, locked = true)
         val parts = BriefParts.of(locked.spoken)
         assertEquals(listOf(BriefItem.GREETING, BriefItem.WEATHER, null), parts.map { it.item })
@@ -319,9 +320,10 @@ class RoutineRuntimeTest {
     }
 
     @Test fun commandCodesCoverEveryRoutineCommand() {
-        val draft = RoutineDraft(Routine("r-1", "X", RoutineTrigger.Asked, listOf(RoutineStep.Brief), created = 1), BriefLang.EN)
+        val draft = RoutineDraft(Routine("r-1", "X", RoutineTrigger.Asked, listOf(RoutineStep.Brief), created = 1), Lang.EN)
         val all = listOf(RoutineCommand.BriefNow, RoutineCommand.Create(draft), RoutineCommand.Run("x"), RoutineCommand.ListAll, RoutineCommand.Delete("x"),
-            RoutineCommand.Remind("x", false))
+            RoutineCommand.Remind("x", false), RoutineCommand.RemindOn("x", "on the 20th"), RoutineCommand.RemindWhat,
+            RoutineCommand.CantCancel(timer = false, french = false))
         assertEquals(RoutineCommandCode.entries.toList(), all.map(RoutineCommandCode::of))
     }
 }

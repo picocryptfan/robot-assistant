@@ -177,6 +177,14 @@ object Cmd {
      * what it holds of memory and starts the live conversation again, so a deleted item can't come back in an answer.
      */
     const val MEMORY_CHANGED = "memory_changed"
+    /**
+     * 1.4: Robot Files changed in the main app (Delete them all, Start over, files_settings.json): :voice drops the index
+     * it holds in RAM and reads the settings again (sys/FilesVault.kt).
+     */
+    const val FILES = "files"
+    /** 1.4 F6: a filing notification's Undo, and its "File them" (extra [EXTRA_KEY]: the notification's token, never a file's id). */
+    const val FILES_UNDO = "files_undo"
+    const val FILES_FILE = "files_file"
     /** "Barge-in test" (extra [EXTRA_RUN], a core BargeRun's name): results come back in Paths.bargeTest. */
     const val BARGE_TEST = "barge_test"
     const val EXTRA_RUN = "run"
@@ -188,6 +196,8 @@ object Cmd {
     const val EXTRA_ON = "on"
     /** 0.8: Settings › Routines changed routines.json or routine_settings.json: the voice process reloads its triggers. */
     const val ROUTINES = "routines"
+    /** 1.1: Settings › Skills changed skills.json, or a backup restored it: :voice reads it again. */
+    const val SKILLS = "skills"
     /** 0.8: Settings › Headset or Car mode changed headset.json, car.json, places.json or devices.json: :voice reads them again. */
     const val HANDSFREE = "handsfree"
     /**

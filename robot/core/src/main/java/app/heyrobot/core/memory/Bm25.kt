@@ -5,7 +5,7 @@ import java.text.Normalizer
 import java.util.Locale
 import kotlin.math.ln
 
-// Pure. Word search over what Robot remembers (design §A6): BM25 with accents and case folded, French elisions and
+// Pure. Word search over what Robot remembers: BM25 with accents and case folded, French elisions and
 // English possessives cut, English and French stop words dropped, and plurals reduced ("birthdays" = "birthday",
 // "journaux" = "journal"). It finds questions that share a word with an item, names and numbers best; it misses
 // paraphrase and the other language ("la fête de ma sœur" against "sister's birthday"), which the embedding model
@@ -68,18 +68,39 @@ object MemoryText {
         return w
     }
 
-    /** The folded words of [s], apostrophes kept inside a word for [tokens] to cut. */
-    fun words(s: String): List<String> = Regex("[\\p{L}\\p{N}]+(?:'[\\p{L}\\p{N}]+)*").findAll(fold(s)).map { it.value }.toList()
+    /**
+     * Words with accents that fold onto a stop word but mean something of their own: « thé » is not "the", « maïs » is
+     * not « mais », « né » not « ne », « dé » and « dés » not « de » and « des ». Kept as search terms (folded, so « thé »
+     * is the term "the", which only an accented « thé » ever gives). Without them, a skill or note named « Thé » could
+     * never be found. "à", "où", "là", "ça", "très" and "était" stay stop words.
+     */
+    private val NOT_STOP = setOf("thé", "maïs", "né", "dé", "dés") // l10n: not text (search words compared with what you said)
 
-    /** Search terms: folded, elisions and possessives cut, stop words dropped, stemmed. Numbers stay as written. */
+    private val WORD = Regex("[\\p{L}\\p{N}]+(?:'[\\p{L}\\p{N}]+)*")
+
+    /** The same words with their accents (lower case, composed, plain apostrophes), for the stop-word check. */
+    private val WORD_ACCENTED = Regex("[\\p{L}\\p{M}\\p{N}]+(?:'[\\p{L}\\p{M}\\p{N}]+)*")
+
+    /** The folded words of [s], apostrophes kept inside a word for [tokens] to cut. */
+    fun words(s: String): List<String> = WORD.findAll(fold(s)).map { it.value }.toList()
+
+    /**
+     * Search terms: folded, elisions and possessives cut, stop words dropped, stemmed. Numbers stay as written. A stop
+     * word is one whose folded form is in [STOP], unless it is one of [NOT_STOP] as written, accents and all.
+     */
     fun tokens(s: String): List<String> {
+        val plain = Normalizer.normalize(s.replace('’', '\'').replace('ʼ', '\'').replace('‘', '\''), Normalizer.Form.NFC)
+            .lowercase(Locale.ROOT)
         val out = ArrayList<String>()
-        for (w in words(s)) {
+        for (m in WORD_ACCENTED.findAll(plain)) {
+            val w = m.value
             // "don't", "can't", "isn't": a negation, never what a note is about (and "Don" stays a name).
             if (w.endsWith("n't")) continue
-            for (part in pieces(w)) {
-                if (part.isEmpty() || part in STOP) continue
-                out += stem(part)
+            for (piece in pieces(w)) {
+                for (part in words(piece)) {
+                    if (part in STOP && piece !in NOT_STOP) continue
+                    out += stem(part)
+                }
             }
         }
         return out

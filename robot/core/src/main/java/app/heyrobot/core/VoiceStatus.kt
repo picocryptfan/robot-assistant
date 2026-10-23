@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.PhraseWire
+import app.heyrobot.core.i18n.VoiceStrings
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
@@ -38,14 +41,15 @@ enum class EngineState {
     /** May the real engine be used (else the placeholder)? */
     val usable: Boolean get() = this == IDLE || this == LOADING || this == READY
 
-    fun text(): String = when (this) {
-        MISSING -> "Not downloaded"
-        IDLE -> "Ready (loads when first used)"
-        LOADING -> "Loading"
-        READY -> "Loaded"
-        FAILED -> "Couldn't start. Robot uses the stand-in for now."
-        BROKEN -> "Turned off after it crashed twice while loading. Robot uses the stand-in."
+    fun textPhrase(): Phrase = when (this) {
+        MISSING -> VoiceStrings.engineMissing()
+        IDLE -> VoiceStrings.engineIdle()
+        LOADING -> VoiceStrings.engineLoading()
+        READY -> VoiceStrings.engineReady()
+        FAILED -> VoiceStrings.engineFailed()
+        BROKEN -> VoiceStrings.engineBroken()
     }
+
 }
 
 data class VoiceEngineStatus(val engines: Map<VoiceBundle, EngineState>, val updated: Long) {
@@ -87,8 +91,23 @@ data class VoiceBench(
     /** Resident memory of the voice process at the end (MB), or -1. */
     val rssMb: Int = -1,
 ) {
+    /**
+     * 1.1: [step] without a language yet, as the voice process wrote it (PhraseWire), so the app shows it in your language;
+     * [step] stays its English (equality and older readers).
+     */
+    var stepText: Phrase = Phrase.plain(step)
+        private set
+
+    constructor(state: BenchState, stepText: Phrase, started: Long, stt: SttBench? = null, voices: List<TtsBench> = emptyList(), rssMb: Int = -1) :
+        this(state, stepText.en(), started, stt, voices, rssMb) {
+        this.stepText = stepText
+    }
+
+    /** The same with another [step]. */
+    fun withStep(stepText: Phrase): VoiceBench = VoiceBench(state, stepText, started, stt, voices, rssMb)
+
     fun toJson(): JSONObject = JSONObject().apply {
-        put("state", state.name); put("step", step); put("started", started); put("rssMb", rssMb)
+        put("state", state.name); put("step", step); put("stepPhrase", PhraseWire.toJson(stepText)); put("started", started); put("rssMb", rssMb)
         stt?.let { put("stt", JSONObject().put("loadMs", it.loadMs).put("clipMs", it.clipMs).put("decodeMs", it.decodeMs).put("partialMs", it.partialMs).put("wordAccuracy", it.wordAccuracy)) }
         put("voices", JSONArray().apply {
             voices.forEach {
@@ -105,7 +124,7 @@ data class VoiceBench(
             val v = o.optJSONArray("voices") ?: JSONArray()
             VoiceBench(
                 state = enumOr(o.optString("state"), BenchState.FAILED),
-                step = o.optString("step"),
+                stepText = PhraseWire.fromJson(o.optJSONObject("stepPhrase")) ?: Phrase.plain(o.optString("step")),
                 started = o.optLong("started"),
                 stt = s?.let { SttBench(it.getLong("loadMs"), it.getLong("clipMs"), it.getLong("decodeMs"), it.getLong("partialMs"), it.getInt("wordAccuracy")) },
                 voices = (0 until v.length()).map { i ->
@@ -125,24 +144,30 @@ object VoiceBenchLogic {
 
     fun kokoroTooSlow(k: TtsBench): Boolean = !(k.rtf <= MAX_KOKORO_RTF) || k.firstChunkMs > MAX_FIRST_CHUNK_MS
 
+    /** [x] with [d] decimals as 1.0 writes it ("0.50"), as its whole part and its decimals, for either language's mark. */
+    private fun dec(name: String, x: Double, d: Int): List<Pair<String, String>> {
+        val s = String.format(Locale.US, "%.${d}f", x)
+        return listOf(name to s.substringBefore('.'), (name + "D") to s.substringAfter('.', ""))
+    }
+
     /** Plain-language lines for the settings screen. */
-    fun lines(b: VoiceBench): List<String> {
-        val out = mutableListOf<String>()
+    fun linesText(b: VoiceBench): List<Phrase> {
+        val out = mutableListOf<Phrase>()
         b.stt?.let {
-            out += String.format(Locale.US, "Speech recognition: %.1f s of speech written down in %.2f s (real-time factor %.2f), %d%% of the words right. Loading took %.1f s.",
-                it.clipMs / 1000.0, it.decodeMs / 1000.0, it.rtf, it.wordAccuracy, it.loadMs / 1000.0)
+            out += VoiceStrings.benchStt(*(dec("clip", it.clipMs / 1000.0, 1) + dec("decode", it.decodeMs / 1000.0, 2) + dec("rtf", it.rtf, 2) +
+                listOf("words" to it.wordAccuracy.toString()) + dec("load", it.loadMs / 1000.0, 1)).toTypedArray())
         }
         for (v in b.voices) {
-            out += String.format(Locale.US, "%s: first words after %.2f s (a whole sentence: %.2f s), real-time factor %.2f. Loading took %.1f s.",
-                v.voice.title, v.firstChunkMs / 1000.0, v.sentenceFirstMs / 1000.0, v.rtf, v.loadMs / 1000.0)
+            out += VoiceStrings.benchVoice(*(listOf<Pair<String, Any?>>("voice" to v.voice.titleText) + dec("first", v.firstChunkMs / 1000.0, 2) +
+                dec("sentence", v.sentenceFirstMs / 1000.0, 2) + dec("rtf", v.rtf, 2) + dec("load", v.loadMs / 1000.0, 1)).toTypedArray())
         }
         b.voices.firstOrNull { it.voice.bundle == VoiceBundle.KOKORO }?.let { k ->
-            out += if (kokoroTooSlow(k)) "Kokoro is slow on this phone: pick Kitten for quicker replies."
-            else "Kokoro is fast enough on this phone."
+            out += if (kokoroTooSlow(k)) VoiceStrings.kokoroSlow() else VoiceStrings.kokoroFast()
         }
-        if (b.rssMb > 0) out += "Memory used by the voice process: ${b.rssMb} MB."
+        if (b.rssMb > 0) out += VoiceStrings.benchMemory("mb" to b.rssMb.toString())
         return out
     }
+
 }
 
 /** Word accuracy (1 − word error rate, floored at 0) for the benchmark clip; case and punctuation do not count. */

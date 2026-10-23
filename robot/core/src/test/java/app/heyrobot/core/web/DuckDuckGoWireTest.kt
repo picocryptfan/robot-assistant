@@ -68,7 +68,11 @@ class DuckDuckGoWireTest {
         assertEquals(0.0, WebPrices.dollars(SearchService.DDG_INSTANT), 0.0)
         // No page is read, and the consent and the first search's card say only where the words go.
         assertEquals(0, WebGate.pagesFromPhone(s))
-        assertEquals("When you ask, Robot sends your search words to DuckDuckGo. Nothing else leaves the phone.", WebSetup.consent(SearchService.DDG_INSTANT))
+        // Encyclopedia lookups (on by default) send a who, what or where question to Wikipedia too: the consent says so.
+        assertEquals("When you ask, Robot sends your search words to DuckDuckGo. A who, what or where question also goes to Wikipedia. " +
+            "Nothing else leaves the phone.", WebSetup.consent(SearchService.DDG_INSTANT, s))
+        assertEquals("When you ask, Robot sends your search words to DuckDuckGo. Nothing else leaves the phone.",
+            WebSetup.consent(SearchService.DDG_INSTANT, s.copy(encyclopedia = false)))
         assertEquals("Robot would send these words to DuckDuckGo.", WebConsent.note(SearchService.DDG_INSTANT, WebGate.pagesFromPhone(s)))
         // The card: "Results from DuckDuckGo", and Wikipedia's licence for its text.
         val found = results(DuckDuckGoWire.parse(200, sample("duckduckgo_abstract.json"), "Canadiens"))

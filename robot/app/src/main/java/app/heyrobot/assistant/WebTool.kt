@@ -20,7 +20,9 @@ import app.heyrobot.core.SecretRead
 import app.heyrobot.core.TokenEstimate
 import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
+import app.heyrobot.core.i18n.ToolStrings
 import app.heyrobot.core.toPromptTurns
+import app.heyrobot.core.i18n.Phrase
 import app.heyrobot.core.web.AnswerCard
 import app.heyrobot.core.web.Citations
 import app.heyrobot.core.web.PageSkip
@@ -78,7 +80,7 @@ class WebTool(
     private val step: (WebStep, String) -> Unit,
 ) {
     fun prepare(a: Action.WebSearch): Prepared {
-        if (!Assistant.granted(ctx, Manifest.permission.INTERNET)) return Prepared.Refused(ActionStatus.FAILED, WebFail.NO_NETWORK_PERMISSION.text(null) + ".")
+        if (!Assistant.granted(ctx, Manifest.permission.INTERNET)) return Prepared.Refused(ActionStatus.FAILED, WebFail.NO_NETWORK_PERMISSION.sentence(null))
         return WebGate.prepare(a, WebStore.load(ctx), WebAnswers.load(ctx), context(), WebCounts.today(ctx), settings.weatherHome?.name,
             question = said?.takeIf { it.isNotBlank() } ?: a.query)
     }
@@ -117,7 +119,7 @@ class WebTool(
                     RLog.i("web_pages", "ok" to outcome.pagesRead, "skipped" to skips.size, "ms" to (now - searched), "why" to (skips.firstOrNull() ?: PageSkip.FAILED).code)
                 }
                 // 1.0 (network-1): everyone the words went to (core WebAlso), as the answer card and History say too.
-                Executed(ActionStatus.DONE, "Sent to ${WebAlso.to(service, outcome.also)}: “${outcome.query}”", web = outcome)
+                Executed(ActionStatus.DONE, ToolStrings.sentTo("who" to WebAlso.to(service, outcome.also), "query" to outcome.query), web = outcome)
             }
             is WebOutcome.Failed -> {
                 // Asked, and answered with a failure: it counts toward today's cap (a key's credit may have gone).
@@ -133,7 +135,7 @@ class WebTool(
             RLog.i("web_failed", "why" to why.id, "svc" to (service?.code ?: 0))
         }
         val o = WebOutcome.Failed(service, why)
-        return Executed(ActionStatus.FAILED, o.text, web = o)
+        return Executed(ActionStatus.FAILED, o.sentence, web = o)
     }
 
     /** A paid search's estimated price joins the helpers' one daily budget (0.6.0 helpers_spend.json), under the service's key id. */
@@ -157,14 +159,17 @@ class WebTool(
 object WebReply {
     sealed class Result {
         /** [text] with its marks renumbered; [complete] false when the answer was cut at its time. */
-        class Answered(val text: String, val complete: Boolean, val card: AnswerCard, val saved: String) : Result()
+        class Answered(val text: String, val complete: Boolean, val card: AnswerCard, val saved: Phrase) : Result()
         object Cancelled : Result()
         object Failed : Result()
     }
 
     /** A web answer's whole time on the model once it starts (a CPU model writes 350 tokens in about a minute). */
     private const val ANSWER_MS = 180_000L
-    const val NO_ANSWER = "Robot's model couldn't answer from the web results. Please try again."
+    val NO_ANSWER: String get() = noAnswer.en()
+
+    /** [NO_ANSWER] in words without a language yet (1.1: Robot says it in the reply language). */
+    val noAnswer: app.heyrobot.core.i18n.Phrase get() = ToolStrings.noWebAnswer()
 
     suspend fun answer(ctx: Context, question: String, history: List<ChatTurn>, found: WebOutcome.Found, spoken: Boolean, showCost: Boolean,
         onRestart: () -> Unit, onText: (String) -> Unit): Result {
@@ -201,6 +206,6 @@ object WebReply {
         val out = TokenEstimate.text(text)
         VoiceLog.add(VoiceEvent.WEB_ANSWER, one.inputTokens / 10, out, first.coerceAtLeast(0).toInt())
         RLog.i("web_answer", "in" to one.inputTokens, "out" to out, "first_ms" to first)
-        return Result.Answered(cited.text, complete, card, card.savedLine(web.keepSources))
+        return Result.Answered(cited.text, complete, card, card.savedText(web.keepSources))
     }
 }

@@ -378,14 +378,42 @@ object AppPages {
     const val EXTRA_TRANSCRIPT = "robot_transcript"
     /** 0.5.0, phase 5.6: the line a summary's [14:03] link points at, in [EXTRA_TRANSCRIPT]. */
     const val EXTRA_LINE = "robot_transcript_line"
-    /** Settings › Model, the Model tab (0.4.3: from a chat-only model's answer to an action). */
+    /** Settings › Model (0.4.3: from a chat-only model's answer to an action; a tab until 1.4). */
     const val MODEL = "model"
     /** 0.8: Settings › Routines (a routine's notification when Robot isn't the assistant). */
     const val ROUTINES = "routines"
     /** Settings › Updates (the updater's notifications). */
     const val UPDATES = "updates"
+    /** 1.1: Settings › Phone lock (its "couldn't start" notice, the cover's Change locks). */
+    const val PHONE_LOCK = "phone_lock"
+    /** 1.1: Settings › Back up and restore (the monthly reminder's notice). */
+    const val BACKUP = "backup"
     /** 0.7.0: the Settings tab, from the panel's Settings button. */
     const val SETTINGS = "settings"
+    /** 1.4: the Files tab (a filing notification's tap: your Inbox is at its top). */
+    const val FILES = "files"
+    /**
+     * 1.4 F12: a tax pack's or an expense report's page in the Files tab ("files_pack:tax:2026"), from the panel's card for
+     * "make my 2026 tax pack". It only opens the page: exporting is a tap there.
+     */
+    const val FILES_PACK = "files_pack"
+
+    /** [r]'s pack ("tax" or "expenses") and year when it is a [FILES_PACK] route, else null. */
+    fun filesPack(r: String): Pair<String, Int>? {
+        val p = r.split(':')
+        if (p.size != 3 || p[0] != FILES_PACK || p[1] !in PACKS) return null
+        val year = p[2].toIntOrNull()?.takeIf { it in 1900..2200 } ?: return null
+        return p[1] to year
+    }
+
+    /** The packs a route names (core files PackKind's names, lower case). */
+    private val PACKS = setOf("tax", "expenses") // l10n: not text (route parts)
+
+    /** The route for the pack [kind] ("tax", "expenses") for [year]. */
+    fun packRoute(kind: String, year: Int): String = "$FILES_PACK:$kind:$year" // l10n: not text (a route)
+
+    /** 1.4: the "Robot Files" launcher entry (an activity-alias of MainActivity): the Files tab, Back leaving the app. */
+    const val FILES_ICON = "files_icon"
     /** 0.7: Settings › Memory (a memory card's "Open Memory" in the panel). */
     const val MEMORY = "memory"
     /** 0.7: Settings › About › Send feedback, from a feedback phrase in the panel, with its kind ([EXTRA_FEEDBACK_KIND]). */
@@ -393,6 +421,8 @@ object AppPages {
     const val EXTRA_FEEDBACK_KIND = "robot_feedback_kind"
     /** The Robot Notes launcher entry (an activity-alias of MainActivity). */
     const val NOTES_ALIAS = "app.heyrobot.ui.NotesLauncher"
+    /** 1.4: the Robot Files launcher entry (an activity-alias of MainActivity), as Robot Notes'. */
+    const val FILES_ALIAS = "app.heyrobot.ui.FilesLauncher"
 }
 
 object NotesFiles {

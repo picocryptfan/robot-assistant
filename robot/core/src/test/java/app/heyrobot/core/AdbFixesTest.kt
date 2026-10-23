@@ -32,6 +32,29 @@ class AdbFixesTest {
         assertEquals(Decision.OTHER_RECOGNIZER, d(role = true, perm = false, cur = other))
     }
 
+    /**
+     * 1.2 (every-android-phone, Step 6): what keeps Robot the assistant at boot, as [RecognizerRepair.decide] reads it: a
+     * stock phone's own installed recognizer ([RecognizerRepair.Kept.OTHER]) means the fix isn't asked for.
+     */
+    @Test fun keptReadsTheRecognizerAsTheRepairDoes() {
+        val kept = { cur: String?, installed: Boolean -> RecognizerRepair.kept(cur, robot, installed) }
+        assertEquals(RecognizerRepair.Kept.ROBOT, kept(robot, true))
+        assertEquals(RecognizerRepair.Kept.ROBOT, kept("ai.robot_app/app.heyrobot.assistant.RobotRecognitionService", false))
+        assertEquals(RecognizerRepair.Kept.OTHER, kept(other, true))
+        for (cur in listOf<String?>(null, "", "  ")) assertEquals(RecognizerRepair.Kept.NONE, kept(cur, true))
+        // Set to something no longer installed: Android clears it at boot, so the fix is still asked for.
+        assertEquals(RecognizerRepair.Kept.NONE, kept(other, false))
+        // The same split as the repair's: OTHER is exactly the case it leaves alone, NONE the one it writes.
+        for (cur in listOf<String?>(null, "", other, robot)) for (installed in listOf(true, false)) {
+            val d = d(role = true, perm = true, cur = cur, installed = installed)
+            assertEquals("$cur $installed", when (d) {
+                Decision.ALREADY_ROBOT -> RecognizerRepair.Kept.ROBOT
+                Decision.OTHER_RECOGNIZER -> RecognizerRepair.Kept.OTHER
+                else -> RecognizerRepair.Kept.NONE
+            }, kept(cur, installed))
+        }
+    }
+
     @Test fun alreadyRobotsIsLeftAsItIs() {
         for (role in listOf(true, false)) for (perm in listOf(true, false)) {
             assertEquals(Decision.ALREADY_ROBOT, d(role, perm, robot))
@@ -84,5 +107,32 @@ class AdbFixesTest {
         assertEquals(AdbFixState.NEEDS_NEWER, AdbFixes.state(grant, applied = true, versionCode = 22))
         assertEquals("Needs Robot 0.2.3+", AdbFixes.label(grant, AdbFixState.NEEDS_NEWER))
         assertEquals("Done", AdbFixes.label(grant, AdbFixState.APPLIED))
+    }
+
+    /**
+     * 1.2 (every-android-phone, Step 6): another installed recognizer set (a stock phone's own) makes the recognizer fix "Not
+     * needed", never "Not done"; nothing else changes, and unset, unreadable or uninstalled (NONE, as on GrapheneOS) reads as before.
+     */
+    @Test fun theRecognizerFixIsNotNeededOverAnotherRecognizer() {
+        val rec = AdbFixes.ALL.single { it.check == AdbCheck.RECOGNIZER_IS_ROBOT }
+        val grant = AdbFixes.ALL.single { it.check == AdbCheck.SECURE_SETTINGS_GRANTED }
+        val other = RecognizerRepair.Kept.OTHER
+        assertEquals(AdbFixState.NOT_NEEDED, AdbFixes.state(rec, applied = false, versionCode = 23, kept = other))
+        assertEquals("Not needed", AdbFixes.label(rec, AdbFixState.NOT_NEEDED))
+        assertTrue(AdbFixes.notNeeded(rec, other))
+        // GrapheneOS (none set), a recognizer uninstalled or unreadable: as before.
+        assertEquals(AdbFixState.NOT_APPLIED, AdbFixes.state(rec, applied = false, versionCode = 23, kept = RecognizerRepair.Kept.NONE))
+        assertEquals(AdbFixState.NOT_APPLIED, AdbFixes.state(rec, applied = false, versionCode = 23))
+        assertEquals(AdbFixState.APPLIED, AdbFixes.state(rec, applied = true, versionCode = 23, kept = RecognizerRepair.Kept.ROBOT))
+        // The grant replaces nothing (Robot's repair leaves another recognizer alone): its state never changes with it.
+        for (k in RecognizerRepair.Kept.entries) {
+            assertFalse(AdbFixes.notNeeded(grant, k))
+            assertEquals(AdbFixState.NOT_APPLIED, AdbFixes.state(grant, applied = false, versionCode = 23, kept = k))
+            assertEquals(AdbFixState.NEEDS_NEWER, AdbFixes.state(grant, applied = false, versionCode = 22, kept = k))
+        }
+        // The page's rows read as Assistant setup's do: the check said, with the decision the repair makes.
+        assertEquals(RecognizerRepair.Kept.OTHER, RecognizerRepair.kept("com.example.speech/.Recognizer", AdbFixes.RECOGNIZER, currentInstalled = true))
+        assertEquals(RecognizerRepair.Decision.OTHER_RECOGNIZER,
+            RecognizerRepair.decide(roleHeld = true, canWrite = true, current = "com.example.speech/.Recognizer", robot = AdbFixes.RECOGNIZER, currentInstalled = true))
     }
 }

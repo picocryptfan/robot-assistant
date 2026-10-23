@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.HelperStrings
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
@@ -11,8 +12,9 @@ import java.util.Locale
 // per-turn clock), then the question.
 //
 // A conversation becomes personal from the first turn that carries screen text, a picture, what a read tool found
-// (contacts, calendar, notes, the weather and so where you are, your phone's status), Claude's answer read off the Claude
-// app, or an "ask Jarvis about my screen" question.
+// (contacts, calendar, notes, the weather and so where you are, your phone's status), what Robot Files answered (a total,
+// a due date, a drawer's or a file's name), Claude's answer read off the Claude app, or an "ask Jarvis about my screen"
+// question.
 // Robot checking with a helper on its own sends only the question from then on. A helper joining a personal conversation
 // sees what came before only after a tap on Include ("Start fresh" sends none of it). Never sent: audio, the wake-word
 // stream, the contacts list, Robot's People (names learned from Cheogram notifications included), the calendar,
@@ -87,7 +89,11 @@ object HelperPrompt {
  * Exactly what checking with a helper sends, fixed when Robot decides to (an offer's tap or yes sends this and nothing
  * newer). [sends]: the card's list. [personal]: what in it needs a tap (a spoken yes can't send it).
  */
-class HelperPayload(val question: String, val blocks: List<HelperBlock>, val sends: List<String>, val personal: Set<Personal>, val preview: String? = null)
+class HelperPayload(val question: String, val blocks: List<HelperBlock>, val sendsText: List<app.heyrobot.core.i18n.Phrase>, val personal: Set<Personal>,
+    val preview: String? = null) {
+    /** What goes, in English; [sendsText] the same as words without a language yet (1.1: the card shows them in the turn's). */
+    val sends: List<String> get() = sendsText.map { it.en() }
+}
 
 object HelperContext {
     /** Turns of plain conversation an escalation may carry (with the user's question), when nothing in it is personal. */
@@ -156,10 +162,11 @@ object HelperContext {
         val earlier = (personal.isEmpty() || includePersonal) && transcript(recent(history)) != null
         val screen = shared.screenText?.let(ScreenText::sanitize)?.takeIf { it.isNotBlank() }
         val sends = buildList {
-            add("Your question")
-            if (earlier) add("The last turns of this conversation")
-            if (screen != null) add("Your screen's text")
-            if (shared.image != null) add(if (attachment == Attachment.PHOTO) "The photo" else "A screenshot")
+            // The context line goes first (HelperPrompt.context): today's date, and your country when Robot knows it.
+            add(if (HelperPrompt.country(region).isNotBlank()) HelperStrings.sendsQuestion() else HelperStrings.sendsQuestionDate())
+            if (earlier) add(HelperStrings.sendsEarlier())
+            if (screen != null) add(HelperStrings.sendsScreen())
+            if (shared.image != null) add(if (attachment == Attachment.PHOTO) HelperStrings.sendsPhoto() else HelperStrings.sendsScreenshot())
         }
         val sharing = buildSet {
             if (screen != null || (shared.image != null && attachment != Attachment.PHOTO)) add(Personal.SCREEN)
@@ -189,7 +196,7 @@ object HelperContext {
         if (t.error || t.text.isBlank()) return@mapNotNull null
         when (t.role) {
             // 1.0: words said while the phone was locked (ChatTurn.locked) may be anyone's, never "User".
-            TurnRole.USER -> (if (t.locked) "Said while the phone was locked: " else "User: ") + oneLine(t.text) + when (t.attachment) {
+            TurnRole.USER -> (if (t.locked) "Said while the phone was locked: " else "User: ") + oneLine(t.text) + when (t.attachment) { // l10n: not text (helper request)
                 Attachment.PHOTO -> " [about a photo]"
                 Attachment.SCREEN -> " [about their screen]"
                 Attachment.NONE -> ""
@@ -200,9 +207,10 @@ object HelperContext {
 
     /**
      * The personal content in a conversation: a screen or photo question (asked of Robot or of a helper), what a read tool
-     * found, Claude's answer read off the Claude app, what Robot remembers (given to the model, pinned or found, or saved).
-     * [attachment]: the question being asked now. Any of it makes the whole conversation personal from that turn on,
-     * including replies that only repeat it.
+     * found, Claude's answer read off the Claude app, what Robot remembers (given to the model, pinned or found, or saved),
+     * and what Robot Files' router answered without a tool (ChatTurn.files: "You spent $312.40 on gas", a due date, a
+     * drawer's name), which only a tap sends (HelperTrust). [attachment]: the question being asked now. Any of it makes the
+     * whole conversation personal from that turn on, including replies that only repeat it.
      */
     fun personal(turns: List<ChatTurn>, attachment: Attachment = Attachment.NONE): Set<Personal> = buildSet {
         Personal.of(attachment)?.let(::add)
@@ -214,6 +222,7 @@ object HelperContext {
             // 1.0.2: something the model's remember card saved (the router's "remember that …" marks its reply with the id).
             if (t.actions.any { it.tool == ToolName.REMEMBER && it.status == ActionStatus.DONE }) add(Personal.MEMORY)
             if (t.messages) add(Personal.MESSAGES)
+            if (t.files) add(Personal.FILES)
         }
     }
 

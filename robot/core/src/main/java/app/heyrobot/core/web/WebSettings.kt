@@ -3,6 +3,11 @@ package app.heyrobot.core.web
 
 import app.heyrobot.core.AppId
 import app.heyrobot.core.LogCode
+import app.heyrobot.core.i18n.Arg
+import app.heyrobot.core.i18n.Msg
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.UiStrings
+import app.heyrobot.core.i18n.WebStrings
 import org.json.JSONObject
 
 // Pure. Settings › Web search as data (design A5), the first search's tap-only card (A4.2, the 0.4.0 Nearby pattern),
@@ -10,24 +15,27 @@ import org.json.JSONObject
 // of their own, files/robot/web.json (the main app writes it, the voice process reads it; settings.json and its schema
 // don't change), read with WebSettings.fromJson: no file, or an unreadable one, is Off. VoiceEvent has the ids below.
 
-/** Which service searches for you: the one set-up picked. [code] is what the voice log stores. */
-enum class SearchService(val code: Int, val title: String, val label: String, val provider: SearchProvider, val keyId: String?, val setupLine: String) {
-    SEARXNG_HOME(1, "Your own SearXNG", "your SearXNG", SearchProvider.SEARXNG, null,
-        "Your server searches for you. Nothing goes to a company from Robot."),
-    KAGI(2, "Kagi", "Kagi", SearchProvider.KAGI, "search_kagi",
-        "Kagi doesn't store API searches against your account. \$12 per 1,000."),
-    BRAVE(3, "Brave Search API", "Brave", SearchProvider.BRAVE, "search_brave",
-        "Brave keeps your searches for up to 90 days, tied to your API account. \$5 per 1,000 searches; Brave gives \$5 a month (about 1,000 searches). Needs a card on file."),
-    MOJEEK(4, "Mojeek", "Mojeek", SearchProvider.MOJEEK, "search_mojeek",
-        "Mojeek's own index. About £2 per 1,000; sign-up through Mojeek's sales contact."),
-    SEARXNG_PUBLIC(5, "A public SearXNG", "a public SearXNG", SearchProvider.SEARXNG, null,
-        "Run by someone you don't know: they can see and keep your searches. Many public servers refuse apps."),
-    WIKIPEDIA_ONLY(6, "Wikipedia only", "Wikipedia", SearchProvider.WIKIPEDIA, null,
-        "No account. Answers facts from Wikipedia; no general web search."),
+/**
+ * Which service searches for you: the one set-up picked. [code] is what the voice log stores. 1.1: its words are core's catalog
+ * (WebStrings): [titleText] in a list, [labelText] inside a sentence ("to your SearXNG"), [capText] at a sentence's start;
+ * [title] and [label] are their English, for the voice log and the callers still on English.
+ */
+enum class SearchService(val code: Int, val titleText: Phrase, val labelText: Phrase, val capText: Phrase, val provider: SearchProvider, val keyId: String?) {
+    SEARXNG_HOME(1, WebStrings.homeTitle(), WebStrings.homeLabel(), WebStrings.homeCap(), SearchProvider.SEARXNG, null),
+    KAGI(2, Phrase.plain("Kagi"), Phrase.plain("Kagi"), Phrase.plain("Kagi"), SearchProvider.KAGI, "search_kagi"),
+    BRAVE(3, WebStrings.braveTitle(), Phrase.plain("Brave"), Phrase.plain("Brave"), SearchProvider.BRAVE, "search_brave"),
+    MOJEEK(4, Phrase.plain("Mojeek"), Phrase.plain("Mojeek"), Phrase.plain("Mojeek"), SearchProvider.MOJEEK, "search_mojeek"),
+    SEARXNG_PUBLIC(5, WebStrings.publicTitle(), WebStrings.publicLabel(), WebStrings.publicTitle(), SearchProvider.SEARXNG, null),
+    WIKIPEDIA_ONLY(6, WebStrings.wikipediaOnly(), WebStrings.wikipedia(), WebStrings.wikipedia(), SearchProvider.WIKIPEDIA, null),
     /** 1.0: DuckDuckGo's official, free, keyless Instant Answer API: short answers only, never a list of results (DuckDuckGoWire). */
-    DDG_INSTANT(7, "DuckDuckGo Instant Answers", "DuckDuckGo", SearchProvider.DUCKDUCKGO, null,
-        "No account. DuckDuckGo's short answers, often from Wikipedia; not a list of results."),
+    DDG_INSTANT(7, WebStrings.ddgTitle(), Phrase.plain("DuckDuckGo"), Phrase.plain("DuckDuckGo"), SearchProvider.DUCKDUCKGO, null),
     ;
+
+    /** [titleText] in English: the voice log's name ("Your own SearXNG"). */
+    val title: String get() = titleText.en()
+
+    /** [labelText] in English ("your SearXNG"). */
+    val label: String get() = labelText.en()
 
     /** Needs an API key (kept by 0.6.0's HelperKeys under [keyId], read only in the voice process). */
     val needsKey: Boolean get() = keyId != null
@@ -36,12 +44,15 @@ enum class SearchService(val code: Int, val title: String, val label: String, va
     val needsAddress: Boolean get() = this == SEARXNG_HOME || this == SEARXNG_PUBLIC
 
     /** The card's cost line for one search ([ServiceTerms]): Brave 0.5¢, Kagi 1.2¢, Mojeek 0.2p, the rest free. */
-    val cost: String get() = when (this) {
-        BRAVE -> "≈ 0.5¢"
-        KAGI -> "≈ 1.2¢"
-        MOJEEK -> "≈ 0.2p"
-        else -> "≈ free"
+    val costText: Phrase get() = when (this) {
+        BRAVE -> WebStrings.costCents("n" to Arg.Num(0.5))
+        KAGI -> WebStrings.costCents("n" to Arg.Num(1.2))
+        MOJEEK -> WebStrings.costPence("n" to Arg.Num(0.2))
+        else -> WebStrings.costFree()
     }
+
+    /** [costText] in English ("≈ 0.5¢"). */
+    val cost: String get() = costText.en()
 
     /** Can be chosen now: Wikipedia only with a published contact for Wikimedia's User-Agent rule ([WebUserAgent.CONTACT]). */
     fun available(contact: String? = WebUserAgent.CONTACT): Boolean = this != WIKIPEDIA_ONLY || WikipediaWire.allowed(contact)
@@ -68,39 +79,87 @@ object WebSetup {
     fun suggested(hasHomeServer: Boolean): SearchService = order(hasHomeServer).first()
 
     /** The line under the list (1.0: they open in your browser instead, Settings › Web search's other list). */
-    const val NOT_OFFERED = "Google, Bing, Startpage and DuckDuckGo have no full search API that Robot can use: they open in your browser instead."
+    val notOffered: Phrase get() = WebStrings.notOffered()
 
-    /** The consent screen, shown once at set-up and then in Settings. */
-    fun consent(service: SearchService): String =
-        if (!readsPages(service)) "When you ask, Robot sends your search words to ${service.label}. Nothing else leaves the phone."
-        else "When you ask, Robot sends your search words to ${service.label}. To answer, it may open up to 3 of the result pages from " +
-            "this phone, like a browser without cookies: those sites see your IP address. Nothing else leaves the phone."
+    /** [notOffered] in English. */
+    val NOT_OFFERED: String get() = notOffered.en()
+
+    /**
+     * The consent screen, shown once at set-up and then in Settings, as PRIVACY.md says it: who gets your words once [service]
+     * is on with [s] (the service; Wikipedia for a who, what or where question while Encyclopedia lookups are on, unless it
+     * is the service; Open Library for a question about books while Book lookups are: WebAlso's rules), and how many result
+     * pages this phone may open for one answer (WebGate.pagesFromPhone: Settings' number, none for DuckDuckGo's short
+     * answers or pages read through the service).
+     */
+    fun consentText(service: SearchService, s: WebSettings): Phrase {
+        val w = s.copy(service = service)
+        val pages = WebGate.pagesFromPhone(w)
+        return Phrase.Join(listOfNotNull(
+            WebStrings.consentSends("service" to service.labelText),
+            WebStrings.consentWikipedia().takeIf { service != SearchService.WIKIPEDIA_ONLY && w.wikipedia() },
+            WebStrings.consentBooks().takeIf { w.books },
+            if (pages > 0) WebStrings.consentPages(pages) else null,
+            WebStrings.consentNothingElse(),
+        ))
+    }
+
+    /** [consentText] in English. */
+    fun consent(service: SearchService, s: WebSettings): String = consentText(service, s).en()
 }
 
 /** "Ask before searching" (A5). The level in Settings › Actions and the Safety cards still apply on top. */
-enum class WebAsk(val title: String) {
+enum class WebAsk(val label: Msg) {
     /** The default: a tap-only card ([WebConsent]) until "Allow always" or "No" with "Don't ask again". */
-    FIRST_TIME("Ask the first time"),
+    FIRST_TIME(WebStrings.askFirstTime),
     /** A card for every search. */
-    ALWAYS("Always ask"),
+    ALWAYS(WebStrings.askAlways),
     /** No consent card (what "Allow always" sets). */
-    NEVER("Never ask"),
+    NEVER(WebStrings.askNever),
+    ;
+
+    /** [label] in English. */
+    val title: String get() = label().en()
 }
 
 /** "Read result pages". */
-enum class ReadPages(val title: String) { WHEN_NEEDED("When needed"), ALWAYS("Always"), NEVER("Never (snippets only)") }
+enum class ReadPages(val label: Msg) {
+    WHEN_NEEDED(WebStrings.readWhenNeeded), ALWAYS(WebStrings.readAlways), NEVER(WebStrings.readNever);
+
+    /** [label] in English. */
+    val title: String get() = label().en()
+}
 
 /** "Read pages through": this phone, or the search service when it can (Brave's LLM context, Kagi's extract: costs more, the sites don't see you). */
-enum class ReadThrough(val title: String) { PHONE("This phone"), SERVICE("The search service when it can") }
+enum class ReadThrough(val label: Msg) {
+    PHONE(WebStrings.throughPhone), SERVICE(WebStrings.throughService);
+
+    /** [label] in English. */
+    val title: String get() = label().en()
+}
 
 /** "Safe search", passed to the service. */
-enum class SafeSearch(val title: String) { OFF("Off"), MODERATE("Moderate"), STRICT("Strict") }
+enum class SafeSearch(val label: Msg) {
+    OFF(WebStrings.safeOff), MODERATE(WebStrings.safeModerate), STRICT(WebStrings.safeStrict);
+
+    /** [label] in English. */
+    val title: String get() = label().en()
+}
 
 /** "Keep sources in history". */
-enum class KeepSources(val title: String) { DOMAINS("Domains only"), LINKS("Full links"), NONE("None") }
+enum class KeepSources(val label: Msg) {
+    DOMAINS(WebStrings.keepDomains), LINKS(WebStrings.keepLinks), NONE(WebStrings.keepNone);
+
+    /** [label] in English. */
+    val title: String get() = label().en()
+}
 
 /** "Current information": who answers news-like questions first. */
-enum class CurrentInfo(val title: String) { ROBOT_FIRST("Robot searches first"), HELPER_FIRST("Ask a helper first") }
+enum class CurrentInfo(val label: Msg) {
+    ROBOT_FIRST(WebStrings.robotFirst), HELPER_FIRST(WebStrings.helperFirst);
+
+    /** [label] in English. */
+    val title: String get() = label().en()
+}
 
 /**
  * Settings › Web search, every behaviour a switch with its default (design A5). Off until set up: [on] is false and
@@ -261,28 +320,44 @@ data class WebConsentAnswer(val ask: WebAsk, val off: Boolean, val at: Long) {
     }
 }
 
-/** The card a search shows before anything leaves the phone, or none. */
+/**
+ * The card a search shows before anything leaves the phone, or none. 1.1: its words are phrases ([titleText], [noteText],
+ * [buttonTexts], [rememberText]); [title], [note], [buttons] and [remember] are their English (the gate's Prepared holds
+ * English words until the turn's cards take phrases).
+ */
 data class WebConsentCard(
     /** "Search the web for “…”". */
-    val title: String,
+    val titleText: Phrase,
     /** Exactly what would leave the phone, and to whom. */
-    val note: String,
+    val noteText: Phrase,
     /** The buttons, in order. */
-    val buttons: List<String>,
+    val buttonTexts: List<Phrase>,
     /** The tick box ("Don't ask again"), when the answer can be kept. */
-    val remember: String?,
+    val rememberText: Phrase?,
     /** Answered by a tap only (AskWhy.ONLINE's CardAnswer.TAP_ONLINE words): a spoken yes can't. */
     val tapOnly: Boolean,
-)
+) {
+    val title: String get() = titleText.en()
+    val note: String get() = noteText.en()
+    val buttons: List<String> get() = buttonTexts.map { it.en() }
+    val remember: String? get() = rememberText?.en()
+}
 
 /** "Ask before searching" made concrete: whether this search shows a card first, and which. */
 object WebConsent {
-    const val ALLOW_ALWAYS = "Allow always"
-    const val JUST_THIS_TIME = "Just this time"
-    const val NO = "No"
-    const val DONT_ASK = "Don't ask again"
-    const val SEARCH = "Search"
-    const val CANCEL = "Cancel"
+    // The buttons' words, and their English (a Choice's label is English until the turn's cards take phrases).
+    val allowAlways: Phrase get() = UiStrings.allowAlways()
+    val justThisTime: Phrase get() = WebStrings.justThisTime()
+    val no: Phrase get() = WebStrings.no()
+    val dontAsk: Phrase get() = WebStrings.dontAsk()
+    val search: Phrase get() = WebStrings.search()
+    val cancel: Phrase get() = UiStrings.cancel()
+    val ALLOW_ALWAYS: String get() = allowAlways.en()
+    val JUST_THIS_TIME: String get() = justThisTime.en()
+    val NO: String get() = no.en()
+    val DONT_ASK: String get() = dontAsk.en()
+    val SEARCH: String get() = search.en()
+    val CANCEL: String get() = cancel.en()
 
     /** Ask before searching now: Settings' choice, or the card's lasting answer when that is newer. */
     fun ask(settings: WebSettings, answer: WebConsentAnswer?): WebAsk =
@@ -296,9 +371,11 @@ object WebConsent {
      * The first-use card's line (A4.2): the query, the service and anyone else asked ([also]: WebAlso, 1.0), and that pages
      * may be opened from this phone ([pages]).
      */
-    fun note(service: SearchService, pages: Int, also: List<String> = emptyList()): String =
-        "Robot would send these words to ${WebAlso.to(service, also)}." +
-            if (pages > 0) " It may also open up to $pages result page${if (pages == 1) "" else "s"} from this phone." else ""
+    fun noteText(service: SearchService, pages: Int, also: List<String> = emptyList()): Phrase =
+        if (pages > 0) WebStrings.wouldSendPages(pages, "to" to WebAlso.toText(service, also)) else WebStrings.wouldSend("to" to WebAlso.toText(service, also))
+
+    /** [noteText] in English. */
+    fun note(service: SearchService, pages: Int, also: List<String> = emptyList()): String = noteText(service, pages, also).en()
 
     /**
      * The card for one search of [query] with [service], or null when it may go without one. Ask the first time: a card
@@ -307,8 +384,9 @@ object WebConsent {
      */
     fun card(ask: WebAsk, service: SearchService, query: String, pages: Int, also: List<String> = emptyList()): WebConsentCard? = when (ask) {
         WebAsk.NEVER -> null
-        WebAsk.FIRST_TIME -> WebConsentCard("Search the web for “$query”", note(service, pages, also), listOf(ALLOW_ALWAYS, JUST_THIS_TIME, NO), DONT_ASK, tapOnly = true)
-        WebAsk.ALWAYS -> WebConsentCard("Search the web for “$query”", note(service, pages, also), listOf(SEARCH, CANCEL), null, tapOnly = false)
+        WebAsk.FIRST_TIME -> WebConsentCard(WebStrings.cardTitle("query" to query), noteText(service, pages, also), listOf(allowAlways, justThisTime, no), dontAsk,
+            tapOnly = true)
+        WebAsk.ALWAYS -> WebConsentCard(WebStrings.cardTitle("query" to query), noteText(service, pages, also), listOf(search, cancel), null, tapOnly = false)
     }
 }
 
@@ -319,7 +397,7 @@ object WebUserAgent {
      * question 1). 1.0: Robot's published address, so Wikipedia (whose User-Agent policy requires one) is offered: the
      * "Wikipedia only" service and Encyclopedia lookups. It names Robot's project, never you or your phone.
      */
-    val CONTACT: String? = "hey@robot-app.ai"
+    val CONTACT: String? = "hey@robot-app.ai" // l10n: not text (an address in the User-Agent)
 
     /**
      * The honest User-Agent for the search APIs and Wikipedia: "Robot/0.7.0 (ai.robot_app; Android voice assistant)",
@@ -327,11 +405,11 @@ object WebUserAgent {
      * send it ([AppId.product]: "Robot/1.0.0-rc1"). Nothing about the phone or the person.
      */
     fun api(version: String, contact: String? = CONTACT): String =
-        "${AppId.product(version)} (${AppId.PACKAGE}; Android voice assistant" +
+        "${AppId.product(version)} (${AppId.PACKAGE}; Android voice assistant" + // l10n: not text (the User-Agent)
             (contact?.trim()?.takeIf { it.isNotEmpty() }?.let { "; $it" } ?: "") + ")"
 
     /** A generic mobile User-Agent for page fetches (the design's proposal for open question 2). */
-    const val PAGE = "Mozilla/5.0 (Linux; Android 17) Robot"
+    const val PAGE = "Mozilla/5.0 (Linux; Android 17) Robot" // l10n: not text (the User-Agent)
 
     /**
      * Every header a page fetch sends: the generic User-Agent, HTML or text only, the question's language only. No
@@ -339,7 +417,7 @@ object WebUserAgent {
      */
     fun pageHeaders(lang: String?): List<Pair<String, String>> = listOfNotNull(
         "User-Agent" to PAGE,
-        "Accept" to "text/html,application/xhtml+xml,text/plain;q=0.8",
+        "Accept" to "text/html,application/xhtml+xml,text/plain;q=0.8", // l10n: not text (an HTTP header)
         lang?.takeIf { it.matches(Regex("[a-z]{2,3}")) }?.let { "Accept-Language" to it },
     )
 }
@@ -383,11 +461,11 @@ enum class WebLogEvent(val reservedId: Int) {
 data class WebLogLine(val event: WebLogEvent, val a: Int, val b: Int = 0, val c: Int = 0, val spare: Int = 0) {
     /** The logcat form ("web_search svc=1 n=8 ms=950"). */
     fun logcat(): String = when (event) {
-        WebLogEvent.WEB_SEARCH -> "web_search svc=$a n=$b ms=$c"
-        WebLogEvent.WEB_PAGES -> "web_pages ok=$a skipped=$b ms=$c why=$spare"
-        WebLogEvent.WEB_ANSWER -> "web_answer in=${a * 10} out=$b first_ms=$c"
-        WebLogEvent.WEB_FAILED -> "web_failed why=$a"
-        WebLogEvent.BROWSER_SEARCH -> "browser_search engine=$a by=$b fallback=$c"
+        WebLogEvent.WEB_SEARCH -> "web_search svc=$a n=$b ms=$c" // l10n: not text (a log line)
+        WebLogEvent.WEB_PAGES -> "web_pages ok=$a skipped=$b ms=$c why=$spare" // l10n: not text (a log line)
+        WebLogEvent.WEB_ANSWER -> "web_answer in=${a * 10} out=$b first_ms=$c" // l10n: not text (a log line)
+        WebLogEvent.WEB_FAILED -> "web_failed why=$a" // l10n: not text (a log line)
+        WebLogEvent.BROWSER_SEARCH -> "browser_search engine=$a by=$b fallback=$c" // l10n: not text (a log line)
     }
 
     companion object {
@@ -424,29 +502,34 @@ enum class WebFail(override val id: Int, override val title: String) : LogCode {
     ;
 
     /** What Robot says and the card shows, naming [service] where it matters. */
-    fun text(service: SearchService?): String {
-        val name = service?.label ?: "the search service"
-        val cap = name.replaceFirstChar { it.uppercase() }
+    fun textPhrase(service: SearchService?): Phrase {
+        val name = service?.labelText ?: WebStrings.theService()
+        val cap = service?.capText ?: WebStrings.theServiceCap()
         return when (this) {
-            NO_INTERNET -> "No internet: Robot couldn't search the web"
-            NO_NETWORK_PERMISSION -> "Robot isn't allowed to use the network"
-            NOT_HOME -> "Robot can't reach $name off your home network"
-            NOT_ANSWERING -> "$cap isn't answering"
-            JSON_OFF -> "$cap answered 403: add json under search: formats: in settings.yml"
-            KEY_MISSING -> "The key for $name is missing"
-            KEY_REFUSED -> "$cap refused the key"
-            OUT_OF_CREDIT -> "The key for $name is out of credit"
-            BUSY -> "$cap is busy just now"
-            SERVICE -> "$cap didn't answer properly"
-            TIMEOUT -> "The search took too long"
-            NO_RESULTS -> if (service == SearchService.DDG_INSTANT) "DuckDuckGo has no short answer for that" else "No results"
-            STOPPED -> "Stopped"
-            DAILY_CAP -> "That's today's limit of web searches"
-            QUERY_REFUSED -> "That search looked like it contained personal details, so Robot didn't send it."
-            OFF -> "Web search is off"
-            KEY_OVER_HTTP -> app.heyrobot.core.helpers.LanRule.keyOverHttp("a key").removeSuffix(".")
+            NO_INTERNET -> WebStrings.failNoInternet()
+            NO_NETWORK_PERMISSION -> WebStrings.failNoNetwork()
+            NOT_HOME -> WebStrings.failNotHome("name" to name)
+            NOT_ANSWERING -> WebStrings.failNotAnswering("name" to cap)
+            JSON_OFF -> WebStrings.failJsonOff("name" to cap, "path" to "search: formats:") // l10n: not text (settings.yml keys)
+            KEY_MISSING -> WebStrings.failKeyMissing("name" to name)
+            KEY_REFUSED -> WebStrings.failKeyRefused("name" to cap)
+            OUT_OF_CREDIT -> WebStrings.failOutOfCredit("name" to name)
+            BUSY -> WebStrings.failBusy("name" to cap)
+            SERVICE -> WebStrings.failService("name" to cap)
+            TIMEOUT -> WebStrings.failTimeout()
+            NO_RESULTS -> if (service == SearchService.DDG_INSTANT) WebStrings.failNoShortAnswer() else WebStrings.failNoResults()
+            STOPPED -> WebStrings.failStopped()
+            DAILY_CAP -> WebStrings.failDailyCap()
+            QUERY_REFUSED -> WebStrings.failQueryRefused()
+            OFF -> WebStrings.failOff()
+            KEY_OVER_HTTP -> WebStrings.failKeyOverHttp()
         }
     }
+
+    /** [textPhrase] as a sentence, ending with a full stop. */
+    fun sentence(service: SearchService?): Phrase =
+        if (this == QUERY_REFUSED) textPhrase(service) else WebStrings.sentence("text" to textPhrase(service))
+
 }
 
 /**
@@ -480,8 +563,9 @@ object WebAlso {
     )
 
     /** "your SearXNG", "your SearXNG and Open Library", "Brave Search, Wikipedia and Open Library". */
-    fun to(service: SearchService, also: List<String>): String {
-        val all = listOf(service.label) + also
-        return if (all.size == 1) all[0] else all.dropLast(1).joinToString(", ") + " and " + all.last()
-    }
+    fun toText(service: SearchService, also: List<String>): Phrase =
+        Phrase.ListOf(listOf(service.labelText) + also.map { if (it == WIKIPEDIA) WebStrings.wikipedia() else Phrase.plain(it) })
+
+    /** [toText] in English. */
+    fun to(service: SearchService, also: List<String>): String = toText(service, also).en()
 }

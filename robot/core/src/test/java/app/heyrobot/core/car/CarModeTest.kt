@@ -12,7 +12,7 @@ import app.heyrobot.core.output.DeviceRole
 import app.heyrobot.core.output.ReadAloud
 import app.heyrobot.core.output.RouteType
 import app.heyrobot.core.output.SeenDevice
-import app.heyrobot.core.output.SpokenLang
+import app.heyrobot.core.i18n.Lang
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -23,7 +23,7 @@ import org.junit.Test
 private const val MIN = 60_000L
 private const val HOUR = 3_600_000L
 
-/** Car mode's states (design §4.8, §4.11 CarModeState) and the trusted session (§4.6). */
+/** Car mode's states and the trusted session (§4.6). */
 class CarModeTest {
     private val carSco = SeenDevice(RouteType.BT_SCO, "MyCar", "XX:XX:XX:XX:12:34")
     private val memory = DeviceMemory().remember(carSco, DeviceRole.CAR, 0)!!.first
@@ -203,8 +203,8 @@ class CarModeTest {
         assertEquals(CarSeen.NotCar, CarDetect.of(stranger.copy(btClass = BtClass.UNKNOWN), memory))
         assertTrue(CarDetect.surelyCar(stranger))
         assertFalse(CarDetect.surelyCar(stranger.copy(btClass = BtClass.HANDSFREE)))
-        assertEquals("Robot sees “MyCar” (…12:34). Is this your car?", CarDetect.question(carSco, SpokenLang.EN))
-        assertEquals("Robot voit « MyCar » (…12:34). Est-ce ton auto?", CarDetect.question(carSco, SpokenLang.FR))
+        assertEquals("Robot sees “MyCar” (…12:34). Is this your car?", CarDetect.question(carSco, Lang.EN))
+        assertEquals("Robot voit «\u00A0MyCar\u00A0» (…12:34). Est-ce ton auto\u202F?", CarDetect.question(carSco, Lang.FR))
         assertFalse(CarSettings.hasCar(DeviceMemory()))
         assertTrue(CarSettings.hasCar(memory))
         assertFalse(CarSettings.hasCar(memory.setEnabled(1, false).setEnabled(2, false)))
@@ -289,7 +289,7 @@ class CarGateTest {
         assertTrue(CarGate.allowed(CarFunction.CALL, locked = true, trusted = true))
         assertFalse(CarGate.allowed(CarFunction.CALL, locked = true, trusted = false))
         assertTrue(CarGate.allowed(CarFunction.CALL, locked = false, trusted = false))
-        assertEquals("Car mode · unlocked features", CarScreen.title(true, SpokenLang.EN))
-        assertEquals("Mode auto", CarScreen.title(false, SpokenLang.FR))
+        assertEquals("Car mode · unlocked features", CarScreen.title(true, Lang.EN))
+        assertEquals("Mode auto", CarScreen.title(false, Lang.FR))
     }
 }

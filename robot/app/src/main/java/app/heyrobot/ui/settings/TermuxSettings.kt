@@ -22,6 +22,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -34,6 +35,10 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import app.heyrobot.BuildConfig
 import app.heyrobot.R
 import app.heyrobot.core.VoiceEvent
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.TermuxStrings
+import app.heyrobot.core.i18n.AndroidPath
+import app.heyrobot.core.i18n.UiStrings
 import app.heyrobot.core.termux.ApiCommands
 import app.heyrobot.core.termux.CommandLevel
 import app.heyrobot.core.termux.ScriptLevel
@@ -75,6 +80,8 @@ import app.heyrobot.ui.pref.StatusPreference
 import app.heyrobot.ui.pref.SwitchPreference
 import app.heyrobot.ui.pref.preferenceFooter
 import app.heyrobot.ui.pref.preferenceGroup
+import app.heyrobot.ui.theme.LocalLangs
+import app.heyrobot.ui.theme.str
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -87,7 +94,9 @@ import kotlinx.coroutines.withContext
 // the page reads what they found from termux_status.json.
 // 1.0: what changed about the installed Termux, above the checklist (the update lock's Trust this version, another
 // signer's Set up again, the public test key's way to the F-Droid build and its "Run anyway"), and "Check for Termux
-// updates" (TermuxUpdateCheck, once a week) with what Termux's developers and F-Droid offer.
+// updates" (TermuxUpdateCheck, once a week) with what Termux's developers and F-Droid offer. 1.1: the page's words are in
+// strings_termux.xml, with their French; the checklist's lines, the choices' names and the row's summary are core's
+// (TermuxStrings).
 
 /** What the page shows (TermuxRoute reads it; a test passes its own). */
 data class TermuxUi(
@@ -129,11 +138,11 @@ private fun mark(m: SetupMark): Mark = when (m) {
 }
 
 /** "Off", "On · 2 scripts", "On · commands only" (Settings' row). */
-internal fun termuxSummary(t: TermuxSettings, scripts: Int): String = when {
-    !t.enabled -> "Off"
-    scripts > 0 -> "On · " + if (scripts == 1) "1 script" else "$scripts scripts"
-    t.commands == CommandLevel.OFF -> "On · no scripts, commands off"
-    else -> "On · commands ask first"
+internal fun termuxSummaryText(t: TermuxSettings, scripts: Int): Phrase = when {
+    !t.enabled -> TermuxStrings.summaryOff()
+    scripts > 0 -> TermuxStrings.summaryScripts(scripts)
+    t.commands == CommandLevel.OFF -> TermuxStrings.summaryNoScripts()
+    else -> TermuxStrings.summaryAskFirst()
 }
 
 @Composable
@@ -151,150 +160,178 @@ fun TermuxSettingsScreen(ui: TermuxUi, act: TermuxPageActions, onBack: () -> Uni
     var setUpAgain by rememberSaveable { mutableStateOf(false) }
     var risk by rememberSaveable { mutableStateOf(false) }
     val ctx = LocalContext.current
-    PreferenceScreen("Termux", onBack, snackbar = snackbar) {
+    val setupTitle = stringResource(R.string.termux_setup_group)
+    val scriptsTitle = stringResource(R.string.termux_scripts_group)
+    val lockTitle = stringResource(R.string.termux_lock_group)
+    val commandsTitle = stringResource(R.string.termux_commands_group)
+    val runsTitle = stringResource(R.string.termux_runs_group)
+    val othersTitle = stringResource(R.string.termux_others_group)
+    val levelLabels = ScriptLevel.entries.associateWith { it.text.str() }
+    val levelDetails = ScriptLevel.entries.associateWith { stringResource(scriptDetail(it)) }
+    val commandLabels = CommandLevel.entries.associateWith { it.text.str() }
+    val commandDetails = CommandLevel.entries.associateWith { stringResource(if (it == CommandLevel.ASK) R.string.termux_commands_ask else R.string.termux_commands_off) }
+    val spokenLabels = SpokenYes.entries.associateWith { it.text.str() }
+    val spokenDetails = SpokenYes.entries.associateWith {
+        stringResource(if (it == SpokenYes.WITHOUT_WARNINGS) R.string.termux_spoken_without_warnings else R.string.termux_spoken_never)
+    }
+    val apiLabels = ApiCommands.entries.associateWith { it.text.str() }
+    val apiDetails = ApiCommands.entries.associateWith { stringResource(if (it == ApiCommands.WITH_CARD) R.string.termux_api_with_card else R.string.termux_api_not_allowed) }
+    val outputLabels = OUTPUT_LINES.associateWith { pluralStringResource(R.plurals.termux_lines, it, it) }
+    val theDefault = stringResource(R.string.termux_default)
+    val outputDefault = stringResource(R.string.termux_output_default)
+    val footer = listOf(stringResource(R.string.termux_footer_cards), stringResource(R.string.termux_footer_runs, s.outputLines),
+        stringResource(R.string.termux_footer_network)).joinToString("\n\n")
+    PreferenceScreen(UiStrings.termux().str(), onBack, snackbar = snackbar) {
         item(key = "switch") {
-            MainSwitchBar("Let Robot use Termux", s.enabled, enabled = s.enabled || ui.ready) { act.save(s.copy(enabled = it)) }
+            MainSwitchBar(stringResource(R.string.termux_use), s.enabled, enabled = s.enabled || ui.ready) { act.save(s.copy(enabled = it)) }
         }
         item(key = "intro") {
-            IntroPreference(if (ui.ready || s.enabled) "Robot runs your own scripts in ~/robot and short commands in Termux. Each shows a card first unless you choose " +
-                "otherwise below; a command with a warning always needs a tap."
-            else "Set up Termux below first: nothing runs until every line is green. Termux runs on this phone; Robot sends it nothing else.")
+            IntroPreference(stringResource(if (ui.ready || s.enabled) R.string.termux_intro_ready else R.string.termux_intro_setup))
         }
         // 1.0: what changed, and what to do, before anything else.
         termuxLock(ui, ctx, onTrustVersion = { trustVersion = true }, onSetUpAgain = { setUpAgain = true }, onRisk = { on ->
             if (on) risk = true else { act.save(s.copy(testKeyRisk = false)); act.trustLog(TermuxTrustOp.RISK_OFF) }
         }, openFdroid = act.openFdroid)
-        preferenceGroup("Set-up", "setup") {
-            for (l in lines) when (l.step) {
-                SetupStep.INSTALLED -> StatusPreference(l.step.title, l.text, mark(l.mark),
-                    action = if ((ui.check.usable && l.mark == SetupMark.OK) || ui.check.lock == TermuxLock.UPDATED) null else ({
-                    FilledTonalButton(onClick = act.openFdroid, modifier = Modifier.semantics { contentDescription = "Get Termux on F-Droid" }) { Text("F-Droid") }
-                }))
-                SetupStep.PERMISSION -> {
-                    StatusPreference(l.step.title, l.text, mark(l.mark), action = if (ui.granted || !installed) null else ({
-                        FilledTonalButton(onClick = act.askPermission, modifier = Modifier.semantics { contentDescription = "Allow Robot to run commands in Termux" }) { Text("Allow") }
-                    }))
-                    if (!ui.granted && installed) PreferenceItem("Android doesn't ask?", "App info › Permissions › Additional permissions", RIcons.Settings, onClick = act.openAppInfo)
-                }
-                SetupStep.EXTERNAL_APPS -> {
-                    StatusPreference(l.step.title, l.text, mark(l.mark), action = if (l.mark == SetupMark.OK) null else ({
-                        FilledTonalButton(onClick = act.copyLine, modifier = Modifier.semantics { contentDescription = "Copy the line to paste in Termux" }) { Text("Copy") }
-                    }))
-                    if (l.mark != SetupMark.OK) PreferenceBlock {
-                        Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.small, modifier = Modifier.fillMaxWidth()) {
-                            Text(TermuxSetup.ALLOW_LINE, style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
+        preferenceGroup(setupTitle, "setup") {
+            for (l in lines) {
+                val title = l.step.label().str()
+                val text = l.phrase.str()
+                when (l.step) {
+                    SetupStep.INSTALLED -> StatusPreference(title, text, mark(l.mark),
+                        action = if ((ui.check.usable && l.mark == SetupMark.OK) || ui.check.lock == TermuxLock.UPDATED) null else ({
+                        val label = stringResource(R.string.termux_fdroid_label)
+                        FilledTonalButton(onClick = act.openFdroid, modifier = Modifier.semantics { contentDescription = label }) {
+                            Text(stringResource(R.string.termux_fdroid_button))
                         }
-                        Text(TermuxSetup.ALLOW_WARNING, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-                SetupStep.TEST -> {
-                    // 1.0: while a lock holds Termux, the Test says why it can't run, instead of a line about what it would run.
-                    val lock = ui.check.lock
-                    if (lock != null) StatusPreference(l.step.title, testBlocked(lock), Mark.TODO)
-                    else StatusPreference(l.step.title, l.text, mark(l.mark), action = if (!canRun) null else ({
-                        FilledTonalButton(onClick = { act.run("test") }, modifier = Modifier.semantics { contentDescription = "Test Termux" }) { Text(if (st.testAt > 0) "Again" else "Test") }
                     }))
-                }
-                SetupStep.FOLDER -> StatusPreference(l.step.title, l.text, mark(l.mark), action = if (!canRun || !st.testOk) null else ({
-                    val make = st.folderMissing
-                    FilledTonalButton(onClick = { confirm = if (make) "folder" else "list" },
-                        modifier = Modifier.semantics { contentDescription = if (make) "Create ~/robot" else "Refresh the list of your scripts" }) {
-                        Text(if (make) "Create it" else "Refresh")
+                    SetupStep.PERMISSION -> {
+                        StatusPreference(title, text, mark(l.mark), action = if (ui.granted || !installed) null else ({
+                            val label = stringResource(R.string.termux_allow_label)
+                            FilledTonalButton(onClick = act.askPermission, modifier = Modifier.semantics { contentDescription = label }) { Text(UiStrings.allow().str()) }
+                        }))
+                        if (!ui.granted && installed) PreferenceItem(stringResource(R.string.termux_android_doesnt_ask), AndroidPath.APP_ADDITIONAL_PERMISSIONS.render(LocalLangs.current.system),
+                            RIcons.Settings, onClick = act.openAppInfo)
                     }
-                }))
-                SetupStep.TRUST -> StatusPreference(l.step.title, l.text, mark(l.mark), action = when {
-                    ui.check.signer == null || l.mark == SetupMark.OK -> null
-                    // 1.0: another signer is refused until set-up is redone; a new version is trusted as it is.
-                    ui.check.lock == TermuxLock.SIGNER -> ({ SetUpAgainButton { setUpAgain = true } })
-                    ui.check.lock == TermuxLock.UPDATED -> ({ TrustVersionButton { trustVersion = true } })
-                    else -> ({
-                        FilledTonalButton(onClick = { trust = true }, modifier = Modifier.semantics { contentDescription = "Trust this Termux" }) {
-                            Text(if (s.trustedSigner != null) "Trust again" else "Trust")
+                    SetupStep.EXTERNAL_APPS -> {
+                        StatusPreference(title, text, mark(l.mark), action = if (l.mark == SetupMark.OK) null else ({
+                            val label = stringResource(R.string.termux_copy_label)
+                            FilledTonalButton(onClick = act.copyLine, modifier = Modifier.semantics { contentDescription = label }) { Text(stringResource(R.string.termux_copy)) }
+                        }))
+                        if (l.mark != SetupMark.OK) PreferenceBlock {
+                            Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.small, modifier = Modifier.fillMaxWidth()) {
+                                Text(TermuxSetup.ALLOW_LINE, style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
+                            }
+                            Text(TermuxSetup.allowWarning.str(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
+                    }
+                    SetupStep.TEST -> {
+                        // 1.0: while a lock holds Termux, the Test says why it can't run, instead of a line about what it would run.
+                        val lock = ui.check.lock
+                        if (lock != null) StatusPreference(title, testBlocked(lock), Mark.TODO)
+                        else StatusPreference(title, text, mark(l.mark), action = if (!canRun) null else ({
+                            val label = stringResource(R.string.termux_test_label)
+                            FilledTonalButton(onClick = { act.run("test") }, modifier = Modifier.semantics { contentDescription = label }) {
+                                Text(stringResource(if (st.testAt > 0) R.string.termux_test_again else R.string.termux_test))
+                            }
+                        }))
+                    }
+                    SetupStep.FOLDER -> StatusPreference(title, text, mark(l.mark), action = if (!canRun || !st.testOk) null else ({
+                        val make = st.folderMissing
+                        val label = stringResource(if (make) R.string.termux_create_folder_label else R.string.termux_refresh_label)
+                        FilledTonalButton(onClick = { confirm = if (make) "folder" else "list" }, modifier = Modifier.semantics { contentDescription = label }) {
+                            Text(stringResource(if (make) R.string.termux_create_it else R.string.termux_refresh))
+                        }
+                    }))
+                    SetupStep.TRUST -> StatusPreference(title, text, mark(l.mark), action = when {
+                        ui.check.signer == null || l.mark == SetupMark.OK -> null
+                        // 1.0: another signer is refused until set-up is redone; a new version is trusted as it is.
+                        ui.check.lock == TermuxLock.SIGNER -> ({ SetUpAgainButton { setUpAgain = true } })
+                        ui.check.lock == TermuxLock.UPDATED -> ({ TrustVersionButton { trustVersion = true } })
+                        else -> ({
+                            val label = stringResource(R.string.termux_trust_label)
+                            FilledTonalButton(onClick = { trust = true }, modifier = Modifier.semantics { contentDescription = label }) {
+                                Text(stringResource(if (s.trustedSigner != null) R.string.termux_trust_again else R.string.termux_trust_button))
+                            }
+                        })
                     })
-                })
-                else -> StatusPreference(l.step.title, l.text, mark(l.mark))
+                    else -> StatusPreference(title, text, mark(l.mark))
+                }
             }
         }
-        if (st.scripts.isNotEmpty()) preferenceGroup("Your scripts", "scripts") {
+        if (st.scripts.isNotEmpty()) preferenceGroup(scriptsTitle, "scripts") {
             for (sc in st.scripts) {
                 val level = s.script(sc.name)
-                ListPreference(sc.name, level, ScriptLevel.entries, { it.en }, ::scriptDetail, RIcons.Terminal,
-                    summary = level.en + (sc.comment?.let { " · $it" } ?: "")) { lvl -> act.save(s.copy(scripts = s.scripts + (sc.name to lvl))) }
+                ListPreference(sc.name, level, ScriptLevel.entries, { levelLabels.getValue(it) }, { levelDetails.getValue(it) }, RIcons.Terminal,
+                    summary = levelLabels.getValue(level) + (sc.comment?.let { " · $it" } ?: "")) { lvl -> act.save(s.copy(scripts = s.scripts + (sc.name to lvl))) }
             }
         }
-        if (st.scripts.isNotEmpty()) preferenceGroup("Works on the lock screen", "locked") {
+        if (st.scripts.isNotEmpty()) preferenceGroup(lockTitle, "locked") {
             for (sc in st.scripts.filter { s.script(it.name) != ScriptLevel.OFF }) {
-                SwitchPreference(sc.name, if (sc.name in s.lockScreenScripts) "Runs while the phone is locked" else "Unlock first", sc.name in s.lockScreenScripts) { on ->
+                SwitchPreference(sc.name, stringResource(if (sc.name in s.lockScreenScripts) R.string.termux_lock_on else R.string.termux_lock_off),
+                    sc.name in s.lockScreenScripts) { on ->
                     act.save(s.copy(lockScreenScripts = if (on) s.lockScreenScripts + sc.name else s.lockScreenScripts - sc.name))
                 }
             }
-            Text("Commands Robot writes never run on the lock screen.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            Text(stringResource(R.string.termux_lock_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
         }
-        preferenceGroup("Commands Robot writes", "commands") {
-            ListPreference("Commands Robot writes", s.commands, CommandLevel.entries, { it.en },
-                { if (it == CommandLevel.ASK) "Gemma may write a short command; you see its card and tap Run" else "Only your own scripts run" }, RIcons.Terminal) {
+        preferenceGroup(commandsTitle, "commands") {
+            ListPreference(commandsTitle, s.commands, CommandLevel.entries, { commandLabels.getValue(it) }, { commandDetails.getValue(it) }, RIcons.Terminal) {
                 act.save(s.copy(commands = it))
             }
-            SwitchPreference("Read-only commands without a card",
-                "Only commands on Robot's read-only list (ls, du, df, ps…), and never in a conversation with content Robot didn't write",
+            SwitchPreference(stringResource(R.string.termux_read_only), stringResource(R.string.termux_read_only_summary),
                 s.readOnlyWithoutCard, enabled = s.commands != CommandLevel.OFF) { act.save(s.copy(readOnlyWithoutCard = it)) }
-            ListPreference("A spoken yes runs a command", s.spokenYes, SpokenYes.entries, { it.en },
-                { if (it == SpokenYes.WITHOUT_WARNINGS) "A command with a warning always needs a tap" else "Every command needs a tap on Run" }) {
+            ListPreference(stringResource(R.string.termux_spoken_yes), s.spokenYes, SpokenYes.entries, { spokenLabels.getValue(it) }, { spokenDetails.getValue(it) }) {
                 act.save(s.copy(spokenYes = it))
             }
-            ListPreference("Termux:API commands", s.api, ApiCommands.entries, { it.en },
-                { if (it == ApiCommands.WITH_CARD) "Sending a text or placing a call always needs a tap, with a red line" else "termux-sms-send, termux-location and the rest are refused" }) {
+            ListPreference(stringResource(R.string.termux_api), s.api, ApiCommands.entries, { apiLabels.getValue(it) }, { apiDetails.getValue(it) }) {
                 act.save(s.copy(api = it))
             }
         }
-        preferenceGroup("Each run", "runs") {
-            ListPreference("Time limit", s.limitSeconds, TERMUX_LIMITS, ::limitLabel, { if (it == TermuxSettings.DEFAULT_LIMIT_S) "The default" else null }, RIcons.Timer) {
+        preferenceGroup(runsTitle, "runs") {
+            ListPreference(stringResource(R.string.termux_time_limit), s.limitSeconds, TERMUX_LIMITS, ::limitLabel, { if (it == TermuxSettings.DEFAULT_LIMIT_S) theDefault else null },
+                RIcons.Timer) {
                 act.save(s.copy(limitSeconds = it))
             }
-            ListPreference("Output Robot reads", s.outputLines, listOf(20, 40, 80), { "$it lines" }, { if (it == TermuxSettings.DEFAULT_LINES) "The default (about 430 tokens)" else null }) {
+            ListPreference(stringResource(R.string.termux_output), s.outputLines, OUTPUT_LINES, { outputLabels.getValue(it) },
+                { if (it == TermuxSettings.DEFAULT_LINES) outputDefault else null }) {
                 act.save(s.copy(outputLines = it))
             }
-            SwitchPreference("Hide secrets in output", "Private keys, API keys, tokens and passwords become “[hidden: …]” before Gemma or the card sees them",
-                s.hideSecrets) { act.save(s.copy(hideSecrets = it)) }
-            SwitchPreference("Load my shell profile", if (s.loadProfile) "bash -l: your ~/.bash_profile runs first" else "Off: bash without your profile, predictable",
+            SwitchPreference(stringResource(R.string.termux_hide_secrets), stringResource(R.string.termux_hide_secrets_summary), s.hideSecrets) {
+                act.save(s.copy(hideSecrets = it))
+            }
+            SwitchPreference(stringResource(R.string.termux_profile), stringResource(if (s.loadProfile) R.string.termux_profile_on else R.string.termux_profile_off),
                 s.loadProfile) { act.save(s.copy(loadProfile = it)) }
         }
         if (s.trustedSigner != null) termuxUpdates(ui, ctx, act)
-        preferenceGroup("Other apps", "others") {
-            PreferenceItem("Apps that can run commands in Termux", if (ui.others.isEmpty()) "None other than Robot that Robot can see"
+        preferenceGroup(othersTitle, "others") {
+            PreferenceItem(stringResource(R.string.termux_others), if (ui.others.isEmpty()) stringResource(R.string.termux_others_none)
                 else ui.others.joinToString(", "), RIcons.Apps)
         }
-        preferenceFooter(
-            "Every command shows its card with Run, Edit and Cancel, except your own scripts set to Just do it and, if you turn it on, " +
-                "commands on Robot's read-only list. Robot never has a setting that runs anything Gemma writes. In a conversation with screen " +
-                "text, a photo, a web page or anything else Robot didn't write, every command needs a tap.\n\n" +
-                "Each run has a time limit, and Stop ends it with everything it started. Robot reads at most ${s.outputLines} lines of the " +
-                "output, with secrets hidden. History keeps “Ran a command in Termux (exit 0)”, never the command or its output.\n\n" +
-                "Robot sends nothing anywhere: a command that goes online does so from Termux, under Termux's own Network permission. " +
-                "Termux gets the label “Robot”, never the command, for its logs. Other apps Robot can't see may also hold Termux's " +
-                "permission: Android doesn't show Robot every app.",
-        )
+        preferenceFooter(footer)
     }
     confirm?.let { what ->
+        val commands = (if (what == "folder") ScriptRegistry.MAKE_FOLDER + "\n" else "") + ScriptRegistry.listShown.str()
         ConfirmDialog(
-            if (what == "folder") "Create ~/robot?" else "List your scripts?",
-            "Robot runs this in Termux:\n\n" + (if (what == "folder") ScriptRegistry.MAKE_FOLDER + "\n" else "") + ScriptRegistry.LIST_SHOWN,
-            "Run", onDismiss = { confirm = null }, onConfirm = { confirm = null; act.run(what) },
+            stringResource(if (what == "folder") R.string.termux_create_title else R.string.termux_list_title),
+            listOf(stringResource(R.string.termux_runs_this), commands).joinToString("\n\n"),
+            UiStrings.run().str(), onDismiss = { confirm = null }, onConfirm = { confirm = null; act.run(what) },
         )
     }
     if (trust) {
         val src = ui.check.source
-        ConfirmDialog("Trust this Termux?",
-            ui.check.line() + "\n\nSigner " + (ui.check.signer?.let(TermuxSetup::short) ?: "unknown") + ". Robot checks it before every run and stops if " +
-                "Termux is replaced." + when (src) {
-                TermuxSource.GITHUB -> "\n\nGitHub builds share a public test key: anyone can make an update that installs over it."
-                TermuxSource.UNKNOWN -> "\n\nRobot doesn't know this key: trust it only if you built or chose this Termux yourself."
-                else -> ""
-            } + (if (s.updateCheck) "\n\n" + stringResource(R.string.termux_trust_updates_note) else ""),
-            "Trust", onDismiss = { trust = false }, onConfirm = {
+        val text = listOfNotNull(
+            stringResource(R.string.termux_trust_text, ui.check.lineText().str(), ui.check.signer?.let(TermuxSetup::short) ?: stringResource(R.string.termux_signer_unknown)),
+            when (src) {
+                TermuxSource.GITHUB -> stringResource(R.string.termux_trust_github)
+                TermuxSource.UNKNOWN -> stringResource(R.string.termux_trust_unknown)
+                else -> null
+            },
+            if (s.updateCheck) stringResource(R.string.termux_trust_updates_note) else null,
+        ).joinToString("\n\n")
+        ConfirmDialog(stringResource(R.string.termux_trust_title), text,
+            stringResource(R.string.termux_trust_button), onDismiss = { trust = false }, onConfirm = {
                 trust = false
                 // 1.0: the signer with the version, so a later update pauses Termux until you trust it.
                 act.save(s.trust(ui.check))
@@ -304,8 +341,8 @@ fun TermuxSettingsScreen(ui: TermuxUi, act: TermuxPageActions, onBack: () -> Uni
     if (trustVersion) {
         val c = ui.check
         ConfirmDialog(stringResource(R.string.termux_trust_version_title, c.version ?: "?"),
-            stringResource(R.string.termux_trust_version_text, TermuxWords.source(ctx, c.source), termuxDate(c.updatedAt)) +
-                (if (c.source == TermuxSource.GITHUB) "\n\n" + stringResource(R.string.termux_trust_version_test_key) else ""),
+            listOfNotNull(stringResource(R.string.termux_trust_version_text, TermuxWords.source(ctx, c.source), termuxDate(c.updatedAt)),
+                if (c.source == TermuxSource.GITHUB) stringResource(R.string.termux_trust_version_test_key) else null).joinToString("\n\n"),
             stringResource(R.string.termux_trust_version), onDismiss = { trustVersion = false }, onConfirm = {
                 trustVersion = false
                 act.save(s.trust(c))
@@ -329,6 +366,9 @@ fun TermuxSettingsScreen(ui: TermuxUi, act: TermuxPageActions, onBack: () -> Uni
             })
     }
 }
+
+/** "Output Robot reads": lines Gemma gets. */
+private val OUTPUT_LINES = listOf(20, 40, 80)
 
 /** 1.0: why the Test can't run while [lock] holds Termux, and what to do. */
 @Composable
@@ -372,7 +412,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.termuxLock(ui: Termux
         else -> {}
     }
     if (c.source != TermuxSource.GITHUB) return
-    preferenceGroup(null, "lock-test-key") {
+    preferenceGroup(null, "lock-test-key") { // l10n: not text (a list key)
         StatusPreference(stringResource(R.string.termux_lock_title_test_key), TermuxWords.lock(ctx, c, TermuxLock.TEST_KEY), if (c.testKeyRisk) Mark.WARN else Mark.TODO)
         // Another signer or an update asks for Set up again or Trust this version first; then Run anyway is for this version.
         if (c.status == TermuxStatus.TEST_KEY) SwitchPreference(stringResource(R.string.termux_risk_title),
@@ -382,7 +422,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.termuxLock(ui: Termux
                 else -> stringResource(R.string.termux_risk_off)
             }, c.testKeyRisk, enabled = s.trustedSigner != null) { onRisk(it) }
     }
-    preferenceGroup(ctx.getString(R.string.termux_switch_title), "switch-fdroid") {
+    preferenceGroup(ctx.getString(R.string.termux_switch_title), "switch-fdroid") { // l10n: not text (a list key)
         val label = stringResource(R.string.termux_fdroid_label)
         PreferenceBlock {
             Text(stringResource(R.string.termux_switch_steps), style = MaterialTheme.typography.bodyMedium)
@@ -444,10 +484,10 @@ private fun androidx.compose.foundation.lazy.LazyListScope.termuxUpdates(ui: Ter
     }
 }
 
-private fun scriptDetail(l: ScriptLevel): String = when (l) {
-    ScriptLevel.AUTO -> "Runs when you name it, without a card (not after content Robot didn't write)"
-    ScriptLevel.ASK -> "Its card first: Run or Cancel"
-    ScriptLevel.OFF -> "Robot never runs it"
+private fun scriptDetail(l: ScriptLevel): Int = when (l) {
+    ScriptLevel.AUTO -> R.string.termux_script_auto
+    ScriptLevel.ASK -> R.string.termux_script_ask
+    ScriptLevel.OFF -> R.string.termux_script_off
 }
 
 /** The page with what Android, termux.json and termux_status.json say now; read again on resume and while a set-up run goes. */
@@ -478,6 +518,10 @@ internal fun TermuxRoute(a: AppActions, snackbar: SnackbarHostState, onBack: () 
         }
     }
     fun say(t: String) { scope.launch { snackbar.showSnackbar(t) } }
+    val noBrowser = stringResource(R.string.termux_no_browser)
+    val copied = stringResource(R.string.termux_copied)
+    val copyFailed = stringResource(R.string.termux_copy_failed)
+    val assistantFirst = stringResource(R.string.termux_assistant_first)
     val act = TermuxPageActions(
         save = { s ->
             val old = ui?.settings
@@ -502,18 +546,18 @@ internal fun TermuxRoute(a: AppActions, snackbar: SnackbarHostState, onBack: () 
         },
         askPermission = a.askTermux,
         openFdroid = {
-            try { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(TermuxSetup.FDROID_URL))) } catch (_: Exception) { say("No browser to open F-Droid's page.") }
+            try { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(TermuxSetup.FDROID_URL))) } catch (_: Exception) { say(noBrowser) }
         },
         openAppInfo = a.openAppSettings,
         copyLine = {
             try {
                 ctx.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("Termux", TermuxSetup.ALLOW_LINE))
-                say("Copied. Paste it in Termux and press Enter.")
-            } catch (_: Exception) { say("Couldn't copy.") }
+                say(copied)
+            } catch (_: Exception) { say(copyFailed) }
         },
         run = { what ->
             // The set-up runs happen in the assistant's process, where Termux's answer comes back.
-            if (assistantActive != true) say("Make Robot your digital assistant first: Termux answers the assistant.")
+            if (assistantActive != true) say(assistantFirst)
             else Cmd.send(app, Cmd.TERMUX, Bundle().apply { putString(Cmd.EXTRA_RUN, what) })
             scope.launch {
                 delay(300)
@@ -522,7 +566,8 @@ internal fun TermuxRoute(a: AppActions, snackbar: SnackbarHostState, onBack: () 
         },
     )
     val now = ui
-    if (now == null) PreferenceScreen("Termux", onBack, snackbar = snackbar) { item(key = "checking") { IntroPreference("Checking…") } }
+    val checking = stringResource(R.string.termux_checking)
+    if (now == null) PreferenceScreen(UiStrings.termux().str(), onBack, snackbar = snackbar) { item(key = "checking") { IntroPreference(checking) } }
     else TermuxSettingsScreen(now, act, onBack, snackbar)
 }
 
@@ -535,12 +580,12 @@ internal fun TermuxSetupRow(a: AppActions) {
         state = withContext(Dispatchers.IO) { TermuxStore.load(ctx).let { s -> s.enabled to TermuxFacts.ready(ctx, s) } }
     }
     val (on, ready) = state ?: return
-    StatusPreference("Termux",
-        when {
-            on && ready -> "On: your scripts and short commands in Termux, each with its card unless you chose otherwise"
-            on -> "On, but its set-up needs attention"
-            else -> "Optional and off: your own scripts and short commands in Termux"
-        },
+    StatusPreference(UiStrings.termux().str(),
+        stringResource(when {
+            on && ready -> R.string.termux_row_ready
+            on -> R.string.termux_row_attention
+            else -> R.string.termux_row_off
+        }),
         when { on && ready -> Mark.OK; on -> Mark.WARN; else -> Mark.TODO },
         onClick = { a.openPage(Page.Settings(SettingsRoutes.TERMUX)) })
 }

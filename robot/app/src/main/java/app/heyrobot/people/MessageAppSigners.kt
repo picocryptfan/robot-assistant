@@ -67,7 +67,8 @@ object MessageAppSigners {
     }
 
     /** What Settings › Messages says about the apps you turned on: one line per installed package that isn't trusted. */
-    fun problems(ctx: Context, f: MessagesFile): List<String> = MessageApp.entries.filter { it in f.settings.allowlist.apps }.flatMap { app ->
-        app.packages.mapNotNull { pkg -> verdict(ctx, pkg, f)?.let { MessageSigners.problem(pkg, it) } }
+    fun problems(ctx: Context, f: MessagesFile, l: app.heyrobot.core.i18n.Langs = app.heyrobot.core.i18n.Langs.EN): List<String> =
+        MessageApp.entries.filter { it in f.settings.allowlist.apps }.flatMap { app ->
+        app.packages.mapNotNull { pkg -> verdict(ctx, pkg, f)?.let { MessageSigners.problemText(pkg, it)?.render(l) } }
     }
 }

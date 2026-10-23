@@ -1,5 +1,6 @@
 # Robot's donation links, one per line: what it is, then the link or address. The README, robot-app.ai and (from 1.1)
-# Settings › About › Support Robot must match this file character for character; SupportAddressesTest checks the README.
+# Settings › About › Support Robot must match this file character for character; SupportAddressesTest checks the README
+# and the app (ui/settings/SupportSettings.kt).
 ETH 0x8245306C33c92630Af30aCFc542307dbD17f47D1
 BTC sp1qqf85ltcy8al2flnwm2v8kszm2rplcs8a6xa6uw5rpfqmy7sa7srr6qafj6jwd3jj2fcmq8agna23syl6vjwzpjjg5yhwalyqm7d7ydxjhvqtgt0v
 BTC bc1qq9qe5ckwju6dkjddmf2vpfrcu7cakjw7ld2gtk

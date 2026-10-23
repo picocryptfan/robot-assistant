@@ -3,6 +3,7 @@ package app.heyrobot.helpers.anthropic
 
 import app.heyrobot.core.AnthropicAttempt
 import app.heyrobot.core.AnthropicCost
+import app.heyrobot.core.CostText
 import app.heyrobot.core.AnthropicErrorKind
 import app.heyrobot.core.AnthropicModel
 import app.heyrobot.core.AnthropicModelCode
@@ -147,7 +148,7 @@ class AnthropicSession(
             rollBack()
             return
         }
-        val why = if (stopped) "The user stopped before this ran." else "The turn ended before this ran."
+        val why = if (stopped) "The user stopped before this ran." else "The turn ended before this ran." // l10n: not text (tool result for the model)
         val filled = pending.indices.map { i -> results.getOrNull(i) ?: mapOf("status" to "not_done", "detail" to why) }
         messages += AnthropicHistory.message(BetaMessageParam.Role.USER, AnthropicRequests.results(pending, filled))
         seals += emptyList<String>()

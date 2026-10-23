@@ -22,6 +22,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import app.heyrobot.core.Approval
 import app.heyrobot.core.BrainModel
 import app.heyrobot.core.ModelStatus
@@ -54,6 +55,7 @@ import app.heyrobot.ui.settings.AboutSettingsScreen
 import app.heyrobot.ui.settings.SettingsRoutes
 import app.heyrobot.ui.testing.ActionLog
 import app.heyrobot.ui.testing.PHONE
+import app.heyrobot.ui.testing.GALAXY_S25
 import app.heyrobot.ui.testing.PIXEL_10_PRO
 import app.heyrobot.ui.testing.SettingsHost
 import app.heyrobot.ui.testing.facts
@@ -140,7 +142,7 @@ class SetupGuideScreenTest {
     private val titles = listOf(
         "Welcome to Robot™", "What Robot can do", "Your phone and Robot's brain", "Voice", "Opening Robot", "How Robot asks first",
         "People, texts, email, calendar and notes", "Messages", "Memory", "Weather and places", "Conversation mode", "Routines and the morning brief",
-        "Headset and car", "Helpers (optional)", "Web search and Termux (optional)", "Updates and feedback", "You're set up",
+        "Phone lock (optional)", "Headset and car", "Helpers (optional)", "Web search and Termux (optional)", "Updates and feedback", "You're set up",
     )
 
     @Test fun nextGoesThroughEveryPageAndDoneFinishes() {
@@ -212,6 +214,291 @@ class SetupGuideScreenTest {
         assertEquals(listOf("download ${BrainModel.FAST}"), log)
     }
 
+    /** 1.2: on a Galaxy S25 the phone page names its Snapdragon and its NPU, and offers the general build on the GPU. */
+    @Test fun thePhonePageNamesASnapdragon() {
+        guide(Stores(GuideStep.PHONE), snap = fresh.copy(phone = GALAXY_S25, models = listOf(ModelStore.Snap(BrainModel.GENERAL, ModelStatus.MISSING))))
+        rule.onNode(hasText("Samsung SM-S931W (Snapdragon 8 Elite)")).assertExists()
+        rule.onNode(hasText("Robot has no NPU build for this phone's Snapdragon 8 Elite", substring = true)).assertExists()
+        rule.onNode(hasText("Fast: Gemma 4 E2B, on the GPU", substring = true)).assertExists()
+        rule.shot("guide_phone_s25")
+        rule.scrollToText("Robot's brain · 2.59 GB")
+        rule.onNodeWithContentDescription("Download Robot's brain").performClick()
+        assertEquals(listOf("download ${BrainModel.GENERAL}"), log)
+    }
+
+    // ------------------------------------------------------------------ 1.2: the GPU self-test (design Step 2)
+
+    private val build = "google/tegu/tegu:16/BP4A.251005.001/14000000:user/release-keys"
+    private val updated = "google/tegu/tegu:16/BP4A.251105.001/14100000:user/release-keys"
+
+    /** A Pixel 9a (Tensor G4, Mali GPU) with the general build downloaded and checked: Fast on the GPU, its check due. */
+    private val nineA = fresh.copy(phone = app.heyrobot.ui.testing.PIXEL_9A, build = build,
+        models = listOf(ModelStore.Snap(BrainModel.GENERAL, ModelStatus.VERIFIED)))
+
+    private fun record(verdict: app.heyrobot.core.GpuVerdict, turn: Int = 0, fingerprint: String = build, model: BrainModel = BrainModel.GENERAL,
+        backend: app.heyrobot.core.ModelBackend = app.heyrobot.core.ModelBackend.GPU) =
+        app.heyrobot.core.CheckRecord(app.heyrobot.core.CheckKey.of(model, backend, model.sha256, fingerprint)!!, verdict, turn, 1_760_000_000_000L,
+            41_200, if (verdict.passed) 482.4 else -1.0, if (verdict.passed) 14.3 else -1.0)
+
+    /** Right after Fast's download is checked, the phone page asks for the self-test, once; nothing shows until it runs. */
+    @Test fun thePhonePageAsksForTheCheckOnceFastIsChecked() {
+        guide(Stores(GuideStep.PHONE), snap = nineA)
+        rule.waitForIdle()
+        assertEquals(listOf("checkModel"), log)
+        rule.onNode(hasText("Checking this phone's GPU")).assertDoesNotExist()
+    }
+
+    @Test fun whileTheCheckRunsThePageSaysSoAndHowLong() {
+        guide(Stores(GuideStep.PHONE), snap = nineA.copy(checking = true))
+        rule.onNode(hasText("Checking this phone's GPU")).assertExists()
+        rule.onNode(hasText("Three short questions that never leave the phone, about 30 s once the model is loaded. You can go on with the guide.")).assertExists()
+        rule.waitForIdle()
+        // Asked once already: not again while it runs.
+        assertEquals(emptyList<String>(), log)
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
+        rule.shot("guide_phone_checking")
+    }
+
+    /** The check never holds the guide up: Next goes on while it runs. */
+    @Test fun theGuideGoesOnWhileTheCheckRuns() {
+        val stores = Stores(GuideStep.PHONE)
+        guide(stores, snap = nineA.copy(checking = true))
+        rule.onNode(hasText("Checking this phone's GPU")).assertExists()
+        next()
+        rule.waitForIdle()
+        assertEquals(GuideStep.VOICE, stores.state.at)
+    }
+
+    @Test fun aPassedCheckShowsItsNumbers() {
+        guide(Stores(GuideStep.PHONE), snap = nineA.copy(checks = listOf(record(app.heyrobot.core.GpuVerdict.PASSED))))
+        rule.onNode(hasText("This phone's GPU passed Robot's check")).assertExists()
+        rule.onNode(hasText("Took 41 s. Measured in the check: reading 482 tokens a second, writing 14. Robot checks again after each Android update.")).assertExists()
+        rule.onNode(hasText("Fast: Gemma 4 E2B, on the GPU", substring = true)).assertExists()
+        rule.waitForIdle()
+        assertEquals(emptyList<String>(), log)
+        rule.shot("guide_phone_check_passed")
+    }
+
+    @Test fun aFailedCheckSaysWhatItFoundAndThatFastRunsOnTheCpu() {
+        val failed = record(app.heyrobot.core.GpuVerdict.GARBAGE, turn = 2)
+        val gpu = app.heyrobot.core.GpuFailure(BrainModel.GENERAL, failed.time, app.heyrobot.core.ProblemStage.WRITING, null,
+            app.heyrobot.core.SpeedLog.cleanBuild(build), app.heyrobot.core.GpuVerdict.GARBAGE)
+        guide(Stores(GuideStep.PHONE), snap = nineA.copy(checks = listOf(failed), gpuFailure = gpu))
+        rule.onNode(hasText("Fast: Gemma 4 E2B, on the CPU", substring = true)).assertExists()
+        rule.onNode(hasText("This phone's GPU failed Robot's check (garbled answer)")).assertExists()
+        rule.onNode(hasText("Robot runs on the CPU here, more slowly. To check it again, tap Try the GPU again in the Model tab.")).assertExists()
+        rule.waitForIdle()
+        assertEquals(emptyList<String>(), log)
+        rule.shot("guide_phone_check_failed")
+    }
+
+    /**
+     * A miss (here a wrong answer to "2 plus 3") is how the model answered, not the GPU failing: the row says what was off,
+     * and Fast stays on the GPU (no GPU failure is written).
+     */
+    @Test fun aCheckWithANoteKeepsTheGpu() {
+        guide(Stores(GuideStep.PHONE), snap = nineA.copy(checks = listOf(record(app.heyrobot.core.GpuVerdict.WRONG, turn = 2))))
+        rule.onNode(hasText("Fast: Gemma 4 E2B, on the GPU", substring = true)).assertExists()
+        rule.onNode(hasText("This phone's GPU passed Robot's check, with a note: wrong answer")).assertExists()
+        rule.onNode(hasText("Took 41 s. Nothing in it points to a fault in the GPU, so Robot keeps using it. Robot checks again after each Android update."))
+            .assertExists()
+        rule.onNode(hasText("failed Robot's check", substring = true)).assertDoesNotExist()
+        rule.waitForIdle()
+        // Checked already on this build: not asked again.
+        assertEquals(emptyList<String>(), log)
+        rule.shot("guide_phone_check_noted")
+    }
+
+    @Test fun aSlowCheckIsANoteToo() {
+        guide(Stores(GuideStep.PHONE), snap = nineA.copy(checks = listOf(record(app.heyrobot.core.GpuVerdict.SLOW, turn = 3))))
+        rule.onNode(hasText("This phone's GPU passed Robot's check, with a note: too slow")).assertExists()
+        rule.onNode(hasText("Fast: Gemma 4 E2B, on the GPU", substring = true)).assertExists()
+    }
+
+    /** After a system update the GPU gets another chance: the old build's failure no longer holds, and the check is due again. */
+    @Test fun anOsUpdateAsksForTheCheckAgain() {
+        val old = record(app.heyrobot.core.GpuVerdict.GARBAGE, turn = 2)
+        // The snapshot reads failures through Problems, which drops another build's (sys Problems.gpuFailure): none here.
+        guide(Stores(GuideStep.PHONE), snap = nineA.copy(build = updated, checks = listOf(old)))
+        rule.waitForIdle()
+        assertEquals(listOf("checkModel"), log)
+        rule.onNode(hasText("failed Robot's check", substring = true)).assertDoesNotExist()
+    }
+
+    /** Never on a Pixel 10 (the Tensor G5's TPU is as fast as ever), never before the download, never with the GPU off. */
+    @Test fun noCheckWhereItDoesntApply() {
+        guide(Stores(GuideStep.PHONE), snap = fresh.copy(build = build, models = listOf(ModelStore.Snap(BrainModel.FAST, ModelStatus.VERIFIED))))
+        rule.waitForIdle()
+        assertEquals(emptyList<String>(), log)
+        rule.onNode(hasText("Robot's check", substring = true)).assertDoesNotExist()
+        rule.onNode(hasText("Checking this phone's", substring = true)).assertDoesNotExist()
+    }
+
+    @Test fun noCheckBeforeTheDownloadOrWithTheGpuOff() {
+        val host = SettingsHost(RobotSettings(modelGpu = false))
+        guide(Stores(GuideStep.PHONE), host, snap = nineA)
+        rule.waitForIdle()
+        assertEquals(emptyList<String>(), log)
+        assertFalse(nineA.copy(models = listOf(ModelStore.Snap(BrainModel.GENERAL, ModelStatus.MISSING))).checkDue(true))
+        assertFalse(nineA.copy(models = listOf(ModelStore.Snap(BrainModel.GENERAL, ModelStatus.DOWNLOADING))).checkDue(true))
+    }
+
+    /** The Tensor G6's beta TPU build gets the same check; a failure says Fast is the general build now. */
+    @Test fun aBetaTpuBuildIsCheckedToo() {
+        val eleven = fresh.copy(phone = app.heyrobot.ui.testing.PIXEL_11, build = build, models = listOf(ModelStore.Snap(BrainModel.FAST_G6, ModelStatus.VERIFIED)))
+        assertTrue(eleven.checkDue(true))
+        val failed = record(app.heyrobot.core.GpuVerdict.GARBAGE, turn = 2, model = BrainModel.FAST_G6, backend = app.heyrobot.core.ModelBackend.TPU)
+        val tpu = app.heyrobot.core.TpuFailure(BrainModel.FAST_G6, failed.time, null, app.heyrobot.core.SpeedLog.cleanBuild(build), app.heyrobot.core.GpuVerdict.GARBAGE)
+        guide(Stores(GuideStep.PHONE), snap = eleven.copy(checks = listOf(failed), tpuFailure = tpu,
+            models = listOf(ModelStore.Snap(BrainModel.GENERAL, ModelStatus.VERIFIED), ModelStore.Snap(BrainModel.FAST_G6, ModelStatus.VERIFIED))))
+        rule.onNode(hasText("This phone's TPU failed Robot's check (garbled answer)")).assertExists()
+        rule.onNode(hasText("Robot uses the general build of Fast here. To check it again, tap Try the TPU again in the Model tab.")).assertExists()
+        rule.waitForIdle()
+        // The general build runs on the CPU on a Tensor G6 (its PowerVR GPU isn't used): nothing more to check.
+        assertEquals(emptyList<String>(), log)
+    }
+
+    /** The beta TPU build's miss is a note as the GPU's is: Fast stays the TPU build. */
+    @Test fun aBetaTpuBuildsMissKeepsTheTpu() {
+        val eleven = fresh.copy(phone = app.heyrobot.ui.testing.PIXEL_11, build = build, models = listOf(ModelStore.Snap(BrainModel.FAST_G6, ModelStatus.VERIFIED)),
+            checks = listOf(record(app.heyrobot.core.GpuVerdict.NO_CALL, turn = 3, model = BrainModel.FAST_G6, backend = app.heyrobot.core.ModelBackend.TPU)))
+        assertFalse(eleven.checkDue(true))
+        guide(Stores(GuideStep.PHONE), snap = eleven)
+        rule.onNode(hasText("This phone's TPU passed Robot's check, with a note: no timer set")).assertExists()
+        rule.onNode(hasText("Nothing in it points to a fault in the TPU, so Robot keeps using it.", substring = true)).assertExists()
+        rule.waitForIdle()
+        assertEquals(emptyList<String>(), log)
+    }
+
+    // ------------------------------------------------------------------ 1.2: the weak-phone warning (design Step 8)
+
+    private val gpuFailed = app.heyrobot.core.GpuFailure(BrainModel.GENERAL, 1_760_000_000_000L, app.heyrobot.core.ProblemStage.WRITING, null,
+        app.heyrobot.core.SpeedLog.cleanBuild(build), app.heyrobot.core.GpuVerdict.GARBAGE)
+    /** A Pixel 9a whose GPU failed Robot's check: Fast on its CPU. */
+    private val cpuNineA = nineA.copy(checks = listOf(record(app.heyrobot.core.GpuVerdict.GARBAGE, turn = 2)), gpuFailure = gpuFailed)
+    /** A 4 GB Snapdragon phone (Android reports about 3.7 GB): Fast on its GPU, but the model may not fit. */
+    private val motoG = app.heyrobot.core.Phone("motorola", "moto g", "QTI", "SM6375", 3_700_000_000L)
+    private val small = fresh.copy(phone = motoG, models = listOf(ModelStore.Snap(BrainModel.GENERAL, ModelStatus.MISSING)))
+
+    private fun scrollToWarning(title: String = "Robot will be slow on this phone") = rule.scrollToText(title)
+
+    @Test fun aCpuPhoneIsWarnedOnThePhoneStep() {
+        val first = cpuNineA.fit(true).firstWordS
+        guide(Stores(GuideStep.PHONE), snap = cpuNineA)
+        scrollToWarning()
+        rule.onNode(hasText("Robot's model runs on this phone's CPU.")).assertExists()
+        rule.onNode(hasText("Estimate: a new conversation starts answering in about $first\u00A0s, later answers in about 1\u00A0s.")).assertExists()
+        rule.onNode(hasText("To answer sooner, Robot reads back fewer earlier exchanges of a conversation here, and gives its model shorter " +
+            "instructions.")).assertExists()
+        rule.onNode(hasText("A question about a photo or the screen takes longer again: the model looks at the picture first.")).assertExists()
+        // Nothing to turn off here: the GPU failed (Try the GPU again is in the Model tab) and Translate transcripts is off.
+        rule.onNode(hasText("Use the GPU: off")).assertDoesNotExist()
+        rule.onNode(hasText("Translate transcripts: on")).assertDoesNotExist()
+        rule.waitForIdle()
+        assertEquals(emptyList<String>(), log)
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
+        rule.shot("guide_phone_slow")
+    }
+
+    /** Never on a Pixel on its TPU or its GPU: before the check, while it runs, after it passed or noted a miss. */
+    @Test fun noWarningOnAPixelOnItsGpuOrItsTpu() {
+        val snaps = listOf(fresh, fresh.copy(build = build, models = listOf(ModelStore.Snap(BrainModel.FAST, ModelStatus.VERIFIED))), nineA,
+            nineA.copy(checking = true), nineA.copy(checks = listOf(record(app.heyrobot.core.GpuVerdict.PASSED))),
+            nineA.copy(checks = listOf(record(app.heyrobot.core.GpuVerdict.SLOW, turn = 3))),
+            fresh.copy(phone = app.heyrobot.ui.testing.PIXEL_11, models = listOf(ModelStore.Snap(BrainModel.FAST_G6, ModelStatus.VERIFIED))))
+        var shown by mutableStateOf(snaps.first())
+        val host = SettingsHost()
+        rule.show { SetupGuideScreen(host.now, shown, host::update, log.actions, Stores(GuideStep.PHONE), SnackbarHostState(), onClose = {}) }
+        for (s in snaps) {
+            shown = s
+            rule.waitForIdle()
+            assertFalse(s.phone.model, s.fit(true).shows)
+            rule.scrollToText("Robot's brain · ", substring = true)
+            rule.onNode(hasText("Robot will be slow", substring = true)).assertDoesNotExist()
+            rule.onNode(hasText("memory is tight", substring = true)).assertDoesNotExist()
+        }
+    }
+
+    /** "Use the GPU" off by your choice: the row turns it back on, the warning goes, and the GPU's check is asked for. */
+    @Test fun useTheGpuTurnsItBackOn() {
+        val host = SettingsHost(RobotSettings(modelGpu = false))
+        guide(Stores(GuideStep.PHONE), host, snap = nineA)
+        rule.scrollToText("Use the GPU: off")
+        rule.onNode(hasText("Robot will be slow on this phone", substring = true)).assertExists()
+        rule.onNode(hasText("Robot answers sooner on the GPU here, after a short check.")).assertExists()
+        rule.onNodeWithContentDescription("Use the GPU").performClick()
+        rule.waitForIdle()
+        assertEquals(true, host.saved.single().modelGpu)
+        rule.onNode(hasText("Robot will be slow", substring = true)).assertDoesNotExist()
+        assertEquals(listOf("checkModel"), log)
+    }
+
+    /** "Translate transcripts" on, on a slow phone: the row turns it off, and only that. */
+    @Test fun translateTranscriptsTurnsOff() {
+        val host = SettingsHost(RobotSettings(convTranslate = true))
+        guide(Stores(GuideStep.PHONE), host, snap = cpuNineA)
+        rule.scrollToText("Translate transcripts: on")
+        rule.onNode(hasText("Robot's model translates each line too, which is slow here.")).assertExists()
+        rule.onNodeWithContentDescription("Turn off Translate transcripts").performClick()
+        rule.waitForIdle()
+        assertEquals(RobotSettings(convTranslate = false), host.saved.single())
+        rule.onNode(hasText("Translate transcripts: on")).assertDoesNotExist()
+        // Still slow: the CPU is why.
+        rule.onNode(hasText("Robot will be slow on this phone", substring = true)).assertExists()
+    }
+
+    /** A phone too small for the model: said first, and Set up opens Settings › Helpers. */
+    @Test fun aTooSmallPhoneOffersAHelper() {
+        guide(Stores(GuideStep.PHONE), snap = small)
+        rule.scrollToText("For a question Robot can't answer well, it can ask a bigger AI online. None is set up yet.")
+        rule.onNode(hasText("Robot's model may not fit in this phone's memory", substring = true)).assertExists()
+        rule.onNode(hasText("This phone has 3.7 GB of memory. Robot's model uses about 2.6 GB of it while it's loaded, and the voice models " +
+            "need room too: it may not load here, or Android may stop it while it answers. Robot has no smaller model yet.")).assertExists()
+        // On its GPU: nothing said about speed.
+        rule.onNode(hasText("Robot will be slow", substring = true)).assertDoesNotExist()
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
+        rule.shot("guide_phone_small")
+        rule.onNodeWithContentDescription("Set up a helper").performClick()
+        assertEquals(listOf("openPage ${Page.Helpers}"), log)
+    }
+
+    /** The warning never holds the guide up: Next goes on. */
+    @Test fun theGuideGoesOnPastTheWarning() {
+        val stores = Stores(GuideStep.PHONE)
+        guide(stores, snap = cpuNineA)
+        scrollToWarning()
+        next()
+        rule.waitForIdle()
+        assertEquals(GuideStep.VOICE, stores.state.at)
+    }
+
+    /** What this phone measured replaces the estimate, in the warning and the row above it alike. */
+    @Test fun whatThisPhoneMeasuredReplacesTheEstimate() {
+        val key = app.heyrobot.core.SpeedKey.of(BrainModel.GENERAL, app.heyrobot.core.ModelBackend.CPU, BrainModel.GENERAL.sha256, build)!!
+        val speeds = listOf(12_000L, 12_500L, 13_000L).map { key to app.heyrobot.core.SpeedSample(1_200, 95.3, 90, 9.1, it, true) }
+        guide(Stores(GuideStep.PHONE), snap = cpuNineA.copy(speeds = speeds))
+        rule.onNode(hasText("Measured on this phone: a new conversation starts answering in about 13 s, later answers in about 1 s, then about 7 " +
+            "words a second.", substring = true)).assertExists()
+        scrollToWarning()
+        rule.onNode(hasText("Measured on this phone: a new conversation starts answering in about 13\u00A0s, later answers in about 1\u00A0s.")).assertExists()
+        rule.onNode(hasText("Estimate: ", substring = true)).assertDoesNotExist()
+    }
+
+    @Test fun theSummaryRepeatsTheWarning() {
+        guide(Stores(GuideStep.SUMMARY), snap = cpuNineA)
+        scrollToWarning()
+        rule.onNode(hasText("Robot's model runs on this phone's CPU.")).assertExists()
+        rule.scrollToText("Now")
+    }
+
+    @Test @Config(fontScale = 2f)
+    fun aCpuPhoneAt200() {
+        guide(Stores(GuideStep.PHONE), SettingsHost(RobotSettings(convTranslate = true)), snap = cpuNineA)
+        rule.onNode(androidx.compose.ui.test.hasScrollToNodeAction()).performScrollToNode(hasContentDescription("Turn off Translate transcripts"))
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
+        rule.shot("guide_phone_slow_font200")
+    }
+
     @Test fun theVoicePageWritesTheVoiceAndPlaysASample() {
         val host = SettingsHost()
         guide(Stores(GuideStep.VOICE), host)
@@ -238,6 +525,27 @@ class SetupGuideScreenTest {
         rule.scrollToText("Talk to Robot")
         rule.onRow("Talk to Robot").performClick()
         assertEquals(listOf("openAssistantSettings", "askPermissions", "talk null"), log)
+    }
+
+    /**
+     * 1.2 (every-android-phone, Step 6): the ADB fix is asked for only where no installed recognizer is set; a phone's own
+     * (a stock phone's) should keep Robot the assistant, and the fix would replace it.
+     */
+    @Test fun theOpeningPageAsksForTheFixOnlyWithoutARecognizer() {
+        guide(Stores(GuideStep.OPENING))
+        rule.scrollToText("Stay the assistant after a restart")
+        rule.onRow("Stay the assistant after a restart").performClick()
+        assertEquals(listOf("openPage ${Page.AdbFixes}"), log)
+    }
+
+    @Test fun aPhoneWithItsOwnRecognizerIsNotAskedForTheFix() {
+        val own = fresh.facts!!.copy(recognizer = "com.example.speech/.Recognizer", recognizerIsRobot = false, recognizerInstalled = true)
+        guide(Stores(GuideStep.OPENING), snap = fresh.copy(facts = own))
+        rule.scrollToText("Stay the assistant after a restart")
+        rule.onNode(hasText("Stay the assistant after a restart")).assert(hasText("Probably not needed on this phone", substring = true))
+        rule.onNode(hasText("Stay the assistant after a restart") and hasClickAction()).assertDoesNotExist()
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
+        rule.shot("guide_opening_own_recognizer")
     }
 
     @Test fun theAskFirstPageWritesTheCardsAndOffersTheDefaultsBack() {
@@ -371,6 +679,19 @@ class SetupGuideScreenTest {
         assertEquals("routines brief=false online=true", stores.events.last())
     }
 
+    /** 1.2 (every-android-phone, Step 6): the brief "after your alarm" on a phone without GrapheneOS Clock says it won't start. */
+    @Test fun theBriefWithClockSaysNothingMore() {
+        guide(Stores(GuideStep.ROUTINES))
+        rule.onNodeWithText("Needs the GrapheneOS Clock app", substring = true).assertDoesNotExist()
+    }
+
+    @Test fun theBriefWithoutClockSaysSo() {
+        guide(Stores(GuideStep.ROUTINES), snap = fresh.copy(facts = fresh.facts!!.copy(clockInstalled = false)))
+        rule.onNodeWithText("Needs the GrapheneOS Clock app", substring = true).assertExists()
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
+        rule.shot("guide_routines_no_clock")
+    }
+
     @Test fun theHeadsetAndUpdatesPagesWriteTheirFiles() {
         val stores = Stores(GuideStep.HEADSET_CAR)
         guide(stores)
@@ -462,7 +783,7 @@ class SetupGuideScreenTest {
     @Test fun homeOffersToContinueOrRunItAgain() {
         var g by mutableStateOf(GuideState(seen = 1, at = GuideStep.MEMORY))
         rule.show { HomeScreen(fresh, emptyList(), log.actions, androidx.compose.ui.Modifier, guide = g) }
-        rule.onNode(hasText("Step 9 of 17: pick up where you left off")).assertExists()
+        rule.onNode(hasText("Step 9 of 18: pick up where you left off")).assertExists()
         rule.onNode(hasText("Continue the setup guide") and hasClickAction()).performClick()
         rule.onNode(hasText("Run the setup guide again")).assertDoesNotExist()
         g = SetupGuide.finish(g)

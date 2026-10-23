@@ -5,7 +5,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.nio.charset.StandardCharsets.UTF_8
 
-// Pure (org.json). memory.enc's plain content and its frame (design §A5, §A8). The encryption itself is not here: the
+// Pure (org.json). memory.enc's plain content and its frame. The encryption itself is not here: the
 // vault in app/sys (both app processes) implements [MemoryCipher] with an Android Keystore AES-256-GCM key made with
 // setUnlockedDeviceRequired(true), and [MemoryVault] with the file lock and atomic writes (tmp, fsync, rename), as
 // People's store does. Everything that decides (what a damaged, locked or newer file means, and that such a file is
@@ -41,6 +41,7 @@ object MemoryCodec {
             if (i.uses > 0) put("uses", i.uses)
             i.usedAt?.let { put("used", it) }
             i.imported?.let { put("imported", it.name) }
+            i.filing?.let { put("filing", MemoryFilingCodec.toJson(it)) }
         })
     }).put("suggestions", JSONArray().apply {
         for (s in f.suggestions) put(JSONObject().put("id", s.id).put("text", s.text).put("kind", s.kind.name).put("created", s.createdAt))
@@ -85,12 +86,14 @@ object MemoryCodec {
         if (text.isEmpty()) return null
         val created = o.optLong("created", 0)
         val secret = o.optBoolean("secret", false)
+        // 1.4: a filing rule (MemoryFiling); a damaged one leaves the item a plain fact. A rule is a fact, never pinned.
+        val filing = MemoryFilingCodec.read(o.optJSONObject("filing"))
         return MemoryItem(
             id = id,
             text = text,
-            kind = enumOr(o.optString("kind"), MemoryKind.FACT),
+            kind = if (filing != null) MemoryKind.FACT else enumOr(o.optString("kind"), MemoryKind.FACT),
             secret = secret,
-            pinned = o.optBoolean("pinned", false) && !secret,
+            pinned = o.optBoolean("pinned", false) && !secret && filing == null,
             source = enumOr(o.optString("source"), MemorySource.CONTENT),
             sourceLabel = o.optString("sourceLabel").takeIf { it.isNotBlank() },
             language = o.optString("lang").takeIf { it.isNotBlank() },
@@ -101,6 +104,7 @@ object MemoryCodec {
             uses = o.optInt("uses", 0).coerceAtLeast(0),
             usedAt = if (o.has("used")) o.optLong("used") else null,
             imported = if (o.has("imported")) enumOr(o.optString("imported"), MemoryImported.CONTENT) else null,
+            filing = filing,
         )
     }
 
@@ -179,11 +183,11 @@ object MemoryEnvelope {
     private val MAGIC = "RMEM".toByteArray(UTF_8)
     private const val MAX_ALIAS = 64
 
-    fun aad(fileName: String): ByteArray = "robot-memory-v1|$fileName".toByteArray(UTF_8)
+    fun aad(fileName: String): ByteArray = "robot-memory-v1|$fileName".toByteArray(UTF_8) // l10n: not text (the cipher's additional data)
 
     fun seal(file: MemoryFile, cipher: MemoryCipher, fileName: String = FILE): ByteArray {
         val alias = cipher.alias.toByteArray(UTF_8)
-        require(alias.isNotEmpty() && alias.size <= MAX_ALIAS) { "key alias" }
+        require(alias.isNotEmpty() && alias.size <= MAX_ALIAS) { "key alias" } // l10n: not text (a programming error)
         val body = cipher.seal(MemoryCodec.toJson(file).toByteArray(UTF_8), aad(fileName))
         return MAGIC + byteArrayOf(VERSION.toByte(), alias.size.toByte()) + alias + body
     }

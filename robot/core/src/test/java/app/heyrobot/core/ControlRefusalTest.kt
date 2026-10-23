@@ -52,19 +52,24 @@ class ControlRefusalTest {
     }
 
     @Test fun eachCaseHasItsOwnWords() {
-        assertEquals(ControlRefusal.QUESTION, ControlRefusal.text(ControlRefusal.Found(question = true)))
-        assertEquals(ControlRefusal.EARLIER, ControlRefusal.text(ControlRefusal.Found(false, listOf(1))))
-        assertEquals(ControlRefusal.EARLIER, ControlRefusal.text(ControlRefusal.Found(true, listOf(1))))
-        assertEquals(ControlRefusal.UNKNOWN, ControlRefusal.text(ControlRefusal.Found()))
-        for (s in listOf(ControlRefusal.QUESTION, ControlRefusal.EARLIER, ControlRefusal.UNKNOWN)) {
-            assertFalse(s.contains('!'))
-            assertTrue(s.length < 140)
+        val en = { f: ControlRefusal.Found -> ControlRefusal.text(f).render(app.heyrobot.core.i18n.Langs.EN) }
+        val fr = { f: ControlRefusal.Found -> ControlRefusal.text(f).render(app.heyrobot.core.i18n.Langs.of(app.heyrobot.core.i18n.Lang.FR)) }
+        val question = ControlRefusal.Found(question = true)
+        val earlier = ControlRefusal.Found(false, listOf(1))
+        assertEquals(QUESTION, en(question))
+        assertEquals(EARLIER, en(earlier))
+        assertEquals(EARLIER, en(ControlRefusal.Found(true, listOf(1))))
+        assertEquals(UNKNOWN, en(ControlRefusal.Found()))
+        for (f in listOf(question, earlier, ControlRefusal.Found())) {
+            assertFalse(en(f).contains('!'))
+            assertTrue(en(f).length < 140)
+            assertTrue(fr(f), fr(f).contains("commande"))
         }
     }
 
     /** Why 1.0.1's limit was an earlier turn: a refused question is never replayed (its error reply isn't, nor a question without one). */
     @Test fun aRefusedQuestionIsNeverReplayedAnyway() {
-        val chat = listOf(user("1", "hi"), reply("2", "Hello."), user("3", bad), reply("4", ControlRefusal.QUESTION, error = true))
+        val chat = listOf(user("1", "hi"), reply("2", "Hello."), user("3", bad), reply("4", QUESTION, error = true))
         assertEquals(listOf("hi", "Hello."), replayed(chat).map { it.text })
     }
 
@@ -76,7 +81,7 @@ class ControlRefusalTest {
             user("6", "ask Jarvis"), reply("7", "Sure $bad", fromHelper = true),
         )
         assertEquals(listOf("1", "3", "5", "6", "7"), history.filter { listOf(it).toPromptTurns().isNotEmpty() }.map { it.id })
-        val chat = history + user("8", "next question") + reply("9", ControlRefusal.EARLIER, error = true)
+        val chat = history + user("8", "next question") + reply("9", EARLIER, error = true)
         val out = ControlRefusal.recover(chat, history, ControlRefusal.Found(false, listOf(4)))
         assertEquals(listOf("7"), out.filter { it.leftOut }.map { it.id })
         // The next question is given everything else, its turns still alternating, and nothing of the helper's answer.
@@ -116,5 +121,11 @@ class ControlRefusalTest {
         val t = user("1", bad).copy(leftOut = true)
         val back = ConversationCodec.fromJson(ConversationCodec.toJson(StoredConversation("c", 1, 2, listOf(t))))!!
         assertEquals(t.copy(leftOut = false), back.turns.single())
+    }
+
+    private companion object {
+        const val QUESTION = "Robot didn't read your message: it holds text this model treats as a command. Try asking without that part."
+        const val EARLIER = "Part of this conversation holds text this model treats as a command, so Robot leaves it out from now on. Ask again."
+        const val UNKNOWN = "This conversation holds text this model treats as a command, so Robot couldn't read it. Start a new conversation."
     }
 }

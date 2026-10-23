@@ -1,0 +1,247 @@
+<!-- Helpers, in Québec French (tu): the l10n work package WP2. The ids of values/strings_helpers.xml; each value
+     written with the glossary (robot/l10n/glossary.tsv) and the OQLF's spaces (tools/fr_typo.py,
+     FrenchTypographyTest). A helper is « une IA externe »; its status words agree with it (« Prête »), never with its name. -->
+<resources>
+    <!-- Settings › Helpers: a helper's line and status -->
+    <string name="helper_status_off">Désactivée</string>
+    <string name="helper_status_key_removed">La clé enregistrée n’a pas pu être lue et a été retirée&#160;: ajoute-la de nouveau</string>
+    <string name="helper_status_no_key_no_app">Aucune clé, et l’appli %1$s n’est pas installée</string>
+    <string name="helper_status_opens_app">Ouvre l’appli %1$s</string>
+    <string name="helper_no_key">Aucune clé</string>
+    <string name="helper_status_ready">Prête</string>
+    <string name="helper_status_ready_in">Prête · a répondu en %1$s&#160;s</string>
+    <string name="helper_status_find_server">Teste la connexion pour trouver le serveur</string>
+    <string name="helper_status_not_tested">Pas encore testée</string>
+    <string name="helper_status_address_changed">Teste la connexion de nouveau&#160;: l’adresse a changé</string>
+    <string name="helper_status_connected">Connectée</string>
+    <string name="helper_line_your_server">Ton serveur</string>
+    <string name="helper_line_no_model">aucun modèle choisi</string>
+    <string name="helper_line_trusted">de confiance pour le contenu personnel</string>
+
+    <!-- Settings › Helpers -->
+    <string name="helper_intro">D’autres IA que Robot consulte seulement quand tu le dis («&#160;demande à un assistant …&#160;», ou «&#160;va chercher&#160;» et le nom d’une IA externe) ou quand tu le laisses vérifier les questions difficiles.</string>
+    <string name="helper_group_yours">Tes IA externes</string>
+    <string name="helper_none">Aucune IA externe</string>
+    <string name="helper_none_summary">Robot répond à tout lui-même</string>
+    <string name="helper_add_summary">Le modèle d’une entreprise ou son appli, ou un modèle sur ton propre ordinateur</string>
+    <string name="helper_or_app_no_key">ou l’appli %1$s, sans clé</string>
+    <string name="helper_group_when">Quand Robot a besoin d’aide</string>
+    <string name="helper_auto_needs_key">Il faut d’abord une clé d’API pour %1$s&#160;: d’ici là, Robot demande d’abord.</string>
+    <string name="helper_auto_needs_test">Il faut d’abord tester la connexion de %1$s&#160;: d’ici là, Robot demande d’abord.</string>
+    <string name="helper_no_target">aucune IA externe à consulter</string>
+    <string name="helper_ask">Consulter</string>
+    <string name="helper_prices_unknown_title">Robot ne connaît pas les prix de %1$s</string>
+    <string name="helper_prices_unknown_summary">Alors il demande d’abord au lieu de vérifier de lui-même. Entre-les sur la page de %1$s.</string>
+    <string name="helper_group_cost">Coût</string>
+    <string name="helper_daily_budget">Budget quotidien pour toutes les IA externes</string>
+    <string name="helper_today_of">Aujourd’hui&#160;: %1$s sur %2$s (une estimation)</string>
+    <string name="helper_spent_by">%1$s&#160;: %2$s</string>
+    <string name="helper_spent_today">Dépensé aujourd’hui</string>
+    <string name="helper_show_cost">Afficher le coût</string>
+    <string name="helper_show_cost_summary">«&#160;≈ 1&#160;¢&#160;» sous chaque réponse d’une IA externe</string>
+    <string name="helper_footer_offline">Robot reste hors ligne à moins que tu consultes une IA externe («&#160;demande à un assistant …&#160;», «&#160;va chercher Jarvis&#160;») ou que tu laisses Robot vérifier les questions difficiles avec elle. Seul du texte quitte le téléphone&#160;: ta voix est transformée en texte ici, et la réponse d’une IA externe est lue par les voix de Robot.</string>
+    <string name="helper_footer_sends_all">De lui-même, Robot envoie ta question et les deux derniers échanges de la conversation, avec le texte de l’écran, la photo ou ce qu’il a lu (%1$s est activé).</string>
+    <string name="helper_footer_sends_question">De lui-même, Robot envoie seulement ta question et les deux derniers échanges d’une conversation ordinaire. Dès qu’une conversation contient le texte de l’écran, une photo, ou ce que Robot a lu dans tes contacts, ton agenda ou tes notes, la météo (où tu es) ou l’état de ton téléphone, il n’envoie que ta question (davantage aux IA externes à qui tu confies ton contenu personnel)&#8239;; le reste part seulement après que tu as touché une carte qui l’énumère.</string>
+    <string name="helper_footer_current">Robot n’envoie de lui-même les questions sur les nouvelles, les prix ou l’actualité à %1$s que si cette IA externe peut chercher sur le web&#8239;; sinon, Robot répond et propose de vérifier.</string>
+    <string name="helper_footer_budget">Budget quotidien&#160;: une fois atteint, Robot demande avant de vérifier de lui-même avec une IA externe, jusqu’à demain. Une IA externe dont Robot ne connaît pas les prix n’est pas comptée. Afficher le coût&#160;: «&#160;≈ 1&#160;¢&#160;» sous chaque réponse d’une IA externe, estimé à partir des prix publiés (ou du prix que l’entreprise indique)&#8239;; «&#160;coût inconnu&#160;» quand Robot ne peut pas le savoir.</string>
+
+    <!-- Add a helper -->
+    <string name="helper_group_companies">Entreprises</string>
+    <string name="helper_openrouter_detail">Des centaines de modèles de nombreuses entreprises, avec une seule clé</string>
+    <string name="helper_group_own">Ta propre IA</string>
+    <string name="helper_home_summary">Un ordinateur sur ton réseau, ou joint par Tailscale</string>
+    <string name="helper_group_other">Autre</string>
+    <string name="helper_other_summary">Toute entreprise avec une API compatible OpenAI (https)</string>
+    <string name="helper_add_footer">Qui Robot devrait-il pouvoir consulter&#8239;? Le modèle d’une entreprise demande une clé d’API de cette entreprise (payée à part de tout abonnement à une appli). Sans clé, une entreprise qui a une appli sur ce téléphone reçoit ta question dans son appli&#160;: tu touches Envoyer là-bas, et Robot n’entend pas la réponse. Un modèle sur ton propre ordinateur ne demande aucune clé et ne coûte rien, et il est privé quand l’ordinateur est à toi. Pour une autre entreprise, tu entres son adresse compatible OpenAI (https).</string>
+    <string name="helper_mine_title">Cet ordinateur est-il à toi&#8239;?</string>
+    <string name="helper_mine_text">Cet ordinateur est-il à toi, et fait-il tourner le modèle lui-même (sans transmettre les questions à une entreprise)&#8239;? Si oui, Robot peut inclure ce qu’il a lu pour toi (ton agenda, tes notes, tes contacts) quand il consulte %1$s. Ton écran et tes photos demandent quand même que tu touches une carte chaque fois. Tu peux changer ça sur sa page.</string>
+    <string name="helper_mine_yes">Oui, il est à moi</string>
+    <string name="helper_not_now">Pas maintenant</string>
+
+    <!-- Your server's address, or another company's API -->
+    <string name="helper_address_bad">Ce n’est pas une adresse que Robot peut utiliser&#160;: un nom ou une adresse IP, avec http ou https si tu veux, et un port.</string>
+    <string name="helper_address_https_only">Robot ne se connecte à une entreprise qu’en https.</string>
+    <string name="helper_address_blocked">Cette adresse ne peut pas être un serveur.</string>
+    <string name="helper_address_title_home">L’adresse de ton serveur</string>
+    <string name="helper_address_title_api">L’adresse de l’API</string>
+    <string name="helper_address_home_hint">L’ordinateur qui fait tourner Ollama, LM Studio, llama.cpp, vLLM, LocalAI ou Open WebUI&#160;: son adresse IP ou son nom, comme %1$s, %2$s ou %3$s. Sans port, Robot essaie les ports habituels.</string>
+    <string name="helper_address_api_hint">Son adresse compatible OpenAI, comme %1$s.</string>
+    <string name="helper_address">Adresse</string>
+    <string name="helper_address_cleartext">Sans https, n’importe qui sur le même Wi-Fi peut lire ce que Robot envoie. Ça va sur ton réseau domestique&#8239;; sur un réseau partagé, utilise Tailscale ou https.</string>
+
+    <!-- A helper's page -->
+    <string name="helper_use_name">Utiliser %1$s</string>
+    <string name="helper_group_connection">Connexion</string>
+    <string name="helper_address_none">Aucune</string>
+    <string name="helper_change">Modifier</string>
+    <string name="helper_not_encrypted">Non chiffrée</string>
+    <string name="helper_not_encrypted_summary">N’importe qui sur le même Wi-Fi peut lire ce que Robot envoie à %1$s. Utilise https ou Tailscale sur un réseau partagé.</string>
+    <string name="helper_not_encrypted_summary_trusted">N’importe qui sur le même Wi-Fi peut lire ce que Robot envoie à %1$s, y compris le contenu personnel que tu lui confies. Utilise https ou Tailscale sur un réseau partagé.</string>
+    <string name="helper_no_key_optional">Aucune clé (pas nécessaire, sauf si ton serveur en demande une)</string>
+    <string name="helper_key_unreadable">Robot n’a pas pu lire la clé enregistrée (le magasin de clés d’Android l’a perdue), alors elle a été retirée. Ajoute-la de nouveau.</string>
+    <string name="helper_key_from">Sur %1$s.</string>
+    <string name="helper_replace">Remplacer</string>
+    <string name="helper_add_key">Ajouter une clé</string>
+    <string name="helper_checked_answered">Dernière vérification&#160;: une question test a reçu une réponse.</string>
+    <plurals name="helper_checked_answered_models">
+        <item quantity="one">Dernière vérification&#160;: une question test a reçu une réponse, %d modèle listé.</item>
+        <item quantity="many">Dernière vérification&#160;: une question test a reçu une réponse, %d modèles listés.</item>
+        <item quantity="other">Dernière vérification&#160;: une question test a reçu une réponse, %d modèles listés.</item>
+    </plurals>
+    <string name="helper_checked_server">Dernière vérification&#160;: le serveur a répondu.</string>
+    <plurals name="helper_checked_server_models">
+        <item quantity="one">Dernière vérification&#160;: le serveur a répondu, %d modèle listé.</item>
+        <item quantity="many">Dernière vérification&#160;: le serveur a répondu, %d modèles listés.</item>
+        <item quantity="other">Dernière vérification&#160;: le serveur a répondu, %d modèles listés.</item>
+    </plurals>
+    <string name="helper_not_reached">Robot n’a pas encore joint %1$s.</string>
+    <string name="helper_checked_key_not_sent">Dernière vérification&#160;: la clé n’a pas été envoyée en http, alors rien n’a été demandé.</string>
+    <string name="helper_checked_failed">Dernière vérification&#160;: ça n’a pas fonctionné. %1$s</string>
+    <string name="helper_zdr">Seulement des fournisseurs qui ne conservent rien</string>
+    <string name="helper_zdr_summary">Aucune conservation des données</string>
+    <string name="helper_use">Utiliser</string>
+    <string name="helper_app_not_installed">L’appli %1$s n’est pas installée.</string>
+    <string name="helper_add_key_first">Ajoute d’abord une clé.</string>
+    <string name="helper_group_names">Nom utilisé à la voix</string>
+    <string name="helper_name">Nom</string>
+    <string name="helper_name_hint">Dis «&#160;demande à %1$s …&#160;» ou «&#160;va chercher %1$s&#160;».</string>
+    <string name="helper_aliases">Répond aussi à</string>
+    <string name="helper_aliases_none">Aucun</string>
+    <string name="helper_aliases_hint">D’autres noms que tu lui donnes, séparés par des virgules (%1$d au plus).</string>
+    <string name="helper_alias_problem">%1$s&#160;: %2$s</string>
+    <string name="helper_model">Modèle</string>
+    <string name="helper_model_none">Aucun modèle choisi</string>
+    <string name="helper_effort">Niveau de réflexion de %1$s</string>
+    <string name="helper_effort_auto">Faible pour les questions dites, moyen pour les questions écrites, élevé quand tu le demandes</string>
+    <string name="helper_group_may">Ce que %1$s peut faire</string>
+    <string name="helper_search">Permettre à %1$s de chercher sur le web</string>
+    <string name="helper_search_cant">Ce modèle ne peut pas chercher sur le web par cette connexion.</string>
+    <string name="helper_actions">Permettre à %1$s de demander des actions à Robot</string>
+    <string name="helper_actions_none">Ce modèle n’a pas utilisé les actions de Robot quand Robot a vérifié, alors il n’en reçoit aucune.</string>
+    <string name="helper_actions_summary">Minuteries, notes, messages et plus, chaque fois avec une carte d’abord</string>
+    <string name="helper_check_actions">Vérifier les actions</string>
+    <string name="helper_check_actions_summary">Si ce modèle utilise les actions de Robot</string>
+    <string name="helper_locked">Autoriser sur l’écran de verrouillage</string>
+    <string name="helper_locked_summary">Un téléphone verrouillé ne peut pas montrer qui demande</string>
+    <string name="helper_group_voice">Voix et confiance</string>
+    <string name="helper_voice">Voix de %1$s</string>
+    <string name="helper_voice_also">Aussi celle de %1$s</string>
+    <string name="helper_trust">De confiance pour le contenu personnel</string>
+    <string name="helper_trust_all">Toutes les IA externes le reçoivent déjà (%1$s)</string>
+    <string name="helper_trust_on">Ce que Robot a lu part sans demander</string>
+    <string name="helper_trust_off">Désactivé&#160;: seule ta question part d’elle-même</string>
+    <string name="helper_prices_edit">Modifier tes prix</string>
+    <string name="helper_price_add">Ajouter un prix</string>
+    <string name="helper_prices_enter">Entrer les prix</string>
+    <string name="helper_prices_yours_summary">%1$s en entrée, %2$s en sortie, par million de jetons</string>
+    <string name="helper_prices_unit">Dollars US par million de jetons</string>
+    <string name="helper_prices_published">Utiliser les prix publiés</string>
+    <string name="helper_cap">Plafond quotidien pour %1$s</string>
+    <string name="helper_cap_none">Aucun</string>
+    <string name="helper_cap_today_no_cap">Aujourd’hui&#160;: %1$s · aucun plafond (une estimation)</string>
+    <string name="helper_remove">Retirer %1$s</string>
+    <string name="helper_remove_summary">Sa clé et ce que Robot a trouvé à son sujet</string>
+    <string name="helper_moved_trust_key">«&#160;%1$s&#160;» a été désactivé et la clé a été retirée&#160;: l’adresse a changé. Ajoute la clé de nouveau si le serveur en a besoin.</string>
+    <string name="helper_moved_trust">«&#160;%1$s&#160;» a été désactivé&#160;: l’adresse a changé.</string>
+    <string name="helper_moved_key">La clé a été retirée&#160;: Robot n’envoie une clé qu’à l’hôte pour lequel elle a été enregistrée. Ajoute-la de nouveau si le serveur en a besoin.</string>
+    <string name="helper_delete_key_title">Supprimer la clé de %1$s&#8239;?</string>
+    <string name="helper_delete_key_text">Robot retire la clé de ce téléphone.</string>
+    <string name="helper_delete_key_text_app">Robot retire la clé de ce téléphone. %1$s utilise l’appli %2$s jusqu’à ce que tu ajoutes une clé de nouveau.</string>
+    <string name="helper_remove_title">Retirer %1$s&#8239;?</string>
+    <string name="helper_remove_text">Robot supprime sa clé et ce qu’il a trouvé à son sujet. Les conversations de l’historique gardent ses réponses.</string>
+    <string name="helper_remove_confirm">Retirer</string>
+
+    <!-- A helper page's footer -->
+    <string name="helper_footer_zdr">Seulement des fournisseurs qui ne conservent rien (aucune conservation des données)&#160;: OpenRouter n’envoie tes questions qu’aux fournisseurs qui ne les stockent pas. Certains modèles n’en ont aucun&#8239;; %1$s le dit alors.</string>
+    <string name="helper_footer_misheard">Robot entend aussi «&#160;%1$s&#160;» comme %2$s, mais seulement après «&#160;demande à&#160;» ou «&#160;va chercher&#160;».</string>
+    <string name="helper_footer_effort">Niveau de réflexion de %1$s&#160;: Automatique est faible pour les questions dites (rapide), moyen pour les questions écrites, élevé quand tu demandes à %1$s de «&#160;bien réfléchir&#160;» ou de «&#160;prendre son temps&#160;».</string>
+    <string name="helper_footer_effort_mistral">Mistral réfléchit pleinement ou pas du tout&#160;: Faible veut dire aucune réflexion.</string>
+    <string name="helper_footer_effort_deepseek">Pour DeepSeek, Élevé veut dire son maximum.</string>
+    <string name="helper_footer_voice">La voix de %1$s est une voix Kokoro, alors tu entends qui parle. Avec la voix Kitten, les IA externes utilisent l’autre voix de Kitten&#8239;; avec la voix du téléphone, une voix plus grave.</string>
+    <string name="helper_footer_trust">De confiance pour le contenu personnel&#160;: désactivé (par défaut), quand Robot vérifie de lui-même avec %1$s dans une conversation qui contient quelque chose de personnel (ce que Robot a lu dans ton agenda, tes notes ou tes contacts, où tu es, l’état de ton téléphone), seule ta question part&#8239;; «&#160;va chercher %1$s&#160;» demande avant d’inclure la conversation&#8239;; un oui dit à voix haute n’envoie jamais de contenu personnel. Activé&#160;: tout cela part vers %1$s sans demander. Ton écran et tes photos demandent quand même que tu touches une carte chaque fois, tout comme une conversation qui en contenait. Active-le seulement pour une IA externe à qui tu montrerais ton agenda&#160;: un serveur qui est à toi, ou une entreprise dont tu acceptes les conditions.</string>
+    <string name="helper_footer_trust_all">%1$s est activé, alors toutes les IA externes le reçoivent déjà.</string>
+    <string name="helper_footer_budget_where">Le budget pour toutes les IA externes est dans %1$s.</string>
+
+    <!-- Where a helper's price comes from -->
+    <string name="helper_price_free">Gratuit&#160;: ton propre serveur. Si tu paies son électricité ou une machine louée, tu peux ajouter un prix.</string>
+    <string name="helper_price_yours">Tes prix&#160;: %1$s par million de jetons en entrée, %2$s en sortie.</string>
+    <string name="helper_price_rates">%1$s par million de jetons en entrée, %2$s en sortie</string>
+    <string name="helper_price_rates_cached">%1$s par million de jetons en entrée, %2$s en sortie, %3$s pour l’entrée en cache</string>
+    <string name="helper_price_long">plus pour les très longues conversations</string>
+    <string name="helper_price_peak">le double aux heures de pointe</string>
+    <string name="helper_price_then">%1$s en entrée et %2$s en sortie après le %3$s</string>
+    <string name="helper_prices_as_of_from">Prix en date du %1$s, selon %2$s.</string>
+    <string name="helper_prices_as_of">Prix en date du %1$s.</string>
+    <string name="helper_prices_from">Prix selon %1$s.</string>
+    <string name="helper_price_reported">%1$s indique le coût de chaque réponse&#8239;; la ligne de coût affiche son montant.</string>
+    <string name="helper_price_unknown_home">Robot ne connaît pas les prix de ce modèle&#160;: les réponses affichent «&#160;coût inconnu&#160;», elles ne sont pas comptées dans les dépenses du jour, et Robot ne vérifiera pas de lui-même avec %1$s. Entre les prix d’après ce que tu paies.</string>
+    <string name="helper_price_unknown">Robot ne connaît pas les prix de ce modèle&#160;: les réponses affichent «&#160;coût inconnu&#160;», elles ne sont pas comptées dans les dépenses du jour, et Robot ne vérifiera pas de lui-même avec %1$s. Entre les prix d’après la page de prix de %2$s.</string>
+    <string name="helper_price_of">Prix de %1$s</string>
+    <string name="helper_prices_for">Prix pour %1$s</string>
+    <string name="helper_price_in">$&#160;US en entrée</string>
+    <string name="helper_price_out">$&#160;US en sortie</string>
+    <string name="helper_price_unit_for">Dollars US par million de jetons, pour %1$s.</string>
+    <string name="helper_price_unit_this">Dollars US par million de jetons, pour ce modèle.</string>
+
+    <!-- The model dialog -->
+    <string name="helper_badges_t">(Peut utiliser les actions de Robot.)</string>
+    <string name="helper_badges_s">(Peut chercher sur le web.)</string>
+    <string name="helper_badges_v">(Peut voir les images.)</string>
+    <string name="helper_badges_ts">(Peut utiliser les actions de Robot, peut chercher sur le web.)</string>
+    <string name="helper_badges_tv">(Peut utiliser les actions de Robot, peut voir les images.)</string>
+    <string name="helper_badges_sv">(Peut chercher sur le web, peut voir les images.)</string>
+    <string name="helper_badges_tsv">(Peut utiliser les actions de Robot, peut chercher sur le web, peut voir les images.)</string>
+    <plurals name="helper_models_search">
+        <item quantity="one">Chercher parmi %d modèle</item>
+        <item quantity="many">Chercher parmi %d modèles</item>
+        <item quantity="other">Chercher parmi %d modèles</item>
+    </plurals>
+    <string name="helper_models_more">D’autres modèles correspondent&#160;: précise la recherche.</string>
+    <string name="helper_model_yours">Entré par toi</string>
+    <string name="helper_model_id">ID du modèle</string>
+    <string name="helper_model_id_hint_home">N’importe quel modèle de ton serveur, nommé exactement comme il l’est.</string>
+    <string name="helper_model_id_hint">N’importe quel modèle offert par %1$s, nommé exactement comme il l’est.</string>
+    <string name="helper_models_listed_home">Tester la connexion affiche les modèles de ton serveur.</string>
+    <string name="helper_models_listed">Tester la connexion affiche les modèles que tu peux utiliser.</string>
+    <string name="helper_models_refresh">Actualiser la liste</string>
+
+    <!-- What a web search costs with a helper -->
+    <string name="helper_search_anthropic">Jusqu’à 3 recherches par question, environ %1$s chacune. La réponse énumère les sites.</string>
+    <string name="helper_search_openrouter">La recherche web d’OpenRouter (5 résultats)&#8239;; son prix fait partie du coût qu’OpenRouter indique. La réponse énumère les sites.</string>
+    <string name="helper_search_priced">La recherche web de %1$s, environ %2$s chacune. La réponse énumère les sites.</string>
+    <string name="helper_search_unpriced">La recherche web de %1$s. La réponse énumère les sites.</string>
+
+    <!-- A helper's connection window -->
+    <string name="helper_window_key_title">%1$s&#160;: clé d’API</string>
+    <string name="helper_window_key_title_optional">%1$s&#160;: clé (si ton serveur en demande une)</string>
+    <string name="helper_window_key_where">Crée une clé sur %1$s, puis colle-la ici.</string>
+    <string name="helper_window_key_safe">Robot chiffre la clé sur ce téléphone et seule la partie assistant de Robot la lit.</string>
+    <string name="helper_window_api_key">Clé d’API</string>
+    <string name="helper_window_key_not_saved">La clé n’a pas pu être enregistrée sur ce téléphone.</string>
+    <string name="helper_window_testing">Test de %1$s…</string>
+    <string name="helper_window_testing_home">Robot cherche ton serveur à l’adresse que tu as donnée (sur les ports habituels si tu n’en as pas donné), liste ses modèles et lui demande de répondre «&#160;OK&#160;».</string>
+    <string name="helper_window_testing_company">Robot liste les modèles de %1$s offerts à ta clé et demande au modèle de répondre «&#160;OK&#160;» (une fraction de cent).</string>
+    <string name="helper_window_ready">%1$s fonctionne</string>
+    <string name="helper_window_no_answer">%1$s n’a pas répondu</string>
+    <string name="helper_window_key_not_sent">%1$s&#160;: clé non envoyée</string>
+    <string name="helper_window_done">OK</string>
+    <string name="helper_probe_needs_key">Ce serveur demande une clé.</string>
+    <string name="helper_probe_needs_key_https">Ce serveur demande une clé, que Robot n’envoie qu’en https.</string>
+    <plurals name="helper_probe_lists">
+        <item quantity="one">Il liste %d modèle.</item>
+        <item quantity="many">Il liste %d modèles.</item>
+        <item quantity="other">Il liste %d modèles.</item>
+    </plurals>
+    <string name="helper_probe_connected">Connexion établie.</string>
+    <plurals name="helper_probe_connected_models">
+        <item quantity="one">Connexion établie&#160;: %d modèle à choisir dans les réglages.</item>
+        <item quantity="many">Connexion établie&#160;: %d modèles à choisir dans les réglages.</item>
+        <item quantity="other">Connexion établie&#160;: %d modèles à choisir dans les réglages.</item>
+    </plurals>
+    <string name="helper_probe_answered">Une question test a reçu une réponse en %1$s&#160;s.</string>
+    <string name="helper_probe_no_usage">Le serveur n’indique pas ses nombres de jetons.</string>
+    <string name="helper_probe_actions_yes">Le modèle peut utiliser les actions de Robot (toujours derrière une carte).</string>
+    <string name="helper_probe_actions_no">Le modèle n’a pas utilisé l’action de Robot quand on le lui a demandé&#160;: les actions sont désactivées pour lui.</string>
+    <string name="helper_probe_dropped">Robot laissera de côté ce que le serveur n’a pas accepté&#160;: %1$s.</string>
+    <string name="helper_probe_cleartext">Cette connexion n’est pas chiffrée&#160;: n’importe qui sur ton réseau peut la lire.</string>
+</resources>

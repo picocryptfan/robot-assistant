@@ -74,11 +74,37 @@ class WebSettingsTest {
         // A public SearXNG is offered, never suggested.
         assertTrue(WebSetup.order(false).indexOf(SearchService.SEARXNG_PUBLIC) > 0)
         assertEquals("Google, Bing, Startpage and DuckDuckGo have no full search API that Robot can use: they open in your browser instead.", WebSetup.NOT_OFFERED)
-        assertEquals("When you ask, Robot sends your search words to Kagi. To answer, it may open up to 3 of the result pages from this phone, " +
-            "like a browser without cookies: those sites see your IP address. Nothing else leaves the phone.", WebSetup.consent(SearchService.KAGI))
+        // The consent says who gets your words (Wikipedia too for a who, what or where question, Encyclopedia lookups being on by
+        // default) and the pages Settings allow.
+        assertEquals("When you ask, Robot sends your search words to Kagi. A who, what or where question also goes to Wikipedia. To answer, it may " +
+            "open up to 3 of the result pages from this phone, like a browser without cookies: those sites see your IP address. Nothing else leaves the phone.",
+            WebSetup.consent(SearchService.KAGI, WebSettings()))
         assertTrue(SearchService.BRAVE.needsKey && SearchService.KAGI.needsKey && SearchService.MOJEEK.needsKey)
         assertFalse(SearchService.SEARXNG_HOME.needsKey)
         assertEquals(SearchService.entries.size, SearchService.entries.map { it.code }.toSet().size)
+    }
+
+    /** The consent says what leaves the phone as PRIVACY.md does: the pages from Settings' slider (1 to 5), and every service asked. */
+    @Test fun theConsentFollowsTheSettings() {
+        fun c(service: SearchService, s: WebSettings = WebSettings()) = WebSetup.consent(service, s)
+        val wiki = "A who, what or where question also goes to Wikipedia."
+        val books = "A question about books also goes to Open Library."
+        assertTrue(c(SearchService.BRAVE, WebSettings(pages = 5)).contains("it may open up to 5 of the result pages"))
+        assertTrue(c(SearchService.BRAVE, WebSettings(pages = 1)).contains("it may open 1 result page from this phone, like a browser without cookies: that site sees your IP address."))
+        // Pages read through the service, or none read: no page from this phone.
+        for (s in listOf(WebSettings(readPages = ReadPages.NEVER), WebSettings(readThrough = ReadThrough.SERVICE))) {
+            assertEquals("When you ask, Robot sends your search words to Brave. $wiki Nothing else leaves the phone.", c(SearchService.BRAVE, s))
+        }
+        // Wikipedia only while Encyclopedia lookups are on, Open Library only while Book lookups are, and nothing more about
+        // Wikipedia when it is the service itself.
+        assertEquals("When you ask, Robot sends your search words to Mojeek. $books Nothing else leaves the phone.",
+            c(SearchService.MOJEEK, WebSettings(encyclopedia = false, books = true, readPages = ReadPages.NEVER)))
+        assertTrue(c(SearchService.MOJEEK, WebSettings(books = true)).startsWith("When you ask, Robot sends your search words to Mojeek. $wiki $books To answer"))
+        assertFalse(c(SearchService.MOJEEK, WebSettings(encyclopedia = false)).contains("Wikipedia"))
+        assertTrue(c(SearchService.WIKIPEDIA_ONLY).startsWith("When you ask, Robot sends your search words to Wikipedia. To answer"))
+        assertEquals(1, Regex("Wikipedia").findAll(c(SearchService.WIKIPEDIA_ONLY)).count())
+        // The one being set up counts, not the one in use.
+        assertEquals(c(SearchService.KAGI), c(SearchService.KAGI, WebSettings(service = SearchService.DDG_INSTANT)))
     }
 
     @Test fun theFirstSearchShowsATapOnlyCard() {

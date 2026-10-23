@@ -1,0 +1,252 @@
+# Robot's English → Québec French glossary. Tab-separated: english, french, never (the
+# French variants Robot doesn't use, comma-separated), check, note. check: word = GlossaryTest fails on a never variant as a
+# whole word, any case, in any French value (values-fr-rCA and core's catalogs, brand names left out); case = the same,
+# case-sensitive; path = « Réglages › » is always followed by a Robot screen's title (core UiStrings); - = a reviewer applies
+# it (the word is right in other senses). The OQLF's Grand dictionnaire terminologique decides a term not here.
+english	french	never	check	note
+Robot	Robot (il)	le Robot, du Robot, au Robot	case	A name; Robot is « il »
+Settings (Robot's)	Réglages	Paramètres	path	Robot's existing word; « Réglages › » always names a Robot screen (a UiStrings title); « Paramètres » is Android's
+Settings (Android's)	Paramètres	Réglages	-	core AndroidPath, rendered in the phone's language (UiLabelTest)
+Home (screen)	Accueil		-	
+Home (address, for weather)	Domicile	Maison	-	« Ton domicile pour la météo »; « à la maison » stays possible in a sentence
+digital assistant (Android role)	assistant numérique		-	As Android names it in Paramètres › Applications par défaut
+Assistant setup	Configuration de l'assistant		-	
+helper (Claude, your AI server)	IA externe	assistant	-	Decided by default (open question 3): « IA externes »; « assistant » stays for the digital assistant
+Helpers (page)	IA externes		-	
+wake word	mot d'éveil	mot-clé	word	"hey robot" itself stays as is
+model	modèle		-	
+Fast / Smarter / Uncensored (built-in models)	Rapide / Plus futé / Sans censure		-	The user, 15 and 19 Oct 2026: translated (« Rapide (bêta) », « Plus futé, plus lent », « Sans censure, plus lent »)
+voice	voix		-	
+voice models	modèles de voix		-	
+Display	Affichage		-	
+Actions	Actions		-	
+Advanced	Avancé		-	
+About	À propos		-	
+History	Historique		-	
+Memory	Mémoire		-	
+remember / Remember (button)	retenir / Retenir	mémoriser, mémorise	word	« Je retiens 3 choses. »
+forget	oublier		-	
+Messages	Messages		-	
+text (message)	texto	message texte, messages textes	word	OQLF accepts all; texto is Robot's (79 uses); SMS stays as an acronym (appli SMS)
+text (verb)	texter, envoyer un texto		-	
+email	courriel	e-mail, email, mail, mél	word	Brand names (Proton Mail, K-9 Mail) are left out before the check
+chat (a thread)	conversation	chat, tchat	word	
+chat (the activity)	clavardage	chat, tchat	word	Rare in Robot
+draft	brouillon		-	
+calendar	agenda	calendrier	word	Robot's existing word
+event	événement (screens), rendez-vous (spoken brief)	évènement, évènements	word	
+reminder	rappel		-	
+alarm	alarme (screens, as the Clock app), cadran (spoken)	réveil	word	Brief.kt already says cadran
+timer	minuterie	minuteur, minuteurs	word	Québec usage; the Clock app's fr-CA word UNVERIFIED
+notification	notification		-	
+lock screen / unlock	écran de verrouillage / déverrouiller		-	
+card (action card)	carte	fiche	word	Robot's existing word
+Do it	Fais-le	Exécuter	-	The card's button; « exécuter » may still say what a script does
+Just do it (level)	Faire sans demander		-	
+Ask first	Demander d'abord		-	Already in TermuxSettings
+Cancel	Annuler		-	
+Undo	Annuler	Défaire	word	Never on the same card as Cancel
+Send	Envoyer		-	
+Open	Ouvrir		-	
+Delete	Supprimer	Effacer	-	On buttons; « efface » stays a heard word and a verb in sentences
+Done	Fait	Terminé	-	Card status
+tap	touche (tu)	appuie, appuyer, clique, cliquer	word	Robot's existing majority (24 to 4); « tape » stays for typing
+Safety & privacy	Sécurité et confidentialité		-	
+Car mode	Mode auto	mode voiture	word	Existing
+Headset	Écouteurs	casque	word	Existing
+Routines	Routines		-	
+morning brief	résumé du matin	briefing	word	Existing
+Conversation mode / transcribe	transcrire		-	
+transcript	transcription		-	
+interpreter	interprète		-	
+summary	résumé		-	
+Web search	Recherche web	recherche Internet	word	
+search engine	moteur de recherche		-	
+command / script	commande / script		-	Termux
+update(s)	mise(s) à jour		-	
+test builds	versions de test		-	
+Send feedback	Envoyer un commentaire	feedback	word	
+bug	bogue	bug, bugs	word	Existing in FeedbackRouter
+download	télécharger		-	
+storage / free space	stockage / espace libre		-	
+GB / MB	Go / Mo		-	core Fmt
+mobile data	données mobiles		-	As Android says it
+microphone	micro		-	
+phone	téléphone (screens), cell (heard, not said)		-	
+app	appli	app, apps	word	Existing (19 to 9 + 9); « application » stays where Android says it (Paramètres › Applications)
+People	Personnes		-	
+contact	contact		-	
+Notes	Notes		-	
+Weather	Météo		-	
+Voice log	Journal vocal		-	Page title only; its lines stay English (decided by default, open question 6)
+ADB fixes	Correctifs ADB		-	
+Licences	Licences		-	
+token (model)	jeton		-	
+API key	clé d'API	clé API	word	Existing
+screen (share the screen)	écran		-	
+photo	photo		-	
+locked	verrouillé		-	
+Quick Settings tile	tuile des Réglages rapides		-	As Android says it (UNVERIFIED on GrapheneOS)
+weekend	fin de semaine	week-end, week-ends	word	
+dinner (evening)	souper	dîner	-	« dîner » is lunch in Québec, so it may appear with that meaning
+you	tu, toi, ton	vous, votre, vos	word	Tutoiement everywhere
+flashlight	lampe de poche	lampe torche	word	WP1: the flashlight tool and its card
+dialer (Phone app)	composeur		-	WP1: « Le composeur est ouvert : touche Appeler. »
+App info (Android's page)	Infos sur l'appli		-	WP1: Android's page for an app, where you tap « Forcer l'arrêt »; Android's own words (UNVERIFIED on GrapheneOS fr-CA)
+Force stop	Forcer l'arrêt		-	WP1: Android's button on App info
+Usage access	accès aux données d'utilisation		-	WP1: Android's special access (core AndroidPath USAGE_ACCESS)
+Free up space (Android's screen)	Libérer de l'espace		-	WP1: Android's storage screen
+Route (Organic Maps' button)	Itinéraire		-	WP1: Organic Maps' own word
+forecast	prévisions		-	WP1: the weather card
+gusts	rafales		-	WP1: the weather card
+clipboard	presse-papiers		-	WP1: the Claude app hand-off
+Mobile (a phone number's kind)	Cellulaire		-	WP1: People's number kinds (Mobile, Home, Work, Other: Cellulaire, Domicile, Travail, Autre)
+cookie (web)	témoin	cookie, cookies	word	OQLF; « sans témoins » (WP6)
+search service	service de recherche		-	Settings › Web search (WP6)
+snippet (search result)	extrait		-	« extraits seulement » (WP6)
+browser	navigateur		-	(WP6)
+privacy level	niveau de confidentialité		-	Élevé, Moyen, Faible (WP6)
+set up / set-up	configurer / configuration		-	« Configurer », Termux's checklist (WP6)
+trust (a Termux, a version)	faire confiance, approuver		-	« Faire confiance à cette version », « Approuvé · signataire » (WP6)
+signer	signataire		-	Termux's signing key (WP6)
+Run (a Termux card's button)	Lancer		-	core UiStrings.run; « exécuter » may still say what code does (WP6)
+Edit (a card's button)	Modifier		-	(WP6)
+output (a command's)	sortie		-	Termux (WP6)
+exit code	code		-	« Code 0 · 0,8 s » (WP6)
+time limit	limite de temps		-	Termux (WP6)
+read-only	en lecture seule		-	Termux (WP6)
+hidden (a secret)	masqué		-	« [masqué : ressemble à une clé d'API] » (WP6)
+panel (the assistant's)	panneau		-	WP2: « Ferme d'abord le panneau de Robot »; Robot's own window over other apps
+screenshot	capture d'écran		-	WP2: « Envoyer une capture d'écran de Signal à Claude ? »
+PIN	NIP		-	WP2: Québec usage (« les mots de passe, NIP, codes ou numéros de carte »)
+voiceprint	empreinte vocale		-	WP2: Home's message after Your voice is deleted
+notification access (Android's)	accès aux notifications		-	WP3: Android's special access, as Android names it (UNVERIFIED on GrapheneOS fr-CA)
+Robot Notes	Notes de Robot		-	WP3: the notes app's launcher name and title
+nickname	surnom		-	WP3: People's Nicknames field
+pin / pinned (a memory)	épingler / épinglé		-	WP3: Settings › Memory; « Six choses sont déjà épinglées »
+private (a memory item)	privé		-	WP3: Settings › Memory; a secret is « privé », shown as « [un NIP, gardé en mémoire] »
+read receipt	accusé de lecture	confirmation de lecture	-	WP3: Signal's receipts
+carrier (phone company)	opérateur		-	WP3: « des frais de l'opérateur peuvent s'appliquer »
+one-to-one chat	conversation en tête-à-tête		-	WP3: Cheogram's 1:1 chats, as opposed to a group
+group chat	conversation de groupe		-	WP3
+Mark as read	Marquer comme lu		-	WP3: Settings › Messages › After Robot reads a message
+SMS gateway	passerelle SMS		-	WP3: Settings › People, notes and calendar
+Messaging (the phone's SMS app)	Messagerie (SMS)		-	WP3: AOSP Messaging's French name (UNVERIFIED on GrapheneOS fr-CA)
+speaker (a person in a transcript)	intervenant		-	WP5: « Distinguer les intervenants », « Intervenant » on a one-voice chip; the labels S1, S2… stay as they are
+You (your own lines in a transcript)	Moi		-	WP5: a speaker's name, shown and exported; the model still reads "User"
+voiceprint	empreinte vocale		-	WP5: Settings › Conversation › Your voice (« Ta voix »)
+speaker model	modèle des intervenants		-	WP5: the TitaNet download that tells speakers apart
+fast translation engine	moteur de traduction rapide		-	WP5: Bergamot; its translations are marked « rapide »
+clip (an audio file)	extrait		-	WP5: the Transcription check's imported clips
+pass mark (a check's gate)	seuil		-	WP5: the Transcription check and the speed test (« Seuil de réussite 15 % »)
+Live words	Mots en direct		-	WP5: Settings › Conversation
+merge (two speakers)	fusionner		-	WP5: « Fusionner », « Pas la même »
+routine step	étape		-	WP4: a routine's steps (« 1 étape »)
+trigger (a routine's)	déclencheur		-	WP4: « quand son déclencheur arrive »
+Ready card	carte Prêt		-	WP4: a step that waits for your tap; Settings › Routines › « Prêt pour toi »
+event (spoken brief)	événement		-	WP4: the brief says « événement »: GlossaryTest's « vous » rule refuses « rendez-vous »
+Clock (GrapheneOS's app)	Horloge		-	WP4: « l'Horloge de GrapheneOS » (UNVERIFIED on a fr-CA phone)
+Nearby devices (Android permission)	Appareils à proximité		-	WP4: Android's permission name (UNVERIFIED on GrapheneOS fr-CA)
+parked (car mode: kept for when you park)	stationné		-	WP4: « pour quand tu seras stationné », « De ton trajet »
+dialer	composeur		-	WP4: « le composeur s'ouvre »
+headphones (a device)	écouteurs		-	WP4: plural in French (« Tes écouteurs », « 1 paire d'écouteurs »)
+build (a model's)	version		-	WP7: « la version générale », « la version TPU pour le Tensor G5 »
+checksum	somme de contrôle		-	WP7: a downloaded file's SHA-256
+cache (a model's)	cache (m.)		-	WP7: « son premier chargement écrit un cache »
+prompt (Robot's, to a model)	consigne		-	WP7: « Robot lui donne une consigne courte »; « requête » for what a model reads in a problem's stage
+tokenizer	segmenteur		-	WP7: a GGUF file's check (OQLF)
+chat template	gabarit de conversation		-	WP7: never « modèle », which is the model
+model card (Hugging Face)	page du modèle		-	WP7: « fiche » is the card's forbidden variant
+stamp (a TPU build's)	estampille		-	WP7: LiteRT-LM's LiteRtStamp
+big-endian / little-endian	gros-boutiste / petit-boutiste		-	WP7: OQLF
+fallback (a model, a voice)	de secours		-	WP7: « Fast (version générale, de secours) », « Voix rapide (de secours) »
+stand-in (the voice's)	remplaçant		-	WP7: what Robot uses while a voice model isn't there (typing, the phone's voice)
+speech recognition	reconnaissance vocale		-	WP7: the Parakeet model
+real-time factor	facteur temps réel		-	WP7: the voice speed test
+technical detail (a parser's)	détail technique		-	WP7: a model file's parser detail stays English inside « (détail technique : …) »
+price (a helper's, per million tokens)	prix (« 2 $ US par million de jetons en entrée, 10 $ US en sortie »)		-	WP2b: Settings › Helpers; "in"/"out" are « en entrée » / « en sortie »; amounts in « $ US » (core HelperFormat)
+cached input	entrée en cache		-	WP2b: a helper's published prices
+peak hours / off-peak	heures de pointe / heures creuses		-	WP2b: DeepSeek's prices
+daily budget / daily cap	budget quotidien / plafond quotidien		-	WP2b: Settings › Helpers › Cost; a helper's own cap
+provider (an AI model's host)	fournisseur		-	WP2b: OpenRouter's providers
+zero data retention	aucune conservation des données		-	WP2b: OpenRouter's option
+encrypted (a connection, a key)	chiffré	crypté, cryptée, cryptés	word	WP2b: OQLF; « Non chiffrée », « Robot chiffre la clé »
+host (a server)	hôte		-	WP2b: « l'hôte pour lequel elle a été enregistrée »
+keystore (Android's)	magasin de clés		-	WP2b: « le magasin de clés d'Android l'a perdue »
+Trusted with personal content	De confiance pour le contenu personnel		-	WP2b: a helper's page; « de confiance pour le contenu personnel » in its line
+How hard {name} thinks	Niveau de réflexion de {name}		-	WP2b: Automatique, Faible, Moyen, Élevé
+plan (a subscription's)	forfait		-	WP2b: « ton forfait claude.ai », « un forfait Pro ou Max »
+free tier / paid tier	niveau gratuit / niveau payant		-	WP2b: Google's API tiers
+search grounding (Google's)	ancrage avec la recherche Google		-	WP2b: as Google's French documentation names it (UNVERIFIED)
+When Robot asks first (Settings › Safety & privacy)	Quand Robot demande d'abord		-	WP8: decided (WP6 and WP3 quote it)
+release (a GitHub release)	publication		-	WP8: the updater; « version » stays Robot's own version
+repository	dépôt		-	WP8: Settings › About › Updates
+access token (GitHub)	jeton d'accès		-	WP8: Settings › About › Updates
+skip (a version)	ignorer		-	WP8: « Ignorer cette version », « Ne plus ignorer »
+pre-release	préversion		-	WP8: « Inclure les versions de test » (test builds), « Des préversions »
+issue (GitHub)	ticket		-	WP8: « Ouvrir un ticket GitHub »
+share sheet	feuille de partage		-	WP8: Android's share sheet (UNVERIFIED on GrapheneOS fr-CA)
+crash	plantage		-	WP8: Send feedback's crash report
+speech recognizer	reconnaissance vocale		-	WP8: Assistant setup, ADB fixes (« Reconnaissance vocale par défaut »)
+not needed (an ADB fix)	pas nécessaire		-	1.2: Settings › Advanced › ADB fixes, the recognizer fix where another installed speech recognizer is set
+text-to-speech engine	moteur de synthèse vocale		-	1.2: the phone's voice when Android doesn't name its engine (Android's fr word « Synthèse vocale », UNVERIFIED on a fr-CA phone)
+echo cancellation	annulation d'écho		-	WP8: Settings › Voice's choices (core BargeIn)
+Build number, USB debugging, Wireless debugging	Numéro de build, Débogage USB, Débogage sans fil		-	WP8: Android's own words in ADB fixes (UNVERIFIED on GrapheneOS fr-CA)
+working memory (RAM)	mémoire vive		-	WP8: the guide (« les messages restent seulement en mémoire vive »)
+cloud backup	sauvegarde infonuagique		-	WP8: the guide's Welcome
+battery	pile		-	WP8: Québec usage (« Économise la pile »)
+app store	boutique d'applis		-	WP8: Updates (« une autre boutique d'applis gère les mises à jour de Robot »)
+thumbnail	miniature		-	WP8: Safety & privacy and History
+Phone lock (Robot's feature)	blocage du téléphone		-	1.1: Réglages › Blocage du téléphone; « barrer » / « bloquer » only in what you say to Robot (phase B)
+lock code (Phone lock's)	code de blocage		-	1.1: never « NIP », which is the phone's own
+cover (Phone lock's screen)	écran de blocage		-	1.1: never « écran de verrouillage », which is Android's lock screen
+skill (Robot's, a few steps under one name)	compétence	habileté, aptitude	word	1.1, Skills: « apprends une compétence qui s’appelle … »; « skill » is heard too, never written
+chip (a phone's)	puce (la)		-	1.2: « la puce de ce téléphone », « Puce, telle qu’Android la nomme »; a chip's name (Tensor G4, Snapdragon 8 Elite) stays as it is, « le Snapdragon 8 Elite »
+NPU (a Snapdragon's accelerator)	NPU (le)		-	1.2: as TPU, kept as is: « aucune version NPU pour le Snapdragon 8 Elite de ce téléphone »
+not given (an empty Android field)	non indiqué		-	1.2: Settings › Model's raw chip fields
+measured (on this phone)	mesuré sur ce téléphone		-	1.2: Settings › Model, Robot's own medians (core SpeedLog); "Measured:" alone is a Pixel 10 Pro's, « Mesuré : »
+median	médiane		-	1.2: Settings › Model, the measured speeds (core SpeedLog)
+self-test, check (Robot's, of the GPU or a TPU build)	vérification (la)		-	1.2: « Robot vérifie le GPU de ce téléphone », « a réussi la vérification de Robot », « a échoué à la vérification de Robot »
+garbled (an answer)	brouillée (une réponse)		-	1.2: what the GPU check found, « réponse brouillée »
+note (what Robot's check noted)	remarque (la)		-	1.2: the GPU check passed with a note, « avec une remarque : mauvaise réponse »
+slow (Robot on this phone)	lent (Robot sera lent)		-	1.2: the weak-phone warning, « Robot sera lent sur ce téléphone » (core PhoneFit)
+tight (a phone's memory, for Robot)	juste (la mémoire est juste)		-	1.2: « La mémoire de ce téléphone est juste pour Robot »; « Juste pour la mémoire de ce téléphone » in Settings › Model's rows
+estimate (a speed)	estimation (l')		-	« Estimation : une nouvelle conversation commence à répondre en environ 14 s »
+earlier exchanges (of a conversation)	échanges précédents		-	1.2: what a slow CPU reads back less of, « Robot relit ici moins d'échanges précédents »
+Turn on / Turn off (a button)	Activer / Désactiver		-	1.2: the warning's buttons, « Activer » for Use the GPU, « Désactiver » for Translate transcripts
+Robot Files	Fichiers de Robot		-	1.4, Robot Files: the cabinet's name, as Notes de Robot, plural with its article in a sentence (« Les Fichiers de Robot sont désactivés », « Ajouté aux Fichiers de Robot »); Settings › Files is « Fichiers » (core UiStrings)
+Files (the tab, Settings › Files, a backup's category)	Fichiers (les Fichiers)		-	1.4 F13: bare « Fichiers » in titles, buttons and paths (Réglages › Fichiers); « les Fichiers » in a sentence (« Exporte-le depuis les Fichiers », « Voir dans les Fichiers »), as backups say « la Mémoire »
+file (in Robot Files)	fichier		-	1.4, Robot Files; « document » is a kind (Documents, documents médicaux), not another word for a file
+Inbox (Robot Files')	boîte de réception	boîte d'entrée	word	1.4, Robot Files: where a new file waits; « ta boîte de réception » in a sentence, « Boîte de réception » as a title
+scan (a paper, with the camera)	numériser / numérisation	scanner, scanné, scannée, scannés, scannées	word	1.4, Robot Files (F5): « Numériser un document », a scan's name « Numérisation 2026-10-22 14.05 » (OQLF)
+drawer (Robot Files')	tiroir		-	1.4, Robot Files (F6): Receipts, Bills… are « tiroirs »; « dossier » is a folder on the phone (Export to a folder) and the tax pack
+receipt	reçu	ticket de caisse	word	1.4, Robot Files (F6): the Receipts drawer is « Reçus »
+bill (to pay)	facture		-	1.4, Robot Files (F6): the Bills drawer is « Factures »; « compte » (« mon compte d'Hydro ») is heard, never written
+file (verb, in Robot Files)	classer		-	1.4, Robot Files (F6): "Filed in Receipts." is « Classé dans Reçus. »; « ranger » only in « Où le ranger ? »
+move (a file to a drawer)	déplacer (dans)		-	1.4 F13: « Déplacé dans Impôts. »; « bouge-le dans Impôts » is heard too
+kind (of file: receipt, bill…)	genre	type	-	1.4 F13: « Genre » on a file's page and in the table's columns; « Type de fichier » is the file's format (PDF, JPEG)
+tax slip	feuillet d'impôt / feuillet		-	1.4 F13: T4, T5… and RL-1 alike; Québec's RL slips are « relevés » when you say them, never in Robot's text (« relevé » is also a bank statement)
+tax pack	dossier d'impôts	dossier fiscal, trousse fiscale	word	1.4 F12-F13: « Ton dossier d'impôts 2026 »; never the tax return itself (« rapport d'impôts », « déclaration »), which Robot doesn't do
+expense report	rapport de dépenses	note de frais	word	1.4 F12-F13: files tagged business for one year
+tag (on a file)	étiquette / étiqueté		-	1.4 F13: « étiquetés affaires »; not a GlossaryTest word: « {tag} » is a placeholder in ModelStrings
+tags business / personal / tax	affaires / perso / impôts		-	1.4 F13: Québec's everyday pair (« affaires ou perso »); « personnel » is heard as well but never shown: it also means staff
+merchant (a receipt's)	commerçant	marchand, marchands	word	1.4 F13: a file's field and the table's column
+total (a receipt's or bill's)	total		-	1.4 F13: « Montant total » as a field's label, « Total » as a column; amounts as « 84,12 $ » (core Fmt.money), « 84 dollars 12 » aloud
+due (a bill)	échéance (label) / due, à payer (sentence)		-	1.4 F13: « Échéance : 17 octobre 2026 », « Ta facture d'Hydro-Québec est due le 17 octobre »; a date after a verb takes « le »
+return window	délai de retour		-	1.4 F10: « Dernier jour pour le retourner »
+warranty	garantie		-	1.4 F10: « Garantie jusqu'au 14 août 2029 »
+expiry	expiration / expire le		-	1.4 F10: an ID's, a document's
+subscription	abonnement		-	1.4 F10: « 2 abonnements dans tes factures »
+Clean-up suggestions	Suggestions de ménage		-	1.4 F10: Settings › Files; « Fichiers qui pourraient partir »
+travel mode	mode voyage		-	1.4 F12: « Le mode voyage est activé »
+hidden drawers	tiroirs masqués	tiroirs cachés	word	1.4 F12: hidden until your PIN; « masqué » as hidden secrets (WP6)
+Start over (Robot Files' list)	Recommencer		-	1.4 F1-F2: Settings › Files, when the list can't be read
+Recently filed	Classés récemment		-	1.4 F7: the Files tab
+Being read	En cours de lecture		-	1.4 F7: the Files tab, files Robot is reading
+source (where a file came from)	provenance		-	1.4 F7: « D'où il vient », « Provenance »
+ID (a document)	pièce d'identité		-	1.4: never « ID » or « carte d'identité » for the kind; the passport and the health card (« carte soleil ») are heard
+medical file	document médical		-	1.4: the Medical drawer is « Santé »
+ticket or booking	billet ou réservation		-	1.4: boarding passes too (« carte d'embarquement », heard)
+CRA	l'ARC		-	1.4 F10: « l'ARC et Revenu Québec »; Revenu Québec keeps its name
+GST / HST / PST / QST	TPS / TVH / TVP / TVQ		-	1.4 F12: the table's columns
+currency	devise		-	1.4: a file's field and the table's column

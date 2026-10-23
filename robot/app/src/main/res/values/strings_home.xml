@@ -1,0 +1,109 @@
+<!-- Home (the l10n work package WP2): ids start with home_, and the French is in values-fr-rCA/strings_home.xml.
+     1.1 split strings.xml into one file per area, ids and texts unchanged. Home, History, a saved conversation, and the
+     messages the main app shows (ui/MainActivity.kt, Screens.kt, Components.kt). The tabs' names are core's UiStrings,
+     as replies name them. -->
+<resources>
+    <!-- Home (ui/Screens.kt). -->
+    <string name="home_hi">Hi, I\'m Robot</string>
+    <string name="home_runs_here">Your assistant runs entirely on this phone.</string>
+    <string name="home_talk_to_robot">Talk to Robot</string>
+    <string name="home_get_started">Get started</string>
+    <string name="home_download_gemma">Download Gemma, Robot\'s brain</string>
+    <string name="home_ready_here">Ready on this phone</string>
+    <string name="home_size_once">%1$s, once. Wi-Fi recommended.</string>
+    <string name="home_open">Open</string>
+    <string name="home_download_voice">Download voice models</string>
+    <string name="home_voice_works">Robot can hear you and answer out loud</string>
+    <string name="home_stt_progress">Speech recognition: %1$s</string>
+    <string name="home_voice_progress">Voice: %1$s</string>
+    <string name="home_voice_size">%1$s, once, to talk to Robot. Wi-Fi recommended.</string>
+    <string name="home_allow_mic">Allow the microphone and notifications</string>
+    <string name="home_allow_mic_why">For “hey robot”, and to tell you if Android turns Robot off after a restart.</string>
+    <string name="home_allow">Allow</string>
+    <string name="home_make_assistant_row">Make Robot your digital assistant</string>
+    <string name="home_done">Done</string>
+    <string name="home_assistant_path">Settings › Digital assistant app › Robot</string>
+    <string name="home_set">Set</string>
+    <string name="home_conversation">Conversation</string>
+    <string name="home_conversation_detail">Robot writes down a conversation, in French and English, translates it face to face, and summarizes it, on this phone.</string>
+    <string name="home_transcribe">Transcribe</string>
+    <string name="home_translate">Translate</string>
+    <string name="home_transcripts">Transcripts</string>
+    <string name="home_ways_to_ask">Ways to ask</string>
+    <string name="home_swipe">Swipe up from a bottom corner</string>
+    <string name="home_swipe_detail">Works on the lock screen too. Once the phone is unlocked, Robot can see the screen you\'re on.</string>
+    <string name="home_say_hey">Say “hey robot”</string>
+    <string name="home_say_hey_detail">Even with the screen off. Turn it off in Settings.</string>
+    <string name="home_show_photo">Show it a photo</string>
+    <string name="home_show_photo_detail">Tap the camera in the assistant panel.</string>
+    <string name="home_texts">Texts, email, notes and your calendar</string>
+    <string name="home_texts_detail">“Text Mom I\'m running late”, “note: buy coffee filters”, “what\'s on my calendar tomorrow”.</string>
+    <string name="home_recent">Recent</string>
+    <string name="home_all_conversations">All conversations</string>
+    <string name="home_with">With %1$s</string>
+
+    <!-- History and a saved conversation (ui/Screens.kt). -->
+    <string name="home_saved_here">Saved on this phone only.</string>
+    <string name="home_delete_all">Delete all</string>
+    <string name="home_no_conversations">No conversations yet</string>
+    <string name="home_no_conversations_detail">They appear here after you ask Robot something.</string>
+    <string name="home_delete_all_title">Delete all conversations?</string>
+    <string name="home_delete_all_detail">This removes every saved conversation from this phone. It can\'t be undone.</string>
+    <string name="home_cancel">Cancel</string>
+    <string name="home_delete">Delete</string>
+    <string name="home_continue">Continue</string>
+    <string name="home_conversation_deleted">This conversation was deleted.</string>
+    <string name="home_delete_this">Delete this conversation?</string>
+    <string name="home_back">Back</string>
+
+    <!-- What the main app says in its snackbar (ui/MainActivity.kt). -->
+    <string name="home_bundle_ready">%1$s is ready.</string>
+    <string name="home_bundle_failed">%1$s couldn\'t be installed. See Model › Voice models.</string>
+    <string name="home_mt_ready">The fast translation engine is ready.</string>
+    <string name="home_mt_failed">The fast translation engine couldn\'t be installed. See Settings › Conversation.</string>
+    <string name="home_not_allowed">Not allowed. If Android doesn\'t ask again: %1$s.</string>
+    <string name="home_media_picked">Robot can see the photos and videos you picked.</string>
+    <string name="home_model_ready">“%1$s” is ready.</string>
+    <string name="home_copy_damaged">The copied file is damaged. Pick the right file or download it.</string>
+    <string name="home_no_connection_window">Couldn\'t open the connection window.</string>
+    <string name="home_make_assistant_first">Make Robot your digital assistant first.</string>
+    <string name="home_couldnt_open_assistant">Couldn\'t open the assistant.</string>
+    <string name="home_open_assistant_settings">Open Settings > Apps > Default apps > Digital assistant app.</string>
+    <string name="home_file_ok">The file checks out.</string>
+    <string name="home_file_damaged">The file is damaged. Delete it and download again.</string>
+    <string name="home_own_checked">Your model file is checked. See what Robot found in Model.</string>
+    <string name="home_own_unusable">Robot can\'t use that file. Model says why.</string>
+    <string name="home_model_deleted">“%1$s” was deleted.</string>
+    <string name="home_model_deleted_fast">“%1$s” was deleted. Robot uses Fast again.</string>
+    <string name="home_tpu_file_changed">Robot couldn\'t allow that: the file changed since its check. Check it again first.</string>
+    <string name="home_couldnt_change">Robot couldn\'t change that.</string>
+    <string name="home_tpu_may">Your model file may run on the TPU now.</string>
+    <string name="home_tpu_wont">Your model file won\'t run on the TPU.</string>
+    <string name="home_history_deleted">History deleted.</string>
+    <string name="home_no_saved_media">No saved screenshots or photos.</string>
+    <plurals name="home_media_removed">
+        <item quantity="one">Removed from %1$d conversation.</item>
+        <item quantity="other">Removed from %1$d conversations.</item>
+    </plurals>
+    <string name="home_was_deleted">%1$s was deleted.</string>
+    <string name="home_make_assistant_test">Make Robot your digital assistant first: the test runs in the assistant.</string>
+    <string name="home_voice_retry">Robot will try the voice models again.</string>
+    <string name="home_open_path">Open %1$s.</string>
+    <string name="home_key_deleted">The %1$s key was deleted.</string>
+    <string name="home_helper_key_deleted">The helper\'s key was deleted.</string>
+    <string name="home_helper_removed">%1$s was removed.</string>
+    <string name="home_try_gpu">Robot will try the GPU at the next question. If it fails again, Robot goes back to the CPU by itself.</string>
+    <string name="home_try_tpu">Robot will try the TPU at the next question. If it fails again, Robot goes back to the general build by itself.</string>
+    <string name="home_report_copied">The report is on the clipboard.</string>
+    <string name="home_no_share_sheet">Couldn\'t open the share sheet.</string>
+    <string name="home_no_transcript_screen">Couldn\'t open the transcript screen.</string>
+    <string name="home_no_interpreter">Couldn\'t open the interpreter.</string>
+    <string name="home_no_transcription_check">Couldn\'t open the Transcription check.</string>
+    <string name="home_mt_deleted">The fast translation engine\'s files were deleted.</string>
+    <string name="home_no_your_voice">Couldn\'t open Your voice.</string>
+    <string name="home_voiceprint_deleted">Your voiceprint was deleted.</string>
+    <string name="home_open_usage_access">Open %1$s, then Robot.</string>
+    <string name="home_make_assistant_routines">Make Robot your digital assistant first: routines run in the assistant.</string>
+    <string name="home_send_feedback">Send feedback</string>
+    <string name="home_not_now">Not now</string>
+</resources>

@@ -1,9 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.memory
 
+import app.heyrobot.core.i18n.InfoStrings
+import app.heyrobot.core.i18n.Lang
+import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.i18n.MemoryStrings
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.UiLabel
+import app.heyrobot.core.i18n.UiStrings
 import java.time.ZoneId
 
-// Pure. What the panel does with your words before the model ever sees them (design §A3.1, the router's half), what
+// Pure. What the panel does with your words before the model ever sees them, what
 // Robot answers in English or Québec French, and what History keeps of it. The panel (:voice, assistant/MemoryPanel.kt)
 // runs the command on the vault and shows the cards; everything it decides is here, so the JVM tests cover it.
 
@@ -47,124 +54,127 @@ object MemoryRouting {
     }
 }
 
-/** What Robot answers a memory command, in English or French ([fr]). Never an item's words for a secret one. */
+/**
+ * What Robot answers a memory command, in English or French ([fr]). Never an item's words for a secret one. 1.1: each
+ * answer is also words without a language yet (the `…Text` functions, core i18n's [MemoryStrings]); the String ones
+ * render them in English, or in French with [fr] (Robot's screens named in it too), for the callers not moved yet.
+ */
 object MemoryReplies {
-    const val PIN_FULL = " Six things are pinned already, so this one isn't used in every answer."
-    const val PIN_FULL_FR = " Six choses sont déjà épinglées : celle-ci ne l'est pas."
+    val PIN_FULL: String get() = " ${MemoryStrings.pinFull().en()}"
+    val PIN_FULL_FR: String get() = " ${MemoryStrings.pinFull().render(Langs.of(Lang.FR))}"
 
     private val CALL_ME = Regex("""^(?:please )?call me (.+?)[.!]?$""", RegexOption.IGNORE_CASE)
     private val OWN = Regex("""^(?:i|i'm|i've|i'd|my|we|our)\b""")
+
+    private fun langs(fr: Boolean): Langs = if (fr) Langs.of(Lang.FR) else Langs.EN
+
+    /** Settings › Memory, as a sentence names it (in the menus' language). */
+    private val page: UiLabel get() = UiStrings.inSettings(UiStrings.memory)
 
     /**
      * What Robot says back: MemoryCommands.saidBack, except that a preference telling Robot what to do is never turned to
      * "you" ("Call me Sam" is "I'll call you Sam.", "Always answer briefly" is quoted).
      */
-    fun sayBack(c: MemoryCommand.Remember): String {
+    fun sayBack(c: MemoryCommand.Remember): String = sayBackText(c).render(langs(c.language == "fr"))
+
+    /** [sayBack] in words without a language yet. */
+    fun sayBackText(c: MemoryCommand.Remember): Phrase {
         val t = c.text.trim()
-        if (c.secret || c.language == "fr" || c.kind != MemoryKind.PREFERENCE || OWN.containsMatchIn(MemoryCommands.foldAligned(t))) return MemoryCommands.saidBack(c)
-        return CALL_ME.find(t)?.let { "Got it: I'll call you ${it.groupValues[1]}." } ?: "Got it: “${t.trimEnd('.')}”."
+        if (c.secret || c.language == "fr" || c.kind != MemoryKind.PREFERENCE || OWN.containsMatchIn(MemoryCommands.foldAligned(t))) return MemoryCommands.saidBackText(c)
+        return CALL_ME.find(t)?.let { MemoryStrings.callYou("name" to it.groupValues[1]) } ?: MemoryStrings.gotItQuoted("text" to t.trimEnd('.'))
     }
 
-    /** After saving [c] (its outcome [o]). */
-    fun saved(c: MemoryCommand.Remember, o: AddOutcome): String {
-        val fr = c.language == "fr"
-        return when (o) {
-            AddOutcome.SAVED -> sayBack(c)
-            AddOutcome.SAVED_PIN_FULL -> sayBack(c) + if (fr) PIN_FULL_FR else PIN_FULL
-            AddOutcome.ALREADY_KEPT -> if (fr) "Je m'en souviens déjà." else "I already remember that."
-            AddOutcome.FULL -> if (fr) "Ma mémoire est pleine. Efface des choses dans Réglages › Mémoire d'abord." else
-                "My memory is full. Delete some things in Settings › Memory first."
-            AddOutcome.EMPTY -> if (fr) "Il n'y avait rien à retenir." else "There was nothing to remember."
-        }
+    /** After saving [c] (its outcome [o]), as words without a language yet. */
+    fun savedText(c: MemoryCommand.Remember, o: AddOutcome): Phrase = when (o) {
+        AddOutcome.SAVED -> sayBackText(c)
+        AddOutcome.SAVED_PIN_FULL -> Phrase.join(sayBackText(c), MemoryStrings.pinFull())
+        AddOutcome.ALREADY_KEPT -> MemoryStrings.already()
+        AddOutcome.FULL -> MemoryStrings.full("page" to page)
+        AddOutcome.EMPTY -> MemoryStrings.nothingToRemember()
     }
 
-    fun forgotten(n: Int, fr: Boolean): String = when {
-        fr -> if (n == 1) "C'est oublié." else "C'est oublié : $n choses."
-        else -> if (n == 1) "Forgotten." else "Forgotten: $n things."
-    }
 
-    fun nothingToForget(fr: Boolean): String =
-        if (fr) "Il n'y a rien de cette conversation à oublier." else "There's nothing from this conversation to forget."
+    fun forgottenText(n: Int): Phrase = if (n == 1) MemoryStrings.forgotten() else MemoryStrings.forgottenN(n)
 
-    fun notFound(fr: Boolean): String = if (fr) "Je ne me souviens de rien à ce sujet." else "I don't remember anything about that."
 
-    fun which(fr: Boolean): String = if (fr) "Laquelle dois-je oublier ?" else "Which one should I forget?"
+    fun nothingToForgetText(): Phrase = MemoryStrings.nothingToForget()
+
+
+    fun notFoundText(): Phrase = MemoryStrings.notFound()
+
+
+    fun whichText(): Phrase = MemoryStrings.which()
 
     /**
      * One item read aloud: your words turned to "you" in English, quoted in French; a preference that tells Robot what to
      * do ("Call me Sam", "Always answer briefly") quoted as you said it.
      */
-    fun spoken(item: MemoryItem, fr: Boolean): String {
+    fun spoken(item: MemoryItem, fr: Boolean): String = spokenText(item, fr).render(langs(fr))
+
+    /** [spoken] in words without a language yet, made for [fr]'s reply (French quotes your words; English turns them to "you"). */
+    fun spokenText(item: MemoryItem, fr: Boolean): Phrase {
         val t = item.text.trimEnd('.', ' ')
-        val own = Regex("""^(?:i|i'm|i've|i'd|my|we|our)\b""").containsMatchIn(MemoryCommands.foldAligned(t))
+        val own = OWN.containsMatchIn(MemoryCommands.foldAligned(t))
         return when {
-            fr -> "« $t »"
-            item.kind == MemoryKind.PREFERENCE && !own -> "“$t”"
-            else -> MemoryCommands.toYou(item.text)
+            fr || (item.kind == MemoryKind.PREFERENCE && !own) -> MemoryStrings.quoted("text" to t)
+            else -> Phrase.plain(MemoryCommands.toYou(item.text))
         }
     }
+
+    /** Items read aloud one after the other: "a; b" in English, « a » « b » in French. */
+    private fun list(items: List<MemoryItem>, fr: Boolean): Phrase = Phrase.Join(items.map { spokenText(it, fr) }, if (fr) " " else "; ")
 
     /**
      * "What do you remember about Julie?": the [found] items (not secret: [private] counts those left out), or that none
-     * matches.
+     * matches, as words without a language yet, made for [fr]'s reply ([spokenText]).
      */
-    fun recall(about: String, found: List<MemoryItem>, private: Int, fr: Boolean): String {
-        val more = when {
-            private == 0 -> ""
-            fr -> " Et ${if (private == 1) "une chose privée" else "$private choses privées"}, dans Réglages › Mémoire."
-            else -> " And ${if (private == 1) "1 private item" else "$private private items"}, in Settings › Memory."
-        }
-        if (found.isEmpty()) return (if (fr) "Je ne me souviens de rien sur $about." else "I don't remember anything about $about.") +
-            if (private > 0) more else ""
-        val list = found.joinToString(if (fr) " " else "; ") { spoken(it, fr) }
-        return if (fr) "Voici ce que je retiens sur $about : $list.$more" else "Here's what I remember about $about: $list.$more"
+    fun recallText(about: String, found: List<MemoryItem>, private: Int, fr: Boolean): Phrase {
+        val more = if (private == 0) null else MemoryStrings.privateMore(private, "page" to page)
+        val first = if (found.isEmpty()) MemoryStrings.recallNone("about" to about) else MemoryStrings.recall("about" to about, "list" to list(found, fr))
+        return Phrase.Join(listOfNotNull(first, more))
     }
 
-    /** "What do you know about me?": how many, and a few of them (the most used, never a secret one). */
-    fun aboutMe(total: Int, examples: List<MemoryItem>, fr: Boolean): String {
-        if (total == 0) return if (fr) "Je ne retiens rien pour l'instant. Dis « souviens-toi que … » pour garder quelque chose." else
-            "I don't remember anything yet. Say “remember that …” to keep something."
-        val count = if (fr) (if (total == 1) "Je retiens une chose." else "Je retiens $total choses.") else (if (total == 1) "I remember 1 thing." else "I remember $total things.")
-        if (examples.isEmpty()) return count + if (fr) " Elle est privée : ouvre Réglages › Mémoire." else " It's private: open Settings › Memory."
-        val list = examples.joinToString(if (fr) " " else "; ") { spoken(it, fr) }
-        return if (fr) "$count Par exemple : $list." else "$count For example: $list."
+    /**
+     * "What do you know about me?": how many, and a few of them (the most used, never a secret one), as words without a
+     * language yet, made for [fr]'s reply ([spokenText]).
+     */
+    fun aboutMeText(total: Int, examples: List<MemoryItem>, fr: Boolean): Phrase {
+        if (total == 0) return MemoryStrings.aboutMeNone()
+        val count = MemoryStrings.aboutMeCount(total)
+        if (examples.isEmpty()) return Phrase.join(count, MemoryStrings.aboutMePrivate("page" to page))
+        return Phrase.join(count, MemoryStrings.aboutMeExamples("list" to list(examples, fr)))
     }
 
-    fun forgetAll(fr: Boolean): String = if (fr) MemoryAccess.FORGET_ALL_BY_VOICE_FR else MemoryAccess.FORGET_ALL_BY_VOICE
+    fun forgetAllText(): Phrase = MemoryAccess.forgetAllByVoice()
 
-    fun unlock(fr: Boolean, saving: Boolean = false, changing: Boolean = false): String = when {
-        saving -> if (fr) MemoryAccess.UNLOCK_TO_SAVE_FR else MemoryAccess.UNLOCK_TO_SAVE
-        changing -> if (fr) MemoryAccess.UNLOCK_TO_CHANGE_FR else MemoryAccess.UNLOCK_TO_CHANGE
-        fr -> MemoryAccess.UNLOCK_FIRST_FR
-        else -> MemoryAccess.UNLOCK_FIRST
+    fun unlockText(saving: Boolean = false, changing: Boolean = false): Phrase = when {
+        saving -> MemoryStrings.unlockToSave()
+        changing -> MemoryStrings.unlockToChange()
+        else -> MemoryStrings.unlockFirst()
     }
 
-    fun off(fr: Boolean): String = if (fr) "La mémoire est désactivée. Active-la dans les réglages de Robot, sous Mémoire." else
-        "Memory is off. Turn it on in Robot's settings, under Memory."
+    fun offText(): Phrase = MemoryStrings.off()
 
     /** Memory couldn't be opened on an unlocked phone ([load] not usable): why, in words. */
-    fun cantOpen(load: MemoryLoad, fr: Boolean): String = when (load) {
-        MemoryLoad.KeyGone -> if (fr) "Je ne peux pas ouvrir ce que tu m'as demandé de retenir : sa clé n'existe plus. Réglages › Mémoire en dit plus." else
-            "I can't open what you asked me to remember: its key is gone. Settings › Memory says more."
-        MemoryLoad.Unreadable -> if (fr) "Je n'arrive pas à lire ma mémoire. Réglages › Mémoire en dit plus." else
-            "I can't read my memory file. Settings › Memory says more."
-        is MemoryLoad.TooNew -> if (fr) "Ma mémoire vient d'une version plus récente de Robot : je ne peux pas la changer." else
-            "My memory was saved by a newer Robot, so I can't change it."
-        else -> if (fr) "Je n'ai pas pu ouvrir ma mémoire. Réessaie dans un instant." else "I couldn't open my memory just now. Try again in a moment."
+    fun cantOpenText(load: MemoryLoad): Phrase = when (load) {
+        MemoryLoad.KeyGone -> MemoryStrings.keyGone("page" to page)
+        MemoryLoad.Unreadable -> MemoryStrings.unreadable("page" to page)
+        is MemoryLoad.TooNew -> MemoryStrings.tooNew()
+        else -> MemoryStrings.notNow()
     }
 
-    /** The card for an item saved by voice: its summary (History keeps it: no words of the item) and its body (the panel only). */
-    fun savedCard(item: MemoryItem): Pair<String, String> =
-        (if (item.kind == MemoryKind.PREFERENCE && item.pinned) "Remembered, used in every answer" else "Remembered") to MemoryHygiene.shown(item)
+    /** The card for an item saved by voice: its summary (History keeps it: no words of the item), without a language yet. */
+    fun savedCardText(item: MemoryItem): Phrase =
+        if (item.kind == MemoryKind.PREFERENCE && item.pinned) MemoryStrings.cardSavedPinned() else MemoryStrings.cardSaved()
 
-    const val CARD_FORGOTTEN = "Forgotten"
-    const val CARD_WHICH = "Forget which one?"
-    const val CARD_SAVED_DETAIL = "Undo, or change it in Memory."
-    const val CARD_FORGOTTEN_DETAIL = "Undo puts it back."
+    fun cardForgottenText(): Phrase = MemoryStrings.cardForgotten()
+    fun cardWhichText(): Phrase = MemoryStrings.cardWhich()
+    fun cardSavedDetailText(): Phrase = MemoryStrings.cardSavedDetail("undo" to UiLabel(UiStrings.undo), "page" to UiLabel(UiStrings.memory))
+    fun cardForgottenDetailText(): Phrase = MemoryStrings.cardForgottenDetail("undo" to UiLabel(UiStrings.undo))
 }
 
 /**
- * What History keeps of memory (design §A6.4, "History hygiene"): the notes block never (ChatTurn.memoryIds instead),
+ * What History keeps of memory: the notes block never (ChatTurn.memoryIds instead),
  * a question that saved a secret only as "Remember: [a code, kept in Memory]", an answer that showed a secret only as a
  * line saying so, and card summaries without an item's words.
  */
@@ -173,10 +183,14 @@ object MemoryHygiene {
     fun shown(item: MemoryItem, fr: Boolean = false): String =
         if (item.secret) SecretDetector.placeholder(SecretDetector.find(item.text), fr) else item.text
 
+    /** [shown] in words without a language yet: a secret's placeholder in the card's language, your words as they are. */
+    fun shownText(item: MemoryItem): Phrase =
+        if (item.secret) SecretDetector.placeholderText(SecretDetector.find(item.text)) else Phrase.plain(item.text)
+
     /** The question History keeps for "remember that …" ([said]: your words). A secret is never kept in them. */
     fun question(c: MemoryCommand.Remember, said: String): String =
         if (!c.secret) said
-        else (if (c.language == "fr") "Retiens : " else "Remember: ") + SecretDetector.placeholder(SecretDetector.find(c.text), c.language == "fr")
+        else MemoryStrings.rememberSecret("what" to SecretDetector.placeholderText(SecretDetector.find(c.text))).render(if (c.language == "fr") Langs.of(Lang.FR) else Langs.EN)
 
     /**
      * The question History keeps for what the memory router took ([route]; [said]: your words). 1.0 audit
@@ -199,13 +213,13 @@ object MemoryHygiene {
         }
     }
 
-    const val NOT_SAVED = "Remember: [not saved, not kept in History]"
-    const val NOT_SAVED_FR = "Retiens : [pas gardé, ni dans l'historique]"
-    const val PRIVATE = "[Something private about memory: not kept in History.]"
-    const val PRIVATE_FR = "[Quelque chose de privé sur la mémoire : pas gardé dans l'historique.]"
+    val NOT_SAVED: String get() = MemoryStrings.notSaved().en()
+    val NOT_SAVED_FR: String get() = MemoryStrings.notSaved().render(Langs.of(Lang.FR))
+    val PRIVATE: String get() = MemoryStrings.privateQuestion().en()
+    val PRIVATE_FR: String get() = MemoryStrings.privateQuestion().render(Langs.of(Lang.FR))
 
     /** The answer History keeps for a reply that had a secret item before it: never the answer itself. */
-    const val SECRET_ANSWER = "[An answer with something private from Memory: not kept in History.]"
+    val SECRET_ANSWER: String get() = MemoryStrings.secretAnswer().en()
 
     /** Items as a short list for a card's body, one a line, secrets as their placeholder. */
     fun list(items: List<MemoryItem>): String = items.joinToString("\n") { "• " + shown(it) }
@@ -213,16 +227,26 @@ object MemoryHygiene {
 
 /** A day and an end, as Settings › Memory and the cards show them ("Saved Oct 9 · until tonight"). */
 object MemoryDates {
-    private val DAY = java.time.format.DateTimeFormatter.ofPattern("MMM d", java.util.Locale.ENGLISH)
+    fun line(item: MemoryItem, now: Long, zone: ZoneId = ZoneId.systemDefault()): String = lineText(item, now, zone).en()
 
-    fun line(item: MemoryItem, now: Long, zone: ZoneId = ZoneId.systemDefault()): String {
-        val day = { t: Long -> DAY.format(java.time.Instant.ofEpochMilli(t).atZone(zone)) }
-        return listOfNotNull(
-            if (item.pinned) "Pinned" else null,
-            if (item.secret) "Private" else null,
-            "saved ${day(item.createdAt)}",
-            item.expiresAt?.let { if (now >= it) "ended" else "until ${day(it)}" },
-            if (item.uses > 0) "used in ${if (item.uses == 1) "1 answer" else "${item.uses} answers"}" else null,
-        ).joinToString(" · ").replaceFirstChar { it.uppercase() }
+    /** [line] in words without a language yet (a screen: the menus' language). */
+    fun lineText(item: MemoryItem, now: Long, zone: ZoneId = ZoneId.systemDefault()): Phrase {
+        val day = { t: Long -> day(java.time.Instant.ofEpochMilli(t).atZone(zone).toLocalDate()) }
+        val first = !item.pinned && !item.secret
+        return Phrase.Join(listOfNotNull(
+            if (item.pinned) MemoryStrings.datePinned() else null,
+            if (item.secret) MemoryStrings.datePrivate() else null,
+            (if (first) MemoryStrings.dateSavedFirst else MemoryStrings.dateSaved)("day" to day(item.createdAt)),
+            item.expiresAt?.let { if (now >= it) MemoryStrings.dateEnded() else MemoryStrings.dateUntil("day" to day(it)) },
+            if (item.uses > 0) MemoryStrings.dateUsed(item.uses) else null,
+        ), " · ")
+    }
+
+    /** "Oct 9", « 9 octobre », « 1er octobre ». */
+    private fun day(d: java.time.LocalDate): Phrase {
+        val months = listOf(InfoStrings.jan, InfoStrings.feb, InfoStrings.mar, InfoStrings.apr, InfoStrings.may, InfoStrings.jun, InfoStrings.jul,
+            InfoStrings.aug, InfoStrings.sep, InfoStrings.oct, InfoStrings.nov, InfoStrings.dec)
+        val n: Any = if (d.dayOfMonth == 1) InfoStrings.firstOfMonth() else d.dayOfMonth.toString()
+        return MemoryStrings.dateDay("month" to months[d.monthValue - 1](), "day" to n)
     }
 }

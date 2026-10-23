@@ -4,8 +4,7 @@ package app.heyrobot.core.output
 import org.json.JSONArray
 import org.json.JSONObject
 
-// Pure (org.json). The headsets and cars Robot remembers (design §1.3 rule 2, §3.1 "Identity without a permission",
-// §3.4 "Your headphones", §4.3 "Add your car"), kept in files/routines/devices.json next to routines.json (the store, an
+// Pure (org.json). The headsets and cars Robot remembers, kept in files/routines/devices.json next to routines.json (the store, an
 // atomic write under the lock both processes take, comes with the wiring). A remembered device is its family, its
 // product name and the last two bytes of its address; with BLUETOOTH_CONNECT also its whole address, which then wins
 // (a renamed headset stays itself). The voice log names a device only by [RememberedDevice.number] ("device #2").
@@ -24,7 +23,7 @@ enum class DeviceRole(val id: String) {
     }
 }
 
-/** Whether personal sentences may play on a device (design §1.3 rule 2). */
+/** Whether personal sentences may play on a device. */
 enum class Trust {
     /** Worn by you: wired, USB, earpiece, hearing aids, or a Bluetooth headset you confirmed. */
     PRIVATE,
@@ -53,9 +52,9 @@ data class RememberedDevice(
     val seen: Long = added,
 ) {
     /** The routines' deviceId (RoutineTrigger.Device), stable for as long as the device is remembered. */
-    val id: String get() = "dev-$number"
+    val id: String get() = "dev-$number" // l10n: not text (an id, never shown)
 
-    override fun toString(): String = "RememberedDevice(#$number, role=$role, family=$family, private=$private, enabled=$enabled)"
+    override fun toString(): String = "RememberedDevice(#$number, role=$role, family=$family, private=$private, enabled=$enabled)" // l10n: not text (toString, for the logs)
 }
 
 /** How a device Android lists matched the remembered ones. */
@@ -65,7 +64,7 @@ sealed class DeviceMatch {
     /** [how]: by the whole address, by name and tail, or by tail only (a rename, or another device with the same tail). */
     data class One(val device: RememberedDevice, val how: MatchHow) : DeviceMatch()
 
-    /** Two remembered devices with the same name and tail (design §3.1: "rare; noted"): Robot can't tell which. */
+    /** Two remembered devices with the same name and tail: Robot can't tell which. */
     data class Several(val list: List<RememberedDevice>) : DeviceMatch()
 
     val devices: List<RememberedDevice> get() = when (this) {
@@ -103,7 +102,7 @@ data class DeviceMemory(val devices: List<RememberedDevice> = emptyList(), val n
     fun byNumber(n: Int): RememberedDevice? = devices.firstOrNull { it.number == n }
     fun byId(id: String?): RememberedDevice? = devices.firstOrNull { it.id == id }
 
-    /** Which remembered device [seen] is (design §3.9 DeviceMatch: name and tail, collisions, renames). */
+    /** Which remembered device [seen] is. */
     fun match(seen: SeenDevice): DeviceMatch {
         val same = devices.filter { it.family == seen.family }
         if (same.isEmpty() || seen.family == DeviceFamily.BUILTIN) return DeviceMatch.None
@@ -127,7 +126,7 @@ data class DeviceMemory(val devices: List<RememberedDevice> = emptyList(), val n
     }
 
     /**
-     * Whether personal speech may play on [seen] (design §1.3 rule 2). Heard by the room by its type (the speaker, a
+     * Whether personal speech may play on [seen]. Heard by the room by its type (the speaker, a
      * Bluetooth or LE speaker, line out) or by its Bluetooth class (a loudspeaker, a car): never. A remembered car: never.
      * Your "No": never. Worn by its type (wired, USB headset, earpiece, hearing aid): private. A Bluetooth headset you
      * confirmed: private, unless it only matched by its tail (a rename): asked again. Two remembered devices that look

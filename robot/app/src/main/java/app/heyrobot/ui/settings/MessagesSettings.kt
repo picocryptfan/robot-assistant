@@ -57,8 +57,13 @@ import app.heyrobot.ui.pref.SwitchPreference
 import app.heyrobot.ui.pref.IntroPreference
 import app.heyrobot.ui.pref.preferenceFooter
 import app.heyrobot.ui.pref.preferenceGroup
+import app.heyrobot.ui.theme.LocalLangs
+import app.heyrobot.ui.theme.str
+import app.heyrobot.core.i18n.MessageStrings
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.UiStrings
 
-// MAIN PROCESS. Settings › Messages (0.7, design §B11): "Read my messages" and each app (all off), group chats, how
+// MAIN PROCESS. Settings › Messages (0.7): "Read my messages" and each app (all off), group chats, how
 // replies go and whether a card comes first, what happens after Robot reads, translations, the lock screen, and the
 // switches for later. Kept in messages.json (MessagesStore), not settings.json. Turning it on says once what Robot will
 // do and what stays on the phone, pre-ticks your texting app (Cheogram), then the notification access steps People has.
@@ -87,13 +92,22 @@ fun MessagesSettingsScreen(
     fun turn(app: MessageApp, on: Boolean) = onEdit { it.withApp(app, on, if (on) pinsNow(app) else emptyMap()) }
     val granted = facts?.notificationAccess == true
     val untrusted = remember(file) { if (s.on) problems(file) else emptyList() }
-    PreferenceScreen("Messages", onBack) {
+    val langs = LocalLangs.current
+    val routeDetails = ReplyRoute.entries.associateWith { routeDetail(it) }
+    val keepDetails = KeepMessages.entries.associateWith { keepDetail(it) }
+    val afterDetails = AfterReading.entries.associateWith { afterDetail(it) }
+    val lockedDetails = MessagesLocked.entries.associateWith { lockedDetail(it) }
+    val footer = stringResource(R.string.messages_footer)
+    val apps = stringResource(R.string.messages_apps)
+    val replies = stringResource(R.string.messages_replies)
+    val reading = stringResource(R.string.messages_reading)
+    val announcements = stringResource(R.string.messages_announcements)
+    PreferenceScreen(UiStrings.messages().str(), onBack) {
         item(key = "intro") {
-            IntroPreference("Robot reads, summarizes, translates and answers your messages from their notifications, on this phone only. " +
-                "Messages are kept in memory only, never written to storage, and never sent anywhere unless you send them.")
+            IntroPreference(stringResource(R.string.messages_intro))
         }
         item(key = "main") {
-            MainSwitchBar("Read my messages", s.on) { on ->
+            MainSwitchBar(stringResource(R.string.messages_main), s.on) { on ->
                 if (on && s.allowlist.apps.isEmpty()) setup = true
                 else {
                     set { it.copy(on = on) }
@@ -104,67 +118,74 @@ fun MessagesSettingsScreen(
         // Off with access still allowed (name learning may use it): how to take it back.
         if (!s.on && granted) {
             preferenceGroup(null, "still") {
-                StatusPreference("Notification access is still allowed", "Robot reads no message while this is off", Mark.TODO,
-                    action = { TextButton(onClick = { app.heyrobot.ui.openFirst(ctx, NotificationAccess.settings(ctx), a) }) { Text("Open") } })
+                StatusPreference(stringResource(R.string.messages_still_allowed), stringResource(R.string.messages_still_allowed_detail), Mark.TODO,
+                    action = { TextButton(onClick = { app.heyrobot.ui.openFirst(ctx, NotificationAccess.settings(ctx), a) }) { Text(stringResource(R.string.messages_open)) } })
             }
         }
         if (s.on) {
             preferenceGroup(null, "access") {
-                if (!granted) StatusPreference("Notification access", "Needed: three steps", Mark.TODO,
+                if (!granted) StatusPreference(stringResource(R.string.messages_access), stringResource(R.string.messages_access_needed), Mark.TODO,
                     onClick = { a.openPage(Page.Settings(SettingsRoutes.NOTIFICATION_ACCESS)) })
-                else StatusPreference("Notification access allowed", "Messages from the apps below only", Mark.OK)
-                PreferenceItem("Quiet notifications", "Android sends Robot conversations only. To read quiet-hours messages too, allow Silent " +
-                    "in Robot's notification access page.", onClick = { app.heyrobot.ui.openFirst(ctx, NotificationAccess.settings(ctx), a) })
+                else StatusPreference(stringResource(R.string.messages_access_allowed), stringResource(R.string.messages_access_allowed_detail), Mark.OK)
+                PreferenceItem(stringResource(R.string.messages_quiet), stringResource(R.string.messages_quiet_detail),
+                    onClick = { app.heyrobot.ui.openFirst(ctx, NotificationAccess.settings(ctx), a) })
             }
         }
-        preferenceGroup("Apps", "apps") {
+        preferenceGroup(apps, "apps") {
             // An app Robot no longer reads: its signing key changed, or this build came after you turned it on.
-            for (line in untrusted) StatusPreference(line, "Robot ignores its notifications until then", Mark.WARN)
+            for (line in untrusted) StatusPreference(line, stringResource(R.string.messages_untrusted_detail), Mark.WARN)
             for (app in MessageApp.entries) {
                 val on = app in s.allowlist.apps
                 val here = installed(app)
-                SwitchPreference(app.title, appSummary(app, here), on, enabled = s.on) { turn(app, it) }
+                SwitchPreference(app.titleText.str(), appSummary(app, here), on, enabled = s.on) { turn(app, it) }
             }
-            SwitchPreference("Include group chats", "Replies to a group always need a tap", s.allowlist.groups, enabled = s.on) { g ->
+            SwitchPreference(stringResource(R.string.messages_groups), stringResource(R.string.messages_groups_detail), s.allowlist.groups, enabled = s.on) { g ->
                 set { it.copy(allowlist = it.allowlist.copy(groups = g)) }
             }
         }
-        preferenceGroup("Replies", "replies") {
-            ListPreference("How replies go", s.replyRoute, ReplyRoute.entries, { it.title }, detail = { routeDetail(it) }, enabled = s.on) { r ->
+        preferenceGroup(replies, "replies") {
+            ListPreference(stringResource(R.string.messages_how_replies), s.replyRoute, ReplyRoute.entries, { it.text.render(langs) },
+                detail = { routeDetails[it] }, enabled = s.on) { r ->
                 set { it.copy(replyRoute = r) }
             }
-            SwitchPreference("Card before sending a reply", if (s.replyCard) "Robot shows what goes where; you tap Send"
-                else "Your own words to one person go after a 3-second stop", s.replyCard, enabled = s.on && s.replyRoute == ReplyRoute.SEND_AFTER_CARD) { c ->
+            SwitchPreference(stringResource(R.string.messages_card), stringResource(if (s.replyCard) R.string.messages_card_on else R.string.messages_card_off),
+                s.replyCard, enabled = s.on && s.replyRoute == ReplyRoute.SEND_AFTER_CARD) { c ->
                 set { it.copy(replyCard = c) }
             }
-            SwitchPreference("Answer reply cards by voice", "A spoken yes sends your words to one person; a group, a draft or a translation always needs a tap",
+            SwitchPreference(stringResource(R.string.messages_voice_yes), stringResource(R.string.messages_voice_yes_detail),
                 s.voiceYesSends, enabled = s.on && s.replyRoute == ReplyRoute.SEND_AFTER_CARD) { v -> set { it.copy(voiceYesSends = v) } }
-            SwitchPreference("Offer to send my reply in their language", "A tick box on the card, unticked", s.offerTheirLanguage, enabled = s.on) { o ->
+            SwitchPreference(stringResource(R.string.messages_their_language), stringResource(R.string.messages_their_language_detail), s.offerTheirLanguage,
+                enabled = s.on) { o ->
                 set { it.copy(offerTheirLanguage = o) }
             }
         }
-        preferenceGroup("Reading", "reading") {
-            ListPreference("Keep messages for", s.keep, KeepMessages.entries, { it.title }, detail = { keepDetail(it) }, enabled = s.on) { k -> set { it.copy(keep = k) } }
-            ListPreference("After Robot reads a message", s.afterReading, AfterReading.entries, { it.title }, detail = { afterDetail(it) }, enabled = s.on) { r ->
+        preferenceGroup(reading, "reading") {
+            ListPreference(stringResource(R.string.messages_keep), s.keep, KeepMessages.entries, { it.text.render(langs) }, detail = { keepDetails[it] },
+                enabled = s.on) { k -> set { it.copy(keep = k) } }
+            ListPreference(stringResource(R.string.messages_after), s.afterReading, AfterReading.entries, { it.text.render(langs) },
+                detail = { afterDetails[it] }, enabled = s.on) { r ->
                 set { it.copy(afterReading = r) }
             }
-            SwitchPreference("Translate messages not in my languages", "English and French are read as written", s.translate, enabled = s.on) { t ->
+            SwitchPreference(stringResource(R.string.messages_translate), stringResource(R.string.messages_translate_detail), s.translate, enabled = s.on) { t ->
                 set { it.copy(translate = t) }
             }
-            ListPreference("Messages on the lock screen", s.locked, MessagesLocked.entries, { it.title }, detail = { lockedDetail(it) }, enabled = s.on) { l ->
+            ListPreference(stringResource(R.string.messages_locked), s.locked, MessagesLocked.entries, { it.text.render(langs) },
+                detail = { lockedDetails[it] }, enabled = s.on) { l ->
                 set { it.copy(locked = l) }
             }
         }
         // 0.8: off by default; where and from whom are Settings › Headset's and Car mode's.
-        preferenceGroup("Announcements", "announce") {
-            SwitchPreference("Announce new messages", if (s.announce) "In private headphones, and in the car while car mode runs; never on the phone's speaker"
-                else "Off", s.announce, enabled = s.on) { an -> set { it.copy(announce = an) } }
+        preferenceGroup(announcements, "announce") {
+            SwitchPreference(stringResource(R.string.messages_announce), stringResource(if (s.announce) R.string.messages_announce_on else R.string.messages_announce_off),
+                s.announce, enabled = s.on) { an -> set { it.copy(announce = an) } }
             if (s.on && s.announce) {
-                PreferenceItem("In the headset", "Who, how, and on the lock screen", RIcons.Headset, onClick = { a.openPage(Page.Settings(SettingsRoutes.HEADSET)) })
-                PreferenceItem("In the car", "Who, reading aloud and replies by voice", RIcons.Car, onClick = { a.openPage(Page.Settings(SettingsRoutes.CAR)) })
+                PreferenceItem(stringResource(R.string.messages_in_headset), stringResource(R.string.messages_in_headset_detail), RIcons.Headset,
+                    onClick = { a.openPage(Page.Settings(SettingsRoutes.HEADSET)) })
+                PreferenceItem(stringResource(R.string.messages_in_car), stringResource(R.string.messages_in_car_detail), RIcons.Car,
+                    onClick = { a.openPage(Page.Settings(SettingsRoutes.CAR)) })
             }
         }
-        preferenceFooter(FOOTER)
+        preferenceFooter(footer)
     }
     if (setup) {
         MessagesSetupDialog(installed, onDismiss = { setup = false }) { apps ->
@@ -199,7 +220,7 @@ internal fun MessagesSetupDialog(installed: (MessageApp) -> Boolean, onDismiss: 
                     ) {
                         androidx.compose.material3.Checkbox(checked = app in apps, onCheckedChange = null)
                         Spacer(Modifier.width(12.dp))
-                        Text(app.title, style = MaterialTheme.typography.bodyLarge)
+                        Text(app.titleText.str(), style = MaterialTheme.typography.bodyLarge)
                     }
                 }
                 if (MessageApp.entries.none { installed(it) }) {
@@ -243,11 +264,12 @@ private fun rememberPinsNow(): (MessageApp) -> Map<String, AppPin> {
     return remember { { app -> MessageAppSigners.pinsNow(ctx, app) } }
 }
 
-/** The apps turned on whose packages Robot doesn't trust now (MessageAppSigners.problems). */
+/** The apps turned on whose packages Robot doesn't trust now (MessageAppSigners.problems), in the menus' language. */
 @Composable
 private fun rememberProblems(): (MessagesFile) -> List<String> {
     val ctx = LocalContext.current
-    return remember { { f -> MessageAppSigners.problems(ctx, f) } }
+    val langs = LocalLangs.current
+    return remember(langs) { { f -> MessageAppSigners.problems(ctx, f, langs) } }
 }
 
 /** Which of the apps are on this phone (by their package names, <queries> in the manifest). */
@@ -259,54 +281,51 @@ private fun rememberInstalled(): (MessageApp) -> Boolean {
 }
 
 /** "Installed · replies checked", "Not installed". */
+@Composable
 internal fun appSummary(app: MessageApp, installed: Boolean): String = listOfNotNull(
-    if (installed) "Installed" else "Not installed",
+    stringResource(if (installed) R.string.messages_installed else R.string.messages_not_installed),
     when {
-        !app.verified -> "how it replies isn't checked yet"
-        app.sms -> "replies are SMS"
-        app.replyMarksRead -> "a reply marks the chat read"
-        app.markReadTellsSender -> "Mark as read tells the sender"
+        !app.verified -> stringResource(R.string.messages_app_unverified)
+        app.sms -> stringResource(R.string.messages_app_sms)
+        app.replyMarksRead -> stringResource(R.string.messages_app_marks_read)
+        app.markReadTellsSender -> stringResource(R.string.messages_app_tells_sender)
         else -> null
     },
 ).joinToString(" · ")
 
-internal fun routeDetail(r: ReplyRoute): String = when (r) {
-    ReplyRoute.SEND_AFTER_CARD -> "Through the app's own reply action, after its card. A sent message can't be recalled."
-    ReplyRoute.OPEN_CHAT -> "The chat opens with your words; nothing is sent until you press Send there."
-}
+@Composable
+internal fun routeDetail(r: ReplyRoute): String = stringResource(when (r) {
+    ReplyRoute.SEND_AFTER_CARD -> R.string.messages_route_send_detail
+    ReplyRoute.OPEN_CHAT -> R.string.messages_route_open_detail
+})
 
-internal fun keepDetail(k: KeepMessages): String = when (k) {
-    KeepMessages.UNTIL_GONE -> "Read in the app, dismissed or cleared: gone from Robot too."
-    KeepMessages.ONE_HOUR, KeepMessages.ONE_DAY -> "Still in memory only; a restart forgets them."
-}
+@Composable
+internal fun keepDetail(k: KeepMessages): String = stringResource(when (k) {
+    KeepMessages.UNTIL_GONE -> R.string.messages_keep_gone_detail
+    KeepMessages.ONE_HOUR, KeepMessages.ONE_DAY -> R.string.messages_keep_ram_detail
+})
 
-internal fun afterDetail(a: AfterReading): String = when (a) {
-    AfterReading.LEAVE -> "Nothing changes in the app; Robot only remembers it read it."
-    AfterReading.CLEAR -> "The notification goes; the chat stays unread in the app. A reply then opens the chat."
-    AfterReading.MARK_READ -> "The sender may see you read it (a read marker or a receipt). A reply then opens the chat."
-}
+@Composable
+internal fun afterDetail(a: AfterReading): String = stringResource(when (a) {
+    AfterReading.LEAVE -> R.string.messages_after_leave_detail
+    AfterReading.CLEAR -> R.string.messages_after_clear_detail
+    AfterReading.MARK_READ -> R.string.messages_after_mark_detail
+})
 
-internal fun lockedDetail(l: MessagesLocked): String = when (l) {
-    MessagesLocked.OFF -> "“Unlock first”."
-    MessagesLocked.WHO_MESSAGED -> "Names only: who wrote, not what."
-    MessagesLocked.READ_AND_REPLY -> "Anyone holding your locked phone can hear your messages and reply."
-}
+@Composable
+internal fun lockedDetail(l: MessagesLocked): String = stringResource(when (l) {
+    MessagesLocked.OFF -> R.string.messages_locked_off_detail
+    MessagesLocked.WHO_MESSAGED -> R.string.messages_locked_who_detail
+    MessagesLocked.READ_AND_REPLY -> R.string.messages_locked_read_detail
+})
 
-/** The Settings row's state: "Off", "On · Cheogram, Signal", "On · no app yet". */
-internal fun messagesSummary(f: MessagesFile): String {
+/** [messagesSummary] in words without a language yet (Settings' row: `messagesSummaryText(f).str()`). */
+internal fun messagesSummaryText(f: MessagesFile): Phrase {
     val s = f.settings
-    if (!s.on) return "Off"
-    val apps = MessageApp.entries.filter { it in s.allowlist.apps }.map { it.title }
-    return "On · " + if (apps.isEmpty()) "no app yet" else apps.joinToString(", ")
+    if (!s.on) return MessageStrings.summaryOff()
+    val apps = MessageApp.entries.filter { it in s.allowlist.apps }.map { it.titleText }
+    return if (apps.isEmpty()) MessageStrings.summaryOnNone() else MessageStrings.summaryOn("appNames" to Phrase.Join(apps, ", "))
 }
-
-internal const val FOOTER = "Robot reads the shade, not a database: no SMS permission, no message history. A message's text stays in memory " +
-    "until its notification goes; History keeps a line such as “Robot read 2 messages from Mom”, never the words, and the voice log keeps " +
-    "numbers only.\n\nReplies go to the conversation the notification belongs to, never to anyone else, and only after you tap Send on the " +
-    "card (or, for someone you chose in People, after a 3-second stop). A sent message can't be recalled. An SMS reply may cost what your " +
-    "carrier charges. Some messaging apps mark the chat read and may send a read receipt when you reply from their notification. Some send an emoji " +
-    "alone as a reaction, and their Mark as read tells the sender.\n\nSome apps show other apps only “New message” unless their notification " +
-    "settings show the name and message. Android hides messages that look like login codes from apps like Robot."
 
 /**
  * People › a person (0.7): "Send my replies to … without a card". Only while Settings › Messages is on, for someone you
@@ -326,8 +345,8 @@ fun NoCardSwitch(p: Person, modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text("Send my replies to $who without a card", style = MaterialTheme.typography.bodyLarge)
-            Text("Your own words, one to one, phone unlocked: Robot says them and sends after 3 seconds unless you say stop.",
+            Text(stringResource(R.string.messages_no_card, who), style = MaterialTheme.typography.bodyLarge)
+            Text(stringResource(R.string.messages_no_card_detail),
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Spacer(Modifier.width(16.dp))
@@ -353,8 +372,8 @@ fun AnnounceSwitch(p: Person, modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text("Announce messages from $who", style = MaterialTheme.typography.bodyLarge)
-            Text("In private headphones, and in the car in car mode, when “Announce from” is “People you choose”.",
+            Text(stringResource(R.string.messages_announce_from, who), style = MaterialTheme.typography.bodyLarge)
+            Text(stringResource(R.string.messages_announce_from_detail),
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Spacer(Modifier.width(16.dp))

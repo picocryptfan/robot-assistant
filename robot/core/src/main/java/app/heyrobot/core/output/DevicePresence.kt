@@ -6,7 +6,7 @@ import app.heyrobot.core.RoutineTrigger
 import app.heyrobot.core.TriggerEvent
 
 // Pure. Which remembered headsets and cars are connected now, from AudioManager's device list after every
-// AudioDeviceCallback (design §2.1 "Headphones or car connect / disconnect", §4.8 CarModeController). One physical
+// AudioDeviceCallback. One physical
 // device comes and goes as several entries (A2DP, SCO, LE), and Bluetooth links flap (a case opened and closed, a car
 // restarting its radio), so a device counts as gone only after a grace period ([graceMs]: 30 s for a car by default, as
 // car mode ends, 5 s for a headset). Coming back within it is no event at all. This is for routines, car mode and

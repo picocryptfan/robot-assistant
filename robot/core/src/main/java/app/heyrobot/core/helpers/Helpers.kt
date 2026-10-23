@@ -8,6 +8,8 @@ import app.heyrobot.core.AskRoute
 import app.heyrobot.core.HelperVoices
 import app.heyrobot.core.LogCode
 import app.heyrobot.core.enumOr
+import app.heyrobot.core.i18n.HelperStrings
+import app.heyrobot.core.i18n.Phrase
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -85,25 +87,29 @@ data class Quirks(
 data class CatalogModel(
     val id: String,
     val title: String,
-    val detail: String,
+    val detailText: Phrase,
     val tools: Boolean = true,
     val search: Boolean = false,
     val vision: Boolean = false,
     val effort: EffortStyle? = null,
-)
+) {
+}
 
 /**
  * A kind of helper you can add. [defaultName]: the name you call it by ("ChatGPT"); [spoken]: other ways the name is
  * written by speech recognition that mean it exactly ("chat gpt"), [misheard]: words Parakeet produces for it that count
  * only after a command verb ("cloud" for Claude). [baseUrl]: the company's API (null: the SDK's own for Anthropic, yours
- * for a home server or another company). [keyWhere], [billing], [dataUse] and [searchNote] are Settings' words.
- * [keyPrefixes]: the usual start of a key, for a warning only (a different start never blocks a key).
+ * for a home server or another company). [billingText], [dataUseText] and [searchNoteText] are Settings' words (1.1:
+ * without a language yet, shown in the menus'); [keyWhere] is the company site's own page, in its own words.
+ * [companyText] and [titleText]: the company and the kind of helper, by name. [defaultName] stays as written in every
+ * language (it becomes your helper's name). [keyPrefixes]: the usual start of a key, for a warning only (a different
+ * start never blocks a key).
  */
 data class Preset(
     val id: String,
     val kind: HelperKind,
-    val company: String,
-    val title: String,
+    val companyText: Phrase,
+    val titleText: Phrase,
     val defaultName: String,
     val protocol: Protocol,
     val baseUrl: String?,
@@ -112,9 +118,9 @@ data class Preset(
     val keyRequired: Boolean = true,
     val keyWhere: String? = null,
     val keyPrefixes: List<String> = emptyList(),
-    val billing: String? = null,
-    val dataUse: String? = null,
-    val searchNote: String? = null,
+    val billingText: Phrase? = null,
+    val dataUseText: Phrase? = null,
+    val searchNoteText: Phrase? = null,
     /**
      * The company's own Android app Robot can hand a question to, by package (1.0.0: each checked against its Play Store
      * listing on 13 Oct 2026). Without a key, questions open it ([HelperSettings.route]); you press Send there.
@@ -126,6 +132,8 @@ data class Preset(
     val searchByDefault: Boolean = false,
 ) {
     val home: Boolean get() = kind == HelperKind.HOME
+
+
     /** You type the address (your server, or another company's OpenAI-compatible API). */
     val needsAddress: Boolean get() = baseUrl == null && protocol != Protocol.ANTHROPIC
     val defaultModel: String get() = models.firstOrNull()?.id.orEmpty()
@@ -139,11 +147,11 @@ data class Preset(
 object Presets {
     /** Kept as it was: the Ask Claude settings, the Anthropic SDK, the Claude app. */
     val ANTHROPIC = Preset(
-        "anthropic", HelperKind.ANTHROPIC, "Anthropic", "Anthropic (Claude)", "Claude", Protocol.ANTHROPIC, null,
+        "anthropic", HelperKind.ANTHROPIC, Phrase.plain("Anthropic"), Phrase.plain("Anthropic (Claude)"), "Claude", Protocol.ANTHROPIC, null, // l10n: not text (company and product names)
         Quirks(search = SearchStyle.ANTHROPIC, strictTools = true, effort = EffortStyle.NONE),
-        AnthropicModel.entries.map { CatalogModel(it.id, it.title, it.detail, tools = true, search = true, vision = true) },
-        keyWhere = "console.anthropic.com › API keys", keyPrefixes = listOf("sk-ant-"),
-        billing = "API use is paid with API credits, which a claude.ai Pro or Max plan doesn't include.",
+        AnthropicModel.entries.map { CatalogModel(it.id, it.title, it.detailText, tools = true, search = true, vision = true) },
+        keyWhere = "console.anthropic.com › API keys", keyPrefixes = listOf("sk-ant-"), // l10n: not text (the company site's own page)
+        billingText = HelperStrings.billingAnthropic(),
         app = "com.anthropic.claude", misheard = listOf("cloud", "clod", "clawed", "claud", "klode", "clyde"), searchByDefault = true,
     )
 
@@ -152,93 +160,94 @@ object Presets {
      * search outside it needs a separate model that always searches.
      */
     val OPENAI = Preset(
-        "openai", HelperKind.OPENAI, "OpenAI", "OpenAI (GPT)", "ChatGPT", Protocol.RESPONSES, "https://api.openai.com/v1",
+        "openai", HelperKind.OPENAI, Phrase.plain("OpenAI"), Phrase.plain("OpenAI (GPT)"), "ChatGPT", Protocol.RESPONSES, "https://api.openai.com/v1", // l10n: not text (company and product names)
         Quirks(lengthParam = "max_output_tokens", strictTools = true, effort = EffortStyle.RESPONSES, search = SearchStyle.RESPONSES),
         listOf(
-            CatalogModel("gpt-6.1-sol", "GPT-6.1 Sol", "Fast and capable: \$2 per million tokens in, \$10 out.", search = true, vision = true),
-            CatalogModel("gpt-6-astra", "GPT-6 Astra", "OpenAI's most capable: \$10 in, \$50 out.", search = true, vision = true),
-            CatalogModel("gpt-6-luna", "GPT-6 Luna", "The fastest and cheapest: \$0.10 in, \$0.50 out.", search = true, vision = true),
+            CatalogModel("gpt-6.1-sol", "GPT-6.1 Sol", HelperStrings.modelGptSol(), search = true, vision = true), // l10n: not text (a model's name)
+            CatalogModel("gpt-6-astra", "GPT-6 Astra", HelperStrings.modelGptAstra(), search = true, vision = true), // l10n: not text (a model's name)
+            CatalogModel("gpt-6-luna", "GPT-6 Luna", HelperStrings.modelGptLuna(), search = true, vision = true), // l10n: not text (a model's name)
         ),
-        keyWhere = "platform.openai.com › API keys", keyPrefixes = listOf("sk-"),
-        billing = "API use is paid separately from a ChatGPT subscription.", spoken = listOf("chatgpt", "chat gpt", "chat g p t", "gpt", "g p t"),
+        keyWhere = "platform.openai.com › API keys", keyPrefixes = listOf("sk-"), // l10n: not text (the company site's own page)
+        billingText = HelperStrings.billingOpenAi(), spoken = listOf("chatgpt", "chat gpt", "chat g p t", "gpt", "g p t"),
         searchByDefault = true, app = "com.openai.chatgpt",
     )
 
     val GEMINI = Preset(
-        "gemini", HelperKind.GOOGLE, "Google", "Google (Gemini)", "Gemini", Protocol.CHAT, "https://generativelanguage.googleapis.com/v1beta/openai",
+        "gemini", HelperKind.GOOGLE, Phrase.plain("Google"), Phrase.plain("Google (Gemini)"), "Gemini", Protocol.CHAT, "https://generativelanguage.googleapis.com/v1beta/openai", // l10n: not text (company and product names)
         Quirks(),
         listOf(
-            CatalogModel("gemini-3.8-flash", "Gemini 3.8 Flash", "Fast and capable: \$0.75 per million tokens in, \$3.75 out until 31 Dec 2026, then double.", vision = true),
-            CatalogModel("gemini-3.1-pro-preview", "Gemini 3.1 Pro (preview)", "Google's most capable: \$2 in, \$12 out.", vision = true),
-            CatalogModel("gemini-3.5-flash-lite", "Gemini 3.5 Flash-Lite", "The cheapest: \$0.30 in, \$2.50 out.", vision = true),
+            CatalogModel("gemini-3.8-flash", "Gemini 3.8 Flash", HelperStrings.modelGeminiFlash(), vision = true), // l10n: not text (a model's name)
+            CatalogModel("gemini-3.1-pro-preview", "Gemini 3.1 Pro (preview)", HelperStrings.modelGeminiPro(), vision = true), // l10n: not text (a model's name)
+            CatalogModel("gemini-3.5-flash-lite", "Gemini 3.5 Flash-Lite", HelperStrings.modelGeminiLite(), vision = true), // l10n: not text (a model's name)
         ),
-        keyWhere = "aistudio.google.com › Get API key", keyPrefixes = listOf("AIza"),
-        billing = "API use is paid separately from a Gemini app subscription.",
-        dataUse = "On Google's free tier, what you send is used to improve Google's products (its pricing page says “Used to improve our products: Yes”); on the paid tier it isn't. Robot's cost line assumes the paid tier.",
-        searchNote = "Google's search grounding isn't available through this connection.", app = "com.google.android.apps.bard",
+        keyWhere = "aistudio.google.com › Get API key", keyPrefixes = listOf("AIza"), // l10n: not text (the company site's own page)
+        billingText = HelperStrings.billingGemini(),
+        dataUseText = HelperStrings.dataUseGemini(),
+        searchNoteText = HelperStrings.searchNoteGemini(), app = "com.google.android.apps.bard",
     )
 
     val MISTRAL = Preset(
-        "mistral", HelperKind.MISTRAL, "Mistral AI", "Mistral", "Mistral", Protocol.CHAT, "https://api.mistral.ai/v1",
+        "mistral", HelperKind.MISTRAL, Phrase.plain("Mistral AI"), Phrase.plain("Mistral"), "Mistral", Protocol.CHAT, "https://api.mistral.ai/v1", // l10n: not text (company and product names)
         Quirks(streamUsage = false, effort = EffortStyle.MISTRAL),
         listOf(
-            CatalogModel("mistral-medium-3-5", "Mistral Medium 3.5", "Mistral's choice for most tasks."),
-            CatalogModel("mistral-large-4-0", "Mistral Large 4.0", "The largest."),
-            CatalogModel("mistral-small-latest", "Mistral Small", "For cost-sensitive use."),
+            CatalogModel("mistral-medium-3-5", "Mistral Medium 3.5", HelperStrings.modelMistralMedium()), // l10n: not text (a model's name)
+            CatalogModel("mistral-large-4-0", "Mistral Large 4.0", HelperStrings.modelMistralLarge()), // l10n: not text (a model's name)
+            CatalogModel("mistral-small-latest", "Mistral Small", HelperStrings.modelMistralSmall()), // l10n: not text (a model's name)
         ),
-        keyWhere = "console.mistral.ai › API keys",
-        billing = "Mistral's per-model prices aren't readable outside a browser, so Robot can't estimate them: enter them below from mistral.ai/pricing.",
-        searchNote = "Mistral's web search works only through its Agents and Conversations APIs, not this connection.",
+        keyWhere = "console.mistral.ai › API keys", // l10n: not text (the company site's own page)
+        billingText = HelperStrings.billingMistral(),
+        searchNoteText = HelperStrings.searchNoteMistral(),
         // Its app was called Le Chat until 2026 (now Vibe by Mistral); the package stayed.
         app = "ai.mistral.chat",
     )
 
     val DEEPSEEK = Preset(
-        "deepseek", HelperKind.DEEPSEEK, "DeepSeek", "DeepSeek", "DeepSeek", Protocol.CHAT, "https://api.deepseek.com",
+        "deepseek", HelperKind.DEEPSEEK, Phrase.plain("DeepSeek"), Phrase.plain("DeepSeek"), "DeepSeek", Protocol.CHAT, "https://api.deepseek.com",
         Quirks(effort = EffortStyle.DEEPSEEK),
         listOf(
-            CatalogModel("deepseek-flash", "DeepSeek Flash", "Fast: \$0.15 per million tokens in, \$0.60 out (off-peak).", vision = true),
-            CatalogModel("deepseek-v4-pro", "DeepSeek V4 Pro", "More capable: \$0.66 in, \$1.98 out (off-peak)."),
+            CatalogModel("deepseek-flash", "DeepSeek Flash", HelperStrings.modelDeepSeekFlash(), vision = true), // l10n: not text (a model's name)
+            CatalogModel("deepseek-v4-pro", "DeepSeek V4 Pro", HelperStrings.modelDeepSeekPro()), // l10n: not text (a model's name)
         ),
-        keyWhere = "platform.deepseek.com › API keys", keyPrefixes = listOf("sk-"),
-        billing = "Pay as you go from a balance you top up. Prices double on weekdays from 01:00 to 04:00 and 06:00 to 10:00 UTC.",
-        searchNote = "DeepSeek's API has no web search.", spoken = listOf("deepseek", "deep seek"), app = "com.deepseek.chat",
+        keyWhere = "platform.deepseek.com › API keys", keyPrefixes = listOf("sk-"), // l10n: not text (the company site's own page)
+        billingText = HelperStrings.billingDeepSeek(),
+        searchNoteText = HelperStrings.searchNoteDeepSeek(), spoken = listOf("deepseek", "deep seek"), app = "com.deepseek.chat",
     )
 
     val GROQ = Preset(
-        "groq", HelperKind.GROQ, "Groq", "Groq", "Groq", Protocol.CHAT, "https://api.groq.com/openai/v1",
+        "groq", HelperKind.GROQ, Phrase.plain("Groq"), Phrase.plain("Groq"), "Groq", Protocol.CHAT, "https://api.groq.com/openai/v1",
         Quirks(lengthParam = "max_completion_tokens"),
         listOf(
-            CatalogModel("openai/gpt-oss-120b", "GPT-OSS 120B", "Very fast: \$0.15 per million tokens in, \$0.60 out."),
-            CatalogModel("openai/gpt-oss-20b", "GPT-OSS 20B", "Faster and cheaper: \$0.075 in, \$0.30 out."),
-            CatalogModel("qwen/qwen3.8-27b", "Qwen 3.8 27B", "\$0.80 in, \$4 out; can see pictures.", vision = true, effort = EffortStyle.NONE),
+            CatalogModel("openai/gpt-oss-120b", "GPT-OSS 120B", HelperStrings.modelGptOss120()), // l10n: not text (a model's name)
+            CatalogModel("openai/gpt-oss-20b", "GPT-OSS 20B", HelperStrings.modelGptOss20()), // l10n: not text (a model's name)
+            CatalogModel("qwen/qwen3.8-27b", "Qwen 3.8 27B", HelperStrings.modelQwen(), vision = true, effort = EffortStyle.NONE), // l10n: not text (a model's name)
         ),
-        keyWhere = "console.groq.com › API Keys", keyPrefixes = listOf("gsk_"),
-        searchNote = "Groq doesn't publish its browser search price where Robot can check it, so Robot leaves search off rather than guess the cost.",
+        keyWhere = "console.groq.com › API Keys", keyPrefixes = listOf("gsk_"), // l10n: not text (the company site's own page)
+        searchNoteText = HelperStrings.searchNoteGroq(),
     )
 
     val OPENROUTER = Preset(
-        "openrouter", HelperKind.OPENROUTER, "OpenRouter", "OpenRouter (hundreds of models)", "OpenRouter", Protocol.CHAT, "https://openrouter.ai/api/v1",
+        "openrouter", HelperKind.OPENROUTER, Phrase.plain("OpenRouter"), HelperStrings.titleOpenRouter(), "OpenRouter", Protocol.CHAT, "https://openrouter.ai/api/v1",
         Quirks(streamUsage = false, strictTools = true, effort = EffortStyle.OPENROUTER, search = SearchStyle.OPENROUTER, reportsCost = true, zdr = true),
         emptyList(),
-        keyWhere = "openrouter.ai › Keys", keyPrefixes = listOf("sk-or-"),
-        billing = "OpenRouter reports what each answer cost, so the cost line is its own figure. Its web search may use another search company (Exa) when the model has none.",
-        dataUse = "Robot asks OpenRouter to use only providers that keep nothing (zero data retention); you can turn that off below.",
+        keyWhere = "openrouter.ai › Keys", keyPrefixes = listOf("sk-or-"), // l10n: not text (the company site's own page)
+        billingText = HelperStrings.billingOpenRouter(),
+        dataUseText = HelperStrings.dataUseOpenRouter(),
         spoken = listOf("openrouter", "open router"),
     )
 
     /** xAI through the Responses API (its web search is only there; it calls Chat Completions "legacy"). */
     val XAI = Preset(
-        "xai", HelperKind.XAI, "xAI", "xAI (Grok)", "Grok", Protocol.RESPONSES, "https://api.x.ai/v1",
+        "xai", HelperKind.XAI, Phrase.plain("xAI"), Phrase.plain("xAI (Grok)"), "Grok", Protocol.RESPONSES, "https://api.x.ai/v1", // l10n: not text (company and product names)
         Quirks(lengthParam = "max_output_tokens", effort = EffortStyle.RESPONSES, search = SearchStyle.RESPONSES),
-        listOf(CatalogModel("grok-4.7", "Grok 4.7", "\$2 per million tokens in, \$6 out; web search \$5 per 1,000.", search = true, vision = true)),
-        keyWhere = "console.x.ai › API keys", keyPrefixes = listOf("xai-"), searchByDefault = true, app = "ai.x.grok",
+        listOf(CatalogModel("grok-4.7", "Grok 4.7", HelperStrings.modelGrok(), search = true, vision = true)), // l10n: not text (a model's name)
+        keyWhere = "console.x.ai › API keys", keyPrefixes = listOf("xai-"), searchByDefault = true, app = "ai.x.grok", // l10n: not text (the company site's own page)
     )
 
     val HOME = Preset(
-        "home", HelperKind.HOME, "Your own server", "Your own server (Ollama, LM Studio, llama.cpp, vLLM…)", "My server", Protocol.CHAT, null,
+        // Its default name stays as written in every language: it becomes your helper's name.
+        "home", HelperKind.HOME, HelperStrings.companyHome(), HelperStrings.titleHome(), "My server", Protocol.CHAT, null, // l10n: not text (a default name, kept in every language)
         Quirks(toolChoice = false, home = true), emptyList(), keyRequired = false,
-        searchNote = "A server on your network has no web search Robot can use.",
+        searchNoteText = HelperStrings.searchNoteHome(),
     )
 
     /**
@@ -246,9 +255,9 @@ object Presets {
      * whichever helper Robot checks with, so a name nobody may pick ([HelperNames.check] lets one saved before keep it).
      */
     val OTHER = Preset(
-        "compatible", HelperKind.OTHER, "Another company", "Another company (OpenAI-compatible)", "My AI", Protocol.CHAT, null,
+        "compatible", HelperKind.OTHER, HelperStrings.companyOther(), HelperStrings.titleOther(), "My AI", Protocol.CHAT, null, // l10n: not text (a new helper's default name, yours to change)
         Quirks(toolChoice = false), emptyList(), keyRequired = false,
-        searchNote = "Robot doesn't know this company's web search.",
+        searchNoteText = HelperStrings.searchNoteOther(),
     )
 
     /** [OTHER]'s name before 1.0.0, a default rather than a name you chose (the diagnostics keep it). */
@@ -398,8 +407,11 @@ data class HelperConfig(
 /** What a name check found: fine, a problem (the name can't be saved), or a warning (it can, but you should know). */
 sealed class NameCheck {
     data object Ok : NameCheck()
-    data class Problem(val why: String) : NameCheck()
-    data class Warning(val why: String) : NameCheck()
+
+    /** [text]: why, as words without a language yet (1.1: the name field shows it in the menus' language); [why] its English. */
+    data class Problem(val text: Phrase) : NameCheck()
+
+    data class Warning(val text: Phrase) : NameCheck()
 }
 
 /** Names and the words around them: what a helper may be called (pure, tested). */
@@ -413,6 +425,9 @@ object HelperNames {
         "merci", "oui", "non", "annule", "demande", "help", "wait", "not", "you", "me", "it", "the", "a", "an",
         // 1.0.0: "ask the helper …" and « demande à l'assistant … » mean the helper Robot checks with, never one called that.
         "helper", "assistant", "lassistant")
+
+    /** 1.1: [COMMANDS] for Skills' name check (core skills SkillNames): a skill can't be called a command word either. */
+    val commandWords: Set<String> get() = COMMANDS
 
     /** The command words 1.0.0 added, which a helper may already have been called. */
     private val SINCE_1_0 = setOf("helper", "assistant", "lassistant")
@@ -457,27 +472,26 @@ object HelperNames {
      */
     fun check(name: String, id: String, s: app.heyrobot.core.RobotSettings, wakeWords: Set<String>): NameCheck {
         val raw = name.trim()
-        if (raw.isEmpty()) return NameCheck.Problem("Give it a name of one to three words.")
-        if (raw.any { !(it.isLetterOrDigit() || it == ' ') }) return NameCheck.Problem("Use letters, digits and spaces only.")
+        if (raw.isEmpty()) return NameCheck.Problem(HelperStrings.nameWords())
+        if (raw.any { !(it.isLetterOrDigit() || it == ' ') }) return NameCheck.Problem(HelperStrings.nameLetters())
         val words = app.heyrobot.core.HelperName.words(raw)
-        if (words.isEmpty() || words.size > 3) return NameCheck.Problem("Give it a name of one to three words.")
+        if (words.isEmpty() || words.size > 3) return NameCheck.Problem(HelperStrings.nameWords())
         // A name saved before 1.0.0 made "helper" and "assistant" command words ("Helper", another company's default) keeps
         // working: it is only refused for a new helper or a new name.
         val kept = s.helpers.any { it.id == id && app.heyrobot.core.HelperName.words(it.name) == words }
         for (w in words) {
-            if (w == "robot" || w in wakeWords) return NameCheck.Problem("“$w” is in a wake phrase: Robot would mix them up.")
+            if (w == "robot" || w in wakeWords) return NameCheck.Problem(HelperStrings.nameWake("word" to w))
             if (kept && w in SINCE_1_0) continue
-            if (w in COMMANDS || w in app.heyrobot.core.HelperRouter.FILLER_WORDS) return NameCheck.Problem("“$w” is a word Robot listens for in commands.")
+            if (w in COMMANDS || w in app.heyrobot.core.HelperRouter.FILLER_WORDS) return NameCheck.Problem(HelperStrings.nameCommand("word" to w))
         }
         for (other in s.helpers) {
             if (other.id == id) continue
             val theirs = app.heyrobot.core.HelperName.of(other)
-            if (theirs.forms.any { it == words } || theirs.misheard.any { it == words }) return NameCheck.Problem("${other.name} is already called that.")
+            if (theirs.forms.any { it == words } || theirs.misheard.any { it == words }) return NameCheck.Problem(HelperStrings.nameTaken("name" to other.name))
             if (words.size == 1 && theirs.forms.any { it.size == 1 && app.heyrobot.core.Phonetic.same(it[0], words[0]) })
-                return NameCheck.Problem("That sounds like ${other.name}: Robot couldn't tell them apart.")
+                return NameCheck.Problem(HelperStrings.nameSoundsLike("name" to other.name))
         }
-        if (words.size == 1 && words[0] in COMMON) return NameCheck.Warning("“${raw}” is a common word or name: “ask ${raw} …” will go to this helper, " +
-            "never to someone called ${raw}.")
+        if (words.size == 1 && words[0] in COMMON) return NameCheck.Warning(HelperStrings.nameCommon("name" to raw))
         return NameCheck.Ok
     }
 }

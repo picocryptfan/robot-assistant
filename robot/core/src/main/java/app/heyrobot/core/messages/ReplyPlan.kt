@@ -1,10 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.messages
 
+import app.heyrobot.core.i18n.Lang
+import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.i18n.MessageStrings
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.UiLabel
+import app.heyrobot.core.i18n.UiStrings
 import java.text.Normalizer
 import java.util.Locale
 
-// Pure. How a reply to a message goes out (design §B5), decided by code. The recipient is the notification's own
+// Pure. How a reply to a message goes out, decided by code. The recipient is the notification's own
 // conversation: [ReplyPlanner.plan] takes the [MessageThread] and the words, and has no way to name anyone else, so
 // nothing the model writes can choose or change who gets it. By default a card shows exactly what goes where, and a
 // tap sends it: a spoken "yes" is not enough to send (it could be someone else's voice, or Robot's own reading the
@@ -57,12 +63,12 @@ sealed class ReplyPlan {
     /** A card (or the stop window) for [text] to [target]. [newestSeen]: the newest message the card was made with. */
     data class Send(val target: ReplyTarget, val text: String, val confirm: Confirm, val notes: Set<ReplyNote>, val newestSeen: Long?) : ReplyPlan() {
         val voiceYesCounts: Boolean get() = confirm != Confirm.TAP
-        override fun toString(): String = "Send(app=${target.app}, group=${target.isGroup}, confirm=$confirm, notes=$notes, chars=${text.length})"
+        override fun toString(): String = "Send(app=${target.app}, group=${target.isGroup}, confirm=$confirm, notes=$notes, chars=${text.length})" // l10n: not text (toString for logs and tests)
     }
 
     /** Open the chat with [text] as a draft: nothing is sent until you press Send there. */
     data class HandOff(val app: MessageApp, val conversationId: String, val text: String, val why: HandOffWhy) : ReplyPlan() {
-        override fun toString(): String = "HandOff(app=$app, why=$why, chars=${text.length})"
+        override fun toString(): String = "HandOff(app=$app, why=$why, chars=${text.length})" // l10n: not text (toString for logs and tests)
     }
 
     data class Refused(val why: RefuseWhy) : ReplyPlan()
@@ -107,6 +113,15 @@ object ReplyPlanner {
     }
 
     /**
+     * [p] once its 3 seconds were stopped (the word, Stop, the panel closing), or once it waits again after it found newer
+     * messages: a card from then on, sent by a tap, or by a spoken yes only with "Answer reply cards by voice" on
+     * ([MessageSettings.voiceYesSends]), as the same reply with a card would be. Never by itself again, and never by a yes
+     * the card wouldn't take.
+     */
+    fun stopped(p: ReplyPlan.Send, s: MessageSettings): ReplyPlan.Send =
+        if (p.confirm != Confirm.STOP_WINDOW) p else p.copy(confirm = if (s.voiceYesSends) Confirm.VOICE_OR_TAP else Confirm.TAP)
+
+    /**
      * "Reply to Mom": the conversations whose title or sender is called [name] (the caller adds People aliases by key).
      * Several make a pick card; none, "No message from Mom right now", and the usual texting route.
      */
@@ -117,31 +132,34 @@ object ReplyPlanner {
     }
 
     /** The card's text: "Reply to **Mom** · Cheogram", the words in quotes, and the notes. */
-    fun card(p: ReplyPlan.Send, lang: Lang): String = buildString {
-        val to = p.target.to
-        if (lang == Lang.FR) append(if (p.target.isGroup) "Répondre au groupe **$to**" else "Répondre à **$to**") else append(if (p.target.isGroup) "Reply to the group **$to**" else "Reply to **$to**")
-        append(" · ").append(p.target.app.title).append('\n')
-        append(if (lang == Lang.FR) "« ${p.text} »" else "«${p.text}»")
-        for (n in p.notes) note(n, lang)?.let { append('\n').append(it) }
+    fun card(p: ReplyPlan.Send, lang: Lang): String = card(p, Langs.of(lang))
+
+    /** [card] in [l] (1.1: the reply language, Robot's buttons named in the menus'). */
+    fun card(p: ReplyPlan.Send, l: Langs): String = buildString {
+        val to = "to" to p.target.to
+        val app = "appName" to p.target.app.titleText
+        append((if (p.target.isGroup) MessageStrings.replyToGroup(to, app) else MessageStrings.replyTo(to, app)).render(l)).append('\n')
+        append(MessageStrings.replyQuote("text" to p.text).render(l))
+        for (n in p.notes) noteText(n)?.let { append('\n').append(it.render(l)) }
     }
 
     /** The card read aloud: "Reply to Mom: I'll be late. Tap Send to send it." (the words as they will go, then a full stop). */
-    fun spoken(p: ReplyPlan.Send, lang: Lang): String {
+    fun spoken(p: ReplyPlan.Send, lang: Lang): String = spokenText(p).render(Langs.of(lang))
+
+    fun spokenText(p: ReplyPlan.Send): Phrase {
         val said = if (p.text.last() in ".!?…") p.text else "${p.text}."
-        return when {
-            lang == Lang.FR && p.voiceYesCounts -> "Répondre à ${p.target.to} : $said Je l'envoie ?"
-            lang == Lang.FR -> "Répondre à ${p.target.to} : $said Touche Envoyer pour l'envoyer."
-            p.voiceYesCounts -> "Reply to ${p.target.to}: $said Send it?"
-            else -> "Reply to ${p.target.to}: $said Tap Send to send it."
-        }
+        return if (p.voiceYesCounts) MessageStrings.spokenSendIt("to" to p.target.to, "said" to said)
+        else MessageStrings.spokenTapSend("to" to p.target.to, "said" to said, "send" to UiLabel(UiStrings.send))
     }
 
-    fun note(n: ReplyNote, lang: Lang): String? = when (n) {
-        ReplyNote.GROUP -> if (lang == Lang.FR) "Tout le groupe le verra. Touche Envoyer pour l'envoyer." else "Everyone in the group will see it. Tap Send to send it."
-        ReplyNote.EMOJI_REACTION -> if (lang == Lang.FR) "Cette application envoie un émoji seul comme réaction." else "This app sends an emoji alone as a reaction."
-        ReplyNote.SMS -> if (lang == Lang.FR) "C'est un texto : des frais de l'opérateur peuvent s'appliquer." else "This is an SMS: carrier charges may apply."
-        ReplyNote.MARKS_READ -> if (lang == Lang.FR) "Cette application marque la conversation comme lue et peut envoyer un accusé de lecture." else "This app marks the chat read and may send a read receipt."
-        ReplyNote.UNVERIFIED_APP -> if (lang == Lang.FR) "Robot n'a pas encore vérifié comment cette application envoie une réponse." else "Robot hasn't checked yet how this app sends a reply."
+    fun note(n: ReplyNote, lang: Lang): String? = noteText(n)?.render(Langs.of(lang))
+
+    fun noteText(n: ReplyNote): Phrase? = when (n) {
+        ReplyNote.GROUP -> MessageStrings.noteGroup("send" to UiLabel(UiStrings.send))
+        ReplyNote.EMOJI_REACTION -> MessageStrings.noteEmoji()
+        ReplyNote.SMS -> MessageStrings.noteSms()
+        ReplyNote.MARKS_READ -> MessageStrings.noteMarksRead()
+        ReplyNote.UNVERIFIED_APP -> MessageStrings.noteUnverified()
         ReplyNote.OPENS_APP -> null
     }
 
@@ -243,7 +261,7 @@ object ReplyText {
 }
 
 /**
- * Where "Open the chat" goes (design §B5's hand-off, phase 2's drafts): Cheogram's chat by its shortcut id
+ * Where "Open the chat" goes: Cheogram's chat by its shortcut id
  * "<account>#<address>", with your words in its box; other apps get the words shared to them, and you pick the chat
  * there. Nothing is sent until you press Send in the app.
  */

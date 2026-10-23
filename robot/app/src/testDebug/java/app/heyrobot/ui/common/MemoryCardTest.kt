@@ -27,6 +27,10 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import app.heyrobot.CARD_FORGOTTEN
+import app.heyrobot.CARD_FORGOTTEN_DETAIL
+import app.heyrobot.CARD_SAVED_DETAIL
+import app.heyrobot.CARD_WHICH
 
 /**
  * 0.7, memory's cards in the panel: "Remembered" with its words, Undo and Open Memory; "Forgotten" with Undo; the pick

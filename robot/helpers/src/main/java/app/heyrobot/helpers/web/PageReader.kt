@@ -55,7 +55,7 @@ object PageReader {
         for (e in doc.getAllElements()) {
             // The document and its html, head (whose scripts and styles go one by one; the title stays) and body.
             if (e === doc || e.tagName() in KEEP) continue
-            if (PageText.hidden(e.tagName(), attrs(e))) gone += e
+            if (PageText.hidden(e.tagName(), attrs(e))) gone.add(e)
         }
         // Removing an outer element removes what is inside it too.
         gone.forEach { if (it.parent() != null) it.remove() }

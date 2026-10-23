@@ -1,36 +1,42 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.Msg
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.SettingsStrings
+
 // Pure. Hearing the user while Robot speaks (0.2.3): the microphone mode while Robot talks, how her voice is played,
 // the volume key that stops her, and the barge-in test's result (written by :voice, shown by Settings › Voice).
 
-/** Settings › Voice › "Hear me while Robot talks". */
-enum class BargeIn(val title: String, val detail: String) {
-    ECHO_CANCEL(
-        "Echo cancellation",
-        "While Robot talks the microphone switches to the phone's call mode with echo cancellation, so “stop” and your wake words get through. Back to the best mode for questions when she's done.",
-    ),
-    OFF("Off", "The old way: the microphone hears Robot over you. Tap the conversation or press the volume key to stop her."),
-    ALWAYS(
-        "Always echo cancellation",
-        "Call mode with echo cancellation the whole time the panel is open: no switching, questions a little less accurate.",
-    ),
+/**
+ * Settings › Voice › "Hear me while Robot talks". 1.1: [titleText] and [detailText] are the words without a language yet
+ * (Settings shows them with `str()`).
+ */
+enum class BargeIn(private val titleMsg: Msg, private val detailMsg: Msg) {
+    ECHO_CANCEL(SettingsStrings.bargeEcho, SettingsStrings.bargeEchoDetail),
+    OFF(SettingsStrings.bargeOff, SettingsStrings.bargeOffDetail),
+    ALWAYS(SettingsStrings.bargeAlways, SettingsStrings.bargeAlwaysDetail);
+
+    val titleText: Phrase get() = titleMsg()
+    val detailText: Phrase get() = detailMsg()
 }
 
-/** How Robot's voice is played (Settings › Voice). */
-enum class Playback(val title: String, val detail: String) {
-    ASSISTANT("Assistant audio", "As before: the media volume. On Pixel the echo canceller hears everything the speaker plays."),
-    CALL(
-        "Call audio",
-        "Like a call on the loudspeaker (communication mode), the way calling apps get the phone's echo cancellation. Uses the call volume.",
-    ),
+/** How Robot's voice is played (Settings › Voice). 1.1: [titleText] and [detailText] without a language yet. */
+enum class Playback(private val titleMsg: Msg, private val detailMsg: Msg) {
+    ASSISTANT(SettingsStrings.playbackAssistant, SettingsStrings.playbackAssistantDetail),
+    CALL(SettingsStrings.playbackCall, SettingsStrings.playbackCallDetail);
+
+    val titleText: Phrase get() = titleMsg()
+    val detailText: Phrase get() = detailMsg()
 }
 
-/** Which volume key stops Robot talking while the panel shows (it then doesn't change the volume). */
-enum class StopKey(val title: String) {
-    VOLUME_DOWN("Volume down"),
-    EITHER("Either volume key"),
-    OFF("Off"),
+/** Which volume key stops Robot talking while the panel shows (it then doesn't change the volume). 1.1: [titleText]. */
+enum class StopKey(private val titleMsg: Msg) {
+    VOLUME_DOWN(SettingsStrings.stopVolumeDown),
+    EITHER(SettingsStrings.stopEither),
+    OFF(SettingsStrings.stopOff);
+
+    val titleText: Phrase get() = titleMsg()
 }
 
 /** The pure part of "a volume key stops Robot talking" (the session handles the key events). */
@@ -119,12 +125,23 @@ data class BargeTestResult(
     /** With [h] added (the first [MAX_HITS] are kept). */
     fun plus(h: BargeHit): BargeTestResult = if (hits.size >= MAX_HITS) this else copy(hits = hits + h)
 
+    /**
+     * 1.1 (WP7): why it FAILED, without a language (PhraseWire in the file), so Settings says it in the menus' language of
+     * the day; [note] keeps its English. Not part of equality; a copy() drops it ([withNote] after the last copy).
+     */
+    var noteText: app.heyrobot.core.i18n.Phrase? = null
+        private set
+
+    /** The same with [p] as its note. */
+    fun withNote(p: app.heyrobot.core.i18n.Phrase): BargeTestResult = copy(note = p.en()).also { it.noteText = p }
+
     fun toJson(): org.json.JSONObject = org.json.JSONObject().apply {
         put("state", state.name); put("silent", silent); put("started", started); put("mode", mode.name); put("playback", playback.name)
         put("mic", mic); put("aec", aec); put("heard", heard); put("atMs", atMs); put("stopMs", stopMs)
         put("falseStops", falseStops); put("falseWakes", falseWakes); put("suppressed", suppressed); put("spokeMs", spokeMs); put("note", note)
         put("count", count); put("counted", counted); put("phoneVoice", phoneVoice); put("tricky", tricky); put("interrupt", interrupt.name)
         put("hits", org.json.JSONArray().apply { for (h in hits) put(org.json.JSONArray().put(h.phrase).put(h.atMs).put(h.kind.id)) })
+        noteText?.let { put("notePhrase", app.heyrobot.core.i18n.PhraseWire.toJson(it)) }
     }
 
     companion object {
@@ -152,7 +169,7 @@ data class BargeTestResult(
                 tricky = o.optBoolean("tricky"),
                 // A result from before 0.4.6 ran at Medium, the only level a tap could save.
                 interrupt = enumOr(o.optString("interrupt"), InterruptSensitivity.MEDIUM),
-            )
+            ).also { r -> app.heyrobot.core.i18n.PhraseWire.fromJson(o.optJSONObject("notePhrase"))?.let { r.noteText = it } }
         } catch (_: Exception) { null }
     }
 }
@@ -192,7 +209,7 @@ object BargeTestLogic {
      */
     fun setup(mode: BargeIn, playback: Playback, phoneVoice: Boolean, missing: String? = null,
         interrupt: InterruptSensitivity = InterruptSensitivity.MEDIUM): String =
-        "Hear me while Robot talks: ${mode.title} · Interrupt sensitivity: ${interrupt.title} · Robot's voice plays as ${playback.title}" +
+        "Hear me while Robot talks: ${mode.titleText.en()} · Interrupt sensitivity: ${interrupt.titleText.en()} · Robot's voice plays as ${playback.titleText.en()}" +
             (if (phoneVoice) " · the phone's voice" + (missing?.let { " ($it isn't installed)" } ?: "") else "")
 
     /**

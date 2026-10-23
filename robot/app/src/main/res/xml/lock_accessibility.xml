@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Phone lock's accessibility service (1.1, docs/plans/phone-lock-design.md §13): window-state events only, so it sees
+     which app comes to the front and nothing else. No window content, no gestures, no packages filter (any app may
+     need covering), and not an accessibility tool: it doesn't assist people with disabilities, and saying so would hide
+     the reminder Android shows on purpose. The description is Android's consent text. At run time it asks for no events
+     at all while no lock is on or due within 10 minutes. -->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:notificationTimeout="0"
+    android:canRetrieveWindowContent="false"
+    android:isAccessibilityTool="false"
+    android:description="@string/lock_a11y_description" />

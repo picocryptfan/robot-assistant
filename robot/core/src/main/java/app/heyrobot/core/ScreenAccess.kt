@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.AndroidPath
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.TurnStrings
+import app.heyrobot.core.i18n.UiLabel
+
 // Pure. "Ask about this screen" (0.3.1). Android gives the assistant the screen's text and a screenshot only when you
 // open it with the corner swipe, only with "Use text from screen" on in Settings › Apps › Default apps › Digital
 // assistant app (without it, no screenshot either; "Use screenshot" adds the picture), and never for some screens
@@ -50,7 +55,11 @@ object ScreenAccess {
     const val SHOW_SOURCE_ASSIST_GESTURE = 4
     const val SHOW_SOURCE_APPLICATION = 8
 
-    private const val WHERE = "Settings › Apps › Default apps › Digital assistant app"
+    /** Android's page with "Use text from screen" and "Use screenshot", in the phone's language. */
+    private val WHERE = AndroidPath.DIGITAL_ASSISTANT
+
+    /** The chip's own name, as the panel shows it (a sentence names it in the menus' language). */
+    private val ASK = UiLabel(TurnStrings.askAboutScreen)
 
     /**
      * The chip for a panel opened from [source]. [text] and [shot]: what Android sent so far (null: nothing yet, false:
@@ -66,17 +75,19 @@ object ScreenAccess {
         else -> ScreenChip.WAITING
     }
 
-    /** What a tap on the chip says without the screen, and whether the notice offers "Open settings". */
-    data class Hint(val text: String, val openSettings: Boolean)
+    /**
+     * What a tap on the chip says without the screen, and whether the notice offers "Open settings". [phrase]: 1.1, the
+     * words without a language yet ([text] is their English).
+     */
+    data class Hint(val phrase: Phrase, val openSettings: Boolean) {
+        val text: String get() = phrase.en()
+    }
 
-    val WAITING_HINT = Hint("Android is still sending your screen. Try again in a moment.", false)
-
-    private const val SWIPE = "Android shares your screen with Robot only when you open it by swiping up from a bottom corner. " +
-        "Swipe up from a corner over the screen, then ask about it."
+    val WAITING_HINT = Hint(TurnStrings.screenWaiting(), false)
 
     /** A tap on the chip in a wake-word panel. [textOn] false: that setting must be turned on as well. */
     fun swipeHint(textOn: Boolean?): Hint =
-        if (textOn == false) Hint("$SWIPE “Use text from screen” is off: turn it on first in $WHERE.", true) else Hint(SWIPE, false)
+        if (textOn == false) Hint(TurnStrings.screenSwipeTextOff("swipe" to TurnStrings.screenSwipe(), "where" to WHERE), true) else Hint(TurnStrings.screenSwipe(), false)
 
     /**
      * A tap on the chip when the corner swipe came without the screen. [textOn], [shotOn]: the two settings, null if
@@ -84,55 +95,47 @@ object ScreenAccess {
      * nothing to open.
      */
     fun notSharedHint(textOn: Boolean?, shotOn: Boolean?): Hint {
-        val start = "Android didn't share this screen with Robot."
-        val private = "this app may keep its screen private (banking apps and private tabs do)"
+        val start = TurnStrings.screenNotShared()
+        val private = TurnStrings.screenPrivate()
         return when {
-            textOn == false -> Hint(
-                "$start Turn on “Use text from screen”" + (if (shotOn == false) " and “Use screenshot”" else "") + " in $WHERE, then swipe up " +
-                    "from a bottom corner again." + (if (shotOn == false) "" else " Without it, Android sends no screenshot either."),
-                true,
-            )
-            textOn == null -> Hint(
-                "$start Check that “Use text from screen” and “Use screenshot” are on in $WHERE, then swipe up from a bottom corner " +
-                    "again. Some apps, like banking apps and private tabs, never share their screen.",
-                true,
-            )
-            shotOn == false -> Hint(
-                "$start “Use text from screen” is on, so $private. “Use screenshot” is off in $WHERE: turn it on to send a picture of " +
-                    "the screen as well.",
-                true,
-            )
-            shotOn == true -> Hint("$start “Use text from screen” and “Use screenshot” are on, so $private.", false)
-            else -> Hint("$start “Use text from screen” is on, so $private.", false)
+            textOn == false && shotOn == false -> Hint(TurnStrings.screenBothOff("start" to start, "where" to WHERE), true)
+            textOn == false -> Hint(TurnStrings.screenTextOff("start" to start, "where" to WHERE), true)
+            textOn == null -> Hint(TurnStrings.screenUnknown("start" to start, "where" to WHERE), true)
+            shotOn == false -> Hint(TurnStrings.screenShotOff("start" to start, "private" to private, "where" to WHERE), true)
+            shotOn == true -> Hint(TurnStrings.screenBothOn("start" to start, "private" to private), false)
+            else -> Hint(TurnStrings.screenTextOn("start" to start, "private" to private), false)
         }
     }
 
     /** What TalkBack says for the chip's icon: whether the screen is there, and that a tap explains when it isn't. */
-    fun iconDescription(chip: ScreenChip): String? = when (chip) {
-        ScreenChip.READY -> "Screen ready"
-        ScreenChip.WAITING -> "Screen still coming"
-        ScreenChip.NOT_SHARED -> "Screen not shared: tap to see why"
-        ScreenChip.SWIPE_ONLY -> "No screen this time: tap to see how to share it"
+    fun iconDescription(chip: ScreenChip): String? = iconText(chip)?.en()
+
+    /** [iconDescription] in words without a language yet (1.1: the menus' language). */
+    fun iconText(chip: ScreenChip): Phrase? = when (chip) {
+        ScreenChip.READY -> TurnStrings.screenReady()
+        ScreenChip.WAITING -> TurnStrings.screenComing()
+        ScreenChip.NOT_SHARED -> TurnStrings.screenNotSharedTap()
+        ScreenChip.SWIPE_ONLY -> TurnStrings.screenNoneTap()
         ScreenChip.HIDDEN -> null
     }
 
     /** How Assistant setup marks its "Screen sharing" row: only "Use text from screen" off is a problem. */
     enum class Level { OK, INFO, WARN }
 
-    data class Setup(val level: Level, val text: String)
+    /** [phrase]: 1.1, the row's words without a language yet ([text] is their English). */
+    data class Setup(val level: Level, val phrase: Phrase) {
+        val text: String get() = phrase.en()
+    }
 
     /** Assistant setup's "Screen sharing" row. [textOn], [shotOn]: null when Android wouldn't say. */
     fun setup(textOn: Boolean?, shotOn: Boolean?): Setup {
         fun tick(b: Boolean?) = when (b) { true -> "✓"; false -> "✗"; null -> "?" }
-        val both = "Use text from screen ${tick(textOn)} · Use screenshot ${tick(shotOn)}."
+        val both = TurnStrings.screenSettings("text" to tick(textOn), "shot" to tick(shotOn))
         return when {
-            textOn == false -> Setup(Level.WARN, "$both Turn on Use text from screen for “Ask about this screen”: without it, Android sends no " +
-                "screenshot either.")
-            textOn == null -> Setup(Level.INFO, "Android didn't say. For “Ask about this screen”, turn on “Use text from screen” and " +
-                "“Use screenshot” in $WHERE.")
-            shotOn != true -> Setup(Level.INFO, "$both “Ask about this screen” sends the screen's text; turn on Use screenshot to send a " +
-                "picture of it too.")
-            else -> Setup(Level.OK, "$both Swipe up from a bottom corner, then tap “Ask about this screen”.")
+            textOn == false -> Setup(Level.WARN, TurnStrings.screenSetupTextOff("both" to both, "ask" to ASK))
+            textOn == null -> Setup(Level.INFO, TurnStrings.screenSetupUnknown("ask" to ASK, "where" to WHERE))
+            shotOn != true -> Setup(Level.INFO, TurnStrings.screenSetupShotOff("both" to both, "ask" to ASK))
+            else -> Setup(Level.OK, TurnStrings.screenSetupOk("both" to both, "ask" to ASK))
         }
     }
 
@@ -141,8 +144,8 @@ object ScreenAccess {
         val w = listOfNotNull(
             "text".takeIf { flags and SHOW_WITH_ASSIST != 0 },
             "screenshot".takeIf { flags and SHOW_WITH_SCREENSHOT != 0 },
-            "assist gesture".takeIf { flags and SHOW_SOURCE_ASSIST_GESTURE != 0 },
-            "from an app".takeIf { flags and SHOW_SOURCE_APPLICATION != 0 },
+            "assist gesture".takeIf { flags and SHOW_SOURCE_ASSIST_GESTURE != 0 }, // l10n: not text (voice log)
+            "from an app".takeIf { flags and SHOW_SOURCE_APPLICATION != 0 }, // l10n: not text (voice log)
         )
         return w.joinToString(", ").ifEmpty { "none" }
     }

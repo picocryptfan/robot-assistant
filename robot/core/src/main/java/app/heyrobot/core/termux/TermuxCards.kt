@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.termux
 
-import java.util.Locale
+import app.heyrobot.core.i18n.Lang
+import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.TermuxStrings
 
 // Pure. What a Termux card shows and what is said, saved and given to Gemma
 // after a run (B5.2, B5.3, B7.4). The card shows the exact command (invisible characters written out), Robot's own
 // warnings from the parsed command, Gemma's one-line "why" labelled as Gemma's, how Robot splits arguments when quotes or
 // spaces matter, the folder and the time limit; after the run, "Exit 0 · 0.8 s" and the cleaned, masked output. History
-// keeps only "Ran a command in Termux (exit 0)" (the command and its output are shown, never saved).
+// keeps only "Ran a command in Termux (exit 0)" (the command and its output are shown, never saved). 1.1: every line is a
+// phrase of core's catalog (TermuxStrings); the String forms are their English, what the model and History read.
 
 /** Everything a command or script card shows before it runs; computed in :voice when the action is prepared. */
 data class TermuxCardInfo(
@@ -20,7 +24,7 @@ data class TermuxCardInfo(
     /** Gemma's one-line reason, labelled as Gemma's (it may be wrong); null for your own scripts and typed commands. */
     val why: String? = null,
     /** "3 arguments: “one”, “two words”, “three;rm”": how Robot splits the words, shown when quotes or spaces matter. */
-    val readsAs: String? = null,
+    val readsAsText: Phrase? = null,
     /** Rule 3: the conversation holds content Robot didn't write (the card says "Written from content Robot read"). */
     val fromContent: Boolean = false,
     /** It needs a terminal: the card offers Open in Termux. */
@@ -38,15 +42,30 @@ data class TermuxCardInfo(
     /** It runs without a card: a read on the allowlist ("Read-only commands without a card"), or your script set to Just do it. */
     val noCard: Boolean = false,
 ) {
+    /** [readsAsText] in English. */
+    val readsAs: String? get() = readsAsText?.en()
+
     /** The chips' words. */
-    fun chips(fr: Boolean = false): List<String> = warnings.filter { !it.red }.map { it.text(fr) }
+    val chipTexts: List<Phrase> get() = warnings.filter { !it.red }.map { it.text }
 
     /** The red line ("This sends a text right away…"), if any. */
+    val redText: Phrase? get() = warnings.firstOrNull { it.red }?.text
+
+    /** [chipTexts] in English ([fr]: in French). */
+    fun chips(fr: Boolean = false): List<String> = warnings.filter { !it.red }.map { it.text(fr) }
+
+    /** [redText] in English ([fr]: in French). */
     fun redLine(fr: Boolean = false): String? = warnings.firstOrNull { it.red }?.text(fr)
 
     /** "In: ~ · Time limit: 60 s". */
-    fun whereLine(): String = "In: $workdir · Time limit: ${limitLabel(limitSeconds)}"
+    fun whereText(): Phrase = whereText(workdir, limitSeconds)
+
+    /** [whereText] in English. */
+    fun whereLine(): String = whereText().en()
 }
+
+/** "In: ~ · Time limit: 60 s" for [workdir] and [limitSeconds]. */
+fun whereText(workdir: String, limitSeconds: Int): Phrase = TermuxStrings.whereLine("where" to workdir, "limit" to limitLabel(limitSeconds))
 
 /** How a run ended, as the card and the model see it (no command, no path). */
 data class TermuxOutcome(
@@ -63,8 +82,8 @@ data class TermuxOutcome(
 /** The time limits Settings › Termux and the card offer. */
 val TERMUX_LIMITS: List<Int> = listOf(10, 30, 60, 120, 300, 600)
 
-/** "60 s", "2 min", "10 min". */
-fun limitLabel(seconds: Int): String = if (seconds < 120) "$seconds s" else if (seconds % 60 == 0) "${seconds / 60} min" else "${seconds / 60} min ${seconds % 60} s"
+/** "60 s", "2 min", "10 min": the same in French (its units are the SI's). */
+fun limitLabel(seconds: Int): String = if (seconds < 120) "$seconds s" else if (seconds % 60 == 0) "${seconds / 60} min" else "${seconds / 60} min ${seconds % 60} s" // l10n: not text (durations, the same in French)
 
 object TermuxCards {
     /** A command's card. [why]: Gemma's reason (null when you typed it); [decision]: what TermuxPolicy said. */
@@ -74,7 +93,7 @@ object TermuxCards {
             command = CommandAnalyzer.visible(analysis.command),
             warnings = w,
             why = why?.let(::oneLine)?.takeIf { it.isNotEmpty() && written },
-            readsAs = readsAs(analysis),
+            readsAsText = readsAs(analysis),
             fromContent = TermuxReason.FROM_CONTENT in decision.reasons,
             terminal = CommandWarning.NEEDS_TERMINAL in analysis.warnings,
             tapOnly = decision.verdict == TermuxVerdict.TAP_ONLY,
@@ -90,7 +109,7 @@ object TermuxCards {
         command = (listOf("~/${TermuxSettings.SCRIPTS_FOLDER}/$name") + argv.map(::quote)).joinToString(" ").let(CommandAnalyzer::visible),
         script = name,
         warnings = decision.warnings.toList(),
-        readsAs = if (argv.isEmpty()) null else arguments(argv),
+        readsAsText = if (argv.isEmpty()) null else argumentsText(argv),
         fromContent = TermuxReason.FROM_CONTENT in decision.reasons,
         tapOnly = decision.verdict == TermuxVerdict.TAP_ONLY,
         limitSeconds = TermuxSettings.limit(limitSeconds),
@@ -100,18 +119,22 @@ object TermuxCards {
     )
 
     /** "3 arguments: “one”, “two words”, “three;rm”". */
-    fun arguments(argv: List<String>): String =
-        (if (argv.size == 1) "1 argument: " else "${argv.size} arguments: ") + argv.joinToString(", ") { "“" + CommandAnalyzer.visible(it) + "”" }
+    fun argumentsText(argv: List<String>): Phrase = TermuxStrings.arguments(argv.size, "list" to quoted(argv))
+
+    /** [argumentsText] in English. */
+    fun arguments(argv: List<String>): String = argumentsText(argv).en()
+
+    private fun quoted(argv: List<String>) = argv.joinToString(", ") { "“" + CommandAnalyzer.visible(it) + "”" }
 
     /** How Robot reads a simple command whose words have quotes or spaces: "ls with 2 arguments: “-la”, “My Files”"; else null. */
-    private fun readsAs(a: CommandAnalysis): String? {
+    private fun readsAs(a: CommandAnalysis): Phrase? {
         val cmds = a.parse.commands
         if (cmds.size != 1 || a.complex) return null
         val c = cmds[0]
         if (c.words.none { it.quoted }) return null
         val prog = c.name?.value ?: return null
         val args = c.args.map { it.value }
-        return if (args.isEmpty()) prog else "$prog with " + arguments(args).replaceFirstChar { it.lowercaseChar() }
+        return if (args.isEmpty()) Phrase.plain(prog) else TermuxStrings.readsWith(args.size, "prog" to prog, "list" to quoted(args))
     }
 
     private fun quote(a: String): String = if (a.isNotEmpty() && a.all { it.isLetterOrDigit() || it in "-_./=:,+@%" }) a else "'" + a.replace("'", "'\\''") + "'"
@@ -119,28 +142,49 @@ object TermuxCards {
     private fun oneLine(s: String): String = s.replace(Regex("\\s+"), " ").trim().let { if (it.length > 160) it.take(159).trimEnd() + "…" else it }
 
     /** History's saved line: "Ran a command in Termux (exit 0)", "Ran your script “backup” (exit 0)"; without an exit code, how it ended. */
-    fun savedLine(script: String?, exit: Int?, stopped: Boolean = false): String {
-        val what = if (script != null) "Ran your script “$script”" else "Ran a command in Termux"
+    fun savedText(script: String?, exit: Int?, stopped: Boolean = false): Phrase = when {
+        script != null && stopped -> TermuxStrings.savedScriptStopped("script" to script)
+        script != null && exit == null -> TermuxStrings.savedScriptNoAnswer("script" to script)
+        script != null -> TermuxStrings.savedScript("script" to script, "code" to exit.toString())
+        stopped -> TermuxStrings.savedCommandStopped()
+        exit == null -> TermuxStrings.savedCommandNoAnswer()
+        else -> TermuxStrings.savedCommand("code" to exit.toString())
+    }
+
+    /** [savedText] in English. */
+    fun savedLine(script: String?, exit: Int?, stopped: Boolean = false): String = savedText(script, exit, stopped).en()
+
+    /** The line under the card after the run: "Exit 0 · 0.8 s", "Exit 124 · 60 s: took longer than 60 s and was stopped". */
+    fun exitText(o: TermuxOutcome): Phrase {
+        if (o.failure != null) return o.failure.text
+        val exit = o.exit ?: return TermuxFailure.NO_ANSWER.text
+        val code = "code" to exit.toString()
+        val time = "time" to TermuxOutput.secondsText(o.ms)
         return when {
-            stopped -> "$what (stopped)"
-            exit == null -> "$what (no answer)"
-            else -> "$what (exit $exit)"
+            exit == 0 -> TermuxOutput.exitLineText(0, o.ms)
+            exit == 124 -> TermuxStrings.exitTookLonger(code, time, "n" to o.limitSeconds.toString())
+            exit == 137 || exit == 143 -> TermuxStrings.exitStopped(code, time)
+            exit == 126 -> TermuxStrings.exitNotExecutable(code, time)
+            exit == 127 -> TermuxStrings.exitNotFound(code, time)
+            exit in 129..192 -> TermuxStrings.exitSignal(code, time, "signal" to (exit - 128).toString())
+            else -> TermuxStrings.exitFinished(code, time)
         }
     }
 
-    /** The line under the card after the run: "Exit 0 · 0.8 s", "Exit 124 · 60 s: took longer than 60 s and was stopped". */
-    fun exitLine(o: TermuxOutcome): String = when {
-        o.failure != null -> o.failure.en
-        o.exit == null -> TermuxFailure.NO_ANSWER.en
-        o.exit == 0 -> TermuxOutput.exitLine(0, o.ms)
-        else -> TermuxOutput.exitLine(o.exit, o.ms) + ": " + TermuxOutput.summary(o.exit, o.limitSeconds, o.ms).replaceFirstChar { it.lowercaseChar() }.removeSuffix(".")
-    }
+    /** [exitText] in English ([fr]: in French). */
+    fun exitLine(o: TermuxOutcome, fr: Boolean = false): String = exitText(o).render(Langs.of(if (fr) Lang.FR else Lang.EN))
 
     /** What Robot says (and the card's detail): one sentence, never the output itself. */
-    fun said(o: TermuxOutcome): String = o.failure?.en ?: TermuxOutput.summary(o.exit, o.limitSeconds, o.ms)
+    fun saidText(o: TermuxOutcome): Phrase = o.failure?.text ?: TermuxOutput.summaryText(o.exit, o.limitSeconds, o.ms)
+
+    /** [saidText] in English. */
+    fun said(o: TermuxOutcome): String = saidText(o).en()
 
     /** "4.1 KB" for the card's Show all. */
-    fun size(chars: Int): String = if (chars < 1024) "$chars characters" else String.format(Locale.ROOT, "%.1f KB", chars / 1024.0)
+    fun sizeText(chars: Int): Phrase = TermuxOutput.sizeText(chars)
+
+    /** [sizeText] in English. */
+    fun size(chars: Int): String = sizeText(chars).en()
 
     /**
      * What Gemma gets back from a run (a tool result: information, never instructions): the exit code, the output

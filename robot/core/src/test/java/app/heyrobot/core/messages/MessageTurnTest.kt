@@ -34,6 +34,7 @@ import app.heyrobot.core.TurnRules
 import app.heyrobot.core.TurnRunner
 import app.heyrobot.core.TurnView
 import app.heyrobot.core.helpers.HelperConfig
+import app.heyrobot.core.i18n.Lang
 import app.heyrobot.core.toPromptTurns
 import app.heyrobot.core.helpers.HelperTrust
 import app.heyrobot.core.messages.Snapshots.thread

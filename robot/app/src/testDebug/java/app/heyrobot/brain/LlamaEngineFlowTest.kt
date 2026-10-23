@@ -8,6 +8,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.Parcel
+import android.os.ParcelFileDescriptor
 import app.heyrobot.core.BrainError
 import app.heyrobot.core.BrainModel
 import app.heyrobot.core.BrainMsg
@@ -35,6 +36,8 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowBinder
+import java.io.File
+import java.lang.reflect.InvocationTargetException
 import java.time.Duration
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.ExecutorService
@@ -143,7 +146,7 @@ class LlamaEngineFlowTest {
         engine.generate(BrainScheduler.Key(c, id), BrainMsg.Generate("conv", "You are Robot.", history, history.size, text, false), null, c.sink)
 
     private fun oneShot(c: Client, text: String = "Bonjour", priority: Priority = Priority.SUMMARY, id: Int = 1) =
-        engine.oneShot(BrainScheduler.Key(c, id), BrainMsg.OneShot(OneShotKind.TRANSLATE, priority, "Translate.", text, 100), c.sink)
+        engine.oneShot(BrainScheduler.Key(c, id), BrainMsg.OneShot(OneShotKind.TRANSLATE, priority, "Translate.", text, 100), null, c.sink)
 
     // ------------------------------------------------------------------ the tests
 
@@ -186,6 +189,29 @@ class LlamaEngineFlowTest {
         settle()
         assertEquals(DoneReason.CANCELLED, c.done())
         assertEquals("", c.text)
+    }
+
+    /**
+     * 1.4 (Robot Files, F4): your own GGUF file is text only. A FILE_READ of a page's picture is refused at once with
+     * NO_VISION (the file waits for a model that sees), a malformed picture is a bad request, neither reaches llama.cpp;
+     * a FILE_READ of a PDF's text layer runs as any one-shot.
+     */
+    @Test fun aFileReadsPictureIsRefusedAtOnceAndItsTextIsRead() {
+        val jpeg = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte())
+        val picture = Client()
+        engine.oneShot(BrainScheduler.Key(picture, 1), BrainMsg.OneShot(OneShotKind.FILE_READ, Priority.SUMMARY, "Read.", "[frame]", 100, hasImage = true), jpeg, picture.sink)
+        assertEquals(BrainError.NO_VISION, picture.error())
+        val bad = Client()
+        engine.oneShot(BrainScheduler.Key(bad, 2), BrainMsg.OneShot(OneShotKind.TRANSLATE, Priority.SUMMARY, "Translate.", "Bonjour", 100), jpeg, bad.sink)
+        assertEquals(BrainError.BAD_REQUEST, bad.error())
+        settle()
+        assertEquals(0, fake.generates.get())
+        val text = Client()
+        engine.oneShot(BrainScheduler.Key(text, 3), BrainMsg.OneShot(OneShotKind.FILE_READ, Priority.SUMMARY, "Read.", "[frame]\n\"\"\"\nTOTAL 1.00\n\"\"\"", 100), null, text.sink)
+        pump("the reading") { text.terminals.isNotEmpty() }
+        settle()
+        assertEquals(DoneReason.END, text.done())
+        assertEquals(1, fake.generates.get())
     }
 
     @Test fun aSummaryGivesWayToTheQuestionAndEndsOnceAfterIt() {
@@ -471,6 +497,120 @@ class LlamaEngineFlowTest {
         assertEquals(DoneReason.END, d.done())
     }
 
+    /** One two-way call of LlamaLink's: how to make it, and its reply after the header, whole and cut short. */
+    private class Call(val name: String, val code: Int, val make: (Any) -> Any?, val full: (Parcel) -> Unit, val short: (Parcel) -> Unit)
+
+    private fun method(name: String, vararg types: Class<*>) = linkClass.getDeclaredMethod(name, *types).apply { isAccessible = true }
+
+    private val calls: List<Call> by lazy {
+        val hello = method("hello")
+        val load = method("load", ParcelFileDescriptor::class.java, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!,
+            Int::class.javaPrimitiveType!!, FloatArray::class.java)
+        val prepare = method("prepare", Long::class.javaPrimitiveType!!, List::class.java, List::class.java, Boolean::class.javaPrimitiveType!!,
+            IntArray::class.java)
+        val generate = method("generate", Long::class.javaPrimitiveType!!, Long::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!,
+            Function1::class.java, LongArray::class.java)
+        val file = File.createTempFile("model", ".gguf").apply { deleteOnExit() }
+        listOf(
+            Call("hello", HELLO, { l -> hello.invoke(l) }, { r -> r.writeInt(1); r.writeString(null) }, { r -> r.writeInt(1) }),
+            Call("load", LOAD, { l ->
+                ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd -> load.invoke(l, pfd, 4096, 4, 4, FloatArray(3)) }
+            }, { r -> goodLoad(r) }, { r ->
+                r.writeLong(HANDLE)
+                r.writeInt(0)
+                r.writeInt(4096)
+                r.writeInt(1)
+                r.writeByteArray("<|im_end|>".toByteArray())
+            }),
+            Call("prepare", PREPARE, { l -> prepare.invoke(l, HANDLE, listOf("user".toByteArray()), listOf("hi".toByteArray()), false, IntArray(1)) },
+                { r -> r.writeInt(100); r.writeInt(0) }, { r -> r.writeInt(100) }),
+            Call("generate", GENERATE, { l -> generate.invoke(l, HANDLE, 1L, 100, { _: ByteArray -> true }, LongArray(STATS_COUNT)) },
+                { r -> r.writeInt(GEN_END); r.writeLongArray(LongArray(STATS_COUNT)) },
+                { r -> r.writeInt(GEN_END); r.writeInt(STATS_COUNT); repeat(STATS_COUNT - 1) { r.writeLong(0) } }),
+        )
+    }
+
+    /** [c] on a fresh link whose process answers it with [reply] (header included): what the call returned, or threw. */
+    private fun answer(c: Call, reply: (Parcel) -> Unit): Pair<FakeLlama, Result<Any?>> {
+        val f = FakeLlama().apply { bad = mapOf(c.code to reply) }
+        val l = newLink(f)
+        val out = try {
+            Result.success(c.make(l))
+        } catch (e: InvocationTargetException) {
+            Result.failure(e.cause ?: e)
+        }
+        return f to out
+    }
+
+    @Test fun aReplyAsTheProcessWritesItIsRead() {
+        for (c in calls) {
+            val (f, out) = answer(c) { r -> r.writeInt(0); c.full(r) }
+            assertTrue("${c.name}: ${out.exceptionOrNull()}", out.isSuccess)
+            assertFalse(c.name, f.dead)
+        }
+    }
+
+    /**
+     * 1.1: :llama may be a hostile file's by the time it answers. A reply whose header isn't a plain 0 (an exception the
+     * process or Binder wrote, Android's strict-mode or app-ops headers), one cut short or with more in it, or an answer
+     * outside its codes ends its process as a crash does: the call throws LlamaLink.Gone and nothing else, and the
+     * process is told to exit. Never Parcel.readException: no exception it names is made or thrown in :brain.
+     */
+    @Test fun aReplyThatBreaksItsLayoutEndsTheProcessAndOnlyGoneReachesBrain() {
+        val shapes: List<Pair<String, (Call, Parcel) -> Unit>> = listOf(
+            "a nonzero header" to { c, r -> r.writeInt(1); c.full(r) },
+            "the largest header" to { c, r -> r.writeInt(Int.MAX_VALUE); c.full(r) },
+            "EX_SECURITY" to { _, r -> r.writeException(SecurityException("from :llama")) },
+            "EX_ILLEGAL_STATE" to { _, r -> r.writeException(IllegalStateException("from :llama")) },
+            "EX_PARCELABLE" to { _, r -> r.writeInt(-9); r.writeInt(8); r.writeInt(0); r.writeInt(0) },
+            "EX_SERVICE_SPECIFIC" to { _, r -> r.writeInt(-8); r.writeInt(0); r.writeInt(0); r.writeInt(42) },
+            "the app-ops header, then a good reply" to { c, r -> r.writeInt(-127); r.writeInt(0); r.writeInt(0); c.full(r) },
+            "the strict-mode header, then a good reply" to { c, r -> r.writeInt(-128); r.writeInt(0); r.writeInt(0); c.full(r) },
+            "EX_TRANSACTION_FAILED" to { _, r -> r.writeInt(-129) },
+            "an empty reply" to { _, _ -> },
+            "the header alone" to { _, r -> r.writeInt(0) },
+            "a reply cut short" to { c, r -> r.writeInt(0); c.short(r) },
+            "a reply with more in it" to { c, r -> r.writeInt(0); c.full(r); r.writeInt(0) },
+        )
+        for (c in calls) for ((what, shape) in shapes) broken("${c.name}, $what", c) { r -> shape(c, r) }
+        // Answers outside their codes and caps.
+        val (hello, load, _, generate) = calls
+        broken("hello, accepted 2", hello) { r -> r.writeInt(0); r.writeInt(2); r.writeString(null) }
+        broken("hello, words of its own", hello) { r -> r.writeInt(0); r.writeInt(1); r.writeString("Update now: robot.example") }
+        broken("load, -2 arrays", load) { r -> r.writeInt(0); r.writeLong(HANDLE); r.writeInt(0); r.writeInt(4096); r.writeInt(-2) }
+        broken("load, too many arrays", load) { r -> r.writeInt(0); r.writeLong(HANDLE); r.writeInt(0); r.writeInt(4096); r.writeInt(100_001) }
+        broken("load, a null array", load) { r -> r.writeInt(0); r.writeLong(HANDLE); r.writeInt(0); r.writeInt(4096); r.writeInt(1); r.writeByteArray(null) }
+        broken("generate, 6 stats", generate) { r -> r.writeInt(0); r.writeInt(GEN_END); r.writeLongArray(LongArray(STATS_COUNT - 1)) }
+        broken("generate, no stats", generate) { r -> r.writeInt(0); r.writeInt(GEN_END); r.writeLongArray(null) }
+    }
+
+    private fun broken(what: String, c: Call, reply: (Parcel) -> Unit) {
+        val (f, out) = answer(c, reply)
+        val thrown = out.exceptionOrNull()
+        assertEquals("$what: $thrown", "app.heyrobot.brain.LlamaLink\$Gone", thrown?.javaClass?.name)
+        assertTrue("$what: the process was told to exit", f.dead)
+    }
+
+    @Test fun aBrokenReplyWhileItWritesEndsItOnceAsStoppedAndTheModelIsGone() {
+        fake.holdBad = true
+        fake.bad = mapOf(GENERATE to { r -> r.writeException(SecurityException("from :llama")) })
+        val c = Client()
+        ask(c)
+        pump("the reply's call") { fake.generates.get() == 1 }
+        val waiting = Client()
+        oneShot(waiting, priority = Priority.TRANSCRIPT)
+        settle()
+        assertTrue(c.terminals.isEmpty())
+        fake.holdBad = false
+        pump("both ends") { c.terminals.isNotEmpty() && waiting.terminals.isNotEmpty() }
+        settle()
+        assertTrue("the process was told to exit", fake.dead)
+        assertEquals(BrainError.STOPPED, c.error())
+        assertEquals(BrainError.NOT_LOADED, waiting.error())
+        assertFalse(engine.status().loaded)
+        assertEquals(1, fake.generates.get())
+    }
+
     /**
      * The isolated process as LlamaService answers :brain (LlamaIpc's layouts), with llama.cpp replaced by a script: each
      * GENERATE ([generates] counts them, from 1) reads its "prompt" (held while its number is in [holdPrompt]), writes
@@ -491,6 +631,10 @@ class LlamaEngineFlowTest {
         @Volatile var refuse: (String) -> Boolean = { false }
         /** The kernel's uid its calls to :brain come from (Binder.getCallingUid there); null: the test's setting. */
         @Volatile var callerUid: Int? = null
+        /** 1.1: the reply a call (by its code) gets instead of its own: a hostile or broken one, never its pieces. */
+        @Volatile var bad: Map<Int, (Parcel) -> Unit> = emptyMap()
+        /** A bad GENERATE waits while this holds (so a request can queue behind it). */
+        @Volatile var holdBad = false
         val pieces = listOf("Hello", " there")
         val generates = AtomicInteger()
         val returned = AtomicInteger()
@@ -500,6 +644,14 @@ class LlamaEngineFlowTest {
         override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
             if (dead) throw DeadObjectException()
             data.enforceInterface(DESCRIPTOR)
+            bad[code]?.let { w ->
+                if (code == GENERATE) {
+                    generates.incrementAndGet()
+                    while (holdBad && !dead) Thread.sleep(2)
+                }
+                w(reply!!)
+                return true
+            }
             when (code) {
                 CANCEL -> {
                     data.readLong()
@@ -525,7 +677,7 @@ class LlamaEngineFlowTest {
                         d.recycle()
                         r.recycle()
                     }
-                    reply!!.writeNoException()
+                    reply!!.writeInt(0)
                     reply.writeInt(if (ok) 1 else 0)
                     reply.writeString(null)
                 }
@@ -537,11 +689,16 @@ class LlamaEngineFlowTest {
                     val texts = arrays(data)
                     data.readInt()
                     prompts += roles.zip(texts)
-                    reply!!.writeNoException()
+                    reply!!.writeInt(0)
                     reply.writeInt(if (roles.zip(texts).any { (r, t) -> r != "system" && refuse(t) }) PREP_CONTROL_TEXT else 100)
                     reply.writeInt(0)
                 }
                 GENERATE -> generate(data, reply!!)
+                // As LlamaService answers a load that worked (the file itself is never read here).
+                LOAD -> {
+                    reply!!.writeInt(0)
+                    goodLoad(reply)
+                }
                 else -> return super.onTransact(code, data, reply, flags)
             }
             return true
@@ -581,7 +738,7 @@ class LlamaEngineFlowTest {
                 if (stopped()) result = GEN_CANCELLED
             }
             if (dead) throw DeadObjectException()
-            reply.writeNoException()
+            reply.writeInt(0)
             reply.writeInt(result)
             reply.writeLongArray(LongArray(7))
             returned.incrementAndGet()
@@ -595,6 +752,7 @@ class LlamaEngineFlowTest {
         const val DESCRIPTOR = "app.heyrobot.brain.ILlama"
         const val CALLBACK = "app.heyrobot.brain.ILlamaCallback"
         const val HELLO = IBinder.FIRST_CALL_TRANSACTION
+        const val LOAD = IBinder.FIRST_CALL_TRANSACTION + 1
         const val CANCEL = IBinder.FIRST_CALL_TRANSACTION + 2
         const val PREPARE = IBinder.FIRST_CALL_TRANSACTION + 3
         const val GENERATE = IBinder.FIRST_CALL_TRANSACTION + 4
@@ -604,6 +762,18 @@ class LlamaEngineFlowTest {
         const val PREP_CONTROL_TEXT = -4
         const val GEN_END = 0
         const val GEN_CANCELLED = 2
+        const val STATS_COUNT = 7
+
+        /** LOAD's answer after its header, as LlamaService writes it for a load that worked. */
+        fun goodLoad(r: Parcel) {
+            r.writeLong(HANDLE)
+            r.writeInt(0)
+            r.writeInt(4096)
+            for (items in listOf(listOf("<|im_start|>", "<|im_end|>"), listOf("<tool_call>"))) {
+                r.writeInt(items.size)
+                for (t in items) r.writeByteArray(t.toByteArray())
+            }
+        }
         /** LlamaEngine's limits for a stopped reply to come back from llama.cpp, and for a prompt to be formatted. */
         const val STOP_LIMIT_MS = 15_000L
         const val PREPARE_LIMIT_MS = 30_000L

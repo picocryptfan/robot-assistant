@@ -75,6 +75,17 @@ object PanelFixtures {
         UiTurn("r3", TurnRole.ASSISTANT, "Timer set for 10 minutes.", actions = listOf(UiAction("a2", ToolName.SET_TIMER, "Timer for 10 minutes", ActionStatus.DONE, null))),
     ), speak = false)
 
+    /**
+     * 1.4 F6: "file this" on a receipt the panel holds: "Filed in Receipts.", and the card naming the file with Move and
+     * Undo ([fr]: the reply in Québec French, as the turn's language said it).
+     */
+    fun filed(fr: Boolean = false) = PanelState("c1", turns = listOf(
+        UiTurn("u6", TurnRole.USER, if (fr) "Classe ça" else "File this"),
+        UiTurn("r6", TurnRole.ASSISTANT, if (fr) "Classé dans Reçus." else "Filed in Receipts.", actions = listOf(UiAction("files-1", null,
+            "2026-08-14 Costco 84.12 CAD", ActionStatus.DONE, if (fr) "Classé dans Reçus." else "Filed in Receipts.", undo = "files:1", handOff = "files-move:1",
+            files = true))),
+    ), speak = false)
+
     /** Robot's own answer, then the offer to ask a helper, then the helper's answer under its name. */
     val helperOffer = PanelState("c1", turns = listOf(
         UiTurn("u4", TurnRole.USER, "What's the latest on the Artemis program?"),

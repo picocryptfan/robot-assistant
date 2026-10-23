@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.Msg
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.RoutineStrings
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.DayOfWeek
@@ -39,7 +42,7 @@ enum class DeviceKind(val id: String) {
     }
 }
 
-/** What starts a routine (design §2.1). */
+/** What starts a routine. */
 sealed class RoutineTrigger {
     abstract val kind: TriggerKind
 
@@ -84,16 +87,20 @@ sealed class RoutineTrigger {
 }
 
 /**
- * The editor's conditions for triggers other than a time (design §2.3): only between two times, only on these days, at
+ * The editor's conditions for triggers other than a time: only between two times, only on these days, at
  * most once a day (on by default: a flapping Bluetooth link or a spoofed broadcast can't repeat a routine).
  */
 data class RoutineConditions(val between: TimeWindow? = null, val days: Set<DayOfWeek>? = null, val oncePerDay: Boolean = true)
 
-/** Where a routine speaks (design §2.3 "Speak"); OutputGuard's rules for headsets come with headset mode. */
-enum class RoutineOutput(val id: String, val title: String) {
-    HEADSET_ONLY("headset_only", "Headset only"),
-    HEADSET_OR_SPEAKER("headset_or_speaker", "Headset, else the phone speaker"),
-    SILENT("silent", "Don't speak (notification only)");
+/** Where a routine speaks; OutputGuard's rules for headsets come with headset mode. */
+enum class RoutineOutput(val id: String, private val msg: Msg) {
+    HEADSET_ONLY("headset_only", RoutineStrings.headsetOnly),
+    HEADSET_OR_SPEAKER("headset_or_speaker", RoutineStrings.headsetOrSpeaker),
+    SILENT("silent", RoutineStrings.silent);
+
+    /** 1.1: the editor's and the card's words, without a language yet; [title] is their English. */
+    val text: Phrase get() = msg()
+    val title: String get() = text.en()
 
     companion object {
         fun of(id: String?): RoutineOutput? = entries.firstOrNull { it.id == id }
@@ -109,10 +116,14 @@ enum class RoutineLock(val id: String) {
     }
 }
 
-/** A service a step reaches online by itself; the routine's card names it and saving it is the consent (design §2.5). */
-enum class OnlineUse(val id: String, val title: String) {
-    OPEN_METEO("open_meteo", "Open-Meteo (the weather)"),
-    NOMINATIM("nominatim", "OpenStreetMap's Nominatim (the nearest place)");
+/** A service a step reaches online by itself; the routine's card names it and saving it is the consent. */
+enum class OnlineUse(val id: String, private val msg: Msg) {
+    OPEN_METEO("open_meteo", RoutineStrings.openMeteo),
+    NOMINATIM("nominatim", RoutineStrings.nominatim);
+
+    /** 1.1: the card's words, without a language yet; [title] is their English. */
+    val text: Phrase get() = msg()
+    val title: String get() = text.en()
 
     companion object {
         fun of(id: String?): OnlineUse? = entries.firstOrNull { it.id == id }
@@ -151,13 +162,19 @@ sealed class RoutineStep {
         else -> null
     }
 
-    /** The card's line for it ("Check the weather here"); the tool steps say what their card would say. */
+    /** The card's line for it ("Check the weather here"); the tool steps say what their card would say. English. */
     fun describe(): String = when (this) {
         is Tool -> action.describe()
-        Brief -> "Read your morning brief"
-        is Say -> "Say “$text”"
-        Reminders -> "Read your brief reminders"
-        Messages -> "Say how many unread messages you have"
+        else -> summary().en()
+    }
+
+    /** 1.1: [describe] without a language yet (a tool step's is its card's summary, core Action.summary). */
+    fun summary(): Phrase = when (this) {
+        is Tool -> action.summary()
+        Brief -> RoutineStrings.stepBrief()
+        is Say -> RoutineStrings.stepSay("text" to text)
+        Reminders -> RoutineStrings.stepReminders()
+        Messages -> RoutineStrings.stepMessages()
     }
 
     /** The code the voice log would record for it (never the arguments). */
@@ -208,7 +225,8 @@ enum class StepCode(override val id: Int, override val title: String) : LogCode 
     LOOKUP_CONTACT(18, "contact lookup"), ADD_NOTE(19, "new note"), FIND_NOTES(20, "note search"), ADD_EVENT(21, "new event"),
     READ_CALENDAR(22, "calendar"), WEATHER(23, "weather"), PHONE_STATUS(24, "phone status"), FREE_MEMORY(25, "free memory"),
     FREE_STORAGE(26, "free storage"), ASK_HELPER(27, "Ask a helper"), REMEMBER(28, "remember"), FORGET(29, "forget"), CALL(30, "call"),
-    WEB_SEARCH(31, "web search"), TERMUX_SCRIPT(32, "Termux script"), TERMUX_COMMAND(33, "Termux command"), BROWSER_SEARCH(34, "browser search");
+    WEB_SEARCH(31, "web search"), TERMUX_SCRIPT(32, "Termux script"), TERMUX_COMMAND(33, "Termux command"), BROWSER_SEARCH(34, "browser search"),
+    FIND_FILES(35, "file search"), READ_FILE(36, "file question");
 
     companion object {
         fun of(t: ToolName): StepCode = when (t) {
@@ -237,6 +255,8 @@ enum class StepCode(override val id: Int, override val title: String) : LogCode 
             ToolName.TERMUX_SCRIPT -> TERMUX_SCRIPT
             ToolName.TERMUX_COMMAND -> TERMUX_COMMAND
             ToolName.BROWSER_SEARCH -> BROWSER_SEARCH
+            ToolName.FIND_FILES -> FIND_FILES
+            ToolName.READ_FILE -> READ_FILE
         }
     }
 }
@@ -262,40 +282,43 @@ object RoutineCheck {
      * the router, and each tool step's fixed arguments must read back the same through the tool's own validation
      * (ToolCalls.parse): a timer over 24 hours or an alarm at 25:00 can't be saved.
      */
-    fun problems(r: Routine): List<String> = buildList {
-        if (!validId(r.id)) add("The routine has no valid id.")
+    fun problems(r: Routine): List<String> = problemTexts(r).map { it.en() }
+
+    /** 1.1: [problems] without a language yet (Settings shows them in the menus' language, the card in the turn's). */
+    fun problemTexts(r: Routine): List<Phrase> = buildList {
+        if (!validId(r.id)) add(RoutineStrings.noId())
         val name = r.name.trim()
-        if (name.isEmpty()) add("Give the routine a name.")
-        if (name.length > MAX_NAME) add("A routine's name is at most $MAX_NAME characters.")
-        if (CONTROL.containsMatchIn(r.name)) add("A routine's name is one line of text.")
-        if (r.steps.isEmpty()) add("Add at least one step.")
-        if (r.steps.size > MAX_STEPS) add("A routine has at most $MAX_STEPS steps.")
-        if (r.steps.count { it == RoutineStep.Brief } > 1) add("The morning brief can be in a routine once.")
+        if (name.isEmpty()) add(RoutineStrings.noName())
+        if (name.length > MAX_NAME) add(RoutineStrings.nameTooLong("max" to MAX_NAME))
+        if (CONTROL.containsMatchIn(r.name)) add(RoutineStrings.nameOneLine())
+        if (r.steps.isEmpty()) add(RoutineStrings.noSteps())
+        if (r.steps.size > MAX_STEPS) add(RoutineStrings.tooManySteps("max" to MAX_STEPS))
+        if (r.steps.count { it == RoutineStep.Brief } > 1) add(RoutineStrings.briefOnce())
         for (s in r.steps) {
-            if (RoutineGate.classOf(s) == StepClass.NEVER) add("Routines can't do this: ${s.describe()}.")
+            if (RoutineGate.classOf(s) == StepClass.NEVER) add(RoutineStrings.cantDo("step" to s.summary()))
             when (s) {
                 is RoutineStep.Say -> {
-                    if (s.text.isBlank()) add("Say what Robot should say.")
-                    if (s.text.length > MAX_SAY) add("A sentence to say is at most $MAX_SAY characters.")
-                    if (CONTROL.containsMatchIn(s.text)) add("A sentence to say is one line of text.")
+                    if (s.text.isBlank()) add(RoutineStrings.sayWhat())
+                    if (s.text.length > MAX_SAY) add(RoutineStrings.sayTooLong("max" to MAX_SAY))
+                    if (CONTROL.containsMatchIn(s.text)) add(RoutineStrings.sayOneLine())
                 }
-                is RoutineStep.Tool -> if (RoutineCodec.readBack(s) != s) add("A step's details can't be used: ${s.describe()}.")
+                is RoutineStep.Tool -> if (RoutineCodec.readBack(s) != s) add(RoutineStrings.stepUnusable("step" to s.summary()))
                 else -> Unit
             }
         }
         when (val t = r.trigger) {
             is RoutineTrigger.At -> {
-                if (t.days.isEmpty() && t.once == null) add("Pick the days, or a date.")
-                if (t.time.second != 0 || t.time.nano != 0) add("A routine's time is in whole minutes.")
-                if (t.days.isNotEmpty() && t.once != null) add("Pick the days or a date, not both.")
-                if (r.conditions.between != null || r.conditions.days != null) add("A routine at a time has its days already.")
+                if (t.days.isEmpty() && t.once == null) add(RoutineStrings.pickDaysOrDate())
+                if (t.time.second != 0 || t.time.nano != 0) add(RoutineStrings.wholeMinutes())
+                if (t.days.isNotEmpty() && t.once != null) add(RoutineStrings.notBoth())
+                if (r.conditions.between != null || r.conditions.days != null) add(RoutineStrings.timeHasDays())
             }
-            is RoutineTrigger.AlarmDismissed -> if (t.window.from == t.window.to) add("The alarm's hours can't start and end at the same time.")
-            is RoutineTrigger.Device -> t.deviceId?.let { if (it.isBlank() || it.length > MAX_DEVICE_ID || CONTROL.containsMatchIn(it)) add("Pick the device again.") }
+            is RoutineTrigger.AlarmDismissed -> if (t.window.from == t.window.to) add(RoutineStrings.alarmHoursSame())
+            is RoutineTrigger.Device -> t.deviceId?.let { if (it.isBlank() || it.length > MAX_DEVICE_ID || CONTROL.containsMatchIn(it)) add(RoutineStrings.deviceAgain()) }
             else -> Unit
         }
-        r.conditions.between?.let { if (it.from == it.to) add("The hours can't start and end at the same time.") }
-        if (r.conditions.days?.isEmpty() == true) add("Pick at least one day.")
+        r.conditions.between?.let { if (it.from == it.to) add(RoutineStrings.hoursSame()) }
+        if (r.conditions.days?.isEmpty() == true) add(RoutineStrings.pickADay())
     }
 
     fun valid(r: Routine): Boolean = problems(r).isEmpty()
@@ -464,7 +487,7 @@ object RoutineCodec {
         is Action.Call -> mapOf("to" to a.to)
         is Action.AddNote -> buildMap { put("text", a.text); a.title?.let { put("title", it) } }
         is Action.FindNotes -> mapOf("query" to a.query)
-        is Action.AddEvent -> buildMap { put("title", a.title); put("when", a.whenText); a.minutes?.let { put("duration_minutes", it) } }
+        is Action.AddEvent -> buildMap { put("title", a.title); put("when", a.whenText); a.minutes?.let { put("duration_minutes", it) }; if (a.alert) put("alert", true) }
         is Action.AskHelper -> mapOf("question" to a.text)
         is Action.Weather -> buildMap { a.place?.let { put("place", it) }; a.day?.let { put("day", it) } }
         is Action.PhoneCheck -> mapOf("about" to a.part.name.lowercase())
@@ -480,6 +503,9 @@ object RoutineCodec {
         is TermuxCommandAction -> buildMap { put("command", a.command); a.why?.let { put("why", it) } }
         // 1.0: never a routine's step either.
         is BrowserSearchAction -> buildMap { put("query", a.query); a.engine?.let { put("engine", it.id) } }
+        // 1.4: never a routine's step either (RoutineGate: NEVER): a routine runs while you may not be there, files need you.
+        is Action.FindFiles -> buildMap { put("query", a.query); a.drawer?.let { put("drawer", it) }; a.whenText?.let { put("when", it) } }
+        is Action.ReadFile -> mapOf("file" to a.file, "question" to a.question)
     }
 
     private fun nearest(a: Action): Boolean = (a as? Action.MapsSearch)?.nearest == true || (a as? Action.MapsNavigate)?.nearest == true

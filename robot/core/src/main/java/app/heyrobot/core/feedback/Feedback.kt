@@ -7,6 +7,10 @@ import app.heyrobot.core.LogCode
 import app.heyrobot.core.ModelBackend
 import app.heyrobot.core.ModelFormat
 import app.heyrobot.core.Phone
+import app.heyrobot.core.Socs
+import app.heyrobot.core.i18n.FeedbackStrings
+import app.heyrobot.core.i18n.Msg
+import app.heyrobot.core.i18n.Phrase
 import app.heyrobot.core.update.GitHubRepo
 import java.security.SecureRandom
 import java.time.Instant
@@ -23,12 +27,20 @@ import java.util.Random
 // transcripts, messages, memory, people, notes, calendar, wake phrases, helpers, the updater's repository or token, or
 // where you are; a last pass leaves out any of those Robot knows of that still turned up in them (FeedbackPrivacy).
 
-/** What you send. [header] is the message's "Kind:", [section] the heading over your words, [prompt] the text field's label. */
-enum class FeedbackKind(override val id: Int, override val title: String, val label: String, val header: String, val section: String, val prompt: String) : LogCode {
-    BUG(1, "bug report", "Bug", "Bug report", "What happened", "What happened?"),
-    IDEA(2, "idea", "Idea", "Idea", "The idea", "What would you like Robot to do?"),
-    OTHER(3, "other", "Other", "Other", "Message", "What would you like to tell the developer?"),
+/**
+ * What you send. [header] is the message's "Kind:", [section] the heading over your words (the message stays English: the
+ * developer reads it). The form shows [labelText] on its button and [promptText] as the text field's label (1.1, in the
+ * menus' language).
+ */
+enum class FeedbackKind(override val id: Int, override val title: String, private val labelMsg: Msg, val header: String, val section: String,
+    private val promptMsg: Msg) : LogCode {
+    BUG(1, "bug report", FeedbackStrings.bug, "Bug report", "What happened", FeedbackStrings.bugPrompt), // l10n: not text (the message's English, read by the developer)
+    IDEA(2, "idea", FeedbackStrings.idea, "Idea", "The idea", FeedbackStrings.ideaPrompt), // l10n: not text (the message's English, read by the developer)
+    OTHER(3, "other", FeedbackStrings.other, "Other", "Message", FeedbackStrings.otherPrompt),
     ;
+
+    val labelText: Phrase get() = labelMsg()
+    val promptText: Phrase get() = promptMsg()
 
     companion object {
         fun of(name: String?): FeedbackKind? = entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
@@ -54,14 +66,20 @@ enum class FeedbackEntry(override val id: Int, override val title: String, val k
 /**
  * What Robot may add to your words, each only when you tick it, in this order. [bit]: its flag in the voice log's numbers.
  * A bug ticks the problem report (if there is one), the voice log and the settings summary for you (the updater's codes
- * too when you came from an update error); an idea or anything else ticks none.
+ * too when you came from an update error); an idea or anything else ticks none. 1.1: [titleText] and [detailText] are the
+ * form's words (in the menus' language); [title] and [detail] their English, which the voice log keeps.
  */
-enum class Diagnostic(val bit: Int, val title: String, val detail: String) {
-    PROBLEM(1, "Problem report", "The model problem's report: codes, this phone and its Android build, the model, how its process ended"),
-    VOICE_LOG(2, "Voice log", "The last ${FeedbackDiagnostics.LOG_EVENTS} events, codes and numbers only"),
-    SETTINGS(4, "Settings summary", "Switches and levels only: no names, addresses, phrases, server addresses or keys"),
-    UPDATER(8, "Updater", "The updater's last check, error and install, as codes"),
+enum class Diagnostic(val bit: Int, private val titleMsg: Msg, private val detailMsg: Msg) {
+    PROBLEM(1, FeedbackStrings.problem, FeedbackStrings.problemDetail),
+    VOICE_LOG(2, FeedbackStrings.voiceLog, FeedbackStrings.voiceLogDetail),
+    SETTINGS(4, FeedbackStrings.settings, FeedbackStrings.settingsDetail),
+    UPDATER(8, FeedbackStrings.updater, FeedbackStrings.updaterDetail),
     ;
+
+    val titleText: Phrase get() = titleMsg()
+    val detailText: Phrase get() = detailMsg("n" to FeedbackDiagnostics.LOG_EVENTS)
+    val title: String get() = titleText.en()
+    val detail: String get() = detailText.en()
 
     companion object {
         fun bits(set: Set<Diagnostic>): Int = set.sumOf { it.bit }
@@ -69,7 +87,7 @@ enum class Diagnostic(val bit: Int, val title: String, val detail: String) {
         fun of(bits: Int): Set<Diagnostic> = entries.filter { bits and it.bit != 0 }.toSet()
 
         /** "the problem report, the voice log", "no diagnostics". */
-        fun words(bits: Int): String = of(bits).joinToString(", ") { "the " + it.title.lowercase(Locale.ROOT) }.ifEmpty { "no diagnostics" }
+        fun words(bits: Int): String = of(bits).joinToString(", ") { "the " + it.title.lowercase(Locale.ROOT) }.ifEmpty { "no diagnostics" } // l10n: not text (voice log)
 
         fun defaults(kind: FeedbackKind, entry: FeedbackEntry): Set<Diagnostic> = when (kind) {
             FeedbackKind.BUG -> setOf(PROBLEM, VOICE_LOG, SETTINGS) + (if (entry == FeedbackEntry.UPDATER) setOf(UPDATER) else emptySet())
@@ -98,15 +116,17 @@ data class FeedbackFacts(
     val model: String,
     val look: String,
     val language: String,
+    /** 1.2: the chip as Android names it ([chip]); "" leaves its line out. */
+    val chip: String = "",
 ) {
     companion object {
         /** "0.6.0 (60) · release build": a pre-release version is a test build, a debug build says so. */
         fun robot(version: String, code: Int, debug: Boolean): String {
             val v = version.filter { it.isLetterOrDigit() || it == '.' || it == '-' }.take(32).ifEmpty { "unknown" }
             val kind = when {
-                debug -> "debug build"
-                '-' in v -> "test build"
-                else -> "release build"
+                debug -> "debug build" // l10n: not text (the report's header, a diagnostic: English)
+                '-' in v -> "test build" // l10n: not text (the report's header, a diagnostic: English)
+                else -> "release build" // l10n: not text (the report's header, a diagnostic: English)
             }
             return "$v ($code) · $kind"
         }
@@ -115,12 +135,19 @@ data class FeedbackFacts(
          * GrapheneOS numbers its builds by the date and hour they were made (BUILD_NUMBER, YYYYMMDDHH: Build.VERSION.INCREMENTAL
          * "2026100201"); the Pixel's own Android uses a plain counter ("13470043").
          */
-        fun os(incremental: String): String = if (Regex("""20\d{8}""").matches(incremental.trim())) "GrapheneOS" else "not GrapheneOS (by its build number)"
+        fun os(incremental: String): String = if (Regex("""20\d{8}""").matches(incremental.trim())) "GrapheneOS" else "not GrapheneOS (by its build number)" // l10n: not text (the report's header, a diagnostic: English)
 
         /** "Pixel 9a · Tensor G4 · Android 16 (BP2A.250805.005) · GrapheneOS". */
         fun phone(p: Phone, androidRelease: String, buildId: String, incremental: String): String =
-            listOf(p.name, p.chip.title.ifEmpty { "not a Tensor" }, "Android ${line(androidRelease, 16)} (${line(buildId, 40)})", os(incremental))
+            listOf(p.nameText.en(), p.chip.title.ifEmpty { "unknown chip" }, "Android ${line(androidRelease, 16)} (${line(buildId, 40)})", os(incremental)) // l10n: not text (the report's header, a diagnostic: English)
                 .joinToString(" · ") { line(it, 80) }
+
+        /**
+         * 1.2: "Build.SOC_MANUFACTURER “QTI” · Build.SOC_MODEL “SM8750”": Android's two SoC fields as Robot read them, codes
+         * only (Socs.clean: letters, digits and a few signs, 40 characters each), so a report from any phone names its chip.
+         */
+        fun chip(p: Phone): String =
+            "Build.SOC_MANUFACTURER “${Socs.clean(p.socManufacturer)}” · Build.SOC_MODEL “${Socs.clean(p.socModel)}”" // l10n: not text (the report's header, a diagnostic: English)
 
         /**
          * "Fast · Gemma 4 E2B · GPU", "Fast · Gemma 4 E2B · GPU (fell back to CPU on 2026-10-11)", "Your own model file (.gguf) ·
@@ -128,14 +155,14 @@ data class FeedbackFacts(
          */
         fun model(chosen: BrainModel, backend: ModelBackend, gpuFailure: GpuFailure?, ownFormat: ModelFormat?, using: BrainModel? = null,
             zone: ZoneId = ZoneId.systemDefault()): String {
-            val name = if (chosen == BrainModel.OWN) "Your own model file" + (ownFormat?.let { " (.${it.id})" } ?: "") else "${chosen.title} · ${chosen.modelName}"
-            val where = if (gpuFailure != null && gpuFailure.model == chosen) "GPU (fell back to CPU on ${day(gpuFailure.time, zone)})" else backend.title
-            val meanwhile = if (using != null && using != chosen) " · not ready: Robot uses ${using.title} · ${using.modelName}" else ""
+            val name = if (chosen == BrainModel.OWN) "Your own model file" + (ownFormat?.let { " (.${it.id})" } ?: "") else "${chosen.titleText.en()} · ${chosen.modelName}" // l10n: not text (the report, a diagnostic: English)
+            val where = if (gpuFailure != null && gpuFailure.model == chosen) "GPU (fell back to CPU on ${day(gpuFailure.time, zone)})" else backend.title // l10n: not text (the report, a diagnostic: English)
+            val meanwhile = if (using != null && using != chosen) " · not ready: Robot uses ${using.titleText.en()} · ${using.modelName}" else "" // l10n: not text (the report, a diagnostic: English)
             return "$name · $where$meanwhile"
         }
 
         /** The colours Settings › Display chose: "wallpaper colours" or "Robot's colours" (1.0: the panel has one look). */
-        fun look(wallpaperColors: Boolean): String = if (wallpaperColors) "wallpaper colours" else "Robot's colours"
+        fun look(wallpaperColors: Boolean): String = if (wallpaperColors) "wallpaper colours" else "Robot's colours" // l10n: not text (the report, a diagnostic: English)
 
         /** A language tag ("en-CA"), or "unknown". */
         fun language(tag: String): String = tag.filter { it.isLetterOrDigit() || it == '-' }.take(24).ifEmpty { "unknown" }
@@ -153,8 +180,8 @@ data class FeedbackFacts(
  */
 data class DiagnosticBlock(val diagnostic: Diagnostic, val title: String, val lines: List<String>) {
     fun cutNote(n: Int): String = when (diagnostic) {
-        Diagnostic.VOICE_LOG -> "(the $n older event${if (n == 1) "" else "s"} left out to keep the message short)"
-        else -> "($n more line${if (n == 1) "" else "s"} left out to keep the message short)"
+        Diagnostic.VOICE_LOG -> "(the $n older event${if (n == 1) "" else "s"} left out to keep the message short)" // l10n: not text (the report, a diagnostic: English)
+        else -> "($n more line${if (n == 1) "" else "s"} left out to keep the message short)" // l10n: not text (the report, a diagnostic: English)
     }
 }
 
@@ -175,12 +202,12 @@ object FeedbackRef {
  * ([GITHUB_MAX], measured URL-encoded) your words are cut last, saying so.
  */
 object FeedbackReport {
-    const val HEADER = "ROBOT FEEDBACK v1"
+    const val HEADER = "ROBOT FEEDBACK v1" // l10n: not text (the report, a diagnostic: English)
     const val MAX_CHARS = 12_000
     const val GITHUB_MAX = 7_000
     const val SEPARATOR = "---"
-    const val FOOTER = "Forward this whole message to the developer's assistant as it is."
-    const val TEXT_CUT = "… (cut to fit the link: Copy has the whole report)"
+    const val FOOTER = "Forward this whole message to the developer's assistant as it is." // l10n: not text (the report, a diagnostic: English)
+    const val TEXT_CUT = "… (cut to fit the link: Copy has the whole report)" // l10n: not text (the report, a diagnostic: English)
 
     /** The message, each ticked diagnostic's part of it exactly as it is there, what was cut, and whether your words were. */
     data class Composed(val text: String, val blocks: Map<Diagnostic, String>, val cut: Set<Diagnostic>, val textCut: Boolean)
@@ -256,26 +283,27 @@ object FeedbackReport {
 
     private fun render(draft: FeedbackDraft, text: String, ref: String, facts: FeedbackFacts, parts: Map<Diagnostic, String>): String = buildString {
         append(HEADER).append('\n')
-        append("Kind: ").append(draft.kind.header).append('\n')
-        append("Ref: ").append(ref).append('\n')
-        append("Robot: ").append(FeedbackFacts.line(facts.robot, 120)).append('\n')
-        append("Phone: ").append(FeedbackFacts.line(facts.phone, 200)).append('\n')
-        append("Model: ").append(FeedbackFacts.line(facts.model, 200)).append('\n')
-        append("Look: ").append(FeedbackFacts.line(facts.look, 20)).append(" · Language: ").append(FeedbackFacts.line(facts.language, 24)).append('\n')
+        append("Kind: ").append(draft.kind.header).append('\n') // l10n: not text (the report, a diagnostic: English)
+        append("Ref: ").append(ref).append('\n') // l10n: not text (the report, a diagnostic: English)
+        append("Robot: ").append(FeedbackFacts.line(facts.robot, 120)).append('\n') // l10n: not text (the report, a diagnostic: English)
+        append("Phone: ").append(FeedbackFacts.line(facts.phone, 200)).append('\n') // l10n: not text (the report, a diagnostic: English)
+        if (facts.chip.isNotEmpty()) append("Chip: ").append(FeedbackFacts.line(facts.chip, 120)).append('\n') // l10n: not text (the report, a diagnostic: English)
+        append("Model: ").append(FeedbackFacts.line(facts.model, 200)).append('\n') // l10n: not text (the report, a diagnostic: English)
+        append("Look: ").append(FeedbackFacts.line(facts.look, 20)).append(" · Language: ").append(FeedbackFacts.line(facts.language, 24)).append('\n') // l10n: not text (the report, a diagnostic: English)
         append(SEPARATOR).append('\n')
         append(draft.kind.section).append(":\n")
-        append(clean(text).ifEmpty { "(nothing written)" }).append('\n')
+        append(clean(text).ifEmpty { "(nothing written)" }).append('\n') // l10n: not text (the report, a diagnostic: English)
         val steps = clean(draft.steps)
         val expected = clean(draft.expected)
         if (draft.kind == FeedbackKind.BUG && (steps.isNotEmpty() || expected.isNotEmpty())) {
             append(SEPARATOR).append('\n')
-            append("Steps:\n").append(steps.ifEmpty { "(none written)" }).append('\n')
-            append("Expected:\n").append(expected.ifEmpty { "(none written)" }).append('\n')
+            append("Steps:\n").append(steps.ifEmpty { "(none written)" }).append('\n') // l10n: not text (the report, a diagnostic: English)
+            append("Expected:\n").append(expected.ifEmpty { "(none written)" }).append('\n') // l10n: not text (the report, a diagnostic: English)
         }
         append(SEPARATOR).append('\n')
-        if (parts.isEmpty()) append("Diagnostics: none ticked by the tester\n")
+        if (parts.isEmpty()) append("Diagnostics: none ticked by the tester\n") // l10n: not text (the report, a diagnostic: English)
         else {
-            append("Diagnostics (ticked by the tester):\n")
+            append("Diagnostics (ticked by the tester):\n") // l10n: not text (the report, a diagnostic: English)
             for (d in Diagnostic.entries) parts[d]?.let { append(it) }
         }
         append(SEPARATOR).append('\n')

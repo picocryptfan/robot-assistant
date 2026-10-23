@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.TurnStrings
+
 // Pure. The empty panel's tips (0.4.0): three things Robot can do, a different three each time the panel opens, from
 // the features that are on and can work right now (an action turned Off, texting off, the lock screen, no helper, no
 // screen this time: not offered). A question is asked at once, as if typed; a tip that would do something (an alarm, a
@@ -13,11 +16,14 @@ package app.heyrobot.core
  */
 enum class TipKind { ASK, FILL, SCREEN, PHOTO }
 
-data class Tip(val text: String, val kind: TipKind = TipKind.ASK)
+/** [phrase]: 1.1, [text] in words without a language yet (the panel shows the menus' language, and asks those words). */
+data class Tip(val text: String, val kind: TipKind = TipKind.ASK, val phrase: Phrase = Phrase.plain(text)) {
+    constructor(phrase: Phrase, kind: TipKind = TipKind.ASK) : this(phrase.en(), kind, phrase)
+}
 
 object Tips {
     /** Shown only when the screen came with this panel (it may come a moment after the panel opens: [withScreen]). */
-    val SCREEN = Tip("What's on my screen?", TipKind.SCREEN)
+    val SCREEN = Tip(TurnStrings.tipScreen(), TipKind.SCREEN)
 
     /**
      * What the panel can do right now. [claude]: the Claude helper is on and reachable (the helper tip's condition, as
@@ -35,24 +41,24 @@ object Tips {
 
     /** In the order they rotate through, mixing kinds so any three show different sides of Robot. */
     private val ALL: List<Entry> = listOf(
-        Entry(Tip("What's the weather tomorrow?"), ToolName.WEATHER),
-        Entry(Tip("Set a timer for 10 minutes"), ToolName.SET_TIMER),
-        Entry(Tip("Text Mom I'm on my way"), ToolName.SEND_TEXT, needs = { it.settings.textApp != TextApp.OFF }),
-        Entry(Tip("What's on my calendar today?"), ToolName.READ_CALENDAR),
-        Entry(Tip("Ask about a photo", TipKind.PHOTO), needs = { !it.locked }),
-        Entry(Tip("Remember that I parked on level 3"), ToolName.ADD_NOTE),
-        Entry(Tip("How's my battery?"), ToolName.PHONE_STATUS),
-        Entry(Tip("Ask a helper why the sky is blue"), online = true, needs = { it.helper }),
-        Entry(Tip("Directions to the nearest pharmacy"), ToolName.MAPS_NAVIGATE),
+        Entry(Tip(TurnStrings.tipWeather()), ToolName.WEATHER),
+        Entry(Tip(TurnStrings.tipTimer()), ToolName.SET_TIMER),
+        Entry(Tip(TurnStrings.tipText()), ToolName.SEND_TEXT, needs = { it.settings.textApp != TextApp.OFF }),
+        Entry(Tip(TurnStrings.tipCalendar()), ToolName.READ_CALENDAR),
+        Entry(Tip(TurnStrings.tipPhoto(), TipKind.PHOTO), needs = { !it.locked }),
+        Entry(Tip(TurnStrings.tipRemember()), ToolName.ADD_NOTE),
+        Entry(Tip(TurnStrings.tipBattery()), ToolName.PHONE_STATUS),
+        Entry(Tip(TurnStrings.tipClaude()), online = true, needs = { it.helper }),
+        Entry(Tip(TurnStrings.tipNearest()), ToolName.MAPS_NAVIGATE),
         Entry(SCREEN, needs = { it.screen }),
-        Entry(Tip("Wake me up at 7:00"), ToolName.SET_ALARM),
-        Entry(Tip("Help me free up space"), ToolName.FREE_STORAGE),
-        Entry(Tip("Email Sam about dinner on Friday"), ToolName.DRAFT_EMAIL),
-        Entry(Tip("Find my note about the wifi"), ToolName.FIND_NOTES),
-        Entry(Tip("Turn on the flashlight"), ToolName.FLASHLIGHT),
-        Entry(Tip("Add lunch with Alex on Friday at noon"), ToolName.ADD_EVENT),
-        Entry(Tip("How much storage is free?"), ToolName.PHONE_STATUS),
-        Entry(Tip("Tell me a fun fact")),
+        Entry(Tip(TurnStrings.tipAlarm()), ToolName.SET_ALARM),
+        Entry(Tip(TurnStrings.tipSpace()), ToolName.FREE_STORAGE),
+        Entry(Tip(TurnStrings.tipEmail()), ToolName.DRAFT_EMAIL),
+        Entry(Tip(TurnStrings.tipNote()), ToolName.FIND_NOTES),
+        Entry(Tip(TurnStrings.tipFlashlight()), ToolName.FLASHLIGHT),
+        Entry(Tip(TurnStrings.tipEvent()), ToolName.ADD_EVENT),
+        Entry(Tip(TurnStrings.tipStorage()), ToolName.PHONE_STATUS),
+        Entry(Tip(TurnStrings.tipFact())),
     )
 
     /** Every tip that can work now: its action on in Settings (and allowed on the lock screen when locked), and its needs met. */

@@ -8,6 +8,8 @@ import app.heyrobot.core.TtsBench
 import app.heyrobot.core.VoiceBench
 import app.heyrobot.core.VoiceChoice
 import app.heyrobot.core.writeAtomic
+import app.heyrobot.core.i18n.UiStrings
+import app.heyrobot.core.i18n.VoiceStrings
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -19,8 +21,8 @@ import java.nio.ByteOrder
 // them. Results go to voice_bench.json for the settings screen; the log gets the numbers only.
 
 internal object VoiceBenchmark {
-    const val FIRST_CHUNK = "Sure, here is the weather."
-    const val SENTENCE = "The weather today is sunny with a light breeze, and it should stay warm until the evening."
+    const val FIRST_CHUNK = "Sure, here is the weather." // l10n: not text (the speed test's fixed input, never shown or played)
+    const val SENTENCE = "The weather today is sunny with a light breeze, and it should stay warm until the evening." // l10n: not text (the speed test's fixed input, never shown or played)
 
     fun clip(ctx: Context): FloatArray {
         val b = ctx.assets.open("bench/test-clip.s16").use { it.readBytes() }
@@ -34,25 +36,26 @@ internal object VoiceBenchmark {
         try {
             val voices = listOf(VoiceChoice.HEART, VoiceChoice.KITTEN).filter { tts.usable(it) }
             if (!stt.usable && voices.isEmpty()) {
-                write(VoiceBench(BenchState.FAILED, "Download the voice models first (Model › Voice models).", started))
+                write(VoiceBench(BenchState.FAILED, VoiceStrings.benchNoModels("page" to UiStrings.inSettings(UiStrings.model, UiStrings.voiceModels)), started))
                 return
             }
-            var res = VoiceBench(BenchState.RUNNING, "Loading speech recognition and writing down a test sentence…", started)
+            // 1.1: each step goes to the app without a language (core VoiceBench.stepText, PhraseWire).
+            var res = VoiceBench(BenchState.RUNNING, VoiceStrings.benchLoadingStt(), started)
             if (stt.usable) {
                 write(res)
                 val expected = ctx.assets.open("bench/test-clip.txt").use { it.readBytes().toString(Charsets.UTF_8) }.trim()
                 val b = stt.bench(clip(ctx), expected)
-                    ?: return write(VoiceBench(BenchState.FAILED, "Robot was listening, or speech recognition couldn't load. Try again in a moment.", started))
-                res = res.copy(stt = b)
+                    ?: return write(VoiceBench(BenchState.FAILED, VoiceStrings.benchSttFailed(), started))
+                res = res.copy(stt = b).withStep(res.stepText)
                 RLog.i("voice_bench", "part" to RLog.Code("stt"), "loadMs" to b.loadMs, "clipMs" to b.clipMs, "decodeMs" to b.decodeMs,
                     "partialMs" to b.partialMs, "rtf" to b.rtf, "wordAccuracy" to b.wordAccuracy)
             }
             val done = mutableListOf<TtsBench>()
             for (v in voices) {
-                res = res.copy(step = "Loading the voice “${v.title}” and timing it…", voices = done.toList())
+                res = res.copy(voices = done.toList()).withStep(VoiceStrings.benchLoadingVoice("voice" to v.titleText))
                 write(res)
                 val b = tts.bench(v, FIRST_CHUNK, SENTENCE)
-                    ?: return write(res.copy(state = BenchState.FAILED, step = "Robot was speaking, or the voice “${v.title}” couldn't load. Try again in a moment."))
+                    ?: return write(res.copy(state = BenchState.FAILED).withStep(VoiceStrings.benchVoiceFailed("voice" to v.titleText)))
                 done += b
                 RLog.i("voice_bench", "part" to RLog.Code(v.id), "loadMs" to b.loadMs, "firstChunkMs" to b.firstChunkMs,
                     "sentenceFirstMs" to b.sentenceFirstMs, "audioMs" to b.audioMs, "genMs" to b.genMs, "rtf" to b.rtf)
@@ -62,7 +65,7 @@ internal object VoiceBenchmark {
             RLog.i("voice_bench", "part" to RLog.Code("done"), "rssMb" to rss)
         } catch (t: Throwable) {
             RLog.w("voice_bench", t)
-            write(VoiceBench(BenchState.FAILED, "The test stopped with an error (${t.javaClass.simpleName}).", started))
+            write(VoiceBench(BenchState.FAILED, VoiceStrings.benchError("error" to t.javaClass.simpleName), started))
         }
     }
 

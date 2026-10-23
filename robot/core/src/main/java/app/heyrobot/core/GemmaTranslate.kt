@@ -244,8 +244,8 @@ object InterpreterVoice {
 
     /** The language's name as the interpreter's halves say it. */
     fun name(lang: String): String = when (lang) {
-        "fr" -> "Français"
-        "en" -> "English"
+        "fr" -> "Français" // l10n: not text (each language's own name, the same in every menu)
+        "en" -> "English" // l10n: not text (each language's own name, the same in every menu)
         else -> lang.uppercase(Locale.ROOT)
     }
 }

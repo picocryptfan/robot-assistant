@@ -4,7 +4,7 @@ package app.heyrobot.core.memory
 import app.heyrobot.core.ScreenText
 import app.heyrobot.core.TokenEstimate
 
-// Pure. Things Robot may offer to remember (design §A6.5), built only from your own words: never Robot's answers,
+// Pure. Things Robot may offer to remember, built only from your own words: never Robot's answers,
 // screen text, a photo, a web or helper answer, a message or a read tool's findings, so nothing anyone else wrote can
 // plant a memory. After a conversation (the panel closes, or 10 minutes without a turn, with at least two of your
 // turns), the local model gets your words alone in a one-shot request with no tools, and may list two lasting facts.
@@ -29,7 +29,7 @@ enum class TurnSource {
 
 /** One turn of a finished conversation, as the suggestion job sees it. */
 class SpokenTurn(val text: String, val source: TurnSource) {
-    override fun toString(): String = "SpokenTurn(source=$source, chars=${text.length})"
+    override fun toString(): String = "SpokenTurn(source=$source, chars=${text.length})" // l10n: not text (toString for logs and tests)
 }
 
 /** The one-shot request for the local model: no tools, ever ([tools] is always empty). */

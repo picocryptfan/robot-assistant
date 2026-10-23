@@ -53,7 +53,7 @@ object EspeakData {
         mark.delete()
         for (f in FILES) {
             val r = try {
-                ctx.assets.open("espeak-ng-data/${f.name}").use { installVerified(it, File(d, f.name), f.bytes, f.sha256) }
+                ctx.assets.open("espeak-ng-data/${f.name}").use { installVerified(it, File(d, f.name), f.bytes, f.sha256) } // l10n: not text (a path)
             } catch (_: Exception) { InstallResult.IO_ERROR }
             if (r != InstallResult.OK) {
                 RLog.i("espeak_copy", "ok" to false, "result" to r)

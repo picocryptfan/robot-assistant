@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.voice
 
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.UiStrings
+import app.heyrobot.core.i18n.VoiceStrings
+
 // VOICE PROCESS. Speech to text for push-to-talk in the panel and the question after a wake word
 // (spec item 3): SherpaSpeechToText (Parakeet v3) once its model is downloaded, [PlaceholderSpeechToText]
 // until then (VoiceEngines picks). Audio stays in memory: never written to disk.
@@ -12,8 +16,11 @@ interface SpeechToText {
     /** Why voice input is not available, in a few words for the mic button's tooltip; null when it is. */
     val hint: String? get() = null
 
-    /** Show partial text while the person speaks (decodes the speech so far about every 0.7 s). */
-    fun configure(livePartials: Boolean) {}
+    /**
+     * Show partial text while the person speaks (decodes the speech so far about every 0.7 s), and the pause a question
+     * may hold before it ends ([pauseMs], Settings › Voice › "Wait before answering"; from the next question on).
+     */
+    fun configure(livePartials: Boolean, pauseMs: Int = Endpointer.DEFAULT_PAUSE_MS) {}
 
     /** Start loading the model in the background (the panel opened), so the first question is not kept waiting. */
     fun prewarm() {}
@@ -23,9 +30,16 @@ interface SpeechToText {
 
     /**
      * Starts listening; results arrive on [listener] (on any thread: callers hop to their own). It ends
-     * by itself on silence (VAD), or when [stop] is called (button released), with [Listener.onFinal].
+     * by itself on silence (VAD), or when [stop] is called (button released), with [Listener.onFinal]. [shortAnswer]
+     * (a card's "yes" or "no"): a short pause ends it, whatever the setting.
      */
-    fun start(listener: Listener)
+    fun start(listener: Listener, shortAnswer: Boolean = false)
+
+    /** The mic button is held past a tap: silence doesn't end this question; [stop] (the release) does. */
+    fun holdOpen() {}
+
+    /** Speech was heard in the current question and its words are not in yet (a timer shouldn't end it now). */
+    val hearing: Boolean get() = false
 
     /** Stop capturing and finish: the final text (possibly empty) arrives in [Listener.onFinal]. */
     fun stop()
@@ -63,7 +77,7 @@ interface SpeechToText {
 class PlaceholderSpeechToText(private val message: String = MESSAGE) : SpeechToText {
     override val available: Boolean = false
 
-    override fun start(listener: SpeechToText.Listener) {
+    override fun start(listener: SpeechToText.Listener, shortAnswer: Boolean) {
         listener.onError(SpeechToText.Reason.UNAVAILABLE, message)
     }
 
@@ -72,6 +86,8 @@ class PlaceholderSpeechToText(private val message: String = MESSAGE) : SpeechToT
     override fun release() {}
 
     companion object {
-        const val MESSAGE = "Voice input needs the voice models: download them in the Robot app (Model › Voice models). Type your question for now."
+        /** 1.1: without a language yet (the recognizer says it in the menus' language, as the panel's notices). */
+        val messageText: Phrase get() = VoiceStrings.sttNeedsModels("page" to UiStrings.inSettings(UiStrings.model, UiStrings.voiceModels))
+        val MESSAGE: String get() = messageText.en()
     }
 }

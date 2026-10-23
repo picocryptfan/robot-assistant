@@ -67,6 +67,10 @@ import app.heyrobot.core.TipKind
 import app.heyrobot.core.TurnRole
 import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
+import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.i18n.PanelStrings
+import app.heyrobot.ui.common.replyFooterText
+import app.heyrobot.ui.theme.LocalLangs
 import app.heyrobot.ui.classic.ClassicAttachRow
 import app.heyrobot.ui.classic.ClassicBrainBanner
 import app.heyrobot.ui.classic.ClassicContextRow
@@ -200,16 +204,19 @@ private fun Panel(st: PanelState, actions: PanelActions, onClose: () -> Unit) {
                     // Landscape with the keyboard up: no room for the empty page's words or the suggestions.
                     if (st.turns.isNotEmpty() || !tight) Messages(st, actions, Modifier.weight(1f, fill = false))
                     if (st.turns.isEmpty() && !hearing && !tight) {
+                        // 1.1: a tip asks in the words it shows (the menus' language).
+                        val l = LocalLangs.current
                         ClassicSuggestions(st.tips) { tip ->
+                            val words = tip.phrase.render(l)
                             when (tip.kind) {
-                                TipKind.ASK -> { input = tip.text; send() }
+                                TipKind.ASK -> { input = words; send() }
                                 // It would do something or go online: its words wait in the field, to change or send.
                                 TipKind.FILL -> {
-                                    input = tip.text
+                                    input = words
                                     try { focus.requestFocus() } catch (_: Exception) {}
                                     keyboard?.show()
                                 }
-                                TipKind.SCREEN -> actions.askAboutScreen(tip.text)
+                                TipKind.SCREEN -> actions.askAboutScreen(words)
                                 TipKind.PHOTO -> attachOpen = true
                             }
                         }
@@ -266,7 +273,7 @@ private fun keyboardPad(): Pair<Dp, Dp> {
 private fun PanelTop(st: PanelState, actions: PanelActions, onClose: () -> Unit) {
     ClassicDragHandle()
     ClassicHeader(
-        mood = orbMood(st.phase), status = statusLine(st), showKeep = !st.keep && st.turns.isNotEmpty(), speak = st.speak,
+        mood = orbMood(st.phase), status = statusLine(st, LocalLangs.current), showKeep = !st.keep && st.turns.isNotEmpty(), speak = st.speak,
         onKeep = actions::keepConversation, onToggleSpeak = actions::toggleSpeak, onNew = actions::newConversation, onClose = onClose,
         onSettings = actions::openSettings, face = st.face,
     )
@@ -280,28 +287,33 @@ internal fun orbMood(p: Phase): OrbMood = when (p) {
     Phase.SPEAKING, Phase.CONFIRMING -> OrbMood.TALKING
 }
 
-/** The header's words, as 0.6.0 said them. */
-internal fun statusLine(st: PanelState): String = when (st.phase) {
-    Phase.LISTENING -> "Listening…"
-    Phase.TRANSCRIBING -> "Writing it down…"
+/** The header's words, as 0.6.0 said them, in [l] (the menus' language). */
+internal fun statusLine(st: PanelState, l: Langs = Langs.EN): String = when (st.phase) {
+    Phase.LISTENING -> PanelStrings.listening().render(l)
+    Phase.TRANSCRIBING -> PanelStrings.writingItDown().render(l)
     // "ChatGPT is thinking…" (or "Checking with ChatGPT…", "My server is loading its model…") until the helper's first words.
-    Phase.THINKING -> st.helperStatus ?: if (st.brain.readiness == BrainKeeper.Readiness.LOADING) "Waking up the model…" else "Thinking…"
-    Phase.ANSWERING -> st.turns.lastOrNull()?.takeIf { it.fromHelper }?.let { "${it.by ?: "The helper"} is answering…" } ?: "Answering…"
-    Phase.CONFIRMING -> if (st.cardHearing != null) "Say yes or no…" else "Waiting for you: tap the card, or answer yes or no"
-    Phase.SPEAKING -> "Speaking · tap to stop"
+    Phase.THINKING -> st.helperStatus ?: (checkingLine(st) ?: if (st.brain.readiness == BrainKeeper.Readiness.LOADING) PanelStrings.wakingModel() else PanelStrings.thinking()).render(l)
+    Phase.ANSWERING -> (st.turns.lastOrNull()?.takeIf { it.fromHelper }?.let { PanelStrings.helperAnswering("name" to (it.by ?: PanelStrings.theHelperStart())) } ?: PanelStrings.answering()).render(l)
+    Phase.CONFIRMING -> (if (st.cardHearing != null) PanelStrings.sayYesOrNoDots() else PanelStrings.waitingForYou()).render(l)
+    Phase.SPEAKING -> PanelStrings.speakingTapToStop().render(l)
     Phase.IDLE -> when {
-        st.inHelperMode -> "Talking with ${st.helperName ?: "the helper"}: your questions go " + if (st.helperHome) "to your server" else "online"
-        st.locked -> "Locked: " + LockScreen.allowed(st.lockedTools)
-        st.brain.readiness == BrainKeeper.Readiness.LOADING -> "Getting ready…"
-        else -> "On this phone, private"
-    }
+        st.inHelperMode -> (if (st.helperHome) PanelStrings.withHelperYoursServer else PanelStrings.withHelperYoursOnline)("name" to (st.helperName ?: PanelStrings.theHelper()))
+        st.locked -> PanelStrings.lockedAllowed("allowed" to LockScreen.allowed(st.lockedTools, l))
+        st.brain.readiness == BrainKeeper.Readiness.LOADING -> checkingLine(st) ?: PanelStrings.gettingReady()
+        else -> PanelStrings.onThisPhonePrivate()
+    }.render(l)
 }
 
+/** 1.2 (design Step 2): "Checking this phone's GPU, about 30 s…" while the self-test runs before your first question, else null. */
+private fun checkingLine(st: PanelState): app.heyrobot.core.i18n.Phrase? =
+    st.brain.checking?.takeIf { st.brain.readiness == BrainKeeper.Readiness.LOADING }
+        ?.let { PanelStrings.checkingDevice("device" to it, "seconds" to app.heyrobot.core.GpuCheck.EST_SECONDS) }
+
 /** A notice's button: its words and what it does, or null. */
-private fun noticeAction(a: NoticeAction, actions: PanelActions): Pair<String, () -> Unit>? = when (a) {
-    NoticeAction.OPEN_APP -> "Open Robot" to actions::openRobotApp
-    NoticeAction.OPEN_ASSIST_SETTINGS -> "Open settings" to actions::openAssistSettings
-    NoticeAction.OPEN_MODEL -> "Open Model" to actions::openModelSettings
+internal fun noticeAction(a: NoticeAction, actions: PanelActions, l: Langs = Langs.EN): Pair<String, () -> Unit>? = when (a) {
+    NoticeAction.OPEN_APP -> PanelStrings.openRobot().render(l) to actions::openRobotApp
+    NoticeAction.OPEN_ASSIST_SETTINGS -> PanelStrings.openSettings().render(l) to actions::openAssistSettings
+    NoticeAction.OPEN_MODEL -> PanelStrings.openModel().render(l) to actions::openModelSettings
     NoticeAction.NONE -> null
 }
 
@@ -310,7 +322,7 @@ private fun noticeAction(a: NoticeAction, actions: PanelActions): Pair<String, (
 private fun ColumnScope.PanelNotices(st: PanelState, actions: PanelActions) {
     AnimatedVisibility(st.notice != null, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
         st.notice?.let { n ->
-            val a = noticeAction(n.action, actions)
+            val a = noticeAction(n.action, actions, LocalLangs.current)
             ClassicNoticeBar(n.text, a?.first, onAction = a?.second ?: {}, onDismiss = actions::dismissNotice)
         }
     }
@@ -318,19 +330,19 @@ private fun ColumnScope.PanelNotices(st: PanelState, actions: PanelActions) {
     if (st.notice == null && (b.readiness == BrainKeeper.Readiness.NO_MODEL || b.readiness == BrainKeeper.Readiness.FAILED)) {
         ClassicBrainBanner(b.problem, openRobot = b.readiness == BrainKeeper.Readiness.NO_MODEL, onOpenRobot = actions::openRobotApp)
     }
-    if (st.inHelperMode) ClassicHelperModeChip(st.helperName ?: "Helper", actions::endHelperMode)
+    if (st.inHelperMode) ClassicHelperModeChip(st.helperName ?: PanelStrings.helperLabel().render(LocalLangs.current), actions::endHelperMode)
 }
 
-/** A panel turn as the panel draws it (ui/common TurnUi). */
-internal fun UiTurn.toTurnUi() = TurnUi(
+/** A panel turn as both looks draw it (ui/common TurnUi); its buttons and footer in [l] (1.1: the menus' language). */
+internal fun UiTurn.toTurnUi(l: Langs = Langs.EN) = TurnUi(
     id = id, user = role == TurnRole.USER, text = text, attachment = attachment, thumb = thumb,
     actions = actions.map {
         ActionView(it.id, it.tool, it.summary, it.status, it.detail, it.icon, it.body, it.choices, it.confirm, it.undo != null, it.more,
-            cancel = it.cancel, openApp = it.handOff?.let { h -> SettingsPage.label(h) ?: "Open Cheogram" }, picture = it.picture, remember = it.remember,
-            allowContacts = it.allowContacts, termux = it.termux)
+            cancel = it.cancel, openApp = it.handOff?.let { h -> (PanelFiles.label(h) ?: SettingsPage.labelText(h) ?: PanelStrings.openCheogram()).render(l) }, picture = it.picture, remember = it.remember,
+            allowContacts = it.allowContacts, termux = it.termux, chips = it.chips, files = it.files)
     },
     streaming = streaming, stopped = stopped, error = error, helper = fromHelper, readBack = readBack, by = by, home = home,
-    footer = if (role == TurnRole.USER) emptyList() else replyFooter(sources, cost, by),
+    footer = if (role == TurnRole.USER) emptyList() else replyFooterText(sources, cost, by).map { it.render(l) },
     offer = offer?.let { OfferView(it.api, it.text, it.sends, it.preview, it.asWell, it.name, it.app) },
     reply = reply,
     web = web,
@@ -366,6 +378,7 @@ private fun Messages(st: PanelState, actions: PanelActions, modifier: Modifier) 
         }
     }
     val newest = st.turns.last()
+    val stopSpeaking = androidx.compose.ui.res.stringResource(app.heyrobot.R.string.panel_stop_speaking)
     LaunchedEffect(newest.id) {
         if (newest.role == TurnRole.USER) follow = true
         if (follow) list.animateScrollToItem(0)
@@ -378,7 +391,7 @@ private fun Messages(st: PanelState, actions: PanelActions, modifier: Modifier) 
         }.semantics {
             // The same for TalkBack, which can't tap the list itself: an action on it while Robot talks.
             if (st.phase == Phase.SPEAKING || (st.phase == Phase.ANSWERING && st.speak)) {
-                customActions = listOf(CustomAccessibilityAction("Stop speaking") { actions.stopSpeaking(); true })
+                customActions = listOf(CustomAccessibilityAction(stopSpeaking) { actions.stopSpeaking(); true })
             }
         },
         reverseLayout = true,
@@ -387,7 +400,8 @@ private fun Messages(st: PanelState, actions: PanelActions, modifier: Modifier) 
     ) {
         itemsIndexed(reversed, key = { _, t -> t.id }) { i, t ->
             // 1.0: with replies not spoken, TalkBack reads each answer once it is complete (ui/common answerSemantics).
-            val turn = remember(t, st.speak) { t.toTurnUi().copy(announce = !st.speak) }
+            val l = LocalLangs.current
+            val turn = remember(t, st.speak, l) { t.toTurnUi(l).copy(announce = !st.speak) }
             val divider = lockedDividerAbove(saidLocked, reversed.size - 1 - i)
             WithLockedDivider(divider) { TurnView(turn, turnActions) }
         }
@@ -424,6 +438,7 @@ private fun ColumnScope.PanelInputArea(
         hasDraft = st.draft != null, screenChip = st.screenChip, micHint = st.micHint,
     )
     val buttons = ClassicInputActions(attach = { onAttachOpen(!attachOpen) }, attachScreen = actions::attachScreen, stop = actions::stopGenerating,
-        stopSpeaking = actions::stopSpeaking, micPressed = actions::micPressed, micReleased = actions::micReleased)
+        stopSpeaking = actions::stopSpeaking, micPressed = actions::micPressed, micReleased = actions::micReleased,
+        micHeld = actions::micHeld)
     ClassicInputRow(state, input, onInput, onSend, focus, buttons)
 }

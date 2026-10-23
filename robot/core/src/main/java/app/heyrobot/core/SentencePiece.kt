@@ -67,7 +67,7 @@ class SentencePieceModel private constructor(
                     else -> r.skip(wire)
                 }
             }
-            require(pieces.isNotEmpty()) { "no pieces" }
+            require(pieces.isNotEmpty()) { "no pieces" } // l10n: not text (a developer's error)
             return SentencePieceModel(type, pieces, dummy, extra, escape, normalizes)
         }
 
@@ -99,7 +99,7 @@ class SentencePieceModel private constructor(
             var v = 0L
             var shift = 0
             while (true) {
-                require(pos < end && shift < 64) { "truncated varint" }
+                require(pos < end && shift < 64) { "truncated varint" } // l10n: not text (a developer's error)
                 val x = b[pos++].toInt() and 0xFF
                 v = v or ((x and 0x7F).toLong() shl shift)
                 if (x < 0x80) return v
@@ -113,7 +113,7 @@ class SentencePieceModel private constructor(
         }
 
         fun fixed32(): Int {
-            require(end - pos >= 4) { "truncated fixed32" }
+            require(end - pos >= 4) { "truncated fixed32" } // l10n: not text (a developer's error)
             val v = (b[pos].toInt() and 0xFF) or ((b[pos + 1].toInt() and 0xFF) shl 8) or
                 ((b[pos + 2].toInt() and 0xFF) shl 16) or ((b[pos + 3].toInt() and 0xFF) shl 24)
             pos += 4
@@ -122,7 +122,7 @@ class SentencePieceModel private constructor(
 
         private fun length(): Int {
             val n = varint()
-            require(n in 0..(end - pos).toLong()) { "bad length" }
+            require(n in 0..(end - pos).toLong()) { "bad length" } // l10n: not text (a developer's error)
             return n.toInt()
         }
 
@@ -168,9 +168,9 @@ class SentencePieceEncoder(private val model: SentencePieceModel) {
     private val maxScore: Float
 
     init {
-        require(model.type == SentencePieceModel.ModelType.UNIGRAM) { "only unigram models (this one is ${model.type})" }
+        require(model.type == SentencePieceModel.ModelType.UNIGRAM) { "only unigram models (this one is ${model.type})" } // l10n: not text (a developer's error)
         val normal = model.pieces.filter { it.type == SentencePieceModel.PieceType.NORMAL }
-        require(normal.isNotEmpty()) { "no normal pieces" }
+        require(normal.isNotEmpty()) { "no normal pieces" } // l10n: not text (a developer's error)
         // Normal and user-defined pieces are matched; unused, control, unknown and byte pieces are not.
         for (p in model.pieces) {
             if (p.type == SentencePieceModel.PieceType.NORMAL || p.type == SentencePieceModel.PieceType.USER_DEFINED) {

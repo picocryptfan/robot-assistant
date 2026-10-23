@@ -2,6 +2,7 @@
 package app.heyrobot.sys
 
 import app.heyrobot.BuildConfig
+import app.heyrobot.R
 import android.app.DownloadManager
 import android.content.Context
 import android.net.Uri
@@ -18,6 +19,7 @@ import app.heyrobot.core.RLog
 import app.heyrobot.core.VoiceFacts
 import app.heyrobot.core.VoiceMark
 import app.heyrobot.core.VoiceModelLogic
+import app.heyrobot.core.i18n.PhraseWire
 import app.heyrobot.core.installGzVerified
 import app.heyrobot.core.readOrNull
 import app.heyrobot.core.writeAtomic
@@ -121,7 +123,7 @@ object MtModelStore {
         val downloading = active.any(VoiceModelLogic::inFlight)
         if (!downloading && active.any { it.status == DownloadManager.STATUS_FAILED }) {
             val failed = active.first { it.status == DownloadManager.STATUS_FAILED }
-            prefs(ctx).edit().putString("fail_${b.id}", MtModelLogic.downloadText(b, 0, listOf(failed)).first).apply()
+            prefs(ctx).edit().putString("fail_${b.id}", PhraseWire.encode(MtModelLogic.downloadPhrase(b, 0, listOf(failed)).first)).apply()
             RLog.i("mt_download", "bundle" to RLog.Code(b.id), "op" to RLog.Code("failed"), "reason" to failed.reason)
             setIds(ctx, b, ids.filterValues { rows[it]?.status != DownloadManager.STATUS_FAILED })
         }
@@ -130,23 +132,23 @@ object MtModelStore {
             downloading = downloading,
             downloaded = rem.isNotEmpty() && !downloading && rem.all { stagedComplete(ctx, b, it) },
             installing = installing == b,
-            bad = prefs(ctx).contains("bad_${b.id}"),
-            installFailed = prefs(ctx).contains("installfail_${b.id}"),
+            bad = prefs(ctx).contains("bad_${b.id}"), // l10n: not text (a preference's key)
+            installFailed = prefs(ctx).contains("installfail_${b.id}"), // l10n: not text (a preference's key)
         )
         val status = MtModelLogic.status(b, facts)
         var percent = -1
         val progress = when (status) {
             ModelStatus.DOWNLOADING -> {
                 val done = b.files.filter { it.name in v }.sumOf { it.gzBytes }
-                MtModelLogic.downloadText(b, done, active).let { percent = it.second; it.first }
+                MtModelLogic.downloadPhrase(b, done, active).let { percent = it.second; it.first.render(AppLanguage.langs(ctx)) }
             }
-            ModelStatus.VERIFYING -> { percent = installPercent; VoiceModelLogic.installText(installPercent) }
-            ModelStatus.UNVERIFIED -> "Downloaded. Checking the files next."
+            ModelStatus.VERIFYING -> { percent = installPercent; VoiceModelLogic.installPhrase(installPercent).render(AppLanguage.langs(ctx)) }
+            ModelStatus.UNVERIFIED -> ctx.getString(R.string.conv_mt_downloaded)
             else -> null
         }
         val failure = when (status) {
-            ModelStatus.BAD -> "A downloaded file didn't match its checksum, so Robot deleted it. Tap Download to fetch it again."
-            ModelStatus.MISSING -> prefs(ctx).getString("fail_${b.id}", null)
+            ModelStatus.BAD -> ctx.getString(R.string.conv_mt_bad)
+            ModelStatus.MISSING -> prefs(ctx).getString("fail_${b.id}", null)?.let { s -> PhraseWire.decode(s)?.render(AppLanguage.langs(ctx)) ?: s }
             else -> null
         }
         return Snap(b, status, progress, percent, failure, engineInBuild(ctx))
@@ -159,8 +161,8 @@ object MtModelStore {
         val rem = remaining(ctx, b)
         val staged = rem.filter { stagedComplete(ctx, b, it) }.map { it.name }.toSet()
         val pending = VoiceModelStore.pendingBytes(ctx) + ModelStore.pendingBytes(ctx)
-        MtModelLogic.refuseDownload(b, snapshot(ctx, b).status, rem, VoiceModelStore.freeBytes(ctx), staged, pending)?.let { return it }
-        val dir = staging(ctx, b) ?: return "The phone's storage isn't available right now."
+        MtModelLogic.refuseDownloadText(b, snapshot(ctx, b).status, rem, VoiceModelStore.freeBytes(ctx), staged, pending)?.let { return it.render(AppLanguage.langs(ctx)) }
+        val dir = staging(ctx, b) ?: return ctx.getString(R.string.conv_mt_no_storage)
         dir.mkdirs()
         prefs(ctx).edit().remove("bad_${b.id}").remove("fail_${b.id}").remove("installfail_${b.id}").apply()
         val dm = ctx.getSystemService(DownloadManager::class.java)
@@ -175,8 +177,8 @@ object MtModelStore {
                 id?.let { dm.remove(it) }
                 staged(ctx, b, f)?.delete()
                 val req = DownloadManager.Request(Uri.parse(b.url(f)))
-                    .setTitle("Robot: fast translation engine")
-                    .setDescription(VoiceModelLogic.size(f.gzBytes))
+                    .setTitle(ctx.getString(R.string.conv_mt_download_title))
+                    .setDescription(VoiceModelLogic.sizeText(f.gzBytes).render(AppLanguage.langs(ctx)))
                     .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
                     .setDestinationInExternalFilesDir(ctx, null, "$STAGING/${b.id}/${f.name}.gz")
                     .addRequestHeader("User-Agent", DownloadPolicy.userAgent(BuildConfig.VERSION_NAME))
@@ -188,7 +190,7 @@ object MtModelStore {
         } catch (t: Throwable) {
             setIds(ctx, b, ids)
             RLog.w("mt_download", t, "bundle" to RLog.Code(b.id))
-            "The download couldn't start."
+            ctx.getString(R.string.conv_mt_download_failed)
         }
     }
 
@@ -228,8 +230,7 @@ object MtModelStore {
                 val r = installGzVerified(src, dest, f) { n -> installPercent = ((done + n) * 100 / total).toInt() }
                 if (r != InstallResult.OK) {
                     if (r == InstallResult.IO_ERROR) {
-                        prefs(ctx).edit().putString("fail_${b.id}", "Robot couldn't unpack the files into its storage (is the phone full?). " +
-                            "Free some space, then tap Download to try again.").putBoolean("installfail_${b.id}", true).apply()
+                        prefs(ctx).edit().putString("fail_${b.id}", ctx.getString(R.string.conv_mt_unpack_failed)).putBoolean("installfail_${b.id}", true).apply()
                     } else {
                         // The download is damaged: delete it so the next attempt fetches it again.
                         prefs(ctx).edit().putString("bad_${b.id}", f.name).apply()
@@ -255,7 +256,7 @@ object MtModelStore {
             return ok
         } catch (t: Throwable) {
             RLog.w("mt_install", t, "bundle" to RLog.Code(b.id))
-            prefs(ctx).edit().putString("fail_${b.id}", "Installing failed. Tap Download to try again.").putBoolean("installfail_${b.id}", true).apply()
+            prefs(ctx).edit().putString("fail_${b.id}", ctx.getString(R.string.conv_mt_install_failed)).putBoolean("installfail_${b.id}", true).apply()
             return false
         } finally {
             installing = null

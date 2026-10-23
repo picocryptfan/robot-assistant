@@ -61,29 +61,31 @@ class CapturePolicyTest {
     /**
      * The wake lines are built on another thread while the listener starts; a value copied into the listener before
      * it was published was lost when the build finished in between, and the wake word stayed deaf. The listener now
-     * reads the shared inputs on every frame, so whatever the order, it sees the lines.
+     * reads the shared inputs on every frame, so whatever the order, it sees the lines. The latches fix the order the
+     * test means (the first frame read before the build ends, the next ones after); without them the worker could
+     * write first and the test failed on its own setup.
      */
     @Test fun aListenerStartedBeforeTheWakeLinesAreBuiltStillGetsThem() {
         val inputs = KeywordInputs()
-        val builtAt = java.util.concurrent.CountDownLatch(1)
-        val published = java.util.concurrent.CountDownLatch(1)
-        // The listener is made (and starts reading frames) with the lines still empty...
+        val firstFrame = java.util.concurrent.CountDownLatch(1)
+        val built = java.util.concurrent.CountDownLatch(1)
+        // The listener is made (and reads its first frame) with the lines still empty...
         val seen = mutableListOf<String>()
         val frames = Thread {
             seen += inputs.wakeLines
-            builtAt.await()
-            published.countDown()
+            firstFrame.countDown()
+            built.await()
             repeat(3) { seen += inputs.wakeLines }
         }
         frames.start()
-        // ... and the worker finishes the build before the listener is published.
+        // ... and the worker finishes the build while it runs.
         val worker = Thread {
+            firstFrame.await()
             inputs.wakeLines = "▁HE Y ▁RO B O T :1.5 #0.25 @W1"
-            builtAt.countDown()
+            built.countDown()
         }
         worker.start()
         worker.join()
-        published.await()
         frames.join()
         assertEquals("", seen.first())
         assertEquals("▁HE Y ▁RO B O T :1.5 #0.25 @W1", seen.last())

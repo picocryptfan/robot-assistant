@@ -109,7 +109,9 @@ class MemoryImportScreenTest {
         fun items(): List<MemoryItem> = (vault.load() as? MemoryLoad.Loaded)?.file?.items.orEmpty()
     }
 
-    private val store = TestStore(Files.createTempDirectory("memory-import").toFile()) { now }
+    private val dir: File = Files.createTempDirectory("memory-import").toFile()
+    private val store = TestStore(dir) { now }
+    private val voiceLogDir: File by lazy { Files.createTempDirectory("voicelog").toFile() }
 
     /** What the picker was asked to open (its MIME types), answered with [picked]. */
     private val launched = ArrayList<List<String>>()
@@ -126,6 +128,8 @@ class MemoryImportScreenTest {
     @After fun tearDown() {
         RLog.sink = null
         VoiceLog.resetForTests()
+        dir.deleteRecursively()
+        voiceLogDir.deleteRecursively()
     }
 
     /** 0.9's and 1.0's Export: MemoryCodec's JSON, indented by Android's org.json. */
@@ -219,7 +223,7 @@ class MemoryImportScreenTest {
         assertEquals(now - 400 * day, added[0].createdAt)
         assertTrue(added[1].pinned)
         assertTrue(added[2].secret)
-        assertTrue("changed" in store.events)
+        rule.waitUntil(5_000) { "changed" in store.events }
         rule.waitUntil(5_000) { "log MEM_IMPORT 4 ${MemImportCode.CONTENT.id} 2" in store.events }
         // The file isn't encrypted: Robot offers to delete it.
         rule.inDialog("isn't encrypted", substring = true).assertExists()
@@ -338,7 +342,7 @@ class MemoryImportScreenTest {
         val logged = ArrayList<String>()
         RLog.sink = { logged += it }
         ShadowLog.clear()
-        val voiceLog = File(Files.createTempDirectory("voicelog").toFile(), "voice_log.txt")
+        val voiceLog = File(voiceLogDir, "voice_log.txt")
         VoiceLog.resetForTests()
         VoiceLog.init(voiceLog)
         store.file = export(listOf(

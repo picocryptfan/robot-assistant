@@ -13,13 +13,13 @@ import app.heyrobot.core.ToolCalls
 import app.heyrobot.core.ToolGroup
 import app.heyrobot.core.ToolName
 import app.heyrobot.core.ToolRouter
-import app.heyrobot.core.output.SpokenLang
+import app.heyrobot.core.i18n.Lang
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** 0.8's call tool and the call flow's emergency rule (design §4.5 flow 2, §4.9 rule 6). */
+/** 0.8's call tool and the call flow's emergency rule. */
 class CallToolTest {
     @Test fun theModelsCallParsesAndAsksFirst() {
         val ok = ToolCalls.parse(RawToolCall("call", mapOf("to" to "Mom"))) as ParsedCall.Ok
@@ -61,21 +61,21 @@ class CallToolTest {
         val rules = CallRules(CallSetting.CALL_AFTER_YES, hasCallPermission = true)
         assertEquals(CallWay.CALL, rules.way)
         for (locked in listOf(false, true)) for (trusted in listOf(false, true)) {
-            val p = CallTarget.plan("555 0199", emptyList(), rules, locked, trusted, SpokenLang.EN, fake)
+            val p = CallTarget.plan("555 0199", emptyList(), rules, locked, trusted, Lang.EN, fake)
             assertTrue(p.toString(), p is CallPlan.Emergency)
             p as CallPlan.Emergency
             assertEquals("5550199", p.number)
             assertTrue(p.say.startsWith("I can't place emergency calls."))
-            val (_, fx) = CallFlow.start(p, "555 0199", SpokenLang.EN)
+            val (_, fx) = CallFlow.start(p, "555 0199", Lang.EN)
             assertEquals(FlowEffect.Place("5550199", CallWay.DIAL), fx.first())
             assertFalse(fx.any { it is FlowEffect.Place && it.way == CallWay.CALL })
         }
         // A person whose number the classifier marks: the dialer too.
-        val p = CallTarget.plan("Mom", listOf(PhoneCandidate("Mom", "555-0199")), rules, false, false, SpokenLang.FR, fake)
+        val p = CallTarget.plan("Mom", listOf(PhoneCandidate("Mom", "555-0199")), rules, false, false, Lang.FR, fake)
         assertTrue(p is CallPlan.Emergency)
         assertTrue((p as CallPlan.Emergency).say.startsWith("Je ne peux pas"))
         // Any other number keeps the read-back and the yes.
-        assertTrue(CallTarget.plan("555 0100", emptyList(), rules, false, false, SpokenLang.EN, fake) is CallPlan.Confirm)
+        assertTrue(CallTarget.plan("555 0100", emptyList(), rules, false, false, Lang.EN, fake) is CallPlan.Confirm)
     }
 
     /**
@@ -88,12 +88,12 @@ class CallToolTest {
         assertEquals(CallWay.DIAL, rules.forSession(car = false).way)
         assertEquals(CallWay.DIAL, CallRules().forSession(car = true).way)
         val mom = listOf(PhoneCandidate("Mom", "+15145550101", PhoneLabel.MOBILE))
-        val headset = CallTarget.plan("Mom", mom, rules.forSession(car = false), locked = false, trusted = false, SpokenLang.EN) { false }
+        val headset = CallTarget.plan("Mom", mom, rules.forSession(car = false), locked = false, trusted = false, Lang.EN) { false }
         assertTrue(headset.toString(), headset is CallPlan.Confirm && headset.way == CallWay.DIAL)
-        val (st, _) = CallFlow.start(headset, "Mom", SpokenLang.EN)
-        val (_, fx) = CallFlow.on(st, "yes", SpokenLang.EN)
+        val (st, _) = CallFlow.start(headset, "Mom", Lang.EN)
+        val (_, fx) = CallFlow.on(st, "yes", Lang.EN)
         assertEquals(listOf(CallWay.DIAL), fx.filterIsInstance<FlowEffect.Place>().map { it.way })
-        val car = CallTarget.plan("Mom", mom, rules.forSession(car = true), locked = false, trusted = false, SpokenLang.EN) { false }
+        val car = CallTarget.plan("Mom", mom, rules.forSession(car = true), locked = false, trusted = false, Lang.EN) { false }
         assertTrue(car is CallPlan.Confirm && car.way == CallWay.CALL)
     }
 }

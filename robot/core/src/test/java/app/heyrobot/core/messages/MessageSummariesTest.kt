@@ -2,6 +2,7 @@
 package app.heyrobot.core.messages
 
 import app.heyrobot.core.TokenEstimate
+import app.heyrobot.core.i18n.Lang
 import app.heyrobot.core.messages.Snapshots.MIN
 import app.heyrobot.core.messages.Snapshots.T
 import app.heyrobot.core.messages.Snapshots.thread
@@ -22,19 +23,19 @@ class MessageSummariesTest {
         assertEquals("Aucun nouveau message.", MessageReading.count(emptyList(), Lang.FR))
         assertEquals("1 conversation: Mom Martin.", MessageReading.count(listOf(mom), Lang.EN))
         assertEquals("3 conversations: Mom Martin, Famille and Pierre.", MessageReading.count(listOf(mom, famille, pierre), Lang.EN))
-        assertEquals("3 conversations : Mom Martin, Famille et Pierre.", MessageReading.count(listOf(mom, famille, pierre), Lang.FR))
+        assertEquals("3 conversations\u00A0: Mom Martin, Famille et Pierre.", MessageReading.count(listOf(mom, famille, pierre), Lang.FR))
         assertEquals("Mom Martin, in Cheogram, 2 messages:", MessageReading.intro(mom, Lang.EN))
-        assertEquals("Mom Martin, dans Cheogram, 2 messages :", MessageReading.intro(mom, Lang.FR))
+        assertEquals("Mom Martin, dans Cheogram, 2 messages\u00A0:", MessageReading.intro(mom, Lang.FR))
         assertEquals("Famille, a group in Cheogram, 3 messages:", MessageReading.intro(famille, Lang.EN))
-        assertEquals("Pierre, dans Signal, 1 message :", MessageReading.intro(pierre, Lang.FR))
+        assertEquals("Pierre, dans Signal, 1 message\u00A0:", MessageReading.intro(pierre, Lang.FR))
         assertEquals("Reply, next, or stop?", MessageReading.next(Lang.EN))
-        assertEquals("Répondre, suivant ou arrêter ?", MessageReading.next(Lang.FR))
+        assertEquals("Répondre, suivant ou arrêter\u202F?", MessageReading.next(Lang.FR))
     }
 
     @Test fun linesReadAsWritten() {
         assertEquals(listOf("Are you coming?", "Call me back"), MessageReading.lines(mom, Lang.EN))
         assertEquals(listOf("Marc: Souper dimanche à 18 h chez maman", "Julie: J'apporte le dessert", "Julie sent a photo."), MessageReading.lines(famille, Lang.EN))
-        assertEquals(listOf("Marc : Souper dimanche à 18 h chez maman", "Julie : J'apporte le dessert", "Julie a envoyé une photo."), MessageReading.lines(famille, Lang.FR))
+        assertEquals(listOf("Marc\u00A0: Souper dimanche à 18 h chez maman", "Julie\u00A0: J'apporte le dessert", "Julie a envoyé une photo."), MessageReading.lines(famille, Lang.FR))
         // Five at most, the newest, with how many came before.
         val many = thread(Snapshots.cheogram1to1(*(1..8).map { "m$it" }.toTypedArray()))
         assertEquals(listOf("The newest 5, and 3 earlier.", "m4", "m5", "m6", "m7", "m8"), MessageReading.lines(many, Lang.EN))

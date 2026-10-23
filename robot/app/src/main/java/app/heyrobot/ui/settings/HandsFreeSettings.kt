@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.ui.settings
 
+import androidx.compose.ui.res.stringResource
+import app.heyrobot.R
+import app.heyrobot.core.i18n.HandsFreeStrings
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.UiStrings
+import app.heyrobot.ui.theme.LocalLangs
+import app.heyrobot.ui.theme.str
 import android.Manifest
 import android.content.Context
 import android.content.Intent
@@ -48,7 +55,7 @@ import app.heyrobot.core.output.Places
 import app.heyrobot.core.output.ReadAloud
 import app.heyrobot.core.output.RememberedDevice
 import app.heyrobot.core.output.SeenDevice
-import app.heyrobot.core.output.SpokenLang
+import app.heyrobot.core.i18n.Lang
 import app.heyrobot.sys.AudioDevices
 import app.heyrobot.sys.CoarseLocation
 import app.heyrobot.sys.HandsFreeFacts
@@ -76,7 +83,7 @@ import kotlinx.coroutines.launch
 import java.io.File
 import java.util.Locale
 
-// MAIN PROCESS (0.8). Settings › Headset and Settings › Car mode (design §3.4, §4.4), as Android-style pages, with the
+// MAIN PROCESS (0.8). Settings › Headset and Settings › Car mode, as Android-style pages, with the
 // design's defaults: the headset button opens Robot, car mode is off until you turn it on and add your car. Everything is
 // in files/robot (sys HandsFreeFiles, core HandsFreeStore: headset.json, car.json, places.json, devices.json), not in
 // settings.json; each change tells the :voice process. The optional permissions are asked only from their own rows:
@@ -170,37 +177,36 @@ fun HandsFreeRoute(route: String, a: AppActions, snackbar: SnackbarHostState, on
     }
 }
 
-/** Settings' Headset row: "Button opens Robot · 1 headphone", "Button off". */
-fun headsetSummary(f: HeadsetFile, memory: DeviceMemory): String {
+/** 1.1: [headsetSummary] without a language yet (« Le bouton ouvre Robot · 1 paire d'écouteurs »). */
+fun headsetSummaryText(f: HeadsetFile, memory: DeviceMemory): Phrase {
     val n = memory.headsets.size
-    return (if (f.settings.buttonOpensRobot) "Button opens Robot" else "Button off") + " · " + when (n) { 0 -> "no headphones yet"; 1 -> "1 headphone"; else -> "$n headphones" }
+    val devices = if (n == 0) HandsFreeStrings.noHeadphones() else HandsFreeStrings.headphones(n)
+    return (if (f.settings.buttonOpensRobot) HandsFreeStrings.buttonOpensSummary else HandsFreeStrings.buttonOffSummary)("devices" to devices)
 }
 
-fun headsetSummary(ctx: Context): String = HandsFreeFiles.store(ctx).let { headsetSummary(it.headset(), it.devices()) }
+fun headsetSummaryText(ctx: Context): Phrase = HandsFreeFiles.store(ctx).let { headsetSummaryText(it.headset(), it.devices()) }
 
-fun carSummary(ctx: Context): String = HandsFreeFiles.store(ctx).let { CarSetup.summary(it.car().on, it.devices()) }
+fun carSummaryText(ctx: Context): Phrase = HandsFreeFiles.store(ctx).let { CarSetup.summaryText(it.car().on, it.devices()) }
 
 // ---------------------------------------------------------------------------------------------- Settings › Headset
 
-private fun listenTitle(l: ListenWith): String = l.title
-
-private fun listenDetail(l: ListenWith): String = when (l) {
-    ListenWith.HEADSET_MIC -> "The default. Works with the phone in a pocket; music pauses while Robot listens and answers (call-quality sound)."
-    ListenWith.PHONE_MIC -> "Keep the phone near you. No switch: faster, and music keeps its quality."
+private fun listenDetail(l: ListenWith): Int = when (l) {
+    ListenWith.HEADSET_MIC -> R.string.headset_listen_headset_detail
+    ListenWith.PHONE_MIC -> R.string.headset_listen_phone_detail
 }
 
 private val FOLLOW_UP = listOf(0, 3, 6, 10, 15)
 
-private fun followUpTitle(s: Int): String = if (s == 0) "Don't wait" else "$s s"
+private fun followUpTitle(ctx: Context, s: Int): String = if (s == 0) ctx.getString(R.string.headset_dont_wait) else ctx.getString(R.string.headset_seconds, s)
 
-private fun announceFromDetail(a: AnnounceFrom): String = when (a) {
-    AnnounceFrom.CHOSEN_PEOPLE -> "Choose them in People › a person"
-    AnnounceFrom.EVERYONE -> "Anyone who writes in the apps Settings › Messages reads"
+private fun announceFromDetail(a: AnnounceFrom): Int = when (a) {
+    AnnounceFrom.CHOSEN_PEOPLE -> R.string.headset_from_chosen_detail
+    AnnounceFrom.EVERYONE -> R.string.headset_from_everyone_detail
 }
 
-private fun readDetail(r: AnnounceRead): String = when (r) {
-    AnnounceRead.ASK_FIRST -> "Who wrote first; “yes” reads it, “no” is quiet"
-    AnnounceRead.ALWAYS -> "The whole message at once"
+private fun readDetail(r: AnnounceRead): Int = when (r) {
+    AnnounceRead.ASK_FIRST -> R.string.headset_read_ask_detail
+    AnnounceRead.ALWAYS -> R.string.headset_read_always_detail
 }
 
 @Composable
@@ -209,72 +215,80 @@ fun HeadsetSettingsScreen(d: HeadsetPageData, act: HandsFreeActions, snackbar: S
     val s = f.settings
     fun set(n: HeadsetSettings) = act.headset(f.copy(settings = n))
     var device by rememberSaveable { mutableStateOf<Int?>(null) }
-    PreferenceScreen("Headset", onBack, snackbar = snackbar) {
+    val ctx = LocalContext.current
+    val langs = LocalLangs.current
+    val tListening = stringResource(R.string.headset_listening)
+    val tPrivacy = stringResource(R.string.headset_privacy)
+    val tNew = stringResource(R.string.headset_new_messages)
+    val tYours = stringResource(R.string.headset_yours)
+    val tNearby = stringResource(R.string.headset_nearby)
+    val footer = stringResource(R.string.headset_footer)
+    PreferenceScreen(UiStrings.headset().str(), onBack, snackbar = snackbar) {
         preferenceGroup(null, "button") {
-            SwitchPreference("Headset button opens Robot", if (s.buttonOpensRobot) "A long press of your headset's or car's voice button" else
-                "Off: other apps get the button", s.buttonOpensRobot, icon = RIcons.Headset) { set(s.copy(buttonOpensRobot = it)) }
+            SwitchPreference(stringResource(R.string.headset_button), stringResource(if (s.buttonOpensRobot) R.string.headset_button_on else R.string.headset_button_off),
+                s.buttonOpensRobot, icon = RIcons.Headset) { set(s.copy(buttonOpensRobot = it)) }
             val row = HeadsetSetup.row(s.buttonOpensRobot, d.facts?.buttonHandlers.orEmpty())
-            if (d.facts != null && row.ok != null) StatusPreference(row.title, row.text.removePrefix("Headset button "), if (row.ok == true) Mark.OK else Mark.TODO)
+            val title = row.titleText.str()
+            if (d.facts != null && row.ok != null) StatusPreference(title, row.textPhrase.str().removePrefix("$title "), if (row.ok == true) Mark.OK else Mark.TODO)
         }
-        preferenceGroup("Listening", "listening") {
-            ListPreference("Listen with", s.listenWith, ListenWith.entries, ::listenTitle, ::listenDetail, RIcons.Mic) { set(s.copy(listenWith = it)) }
-            SwitchPreference("Fall back to the phone mic", if (s.fallbackToPhoneMic) "If the headset's microphone doesn't connect in 3 s" else
-                "Off: the session ends instead", s.fallbackToPhoneMic) { set(s.copy(fallbackToPhoneMic = it)) }
-            ListPreference("Keep listening for a follow-up", HeadsetSettings.clampFollowUp(s.followUpSeconds), FOLLOW_UP, ::followUpTitle) {
+        preferenceGroup(tListening, "listening") {
+            ListPreference(stringResource(R.string.headset_listen_with), s.listenWith, ListenWith.entries, { it.text.render(langs) }, { ctx.getString(listenDetail(it)) },
+                RIcons.Mic) { set(s.copy(listenWith = it)) }
+            SwitchPreference(stringResource(R.string.headset_fallback), stringResource(if (s.fallbackToPhoneMic) R.string.headset_fallback_on else R.string.headset_fallback_off),
+                s.fallbackToPhoneMic) { set(s.copy(fallbackToPhoneMic = it)) }
+            ListPreference(stringResource(R.string.headset_follow_up), HeadsetSettings.clampFollowUp(s.followUpSeconds), FOLLOW_UP, { followUpTitle(ctx, it) }) {
                 set(s.copy(followUpSeconds = it))
             }
-            SwitchPreference("Speak replies in the headset", if (s.speakInHeadset) "Robot answers aloud in your ears" else "Replies show on screen only",
+            SwitchPreference(stringResource(R.string.headset_speak), stringResource(if (s.speakInHeadset) R.string.headset_speak_on else R.string.headset_speak_off),
                 s.speakInHeadset, icon = RIcons.VolumeUp) { set(s.copy(speakInHeadset = it)) }
         }
-        preferenceGroup("Privacy", "privacy") {
-            SwitchPreference("Personal answers only in private headphones", if (f.safety.personalOnlyPrivate) "Your calendar, contacts and notes never play on a speaker"
-                else "Off: personal answers play wherever the headset's sound goes", f.safety.personalOnlyPrivate, icon = RIcons.Shield) {
+        preferenceGroup(tPrivacy, "privacy") {
+            SwitchPreference(stringResource(R.string.headset_personal),
+                stringResource(if (f.safety.personalOnlyPrivate) R.string.headset_personal_on else R.string.headset_personal_off), f.safety.personalOnlyPrivate,
+                icon = RIcons.Shield) {
                 act.headset(f.copy(safety = f.safety.copy(personalOnlyPrivate = it)))
             }
-            SwitchPreference("Stop when the headset disconnects", if (s.stopOnDisconnect) "Nothing more is said once it's gone; nothing moves to the speaker"
-                else "Off: a public answer may go on, on the speaker", s.stopOnDisconnect) { set(s.copy(stopOnDisconnect = it)) }
+            SwitchPreference(stringResource(R.string.headset_stop), stringResource(if (s.stopOnDisconnect) R.string.headset_stop_on else R.string.headset_stop_off),
+                s.stopOnDisconnect) { set(s.copy(stopOnDisconnect = it)) }
         }
         // 0.8: 0.7's messages announced in private headphones, once Settings › Messages announces them.
-        preferenceGroup("New messages", "announce") {
-            if (!d.announce) PreferenceItem("Announce new messages is off", "Turn it on in Settings › Messages", RIcons.Message,
+        preferenceGroup(tNew, "announce") {
+            if (!d.announce) PreferenceItem(stringResource(R.string.headset_announce_is_off), stringResource(R.string.headset_announce_turn_on), RIcons.Message,
                 onClick = { act.open(SettingsRoutes.MESSAGES) })
             val on = d.announce && s.announceMessages
-            SwitchPreference("Announce new messages in the headset", if (on) "“Message from Marie. Read it?” in private headphones only" else "Off",
+            SwitchPreference(stringResource(R.string.headset_announce), stringResource(if (on) R.string.headset_announce_on else R.string.headset_off),
                 on, enabled = d.announce) { set(s.copy(announceMessages = it)) }
-            ListPreference("Announce from", s.announceFrom, AnnounceFrom.entries, { it.title }, detail = { announceFromDetail(it) }, enabled = on) {
+            ListPreference(stringResource(R.string.headset_announce_from), s.announceFrom, AnnounceFrom.entries, { it.text.render(langs) },
+                detail = { ctx.getString(announceFromDetail(it)) }, enabled = on) {
                 set(s.copy(announceFrom = it))
             }
-            ListPreference("Read the text", s.announceRead, AnnounceRead.entries, { it.title }, detail = { readDetail(it) }, enabled = on) {
+            ListPreference(stringResource(R.string.headset_read), s.announceRead, AnnounceRead.entries, { it.text.render(langs) },
+                detail = { ctx.getString(readDetail(it)) }, enabled = on) {
                 set(s.copy(announceRead = it))
             }
-            SwitchPreference("Announce while locked", if (s.announceLocked) "Only with Settings › Messages › Messages on the lock screen: Read and reply"
-                else "Off: nothing is announced until you unlock", s.announceLocked, enabled = on) { set(s.copy(announceLocked = it)) }
+            SwitchPreference(stringResource(R.string.headset_announce_locked),
+                stringResource(if (s.announceLocked) R.string.headset_announce_locked_on else R.string.headset_announce_locked_off), s.announceLocked, enabled = on) {
+                set(s.copy(announceLocked = it))
+            }
         }
-        preferenceGroup("Your headphones", "devices") {
+        preferenceGroup(tYours, "devices") {
             val list = HeadsetSetup.headphones(d.memory)
-            if (list.isEmpty()) PreferenceItem("None yet", "A headset is added the first time you use its button", RIcons.Headset)
-            for (h in list) PreferenceItem(h.name.ifEmpty { "Headset #${h.number}" }, HeadsetSetup.deviceLine(h), RIcons.Headset, onClick = { device = h.number })
+            if (list.isEmpty()) PreferenceItem(stringResource(R.string.headset_none), stringResource(R.string.headset_none_hint), RIcons.Headset)
+            for (h in list) PreferenceItem(h.name.ifEmpty { stringResource(R.string.headset_number, h.number) }, HeadsetSetup.deviceLineText(h).str(), RIcons.Headset,
+                onClick = { device = h.number })
         }
-        preferenceGroup("Nearby devices", "nearby") {
+        preferenceGroup(tNearby, "nearby") {
             val granted = d.facts?.bluetooth == true
-            SwitchPreference("Answer the headset's voice button properly", when {
-                !granted -> "Asks for Nearby devices. Tells your headset Robot is listening, so it doesn't beep an error after 5 s"
-                s.answerVoiceButton -> "On: the headset is told Robot is listening"
-                else -> "Off"
+            SwitchPreference(stringResource(R.string.headset_answer_button), when {
+                !granted -> stringResource(R.string.headset_answer_ask)
+                s.answerVoiceButton -> stringResource(R.string.headset_answer_on)
+                else -> stringResource(R.string.headset_off)
             }, s.answerVoiceButton && granted, icon = RIcons.Bluetooth) { on ->
                 if (on && !granted) act.ask(Manifest.permission.BLUETOOTH_CONNECT)
                 set(s.copy(answerVoiceButton = on))
             }
         }
-        preferenceFooter(
-            "A Bluetooth headset's or car's voice button, and a wired or USB headset's long press, open Robot. Robot never takes " +
-                "your play and pause buttons and holds no media session, so your music app keeps them; it resumes after Robot " +
-                "answers. During a phone call the button does nothing to the call.\n\nWith the headset's microphone, Robot uses " +
-                "the headset as for a call while it listens and answers, and lets go right after. Personal answers play only in " +
-                "headphones you said only you can hear: wired and USB headsets are, a Bluetooth headset once you say so, a car or " +
-                "a speaker never. If the headset goes, Robot stops at once. Device names stay on this phone and never enter the " +
-                "voice log.",
-        )
+        preferenceFooter(footer)
     }
     device?.let { n -> d.memory.byNumber(n)?.let { h -> DeviceDialog(h, onDismiss = { device = null }, act = act, car = false) } }
 }
@@ -283,42 +297,50 @@ fun HeadsetSettingsScreen(d: HeadsetPageData, act: HandsFreeActions, snackbar: S
 @Composable
 private fun DeviceDialog(d: RememberedDevice, onDismiss: () -> Unit, act: HandsFreeActions, car: Boolean) {
     var forget by rememberSaveable { mutableStateOf(false) }
-    if (forget) return ConfirmDialog("Forget “${d.name}”?", if (car) "Car mode won't start when it connects." else
-        "Robot asks again whether it is private the next time.", "Forget", onDismiss = onDismiss) { act.devices { it.forget(d.number) }; onDismiss() }
+    if (forget) return ConfirmDialog(stringResource(R.string.headset_forget_title, d.name),
+        stringResource(if (car) R.string.car_forget_text else R.string.headset_forget_text), stringResource(R.string.headset_forget), onDismiss = onDismiss) {
+        act.devices { it.forget(d.number) }; onDismiss()
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(d.name.ifEmpty { if (car) "Car #${d.number}" else "Headset #${d.number}" }) },
-        text = { Text(if (car) "Car mode starts when this car connects, and ends 30 s after it goes." else "Is it headphones only you can hear?") },
+        title = { Text(d.name.ifEmpty { stringResource(if (car) R.string.car_number else R.string.headset_number, d.number) }) },
+        text = { Text(stringResource(if (car) R.string.car_device_text else R.string.headset_device_text)) },
         confirmButton = {
             if (car) TextButton(onClick = { act.devices { it.setEnabled(d.number, !d.enabled) }; onDismiss() }, modifier = Modifier.heightIn(min = 48.dp)) {
-                Text(if (d.enabled) "Turn off" else "Turn on")
-            } else TextButton(onClick = { act.devices { it.answerPrivate(d.number, true) }; onDismiss() }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Private") }
+                Text(stringResource(if (d.enabled) R.string.car_turn_off else R.string.car_turn_on))
+            } else TextButton(onClick = { act.devices { it.answerPrivate(d.number, true) }; onDismiss() }, modifier = Modifier.heightIn(min = 48.dp)) {
+                Text(stringResource(R.string.headset_private))
+            }
         },
         dismissButton = {
-            if (!car) TextButton(onClick = { act.devices { it.answerPrivate(d.number, false) }; onDismiss() }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Not private") }
-            TextButton(onClick = { forget = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Forget") }
+            if (!car) TextButton(onClick = { act.devices { it.answerPrivate(d.number, false) }; onDismiss() }, modifier = Modifier.heightIn(min = 48.dp)) {
+                Text(stringResource(R.string.headset_not_private))
+            }
+            TextButton(onClick = { forget = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.headset_forget)) }
         },
     )
 }
 
 // ---------------------------------------------------------------------------------------------- Settings › Car mode
 
-private fun graceTitle(s: Int): String = when (s) { 0 -> "At once"; else -> if (s < 60) "$s s after it disconnects" else "${s / 60} min after it disconnects" }
-
-private fun hoursTitle(h: Int): String = if (h == 1) "1 hour" else "$h hours"
-
-private fun lockDetail(l: CarLockUse): String = when (l) {
-    CarLockUse.AFTER_ONE_UNLOCK -> "The default. Unlock once in the car: calls, what's next and navigating home work locked until the car goes"
-    CarLockUse.ALWAYS -> "Car functions work locked whenever your car is connected, unlocked or not"
-    CarLockUse.NEVER -> "Unlock each time"
+private fun graceTitle(ctx: Context, s: Int): String = when (s) {
+    0 -> ctx.getString(R.string.car_grace_now)
+    else -> if (s < 60) ctx.getString(R.string.car_grace_seconds, s) else ctx.getString(R.string.car_grace_minutes, s / 60)
 }
 
-private fun callDetail(c: CallSetting): String = when (c) {
-    CallSetting.OPEN_DIALER -> "The default. The dialer opens with the number; you tap Call"
-    CallSetting.CALL_AFTER_YES -> "Needs the Phone permission. Robot reads back who and which number, then calls after your yes"
+private fun lockDetail(l: CarLockUse): Int = when (l) {
+    CarLockUse.AFTER_ONE_UNLOCK -> R.string.car_lock_after_detail
+    CarLockUse.ALWAYS -> R.string.car_lock_always_detail
+    CarLockUse.NEVER -> R.string.car_lock_never_detail
 }
 
-private fun placeLine(p: SavedPlace?): String = p?.let { it.label + " · " + String.format(Locale.US, "%.4f, %.4f", it.lat, it.lon) } ?: "Not set"
+private fun callDetail(c: CallSetting): Int = when (c) {
+    CallSetting.OPEN_DIALER -> R.string.car_call_dialer_detail
+    CallSetting.CALL_AFTER_YES -> R.string.car_call_yes_detail
+}
+
+private fun placeLine(ctx: Context, p: SavedPlace?): String =
+    p?.let { it.label + " · " + String.format(Locale.US, "%.4f, %.4f", it.lat, it.lon) } ?: ctx.getString(R.string.car_not_set)
 
 @Composable
 fun CarSettingsScreen(d: CarPageData, act: HandsFreeActions, snackbar: SnackbarHostState, onBack: () -> Unit) {
@@ -328,110 +350,126 @@ fun CarSettingsScreen(d: CarPageData, act: HandsFreeActions, snackbar: SnackbarH
     var car by rememberSaveable { mutableStateOf<Int?>(null) }
     var place by rememberSaveable { mutableStateOf<String?>(null) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
-    PreferenceScreen("Car mode", onBack, snackbar = snackbar) {
-        item(key = "main") { MainSwitchBar("Use car mode", f.on) { act.car(f.copy(on = it)) } }
-        preferenceGroup("Your cars", "cars") {
-            for (c in d.memory.cars) TwoTargetSwitchPreference(c.name.ifEmpty { "Car #${c.number}" }, if (c.enabled) "Car mode starts when it connects" else "Off",
-                c.enabled, onClick = { car = c.number }, onCheckedChange = { on -> act.devices { it.setEnabled(c.number, on) } }, switchLabel = "${c.name} starts car mode",
-                enabled = f.on, icon = RIcons.Car)
-            PreferenceItem("Add your car", if (d.memory.cars.isEmpty()) "Car mode starts by itself once your car is added. Connect it first" else null,
+    val ctx = LocalContext.current
+    val langs = LocalLangs.current
+    val use = stringResource(R.string.car_use)
+    val tYours = stringResource(R.string.car_yours)
+    val tWhen = stringResource(R.string.car_when_run)
+    val tCalls = UiStrings.calls().str()
+    val tPlaces = stringResource(R.string.car_places)
+    val tNew = stringResource(R.string.headset_new_messages)
+    val tDrive = stringResource(R.string.car_while_drive)
+    val footer = stringResource(R.string.car_footer)
+    PreferenceScreen(UiStrings.carMode().str(), onBack, snackbar = snackbar) {
+        item(key = "main") { MainSwitchBar(use, f.on) { act.car(f.copy(on = it)) } }
+        preferenceGroup(tYours, "cars") {
+            for (c in d.memory.cars) TwoTargetSwitchPreference(c.name.ifEmpty { stringResource(R.string.car_number, c.number) },
+                stringResource(if (c.enabled) R.string.car_starts_on_connect else R.string.car_off),
+                c.enabled, onClick = { car = c.number }, onCheckedChange = { on -> act.devices { it.setEnabled(c.number, on) } },
+                switchLabel = stringResource(R.string.car_starts_label, c.name), enabled = f.on, icon = RIcons.Car)
+            PreferenceItem(UiStrings.addYourCar().str(), if (d.memory.cars.isEmpty()) stringResource(R.string.car_add_hint) else null,
                 RIcons.Add, enabled = f.on, onClick = { act.open(HandsFreeRoutes.ADD_CAR) })
         }
-        preferenceGroup("When car mode runs", "run") {
-            SwitchPreference("Start car mode when my car connects", if (s.startOnConnect) "In under 5 s" else "Off: say “car mode”", s.startOnConnect,
-                enabled = f.on) { set(s.copy(startOnConnect = it)) }
-            ListPreference("End car mode", CarSettings.clampGrace(s.endGraceSeconds), CarSettings.GRACE_CHOICES, ::graceTitle, enabled = f.on) {
+        preferenceGroup(tWhen, "run") {
+            SwitchPreference(stringResource(R.string.car_start_connect), stringResource(if (s.startOnConnect) R.string.car_start_connect_on else R.string.car_start_connect_off),
+                s.startOnConnect, enabled = f.on) { set(s.copy(startOnConnect = it)) }
+            ListPreference(stringResource(R.string.car_end_mode), CarSettings.clampGrace(s.endGraceSeconds), CarSettings.GRACE_CHOICES, { graceTitle(ctx, it) },
+                enabled = f.on) {
                 set(s.copy(endGraceSeconds = it))
             }
-            SwitchPreference("Speak through the car as a call", if (s.speakAsCall) "Cars lower the radio for it" else "Off: through the car's media, only if it plays Bluetooth",
+            SwitchPreference(stringResource(R.string.car_speak_call), stringResource(if (s.speakAsCall) R.string.car_speak_call_on else R.string.car_speak_call_off),
                 s.speakAsCall, enabled = f.on, icon = RIcons.VolumeUp) { set(s.copy(speakAsCall = it)) }
-            ListPreference("After “hey robot” in the car, listen with", s.wakeListenWith, ListenWith.entries, { if (it == ListenWith.PHONE_MIC) "Phone microphone" else
-                "The car's microphone" }, { if (it == ListenWith.PHONE_MIC) "The default: nothing of the question is lost" else "About 1 s later" }, enabled = f.on) {
+            val phoneMicDetail = stringResource(R.string.car_phone_mic_detail)
+            val carMicDetail = stringResource(R.string.car_car_mic_detail)
+            ListPreference(stringResource(R.string.car_wake_listen), s.wakeListenWith, ListenWith.entries,
+                { ctx.getString(if (it == ListenWith.PHONE_MIC) R.string.car_phone_mic else R.string.car_car_mic) },
+                { if (it == ListenWith.PHONE_MIC) phoneMicDetail else carMicDetail }, enabled = f.on) {
                 set(s.copy(wakeListenWith = it))
             }
-            ListPreference("Use car mode without unlocking", s.lockUse, CarLockUse.entries, { it.title }, ::lockDetail, RIcons.Lock, enabled = f.on) {
+            ListPreference(stringResource(R.string.car_lock_use), s.lockUse, CarLockUse.entries, { it.text.render(langs) }, { ctx.getString(lockDetail(it)) },
+                RIcons.Lock, enabled = f.on) {
                 set(s.copy(lockUse = it))
             }
-            ListPreference("Unlocked features last", CarSettings.clampHours(s.trustedHours), CarSettings.HOUR_CHOICES, { "Until the car goes, at most ${hoursTitle(it)}" },
-                enabled = f.on) { set(s.copy(trustedHours = it)) }
-            SwitchPreference("Keep the screen on", if (s.keepScreenOn) "While the car screen shows" else "Off", s.keepScreenOn, enabled = f.on) {
+            ListPreference(stringResource(R.string.car_trusted_last), CarSettings.clampHours(s.trustedHours), CarSettings.HOUR_CHOICES,
+                { ctx.resources.getQuantityString(R.plurals.car_trusted_hours, it, it) }, enabled = f.on) { set(s.copy(trustedHours = it)) }
+            SwitchPreference(stringResource(R.string.car_screen_on), stringResource(if (s.keepScreenOn) R.string.car_screen_on_on else R.string.car_off),
+                s.keepScreenOn, enabled = f.on) {
                 set(s.copy(keepScreenOn = it))
             }
         }
-        preferenceGroup("Calls", "calls") {
+        preferenceGroup(tCalls, "calls") {
             val phone = d.facts?.callPhone == true
-            ListPreference("Calls", s.calls, CallSetting.entries, { it.title }, ::callDetail, RIcons.Call, enabled = f.on) { c ->
+            ListPreference(tCalls, s.calls, CallSetting.entries, { it.text.render(langs) }, { ctx.getString(callDetail(it)) }, RIcons.Call, enabled = f.on) { c ->
                 if (c == CallSetting.CALL_AFTER_YES && !phone) act.ask(Manifest.permission.CALL_PHONE)
                 set(s.copy(calls = c))
             }
             if (s.calls == CallSetting.CALL_AFTER_YES) {
-                StatusPreference("Phone permission", if (phone) "Allowed: Robot calls after your spoken yes" else "Not allowed: the dialer opens instead",
+                val allow = stringResource(R.string.car_allow)
+                StatusPreference(stringResource(R.string.car_phone_permission),
+                    stringResource(if (phone) R.string.car_phone_permission_ok else R.string.car_phone_permission_no),
                     if (phone) Mark.OK else Mark.TODO, action = if (phone) null else ({
-                        TextButton(onClick = { act.ask(Manifest.permission.CALL_PHONE) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Allow") }
+                        TextButton(onClick = { act.ask(Manifest.permission.CALL_PHONE) }, modifier = Modifier.heightIn(min = 48.dp)) { Text(allow) }
                     }))
-                SwitchPreference("Place a call after a spoken yes", if (d.callAfterYes) "On (Safety & privacy)" else "Off: every call opens the dialer",
+                SwitchPreference(stringResource(R.string.car_call_after_yes),
+                    stringResource(if (d.callAfterYes) R.string.car_call_after_yes_on else R.string.car_call_after_yes_off),
                     d.callAfterYes, enabled = f.on) { act.callAfterYes(it) }
             }
         }
-        preferenceGroup("Places", "places") {
+        preferenceGroup(tPlaces, "places") {
             for ((which, p) in listOf("home" to d.places.home, "work" to d.places.work)) {
-                val title = if (which == "home") "Home" else "Work"
-                PreferenceItem(title, placeLine(p), if (which == "home") RIcons.Home else RIcons.Place, enabled = f.on, onClick = { place = which }, trailing = {
+                val title = stringResource(if (which == "home") R.string.car_home else R.string.car_work)
+                val unknown = stringResource(R.string.car_where_unknown)
+                PreferenceItem(title, placeLine(ctx, p), if (which == "home") RIcons.Home else RIcons.Place, enabled = f.on, onClick = { place = which }, trailing = {
                     // Where the phone is now (approximate: Robot has no precise location).
                     TextButton(onClick = {
                         scope.launch {
                             val here = act.here()
-                            if (here == null) snackbar.showSnackbar("Robot doesn't know where the phone is. Allow approximate location, or paste coordinates.")
+                            if (here == null) snackbar.showSnackbar(unknown)
                             else act.places((SavedPlace.of(title, here.first, here.second)).let { sp -> if (which == "home") d.places.copy(home = sp) else d.places.copy(work = sp) })
                         }
-                    }, enabled = f.on, modifier = Modifier.heightIn(min = 48.dp)) { Text("Here") }
+                    }, enabled = f.on, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.car_here)) }
                 })
             }
         }
         // 0.8: 0.7's messages announced in the car while car mode runs, once Settings › Messages announces them.
-        preferenceGroup("New messages", "announce") {
-            if (!d.announce) PreferenceItem("Announce new messages is off", "Turn it on in Settings › Messages", RIcons.Message,
+        preferenceGroup(tNew, "announce") {
+            if (!d.announce) PreferenceItem(stringResource(R.string.headset_announce_is_off), stringResource(R.string.headset_announce_turn_on), RIcons.Message,
                 onClick = { act.open(SettingsRoutes.MESSAGES) })
             val on = f.on && d.announce
-            ListPreference("Announce new messages", if (d.announce) s.announce else CarAnnounce.OFF, CarAnnounce.entries, { it.title }, enabled = on) {
+            ListPreference(UiStrings.announceNewMessages().str(), if (d.announce) s.announce else CarAnnounce.OFF, CarAnnounce.entries, { it.text.render(langs) },
+                enabled = on) {
                 set(s.copy(announce = it))
             }
             val announcing = on && s.announce != CarAnnounce.OFF
-            ListPreference("Announce from", s.announceFrom, CarAnnounceFrom.entries, { it.title }, enabled = announcing) { set(s.copy(announceFrom = it)) }
-            ListPreference("Read message text aloud when others may hear", s.readAloud, ReadAloud.entries, { it.title }, enabled = announcing) {
+            ListPreference(stringResource(R.string.headset_announce_from), s.announceFrom, CarAnnounceFrom.entries, { it.text.render(langs) },
+                enabled = announcing) { set(s.copy(announceFrom = it)) }
+            ListPreference(stringResource(R.string.car_read_aloud), s.readAloud, ReadAloud.entries, { it.text.render(langs) }, enabled = announcing) {
                 set(s.copy(readAloud = it))
             }
-            SwitchPreference("Replies by voice", if (s.voiceReplies) "Read back word for word, then “send”, where Settings › Messages lets a spoken yes send; " +
-                "otherwise the reply card shows" else "Off: the reply card shows, as outside the car",
-                s.voiceReplies, enabled = announcing) { set(s.copy(voiceReplies = it)) }
+            SwitchPreference(stringResource(R.string.car_voice_replies),
+                stringResource(if (s.voiceReplies) R.string.car_voice_replies_on else R.string.car_voice_replies_off), s.voiceReplies, enabled = announcing) {
+                set(s.copy(voiceReplies = it))
+            }
         }
-        preferenceGroup("While you drive", "drive") {
+        preferenceGroup(tDrive, "drive") {
             // 1.0 (the user, 13 Oct 2026): no driving restrictions, so no row holds anything for when you park.
             val dnd = d.facts?.dndAccess == true
-            SwitchPreference("Do Not Disturb while driving", when {
-                !dnd -> "Needs Do Not Disturb access: Robot switches only its own “Driving (Robot)” mode"
-                s.dndWhileDriving -> "“Driving (Robot)” is on while car mode is"
-                else -> "Off"
+            SwitchPreference(stringResource(R.string.car_dnd), when {
+                !dnd -> stringResource(R.string.car_dnd_needs)
+                s.dndWhileDriving -> stringResource(R.string.car_dnd_on)
+                else -> stringResource(R.string.car_off)
             }, s.dndWhileDriving && dnd, enabled = f.on) { on ->
                 if (on && !dnd) act.openDndAccess()
                 set(s.copy(dndWhileDriving = on))
             }
             val bt = d.facts?.bluetooth == true
-            StatusPreference("Nearby devices", if (bt) "Allowed: Robot knows your car exactly" else "Optional: Robot knows your car by its name",
+            val allow = stringResource(R.string.car_allow)
+            StatusPreference(stringResource(R.string.headset_nearby), stringResource(if (bt) R.string.car_nearby_ok else R.string.car_nearby_no),
                 if (bt) Mark.OK else Mark.TODO, action = if (bt) null else ({
-                    TextButton(onClick = { act.ask(Manifest.permission.BLUETOOTH_CONNECT) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Allow") }
+                    TextButton(onClick = { act.ask(Manifest.permission.BLUETOOTH_CONNECT) }, modifier = Modifier.heightIn(min = 48.dp)) { Text(allow) }
                 }))
         }
-        preferenceFooter(
-            "Car mode is Robot's own hands-free mode over your car's Bluetooth, not Android Auto. When your car connects, Robot " +
-                "says “Car mode on”, talks through the car, and shows big buttons. Press your car's voice button or say “hey " +
-                "robot”, then “navigate home”, “call Mom” or “what's next”. Answers are short. Everything else works as it does " +
-                "outside the car: Robot doesn't hold or refuse anything because you're driving, since a passenger may be the " +
-                "one asking.\n\nCalls open the dialer unless " +
-                "you choose to call after a spoken yes; emergency numbers always open the dialer, and Robot never calls one " +
-                "itself. Navigation opens your maps app's route preview, where you tap Start. Places are kept on this " +
-                "phone only: type or paste coordinates (in your maps app: a place › Copy coordinates), or use where you are now.",
-        )
+        preferenceFooter(footer)
     }
     car?.let { n -> d.memory.byNumber(n)?.let { c -> DeviceDialog(c, onDismiss = { car = null }, act = act, car = true) } }
     place?.let { which -> PlaceDialog(which, if (which == "home") d.places.home else d.places.work, onDismiss = { place = null }) { p ->
@@ -442,10 +480,11 @@ fun CarSettingsScreen(d: CarPageData, act: HandsFreeActions, snackbar: SnackbarH
 /** Home or Work: a name and coordinates (typed, pasted from Organic Maps, or where the phone is now). Clear removes it. */
 @Composable
 private fun PlaceDialog(which: String, now: SavedPlace?, onDismiss: () -> Unit, onSave: (SavedPlace?) -> Unit) {
-    val title = if (which == "home") "Home" else "Work"
+    val title = stringResource(if (which == "home") R.string.car_home else R.string.car_work)
     val initial = now?.let { String.format(Locale.US, "%.5f, %.5f", it.lat, it.lon) } ?: ""
-    EditDialog(title, initial, "Coordinates", "Such as 45.50170, -73.56730 (in your maps app: a place › Copy coordinates). Empty: none.",
-        validate = { t -> if (t.isBlank() || CarSetup.coordinates(t) != null) null else "Coordinates, such as 45.5017, -73.5673" },
+    val problem = stringResource(R.string.car_coordinates_problem)
+    EditDialog(title, initial, stringResource(R.string.car_coordinates), stringResource(R.string.car_coordinates_hint),
+        validate = { t -> if (t.isBlank() || CarSetup.coordinates(t) != null) null else problem },
         keyboard = KeyboardOptions(keyboardType = KeyboardType.Text, autoCorrectEnabled = false),
         onDismiss = onDismiss,
         onSave = { t ->
@@ -459,18 +498,20 @@ private fun PlaceDialog(which: String, now: SavedPlace?, onDismiss: () -> Unit, 
 @Composable
 fun AddCarScreen(d: CarPageData, act: HandsFreeActions, snackbar: SnackbarHostState, onBack: () -> Unit) {
     var ask by remember { mutableStateOf<SeenDevice?>(null) }
-    val lang = SpokenLang.of(Locale.getDefault().toLanguageTag())
-    PreferenceScreen("Add your car", onBack, snackbar = snackbar) {
-        preferenceGroup("Connected now", "now") {
-            if (d.candidates.isEmpty()) PreferenceItem("No Bluetooth device is connected", "Turn the car on and let the phone connect to it, then come back", RIcons.Bluetooth)
-            for (c in d.candidates) PreferenceItem(c.seen.name.ifEmpty { "A Bluetooth device" }, (if (c.suggested) "Bluetooth says it's a car · " else "") +
-                (c.seen.tail?.let { "…$it" } ?: ""), if (c.suggested) RIcons.Car else RIcons.Bluetooth, onClick = { ask = c.seen })
+    val tNow = stringResource(R.string.car_connected_now)
+    val footer = stringResource(R.string.car_add_footer)
+    PreferenceScreen(UiStrings.addYourCar().str(), onBack, snackbar = snackbar) {
+        preferenceGroup(tNow, "now") {
+            if (d.candidates.isEmpty()) PreferenceItem(stringResource(R.string.car_none_connected), stringResource(R.string.car_none_hint), RIcons.Bluetooth)
+            val saysCar = stringResource(R.string.car_says_car)
+            for (c in d.candidates) PreferenceItem(c.seen.name.ifEmpty { stringResource(R.string.car_a_device) },
+                listOfNotNull(saysCar.takeIf { c.suggested }, c.seen.tail?.let { "…$it" }).joinToString(" · "),
+                if (c.suggested) RIcons.Car else RIcons.Bluetooth, onClick = { ask = c.seen })
         }
-        preferenceFooter("Robot lists the Bluetooth audio devices connected now. Your car is remembered by its name and the end of its " +
-            "address (all of it with Nearby devices), on this phone only. A car is never treated as private headphones.")
+        preferenceFooter(footer)
     }
     ask?.let { seen ->
-        ConfirmDialog(CarDetect.question(seen, lang), "Car mode will start when it connects.", "Yes, it's my car", onDismiss = { ask = null }) {
+        ConfirmDialog(CarDetect.questionText(seen).str(), stringResource(R.string.car_add_confirm_text), stringResource(R.string.car_add_yes), onDismiss = { ask = null }) {
             act.devices { m -> m.remember(seen, DeviceRole.CAR, System.currentTimeMillis())?.first ?: m }
             ask = null
             onBack()
@@ -499,6 +540,6 @@ fun HandsFreeNoticeLine(onOpen: () -> Unit) {
     }
     if (!show) return
     fun seen() { show = false; HandsFreeFiles.store(ctx).editHeadset { it.copy(noticeSeen = true) } }
-    NoticeRow(HandsFreeNotice.TEXT, onDismiss = ::seen, icon = RIcons.Headset, action = "Open", onAction = { seen(); onOpen() },
+    NoticeRow(HandsFreeNotice.text.str(), onDismiss = ::seen, icon = RIcons.Headset, action = stringResource(R.string.headset_open), onAction = { seen(); onOpen() },
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
 }

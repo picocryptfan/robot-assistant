@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.TurnStrings
+import app.heyrobot.core.i18n.UiStrings
 import java.text.Normalizer
 import java.util.Locale
 
@@ -13,14 +16,17 @@ import java.util.Locale
 
 object ChatOnly {
     /** Robot's answer when you ask a chat-only model to act: what it can't do, and where to choose a model that can. */
-    const val REPLY = "This model can only chat: it can't do things on the phone (timers, alarms, texts, notes, the calendar, maps) " +
-        "or look anything up. To have Robot do that, choose Fast in Settings › Model."
+    val reply: Phrase get() = TurnStrings.chatOnly("page" to UiStrings.inSettings(UiStrings.model))
+
+    val REPLY: String get() = reply.en()
 
     /** The same, as the voice says it (no "›"). */
-    val SPOKEN: String = REPLY.replace(" › ", ", ")
+    val SPOKEN: String get() = REPLY.replace(" › ", ", ")
 
     /** The notice under it, whose button opens Settings › Model: an offer, never a switch made for you. */
-    const val NOTICE = "For actions, choose Fast in Settings › Model."
+    val notice: Phrase get() = TurnStrings.chatOnlyNotice("page" to UiStrings.inSettings(UiStrings.model))
+
+    val NOTICE: String get() = notice.en()
 
     /**
      * The action [question] clearly asks for, or null: only a request worded as one from its start ("set a timer…",
@@ -88,9 +94,9 @@ object ChatOnly {
      * When a calendar question asks about: "today", "this week", "next Monday", "Friday". Never "this" or "next" alone:
      * "what's on this X-ray?" and "what do I have on my arm?" are questions about a photo or the body.
      */
-    private const val WHEN = "today|tomorrow|tonight|this (morning|afternoon|evening|week|weekend|month)|next (week|weekend|month|$DAY)|$DAY"
+    private const val WHEN = "today|tomorrow|tonight|this (morning|afternoon|evening|week|weekend|month)|next (week|weekend|month|$DAY)|$DAY" // l10n: not text (heard words)
     /** The same in French: "qu'est-ce que j'ai de prévu demain", never "qu'est-ce que j'ai au bras". */
-    private const val QUAND = "de prevu|prevu|au programme|aujourd ?hui|demain|ce (soir|matin|midi|week end|weekend)|cette (semaine|apres midi)|$DAY"
+    private const val QUAND = "de prevu|prevu|au programme|aujourd ?hui|demain|ce (soir|matin|midi|week end|weekend)|cette (semaine|apres midi)|$DAY" // l10n: not text (heard words)
     /** "open wound", "close the cut", "open-angle glaucoma": a body, a wound or a diagnosis after open or close is never an app. */
     private const val NOT_APP = "(?!(?:the |a |an |my |your )?(?:wounds?|cuts?|fractures?|sores?|heart|surgery|mouth|eyes?|skin|blisters?|bites?|" +
         "lesions?|incisions?|gap|up|wide|angle|pneumothorax|reduction|airways?|pores?|bowels?|chest|abdomen|ulcers?|abscess(?:es)?|sinuses|" +

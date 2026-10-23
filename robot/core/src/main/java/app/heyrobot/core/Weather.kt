@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.InfoStrings
+import app.heyrobot.core.i18n.ListKind
+import app.heyrobot.core.i18n.Msg
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.TurnStrings
+import app.heyrobot.core.i18n.UiStrings
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.Normalizer
@@ -54,24 +60,30 @@ enum class WeatherSource(override val id: Int, override val title: String) : Log
     LAST_KNOWN(4, "the phone's last known location"), HOME_NO_FIX(5, "your Home for weather (no location fix)"),
 }
 
-/** Why a weather lookup failed: [text] for the card and the model (fixed wording), [title] for the voice log. */
-enum class WeatherFail(override val id: Int, override val title: String, val text: String) : LogCode {
-    NO_INTERNET(1, "no internet", "No internet: Robot couldn't reach Open-Meteo, the weather service."),
-    NO_NETWORK_PERMISSION(2, "no network permission", "Robot isn't allowed to use the network. Turn on Network for Robot in Android's app settings."),
-    BUSY(3, "rate limited", "The weather service is busy just now. Try again in a while."),
-    SERVICE(4, "service error", "The weather service didn't answer properly. Try again later."),
-    NO_PLACE(5, "place not found", "Open-Meteo doesn't know that place. Try the town's name, or add the country."),
-    NO_LOCATION(6, "no location fix", "Robot couldn't tell where you are just now. Name a town, or set a Home for weather in Robot's settings."),
-    LOCATION_OFF(7, "location off", "Location is off on this phone. Turn it on, name a town, or set a Home for weather in Robot's settings."),
-    NO_DAYS(8, "no forecast for those days", "Open-Meteo has forecasts for today and the next 15 days only."),
-    NO_HOME(9, "no Home for weather", "No Home for weather is set. Set one in Robot's Settings › Weather, or name a town."),
+/**
+ * Why a weather lookup failed: [text] for the model (fixed wording, English), [phrase] the same words for the card (in the
+ * reply language), [title] for the voice log.
+ */
+enum class WeatherFail(override val id: Int, override val title: String, private val msg: Msg) : LogCode {
+    NO_INTERNET(1, "no internet", InfoStrings.weatherNoInternet),
+    NO_NETWORK_PERMISSION(2, "no network permission", InfoStrings.weatherNoNetwork),
+    BUSY(3, "rate limited", InfoStrings.weatherBusy),
+    SERVICE(4, "service error", InfoStrings.weatherService),
+    NO_PLACE(5, "place not found", InfoStrings.weatherNoPlace),
+    NO_LOCATION(6, "no location fix", InfoStrings.weatherNoLocation),
+    LOCATION_OFF(7, "location off", InfoStrings.weatherLocationOff),
+    NO_DAYS(8, "no forecast for those days", InfoStrings.weatherNoDays),
+    NO_HOME(9, "no Home for weather", InfoStrings.weatherNoHome),
     /** The whole lookup (place and forecast) took longer than [WeatherAsk.DEADLINE_MS]. */
-    TIMEOUT(10, "took too long", "The weather took too long to come. Try again in a moment."),
+    TIMEOUT(10, "took too long", InfoStrings.weatherTimeout),
     /** Stop ended it. */
-    STOPPED(11, "stopped", "Stopped."),
+    STOPPED(11, "stopped", TurnStrings.stopped),
     /** Android refused the location to the assistant's process (it counted as in the background). */
-    LOCATION_BACKGROUND(12, "location refused in the background",
-        "Android didn't let Robot see where you are from the assistant. Name a town, or set a Home for weather in Robot's settings."),
+    LOCATION_BACKGROUND(12, "location refused in the background", InfoStrings.weatherBackground);
+
+    val phrase: Phrase get() = if (this == NO_HOME) msg("page" to UiStrings.inSettings(UiStrings.weather)) else msg()
+
+    val text: String get() = phrase.en()
 }
 
 /** How the phone's position was looked for, for the voice log (VoiceEvent.WEATHER_LOCATION): codes only, never where. */
@@ -83,19 +95,25 @@ enum class LocationCode(override val id: Int, override val title: String) : LogC
 
 /** WMO weather interpretation codes (as Open-Meteo gives them) in plain words. */
 object Wmo {
-    private val WORDS = mapOf(
-        0 to "clear", 1 to "mostly clear", 2 to "partly cloudy", 3 to "overcast",
-        45 to "fog", 48 to "freezing fog",
-        51 to "light drizzle", 53 to "drizzle", 55 to "heavy drizzle", 56 to "light freezing drizzle", 57 to "freezing drizzle",
-        61 to "light rain", 63 to "rain", 65 to "heavy rain", 66 to "light freezing rain", 67 to "freezing rain",
-        71 to "light snow", 73 to "snow", 75 to "heavy snow", 77 to "snow grains",
-        80 to "light showers", 81 to "showers", 82 to "heavy showers", 85 to "light snow showers", 86 to "snow showers",
-        95 to "thunderstorms", 96 to "thunderstorms with hail", 99 to "thunderstorms with heavy hail",
+    private val WORDS: Map<Int, Msg> = mapOf(
+        0 to InfoStrings.wmoClear, 1 to InfoStrings.wmoMostlyClear, 2 to InfoStrings.wmoPartlyCloudy, 3 to InfoStrings.wmoOvercast,
+        45 to InfoStrings.wmoFog, 48 to InfoStrings.wmoFreezingFog,
+        51 to InfoStrings.wmoLightDrizzle, 53 to InfoStrings.wmoDrizzle, 55 to InfoStrings.wmoHeavyDrizzle,
+        56 to InfoStrings.wmoLightFreezingDrizzle, 57 to InfoStrings.wmoFreezingDrizzle,
+        61 to InfoStrings.wmoLightRain, 63 to InfoStrings.wmoRain, 65 to InfoStrings.wmoHeavyRain, 66 to InfoStrings.wmoLightFreezingRain,
+        67 to InfoStrings.wmoFreezingRain,
+        71 to InfoStrings.wmoLightSnow, 73 to InfoStrings.wmoSnow, 75 to InfoStrings.wmoHeavySnow, 77 to InfoStrings.wmoSnowGrains,
+        80 to InfoStrings.wmoLightShowers, 81 to InfoStrings.wmoShowers, 82 to InfoStrings.wmoHeavyShowers, 85 to InfoStrings.wmoLightSnowShowers,
+        86 to InfoStrings.wmoSnowShowers,
+        95 to InfoStrings.wmoThunderstorms, 96 to InfoStrings.wmoThunderstormsHail, 99 to InfoStrings.wmoThunderstormsHeavyHail,
     )
     private val SNOW = setOf(71, 73, 75, 77, 85, 86)
 
-    /** Null for a code WMO doesn't define (or none): the line then goes without it. */
-    fun words(code: Int?): String? = code?.let { WORDS[it] }
+    /** Null for a code WMO doesn't define (or none): the line then goes without it. In English (the model's). */
+    fun words(code: Int?): String? = text(code)?.en()
+
+    /** [words] in words without a language yet (the card). */
+    fun text(code: Int?): Phrase? = code?.let { WORDS[it]?.invoke() }
 
     fun snowy(code: Int?): Boolean = code in SNOW
 }
@@ -133,7 +151,15 @@ data class GeoSearch(val name: String, val quals: List<String> = emptyList())
 /** What the searches for a place found: it, a town by that name but none where it was said to be, or nothing. */
 sealed class GeoAnswer {
     data class Found(val place: GeoResult) : GeoAnswer()
-    data class NotThere(val detail: String) : GeoAnswer()
+    data class NotThere(val detail: String) : GeoAnswer() {
+        /** 1.1: [detail] in words without a language yet. */
+        var why: Phrase = Phrase.plain(detail)
+            private set
+
+        constructor(why: Phrase) : this(why.en()) {
+            this.why = why
+        }
+    }
     data object None : GeoAnswer()
 }
 
@@ -156,7 +182,7 @@ object OpenMeteo {
     /** Name searches for one place at most (each a request). */
     const val MAX_SEARCHES = 3
     /** The credit Open-Meteo's CC BY 4.0 data asks for wherever it is shown: the last line of the weather card. */
-    const val ATTRIBUTION = "Weather data by Open-Meteo.com, CC BY 4.0"
+    const val ATTRIBUTION = "Weather data by Open-Meteo.com, CC BY 4.0" // l10n: not text (a licence credit, as Open-Meteo asks for it)
 
     private const val DAILY = "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum," +
         "rain_sum,showers_sum,snowfall_sum,wind_speed_10m_max,wind_gusts_10m_max,cloud_cover_mean"
@@ -167,13 +193,13 @@ object OpenMeteo {
 
     /** The forecast for [days] days from the place's today, in its own time zone and the phone region's units. */
     fun forecastUrl(lat: Double, lon: Double, days: Int, units: WeatherUnits): String =
-        "$FORECAST?latitude=${coord(lat)}&longitude=${coord(lon)}&current=$CURRENT&daily=$DAILY&timezone=auto" +
+        "$FORECAST?latitude=${coord(lat)}&longitude=${coord(lon)}&current=$CURRENT&daily=$DAILY&timezone=auto" + // l10n: not text (a URL)
             "&forecast_days=${days.coerceIn(1, MAX_DAYS)}" +
             if (units == WeatherUnits.IMPERIAL) "&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch" else ""
 
     /** One name search: only the town's name goes (the region or country is matched here, [pick]). */
     fun geocodeUrl(s: GeoSearch): String =
-        "$GEOCODING?name=${UriText.strict(s.name)}&count=${if (s.quals.isEmpty()) CANDIDATES else QUALIFIED_CANDIDATES}&language=en&format=json"
+        "$GEOCODING?name=${UriText.strict(s.name)}&count=${if (s.quals.isEmpty()) CANDIDATES else QUALIFIED_CANDIDATES}&language=en&format=json" // l10n: not text (a URL)
 
     /**
      * The searches that may find [asked], in order. With a comma, the town and what follows it ("Paris, TX"). Without one
@@ -210,12 +236,14 @@ object OpenMeteo {
             pick(s, found)?.let { return GeoAnswer.Found(it) }
             if (missed == null) missed = s
         }
-        return missed?.let { GeoAnswer.NotThere(notThere(it)) } ?: GeoAnswer.None
+        return missed?.let { GeoAnswer.NotThere(notThereText(it)) } ?: GeoAnswer.None
     }
 
     /** "Open-Meteo knows places called Paris, but none in Ontario among the biggest. …" (your words only). */
-    fun notThere(s: GeoSearch): String =
-        "Open-Meteo knows places called ${s.name}, but none in ${s.quals.joinToString(", ")} among the biggest. Try the nearest larger town."
+    fun notThere(s: GeoSearch): String = notThereText(s).en()
+
+    /** [notThere] in words without a language yet. */
+    fun notThereText(s: GeoSearch): Phrase = InfoStrings.notThere("name" to s.name, "where" to s.quals.joinToString(", "))
 
     /** Open-Meteo's error object ({"error": true, "reason": …}): true when [json] is one. */
     fun isError(json: String?): Boolean = try { JSONObject(json ?: return false).optBoolean("error", false) } catch (_: Exception) { false }
@@ -290,18 +318,18 @@ object PlaceNames {
         "ct" to "connecticut", "de" to "delaware", "fl" to "florida", "ga" to "georgia", "hi" to "hawaii", "id" to "idaho", "il" to "illinois",
         "in" to "indiana", "ia" to "iowa", "ks" to "kansas", "ky" to "kentucky", "la" to "louisiana", "me" to "maine", "md" to "maryland",
         "ma" to "massachusetts", "mi" to "michigan", "mn" to "minnesota", "ms" to "mississippi", "mo" to "missouri", "mt" to "montana",
-        "ne" to "nebraska", "nv" to "nevada", "nh" to "new hampshire", "nj" to "new jersey", "nm" to "new mexico", "ny" to "new york",
-        "nc" to "north carolina", "nd" to "north dakota", "oh" to "ohio", "ok" to "oklahoma", "or" to "oregon", "pa" to "pennsylvania",
-        "ri" to "rhode island", "sc" to "south carolina", "sd" to "south dakota", "tn" to "tennessee", "tx" to "texas", "ut" to "utah",
-        "vt" to "vermont", "va" to "virginia", "wa" to "washington", "wv" to "west virginia", "wi" to "wisconsin", "wy" to "wyoming",
-        "dc" to "district of columbia", "d c" to "district of columbia")
-    private val CANADA = mapOf("ab" to "alberta", "bc" to "british columbia", "mb" to "manitoba", "nb" to "new brunswick",
-        "nl" to "newfoundland and labrador", "ns" to "nova scotia", "nt" to "northwest territories", "nu" to "nunavut", "on" to "ontario",
-        "pe" to "prince edward island", "qc" to "quebec", "pq" to "quebec", "sk" to "saskatchewan", "yt" to "yukon")
+        "ne" to "nebraska", "nv" to "nevada", "nh" to "new hampshire", "nj" to "new jersey", "nm" to "new mexico", "ny" to "new york", // l10n: not text (place names Robot matches)
+        "nc" to "north carolina", "nd" to "north dakota", "oh" to "ohio", "ok" to "oklahoma", "or" to "oregon", "pa" to "pennsylvania", // l10n: not text (place names Robot matches)
+        "ri" to "rhode island", "sc" to "south carolina", "sd" to "south dakota", "tn" to "tennessee", "tx" to "texas", "ut" to "utah", // l10n: not text (place names Robot matches)
+        "vt" to "vermont", "va" to "virginia", "wa" to "washington", "wv" to "west virginia", "wi" to "wisconsin", "wy" to "wyoming", // l10n: not text (place names Robot matches)
+        "dc" to "district of columbia", "d c" to "district of columbia") // l10n: not text (place names Robot matches)
+    private val CANADA = mapOf("ab" to "alberta", "bc" to "british columbia", "mb" to "manitoba", "nb" to "new brunswick", // l10n: not text (place names Robot matches)
+        "nl" to "newfoundland and labrador", "ns" to "nova scotia", "nt" to "northwest territories", "nu" to "nunavut", "on" to "ontario", // l10n: not text (place names Robot matches)
+        "pe" to "prince edward island", "qc" to "quebec", "pq" to "quebec", "sk" to "saskatchewan", "yt" to "yukon") // l10n: not text (place names Robot matches)
     private val COUNTRIES = mapOf(
-        "usa" to "united states", "us" to "united states", "u s" to "united states", "u s a" to "united states", "america" to "united states",
-        "united states of america" to "united states", "etats unis" to "united states", "uk" to "united kingdom", "u k" to "united kingdom",
-        "britain" to "united kingdom", "great britain" to "united kingdom", "royaume uni" to "united kingdom", "grande bretagne" to "united kingdom")
+        "usa" to "united states", "us" to "united states", "u s" to "united states", "u s a" to "united states", "america" to "united states", // l10n: not text (place names Robot matches)
+        "united states of america" to "united states", "etats unis" to "united states", "uk" to "united kingdom", "u k" to "united kingdom", // l10n: not text (place names Robot matches)
+        "britain" to "united kingdom", "great britain" to "united kingdom", "royaume uni" to "united kingdom", "grande bretagne" to "united kingdom") // l10n: not text (place names Robot matches)
 
     /** Letters and digits only, no accents, lower case: "Île-de-France Region" → "ile de france region". */
     fun plain(s: String) = Normalizer.normalize(s, Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "").lowercase(Locale.ROOT)
@@ -349,17 +377,17 @@ object WeatherAsk {
     }
 
     /** "today", "tomorrow", "Friday", "this week", "this weekend", "next 3 days", and the French words for them. */
-    const val SAY_DAY = "say the day like today, tomorrow, Friday or this week"
+    val SAY_DAY: String get() = InfoStrings.sayDay().en()
 
     /** Whole French phrases first, then words; a weekday followed by "prochain" is next week's. */
     private val FRENCH = listOf(
-        "aujourdhui et demain" to "next 2 days", "samedi et dimanche" to "this weekend", "les prochains jours" to "next 3 days",
-        "apres demain" to "day after tomorrow", "aujourdhui" to "today", "demain" to "tomorrow", "ce soir" to "tonight", "cette nuit" to "tonight",
-        "ce matin" to "this morning", "cet apres midi" to "this afternoon", "cette semaine" to "this week", "la semaine prochaine" to "next week",
-        "semaine prochaine" to "next week", "ce week end" to "this weekend", "ce weekend" to "this weekend", "le week end" to "this weekend",
-        "le weekend" to "this weekend", "week end" to "weekend", "lundi" to "monday", "mardi" to "tuesday", "mercredi" to "wednesday",
+        "aujourdhui et demain" to "next 2 days", "samedi et dimanche" to "this weekend", "les prochains jours" to "next 3 days", // l10n: not text (heard words)
+        "apres demain" to "day after tomorrow", "aujourdhui" to "today", "demain" to "tomorrow", "ce soir" to "tonight", "cette nuit" to "tonight", // l10n: not text (heard words)
+        "ce matin" to "this morning", "cet apres midi" to "this afternoon", "cette semaine" to "this week", "la semaine prochaine" to "next week", // l10n: not text (heard words)
+        "semaine prochaine" to "next week", "ce week end" to "this weekend", "ce weekend" to "this weekend", "le week end" to "this weekend", // l10n: not text (heard words)
+        "le weekend" to "this weekend", "week end" to "weekend", "lundi" to "monday", "mardi" to "tuesday", "mercredi" to "wednesday", // l10n: not text (heard words)
         "jeudi" to "thursday", "vendredi" to "friday", "samedi" to "saturday", "dimanche" to "sunday", "maintenant" to "today",
-        "prochains jours" to "next 3 days", "matin" to "morning", "apres midi" to "afternoon", "soir" to "evening", "nuit" to "night",
+        "prochains jours" to "next 3 days", "matin" to "morning", "apres midi" to "afternoon", "soir" to "evening", "nuit" to "night", // l10n: not text (heard words)
     )
     private val FRENCH_NEXT = Regex("""\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday) prochaine?\b""")
     private val FRENCH_DAYS = Regex("""\bles (\d{1,2}) prochains jours\b""")
@@ -379,9 +407,9 @@ object WeatherAsk {
         var t = Normalizer.normalize(day.orEmpty(), Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "").lowercase(Locale.ROOT)
             .replace("'", "").replace("’", "").replace(Regex("""(?<=[a-z])-(?=[a-z])"""), " ").replace(Regex("""[^a-z0-9:/\- ]+"""), " ")
             .replace(Regex("\\s+"), " ").trim()
-        t = FRENCH_DAYS.replace(" $t ") { "next ${it.groupValues[1]} days" }.trim()
+        t = FRENCH_DAYS.replace(" $t ") { "next ${it.groupValues[1]} days" }.trim() // l10n: not text (heard words)
         t = FRENCH.fold(" $t ") { acc, (fr, en) -> acc.replace(" $fr ", " $en ") }.replace(Regex("\\s+"), " ").trim()
-        return FRENCH_NEXT.replace(t) { "next ${it.groupValues[1]}" }
+        return FRENCH_NEXT.replace(t) { "next ${it.groupValues[1]}" } // l10n: not text (heard words)
     }
 
     /**
@@ -412,13 +440,13 @@ object WeatherAsk {
             k == "weekend" -> return days("this weekend", now)
             else -> when (val w = WhenParser.range(k, now)) {
                 is Read.Ok -> w.value
-                is Read.Unreadable -> return Read.Unreadable(SAY_DAY)
+                is Read.Unreadable -> return Read.Unreadable(InfoStrings.sayDay())
             }
         }
         val last = today.plusDays(OpenMeteo.MAX_DAYS.toLong())
         val from = maxOf(r.from.toLocalDate(), today)
         val to = minOf(r.to.toLocalDate(), last)
-        if (!to.isAfter(from)) return Read.Unreadable(if (r.to.toLocalDate() <= today) "Robot has forecasts only, not past weather" else WeatherFail.NO_DAYS.text)
+        if (!to.isAfter(from)) return Read.Unreadable(if (r.to.toLocalDate() <= today) InfoStrings.noPastWeather() else WeatherFail.NO_DAYS.phrase)
         return Read.Ok(range(from, to))
     }
 
@@ -430,8 +458,12 @@ object WeatherAsk {
         .replace("'", "").replace("’", "").replace(Regex("[^a-z0-9]+"), " ").trim()
 }
 
-/** What the tool hands back: one line per day for the card and the model, and the line text-call mode reads out. */
-data class WeatherReport(val results: List<Map<String, Any?>>, val lines: String, val spoken: String)
+/**
+ * What the tool hands back: one line per day for the card and the model, and the line text-call mode reads out. 1.1:
+ * [linesText] and [spokenText], the same in words without a language yet (the card and the voice, in the reply language).
+ */
+data class WeatherReport(val results: List<Map<String, Any?>>, val lines: String, val spoken: String,
+    val linesText: Phrase = Phrase.plain(lines), val spokenText: Phrase = Phrase.plain(spoken))
 
 object WeatherText {
     /**
@@ -450,13 +482,14 @@ object WeatherText {
         val days = wanted.take(maxDays.coerceAtLeast(1))
         if (days.isEmpty()) return null
         // The card and the voice get whole lines; the model one line for one day, or a few tokens a day for several.
-        val lines = days.joinToString("\n") { d -> "${label(d.date, today)}: ${line(d, if (d.date == today) f.now else null, units)}" }
+        val dayLines = days.map { d -> InfoStrings.dayLine("day" to labelText(d.date, today), "weather" to lineText(d, if (d.date == today) f.now else null, units)) }
+        val lines = Phrase.Join(dayLines, "\n").en()
         val results: List<Map<String, Any?>> = (if (days.size == 1) listOf(linkedMapOf<String, Any?>("day" to label(days[0].date, today),
             "weather" to line(days[0], if (days[0].date == today) f.now else null, units)))
         else listOf(linkedMapOf<String, Any?>("units" to unitsLine(units),
             "days" to days.joinToString("\n") { d -> short(d, label(d.date, today), if (d.date == today) f.now else null) }))) +
-            listOfNotNull(if (wanted.size > days.size) mapOf("note" to "Only the first ${days.size} of the ${wanted.size} days asked are given.") else null)
-        return WeatherReport(results, lines, lines.replace("\n", ". "))
+            listOfNotNull(if (wanted.size > days.size) mapOf("note" to "Only the first ${days.size} of the ${wanted.size} days asked are given.") else null) // l10n: not text (model prompt)
+        return WeatherReport(results, lines, lines.replace("\n", ". "), Phrase.Join(dayLines, "\n"), Phrase.Join(dayLines, ". "))
     }
 
     /**
@@ -476,7 +509,7 @@ object WeatherText {
     fun tokens(results: List<Map<String, Any?>>): Int = TokenEstimate.text(Json.toJson(results).toString())
 
     /** Said once above several short lines: what their numbers are. */
-    fun unitsLine(u: WeatherUnits) = "conditions, high/low ${u.temp}, chance of rain or snow, wind ${u.wind}, cloud cover"
+    fun unitsLine(u: WeatherUnits) = "conditions, high/low ${u.temp}, chance of rain or snow, wind ${u.wind}, cloud cover" // l10n: not text (model prompt)
 
     /**
      * "Mon Oct 12: drizzle 16/8 67% wind 21 cloud 98%": about 30 tokens (35 estimated on the high side), the units in
@@ -484,21 +517,24 @@ object WeatherText {
      */
     fun short(d: WeatherDay, label: String, now: WeatherNow?): String {
         val parts = mutableListOf<String>()
-        now?.temp?.let { t -> parts += "now ${t.roundToInt()}" + (Wmo.words(now.code)?.let { " $it;" } ?: ";") }
+        now?.temp?.let { t -> parts += "now ${t.roundToInt()}" + (Wmo.words(now.code)?.let { " $it;" } ?: ";") } // l10n: not text (model prompt)
         Wmo.words(d.code)?.let { parts += it }
         if (d.high != null || d.low != null) parts += "${d.high?.roundToInt() ?: "?"}/${d.low?.roundToInt() ?: "?"}"
         d.chance?.let { parts += "$it%" }
-        d.wind?.let { parts += "wind ${it.roundToInt()}" }
-        d.cloud?.let { parts += "cloud $it%" }
+        d.wind?.let { parts += "wind ${it.roundToInt()}" } // l10n: not text (model prompt)
+        d.cloud?.let { parts += "cloud $it%" } // l10n: not text (model prompt)
         return "$label: " + parts.joinToString(" ")
     }
 
     /** "today, Sat Oct 10", "tomorrow, Sun Oct 11", "Mon Oct 12". */
-    fun label(date: LocalDate, today: LocalDate): String {
-        val d = EventText.day(date, today.year)
+    fun label(date: LocalDate, today: LocalDate): String = labelText(date, today).en()
+
+    /** [label] in words without a language yet. */
+    fun labelText(date: LocalDate, today: LocalDate): Phrase {
+        val d = EventText.dayText(date, today.year)
         return when (date) {
-            today -> "today, $d"
-            today.plusDays(1) -> "tomorrow, $d"
+            today -> InfoStrings.today("day" to d)
+            today.plusDays(1) -> InfoStrings.tomorrow("day" to d)
             else -> d
         }
     }
@@ -507,51 +543,66 @@ object WeatherText {
      * "now 8°C and clear; overcast, high 13°C, low 3°C, 67% chance of rain (about 1.3 mm), wind up to 21 km/h (gusts 39),
      * cloud cover 98%". [now] only for today.
      */
-    fun line(d: WeatherDay, now: WeatherNow?, u: WeatherUnits): String {
-        val parts = mutableListOf<String>()
-        Wmo.words(d.code)?.let { parts += it }
-        d.high?.let { parts += "high ${deg(it, u)}" }
-        d.low?.let { parts += "low ${deg(it, u)}" }
-        precipitation(d, u)?.let { parts += it }
-        d.wind?.let { w -> parts += "wind up to ${w.roundToInt()} ${u.wind}" + (d.gusts?.takeIf { it.roundToInt() > w.roundToInt() }?.let { " (gusts ${it.roundToInt()})" } ?: "") }
-        d.cloud?.let { parts += "cloud cover $it%" }
-        val day = parts.joinToString(", ")
-        val nowText = now?.temp?.let { t -> "now ${deg(t, u)}" + (Wmo.words(now.code)?.let { " and $it" } ?: "") }
-        return listOfNotNull(nowText, day.ifEmpty { null }).joinToString("; ")
+    fun line(d: WeatherDay, now: WeatherNow?, u: WeatherUnits): String = lineText(d, now, u).en()
+
+    /** [line] in words without a language yet. */
+    fun lineText(d: WeatherDay, now: WeatherNow?, u: WeatherUnits): Phrase {
+        val parts = mutableListOf<Phrase>()
+        Wmo.text(d.code)?.let { parts += it }
+        d.high?.let { parts += InfoStrings.high("t" to deg(it, u)) }
+        d.low?.let { parts += InfoStrings.low("t" to deg(it, u)) }
+        precipitationText(d, u)?.let { parts += it }
+        d.wind?.let { w ->
+            val gusts = d.gusts?.takeIf { it.roundToInt() > w.roundToInt() }
+            parts += if (gusts == null) InfoStrings.windUpTo("n" to w.roundToInt().toString(), "unit" to u.wind)
+            else InfoStrings.windUpToGusts("n" to w.roundToInt().toString(), "unit" to u.wind, "gusts" to gusts.roundToInt().toString())
+        }
+        d.cloud?.let { parts += InfoStrings.cloudCover("n" to it.toString()) }
+        val nowText = now?.temp?.let { t ->
+            Wmo.text(now.code)?.let { InfoStrings.nowAnd("t" to deg(t, u), "conditions" to it) } ?: InfoStrings.now("t" to deg(t, u))
+        }
+        return Phrase.Join(listOfNotNull(nowText, parts.takeIf { it.isNotEmpty() }?.let { Phrase.Join(it, ", ") }), "; ")
     }
 
     /** "67% chance of rain (about 1.3 mm)", "40% chance of snow (about 2 cm)", "about 4 mm of rain", or null without data. */
-    fun precipitation(d: WeatherDay, u: WeatherUnits): String? {
+    fun precipitation(d: WeatherDay, u: WeatherUnits): String? = precipitationText(d, u)?.en()
+
+    /** [precipitation] in words without a language yet. */
+    fun precipitationText(d: WeatherDay, u: WeatherUnits): Phrase? {
         val rainAmt = if (d.rain == null && d.showers == null) d.precip?.takeIf { d.snow == null || d.snow < snowMin(u) } else (d.rain ?: 0.0) + (d.showers ?: 0.0)
         val rain = rainAmt?.takeIf { it >= rainMin(u) }
         val snow = d.snow?.takeIf { it >= snowMin(u) }
         val kind = when {
-            rain != null && snow != null -> "rain and snow"
-            snow != null || (rain == null && Wmo.snowy(d.code)) -> "snow"
-            else -> "rain"
+            rain != null && snow != null -> InfoStrings.kindRainAndSnow()
+            snow != null || (rain == null && Wmo.snowy(d.code)) -> InfoStrings.kindSnow()
+            else -> InfoStrings.kindRain()
         }
         // Both: each amount names its kind ("3.0 mm of rain and 2.0 cm of snow"); one: the kind is said once.
         val both = rain != null && snow != null
-        val amounts = listOfNotNull(rain?.let { "${amount(it, u)} ${u.rain}" + if (both) " of rain" else "" },
-            snow?.let { "${amount(it, u)} ${u.snow}" + if (both) " of snow" else "" })
-        val about = if (amounts.isEmpty()) null else "about " + amounts.joinToString(" and ")
+        fun unit(name: String): Any = if (name == "in") InfoStrings.inches() else name
+        val amounts = listOfNotNull(
+            rain?.let { (if (both) InfoStrings.amountOfRain else InfoStrings.amount)("n" to amount(it, u), "unit" to unit(u.rain)) },
+            snow?.let { (if (both) InfoStrings.amountOfSnow else InfoStrings.amount)("n" to amount(it, u), "unit" to unit(u.snow)) })
+        val list = Phrase.ListOf(amounts)
         return when {
-            d.chance != null -> "${d.chance}% chance of $kind" + (about?.let { " ($it)" } ?: "")
-            about != null -> if (both) about else "$about of $kind"
-            d.precip != null || d.rain != null -> "dry"
+            d.chance != null -> if (amounts.isEmpty()) InfoStrings.chanceOf("p" to d.chance.toString(), "kind" to kind)
+                else InfoStrings.chanceOfAbout("p" to d.chance.toString(), "kind" to kind, "about" to InfoStrings.about("amounts" to list))
+            amounts.isNotEmpty() -> if (both) InfoStrings.about("amounts" to list) else InfoStrings.aboutOf("amounts" to list, "kind" to kind)
+            d.precip != null || d.rain != null -> InfoStrings.dry()
             else -> null
         }
     }
 
-    private fun deg(v: Double, u: WeatherUnits) = "${v.roundToInt()}${u.temp}"
+    private fun deg(v: Double, u: WeatherUnits): Phrase =
+        (if (u == WeatherUnits.IMPERIAL) InfoStrings.fahrenheit else InfoStrings.celsius)("n" to v.roundToInt().toString())
 
     private fun rainMin(u: WeatherUnits) = if (u == WeatherUnits.IMPERIAL) 0.01 else 0.1
     private fun snowMin(u: WeatherUnits) = if (u == WeatherUnits.IMPERIAL) 0.05 else 0.1
 
-    /** 1.3 (mm, cm below 10), 12 (mm, cm from 10), 0.05 (inches below 1), 1.2 (inches from 1). */
-    private fun amount(v: Double, u: WeatherUnits): String = when {
+    /** 1.3 (mm, cm below 10), 12 (mm, cm from 10), 0.05 (inches below 1), 1.2 (inches from 1); « 1,3 » in French. */
+    private fun amount(v: Double, u: WeatherUnits): Phrase = InfoStrings.decimal(when {
         u == WeatherUnits.IMPERIAL && v < 1 -> String.format(Locale.US, "%.2f", v)
         v < 10 -> String.format(Locale.US, "%.1f", v)
         else -> v.roundToInt().toString()
-    }
+    })
 }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.ModelStrings
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -78,8 +79,12 @@ enum class DoneReason {
  */
 enum class Priority { PANEL, INTERPRETER, TRANSCRIPT, SUMMARY }
 
-/** What a one-shot request is for: 0.9's WEB_ANSWER is a web search's answer (core web WebPrompt), at the panel's priority. */
-enum class OneShotKind { TRANSLATE, SUMMARY_MAP, SUMMARY_REDUCE, WEB_ANSWER }
+/**
+ * What a one-shot request is for: 0.9's WEB_ANSWER is a web search's answer (core web WebPrompt), at the panel's priority.
+ * 1.4 (Robot Files, plan §4.2 and §5.1): FILE_READ reads one file for filing, a page's picture or its text (core files
+ * FilePrompt), and is the only kind that may carry a picture; FILE_ANSWER answers a question from one file's text.
+ */
+enum class OneShotKind { TRANSLATE, SUMMARY_MAP, SUMMARY_REDUCE, WEB_ANSWER, FILE_READ, FILE_ANSWER }
 
 enum class BrainError {
     NOT_LOADED, NO_VISION, BAD_REQUEST, ENGINE, BUSY,
@@ -92,15 +97,16 @@ enum class BrainError {
     STOPPED;
 
     /** Plain language for the panel. */
-    fun text(): String = when (this) {
-        NOT_LOADED -> "The model isn't loaded."
-        NO_VISION -> "Pictures aren't available: the vision part of the model didn't load."
-        BAD_REQUEST -> "Robot sent the model a request it couldn't read."
-        ENGINE -> "The model ran into a problem."
-        BUSY -> "The model is busy with another answer."
-        TOO_LONG -> "That's too long for Robot to read at once. Try a shorter question."
-        STOPPED -> "The model stopped unexpectedly."
+    fun textPhrase(): app.heyrobot.core.i18n.Phrase = when (this) {
+        NOT_LOADED -> ModelStrings.errorNotLoaded()
+        NO_VISION -> ModelStrings.errorNoVision()
+        BAD_REQUEST -> ModelStrings.errorBadRequest()
+        ENGINE -> ModelStrings.errorEngine()
+        BUSY -> ModelStrings.errorBusy()
+        TOO_LONG -> ModelStrings.errorTooLong()
+        STOPPED -> ModelStrings.errorStopped()
     }
+
 }
 
 sealed class BrainMsg {
@@ -136,11 +142,27 @@ sealed class BrainMsg {
         val tools: List<String> = Prompt.CORE_TOOLS.map { it.id },
         /** Settings › Model › "Let the model think first" (0.4.5): :brain tells a model that can think whether it may (core Thinking). */
         val think: Boolean = false,
+        /**
+         * 1.1, Skills phase B (plan §8): your skills described to the model as tools beside [tools], at most 3 (core skills
+         * SkillSpecs). Not ToolName ids: :brain builds each from its spec. A spec it can't read is never described.
+         */
+        val skills: List<app.heyrobot.core.skills.SkillToolSpec> = emptyList(),
+        /**
+         * 1.2 (design Step 3, core PrefillBudget): describe [tools] in their compact form, as [system] was made. On a slow
+         * path only; false everywhere else, and then nothing about the request changes.
+         */
+        val compact: Boolean = false,
+        /** 1.2: the most estimated tokens a rebuild should read (PrefillBudget.tokens), or -1 for no budget (the fast paths). */
+        val readBudget: Int = -1,
     ) : BrainMsg() {
         override fun toJson() = JSONObject().apply {
             put("convId", convId); put("system", system); put("historyCount", historyCount); put("text", text); put("hasImage", hasImage)
             put("history", JSONArray().apply { history.forEach { put(JSONObject().put("role", it.role.name).put("text", it.text)) } })
             put("tools", JSONArray(tools)); put("think", think)
+            if (skills.isNotEmpty()) put("skills", JSONArray().apply { skills.forEach { put(it.toJson()) } })
+            // Only on a slow path: a fast path's request is the same JSON as before 1.2.
+            if (compact) put("compact", true)
+            if (readBudget >= 0) put("readBudget", readBudget)
         }
 
         /** The known tools among [tools], in ToolName order (an unknown id is never described). */
@@ -164,11 +186,14 @@ sealed class BrainMsg {
 
     /**
      * One message, no tools, no history (REQ_ONE_SHOT): [system] one of Prompt's fixed conversation-mode prompts, [text]
-     * the line or the part to work on, [maxChunks] the reply's cap.
+     * the line or the part to work on, [maxChunks] the reply's cap. 1.4: [hasImage], a FILE_READ of a page's picture: the
+     * JPEG travels as a panel question's does ([BrainProtocol.KEY_IMAGE], a read-only SharedMemory), never as a path. Only
+     * then is the key written, so every other one-shot's JSON is as before 1.4; any other kind with it isn't a request.
      */
-    data class OneShot(val kind: OneShotKind, val priority: Priority, val system: String, val text: String, val maxChunks: Int) : BrainMsg() {
+    data class OneShot(val kind: OneShotKind, val priority: Priority, val system: String, val text: String, val maxChunks: Int,
+        val hasImage: Boolean = false) : BrainMsg() {
         override fun toJson() = JSONObject().put("kind", kind.name).put("priority", priority.name).put("system", system).put("text", text)
-            .put("maxChunks", maxChunks)
+            .put("maxChunks", maxChunks).apply { if (hasImage) put("hasImage", true) }
     }
 
     data object Empty : BrainMsg() {
@@ -190,14 +215,21 @@ sealed class BrainMsg {
         }
     }
 
-    /** [failure]: why it didn't load, when it didn't ([error] says it in plain words). */
+    /**
+     * [failure]: why it didn't load, when it didn't ([error] says it in plain words, English). 1.1: [errorPhrase] is the same
+     * without a language yet (PhraseWire across processes), so the app says it in your language ([errorText]).
+     */
     data class Loaded(
         val ok: Boolean, val vision: Boolean, val loadMs: Long, val error: String?,
         val model: BrainModel? = null, val backend: ModelBackend? = null, val failure: LoadFailure? = null,
-        val format: ModelFormat? = null,
+        val format: ModelFormat? = null, val errorPhrase: app.heyrobot.core.i18n.Phrase? = null,
     ) : BrainMsg() {
+        /** Why it didn't load, in words without a language yet (an older :brain's English as it is). */
+        val errorText: app.heyrobot.core.i18n.Phrase? get() = errorPhrase ?: error?.let { app.heyrobot.core.i18n.Phrase.plain(it) }
+
         override fun toJson() = JSONObject().apply {
             put("ok", ok); put("vision", vision); put("loadMs", loadMs); error?.let { put("error", it) }
+            errorPhrase?.let { put("errorPhrase", app.heyrobot.core.i18n.PhraseWire.toJson(it)) }
             model?.let { put("model", it.id) }
             backend?.let { put("backend", it.id) }
             failure?.let { put("failure", it.name) }
@@ -218,10 +250,31 @@ sealed class BrainMsg {
     /**
      * [textCalls]: this conversation runs without LiteRT-LM's tool API ([ToolMode.TEXT_CALLS]); only then may the
      * app read a reply that is nothing but a call as a tool call.
+     * 1.2 (design Step 5): [prefillTokens] and [prefillTps], the tokens the model read for this reply and how fast (LiteRT-LM's
+     * BenchmarkInfo; llama.cpp's own count and time), and [decodeTokens], the tokens it wrote (so a reply of 2 tokens doesn't
+     * pass for a writing speed). Numbers only; -1 unknown, as from a :brain older than 1.2 ([Speed]).
      */
-    data class Done(val reason: DoneReason, val tokens: Int, val ttftMs: Long, val decodeTps: Double, val rebuilt: Boolean, val textCalls: Boolean = false) : BrainMsg() {
+    data class Done(
+        val reason: DoneReason, val tokens: Int, val ttftMs: Long, val decodeTps: Double, val rebuilt: Boolean, val textCalls: Boolean = false,
+        val prefillTokens: Int = -1, val prefillTps: Double = -1.0, val decodeTokens: Int = -1,
+    ) : BrainMsg() {
         override fun toJson() = JSONObject().put("reason", reason.name).put("tokens", tokens).put("ttftMs", ttftMs)
             .put("decodeTps", if (decodeTps.isFinite()) decodeTps else -1.0).put("rebuilt", rebuilt).put("textCalls", textCalls)
+            .put("prefillTokens", Speed.count(prefillTokens)).put("prefillTps", Speed.rate(prefillTps)).put("decodeTokens", Speed.count(decodeTokens))
+
+        /** 1.2: a reply's numbers, either engine's, read the same way (anything absent or out of range is -1). */
+        object Speed {
+            /** More than any context Robot loads, many times over: a count past it is nonsense. */
+            const val MAX_TOKENS = 1_000_000
+            /** Tokens a second no phone reaches: a rate past it (or a division by a zero time) is nonsense. */
+            const val MAX_TPS = 100_000.0
+
+            fun count(n: Int): Int = if (n in 0..MAX_TOKENS) n else -1
+            fun rate(x: Double): Double = if (x.isFinite() && x > 0.0 && x <= MAX_TPS) x else -1.0
+
+            /** Tokens a second from [tokens] in [ms] (llama.cpp's counts), -1 when either is unknown or zero. */
+            fun rate(tokens: Long, ms: Long): Double = if (tokens > 0 && ms > 0) rate(tokens * 1000.0 / ms) else -1.0
+        }
     }
 
     data class Error(val code: BrainError, val detail: String?) : BrainMsg() {
@@ -234,6 +287,13 @@ sealed class BrainMsg {
     }
 
     companion object {
+        /** The skill specs of a Generate, at most 3, each one the app could have made (anything else is left out). */
+        fun skillsOf(a: JSONArray?): List<app.heyrobot.core.skills.SkillToolSpec> {
+            a ?: return emptyList()
+            return (0 until a.length()).mapNotNull { app.heyrobot.core.skills.SkillToolSpec.fromJson(a.optJSONObject(it)) }
+                .distinctBy { it.name }.take(app.heyrobot.core.skills.SkillSelect.MAX)
+        }
+
         /** Decodes the payload of a message with code [what]; null when the code or the JSON is not understood. */
         fun decode(what: Int, json: String?): BrainMsg? = try {
             val o = JSONObject(json ?: "{}")
@@ -259,6 +319,10 @@ sealed class BrainMsg {
                         hasImage = o.optBoolean("hasImage", false),
                         tools = o.optJSONArray("tools")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: Prompt.CORE_TOOLS.map { it.id },
                         think = o.optBoolean("think", false),
+                        skills = BrainMsg.skillsOf(o.optJSONArray("skills")),
+                        compact = o.optBoolean("compact", false),
+                        // A budget below none reads as none: never a negative cap.
+                        readBudget = o.optInt("readBudget", -1).coerceAtLeast(-1),
                     )
                 }
                 BrainProtocol.REQ_TOOL_RESULT -> {
@@ -271,14 +335,17 @@ sealed class BrainMsg {
                 BrainProtocol.REQ_CANCEL -> Cancel(o.getInt("target"))
                 BrainProtocol.REQ_CLOSE_CONV -> CloseConv(o.getString("convId"))
                 BrainProtocol.REQ_ONE_SHOT -> OneShot(enumValueOf(o.getString("kind")), enumValueOf(o.getString("priority")), o.getString("system"),
-                    o.getString("text"), o.optInt("maxChunks", Limits.MAX_REPLY_CHUNKS).coerceIn(1, Limits.MAX_REPLY_CHUNKS))
+                    o.getString("text"), o.optInt("maxChunks", Limits.MAX_REPLY_CHUNKS).coerceIn(1, Limits.MAX_REPLY_CHUNKS),
+                    // 1.4: a picture only with FILE_READ, and only when the key is exactly true.
+                    hasImage = o.opt("hasImage") == true).takeIf { !it.hasImage || it.kind == OneShotKind.FILE_READ }
                 BrainProtocol.REQ_STATUS, BrainProtocol.REQ_UNLOAD, BrainProtocol.EV_UNLOADED -> Empty
                 BrainProtocol.EV_STATUS -> Status(o.optBoolean("loaded"), o.optBoolean("vision"), o.optBoolean("constrained"), o.optBoolean("busy"),
                     BrainModel.byId(o.optString("model")), ModelBackend.of(o.optString("backend")), o.optInt("maxTokens", 0).coerceAtLeast(0),
                     ModelFormat.of(o.optString("format")))
                 BrainProtocol.EV_LOADED -> Loaded(o.optBoolean("ok"), o.optBoolean("vision"), o.optLong("loadMs"), o.optString("error").takeIf { o.has("error") },
                     BrainModel.byId(o.optString("model")), ModelBackend.of(o.optString("backend")),
-                    LoadFailure.entries.firstOrNull { it.name == o.optString("failure") }, ModelFormat.of(o.optString("format")))
+                    LoadFailure.entries.firstOrNull { it.name == o.optString("failure") }, ModelFormat.of(o.optString("format")),
+                    app.heyrobot.core.i18n.PhraseWire.fromJson(o.optJSONObject("errorPhrase")))
                 BrainProtocol.EV_CHUNK -> Chunk(o.getString("text"), o.optBoolean("thought", false))
                 BrainProtocol.EV_TOOL_CALLS -> {
                     val c = o.getJSONArray("calls")
@@ -288,7 +355,10 @@ sealed class BrainMsg {
                     })
                 }
                 BrainProtocol.EV_DONE -> Done(enumValueOf(o.getString("reason")), o.optInt("tokens"), o.optLong("ttftMs", -1), o.optDouble("decodeTps", -1.0),
-                    o.optBoolean("rebuilt"), o.optBoolean("textCalls", false))
+                    o.optBoolean("rebuilt"), o.optBoolean("textCalls", false),
+                    // 1.2: absent from an older :brain, so unknown; never trusted past its range.
+                    Done.Speed.count(o.optInt("prefillTokens", -1)), Done.Speed.rate(o.optDouble("prefillTps", -1.0)),
+                    Done.Speed.count(o.optInt("decodeTokens", -1)))
                 BrainProtocol.EV_ERROR -> Error(enumOr(o.optString("code"), BrainError.ENGINE), o.optString("detail").takeIf { o.has("detail") })
                 BrainProtocol.EV_QUEUED -> Queued(o.getInt("position"))
                 else -> null

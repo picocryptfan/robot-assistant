@@ -27,6 +27,8 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import app.heyrobot.readLine
+import app.heyrobot.savedLine
 
 /**
  * A web answer in the panel (0.9, design A4.4 and A9): the answer's text, then its card (which service searched and

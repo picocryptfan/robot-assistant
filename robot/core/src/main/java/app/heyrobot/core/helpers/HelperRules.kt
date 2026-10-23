@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.helpers
 
+import app.heyrobot.core.i18n.HelperStrings
+import app.heyrobot.core.i18n.Msg
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.UiLabel
+import app.heyrobot.core.i18n.UiStrings
 import app.heyrobot.core.AskRoute
 import app.heyrobot.core.HelperVoices
 import app.heyrobot.core.Escalation
@@ -11,14 +16,18 @@ import app.heyrobot.core.RobotSettings
 // checks with when it needs help, what may go to a helper without a tap, and the words Robot says about it. Claude's
 // rules from 0.3 to 0.5 are these rules with the Claude helper (EscalationTest and HelperContextTest still hold).
 
-/** Who a helper is, for the words Robot says: its name, its company and where its key comes from. */
-data class HelperWho(val name: String, val company: String, val console: String?, val app: String?, val home: Boolean) {
+/**
+ * Who a helper is, for the words Robot says: its name, its company and where its key comes from. [companyText]: the
+ * company as words without a language yet (« Une autre entreprise »); [company] its English.
+ */
+data class HelperWho(val name: String, val company: String, val console: String?, val app: String?, val home: Boolean,
+    val companyText: Phrase = Phrase.plain(company)) {
     companion object {
         val CLAUDE = HelperWho("Claude", "Anthropic", "console.anthropic.com", "Claude", false)
 
         fun of(h: HelperConfig): HelperWho {
             val p = h.presetOf
-            return HelperWho(h.name, p.company, p.keyWhere?.substringBefore(" ›"), if (p.app != null) p.defaultName else null, p.home)
+            return HelperWho(h.name, p.companyText.en(), p.keyWhere?.substringBefore(" ›"), if (p.app != null) p.defaultName else null, p.home, p.companyText)
         }
     }
 }
@@ -96,15 +105,18 @@ object HelperSettings {
     }
 
     /** "Use" on a helper's page: its app or its API, in its own name ([AskRoute]'s words for Claude, as before). */
-    fun routeTitle(p: Preset, r: AskRoute): String = if (p.kind == HelperKind.ANTHROPIC) r.title else when (r) {
-        AskRoute.APP -> "${p.defaultName} app"
-        AskRoute.API -> "${p.company} API"
+    fun routeTitleText(p: Preset, r: AskRoute): Phrase = if (p.kind == HelperKind.ANTHROPIC) r.titleText else when (r) {
+        AskRoute.APP -> HelperStrings.routeOtherApp("name" to p.defaultName)
+        AskRoute.API -> HelperStrings.routeOtherApi("company" to p.companyText)
     }
 
-    fun routeDetail(p: Preset, r: AskRoute): String = if (p.kind == HelperKind.ANTHROPIC) r.detail else when (r) {
-        AskRoute.APP -> "Opens the ${p.defaultName} app with your question; you press Send there, with your own account. Robot doesn't hear the answer."
-        AskRoute.API -> "Robot asks ${p.defaultName} itself and speaks the answer. Needs an API key with credits."
+    fun routeDetailText(p: Preset, r: AskRoute): Phrase = if (p.kind == HelperKind.ANTHROPIC) r.detailText else when (r) {
+        AskRoute.APP -> HelperStrings.routeOtherAppDetail("name" to p.defaultName)
+        AskRoute.API -> HelperStrings.routeOtherApiDetail("name" to p.defaultName)
     }
+
+    fun routeTitle(p: Preset, r: AskRoute): String = routeTitleText(p, r).en()
+    fun routeDetail(p: Preset, r: AskRoute): String = routeDetailText(p, r).en()
 
     /** The first Kokoro voice that neither Robot ([robotSpeaker]) nor another helper uses, for a new helper. */
     fun freeVoice(s: RobotSettings, robotSpeaker: Int?): String {
@@ -130,7 +142,11 @@ object HelperTrust {
      * A screen or a photo is in [personal]: each capture is a new disclosure, never sent on trust alone. So are messages
      * you received (0.7): other people's words.
      */
-    private fun captured(personal: Set<Personal>): Boolean = Personal.SCREEN in personal || Personal.PHOTO in personal || Personal.MESSAGES in personal
+    private fun captured(personal: Set<Personal>): Boolean = Personal.SCREEN in personal || Personal.PHOTO in personal || Personal.MESSAGES in personal ||
+        Personal.FILES in personal
+
+    /** 1.4: what Robot found in or read from your files goes only on a tap: no switch, no trust and no spoken yes sends it. */
+    private fun tapOnly(personal: Set<Personal>): Boolean = Personal.FILES in personal
 
     /**
      * 0.7: what Robot remembers about you is in [personal] and may go to [h] only through a card: neither "Send personal
@@ -147,7 +163,7 @@ object HelperTrust {
      * 0.7: never with messages you received in it (neither switch sends them), nor with what Robot remembers ([memoryHeld]).
      */
     fun conversation(s: RobotSettings, h: HelperConfig?, personal: Set<Personal>, memoryToTrusted: Boolean = false): Boolean =
-        !memoryHeld(h, personal, memoryToTrusted) &&
+        !memoryHeld(h, personal, memoryToTrusted) && !tapOnly(personal) &&
             ((s.personalToHelpers && Personal.MESSAGES !in personal) || (h?.trust == true && !captured(personal)))
 
     /** This question's screen text and picture may go with an escalation without a tap (never by trust alone). */
@@ -165,7 +181,7 @@ object HelperTrust {
 
     /** A spoken or typed yes may send [personal] to [h] ("Voice yes can send personal content", or a trusted helper without a picture). */
     fun voiceYes(s: RobotSettings, h: HelperConfig?, personal: Set<Personal>): Boolean =
-        personal.isEmpty() || s.voiceYesPersonal || (h?.trust == true && !captured(personal))
+        personal.isEmpty() || (!tapOnly(personal) && (s.voiceYesPersonal || (h?.trust == true && !captured(personal))))
 }
 
 /**
@@ -174,30 +190,59 @@ object HelperTrust {
  */
 class HelperWords(w: HelperWho) {
     private val n = w.name
-    val declined = "$n declined that one."
-    val thinking = "$n is thinking…"
-    val checking = "Checking with $n…"
-    val searched = "$n searched the web"
-    val off = "$n is off. Turn it on in Robot's settings, under Helpers."
-    val locked = "Unlock your phone to ask $n, or allow $n on the lock screen in Robot's settings."
-    val joined = "$n is here. Go ahead."
-    val notHere = "$n isn't in this conversation."
-    val budget = "Today's budget for helpers is used up, so Robot will ask before checking with $n again today."
-    val cutEmpty = "$n ran out of room before it could answer. Ask again, or ask for a shorter answer."
-    val keyUnreadable = "Robot couldn't read your saved $n key, so it was removed. Add it again in Robot's settings, under Helpers."
-    /** The saved key couldn't be read just now (a passing Keystore error): it is kept, and the next question reads it again. */
-    val keyUnavailable = "Robot couldn't read your saved $n key just now. It's still saved, so try again in a moment."
-    val offer = "Want me to check with $n?"
-    val offerAsWell = "Want $n's take as well?"
-    val rather = "I'd rather check that with $n."
-    /** A home server's model is loading (no answer for a few seconds). */
-    val loading = "$n is loading its model…"
-    val unlockToCheck = "Unlock your phone to check with $n."
-    val nothingSent = "Okay, nothing was sent to $n."
-    /** "Ask the helper …" when no helper can take it yet ([HelperSettings.askTarget]): what [n], the one you'd get, still needs. */
-    val notReady = "$n can't answer yet. Add its API key in Robot's settings, under Helpers" + (w.app?.let { ", or install the $it app" } ?: "") + "."
+    private fun t(m: Msg): Phrase = m("name" to n)
 
-    fun tapToInclude(p: Set<Personal>): String = "Tap Send to include ${Personal.list(p)}."
+    // 1.1: each line as words without a language yet (the panel says them in the turn's reply language); the String is its English.
+    val declinedText get() = t(HelperStrings.declined)
+    val thinkingText get() = t(HelperStrings.thinking)
+    val checkingText get() = t(HelperStrings.checking)
+    /** [checking] as Robot says it ("Checking with Claude."). */
+    val checkingSaid get() = t(HelperStrings.checkingSaid)
+    val searchedText get() = t(HelperStrings.searched)
+    val offText get() = t(HelperStrings.off)
+    val lockedText get() = t(HelperStrings.locked)
+    val joinedText get() = t(HelperStrings.joined)
+    val notHereText get() = t(HelperStrings.notHere)
+    val budgetText get() = t(HelperStrings.budget)
+    val cutEmptyText get() = t(HelperStrings.cutEmpty)
+    val keyUnreadableText get() = t(HelperStrings.keyUnreadable)
+    val keyUnavailableText get() = t(HelperStrings.keyUnavailable)
+    val offerText get() = t(HelperStrings.offer)
+    val offerAsWellText get() = t(HelperStrings.offerAsWell)
+    val ratherText get() = t(HelperStrings.rather)
+    val loadingText get() = t(HelperStrings.loading)
+    val unlockToCheckText get() = t(HelperStrings.unlockToCheck)
+    val nothingSentText get() = t(HelperStrings.nothingSent)
+
+    val declined = declinedText.en()
+    val thinking = thinkingText.en()
+    val checking = checkingText.en()
+    val searched = searchedText.en()
+    val off = offText.en()
+    val locked = lockedText.en()
+    val joined = joinedText.en()
+    val notHere = notHereText.en()
+    val budget = budgetText.en()
+    val cutEmpty = cutEmptyText.en()
+    /** The saved key couldn't be read just now (a passing Keystore error): it is kept, and the next question reads it again. */
+    val keyUnreadable = keyUnreadableText.en()
+    val keyUnavailable = keyUnavailableText.en()
+    val offer = offerText.en()
+    val offerAsWell = offerAsWellText.en()
+    val rather = ratherText.en()
+    /** A home server's model is loading (no answer for a few seconds). */
+    val loading = loadingText.en()
+    val unlockToCheck = unlockToCheckText.en()
+    val nothingSent = nothingSentText.en()
+    /** "Ask the helper …" when no helper can take it yet ([HelperSettings.askTarget]): what [n], the one you'd get, still needs. */
+    private val app = w.app
+    val notReadyText: Phrase get() = if (app == null) t(HelperStrings.notReady) else HelperStrings.notReadyApp("name" to n, "appName" to app)
+    val notReady get() = notReadyText.en()
+
+    fun tapToInclude(p: Set<Personal>): String = tapToIncludeText(p).en()
+
+    /** "Tap Send to include your calendar." ([Send] is the card's button, in the menus' language). */
+    fun tapToIncludeText(p: Set<Personal>): Phrase = HelperStrings.tapToInclude("button" to UiLabel(UiStrings.send), "what" to Personal.listText(p))
 }
 
 /** A helper's API key's shape, checked before it is saved (pure; the key itself is handled in the :voice process only). */
@@ -210,10 +255,13 @@ object HelperKeyFormat {
     fun plausible(p: Preset, k: String): Boolean =
         if (p.kind == HelperKind.ANTHROPIC) app.heyrobot.core.AnthropicKeyFormat.plausible(k) else k.length in 8..512 && k.all { it.code in 0x21..0x7E }
 
-    /** A note when [k] doesn't start the way [p]'s keys usually do (never a refusal: a wrong guess must not block a key). */
-    fun warning(p: Preset, k: String): String? =
+    /**
+     * A note when [k] doesn't start the way [p]'s keys usually do (never a refusal: a wrong guess must not block a key), as
+     * words without a language yet (1.1: the key window shows it in the menus' language).
+     */
+    fun warningText(p: Preset, k: String): Phrase? =
         if (p.keyPrefixes.isEmpty() || p.keyPrefixes.any { k.startsWith(it) }) null
-        else "${p.company} keys usually start with ${p.keyPrefixes.first()}. Robot will try this one anyway."
+        else HelperStrings.keyPrefix("company" to p.companyText, "prefix" to p.keyPrefixes.first())
 
     /** "sk-ant-…AB12", "gsk_…AB12", "…AB12": the usual start when it has one, and the last four characters. */
     fun mask(p: Preset, k: String): String {
@@ -222,6 +270,5 @@ object HelperKeyFormat {
     }
 
     /** What the key window says about [p]'s key. */
-    fun refusal(p: Preset): String = if (p.kind == HelperKind.ANTHROPIC) "That doesn't look like an Anthropic API key (sk-ant- followed by letters, digits, - and _)."
-        else "That doesn't look like an API key: it should be 8 to 512 letters, digits and symbols, with no spaces."
+    fun refusalText(p: Preset): Phrase = if (p.kind == HelperKind.ANTHROPIC) HelperStrings.keyNotAnthropic() else HelperStrings.keyNotKey()
 }

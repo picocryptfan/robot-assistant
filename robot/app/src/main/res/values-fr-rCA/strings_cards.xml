@@ -1,0 +1,40 @@
+<!-- The turn's cards, the chat and the reply card, in Québec French (tu): the l10n work package WP1. The ids of
+     values/strings_cards.xml; each value written with the glossary (robot/l10n/glossary.tsv) and the OQLF's spaces
+     (tools/fr_typo.py, FrenchTypographyTest). -->
+<resources>
+    <!-- An action's card (ui/common/Chat.kt). -->
+    <string name="card_which_one">Lequel&#8239;?</string>
+    <string name="card_do_you_want">Veux-tu que Robot fasse ceci&#8239;?</string>
+    <string name="card_locked">Verrouillé</string>
+    <string name="card_picture_sent">L’image qui serait envoyée</string>
+    <plurals name="card_and_more">
+        <item quantity="one">…et %1$d autre. Dis le nom complet pour en choisir un.</item>
+        <item quantity="many">…et %1$d autres. Dis le nom complet pour en choisir un.</item>
+        <item quantity="other">…et %1$d autres. Dis le nom complet pour en choisir un.</item>
+    </plurals>
+    <string name="card_cancel">Annuler</string>
+    <string name="card_do_it">Fais-le</string>
+    <string name="card_undo">Annuler</string>
+    <string name="card_allow_contacts">Autoriser les contacts</string>
+    <string name="card_allow">Autoriser</string>
+    <string name="card_dismiss">Fermer</string>
+
+    <!-- The offer to ask a helper under a reply. -->
+    <string name="card_send">Envoyer</string>
+
+    <!-- One turn of a conversation (ui/common/Transcript.kt). -->
+    <string name="card_you">Toi&#160;: %1$s</string>
+    <string name="card_error">Erreur</string>
+
+    <!-- The reply card under a message (ui/common/ReplyCard.kt). -->
+    <string name="card_sent">Envoyé</string>
+    <string name="card_your_reply">Ta réponse</string>
+    <string name="card_done">OK</string>
+    <string name="card_edit">Modifier</string>
+    <string name="card_open_chat">Ouvrir la conversation</string>
+    <string name="card_stop">Arrêter</string>
+
+    <!-- What Robot hands to another app (ToolExecutor): the email chooser's title, a route's start in Organic Maps. -->
+    <string name="card_write_email_with">Écrire le courriel avec</string>
+    <string name="card_your_position">Ta position (approximative)</string>
+</resources>

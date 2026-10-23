@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Robot Files: a filing drawer with its handle and a sheet standing in it, centred in the 66dp safe zone of a 108dp canvas. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <group android:translateX="30" android:translateY="30">
+        <path android:fillColor="#FFFFFFFF"
+            android:pathData="M14,4h16l6,6v12H14z" />
+        <path android:fillColor="#FFFFFFFF"
+            android:pathData="M6,20h36a2,2 0,0 1,2 2v18a4,4 0,0 1,-4 4H8a4,4 0,0 1,-4 -4V22a2,2 0,0 1,2 -2z" />
+        <path android:fillColor="#FF7A5230"
+            android:pathData="M30,4v6h6zM18,28h12a2,2 0,0 1,0 4H18a2,2 0,0 1,0 -4z" />
+    </group>
+</vector>

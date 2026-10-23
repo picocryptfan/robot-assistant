@@ -2,7 +2,7 @@ Notices of the Java libraries in Robot (their NOTICE files, Apache License 2.0 s
 copied unchanged from the jars Robot is built with. The Apache License 2.0 text is in Robot's Licences screen.
 
 ================================================================================
-com.fasterxml.jackson.core:jackson-core:2.19.4, META-INF/NOTICE
+com.fasterxml.jackson.core:jackson-core:2.21.8, META-INF/NOTICE
 ================================================================================
 
 # Jackson JSON processor
@@ -35,39 +35,22 @@ under the following copyright.
 
 Copyright © 2023 Werner Randelshofer, Switzerland. MIT License.
 
-See FastDoubleParser-NOTICE for details of other source code included in FastDoubleParser
-and the licenses and copyrights that apply to that code.
+See FastDoubleParser-LICENSE and also FastDoubleParser-ThirdParty-LICENSE for details of other source code
+included in FastDoubleParser and the licenses and copyrights that apply to that code.
+
+## Schubfach
+
+jackson-core bundles a copy of the Schubfach number writing code <https://github.com/c4f7fcce9cb06515/Schubfach>.
+That code is available under an MIT license <https://github.com/c4f7fcce9cb06515/Schubfach/blob/master/todec/LICENSE>
+under the following copyright.
+
+Copyright 2018-2020 Raffaello Giulietti
+
+See Schubfach-LICENSE.
 
 
 ================================================================================
-com.fasterxml.jackson.core:jackson-databind:2.19.4, META-INF/NOTICE
-================================================================================
-
-# Jackson JSON processor
-
-Jackson is a high-performance, Free/Open Source JSON processing library.
-It was originally written by Tatu Saloranta (tatu.saloranta@iki.fi), and has
-been in development since 2007.
-It is currently developed by a community of developers.
-
-## Copyright
-
-Copyright 2007-, Tatu Saloranta (tatu.saloranta@iki.fi)
-
-## Licensing
-
-Jackson 2.x core and extension components are licensed under Apache License 2.0
-To find the details that apply to this artifact see the accompanying LICENSE file.
-
-## Credits
-
-A list of contributors may be found from CREDITS(-2.x) file, which is included
-in some artifacts (usually source distributions); but is always available
-from the source code management (SCM) system project uses.
-
-
-================================================================================
-com.fasterxml.jackson.core:jackson-annotations:2.19.4, META-INF/NOTICE
+com.fasterxml.jackson.core:jackson-databind:2.21.8, META-INF/NOTICE
 ================================================================================
 
 # Jackson JSON processor
@@ -94,7 +77,34 @@ from the source code management (SCM) system project uses.
 
 
 ================================================================================
-com.fasterxml.jackson.datatype:jackson-datatype-jdk8:2.19.4, META-INF/NOTICE
+com.fasterxml.jackson.core:jackson-annotations:2.21, META-INF/NOTICE
+================================================================================
+
+# Jackson JSON processor
+
+Jackson is a high-performance, Free/Open Source JSON processing library.
+It was originally written by Tatu Saloranta (tatu.saloranta@iki.fi), and has
+been in development since 2007.
+It is currently developed by a community of developers.
+
+## Copyright
+
+Copyright 2007-, Tatu Saloranta (tatu.saloranta@iki.fi)
+
+## Licensing
+
+Jackson 2.x core and extension components are licensed under Apache License 2.0
+To find the details that apply to this artifact see the accompanying LICENSE file.
+
+## Credits
+
+A list of contributors may be found from CREDITS(-2.x) file, which is included
+in some artifacts (usually source distributions); but is always available
+from the source code management (SCM) system project uses.
+
+
+================================================================================
+com.fasterxml.jackson.datatype:jackson-datatype-jdk8:2.21.8, META-INF/NOTICE
 ================================================================================
 
 # Jackson JSON processor
@@ -117,7 +127,7 @@ from the source code management (SCM) system project uses.
 
 
 ================================================================================
-com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.19.4, META-INF/NOTICE
+com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.21.8, META-INF/NOTICE
 ================================================================================
 
 # Jackson JSON processor
@@ -140,7 +150,7 @@ from the source code management (SCM) system project uses.
 
 
 ================================================================================
-com.fasterxml.jackson.module:jackson-module-kotlin:2.19.4, META-INF/NOTICE
+com.fasterxml.jackson.module:jackson-module-kotlin:2.21.8, META-INF/NOTICE
 ================================================================================
 
 # Jackson JSON processor
@@ -194,11 +204,32 @@ Copy of the Apache 2.0 license can be found in `LICENSE` file.
 
 
 ================================================================================
-com.fasterxml.jackson.core:jackson-core:2.19.4, META-INF/FastDoubleParser-NOTICE
+com.fasterxml.jackson.core:jackson-core:2.21.8, META-INF/FastDoubleParser-LICENSE (FastDoubleParser, bundled in jackson-core)
 ================================================================================
 
-# FastDoubleParser
+MIT License
 
+Copyright (c) 2024 Werner Randelshofer, Switzerland.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+------
 This is a Java port of Daniel Lemire's fast_float project.
 This project provides parsers for double, float, BigDecimal and BigInteger values.
 
@@ -211,36 +242,68 @@ Copyright © 2024 Werner Randelshofer, Switzerland.
 This code is licensed under MIT License.
 https://github.com/wrandelshofer/FastDoubleParser/blob/522be16e145f43308c43b23094e31d5efcaa580e/LICENSE
 (The file 'LICENSE' is included in the sources and classes Jar files that are released by this project
-- as is required by that license.)
+- as is required by that license - see FastDoubleParser-LICENSE.)
 
 Some portions of the code have been derived from other projects.
 All these projects require that we include a copyright notice, and some require that we also include some text of their
 license file.
 
-fast_double_parser, Copyright (c) 2022 Daniel Lemire. BSL License.
+fast_double_parser, Copyright (c) 2022 Daniel Lemire. Boost Software License.
 https://github.com/lemire/fast_double_parser
 https://github.com/lemire/fast_double_parser/blob/07d9189a8fb815fe800cb15ca022e7a07093236e/LICENSE.BSL
-(The file 'thirdparty-LICENSE' is included in the sources and classes Jar files that are released by this project
-- as is required by that license.)
+(The file 'LICENSE.BSL' is included in the sources and classes Jar files that are released by this project
+- as is required by that license - see FastDoubleParser-ThirdParty-LICENSE.)
 
 fast_float, Copyright (c) 2021 The fast_float authors. MIT License.
 https://github.com/fastfloat/fast_float
 https://github.com/fastfloat/fast_float/blob/cc1e01e9eee74128e48d51488a6b1df4a767a810/LICENSE-MIT
-(The file 'thirdparty-LICENSE' is included in the sources and classes Jar files that are released by this project
-- as is required by that license.)
+(The file 'LICENSE-MIT' is included in the sources and classes Jar files that are released by this project
+- as is required by that license - see FastDoubleParser-ThirdParty-LICENSE.)
 
 bigint, Copyright 2020 Tim Buktu. 2-clause BSD License.
 https://github.com/tbuktu/bigint/tree/floatfft
 https://github.com/tbuktu/bigint/blob/617c8cd8a7c5e4fb4d919c6a4d11e2586107f029/LICENSE
 https://github.com/wrandelshofer/FastDoubleParser/blob/39e123b15b71f29a38a087d16a0bc620fc879aa6/bigint-LICENSE
 (We only use those portions of the bigint project that can be licensed under 2-clause BSD License.)
-(The file 'thirdparty-LICENSE' is included in the sources and classes Jar files that are released by this project
-- as is required by that license.)
+(The file 'bigint-LICENSE' is included in the sources and classes Jar files that are released by this project
+- as is required by that license - see FastDoubleParser-ThirdParty-LICENSE.)
+
 
 
 ================================================================================
-com.fasterxml.jackson.core:jackson-core:2.19.4, META-INF/thirdparty-LICENSE (FastDoubleParser's third-party code)
+com.fasterxml.jackson.core:jackson-core:2.21.8, META-INF/FastDoubleParser-ThirdParty-LICENSE (FastDoubleParser's third-party code)
 ================================================================================
+
+# FastDoubleParser
+
+This is a Java port of Daniel Lemire's fast_float project.
+This project provides parsers for double, float, BigDecimal and BigInteger values.
+
+Copyright (c) Daniel Lemire
+
+Boost Software License - Version 1.0 - August 17th, 2003
+
+Permission is hereby granted, free of charge, to any person or organization
+obtaining a copy of the software and accompanying documentation covered by
+this license (the "Software") to use, reproduce, display, distribute,
+execute, and transmit the Software, and to prepare derivative works of the
+Software, and to permit third-parties to whom the Software is furnished to
+do so, all subject to the following:
+
+The copyright notices in the Software and this entire statement, including
+the above license grant, this restriction and the following disclaimer,
+must be included in all copies of the Software, in whole or in part, and
+all derivative works of the Software, unless such copies or derivative
+works are solely in the form of machine-executable object code generated by
+a source language processor.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, TITLE AND NON-INFRINGEMENT. IN NO EVENT
+SHALL THE COPYRIGHT HOLDERS OR ANYONE DISTRIBUTING THE SOFTWARE BE LIABLE
+FOR ANY DAMAGES OR OTHER LIABILITY, WHETHER IN CONTRACT, TORT OR OTHERWISE,
+ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
 
 ------
 Third-party license for
@@ -302,6 +365,31 @@ SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
 CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+
+================================================================================
+com.fasterxml.jackson.core:jackson-core:2.21.8, META-INF/Schubfach-LICENSE (Schubfach, bundled in jackson-core)
+================================================================================
+
+Copyright 2018-2020 Raffaello Giulietti
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
 
 
 ================================================================================

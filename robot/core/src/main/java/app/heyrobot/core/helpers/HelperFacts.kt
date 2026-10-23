@@ -34,18 +34,6 @@ data class HelperFacts(
 
     fun withDropped(model: String, e: Extra): HelperFacts = copy(dropped = dropped + (model to (dropped(model) + e)))
 
-    /**
-     * Test connection's line on [name]'s page: what the last check found. 1.0.2: a check that failed says so, and a key
-     * refused over http says nothing was asked (before, any check that got no answer read "the server answered").
-     */
-    fun checkedLine(name: String): String = when {
-        checkedAt <= 0 -> "Robot hasn't reached $name yet."
-        failure == HelperFailure.KEY_OVER_HTTP -> "Last checked: the key wasn't sent over http, so nothing was asked."
-        failure != null -> "Last checked: it didn't work (" + app.heyrobot.core.HelperFail.of(failure).title + ")."
-        else -> "Last checked: " + (if (answered) "a test question was answered" else "the server answered") +
-            (if (models.isNotEmpty()) ", ${models.size} models listed" else "") + "."
-    }
-
     /** The model can't take Robot's actions (the server refused tools, or Check actions saw it not call one). */
     fun noActions(model: String): Boolean = Extra.TOOLS in dropped(model) || (this.model == model && actions == false)
 

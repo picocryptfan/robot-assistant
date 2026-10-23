@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.AndroidPath
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.SettingsStrings
+
 // Pure. Staying the assistant across restarts (0.2.3), and the one-time ADB fixes screen.
 //
 // At boot, Android 17's VoiceInteractionManagerService.initForUser keeps the current assistant only if
@@ -39,6 +43,26 @@ object RecognizerRepair {
         else -> Decision.WRITE
     }
 
+    /** 1.2 (every-android-phone, Step 6): what keeps Robot the assistant at the next boot ([kept]). */
+    enum class Kept {
+        /** Robot's recognizer is set. */
+        ROBOT,
+        /**
+         * Another installed recognizer is set (on a stock phone, its maker's): Android keeps the assistant with it too
+         * (INFERRED from Android's code; to check on the phones), so the ADB fix isn't asked for, and would replace it.
+         */
+        OTHER,
+        /** None set, unreadable, or one no longer installed: Android may drop Robot at the next boot; the ADB fix keeps it. */
+        NONE,
+    }
+
+    /** [current], [robot] and [currentInstalled] as in [decide], which leaves [Kept.OTHER] alone the same way. */
+    fun kept(current: String?, robot: String, currentInstalled: Boolean): Kept = when {
+        same(current, robot) -> Kept.ROBOT
+        !current.isNullOrBlank() && currentInstalled -> Kept.OTHER
+        else -> Kept.NONE
+    }
+
     /**
      * "a.b/.X" and "a.b/a.b.X" are the same component (a class name starting with "." is in the package, as Android reads
      * it). 1.0: Robot's package (ai.robot_app) and its classes' package (app.heyrobot) differ, so "ai.robot_app/.assistant.X"
@@ -68,60 +92,77 @@ enum class AdbCheck {
 /**
  * One platform workaround that needs a computer once (Settings › Advanced › ADB fixes): [why] in one or two plain
  * sentences, the [commands] to run, and how the app tells it is done. [sinceVersionCode]: the first Robot version that
- * uses it. A new workaround is a new entry in [AdbFixes.ALL].
+ * uses it. A new workaround is a new entry in [AdbFixes.ALL]. 1.1: [titleText] and [whyText] are its words without a
+ * language yet (the page shows them in the menus' language).
  */
 data class AdbFix(
     val id: String,
-    val title: String,
-    val why: String,
+    val titleText: Phrase,
+    val whyText: Phrase,
     val commands: List<String>,
     val check: AdbCheck,
     val sinceVersionCode: Int = 0,
     val sinceVersion: String = "",
 )
 
-enum class AdbFixState { APPLIED, NOT_APPLIED, NEEDS_NEWER }
+enum class AdbFixState {
+    APPLIED, NOT_APPLIED, NEEDS_NEWER,
+    /**
+     * 1.2 (every-android-phone, Step 6): the recognizer fix where another installed recognizer is set (a stock phone's
+     * own, [RecognizerRepair.Kept.OTHER]): Android keeps the assistant with it too, and the fix would replace it for every
+     * app, so the page offers neither its commands nor its run.
+     */
+    NOT_NEEDED,
+}
 
 object AdbFixes {
     /** 1.0: [AppId.PACKAGE] (0.9's grants were for `app.heyrobot` and don't carry over to it). */
     const val PACKAGE = AppId.PACKAGE
     /** The package, then the class (whose own package stays `app.heyrobot`), as Android flattens a component. */
-    const val RECOGNIZER = "$PACKAGE/app.heyrobot.assistant.RobotRecognitionService"
+    const val RECOGNIZER = "$PACKAGE/app.heyrobot.assistant.RobotRecognitionService" // l10n: not text (a component's name)
 
-    const val HEADER = "Some things Android only lets a computer change. Each fix below is done once, with adb. " +
-        "On the phone: Settings › About phone, tap Build number seven times; then Settings › System › Developer options, turn on " +
-        "USB debugging and connect the phone to a computer with adb. Run the commands there, then turn USB debugging off again."
+    /** The page's words before the fixes, Android's screens in the phone's language. */
+    val headerText: Phrase get() = SettingsStrings.adbHeader("about" to AndroidPath.ABOUT_PHONE, "build" to AndroidPath.BUILD_NUMBER,
+            "developer" to AndroidPath.DEVELOPER_OPTIONS, "usb" to AndroidPath.USB_DEBUGGING)
 
     val ALL: List<AdbFix> = listOf(
         AdbFix(
             id = "recognizer",
-            title = "Stay the assistant after a restart",
-            why = "At every restart Android keeps a non-system assistant only if a default speech recognizer is set, and GrapheneOS has no " +
-                "screen to set one. This sets Robot's.",
-            commands = listOf("adb shell settings put secure ${RecognizerRepair.KEY} $RECOGNIZER"),
+            titleText = SettingsStrings.adbRecognizer(),
+            whyText = SettingsStrings.adbRecognizerWhy(),
+            commands = listOf("adb shell settings put secure ${RecognizerRepair.KEY} $RECOGNIZER"), // l10n: not text (a shell command)
             check = AdbCheck.RECOGNIZER_IS_ROBOT,
         ),
         AdbFix(
             id = "repair",
-            title = "Let Robot repair that itself",
-            why = "Lets Robot set the speech recognizer again if it is ever cleared (Robot changes nothing else). Android allows this " +
-                "permission only through adb.",
-            commands = listOf("adb shell pm grant $PACKAGE android.permission.WRITE_SECURE_SETTINGS"),
+            titleText = SettingsStrings.adbRepair(),
+            whyText = SettingsStrings.adbRepairWhy(),
+            commands = listOf("adb shell pm grant $PACKAGE android.permission.WRITE_SECURE_SETTINGS"), // l10n: not text (a shell command)
             check = AdbCheck.SECURE_SETTINGS_GRANTED,
             sinceVersionCode = 23,
             sinceVersion = "0.2.3",
         ),
     )
 
-    fun state(fix: AdbFix, applied: Boolean, versionCode: Int): AdbFixState = when {
+    /** [kept]: what keeps Robot the assistant at the next boot now (RecognizerRepair.kept); NONE leaves every fix as before. */
+    fun state(fix: AdbFix, applied: Boolean, versionCode: Int, kept: RecognizerRepair.Kept = RecognizerRepair.Kept.NONE): AdbFixState = when {
         versionCode < fix.sinceVersionCode -> AdbFixState.NEEDS_NEWER
         applied -> AdbFixState.APPLIED
+        notNeeded(fix, kept) -> AdbFixState.NOT_NEEDED
         else -> AdbFixState.NOT_APPLIED
     }
 
-    fun label(fix: AdbFix, s: AdbFixState): String = when (s) {
-        AdbFixState.APPLIED -> "Done"
-        AdbFixState.NOT_APPLIED -> "Not done"
-        AdbFixState.NEEDS_NEWER -> "Needs Robot ${fix.sinceVersion}+"
+    /**
+     * 1.2: [fix] would replace another installed speech recognizer ([kept] is OTHER): the recognizer fix, whose command
+     * sets voice_recognition_service. Neither the page nor "Run with Shizuku through Termux" offers it then.
+     */
+    fun notNeeded(fix: AdbFix, kept: RecognizerRepair.Kept): Boolean = fix.check == AdbCheck.RECOGNIZER_IS_ROBOT && kept == RecognizerRepair.Kept.OTHER
+
+    /** The fix's state in words, without a language yet. */
+    fun labelText(fix: AdbFix, s: AdbFixState): Phrase = when (s) {
+        AdbFixState.APPLIED -> SettingsStrings.adbDone()
+        AdbFixState.NOT_APPLIED -> SettingsStrings.adbNotDone()
+        AdbFixState.NEEDS_NEWER -> SettingsStrings.adbNeedsNewer("version" to fix.sinceVersion)
+        AdbFixState.NOT_NEEDED -> SettingsStrings.adbNotNeeded()
     }
 }

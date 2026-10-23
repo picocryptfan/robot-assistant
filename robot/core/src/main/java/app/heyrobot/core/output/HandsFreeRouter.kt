@@ -4,7 +4,7 @@ package app.heyrobot.core.output
 import app.heyrobot.core.HelperRouter
 import app.heyrobot.core.TextCommand
 
-// Pure. Headset and car mode by voice (design §4.3 "Phrases", §2.3 "repeat", §3.3), English and Québec French, decided by
+// Pure. Headset and car mode by voice, English and Québec French, decided by
 // code before anything reaches the model and anchored at the start of what you said like HelperRouter: only "hey robot",
 // "please", "can you", "peux-tu" and the like in front, and only "please", "now", "merci" after. The short commands must
 // be the whole utterance, so "I'm driving to Montreal tomorrow, what's the weather there" and "my car mode button is

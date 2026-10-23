@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.messages
 
+import app.heyrobot.core.i18n.Lang
 import app.heyrobot.core.messages.Snapshots.thread
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -33,7 +34,7 @@ class ReplyPlanTest {
         assertEquals(Confirm.TAP, p.confirm)
         assertFalse(p.voiceYesCounts)
         assertEquals("Reply to Mom Martin: I'll be late. Tap Send to send it.", ReplyPlanner.spoken(p, Lang.EN))
-        assertEquals("Répondre à Mom Martin : I'll be late. Touche Envoyer pour l'envoyer.", ReplyPlanner.spoken(p, Lang.FR))
+        assertEquals("Répondre à Mom Martin\u00A0: I'll be late. Touche Envoyer pour l’envoyer.", ReplyPlanner.spoken(p, Lang.FR))
         assertEquals("Reply to **Mom Martin** · Cheogram\n«I'll be late»", ReplyPlanner.card(p, Lang.EN))
         // "Answer reply cards by voice": a yes counts, only for your own words in a 1:1 chat.
         val voice = on.copy(voiceYesSends = true)
@@ -63,6 +64,28 @@ class ReplyPlanTest {
     }
 
     /**
+     * Stopped in its 3 seconds, a reply without a card becomes the card it would have been: a tap sends it, or a spoken
+     * yes only with "Answer reply cards by voice". A later "yes" or "ok" (perhaps to another question) sends nothing.
+     */
+    @Test fun aStoppedReplyWaitsForATap() {
+        val window = send(ReplyPlanner.plan(mom, "I'll be late", ReplySource.DICTATED, on, locked = false, noCard = true))
+        assertTrue(window.voiceYesCounts)
+        val stopped = ReplyPlanner.stopped(window, on)
+        assertEquals(Confirm.TAP, stopped.confirm)
+        assertFalse(stopped.voiceYesCounts)
+        assertEquals(window.copy(confirm = Confirm.TAP), stopped)
+        assertEquals(Confirm.VOICE_OR_TAP, ReplyPlanner.stopped(window, on.copy(voiceYesSends = true)).confirm)
+        // "Card before sending a reply" off: the same.
+        val off = on.copy(replyCard = false)
+        assertEquals(Confirm.TAP, ReplyPlanner.stopped(send(ReplyPlanner.plan(mom, "x", ReplySource.DICTATED, off, false)), off).confirm)
+        // A card stays the card it was.
+        for (s in listOf(on, on.copy(voiceYesSends = true))) {
+            val card = send(ReplyPlanner.plan(mom, "x", ReplySource.DICTATED, s, false))
+            assertEquals(card, ReplyPlanner.stopped(card, s))
+        }
+    }
+
+    /**
      * A reply without a card goes after 3 seconds to say "stop" (a sent message can't be recalled): a hurried objection
      * that isn't the exact word stops it too, and so does anything else you begin to say; only a yes lets it go.
      */
@@ -79,7 +102,7 @@ class ReplyPlanTest {
         val p = send(ReplyPlanner.plan(thread(Snapshots.cheogramGroup), "J'arrive", ReplySource.DICTATED, on, false))
         assertTrue(ReplyNote.GROUP in p.notes)
         assertEquals("Reply to the group **Famille** · Cheogram\n«J'arrive»\nEveryone in the group will see it. Tap Send to send it.", ReplyPlanner.card(p, Lang.EN))
-        assertEquals("Répondre au groupe **Famille** · Cheogram\n« J'arrive »\nTout le groupe le verra. Touche Envoyer pour l'envoyer.", ReplyPlanner.card(p, Lang.FR))
+        assertEquals("Répondre au groupe **Famille** · Cheogram\n«\u00A0J'arrive\u00A0»\nTout le groupe le verra. Touche Envoyer pour l’envoyer.", ReplyPlanner.card(p, Lang.FR))
     }
 
     @Test fun whatEachAppDoesIsOnTheCard() {

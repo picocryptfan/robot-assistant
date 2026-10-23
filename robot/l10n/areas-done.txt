@@ -1,0 +1,25 @@
+# The areas whose every word has its French: from the line on,
+# ResourcesCompleteTest and CatalogsTest fail on a missing French string there. The package that finishes an area adds
+# its line at the end. WP0's own area (Settings › Language, core UiStrings) is the first.
+language
+cards
+web
+termux
+panel
+home
+messages
+memory
+people
+conversation
+routines
+handsfree
+model
+voice
+helpers
+settings
+updates
+adb
+guide
+lock
+skills
+files

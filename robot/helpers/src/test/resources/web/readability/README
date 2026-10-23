@@ -1,3 +1,3 @@
 Ten of Mozilla Readability's test pages (https://github.com/mozilla/readability/tree/main/test/test-pages), as Readability4J
 1.0.8 keeps them (src/test/resources/test-pages, Apache-2.0): each page's source.html and the article Readability4J 1.0.8
-gave on jsoup 1.11.2 (expected.html). Robot's copy, on jsoup 1.15.1, must give the same text (ReadabilityPagesTest).
+gave on jsoup 1.11.2 (expected.html). Robot's copy, on jsoup 1.23.2, must give the same text (ReadabilityPagesTest).

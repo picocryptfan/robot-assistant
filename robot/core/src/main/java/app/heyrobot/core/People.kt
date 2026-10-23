@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.InfoStrings
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.ToolStrings
+import app.heyrobot.core.i18n.UiLabel
+import app.heyrobot.core.i18n.UiStrings
 import java.text.Normalizer
 import java.util.Locale
 
@@ -209,7 +214,13 @@ object Recipients {
      * [learned]: the person's name was seen in a Cheogram notification (always a card). [remember]: the same action
      * that also remembers this choice for the name asked ("Always use this for mom"), offered on a card with several.
      */
-    data class Option(val name: String, val kind: String?, val shown: String, val action: Action, val learned: Boolean = false, val remember: Action? = null)
+    data class Option(val name: String, val kind: String?, val shown: String, val action: Action, val learned: Boolean = false, val remember: Action? = null,
+        /** 1.1: [kind] in words without a language yet ("Mobile", « Cellulaire »); null: [kind] as it is. */
+        val kindText: Phrase? = null) {
+        /** The choice's words: the person when [named], the kind, what it shows. */
+        fun choice(named: Boolean): Phrase = Phrase.Join(listOfNotNull(if (named) Phrase.plain(name) else null,
+            kind?.let { k -> kindText?.takeIf { it.en() == k } ?: Phrase.plain(k) }, Phrase.plain(shown)), " · ")
+    }
 
     /**
      * The places a card may offer: all of them, except that a person learned from a notification is never the only one
@@ -219,8 +230,9 @@ object Recipients {
         if (matches.any { !it.learned } && options.isNotEmpty() && options.all { it.learned }) emptyList() else options
 
     /** The card's line when its one choice is someone learned from a notification. */
-    const val LEARNED_NOTE = "This name was seen in a notification, and whoever sent it chose it. Robot treats them as someone " +
-        "you know only once you tick the box, or tap Keep in Settings › People."
+    val LEARNED_NOTE: String get() = learnedNote.en()
+
+    private val learnedNote: Phrase get() = InfoStrings.learnedNote("keep" to UiLabel(UiStrings.keep), "page" to UiStrings.inSettings(UiStrings.people))
 
     /**
      * The card for a text or an email to the people [matches] named, given every place they can be reached
@@ -231,7 +243,7 @@ object Recipients {
      * renames the waiting action after the one person they all belong to.
      */
     fun prepare(asked: Action, matches: List<ContactMatch>, options: List<Option>, hiddenPeople: Int, remember: String? = null,
-        named: (String) -> Action): Prepared {
+        rememberText: Phrase? = null, named: (String) -> Action): Prepared {
         if (options.size == 1 && !options[0].learned) {
             return Prepared.Ready(options[0].action, why = if (hiddenPeople > 0 || !ContactMatcher.sure(matches, 1)) setOf(AskWhy.WHO) else emptySet())
         }
@@ -239,28 +251,33 @@ object Recipients {
             val o = options[0]
             // Only "Card for names learned from Cheogram" is about this one; any other match would make it unsure who too.
             val why = if (hiddenPeople > 0 || matches.size > 1) setOf(AskWhy.LEARNED, AskWhy.WHO) else setOf(AskWhy.LEARNED)
-            return Prepared.Ready(o.action, why = why, choices = listOf(Choice(listOfNotNull(o.kind, o.shown).joinToString(" · "), o.action, o.remember)),
-                more = hiddenPeople, note = LEARNED_NOTE, remember = remember?.takeIf { o.remember != null })
+            return Prepared.Ready(o.action, why = why, choices = listOf(Choice(o.choice(named = false), o.action, o.remember)),
+                more = hiddenPeople, note = LEARNED_NOTE, remember = remember?.takeIf { o.remember != null }, noteText = learnedNote,
+                rememberText = rememberText?.takeIf { o.remember != null })
         }
         val oneName = options.map { it.name }.distinct().singleOrNull()
         val choices = options.take(MAX_CHOICES).map { o ->
-            Choice(listOfNotNull(if (oneName == null) o.name else null, o.kind, o.shown).joinToString(" · "), o.action, o.remember)
+            Choice(o.choice(named = oneName == null), o.action, o.remember)
         }
         // Without a card the first choice is taken: a name learned from a notification asks under its own switch too.
         val why = if (options[0].learned) setOf(AskWhy.WHO, AskWhy.LEARNED) else setOf(AskWhy.WHO)
         return Prepared.Ready(oneName?.let(named) ?: asked, why = why, choices = choices, more = options.size - choices.size + hiddenPeople,
-            remember = remember?.takeIf { choices.any { it.remember != null } })
+            remember = remember?.takeIf { choices.any { it.remember != null } }, rememberText = rememberText?.takeIf { choices.any { it.remember != null } })
     }
 
     /** "Always use this for “mom”": the line next to a card's choices (the name as asked, as it would be kept). */
-    fun rememberLabel(asked: String): String = "Always use this for “${People.aliasName(asked)}”"
+    fun rememberLabel(asked: String): String = rememberLabelText(asked).en()
+
+    /** [rememberLabel] in words without a language yet (a tick box: the menus' language). */
+    fun rememberLabelText(asked: String): Phrase = InfoStrings.alwaysUseFor("name" to People.aliasName(asked))
 
     /** The card's line under "Pick in Cheogram" and "Choose in Cheogram". */
-    const val PICK_NOTE = "“Pick in Cheogram” opens Cheogram's contact list, titled “Create shortcut”: nothing goes on your home screen, " +
-        "and Robot remembers who you pick. “Choose in Cheogram” opens its share screen instead."
+    val PICK_NOTE: String get() = pickNote.en()
+
+    private val pickNote: Phrase get() = InfoStrings.pickNoteCheogram("pick" to UiLabel(ToolStrings.pickInCheogram), "choose" to UiLabel(ToolStrings.chooseInCheogram))
 
     /** Added to the card's line when Robot may not read the phone's contacts (its "Allow contacts" button). */
-    const val ALLOW_NOTE = "Robot can't read your contacts: allow it to find people there too."
+    val ALLOW_NOTE: String get() = InfoStrings.allowNote().en()
 
     /**
      * send_text found no one in the contacts to text ([reason] says why, as the card and the model are told). With
@@ -271,14 +288,19 @@ object Recipients {
      * list: not found. [allowContacts]: Robot may not read the phone's contacts (the person may be there), so the card
      * also offers to allow it; neither Cheogram's list nor its share screen needs that permission.
      */
-    fun notFound(asked: Action.SendText, reason: String, via: TextVia, pick: Boolean = false, allowContacts: Boolean = false): Prepared {
-        if (via != TextVia.CHEOGRAM) return Prepared.Refused(if (allowContacts) ActionStatus.NEEDS_PERMISSION else ActionStatus.NOT_FOUND, reason)
-        val share = asked.copy(target = TextTarget(null, "", reason, "Cheogram", TextVia.CHEOGRAM_PICK))
-        val allow = if (allowContacts) ALLOW_NOTE else null
-        if (!pick) return Prepared.Ready(share, why = setOf(AskWhy.WHO), note = allow, allowContacts = allowContacts)
-        val list = asked.copy(target = TextTarget(null, "", reason, "Cheogram", TextVia.CHEOGRAM_LIST))
-        return Prepared.Ready(list, why = setOf(AskWhy.WHO), choices = listOf(Choice("Pick in Cheogram", list), Choice("Choose in Cheogram", share)),
-            note = listOfNotNull(PICK_NOTE, allow).joinToString(" "), allowContacts = allowContacts)
+    fun notFound(asked: Action.SendText, reason: String, via: TextVia, pick: Boolean = false, allowContacts: Boolean = false): Prepared =
+        notFound(asked, reason, null, via, pick, allowContacts)
+
+    /** [notFound] with [reasonText], [reason] in words without a language yet (1.1: the card's words in the reply language). */
+    fun notFound(asked: Action.SendText, reason: String, reasonText: Phrase?, via: TextVia, pick: Boolean = false, allowContacts: Boolean = false): Prepared {
+        if (via != TextVia.CHEOGRAM) return Prepared.Refused(if (allowContacts) ActionStatus.NEEDS_PERMISSION else ActionStatus.NOT_FOUND, reason, reasonText)
+        val share = asked.copy(target = TextTarget(null, "", reason, "Cheogram", TextVia.CHEOGRAM_PICK, displayText = reasonText))
+        val allow = if (allowContacts) InfoStrings.allowNote() else null
+        if (!pick) return Prepared.Ready(share, why = setOf(AskWhy.WHO), note = allow?.en(), allowContacts = allowContacts, noteText = allow)
+        val list = asked.copy(target = TextTarget(null, "", reason, "Cheogram", TextVia.CHEOGRAM_LIST, displayText = reasonText))
+        val note = Phrase.Join(listOfNotNull(pickNote, allow))
+        return Prepared.Ready(list, why = setOf(AskWhy.WHO), choices = listOf(Choice(ToolStrings.pickInCheogram(), list), Choice(ToolStrings.chooseInCheogram(), share)),
+            note = note.en(), allowContacts = allowContacts, noteText = note)
     }
 
     /** Mobile numbers first (texts), then the rest in the contact's order; the same digits only once. */
@@ -297,7 +319,7 @@ object Recipients {
             val emails = c.emails.distinct().take(2)
             if (emails.isNotEmpty()) put("emails", emails)
             c.xmpp.firstOrNull()?.let { put("xmpp", it.jid) }
-            if (c.learned) put("note", "name seen in a notification, not confirmed")
+            if (c.learned) put("note", "name seen in a notification, not confirmed") // l10n: not text (model prompt)
         }
     }
 }

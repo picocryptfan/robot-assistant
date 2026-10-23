@@ -260,11 +260,11 @@ object HelperRouter {
         // "what does Claude think about …", "qu'est-ce que Claude pense de …".
         (seqName(ws, i, arrayOf("what", "does", "=", "think"), names) ?: seqName(ws, i, arrayOf("whats", "=", "think"), names))?.let { (at, m) ->
             val r = rest(text, ws, at, setOf("about", "of")) ?: return HelperCommand.Join(helper = m.id)
-            return ask("What do you think about ${r.trimEnd('?', '.', ' ')}?", m.id)
+            return ask("What do you think about ${r.trimEnd('?', '.', ' ')}?", m.id) // l10n: not text (the question a helper is sent)
         }
         seqName(ws, i, arrayOf("quest", "ce", "que", "=", "pense"), names)?.let { (at, m) ->
             val r = rest(text, ws, at) ?: return HelperCommand.Join(helper = m.id)
-            return ask("Que penses-tu ${r.trimEnd('?', '.', ' ')} ?", m.id)
+            return ask("Que penses-tu ${r.trimEnd('?', '.', ' ')} ?", m.id) // l10n: not text (the question a helper is sent)
         }
 
         // "go get Claude", "va chercher Claude": nothing after the name but a polite word, or "and" with a question.
@@ -285,7 +285,7 @@ object HelperRouter {
             while (k < ws.size && ws[k].w in JOIN_TAIL) k++
             if (k >= ws.size) return HelperCommand.Join(helper = m.id)
             // "talk to Claude about my day".
-            if (ws[k].w in ABOUT && k + 1 < ws.size) return HelperCommand.Join("Let's talk about " + text.substring(ws[k + 1].start).trim().trimEnd('.', '!', ' ') + ".", helper = m.id)
+            if (ws[k].w in ABOUT && k + 1 < ws.size) return HelperCommand.Join("Let's talk about " + text.substring(ws[k + 1].start).trim().trimEnd('.', '!', ' ') + ".", helper = m.id) // l10n: not text (the question a helper is sent)
             // "get Claude, what's …" or "go get Claude and ask him …": the rest is the first question.
             if (nameEnd.punctAfter in setOf(',', ':', '—', '-') || ws[k].w in JOIN_LINK) {
                 return HelperCommand.Join(rest(text, ws, k, JOIN_LINK + ASK_DROP), helper = m.id)

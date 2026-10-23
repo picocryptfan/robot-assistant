@@ -1,0 +1,198 @@
+<!-- Phone lock, in Québec French (tu): the ids of values/strings_lock.xml; each value written with the glossary
+     (robot/l10n/glossary.tsv: « blocage du téléphone », « code de blocage », « écran de blocage », « appli », « touche ») and
+     the OQLF's spaces (tools/fr_typo.py, FrenchTypographyTest). -->
+<resources>
+    <!-- Android's accessibility list and consent screen (res/xml/lock_accessibility.xml). -->
+    <string name="lock_a11y_label">Blocage du téléphone de Robot</string>
+    <string name="lock_a11y_description">Le blocage du téléphone s’en sert pour voir quelle appli passe au premier plan, afin de couvrir les applis pendant un blocage que tu as réglé dans Robot. Il ne lit jamais ce qui est à l’écran et ne touche jamais à rien.</string>
+
+    <!-- Settings › Phone lock. -->
+    <string name="lock_intro">Pendant un blocage, toutes les applis sont couvertes, sauf les appels, les alarmes et Robot. C’est une habitude que tu te donnes, ou une règle pour quelqu’un qui la respectera la plupart du temps&#160;: ça n’arrête pas une personne déterminée.</string>
+    <string name="lock_switch_on">Les blocages couvrent tes applis aux heures que tu choisis.</string>
+    <string name="lock_switch_off">Aucun blocage ne commence.</string>
+    <string name="lock_damaged">Le fichier du blocage du téléphone est illisible, alors tous les blocages sont désactivés.</string>
+    <string name="lock_start_over">Recommencer</string>
+    <string name="lock_start_over_title">Recommencer le blocage du téléphone&#8239;?</string>
+    <string name="lock_start_over_text">Le fichier illisible est mis de côté, et le blocage du téléphone recommence sans aucun blocage.</string>
+    <string name="lock_needs_code_title">Les changements demandent le code de blocage</string>
+    <string name="lock_needs_code">Entre le code de blocage pour changer le blocage du téléphone. Activer un blocage ne le demande pas.</string>
+    <string name="lock_enter_code">Entrer le code de blocage</string>
+    <string name="lock_who">Pour qui sont les blocages</string>
+    <string name="lock_for_me">Moi</string>
+    <string name="lock_for_someone">Quelqu’un d’autre (un enfant, un téléphone partagé)</string>
+    <string name="lock_code_needed_someone">Choisis d’abord un code de blocage&#160;: les blocages pour quelqu’un d’autre en demandent un.</string>
+    <string name="lock_code">Code de blocage</string>
+    <string name="lock_code_none">Aucun</string>
+    <string name="lock_code_is_set">Choisi</string>
+    <string name="lock_code_set">Choisir un code</string>
+    <string name="lock_code_change">Changer le code</string>
+    <string name="lock_code_remove">Retirer le code</string>
+    <string name="lock_code_remove_title">Retirer le code de blocage&#8239;?</string>
+    <string name="lock_code_remove_text">Les changements au blocage du téléphone ne le demanderont plus. Les blocages pour quelqu’un d’autre demandent un code, alors ils redeviennent les tiens.</string>
+    <string name="lock_code_forgot">Code oublié&#8239;? Il n’y a aucune façon de le récupérer. En dehors d’un blocage, Paramètres › Applications › Robot › Stockage › Effacer le stockage supprime toutes les données de Robot, y compris les blocages et le code.</string>
+    <string name="lock_locks">Blocages</string>
+    <string name="lock_add">Ajouter un blocage</string>
+    <string name="lock_add_hint">Par exemple, Dodo de 22&#160;h à 7&#160;h.</string>
+    <string name="lock_on">%1$s activé</string>
+    <string name="lock_kind_time">Heure de la journée</string>
+    <string name="lock_rules">Comment les blocages fonctionnent</string>
+    <string name="lock_end_early">Arrêter plus tôt</string>
+    <string name="lock_end_off">Désactivé</string>
+    <string name="lock_end_off_detail">Un blocage dure jusqu’à sa fin.</string>
+    <string name="lock_end_wait">Après une attente</string>
+    <string name="lock_end_wait_detail">Arrêter plus tôt lance une attente&#8239;; ensuite, tu peux arrêter le blocage pendant 5 minutes.</string>
+    <string name="lock_end_code">Avec le code</string>
+    <string name="lock_end_code_detail">Le code de blocage arrête un blocage plus tôt.</string>
+    <string name="lock_end_fixed">Avec le code&#160;: les blocages pour quelqu’un d’autre le demandent toujours.</string>
+    <string name="lock_wait_len">Attente avant d’arrêter plus tôt</string>
+    <string name="lock_warn">Avertir avant qu’un blocage commence</string>
+    <string name="lock_warn_off">Désactivé</string>
+    <string name="lock_show_left">Afficher le temps restant sur l’écran de blocage</string>
+    <string name="lock_show_left_on">L’écran de blocage dit combien de minutes il reste.</string>
+    <string name="lock_show_left_off">L’écran de blocage dit seulement quand le téléphone s’ouvre.</string>
+    <string name="lock_more">Plus</string>
+    <string name="lock_history">Ce qui s’est passé</string>
+    <string name="lock_history_summary">Quand les blocages ont commencé et fini, et ce que Robot a remarqué</string>
+    <string name="lock_history_empty">Rien pour l’instant.</string>
+    <string name="lock_history_footer">Gardé 30 jours, sur ce téléphone seulement, jamais dans une sauvegarde.</string>
+    <string name="lock_access">Accès</string>
+    <string name="lock_access_a11y">Accès d’accessibilité</string>
+    <string name="lock_access_on">Activé&#160;: le blocage du téléphone voit quelle appli passe au premier plan.</string>
+    <string name="lock_access_off">Désactivé&#160;: touche pour le configurer.</string>
+    <string name="lock_access_notifications">Notifications</string>
+    <string name="lock_access_notifications_ok">Activées&#160;: un avertissement avant un blocage, et un avis pendant un blocage.</string>
+    <string name="lock_access_notifications_no">Désactivées&#160;: aucun avertissement avant qu’un blocage commence.</string>
+    <string name="lock_allow">Autoriser</string>
+    <string name="lock_cant_stop">Ce qu’un blocage ne peut pas empêcher</string>
+    <string name="lock_cant_stop_summary">Le blocage du téléphone est une habitude, pas un mur</string>
+    <string name="lock_cant_stop_1">Pendant un blocage, les façons d’arrêter Robot à partir du téléphone sont couvertes&#160;: les Paramètres d’Android, les boutiques d’applis, l’installateur et les menus de l’écran d’accueil.</string>
+    <string name="lock_cant_stop_2">Redémarrer en mode sans échec (garde le doigt sur Éteindre dans le menu de l’interrupteur)&#160;: Robot n’y fonctionne pas. Après un redémarrage normal, le blocage revient s’il est encore dans son temps, et Ce qui s’est passé note l’interruption.</string>
+    <string name="lock_cant_stop_3">En mode sans échec, ou en dehors d’un blocage&#160;: désinstaller Robot ou effacer son stockage supprime tous les blocages et le code.</string>
+    <string name="lock_cant_stop_4">En dehors d’un blocage&#160;: désactiver l’accès d’accessibilité de Robot ou forcer l’arrêt de Robot désactive le blocage du téléphone. Ce qui s’est passé le note, et le prochain blocage dit qu’il n’a pas pu commencer.</string>
+    <string name="lock_cant_stop_5">Un ordinateur avec le débogage USB peut tout faire. Sur le téléphone d’un enfant, désactive les options pour les développeurs.</string>
+    <string name="lock_cant_stop_6">Le volet des notifications reste utilisable pendant un blocage, avec ses réponses et ses réglages rapides, parce que le couvrir couvrirait aussi l’écran de verrouillage. Une vidéo en mode image dans l’image lancée avant un blocage peut rester par-dessus.</string>
+    <string name="lock_cant_stop_7">Le blocage du téléphone bloque seulement l’utilisateur dans lequel Robot fonctionne, pas un autre utilisateur ni un espace privé.</string>
+    <string name="lock_cant_stop_8">Changer la date ou l’heure en dehors d’un blocage déplace les blocages Heure de la journée avec l’horloge.</string>
+
+    <!-- Setup. -->
+    <string name="lock_setup_title">Configurer le blocage du téléphone</string>
+    <string name="lock_setup_why">Le blocage du téléphone utilise l’accès d’accessibilité d’Android pour voir quelle appli passe au premier plan, afin de couvrir les applis pendant un blocage. Il ne lit jamais ce qui est à l’écran et ne touche jamais à rien. Android dira que Robot peut «&#160;afficher et contrôler l’écran&#160;»&#160;: ce sont les mots d’Android pour toute appli qui a cet accès.</string>
+    <string name="lock_setup_restricted">Android appelle l’accès d’accessibilité un paramètre restreint pour les applis installées à partir d’un fichier plutôt que d’une boutique d’applis, comme Robot&#160;: des applis malveillantes installées ainsi s’en sont servies pour lire l’écran des gens. Il peut donc falloir trois étapes.</string>
+    <string name="lock_setup_1">1. Touche Ouvrir les paramètres d’accessibilité, trouve Blocage du téléphone de Robot (sous Applis téléchargées) et active-le. Si Android dit «&#160;Paramètre restreint&#160;», touche OK.</string>
+    <string name="lock_setup_open">Ouvrir les paramètres d’accessibilité</string>
+    <string name="lock_setup_2">2. Touche Infos sur l’appli, puis ⋮ (en haut à droite) › Autoriser les paramètres restreints, et confirme&#8239;; Android peut demander ton NIP ou ton empreinte digitale. Pas de tel élément&#8239;? Android ne bloque pas Robot (tu l’as peut-être déjà autorisé pour les Personnes)&#160;: saute cette étape.</string>
+    <string name="lock_app_info">Infos sur l’appli</string>
+    <string name="lock_setup_3">3. De retour dans les paramètres d’accessibilité, active Blocage du téléphone de Robot et touche Autoriser.</string>
+    <string name="lock_setup_again">Paramètres d’accessibilité, de nouveau</string>
+    <string name="lock_setup_done">L’accès du blocage du téléphone est activé.</string>
+    <string name="lock_setup_reminder">Android peut te rappeler de temps en temps que Robot a cet accès. Toucher ce rappel pendant un blocage affiche l’écran de blocage.</string>
+
+    <!-- The lock editor. -->
+    <string name="lock_new">Nouveau blocage</string>
+    <string name="lock_default_name">Dodo</string>
+    <string name="lock_name">Nom</string>
+    <string name="lock_name_hint">Jusqu’à 40 caractères</string>
+    <string name="lock_name_problem">Un nom a de 1 à 40 caractères, sur une ligne.</string>
+    <string name="lock_from">De</string>
+    <string name="lock_to">À</string>
+    <string name="lock_time_hint">Une heure sur 24 heures, comme 22:00</string>
+    <string name="lock_time_problem">Écris une heure comme 22:00.</string>
+    <string name="lock_days">Jours</string>
+    <string name="lock_days_note">Les jours où il commence&#160;: de 22&#160;h à 7&#160;h le dimanche continue jusqu’au lundi matin.</string>
+    <string name="lock_same_times">Un blocage ne peut pas commencer et finir à la même heure.</string>
+    <string name="lock_stays_open">Ce qui reste ouvert</string>
+    <string name="lock_always_open">Les appels d’urgence, les appels entrants, l’Horloge, et Robot comme à l’écran de verrouillage</string>
+    <string name="lock_extra_apps">Autres applis</string>
+    <string name="lock_extra_apps_none">Aucune</string>
+    <string name="lock_extra_apps_hint">Jusqu’à 5 applis qui restent ouvertes pendant ce blocage.</string>
+    <string name="lock_this_lock">Ce blocage</string>
+    <string name="lock_this_lock_on">Activé</string>
+    <string name="lock_this_lock_off">Désactivé&#160;: il ne commence pas.</string>
+    <string name="lock_save">Enregistrer</string>
+    <string name="lock_cancel">Annuler</string>
+    <string name="lock_delete">Supprimer</string>
+    <string name="lock_delete_title">Supprimer ce blocage&#8239;?</string>
+    <string name="lock_too_many">Le blocage du téléphone a au plus 10 blocages.</string>
+    <string name="lock_not_saved">Le blocage n’a pas pu être enregistré.</string>
+
+    <!-- The cover (LockCoverActivity). -->
+    <string name="lock_cover_ask">Demander à Robot</string>
+    <string name="lock_cover_emergency">Appel d’urgence</string>
+    <string name="lock_cover_end">Arrêter plus tôt</string>
+    <string name="lock_cover_change">Changer les blocages</string>
+    <string name="lock_cover_no_early">Ce blocage ne peut pas être arrêté plus tôt.</string>
+    <string name="lock_cover_end_now">Arrêter le blocage maintenant</string>
+    <string name="lock_cover_someone">Réglé avec un code de blocage.</string>
+    <string name="lock_cover_open">Ton téléphone est ouvert.</string>
+
+    <!-- The code pad (LockCodeActivity). -->
+    <string name="lock_code_enter">Entre le code de blocage</string>
+    <string name="lock_code_new">Choisis un code de blocage&#160;: de 4 à 12 chiffres</string>
+    <string name="lock_code_new_hint">6 chiffres, c’est une bonne longueur. Robot garde seulement une vérification du code, sous une clé qui ne quitte jamais ce téléphone.</string>
+    <string name="lock_code_again">Entre-le de nouveau</string>
+    <string name="lock_code_wrong">Ce n’est pas le code.</string>
+    <string name="lock_code_mismatch">Les deux codes ne sont pas pareils. Recommence.</string>
+    <string name="lock_code_short">Un code de blocage a de 4 à 12 chiffres.</string>
+    <string name="lock_code_ok">OK</string>
+    <string name="lock_code_delete">Effacer un chiffre</string>
+    <string name="lock_code_typed">%1$d chiffres tapés</string>
+    <string name="lock_code_lost">Le code de blocage ne peut plus être vérifié, alors les blocages pour quelqu’un d’autre ont été désactivés. Choisis un nouveau code.</string>
+    <string name="lock_code_saved">Le code de blocage est choisi.</string>
+    <string name="lock_code_removed">Le code de blocage est retiré.</string>
+    <string name="lock_code_failed">Le code de blocage n’a pas pu être enregistré.</string>
+    <string name="lock_code_not_now">Robot n’a pas pu vérifier le code pour l’instant. Rien n’a changé. Réessaie.</string>
+    <string name="lock_code_not_saved">Robot n’a pas pu enregistrer ça pour l’instant, alors rien n’a changé. Si le stockage du téléphone est plein, libère de l’espace, puis réessaie.</string>
+
+    <!-- The notices (LockNotices). -->
+    <string name="lock_channel">Blocage du téléphone</string>
+    <string name="lock_channel_detail">Avant qu’un blocage commence, pendant un blocage, et quand un blocage n’a pas pu commencer.</string>
+    <string name="lock_channel_on">Blocage du téléphone en cours</string>
+    <string name="lock_channel_on_detail">Un avis discret pendant un blocage, avec l’heure où le téléphone s’ouvre.</string>
+    <string name="lock_warn_skip">Sauter cette fois</string>
+    <string name="lock_notice_on_text">Touche pour voir ce qui reste ouvert.</string>
+    <string name="lock_notice_failed">Le blocage du téléphone n’a pas pu commencer&#160;: son accès est désactivé dans les paramètres d’Android.</string>
+
+    <!-- Phase B: After the alarm, One app first and Daily limit, usage access, the extras. -->
+    <string name="lock_add_title">Ajouter un blocage</string>
+    <string name="lock_kind_alarm">Après l’alarme</string>
+    <string name="lock_kind_alarm_detail">Pas de téléphone pendant un moment après que tu as arrêté ton alarme.</string>
+    <string name="lock_kind_time_detail">D’une heure à une autre, les jours que tu choisis.</string>
+    <string name="lock_kind_app">Une appli d’abord</string>
+    <string name="lock_kind_app_detail">Seulement une appli jusqu’à ce que tu y aies passé un certain temps, ou une limite quotidienne.</string>
+    <string name="lock_alarm_length">Durée</string>
+    <string name="lock_alarm_from">Alarmes à partir de</string>
+    <string name="lock_alarm_to">Alarmes jusqu’à</string>
+    <string name="lock_alarm_starts">Commence quand tu arrêtes l’alarme</string>
+    <string name="lock_alarm_note">Une alarme reportée ne le lance pas. Si l’alarme sonne jusqu’à ce que l’Horloge la coupe, le blocage commence la prochaine fois que tu déverrouilles, dans les 3 heures.</string>
+    <string name="lock_alarm_needs_clock">Demande l’appli Horloge de GrapheneOS. La prise en charge d’autres applis d’horloge est prévue.</string>
+    <string name="lock_app">Appli</string>
+    <string name="lock_app_choose">Choisis une appli</string>
+    <string name="lock_app_needed">Choisis d’abord l’appli.</string>
+    <string name="lock_app_mode">Fonctionnement</string>
+    <string name="lock_mode_first">Seulement cette appli jusqu’à ce que tu y aies passé le temps</string>
+    <string name="lock_mode_limit">Limite quotidienne</string>
+    <string name="lock_mode_limit_detail">Une fois que le temps d’écran d’aujourd’hui atteint la limite, seulement cette appli jusqu’à l’heure choisie.</string>
+    <string name="lock_app_start">Commence</string>
+    <string name="lock_app_start_at">À une heure</string>
+    <string name="lock_app_start_alarm">Quand j’arrête mon alarme</string>
+    <string name="lock_app_at">À</string>
+    <string name="lock_app_minutes">Minutes dans l’appli</string>
+    <string name="lock_app_latest">Se termine quand même après</string>
+    <string name="lock_latest_problem">«&#160;Se termine quand même après&#160;» doit être plus long que les minutes dans l’appli.</string>
+    <string name="lock_app_note">Seul compte le temps où l’appli est au premier plan, l’écran allumé et déverrouillé.</string>
+    <string name="lock_limit_amount">Temps d’écran aujourd’hui</string>
+    <string name="lock_limit_until">Ensuite seulement cette appli jusqu’à</string>
+    <string name="lock_access_usage">Accès aux données d’utilisation</string>
+    <string name="lock_access_usage_on">Activé&#160;: Une appli d’abord peut compter le temps dans son appli.</string>
+    <string name="lock_access_usage_off">Désactivé&#160;: touche pour l’autoriser. Sans cet accès, Une appli d’abord ne peut pas compter, et le blocage dure jusqu’à sa fin au plus tard.</string>
+    <string name="lock_setup_4">4. Seulement pour Une appli d’abord&#160;: touche Ouvrir l’accès aux données d’utilisation, trouve Robot et active-le. Sur Android 15 et plus, c’est aussi un paramètre restreint, et l’étape 2 s’en occupe déjà.</string>
+    <string name="lock_setup_usage">Ouvrir l’accès aux données d’utilisation</string>
+    <string name="lock_extra_people">Appels aux Personnes que tu choisis</string>
+    <string name="lock_extra_people_empty">Aucune personne pour l’instant. Ajoute-les dans Réglages › Personnes.</string>
+    <string name="lock_extra_maps">Cartes</string>
+    <string name="lock_extra_maps_on">Ton appli de cartes reste ouverte, et Robot peut montrer des lieux et des itinéraires.</string>
+    <string name="lock_extra_maps_off">Couverte pendant ce blocage.</string>
+    <string name="lock_extra_music">Musique</string>
+    <string name="lock_extra_music_hint">Une appli de musique qui reste ouverte pendant ce blocage.</string>
+    <string name="lock_none">Aucune</string>
+</resources>

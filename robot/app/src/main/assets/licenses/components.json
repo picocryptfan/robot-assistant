@@ -51,6 +51,11 @@
    "text": "licenses/CC-BY-4.0.txt",
    "url": "https://creativecommons.org/licenses/by/4.0/"
   },
+  "CC-BY-3.0-US": {
+   "name": "Creative Commons Attribution 3.0 United States",
+   "text": "licenses/CC-BY-3.0-US.txt",
+   "url": "https://creativecommons.org/licenses/by/3.0/us/"
+  },
   "CC0-1.0": {
    "name": "Creative Commons Zero v1.0 Universal",
    "text": "licenses/CC0-1.0.txt",
@@ -282,9 +287,9 @@
   {
    "id": "jsoup",
    "name": "jsoup",
-   "version": "1.15.1",
+   "version": "1.23.2",
    "licence": "MIT",
-   "copyright": "Copyright (c) 2009-2022 Jonathan Hedley <https://jsoup.org/>",
+   "copyright": "Copyright (c) 2009-2026 Jonathan Hedley <https://jsoup.org/>",
    "url": "https://jsoup.org/",
    "where": "app",
    "text": "licenses/MIT-jsoup.txt",
@@ -307,7 +312,7 @@
      "file": "licenses/notices/readability4j-NOTICE.txt"
     }
    ],
-   "note": "0.9 web search: finds a result page's article, as Firefox's Reader View does. A Kotlin port of Mozilla's Readability.js, copied into Robot (app.heyrobot.helpers.web.readability) with its logging removed and built against jsoup 1.15.1."
+   "note": "0.9 web search: finds a result page's article, as Firefox's Reader View does. A Kotlin port of Mozilla's Readability.js, copied into Robot (app.heyrobot.helpers.web.readability) with its logging removed and built against jsoup 1.23.2."
   },
   {
    "id": "termux-constants",
@@ -345,7 +350,7 @@
   {
    "id": "jackson",
    "name": "Jackson",
-   "version": "2.19.4",
+   "version": "2.21.8",
    "licence": "Apache-2.0",
    "copyright": "Copyright 2007-, Tatu Saloranta",
    "url": "https://github.com/FasterXML/jackson",
@@ -362,12 +367,12 @@
     "com.fasterxml.jackson.module:*",
     "com.fasterxml.jackson:*"
    ],
-   "note": "JSON for the Anthropic SDK (core, databind, annotations, jdk8, jsr310, kotlin)."
+   "note": "JSON for the Anthropic SDK (core, databind, annotations, jdk8, jsr310, kotlin). 1.1: lifted from the 2.19.4 the SDK asks for to 2.21.8 (jackson-annotations 2.21) for security fixes."
   },
   {
    "id": "fastdoubleparser",
    "name": "FastDoubleParser (in jackson-core)",
-   "version": "as in jackson-core 2.19.4",
+   "version": "as in jackson-core 2.21.8",
    "licence": "MIT",
    "copyright": "Copyright (c) 2024 Werner Randelshofer, Switzerland",
    "url": "https://github.com/wrandelshofer/FastDoubleParser",
@@ -379,7 +384,24 @@
      "file": "licenses/notices/java-libraries-NOTICE.txt"
     }
    ],
-   "note": "With code from fast_float (MIT), bigint (BSD 2-Clause) and fast_double_parser: their licences are in the notices."
+   "note": "With code from fast_float (MIT), bigint (BSD 2-Clause) and fast_double_parser (Boost Software License 1.0): their licences are in the notices."
+  },
+  {
+   "id": "schubfach",
+   "name": "Schubfach (in jackson-core)",
+   "version": "as in jackson-core 2.21.8",
+   "licence": "MIT",
+   "copyright": "Copyright 2018-2020 Raffaello Giulietti",
+   "url": "https://github.com/c4f7fcce9cb06515/Schubfach",
+   "where": "app",
+   "text": "licenses/MIT-schubfach.txt",
+   "notices": [
+    {
+     "title": "Notices of the Java libraries (NOTICE files)",
+     "file": "licenses/notices/java-libraries-NOTICE.txt"
+    }
+   ],
+   "note": "jackson-core's code that writes floating-point numbers as text (not in the 2.19.4 Robot used before)."
   },
   {
    "id": "classmate",
@@ -455,6 +477,36 @@
    "maven": [
     "com.standardwebhooks:*"
    ]
+  },
+  {
+   "id": "bouncycastle",
+   "name": "Bouncy Castle (Argon2 and BLAKE2b sources only)",
+   "version": "1.81 (r1rv81)",
+   "licence": "MIT",
+   "copyright": "Copyright (c) 2000-2023 The Legion of the Bouncy Castle Inc. (https://www.bouncycastle.org)",
+   "url": "https://www.bouncycastle.org",
+   "where": "app",
+   "text": "licenses/MIT-bouncycastle.txt",
+   "notices": [
+    {
+     "title": "NOTICE (what Robot copied from Bouncy Castle 1.81, and changed)",
+     "file": "licenses/notices/bouncycastle-NOTICE.txt"
+    }
+   ],
+   "note": "1.1 backups: Argon2id, which turns your backup passphrase into the backup's key. Robot copies Bouncy Castle's Argon2 generator, its BLAKE2b digest and the few helpers they need (20 files), not the library; nothing is registered as a security provider, so every cipher stays Android's own."
+  },
+  {
+   "id": "eff-long-wordlist",
+   "name": "EFF's long word list for passphrases",
+   "version": "eff_large_wordlist.txt, 2016-07-18",
+   "licence": "CC-BY-3.0-US",
+   "copyright": "Electronic Frontier Foundation",
+   "url": "https://www.eff.org/dice",
+   "where": "app",
+   "match": [
+    "EFF's long word list"
+   ],
+   "note": "1.1 backups: the passphrase Robot offers is six words picked at random from this list of 7,776 (about 77 bits). “EFF's Long Wordlist” by the Electronic Frontier Foundation, eff.org/dice, licensed under the Creative Commons Attribution 3.0 United States licence (creativecommons.org/licenses/by/3.0/us/). Unchanged: Robot reads the file as published (sha256 addd35536511597a02fa0a9ff1e5284677b8883b83e986e43f15a3db996b903e)."
   },
   {
    "id": "litert-lm",
@@ -635,7 +687,7 @@
   {
    "id": "kotlin",
    "name": "Kotlin standard library and kotlin-reflect",
-   "version": "2.4.0",
+   "version": "2.4.21 (kotlin-reflect 2.4.0)",
    "licence": "Apache-2.0",
    "copyright": "Copyright 2010-2026 JetBrains s.r.o. and Kotlin Programming Language contributors",
    "url": "https://kotlinlang.org",
@@ -643,6 +695,19 @@
    "maven": [
     "org.jetbrains.kotlin:*"
    ]
+  },
+  {
+   "id": "kotlinx-serialization",
+   "name": "kotlinx.serialization",
+   "version": "1.7.3",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright 2017-2023 JetBrains s.r.o.",
+   "url": "https://github.com/Kotlin/kotlinx.serialization",
+   "where": "app",
+   "maven": [
+    "org.jetbrains.kotlinx:kotlinx-serialization-*"
+   ],
+   "note": "1.1: brought by AndroidX savedstate 1.5 (its core library only; Robot's own JSON uses org.json)."
   },
   {
    "id": "kotlinx-coroutines",
@@ -653,13 +718,13 @@
    "url": "https://github.com/Kotlin/kotlinx.coroutines",
    "where": "app",
    "maven": [
-    "org.jetbrains.kotlinx:*"
+    "org.jetbrains.kotlinx:kotlinx-coroutines-*"
    ]
   },
   {
    "id": "androidx",
    "name": "Jetpack Compose and AndroidX",
-   "version": "Compose BOM 2025.06.01 (1.8.3), Material 3 1.3.2",
+   "version": "Compose BOM 2026.06.01 (1.11.4), Material 3 1.3.2",
    "licence": "Apache-2.0",
    "copyright": "Copyright The Android Open Source Project",
    "url": "https://developer.android.com/jetpack/androidx",
@@ -891,7 +956,7 @@
   {
    "id": "agp",
    "name": "Android Gradle Plugin",
-   "version": "8.8.2",
+   "version": "8.13.2",
    "licence": "Apache-2.0",
    "copyright": "Copyright Google LLC",
    "url": "https://developer.android.com/build",
@@ -900,7 +965,7 @@
   {
    "id": "kotlin-compiler",
    "name": "Kotlin compiler and its Compose plugin",
-   "version": "2.4.0",
+   "version": "2.4.21",
    "licence": "Apache-2.0",
    "copyright": "Copyright JetBrains s.r.o.",
    "url": "https://kotlinlang.org",
@@ -939,7 +1004,7 @@
   {
    "id": "robolectric",
    "name": "Robolectric",
-   "version": "4.16.1",
+   "version": "4.17",
    "licence": "MIT",
    "copyright": "Copyright (c) 2010 Xtreme Labs and Pivotal Labs",
    "url": "https://robolectric.org",
@@ -959,7 +1024,7 @@
   {
    "id": "compose-ui-test",
    "name": "Compose UI test and AndroidX Test",
-   "version": "1.8.3 (Compose BOM 2025.06.01)",
+   "version": "1.11.4 (Compose BOM 2026.06.01)",
    "licence": "Apache-2.0",
    "copyright": "Copyright The Android Open Source Project",
    "url": "https://developer.android.com/develop/ui/compose/testing",
@@ -969,7 +1034,7 @@
   {
    "id": "roborazzi",
    "name": "Roborazzi",
-   "version": "1.49.0",
+   "version": "1.76.0",
    "licence": "Apache-2.0",
    "copyright": "Copyright takahirom",
    "url": "https://github.com/takahirom/roborazzi",

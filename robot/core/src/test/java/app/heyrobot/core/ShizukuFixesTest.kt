@@ -16,6 +16,7 @@ import org.junit.Test
  * only the fixed AdbFixes commands by id, and when "Run with Shizuku through Termux" may send one.
  */
 class ShizukuFixesTest {
+    private val none = RecognizerRepair.Kept.NONE
     private val ready = TermuxCheck(TermuxStatus.READY, TermuxSource.F_DROID, TermuxIdentity.F_DROID, "0.118.3", 1002, 1)
 
     @Test fun eachFixAsRishRunsIt() {
@@ -59,18 +60,39 @@ class ShizukuFixesTest {
 
     @Test fun sentOnlyToATrustedTermuxWhileUnlocked() {
         assertTrue(ShizukuRun.offered(ready, true))
-        assertNull(ShizukuRun.refusal("repair", ready, ready = true, locked = false))
-        assertEquals(ShizukuRefusal.NOT_A_FIX, ShizukuRun.refusal("reboot", ready, ready = true, locked = false))
+        assertNull(ShizukuRun.refusal("repair", ready, ready = true, locked = false, kept = none))
+        assertEquals(ShizukuRefusal.NOT_A_FIX, ShizukuRun.refusal("reboot", ready, ready = true, locked = false, kept = none))
         // The lock screen: never.
-        assertEquals(ShizukuRefusal.LOCKED, ShizukuRun.refusal("repair", ready, ready = true, locked = true))
+        assertEquals(ShizukuRefusal.LOCKED, ShizukuRun.refusal("repair", ready, ready = true, locked = true, kept = none))
         // Not set up, the update lock, another signer, the test key (even with Run anyway).
-        assertEquals(ShizukuRefusal.TERMUX_NOT_READY, ShizukuRun.refusal("repair", ready, ready = false, locked = false))
-        assertEquals(ShizukuRefusal.TERMUX_CHANGED, ShizukuRun.refusal("repair", ready.copy(status = TermuxStatus.UPDATED), ready = true, locked = false))
-        assertEquals(ShizukuRefusal.TERMUX_CHANGED, ShizukuRun.refusal("repair", ready.copy(status = TermuxStatus.CHANGED), ready = true, locked = false))
+        assertEquals(ShizukuRefusal.TERMUX_NOT_READY, ShizukuRun.refusal("repair", ready, ready = false, locked = false, kept = none))
+        assertEquals(ShizukuRefusal.TERMUX_CHANGED, ShizukuRun.refusal("repair", ready.copy(status = TermuxStatus.UPDATED), ready = true, locked = false, kept = none))
+        assertEquals(ShizukuRefusal.TERMUX_CHANGED, ShizukuRun.refusal("repair", ready.copy(status = TermuxStatus.CHANGED), ready = true, locked = false, kept = none))
         val testKey = ready.copy(status = TermuxStatus.TEST_KEY, source = TermuxSource.GITHUB, testKeyRisk = true)
         assertTrue(testKey.usable)
         assertFalse(ShizukuRun.offered(testKey, true))
-        assertEquals(ShizukuRefusal.TEST_KEY, ShizukuRun.refusal("repair", testKey, ready = true, locked = false))
+        assertEquals(ShizukuRefusal.TEST_KEY, ShizukuRun.refusal("repair", testKey, ready = true, locked = false, kept = none))
+    }
+
+    /**
+     * 1.2 (every-android-phone, Step 6): where another installed speech recognizer is set, the recognizer fix would replace it
+     * for every app: never sent. The repair fix still is (with the grant, Robot leaves that recognizer alone too); unset,
+     * unreadable or uninstalled recognizers (NONE) and Robot's own send as before.
+     */
+    @Test fun theRecognizerFixIsNeverSentOverAnotherRecognizer() {
+        val other = RecognizerRepair.Kept.OTHER
+        assertEquals(ShizukuRefusal.NOT_NEEDED, ShizukuRun.refusal("recognizer", ready, ready = true, locked = false, kept = other))
+        assertEquals(ShizukuRefusal.NOT_NEEDED, ShizukuRun.refusal("recognizer", ready, ready = false, locked = false, kept = other))
+        assertNull(ShizukuRun.refusal("repair", ready, ready = true, locked = false, kept = other))
+        for (k in listOf(none, RecognizerRepair.Kept.ROBOT)) assertNull(ShizukuRun.refusal("recognizer", ready, ready = true, locked = false, kept = k))
+        // The lock screen and anything that isn't a fix are still said first.
+        assertEquals(ShizukuRefusal.LOCKED, ShizukuRun.refusal("recognizer", ready, ready = true, locked = true, kept = other))
+        assertEquals(ShizukuRefusal.NOT_A_FIX, ShizukuRun.refusal("reboot", ready, ready = true, locked = false, kept = other))
+        assertEquals(6, ShizukuRefusal.NOT_NEEDED.id)
+        assertEquals(ShizukuRefusal.entries.size, ShizukuRefusal.entries.map { it.id }.toSet().size)
+        // Kept with the set-up's status, read back by Settings.
+        val st = app.heyrobot.core.termux.TermuxSetupStatus(shizuku = ShizukuResult("recognizer", 5, ShizukuOutcome.REFUSED, refusal = ShizukuRefusal.NOT_NEEDED))
+        assertEquals(st, app.heyrobot.core.termux.TermuxSetupStatus.parse(st.toJson().toString()))
     }
 
     @Test fun whatTheRunSays() {

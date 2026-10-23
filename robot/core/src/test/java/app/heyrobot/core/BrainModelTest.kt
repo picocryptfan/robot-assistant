@@ -184,7 +184,7 @@ class BrainModelTest {
             ModelChoice.decide(BrainModel.SMARTER, ready, ready, chosenFailedBefore = true))
         // Neither: nothing loads, and the message names both.
         val none = ModelChoice.decide(BrainModel.UNCENSORED, ModelAvailability.NOT_DOWNLOADED, ModelAvailability.NOT_DOWNLOADED, false) as ModelChoice.Decision.NoLoad
-        assertEquals("“Uncensored, slower” isn't on this phone yet, and Fast isn't on this phone either. Open the Robot app › Model.", none.problem)
+        assertEquals("“Uncensored, slower” isn't on this phone yet, and Fast isn't on this phone either. Open the Robot app › Settings › Model.", none.problem)
         assertTrue(none.openApp)
     }
 
@@ -210,10 +210,10 @@ class BrainModelTest {
     @Test fun aModelThatStoppedTheProcessIsSkipped() {
         assertEquals(ModelChoice.Decision.Load(BrainModel.FAST, BrainModel.UNCENSORED, FallbackWhy.STOPPED),
             ModelChoice.decide(BrainModel.UNCENSORED, ready, ready, chosenFailedBefore = true, earlier = FallbackWhy.STOPPED))
-        assertEquals("“Uncensored, slower” stopped unexpectedly, so Robot is using Fast. Tap it again in the Robot app › Model to retry.",
+        assertEquals("“Uncensored, slower” stopped unexpectedly, so Robot is using Fast. Tap it again in the Robot app › Settings › Model to retry.",
             ModelChoice.fallbackText(BrainModel.UNCENSORED, FallbackWhy.STOPPED))
         val alone = ModelChoice.decide(BrainModel.SMARTER, ready, ModelAvailability.NOT_DOWNLOADED, true, FallbackWhy.STOPPED) as ModelChoice.Decision.NoLoad
-        assertEquals("“Smarter, slower” stopped unexpectedly, and Fast isn't on this phone either. Open the Robot app › Model.", alone.problem)
+        assertEquals("“Smarter, slower” stopped unexpectedly, and Fast isn't on this phone either. Open the Robot app › Settings › Model.", alone.problem)
         // Fast itself is tried every time, as before.
         assertEquals(ModelChoice.Decision.Load(BrainModel.FAST), ModelChoice.decide(BrainModel.FAST, ready, ready, true, FallbackWhy.STOPPED))
         assertEquals("Used Fast (Gemma 4 E2B, TPU) instead of Smarter (Gemma 4 E4B, CPU): stopped unexpectedly",
@@ -221,9 +221,9 @@ class BrainModelTest {
     }
 
     @Test fun fallbackMessagesArePlain() {
-        assertEquals("“Smarter, slower” isn't on this phone yet, so Robot is using Fast. Download it in the Robot app › Model.",
+        assertEquals("“Smarter, slower” isn't on this phone yet, so Robot is using Fast. Download it in the Robot app › Settings › Model.",
             ModelChoice.fallbackText(BrainModel.SMARTER, FallbackWhy.NOT_DOWNLOADED))
-        assertEquals("“Your own model file” isn't on this phone yet, so Robot is using Fast. Import it in the Robot app › Model.",
+        assertEquals("“Your own model file” isn't on this phone yet, so Robot is using Fast. Import it in the Robot app › Settings › Model.",
             ModelChoice.fallbackText(BrainModel.OWN, FallbackWhy.NOT_DOWNLOADED))
         assertEquals("“Your own model file” didn't load (the file is missing), so Robot is using Fast.",
             ModelChoice.fallbackText(BrainModel.OWN, FallbackWhy.LOAD_FAILED, "the file is missing"))

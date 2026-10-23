@@ -2,6 +2,8 @@
 package app.heyrobot.helpers.web
 
 import app.heyrobot.core.Abort
+import app.heyrobot.core.i18n.HelperStrings
+import app.heyrobot.core.i18n.Phrase
 import app.heyrobot.core.web.BraveWire
 import app.heyrobot.core.web.DuckDuckGoWire
 import app.heyrobot.core.web.KagiWire
@@ -103,15 +105,18 @@ class SearchClient(
     fun books(query: String): SearchAnswer =
         send(OpenLibraryWire.request(query, ua), WebTransport.Route.CLOUD) { OpenLibraryWire.parse(it.status, it.body, it.retryAfter) }
 
-    /** Settings' Test: the fixed query "test", once, and what came back in words ("JSON on · 9 results · engines: …"). */
-    fun test(): Pair<Boolean, String> {
-        val service = settings.service ?: return false to WebFail.OFF.text(null)
+    /**
+     * Settings' Test: the fixed query "test", once, and what came back ("JSON on · 9 results · engines: …"), as words
+     * without a language yet (1.1: the set-up window shows it in the menus' language).
+     */
+    fun testText(): Pair<Boolean, Phrase> {
+        val service = settings.service ?: return false to WebFail.OFF.textPhrase(null)
         return when (val a = search(TEST_QUERY, null)) {
-            is SearchAnswer.Failed -> false to a.why.text(service)
+            is SearchAnswer.Failed -> false to a.why.textPhrase(service)
             is SearchAnswer.Results -> if (service == SearchService.SEARXNG_HOME || service == SearchService.SEARXNG_PUBLIC) {
-                true to SearxngWire.testLine(a, service)
+                true to SearxngWire.testLineText(a, service)
             } else {
-                true to "${service.title} answered: ${a.results.size} result${if (a.results.size == 1) "" else "s"}"
+                true to HelperStrings.webTestAnswered(a.results.size, "service" to service.titleText)
             }
         }
     }

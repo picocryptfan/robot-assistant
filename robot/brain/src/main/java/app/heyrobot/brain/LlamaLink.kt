@@ -21,6 +21,10 @@ import java.util.concurrent.TimeUnit
 // LlamaEngine loads a file, ended when that model goes (end(): the process ends, and the model's memory with it). The
 // calls are LlamaIpc's, made from LlamaEngine's one llama worker (cancel() and end() from its work thread, one way); a
 // call into a process that is gone throws [Gone]. [onGone] is told once when the process is gone, whoever ended it.
+//
+// 1.1: what the isolated process answers is untrusted (a hostile file may have taken it over), so its replies are read as
+// numbers and bytes only (LlamaIpc.Reply): a header that isn't a plain REPLY_OK, a reply cut short or with more in it, an
+// answer outside its codes, ends the process as a crash does ([Gone]); nothing it sends is unparcelled or thrown here.
 
 internal class LlamaLink(private val ctx: Context, private val onGone: (LlamaLink) -> Unit) {
     /** The isolated process went away (it crashed, Android or [end] ended it): what was asked of it is lost. */
@@ -86,7 +90,8 @@ internal class LlamaLink(private val ctx: Context, private val onGone: (LlamaLin
                     val more = from == uid && bytes != null && b != null && b.take(bytes.size) && s != null && s(bytes)
                     reply?.writeInt(if (more) 1 else 0)
                 }
-                else -> return super.onTransact(code, data, reply, flags)
+                // Nothing else (not the framework's dump or shell commands, which would unparcel descriptors and binders).
+                else -> return false
             }
             return true
         }
@@ -115,8 +120,15 @@ internal class LlamaLink(private val ctx: Context, private val onGone: (LlamaLin
 
     /** Loads the library there, and has the process prove an isolated uid (its CB_HELLO) before it gets any file. */
     fun hello(): Hello = call(LlamaIpc.HELLO, { it.writeStrongBinder(callback) }) { r ->
-        val accepted = r.readInt() == 1
-        Hello(accepted && IsolatedUid.of(uid), r.readString())
+        val accepted = when (r.int()) {
+            1 -> true
+            0 -> false
+            else -> throw LlamaIpc.BadReply()
+        }
+        // One of its two codes or none: never words of its own, which the app would show.
+        val problem = r.string()
+        if (problem != null && problem != LlamaIpc.NOT_IN_BUILD && problem != LlamaIpc.NOT_ISOLATED) throw LlamaIpc.BadReply()
+        Hello(accepted && IsolatedUid.of(uid), problem)
     }
 
     fun load(file: ParcelFileDescriptor, nCtx: Int, threads: Int, batchThreads: Int, sampling: FloatArray): LlamaIpc.LoadResult =
@@ -128,11 +140,11 @@ internal class LlamaLink(private val ctx: Context, private val onGone: (LlamaLin
             d.writeInt(batchThreads)
             d.writeFloatArray(sampling)
         }) { r ->
-            val h = r.readLong()
-            val why = r.readInt()
-            val train = Integer.toUnsignedLong(r.readInt())
-            val control = LlamaIpc.readArrays(r, LlamaIpc.MAX_SPECIALS, LlamaIpc.MAX_SPECIAL_BYTES)
-            val user = LlamaIpc.readArrays(r, LlamaIpc.MAX_SPECIALS, LlamaIpc.MAX_SPECIAL_BYTES)
+            val h = r.long()
+            val why = r.int()
+            val train = Integer.toUnsignedLong(r.int())
+            val control = r.arrays(LlamaIpc.MAX_SPECIALS, LlamaIpc.MAX_SPECIAL_BYTES)
+            val user = r.arrays(LlamaIpc.MAX_SPECIALS, LlamaIpc.MAX_SPECIAL_BYTES)
             LlamaIpc.LoadResult(h, why, train, control, user)
         }
 
@@ -144,8 +156,8 @@ internal class LlamaLink(private val ctx: Context, private val onGone: (LlamaLin
             LlamaIpc.writeArrays(d, texts)
             d.writeInt(if (think) 1 else 0)
         }) { r ->
-            val n = r.readInt()
-            flags[0] = r.readInt()
+            val n = r.int()
+            flags[0] = r.int()
             n
         }
     } catch (_: android.os.TransactionTooLargeException) {
@@ -164,9 +176,9 @@ internal class LlamaLink(private val ctx: Context, private val onGone: (LlamaLin
                 d.writeLong(run)
                 d.writeInt(maxTokens)
             }) { r ->
-                val code = r.readInt()
-                val s = r.createLongArray()
-                if (s != null) System.arraycopy(s, 0, stats, 0, minOf(s.size, stats.size))
+                val code = r.int()
+                val s = r.longs(LlamaIpc.STATS_COUNT)
+                System.arraycopy(s, 0, stats, 0, minOf(s.size, stats.size))
                 code
             }
         } finally {
@@ -216,16 +228,24 @@ internal class LlamaLink(private val ctx: Context, private val onGone: (LlamaLin
         onGone(this)
     }
 
-    private fun <T> call(code: Int, write: (Parcel) -> Unit, read: (Parcel) -> T): T {
+    private fun <T> call(code: Int, write: (Parcel) -> Unit, read: (LlamaIpc.Reply) -> T): T {
+        // Asked to go: nothing more is sent to it.
+        if (ending) throw Gone()
         val b = remote ?: throw Gone()
         val d = Parcel.obtain()
         val r = Parcel.obtain()
         try {
             d.writeInterfaceToken(LlamaIpc.DESCRIPTOR)
             write(d)
-            if (!b.transact(code, d, r, 0)) throw Gone()
-            r.readException()
-            return read(r)
+            val answered = b.transact(code, d, r, 0)
+            return try {
+                // A live process that refuses one of its own calls breaks the link as well.
+                if (!answered) throw LlamaIpc.BadReply()
+                val reply = LlamaIpc.Reply(r)
+                read(reply).also { reply.end() }
+            } catch (_: LlamaIpc.BadReply) {
+                broken(code)
+            }
         } catch (e: android.os.TransactionTooLargeException) {
             throw e
         } catch (e: RemoteException) {
@@ -234,6 +254,16 @@ internal class LlamaLink(private val ctx: Context, private val onGone: (LlamaLin
             d.recycle()
             r.recycle()
         }
+    }
+
+    /**
+     * A reply that broke LlamaIpc's layout: the process may be a hostile file's now. It ends, as after a crash, and the call
+     * throws [Gone]; [onGone] follows when Android says the process is gone (its memory with it).
+     */
+    private fun broken(code: Int): Nothing {
+        RLog.i("brain_llama_bad_reply", "call" to code - IBinder.FIRST_CALL_TRANSACTION)
+        end("bad_reply") // l10n: not text (a code for the log)
+        throw Gone()
     }
 
     private fun oneWay(code: Int, write: (Parcel) -> Unit) {

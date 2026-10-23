@@ -21,6 +21,10 @@ import android.os.Process
 // callback; it decides everything else (LlamaEngine). Calls come from :brain's one llama worker, one at a time (one lock
 // here as well); CANCEL and EXIT from any of its threads, one way, on another binder thread here. One model per process:
 // a second LOAD is refused.
+//
+// 1.1: each reply starts with LlamaIpc.REPLY_OK as a plain int, never Parcel.writeNoException (which may put Android's
+// strict-mode or app-ops header first): :brain reads the header as that number (LlamaIpc.Reply), and any other reply,
+// an exception Binder writes for a call that threw included, ends this process.
 
 class LlamaService : Service() {
     private val lock = Any()
@@ -80,7 +84,7 @@ class LlamaService : Service() {
                 r.recycle()
             }
         } catch (_: Exception) { false }
-        reply.writeNoException()
+        reply.writeInt(LlamaIpc.REPLY_OK)
         reply.writeInt(if (ok) 1 else 0)
         reply.writeString(problem)
     }
@@ -114,7 +118,7 @@ class LlamaService : Service() {
             try { pfd?.close() } catch (_: Exception) {}
         }
         handle = h
-        reply.writeNoException()
+        reply.writeInt(LlamaIpc.REPLY_OK)
         reply.writeLong(h)
         reply.writeInt(why[0])
         reply.writeInt(train)
@@ -135,7 +139,7 @@ class LlamaService : Service() {
         val flags = IntArray(1)
         val tokens = if (h == 0L || h != handle) LlamaIpc.PREP_TEMPLATE_FAILED
         else LlamaNative.prepare(h, roles.toTypedArray(), texts.toTypedArray(), think, flags)
-        reply.writeNoException()
+        reply.writeInt(LlamaIpc.REPLY_OK)
         reply.writeInt(tokens)
         reply.writeInt(flags[0])
     }
@@ -148,7 +152,7 @@ class LlamaService : Service() {
         val cb = callback
         val code = if (h == 0L || h != handle || cb == null) LlamaIpc.GEN_NOT_PREPARED
         else LlamaNative.generate(h, run, maxTokens, { bytes -> piece(cb, bytes) }, stats)
-        reply.writeNoException()
+        reply.writeInt(LlamaIpc.REPLY_OK)
         reply.writeInt(code)
         reply.writeLongArray(stats)
     }

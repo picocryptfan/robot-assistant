@@ -15,7 +15,7 @@ import app.heyrobot.core.headset.AnnounceNext
 import app.heyrobot.core.messages.Snapshots.thread
 import app.heyrobot.core.output.HandsFreeSafety
 import app.heyrobot.core.output.ReplyResult
-import app.heyrobot.core.output.SpokenLang
+import app.heyrobot.core.i18n.Lang
 import app.heyrobot.core.output.handsFree
 import app.heyrobot.core.output.notice
 import org.junit.Assert.assertEquals
@@ -102,28 +102,28 @@ class MessageHandsFreeTest {
         val safety = HandsFreeSafety()
         // 1.0: the screen's own reply card (or chat, or refusal) with your words, as outside the car; nothing waits for parking.
         assertEquals(ReplyStart.OnScreen(ReplyEnd.NEEDS_TAP, "I'm 10 minutes away"),
-            CarMessages.startReply(n, "tell her I'm 10 minutes away", s, safety, false, false, SpokenLang.EN, VoiceReply.TAP_ONLY))
-        assertEquals(ReplyStart.OnScreen(ReplyEnd.NEEDS_TAP, "ok"), CarMessages.startReply(n, "ok", s, safety, false, false, SpokenLang.EN, VoiceReply.OPEN_CHAT))
-        assertEquals(ReplyStart.OnScreen(ReplyEnd.LOCKED, "ok"), CarMessages.startReply(n, "ok", s, safety, false, false, SpokenLang.EN, VoiceReply.REFUSED))
-        assertTrue(CarMessages.startReply(n, "ok", s, safety, false, false, SpokenLang.EN, VoiceReply.BY_VOICE) is ReplyStart.ReadBack)
+            CarMessages.startReply(n, "tell her I'm 10 minutes away", s, safety, false, false, Lang.EN, VoiceReply.TAP_ONLY))
+        assertEquals(ReplyStart.OnScreen(ReplyEnd.NEEDS_TAP, "ok"), CarMessages.startReply(n, "ok", s, safety, false, false, Lang.EN, VoiceReply.OPEN_CHAT))
+        assertEquals(ReplyStart.OnScreen(ReplyEnd.LOCKED, "ok"), CarMessages.startReply(n, "ok", s, safety, false, false, Lang.EN, VoiceReply.REFUSED))
+        assertTrue(CarMessages.startReply(n, "ok", s, safety, false, false, Lang.EN, VoiceReply.BY_VOICE) is ReplyStart.ReadBack)
         // The main process's answers, as said in the car: "Handed to Cheogram", never "delivered".
         assertEquals(ReplyResult.HANDED_OVER, ReplyOutcome.SENT.handsFree())
         assertEquals(ReplyResult.NEW_MESSAGES, ReplyOutcome.NEW_MESSAGES.handsFree())
         assertEquals(ReplyResult.GONE, ReplyOutcome.CHANGED.handsFree())
         assertEquals(ReplyResult.LOCKED, ReplyOutcome.AUTH_REQUIRED.handsFree())
-        assertEquals("A new message just came. Your reply is on the screen.", CarMessages.result(ReplyResult.NEW_MESSAGES, "Cheogram", SpokenLang.EN))
-        assertTrue(ReplyOutcome.entries.all { o -> CarMessages.result(o.handsFree(), "Cheogram", SpokenLang.FR).isNotBlank() })
+        assertEquals("A new message just came. Your reply is on the screen.", CarMessages.result(ReplyResult.NEW_MESSAGES, "Cheogram", Lang.EN))
+        assertTrue(ReplyOutcome.entries.all { o -> CarMessages.result(o.handsFree(), "Cheogram", Lang.FR).isNotBlank() })
     }
 
     @Test fun readItInTheHeadset() {
         val said = "Message from Mom. Read it?"
-        assertEquals(AnnounceNext.Read, AnnounceAnswer.next("yes", said, 0, 0, SpokenLang.EN))
-        assertEquals(AnnounceNext.Read, AnnounceAnswer.next("oui", "Message de Maman. Je te le lis?", 0, 0, SpokenLang.FR))
-        assertEquals(AnnounceNext.Quiet, AnnounceAnswer.next("no", said, 0, 0, SpokenLang.EN))
-        assertEquals(AnnounceNext.Ask(said), AnnounceAnswer.next("repeat", said, 0, 0, SpokenLang.EN))
+        assertEquals(AnnounceNext.Read, AnnounceAnswer.next("yes", said, 0, 0, Lang.EN))
+        assertEquals(AnnounceNext.Read, AnnounceAnswer.next("oui", "Message de Maman. Je te le lis?", 0, 0, Lang.FR))
+        assertEquals(AnnounceNext.Quiet, AnnounceAnswer.next("no", said, 0, 0, Lang.EN))
+        assertEquals(AnnounceNext.Ask(said), AnnounceAnswer.next("repeat", said, 0, 0, Lang.EN))
         // Robot's own question heard back is not a yes; two unusable answers end it quietly.
-        assertTrue(AnnounceAnswer.next(said, said, 0, 0, SpokenLang.EN) is AnnounceNext.Ask)
-        assertEquals(AnnounceNext.Quiet, AnnounceAnswer.next("", said, 1, 0, SpokenLang.EN))
+        assertTrue(AnnounceAnswer.next(said, said, 0, 0, Lang.EN) is AnnounceNext.Ask)
+        assertEquals(AnnounceNext.Quiet, AnnounceAnswer.next("", said, 1, 0, Lang.EN))
     }
 
     @Test fun peopleToAnnounceAreKeptInMessagesJson() {

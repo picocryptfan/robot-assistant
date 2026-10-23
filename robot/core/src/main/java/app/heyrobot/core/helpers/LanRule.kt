@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.helpers
 
+import app.heyrobot.core.i18n.HelperStrings
+import app.heyrobot.core.i18n.Msg
+import app.heyrobot.core.i18n.Phrase
 import java.util.Locale
 
 // Pure. Which addresses a helper may use without encryption (0.6.0, "your own server"). Robot sends http:// only when
@@ -13,16 +16,21 @@ import java.util.Locale
 // http and https is refused.
 
 object LanRule {
-    /** Where an address is. Only [PUBLIC] and [BLOCKED] are refused for cleartext. */
-    enum class Range(val cleartext: Boolean, val warning: String? = null) {
+    /**
+     * Where an address is. Only [PUBLIC] and [BLOCKED] are refused for cleartext. [warningText]: what Settings says about
+     * such an address ("This is a link-local address, …"), as words without a language yet (1.1); [warning] its English.
+     */
+    enum class Range(val cleartext: Boolean, private val warningMsg: Msg? = null) {
         LOOPBACK(true),
         PRIVATE(true),
-        LINK_LOCAL(true, "a link-local address, which only works on a direct connection"),
-        CGNAT(true, "a 100.64–100.127 address: private only through Tailscale (on mobile data without it, this space is the carrier's)"),
+        LINK_LOCAL(true, HelperStrings.lanLinkLocal),
+        CGNAT(true, HelperStrings.lanCgnat),
         ULA(true),
         PUBLIC(false),
         /** Unspecified, broadcast or multicast: never a server. */
-        BLOCKED(false),
+        BLOCKED(false);
+
+        val warningText: Phrase? get() = warningMsg?.invoke()
     }
 
     /** The range of an address given as its 4 or 16 bytes. */
@@ -64,26 +72,26 @@ object LanRule {
         data class Block(val why: String) : Decision()
     }
 
-    const val NOT_LOCAL = "That address isn't on your home network, so Robot won't send to it without https."
+
+    /** Why an http:// address is refused (core HelperFailure.NOT_LOCAL says the same), in English: what [Decision.Block] carries. */
+    private val notLocal: String get() = HelperStrings.notLocal().en()
 
     /** [https]: any address (TLS protects it); http: only the private ones, and none at all is a refusal. */
     fun decide(https: Boolean, resolved: List<ByteArray>): Decision {
-        if (resolved.isEmpty()) return Decision.Block(NOT_LOCAL)
-        if (https) return Decision.Allow(resolved.filter { classify(it) != Range.BLOCKED }.ifEmpty { return Decision.Block(NOT_LOCAL) })
+        if (resolved.isEmpty()) return Decision.Block(notLocal)
+        if (https) return Decision.Allow(resolved.filter { classify(it) != Range.BLOCKED }.ifEmpty { return Decision.Block(notLocal) })
         val ok = resolved.filter { classify(it).cleartext }
-        if (ok.isEmpty()) return Decision.Block(NOT_LOCAL)
-        return Decision.Allow(ok, ok.mapNotNull { classify(it).warning }.firstOrNull())
+        if (ok.isEmpty()) return Decision.Block(notLocal)
+        return Decision.Allow(ok, ok.mapNotNull { classify(it).warningText?.en() }.firstOrNull())
     }
 
     /**
      * 1.0.1: an API key or bearer token never goes over http, not even to your own network (anyone on it could read it).
      * True when [key] would be sent ([key] not empty, as the Authorization header is added) over a connection that isn't
-     * [https]: then Robot refuses before connecting and says [keyOverHttp]. A server set up with http and no key still works.
+     * [https]: then Robot refuses before connecting and says why, with the fix (HelperStrings.keyOverHttp,
+     * WebStrings.failKeyOverHttp). A server set up with http and no key still works.
      */
     fun keyOverHttp(https: Boolean, key: String?): Boolean = !https && !key.isNullOrEmpty()
-
-    /** Why nothing was sent, with the fix, in one sentence: [whose] is "your Jarvis key", "a key". */
-    fun keyOverHttp(whose: String): String = "Robot won't send $whose over plain http: use an https address, or remove the key."
 
     /** The private ones of [resolved], for a cleartext connection's DNS filter. */
     fun cleartextOnly(resolved: List<ByteArray>): List<ByteArray> = resolved.filter { classify(it).cleartext }
@@ -99,12 +107,15 @@ object LanRule {
     /** A typed address made usable: [candidates] are tried in order ([probe]: more than one, Test connection picks). */
     data class Typed(val https: Boolean, val host: String, val port: Int?, val path: String, val candidates: List<String>) {
         val probe: Boolean get() = candidates.size > 1
-        /** A name Settings words hints for (.local, .lan, .home.arpa, .internal, .ts.net), or null for an address. */
-        val hint: String? get() = when {
+        /**
+         * What Settings says about a name (.local, .lan, .home.arpa, .internal, .ts.net: "This is a Tailscale name: …"), as
+         * words without a language yet (1.1), or null for an address; [hint] its English.
+         */
+        val hintText: Phrase? get() = when {
             literal(host) != null -> null
-            host.endsWith(".ts.net") -> "a Tailscale name: it resolves only while Tailscale is on"
-            host.endsWith(".local") -> "a .local name: if it doesn't resolve on this phone, use the server's IP address or its Tailscale name"
-            host.endsWith(".lan") || host.endsWith(".home.arpa") || host.endsWith(".internal") -> "a name your router gives out: it works only on that network"
+            host.endsWith(".ts.net") -> HelperStrings.lanTailscale()
+            host.endsWith(".local") -> HelperStrings.lanDotLocal()
+            host.endsWith(".lan") || host.endsWith(".home.arpa") || host.endsWith(".internal") -> HelperStrings.lanRouter()
             else -> null
         }
     }

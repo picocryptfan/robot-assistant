@@ -119,6 +119,28 @@ class ModelProblemsTest {
         assertTrue(ProblemReport.text(brainUnderGguf, facts, t, utc).contains("llama.cpp in :llama, an isolated process (your GGUF file, never Fast) · stage: writing the answer · failure: the model process stopped (:brain)"))
     }
 
+    /**
+     * 1.2: the phone line carries the chip Robot read and both of Android's SoC fields (the crash report shares it), codes
+     * only, so a test phone's report says what it reports.
+     */
+    @Test fun thePhoneLineNamesTheChipAndBothSocFields() {
+        fun line(p: Phone) = ProblemReport.phoneLines(ReportFacts("1.2.0", 120, p, "16 (SDK 36)", "fp", -1, emptyList(), emptyList())).lines().first()
+        assertEquals("Phone: Pixel 9a · chip Tensor G4 (Build.SOC_MANUFACTURER “Google”, Build.SOC_MODEL “Tensor G4”) · TPU none · GPU offered",
+            line(Phone("Google", "Pixel 9a", "Google", "Tensor G4", 7_500_000_000L)))
+        assertEquals("Phone: Pixel 10 Pro · chip Tensor G5 (Build.SOC_MANUFACTURER “Google”, Build.SOC_MODEL “Tensor G5”) · TPU supported · GPU not used",
+            line(Phone("Google", "Pixel 10 Pro", "Google", "Tensor G5")))
+        assertEquals("Phone: Samsung SM-S931W · chip Snapdragon 8 Elite (Build.SOC_MANUFACTURER “QTI”, Build.SOC_MODEL “SM8750-AC”) · TPU none · GPU offered",
+            line(Phone("samsung", "SM-S931W", "QTI", "SM8750-AC")))
+        assertEquals("Phone: Samsung SM-S931W · chip unknown to Robot (Build.SOC_MANUFACTURER “”, Build.SOC_MODEL “”) · TPU none · GPU offered",
+            line(Phone("samsung", "SM-S931W")))
+        // Whatever a phone puts there stays one line of codes.
+        val odd = ProblemReport.phoneLines(ReportFacts("1.2.0", 120, Phone("samsung", "SM-S931W", "QTI\u202E\nBuild: fake", "SM8750\u0000" + "9".repeat(500)),
+            "16 (SDK 36)", "fp", -1, emptyList(), emptyList()))
+        assertEquals(odd, 2, odd.trimEnd('\n').lines().size)
+        assertTrue(odd, odd.lines().first().contains("Build.SOC_MANUFACTURER “QTI??Build? fake”, Build.SOC_MODEL “SM8750?999999999999999999999999999999999”"))
+        assertFalse(odd, odd.any { it == '\u202E' || it == '\u0000' })
+    }
+
     /** 0.7: the last 10 problems for the Model tab's list, codes and numbers only, newest first, one per time. */
     @Test fun theLastTenProblemsAreKept() {
         fun p(i: Int) = ModelProblem(t + i * 60_000L, BrainModel.GENERAL, ModelBackend.GPU, ProblemStage.WRITING, null, BrainModel.GENERAL, ModelBackend.CPU)

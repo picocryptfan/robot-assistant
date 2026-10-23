@@ -57,7 +57,9 @@ abstract class AarNotices extends DefaultTask {
 
 def aarNotices = tasks.register('aarNotices', AarNotices) {
     aars.from(configurations.aarNotices)
-    outputDir = layout.buildDirectory.dir('generated/aar-notices')
+    // AGP 8.8 moved a generated assets folder to build/generated/assets/<task>; 8.13 keeps the task's own. Named here, so
+    // the app's LicencesTest finds the files at the same place with either.
+    outputDir = layout.buildDirectory.dir('generated/assets/aarNotices')
 }
 androidComponents {
     onVariants(selector().all()) { variant ->

@@ -5,6 +5,11 @@ import app.heyrobot.core.helpers.HelperConfig
 import app.heyrobot.core.helpers.HelperPrice
 import app.heyrobot.core.helpers.HelperUsage
 import app.heyrobot.core.helpers.Pricing
+import app.heyrobot.core.i18n.Arg
+import app.heyrobot.core.i18n.ConversationStrings
+import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.i18n.ListKind
+import app.heyrobot.core.i18n.Phrase
 import org.json.JSONObject
 import java.text.Normalizer
 import java.time.Instant
@@ -83,9 +88,9 @@ object SummaryPlanner {
      * "?" (the prompt says the transcript was recorded on the user's phone).
      */
     fun speakerName(t: Transcript, label: String): String = t.names[label] ?: when {
-        label == t.me || label == SpeakerClusterer.ME -> "User"
-        label == SpeakerClusterer.UNKNOWN -> "Unknown speaker"
-        Regex("S(\\d+)\\D*").matches(label) -> "Speaker " + Regex("\\d+").find(label)!!.value
+        label == t.me || label == SpeakerClusterer.ME -> "User" // l10n: not text (the transcript as the model reads it, English)
+        label == SpeakerClusterer.UNKNOWN -> "Unknown speaker" // l10n: not text (the transcript as the model reads it, English)
+        Regex("S(\\d+)\\D*").matches(label) -> "Speaker " + Regex("\\d+").find(label)!!.value // l10n: not text (the transcript as the model reads it, English)
         else -> label
     }
 
@@ -192,7 +197,7 @@ object SummaryPlanner {
 
     /** "Notes on part 3 (14:20–14:31):\n<note>" for a map note; "Summary of parts 1–12 (…):" for a merged one. */
     fun noteLabel(first: Int, last: Int, from: String, to: String): String =
-        if (first == last) "Notes on part $first ($from–$to):" else "Summary of parts $first–$last ($from–$to):"
+        if (first == last) "Notes on part $first ($from–$to):" else "Summary of parts $first–$last ($from–$to):" // l10n: not text (what the model reads, English)
 
     private fun fitNote(n: String, room: Int): String {
         if (TokenEstimate.text(n + "\n\n") <= room) return n
@@ -206,8 +211,11 @@ object SummaryPlanner {
 data class SummaryMiss(val text: String, val kind: Kind) {
     enum class Kind { NUMBER, NAME, TIME }
 
-    /** "Robot couldn't find “17 h” in the transcript." */
-    val message: String get() = if (kind == Kind.TIME) "Robot couldn't find a line at $text." else "Robot couldn't find “$text” in the transcript."
+    /** "Robot couldn't find “17 h” in the transcript." (« Robot n'a pas trouvé « 17 h » dans la transcription. »). */
+    val messageText: Phrase get() = if (kind == Kind.TIME) ConversationStrings.missTime("time" to text) else ConversationStrings.missWord("text" to text)
+
+    /** [messageText] in English. */
+    val message: String get() = messageText.en()
 }
 
 /**
@@ -322,7 +330,9 @@ object SummaryOffer {
     fun helperFirst(s: RobotSettings, parts: Int, important: Boolean, flagged: Boolean): Boolean =
         s.convAutoOfferHelper && (parts > LONG_PARTS || important || flagged)
 
-    const val CARD = "This conversation is long; a stronger AI will summarize it more accurately."
+    /** "This conversation is long; a stronger AI will summarize it more accurately.", and [CARD] its English. */
+    val card: Phrase get() = ConversationStrings.offerCard()
+    val CARD: String get() = card.en()
 }
 
 /** How a helper gets the transcript: the API (Robot gets the answer) or a share to an app (you send it there). */
@@ -331,31 +341,45 @@ enum class HelperRoute { API, APP_SHARE }
 /**
  * Where a helper sends a transcript, as the consent card says it: [provider] ("Anthropic"), [model] ("Claude Opus 5.5",
  * null when the app picks), [network] how it gets there, [retention] what the provider keeps (null: their own terms),
- * [cost] the estimated price line (null: none to Robot).
+ * [cost] the estimated price line (null: none to Robot). 1.1: the words are phrases, rendered in the menus' language.
  */
-data class Disclosure(val provider: String, val model: String?, val network: String, val retention: String? = null, val cost: String? = null,
-    val warning: String? = null) {
+data class Disclosure(val provider: Phrase, val model: String?, val network: Phrase, val retention: Phrase? = null, val cost: Phrase? = null,
+    val warning: Phrase? = null) {
+    /** The same with words that aren't translated (names, a price line already written). */
+    constructor(provider: String, model: String?, network: String, retention: String? = null, cost: String? = null) :
+        this(Phrase.plain(provider), model, Phrase.plain(network), retention?.let { Phrase.plain(it) }, cost?.let { Phrase.plain(it) })
     /** "Goes to: Anthropic (Claude Opus 5.5), over the internet, with your API key. ≈ 9¢." */
-    val line: String get() = "Goes to: $provider" + (model?.let { " ($it)" } ?: "") + ", $network." + (retention?.let { " $it" } ?: "") +
-        (cost?.let { " ${it.replaceFirstChar { c -> c.uppercase() }}." } ?: "") + (warning?.let { " $it" } ?: "")
+    val lineText: Phrase get() {
+        val to = if (model != null) ConversationStrings.discloseModel("provider" to provider, "model" to model) else provider
+        return Phrase.Join(listOfNotNull(ConversationStrings.discloseTo("to" to to, "network" to network), retention,
+            cost?.let { ConversationStrings.costSentence("cost" to it) }, warning))
+    }
+
+    /** [lineText] in English. */
+    val line: String get() = lineText.en()
 
     companion object {
         fun claudeApi(model: AnthropicModel, dollars: Double): Disclosure =
-            Disclosure("Anthropic", model.title, "over the internet, with your API key", cost = CostText.line(dollars))
+            Disclosure(Phrase.plain("Anthropic"), model.title, ConversationStrings.networkApi(), cost = Phrase.plain(CostText.line(dollars)))
 
-        fun claudeApp(): Disclosure = app("Claude", "with your claude.ai account, when you press Send there")
+        fun claudeApp(): Disclosure = Disclosure(ConversationStrings.theClaudeApp(), null, ConversationStrings.networkApp())
 
         /** 1.0.0: a helper's own app ("ChatGPT"): your account there, your Send. */
-        fun app(name: String, how: String = "with your own account there, when you press Send there"): Disclosure = Disclosure("the $name app", null, how)
+        fun app(name: String, how: Phrase = ConversationStrings.networkOwnApp()): Disclosure =
+            Disclosure(ConversationStrings.theApp("name" to name), null, how)
 
         /**
          * 1.0.0, any helper's API: its company and model, how it gets there, and the cost line the panel shows ([cost]:
-         * [SummaryCost.line]); [budgetUsed]: today's budget for helpers (or this helper's own) is used up, said on the card.
+         * [SummaryCost.cardText]); [budgetUsed]: today's budget for helpers (or this helper's own) is used up, said on the card.
          */
+        fun api(h: HelperConfig, cost: Phrase?, budgetUsed: Boolean): Disclosure =
+            Disclosure(if (h.home) ConversationStrings.yourOwnServer() else h.presetOf.companyText, h.catalogModel?.title ?: h.model.ifEmpty { null },
+                if (h.home) ConversationStrings.networkHome() else ConversationStrings.networkApi(), cost = cost,
+                warning = if (budgetUsed) ConversationStrings.overBudget() else null)
+
+        /** [api] with the cost line in English ([SummaryCost.line]). */
         fun api(h: HelperConfig, cost: String?, budgetUsed: Boolean): Disclosure =
-            Disclosure(if (h.home) "your own server" else h.presetOf.company, h.catalogModel?.title ?: h.model.ifEmpty { null },
-                if (h.home) "over your network" else "over the internet, with your API key", cost = cost,
-                warning = if (budgetUsed) SummaryCost.OVER_BUDGET else null)
+            api(h, cost?.let { if (it == SummaryCost.UNKNOWN) ConversationStrings.costUnknownCard() else Phrase.plain(it) }, budgetUsed)
     }
 }
 
@@ -370,15 +394,22 @@ object SummaryCost {
         Pricing.dollars(h.price, HelperUsage(input = HelperCost.tokens(chars), output = HelperCost.OUTPUT_TOKENS), at)
 
     /** "≈ 9¢", "cost unknown: Robot has no price for this model", or nothing for a free server (as the panel's cost line). */
-    fun line(h: HelperConfig, chars: Int, at: Instant): String? {
+    fun lineText(h: HelperConfig, chars: Int, at: Instant): Phrase? {
         val d = estimate(h, chars, at)
-        return if (d == null) UNKNOWN else Pricing.line(d, free = h.price is HelperPrice.Free)
+        return if (d == null) ConversationStrings.costUnknown() else Pricing.lineText(d, free = h.price is HelperPrice.Free)
     }
 
-    const val UNKNOWN = "cost unknown: Robot has no price for this model (you can enter it on the helper's page)"
+    /** [lineText] in English. */
+    fun line(h: HelperConfig, chars: Int, at: Instant): String? = lineText(h, chars, at)?.en()
+
+    /** [lineText] as the summary card's sentence starts it ("Cost unknown: …"). */
+    fun cardText(h: HelperConfig, chars: Int, at: Instant): Phrase? =
+        if (estimate(h, chars, at) == null) ConversationStrings.costUnknownCard() else lineText(h, chars, at)
+
+    val UNKNOWN: String get() = ConversationStrings.costUnknown().en()
 
     /** As an ask you make yourself: never refused, but the card says so (Automatic would have asked first). */
-    const val OVER_BUDGET = "Today's budget for helpers is used up: this adds to it."
+    val OVER_BUDGET: String get() = ConversationStrings.overBudget().en()
 }
 
 /** A helper's progress while it works. */
@@ -393,7 +424,15 @@ sealed class HelperResult {
     /** Handed to an app: you send it there, and Robot doesn't hear the answer. */
     data class Shared(val how: AppShareCode) : HelperResult()
 
-    data class Failed(val reason: String) : HelperResult()
+    /** [reason] in English; [reasonText] for the screen (a reason from elsewhere stays as it was written). */
+    data class Failed(val reason: String) : HelperResult() {
+        var reasonText: Phrase = Phrase.plain(reason)
+            private set
+
+        constructor(text: Phrase) : this(text.en()) {
+            reasonText = text
+        }
+    }
 }
 
 /**
@@ -423,11 +462,12 @@ class ConsentCard private constructor(
     /** The helper's id, and its name in "Send this conversation to Jarvis?". */
     val helper: String,
     val to: String,
+    val toText: Phrase,
     val disclosure: Disclosure,
     /** "41 min · 2 speakers · 6,120 words · French and English." */
-    val stats: String,
+    val statsText: Phrase,
     /** "It includes what other people said and the names you gave them." */
-    val includes: String,
+    val includesText: Phrase,
     /** "Replace names with “Speaker 1, 2”" is ticked. */
     val anonymized: Boolean,
     val blocks: List<HelperBlock.Text>,
@@ -436,7 +476,12 @@ class ConsentCard private constructor(
     val speakers: Int,
     private val rebuild: (Boolean) -> ConsentCard,
 ) {
-    val title: String get() = "Send this conversation to $to?"
+    val titleText: Phrase get() = ConversationStrings.consentTitle("to" to toText)
+
+    /** [titleText], [statsText] and [includesText] in English. */
+    val title: String get() = titleText.en()
+    val stats: String get() = statsText.en()
+    val includes: String get() = includesText.en()
 
     /** The names toggle: the same card, its payload made again. */
     fun withNames(replace: Boolean): ConsentCard = if (replace == anonymized) this else rebuild(replace)
@@ -445,19 +490,22 @@ class ConsentCard private constructor(
     fun approve(now: Long): SummaryJob = SummaryJob.approved(this, now)
 
     companion object {
-        const val TOGGLE = "Replace names with “Speaker 1, 2”"
-        /** A helper's app takes at most this much text in a share (about 1.5 h of talk; the Claude app's limit). */
+        /** "Replace names with “Speaker 1, 2”" (what the helper then reads), and [TOGGLE] its English. */
+        val toggle: Phrase get() = ConversationStrings.replaceNames()
+        val TOGGLE: String get() = toggle.en()
+        /** The Claude app takes at most this much text in a share (about 1.5 h of talk). */
         const val APP_MAX_CHARS = 100_000
-        const val TOO_LONG_FOR_APP = "Too long for the app; export and attach the file."
+        val tooLongForApp: Phrase get() = ConversationStrings.tooLongForApp()
+        val TOO_LONG_FOR_APP: String get() = tooLongForApp.en()
 
         /**
          * The card for sending [t] to [helper]. [now] and [region] make the context line (HelperPrompt.context);
          * [summaryLang] the language asked for; [anonymize] the toggle.
          */
         fun build(helper: String, to: String, disclosure: Disclosure, meta: TranscriptMeta, t: Transcript, now: ZonedDateTime, region: String,
-            summaryLang: String, zone: ZoneId, anonymize: Boolean = false): ConsentCard {
+            summaryLang: String, zone: ZoneId, anonymize: Boolean = false, toText: Phrase = Phrase.plain(to)): ConsentCard {
             val named = t.speakers.filter { t.names[it] != null }
-            val label = t.speakers.withIndex().associate { (k, s) -> s to if (anonymize) "Speaker ${k + 1}" else s }
+            val label = t.speakers.withIndex().associate { (k, s) -> s to if (anonymize) "Speaker ${k + 1}" else s } // l10n: not text (the request a helper reads, English)
             val who = t.speakers.joinToString(", ") { s ->
                 val name = t.names[s]
                 label.getValue(s) + when {
@@ -468,22 +516,24 @@ class ConsentCard private constructor(
             }
             val day = DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.US).format(Instant.ofEpochMilli(meta.createdAt).atZone(zone))
             val minutes = minutes(meta, t)
+            // The names you gave go wherever they appear, when you asked: the card says what is left.
+            val swap = if (anonymize) NameSwap.of(t, label) else null
             val lines = t.lines.joinToString("\n") { l ->
                 var text = l.text.replace(Regex("\\s+"), " ").trim()
-                // The names you gave go wherever they appear, when you asked: the card says what is left.
-                if (anonymize) for (s in named) text = text.replace(Regex("(?i)(?<![\\p{L}\\p{N}])" + Regex.escape(t.names.getValue(s)) + "(?![\\p{L}\\p{N}])"), label.getValue(s))
+                if (swap != null) text = swap(text)
                 SummaryPlanner.line(TranscriptExport.clock(meta, l.t0, zone), label.getValue(l.speaker), l.lang, text)
             }
-            val ask = "Summarize this conversation in ${TranscriptExport.langName(summaryLang)}."
-            val convo = "[Conversation of $day, $minutes minutes. Speakers: $who.]"
+            val ask = "Summarize this conversation in ${TranscriptExport.langName(summaryLang)}." // l10n: not text (the request a helper reads, English)
+            val convo = "[Conversation of $day, $minutes minutes. Speakers: $who.]" // l10n: not text (the request a helper reads, English)
             val blocks = listOf(HelperBlock.Text(HelperPrompt.context(now, region)), HelperBlock.Text(convo), HelperBlock.Text(lines), HelperBlock.Text(ask))
             val words = t.words
-            val langs = t.langs.map { TranscriptExport.langName(it) }
-            val stats = "$minutes min · ${t.speakers.size} speaker${if (t.speakers.size == 1) "" else "s"} · ${String.format(Locale.US, "%,d", words)} words" +
-                (if (langs.isEmpty()) "" else " · " + langs.joinToString(" and ")) + "."
-            val includes = if (named.isEmpty() || anonymize) "It includes what other people said." else "It includes what other people said and the names you gave them."
-            return ConsentCard(meta.id, helper, to, disclosure, stats, includes, anonymize, blocks, "$ask\n\n$convo\n$lines", words, t.speakers.size) {
-                build(helper, to, disclosure, meta, t, now, region, summaryLang, zone, it)
+            val langs = t.langs.map { TranscriptExport.langNameText(it) }
+            val counts = arrayOf("min" to "$minutes", "speakers" to ConversationStrings.speakersCount(t.speakers.size), "words" to ConversationStrings.wordsCount(words))
+            val stats = if (langs.isEmpty()) ConversationStrings.consentStats(*counts)
+                else ConversationStrings.consentStatsLangs(*counts, "langs" to Arg.list(langs, ListKind.AND))
+            val includes = if (named.isEmpty() || anonymize) ConversationStrings.includesSaid() else ConversationStrings.includesNames()
+            return ConsentCard(meta.id, helper, to, toText, disclosure, stats, includes, anonymize, blocks, "$ask\n\n$convo\n$lines", words, t.speakers.size) {
+                build(helper, to, disclosure, meta, t, now, region, summaryLang, zone, it, toText)
             }
         }
 
@@ -496,10 +546,56 @@ class ConsentCard private constructor(
         fun appShare(card: ConsentCard): String? = card.appText.takeIf { it.length <= APP_MAX_CHARS }
 
         /** Too long for one request to a helper's API (Helper.maxInputTokens): nothing is sent, the card offers export. */
-        const val TOO_LONG_FOR_API = "Too long for one request; export it and attach the file."
+        val tooLongForApi: Phrase get() = ConversationStrings.tooLongForApi()
+        val TOO_LONG_FOR_API: String get() = tooLongForApi.en()
 
         /** A request of [blocks] fits a helper's API that takes at most [maxTokens] in (by the card's estimate, HelperCost). */
         fun apiFits(blocks: List<HelperBlock.Text>, maxTokens: Int): Boolean = HelperCost.tokens(blocks.sumOf { it.text.length }) <= maxTokens
+    }
+}
+
+/**
+ * "Replace names" in what a helper reads: every name you gave in a transcript (each speaker's now and before, one a merge
+ * dropped, one whose speaker has no lines left), whole and word by word ("Marie Tremblay", "Marie", "Tremblay"), each
+ * to its speaker's label, longest first and in one pass, so a label put in is never read again. A word two speakers'
+ * names share, or a name whose speaker isn't heard any more, becomes "someone". Particles ("de", "la", "van") are
+ * replaced only inside the whole name: alone they are everyday words.
+ */
+internal object NameSwap {
+    private const val SOMEONE = "someone" // l10n: not text (the request a helper reads, English)
+    private val PARTICLES = setOf("de", "du", "des", "la", "le", "les", "van", "von", "der", "den", "di", "da", "del", "della", "dos", "das", // l10n: not text
+        "bin", "ibn", "st", "ste") // l10n: not text
+    private val SPLIT = Regex("[\\s\\-‐]+")
+
+    /** The replacement for [t], speakers labelled by [label]; null when no name was given. */
+    fun of(t: Transcript, label: Map<String, String>): ((String) -> String)? {
+        fun labelOf(speaker: String): String {
+            var s = speaker
+            repeat(16) {
+                label[s]?.let { return it }
+                s = t.merges[s] ?: return SOMEONE
+            }
+            return SOMEONE
+        }
+        val given = t.names.map { (s, n) -> s to n } + t.formerNames.flatMap { (s, ns) -> ns.map { s to it } }
+        val whole = HashMap<String, String>()
+        val words = HashMap<String, String>()
+        fun put(m: HashMap<String, String>, key: String, to: String) { m[key] = if (m[key].let { it == null || it == to }) to else SOMEONE }
+        for ((s, n) in given) {
+            val name = n.trim()
+            if (name.isEmpty()) continue
+            val to = labelOf(s)
+            put(whole, name.lowercase(Locale.ROOT), to)
+            val parts = name.split(SPLIT).map { w -> w.trim { !it.isLetterOrDigit() } }
+            if (parts.size > 1) for (w in parts) {
+                if (w.count { it.isLetter() } >= 2 && w.lowercase(Locale.ROOT) !in PARTICLES) put(words, w.lowercase(Locale.ROOT), to)
+            }
+        }
+        val all = words + whole
+        if (all.isEmpty()) return null
+        val alt = all.keys.sortedByDescending { it.length }.joinToString("|") { Regex.escape(it) }
+        val re = Regex("(?<![\\p{L}\\p{N}])(?:$alt)(?![\\p{L}\\p{N}])", RegexOption.IGNORE_CASE)
+        return { text -> re.replace(text) { m -> all[m.value.lowercase(Locale.ROOT)] ?: all.entries.firstOrNull { it.key.equals(m.value, ignoreCase = true) }?.value ?: m.value } }
     }
 }
 
@@ -562,11 +658,16 @@ data class SummaryRecord(
 
     /**
      * "Robot's summary — made on this phone by Gemma 4 E2B. …" (the model that made it: [model] is its BrainModel id) or
-     * "Claude's summary — sent to Anthropic with your OK on 11 Oct, 14:52."
+     * "Claude's summary — sent to Anthropic with your OK on 11 Oct, 14:52.", in [l] (« … le 11 octobre à 14 h 52. »).
      */
-    fun label(zone: ZoneId = ZoneId.systemDefault()): String = if (via == VIA_PHONE) robotLabel(model)
-    else "${helperName ?: "Claude"}'s summary — sent to ${company ?: "Anthropic"} with your OK on " +
-        DateTimeFormatter.ofPattern("d MMM, HH:mm", Locale.US).format(Instant.ofEpochMilli(if (sentAt > 0) sentAt else createdAt).atZone(zone)) + "."
+    fun label(zone: ZoneId = ZoneId.systemDefault(), l: Langs = Langs.EN): String = if (via == VIA_PHONE) robotLabelText(model).render(l)
+    else {
+        val z = Instant.ofEpochMilli(if (sentAt > 0) sentAt else createdAt).atZone(zone)
+        val at = ConversationStrings.dayTime("day" to TranscriptDates.dayMonth(z, l.say), "time" to TranscriptDates.time(z, l.say))
+        // 1.0.0: any helper's summary; a record from before has no name (Claude's).
+        (if (helperName == null) ConversationStrings.claudeSummary("when" to at)
+        else ConversationStrings.helperSummary("name" to helperName, "company" to (company ?: helperName), "when" to at)).render(l)
+    }
 
     companion object {
         const val VIA_PHONE = "phone"
@@ -574,14 +675,20 @@ data class SummaryRecord(
         const val VIA_APP = "app"
 
         /** Robot's own summary's label, naming the model it was made with (0.4.1: the one chosen in Settings › Model). */
-        fun robotLabel(model: String): String = "Robot's summary — made on this phone by ${modelName(model)}. It can miss or mix up details; check the transcript."
+        fun robotLabelText(model: String): Phrase = ConversationStrings.robotSummary("model" to modelNameText(model))
+
+        /** [robotLabelText] in English. */
+        fun robotLabel(model: String): String = robotLabelText(model).en()
 
         /** A model as a summary names it: "Gemma 4 E2B", "Gemma 4 E4B", "your own model file"; Robot's model when unknown. */
-        fun modelName(model: String): String = when (val m = BrainModel.byId(model)) {
-            null -> "Robot's model"
-            BrainModel.OWN -> "your own model file"
-            else -> m.modelName.substringBefore(" (")
+        fun modelNameText(model: String): Phrase = when (val m = BrainModel.byId(model)) {
+            null -> ConversationStrings.robotsModel()
+            BrainModel.OWN -> ConversationStrings.ownModelFile()
+            else -> Phrase.plain(m.modelName.substringBefore(" ("))
         }
+
+        /** [modelNameText] in English. */
+        fun modelName(model: String): String = modelNameText(model).en()
 
         fun fromJson(text: String?): SummaryRecord? = try {
             val o = JSONObject(text ?: return null)

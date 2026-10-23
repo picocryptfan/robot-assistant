@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.ui.settings
 
+import app.heyrobot.core.files.TravelMode
+import app.heyrobot.sys.FilesSettingsStore
+import app.heyrobot.sys.TravelReveal
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.net.Uri
@@ -49,6 +52,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import app.heyrobot.R
+import app.heyrobot.core.i18n.MemoryStrings
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.UiStrings
+import app.heyrobot.ui.theme.LocalLangs
+import app.heyrobot.ui.theme.str
 import app.heyrobot.core.RLog
 import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
@@ -103,7 +111,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
-// MAIN PROCESS. Settings › Memory (0.7, design §A3.2 and §A4): what Robot remembers, each item you can see, search,
+// MAIN PROCESS. Settings › Memory (0.7): what Robot remembers, each item you can see, search,
 // edit, pin (six at most), make private or delete; what waits in Suggestions (a quiet list, never spoken); the switches,
 // whose defaults are the design's (memory on, used in answers, nothing on the lock screen, private items never spoken,
 // helpers only through their card); Export to a file you pick (plain JSON, after a warning), Import (1.0: an export from 0.9
@@ -139,7 +147,15 @@ interface MemoryStore {
     fun readImport(uri: Uri): ByteArray?
     /** After an import, when you agree: the file deleted where it is (its app may not allow it). */
     fun deleteImport(uri: Uri): Boolean
+    /**
+     * FX1 (files-1.4-review.md finding 6): which drawers Robot Files' travel mode hides now, read off the main thread: a
+     * filing rule naming one isn't listed or counted here until your PIN shows them, or travel mode is off. None by default.
+     */
+    fun hiddenDrawers(): (String) -> Boolean = { false }
 }
+
+/** FX3: what Export writes of [all]: every item but the filing rules naming a drawer travel mode hides now ([hidden]). */
+internal fun exported(all: MemoryFile, hidden: (String) -> Boolean): MemoryFile = all.copy(items = all.items.filter { it.filing?.drawer?.let(hidden) != true })
 
 /** The phone's: the vault in files/memory, memory.json, the voice log's main-process file. */
 class PhoneMemoryStore(ctx: Context) : MemoryStore {
@@ -148,6 +164,11 @@ class PhoneMemoryStore(ctx: Context) : MemoryStore {
 
     override fun settings() = MemorySettingsStore.current(app)
     override fun saveSettings(s: MemorySettings) = MemorySettingsStore.save(app, s)
+    override fun hiddenDrawers(): (String) -> Boolean {
+        val s = FilesSettingsStore.current(app)
+        val revealed = TravelReveal.on()
+        return { d -> TravelMode.hidden(d, s, revealed) }
+    }
     override fun load() = vault.load()
     override fun update(change: (MemoryFile) -> MemoryFile) = vault.update(change)
     override fun deleteAll() = vault.deleteAll()
@@ -215,7 +236,13 @@ fun MemorySettingsScreen(store: MemoryStore, a: AppActions, snackbar: SnackbarHo
     var importedUri by rememberSaveable { mutableStateOf<Uri?>(null) }
     var importedCount by rememberSaveable { mutableIntStateOf(0) }
     val ctx = LocalContext.current
-    LaunchedEffect(tick) { load = withContext(Dispatchers.IO) { store.load() } }
+    /** FX1: the drawers travel mode hides, read before the list (finding 6). */
+    var hiddenDrawer by remember { mutableStateOf<(String) -> Boolean>({ false }) }
+    LaunchedEffect(tick) {
+        val (h, l) = withContext(Dispatchers.IO) { store.hiddenDrawers() to store.load() }
+        hiddenDrawer = h
+        load = l
+    }
     // 1.0.2: the list follows the file while the page is in view (the panel adds or forgets items over it); back in view, it
     // is read again for what changed meanwhile.
     val owner = LocalLifecycleOwner.current
@@ -243,7 +270,7 @@ fun MemorySettingsScreen(store: MemoryStore, a: AppActions, snackbar: SnackbarHo
         scope.launch {
             val r = withContext(Dispatchers.IO) { store.update(change).also { if (it is MemoryLoad.Loaded) store.changed() } }
             load = r
-            if (r !is MemoryLoad.Loaded) a.say(problem(r) ?: "Robot couldn't change its memory.") else done?.let(a.say)
+            if (r !is MemoryLoad.Loaded) a.say(problem(ctx, r) ?: ctx.getString(R.string.memory_not_changed)) else done?.let(a.say)
         }
     }
 
@@ -251,10 +278,13 @@ fun MemorySettingsScreen(store: MemoryStore, a: AppActions, snackbar: SnackbarHo
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
             val n = withContext(Dispatchers.IO) {
-                val f = (store.load() as? MemoryLoad.Loaded)?.file ?: return@withContext -1
+                val all = (store.load() as? MemoryLoad.Loaded)?.file ?: return@withContext -1
+                // FX3: as the list shows it: a filing rule naming a drawer travel mode hides now stays out of the file
+                // (read again here: travel mode may have changed since the page opened).
+                val f = exported(all, store.hiddenDrawers())
                 if (store.export(uri, JSONObject(MemoryCodec.toJson(f)).toString(2))) f.items.size else -1
             }
-            a.say(if (n < 0) "The file couldn't be written." else "Exported ${if (n == 1) "1 thing" else "$n things"}.")
+            a.say(if (n < 0) ctx.getString(R.string.memory_export_failed) else ctx.resources.getQuantityString(R.plurals.memory_exported, n, n))
         }
     }
 
@@ -294,7 +324,7 @@ fun MemorySettingsScreen(store: MemoryStore, a: AppActions, snackbar: SnackbarHo
         val f = have?.current
         if (refusal != null || f == null || read !is ImportRead.Ok) {
             importUri = null
-            a.say(refusal?.let { ctx.getString(it) } ?: have?.let { problem(it) } ?: ctx.getString(R.string.memory_import_not_saved))
+            a.say(refusal?.let { ctx.getString(it) } ?: have?.let { problem(ctx, it) } ?: ctx.getString(R.string.memory_import_not_saved))
             return@LaunchedEffect
         }
         importing = withContext(Dispatchers.Default) { ImportPreview(read, MemoryImport.plan(read, f, mine = true, now = now())) }
@@ -329,7 +359,7 @@ fun MemorySettingsScreen(store: MemoryStore, a: AppActions, snackbar: SnackbarHo
             val d = done
             if (r !is MemoryLoad.Loaded || d == null) {
                 log(VoiceEvent.MEM_IMPORT, 0, MemImportCode.NOT_SAVED.id)
-                a.say(problem(r) ?: ctx.getString(R.string.memory_import_not_saved))
+                a.say(problem(ctx, r) ?: ctx.getString(R.string.memory_import_not_saved))
                 return@launch
             }
             log(VoiceEvent.MEM_IMPORT, d.add.size, (if (mine) MemImportCode.YOURS else MemImportCode.CONTENT).id, d.skipped)
@@ -341,7 +371,8 @@ fun MemorySettingsScreen(store: MemoryStore, a: AppActions, snackbar: SnackbarHo
     }
 
     val file = (load as? MemoryLoad.Loaded)?.file ?: if (load == MemoryLoad.Empty) MemoryFile() else null
-    val items = file?.items.orEmpty()
+    // FX1 (finding 6): a filing rule naming a drawer travel mode hides isn't listed or counted (it stays in the file).
+    val items = file?.items.orEmpty().filter { it.filing?.drawer?.let(hiddenDrawer) != true }
     val pinnedCount = items.count { it.pinned }
     val shown = if (query.isBlank()) items else items.filter { MemoryText.fold(it.text).contains(MemoryText.fold(query.trim())) }
 
@@ -356,107 +387,128 @@ fun MemorySettingsScreen(store: MemoryStore, a: AppActions, snackbar: SnackbarHo
 
     // 1.0 (secrets-memory-private-items-not-secure): private items are shown here in full: out of screenshots, recordings,
     // casting and Recents, and no keyboard learns from the fields, the dialogs' included (ui/common Secure).
+    // The page's words its list builder can't look up itself (it isn't composable).
+    val title = UiStrings.memory().str()
+    val pinnedTitle = stringResource(R.string.memory_pinned_group, pinnedCount, MemoryLimits.MAX_PINNED)
+    val everything = stringResource(R.string.memory_everything)
+    val everythingElse = stringResource(R.string.memory_everything_else)
+    val suggestionsTitle = UiStrings.suggestions().str()
+    val suggestionsCount = stringResource(R.string.memory_suggestions_count, file?.suggestions?.size ?: 0)
+    val kept = stringResource(R.string.memory_kept)
+    val yours = stringResource(R.string.memory_yours)
+    val answers = stringResource(R.string.memory_answers)
+    val privacy = stringResource(R.string.memory_privacy)
+    val footer = stringResource(if (s.onLockScreen) R.string.memory_footer_lock_screen else R.string.memory_footer_unlocked)
+    val langs = LocalLangs.current
+    val suggestionLabels = SuggestionStyle.entries.associateWith { suggestionLabel(it) }
+    val suggestionDetails = SuggestionStyle.entries.associateWith { suggestionDetail(it) }
+    val shareDetails = HelperMemory.entries.associateWith {
+        stringResource(if (it == HelperMemory.ONLY_WHEN_INCLUDED) R.string.memory_share_included_detail else R.string.memory_share_trusted_detail)
+    }
+
+    // 1.0 (secrets-memory-private-items-not-secure): private items are shown here in full: out of screenshots, recordings,
+    // casting and Recents, and no keyboard learns from the fields, the dialogs' included (ui/common Secure). (The title is
+    // a template so ProcessIsolationTest still reads this order.)
     SecureWindow()
     NoImeLearning {
-    PreferenceScreen("Memory", onBack, snackbar = snackbar) {
-        item(key = "main") { MainSwitchBar("Use memory", s.on) { saveSettings(s.copy(on = it)) } }
+    PreferenceScreen("$title", onBack, snackbar = snackbar) {
+        item(key = "main") { MainSwitchBar(stringResource(R.string.memory_use), s.on) { saveSettings(s.copy(on = it)) } }
         when {
-            load == null -> item(key = "reading") { IntroPreference("Opening…") }
+            load == null -> item(key = "reading") { IntroPreference(stringResource(R.string.memory_opening)) }
             file == null -> preferenceGroup(null, "problem") {
-                PreferenceBlock { Text(problem(load!!) ?: "", style = MaterialTheme.typography.bodyLarge) }
+                PreferenceBlock { Text(problem(ctx, load!!) ?: "", style = MaterialTheme.typography.bodyLarge) }
                 if (load == MemoryLoad.KeyGone || load == MemoryLoad.Unreadable) {
-                    PreferenceItem("Start over", "The file is kept aside as memory.enc.bad", RIcons.Refresh, onClick = { confirmStartOver = true })
-                    PreferenceItem("Delete the file", "Everything Robot remembered", RIcons.Delete, onClick = { confirmAll = true })
+                    PreferenceItem(stringResource(R.string.memory_start_over), stringResource(R.string.memory_start_over_detail), RIcons.Refresh,
+                        onClick = { confirmStartOver = true })
+                    PreferenceItem(stringResource(R.string.memory_delete_file), stringResource(R.string.memory_delete_file_detail), RIcons.Delete,
+                        onClick = { confirmAll = true })
                 } else {
-                    PreferenceItem("Try again", null, RIcons.Refresh, onClick = { tick++ })
+                    PreferenceItem(stringResource(R.string.memory_try_again), null, RIcons.Refresh, onClick = { tick++ })
                 }
             }
             else -> {
                 item(key = "intro") {
-                    IntroPreference(when (items.size) {
-                        0 -> "Robot remembers nothing yet. Say “remember that …” to keep something."
-                        1 -> "Robot remembers 1 thing."
-                        else -> "Robot remembers ${items.size} things."
-                    } + " It stays on this phone, encrypted, and never goes to a helper unless you include it." +
-                        if (items.size >= MemoryLimits.NOTE_AT) " Memory holds ${MemoryLimits.MAX_ITEMS} at most." else "")
+                    IntroPreference(listOfNotNull(
+                        if (items.isEmpty()) stringResource(R.string.memory_intro_none)
+                        else pluralStringResource(R.plurals.memory_intro_count, items.size, items.size),
+                        stringResource(R.string.memory_intro_stays),
+                        if (items.size >= MemoryLimits.NOTE_AT) stringResource(R.string.memory_intro_max, MemoryLimits.MAX_ITEMS) else null,
+                    ).joinToString(" "))
                 }
                 if (items.isNotEmpty()) item(key = "search") {
                     OutlinedTextField(
                         value = query, onValueChange = { query = it }, singleLine = true,
-                        placeholder = { Text("Search memory") }, leadingIcon = { Icon(RIcons.Search, null) },
-                        trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(RIcons.Close, "Clear search") } },
+                        placeholder = { Text(stringResource(R.string.memory_search)) }, leadingIcon = { Icon(RIcons.Search, null) },
+                        trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(RIcons.Close, stringResource(R.string.memory_clear_search)) } },
                         shape = RoundedCornerShape(50), modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
                     )
                 }
                 val pinned = shown.filter { it.pinned }
                 val rest = shown.filter { !it.pinned }.sortedByDescending { it.createdAt }
-                if (items.isNotEmpty() && shown.isEmpty()) item(key = "nomatch") { IntroPreference("Nothing matches.") }
-                if (pinned.isNotEmpty()) preferenceItems("Pinned ($pinnedCount of ${MemoryLimits.MAX_PINNED}): in every answer", "pinned", pinned, { it.id }) { i ->
+                if (items.isNotEmpty() && shown.isEmpty()) item(key = "nomatch") { IntroPreference(stringResource(R.string.memory_no_match)) }
+                if (pinned.isNotEmpty()) preferenceItems(pinnedTitle, "pinned", pinned, { it.id }) { i ->
                     ItemRow(i, now()) { editing = i }
                 }
-                if (rest.isNotEmpty()) preferenceItems(if (pinned.isEmpty() && query.isBlank()) "Everything" else "Everything else", "items", rest, { it.id }) { i ->
+                if (rest.isNotEmpty()) preferenceItems(if (pinned.isEmpty() && query.isBlank()) everything else everythingElse, "items", rest, { it.id }) { i ->
                     ItemRow(i, now()) { editing = i }
                 }
                 val suggestions = file.suggestions
                 if (suggestions.isEmpty()) {
-                    preferenceGroup("Suggestions", "suggestions") {
+                    preferenceGroup(suggestionsTitle, "suggestions") {
                         PreferenceBlock {
-                            Text("Nothing waiting. Robot never says a suggestion aloud and never keeps one without your tap.",
+                            Text(stringResource(R.string.memory_suggestions_none),
                                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 } else {
-                    preferenceItems("Suggestions (${suggestions.size})", "suggestions", suggestions, { it.id }) { sg ->
+                    preferenceItems(suggestionsCount, "suggestions", suggestions, { it.id }) { sg ->
                         SuggestionRow(sg,
-                            keep = { change("Kept.") { f -> MemoryEdits.keep(f, sg.id, now()).file }; log(VoiceEvent.MEM_SUGGEST, 0, 1, 0) },
+                            keep = { change(kept) { f -> MemoryEdits.keep(f, sg.id, now()).file }; log(VoiceEvent.MEM_SUGGEST, 0, 1, 0) },
                             dismiss = { change(null) { f -> MemoryEdits.dismiss(f, sg.id, dontSuggest = false) }; log(VoiceEvent.MEM_SUGGEST, 0, 0, 1) })
                     }
                 }
-                preferenceGroup("Your memory", "actions") {
-                    PreferenceItem("Add something", "As if you'd said “remember that …”", RIcons.Add, enabled = items.size < MemoryLimits.MAX_ITEMS,
-                        onClick = { adding = true })
-                    PreferenceItem("Export", "To a file you pick: not encrypted", RIcons.Download, enabled = items.isNotEmpty(), onClick = { warnExport = true })
+                preferenceGroup(yours, "actions") {
+                    PreferenceItem(stringResource(R.string.memory_add), stringResource(R.string.memory_add_detail), RIcons.Add,
+                        enabled = items.size < MemoryLimits.MAX_ITEMS, onClick = { adding = true })
+                    PreferenceItem(stringResource(R.string.memory_export), stringResource(R.string.memory_export_detail), RIcons.Download,
+                        enabled = items.isNotEmpty(), onClick = { warnExport = true })
                     PreferenceItem(stringResource(R.string.memory_import), stringResource(R.string.memory_import_detail), RIcons.Folder,
                         enabled = items.size < MemoryLimits.MAX_ITEMS, onClick = { startImport() })
-                    PreferenceItem("Delete all", "Everything Robot remembers", RIcons.Delete, enabled = items.isNotEmpty() || file.suggestions.isNotEmpty(),
+                    PreferenceItem(stringResource(R.string.memory_delete_all), stringResource(R.string.memory_delete_all_detail), RIcons.Delete,
+                        enabled = items.isNotEmpty() || file.suggestions.isNotEmpty(),
                         onClick = { confirmAll = true })
                 }
             }
         }
-        preferenceGroup("Answers", "answers") {
-            SwitchPreference("Use memory in answers", "Pinned things in every answer, the rest when a question needs it", s.useInAnswers, enabled = s.on) {
+        preferenceGroup(answers, "answers") {
+            SwitchPreference(stringResource(R.string.memory_use_in_answers), stringResource(R.string.memory_use_in_answers_detail), s.useInAnswers,
+                enabled = s.on) {
                 saveSettings(s.copy(useInAnswers = it))
             }
-            ListPreference("Suggest things to remember", s.suggestions, SuggestionStyle.entries, { suggestionLabel(it) }, enabled = s.on,
-                detail = { suggestionDetail(it) }) { saveSettings(s.copy(suggestions = it)) }
-            SwitchPreference("Say private items aloud", "Only one you ask for by name, on an unlocked phone", s.speakSecrets, enabled = s.on) {
+            ListPreference(stringResource(R.string.memory_suggest), s.suggestions, SuggestionStyle.entries, { suggestionLabels.getValue(it) }, enabled = s.on,
+                detail = { suggestionDetails[it] }) { saveSettings(s.copy(suggestions = it)) }
+            SwitchPreference(stringResource(R.string.memory_speak_private), stringResource(R.string.memory_speak_private_detail), s.speakSecrets,
+                enabled = s.on) {
                 saveSettings(s.copy(speakSecrets = it))
             }
         }
-        preferenceGroup("Privacy", "privacy") {
-            SwitchPreference("Use memory on the lock screen", "Anyone who can talk to your locked phone can hear what Robot remembers", s.onLockScreen,
+        preferenceGroup(privacy, "privacy") {
+            SwitchPreference(stringResource(R.string.memory_lock_screen), stringResource(R.string.memory_lock_screen_detail), s.onLockScreen,
                 enabled = s.on) { on ->
                 // Memory is sealed again with the key that matches first; the switch moves only once that worked.
                 scope.launch {
                     val r = withContext(Dispatchers.IO) { store.rekey(on) }
                     val ok = r is MemoryLoad.Loaded || r == MemoryLoad.Empty
                     log(VoiceEvent.MEM_KEY, if (on) 1 else 0, if (ok) 1 else 0)
-                    if (ok) saveSettings(s.copy(onLockScreen = on)) else a.say(problem(r) ?: "Robot couldn't change memory's key.")
+                    if (ok) saveSettings(s.copy(onLockScreen = on)) else a.say(problem(ctx, r) ?: ctx.getString(R.string.memory_key_failed))
                 }
             }
-            ListPreference("Share memory with helpers", s.helpers, HelperMemory.entries, { it.title }, enabled = s.on,
-                detail = { if (it == HelperMemory.ONLY_WHEN_INCLUDED) "A card asks every time" else "Helpers you trust get what an answer used; private items never" }) {
+            ListPreference(stringResource(R.string.memory_share), s.helpers, HelperMemory.entries, { it.text.render(langs) }, enabled = s.on,
+                detail = { shareDetails[it] }) {
                 saveSettings(s.copy(helpers = it))
             }
         }
-        preferenceFooter(
-            "Robot keeps what you ask it to (“remember that …”, “souviens-toi que …”) in one file on this phone, encrypted with a key " +
-                (if (s.onLockScreen) "that also works while the phone is locked (the lock screen's switch above)" else "that works only while the phone is unlocked") +
-                ", and never backed up. “Forget that” removes the last thing; Undo puts it back. " +
-                "Passwords, PINs and card numbers you ask it to keep stay private: never spoken unless you ask for one by name, never in " +
-                "an answer unless the question names it, never sent to a helper. Robot doesn't keep them from a conversation by itself. " +
-                "History keeps which things an answer used, never their words.",
-        )
+        preferenceFooter(footer)
     }
 
     editing?.let { item ->
@@ -467,12 +519,12 @@ fun MemorySettingsScreen(store: MemoryStore, a: AppActions, snackbar: SnackbarHo
             },
             onDelete = {
                 editing = null
-                change("Deleted.") { f -> MemoryEdits.forget(f, setOf(item.id)).first }
+                change(ctx.getString(R.string.memory_deleted)) { f -> MemoryEdits.forget(f, setOf(item.id)).first }
                 log(VoiceEvent.MEM_FORGET, 1, MemForget.SETTINGS.id)
             },
             onSave = { text, pinned, secret ->
                 editing = null
-                change("Saved.") { f ->
+                change(ctx.getString(R.string.memory_saved)) { f ->
                     var g = if (text != item.text) MemoryEdits.edit(f, item.id, text, now()) ?: f else f
                     g = g.copy(items = g.items.map { if (it.id == item.id && secret != it.secret) it.copy(secret = secret, pinned = it.pinned && !secret) else it })
                     MemoryEdits.pin(g, item.id, pinned && !secret) ?: g
@@ -480,32 +532,32 @@ fun MemorySettingsScreen(store: MemoryStore, a: AppActions, snackbar: SnackbarHo
             })
     }
     if (adding) {
-        EditDialog("Add something", "", "What to remember", "Your words, as you'd say them", canSave = { it.isNotBlank() },
+        EditDialog(stringResource(R.string.memory_add), "", stringResource(R.string.memory_add_label), stringResource(R.string.memory_add_hint), canSave = { it.isNotBlank() },
             maxLength = MemoryLimits.MAX_CHARS, secure = true, onDismiss = { adding = false }) { text ->
             adding = false
             val t = now()
             val kind = if (app.heyrobot.core.memory.MemoryCommands.prefers(text)) MemoryKind.PREFERENCE else MemoryKind.FACT
             val item = MemoryItem(MemoryIds.newId(t), text, kind, source = MemorySource.SETTINGS, createdAt = t)
-            change("Remembered.") { f -> MemoryEdits.add(f, item).file }
+            change(ctx.getString(R.string.memory_remembered)) { f -> MemoryEdits.add(f, item).file }
             log(VoiceEvent.MEM_SAVE, MemOrigin.SETTINGS.id, MemKindCode.of(item).id)
         }
     }
     if (warnExport) {
-        ConfirmDialog("Export memory?", "The file isn't encrypted: anyone who opens it can read everything Robot remembers, private items " +
-            "and what you said about other people included. Keep it somewhere safe.", "Choose a file", onDismiss = { warnExport = false }) {
+        ConfirmDialog(stringResource(R.string.memory_export_title), stringResource(R.string.memory_export_text), stringResource(R.string.memory_export_choose),
+            onDismiss = { warnExport = false }) {
             warnExport = false
-            try { exporter.launch("robot-memory.json") } catch (_: Exception) { a.say("No app here can save a file.") }
+            try { exporter.launch("robot-memory.json") } catch (_: Exception) { a.say(ctx.getString(R.string.memory_export_no_app)) }
         }
     }
     if (confirmAll) {
-        ConfirmDialog("Delete all memory?", "Robot forgets everything it remembers about you, and its suggestions. This can't be undone.",
-            "Delete all", onDismiss = { confirmAll = false }) {
+        ConfirmDialog(stringResource(R.string.memory_delete_all_title), stringResource(R.string.memory_delete_all_text),
+            stringResource(R.string.memory_delete_all), onDismiss = { confirmAll = false }) {
             confirmAll = false
             scope.launch {
                 val n = items.size
                 val ok = withContext(Dispatchers.IO) { store.deleteAll().also { if (it) store.changed() } }
                 if (ok) log(VoiceEvent.MEM_FORGET, n, MemForget.ALL.id)
-                a.say(if (ok) "Memory deleted." else "Memory couldn't be deleted.")
+                a.say(ctx.getString(if (ok) R.string.memory_all_deleted else R.string.memory_not_deleted))
                 tick++
             }
         }
@@ -547,12 +599,12 @@ fun MemorySettingsScreen(store: MemoryStore, a: AppActions, snackbar: SnackbarHo
         )
     }
     if (confirmStartOver) {
-        ConfirmDialog("Start over?", "Robot keeps the file it can't read aside, as memory.enc.bad, and starts an empty memory.", "Start over",
+        ConfirmDialog(stringResource(R.string.memory_start_over_title), stringResource(R.string.memory_start_over_text), stringResource(R.string.memory_start_over),
             onDismiss = { confirmStartOver = false }) {
             confirmStartOver = false
             scope.launch {
                 val ok = withContext(Dispatchers.IO) { store.startOver().also { if (it) store.changed() } }
-                a.say(if (ok) "Memory is empty now." else "Robot couldn't set the file aside.")
+                a.say(ctx.getString(if (ok) R.string.memory_empty_now else R.string.memory_not_set_aside))
                 tick++
             }
         }
@@ -560,49 +612,57 @@ fun MemorySettingsScreen(store: MemoryStore, a: AppActions, snackbar: SnackbarHo
     }
 }
 
-/** What a memory that couldn't be opened means, in words; null when it opened. */
-internal fun problem(l: MemoryLoad): String? = when (l) {
-    MemoryLoad.Locked -> "Robot couldn't open its memory just now. Try again in a moment."
-    MemoryLoad.KeyGone -> "Robot's memory key is gone (the screen lock was removed, or the phone reset it), so its memory can't be read. " +
-        "Start over keeps the file aside; Delete removes it."
-    MemoryLoad.Unreadable -> "Robot can't read its memory: the file is damaged. Start over keeps it aside and starts an empty memory."
-    is MemoryLoad.TooNew -> "A newer version of Robot saved your memory, so this one can't read or change it."
+/** What a memory that couldn't be opened means, in words (the menus' language); null when it opened. */
+internal fun problem(ctx: android.content.Context, l: MemoryLoad): String? = when (l) {
+    MemoryLoad.Locked -> ctx.getString(R.string.memory_problem_locked)
+    MemoryLoad.KeyGone -> ctx.getString(R.string.memory_problem_key_gone)
+    MemoryLoad.Unreadable -> ctx.getString(R.string.memory_problem_unreadable)
+    is MemoryLoad.TooNew -> ctx.getString(R.string.memory_problem_too_new)
     is MemoryLoad.Loaded, MemoryLoad.Empty -> null
 }
 
-internal fun suggestionLabel(s: SuggestionStyle): String = when (s) {
-    SuggestionStyle.QUIET_LIST -> "A quiet list here"
-    SuggestionStyle.END_CHIP -> "Also at the end of a conversation"
-    SuggestionStyle.OFF -> "Off"
-}
+@Composable
+internal fun suggestionLabel(s: SuggestionStyle): String = stringResource(when (s) {
+    SuggestionStyle.QUIET_LIST -> R.string.memory_suggest_quiet
+    SuggestionStyle.END_CHIP -> R.string.memory_suggest_end_chip
+    SuggestionStyle.OFF -> R.string.memory_suggest_off
+})
 
-private fun suggestionDetail(s: SuggestionStyle): String = when (s) {
-    SuggestionStyle.QUIET_LIST -> "Never spoken, no pop-up"
-    SuggestionStyle.END_CHIP -> "A “Remember: …?” chip in the panel"
-    SuggestionStyle.OFF -> "Robot suggests nothing"
-}
+@Composable
+private fun suggestionDetail(s: SuggestionStyle): String = stringResource(when (s) {
+    SuggestionStyle.QUIET_LIST -> R.string.memory_suggest_quiet_detail
+    SuggestionStyle.END_CHIP -> R.string.memory_suggest_end_chip_detail
+    SuggestionStyle.OFF -> R.string.memory_suggest_off_detail
+})
 
-/** The Memory row's state in Settings: "On", "On · on the lock screen", "Off". */
-fun memorySummary(s: MemorySettings): String = when {
-    !s.on -> "Off"
-    s.onLockScreen -> "On · also on the lock screen"
-    !s.useInAnswers -> "On · not used in answers"
-    else -> "On"
+/** [memorySummary] in words without a language yet (Settings' row: `memorySummaryText(s).str()`). */
+fun memorySummaryText(s: MemorySettings): Phrase = when {
+    !s.on -> MemoryStrings.summaryOff()
+    s.onLockScreen -> MemoryStrings.summaryLockScreen()
+    !s.useInAnswers -> MemoryStrings.summaryNotInAnswers()
+    else -> MemoryStrings.summaryOn()
 }
 
 /** One item: its words (a private one too: this page is behind your unlock), its state under them, and "Imported" (1.0). */
 @Composable
 private fun ItemRow(i: MemoryItem, now: Long, onClick: () -> Unit) {
-    PreferenceItem(i.text, MemoryDates.line(i, now), if (i.secret) RIcons.Lock else null, onClick = onClick,
+    // 1.4: a filing rule says so (Robot Files reads it; it never goes into an answer).
+    val line = listOfNotNull(if (i.filing != null) app.heyrobot.core.i18n.FilesStrings.ruleLabel().str() else null, MemoryDates.lineText(i, now).str())
+        .joinToString(" · ")
+    PreferenceItem(i.text, line, if (i.secret) RIcons.Lock else if (i.filing != null) RIcons.Folder else null, onClick = onClick,
         trailing = if (i.imported != null) { { ImportedChip() } } else null)
 }
 
 /** A suggestion with Keep and Not this, each named after it for TalkBack. */
 @Composable
 private fun SuggestionRow(s: MemorySuggestion, keep: () -> Unit, dismiss: () -> Unit) {
-    TwoTargetPreference(s.text, "Suggested from your own words", onClick = keep, onClickLabel = "Keep") {
-        TextButton(onClick = keep, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Keep: ${s.text}" }) { Text("Keep") }
-        TextButton(onClick = dismiss, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Not this: ${s.text}" }) { Text("Not this") }
+    val keepNamed = stringResource(R.string.memory_keep_named, s.text)
+    val notThisNamed = stringResource(R.string.memory_not_this_named, s.text)
+    TwoTargetPreference(s.text, stringResource(R.string.memory_suggested), onClick = keep, onClickLabel = stringResource(R.string.memory_keep)) {
+        TextButton(onClick = keep, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = keepNamed }) { Text(stringResource(R.string.memory_keep)) }
+        TextButton(onClick = dismiss, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = notThisNamed }) {
+            Text(stringResource(R.string.memory_not_this))
+        }
     }
 }
 
@@ -613,18 +673,21 @@ private fun ItemDialog(item: MemoryItem, pinFull: Boolean, now: Long, onDismiss:
     var text by rememberSaveable(item.id) { mutableStateOf(item.text) }
     var pinned by rememberSaveable(item.id) { mutableStateOf(item.pinned) }
     var secret by rememberSaveable(item.id) { mutableStateOf(item.secret) }
+    if (item.filing != null) return RuleDialog(item, now, onDismiss, onMine, onDelete)
     AlertDialog(
         onDismissRequest = onDismiss,
         properties = SecureDialog,
-        title = { Text(if (item.kind == MemoryKind.PREFERENCE) "Preference" else "Remembered") },
+        title = { Text(stringResource(if (item.kind == MemoryKind.PREFERENCE) R.string.memory_preference else R.string.memory_remembered_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(text, { text = it.take(MemoryLimits.MAX_CHARS) }, label = { Text("What Robot remembers") },
+                OutlinedTextField(text, { text = it.take(MemoryLimits.MAX_CHARS) }, label = { Text(stringResource(R.string.memory_what_robot_remembers)) },
                     modifier = Modifier.fillMaxWidth())
-                DialogSwitch("Pinned", if (pinFull) "Six are pinned: unpin one first" else "Used in every answer", pinned && !secret,
-                    enabled = !secret && !pinFull) { pinned = it }
-                DialogSwitch("Private", "Never spoken or sent; only here", secret) { secret = it; if (it) pinned = false }
-                Text(MemoryDates.line(item, now) + (item.sourceLabel?.let { " · from $it" } ?: if (item.source == MemorySource.CONTENT) " · not your own words" else ""),
+                DialogSwitch(stringResource(R.string.memory_pinned), stringResource(if (pinFull) R.string.memory_pinned_full else R.string.memory_pinned_detail),
+                    pinned && !secret, enabled = !secret && !pinFull) { pinned = it }
+                DialogSwitch(stringResource(R.string.memory_private), stringResource(R.string.memory_private_detail), secret) { secret = it; if (it) pinned = false }
+                val from = item.sourceLabel?.let { stringResource(R.string.memory_from, it) }
+                    ?: if (item.source == MemorySource.CONTENT) stringResource(R.string.memory_not_your_words) else null
+                Text(listOfNotNull(MemoryDates.lineText(item, now).str(), from).joinToString(" · "),
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 // 1.0: an imported item, until you say it is yours.
                 if (item.imported != null) {
@@ -635,13 +698,46 @@ private fun ItemDialog(item: MemoryItem, pinFull: Boolean, now: Long, onDismiss:
                 }
             }
         },
-        confirmButton = { TextButton(onClick = { onSave(text.trim(), pinned, secret) }, enabled = text.isNotBlank()) { Text("Save") } },
+        confirmButton = { TextButton(onClick = { onSave(text.trim(), pinned, secret) }, enabled = text.isNotBlank()) { Text(stringResource(R.string.memory_save)) } },
         dismissButton = {
             Row {
-                TextButton(onClick = onDelete) { Text("Delete") }
-                TextButton(onClick = onDismiss) { Text("Cancel") }
+                TextButton(onClick = onDelete) { Text(stringResource(R.string.memory_delete)) }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.memory_cancel)) }
             }
         },
+    )
+}
+
+/**
+ * 1.4: a filing rule (files-1.4-plan.md §4.5): its words as Robot wrote them, whether Robot Files follows it, Delete. Never
+ * edited, pinned or made private here: its words are a template, and it never goes into an answer anyway.
+ */
+@Composable
+private fun RuleDialog(item: MemoryItem, now: Long, onDismiss: () -> Unit, onMine: () -> Unit, onDelete: () -> Unit) {
+    val rule = item.filing!!
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        properties = SecureDialog,
+        title = { Text(app.heyrobot.core.i18n.FilesStrings.ruleLabel().str()) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(item.text, style = MaterialTheme.typography.bodyLarge)
+                Text(when {
+                    rule.foreign != null -> app.heyrobot.core.i18n.FilesStrings.ruleNewer().str()
+                    item.tainted -> app.heyrobot.core.i18n.FilesStrings.ruleNotYours().str()
+                    else -> app.heyrobot.core.i18n.FilesStrings.ruleFollowed().str()
+                }, style = MaterialTheme.typography.bodyMedium)
+                Text(MemoryDates.lineText(item, now).str(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (item.imported != null) {
+                    if (item.imported == MemoryImported.CONTENT) Text(stringResource(R.string.memory_imported_content),
+                        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    DialogAction(stringResource(R.string.memory_this_is_mine), stringResource(if (item.source == MemorySource.CONTENT)
+                        R.string.memory_this_is_mine_content_detail else R.string.memory_this_is_mine_detail), onMine)
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.memory_cancel)) } },
+        dismissButton = { TextButton(onClick = onDelete) { Text(stringResource(R.string.memory_delete)) } },
     )
 }
 

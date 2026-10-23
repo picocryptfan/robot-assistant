@@ -2,9 +2,15 @@
 package app.heyrobot.core.memory
 
 import app.heyrobot.core.enumOr
+import app.heyrobot.core.i18n.Lang
+import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.i18n.MemoryStrings
+import app.heyrobot.core.i18n.Msg
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.UiStrings
 import org.json.JSONObject
 
-// Pure. Settings › Memory (design §A4) and the rules that read them: the lock screen, helpers, content, the search
+// Pure. Settings › Memory and the rules that read them: the lock screen, helpers, content, the search
 // model offer. The defaults are the design's answers to its open questions: suggestions as a quiet list (5), the search
 // model offered once in Assistant setup, never downloaded by itself (6), helpers get memory only through the Include
 // card, even trusted ones (7), and nothing on the lock screen.
@@ -13,21 +19,27 @@ import org.json.JSONObject
 // the main app writes it (Settings › Memory), the voice process reads it again when it changes. An older or damaged file
 // reads each field at the default below. The voice log's ids 180 to 189 are memory's (VoiceEvent.MEM_*, MemoryLog.kt).
 
-/** Who may see retrieved items besides the local model (0.6.0 helpers). */
-enum class HelperMemory(val title: String) {
+/** Who may see retrieved items besides the local model (0.6.0 helpers). [text]: its name (core i18n); [title] its English. */
+enum class HelperMemory(private val msg: Msg) {
     /** The default: an item goes to a helper only when you include it on the card. */
-    ONLY_WHEN_INCLUDED("Only when I include it"),
+    ONLY_WHEN_INCLUDED(MemoryStrings.helpersIncluded),
     /** Retrieved, non-secret items of that turn go to a helper you trust without the card. */
-    TRUSTED_HELPERS("With helpers I trust"),
+    TRUSTED_HELPERS(MemoryStrings.helpersTrusted);
+
+    val text: Phrase get() = msg()
+    val title: String get() = text.en()
 }
 
-/** How suggestions reach you. */
-enum class SuggestionStyle(val title: String) {
+/** How suggestions reach you. [text]: its name (core i18n); [title] its English. */
+enum class SuggestionStyle(private val msg: Msg) {
     /** The default: a list in Settings › Memory › Suggestions with a dot on the Memory row; never spoken, no pop-up. */
-    QUIET_LIST("A list in Settings (quiet)"),
+    QUIET_LIST(MemoryStrings.suggestQuiet),
     /** Also a chip "Remember: …?" at the end of a conversation. */
-    END_CHIP("Ask me at the end of a conversation"),
-    OFF("Off"),
+    END_CHIP(MemoryStrings.suggestEndChip),
+    OFF(MemoryStrings.suggestOff);
+
+    val text: Phrase get() = msg()
+    val title: String get() = text.en()
 }
 
 /** Whether Robot still offers the search model (165 MB): offered once in Assistant setup, never downloaded by itself. */
@@ -95,16 +107,20 @@ enum class LockedMemory {
 }
 
 object MemoryAccess {
-    const val UNLOCK_FIRST = "Unlock first: what you asked me to remember stays locked."
-    const val UNLOCK_FIRST_FR = "Déverrouille d'abord : ce que tu m'as demandé de retenir reste verrouillé."
-    /** 0.7 after the review: nothing is saved to memory on the lock screen, "Use memory on the lock screen" or not. */
-    const val UNLOCK_TO_SAVE = "Unlock first to save to memory."
-    const val UNLOCK_TO_SAVE_FR = "Déverrouille d'abord pour l'enregistrer en mémoire."
-    /** Nor removed from it ("forget …"): what you asked Robot to remember is changed only on an unlocked phone. */
-    const val UNLOCK_TO_CHANGE = "Unlock first to change what I remember."
-    const val UNLOCK_TO_CHANGE_FR = "Déverrouille d'abord pour changer ce que je retiens."
-    const val FORGET_ALL_BY_VOICE = "Open Settings › Memory to delete everything."
-    const val FORGET_ALL_BY_VOICE_FR = "Ouvre Réglages › Mémoire pour tout effacer."
+    private val FR = Langs.of(Lang.FR)
+
+    val UNLOCK_FIRST: String get() = MemoryStrings.unlockFirst().en()
+    val UNLOCK_FIRST_FR: String get() = MemoryStrings.unlockFirst().render(FR)
+    val UNLOCK_TO_SAVE_FR: String get() = MemoryStrings.unlockToSave().render(FR)
+    val UNLOCK_TO_CHANGE_FR: String get() = MemoryStrings.unlockToChange().render(FR)
+    val FORGET_ALL_BY_VOICE: String get() = forgetAllByVoice().en()
+    val FORGET_ALL_BY_VOICE_FR: String get() = forgetAllByVoice().render(FR)
+
+    /** These lines in words without a language yet (1.1): a card's line or a reply in the turn's languages. */
+    fun unlockFirst(): Phrase = MemoryStrings.unlockFirst()
+    fun unlockToSave(): Phrase = MemoryStrings.unlockToSave()
+    fun unlockToChange(): Phrase = MemoryStrings.unlockToChange()
+    fun forgetAllByVoice(): Phrase = MemoryStrings.forgetAllByVoice("page" to UiStrings.inSettings(UiStrings.memory))
 
     /**
      * Whether memory may be changed now (an item saved, forgotten, put back by Undo, or its use counted): only on an unlocked

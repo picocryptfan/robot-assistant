@@ -21,6 +21,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.unit.dp
+import app.heyrobot.core.i18n.FrTypo
 import app.heyrobot.ui.testing.PHONE
 import app.heyrobot.ui.testing.shot
 import app.heyrobot.ui.testing.show
@@ -35,7 +36,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * 0.7, the reply card (design §B5): who and which app, your words in quotes, the tick box that sends them in her language
+ * 0.7, the reply card: who and which app, your words in quotes, the tick box that sends them in her language
  * with what Robot made of them, the notes, and Send, Edit, Open chat, Cancel; the 3 seconds' Stop; a pick when several
  * conversations fit; what's left when it went or failed; History's has no buttons. In the panel's tonal colours and type,
  * and at twice the size.
@@ -145,6 +146,29 @@ class ReplyCardTest {
             }
         }
         rule.shot("reply_card_classic")
+    }
+
+    /** WP9b: the screenshot's three cards with the menus in French: core's French lines (FrTypo's spaces in), your words as they are. */
+    @Test @Config(qualifiers = "fr-rCA-w411dp-h891dp-xhdpi")
+    fun inFrench() {
+        val waitingFr = ReplyCardView(
+            headline = "Répondre à **Maman** · Cheogram", state = ReplyCardState.WAITING, line = FrTypo.fix("Touche Envoyer pour l'envoyer."),
+            text = "Je vais être en retard, commencez sans moi.", translation = "I'll be late, start without me.", translateLabel = "Envoyer en anglais",
+            alwaysLabel = "Toujours pour Maman", notes = listOf(FrTypo.fix("Robot n'a pas encore vérifié comment cette appli envoie une réponse.")),
+        )
+        val windowFr = ReplyCardView("Répondre à **Pierre** · Signal", ReplyCardState.STOP_WINDOW,
+            FrTypo.fix("Envoi dans 3 secondes. Dis « arrête » ou touche Arrêter."), text = "J'arrive")
+        val sentFr = ReplyCardView("Répondre à **Maman** · Cheogram", ReplyCardState.SENT, "Envoyé dans Cheogram.", text = "OK")
+        rule.show(classic = true) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                ReplyCard(waitingFr, { ops += it })
+                ReplyCard(windowFr, { ops += it })
+                ReplyCard(sentFr, { ops += it })
+            }
+        }
+        rule.onNodeWithText("Ouvrir la conversation").assertExists()
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
+        rule.shot("reply_card_fr")
     }
 
     @Test @Config(fontScale = 2f)

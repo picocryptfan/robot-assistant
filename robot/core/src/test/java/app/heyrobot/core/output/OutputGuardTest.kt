@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.output
 
+import app.heyrobot.core.i18n.Lang
 import app.heyrobot.core.output.OutputDecision.Ask
 import app.heyrobot.core.output.OutputDecision.Hold
 import app.heyrobot.core.output.OutputDecision.Speak
@@ -9,7 +10,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** OutputGuard's table (design §1.3, §3.7, §4.9): each row, then rules that must hold over every combination. */
+/** OutputGuard's table: each row, then rules that must hold over every combination. */
 class OutputGuardTest {
     private val buds = SeenDevice(RouteType.BT_A2DP, "Pixel Buds Pro", "XX:XX:XX:XX:EE:FF")
     private val budsSco = buds.copy(type = RouteType.BT_SCO)
@@ -206,11 +207,11 @@ class OutputGuardTest {
     }
 
     @Test fun lines() {
-        assertEquals("Is “Pixel Buds Pro” headphones only you can hear? Say yes or no.", OutputLines.privateQuestion("Pixel Buds Pro", SpokenLang.EN))
-        assertEquals("Are these headphones only you can hear? Say yes or no.", OutputLines.privateQuestion("  ", SpokenLang.EN))
-        assertEquals("Est-ce que « Pixel Buds Pro », ce sont des écouteurs que toi seul peux entendre? Dis oui ou non.",
-            OutputLines.privateQuestion("Pixel Buds Pro", SpokenLang.FR))
-        assertEquals("Déverrouille pour l'entendre.", OutputLines.UNLOCK_TO_HEAR.get(SpokenLang.FR))
-        assertEquals("I'll keep that for when you can look at the phone.", OutputLines.KEEP_FOR_LOOK.get(SpokenLang.EN))
+        assertEquals("Is “Pixel Buds Pro” headphones only you can hear? Say yes or no.", OutputLines.privateQuestion("Pixel Buds Pro", Lang.EN))
+        assertEquals("Are these headphones only you can hear? Say yes or no.", OutputLines.privateQuestion("  ", Lang.EN))
+        assertEquals("Est-ce que Pixel Buds Pro, ce sont des écouteurs que toi seul peux entendre? Dis oui ou non.",
+            OutputLines.privateQuestion("Pixel Buds Pro", Lang.FR))
+        assertEquals("Déverrouille pour l’entendre.", OutputLines.UNLOCK_TO_HEAR.get(Lang.FR))
+        assertEquals("I'll keep that for when you can look at the phone.", OutputLines.KEEP_FOR_LOOK.get(Lang.EN))
     }
 }

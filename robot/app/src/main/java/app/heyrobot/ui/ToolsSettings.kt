@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.ui
 
+import androidx.compose.ui.res.stringResource
+import app.heyrobot.R
+import app.heyrobot.core.i18n.UiStrings
+import app.heyrobot.ui.theme.LocalLangs
+import app.heyrobot.ui.theme.str
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -57,18 +62,15 @@ import kotlinx.coroutines.withContext
 fun WeatherSettingsScreen(s: RobotSettings, snap: Snapshot, update: (RobotSettings) -> Unit, a: AppActions, snackbar: SnackbarHostState, onBack: () -> Unit) {
     var editing by rememberSaveable { mutableStateOf(false) }
     val home = s.weatherHome
-    PreferenceScreen("Weather", onBack, snackbar = snackbar) {
+    val footer = stringResource(R.string.settings_weather_footer)
+    PreferenceScreen(UiStrings.weather().str(), onBack, snackbar = snackbar) {
         preferenceGroup(null, "home") {
-            PreferenceItem("Home for weather", home?.let { "${it.name} · ${OpenMeteo.coord(it.lat)}, ${OpenMeteo.coord(it.lon)}" } ?: "Not set",
+            PreferenceItem(stringResource(R.string.settings_weather_home),
+                home?.let { "${it.name} · ${OpenMeteo.coord(it.lat)}, ${OpenMeteo.coord(it.lon)}" } ?: stringResource(R.string.settings_weather_not_set),
                 RIcons.Home, onClick = { editing = true })
             LocationRow(snap.facts, a)
         }
-        preferenceFooter(
-            "Robot gets the weather from Open-Meteo (open-meteo.com) over the internet, with no account and no key. Only the place goes: " +
-                "a town you name, your Home for weather, or where the phone is, rounded to about 1 km. °F in the United States, Liberia " +
-                "and Myanmar (by the phone region), °C elsewhere.\n\nThe Home for weather is used when Robot can't tell where you are. " +
-                "It is looked up once with Open-Meteo when you save it, then kept on the phone.",
-        )
+        preferenceFooter(footer)
     }
     if (editing) HomeDialog(s, update, a, onClose = { editing = false })
 }
@@ -81,6 +83,7 @@ fun WeatherSettingsScreen(s: RobotSettings, snap: Snapshot, update: (RobotSettin
 internal fun HomeDialog(s: RobotSettings, update: (RobotSettings) -> Unit, a: AppActions, onClose: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
+    val langs = LocalLangs.current
     val current by rememberUpdatedState(s)
     val home = s.weatherHome
     var text by rememberSaveable { mutableStateOf("") }
@@ -100,23 +103,24 @@ internal fun HomeDialog(s: RobotSettings, update: (RobotSettings) -> Unit, a: Ap
                 is WeatherPlace -> {
                     update(current.copy(weatherHome = r.copy(name = r.name.take(ToolCalls.MAX_PLACE))))
                     onClose()
-                    a.say("Home for weather: ${r.name}.")
+                    a.say(ctx.getString(R.string.settings_weather_saved, r.name))
                 }
-                is OpenMeteoClient.Failure -> problem = r.text
-                else -> problem = "Robot couldn't look that up."
+                is OpenMeteoClient.Failure -> problem = r.phrase.render(langs)
+                else -> problem = ctx.getString(R.string.settings_weather_failed)
             }
         }
     }
     AlertDialog(
         onDismissRequest = { if (!busy) onClose() },
-        title = { Text("Home for weather") },
+        title = { Text(stringResource(R.string.settings_weather_home)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (home != null) Text("Now: ${home.name} (${OpenMeteo.coord(home.lat)}, ${OpenMeteo.coord(home.lon)})")
+                if (home != null) Text(stringResource(R.string.settings_weather_now, home.name, OpenMeteo.coord(home.lat), OpenMeteo.coord(home.lon)))
                 OutlinedTextField(
                     value = text, onValueChange = { text = it; problem = null }, singleLine = true, enabled = !busy,
-                    label = { Text(if (home == null) "Town" else "Another town") }, isError = problem != null,
-                    supportingText = { Text(problem ?: "A town, like Montreal or Paris, Texas.") },
+                    label = { Text(stringResource(if (home == null) R.string.settings_weather_town else R.string.settings_weather_another_town)) },
+                    isError = problem != null,
+                    supportingText = { Text(problem ?: stringResource(R.string.settings_weather_town_hint)) },
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = { lookUp() }),
                     modifier = Modifier.fillMaxWidth(),
@@ -124,11 +128,11 @@ internal fun HomeDialog(s: RobotSettings, update: (RobotSettings) -> Unit, a: Ap
                 if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             }
         },
-        confirmButton = { TextButton(onClick = ::lookUp, enabled = text.isNotBlank() && !busy) { Text("Look up") } },
+        confirmButton = { TextButton(onClick = ::lookUp, enabled = text.isNotBlank() && !busy) { Text(stringResource(R.string.settings_weather_look_up)) } },
         dismissButton = {
             Row {
-                if (home != null) TextButton(onClick = { update(current.copy(weatherHome = null)); onClose() }, enabled = !busy) { Text("Clear") }
-                TextButton(onClick = onClose, enabled = !busy) { Text("Cancel") }
+                if (home != null) TextButton(onClick = { update(current.copy(weatherHome = null)); onClose() }, enabled = !busy) { Text(stringResource(R.string.settings_weather_clear)) }
+                TextButton(onClick = onClose, enabled = !busy) { Text(UiStrings.cancel().str()) }
             }
         },
     )
@@ -138,35 +142,26 @@ internal fun HomeDialog(s: RobotSettings, update: (RobotSettings) -> Unit, a: Ap
 @Composable
 private fun LocationRow(f: AssistantFacts?, a: AppActions) {
     val on = f?.locationGranted == true
-    StatusPreference("Location (optional)",
-        if (on) "Allowed, approximate only (about 1 km)" else "For “the weather here” and “the nearest …”",
+    StatusPreference(stringResource(R.string.settings_location),
+        stringResource(if (on) R.string.settings_location_ok else R.string.settings_location_todo),
         if (on) Mark.OK else Mark.TODO,
-        action = if (on) null else ({ FilledTonalButton(onClick = a.askLocation) { Text("Allow") } }))
+        action = if (on) null else ({ FilledTonalButton(onClick = a.askLocation) { Text(UiStrings.allow().str()) } }))
 }
 
 /** Assistant setup › Weather and phone status: all optional, all yours to turn off again in Android's settings. */
 @Composable
 internal fun ToolsSetupRows(f: AssistantFacts, a: AppActions) {
     LocationRow(f, a)
-    StatusPreference("Usage access (optional)",
-        if (f.usageAccess) "On: Robot can tell which apps use the most space" else "So Robot can tell which apps use the most space",
+    StatusPreference(stringResource(R.string.settings_usage),
+        stringResource(if (f.usageAccess) R.string.settings_usage_ok else R.string.settings_usage_todo),
         if (f.usageAccess) Mark.OK else Mark.TODO,
-        action = if (f.usageAccess) null else ({ FilledTonalButton(onClick = a.openUsageAccess) { Text("Open") } }))
-    StatusPreference("Photos and videos (optional)",
-        when {
-            f.mediaPartial -> "Only the ones you picked"
-            f.mediaGranted -> "Allowed: Robot can show your largest ones"
-            else -> "So Robot can show your largest ones to free storage"
-        },
+        action = if (f.usageAccess) null else ({ FilledTonalButton(onClick = a.openUsageAccess) { Text(UiStrings.open().str()) } }))
+    StatusPreference(stringResource(R.string.settings_media),
+        stringResource(when {
+            f.mediaPartial -> R.string.settings_media_partial
+            f.mediaGranted -> R.string.settings_media_ok
+            else -> R.string.settings_media_todo
+        }),
         if (f.mediaGranted) Mark.OK else Mark.TODO,
-        action = if (f.mediaGranted && !f.mediaPartial) null else ({ FilledTonalButton(onClick = a.askMedia) { Text("Allow") } }))
+        action = if (f.mediaGranted && !f.mediaPartial) null else ({ FilledTonalButton(onClick = a.askMedia) { Text(UiStrings.allow().str()) } }))
 }
-
-/** What Assistant setup's footer says about the weather and phone status rows. */
-internal const val TOOLS_SETUP_NOTE =
-    "Weather and phone status are all optional. The weather comes from Open-Meteo over the internet; your phone's status is read on " +
-        "the phone and never leaves it. Location is approximate only: “the weather here” and “the nearest pharmacy” use where the " +
-        "phone is, rounded to about 1 km; without it, Robot uses your Home for weather and your maps app's search. You turn Usage access " +
-        "on for Robot in Android's settings. Photos and videos: to free storage, Robot can show your largest ones (only the ones you " +
-        "picked, if you chose that; allow again to pick more, or all), and Android asks before any is deleted. Robot doesn't ask for " +
-        "All files access: Android clears apps' caches by itself when space runs low, and each app's info page clears its own."

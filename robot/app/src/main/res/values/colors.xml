@@ -1,4 +1,6 @@
 <resources>
     <color name="ic_launcher_background">#FF1B4FB8</color>
     <color name="ic_notes_background">#FF3E6E5A</color>
+    <!-- 1.4: Robot Files, the warm brown of a cardboard file box. -->
+    <color name="ic_files_background">#FF7A5230</color>
 </resources>

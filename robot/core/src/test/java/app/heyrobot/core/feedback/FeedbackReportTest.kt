@@ -49,6 +49,29 @@ class FeedbackReportTest {
         FeedbackDiagnostics.updater(UpdateState(lastCheck = t, outcome = CheckOutcome.FAILED, fail = UpdateFail.NOT_FOUND, failHttp = 404), utc),
     )
 
+    /** 1.2: the chip's own line, Android's two SoC fields as codes, under the phone's; without it, the header is as before. */
+    @Test fun theChipLineCarriesCodesOnly() {
+        val d = FeedbackDraft(FeedbackKind.BUG, "Slow.", ticked = emptySet())
+        val s25 = Phone("samsung", "SM-S931W", "QTI", "SM8750", 11_500_000_000L)
+        val withChip = facts.copy(phone = FeedbackFacts.phone(s25, "16", "BP2A.250805.005", "13470043"), chip = FeedbackFacts.chip(s25))
+        val lines = FeedbackReport.compose(d, ref, withChip, emptyList()).text.lines()
+        assertEquals("Phone: Samsung SM-S931W · Snapdragon 8 Elite · Android 16 (BP2A.250805.005) · not GrapheneOS (by its build number)", lines[4])
+        assertEquals("Chip: Build.SOC_MANUFACTURER “QTI” · Build.SOC_MODEL “SM8750”", lines[5])
+        assertEquals("Model: Fast · Gemma 4 E2B · GPU (fell back to CPU on 2026-10-03)", lines[6])
+        assertEquals("Chip: Build.SOC_MANUFACTURER “Google” · Build.SOC_MODEL “Tensor G4”",
+            FeedbackReport.compose(d, ref, facts.copy(chip = FeedbackFacts.chip(nineA)), emptyList()).text.lines()[5])
+        assertEquals("Build.SOC_MANUFACTURER “” · Build.SOC_MODEL “”", FeedbackFacts.chip(Phone("samsung", "SM-S931W")))
+        assertEquals("Samsung SM-S931W · unknown chip · Android 16 (B) · not GrapheneOS (by its build number)",
+            FeedbackFacts.phone(Phone("samsung", "SM-S931W"), "16", "B", "1"))
+        // Codes only, whatever a phone puts in its fields: no line break, no direction mark, at most 40 characters a field.
+        val odd = FeedbackFacts.chip(Phone("samsung", "SM-S931W", "QTI\nKind: Feature\u202E", "\uD83D\uDE00" + "SM8750".repeat(100)))
+        assertTrue(odd, odd.all { it.code in 32..126 || it in "“”·" })
+        assertTrue(odd, odd.length < 140)
+        val text = FeedbackReport.compose(d, ref, facts.copy(chip = odd), emptyList()).text
+        assertEquals(1, text.lines().count { it.startsWith("Kind:") })
+        assertFalse(FeedbackReport.compose(d, ref, facts, emptyList()).text.contains("Chip:"))
+    }
+
     @Test fun theHeaderIsFixedAndParsable() {
         val d = FeedbackDraft(FeedbackKind.BUG, "The timer didn't ring.", steps = "Said “set a timer for 2 minutes”.", expected = "A ring after 2 minutes.",
             ticked = Diagnostic.entries.toSet())

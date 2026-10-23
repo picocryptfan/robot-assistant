@@ -47,7 +47,7 @@ object RoutineIntents {
 }
 
 /**
- * The one exact alarm (design §2.1): AlarmManager.setExactAndAllowWhileIdle for the soonest time over every enabled time
+ * The one exact alarm: AlarmManager.setExactAndAllowWhileIdle for the soonest time over every enabled time
  * routine, the brief included; never setAlarmClock, which would become Android's "next alarm" (the status bar, the lock
  * screen) and confuse "when I turn off my alarm". USE_EXACT_ALARM, declared since 0.2.3 for the restart check, is granted
  * at install and can't be revoked, so it is exact on this phone; if Android ever says otherwise, an inexact
@@ -105,13 +105,20 @@ data class RoutineFacts(
     companion object {
         const val CLOCK = "com.android.deskclock"
 
+        /**
+         * GrapheneOS Clock is installed (seen through the SET_ALARM <queries> entry the alarm tool already has: no new
+         * package visibility). 1.2: also where a routine or a lock is set to start after an alarm (the routine editor,
+         * the brief's page, the guide, a routine made by voice), so a phone with another Clock is told plainly. Other
+         * Clocks' broadcasts are UNVERIFIED and not guessed (every-android-phone design, Step 6).
+         */
+        fun clockInstalled(ctx: Context): Boolean = try {
+            ctx.packageManager.queryIntentActivities(Intent(AlarmClock.ACTION_SET_ALARM), 0).any { it.activityInfo.packageName == CLOCK }
+        } catch (_: Throwable) { false }
+
         fun read(ctx: Context): RoutineFacts = RoutineFacts(
             exactAlarms = RoutineAlarms.exact(ctx),
             notifications = Assistant.granted(ctx, Manifest.permission.POST_NOTIFICATIONS),
-            // Seen through the SET_ALARM <queries> entry the alarm tool already has: no new package visibility.
-            clock = try {
-                ctx.packageManager.queryIntentActivities(Intent(AlarmClock.ACTION_SET_ALARM), 0).any { it.activityInfo.packageName == CLOCK }
-            } catch (_: Throwable) { false },
+            clock = clockInstalled(ctx),
             calendar = Calendars.readGranted(ctx),
             location = CoarseLocation.granted(ctx),
         )

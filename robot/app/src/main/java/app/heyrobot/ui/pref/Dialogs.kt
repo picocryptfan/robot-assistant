@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.ui.pref
 
+import app.heyrobot.core.i18n.UiStrings
+import app.heyrobot.ui.theme.str
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -72,7 +74,7 @@ fun <T> RadioDialog(
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(UiStrings.cancel().str()) } },
     )
 }
 
@@ -88,7 +90,7 @@ fun EditDialog(
     fieldLabel: String,
     supporting: String,
     validate: (String) -> String? = { null },
-    confirm: String = "Save",
+    confirm: String = UiStrings.save().str(),
     keyboard: KeyboardOptions = KeyboardOptions.Default,
     hint: ((String) -> String?)? = null,
     canSave: (String) -> Boolean = { true },
@@ -119,7 +121,7 @@ fun EditDialog(
             )
         },
         confirmButton = { TextButton(onClick = { onSave(text.trim()) }, enabled = ok) { Text(confirm) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(UiStrings.cancel().str()) } },
     )
 }
 
@@ -131,6 +133,6 @@ fun ConfirmDialog(title: String, text: String?, confirm: String, onDismiss: () -
         title = { Text(title) },
         text = text?.let { { Text(it) } },
         confirmButton = { TextButton(onClick = onConfirm) { Text(confirm) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(UiStrings.cancel().str()) } },
     )
 }

@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.assistant
 
+import app.heyrobot.R
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.sys.AppLanguage
+import app.heyrobot.ui.theme.LocalLangs
+import app.heyrobot.ui.theme.str
+import androidx.compose.ui.res.stringResource
 import android.Manifest
 import android.app.Activity
 import android.os.Bundle
@@ -97,6 +103,7 @@ class WebSearchActivity : ComponentActivity() {
         var step by remember { mutableStateOf(if (keyMode) Step.KEY else Step.TESTING) }
         var result by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
         val scope = rememberCoroutineScope()
+        val langs = LocalLangs.current
         val muted = MaterialTheme.colorScheme.onSurfaceVariant
         fun test() {
             step = Step.TESTING
@@ -111,21 +118,21 @@ class WebSearchActivity : ComponentActivity() {
                 Column(Modifier.padding(24.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     when (step) {
                         Step.KEY -> {
-                            Text("${service.title}: API key", style = MaterialTheme.typography.headlineSmall)
-                            Text(WebKeyFormat.where(service) + " Robot encrypts the key on this phone and only the assistant reads it.",
+                            Text(stringResource(R.string.panel_web_key_title, service.title), style = MaterialTheme.typography.headlineSmall)
+                            Text(stringResource(R.string.panel_web_key_where, WebKeyFormat.whereText(service)?.str().orEmpty()),
                                 style = MaterialTheme.typography.bodyMedium, color = muted)
                             OutlinedTextField(
-                                value = key, onValueChange = { key = it.trim(); problem = null }, singleLine = true, label = { Text("API key") },
+                                value = key, onValueChange = { key = it.trim(); problem = null }, singleLine = true, label = { Text(stringResource(R.string.panel_web_api_key)) },
                                 visualTransformation = PasswordVisualTransformation(),
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
                                 isError = problem != null, supportingText = { problem?.let { Text(it) } },
                                 modifier = Modifier.fillMaxWidth(),
                             )
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End)) {
-                                TextButton(onClick = { setResult(Activity.RESULT_CANCELED); finish() }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Cancel") }
+                                TextButton(onClick = { setResult(Activity.RESULT_CANCELED); finish() }, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.panel_cancel)) }
                                 Button(onClick = {
-                                    WebKeyFormat.problem(key)?.let {
-                                        problem = it
+                                    WebKeyFormat.problemText(key)?.let {
+                                        problem = it.render(langs)
                                         return@Button
                                     }
                                     val k = key
@@ -134,7 +141,7 @@ class WebSearchActivity : ComponentActivity() {
                                         val ok = withContext(Dispatchers.IO) { WebKeys.save(applicationContext, service, k, WebKeyFormat.mask(k)) }
                                         busy = false
                                         if (!ok) {
-                                            problem = "The key couldn't be saved on this phone."
+                                            problem = getString(R.string.panel_web_key_not_saved)
                                             return@launch
                                         }
                                         WebKeys.clearClipboard(this@WebSearchActivity, service, k)
@@ -142,22 +149,22 @@ class WebSearchActivity : ComponentActivity() {
                                         setResult(Activity.RESULT_OK)
                                         test()
                                     }
-                                }, enabled = key.isNotEmpty() && !busy, modifier = Modifier.heightIn(min = 48.dp)) { Text("Save") }
+                                }, enabled = key.isNotEmpty() && !busy, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.panel_web_save)) }
                             }
                         }
                         Step.TESTING -> {
-                            Text("Testing ${service.label}…", style = MaterialTheme.typography.headlineSmall)
-                            Text("Robot sends the word “test” once and reads what comes back.", style = MaterialTheme.typography.bodyMedium, color = muted)
+                            Text(stringResource(R.string.panel_web_testing, service.label), style = MaterialTheme.typography.headlineSmall)
+                            Text(stringResource(R.string.panel_web_test_sends), style = MaterialTheme.typography.bodyMedium, color = muted)
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { CircularProgressIndicator() }
                         }
                         Step.RESULT -> {
                             val r = result
-                            Text(if (r?.first == true) "${service.title} works" else "${service.title} didn't work", style = MaterialTheme.typography.headlineSmall)
+                            Text(stringResource(if (r?.first == true) R.string.panel_web_works else R.string.panel_web_didnt_work, service.title), style = MaterialTheme.typography.headlineSmall)
                             Text(r?.second.orEmpty(), style = MaterialTheme.typography.bodyMedium)
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End)) {
-                                if (service.needsKey && r?.first != true) OutlinedButton(onClick = { step = Step.KEY }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Change key") }
-                                OutlinedButton(onClick = { test() }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Test again") }
-                                Button(onClick = { setResult(Activity.RESULT_OK); finish() }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Done") }
+                                if (service.needsKey && r?.first != true) OutlinedButton(onClick = { step = Step.KEY }, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.panel_web_change_key)) }
+                                OutlinedButton(onClick = { test() }, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.panel_web_test_again)) }
+                                Button(onClick = { setResult(Activity.RESULT_OK); finish() }, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.panel_done)) }
                             }
                         }
                     }
@@ -166,28 +173,31 @@ class WebSearchActivity : ComponentActivity() {
         }
     }
 
-    /** Test: the fixed query once, with the key decrypted here; its line kept for Settings (background thread). */
+    /**
+     * Test: the fixed query once, with the key decrypted here; its line kept for Settings (background thread). 1.1: the
+     * window and Settings show it in the menus' language (WebTest keeps it without one).
+     */
     private fun test(s: WebSettings, service: SearchService): Pair<Boolean, String> {
         val ctx = applicationContext
-        val r = when {
-            !Assistant.granted(ctx, Manifest.permission.INTERNET) -> false to WebFail.NO_NETWORK_PERMISSION.text(service)
+        val r: Pair<Boolean, Phrase> = when {
+            !Assistant.granted(ctx, Manifest.permission.INTERNET) -> false to WebFail.NO_NETWORK_PERMISSION.textPhrase(service)
             else -> {
                 val key = if (!service.needsKey) null else when (val k = WebKeys.read(ctx, service)) {
                     is SecretRead.Present -> k.value
-                    is SecretRead.Unavailable -> return false to "The key couldn't be read just now. Try again in a moment."
+                    is SecretRead.Unavailable -> return false to ctx.getString(R.string.panel_web_key_unreadable)
                     else -> null
                 }
-                if (service.needsKey && key == null) false to WebFail.KEY_MISSING.text(service)
+                if (service.needsKey && key == null) false to WebFail.KEY_MISSING.textPhrase(service)
                 else try {
-                    SearchClient(s, key, BuildConfig.VERSION_NAME, WebTransport(), Abort(WebLimits.TOTAL_MS)).test()
+                    SearchClient(s, key, BuildConfig.VERSION_NAME, WebTransport(), Abort(WebLimits.TOTAL_MS)).testText()
                 } catch (t: Throwable) {
                     RLog.w("web_test", t)
-                    false to WebFail.SERVICE.text(service)
+                    false to WebFail.SERVICE.textPhrase(service)
                 }
             }
         }
         RLog.i("web_test", "svc" to service.code, "ok" to r.first)
         WebTest.save(ctx, WebTest(service, r.first, r.second, System.currentTimeMillis()))
-        return r
+        return r.first to r.second.render(AppLanguage.langs(ctx))
     }
 }

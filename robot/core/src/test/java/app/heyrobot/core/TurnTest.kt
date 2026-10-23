@@ -136,7 +136,12 @@ class TurnTest {
         assertEquals(TurnResult(DoneReason.END), r)
         assertEquals(listOf<Action>(Action.SetTimer(300)), actions.ran)
         assertEquals(listOf(ActionStatus.DONE), view.statuses())
-        assertEquals("done", model.answers.single().single().second["status"])
+        // 1.1: the model hears what happened, and Robot's line from the card is the reply: no follow-up could name another
+        // length or time (docs/pm/handoff-dated-reminders.md point 1).
+        assertEquals("done", model.abandoned!!.single().second["status"])
+        assertTrue(model.answers.isEmpty())
+        assertEquals("Done: Set a timer for 5 minutes.", view.text)
+        assertEquals(listOf("Done: Set a timer for 5 minutes."), view.said)
         assertFalse(view.phases.contains(TurnPhase.CONFIRMING))
     }
 
@@ -994,7 +999,10 @@ class TurnTest {
         assertTrue(v2.said.isEmpty())
     }
 
-    /** A note that was saved may be said to be saved: nothing changes for an action that happened. */
+    /**
+     * An action that happened may be said to have happened: the flashlight's follow-up stays as written. 1.1: a note (like a
+     * timer, an alarm and an event) is confirmed in Robot's own words from its card instead of a follow-up (point 1).
+     */
     @Test fun aClaimAboutWhatHappenedStays() = runBlocking {
         val view = FakeView()
         val model = Claiming(ModelOutcome.Calls(listOf(note)), view, "I have saved that as a note.")
@@ -1002,8 +1010,13 @@ class TurnTest {
         val turn = async { TurnRunner(model, FakeActions(), view, conf, untrusted = true, asked = setOf(ToolName.ADD_NOTE)) { "s${++ids}" }.run() }
         conf.answer(withTimeout(5_000) { view.pending.receive() }, true)
         turn.await()
-        assertEquals(1, model.answers.size)
-        assertEquals("I have saved that as a note.", view.text)
+        assertEquals(0, model.answers.size)
+        assertEquals("Done: Save the note **ROBOT TEST Kitchen list** in Robot Notes.", view.text)
+        val v2 = FakeView()
+        val m2 = Claiming(ModelOutcome.Calls(listOf(call("flashlight", "on" to true))), v2, "I have turned the flashlight on.")
+        TurnRunner(m2, FakeActions(), v2, Confirmations(), untrusted = false, asked = setOf(ToolName.FLASHLIGHT)) { "s${++ids}" }.run()
+        assertEquals(1, m2.answers.size)
+        assertEquals("I have turned the flashlight on.", v2.text)
     }
 
     /**

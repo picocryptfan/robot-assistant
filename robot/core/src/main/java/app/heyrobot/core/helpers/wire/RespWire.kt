@@ -72,7 +72,7 @@ object RespWire {
         val parts = JSONArray()
         for (b in blocks) when (b) {
             is HelperBlock.Text -> parts.put(JSONObject().put("type", "input_text").put("text", b.text))
-            is HelperBlock.Image -> if (images) parts.put(JSONObject().put("type", "input_image").put("image_url", "data:image/jpeg;base64," + Base64.getEncoder().encodeToString(b.jpeg)))
+            is HelperBlock.Image -> if (images) parts.put(JSONObject().put("type", "input_image").put("image_url", "data:image/jpeg;base64," + Base64.getEncoder().encodeToString(b.jpeg))) // l10n: not text (the wire format)
         }
         return JSONObject().put("role", "user").put("content", parts)
     }
@@ -109,7 +109,7 @@ class RespReply {
 
     fun add(payload: String): Step {
         val p = payload.trim()
-        if (p == "[DONE]") return Step()
+        if (p == "[DONE]") return Step() // l10n: not text (the wire format)
         val o = JSONObject(p)
         return when (o.optString("type")) {
             "response.output_text.delta" -> o.optString("delta").let { visible.append(it); Step(it) }
@@ -162,7 +162,7 @@ class RespReply {
         for ((i, item) in out.withIndex()) {
             when (item.optString("type")) {
                 "function_call" -> {
-                    val callId = item.optString("call_id").ifEmpty { item.optString("id") }.ifEmpty { "call_robot_$i" }
+                    val callId = item.optString("call_id").ifEmpty { item.optString("id") }.ifEmpty { "call_robot_$i" } // l10n: not text (the wire format)
                     if (!item.has("call_id")) item.put("call_id", callId)
                     val a = item.optString("arguments").ifEmpty { args[item.optString("id")]?.toString().orEmpty() }
                     if (!item.has("arguments") || item.optString("arguments").isEmpty()) item.put("arguments", a.ifBlank { "{}" })

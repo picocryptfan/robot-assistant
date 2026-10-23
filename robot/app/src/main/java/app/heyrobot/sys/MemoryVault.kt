@@ -35,7 +35,7 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-// Main and voice processes. What Robot remembers (0.7, design §A5, §A8, §A9): one file, files/memory/memory.enc,
+// Main and voice processes. What Robot remembers (0.7): one file, files/memory/memory.enc,
 // AES-256-GCM with an Android Keystore key (TEE, not exportable) made with setUnlockedDeviceRequired(true), so it can't be
 // read while the phone is locked, not even after the first unlock; core MemoryEnvelope is its frame and decides what a
 // file means. Every change happens under a lock both app processes take (memory.lock, as People's), written atomically

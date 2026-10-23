@@ -1,20 +1,30 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.termux
 
+import app.heyrobot.core.i18n.Lang
+import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.i18n.Msg
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.TermuxStrings
+
 // Pure. Which Termux is installed. :app (main process, with
 // <queries> for com.termux) reads the package's signing certificates' SHA-256 (GET_SIGNING_CERTIFICATES), its version,
 // whether it declares RunCommandService, and which package defines com.termux.permission.RUN_COMMAND; this decides what
 // Settings › Termux says and whether the agent may use it. The pinned signer follows the Cheogram precedent
 // (CheogramSigners): files/termux/termux.signer.
 
-/** Where the installed Termux came from, by its signer. */
-enum class TermuxSource(val en: String, val fr: String) {
-    F_DROID("from F-Droid", "depuis F-Droid"),
-    GITHUB("from GitHub (public test key: anyone can make an update that installs over it)",
-        "depuis GitHub (clé de test publique : n'importe qui peut faire une mise à jour qui s'installe par-dessus)"),
-    GOOGLE_PLAY("from Google Play", "depuis Google Play"),
-    TERMUX_DEVS("signed by the Termux developers", "signée par les développeurs de Termux"),
-    UNKNOWN("signed by an unknown key", "signée par une clé inconnue"),
+/** Where the installed Termux came from, by its signer ([text]: "from F-Droid"; [en] and [fr] its English and French). */
+enum class TermuxSource(val label: Msg) {
+    F_DROID(TermuxStrings.fromFdroid),
+    GITHUB(TermuxStrings.fromGithub),
+    GOOGLE_PLAY(TermuxStrings.fromPlay),
+    TERMUX_DEVS(TermuxStrings.fromDevs),
+    UNKNOWN(TermuxStrings.fromUnknown),
+    ;
+
+    val text: Phrase get() = label()
+    val en: String get() = text.en()
+    val fr: String get() = text.render(Langs.of(Lang.FR))
 }
 
 /** What :app read about the installed com.termux. */
@@ -83,21 +93,21 @@ data class TermuxCheck(val status: TermuxStatus, val source: TermuxSource?, /** 
     }
 
     /** Settings › Termux's first line: "Termux 0.118.3 from F-Droid", "Termux from Google Play: this version can't…". */
-    fun line(fr: Boolean = false): String {
-        val name = if (version.isNullOrBlank()) "Termux" else "Termux $version"
-        val from = source?.let { " " + (if (fr) it.fr else it.en) }.orEmpty()
+    fun lineText(): Phrase {
+        val name = Phrase.plain(if (version.isNullOrBlank()) "Termux" else "Termux $version") // l10n: not text (a name and its version)
+        val who = source?.let { TermuxStrings.nameFrom("name" to name, "from" to it.text) } ?: name
         return when (status) {
-            TermuxStatus.NOT_INSTALLED -> if (fr) "Termux n'est pas installé." else "Termux isn't installed."
-            TermuxStatus.NOT_SUPPORTED -> if (fr) "$name$from : cette version n'accepte pas de commandes d'autres applications ; installez Termux depuis F-Droid."
-                else "$name$from: this version can't take commands from other apps; install Termux from F-Droid."
-            TermuxStatus.PERMISSION_TAKEN -> if (fr) "Une autre application définit la permission de Termux : désinstallez-la avant de faire confiance à Termux."
-                else "Another app defines Termux's permission: uninstall it before trusting Termux."
-            TermuxStatus.TOO_OLD -> if (fr) "$name$from est trop ancien : mettez-le à jour vers ${TermuxIdentity.MIN_VERSION} ou plus récent."
-                else "$name$from is too old: update it to ${TermuxIdentity.MIN_VERSION} or newer."
-            TermuxStatus.CHANGED -> TermuxFailure.NOT_TRUSTED.text(fr)
-            else -> "$name$from"
+            TermuxStatus.NOT_INSTALLED -> TermuxStrings.notInstalled()
+            TermuxStatus.NOT_SUPPORTED -> TermuxStrings.notSupported("who" to who)
+            TermuxStatus.PERMISSION_TAKEN -> TermuxStrings.permissionTaken()
+            TermuxStatus.TOO_OLD -> TermuxStrings.tooOld("who" to who, "min" to TermuxIdentity.MIN_VERSION)
+            TermuxStatus.CHANGED -> TermuxFailure.NOT_TRUSTED.text
+            else -> who
         }
     }
+
+    /** [lineText] in English ([fr]: in French). */
+    fun line(fr: Boolean = false): String = lineText().render(Langs.of(if (fr) Lang.FR else Lang.EN))
 }
 
 /**

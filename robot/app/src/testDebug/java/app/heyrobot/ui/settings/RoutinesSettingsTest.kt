@@ -94,6 +94,15 @@ class RoutinesSettingsTest {
         openReady = { calls += "ready $it" }, removeReminder = { calls += "remove ${it.text}" }, startOver = { calls += "startOver" },
     )
 
+    /** WP9b: the same page with the menus in French (strings_routines.xml, core's RoutineStrings); your routines' names as they are. */
+    @Test @Config(qualifiers = "fr-rCA-w411dp-h891dp-xhdpi")
+    fun inFrench() {
+        rule.show { RoutinesScreen(data(), RobotSettings(), facts(), actions(), log.actions, SnackbarHostState(), onBack = {}, now = now) }
+        rule.onNodeWithText("Tes routines").assertExists()
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
+        rule.shot("routines_fr")
+    }
+
     @Test fun theRoutinesPageListsTheBriefYourRoutinesAndWhatWaits() {
         rule.show { RoutinesScreen(data(), RobotSettings(), facts(), actions(), log.actions, SnackbarHostState(), onBack = {}, now = now) }
         assertEquals(emptyList<String>(), rule.touchTargetProblems())
@@ -112,7 +121,7 @@ class RoutinesSettingsTest {
         rule.onRow("Morning brief").performClick()
         assertEquals("open ${RoutineRoutes.BRIEF}", calls.last())
         rule.scrollToText("Ready (1)")
-        rule.onRow("Your “Leaving work” routine is ready to: Search Organic Maps for “home”, then tap Route.").performClick()
+        rule.onRow("Your “Leaving work” routine is ready to: Open the route home in Organic Maps.").performClick()
         assertEquals("ready ${ready.key}", calls.last())
         rule.scrollToText("Add a routine")
         rule.onRow("Add a routine").performClick()
@@ -182,6 +191,54 @@ class RoutinesSettingsTest {
         rule.scrollToText("Use the morning brief")
         rule.onRow("Use the morning brief").performClick()
         assertEquals(false, rs.briefEnabled)
+    }
+
+    /** 1.2 (every-android-phone, Step 6): no GrapheneOS Clock on this phone, so a start after an alarm says so where it is picked. */
+    private val noClock = allFacts.copy(clock = false)
+    private val wakeUp = Routine("r-3", "Wake up", RoutineTrigger.AlarmDismissed(), listOf(tool("weather")), created = 1)
+
+    @Test fun anAlarmStartWithoutClockSaysSoOnItsPage() {
+        rule.show { RoutineEditScreen(wakeUp, false, data().copy(facts = noClock), actions(), SnackbarHostState(), onBack = {}, now = now) }
+        rule.onNodeWithText("Needs the GrapheneOS Clock app, which isn't on this phone: turning off an alarm won't start anything. Support for " +
+            "other clock apps is planned.").assertExists()
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
+        rule.shot("routine_edit_no_clock")
+    }
+
+    @Test fun withClockOrAnotherStartNothingMoreShows() {
+        var r by mutableStateOf(wakeUp)
+        var d by mutableStateOf(data())
+        rule.show { RoutineEditScreen(r, false, d, actions(), SnackbarHostState(), onBack = {}, now = now) }
+        rule.onNodeWithText("Needs the GrapheneOS Clock app", substring = true).assertDoesNotExist()
+        d = data().copy(facts = noClock)
+        r = leaving
+        rule.onNodeWithText("Needs the GrapheneOS Clock app", substring = true).assertDoesNotExist()
+        // Facts not read yet: nothing either.
+        d = data().copy(facts = null)
+        r = wakeUp
+        rule.onNodeWithText("Needs the GrapheneOS Clock app", substring = true).assertDoesNotExist()
+    }
+
+    @Test fun theBriefsPageWithoutClockSaysSo() {
+        rule.show { BriefSettingsScreen(data(RoutineSettings(briefEnabled = true, briefOnline = true)).copy(facts = noClock), RoutineActions(), SnackbarHostState(), onBack = {}) }
+        rule.onNodeWithText("Needs the GrapheneOS Clock app", substring = true).assertExists()
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
+        rule.shot("routines_brief_no_clock")
+    }
+
+    @Test @Config(qualifiers = "fr-rCA-w411dp-h891dp-xhdpi")
+    fun anAlarmStartWithoutClockInFrench() {
+        rule.show { RoutineEditScreen(wakeUp, false, data().copy(facts = noClock), actions(), SnackbarHostState(), onBack = {}, now = now) }
+        rule.onNodeWithText("Demande l\u2019appli Horloge de GrapheneOS, qui n\u2019est pas sur ce téléphone\u00a0: arrêter une alarme ne lancera donc " +
+            "rien. La prise en charge d\u2019autres applis d\u2019horloge est prévue.").assertExists()
+        rule.shot("routine_edit_no_clock_fr")
+    }
+
+    @Test @Config(qualifiers = "fr-rCA-w411dp-h891dp-xhdpi")
+    fun theBriefsPageWithoutClockInFrench() {
+        rule.show { BriefSettingsScreen(data(RoutineSettings(briefEnabled = true, briefOnline = true)).copy(facts = noClock), RoutineActions(), SnackbarHostState(), onBack = {}) }
+        rule.onNodeWithText("Demande l\u2019appli Horloge de GrapheneOS", substring = true).assertExists()
+        rule.shot("routines_brief_no_clock_fr")
     }
 
     @Test fun aRoutinesPageLooksLikeSettings() {

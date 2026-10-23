@@ -5,7 +5,12 @@ package app.heyrobot.voice
 // counted in samples at 16 kHz, so the logic is the same in tests and on the phone. SherpaSpeechToText feeds it
 // the end-of-utterance VAD's speech flag for every 32 ms frame.
 
-/** Where a spoken question ends (docs/voice-plan.md 4.6). */
+/**
+ * Where a spoken question ends (docs/voice-plan.md 4.6). The VAD's flag drops [VAD_MIN_SILENCE_S] after speech stops;
+ * the question ends once it has stayed down for [Config.silenceSamples] (speech coming back resets the count), so the
+ * pause you chose (Settings › Voice › "Wait before answering") is counted here, without rebuilding the VAD. While the
+ * mic button is held ([held]) silence never ends it: letting go does (SpeechToText.stop), or the caps below.
+ */
 class Endpointer(private val cfg: Config = Config()) {
     data class Config(
         /** Nothing said this long after listening started: give up ("I didn't hear anything"). */
@@ -17,13 +22,15 @@ class Endpointer(private val cfg: Config = Config()) {
          * saying so must still end the question (the panel would say "Listening…" for ever).
          */
         val watchdogMs: Long = 35_000L,
+        /** How long the VAD's flag stays down before the question ends: [windowFor] the chosen pause. */
+        val silenceSamples: Long = windowFor(DEFAULT_PAUSE_MS),
     )
 
     enum class Event {
         NONE,
         /** The VAD says speech started (the first frame of it). */
         SPEECH,
-        /** The VAD's speech flag dropped: it waits for its minimum silence (0.5 s) before it drops it. */
+        /** The VAD's flag has been down for [Config.silenceSamples] (and the button isn't held). */
         END,
         NO_SPEECH,
         MAX_LENGTH,
@@ -32,7 +39,14 @@ class Endpointer(private val cfg: Config = Config()) {
     @Volatile var samples = 0L; private set
     /** Sample index where speech was first detected, or -1. */
     @Volatile var speechStart = -1L; private set
+    /**
+     * The mic button is held past a tap (push-to-talk): neither a pause nor the no-speech timeout ends the question;
+     * the release does, or [Config.maxSamples] and the watchdog.
+     */
+    @Volatile var held = false
     private var speaking = false
+    /** Sample index where the flag last dropped after speech, or -1 while it is up. */
+    private var downSince = -1L
     private var done = false
 
     val heardSpeech: Boolean get() = speechStart >= 0
@@ -50,12 +64,12 @@ class Endpointer(private val cfg: Config = Config()) {
             speechStart = samples - n
             ev = Event.SPEECH
         }
-        val ended = speaking && !speech
+        if (speech) downSince = -1 else if (speaking) downSince = samples - n
         speaking = speech
         val out = when {
-            ended -> Event.END
+            !held && downSince >= 0 && samples - downSince >= cfg.silenceSamples -> Event.END
             samples >= cfg.maxSamples -> Event.MAX_LENGTH
-            speechStart < 0 && samples >= cfg.noSpeechSamples -> Event.NO_SPEECH
+            !held && speechStart < 0 && samples >= cfg.noSpeechSamples -> Event.NO_SPEECH
             else -> ev
         }
         if (out == Event.END || out == Event.NO_SPEECH || out == Event.MAX_LENGTH) done = true
@@ -75,6 +89,27 @@ class Endpointer(private val cfg: Config = Config()) {
 
     companion object {
         const val RATE = 16_000
+
+        /**
+         * The end-of-question VAD's own minimum silence: short, so the pause is counted here. Its flag drops this long
+         * after speech stops, and comes back only after its minimum speech (0.25 s too) once speech resumes.
+         */
+        const val VAD_MIN_SILENCE_S = 0.25f
+        const val VAD_MIN_SPEECH_S = 0.25f
+
+        /** Settings › Voice › "Wait before answering" at Normal (core ListenPause). */
+        const val DEFAULT_PAUSE_MS = 1_000
+
+        /** Answering a card by voice ("yes", "no"): the flag down 0.35 s, about 0.6 s of silence, whatever the setting. */
+        const val CARD_WINDOW_SAMPLES = 350L * RATE / 1000
+
+        /**
+         * The flag's down-window for a chosen pause: the pause itself, not the pause less the VAD's 0.25 s. A pause of
+         * P s drops the flag at about 0.25 s and the flag comes back at about P + 0.25 s (the VAD's minimum speech), so
+         * with this window any pause shorter than the choice never ends the question; the answer comes about 0.25 s
+         * after the chosen pause. Taking 0.25 s off here would cut pauses up to 0.25 s shorter than the choice.
+         */
+        fun windowFor(pauseMs: Int): Long = pauseMs.toLong() * RATE / 1000
     }
 }
 

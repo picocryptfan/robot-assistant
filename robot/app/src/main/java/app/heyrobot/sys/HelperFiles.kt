@@ -40,11 +40,11 @@ object HelperKeyFiles {
     const val LOG = "helper_key"
     private val SAFE = Regex("[a-z0-9_]{1,16}")
 
-    fun alias(id: String): String = if (id == HelperConfig.CLAUDE_ID) CLAUDE_ALIAS else "robot_helper_$id"
+    fun alias(id: String): String = if (id == HelperConfig.CLAUDE_ID) CLAUDE_ALIAS else "robot_helper_$id" // l10n: not text (a key alias, an exception, a clip label)
 
     /** The helper's own folder (not Claude's: its files sit where they always were). */
     fun dir(ctx: Context, id: String): File {
-        require(SAFE.matches(id)) { "helper id" }
+        require(SAFE.matches(id)) { "helper id" } // l10n: not text (a key alias, an exception, a clip label)
         return File(File(Paths.dir(ctx), "helpers"), id)
     }
 
@@ -56,7 +56,7 @@ object HelperKeyFiles {
      * (ProcessIsolationTest); the main app uses the functions below.
      */
     fun store(id: String): KeystoreSecret = if (id == HelperConfig.CLAUDE_ID) claude else {
-        require(SAFE.matches(id)) { "helper id" }
+        require(SAFE.matches(id)) { "helper id" } // l10n: not text (a key alias, an exception, a clip label)
         KeystoreSecret(alias(id), "key", LOG) { dir(it, id) }
     }
 
@@ -190,7 +190,7 @@ object HandOffIntents {
      */
     fun copy(ctx: Context, text: String, app: String) {
         try {
-            val clip = ClipData.newPlainText("Question for $app", text)
+            val clip = ClipData.newPlainText("Question for $app", text) // l10n: not text (a key alias, an exception, a clip label)
             clip.description.extras = PersistableBundle().apply { putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, false) }
             ctx.getSystemService(ClipboardManager::class.java).setPrimaryClip(clip)
         } catch (t: Throwable) {

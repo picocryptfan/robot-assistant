@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.ConversationStrings
+import app.heyrobot.core.i18n.Phrase
+
 // Pure. Speaker labels in a transcript (docs/conversation-mode.md 3, 5.3, phase 5.3): the labels themselves (S1, S2…,
 // "Me" for an enrolled voice, "?" for a line too short to tell), a live session's speakers (the clusterer plus what you
 // changed during it), and the changes you make from a transcript screen as the events the log stores: a name for a
@@ -8,8 +11,10 @@ package app.heyrobot.core
 // and a line split where the other person started. Nothing here ever relabels a line by itself.
 
 object SpeakerLabels {
-    /** How "Me" (your enrolled voice, or the speaker you said is you) is shown and exported. */
-    const val YOU = "You"
+    /** How "Me" (your enrolled voice, or the speaker you said is you) is shown and exported: "You", « Moi ». */
+    val you: Phrase get() = ConversationStrings.you()
+    /** [you] in English. */
+    val YOU: String get() = you.en()
     /** A name you give a speaker, at most. */
     const val MAX_NAME = 40
     /** The one label of a transcript made without speaker labels (and before 0.5.0's phase 5.3). */

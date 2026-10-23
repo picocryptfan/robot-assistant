@@ -1,0 +1,835 @@
+{
+ "_about": "The rules of the user-visible text scan, shared by robot/tools/strings_inventory.py (the report) and app/src/test/.../l10n/UserTextGuardTest.kt (the guard): both read this file, so they classify every literal the same way. Patterns are regular expressions that Python's re and Java's java.util.regex (with UNICODE_CHARACTER_CLASS) read alike. 'areas' maps a source file (its path from robot/) to the area whose baseline lists its literals: the first pattern that matches wins.",
+ "modules": [
+  "app",
+  "voice",
+  "core",
+  "brain",
+  "helpers",
+  "mt"
+ ],
+ "exclude": [
+  "^voice/src/main/java/com/k2fsa/sherpa/onnx/",
+  "/helpers/web/readability/",
+  "^core/src/main/java/app/heyrobot/thirdparty/"
+ ],
+ "allowed_dirs": [
+  "^core/src/main/java/app/heyrobot/core/i18n/"
+ ],
+ "marker": "//\\s*l10n:\\s*not text\\s*\\(([^)]+)\\)\\s*$",
+ "marker_any": "//\\s*l10n:",
+ "patterns": {
+  "log_call": "(^|\\.)(RLog\\.[a-z]+|Log\\.[a-z]+|println|print|logd|logi|logw|loge)$",
+  "json_call": "(^|\\.)(put|opt|optString|optInt|optLong|optBoolean|optDouble|optJSONObject|optJSONArray|get|getString|getInt|getLong|getBoolean|getDouble|getJSONObject|getJSONArray|has|isNull|remove|putExtra|getStringExtra|getIntExtra|getLongExtra|getBooleanExtra|getParcelableExtra|hasExtra|putString|putInt|putLong|putBoolean|getStringArrayList|putStringArrayList|getQueryParameter|appendQueryParameter|header|addHeader|setHeader|getHeader|str|long|int|bool|hasOpt|attr|getElementsByTag|getSystemService|getSharedPreferences|edit|getPersistableBundle|optStringOrNull|optArray|stringOrNull|getStringOrNull|optObj|optStr|field|key|withName|getColumnIndex|getColumnIndexOrThrow|query|setAction|setPackage|setClassName|ComponentName|Intent|Uri\\.parse|parse|File|resolve|openFileInput|openFileOutput|getDir|asset|open|createTempFile|Thread|HandlerThread|newWakeLock|NotificationChannel|createNotificationChannel|setChannelId|getIdentifier|createChannel|channel|ofPattern|forLanguageTag|Locale|loadLibrary|Class\\.forName|getMethod|getDeclaredField|getDeclaredMethod|forName|getProperty|testTag|tag|Tag)$",
+  "regex_call": "(^|\\.)(Regex|toRegex|compile|Pattern\\.compile|matches|split|replace|containsMatchIn|find|findAll|rx|re)$",
+  "input_call": "(^|\\.)(setOf|listOf|mutableSetOf|hashSetOf|arrayOf|mapOf|mutableListOf|words|phrases|list|en|fr|enFr|startsWith|endsWith|contains|removePrefix|removeSuffix|replace|indexOf|lastIndexOf|split|equals|substringAfter|substringBefore|substringAfterLast|substringBeforeLast|any|all|none|first|firstOrNull|trimEnd|trimStart|trim|drop|dropLast|take|startsWithAny|endsWithAny|has|hasWord|hasAny|word|phrase|w|p|at|seq|lead|lead2|opener|strip|after|cut|verb|verbs|alias|aliases|syn|cue|cues|fold|plain|symbol|asList|listOfNotNull|in|is|kw|keyword|keywords|stop|stops|match|m|x|tok|t)$",
+  "ui_sink": "(^|\\.)(Text|Button|TextButton|OutlinedButton|FilledTonalButton|Tip|SetupLine|PreferenceItem|SwitchPreference|StatusPreference|ListPreference|TextPreference|PreferenceScreen|preferenceGroup|preferenceFooter|ConfirmDialog|EditDialog|AlertDialog|Toast\\.makeText|makeText|setContentTitle|setContentText|setTicker|setSubText|BigTextStyle|bigText|setBigContentTitle|setSummaryText|Action\\.Builder|addAction|Snackbar|showSnackbar|say|reply|speak|card|Card|Line|Executed|Refused|Done|notify|title|label|placeholder|supportingText|contentDescription|stringOf|RadioRow|SwitchRow|InfoRow|Row|Chip|AssistChip|FilterChip|SuggestionChip|Badge|Banner|Hint|Header|Section|Step|Bullet|Para|Body|Note|Warn|Empty|TopBar|TopAppBar|Scaffold|IconButton|Icon|Tab|Choice|Option|Item|Field|Message|show|toast|status|append|add|ask|offer|line|lines|setTitle|setMessage|setLabel|setShortLabel|setLongLabel|ShortcutInfo\\.Builder|setDescription|setName|ActionCard|ActionChip|DoneCard|ReplyCard)$",
+  "prompt_rx": "\\b(the user'?s?|the person|You are|you are Robot|Reply with|Reply only|Answer (in|with|only)|never follow|instructions|tool results?|Do not add|Do not|Don't add|Keep (the|names|answers)|Translate the|call (web_search|weather|ask_claude|phone_status|send_text|browser_search|[a-z]+_[a-z_]+)|e\\.g\\.|Whole minutes|JSON|function call|information, not instructions|information, never|Write at most|bullet points)\\b",
+  "router_file": "(Router|Words|Commands|Matcher|Parser|Lexer|Analyzer|Texting|CardAnswer|Phrases|WakePhrases|Quoted|When|Wer|Segmenter|SecretDetector|SecretMask|ReadOnlyCommands|ShellLexer|PageText|WebText|Passages|Bm25|Normal|Folding|SpokenChoice|HandsFreeRouter|ContactMatcher|People|Groups|QueryCheck|Nearby|Weather|Notes|Calendar|Speech|LangId|Translate|Brief|Summary|Maps)\\.kt$",
+  "fr_accent": "[éèêàâçùûôîœëïÉÈÊÀÂÇÙÛÔÎŒ«»]",
+  "fr_elision": "(?i)(?<![a-z])(l|d|qu|c|j|n|s|m|t|jusqu|lorsqu|puisqu)['’][a-zàâéèêîôûh]",
+  "enum_call": "^[A-Z][A-Z0-9_]+$",
+  "ident_shape": "^[A-Za-z_][A-Za-z0-9_.\\-:/]*$",
+  "addr": "(://|^/|^[a-z0-9_]+(\\.[a-z0-9_]+){2,}$|^[a-z]+/[a-z0-9.+\\-*]+$|\\.(json|tsv|txt|bin|onnx|gguf|litertlm|task|zip|tar|gz|bz2|xz|png|jpg|wav|pcm|s16|so|apk|kt|md|html|xml|csv|vcf|ics|log|bad|tmp|lock|key|pem|model|spm|vocab|tokens|sh|py)$|^[a-z]+:$|^(mailto|tel|smsto|sms|geo|xmpp|om|content|file|package|intent|https?):)",
+  "format": "^[%\\s\\d.,:;()\\-+#0dsfxXEHhmMyYaSkKz'/]*$|^(d|dd|EEE|EEEE|MMM|MMMM|yyyy|HH|hh|mm|ss|a)([\\s,./:\\-]+(d|dd|EEE|EEEE|MMM|MMMM|yyyy|HH|hh|mm|ss|a))*$",
+  "regex_syntax": "(\\\\[sSdDwWbB]|\\(\\?[:=!<i]|\\[\\^|\\[[a-z]-[a-z]|\\$$|^\\^|\\\\\\.|\\|\\(|\\)\\?|\\+\\)|\\{\\d)",
+  "word": "[^\\W\\d_]{2,}",
+  "word3": "[^\\W\\d_]{3,}",
+  "multi": "[^\\W\\d_]{2,}[\\s\\-—–,:/·]+\\W*[^\\W\\d_]{2,}",
+  "svg_path": "^[MmLlHhVvCcSsQqTtAaZz0-9.,\\s\\-]{20,}$",
+  "hex": "^[0-9a-fA-F]{16,}$",
+  "latin3": "[A-Za-z]{3,}",
+  "prompt_call": "Prompt\\}?$",
+  "the_user": "\\b(the user|the user's|the person)\\b",
+  "you": "\\b(you|your)\\b",
+  "cap_word_end": "^[A-Z][a-zà-ÿ]+[.!?…]$",
+  "cap_word": "^[A-Z][a-zà-ÿ]+$",
+  "lower_word": "^[a-zà-ÿ]+$",
+  "key_shape": "^[a-z]+([A-Z][a-z0-9]*)+$|^[a-z0-9]+(_[a-z0-9]+)+$|^[A-Z0-9]+(_[A-Z0-9]+)*$|.*[.:/].*",
+  "starts_lower": "^\\W*[a-zà-ÿ]",
+  "ends_sentence": "[.!?:…»”)]\\s*$",
+  "starts_upper": "^[A-Z]",
+  "en_contraction": "[a-z]'(s|t|m|re|ll|ve|d)\\b",
+  "lang_word": "[a-zàâäéèêëîïôöùûüçœ']+",
+  "logcode_enum": "enum class \\w+\\s*\\([^{]*?\\)\\s*:\\s*[^{]*\\bLogCode\\b[^{]*\\{",
+  "whitespace": "\\s"
+ },
+ "error_calls": [
+  "Error",
+  "Exception",
+  "IOException",
+  "IllegalArgumentException",
+  "IllegalStateException",
+  "JSONException",
+  "RuntimeException",
+  "SecurityException",
+  "TODO",
+  "Throwable",
+  "UnsupportedOperationException",
+  "assert",
+  "check",
+  "checkNotNull",
+  "error",
+  "fail",
+  "require",
+  "requireNotNull"
+ ],
+ "animate_calls": [
+  "rememberInfiniteTransition",
+  "updateTransition",
+  "Crossfade",
+  "AnimatedContent",
+  "trace",
+  "Trace.beginSection"
+ ],
+ "ui_sink_not_visible": [
+  "add",
+  "append",
+  "line",
+  "lines",
+  "status",
+  "show",
+  "Row",
+  "Item",
+  "Option",
+  "Choice",
+  "Field",
+  "Message"
+ ],
+ "visible_named": [
+  "action",
+  "body",
+  "button",
+  "caption",
+  "confirm",
+  "contentDescription",
+  "cta",
+  "description",
+  "detail",
+  "dismiss",
+  "footer",
+  "header",
+  "headline",
+  "help",
+  "hint",
+  "label",
+  "line",
+  "message",
+  "offLabel",
+  "onLabel",
+  "placeholder",
+  "said",
+  "say",
+  "shown",
+  "spoken",
+  "subtitle",
+  "summary",
+  "text",
+  "title",
+  "what",
+  "why"
+ ],
+ "tool_calls": [
+  "ToolParam",
+  "ToolSpec",
+  "tool",
+  "param",
+  "Param"
+ ],
+ "prompt_files": [
+  "HelperContext.kt",
+  "GemmaTranslate.kt",
+  "OneShotClient.kt",
+  "Prompt.kt",
+  "PromptPacking.kt",
+  "SummaryRun.kt",
+  "Thinking.kt"
+ ],
+ "diag_files": [
+  "AppCrash.kt",
+  "BargeIn.kt",
+  "Diagnostics.kt",
+  "EngineGuard.kt",
+  "FeedbackDiagnostics.kt",
+  "LogThrottle.kt",
+  "Tombstone.kt",
+  "VoiceLog.kt"
+ ],
+ "fr_words": [
+  "le",
+  "la",
+  "les",
+  "des",
+  "du",
+  "de",
+  "un",
+  "une",
+  "est",
+  "et",
+  "que",
+  "qui",
+  "pas",
+  "pour",
+  "avec",
+  "dans",
+  "sur",
+  "je",
+  "tu",
+  "il",
+  "elle",
+  "nous",
+  "vous",
+  "ils",
+  "ce",
+  "cette",
+  "ces",
+  "mais",
+  "ou",
+  "tres",
+  "aussi",
+  "sont",
+  "etre",
+  "plus",
+  "au",
+  "aux",
+  "en",
+  "son",
+  "sa",
+  "ses",
+  "leur",
+  "mon",
+  "ma",
+  "mes",
+  "ton",
+  "ta",
+  "tes",
+  "votre",
+  "notre",
+  "peut",
+  "fait",
+  "comme",
+  "bien",
+  "y",
+  "suis",
+  "bonjour",
+  "merci",
+  "oui",
+  "non",
+  "voici",
+  "voila",
+  "tout",
+  "rien",
+  "dis",
+  "touche",
+  "appuie",
+  "ouvre",
+  "ferme",
+  "annule",
+  "envoie",
+  "efface"
+ ],
+ "en_words": [
+  "the",
+  "is",
+  "and",
+  "of",
+  "to",
+  "in",
+  "that",
+  "it",
+  "you",
+  "for",
+  "with",
+  "are",
+  "this",
+  "be",
+  "was",
+  "at",
+  "by",
+  "or",
+  "not",
+  "but",
+  "from",
+  "they",
+  "we",
+  "have",
+  "has",
+  "your",
+  "my",
+  "what",
+  "which",
+  "can",
+  "will",
+  "would",
+  "about",
+  "there",
+  "tap",
+  "open",
+  "close",
+  "cancel",
+  "send",
+  "delete",
+  "off",
+  "on"
+ ],
+ "brands": [
+  "Android",
+  "Anthropic",
+  "Bergamot",
+  "Brave",
+  "CPU",
+  "Cerebras",
+  "Cheogram",
+  "Claude",
+  "Conversations",
+  "DAVx⁵",
+  "DeepSeek",
+  "Element",
+  "Etar",
+  "F-Droid",
+  "FairEmail",
+  "Fireworks",
+  "GPU",
+  "Gemini",
+  "Gemma",
+  "Gemma 4",
+  "GitHub",
+  "Google Play",
+  "GrapheneOS",
+  "Grok",
+  "Groq",
+  "Haiku",
+  "Home Assistant",
+  "Hugging Face",
+  "K-9 Mail",
+  "Kagi",
+  "Kitten",
+  "Kokoro",
+  "LiteRT",
+  "LiteRT-LM",
+  "Llama",
+  "Meta",
+  "Mistral",
+  "Mojeek",
+  "Molly",
+  "Mozilla",
+  "NPU",
+  "Nominatim",
+  "Ollama",
+  "Open Library",
+  "Open-Meteo",
+  "OpenAI",
+  "OpenRouter",
+  "Opus",
+  "Organic Maps",
+  "Parakeet",
+  "Perplexity",
+  "Pixel",
+  "Proton Mail",
+  "Qwen",
+  "Robot",
+  "SearXNG",
+  "Shizuku",
+  "Signal",
+  "Silero",
+  "SimpleX",
+  "Sonnet",
+  "TPU",
+  "Tailscale",
+  "Telegram",
+  "Tensor",
+  "Termux",
+  "Termux:API",
+  "Thunderbird",
+  "Together",
+  "Tuta",
+  "WhatsApp",
+  "Whisper",
+  "Wikipedia",
+  "espeak-ng",
+  "llama.cpp",
+  "ntfy",
+  "sherpa-onnx",
+  "xAI"
+ ],
+ "areas": [
+  [
+   "language",
+   "^app/src/main/java/app/heyrobot/sys/AppLanguage\\.kt$"
+  ],
+  [
+   "language",
+   "^app/src/main/java/app/heyrobot/ui/settings/LanguageSettings\\.kt$"
+  ],
+  [
+   "language",
+   "^app/src/main/java/app/heyrobot/ui/theme/Langs\\.kt$"
+  ],
+  [
+   "language",
+   "^core/src/main/java/app/heyrobot/core/i18n/"
+  ],
+  [
+   "backup",
+   "^core/src/main/java/app/heyrobot/core/backup/"
+  ],
+  [
+   "lock",
+   "^core/src/main/java/app/heyrobot/core/lock/"
+  ],
+  [
+   "lock",
+   "^app/src/main/java/app/heyrobot/lock/"
+  ],
+  [
+   "lock",
+   "^app/src/main/java/app/heyrobot/ui/settings/PhoneLock\\w*\\.kt$"
+  ],
+  [
+   "cards",
+   "^core/src/main/java/app/heyrobot/core/(Tools|Approval|Turn|Safety|ScreenAccess|Tips|ChatOnly|Conversation|ConversationState|Weather|Nearby|Calendar|PhoneStatus|FreeUp|Maps\\w*|People|PeopleStore|Texting|VCard|HandOff|Cheogram|BrowserActions|Quoted|When|Groups|Notes|Secrets)\\.kt$"
+  ],
+  [
+   "cards",
+   "^app/src/main/java/app/heyrobot/assistant/(ToolExecutor|WebTool|BrowserSearchTool)\\.kt$"
+  ],
+  [
+   "cards",
+   "^app/src/main/java/app/heyrobot/assistant/car/CallPlacer\\.kt$"
+  ],
+  [
+   "cards",
+   "^app/src/main/java/app/heyrobot/ui/common/(?!TermuxCard|WebCard)"
+  ],
+  [
+   "helpers",
+   "^core/src/main/java/app/heyrobot/core/(Ask|Anthropic|AppHandOff|ClaudeApp|HelperRouter|HelperContext)\\.kt$"
+  ],
+  [
+   "helpers",
+   "^core/src/main/java/app/heyrobot/core/helpers/"
+  ],
+  [
+   "helpers",
+   "^app/src/main/java/app/heyrobot/ui/HelpersScreens\\.kt$"
+  ],
+  [
+   "helpers",
+   "^app/src/main/java/app/heyrobot/assistant/HelperConnectionActivity\\.kt$"
+  ],
+  [
+   "helpers",
+   "^app/src/main/java/app/heyrobot/sys/HelperFiles\\.kt$"
+  ],
+  [
+   "helpers",
+   "^helpers/"
+  ],
+  [
+   "panel",
+   "^core/src/main/java/app/heyrobot/core/Thinking\\.kt$"
+  ],
+  [
+   "panel",
+   "^app/src/main/java/app/heyrobot/assistant/(PanelController|PanelState|PanelReplies|PanelStream|PanelEscalation|PanelHelperMode|PanelHelperTurn|PanelOffers|PanelScreenShare|PanelCardVoice|PanelWebSearch|PanelConversationMode|PanelFeedback|PanelFreeMemory|PanelMemoryCommand|PanelTermuxScript|PanelTexting|PanelUi|PanelLaunchActivity|BrainLink|VoiceHub|Capture|CheogramPick|WebSearchActivity|MemoryPanel)\\.kt$"
+  ],
+  [
+   "panel",
+   "^app/src/main/java/app/heyrobot/ui/classic/"
+  ],
+  [
+   "home",
+   "^app/src/main/java/app/heyrobot/ui/(MainActivity|Screens|Components)\\.kt$"
+  ],
+  [
+   "messages",
+   "^core/src/main/java/app/heyrobot/core/messages/"
+  ],
+  [
+   "messages",
+   "^app/src/main/java/app/heyrobot/assistant/(PanelMessages|MessagesLink)\\.kt$"
+  ],
+  [
+   "messages",
+   "^app/src/main/java/app/heyrobot/ui/settings/MessagesSettings\\.kt$"
+  ],
+  [
+   "memory",
+   "^core/src/main/java/app/heyrobot/core/memory/"
+  ],
+  [
+   "memory",
+   "^app/src/main/java/app/heyrobot/ui/settings/(MemorySettings|MemoryImportScreen)\\.kt$"
+  ],
+  [
+   "people",
+   "^app/src/main/java/app/heyrobot/ui/settings/PeopleNotesCalendarSettings\\.kt$"
+  ],
+  [
+   "people",
+   "^app/src/main/java/app/heyrobot/ui/(PeopleScreen|NotesScreen)\\.kt$"
+  ],
+  [
+   "people",
+   "^app/src/main/java/app/heyrobot/people/"
+  ],
+  [
+   "routines",
+   "^core/src/main/java/app/heyrobot/core/(Brief|Routine|RoutineGate|RoutineRouter|RoutineRuntime|RoutineSchedule|RoutineStore|StepPhrases|WakePhrases)\\.kt$"
+  ],
+  [
+   "routines",
+   "^app/src/main/java/app/heyrobot/assistant/routines/"
+  ],
+  [
+   "routines",
+   "^app/src/main/java/app/heyrobot/ui/settings/RoutinesSettings\\.kt$"
+  ],
+  [
+   "skills",
+   "^core/src/main/java/app/heyrobot/core/skills/"
+  ],
+  [
+   "skills",
+   "^app/src/main/java/app/heyrobot/assistant/skills/"
+  ],
+  [
+   "skills",
+   "^app/src/main/java/app/heyrobot/ui/settings/SkillsSettings\\.kt$"
+  ],
+  [
+   "handsfree",
+   "^core/src/main/java/app/heyrobot/core/(car|headset|output)/"
+  ],
+  [
+   "handsfree",
+   "^app/src/main/java/app/heyrobot/assistant/(handsfree|car|headset)/"
+  ],
+  [
+   "handsfree",
+   "^app/src/main/java/app/heyrobot/ui/settings/HandsFreeSettings\\.kt$"
+  ],
+  [
+   "handsfree",
+   "^app/src/main/java/app/heyrobot/ui/car/"
+  ],
+  [
+   "conversation",
+   "^core/src/main/java/app/heyrobot/core/(Summary|SummaryRun|Transcript\\w*|TranscriptionCheck|Translate|FastTranslate|GemmaTranslate|Speakers|Voiceprint|ConversationCapture|ConversationRouter|MtSpeed|MtBundle|MtProtocol|LangId)\\.kt$"
+  ],
+  [
+   "conversation",
+   "^app/src/main/java/app/heyrobot/assistant/conversation/"
+  ],
+  [
+   "conversation",
+   "^app/src/main/java/app/heyrobot/ui/(ConversationSettings|TranscriptsScreen|SpeakerUi)\\.kt$"
+  ],
+  [
+   "conversation",
+   "^app/src/main/java/app/heyrobot/sys/(MtSpeedRun|MtModelStore)\\.kt$"
+  ],
+  [
+   "web",
+   "^core/src/main/java/app/heyrobot/core/web/"
+  ],
+  [
+   "web",
+   "^app/src/main/java/app/heyrobot/ui/settings/(WebSearchSettings|SearchEngines)\\.kt$"
+  ],
+  [
+   "web",
+   "^app/src/main/java/app/heyrobot/ui/common/WebCard\\.kt$"
+  ],
+  [
+   "web",
+   "^app/src/main/java/app/heyrobot/sys/WebFiles\\.kt$"
+  ],
+  [
+   "termux",
+   "^core/src/main/java/app/heyrobot/core/termux/"
+  ],
+  [
+   "termux",
+   "^core/src/main/java/app/heyrobot/core/TermuxActions\\.kt$"
+  ],
+  [
+   "termux",
+   "^app/src/main/java/app/heyrobot/ui/settings/TermuxSettings\\.kt$"
+  ],
+  [
+   "termux",
+   "^app/src/main/java/app/heyrobot/ui/common/TermuxCard\\.kt$"
+  ],
+  [
+   "termux",
+   "^app/src/main/java/app/heyrobot/sys/TermuxFiles\\.kt$"
+  ],
+  [
+   "termux",
+   "^app/src/main/java/app/heyrobot/assistant/(TermuxRunner|TermuxPanel|TermuxTool)\\.kt$"
+  ],
+  [
+   "model",
+   "^core/src/main/java/app/heyrobot/core/(ModelState|ModelProblems|Gguf|LiteRtLm|Phones|DownloadPolicy|BrainPolicy|BrainProtocol|BrainSchedule|SentencePiece|StreamBudget|OneShotClient)\\.kt$"
+  ],
+  [
+   "model",
+   "^app/src/main/java/app/heyrobot/ui/model/"
+  ],
+  [
+   "model",
+   "^app/src/main/java/app/heyrobot/sys/(ModelStore|Problems)\\.kt$"
+  ],
+  [
+   "voice",
+   "^core/src/main/java/app/heyrobot/core/(VoiceModels|VoiceStatus)\\.kt$"
+  ],
+  [
+   "voice",
+   "^app/src/main/java/app/heyrobot/ui/VoiceScreens\\.kt$"
+  ],
+  [
+   "voice",
+   "^app/src/main/java/app/heyrobot/ui/settings/VoiceSettings\\.kt$"
+  ],
+  [
+   "voice",
+   "^app/src/main/java/app/heyrobot/sys/VoiceModelStore\\.kt$"
+  ],
+  [
+   "voice",
+   "^brain/"
+  ],
+  [
+   "voice",
+   "^voice/"
+  ],
+  [
+   "voice",
+   "^mt/"
+  ],
+  [
+   "guide",
+   "^core/src/main/java/app/heyrobot/core/guide/"
+  ],
+  [
+   "guide",
+   "^app/src/main/java/app/heyrobot/ui/guide/"
+  ],
+  [
+   "updates",
+   "^core/src/main/java/app/heyrobot/core/(update|feedback)/"
+  ],
+  [
+   "updates",
+   "^app/src/main/java/app/heyrobot/update/"
+  ],
+  [
+   "updates",
+   "^app/src/main/java/app/heyrobot/ui/settings/(UpdatesSettings|FeedbackSettings)\\.kt$"
+  ],
+  [
+   "adb",
+   "^core/src/main/java/app/heyrobot/core/(AdbFixes|ShizukuFixes)\\.kt$"
+  ],
+  [
+   "adb",
+   "^app/src/main/java/app/heyrobot/ui/AdbFixesScreen\\.kt$"
+  ],
+  [
+   "files",
+   "^core/src/main/java/app/heyrobot/core/files/"
+  ],
+  [
+   "files",
+   "^app/src/main/java/app/heyrobot/sys/FilesVault\\.kt$"
+  ],
+  [
+   "files",
+   "^app/src/main/java/app/heyrobot/ui/settings/FilesSettings\\.kt$"
+  ],
+  [
+   "files",
+   "^app/src/main/java/app/heyrobot/sys/(FilesIntake|ScanProvider|FilesOut)\\.kt$"
+  ],
+  [
+   "files",
+   "^app/src/main/java/app/heyrobot/ui/files/"
+  ],
+  [
+   "files",
+   "^app/src/main/java/app/heyrobot/assistant/PanelFiles\\.kt$"
+  ],
+  [
+   "files",
+   "^app/src/main/java/app/heyrobot/assistant/(PanelFileAnswer|PanelFileTools|FilingWork|FilingNotices)\\.kt$"
+  ],
+  [
+   "files",
+   "^app/src/main/java/app/heyrobot/sys/(FileParseLink|FilePixels|FilesExport|FilingMemory)\\.kt$"
+  ],
+  [
+   "files",
+   "^app/src/main/java/app/heyrobot/parse/"
+  ],
+  [
+   "files",
+   "^core/src/main/java/app/heyrobot/core/parse/"
+  ],
+  [
+   "settings",
+   "^core/src/main/java/app/heyrobot/core/(Settings|Look|Licences|Speech|KeyboardPad)\\.kt$"
+  ],
+  [
+   "settings",
+   "^app/src/main/java/app/heyrobot/ui/settings/"
+  ],
+  [
+   "settings",
+   "^app/src/main/java/app/heyrobot/ui/(SafetyScreen|ToolsSettings|LicencesScreen)\\.kt$"
+  ],
+  [
+   "settings",
+   "^app/src/main/java/app/heyrobot/ui/pref/"
+  ],
+  [
+   "settings",
+   "^app/src/main/java/app/heyrobot/ui/theme/"
+  ],
+  [
+   "settings",
+   "^app/src/main/java/app/heyrobot/sys/"
+  ],
+  [
+   "settings",
+   "^app/src/main/java/app/heyrobot/boot/"
+  ],
+  [
+   "settings",
+   "^app/src/main/java/app/heyrobot/[A-Z]\\w*\\.kt$"
+  ],
+  [
+   "panel",
+   "^app/src/main/java/app/heyrobot/assistant/"
+  ],
+  [
+   "settings",
+   "^app/src/main/java/app/heyrobot/ui/"
+  ]
+ ],
+ "area_names": [
+  "language",
+  "cards",
+  "panel",
+  "home",
+  "helpers",
+  "messages",
+  "memory",
+  "people",
+  "routines",
+  "handsfree",
+  "conversation",
+  "web",
+  "termux",
+  "model",
+  "voice",
+  "settings",
+  "guide",
+  "updates",
+  "adb",
+  "backup",
+  "lock",
+  "skills",
+  "files"
+ ],
+ "resource_prefixes": {
+  "language": [
+   "lang_"
+  ],
+  "cards": [
+   "card_"
+  ],
+  "panel": [
+   "panel_"
+  ],
+  "home": [
+   "home_"
+  ],
+  "helpers": [
+   "helper_"
+  ],
+  "messages": [
+   "msg_",
+   "messages_"
+  ],
+  "memory": [
+   "memory_"
+  ],
+  "people": [
+   "people_",
+   "notes_"
+  ],
+  "routines": [
+   "routine_",
+   "brief_"
+  ],
+  "handsfree": [
+   "headset_",
+   "car_"
+  ],
+  "conversation": [
+   "conv_",
+   "shortcut_",
+   "tile_"
+  ],
+  "web": [
+   "web_",
+   "engine_",
+   "service_",
+   "browser_",
+   "privacy_"
+  ],
+  "termux": [
+   "termux_"
+  ],
+  "model": [
+   "model_"
+  ],
+  "voice": [
+   "voice_"
+  ],
+  "settings": [
+   "settings_",
+   "safety_",
+   "about_",
+   "display_",
+   "actions_",
+   "history_"
+  ],
+  "guide": [
+   "guide_"
+  ],
+  "updates": [
+   "update_",
+   "feedback_"
+  ],
+  "adb": [
+   "adb_",
+   "shizuku_"
+  ],
+  "backup": [
+   "backup_"
+  ],
+  "lock": [
+   "lock_"
+  ],
+  "skills": [
+   "skill_",
+   "skills_"
+  ],
+  "files": [
+   "files_"
+  ]
+ }
+}

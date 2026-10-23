@@ -36,7 +36,8 @@ class TermuxOutputTest {
         assertEquals("… 312 lines not shown …", lines[15])
         assertEquals("line 328", lines[16])
         assertEquals("line 352", lines.last())
-        assertTrue(TermuxOutput.forModel(text, fr = true).contains("… 312 lignes non affichées …"))
+        // 1.1: the model reads English whatever the reply language.
+        assertTrue(TermuxOutput.forModel(text, fr = true).contains("… 312 lines not shown …"))
         assertEquals("a\nb", TermuxOutput.forModel("a\nb\n"))
         // And at most 1,500 characters.
         val wide = TermuxOutput.forModel("x".repeat(10_000))
@@ -52,7 +53,7 @@ class TermuxOutputTest {
         assertTrue(card.startsWith("A".repeat(8 * 1024)))
         assertTrue(card.endsWith("B".repeat(8 * 1024)))
         assertTrue(card.contains("… 3.5 KB not shown …"))
-        assertTrue(TermuxOutput.forCard(big, fr = true).contains("… 3,5 KB non affichés …"))
+        assertTrue(TermuxOutput.forCard(big, fr = true).contains("… 3,5\u00A0ko non affichés …"))
     }
 
     @Test fun preparedForCardAndModel() {
@@ -66,7 +67,9 @@ class TermuxOutputTest {
         // "Hide secrets in output" off: shown as is (still cleaned).
         assertTrue(TermuxOutput.prepare(r, mask = false).card.contains("b3BlbnNzaC1rZXk"))
         // Robot's own keys by value; French labels.
-        assertEquals("[masqué : une des clés de Robot]", TermuxOutput.prepare(TermuxResult("own-secret-value-123", null, 0), own = listOf("own-secret-value-123"), fr = true).card)
+        val own = TermuxOutput.prepare(TermuxResult("own-secret-value-123", null, 0), own = listOf("own-secret-value-123"), fr = true)
+        assertEquals("[masqué\u00A0: une des clés de Robot]", own.card)
+        assertEquals("[hidden: one of Robot's own keys]", own.model)
         // Only stderr.
         assertEquals("boom", TermuxOutput.prepare(TermuxResult("", "boom", 1)).card)
     }
@@ -90,9 +93,9 @@ class TermuxOutputTest {
 
     @Test fun exitCodesInWords() {
         assertEquals("Done in 0.8 s.", TermuxOutput.summary(0, 60, 812))
-        assertEquals("Terminé en 0,8 s.", TermuxOutput.summary(0, 60, 812, fr = true))
+        assertEquals("Terminé en 0,8\u00A0s.", TermuxOutput.summary(0, 60, 812, fr = true))
         assertEquals("Took longer than 60 s and was stopped.", TermuxOutput.summary(124, 60, 61_000))
-        assertEquals("A pris plus de 10 s et a été arrêtée.", TermuxOutput.summary(124, 10, 11_000, fr = true))
+        assertEquals("A pris plus de 10\u00A0s et a été arrêtée.", TermuxOutput.summary(124, 10, 11_000, fr = true))
         assertEquals("Stopped.", TermuxOutput.summary(143, 60, 3_000))
         assertEquals("Arrêtée.", TermuxOutput.summary(137, 60, 3_000, fr = true))
         assertEquals("Command not found (exit 127).", TermuxOutput.summary(127, 60, 10))
@@ -102,7 +105,7 @@ class TermuxOutputTest {
         assertEquals("Terminée avec le code 1 en 2 min 5 s.", TermuxOutput.summary(1, 600, 125_000, fr = true))
         assertEquals("Termux didn't answer.", TermuxOutput.summary(null, 60, 75_000))
         assertEquals("Exit 0 · 0.8 s", TermuxOutput.exitLine(0, 800))
-        assertEquals("Code 1 · 1,5 s", TermuxOutput.exitLine(1, 1_500, fr = true))
+        assertEquals("Code 1 · 1,5\u00A0s", TermuxOutput.exitLine(1, 1_500, fr = true))
     }
 
     @Test fun termuxFailuresNeverShowItsMessage() {

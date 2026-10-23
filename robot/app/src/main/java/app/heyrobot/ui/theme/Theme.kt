@@ -10,6 +10,7 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -44,19 +45,24 @@ fun robotColorScheme(ctx: Context, dark: Boolean, wallpaper: Boolean): ColorSche
     return if (dark) RobotColors.Dark else RobotColors.Light
 }
 
-/** Robot's theme. [look] is Settings › Display (look.json, read once per process and again when the panel opens). */
+/**
+ * Robot's theme. [look] is Settings › Display (look.json, read once per process and again when the panel opens); (1.1)
+ * the languages core's words render in are in [LocalLangs].
+ */
 @Composable
 fun RobotTheme(
     dark: Boolean = isSystemInDarkTheme(),
     look: LookSettings = LookStore.current(LocalContext.current),
     content: @Composable () -> Unit,
 ) {
-    MaterialTheme(
-        colorScheme = robotColorScheme(LocalContext.current, dark, look.wallpaperColors),
-        typography = StockTypography,
-        shapes = Shapes(),
-        content = content,
-    )
+    CompositionLocalProvider(LocalLangs provides rememberLangs()) {
+        MaterialTheme(
+            colorScheme = robotColorScheme(LocalContext.current, dark, look.wallpaperColors),
+            typography = StockTypography,
+            shapes = Shapes(),
+            content = content,
+        )
+    }
 }
 
 /** The classic look's type around [content] (the panel, a turn in History), in the theme's own colours and shapes. */

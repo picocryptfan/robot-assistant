@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- Skills in Québec French (tu): the ids of values/strings_skills.xml, each value written with the glossary
+     (robot/l10n/glossary.tsv: « compétence », « étape », « appli ») and the OQLF's spaces (tools/fr_typo.py, FrenchTypographyTest). -->
+<resources>
+    <string name="skill_channel">Compétences</string>
+    <string name="skill_channel_detail">La prochaine étape d’une compétence, après l’ouverture d’une appli</string>
+
+    <string name="skill_intro">Apprends une compétence de vive voix&#160;: «&#160;apprends une compétence qui s’appelle je rentre&#160;: texte à Sam que je m’en viens, puis ouvre l’itinéraire vers la maison.&#160;» Ou demande quelque chose à Robot, puis dis «&#160;enregistre ça comme compétence.&#160;»</string>
+    <string name="skill_yours">Tes compétences</string>
+    <string name="skill_none_yet">Aucune pour l’instant</string>
+    <plurals name="skills_n">
+        <item quantity="one">%d compétence</item>
+        <item quantity="many">%d compétences</item>
+        <item quantity="other">%d compétences</item>
+    </plurals>
+    <string name="skill_paused">Les compétences sont en pause</string>
+    <string name="skill_start_over">Recommencer</string>
+    <string name="skill_start_over_title">Recommencer&#8239;?</string>
+    <string name="skill_start_over_text">Robot met de côté le fichier qu’il n’a pas pu lire, sous le nom skills.json.bad, et tu recommences sans compétences.</string>
+    <string name="skill_footer">Une compétence fait ses étapes sur ton téléphone, une à la fois. Chaque étape montre quand même sa propre carte quand son action demande d’abord&#160;: une compétence ne saute jamais une carte. Les compétences ne se lancent jamais sur un téléphone verrouillé.</string>
+
+    <string name="skill_name">Nom</string>
+    <string name="skill_name_supporting">De 1 à 40 caractères sur une ligne</string>
+    <string name="skill_other_names">Répond aussi à</string>
+    <string name="skill_in_english">En anglais</string>
+    <string name="skill_in_french">En français</string>
+    <string name="skill_add_name">Ajouter un nom</string>
+    <string name="skill_name_words">De 1 à 5 mots</string>
+    <string name="skill_remove_name">Retirer «&#160;%1$s&#160;»</string>
+    <string name="skill_level">Niveau</string>
+    <string name="skill_questions">Questions</string>
+    <string name="skill_default">Par défaut</string>
+    <string name="skill_default_minutes">En minutes</string>
+    <string name="skill_default_time">Comme 07:30</string>
+    <string name="skill_remove">Retirer</string>
+    <string name="skill_remove_question">Retirer «&#160;%1$s&#160;»&#160;: sa valeur reste celle par défaut</string>
+    <string name="skill_steps">Étapes</string>
+    <string name="skill_move_up">Monter l’étape %1$d</string>
+    <string name="skill_move_down">Descendre l’étape %1$d</string>
+    <string name="skill_remove_step">Retirer l’étape %1$d</string>
+    <string name="skill_last_run">Dernière fois</string>
+    <string name="skill_made">Création</string>
+    <string name="skill_mine">Ces étapes sont les miennes</string>
+    <string name="skill_mine_detail">Faire sans demander peut alors être choisi</string>
+    <string name="skill_delete">Supprimer la compétence</string>
+    <string name="skill_delete_title">Supprimer «&#160;%1$s&#160;»&#8239;?</string>
+    <string name="skill_delete_text">C’est irréversible.</string>
+    <string name="skill_invalid_default">Ce n’est pas une valeur que cette question peut prendre.</string>
+
+    <!-- Phase B (plan §9): the model and your skills. -->
+    <string name="skill_model_picks">Laisser le modèle de Robot choisir des compétences</string>
+    <string name="skill_model_picks_summary">Jusqu’à 3 de tes compétences sont décrites au modèle de Robot quand tes mots leur correspondent. Désactivé&#160;: seuls leurs noms les lancent.</string>
+    <string name="skill_fills">Valeurs remplies par le modèle de Robot</string>
+</resources>

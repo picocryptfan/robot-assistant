@@ -5,7 +5,7 @@ import app.heyrobot.core.ToolCalls
 import java.text.Normalizer
 import java.util.Locale
 
-// Pure. A messaging notification read into a [MessageThread] (design §B2–§B4). The main process's notification listener
+// Pure. A messaging notification read into a [MessageThread]. The main process's notification listener
 // copies what Android gives (MessagingStyle's messages and people, the actions and their RemoteInputs) into the plain
 // snapshot classes below, field for field, and everything that decides runs here, so it is tested on the JVM with
 // recorded snapshots. Missing pieces are normal (an app's privacy setting, a redacted code, a quiet-hours channel
@@ -28,12 +28,12 @@ object SemanticAction {
 
 /** android.app.Person: [name] as shown, [key] the app's id for them (Cheogram: the bare JID), [uri] a contact link. */
 data class PersonSnapshot(val name: String?, val key: String? = null, val uri: String? = null) {
-    override fun toString(): String = "PersonSnapshot(named=${name != null}, keyed=${key != null})"
+    override fun toString(): String = "PersonSnapshot(named=${name != null}, keyed=${key != null})" // l10n: not text (toString for logs and tests)
 }
 
 /** MessagingStyle.Message: text, timestamp, sender (null: the user), and the data MIME type of an attachment. */
 data class MessageSnapshot(val text: String?, val timestamp: Long, val sender: PersonSnapshot?, val dataMimeType: String? = null) {
-    override fun toString(): String = "MessageSnapshot(chars=${text?.length}, time=$timestamp, mime=$dataMimeType)"
+    override fun toString(): String = "MessageSnapshot(chars=${text?.length}, time=$timestamp, mime=$dataMimeType)" // l10n: not text (toString for logs and tests)
 }
 
 /** RemoteInput: [resultKey] the reply goes under; [allowFreeFormInput] false means canned choices only. */
@@ -78,7 +78,7 @@ data class NotificationSnapshot(
     val groupSummary: Boolean = false,
     val ongoing: Boolean = false,
 ) {
-    override fun toString(): String = "NotificationSnapshot(package=$packageName, messages=${messages.size}, actions=${actions.size})"
+    override fun toString(): String = "NotificationSnapshot(package=$packageName, messages=${messages.size}, actions=${actions.size})" // l10n: not text (toString for logs and tests)
 }
 
 /** Why a notification was left alone. */

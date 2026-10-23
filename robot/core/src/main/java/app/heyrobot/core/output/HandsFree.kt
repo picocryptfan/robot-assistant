@@ -2,8 +2,11 @@
 package app.heyrobot.core.output
 
 import app.heyrobot.core.LogCode
+import app.heyrobot.core.i18n.HandsFreeStrings
+import app.heyrobot.core.i18n.Lang
+import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.i18n.Phrase
 import org.json.JSONObject
-import java.util.Locale
 
 // Pure. What headset mode and car mode share: the language Robot speaks
 // in, the kind of session a sentence belongs to, and the Safety & privacy rows of §1.5 that are theirs.
@@ -28,20 +31,38 @@ import java.util.Locale
 // 216 CAR_NAV (a = car NavKind), 217 CAR_MUSIC (a = MusicAction ordinal + 1), 218 HEADSET_END (a = headset EndWhy, b = seconds,
 // c = [SessionKind] id), 219 spare.
 
-/** The language a hands-free line is spoken in: English, or Québec French (tu, as Robot's French elsewhere). */
-enum class SpokenLang {
-    EN, FR;
+/**
+ * The language a hands-free line is spoken in: English, or Québec French (tu, as Robot's French elsewhere). 1.1: core
+ * i18n's [app.heyrobot.core.i18n.Lang], with the same constants and `of(tag)`.
+ */
 
-    companion object {
-        /** From a language tag ("fr-CA", "fr", "en-US"); anything not French is English. */
-        fun of(tag: String?): SpokenLang = if (tag?.trim()?.lowercase(Locale.ROOT)?.startsWith("fr") == true) FR else EN
-    }
-}
-
-/** A line in both languages. */
+/**
+ * A line in both languages: [en], and [fr] as Robot's voice says it. 1.1: made from a catalog entry ([text], core i18n
+ * HandsFreeStrings), [fr] is the voice's form (no typography characters, core VoiceForm); a screen shows [shown], a turn
+ * says [said] in its own languages. [text] isn't part of the line's equality.
+ */
 data class Line(val en: String, val fr: String) {
-    fun get(lang: SpokenLang): String = if (lang == SpokenLang.FR) fr else en
+    var text: Phrase? = null
+        private set
+
+    constructor(text: Phrase) : this(text.en(), spoken(text, Lang.FR)) {
+        this.text = text
+    }
+
+    fun get(lang: Lang): String = if (lang == Lang.FR) fr else en
+
+    /** As the voice says it in [l] (a line without [text]: [get]). */
+    fun said(l: Langs): String = text?.let { spoken(it, l) } ?: get(l.say)
+
+    /** As a screen shows it in [l]. */
+    fun shown(l: Langs): String = text?.render(l) ?: get(l.say)
 }
+
+/** 1.1: [p] as Robot's voice says it in [lang]: English as written, French without its typography (core VoiceForm). */
+fun spoken(p: Phrase, lang: Lang): String = spoken(p, Langs.of(lang))
+
+/** [p] as the voice says it in [l]. */
+fun spoken(p: Phrase, l: Langs): String = if (l.say == Lang.EN) p.render(l) else p.render(l.voice)
 
 /** Who a sentence is spoken for: the panel on the phone, a headset session, or car mode. Its id is the voice log's. */
 enum class SessionKind(override val id: Int, override val title: String) : LogCode {
@@ -49,7 +70,7 @@ enum class SessionKind(override val id: Int, override val title: String) : LogCo
 }
 
 /**
- * Settings › Safety & privacy rows for headset and car (design §1.5), defaults on. They become RobotSettings fields under
+ * Settings › Safety & privacy rows for headset and car, defaults on. They become RobotSettings fields under
  * the next settings schema when this is wired (Settings.kt is not changed on this branch); [toJson] and [fromJson] are
  * the fields as they would sit there, an absent one reading as its default.
  */
@@ -87,8 +108,10 @@ inline fun <reified T : Enum<T>> JSONObject.enumOr(key: String, default: T): T =
  * only answers a press, so it needs no switch first).
  */
 object HandsFreeNotice {
-    const val TEXT = "New: routines, the morning brief, the headset button and car mode. Nothing runs until you turn it on; " +
-        "your headset's voice button opens Robot from now on."
+    val TEXT: String get() = text.en()
+
+    /** 1.1: [TEXT] without a language yet (Home and Settings show it in the menus' language). */
+    val text: Phrase get() = HandsFreeStrings.notice()
 
     /** Shown to someone who had Robot before 0.8 ([hadSettings]: settings.json was there) until they close it. */
     fun shows(hadSettings: Boolean, seen: Boolean): Boolean = hadSettings && !seen

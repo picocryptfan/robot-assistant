@@ -29,13 +29,38 @@ import app.heyrobot.ui.pref.StatusPreference
 import app.heyrobot.ui.pref.TextPreference
 import app.heyrobot.ui.pref.preferenceFooter
 import app.heyrobot.ui.pref.preferenceGroup
+import androidx.compose.ui.res.stringResource
+import app.heyrobot.R
+import app.heyrobot.core.i18n.Arg
+import app.heyrobot.core.i18n.PeopleStrings
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.UiStrings
+import app.heyrobot.ui.theme.LocalLangs
+import app.heyrobot.ui.theme.str
 
 // MAIN PROCESS. Settings › People, notes and calendar (docs/phase-2.md "Main app"; 0.4.x redesign): the texting app and
 // its SMS gateway, the phone region, the email app, the calendar for new events and their length, as radio and edit
 // dialogs, and the ways to People, Robot Notes and the permissions.
 
-/** "1 h", "30 min", "1.5 h". */
-internal fun eventLength(m: Int): String = if (m < 60) "$m min" else if (m % 60 == 0) "${m / 60} h" else "${m / 60}.${m % 60 * 10 / 60} h"
+/** "1 h", "30 min", "1.5 h" (English: the callers not moved to [eventLengthText]). */
+internal fun eventLength(m: Int): String = eventLengthText(m).en()
+
+/** [eventLength] in words without a language yet: « 1,5 h » in French. */
+internal fun eventLengthText(m: Int): Phrase =
+    if (m < 60) PeopleStrings.minutes("n" to m) else PeopleStrings.hours("h" to Arg.Num(m / 60.0, 1))
+
+@Composable
+private fun textAppLabel(v: TextApp): String = when (v) {
+    TextApp.CHEOGRAM -> v.titleText.str()
+    TextApp.SMS -> stringResource(R.string.people_text_sms)
+    TextApp.OFF -> stringResource(R.string.people_text_off)
+}
+
+@Composable
+private fun emailAppLabel(v: EmailApp): String = when (v) {
+    EmailApp.PROTON -> v.titleText.str()
+    EmailApp.ASK -> stringResource(R.string.people_email_ask)
+}
 
 @Composable
 fun PeopleNotesCalendarScreen(s: RobotSettings, snap: Snapshot, calendars: List<CalendarInfo>, update: (RobotSettings) -> Unit, a: AppActions,
@@ -44,65 +69,79 @@ fun PeopleNotesCalendarScreen(s: RobotSettings, snap: Snapshot, calendars: List<
     val ctx = LocalContext.current
     // TelephonyManager calls: once per screen, not on every recomposition.
     val device = remember { Phones.deviceRegion(ctx) }
-    PreferenceScreen("People, notes and calendar", onBack, snackbar = snackbar) {
-        preferenceGroup("Texts", "texts") {
+    // The page's words its list builder and the lists' lambdas can't look up themselves (they aren't composable).
+    val langs = LocalLangs.current
+    val textApps = TextApp.entries.associateWith { textAppLabel(it) }
+    val textDetails = mapOf(
+        TextApp.CHEOGRAM to stringResource(if (f?.cheogramInstalled == true) R.string.people_text_cheogram_detail else R.string.people_not_installed),
+        TextApp.SMS to stringResource(R.string.people_text_sms_detail),
+        TextApp.OFF to stringResource(R.string.people_text_off_detail),
+    )
+    val emailApps = EmailApp.entries.associateWith { emailAppLabel(it) }
+    val emailDetails = mapOf(
+        EmailApp.PROTON to stringResource(if (f?.protonInstalled == true) R.string.people_email_proton_detail else R.string.people_email_proton_missing),
+        EmailApp.ASK to stringResource(R.string.people_email_ask_detail),
+    )
+    val regionInvalid = stringResource(R.string.people_region_invalid)
+    val deviceRegion = device ?: stringResource(R.string.people_region_unknown)
+    val automatic = stringResource(R.string.people_automatic)
+    val calendarId = stringResource(R.string.people_calendar_id, "%s")
+    val nowName = stringResource(R.string.people_now, "%s")
+    val automaticNow = stringResource(R.string.people_automatic_now, "%s")
+    val texts = stringResource(R.string.people_texts)
+    val email = stringResource(R.string.people_email)
+    val calendar = stringResource(R.string.people_calendar)
+    val footer = stringResource(R.string.people_settings_footer)
+    PreferenceScreen(UiStrings.peopleNotesCalendar().str(), onBack, snackbar = snackbar) {
+        preferenceGroup(texts, "texts") {
             val cheogram = f?.cheogramInstalled == true
-            ListPreference("Texting app", s.textAppFor(cheogram), TextApp.entries, { it.title }, { v ->
-                when (v) {
-                    TextApp.CHEOGRAM -> if (cheogram) "Numbers go through the SMS gateway; XMPP addresses directly" else "Not installed"
-                    TextApp.SMS -> "The phone's SMS app, with the text filled in"
-                    TextApp.OFF -> "Robot doesn't write texts"
-                }
-            }, RIcons.Message) { update(s.copy(textApp = it)) }
-            TextPreference("SMS gateway", s.smsGateway, PhoneNumbers.DEFAULT_GATEWAY, "Gateway", "The domain your messaging app texts numbers through (JMP: cheogram.com).",
+            ListPreference(stringResource(R.string.people_texting_app), s.textAppFor(cheogram), TextApp.entries, { textApps.getValue(it) }, { textDetails[it] },
+                RIcons.Message) { update(s.copy(textApp = it)) }
+            TextPreference(stringResource(R.string.people_gateway), s.smsGateway, PhoneNumbers.DEFAULT_GATEWAY, stringResource(R.string.people_gateway_field),
+                stringResource(R.string.people_gateway_help),
                 keyboard = KeyboardOptions(autoCorrectEnabled = false)) { update(s.copy(smsGateway = PhoneNumbers.gateway(it))) }
-            TextPreference("Phone region", s.phoneRegion ?: "", "This phone's own (${device ?: "unknown"})", "Region",
-                "Two letters, for numbers without a country code (US, FR, DE…). Empty: this phone's own (${device ?: "unknown"}).",
+            TextPreference(stringResource(R.string.people_region), s.phoneRegion ?: "", stringResource(R.string.people_region_own, deviceRegion),
+                stringResource(R.string.people_region_field), stringResource(R.string.people_region_help, deviceRegion),
                 keyboard = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, autoCorrectEnabled = false),
-                validate = { if (it.isBlank() || PhoneNumbers.region(it) != null) null else "Two letters, such as US or FR" }) {
+                validate = { if (it.isBlank() || PhoneNumbers.region(it) != null) null else regionInvalid }) {
                 update(s.copy(phoneRegion = PhoneNumbers.region(it)))
             }
         }
-        preferenceGroup("Email", "email") {
+        preferenceGroup(email, "email") {
             val proton = f?.protonInstalled == true
-            ListPreference("Email app", s.emailAppFor(proton), EmailApp.entries, { it.title }, { v ->
-                when (v) {
-                    EmailApp.PROTON -> if (proton) "Opens Proton Mail's composer with the draft" else "Not installed: Robot asks each time"
-                    EmailApp.ASK -> "Android asks which email app to use"
-                }
-            }, RIcons.Email) { update(s.copy(emailApp = it)) }
+            ListPreference(stringResource(R.string.people_email_app), s.emailAppFor(proton), EmailApp.entries, { emailApps.getValue(it) }, { emailDetails[it] },
+                RIcons.Email) { update(s.copy(emailApp = it)) }
         }
-        preferenceGroup("Calendar", "calendar") {
+        preferenceGroup(calendar, "calendar") {
             when {
-                f?.calendarGranted != true -> StatusPreference("Allow the calendar", "Then Robot adds events itself", Mark.TODO,
-                    action = { FilledTonalButton(onClick = a.askCalendar) { Text("Allow") } })
-                calendars.isEmpty() -> PreferenceItem("Calendar for new events", "No calendar here takes new events", RIcons.Event, enabled = false)
+                f?.calendarGranted != true -> StatusPreference(stringResource(R.string.people_allow_calendar), stringResource(R.string.people_allow_calendar_detail),
+                    Mark.TODO, action = { FilledTonalButton(onClick = a.askCalendar) { Text(stringResource(R.string.people_allow)) } })
+                calendars.isEmpty() -> PreferenceItem(stringResource(R.string.people_event_calendar), stringResource(R.string.people_no_calendar), RIcons.Event,
+                    enabled = false)
                 else -> {
                     val auto = CalendarPick.choose(calendars, CalendarPick.AUTO)
                     val chosen = CalendarPick.choose(calendars, s.eventCalendar)
                     val value = if (s.eventCalendar == CalendarPick.AUTO || chosen == null) CalendarPick.AUTO else s.eventCalendar
                     val byId = calendars.associateBy { it.id }
-                    ListPreference("Calendar for new events", value, listOf(CalendarPick.AUTO) + calendars.map { it.id },
-                        { id -> if (id == CalendarPick.AUTO) "Automatic" else byId[id]?.name ?: "Calendar $id" },
-                        { id -> if (id == CalendarPick.AUTO) auto?.let { "Now: ${it.name}" } else byId[id]?.account?.takeIf { a -> a.isNotBlank() && a != byId[id]?.name } },
+                    ListPreference(stringResource(R.string.people_event_calendar), value, listOf(CalendarPick.AUTO) + calendars.map { it.id },
+                        { id -> if (id == CalendarPick.AUTO) automatic else byId[id]?.name ?: calendarId.format(id) },
+                        { id -> if (id == CalendarPick.AUTO) auto?.let { nowName.format(it.name) } else byId[id]?.account?.takeIf { a -> a.isNotBlank() && a != byId[id]?.name } },
                         RIcons.Event,
-                        summary = if (value == CalendarPick.AUTO) "Automatic" + (auto?.let { " · now ${it.name}" } ?: "") else null) {
+                        summary = if (value == CalendarPick.AUTO) auto?.let { automaticNow.format(it.name) } ?: automatic else null) {
                         update(s.copy(eventCalendar = it))
                     }
                 }
             }
-            ListPreference("Length of a new event", s.eventMinutes, RobotSettings.EVENT_MINUTES.filter { it >= 30 }, ::eventLength, icon = RIcons.Timer,
-                summary = eventLength(s.eventMinutes)) { update(s.copy(eventMinutes = it)) }
+            ListPreference(stringResource(R.string.people_event_length), s.eventMinutes, RobotSettings.EVENT_MINUTES.filter { it >= 30 },
+                { eventLengthText(it).render(langs) }, icon = RIcons.Timer,
+                summary = eventLengthText(s.eventMinutes).str()) { update(s.copy(eventMinutes = it)) }
         }
         preferenceGroup(null, "links") {
-            PreferenceItem("People", "Who Robot knows besides your contacts, and what you call them", RIcons.Person, onClick = { a.openPage(Page.People) })
-            PreferenceItem("Robot Notes", "Your notes, to read, edit, search and share", RIcons.Note, onClick = { a.openTab(Tab.NOTES) })
-            PreferenceItem("Contacts and calendar access", "Allow or check what Robot may read", RIcons.Lock, onClick = { a.openPage(Page.Setup(people = true)) })
+            PreferenceItem(UiStrings.people().str(), stringResource(R.string.people_people_detail), RIcons.Person, onClick = { a.openPage(Page.People) })
+            PreferenceItem(stringResource(R.string.notes_name), stringResource(R.string.people_notes_detail), RIcons.Note, onClick = { a.openTab(Tab.NOTES) })
+            PreferenceItem(stringResource(R.string.people_access), stringResource(R.string.people_access_detail), RIcons.Lock,
+                onClick = { a.openPage(Page.Setup(people = true)) })
         }
-        preferenceFooter(
-            "Robot never sends anything itself: texts and emails open in the app as drafts, and you press Send there. Until the " +
-                "calendar is allowed, or when no calendar on this phone takes new events, your calendar app opens with the event " +
-                "filled in. The length is for a new event when you don't say when it ends.",
-        )
+        preferenceFooter(footer)
     }
 }

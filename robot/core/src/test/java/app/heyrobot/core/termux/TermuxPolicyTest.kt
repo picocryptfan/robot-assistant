@@ -33,7 +33,7 @@ class TermuxPolicyTest {
                 assertEquals(listOf(TermuxReason.ASK_FIRST), d.reasons)
                 assertNull(d.tap)
                 assertEquals("Run this in Termux? Say yes or no.", d.prompt())
-                assertEquals("Lancer ceci dans Termux ? Dites oui ou non.", d.prompt(fr = true))
+                assertEquals("Lancer ceci dans Termux\u202F? Dis oui ou non.", d.prompt(fr = true))
             }
         }
     }
@@ -52,7 +52,7 @@ class TermuxPolicyTest {
             }
         }
         assertEquals("This command runs with ADB's rights through Shizuku: check the card, then tap Run.", cmd("rish -c id").say())
-        assertEquals("Cette commande s'exécute avec les droits d'ADB via Shizuku : vérifiez la carte, puis touchez Exécuter.", cmd("rish -c id").say(fr = true))
+        assertEquals("Cette commande s’exécute avec les droits d’ADB via Shizuku\u00A0: vérifie la carte, puis touche Lancer.", cmd("rish -c id").say(fr = true))
     }
 
     @Test fun readOnlyCommandsRunWithoutACardOnlyWithTheSwitch() {
@@ -74,7 +74,7 @@ class TermuxPolicyTest {
         assertEquals(TAP_ONLY, d.verdict)
         assertEquals(TermuxTap.FROM_CONTENT, d.tap)
         assertEquals("Robot read this from content it didn't write: check the card, then tap Run.", d.say())
-        assertEquals("Robot a lu ceci dans un contenu qu'il n'a pas écrit : vérifiez la carte, puis touchez Exécuter.", d.say(fr = true))
+        assertEquals("Robot a lu ceci dans un contenu qu’il n’a pas écrit\u00A0: vérifie la carte, puis touche Lancer.", d.say(fr = true))
     }
 
     @Test fun warningsNeedATap() {
@@ -83,7 +83,7 @@ class TermuxPolicyTest {
         assertEquals(TermuxTap.COMMAND, d.tap)
         assertEquals("This command deletes files or empties them: check the card, then tap Run.", d.say())
         assertEquals("This command deletes files or empties them: check the card, then tap Run. Or say no.", d.prompt())
-        assertEquals("Cette commande supprime ou vide des fichiers : vérifiez la carte, puis touchez Exécuter.", d.say(fr = true))
+        assertEquals("Cette commande supprime ou vide des fichiers\u00A0: vérifie la carte, puis touche Lancer.", d.say(fr = true))
         assertEquals("This command uses the internet: check the card, then tap Run.", cmd("ssh -o BatchMode=yes home uptime").say())
         assertEquals("This command sends a text or places a call right away: check the card, then tap Run.", cmd("termux-sms-send -n 5551234 hi").say())
         // The first warning, in the card's order, is the one said.

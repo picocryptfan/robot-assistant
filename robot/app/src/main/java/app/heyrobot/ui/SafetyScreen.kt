@@ -10,6 +10,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import app.heyrobot.R
+import app.heyrobot.core.i18n.SettingsStrings
+import app.heyrobot.core.i18n.UiStrings
+import app.heyrobot.ui.theme.LocalLangs
+import app.heyrobot.ui.theme.str
 import androidx.compose.ui.unit.dp
 import app.heyrobot.core.LockScreen
 import app.heyrobot.core.RobotSettings
@@ -35,93 +41,83 @@ import app.heyrobot.ui.pref.preferenceGroup
 @Composable
 fun SafetyScreen(s: RobotSettings, update: (RobotSettings) -> Unit, a: AppActions, snackbar: SnackbarHostState, onBack: () -> Unit) {
     var confirmRemove by rememberSaveable { mutableStateOf(false) }
-    PreferenceScreen("Safety & privacy", onBack, snackbar = snackbar) {
+    val langs = LocalLangs.current
+    val cardsTitle = stringResource(R.string.safety_cards)
+    val lockedTitle = stringResource(R.string.safety_locked)
+    val helpersTitle = UiStrings.helpers().str()
+    val answersTitle = stringResource(R.string.safety_answers)
+    val historyTitle = UiStrings.history().str()
+    val footer = stringResource(R.string.safety_footer)
+    val cardDetails = SafetyCards.entries.associateWith { (if (it == SafetyCards.UNASKED) SettingsStrings.theDefault("detail" to it.detailText) else it.detailText).str() }
+    PreferenceScreen(UiStrings.safety().str(), onBack, snackbar = snackbar) {
         item(key = "intro") {
-            IntroPreference("How careful Robot is. Each action's own level (Just do it, Ask first, Off) is in Settings › Actions; " +
-                "these rules decide when “Just do it” still shows a card first.")
+            IntroPreference(stringResource(R.string.safety_intro))
         }
-        preferenceGroup("Cards", "cards") {
-            ListPreference("When Robot asks first", s.safetyCards, SafetyCards.entries, { it.title },
-                { (if (it == SafetyCards.UNASKED) "The default. " else "") + it.detail }) { update(s.copy(safetyCards = it)) }
-            SwitchPreference("Card when a helper asks Robot to do something", "A helper's input may come from web pages",
+        preferenceGroup(cardsTitle, "cards") {
+            ListPreference(stringResource(R.string.safety_when_asks), s.safetyCards, SafetyCards.entries, { it.titleText.render(langs) },
+                { cardDetails.getValue(it) }) { update(s.copy(safetyCards = it)) }
+            SwitchPreference(stringResource(R.string.safety_helper_cards), stringResource(R.string.safety_helper_cards_detail),
                 s.helperActionCards) { update(s.copy(helperActionCards = it)) }
-            SwitchPreference("Card when who-to isn't certain", "Several matches, a near match, or a number the model wrote",
+            SwitchPreference(stringResource(R.string.safety_who_cards), stringResource(R.string.safety_who_cards_detail),
                 s.whoCards) { update(s.copy(whoCards = it)) }
-            SwitchPreference("Card for names learned from notifications", "Whoever sent the message chose that name",
+            SwitchPreference(stringResource(R.string.safety_learned_cards), stringResource(R.string.safety_learned_cards_detail),
                 s.learnedCards) { update(s.copy(learnedCards = it)) }
-            SwitchPreference("Answer cards by voice", "Say yes or no while a card waits", s.voiceCards) { update(s.copy(voiceCards = it)) }
-            SwitchPreference("Card before deleting files", "Large photos and videos, and Robot's cache",
+            SwitchPreference(stringResource(R.string.safety_voice_cards), stringResource(R.string.safety_voice_cards_detail), s.voiceCards) {
+                update(s.copy(voiceCards = it))
+            }
+            SwitchPreference(stringResource(R.string.safety_delete_cards), stringResource(R.string.safety_delete_cards_detail),
                 s.deleteCards) { update(s.copy(deleteCards = it)) }
         }
-        preferenceGroup("Works on the lock screen", "locked") {
+        preferenceGroup(lockedTitle, "locked") {
+            val byDefault = stringResource(R.string.safety_locked_default)
             for (t in LockScreen.CHOICES) {
                 val on = t in s.lockedTools
-                SwitchPreference(t.title, if (t in LockScreen.DEFAULT) "On by default" else null, on, icon = toolIcon(t)) { now ->
+                SwitchPreference(t.titleText.str(), if (t in LockScreen.DEFAULT) byDefault else null, on, icon = toolIcon(t)) { now ->
                     update(s.copy(lockedTools = if (now) s.lockedTools + t else s.lockedTools - t))
                 }
             }
             if (s.lockedTools != LockScreen.DEFAULT) {
-                PreferenceItem("Back to timers and alarms", "Only the default actions work locked", RIcons.Refresh,
+                PreferenceItem(stringResource(R.string.safety_locked_reset), stringResource(R.string.safety_locked_reset_detail), RIcons.Refresh,
                     onClick = { update(s.copy(lockedTools = LockScreen.DEFAULT)) })
             }
         }
-        preferenceGroup("Helpers", "helpers") {
-            SwitchPreference("Send personal content to helpers automatically", if (s.personalToHelpers) "Screen text, photos and what Robot read may go"
-                else "Only your question goes by itself", s.personalToHelpers) { update(s.copy(personalToHelpers = it)) }
-            SwitchPreference("Voice yes can send personal content", if (s.voiceYesPersonal) "A spoken or typed yes can send it" else "Only a tap sends it",
+        preferenceGroup(helpersTitle, "helpers") {
+            SwitchPreference(UiStrings.sendPersonalContent().str(),
+                stringResource(if (s.personalToHelpers) R.string.safety_personal_on else R.string.safety_personal_off), s.personalToHelpers) {
+                update(s.copy(personalToHelpers = it))
+            }
+            SwitchPreference(stringResource(R.string.safety_voice_yes),
+                stringResource(if (s.voiceYesPersonal) R.string.safety_voice_yes_on else R.string.safety_voice_yes_off),
                 s.voiceYesPersonal) { update(s.copy(voiceYesPersonal = it)) }
         }
-        preferenceGroup("Answers", "answers") {
-            SwitchPreference("Direct answers", "No refusals or added warnings", s.directAnswers) { update(s.copy(directAnswers = it)) }
+        preferenceGroup(answersTitle, "answers") {
+            SwitchPreference(stringResource(R.string.safety_direct), stringResource(R.string.safety_direct_detail), s.directAnswers) {
+                update(s.copy(directAnswers = it))
+            }
         }
-        preferenceGroup("History", "history") {
-            SwitchPreference("Keep screenshots and photos in history",
-                if (!s.saveHistory) "Saving conversations is off" else if (s.keepMedia) "A thumbnail and the screen's text" else "Only that there was one",
+        preferenceGroup(historyTitle, "history") {
+            SwitchPreference(stringResource(R.string.safety_keep_media),
+                stringResource(if (!s.saveHistory) R.string.safety_keep_media_no_history else if (s.keepMedia) R.string.safety_keep_media_on
+                    else R.string.safety_keep_media_off),
                 s.keepMedia, enabled = s.saveHistory) { update(s.copy(keepMedia = it)) }
-            PreferenceItem("Remove saved screenshots and photos", "From every saved conversation", RIcons.Delete, onClick = { confirmRemove = true })
+            PreferenceItem(stringResource(R.string.safety_remove_media), stringResource(R.string.safety_remove_media_detail), RIcons.Delete,
+                onClick = { confirmRemove = true })
         }
-        preferenceFooter(SAFETY_FOOTER)
+        preferenceFooter(footer)
     }
     if (confirmRemove) {
-        ConfirmDialog("Remove saved screenshots and photos?", "The conversations stay; their thumbnails and screen text are removed. This can't be undone.",
-            "Remove", onDismiss = { confirmRemove = false }) { confirmRemove = false; a.removeSavedMedia() }
+        ConfirmDialog(stringResource(R.string.safety_remove_title), stringResource(R.string.safety_remove_text),
+            stringResource(R.string.safety_remove_confirm), onDismiss = { confirmRemove = false }) { confirmRemove = false; a.removeSavedMedia() }
     }
 }
 
-/** What each rule on the page does, at length (the rows say it in a line). */
-internal val SAFETY_FOOTER =
-    "When Robot asks first: when something Robot read (a screen, a photo, a note, an event, a contact, the weather, a helper's " +
-        "answer) makes an action ask first.\n\n" +
-        "Who-to isn't certain: several people or numbers fit, a name only nearly matches, the model wrote a number or address " +
-        "itself, or an app name matched loosely. Off: Robot takes the best match.\n\n" +
-        "Answer cards by voice: while a card waits, say “yes”, “do it”, “send it” or “oui”, or “no”, “cancel” or “annule” (or " +
-        "type it). Robot listens when replies are spoken or you asked by voice; the mic answers the card too. A card for a name " +
-        "learned from a notification, or when Robot isn't sure who or which, still needs a tap (a no works). Off: a tap, or a typed yes or no.\n\n" +
-        "Card before deleting files: a large photo or video (Android still asks too), or Robot's cache. Off: Robot goes straight " +
-        "to Android's confirmation for the largest one.\n\n" +
-        "Works on the lock screen: a locked phone can't tell who is asking. Questions always work; the actions turned on above too. " +
-        "Everything else asks you to unlock.\n\n" +
-        "Send personal content to helpers automatically, for every helper: when Robot checks with a helper by itself, it may " +
-        "include the conversation's screen text, photos and what it read (your calendar, notes, contacts, location), and what " +
-        "Robot reads for a helper goes without “Share with …”. Off: only your question goes, and anything more needs a tap. " +
-        "Bringing a helper into the conversation and “ask a helper about my screen” always ask first. Voice yes can send personal content, for every " +
-        "helper: off, a spoken or typed “yes” never sends your screen, a photo or what Robot read to a helper; only a tap does. " +
-        "A helper you trust with personal content (on its page in Settings › Helpers) gets what Robot read without asking, but " +
-        "your screen and photos still need a tap. These two switches go further, for every helper.\n\n" +
-        "Direct answers: Robot helps with whatever you ask without refusing or adding warnings; it still says when something " +
-        "isn't possible.\n\n" +
-        "Keep screenshots and photos in history: off, Robot saves only that a question had a screen or a photo. On, a small " +
-        "thumbnail and the screen's text are saved with the conversation, in Robot's private storage on this phone, for you to " +
-        "see in History (a screen conversation is still saved only after Keep). They are never sent to a helper or read to the " +
-        "model again. Saving conversations itself is in Settings › History."
-
 /**
- * The one-time line after updating to 0.4.0 (core RobotSettings.safetyNotice, SafetyNotice.TEXT), on Home and Settings:
+ * The one-time line after updating to 0.4.0 (core RobotSettings.safetyNotice, SafetyNotice.text), on Home and Settings:
  * Open shows Safety & privacy, Dismiss closes it; either way it never shows again. Nothing is logged. A neutral notice row
  * with the shield symbol (0.4.x redesign; before, a tinted banner).
  */
 @Composable
 fun SafetyNoticeLine(onOpen: () -> Unit, onDismiss: () -> Unit) {
-    NoticeRow(SafetyNotice.TEXT, onDismiss = onDismiss, icon = RIcons.Shield, action = "Open", onAction = onOpen,
+    NoticeRow(SafetyNotice.text.str(), onDismiss = onDismiss, icon = RIcons.Shield, action = UiStrings.open().str(), onAction = onOpen,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
 }

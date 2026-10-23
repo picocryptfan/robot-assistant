@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.assistant
 
+import app.heyrobot.assistant.skills.PanelSkills
+import app.heyrobot.assistant.backup.RestoreSession
 import app.heyrobot.assistant.handsfree.HandsFreeMessages
 import app.heyrobot.assistant.handsfree.HandsFreeHub
 import android.Manifest
@@ -17,6 +19,9 @@ import android.os.HandlerThread
 import android.os.Looper
 import android.os.SystemClock
 import app.heyrobot.core.BargeIn
+import app.heyrobot.core.LockScreen
+import app.heyrobot.core.ToolName
+import app.heyrobot.lock.PhoneLockNow
 import app.heyrobot.core.BargeRun
 import app.heyrobot.core.EchoVoice
 import app.heyrobot.core.KeywordBuffer
@@ -48,6 +53,7 @@ import app.heyrobot.sys.Cmd
 import app.heyrobot.sys.KwsAssets
 import app.heyrobot.sys.RecognizerKeeper
 import app.heyrobot.sys.Paths
+import app.heyrobot.sys.RobotFiles
 import app.heyrobot.sys.SettingsStore
 import app.heyrobot.voice.CapturePolicy
 import app.heyrobot.voice.KeywordInputs
@@ -59,6 +65,10 @@ import app.heyrobot.voice.VoiceEngines
 import app.heyrobot.voice.VoiceOutput
 import app.heyrobot.voice.WakeWord
 import org.json.JSONObject
+import app.heyrobot.core.i18n.PanelStrings
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.PhraseWire
+import app.heyrobot.sys.AppLanguage
 
 // VOICE PROCESS. The controller shared by the assistant service, the session and the panel: settings,
 // the wake-word listener (mode A: in the assistant's process, as phase 0 proved), the speech engines
@@ -82,14 +92,37 @@ object VoiceHub {
     val main = Handler(Looper.getMainLooper())
     private lateinit var worker: Handler
 
-    @Volatile var settings = RobotSettings(); private set
+    /** settings.json as loaded; [settings] is what the turns use. */
+    @Volatile private var loaded = RobotSettings()
+    /**
+     * 1.1, Phone lock: during a lock for someone else, at most the lock screen's default actions (timers and
+     * alarms), whatever Safety & privacy says, since that row needs no code; plus, during any lock, the extras the locks
+     * leave open. Only the main process saves settings.
+     */
+    val settings: RobotSettings get() = loaded.let { s ->
+        if (!::app.isInitialized || !PhoneLockNow.on(app)) return@let s
+        val base = if (PhoneLockNow.someoneElse(app)) s.lockedTools intersect LockScreen.DEFAULT else s.lockedTools
+        // Phase B, the extras every active lock has on (§6): calls (to those People only, ToolExecutor), Maps, and opening
+        // the apps the locks leave open (only those, ToolExecutor).
+        // Never on the real lock screen, which keeps its own rules (§6).
+        val extras = if (Assistant.keyguard(app)) emptySet() else buildSet {
+            if (PhoneLockNow.people(app).isNotEmpty()) add(ToolName.CALL)
+            if (PhoneLockNow.maps(app)) { add(ToolName.MAPS_SEARCH); add(ToolName.MAPS_NAVIGATE) }
+            if (PhoneLockNow.apps(app).isNotEmpty()) add(ToolName.OPEN_APP)
+        }
+        val tools = base + extras
+        // Someone else's lock: conversation mode doesn't start from it either (that row needs no code). A helper allowed on
+        // the lock screen isn't asked during it (PanelController), and Termux is closed during any lock (TermuxTool).
+        val conv = s.convStartLocked && !PhoneLockNow.someoneElse(app)
+        if (tools == s.lockedTools && conv == s.convStartLocked) s else s.copy(lockedTools = tools, convStartLocked = conv)
+    }
 
     /** Settings › Voice › "Interrupt sensitivity" as the listener uses it now (the barge-in test's result says it). */
     val interruptInUse: InterruptSensitivity get() = inputs.interrupt
     @Volatile var listener: Listener? = null; private set
     lateinit var tts: TextToSpeech; private set
     lateinit var stt: SpeechToText; private set
-    @Volatile private var wakeDisabledReason: String? = null
+    @Volatile private var wakeDisabledReason: Phrase? = null
     private var lastWakeE = 0L
     /** Not VoiceHub's monitor: stopListening() holds that while it joins the audio thread that calls onWake. */
     private val wakeLock = Any()
@@ -144,9 +177,13 @@ object VoiceHub {
         app = ctx.applicationContext
         VoiceLog.init(Paths.voiceLog(app))
         worker = Handler(HandlerThread("robot-voice").apply { start() }.looper)
+        // 1.4: Robot Files' filing in the background (assistant/FilingWork.kt): after each unlock, and now.
+        FilingWork.start(app)
+        // 1.1: a restore cut short in this process is finished or undone.
+        Thread({ RestoreSession.recover(app) }, "robot-restore-recover").apply { isDaemon = true; start() }
         // Whether each helper's key is saved and today's spend, read off the main thread before the panel needs them.
         Thread({ HelperLink.refresh(app, settings); HelperSpendStore.current(app) }, "robot-helper-init").apply { isDaemon = true; start() }
-        settings = SettingsStore.load(app)
+        loaded = SettingsStore.load(app)
         VoiceEngines.init(app, Paths.dir(app))
         tts = VoiceEngines.textToSpeech(app).also {
             it.configure(settings.speechRate, settings.voice)
@@ -155,7 +192,7 @@ object VoiceHub {
             it.setListener(::onSpeakingChanged)
         }
         // With no listener of its own running, a question during a conversation takes the session's capture.
-        stt = VoiceEngines.speechToText(app) { listener ?: ConversationSession.frames() }.also { it.configure(settings.livePartials) }
+        stt = VoiceEngines.speechToText(app) { listener ?: ConversationSession.frames() }.also { it.configure(settings.livePartials, settings.listenPause.ms) }
         worker.post { buildWakeLines() }
         // 0.5.0: a conversation this process died under is closed, and Resume offered (never resumed by itself).
         ConversationSession.recoverOnce(app)
@@ -291,7 +328,7 @@ object VoiceHub {
         active = false
         if (::worker.isInitialized) worker.removeCallbacks(retry)
         stopListening(ListenWhy.SHUTDOWN)
-        if (::app.isInitialized) writeStatus(false, "Robot isn't the active assistant right now.")
+        if (::app.isInitialized) writeStatus(false, PanelStrings.notAssistant())
         unregisterAll()
         BrainKeeper.release("shutdown")
         RoutineHub.stop()
@@ -328,11 +365,11 @@ object VoiceHub {
             }
             stopListening(if (why == ListenWhy.SHUTDOWN) why else reason)
             writeStatus(false, when (reason) {
-                ListenWhy.NOT_ASSISTANT -> "Robot isn't the active assistant right now."
-                ListenWhy.OFF -> "The wake word is off in settings."
+                ListenWhy.NOT_ASSISTANT -> PanelStrings.notAssistant()
+                ListenWhy.OFF -> PanelStrings.wakeWordOff()
                 ListenWhy.CRASHES -> wakeDisabledReason
-                ListenWhy.NO_PERMISSION -> "Robot needs the microphone permission."
-                else -> "Listening only while charging."
+                ListenWhy.NO_PERMISSION -> PanelStrings.needsMic()
+                else -> PanelStrings.onlyCharging()
             })
             return
         }
@@ -347,7 +384,7 @@ object VoiceHub {
         // A conversation takes its audio from this listener now.
         if (ok) ConversationSession.audioChanged()
         updateCapture()
-        writeStatus(ok, if (ok) null else "The microphone couldn't be opened (another app may be using it).")
+        writeStatus(ok, if (ok) null else PanelStrings.micBusy())
         RLog.i("listen_apply", "ok" to ok)
     }
 
@@ -390,9 +427,17 @@ object VoiceHub {
         RLog.i("wake_phrases", "enabled" to phrases.count { it.enabled }, "lines" to lines.lines().count { it.isNotBlank() })
     }
 
-    private fun writeStatus(listening: Boolean, note: String?) {
+    /**
+     * 1.1: the wake word's state in Robot's screens' language (the menus'), as Settings › Voice shows it; written again
+     * whenever the listener changes.
+     */
+    private fun Phrase.shown(): String = render(AppLanguage.langs(app))
+
+    /** 1.1 (WP7): the note goes to the main app without a language too (PhraseWire), so Settings says it in the menus' of the day. */
+    private fun writeStatus(listening: Boolean, note: Phrase?) {
         try {
-            writeAtomic(Paths.voiceStatus(app), JSONObject().put("listening", listening).put("note", note ?: "").put("t", System.currentTimeMillis()).toString())
+            writeAtomic(Paths.voiceStatus(app), JSONObject().put("listening", listening).put("note", note?.shown() ?: "").put("t", System.currentTimeMillis())
+                .apply { note?.let { put("notePhrase", PhraseWire.toJson(it)) } }.toString())
         } catch (_: Exception) {}
     }
 
@@ -412,7 +457,7 @@ object VoiceHub {
                 .count { it.processName.endsWith(":voice") && it.reason == ApplicationExitInfo.REASON_CRASH_NATIVE && it.timestamp >= since }
         } catch (_: Exception) { 0 }
         if (crashes >= 3) {
-            wakeDisabledReason = "The wake word stopped after repeated crashes; it comes back after a restart."
+            wakeDisabledReason = PanelStrings.wakeCrashed()
             RLog.i("wake_disabled", "crashes" to crashes)
         }
     }
@@ -479,11 +524,11 @@ object VoiceHub {
         when (i.getStringExtra("op")) {
             Cmd.SETTINGS -> {
                 val old = settings
-                settings = SettingsStore.load(app)
+                loaded = SettingsStore.load(app)
                 tts.configure(settings.speechRate, settings.voice)
                 tts.setPlayback(settings.playback)
                 tts.setWakeWords(WakePhrases.echoWords(settings.wakePhrases))
-                stt.configure(settings.livePartials)
+                stt.configure(settings.livePartials, settings.listenPause.ms)
                 // New wake phrases (or interrupt sensitivity) go to the running listener: no restart.
                 if (old.wakePhrases != settings.wakePhrases || old.interrupt != settings.interrupt) worker.post { buildWakeLines() }
                 // "Hey robot works during a conversation" changed while one runs.
@@ -510,9 +555,12 @@ object VoiceHub {
             Cmd.TRANSCRIPTS_DELETED -> ConversationSession.transcriptsDeleted(app, i.getStringExtra(Cmd.EXTRA_ID))
             Cmd.VOICEPRINT_DELETED -> ConversationSession.voiceprintDeleted()
             Cmd.MEMORY_CHANGED -> PanelController.memoryChanged()
+            Cmd.FILES -> { RobotFiles.changed(app); FilingWork.kick(); PanelController.filesChanged() }
+            Cmd.FILES_UNDO -> FilingWork.act(app, Cmd.FILES_UNDO, i.getStringExtra(Cmd.EXTRA_KEY))
+            Cmd.FILES_FILE -> FilingWork.act(app, Cmd.FILES_FILE, i.getStringExtra(Cmd.EXTRA_KEY))
             Cmd.SPEAK_TEST -> {
                 stopVoice(TtsStop.TEST)
-                tts.speak("Hi, I'm Robot. This is how I sound.")
+                tts.speak(PanelStrings.voiceSample().render(AppLanguage.langs(app).voice))
             }
             Cmd.VOICE_MODELS -> VoiceEngines.modelsChanged()
             Cmd.VOICE_RESET -> VoiceEngines.reset()
@@ -521,6 +569,8 @@ object VoiceHub {
             Cmd.WAKE_TEST -> wakeTestUntil = if (i.getBooleanExtra(Cmd.EXTRA_ON, false)) SystemClock.elapsedRealtime() + WAKE_TEST_MS else 0L
             Cmd.ROUTINES -> RoutineHub.reload()
             Cmd.HANDSFREE -> HandsFreeHub.reload()
+            // 1.1: Settings › Skills or a restore changed skills.json.
+            Cmd.SKILLS -> PanelSkills.reload()
             // 0.8: a new message with "Announce new messages" on (its key and Do Not Disturb's answer only).
             Cmd.MESSAGE_NEW -> i.getStringExtra(Cmd.EXTRA_KEY)?.let { HandsFreeMessages.arrived(it, i.getBooleanExtra(Cmd.EXTRA_DND, false)) }
             // 0.9: Settings › Termux's Test, ~/robot and your scripts (fixed commands; the result receiver is in this process).

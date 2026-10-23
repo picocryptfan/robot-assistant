@@ -36,6 +36,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import app.heyrobot.title
 
 /** Settings › People, notes and calendar: radio dialogs for the apps, the calendar and the length, edit dialogs for the gateway and region. */
 @RunWith(RobolectricTestRunner::class)

@@ -14,6 +14,7 @@ import app.heyrobot.core.RawToolCall
 import app.heyrobot.core.ToolName
 import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
+import app.heyrobot.core.i18n.ToolStrings
 import app.heyrobot.core.web.BrowserGate
 import app.heyrobot.core.web.QueryContext
 import app.heyrobot.core.web.WebConsent
@@ -40,11 +41,12 @@ object BrowserSearchTool {
         val s = WebStore.load(ctx)
         val engine = a.engine ?: s.browserEngine
         val opened = try { launch(intent(engine.url(a.query))) } catch (_: Exception) { false }
-        if (!opened) return Executed(ActionStatus.NO_APP, ctx.getString(R.string.browser_no_browser))
+        if (!opened) return Executed(ActionStatus.NO_APP, ToolStrings.noBrowser())
         val line = WebLogLine.browser(engine, a.own, fallback = !WebConsent.on(s, WebAnswers.load(ctx)))
         VoiceLog.add(VoiceEvent.BROWSER_SEARCH, line.a, line.b, line.c)
         RLog.i("browser_search", "engine" to engine.code, "by" to line.b, "fallback" to line.c)
-        return Executed(ActionStatus.DONE, ctx.getString(R.string.browser_opened, engine.title), launchedApp = true)
+        // The model reads the English; the card says it in the reply language (1.1).
+        return Executed(ActionStatus.DONE, ToolStrings.browserOpened("engine" to engine.title), launchedApp = true)
     }
 
     /**

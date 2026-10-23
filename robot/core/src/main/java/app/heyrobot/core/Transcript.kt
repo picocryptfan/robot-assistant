@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.Phrase
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -35,7 +36,7 @@ object TranscriptFiles {
      * line unfinished, a line break goes first, so the torn line stays alone (and is skipped) and the new record is whole.
      */
     fun append(log: File, record: String) {
-        require('\n' !in record) { "one line per record" }
+        require('\n' !in record) { "one line per record" } // l10n: not text (a programming error's message)
         log.parentFile?.mkdirs()
         val torn = log.isFile && log.length() > 0 && RandomAccessFile(log, "r").use { it.seek(it.length() - 1); it.read() != '\n'.code }
         FileOutputStream(log, true).use { out ->
@@ -153,6 +154,11 @@ data class Transcript(
     val records: Int = 0,
     val skipped: Int = 0,
     val torn: Int = 0,
+    /**
+     * Names you gave that no speaker has now, by the speaker they went with: a speaker's earlier name, and one a merge
+     * dropped (under the speaker it merged into). "Replace names" replaces them too.
+     */
+    val formerNames: Map<String, List<String>> = emptyMap(),
 ) {
     /** The speakers in the order they first spoke. */
     val speakers: List<String> get() = lines.map { it.speaker }.distinct()
@@ -167,8 +173,12 @@ data class Transcript(
 
     fun line(i: Int): TranscriptLine? = lines.firstOrNull { it.i == i }
 
-    /** A speaker as shown and exported: the name you gave, else "You" for you, else the label (S1, S2…, "?"). */
-    fun nameOf(speaker: String): String = names[speaker] ?: if (speaker == me || speaker == SpeakerClusterer.ME) SpeakerLabels.YOU else speaker
+    /** A speaker as shown and exported: the name you gave, else "You" for you (« Moi »), else the label (S1, S2…, "?"). */
+    fun nameText(speaker: String): Phrase = names[speaker]?.let { Phrase.plain(it) }
+        ?: if (speaker == me || speaker == SpeakerClusterer.ME) SpeakerLabels.you else Phrase.plain(speaker)
+
+    /** [nameText] in English. */
+    fun nameOf(speaker: String): String = nameText(speaker).en()
 
     /** One voice only (speaker labels off, or one person heard) and no names: the screens show "Speaker". */
     val oneVoice: Boolean get() = speakers.size <= 1 && names.isEmpty() && me == null && SpeakerClusterer.ME !in speakers
@@ -180,6 +190,7 @@ class TranscriptFold(start: Transcript = Transcript()) {
     private val gaps = ArrayList(start.gaps)
     private val names = LinkedHashMap(start.names)
     private val merges = LinkedHashMap(start.merges)
+    private val former = LinkedHashMap<String, MutableList<String>>().apply { start.formerNames.forEach { (k, v) -> put(k, v.toMutableList()) } }
     private var me = start.me
     private var records = start.records
     private var skipped = start.skipped
@@ -196,13 +207,18 @@ class TranscriptFold(start: Transcript = Transcript()) {
             is TranscriptEvent.Edit -> change(e.i) { it.copy(text = e.text, edited = true) }
             is TranscriptEvent.Speaker -> change(e.i) { it.copy(speaker = resolve(e.speaker)) }
             is TranscriptEvent.Lang -> change(e.i) { it.copy(lang = e.lang, prior = false, translations = emptyMap()) }
-            is TranscriptEvent.Rename -> if (e.name.isBlank()) names.remove(e.speaker) else names[e.speaker] = e.name.trim()
+            is TranscriptEvent.Rename -> {
+                val old = names[e.speaker]
+                if (e.name.isBlank()) names.remove(e.speaker) else names[e.speaker] = e.name.trim()
+                if (old != null && old != names[e.speaker]) formerName(e.speaker, old)
+            }
             is TranscriptEvent.Merge -> if (e.from != e.to && resolve(e.to) != e.from) {
                 val to = resolve(e.to)
                 merges[e.from] = to
                 for ((k, l) in lines) if (l.speaker == e.from) lines[k] = l.copy(speaker = to)
                 if (me == e.from) me = to
                 if (e.from in names && to !in names) names[to] = names.getValue(e.from)
+                else if (e.from in names && names[to] != names[e.from]) formerName(to, names.getValue(e.from))
                 names.remove(e.from)
             }
             is TranscriptEvent.Me -> me = resolve(e.speaker)
@@ -211,6 +227,11 @@ class TranscriptFold(start: Transcript = Transcript()) {
             is TranscriptEvent.Gap -> gaps += TranscriptGap(e.t0, e.t1, e.why)
         }
         return this
+    }
+
+    private fun formerName(speaker: String, name: String) {
+        val l = former.getOrPut(speaker) { ArrayList() }
+        if (name !in l) l += name
     }
 
     /** A cut-off last line: counted, not folded. */
@@ -257,6 +278,7 @@ class TranscriptFold(start: Transcript = Transcript()) {
         records = records,
         skipped = skipped,
         torn = torn,
+        formerNames = former.mapValues { it.value.toList() },
     )
 }
 
@@ -351,11 +373,14 @@ object TranscriptCodec {
         put("names", JSONObject(t.names))
         put("merges", JSONObject(t.merges))
         t.me?.let { put("me", it) }
+        put("former", JSONObject().apply { t.formerNames.forEach { (k, v) -> put(k, JSONArray(v)) } })
     }.toString()
 
     fun fromSnapshot(text: String?): Transcript? = try {
         val o = JSONObject(text ?: return null)
         if (o.optInt("v", 0) != VERSION) return null
+        // A snapshot from before earlier names were kept: the whole log is folded instead, so they're found.
+        val fs = o.optJSONObject("former") ?: return null
         val ls = o.getJSONArray("lines")
         val gs = o.optJSONArray("gaps") ?: JSONArray()
         val ns = o.optJSONObject("names") ?: JSONObject()
@@ -374,6 +399,7 @@ object TranscriptCodec {
             me = o.optString("me").takeIf { o.has("me") && it.isNotEmpty() },
             records = o.getInt("records"),
             skipped = o.optInt("skipped"),
+            formerNames = fs.keys().asSequence().associateWith { k -> fs.getJSONArray(k).let { a -> (0 until a.length()).map { a.getString(it) } } },
         )
     } catch (_: Exception) { null }
 }

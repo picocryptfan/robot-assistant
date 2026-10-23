@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.messages
 
+import app.heyrobot.core.i18n.Lang
 import app.heyrobot.core.readOrNull
 import app.heyrobot.core.withFileLock
 import app.heyrobot.core.writeAtomic

@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Same AGP and Kotlin as my earlier test apps (known to build here); the Compose compiler plugin matches Kotlin.
+// AGP: 1.1, the newest 8.x (AGP 9 needs Gradle 9). The Compose compiler plugin matches Kotlin.
 plugins {
-    id 'com.android.application' version '8.8.2' apply false
-    id 'com.android.library' version '8.8.2' apply false
-    id 'org.jetbrains.kotlin.android' version '2.4.0' apply false
-    id 'org.jetbrains.kotlin.plugin.compose' version '2.4.0' apply false
+    id 'com.android.application' version '8.13.2' apply false
+    id 'com.android.library' version '8.13.2' apply false
+    id 'org.jetbrains.kotlin.android' version '2.4.21' apply false
+    id 'org.jetbrains.kotlin.plugin.compose' version '2.4.21' apply false
 }
 
-// Shared Android settings for every module. 1.0: build-tools pinned to what AGP 8.8.2 picks by default (35.0.0), so a
+// Shared Android settings for every module. 1.0: build-tools pinned to what AGP 8.8.2 picked by default (35.0.0), so a
 // machine with other build-tools installed builds the same APK (tools/repro_check.sh).
 ext {
     robotCompileSdk = 36

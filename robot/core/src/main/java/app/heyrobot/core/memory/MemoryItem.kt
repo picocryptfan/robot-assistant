@@ -4,7 +4,7 @@ package app.heyrobot.core.memory
 import app.heyrobot.core.ToolCalls
 import kotlin.random.Random
 
-// Pure. What Robot remembers because you asked (0.7 "Memory and messages", design §A2 and §A5): one item per thing you
+// Pure. What Robot remembers because you asked (0.7 "Memory and messages"): one item per thing you
 // said to keep ("Remember that my sister Julie's birthday is May 3"), each one you can see, edit, pin or delete in
 // Settings › Memory. Not memory: the History of conversations, Robot Notes ("remember to buy milk" stays a note),
 // People, and message text. The items live in one encrypted file (MemoryCodec, MemoryEnvelope); this file holds the
@@ -18,14 +18,17 @@ enum class MemoryKind {
     PREFERENCE,
 }
 
-/** Where an item came from. Only [CONTENT] isn't your own words. */
-enum class MemorySource(val title: String) {
-    SAID("You said it"),
-    TYPED("You typed it"),
-    SUGGESTED("A suggestion you kept"),
-    SETTINGS("Added in Settings"),
+/** Where an item came from. Only [CONTENT] isn't your own words. [text]: how Settings › Memory says it (core i18n); [title] its English. */
+enum class MemorySource(private val msg: app.heyrobot.core.i18n.Msg) {
+    SAID(app.heyrobot.core.i18n.MemoryStrings.sourceSaid),
+    TYPED(app.heyrobot.core.i18n.MemoryStrings.sourceTyped),
+    SUGGESTED(app.heyrobot.core.i18n.MemoryStrings.sourceSuggested),
+    SETTINGS(app.heyrobot.core.i18n.MemoryStrings.sourceSettings),
     /** Screen text, a message, a transcript or a helper's words, kept through a card: content when retrieved. */
-    CONTENT("From something Robot read");
+    CONTENT(app.heyrobot.core.i18n.MemoryStrings.sourceContent);
+
+    val text: app.heyrobot.core.i18n.Phrase get() = msg()
+    val title: String get() = text.en()
 
     /** Your own words (or your tap on your own words): retrieving it never makes a conversation content. */
     val own: Boolean get() = this != CONTENT
@@ -72,6 +75,11 @@ data class MemoryItem(
     val uses: Int = 0,
     val usedAt: Long? = null,
     val imported: MemoryImported? = null,
+    /**
+     * 1.4: a filing rule (files-1.4-plan.md §4.5): Robot Files reads it, Settings › Memory shows it as "Filing rule", and
+     * it never goes into a question's prompt ([MemoryEdits.forQuestions]). Always a fact, never pinned.
+     */
+    val filing: MemoryFiling? = null,
 ) {
     /**
      * Retrieved into a conversation, it makes that conversation content (later actions follow Safety cards): kept from
@@ -82,12 +90,12 @@ data class MemoryItem(
     /** Past its end ("until tonight"): never retrieved, deleted by [MemoryEdits.sweep] a day later. */
     fun expired(now: Long): Boolean = expiresAt != null && now >= expiresAt
 
-    override fun toString(): String = "MemoryItem(id=$id, kind=$kind, secret=$secret, pinned=$pinned, source=$source, imported=$imported, chars=${text.length})"
+    override fun toString(): String = "MemoryItem(id=$id, kind=$kind, secret=$secret, pinned=$pinned, source=$source, imported=$imported, rule=${filing != null}, chars=${text.length})" // l10n: not text (toString for logs and tests)
 }
 
 /** A suggestion waiting in Settings › Memory › Suggestions: never spoken, never saved without your tap. */
 data class MemorySuggestion(val id: String, val text: String, val kind: MemoryKind, val createdAt: Long) {
-    override fun toString(): String = "MemorySuggestion(id=$id, kind=$kind, chars=${text.length})"
+    override fun toString(): String = "MemorySuggestion(id=$id, kind=$kind, chars=${text.length})" // l10n: not text (toString for logs and tests)
 }
 
 /**
@@ -118,7 +126,7 @@ object MemoryLimits {
 }
 
 object MemoryIds {
-    private const val DIGITS = "0123456789abcdefghijklmnopqrstuvwxyz"
+    private const val DIGITS = "0123456789abcdefghijklmnopqrstuvwxyz" // l10n: not text (an id's alphabet)
     private val ID = Regex("^[ms]_[0-9a-z]{6,40}$")
 
     /** An item id ("m_…") or a suggestion id ("s_…"): letters and digits only, so it is safe in a file or a log. */
@@ -144,6 +152,9 @@ enum class AddOutcome {
     /** Nothing left to save once trimmed. */
     EMPTY,
 }
+
+/** What [MemoryEdits.addRule] did: as [Added], and the older rules the new one [replaced] (Undo puts them back). */
+data class RuleAdded(val file: MemoryFile, val item: MemoryItem?, val outcome: AddOutcome, val replaced: List<MemoryItem> = emptyList())
 
 data class Added(val file: MemoryFile, val item: MemoryItem?, val outcome: AddOutcome) {
     /** Settings › Memory shows "Robot remembers 1,500 things" with the limit from here. */
@@ -198,6 +209,8 @@ object MemoryEdits {
     fun pin(file: MemoryFile, id: String, pinned: Boolean): MemoryFile? {
         val item = file.items.firstOrNull { it.id == id } ?: return null
         if (item.pinned == pinned) return file
+        // 1.4: a filing rule is never pinned (pinned items go into every prompt; a rule never goes into one).
+        if (pinned && item.filing != null) return null
         if (pinned && (item.secret || file.items.count { it.pinned } >= MemoryLimits.MAX_PINNED)) return null
         return file.copy(items = file.items.map { if (it.id == id) it.copy(pinned = pinned) else it })
     }
@@ -208,7 +221,8 @@ object MemoryEdits {
      */
     fun edit(file: MemoryFile, id: String, text: String, now: Long): MemoryFile? {
         val t = clean(text)
-        if (t.isEmpty() || file.items.none { it.id == id }) return null
+        // 1.4: a filing rule's words are its template: deleted, never edited.
+        if (t.isEmpty() || file.items.none { it.id == id } || file.items.any { it.id == id && it.filing != null }) return null
         return file.copy(items = file.items.map {
             if (it.id != id) it else {
                 val secret = it.secret || SecretDetector.isSecret(t)
@@ -244,6 +258,36 @@ object MemoryEdits {
 
     /** Items a question may use now: not expired. */
     fun live(items: List<MemoryItem>, now: Long): List<MemoryItem> = items.filter { !it.expired(now) }
+
+    /**
+     * 1.4: what a question may ever be given, or have found for it: [live] items without filing rules. A rule's words may
+     * come from a file (a merchant), so they never reach a prompt, a reply, a helper or the model's forget (§4.5).
+     */
+    fun forQuestions(items: List<MemoryItem>, now: Long): List<MemoryItem> = items.filter { !it.expired(now) && it.filing == null }
+
+    /**
+     * 1.4: a filing rule kept ([item] with its [MemoryItem.filing]). Not [add]: a rule is a fact, never pinned, and the
+     * newer of two rules with the same match and the same kind of action (a drawer, a name style) replaces the older one,
+     * which [RuleAdded.replaced] gives back for Undo. The same rule again is [AddOutcome.ALREADY_KEPT]; a tag rule whose
+     * tags an older rule with that match already gives is too. Full memory refuses it ([AddOutcome.FULL]).
+     */
+    fun addRule(file: MemoryFile, item: MemoryItem): RuleAdded {
+        val rule = requireNotNull(item.filing)
+        val text = clean(item.text)
+        if (text.isEmpty() || !rule.valid) return RuleAdded(file, null, AddOutcome.EMPTY)
+        val mine = file.items.filter { it.filing != null && !it.tainted && it.filing.sameMatch(rule) }
+        mine.firstOrNull { it.filing!!.sameAs(rule) }?.let { return RuleAdded(file, it, AddOutcome.ALREADY_KEPT) }
+        if (rule.drawer == null && rule.name == null && rule.tags.isNotEmpty() && mine.any { o -> o.filing!!.tags.containsAll(rule.tags) })
+            return RuleAdded(file, mine.first { o -> o.filing!!.tags.containsAll(rule.tags) }, AddOutcome.ALREADY_KEPT)
+        val replaced = mine.filter { o -> (rule.drawer != null && o.filing!!.drawer != null) || (rule.name != null && o.filing!!.name != null) }
+        if (file.items.size - replaced.size >= MemoryLimits.MAX_ITEMS) return RuleAdded(file, null, AddOutcome.FULL)
+        val kept = item.copy(text = text, kind = MemoryKind.FACT, pinned = false, secret = item.secret || SecretDetector.isSecret(text))
+        val ids = replaced.mapTo(HashSet()) { it.id }
+        return RuleAdded(file.copy(items = file.items.filter { it.id !in ids } + kept), kept, AddOutcome.SAVED, replaced)
+    }
+
+    /** Undo of [addRule]: the rule gone, the rules it replaced back. */
+    fun undoRule(file: MemoryFile, added: String, replaced: List<MemoryItem>): MemoryFile = restore(forget(file, setOf(added)).first, replaced)
 
     /** "Keep" on a suggestion: it becomes an item (origin [MemorySource.SUGGESTED]) and leaves the list. */
     fun keep(file: MemoryFile, suggestionId: String, now: Long, newId: () -> String = { MemoryIds.newId(now) }): Added {

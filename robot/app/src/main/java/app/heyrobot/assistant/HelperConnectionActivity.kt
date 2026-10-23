@@ -38,29 +38,36 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import app.heyrobot.R
 import app.heyrobot.core.RLog
 import app.heyrobot.core.SecretRead
 import app.heyrobot.core.helpers.HelperConfig
 import app.heyrobot.core.helpers.HelperFacts
+import app.heyrobot.core.helpers.HelperFormat
 import app.heyrobot.core.helpers.HelperKeyFormat
 import app.heyrobot.core.helpers.HelperWho
 import app.heyrobot.core.helpers.HelperWords
 import app.heyrobot.core.helpers.LanRule
 import app.heyrobot.core.helpers.Protocol
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.UiStrings
 import app.heyrobot.helpers.HelperProbe
 import app.heyrobot.helpers.ProbeResult
 import app.heyrobot.sys.HelperWindow
 import app.heyrobot.sys.HelperFactsStore
 import app.heyrobot.sys.HelperSpendStore
 import app.heyrobot.sys.SettingsStore
+import app.heyrobot.ui.theme.LocalLangs
 import app.heyrobot.ui.theme.RobotTheme
+import app.heyrobot.ui.theme.str
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.Locale
 
 /**
  * A helper's connection window (0.6.0; "Add key" for Claude before): its API key is pasted here, encrypted here and never
@@ -69,7 +76,8 @@ import java.util.Locale
  * starts it by class name with the helper's id, which is not secret), is FLAG_SECURE (no screenshots, recordings or task
  * thumbnail) and kept out of autofill, and clears the clipboard if it still holds the key just saved. What Test
  * connection found (the server's port, its models, whether a tiny question worked) goes to the helper's facts file for
- * Settings; never the key or any words.
+ * Settings; never the key or any words. 1.1: its words are in strings_helpers.xml and core HelperStrings, in the menus'
+ * language.
  */
 class HelperConnectionActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -92,6 +100,7 @@ class HelperConnectionActivity : ComponentActivity() {
     @androidx.compose.runtime.Composable
     private fun Window(h: HelperConfig, keyMode: Boolean, actionsFirst: Boolean = false) {
         val p = h.presetOf
+        val langs = LocalLangs.current
         var key by remember { mutableStateOf("") }
         var problem by remember { mutableStateOf<String?>(null) }
         var busy by remember { mutableStateOf(false) }
@@ -112,22 +121,22 @@ class HelperConnectionActivity : ComponentActivity() {
                 Column(Modifier.padding(24.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     when (step) {
                         Step.KEY -> {
-                            Text(if (p.keyRequired) "${h.name}: API key" else "${h.name}: key (if your server asks for one)", style = MaterialTheme.typography.headlineSmall)
-                            val where = p.keyWhere?.let { "Create a key at $it and paste it here. " }.orEmpty()
-                            Text(where + (p.billing?.let { "$it " }.orEmpty()) + "Robot encrypts the key on this phone and only the assistant reads it.",
-                                style = MaterialTheme.typography.bodyMedium, color = muted)
+                            Text(stringResource(if (p.keyRequired) R.string.helper_window_key_title else R.string.helper_window_key_title_optional, h.name),
+                                style = MaterialTheme.typography.headlineSmall)
+                            Text(listOfNotNull(p.keyWhere?.let { stringResource(R.string.helper_window_key_where, it) }, p.billingText?.str(),
+                                stringResource(R.string.helper_window_key_safe)).joinToString(" "), style = MaterialTheme.typography.bodyMedium, color = muted)
                             OutlinedTextField(
-                                value = key, onValueChange = { key = it.trim(); problem = null }, singleLine = true, label = { Text("API key") },
+                                value = key, onValueChange = { key = it.trim(); problem = null }, singleLine = true, label = { Text(stringResource(R.string.helper_window_api_key)) },
                                 visualTransformation = PasswordVisualTransformation(),
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
-                                isError = problem != null, supportingText = { (problem ?: HelperKeyFormat.warning(p, key).takeIf { key.isNotEmpty() })?.let { Text(it) } },
+                                isError = problem != null, supportingText = { (problem ?: HelperKeyFormat.warningText(p, key)?.str().takeIf { key.isNotEmpty() })?.let { Text(it) } },
                                 modifier = Modifier.fillMaxWidth(),
                             )
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End)) {
-                                TextButton(onClick = { setResult(Activity.RESULT_CANCELED); finish() }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Cancel") }
+                                TextButton(onClick = { setResult(Activity.RESULT_CANCELED); finish() }, modifier = Modifier.heightIn(min = 48.dp)) { Text(UiStrings.cancel().str()) }
                                 Button(onClick = {
                                     if (!HelperKeyFormat.plausible(p, key)) {
-                                        problem = HelperKeyFormat.refusal(p)
+                                        problem = HelperKeyFormat.refusalText(p).render(langs)
                                         return@Button
                                     }
                                     val k = key
@@ -139,7 +148,7 @@ class HelperConnectionActivity : ComponentActivity() {
                                         }
                                         busy = false
                                         if (!ok) {
-                                            problem = "The key couldn't be saved on this phone."
+                                            problem = getString(R.string.helper_window_key_not_saved)
                                             return@launch
                                         }
                                         HelperKeys.clearClipboard(this@HelperConnectionActivity, h.id, k)
@@ -148,31 +157,32 @@ class HelperConnectionActivity : ComponentActivity() {
                                         // Claude's key is checked by the first question, as before; any other helper's now.
                                         if (p.protocol == Protocol.ANTHROPIC) finish() else test(actions = false)
                                     }
-                                }, enabled = key.isNotEmpty() && !busy, modifier = Modifier.heightIn(min = 48.dp)) { Text("Save") }
+                                }, enabled = key.isNotEmpty() && !busy, modifier = Modifier.heightIn(min = 48.dp)) { Text(UiStrings.save().str()) }
                             }
                         }
                         Step.TESTING -> {
-                            Text("Testing ${h.name}…", style = MaterialTheme.typography.headlineSmall)
-                            Text(if (h.home) "Robot looks for your server at the address you gave (on the usual ports when you gave none), lists its models and asks it to reply “OK”."
-                                else "Robot lists ${p.company}'s models for your key and asks the model to reply “OK” (a fraction of a cent).",
+                            Text(stringResource(R.string.helper_window_testing, h.name), style = MaterialTheme.typography.headlineSmall)
+                            Text(if (h.home) stringResource(R.string.helper_window_testing_home) else stringResource(R.string.helper_window_testing_company, p.companyText.str()),
                                 style = MaterialTheme.typography.bodyMedium, color = muted)
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { CircularProgressIndicator() }
                         }
                         Step.RESULT -> {
                             val r = result
-                            Text(when {
-                                r?.ok == true -> "${h.name} is ready"
-                                keyNote != null -> "${h.name}: API key"
+                            Text(stringResource(when {
+                                r?.ok == true -> R.string.helper_window_ready
+                                keyNote != null -> R.string.helper_window_key_title
                                 // 1.0.2: refused before connecting, so nothing was asked (not "didn't answer").
-                                r?.failure == app.heyrobot.core.HelperFailure.KEY_OVER_HTTP -> "${h.name}: key not sent"
-                                else -> "${h.name} didn't answer"
-                            }, style = MaterialTheme.typography.headlineSmall)
+                                r?.failure == app.heyrobot.core.HelperFailure.KEY_OVER_HTTP -> R.string.helper_window_key_not_sent
+                                else -> R.string.helper_window_no_answer
+                            }, h.name), style = MaterialTheme.typography.headlineSmall)
                             Text(r?.let { words(h, it) }.orEmpty(), style = MaterialTheme.typography.bodyMedium)
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End)) {
-                                if (r?.ok == true && h.actions) OutlinedButton(onClick = { test(actions = true) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Check actions") }
+                                if (r?.ok == true && h.actions) OutlinedButton(onClick = { test(actions = true) }, modifier = Modifier.heightIn(min = 48.dp)) {
+                                    Text(stringResource(R.string.helper_check_actions))
+                                }
                                 // 1.0.1: never for an http server (a key never goes over http): the words say what to do instead.
-                                if (r?.needsKey == true && !cleartext(h, r)) OutlinedButton(onClick = { step = Step.KEY }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Add key") }
-                                Button(onClick = { setResult(Activity.RESULT_OK); finish() }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Done") }
+                                if (r?.needsKey == true && !cleartext(h, r)) OutlinedButton(onClick = { step = Step.KEY }, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.helper_add_key)) }
+                                Button(onClick = { setResult(Activity.RESULT_OK); finish() }, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.helper_window_done)) }
                             }
                         }
                     }
@@ -187,7 +197,7 @@ class HelperConnectionActivity : ComponentActivity() {
      * What the saved key's read said when it gave no key (Test connection then sends nothing): it couldn't be read just now
      * (kept), or it could never be read again (removed). Null when it was read, or none is saved.
      */
-    @Volatile private var keyNote: String? = null
+    @Volatile private var keyNote: Phrase? = null
 
     /** Test connection, its facts kept for Settings (background thread). */
     private suspend fun probe(h: HelperConfig, actions: Boolean): ProbeResult {
@@ -203,12 +213,12 @@ class HelperConnectionActivity : ComponentActivity() {
             // Kept: nothing is tested without it (a server that answers without a key would look fine), and nothing is
             // written to the facts; Test connection again in a moment reads it again.
             is SecretRead.Unavailable -> {
-                keyNote = HelperWords(HelperWho.of(h)).keyUnavailable
+                keyNote = HelperWords(HelperWho.of(h)).keyUnavailableText
                 return ProbeResult(failure = app.heyrobot.core.HelperFailure.NO_KEY)
             }
             // Removed as it was read: Settings says so, the panel's client goes, and Add key is offered.
             is SecretRead.Invalidated -> {
-                keyNote = HelperWords(HelperWho.of(h)).keyUnreadable
+                keyNote = HelperWords(HelperWho.of(h)).keyUnreadableText
                 HelperLink.keyChanged(ctx, h.id)
                 return ProbeResult(failure = app.heyrobot.core.HelperFailure.NO_KEY, needsKey = true)
             }
@@ -232,29 +242,30 @@ class HelperConnectionActivity : ComponentActivity() {
         return r
     }
 
-    /** What Test connection found, in words (no address, no key). */
-    private fun words(h: HelperConfig, r: ProbeResult): String = buildString {
-        keyNote?.let {
-            append(it)
-            return@buildString
-        }
+    /** What Test connection found, in words (no address, no key): its sentences, in the menus' language. */
+    @androidx.compose.runtime.Composable
+    private fun words(h: HelperConfig, r: ProbeResult): String {
+        keyNote?.let { return it.str() }
+        val n = r.models.size
         val failure = r.failure
         if (failure != null) {
-            append(failure.say(HelperWho.of(h)))
-            if (r.needsKey) append(if (cleartext(h, r)) " This server asks for a key, which Robot sends only over https." else " This server asks for a key.")
-            if (r.base != null && r.models.isNotEmpty()) append(" It lists ${r.models.size} model${if (r.models.size == 1) "" else "s"}.")
-            return@buildString
+            return listOfNotNull(failure.sayText(HelperWho.of(h)).str(), if (r.needsKey) stringResource(if (cleartext(h, r)) R.string.helper_probe_needs_key_https else R.string.helper_probe_needs_key) else null,
+                if (r.base != null && n > 0) pluralStringResource(R.plurals.helper_probe_lists, n, n) else null).joinToString(" ")
         }
-        append(if (r.models.isEmpty()) "Connected." else "Connected: ${r.models.size} model${if (r.models.size == 1) "" else "s"} to choose from in Settings.")
-        if (r.answered) append(" A test question was answered in ${String.format(Locale.US, "%.1f", r.ms / 1000.0)} s.")
-        if (!r.usage && r.answered && h.home) append(" The server doesn't report its token counts.")
-        when (r.actions) {
-            true -> append(" The model can use Robot's actions (always behind a card).")
-            false -> append(" The model didn't use Robot's action when asked: actions are off for it.")
-            null -> {}
-        }
-        if (r.dropped.isNotEmpty()) append(" Robot will leave out what the server didn't take: ${r.dropped.joinToString { it.name.lowercase().replace('_', ' ') }}.")
-        if (cleartext(h, r)) append(" This connection isn't encrypted: anyone on your network can read it.")
+        val lang = LocalLangs.current.ui
+        return listOfNotNull(
+            if (n == 0) stringResource(R.string.helper_probe_connected) else pluralStringResource(R.plurals.helper_probe_connected_models, n, n),
+            if (r.answered) stringResource(R.string.helper_probe_answered, HelperFormat.oneDecimal(r.ms / 1000.0, lang)) else null,
+            if (!r.usage && r.answered && h.home) stringResource(R.string.helper_probe_no_usage) else null,
+            when (r.actions) {
+                true -> stringResource(R.string.helper_probe_actions_yes)
+                false -> stringResource(R.string.helper_probe_actions_no)
+                null -> null
+            },
+            // The parts the server refused, by their API names.
+            if (r.dropped.isNotEmpty()) stringResource(R.string.helper_probe_dropped, r.dropped.joinToString { it.name.lowercase().replace('_', ' ') }) else null,
+            if (cleartext(h, r)) stringResource(R.string.helper_probe_cleartext) else null,
+        ).joinToString(" ")
     }
 
     /** The address you gave, or the one found, is http:// (no key ever goes there: core LanRule.keyOverHttp). */

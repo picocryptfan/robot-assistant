@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.sys
 
+import app.heyrobot.R
 import android.Manifest
 import android.content.ContentUris
 import android.content.ContentValues
@@ -13,6 +14,7 @@ import android.provider.CalendarContract.Instances
 import app.heyrobot.core.CalendarEvent
 import app.heyrobot.core.CalendarInfo
 import app.heyrobot.core.DayRange
+import app.heyrobot.core.EventAlert
 import app.heyrobot.core.EventPlan
 import java.time.ZoneOffset
 
@@ -40,7 +42,7 @@ object Calendars {
                     while (c.moveToNext()) {
                         out += CalendarInfo(
                             id = c.getLong(0),
-                            name = c.getString(1)?.takeIf { it.isNotBlank() } ?: c.getString(2) ?: "Calendar",
+                            name = c.getString(1)?.takeIf { it.isNotBlank() } ?: c.getString(2) ?: ctx.getString(R.string.settings_calendar_unnamed),
                             account = c.getString(2).orEmpty(),
                             owner = c.getString(3),
                             primary = !c.isNull(4) && c.getInt(4) == 1,
@@ -70,9 +72,16 @@ object Calendars {
         return out
     }
 
-    /** Adds the event to [plan]'s calendar; its id, or null. An all-day event is midnight to midnight UTC, as the provider wants. */
-    fun insert(ctx: Context, title: String, plan: EventPlan): Long? {
+    /** An event Robot added: its [id], and whether its alert ([EventPlan.alertAt]) was written too. */
+    data class Inserted(val id: Long, val alert: Boolean)
+
+    /**
+     * Adds the event to [plan]'s calendar, or null. An all-day event is midnight to midnight UTC, as the provider wants.
+     * 1.1: a dated reminder's alert goes in as its Reminders row (core EventAlert); [Inserted.alert] false when that failed.
+     */
+    fun insert(ctx: Context, title: String, plan: EventPlan): Inserted? {
         val cal = plan.calendarId ?: return null
+        val alert = EventAlert.row(plan)
         val v = ContentValues().apply {
             put(Events.CALENDAR_ID, cal)
             put(Events.TITLE, title)
@@ -87,8 +96,17 @@ object Calendars {
                 put(Events.EVENT_TIMEZONE, plan.start.zone.id)
                 put(Events.ALL_DAY, 0)
             }
+            if (alert != null) put(Events.HAS_ALARM, 1)
         }
-        return ctx.contentResolver.insert(Events.CONTENT_URI, v)?.let { ContentUris.parseId(it) }
+        val id = ctx.contentResolver.insert(Events.CONTENT_URI, v)?.let { ContentUris.parseId(it) } ?: return null
+        if (alert == null) return Inserted(id, alert = false)
+        val r = ContentValues().apply {
+            put(CalendarContract.Reminders.EVENT_ID, id)
+            put(CalendarContract.Reminders.MINUTES, alert.minutes)
+            put(CalendarContract.Reminders.METHOD, alert.method)
+        }
+        val written = try { ctx.contentResolver.insert(CalendarContract.Reminders.CONTENT_URI, r) != null } catch (_: Exception) { false }
+        return Inserted(id, alert = written)
     }
 
     /**

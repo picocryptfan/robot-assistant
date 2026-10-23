@@ -19,6 +19,11 @@
          Open Library) and up to 3 of its result pages (the :voice process). Everything else runs on the phone; the :mt
          process never goes online. The only network permission. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 1.1 (phone, 22 Oct): Android 14 and later refuse a job with a network constraint (setRequiredNetworkType) from an app
+         targeting 34 or later without this permission, with a SecurityException: the daily update check, the Wi-Fi download
+         and Termux's update check were never scheduled (update/UpdateJobs.kt). A normal permission, granted at install; it
+         only lets Robot see whether the phone is online, and Robot reads nothing with it itself. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- 0.2.3, "Call audio" playback only (Settings › Voice): the phone in communication mode with the loudspeaker as the
          call device while Robot speaks, as calling apps do for the echo canceller. Normal permission, no prompt. -->
@@ -30,6 +35,10 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- 1.4 FX1: travel mode's confirms ask for the phone's PIN, pattern or password through Android's BiometricPrompt,
+         allowing the device credential only (sys/DevicePin.kt): Android checks this permission for every prompt, even
+         one that never offers a fingerprint or a face. A normal permission, granted at install; no sensor is used. -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
     <!-- The assistant check 3 minutes after BOOT_COMPLETED (as in the probe). -->
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
@@ -185,6 +194,15 @@
             <action android:name="android.intent.action.SEND" />
             <data android:mimeType="text/plain" />
         </intent>
+        <!-- 1.1, Phone lock: the emergency dialer the cover's Emergency call opens (the phone app's, a system app), and with
+             a number when you ask Robot for an emergency number during a lock. -->
+        <intent>
+            <action android:name="com.android.phone.EmergencyDialer.DIAL" />
+        </intent>
+        <intent>
+            <action android:name="com.android.phone.EmergencyDialer.DIAL" />
+            <data android:scheme="tel" />
+        </intent>
     </queries>
 
     <application
@@ -198,6 +216,7 @@
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:networkSecurityConfig="@xml/network_security_config"
+        android:supportsRtl="true"
         android:enableOnBackInvokedCallback="true">
 
         <!-- Main process: the app (history, settings, model manager, assistant setup). Never loads an engine. -->
@@ -232,6 +251,21 @@
             android:label="@string/notes_name"
             android:icon="@mipmap/ic_notes"
             android:roundIcon="@mipmap/ic_notes"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- 1.4: "Robot Files" on the home screen (files-1.4-plan.md Q1): the main app, opened on the Files tab, as Robot Notes
+             opens on Notes (MainActivity reads the alias). -->
+        <activity-alias
+            android:name=".ui.FilesLauncher"
+            android:targetActivity=".ui.MainActivity"
+            android:label="@string/files_share_label"
+            android:icon="@mipmap/ic_files"
+            android:roundIcon="@mipmap/ic_files"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -300,6 +334,19 @@
             android:theme="@style/Theme.Robot.Translucent" />
         <!-- 0.9: Settings › Web search's set-up window: a search service's key is pasted here, in the :voice process, and Test
              runs here (the main app opens it by class name and never reads a key or loads the HTTP client). -->
+        <!-- 1.1, Back up and restore (docs/plans/backup-1.1-design.md §6.1): the backup window runs in :voice, the only process
+             that may decrypt helper and search keys (and, by the 15 Oct decision, the voiceprint), so a key goes from its
+             Keystore file into the backup's encryption without crossing a process. Not exported, out of Recents, never over
+             the lock screen (no showWhenLocked); FLAG_SECURE from onCreate. Opened by class name from Settings (BackupWindow);
+             it keeps its state across a rotation instead of being made again (the passphrase is never saved state). -->
+        <activity
+            android:name=".assistant.backup.BackupActivity"
+            android:process=":voice"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.Robot" />
         <activity
             android:name=".assistant.WebSearchActivity"
             android:process=":voice"
@@ -326,7 +373,7 @@
             android:excludeFromRecents="true"
             android:taskAffinity="${applicationId}.pick"
             android:theme="@style/Theme.Robot.Translucent" />
-        <!-- 0.8, headset mode (design §3.6): what a headset's or car's voice button (VOICE_COMMAND, after AT+BVRA) and a wired or
+        <!-- 0.8, headset mode: what a headset's or car's voice button (VOICE_COMMAND, after AT+BVRA) and a wired or
              USB headset's long press or a voice-assist key (the two speech actions) start. Exported, because Android starts
              it; exactly these three actions. Translucent, no history, not in Recents, over the lock screen only to pass the
              press on to the assistant's session: it shows nothing and finishes at once. "Headset button opens Robot" off
@@ -353,7 +400,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
-        <!-- 0.8, car mode (design §4.3): the big-button car screen, in :voice where car mode runs. Not exported: only car mode
+        <!-- 0.8, car mode: the big-button car screen, in :voice where car mode runs. Not exported: only car mode
              and its notification open it. Over the lock screen only during the trusted session (set in code). -->
         <activity
             android:name=".assistant.car.CarModeActivity"
@@ -427,6 +474,14 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+        <!-- 1.2 (design Step 2): the setup guide's self-test of the GPU (or a beta TPU build). The main app binds it by class
+             name while its phone step waits for the check: Robot may not be your assistant yet, so the voice process may not
+             run. Not exported, no intent filter, Robot's signature permission; nothing crosses the binding. -->
+        <service
+            android:name=".assistant.GpuCheckService"
+            android:process=":voice"
+            android:exported="false"
+            android:permission="${applicationId}.permission.INTERNAL" />
         <service
             android:name=".assistant.routines.RoutineSpeakingService"
             android:process=":voice"
@@ -436,6 +491,12 @@
              receiver). Not exported: no other app can send it anything. -->
         <receiver
             android:name=".assistant.TermuxResultReceiver"
+            android:process=":voice"
+            android:exported="false" />
+        <!-- 1.1, Skills (docs/plans/skills-1.1-plan.md D7): a skill's "Continue" notification's tap, in :voice where its one-time
+             token is kept; not exported, so only Robot's own PendingIntent reaches it. -->
+        <receiver
+            android:name=".assistant.skills.SkillContinueReceiver"
             android:process=":voice"
             android:exported="false" />
         <!-- The camera app writes the photo here (app cache, deleted right after it is read). -->
@@ -473,6 +534,59 @@
             android:exported="false"
             android:permission="${applicationId}.permission.INTERNAL" />
 
+        <!-- 1.4, Robot Files (files-1.4-plan.md §4.3, D5): ":files", the one place a file's bytes are decoded, in an isolated
+             process: a uid of its own with no permissions, no network and none of Robot's files. Bound only by Robot's
+             FileParseLink (main and :voice), a fresh instance each time (bindIsolatedService), never exported, no
+             permission, no intent filter, never shared with another isolated service nor started from the app zygote. -->
+        <service
+            android:name=".parse.FileParseService"
+            android:process=":files"
+            android:isolatedProcess="true"
+            android:exported="false" />
+
+        <!-- 1.4, Robot Files (files-1.4-plan.md §3.1, D3): "Robot Files" in another app's Share, Robot's first share target.
+             Main process, exported (the share sheet must reach it), exactly SEND and SEND_MULTIPLE of any type, no permission,
+             never over the lock screen (no showWhenLocked), out of Recents. It copies only: each file read once from the sending
+             app's content provider after your tap on Add, sealed into Robot Files' Inbox; nothing is decoded there, no file:
+             URI and no persistable permission is taken, and it refuses during a phone lock (ProcessIsolationTest's
+             theShareTargetOnlyCopies). -->
+        <activity
+            android:name=".ui.files.FilesShareActivity"
+            android:exported="true"
+            android:label="@string/files_share_label"
+            android:excludeFromRecents="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
+            android:theme="@style/Theme.Robot.Translucent">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
+
+        <!-- 1.4, Robot Files: scanning's camera hand-off (files-1.4-plan.md §3.2): the system camera writes the page's photo
+             into cache/scan/ here, and the scan screen reads it into RAM and deletes it at once. Main process, not exported. -->
+        <provider
+            android:name=".sys.ScanProvider"
+            android:authorities="${applicationId}.scan"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/scan_paths" />
+        </provider>
+
+        <!-- 1.4, Robot Files (files-1.4-plan.md §6.4; F7): Share and Open with another app hand over a copy written for that
+             one hand-off into cache/files_out/ (never the sealed file), with a one-time read grant through the system's chooser;
+             taken back (revoked, deleted) when you come back to Robot, at screen-off, or after 15 minutes. Main process, not
+             exported, that folder alone (ProcessIsolationTest, verify_apk.sh). -->
+        <provider
+            android:name=".sys.FilesOutProvider"
+            android:authorities="${applicationId}.files_out"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/files_out_paths" />
+        </provider>
+
         <!-- Not exported: the system's boot broadcast still arrives, other apps cannot fake it. Direct-boot aware (0.2.3)
              so it also gets LOCKED_BOOT_COMPLETED, before the first unlock: there it only checks the speech recognizer
              setting (no files of the credential-encrypted storage; RobotApp only logs). -->
@@ -500,5 +614,47 @@
             android:permission="android.permission.BIND_JOB_SERVICE"
             android:exported="false" />
         <receiver android:name=".update.InstallStatusReceiver" android:exported="false" />
+
+        <!-- 1.1, Phone lock (docs/plans/phone-lock-design.md §4, §13): a small process of its own, :lock, that never loads the
+             model and outlives the panel and the Settings UI. The accessibility service sees which app comes to the front
+             (window-state events, no window content); exported only because the system binds it, and
+             BIND_ACCESSIBILITY_SERVICE means only the system can. The cover (its own task, out of Recents, never over the
+             lock screen) and the code pad aren't exported. The receiver takes the one exact alarm and the system's
+             broadcasts that make it wrong, and Robot's own explicit intents; not exported. No new permission: no overlay
+             permission, no device admin. -->
+        <service
+            android:name=".lock.LockAccessibilityService"
+            android:process=":lock"
+            android:label="@string/lock_a11y_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/lock_accessibility" />
+        </service>
+        <activity
+            android:name=".lock.LockCoverActivity"
+            android:process=":lock"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity="${applicationId}.lock"
+            android:launchMode="singleTask" />
+        <activity
+            android:name=".lock.LockCodeActivity"
+            android:process=":lock"
+            android:exported="false"
+            android:excludeFromRecents="true" />
+        <receiver
+            android:name=".lock.LockAlarmReceiver"
+            android:process=":lock"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

@@ -5,9 +5,16 @@ import app.heyrobot.core.Action
 import app.heyrobot.core.ApprovalGate
 import app.heyrobot.core.AskWhy
 import app.heyrobot.core.GateDecision
+import app.heyrobot.core.PhoneNumbers
 import app.heyrobot.core.RawToolCall
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.ToolName
+import app.heyrobot.core.i18n.Lang
+import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.i18n.MessageStrings
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.UiLabel
+import app.heyrobot.core.i18n.UiStrings
 import app.heyrobot.core.memory.MemoryCommand
 import app.heyrobot.core.memory.MemoryKind
 import app.heyrobot.core.memory.MemoryRoute
@@ -15,7 +22,7 @@ import app.heyrobot.core.memory.MemoryText
 import app.heyrobot.core.memory.Until
 import java.util.Locale
 
-// Pure. Messages are written by anyone who can reach you, so their text is quarantined (design §B10), by code and
+// Pure. Messages are written by anyone who can reach you, so their text is quarantined, by code and
 // without a switch, because you asked that messages can never trigger actions:
 // - Text that came from a message never becomes an action: not through a router, not read back by the microphone,
 //   not as a tool call in a summary (summaries and translations are one-shot requests with no tools). Such an action
@@ -40,40 +47,37 @@ import java.util.Locale
  * [conversations]: which ones ([MessageThread.key]); [senderKeys]: their senders, so a text back to the same person is
  * told apart from a text to anyone else. Never their words. [saidLocked] (1.0): the conversation also holds turns said
  * while the phone was locked, perhaps by someone else (ChatTurn.locked, core PanelContinuity): any action you didn't ask
- * for in your own words asks first, whatever Safety cards says (ApprovalGate.decide).
+ * for in your own words asks first, whatever Safety cards says (ApprovalGate.decide). [gateway]: the SMS gateway Robot
+ * texts through (Settings' smsGateway), the only server where a JID's local part is a phone number ([isSenderAddress]).
  */
-data class MessageTaint(val conversations: Set<String> = emptySet(), val senderKeys: Set<String> = emptySet(), val saidLocked: Boolean = false) {
+data class MessageTaint(val conversations: Set<String> = emptySet(), val senderKeys: Set<String> = emptySet(), val saidLocked: Boolean = false,
+    val gateway: String = PhoneNumbers.DEFAULT_GATEWAY) {
     val active: Boolean get() = conversations.isNotEmpty()
 
-    /** The conversation now holds [thread]'s messages too. */
-    fun with(thread: MessageThread): MessageTaint =
-        copy(conversations = conversations + thread.key, senderKeys = senderKeys + thread.incoming.mapNotNull { it.senderKey?.lowercase(Locale.ROOT) })
+    /** The conversation now holds [thread]'s messages too ([gateway]: Settings' smsGateway now). */
+    fun with(thread: MessageThread, gateway: String = this.gateway): MessageTaint =
+        copy(conversations = conversations + thread.key, senderKeys = senderKeys + thread.incoming.mapNotNull { it.senderKey?.lowercase(Locale.ROOT) },
+            gateway = PhoneNumbers.gateway(gateway))
 
     /** A recipient that is one of the senders (the caller resolves the address the action would use). */
     fun isSender(address: String?): Boolean = address != null && address.trim().lowercase(Locale.ROOT) in senderKeys
 
     /**
      * [isSender], or the same phone number: a JMP address in Cheogram ("+15145550101@cheogram.com") and that number in
-     * the SMS app ("+1 514-555-0101") are one person. At least 7 digits on both sides, the last 10 equal.
+     * the SMS app ("+1 514-555-0101") are one person. At least 7 digits on both sides, the last 10 equal. A JID is a
+     * number only at [gateway] (core MessagePeople.number): "+15145550101@their.server" is anyone's.
      */
     fun isSenderAddress(address: String?): Boolean {
         if (address == null) return false
         if (isSender(address)) return true
-        val d = phoneDigits(address) ?: return false
-        return senderKeys.any { k -> phoneDigits(k)?.let { it.takeLast(10) == d.takeLast(10) } == true }
+        val d = MessagePeople.number(address, gateway) ?: return false
+        return senderKeys.any { k -> MessagePeople.number(k, gateway)?.let { it.takeLast(10) == d.takeLast(10) } == true }
     }
 
-    override fun toString(): String = "MessageTaint(conversations=${conversations.size}, senders=${senderKeys.size}, saidLocked=$saidLocked)"
+    override fun toString(): String = "MessageTaint(conversations=${conversations.size}, senders=${senderKeys.size}, saidLocked=$saidLocked)" // l10n: not text (toString for logs and tests)
 
     companion object {
         val NONE = MessageTaint()
-
-        /** The digits of a phone number, or of a JMP address's local part ("+15145550101@cheogram.com"); null otherwise. */
-        private fun phoneDigits(s: String): String? {
-            val local = s.trim().substringBefore('@')
-            if (!Regex("^\\+?[0-9 ()./-]{7,}$").matches(local)) return null
-            return local.filter(Char::isDigit).takeIf { it.length >= 7 }
-        }
     }
 }
 
@@ -108,15 +112,17 @@ data class QuarantinedDecision(val decision: GateDecision?, val tapOnly: Boolean
 
 /** Something Robot read aloud from a message, and when it finished. */
 class ReadAloud(val text: String, val endedAt: Long) {
-    override fun toString(): String = "ReadAloud(chars=${text.length}, endedAt=$endedAt)"
+    override fun toString(): String = "ReadAloud(chars=${text.length}, endedAt=$endedAt)" // l10n: not text (toString for logs and tests)
 }
 
 object MessageQuarantine {
-    const val CARD_LINE = "A message is in this conversation: check this, then tap."
-    const val CARD_LINE_FR = "Un message fait partie de cette conversation : vérifie, puis touche."
+    private val FR = Langs.of(Lang.FR)
+
+    const val CARD_LINE = MessageStrings.CARD_LINE_EN
+    val CARD_LINE_FR: String get() = cardLineText().render(FR)
     /** What Robot says when a message's words would have been an action. */
-    const val NOT_FROM_MESSAGES = "I don't act on what a message says."
-    const val NOT_FROM_MESSAGES_FR = "Je n'agis pas selon ce que dit un message."
+    val NOT_FROM_MESSAGES: String get() = notFromMessagesText().en()
+    val NOT_FROM_MESSAGES_FR: String get() = notFromMessagesText().render(FR)
     /** What the microphone hears this soon after Robot read a message aloud may be the message itself. */
     const val ECHO_MS = 15_000L
     /**
@@ -125,8 +131,12 @@ object MessageQuarantine {
      * Robot's own voice. A tap always counts.
      */
     const val YES_AFTER_MS = 3_000L
-    const val SAY_YES_AGAIN = "Tap Send, or say yes again."
-    const val SAY_YES_AGAIN_FR = "Touche Envoyer, ou redis oui."
+    val SAY_YES_AGAIN: String get() = sayYesAgainText().en()
+
+    /** These lines in words without a language yet (1.1: the card's line and the reply in the turn's languages). */
+    fun cardLineText(): Phrase = MessageStrings.cardLine()
+    fun notFromMessagesText(): Phrase = MessageStrings.notFromMessages()
+    fun sayYesAgainText(): Phrase = MessageStrings.sayYesAgain("send" to UiLabel(UiStrings.send))
 
     /** A spoken yes may answer a reply card [now]: Robot isn't saying a message's words, and finished them [YES_AFTER_MS] ago or more. */
     fun voiceYesNow(readAloud: List<ReadAloud>, now: Long): Boolean = readAloud.none { now - it.endedAt < YES_AFTER_MS }
@@ -168,28 +178,24 @@ object MessageQuarantine {
         return if (v == QuarantineVerdict.TAP_ONLY || v == QuarantineVerdict.FORBIDDEN || a.online) setOf(AskWhy.MESSAGE) else emptySet()
     }
 
-    /** What a forbidden action's card says: a memory the model proposed, or anything else a message's words asked for. */
-    fun forbidden(tool: ToolName): String = if (tool == ToolName.REMEMBER) NOT_REMEMBERED else NOT_FROM_MESSAGES
+    fun forbiddenText(tool: ToolName): Phrase = if (tool == ToolName.REMEMBER) MessageStrings.notRemembered() else notFromMessagesText()
 
     /** The model proposed a memory in a conversation that holds a message: not kept, and how to keep something yourself. */
-    const val NOT_REMEMBERED = "A message is in this conversation, so Robot keeps nothing the model proposes to remember. " +
-        "To keep something, say “remember that …” yourself: a card shows the words, and only a tap keeps them."
+    val NOT_REMEMBERED: String get() = MessageStrings.notRemembered().en()
 
     /** A code or a password in your "remember that …" in a conversation that holds a message: not from here. */
-    const val NO_SECRET_HERE = "A message is in this conversation, so Robot doesn't keep a code or a password from it. " +
-        "Add it in Settings › Memory instead."
-    const val NO_SECRET_HERE_FR = "Un message fait partie de cette conversation : Robot n'y garde ni code ni mot de passe. " +
-        "Ajoute-le plutôt dans Réglages › Mémoire."
-    /** The reply under that card. */
-    const val CHECK_AND_TAP = "Check the words on the card, then tap Remember to keep them."
-    const val CHECK_AND_TAP_FR = "Vérifie les mots sur la carte, puis touche Remember pour les garder."
+    val NO_SECRET_HERE: String get() = noSecretHereText().en()
+    val NO_SECRET_HERE_FR: String get() = noSecretHereText().render(FR)
+
+    fun noSecretHereText(): Phrase = MessageStrings.noSecretHere("page" to UiStrings.inSettings(UiStrings.memory))
+    fun checkAndTapText(): Phrase = MessageStrings.checkAndTap("remember" to UiLabel(UiStrings.remember))
 
     /** How your own "remember that …" goes in a conversation that holds a message ([rememberAfterMessages]). */
     sealed class AfterMessages {
         /** Through the turn runner as your words (ActionOrigin.USER_WORDS): a card with exactly [call]'s words, a tap only. */
         data class Card(val call: RawToolCall, val fr: Boolean) : AfterMessages()
-        /** Not kept: [text] says why. */
-        data class Refused(val text: String, val fr: Boolean) : AfterMessages()
+        /** Not kept: [text] says why ([phrase]: the same words without a language yet). */
+        data class Refused(val text: String, val fr: Boolean, val phrase: Phrase? = null) : AfterMessages()
     }
 
     /**
@@ -202,9 +208,9 @@ object MessageQuarantine {
         if (!taint.active) return null
         val c = ((route as? MemoryRoute.Run)?.command as? MemoryCommand.Remember) ?: return null
         val fr = c.language == "fr"
-        if (c.secret) return AfterMessages.Refused(if (fr) NO_SECRET_HERE_FR else NO_SECRET_HERE, fr)
+        if (c.secret) return AfterMessages.Refused(if (fr) NO_SECRET_HERE_FR else NO_SECRET_HERE, fr, noSecretHereText())
         val args = linkedMapOf<String, Any?>("text" to c.text, "kind" to if (c.kind == MemoryKind.PREFERENCE) "preference" else "fact")
-        c.until?.let { u -> args["until"] = when (u) { Until.TONIGHT -> "tonight"; Until.TOMORROW -> "tomorrow"; Until.END_OF_WEEK -> "this week" } }
+        c.until?.let { u -> args["until"] = when (u) { Until.TONIGHT -> "tonight"; Until.TOMORROW -> "tomorrow"; Until.END_OF_WEEK -> "this week" } } // l10n: not text (the tool's argument values)
         return AfterMessages.Card(RawToolCall(ToolName.REMEMBER.id, args), fr)
     }
 

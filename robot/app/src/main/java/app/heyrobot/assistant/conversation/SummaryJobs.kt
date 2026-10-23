@@ -3,9 +3,12 @@ package app.heyrobot.assistant.conversation
 
 import android.content.Context
 import android.os.SystemClock
+import app.heyrobot.R
 import app.heyrobot.assistant.BrainKeeper
 import app.heyrobot.assistant.BrainOneShots
 import app.heyrobot.assistant.VoiceHub
+import app.heyrobot.core.i18n.ConversationStrings
+import app.heyrobot.core.i18n.Phrase
 import app.heyrobot.core.ConsentCard
 import app.heyrobot.core.ConversationSettings
 import app.heyrobot.core.DoneCode
@@ -35,6 +38,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.ZoneId
+import app.heyrobot.sys.AppLanguage
+import app.heyrobot.sys.Assistant
 
 // VOICE PROCESS. Summaries being made (docs/conversation-mode.md 7, phase 5.6), one at a time, outliving the summary
 // screen (turning the phone, leaving and coming back): Robot's own (core LocalSummary over :brain's one-shot requests at
@@ -59,7 +64,8 @@ object SummaryJobs {
         val record: SummaryRecord? = null,
         val number: Int? = null,
         val misses: List<SummaryMiss> = emptyList(),
-        val error: String? = null,
+        /** Why it stopped or failed, shown in the menus' language. */
+        val error: Phrase? = null,
         /** The estimated price of the last helper request, and what it cost ([costKnown] false: the helper's price isn't known). */
         val spentDollars: Double = 0.0,
         val costKnown: Boolean = true,
@@ -88,12 +94,12 @@ object SummaryJobs {
                 val store = Transcripts.store(app)
                 val meta = store.meta(id)
                 val t = store.load(id)
-                if (meta == null || t == null) return@launch fail("This transcript was deleted.")
+                if (meta == null || t == null) return@launch fail(ConversationStrings.transcriptDeleted())
                 val zone = ZoneId.systemDefault()
-                val lang = ConversationSettings.summaryLang(VoiceHub.settings)
+                val lang = ConversationSettings.summaryLang(VoiceHub.settings, AppLanguage.langs(app).ui)
                 val lines = SummaryPlanner.lines(meta, t, zone)
                 // The loaded model's context sets the parts (0.4.3: a short-context model gets smaller ones).
-                BrainKeeper.ensureLoaded(app) ?: return@launch fail(BrainKeeper.state.value.problem ?: "Robot's model isn't ready.")
+                BrainKeeper.ensureLoaded(app) ?: return@launch fail(BrainKeeper.state.value.problem?.let { Phrase.plain(it) } ?: ConversationStrings.modelNotReady())
                 val st = BrainKeeper.state.value
                 val maxTokens = st.contextTokens
                 val key = SummaryDraft.key(lines, lang, maxTokens)
@@ -111,21 +117,21 @@ object SummaryJobs {
                     is LocalSummary.Outcome.Done -> {
                         val rec = SummaryRecord("robot", (st.model ?: BrainKeeper.modelHere(app)).id, SummaryRecord.VIA_PHONE, System.currentTimeMillis(),
                             r.text, parts = r.parts)
-                        val n = store.addSummary(id, rec) ?: return@launch fail("The summary couldn't be saved on this phone.")
+                        val n = store.addSummary(id, rec) ?: return@launch fail(ConversationStrings.summaryNotSaved())
                         store.clearDraft(id)
                         val misses = SummaryCheckFor.misses(r.text, meta, t, zone, people(app))
                         code = DoneCode.END
                         _state.update { it.copy(running = false, record = rec, number = n, misses = misses) }
                     }
-                    is LocalSummary.Outcome.Failed -> fail(r.why + if (notes.any { it != null }) " What was done is kept: try again to go on." else "")
+                    is LocalSummary.Outcome.Failed -> fail(if (notes.any { it != null }) ConversationStrings.failedKept("why" to r.whyText) else r.whyText)
                 }
             } catch (e: CancellationException) {
                 code = DoneCode.CANCELLED
-                _state.update { it.copy(running = false, error = "Stopped. What was done is kept: summarize again to go on.") }
+                _state.update { it.copy(running = false, error = ConversationStrings.stoppedKept()) }
                 throw e
             } catch (t: Throwable) {
                 RLog.w("summary_local", t)
-                fail("Robot's summary ran into a problem.")
+                fail(ConversationStrings.summaryProblem())
             } finally {
                 BrainKeeper.releaseHold(MODEL_HOLD)
                 // Event 113: parts, seconds, how it ended. Never a word of it.
@@ -140,6 +146,17 @@ object SummaryJobs {
     fun send(ctx: Context, card: ConsentCard, helper: ApiHelper) {
         if (running) return
         val app = ctx.applicationContext
+        // The last gate before a helper: nothing is sent while the phone is locked (the lock screen, or a phone lock),
+        // whatever screen asked.
+        if (Assistant.locked(app)) {
+            _state.value = Ui(id = card.transcriptId, error = Phrase.plain(app.getString(R.string.conv_summary_unlock)))
+            return
+        }
+        // Deleted since the card was made (in Robot › Transcripts): nothing of it goes.
+        if (!Transcripts.store(app).exists(card.transcriptId)) {
+            _state.value = Ui(id = card.transcriptId, error = ConversationStrings.transcriptDeleted())
+            return
+        }
         val job = card.approve(System.currentTimeMillis())
         val h = helper.h
         _state.value = Ui(id = card.transcriptId, running = true, helper = true, helperName = h.name)
@@ -152,7 +169,7 @@ object SummaryJobs {
                 when (r) {
                     is HelperResult.Done -> {
                         val rec = SummaryRecord(r.by, r.by, SummaryRecord.VIA_API, System.currentTimeMillis(), r.text, consent = true, sentAt = job.approvedAt,
-                            helperName = h.name, company = helper.disclosure.provider)
+                            helperName = h.name, company = helper.disclosure.provider.en())
                         val store = Transcripts.store(app)
                         val n = store.addSummary(card.transcriptId, rec)
                         val meta = store.meta(card.transcriptId)
@@ -161,14 +178,14 @@ object SummaryJobs {
                             else emptyList()
                         end = HelperEnd.END
                         _state.update { it.copy(running = false, record = rec, number = n, misses = misses, spentDollars = helper.spent, costKnown = helper.costKnown,
-                            error = if (n == null) "${h.name}'s summary came, but it couldn't be saved on this phone." else null) }
+                            error = if (n == null) ConversationStrings.helperNotSaved("name" to h.name) else null) }
                     }
-                    is HelperResult.Failed -> _state.update { it.copy(running = false, error = r.reason, spentDollars = helper.spent, costKnown = helper.costKnown) }
+                    is HelperResult.Failed -> _state.update { it.copy(running = false, error = r.reasonText, spentDollars = helper.spent, costKnown = helper.costKnown) }
                     is HelperResult.Shared -> _state.update { it.copy(running = false) }
                 }
             } catch (e: CancellationException) {
                 end = HelperEnd.STOPPED
-                _state.update { it.copy(running = false, error = "Stopped.", spentDollars = helper.spent, costKnown = helper.costKnown) }
+                _state.update { it.copy(running = false, error = ConversationStrings.stopped(), spentDollars = helper.spent, costKnown = helper.costKnown) }
                 throw e
             } finally {
                 // Event 114: which helper, words ÷ 100, how it ended.
@@ -203,7 +220,7 @@ object SummaryJobs {
         if (!running && _state.value.id != id) _state.value = Ui(id = id)
     }
 
-    private fun fail(why: String) = _state.update { it.copy(running = false, error = why) }
+    private fun fail(why: Phrase) = _state.update { it.copy(running = false, error = why) }
 
     /** People's names and what you call them back a name in a summary (the number check). */
     private fun people(ctx: Context): List<String> = try {

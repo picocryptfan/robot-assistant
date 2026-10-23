@@ -1,0 +1,71 @@
+<!-- Messages: Settings › Messages and its window (the l10n work package WP3): ids start with msg_, messages_, and
+     the French is in values-fr-rCA/strings_messages.xml. 1.1 split strings.xml into one file per area, ids and texts
+     unchanged. -->
+<resources>
+    <string name="messages_setup_title">Read your messages?</string>
+    <string name="messages_setup_text">Robot will read the notifications of the apps you tick here, keep their messages in memory only while their notifications are there, and read, summarize, translate or answer them when you ask. Nothing is written to storage, and nothing leaves the phone unless you send it. A message can never make Robot do anything: after one is read, every action asks first.</string>
+    <string name="messages_setup_none">None of the apps Robot knows is installed. Turn one on below once it is.</string>
+    <string name="messages_setup_turn_on">Turn on</string>
+    <string name="messages_setup_cancel">Cancel</string>
+    <!-- Settings › Messages (ui/settings/MessagesSettings.kt). -->
+    <string name="messages_intro">Robot reads, summarizes, translates and answers your messages from their notifications, on this phone only. Messages are kept in memory only, never written to storage, and never sent anywhere unless you send them.</string>
+    <string name="messages_main">Read my messages</string>
+    <string name="messages_still_allowed">Notification access is still allowed</string>
+    <string name="messages_still_allowed_detail">Robot reads no message while this is off</string>
+    <string name="messages_open">Open</string>
+    <string name="messages_access">Notification access</string>
+    <string name="messages_access_needed">Needed: three steps</string>
+    <string name="messages_access_allowed">Notification access allowed</string>
+    <string name="messages_access_allowed_detail">Messages from the apps below only</string>
+    <string name="messages_quiet">Quiet notifications</string>
+    <string name="messages_quiet_detail">Android sends Robot conversations only. To read quiet-hours messages too, allow Silent in Robot\'s notification access page.</string>
+    <string name="messages_apps">Apps</string>
+    <string name="messages_untrusted_detail">Robot ignores its notifications until then</string>
+    <string name="messages_installed">Installed</string>
+    <string name="messages_not_installed">Not installed</string>
+    <string name="messages_app_unverified">how it replies isn\'t checked yet</string>
+    <string name="messages_app_sms">replies are SMS</string>
+    <string name="messages_app_marks_read">a reply marks the chat read</string>
+    <string name="messages_app_tells_sender">Mark as read tells the sender</string>
+    <string name="messages_groups">Include group chats</string>
+    <string name="messages_groups_detail">Replies to a group always need a tap</string>
+    <string name="messages_replies">Replies</string>
+    <string name="messages_how_replies">How replies go</string>
+    <string name="messages_route_send_detail">Through the app\'s own reply action, after its card. A sent message can\'t be recalled.</string>
+    <string name="messages_route_open_detail">The chat opens with your words; nothing is sent until you press Send there.</string>
+    <string name="messages_card">Card before sending a reply</string>
+    <string name="messages_card_on">Robot shows what goes where; you tap Send</string>
+    <string name="messages_card_off">Your own words to one person go after a 3-second stop</string>
+    <string name="messages_voice_yes">Answer reply cards by voice</string>
+    <string name="messages_voice_yes_detail">A spoken yes sends your words to one person; a group, a draft or a translation always needs a tap</string>
+    <string name="messages_their_language">Offer to send my reply in their language</string>
+    <string name="messages_their_language_detail">A tick box on the card, unticked</string>
+    <string name="messages_reading">Reading</string>
+    <string name="messages_keep">Keep messages for</string>
+    <string name="messages_keep_gone_detail">Read in the app, dismissed or cleared: gone from Robot too.</string>
+    <string name="messages_keep_ram_detail">Still in memory only; a restart forgets them.</string>
+    <string name="messages_after">After Robot reads a message</string>
+    <string name="messages_after_leave_detail">Nothing changes in the app; Robot only remembers it read it.</string>
+    <string name="messages_after_clear_detail">The notification goes; the chat stays unread in the app. A reply then opens the chat.</string>
+    <string name="messages_after_mark_detail">The sender may see you read it (a read marker or a receipt). A reply then opens the chat.</string>
+    <string name="messages_translate">Translate messages not in my languages</string>
+    <string name="messages_translate_detail">English and French are read as written</string>
+    <string name="messages_locked">Messages on the lock screen</string>
+    <string name="messages_locked_off_detail">“Unlock first”.</string>
+    <string name="messages_locked_who_detail">Names only: who wrote, not what.</string>
+    <string name="messages_locked_read_detail">Anyone holding your locked phone can hear your messages and reply.</string>
+    <string name="messages_announcements">Announcements</string>
+    <string name="messages_announce">Announce new messages</string>
+    <string name="messages_announce_on">In private headphones, and in the car while car mode runs; never on the phone\'s speaker</string>
+    <string name="messages_announce_off">Off</string>
+    <string name="messages_in_headset">In the headset</string>
+    <string name="messages_in_headset_detail">Who, how, and on the lock screen</string>
+    <string name="messages_in_car">In the car</string>
+    <string name="messages_in_car_detail">Who, reading aloud and replies by voice</string>
+    <string name="messages_footer">Robot reads the shade, not a database: no SMS permission, no message history. A message\'s text stays in memory until its notification goes; History keeps a line such as “Robot read 2 messages from Mom”, never the words, and the voice log keeps numbers only.\n\nReplies go to the conversation the notification belongs to, never to anyone else, and only after you tap Send on the card (or, for someone you chose in People, after a 3-second stop). A sent message can\'t be recalled. An SMS reply may cost what your carrier charges. Some messaging apps mark the chat read and may send a read receipt when you reply from their notification. Some send an emoji alone as a reaction, and their Mark as read tells the sender.\n\nSome apps show other apps only “New message” unless their notification settings show the name and message. Android hides messages that look like login codes from apps like Robot.</string>
+    <!-- People › a person: the switches Settings › Messages adds there. -->
+    <string name="messages_no_card">Send my replies to %1$s without a card</string>
+    <string name="messages_no_card_detail">Your own words, one to one, phone unlocked: Robot says them and sends after 3 seconds unless you say stop.</string>
+    <string name="messages_announce_from">Announce messages from %1$s</string>
+    <string name="messages_announce_from_detail">In private headphones, and in the car in car mode, when “Announce from” is “People you choose”.</string>
+</resources>

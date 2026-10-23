@@ -98,7 +98,7 @@ class AlarmWatchTest {
     }
 
     /**
-     * Documented misclassification (design §2.12 risk 5): a real alarm within the hour after a dismissed one reads as a
+     * Documented misclassification: a real alarm within the hour after a dismissed one reads as a
      * snooze, so the brief waits for that second alarm. An alarm another app set doesn't count.
      */
     @Test fun aRealAlarmWithinTheHourReadsAsASnooze() {

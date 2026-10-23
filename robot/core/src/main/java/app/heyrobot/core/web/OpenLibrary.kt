@@ -20,7 +20,7 @@ object OpenLibraryWire {
     fun wanted(question: String): Boolean = BOOK.containsMatchIn(WebWords.fold(question))
 
     fun request(query: String, userAgent: String, limit: Int = LIMIT): SearchRequest =
-        SearchRequest("GET", "$SEARCH?q=${SearchWire.encode(query)}&limit=${limit.coerceIn(1, 10)}&fields=key,title,author_name,first_publish_year",
+        SearchRequest("GET", "$SEARCH?q=${SearchWire.encode(query)}&limit=${limit.coerceIn(1, 10)}&fields=key,title,author_name,first_publish_year", // l10n: not text (a request address)
             listOf("User-Agent" to userAgent, "Accept" to "application/json"))
 
     /** `docs[]` (key, title, author_name[], first_publish_year) as results; a work's key must look like "/works/OL…W". */
@@ -32,7 +32,7 @@ object OpenLibraryWire {
             val key = SearchWire.str(d, "key")?.takeIf { it.matches(Regex("/works/OL[0-9]{1,12}W")) } ?: return@mapNotNull null
             val authors = SearchWire.strings(d.optJSONArray("author_name")).take(3)
             val year = d.optInt("first_publish_year", 0).takeIf { it in 1..2999 }
-            val snippet = listOfNotNull(authors.takeIf { it.isNotEmpty() }?.joinToString(", ")?.let { "by $it" }, year?.let { "first published $it" })
+            val snippet = listOfNotNull(authors.takeIf { it.isNotEmpty() }?.joinToString(", ")?.let { "by $it" }, year?.let { "first published $it" }) // l10n: not text (a result's snippet the model reads)
                 .joinToString(" · ")
             SearchWire.result(SITE + key, SearchWire.str(d, "title"), snippet, SearchProvider.OPEN_LIBRARY, year?.toString())
         }

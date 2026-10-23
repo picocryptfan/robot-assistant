@@ -44,11 +44,13 @@ class ImportEntry(
     val uses: Int,
     val usedAt: Long?,
     val contentMark: Boolean,
+    /** 1.4: a filing rule (MemoryFiling): kept, labelled, never applied while the item counts as content. */
+    val filing: MemoryFiling? = null,
 ) {
     val key: String = MemoryEdits.textKey(text)
     val holdsSecret: Boolean = SecretDetector.isSecret(text)
 
-    override fun toString(): String = "ImportEntry(kind=$kind, secret=$secret, content=$contentMark, chars=${text.length})"
+    override fun toString(): String = "ImportEntry(kind=$kind, secret=$secret, content=$contentMark, chars=${text.length})" // l10n: not text (toString for logs and tests)
 }
 
 /** What reading an export gave. */
@@ -72,11 +74,16 @@ class ImportPlan(
     val ended: Int,
     val damaged: Int,
     val noRoom: Int,
+    /**
+     * 1.1 (a backup's Add): for each entry of the file, in order, the id it has here now: a new item's, the item already
+     * kept with the same words, or null (a secret, ended, no room).
+     */
+    val landed: List<String?> = emptyList(),
 ) {
     /** Private items among those added: masked in the preview until tapped. */
     val private: Int get() = add.count { it.secret }
     val skipped: Int get() = duplicates + secrets + ended + damaged + noRoom
-    override fun toString(): String = "ImportPlan(add=${add.size}, inFile=$inFile, skipped=$skipped)"
+    override fun toString(): String = "ImportPlan(add=${add.size}, inFile=$inFile, skipped=$skipped)" // l10n: not text (toString for logs and tests)
 }
 
 object MemoryImport {
@@ -129,6 +136,7 @@ object MemoryImport {
             uses = ((o["uses"] as? Long) ?: 0L).coerceIn(0L, MAX_USES.toLong()).toInt(),
             usedAt = time(o["used"]),
             contentMark = content,
+            filing = MemoryFilingCodec.read(o["filing"]),
         )
     }
 
@@ -154,23 +162,25 @@ object MemoryImport {
         var secrets = 0
         var ended = 0
         var noRoom = 0
+        val landed = ArrayList<String?>(read.entries.size)
+        val byKey = HashMap<String, String>().apply { for (i in have.items) putIfAbsent(MemoryEdits.textKey(i.text), i.id) }
         // A time Robot couldn't have written yet (the file's clock ahead, or made up) reads as now.
         fun past(t: Long?): Long? = t?.takeIf { it <= now + MemoryLimits.DAY_MS }
         for (e in read.entries) {
-            if (e.expiresAt != null && now >= e.expiresAt) { ended++; continue }
-            if (!keys.add(e.key)) { duplicates++; continue }
-            if (e.holdsSecret) { secrets++; continue }
-            if (room <= 0) { noRoom++; continue }
+            if (e.expiresAt != null && now >= e.expiresAt) { ended++; landed += null; continue }
+            if (!keys.add(e.key)) { duplicates++; landed += byKey[e.key]; continue }
+            if (e.holdsSecret) { secrets++; landed += null; continue }
+            if (room <= 0) { noRoom++; landed += null; continue }
             room--
             var id: String
             do { id = MemoryIds.newId(now, random) } while (!ids.add(id))
-            val pinned = e.pinned && !e.secret && pinRoom > 0
+            val pinned = e.pinned && !e.secret && e.filing == null && pinRoom > 0
             if (pinned) pinRoom--
             val created = past(e.createdAt) ?: now
             add += MemoryItem(
                 id = id,
                 text = e.text,
-                kind = e.kind,
+                kind = if (e.filing != null) MemoryKind.FACT else e.kind,
                 secret = e.secret,
                 pinned = pinned,
                 source = e.source,
@@ -182,9 +192,12 @@ object MemoryImport {
                 uses = e.uses,
                 usedAt = past(e.usedAt),
                 imported = if (mine && !e.contentMark) MemoryImported.YOURS else MemoryImported.CONTENT,
+                filing = e.filing,
             )
+            byKey[e.key] = id
+            landed += id
         }
-        return ImportPlan(add, read.entries.size + read.damaged, duplicates, secrets, ended, read.damaged, noRoom)
+        return ImportPlan(add, read.entries.size + read.damaged, duplicates, secrets, ended, read.damaged, noRoom, landed)
     }
 
     /** [file] with [plan]'s items added after its own (the vault writes it, under its lock). */

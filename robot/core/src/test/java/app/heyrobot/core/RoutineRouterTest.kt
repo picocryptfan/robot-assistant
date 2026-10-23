@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.Lang
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -32,7 +33,7 @@ class RoutineRouterTest {
 
     private fun at(h: Int, m: Int = 0, days: Set<DayOfWeek> = weekdays) = RoutineTrigger.At(LocalTime.of(h, m), days)
 
-    private fun expect(text: String, trigger: RoutineTrigger, steps: List<RoutineStep>, lang: BriefLang = BriefLang.EN,
+    private fun expect(text: String, trigger: RoutineTrigger, steps: List<RoutineStep>, lang: Lang = Lang.EN,
         conditions: RoutineConditions = RoutineConditions()): RoutineDraft {
         val d = draft(text)
         assertEquals(text, trigger, d.routine.trigger)
@@ -50,20 +51,20 @@ class RoutineRouterTest {
         val d = expect("Every weekday at 7, tell me the weather and my calendar", at(7), listOf(weather, calendar))
         assertEquals("Morning routine", d.routine.name)
         assertEquals(listOf("Read “7” as 07:00; change it in Routines if that's wrong."), d.notes)
-        expect("Chaque matin de semaine à 7 h, dis-moi la météo pis mon agenda", at(7), listOf(weather, calendar), BriefLang.FR).also {
+        expect("Chaque matin de semaine à 7 h, dis-moi la météo pis mon agenda", at(7), listOf(weather, calendar), Lang.FR).also {
             assertEquals("Routine du matin", it.routine.name)
             assertEquals(emptyList<String>(), it.notes)
         }
         expect("When I turn off my alarm, read my morning brief", RoutineTrigger.AlarmDismissed(), listOf(RoutineStep.Brief))
-        expect("Quand je ferme mon cadran, lis-moi mon résumé", RoutineTrigger.AlarmDismissed(), listOf(RoutineStep.Brief), BriefLang.FR)
+        expect("Quand je ferme mon cadran, lis-moi mon résumé", RoutineTrigger.AlarmDismissed(), listOf(RoutineStep.Brief), Lang.FR)
         expect("When I connect my headphones, tell me my next meeting", RoutineTrigger.Device(DeviceKind.HEADSET), listOf(calendar))
-        expect("Quand je branche mes écouteurs, dis-moi mon prochain rendez-vous", RoutineTrigger.Device(DeviceKind.HEADSET), listOf(calendar), BriefLang.FR)
+        expect("Quand je branche mes écouteurs, dis-moi mon prochain rendez-vous", RoutineTrigger.Device(DeviceKind.HEADSET), listOf(calendar), Lang.FR)
         expect("when I connect my car, tell me my next meeting", RoutineTrigger.Device(DeviceKind.CAR), listOf(calendar))
-        expect("Quand je me connecte à l'auto, dis-moi mon prochain rendez-vous", RoutineTrigger.Device(DeviceKind.CAR), listOf(calendar), BriefLang.FR)
+        expect("Quand je me connecte à l'auto, dis-moi mon prochain rendez-vous", RoutineTrigger.Device(DeviceKind.CAR), listOf(calendar), Lang.FR)
         expect("When I plug in at night, set an alarm for 6:30", RoutineTrigger.Charging(true), listOf(tool("set_alarm", "hour" to 6, "minute" to 30)),
             conditions = RoutineConditions(between = TimeWindow.NIGHT))
         expect("Quand je mets le téléphone à charger le soir, règle un réveil à 6 h 30", RoutineTrigger.Charging(true),
-            listOf(tool("set_alarm", "hour" to 6, "minute" to 30)), BriefLang.FR, RoutineConditions(between = TimeWindow.NIGHT))
+            listOf(tool("set_alarm", "hour" to 6, "minute" to 30)), Lang.FR, RoutineConditions(between = TimeWindow.NIGHT))
         expect("every Friday at 5, tell me the weather for the weekend", at(17, days = setOf(DayOfWeek.FRIDAY)), listOf(tool("weather", "day" to "this weekend")))
     }
 
@@ -81,38 +82,38 @@ class RoutineRouterTest {
         expect("Hey robot, every weekday morning at 7, read my morning brief", at(7), listOf(RoutineStep.Brief))
         expect("daily at noon, tell me my battery", at(12, days = RoutineWords.ALL), listOf(tool("phone_status", "about" to "battery")))
         // Québec forms: "7 h", "7h30", "19 h", "pis", "fin de semaine", "tous les lundis".
-        expect("Tous les jours à 6 h 30, dis-moi la météo", at(6, 30, RoutineWords.ALL), listOf(weather), BriefLang.FR)
-        expect("En semaine à 7h30, lis-moi mon résumé du matin", at(7, 30), listOf(RoutineStep.Brief), BriefLang.FR)
+        expect("Tous les jours à 6 h 30, dis-moi la météo", at(6, 30, RoutineWords.ALL), listOf(weather), Lang.FR)
+        expect("En semaine à 7h30, lis-moi mon résumé du matin", at(7, 30), listOf(RoutineStep.Brief), Lang.FR)
         expect("La fin de semaine à 9 h, dis-moi la météo de la fin de semaine", at(9, days = RoutineWords.WEEKEND),
-            listOf(tool("weather", "day" to "this weekend")), BriefLang.FR)
+            listOf(tool("weather", "day" to "this weekend")), Lang.FR)
         expect("Tous les lundis à 19 h, dis-moi mon agenda de demain", at(19, days = setOf(DayOfWeek.MONDAY)),
-            listOf(tool("read_calendar", "day" to "tomorrow")), BriefLang.FR)
-        expect("Chaque soir à 9 h, lis-moi mes rappels", at(21, days = RoutineWords.ALL), listOf(RoutineStep.Reminders), BriefLang.FR)
-        expect("le vendredi à 17 h, dis-moi la météo à la maison", at(17, days = setOf(DayOfWeek.FRIDAY)), listOf(tool("weather", "place" to "home")), BriefLang.FR)
-        expect("les jours de semaine à 7 h, dis-moi la météo à Québec pis mon agenda", at(7), listOf(tool("weather", "place" to "Québec"), calendar), BriefLang.FR)
-        expect("du lundi au vendredi à 6 h, règle un réveil à 6 h 15", at(6), listOf(tool("set_alarm", "hour" to 6, "minute" to 15)), BriefLang.FR)
-        expect("À 7 h tous les jours, dis-moi la météo", at(7, days = RoutineWords.ALL), listOf(weather), BriefLang.FR)
-        expect("Chaque jour à 7 h du soir, lis-moi mon résumé", at(19, days = RoutineWords.ALL), listOf(RoutineStep.Brief), BriefLang.FR)
+            listOf(tool("read_calendar", "day" to "tomorrow")), Lang.FR)
+        expect("Chaque soir à 9 h, lis-moi mes rappels", at(21, days = RoutineWords.ALL), listOf(RoutineStep.Reminders), Lang.FR)
+        expect("le vendredi à 17 h, dis-moi la météo à la maison", at(17, days = setOf(DayOfWeek.FRIDAY)), listOf(tool("weather", "place" to "home")), Lang.FR)
+        expect("les jours de semaine à 7 h, dis-moi la météo à Québec pis mon agenda", at(7), listOf(tool("weather", "place" to "Québec"), calendar), Lang.FR)
+        expect("du lundi au vendredi à 6 h, règle un réveil à 6 h 15", at(6), listOf(tool("set_alarm", "hour" to 6, "minute" to 15)), Lang.FR)
+        expect("À 7 h tous les jours, dis-moi la météo", at(7, days = RoutineWords.ALL), listOf(weather), Lang.FR)
+        expect("Chaque jour à 7 h du soir, lis-moi mon résumé", at(19, days = RoutineWords.ALL), listOf(RoutineStep.Brief), Lang.FR)
     }
 
     @Test fun moreEventsAndSteps() {
         expect("when I unlock my phone, tell me the weather", RoutineTrigger.Unlock(), listOf(weather))
-        expect("quand je déverrouille mon téléphone, dis-moi la météo", RoutineTrigger.Unlock(), listOf(weather), BriefLang.FR)
-        expect("quand j'éteins mon cadran, lis-moi mon résumé", RoutineTrigger.AlarmDismissed(), listOf(RoutineStep.Brief), BriefLang.FR)
-        expect("quand j'arrête mon réveil, dis-moi la météo pis mes rappels", RoutineTrigger.AlarmDismissed(), listOf(weather, RoutineStep.Reminders), BriefLang.FR)
+        expect("quand je déverrouille mon téléphone, dis-moi la météo", RoutineTrigger.Unlock(), listOf(weather), Lang.FR)
+        expect("quand j'éteins mon cadran, lis-moi mon résumé", RoutineTrigger.AlarmDismissed(), listOf(RoutineStep.Brief), Lang.FR)
+        expect("quand j'arrête mon réveil, dis-moi la météo pis mes rappels", RoutineTrigger.AlarmDismissed(), listOf(weather, RoutineStep.Reminders), Lang.FR)
         expect("when my alarm goes off, tell me the weather", RoutineTrigger.AlarmDismissed(), listOf(weather))
         expect("when I disconnect my earbuds, turn off the flashlight", RoutineTrigger.Device(DeviceKind.HEADSET, connect = false), listOf(tool("flashlight", "on" to false)))
         expect("when I get in the car, give me directions to work", RoutineTrigger.Device(DeviceKind.CAR), listOf(tool("maps_navigate", "destination" to "work")))
-        expect("quand j'embarque dans le char, dis-moi mon prochain rendez-vous", RoutineTrigger.Device(DeviceKind.CAR), listOf(calendar), BriefLang.FR)
+        expect("quand j'embarque dans le char, dis-moi mon prochain rendez-vous", RoutineTrigger.Device(DeviceKind.CAR), listOf(calendar), Lang.FR)
         expect("when I unplug my phone, tell me the weather", RoutineTrigger.Charging(false), listOf(weather))
         expect("when I start charging, set a timer for 20 minutes", RoutineTrigger.Charging(true), listOf(tool("set_timer", "minutes" to 20)))
-        expect("quand je branche mon téléphone, mets une minuterie de 10 minutes", RoutineTrigger.Charging(true), listOf(tool("set_timer", "minutes" to 10)), BriefLang.FR)
+        expect("quand je branche mon téléphone, mets une minuterie de 10 minutes", RoutineTrigger.Charging(true), listOf(tool("set_timer", "minutes" to 10)), Lang.FR)
         expect("every weekday at 5 pm, open Organic Maps and text Mom I'm leaving work", at(17),
             listOf(tool("open_app", "name" to "Organic Maps"), tool("send_text", "to" to "Mom", "message" to "I'm leaving work")))
         expect("every day at 9 pm, say time to take your pills", at(21, days = RoutineWords.ALL), listOf(RoutineStep.Say("time to take your pills")))
         expect("every day at 9 pm, say good night and sweet dreams, then turn off the flashlight", at(21, days = RoutineWords.ALL),
             listOf(RoutineStep.Say("good night and sweet dreams"), tool("flashlight", "on" to false)))
-        expect("chaque soir à 22 h, dis bonne nuit", at(22, days = RoutineWords.ALL), listOf(RoutineStep.Say("bonne nuit")), BriefLang.FR)
+        expect("chaque soir à 22 h, dis bonne nuit", at(22, days = RoutineWords.ALL), listOf(RoutineStep.Say("bonne nuit")), Lang.FR)
         expect("every weekday at 7, start a 10 minute timer and tell me my unread messages", at(7), listOf(tool("set_timer", "minutes" to 10), RoutineStep.Messages))
         expect("every Sunday at 8 pm, tell me my notes about groceries", at(20, days = setOf(DayOfWeek.SUNDAY)), listOf(tool("find_notes", "query" to "groceries")))
     }
@@ -160,17 +161,17 @@ class RoutineRouterTest {
         assertEquals(StepClass.NEEDS_YOU, RoutineGate.classOf(f.routine.steps.single()))
     }
 
-    /** Ordinary talk and a reminder with a time are left alone (design §2.11). */
+    /**
+     * Ordinary talk and a reminder with a time but no day are left alone. 1.1: one with a day and a time is a dated
+     * reminder (DatedReminderTest), no longer the model's.
+     */
     @Test fun noMisfires() {
         for (t in listOf(
             "every time I call Bob he hangs up",
             "when I was at work, Bob called",
             "chaque fois que je l'appelle, il raccroche",
             "remind me to call Bob at 5",
-            "remind me tomorrow at 8 to bring the passport",
             "remind me in the morning at 7 to call Bob",
-            "remind me to call Bob at 8 tomorrow morning",
-            "rappelle-moi demain à 8 h d'appeler Bob",
             "what's the weather",
             "start Signal",
             "run",

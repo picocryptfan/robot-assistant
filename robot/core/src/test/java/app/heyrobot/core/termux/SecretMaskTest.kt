@@ -33,7 +33,7 @@ class SecretMaskTest {
             assertEquals(secret, kind, found[0].kind)
             assertEquals("before [hidden: ${kind.en}] after", SecretMask.mask(text))
         }
-        assertEquals("[masqué : ressemble à une clé d'API]", SecretMask.mask(ant, fr = true))
+        assertEquals("[masqué\u00A0: ressemble à une clé d’API]", SecretMask.mask(ant, fr = true))
     }
 
     @Test fun passwordsAfterKeywordsAndInAddresses() {

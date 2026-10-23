@@ -35,6 +35,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import app.heyrobot.title
 
 /** Settings › Actions: a row per action with its level, a radio dialog to change it, and the nearest place's two settings. */
 @RunWith(RobolectricTestRunner::class)

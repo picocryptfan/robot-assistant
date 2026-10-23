@@ -1,0 +1,243 @@
+<!-- People and notes (Robot Notes' launcher icon) (the l10n work package WP3): ids start with people_, notes_, and
+     the French is in values-fr-rCA/strings_people.xml. 1.1 split strings.xml into one file per area, ids and texts
+     unchanged. -->
+<resources>
+    <string name="notes_name">Robot Notes</string>
+    <!-- Robot Notes (ui/NotesScreen.kt). -->
+    <string name="notes_subtitle">Saved on this phone only. Say “note: …” to add one.</string>
+    <string name="notes_search">Search notes</string>
+    <string name="notes_clear">Clear</string>
+    <string name="notes_none">No notes yet</string>
+    <string name="notes_none_detail">Ask Robot to note something, or tap New note.</string>
+    <string name="notes_no_match">No note matches</string>
+    <string name="notes_no_match_detail">Try other words.</string>
+    <string name="notes_new">New note</string>
+    <string name="notes_note">Note</string>
+    <string name="notes_share_title">Share the note</string>
+    <string name="notes_share_nothing">Nothing on this phone can take the note.</string>
+    <string name="notes_share">Share</string>
+    <string name="notes_delete">Delete</string>
+    <string name="notes_deleted_banner">This note was deleted.</string>
+    <string name="notes_not_restored">The note couldn\'t be restored.</string>
+    <string name="notes_restore">Restore</string>
+    <string name="notes_title_field">Title</string>
+    <string name="notes_not_saved">Not saved: restore it to keep it</string>
+    <string name="notes_saved_when">Saved %1$s</string>
+    <string name="notes_delete_title">Delete this note?</string>
+    <string name="notes_delete_text">It can\'t be brought back.</string>
+    <string name="notes_deleted">Note deleted.</string>
+    <string name="notes_cancel">Cancel</string>
+
+    <!-- Settings › People, notes and calendar (ui/settings/PeopleNotesCalendarSettings.kt). -->
+    <string name="people_texts">Texts</string>
+    <string name="people_texting_app">Texting app</string>
+    <string name="people_text_sms">SMS app</string>
+    <string name="people_text_off">Off</string>
+    <string name="people_text_cheogram_detail">Numbers go through the SMS gateway; XMPP addresses directly</string>
+    <string name="people_not_installed">Not installed</string>
+    <string name="people_text_sms_detail">The phone\'s SMS app, with the text filled in</string>
+    <string name="people_text_off_detail">Robot doesn\'t write texts</string>
+    <string name="people_gateway">SMS gateway</string>
+    <string name="people_gateway_field">Gateway</string>
+    <string name="people_gateway_help">The domain your messaging app texts numbers through (JMP: cheogram.com).</string>
+    <string name="people_region">Phone region</string>
+    <string name="people_region_own">This phone\'s own (%1$s)</string>
+    <string name="people_region_unknown">unknown</string>
+    <string name="people_region_field">Region</string>
+    <string name="people_region_help">Two letters, for numbers without a country code (US, FR, DE…). Empty: this phone\'s own (%1$s).</string>
+    <string name="people_region_invalid">Two letters, such as US or FR</string>
+    <string name="people_email">Email</string>
+    <string name="people_email_app">Email app</string>
+    <string name="people_email_ask">Ask each time</string>
+    <string name="people_email_proton_detail">Opens Proton Mail\'s composer with the draft</string>
+    <string name="people_email_proton_missing">Not installed: Robot asks each time</string>
+    <string name="people_email_ask_detail">Android asks which email app to use</string>
+    <string name="people_calendar">Calendar</string>
+    <string name="people_allow_calendar">Allow the calendar</string>
+    <string name="people_allow_calendar_detail">Then Robot adds events itself</string>
+    <string name="people_allow">Allow</string>
+    <string name="people_event_calendar">Calendar for new events</string>
+    <string name="people_no_calendar">No calendar here takes new events</string>
+    <string name="people_automatic">Automatic</string>
+    <string name="people_automatic_now">Automatic · now %1$s</string>
+    <string name="people_calendar_id">Calendar %1$s</string>
+    <string name="people_now">Now: %1$s</string>
+    <string name="people_event_length">Length of a new event</string>
+    <string name="people_people_detail">Who Robot knows besides your contacts, and what you call them</string>
+    <string name="people_notes_detail">Your notes, to read, edit, search and share</string>
+    <string name="people_access">Contacts and calendar access</string>
+    <string name="people_access_detail">Allow or check what Robot may read</string>
+    <string name="people_settings_footer">Robot never sends anything itself: texts and emails open in the app as drafts, and you press Send there. Until the calendar is allowed, or when no calendar on this phone takes new events, your calendar app opens with the event filled in. The length is for a new event when you don\'t say when it ends.</string>
+
+    <!-- Settings › People (ui/PeopleScreen.kt): the list. -->
+    <string name="people_unreadable_file">That file couldn\'t be read, or it is over 8 MB.</string>
+    <string name="people_nothing_to_reach">No one in that file has a number, an email or an XMPP address.</string>
+    <string name="people_export_failed">The file couldn\'t be written.</string>
+    <plurals name="people_exported">
+        <item quantity="one">Exported %1$d person.</item>
+        <item quantity="other">Exported %1$d people.</item>
+    </plurals>
+    <string name="people_cheogram_unreadable">Cheogram\'s answer couldn\'t be read.</string>
+    <string name="people_cheogram_no_address">Cheogram didn\'t say who was picked, or Robot can\'t use that address.</string>
+    <string name="people_cheogram_nobody">Nobody was picked in Cheogram.</string>
+    <string name="people_not_saved">Robot couldn\'t save them.</string>
+    <string name="people_picker_nothing">The contact picker didn\'t return a contact.</string>
+    <string name="people_contact_unreadable">Robot couldn\'t read that contact.</string>
+    <string name="people_contact_empty">That contact has no number or email to add.</string>
+    <string name="people_more">More options</string>
+    <string name="people_import_vcf">Import contacts file (.vcf)</string>
+    <string name="people_no_opener">No app on this phone opens files.</string>
+    <string name="people_export_vcf">Export (.vcf)</string>
+    <string name="people_no_saver">No app on this phone saves files.</string>
+    <string name="people_delete_all">Delete all People</string>
+    <string name="people_intro">People Robot knows besides your contacts: who to text or email, and what you call them. Kept on this phone only, never sent to a helper, and not in Android\'s backups.</string>
+    <string name="people_damaged">Robot can\'t read its People file</string>
+    <string name="people_damaged_detail">It may be damaged. Robot changes nothing in it, and knows no one here, until you start over. Starting over keeps the old file aside (people.json.bad, in Robot\'s files) and begins an empty list; import your last export to get everyone back.</string>
+    <string name="people_start_over">Start over</string>
+    <string name="people_add">Add person</string>
+    <string name="people_add_detail">Type a name, numbers, emails and XMPP addresses</string>
+    <string name="people_add_contact">Add from phone contacts</string>
+    <string name="people_add_contact_detail">One contact, no permission needed</string>
+    <string name="people_add_cheogram">Add from Cheogram</string>
+    <string name="people_add_cheogram_detail">Pick someone in Cheogram\'s list</string>
+    <string name="people_cheogram_didnt_open">Cheogram\'s list didn\'t open.</string>
+    <string name="people_remembering">Remembering</string>
+    <string name="people_remember_picks">Remember who you pick</string>
+    <string name="people_remember_picks_detail">When you pick in a list, or on a card (“Always use this for mom”)</string>
+    <string name="people_learn">Learn names from notifications</string>
+    <string name="people_learn_names">Learn names from message notifications</string>
+    <string name="people_learn_names_detail">Who messages you, never the message. Works with Cheogram only for now</string>
+    <string name="people_access_needed">Needed: three steps</string>
+    <string name="people_access_allowed">Notification access allowed</string>
+    <string name="people_access_cheogram_only">Senders of one-to-one chats only</string>
+    <string name="people_access_still">Notification access is still allowed</string>
+    <string name="people_access_still_detail">Robot ignores notifications while this is off</string>
+    <string name="people_open">Open</string>
+    <string name="people_learned">Learned from notifications (%1$d)</string>
+    <string name="people_keep">Keep</string>
+    <string name="people_keep_named">Keep %1$s</string>
+    <string name="people_remove">Remove</string>
+    <string name="people_remove_named">Remove %1$s</string>
+    <plurals name="people_learned_more">
+        <item quantity="one">…and %1$d more in the list below.</item>
+        <item quantity="other">…and %1$d more in the list below.</item>
+    </plurals>
+    <string name="people_no_one">No one yet</string>
+    <string name="people_search">Search people</string>
+    <string name="people_clear_search">Clear search</string>
+    <string name="people_no_match">No one matches.</string>
+    <string name="people_yours">Your people (%1$d)</string>
+    <string name="people_footer">Import contacts file (.vcf), in the menu: in your email provider\'s contacts page, select all and export as vCard (.vcf). Robot keeps names, nicknames, numbers, emails and XMPP addresses only. Export (.vcf) makes a backup, and a file any contacts app can import.\n\nAdd from Cheogram: its list says “Create shortcut”; nothing goes on your home screen.</string>
+    <!-- Importing a contacts file. -->
+    <plurals name="people_import_title">
+        <item quantity="one">Import %1$d person?</item>
+        <item quantity="other">Import %1$d people?</item>
+    </plurals>
+    <plurals name="people_count_numbers">
+        <item quantity="one">%1$d number</item>
+        <item quantity="other">%1$d numbers</item>
+    </plurals>
+    <plurals name="people_count_emails">
+        <item quantity="one">%1$d email</item>
+        <item quantity="other">%1$d emails</item>
+    </plurals>
+    <plurals name="people_count_xmpp">
+        <item quantity="one">%1$d XMPP address</item>
+        <item quantity="other">%1$d XMPP addresses</item>
+    </plurals>
+    <string name="people_in_file">In the file: %1$s, %2$s, %3$s.</string>
+    <plurals name="people_skipped">
+        <item quantity="one">%1$d card has nothing to reach them by and stay out.</item>
+        <item quantity="other">%1$d cards have nothing to reach them by and stay out.</item>
+    </plurals>
+    <plurals name="people_count_new">
+        <item quantity="one">%1$d new person</item>
+        <item quantity="other">%1$d new people</item>
+    </plurals>
+    <plurals name="people_count_updated">
+        <item quantity="one">%1$d person</item>
+        <item quantity="other">%1$d people</item>
+    </plurals>
+    <string name="people_merge">%1$s; %2$s already here (the same number, email or XMPP address) get what\'s new.</string>
+    <string name="people_keeps_only">Robot keeps names, nicknames, numbers, emails and XMPP addresses only: no postal addresses, birthdays, notes or photos.</string>
+    <string name="people_import_failed">The import couldn\'t be saved.</string>
+    <string name="people_imported">Imported: %1$d new, %2$d updated.</string>
+    <string name="people_import">Import</string>
+    <string name="people_cancel">Cancel</string>
+    <string name="people_legacy_text">Pick a number or an email address; Robot adds it with the contact\'s name.</string>
+    <string name="people_no_contacts_app">No contacts app on this phone.</string>
+    <string name="people_a_number">A number</string>
+    <string name="people_an_email">An email</string>
+    <string name="people_start_over_title">Start over?</string>
+    <string name="people_start_over_text">Robot keeps the file it can\'t read aside, as people.json.bad, and starts an empty People list.</string>
+    <string name="people_empty_now">People is empty now.</string>
+    <string name="people_not_set_aside">Robot couldn\'t set the file aside.</string>
+    <string name="people_delete_all_title">Delete all People?</string>
+    <string name="people_delete_all_text">Robot forgets everyone here and what you call them, and may learn anyone you removed again. The phone\'s contacts aren\'t touched. This can\'t be undone.</string>
+    <string name="people_all_deleted">People deleted.</string>
+    <string name="people_not_deleted">People couldn\'t be deleted.</string>
+    <string name="people_delete_all_button">Delete all</string>
+    <string name="people_open_access">Open %1$s, or %2$s.</string>
+    <!-- Settings › People › Notification access, and what learning from Cheogram reads. -->
+    <string name="people_access_title">Notification access</string>
+    <string name="people_access_allowed_detail">What People and Messages turn on, nothing else</string>
+    <string name="people_access_footer">To learn names, Robot looks at the notifications of one messaging app only, and of those only the sender of a one-to-one chat. With Settings › Messages on, it also reads the messages of the apps you turn on there, in memory only. Settings › People and Settings › Messages say what Robot reads, where it is kept, and how to take it back.</string>
+    <string name="people_steps_title">Allow notification access</string>
+    <string name="people_steps_why">Android calls notification access a restricted setting for apps installed from a file instead of an app store, as Robot is: harmful apps installed that way have used it to read people\'s messages and login codes. So it takes three steps.</string>
+    <string name="people_step_1">1. Tap Notification access and turn on Robot\'s access (in a list, tap Robot first). If Android says “Restricted setting”, tap OK.</string>
+    <string name="people_step_2">2. Tap App info, then ⋮ (top right) › Allow restricted settings, and confirm; Android may ask for your PIN or fingerprint. No such item? Android isn\'t blocking Robot: skip this step.</string>
+    <string name="people_app_info">App info</string>
+    <string name="people_step_3">3. Tap Notification access again, turn on Robot\'s access and tap Allow.</string>
+    <string name="people_access_again">Notification access again</string>
+    <string name="people_privacy_title">What Robot reads, and where it goes</string>
+    <string name="people_privacy_1">Notification access lets an app see every app\'s notifications. Robot asks Android for conversations only, drops all but that one app\'s at once, and learns nothing from them while this switch is off. Settings › Messages, if you turn it on, uses the same access to read the apps you choose there, in memory only.</string>
+    <string name="people_privacy_2">From a message in a one-to-one chat, Robot keeps only the sender\'s name and address and which of your accounts got it. It never looks at, keeps or logs what the message says, and group chats teach it nothing. It checks the app\'s signature too, so an app pretending to be it teaches nothing.</string>
+    <string name="people_privacy_3">Names stay on this phone, in Robot\'s private storage, left out of Android\'s backups. Robot never sends them anywhere by itself: not to a helper, not to any other online AI model. Robot\'s own model, on the phone, sees a name only when it looks someone up for you. Only if you choose to share with a helper a conversation in which Robot looked someone up (Include, a helper you trust with personal content, or Safety &amp; privacy › Send personal content to helpers automatically) can what Robot said about them go with it.</string>
+    <string name="people_privacy_4">To take it back: turn this switch off, and Robot stops learning at once. Then turn Robot off in Notification access. Names already learned stay until you tap Remove on them, or Delete all People.</string>
+    <string name="people_also_called">Also called %1$s</string>
+    <string name="people_seen_in_cheogram">seen in a notification</string>
+
+    <!-- Settings › People › a person. -->
+    <string name="people_check_red">Check what\'s marked in red.</string>
+    <string name="people_deleted_meanwhile">They were deleted meanwhile: Robot didn\'t bring them back.</string>
+    <string name="people_new_person">New person</string>
+    <string name="people_person">Person</string>
+    <string name="people_save">Save</string>
+    <string name="people_delete">Delete</string>
+    <string name="people_person_deleted">This person was deleted.</string>
+    <string name="people_seen_banner">Seen in a notification</string>
+    <string name="people_seen_banner_detail">Whoever sent the message chose this name. Until you keep or edit them, Robot always shows a card first, and never offers them in place of someone you know.</string>
+    <string name="people_kept">Kept.</string>
+    <string name="people_name">Name</string>
+    <string name="people_name_needed">A name is needed.</string>
+    <string name="people_also_called_field">Also called</string>
+    <string name="people_also_called_help">What you call them, separated by commas: mom, maman. Said exactly, it means this person.</string>
+    <string name="people_nicknames">Nicknames</string>
+    <string name="people_nicknames_help">Other names they go by, as in a contacts file. They match like any name, not ahead of others.</string>
+    <string name="people_numbers">Numbers</string>
+    <string name="people_remove_number">Remove the number</string>
+    <string name="people_add_number">Add a number</string>
+    <string name="people_emails">Emails</string>
+    <string name="people_remove_email">Remove the email</string>
+    <string name="people_add_email">Add an email</string>
+    <string name="people_address">Address</string>
+    <string name="people_remove_address">Remove the address</string>
+    <string name="people_account">Your Cheogram account (optional)</string>
+    <string name="people_account_help">Filled in when you pick them in Cheogram: Robot then opens their chat in that account directly.</string>
+    <string name="people_add_xmpp">Add an XMPP address</string>
+    <string name="people_texts_go_to">Texts always go to %1$s</string>
+    <string name="people_emails_go_to">Emails always go to %1$s</string>
+    <string name="people_forget">Forget</string>
+    <string name="people_source_changed">%1$s · changed %2$s</string>
+    <string name="people_save_first">Save first.</string>
+    <string name="people_no_contacts_insert">No contacts app on this phone takes new contacts.</string>
+    <string name="people_save_to_contacts">Save to phone\'s contacts</string>
+    <string name="people_save_to_contacts_detail">Opens your Contacts app with everything filled in: choose the account and save there. Your messaging and email apps and the dialer then know the name too. Robot itself never writes to your contacts.</string>
+    <string name="people_delete_title">Delete %1$s?</string>
+    <string name="people_this_person">this person</string>
+    <string name="people_delete_text">Robot forgets them and what you call them. The phone\'s contacts aren\'t touched.</string>
+    <string name="people_deleted">Deleted.</string>
+    <string name="people_not_deleted_one">Robot couldn\'t delete them.</string>
+    <string name="people_save_changes">Save your changes?</string>
+    <string name="people_discard">Discard</string>
+</resources>

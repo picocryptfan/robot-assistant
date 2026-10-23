@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.Lang
+import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.ToolStrings
+import app.heyrobot.core.i18n.TurnStrings
 import app.heyrobot.core.messages.ActionOrigin
 import app.heyrobot.core.messages.MessageQuarantine
 import app.heyrobot.core.messages.MessageTaint
@@ -20,6 +25,9 @@ import kotlinx.coroutines.withContext
 // the limits and the "one turn at a time" rule are unit-tested.
 
 object TurnRules {
+    /** 1.1: how much of a card's body Robot reads for the days and times it shows (ReplyFacts). */
+    const val CARD_WORDS = 600
+
     /** Actions in one answer at most; calls past it are shown as not done and the model is told why. */
     const val MAX_CALLS = 2
     /** Tool rounds (calls, results, the model again) in one answer at most. */
@@ -86,8 +94,19 @@ interface TurnModel {
 /**
  * One of the people or numbers a card offers: tapping it confirms [action], which goes to that one. [remember]: the
  * same action that also remembers the choice, taken instead when "Always use this for …" is ticked on the card.
+ * [text]: 1.1, [label] as words without a language yet (a button: the turn shows it in the menus' language); null:
+ * [label] as it is (a name, a number).
  */
-data class Choice(val label: String, val action: Action, val remember: Action? = null)
+data class Choice(val label: String, val action: Action, val remember: Action? = null, val text: Phrase? = null) {
+    constructor(text: Phrase, action: Action, remember: Action? = null) : this(text.en(), action, remember, text)
+}
+
+/** 1.1: [en]'s words in [l] while they are still [en] (a copy that changed the English keeps the new English as it is). */
+internal fun Phrase?.orEn(en: String, l: Langs): String = this?.takeIf { it.en() == en }?.render(l) ?: en
+
+/** The same for an optional text. */
+@JvmName("orEnOptional")
+internal fun Phrase?.orEn(en: String?, l: Langs): String? = if (en == null) null else orEn(en, l)
 
 /**
  * An action made ready for the gate (open_app resolved to the installed app it will open, send_text to the number
@@ -104,14 +123,19 @@ sealed class Prepared {
      * allow reading the contacts (the person asked for may be there).
      */
     data class Ready(val action: Action, val why: Set<AskWhy> = emptySet(), val choices: List<Choice> = emptyList(), val more: Int = 0,
-        val note: String? = null, val remember: String? = null, val allowContacts: Boolean = false) : Prepared() {
+        val note: String? = null, val remember: String? = null, val allowContacts: Boolean = false,
+        /** 1.1: [note] and [remember] as words without a language yet (the card's line in the reply language, the tick box in the menus'). */
+        val noteText: Phrase? = null, val rememberText: Phrase? = null) : Prepared() {
         /** Some reason to show the card besides the level (the settings decide whether it does). */
         val mustAsk: Boolean get() = why.isNotEmpty()
 
         /** [why] with a list to choose from that names no reason of its own counted as a pick. */
         val reasons: Set<AskWhy> get() = if (choices.isNotEmpty() && why.isEmpty()) setOf(AskWhy.PICK) else why
     }
-    data class Refused(val status: ActionStatus, val detail: String) : Prepared()
+    /** [text]: 1.1, [detail] as words without a language yet (the card shows them in the reply language; the model reads [detail]). */
+    data class Refused(val status: ActionStatus, val detail: String, val text: Phrase? = null) : Prepared() {
+        constructor(status: ActionStatus, text: Phrase) : this(status, text.en(), text)
+    }
 }
 
 data class Executed(
@@ -138,14 +162,37 @@ data class Executed(
      * in a tool-free one-shot (or says why it failed in fixed words), and the main conversation never holds web text.
      */
     val web: WebOutcome? = null,
+    /**
+     * 1.4, read_file (Robot Files, F9): the file and the question. The model's turn ends with it, as at a web search: the panel
+     * answers in a tool-free FILE_ANSWER one-shot over the file's text, and the main conversation never holds the file's text.
+     */
+    val file: app.heyrobot.core.files.FileAsk? = null,
+    /**
+     * 1.1: [detail], [body] and [spoken] as words without a language yet: the card shows them in the turn's reply language
+     * and the voice says them so, while the model reads [detail] (or [forModel]), always English. Null: the text as it is.
+     */
+    val text: Phrase? = null,
+    val bodyText: Phrase? = null,
+    val spokenText: Phrase? = null,
 ) {
-    /** Content entered the conversation: every later action in it asks first (web results too: content, not personal). */
-    val content: Boolean get() = !results.isNullOrEmpty() || web is WebOutcome.Found
+    /** [text] gives [detail] (its English) and the card's words in the reply language; [body] and [spoken] the same. */
+    constructor(status: ActionStatus, text: Phrase, launchedApp: Boolean = false, results: List<Map<String, Any?>>? = null, body: Phrase? = null,
+        spoken: Phrase? = null, undo: String? = null, forModel: String? = null, handOff: String? = null, web: WebOutcome? = null,
+        file: app.heyrobot.core.files.FileAsk? = null) :
+        this(status, text.en(), launchedApp, results, body?.en(), spoken?.en(), undo, forModel, handOff, web, file, text, body, spoken)
+
+    /**
+     * Content entered the conversation: every later action in it asks first (web results too: content, not personal; 1.4, a
+     * file read_file answers from, whose answer is the file's words).
+     */
+    val content: Boolean get() = !results.isNullOrEmpty() || web is WebOutcome.Found || file != null
 }
 
 interface TurnActions {
     /** Read when deciding and again after a confirmation (the phone may have locked meanwhile). */
     val locked: Boolean
+    /** 1.1: a phone lock is on, during which [locked] is true with the screen unlocked: what it refuses says the lock closes it. */
+    val phoneLock: Boolean get() = false
     val settings: RobotSettings
     /** May read the contacts or the calendar: suspends, so the panel does that off its main thread. */
     suspend fun prepare(action: Action): Prepared
@@ -155,6 +202,14 @@ interface TurnActions {
      */
     suspend fun prepare(action: Action, untrusted: Boolean, remote: Boolean): Prepared = prepare(action)
     suspend fun run(action: Action): Executed
+
+    /**
+     * 1.1, Skills phase B (plan §8): one of your skills the model called ([call], read by SkillCalls), through the same path
+     * as a skill you named (its card when the rule wants one, then each step through its own gate and card). [untrusted]:
+     * the conversation holds content. Refuses by default; the panel's port runs it.
+     */
+    suspend fun runSkill(call: app.heyrobot.core.skills.SkillCall.Ok, untrusted: Boolean): app.heyrobot.core.skills.SkillRan =
+        app.heyrobot.core.skills.SkillRan.NOT_OFFERED
 }
 
 enum class TurnPhase { THINKING, CONFIRMING }
@@ -194,7 +249,17 @@ data class Card(
      * must be seen on the card. A no still declines it. Null: a yes may answer it.
      */
     val tapFor: AskWhy? = null,
-)
+    /**
+     * 1.1 (Skills' save card): small buttons that change what the card would do ("12 minutes · fixed"); a tap on the
+     * [i]th answers the card with [CHIP] + i, and the card is shown again. Its Do it and Cancel stay.
+     */
+    val chips: List<String> = emptyList(),
+) {
+    companion object {
+        /** A chip's answer is this plus its index (below Confirmations.REMEMBER). */
+        const val CHIP = 1 shl 12
+    }
+}
 
 interface TurnView {
     fun phase(p: TurnPhase)
@@ -224,7 +289,11 @@ class StallTimer(private val gapMs: Long, start: Long) {
  */
 data class TurnResult(val reason: DoneReason?, val failure: String? = null, val launchedApp: Boolean = false, val escalate: Boolean = false,
     /** 0.9: the model called web_search and it ran: its turn ended there, and the panel answers from this. */
-    val web: WebOutcome? = null)
+    val web: WebOutcome? = null,
+    /** 1.4: the model called read_file and it was found: its turn ended there, and the panel answers from the file (FILE_ANSWER). */
+    val file: app.heyrobot.core.files.FileAsk? = null,
+    /** 1.1, Skills phase B: "Did you mean" answered no (D18): the model answers again, without skills, for this turn. */
+    val withoutSkills: Boolean = false)
 
 /** The person's answers to confirmation cards. Thread-safe. */
 class Confirmations {
@@ -327,9 +396,57 @@ class TurnRunner(
      * conversation, a memory the model proposes is never kept, and yours is a card a tap answers (MessageQuarantine).
      */
     private val origin: ActionOrigin = ActionOrigin.MODEL,
+    /**
+     * 1.1: the turn's languages (core i18n): what the cards and the voice say in the reply
+     * language ([Langs.say], the panel decides it with ReplyLang), the buttons in the menus' ([Langs.ui]). What the model
+     * is told stays English. English everywhere by default.
+     */
+    private val langs: Langs = Langs.EN,
+    /** 1.1, Skills phase B: your skills described to the model this turn (a `skill_*` call is read against them). */
+    private val skills: app.heyrobot.core.skills.SkillMenu = app.heyrobot.core.skills.SkillMenu.NONE,
+    /**
+     * 1.1: what your own words said this turn (core AlarmWords): set_alarm runs only for a time you said, on the day it
+     * rings. Null: not checked (the panel's own calls, a routine's step, a skill, a helper).
+     */
+    private val heard: TurnWords? = null,
+    /** The time the cards' days are read at (an alarm's ring day, ReplyFacts); [heard]'s when there is one. */
+    private val clock: () -> java.time.ZonedDateTime = { java.time.ZonedDateTime.now() },
     private val newId: () -> String,
 ) {
+    private fun now(): java.time.ZonedDateTime = heard?.now ?: clock()
+
     private var budget = TurnRules.MAX_CALLS
+
+    /** 1.1: the actions that happened in this turn and their cards' words ([cardWords]), for [scrubbed]. */
+    private val doneCards = mutableListOf<Pair<Action, String>>()
+
+    /**
+     * 1.1: [a]'s card in words, English and the reply language: its summary, the start of its body (a long note's or
+     * message's days and times past [TurnRules.CARD_WORDS] characters aren't read) and its line.
+     */
+    private fun cardWords(a: Action, body: String?, detail: String?): String =
+        listOfNotNull(a.summary().en(), a.summary().render(langs), (body ?: a.body())?.take(TurnRules.CARD_WORDS), detail).joinToString("\n")
+
+    /** A button's or a tick box's words: the menus' language. */
+    private val ui: Langs get() = Langs(langs.ui, langs.ui, langs.system, pseudo = langs.pseudo)
+
+    /** What the voice says: its own form in French; English as the card has it (1.0's words). */
+    private fun spoken(p: Phrase): String = if (langs.say == Lang.EN) p.render(langs) else p.render(langs.voice)
+
+    /** What text-call mode says of a result: its spoken words, else its card's line. */
+    private fun said(r: Executed): String =
+        r.spoken?.let { s -> r.spokenText?.takeIf { it.en() == s }?.let(::spoken) ?: s } ?: r.text?.takeIf { it.en() == r.detail }?.let(::spoken) ?: r.detail
+
+    /** A card for a call that doesn't run ([why]), and what the model is told. */
+    private fun notRun(parsed: ParsedCall, status: ActionStatus, why: Phrase, raw: RawToolCall): Pair<String, Map<String, Any?>> {
+        val (tool, summary) = when (parsed) {
+            is ParsedCall.Ok -> parsed.action.tool to parsed.action.summary()
+            is ParsedCall.Invalid -> ToolName.of(parsed.tool) to TurnStrings.couldntDo("tool" to parsed.tool)
+        }
+        view.card(Card(newId(), tool, summary.render(langs), status, why.render(langs), remote = remote))
+        record(Outcome(tool, status, why.en(), text = why))
+        return raw.name to status.toolResponse(why.en())
+    }
 
     /**
      * [spoken]: what the round's actions say (their cards' text), for when no reply can follow them. [outcomes]: how each
@@ -350,6 +467,25 @@ class TurnRunner(
 
     /** 0.9: a web search ran in this turn (core web WebOutcome): nothing else of the reply runs, and the turn ends. */
     private var web: WebOutcome? = null
+
+    /** 1.4: read_file found its file in this turn: nothing else of the reply runs, and the turn ends (as [web]). */
+    private var file: app.heyrobot.core.files.FileAsk? = null
+
+    /** A web search or read_file ended the model's turn: what else it asked for is skipped, in its words. */
+    private val answersFirst: Phrase? get() = when {
+        web != null -> TurnStrings.webFirst()
+        file != null -> TurnStrings.fileFirst()
+        else -> null
+    }
+
+    /** 1.1, Skills phase B: a skill's turn ends here ([SkillRan.endTurn]), or "Did you mean" was answered no ([SkillRan.withoutSkills]). */
+    private var skillEnd: app.heyrobot.core.skills.SkillRan? = null
+
+    /** 1.1: Robot's own question that ends the turn after this round ("What time should the alarm ring?", AlarmWords). */
+    private var askBack: Phrase? = null
+
+    /** 1.1: actions Robot offered in place of one asked for (a dated reminder for an alarm on another day): as asked. */
+    private val offeredInstead = mutableSetOf<ToolName>()
 
     suspend fun run(): TurnResult {
         var outcome = model.ask()
@@ -374,9 +510,28 @@ class TurnRunner(
                 model.close()
                 return TurnResult(DoneReason.END, web = it)
             }
+            // 1.4: read_file the same: the panel answers from the file, in a one-shot that has no tools.
+            file?.let {
+                model.close()
+                return TurnResult(DoneReason.END, file = it)
+            }
+            // A skill's card ended the turn: "Did you mean" answered no (the panel asks again without skills), or a value
+            // being changed (your next words). The model writes nothing after it.
+            skillEnd?.let {
+                model.abandon(round.responses)
+                return TurnResult(DoneReason.END, withoutSkills = it.withoutSkills)
+            }
+            // 1.1: an alarm without a time you said: Robot asks, and the model writes nothing that could guess one.
+            askBack?.let {
+                model.abandon(round.responses)
+                ask(it)
+                return TurnResult(DoneReason.END)
+            }
             // 1.0.2: an action you asked for didn't happen (you cancelled it, no contact matched): Robot says so from its card,
             // and the model, told what happened, writes no follow-up that could claim it was done. A helper still answers.
-            if (!remote && !model.appCalls && ActionOutcome.settles(round.outcomes)) {
+            // 1.1: a timer, an alarm, an event or a note that was done: Robot's line from its card is the reply, never a
+            // follow-up that could name another day or time (ActionOutcome.confirms).
+            if (!remote && !model.appCalls && (ActionOutcome.settles(round.outcomes) || ActionOutcome.confirms(round.outcomes))) {
                 model.abandon(round.responses)
                 writeOutcome(round.outcomes)
                 return TurnResult(DoneReason.END)
@@ -400,14 +555,16 @@ class TurnRunner(
                 val found = if (outcome.reason == DoneReason.END && outcome.textCalls) ToolCalls.wholeReplyCalls(view.text) else emptyList()
                 if (found.isEmpty()) {
                     keepHonest()
+                    keepTrue()
                     return TurnResult(outcome.reason)
                 }
                 view.replaceText("")
                 if (found.any { it.call.asksHelper() }) return escalate()
                 val round = runCalls(found.map { it.call }, speak = true)
+                askBack?.let(::ask)
                 // No tool results in this mode: the conversation is rebuilt from the history next time.
                 model.close()
-                TurnResult(DoneReason.END, launchedApp = round.launched, web = web)
+                TurnResult(DoneReason.END, launchedApp = round.launched, web = web, file = file, withoutSkills = skillEnd?.withoutSkills == true)
             }
         }
     }
@@ -428,10 +585,12 @@ class TurnRunner(
      * when none of this turn's was; said too when replies are spoken.
      */
     private fun writeOutcome(round: List<Outcome>) {
-        val lines = ActionOutcome.lines(round)
-        val before = if (outcomes.any { it.acts && it.status.succeeded }) view.text else ActionOutcome.withoutClaims(view.text)
+        // 1.1: shown in the reply language, said in the voice's own form.
+        val lines = ActionOutcome.lines(round) { it.render(langs) }
+        // 1.1: and without one that names a day, time or length no card that happened shows (ReplyFacts).
+        val before = if (outcomes.any { it.acts && it.status.succeeded }) scrubbed() ?: view.text else ActionOutcome.withoutClaims(view.text)
         view.replaceText(listOf(before.trimEnd(), lines.joinToString(" ")).filter { it.isNotBlank() }.joinToString("\n\n"))
-        lines.forEach(view::say)
+        ActionOutcome.lines(round, ::spoken).forEach(view::say)
     }
 
     /**
@@ -447,6 +606,33 @@ class TurnRunner(
         writeOutcome(acts)
     }
 
+    /** 1.1: Robot's own question after the reply so far (without a sentence claiming an action when none happened); said too. */
+    private fun ask(q: Phrase) {
+        val before = if (outcomes.any { it.acts && it.status.succeeded }) view.text else ActionOutcome.withoutClaims(view.text)
+        view.replaceText(listOf(before.trimEnd(), q.render(langs)).filter { it.isNotBlank() }.joinToString("\n\n"))
+        view.say(spoken(q))
+    }
+
+    /** 1.1: the reply so far without its sentences about an action that name what no card that happened shows; null: none. */
+    private fun scrubbed(): String? {
+        if (doneCards.isEmpty() || !ReplyFacts.speaksOfAction(view.text)) return null
+        val shown = doneCards.map { (a, words) -> ReplyFacts.shown(a, now(), words, langs.say) }
+        return ReplyFacts.scrub(view.text, shown, now(), langs.say)
+    }
+
+    /**
+     * 1.1, point 1's backstop: after actions that happened, a sentence of the reply that speaks of one and names a day, time
+     * or length its card doesn't show goes, and Robot's line for each card that happened follows (said too). The local model only.
+     */
+    private fun keepTrue() {
+        if (remote || model.appCalls) return
+        val done = outcomes.filter { it.acts && it.status.succeeded }
+        val kept = scrubbed() ?: return
+        val lines = ActionOutcome.lines(done) { it.render(langs) }
+        view.replaceText(listOf(kept.trimEnd(), lines.joinToString(" ")).filter { it.isNotBlank() }.joinToString("\n\n"))
+        ActionOutcome.lines(done, ::spoken).forEach(view::say)
+    }
+
     private fun escalate(): TurnResult {
         model.close()
         return TurnResult(DoneReason.END, escalate = true)
@@ -455,10 +641,10 @@ class TurnRunner(
     /** A helper's call checked first: one of the tools offered to it, its input fitting the schema; then the usual reading. */
     private fun parse(raw: RawToolCall): ParsedCall {
         // A tool the model is never told about stays out of its reach (0.8's call tool: "call Mom" is the panel's, not the model's).
-        if (!model.appCalls && ToolName.of(raw.name)?.forModel == false) return ParsedCall.Invalid(raw.name.take(40), "unknown tool")
+        if (!model.appCalls && ToolName.of(raw.name)?.forModel == false) return ParsedCall.Invalid(raw.name.take(40), ToolStrings.unknownTool())
         if (!remote) return ToolCalls.parse(raw)
-        val tool = ToolName.of(raw.name)?.takeIf { it in HelperTools.OFFERED } ?: return ParsedCall.Invalid(raw.name.take(40), "unknown tool")
-        if (tool !in offered) return ParsedCall.Invalid(tool.id, "this tool wasn't offered")
+        val tool = ToolName.of(raw.name)?.takeIf { it in HelperTools.OFFERED } ?: return ParsedCall.Invalid(raw.name.take(40), ToolStrings.unknownTool())
+        if (tool !in offered) return ParsedCall.Invalid(tool.id, ToolStrings.notOffered())
         HelperTools.check(ToolSpecs.of(tool), raw.args)?.let { return ParsedCall.Invalid(tool.id, it) }
         return ToolCalls.parse(raw)
     }
@@ -469,35 +655,34 @@ class TurnRunner(
         spokenThisRound.clear()
         outcomesThisRound.clear()
         for (raw in calls) {
+            // 1.1, Skills phase B: a skill's card ended the turn ("Did you mean" answered no, a value being changed):
+            // nothing else of this reply runs.
+            if (skillEnd != null) break
+            // A skill's call is read by SkillCalls, never by ToolCalls.
+            if (app.heyrobot.core.skills.SkillCalls.isSkill(raw.name)) {
+                val (response, launched) = skillCall(raw) ?: continue
+                out += response
+                if (launched) return Round(out, launched = true, spokenThisRound.toList(), outcomesThisRound.toList())
+                continue
+            }
             val parsed = parse(raw)
-            // After a web search, nothing else of this reply runs: the answer comes from the search (design A6.2).
-            if (web != null) {
-                val why = "Robot answers from the web search first."
-                val (tool, summary) = when (parsed) {
-                    is ParsedCall.Ok -> parsed.action.tool to parsed.action.describe()
-                    is ParsedCall.Invalid -> ToolName.of(parsed.tool) to "Couldn't do “${parsed.tool}”"
-                }
-                view.card(Card(newId(), tool, summary, ActionStatus.SKIPPED, why, remote = remote))
-                out += raw.name to ActionStatus.SKIPPED.toolResponse(why)
-                record(Outcome(tool, ActionStatus.SKIPPED, why))
+            // After a web search, nothing else of this reply runs: the answer comes from the search (design A6.2). 1.4: nor after
+            // read_file, whose answer comes from the file.
+            answersFirst?.let {
+                out += notRun(parsed, ActionStatus.SKIPPED, it, raw)
                 continue
             }
             if (budget <= 0) {
-                val why = "Robot does at most ${TurnRules.MAX_CALLS} actions per answer."
-                val (tool, summary) = when (parsed) {
-                    is ParsedCall.Ok -> parsed.action.tool to parsed.action.describe()
-                    is ParsedCall.Invalid -> ToolName.of(parsed.tool) to "Couldn't do “${parsed.tool}”"
-                }
-                view.card(Card(newId(), tool, summary, ActionStatus.SKIPPED, why, remote = remote))
-                out += raw.name to ActionStatus.SKIPPED.toolResponse(why)
-                record(Outcome(tool, ActionStatus.SKIPPED, why))
+                out += notRun(parsed, ActionStatus.SKIPPED, TurnStrings.maxCalls(TurnRules.MAX_CALLS), raw)
                 continue
             }
             budget--
             when (parsed) {
                 is ParsedCall.Invalid -> {
-                    view.card(Card(newId(), ToolName.of(parsed.tool), "Couldn't do “${parsed.tool}”", ActionStatus.INVALID, parsed.reason, remote = remote))
-                    val o = Outcome(ToolName.of(parsed.tool), ActionStatus.INVALID, parsed.reason)
+                    // The card in the reply language; the model reads the reason as it was written, English.
+                    view.card(Card(newId(), ToolName.of(parsed.tool), TurnStrings.couldntDo("tool" to parsed.tool).render(langs), ActionStatus.INVALID,
+                        parsed.why.orEn(parsed.reason, langs), remote = remote))
+                    val o = Outcome(ToolName.of(parsed.tool), ActionStatus.INVALID, parsed.reason, text = parsed.why)
                     out += raw.name to ActionOutcome.forModel(ActionStatus.INVALID.toolResponse(parsed.reason), o)
                     record(o)
                 }
@@ -512,69 +697,138 @@ class TurnRunner(
         return Round(out, launched = false, spokenThisRound.toList(), outcomesThisRound.toList())
     }
 
+    /**
+     * A model's skill call (plan §8): refused when it wasn't described, changed since, or its arguments aren't the skill's;
+     * else run by the panel's port. It counts as one of [TurnRules.MAX_CALLS], and its outcome has no ToolName (it acts);
+     * each step records its own card. Null: nothing for the model (a skill already ended the turn).
+     */
+    private suspend fun skillCall(raw: RawToolCall): Pair<Pair<String, Map<String, Any?>>, Boolean>? {
+        val sk = app.heyrobot.core.skills.SkillCalls
+        fun refused(status: ActionStatus, why: Phrase, name: String?): Pair<Pair<String, Map<String, Any?>>, Boolean> {
+            val summary = name?.let { app.heyrobot.core.i18n.SkillStrings.callNamed("name" to it) } ?: app.heyrobot.core.i18n.SkillStrings.callAny()
+            view.card(Card(newId(), null, summary.render(langs), status, why.render(langs), remote = remote))
+            val o = Outcome(null, status, why.en(), text = why)
+            record(o)
+            return (raw.name to ActionOutcome.forModel(status.toolResponse(why.en()), o)) to false
+        }
+        answersFirst?.let { return refused(ActionStatus.SKIPPED, it, null) }
+        if (budget <= 0) return refused(ActionStatus.SKIPPED, TurnStrings.maxCalls(TurnRules.MAX_CALLS), null)
+        budget--
+        return when (val c = sk.parse(raw, skills, remote)) {
+            is app.heyrobot.core.skills.SkillCall.Refused -> {
+                VoiceLog.add(VoiceEvent.SKILL_WARN, c.code.id, 0, 0)
+                refused(c.status, c.why, c.skill?.name)
+            }
+            is app.heyrobot.core.skills.SkillCall.Ok -> {
+                val r = actions.runSkill(c, untrusted)
+                // What a step brought in is content for the rest of this answer (D5).
+                if (r.content) untrusted = true
+                if (r.endTurn || r.withoutSkills) skillEnd = r
+                val o = Outcome(null, r.status, r.text?.en() ?: r.status.label, asked = r.asked, content = r.content, text = r.text)
+                record(o)
+                (raw.name to ActionOutcome.forModel(r.forModel, o)) to r.launched
+            }
+        }
+    }
+
     private fun record(o: Outcome) {
         outcomesThisRound += o
         outcomes += o
     }
 
+    /** What a refusal for the lock says: during a phone lock, that the lock closes it (unlocking wouldn't help, §6). */
+    private fun unlockText(t: ToolName): Phrase = if (actions.phoneLock) app.heyrobot.core.i18n.LockStrings.closedNow() else ApprovalGate.unlockText(t)
+
     private suspend fun decideAndRun(asked: Action, speak: Boolean): Pair<Pair<String, Map<String, Any?>>, Boolean> {
         val id = newId()
-        fun done(a: Action, status: ActionStatus, detail: String?, launched: Boolean = false, r: Executed? = null): Pair<Pair<String, Map<String, Any?>>, Boolean> {
-            view.card(Card(id, a.tool, a.describe(), status, detail, a, body = r?.body ?: a.body(), undo = r?.undo, content = r?.content == true, remote = remote,
+        /** The card as it ended ([detail]: its line, in the reply language) and what the model is told ([model], English). */
+        fun done(a: Action, status: ActionStatus, detail: String?, launched: Boolean = false, r: Executed? = null, model: String? = detail,
+            text: Phrase? = null): Pair<Pair<String, Map<String, Any?>>, Boolean> {
+            val body = if (r?.body != null) r.bodyText.orEn(r.body, langs) else a.bodyText().orEn(a.body(), langs)
+            view.card(Card(id, a.tool, a.summary().render(langs), status, detail, a, body = body, undo = r?.undo, content = r?.content == true, remote = remote,
                 handOff = r?.handOff))
-            // 1.0.2: an action that didn't happen is said so in plain words too, beside its status code.
-            val o = Outcome(a.tool, status, detail, asked = a.tool in this.asked, content = r?.content == true, spoken = r?.spoken)
+            // 1.0.2: an action that didn't happen is said so in plain words too, beside its status code. [text]: its line's
+            // words without a language yet (1.1), for Robot's own line in the reply language.
+            val o = Outcome(a.tool, status, model, asked = a.tool in this.asked || a.tool in offeredInstead, content = r?.content == true, spoken = r?.spoken, text = text,
+                spokenText = r?.spokenText)
             record(o)
-            return (a.tool.id to ActionOutcome.forModel(status.toolResponse(r?.forModel ?: detail, r?.results), o)) to launched
+            // 1.1: what its card shows, read only if the reply speaks of an action (ReplyFacts, [scrubbed]).
+            if (status.succeeded && !a.tool.reads) doneCards += a to cardWords(a, body, detail)
+            return (a.tool.id to ActionOutcome.forModel(status.toolResponse(r?.forModel ?: model, r?.results), o)) to launched
         }
+        fun done(a: Action, status: ActionStatus, why: Phrase): Pair<Pair<String, Map<String, Any?>>, Boolean> = done(a, status, why.render(langs), model = why.en(), text = why)
         // 0.7: what a message's quarantine forbids outright (a memory the model proposes once a message is in the
         // conversation) gets no card and runs nothing.
         if (MessageQuarantine.verdict(asked.tool, origin, messages) == QuarantineVerdict.FORBIDDEN) {
             if (messages.active) VoiceLog.add(VoiceEvent.MSG_GUARD, app.heyrobot.core.messages.GuardCode.REFUSED)
-            return done(asked, ActionStatus.SKIPPED, MessageQuarantine.forbidden(asked.tool))
+            return done(asked, ActionStatus.SKIPPED, MessageQuarantine.forbiddenText(asked.tool))
         }
+        // 1.1: an alarm only for a time you said, on the day it rings (core AlarmWords); a day it won't ring on is offered
+        // as a dated reminder instead, on add_event's card.
+        if (asked is Action.SetAlarm && heard != null && !remote && !model.appCalls) when (val fit = AlarmWords.check(asked, heard)) {
+            AlarmFit.Ok -> {}
+            AlarmFit.NoTime -> {
+                askBack = TurnStrings.alarmWhatTime()
+                return done(asked, ActionStatus.INVALID, ToolStrings.alarmNoTime().render(langs), model = AlarmWords.NO_TIME, text = ToolStrings.alarmNoTime())
+            }
+            is AlarmFit.OtherTime -> {
+                val why = ToolStrings.alarmOtherTime("time" to EventText.clock(asked.hour, asked.minute))
+                return done(asked, ActionStatus.INVALID, why.render(langs), model = AlarmWords.OTHER_TIME + " (" + fit.said.said + ").", text = why)
+            }
+            is AlarmFit.OtherDay -> {
+                offeredInstead += ToolName.ADD_EVENT
+                val (response, launched) = decideAndRun(AlarmWords.reminder(fit, ToolStrings.reminderTitle().render(langs)), speak)
+                return (asked.tool.id to (response.second + ("alarm" to AlarmWords.OFFERED))) to launched
+            }
+        }
+        // 1.1 (phone, 22 Oct: « Ajoute un film ce soir de 22 h à 1 h » set a 1-minute timer): a timer or an alarm your words
+        // didn't name, when they ask for an event or name a time range (core AlarmWords.event), shows its card whatever the
+        // settings say.
+        val unnamed = (asked is Action.SetTimer || asked is Action.SetAlarm) && asked.tool !in this.asked && heard != null && !remote &&
+            !model.appCalls && AlarmWords.event(heard)
         // The lock and the settings first: nothing about the phone (an installed app's name) is looked up for nothing.
         when (ApprovalGate.decide(asked.tool, actions.locked, actions.settings, content = untrusted, asked = asked.tool in this.asked, remote = remote,
             online = asked.online, trusted = trusted, messages = messages.active, saidLocked = messages.saidLocked)) {
-            GateDecision.NEEDS_UNLOCK -> return done(asked, ActionStatus.NEEDS_UNLOCK, ApprovalGate.unlockLine(asked.tool))
-            GateDecision.DISABLED -> return done(asked, ActionStatus.DISABLED, "${asked.tool.title} are turned off in Robot's settings.")
+            GateDecision.NEEDS_UNLOCK -> return done(asked, ActionStatus.NEEDS_UNLOCK, unlockText(asked.tool))
+            GateDecision.DISABLED -> return done(asked, ActionStatus.DISABLED, TurnStrings.turnedOff("what" to asked.tool.titleText))
             else -> {}
         }
         val a = when (val p = actions.prepare(asked, untrusted, remote)) {
-            is Prepared.Refused -> return done(asked, p.status, p.detail)
+            is Prepared.Refused -> return done(asked, p.status, p.text.orEn(p.detail, langs), model = p.detail, text = p.text)
             is Prepared.Ready -> p
         }
         // 1.0 (injection-termux-policy-unwired): a Termux call TermuxPolicy didn't prepare (no card, no key) never runs, and
         // never runs without its card: fail closed rather than trust the gate's Termux branch with no reasons.
-        if (a.action.tool.termux && !TermuxCalls.prepared(a.action)) return done(a.action, ActionStatus.FAILED, TermuxCalls.UNPREPARED)
+        if (a.action.tool.termux && !TermuxCalls.prepared(a.action)) return done(a.action, ActionStatus.FAILED, TermuxCalls.unprepared)
         // A message in the conversation: a tap for anything that leaves for someone else (the card says why).
         val fromMessage = MessageQuarantine.why(a.action, messages, origin)
         val reasons = a.reasons + fromMessage
         val decision = ApprovalGate.decide(a.action.tool, actions.locked, actions.settings, reasons, content = untrusted,
             asked = a.action.tool in this.asked, remote = remote, online = a.action.online, trusted = trusted, messages = messages.active,
-            saidLocked = messages.saidLocked)
+            saidLocked = messages.saidLocked).let { if (unnamed && it == GateDecision.RUN) GateDecision.CONFIRM else it }
         if (messages.active && decision == GateDecision.CONFIRM) VoiceLog.add(VoiceEvent.MSG_GUARD,
             if (fromMessage.isEmpty()) app.heyrobot.core.messages.GuardCode.ASKED else app.heyrobot.core.messages.GuardCode.TAP_REQUIRED)
         val chosen = when (decision) {
             // No card for these choices (the settings say so): the first, the best match.
             GateDecision.RUN -> a.choices.firstOrNull()?.action ?: a.action
-            GateDecision.CONFIRM -> confirm(id, a.action, a.choices, a.more, if (fromMessage.isNotEmpty()) MessageQuarantine.CARD_LINE else a.note,
-                a.remember, a.allowContacts, tapFor = CardAnswer.tapFor(reasons))
-            GateDecision.NEEDS_UNLOCK -> return done(a.action, ActionStatus.NEEDS_UNLOCK, ApprovalGate.unlockLine(a.action.tool))
-            GateDecision.DISABLED -> return done(a.action, ActionStatus.DISABLED, "${a.action.tool.title} are turned off in Robot's settings.")
+            GateDecision.CONFIRM -> confirm(id, a.action, a.choices, a.more, if (fromMessage.isNotEmpty()) MessageQuarantine.cardLineText().render(langs) else a.noteText.orEn(a.note, langs),
+                a.rememberText.orEn(a.remember, ui), a.allowContacts, tapFor = CardAnswer.tapFor(reasons))
+            GateDecision.NEEDS_UNLOCK -> return done(a.action, ActionStatus.NEEDS_UNLOCK, unlockText(a.action.tool))
+            GateDecision.DISABLED -> return done(a.action, ActionStatus.DISABLED, TurnStrings.turnedOff("what" to a.action.tool.titleText))
         } ?: return done(a.action, ActionStatus.DECLINED, null)
         // The phone may have locked while the card waited.
         if (ApprovalGate.lockedOut(chosen, actions.locked, actions.settings)) {
-            return done(chosen, ActionStatus.NEEDS_UNLOCK, ApprovalGate.unlockLine(chosen.tool))
+            return done(chosen, ActionStatus.NEEDS_UNLOCK, unlockText(chosen.tool))
         }
         fun finish(r: Executed): Pair<Pair<String, Map<String, Any?>>, Boolean> {
             // What a read tool found is content: from now on every action in this conversation asks first.
             if (r.content) untrusted = true
             if (r.web != null && r.status != ActionStatus.DECLINED) web = r.web
+            if (r.file != null && r.status == ActionStatus.DONE) file = r.file
             val launched = r.launchedApp && r.status.succeeded
-            if (speak && !launched && r.web == null) view.say(r.spoken ?: r.detail)
-            if (!launched) spokenThisRound += r.spoken ?: r.detail
-            return done(chosen, r.status, r.detail, launched, r)
+            if (speak && !launched && r.web == null && r.file == null) view.say(said(r))
+            if (!launched) spokenThisRound += said(r)
+            return done(chosen, r.status, r.text.orEn(r.detail, langs), launched, r, model = r.detail, text = r.text)
         }
         // An online lookup (the weather, the nearest place for the maps, 0.4.0) changes nothing until it is found and may
         // wait seconds on the network: Stop ends it at once, and its card says it was stopped. So does a Termux run (0.9).
@@ -582,7 +836,7 @@ class TurnRunner(
             val r = try {
                 actions.run(chosen)
             } catch (e: CancellationException) {
-                view.card(Card(id, chosen.tool, chosen.describe(), ActionStatus.DECLINED, "Stopped.", chosen, remote = remote))
+                view.card(Card(id, chosen.tool, chosen.summary().render(langs), ActionStatus.DECLINED, TurnStrings.stopped().render(langs), chosen, remote = remote))
                 throw e
             }
             return finish(r)
@@ -599,13 +853,18 @@ class TurnRunner(
      */
     private suspend fun confirm(id: String, a: Action, choices: List<Choice>, more: Int, note: String? = null, remember: String? = null,
         allowContacts: Boolean = false, tapFor: AskWhy? = null): Action? {
-        view.card(Card(id, a.tool, a.describe(), ActionStatus.PENDING, note, a, body = a.body(), choices = choices, more = more, remote = remote,
-            remember = remember, allowContacts = allowContacts, tapFor = tapFor))
+        val summary = a.summary().render(langs)
+        val body = a.bodyText().orEn(a.body(), langs)
+        // The buttons are in the menus' language; a helper's read keeps the panel's own "Share with …" (null here).
+        val button = if (remote && a.tool.reads) null else a.confirmText?.render(ui)
+        val shown = choices.map { c -> c.text?.let { c.copy(label = it.orEn(c.label, ui)) } ?: c }
+        view.card(Card(id, a.tool, summary, ActionStatus.PENDING, note, a, body = body, choices = shown, more = more, remote = remote,
+            confirm = button, remember = remember, allowContacts = allowContacts, tapFor = tapFor))
         view.phase(TurnPhase.CONFIRMING)
         val pick = try {
             confirmations.ask(id)
         } catch (e: CancellationException) {
-            view.card(Card(id, a.tool, a.describe(), ActionStatus.DECLINED, null, a, body = a.body(), remote = remote))
+            view.card(Card(id, a.tool, summary, ActionStatus.DECLINED, null, a, body = body, remote = remote))
             throw e
         }
         view.phase(TurnPhase.THINKING)

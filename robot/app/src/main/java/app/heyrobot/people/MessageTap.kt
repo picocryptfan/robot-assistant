@@ -36,7 +36,7 @@ import app.heyrobot.sys.Cmd
 import app.heyrobot.sys.MessagesStore
 import app.heyrobot.sys.Paths
 
-// MAIN PROCESS. 0.7, "Read my messages" (design §B4): the part of the existing notification listener (CheogramListener,
+// MAIN PROCESS. 0.7, "Read my messages": the part of the existing notification listener (CheogramListener,
 // same component, so the grant you gave for name learning holds) that reads messages. Off until you turn it on in
 // Settings › Messages, and then only the apps you turned on there: every other package is dropped at the first line, with
 // nothing read. An allowed app's MessagingStyle notification is copied field by field into core's plain snapshot

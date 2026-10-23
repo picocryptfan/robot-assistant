@@ -1,0 +1,72 @@
+<!-- Messages: Settings › Messages and its window, in Québec French (tu): the l10n work package WP3. The ids of
+     values/strings_messages.xml; each value written with the glossary (robot/l10n/glossary.tsv) and the OQLF's spaces
+     (tools/fr_typo.py, FrenchTypographyTest). -->
+<resources>
+    <string name="messages_setup_title">Lire tes messages&#8239;?</string>
+    <string name="messages_setup_text">Robot lira les notifications des applis que tu coches ici, gardera leurs messages en mémoire seulement tant que leurs notifications sont là, et les lira, les résumera, les traduira ou y répondra quand tu le demandes. Rien n’est écrit dans le stockage, et rien ne quitte le téléphone à moins que tu l’envoies. Un message ne peut jamais faire agir Robot&#160;: après la lecture d’un message, chaque action demande d’abord.</string>
+    <string name="messages_setup_none">Aucune des applis que Robot connaît n’est installée. Active-en une plus bas quand elle le sera.</string>
+    <string name="messages_setup_turn_on">Activer</string>
+    <string name="messages_setup_cancel">Annuler</string>
+
+    <!-- Settings › Messages (ui/settings/MessagesSettings.kt). -->
+    <string name="messages_intro">Robot lit, résume, traduit et répond à tes messages à partir de leurs notifications, sur ce téléphone seulement. Les messages sont gardés en mémoire seulement, jamais écrits dans le stockage, et jamais envoyés nulle part à moins que tu les envoies.</string>
+    <string name="messages_main">Lire mes messages</string>
+    <string name="messages_still_allowed">L’accès aux notifications est encore autorisé</string>
+    <string name="messages_still_allowed_detail">Robot ne lit aucun message tant que ceci est désactivé</string>
+    <string name="messages_open">Ouvrir</string>
+    <string name="messages_access">Accès aux notifications</string>
+    <string name="messages_access_needed">Requis&#160;: trois étapes</string>
+    <string name="messages_access_allowed">Accès aux notifications autorisé</string>
+    <string name="messages_access_allowed_detail">Les messages des applis ci-dessous seulement</string>
+    <string name="messages_quiet">Notifications silencieuses</string>
+    <string name="messages_quiet_detail">Android n’envoie à Robot que les conversations. Pour lire aussi les messages des heures calmes, autorise Silencieuses dans la page d’accès aux notifications de Robot.</string>
+    <string name="messages_apps">Applis</string>
+    <string name="messages_untrusted_detail">Robot ignore ses notifications d’ici là</string>
+    <string name="messages_installed">Installée</string>
+    <string name="messages_not_installed">Non installée</string>
+    <string name="messages_app_unverified">sa façon de répondre n’est pas encore vérifiée</string>
+    <string name="messages_app_sms">les réponses sont des textos</string>
+    <string name="messages_app_marks_read">une réponse marque la conversation comme lue</string>
+    <string name="messages_app_tells_sender">Marquer comme lu prévient l’expéditeur</string>
+    <string name="messages_groups">Inclure les conversations de groupe</string>
+    <string name="messages_groups_detail">Une réponse à un groupe demande toujours une touche</string>
+    <string name="messages_replies">Réponses</string>
+    <string name="messages_how_replies">Comment partent les réponses</string>
+    <string name="messages_route_send_detail">Par l’action de réponse de l’appli elle-même, après sa carte. Un message envoyé ne peut pas être rappelé.</string>
+    <string name="messages_route_open_detail">La conversation s’ouvre avec tes mots&#8239;; rien n’est envoyé tant que tu ne touches pas Envoyer là-bas.</string>
+    <string name="messages_card">Carte avant d’envoyer une réponse</string>
+    <string name="messages_card_on">Robot montre ce qui part et où&#8239;; tu touches Envoyer</string>
+    <string name="messages_card_off">Tes propres mots à une personne partent après un arrêt de 3 secondes</string>
+    <string name="messages_voice_yes">Répondre aux cartes de réponse de vive voix</string>
+    <string name="messages_voice_yes_detail">Un oui dit à voix haute envoie tes mots à une personne&#8239;; un groupe, un brouillon ou une traduction demande toujours une touche</string>
+    <string name="messages_their_language">Proposer d’envoyer ma réponse dans sa langue</string>
+    <string name="messages_their_language_detail">Une case à cocher sur la carte, non cochée</string>
+    <string name="messages_reading">Lecture</string>
+    <string name="messages_keep">Garder les messages</string>
+    <string name="messages_keep_gone_detail">Lu dans l’appli, balayé ou effacé&#160;: disparu de Robot aussi.</string>
+    <string name="messages_keep_ram_detail">Toujours en mémoire seulement&#8239;; un redémarrage les oublie.</string>
+    <string name="messages_after">Après que Robot a lu un message</string>
+    <string name="messages_after_leave_detail">Rien ne change dans l’appli&#8239;; Robot retient seulement qu’il l’a lu.</string>
+    <string name="messages_after_clear_detail">La notification part&#8239;; la conversation reste non lue dans l’appli. Une réponse ouvre alors la conversation.</string>
+    <string name="messages_after_mark_detail">L’expéditeur peut voir que tu l’as lu (un marqueur de lecture ou un accusé de lecture). Une réponse ouvre alors la conversation.</string>
+    <string name="messages_translate">Traduire les messages qui ne sont pas dans mes langues</string>
+    <string name="messages_translate_detail">L’anglais et le français sont lus tels qu’ils sont écrits</string>
+    <string name="messages_locked">Messages sur l’écran de verrouillage</string>
+    <string name="messages_locked_off_detail">«&#160;Déverrouille d’abord&#160;».</string>
+    <string name="messages_locked_who_detail">Les noms seulement&#160;: qui a écrit, pas quoi.</string>
+    <string name="messages_locked_read_detail">Quiconque tient ton téléphone verrouillé peut entendre tes messages et y répondre.</string>
+    <string name="messages_announcements">Annonces</string>
+    <string name="messages_announce">Annoncer les nouveaux messages</string>
+    <string name="messages_announce_on">Dans des écouteurs privés, et dans l’auto pendant que le mode auto fonctionne&#8239;; jamais dans le haut-parleur du téléphone</string>
+    <string name="messages_announce_off">Désactivé</string>
+    <string name="messages_in_headset">Dans les écouteurs</string>
+    <string name="messages_in_headset_detail">Qui, comment, et sur l’écran de verrouillage</string>
+    <string name="messages_in_car">Dans l’auto</string>
+    <string name="messages_in_car_detail">Qui, la lecture à voix haute et les réponses de vive voix</string>
+    <string name="messages_footer">Robot lit le volet des notifications, pas une base de données&#160;: aucune autorisation SMS, aucun historique des messages. Le texte d’un message reste en mémoire jusqu’à ce que sa notification parte&#8239;; l’historique garde une ligne comme «&#160;Robot a lu 2 messages de Maman&#160;», jamais les mots, et le journal vocal ne garde que des nombres.\n\nLes réponses vont à la conversation de la notification, jamais à quelqu’un d’autre, et seulement après que tu as touché Envoyer sur la carte (ou, pour quelqu’un que tu as choisi dans Personnes, après un arrêt de 3 secondes). Un message envoyé ne peut pas être rappelé. Une réponse par texto peut coûter ce que ton opérateur facture. Certaines applis de messagerie marquent la conversation comme lue et peuvent envoyer un accusé de lecture quand tu réponds depuis leur notification. Certaines envoient un émoji seul comme réaction, et leur Marquer comme lu prévient l’expéditeur.\n\nCertaines applis ne montrent aux autres applis que «&#160;Nouveau message&#160;», à moins que leurs paramètres de notification affichent le nom et le message. Android cache aux applis comme Robot les messages qui ressemblent à des codes de connexion.</string>
+    <!-- People › a person: the switches Settings › Messages adds there. -->
+    <string name="messages_no_card">Envoyer mes réponses à %1$s sans carte</string>
+    <string name="messages_no_card_detail">Tes propres mots, en tête-à-tête, téléphone déverrouillé&#160;: Robot les dit et envoie après 3 secondes, à moins que tu dises «&#160;arrête&#160;».</string>
+    <string name="messages_announce_from">Annoncer les messages de %1$s</string>
+    <string name="messages_announce_from_detail">Dans des écouteurs privés, et dans l’auto en mode auto, quand «&#160;Annoncer de&#160;» est «&#160;Les personnes que tu choisis&#160;».</string>
+</resources>

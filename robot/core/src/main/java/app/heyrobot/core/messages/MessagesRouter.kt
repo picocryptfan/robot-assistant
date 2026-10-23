@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.messages
 
+import app.heyrobot.core.i18n.Lang
 import java.text.Normalizer
 
-// Pure. What you say about your messages (design §B7), in English and Québec French, decided by code before the model
+// Pure. What you say about your messages, in English and Québec French, decided by code before the model
 // is ever asked: "read my messages", "what did Mom say?", "summarize my messages", "translate Pierre's message", "reply
 // I'll be late", "réponds à maman : j'arrive", "mark it as read", and while Robot reads, "next" and "stop". The model never
 // chooses who a reply goes to: "Mom" here is words, and the panel finds her conversation among the notifications (People

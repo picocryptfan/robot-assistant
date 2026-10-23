@@ -228,6 +228,65 @@ enum class VoiceEvent(val id: Int) {
      * [app.heyrobot.core.memory.MemImportCode], c = items skipped. Counts only, never an item's words or the file's name.
      */
     MEM_IMPORT(230),
+    /**
+     * 1.1, Back up now (docs/plans/backup-1.1-design.md §8.5): a = [app.heyrobot.core.backup.BackupCode], b = the
+     * categories (bit set, BackupExport.bits), c = the size in MB. Never a file name, a place or a word of content.
+     */
+    BACKUP(240),
+    /** 1.1, opening a backup to restore: a = 0 opened, else the [app.heyrobot.core.backup.OpenProblem] id; b = its format. */
+    RESTORE_OPEN(241),
+    /**
+     * 1.1, a restore's end: a = 1 every chosen category restored, 2 some not; b = the categories restored, c = those not
+     * (bit sets, BackupExport.bits).
+     */
+    RESTORE(242),
+    // 243 and 244 stay backup's.
+    /**
+     * 1.1, Skills (docs/plans/skills-1.1-plan.md), before the model: a skill asked for by its name. a =
+     * [app.heyrobot.core.skills.SkillRunCode], b = steps that happened, c = steps in all. Never its name, a value or a step's words.
+     */
+    SKILL_RUN(250),
+    /** One step of a skill: a = [StepCode], b = 1 if it happened (done or draft opened), c = 1 if it opened another app. */
+    SKILL_STEP(251),
+    /**
+     * Phase B: a model's skill call that didn't run, or a fill to note: a = [app.heyrobot.core.skills.SkillWarnCode], b = the
+     * fill's tier (0 none, 1 Simple, 2 Careful, 3 Risky), c = 0. Never the skill's name, its tool's name or a value.
+     */
+    SKILL_WARN(252),
+    /** A skill taught, saved, changed or deleted: a = [app.heyrobot.core.skills.SkillEditCode], b = its steps, c = its questions. */
+    SKILL_EDIT(260),
+    /**
+     * Phase B: skills and the model. a = [app.heyrobot.core.skills.SkillPickCode], b = how many skills (described) or the
+     * fill's tier (a call), c = 1 when your words named the skill. Counts and codes only.
+     */
+    SKILL_PICK(261),
+    // 1.4, Robot Files (files-1.4-plan.md D16): 270 to 279. Codes and counts only, never a file's name, words or fields.
+    /** Files came in: a = [app.heyrobot.core.files.FileInCode], b = files added, c = of them dangerous (held in Inbox). */
+    FILE_IN(270),
+    /** The model read a file for filing: a = [app.heyrobot.core.files.FileReadCode], b = 1 a picture (0 a text layer), c = seconds. */
+    FILE_READ(271),
+    /**
+     * Filing one file ended: a = [app.heyrobot.core.files.FileFiledCode], b = its kind (FileKind's place, 1 up), c = why it
+     * waits or stays (FilingWhy's place, 1 up; 0 none).
+     */
+    FILE_FILED(272),
+    /** :files read a file for filing: a = [app.heyrobot.core.files.FileParseCode], b = 1 a picture's pages, c = model values rejected or trapped. */
+    FILE_PARSE(273),
+    /** A change you made: a = [app.heyrobot.core.files.FileMoveCode], b = files. */
+    FILE_MOVE(274),
+    /** A filing rule saved or not (F8): a = [app.heyrobot.core.files.FileRuleCode], b = 1 from your taps (a move, tags), 0 your words. */
+    FILE_RULE(275),
+    /** Your words looking for files (F8; F9's find_files later): a = [app.heyrobot.core.files.FileFindCode], b = files found. */
+    FILE_FIND(276),
+    /** A delete you tapped (F7): a = [app.heyrobot.core.files.FileDeleteCode], b = files. */
+    FILE_DELETE(277),
+    /** Reserved: robot_files_v1's states. */
+    FILE_KEY(278),
+    /**
+     * A file leaving the phone (F7: Share, Open with another app; later an export, a helper's card): a =
+     * [app.heyrobot.core.files.FileOutCode], b = 1 a stripped copy, c = 1 a file that could run something.
+     */
+    FILE_OUT(279),
     // Conversation mode (0.5.0, docs/conversation-mode.md 8): 100 to 119. Counts and codes only, never a word said.
     /** A conversation session started: a = [ConvMode], b = [ConvEntry], c = 1 if the phone was locked. */
     CONV_START(100),
@@ -313,6 +372,11 @@ enum class VoiceEvent(val id: Int) {
      * try the TPU again: a = [ModelCode], b = [LoadFailure] (0: its process stopped).
      */
     TPU_FALLBACK(136),
+    /**
+     * 1.2: Robot's self-test of the GPU or a beta TPU build ran (core GpuCheck, once per Android build): a = [ModelCode], b =
+     * [GpuVerdict] (0: passed), c = the turn it failed at (0: none).
+     */
+    MODEL_CHECK(137),
     // Routines and the morning brief (0.8): 140 to 159. Codes and counts only, never a routine's name, steps or words.
     /** A trigger came: a = [TriggerKind], b = routines it started, c = routines it didn't start (ROUTINE_SKIPPED says why). */
     ROUTINE_TRIGGER(140),
@@ -891,6 +955,10 @@ object VoiceLogText {
     private fun termuxSource(n: Int): String = app.heyrobot.core.termux.TermuxSource.entries.getOrNull(n - 1)?.let { " · " + it.en.substringBefore(" (") } ?: ""
 
     /** "1 call", "2 calls". */
+    /** Backup categories from their bit set (BackupExport.bits). */
+    private fun cats(bits: Int): String =
+        app.heyrobot.core.backup.BackupCategory.entries.filter { bits and (1 shl it.ordinal) != 0 }.joinToString(",") { it.id }.ifEmpty { "nothing" }
+
     private fun count(n: Int, what: String): String = "$n $what" + if (n == 1) "" else "s"
 
     /**
@@ -990,6 +1058,28 @@ object VoiceLogText {
             VoiceEvent.MEM_COMMAND -> "Memory command: " + code(app.heyrobot.core.memory.MemCommandCode.entries, a) + " (" + code(LangCode.entries, b) + ")" +
                 (if (c > 0) " · " + count(c, "item") else "")
             VoiceEvent.MEM_KEY -> (if (b == 1) "Memory now uses " else "Memory couldn't switch to ") + (if (a == 1) "the lock screen's key" else "the key that needs unlocking")
+            VoiceEvent.BACKUP -> "Backup: " + code(app.heyrobot.core.backup.BackupCode.entries, a) + " · " + cats(b) + " · $c MB"
+            VoiceEvent.RESTORE_OPEN -> "Restore: " + (if (a == 0) "opened" else code(app.heyrobot.core.backup.OpenProblem.entries, a)) + " · format $b"
+            VoiceEvent.SKILL_RUN -> "Skill: " + code(app.heyrobot.core.skills.SkillRunCode.entries, a) + " · $b of " + count(c, "step") + " done"
+            VoiceEvent.SKILL_STEP -> "Skill step: " + code(StepCode.entries, a) + (if (b == 1) " · done" else " · didn't happen") + (if (c == 1) " · an app opened" else "")
+            VoiceEvent.SKILL_WARN -> "Skill call: " + code(app.heyrobot.core.skills.SkillWarnCode.entries, a) + (if (b > 0) " · tier $b" else "")
+            VoiceEvent.FILE_IN -> "Robot Files: " + count(b, "file") + " " + code(app.heyrobot.core.files.FileInCode.entries, a) + (if (c > 0) " · $c dangerous" else "")
+            VoiceEvent.FILE_READ -> "Robot Files, the model's reading: " + code(app.heyrobot.core.files.FileReadCode.entries, a) + (if (b == 1) " · a picture" else " · text") + " · " + secs(c * 1000)
+            VoiceEvent.FILE_FILED -> "Robot Files, filing: " + code(app.heyrobot.core.files.FileFiledCode.entries, a) +
+                (app.heyrobot.core.files.FileKind.entries.getOrNull(b - 1)?.let { " · " + it.name.lowercase(Locale.ROOT).replace('_', ' ') } ?: "") +
+                (app.heyrobot.core.files.FilingWhy.entries.getOrNull(c - 1)?.let { " · " + it.name.lowercase(Locale.ROOT).replace('_', ' ') } ?: "")
+            VoiceEvent.FILE_PARSE -> "Robot Files' reader: " + code(app.heyrobot.core.files.FileParseCode.entries, a) + (if (b == 1) " · pages" else "") +
+                (if (c > 0) " · $c of the model's values not kept" else "")
+            VoiceEvent.FILE_MOVE -> "Robot Files: " + code(app.heyrobot.core.files.FileMoveCode.entries, a) + " · " + count(b, "file")
+            VoiceEvent.FILE_DELETE -> "Robot Files: " + code(app.heyrobot.core.files.FileDeleteCode.entries, a) + " · " + count(b, "file")
+            VoiceEvent.FILE_OUT -> "Robot Files: " + code(app.heyrobot.core.files.FileOutCode.entries, a) + (if (a == app.heyrobot.core.files.FileOutCode.EXPORTED.id)
+                " · " + count(b, "file") + " copied · $c left out" else (if (b == 1) " · without its metadata" else "") + (if (c == 1) " · could run something" else ""))
+            VoiceEvent.FILE_RULE -> "Robot Files: " + code(app.heyrobot.core.files.FileRuleCode.entries, a) + (if (b == 1) " · from your taps" else " · from your words")
+            VoiceEvent.FILE_FIND -> "Robot Files: " + code(app.heyrobot.core.files.FileFindCode.entries, a) + " · " + count(b, "file")
+            VoiceEvent.FILE_KEY -> "Robot Files: " + e.event.name.lowercase(Locale.ROOT) + " $a · $b · $c"
+            VoiceEvent.SKILL_PICK -> "Skills and the model: " + code(app.heyrobot.core.skills.SkillPickCode.entries, a) + " · $b" + (if (c == 1) " · named" else "")
+            VoiceEvent.SKILL_EDIT -> "Skill " + code(app.heyrobot.core.skills.SkillEditCode.entries, a) + ": " + count(b, "step") + ", " + count(c, "question")
+            VoiceEvent.RESTORE -> "Restore: " + (if (a == 1) "done" else "partly") + " · " + cats(b) + (if (c != 0) " · not " + cats(c) else "")
             VoiceEvent.MEM_IMPORT -> "Memory import: " + (if (b <= 2) count(a, "item") + " " + code(app.heyrobot.core.memory.MemImportCode.entries, b) +
                 " · $c skipped" else code(app.heyrobot.core.memory.MemImportCode.entries, b))
             VoiceEvent.MODEL_CHOSEN -> "Model chosen: " + code(ModelCode.entries, a) + (if (b > 0 && b != a) " (was " + code(ModelCode.entries, b) + ")" else "")
@@ -1002,6 +1092,7 @@ object VoiceLogText {
                 (if (c > 0) " (" + code(LoadFailure.entries, c) + ")" else " (its process stopped)") + ": the CPU from now on"
             VoiceEvent.TPU_FALLBACK -> "The TPU didn't load " + code(ModelCode.entries, a) +
                 (if (b > 0) " (" + code(LoadFailure.entries, b) + ")" else " (its process stopped)") + ": the general build from now on"
+            VoiceEvent.MODEL_CHECK -> "Self-test of " + code(ModelCode.entries, a) + ": " + code(GpuVerdict.entries, b) + (if (c > 0) " at turn $c" else "")
             VoiceEvent.TERMUX_SENT -> "Termux run sent: " + code(TermuxRunKind.entries, a) + " · limit $b s"
             VoiceEvent.TERMUX_DONE -> "Termux run ended: " + code(TermuxExitBucket.entries, a) + " in " + secs(b) +
                 " · output " + (if (c / 2 == 0) "empty" else "up to ${c / 2} KB") + (if (c % 2 == 1) " (cut)" else "")

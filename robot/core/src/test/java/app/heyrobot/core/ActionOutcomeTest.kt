@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.Lang
+import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.i18n.ToolStrings
+import app.heyrobot.core.i18n.TurnStrings
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -29,6 +33,23 @@ class ActionOutcomeTest {
             "J'ai enregistré la note.",
             "C'est noté.",
         )) assertTrue(s, ActionOutcome.claims(s))
+    }
+
+    /** 1.1: Robot's French replies (tu form) claim actions in these words too; its own French lines never read as a claim. */
+    @Test fun frenchClaimsAndRobotsFrenchLines() {
+        for (s in listOf("Je t'ai créé une note.", "Ta minuterie est réglée.", "Je viens de t'envoyer le texto.", "J'ai appelé Bob.",
+            "C'est ajouté à ton agenda.", "J'ai supprimé l'alarme.", "Je l'ai bien noté.", "J'ai allumé la lampe de poche."))
+            assertTrue(s, ActionOutcome.claims(s))
+        val fr = Langs.of(Lang.FR)
+        for (p in listOf(TurnStrings.outcomeCancelled(), TurnStrings.outcomeNotDone(), TurnStrings.outcomeNoOne(), TurnStrings.outcomeDone()))
+            assertFalse(p.render(fr), ActionOutcome.claims(p.render(fr)))
+        assertFalse(ActionOutcome.claims("Je n'ai pas appelé Bob."))
+        // The line in the reply language, from the card's own words when their English matches.
+        assertEquals(TurnStrings.outcomeCancelled().render(fr), ActionOutcome.line(Outcome(ToolName.ADD_NOTE, ActionStatus.DECLINED, null)) { it.render(fr) })
+        assertEquals(TurnStrings.outcomeNoOne().render(fr),
+            ActionOutcome.line(Outcome(ToolName.SEND_TEXT, ActionStatus.INVALID, ToolCalls.NO_RECIPIENT, text = ToolStrings.noRecipient())) { it.render(fr) })
+        assertEquals(TurnStrings.stopped().render(fr),
+            ActionOutcome.line(Outcome(ToolName.WEATHER, ActionStatus.DECLINED, "Stopped.", text = TurnStrings.stopped())) { it.render(fr) })
     }
 
     @Test fun refusalsQuestionsAndRobotsOwnLinesAreNot() {

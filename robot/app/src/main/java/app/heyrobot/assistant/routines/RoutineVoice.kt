@@ -8,6 +8,7 @@ import android.media.AudioAttributes
 import android.media.AudioManager
 import android.os.PowerManager
 import app.heyrobot.assistant.VoiceHub
+import app.heyrobot.voice.TurnFocus
 import app.heyrobot.assistant.car.CarModeController
 import app.heyrobot.assistant.handsfree.HandsFreeHub
 import app.heyrobot.assistant.handsfree.PanelHandsFree
@@ -42,7 +43,7 @@ import java.io.File
 // VOICE PROCESS (0.8). Says a routine's parts one at a time with Robot's voice (VoiceHub.tts), so "next", "skip",
 // "repeat" and "stop" move by them (core PlayState): said to the panel after "hey robot", the notification's buttons, or
 // the "stop" spotter. A run nobody asked for speaks from RoutineSpeakingService, a mediaPlayback foreground service (Android
-// 17 lets background audio play only from a visible activity or such a service, design §1.2); each part goes through
+// 17 lets background audio play only from a visible activity or such a service); each part goes through
 // OutputGuard first (core RoutineOutputs), by where its sound goes now: on the lock screen a personal part waits for the
 // unlock, nothing talks over a call, "Headset only" says nothing on the speaker, a personal part waits too when the sound
 // goes to a device others may hear (a Bluetooth device not confirmed private, a speaker; in car mode, the car unless "Read
@@ -146,7 +147,7 @@ object RoutineVoice {
     }
 
     /**
-     * Android didn't let the service start by itself (design §1.2 Path 2's fallback): the run's parts are kept and a
+     * Android didn't let the service start by itself: the run's parts are kept and a
      * notification's Play starts it, a tap being something you did.
      */
     fun refused(s: Session) {
@@ -229,6 +230,8 @@ object RoutineVoice {
         s.said += lines.size
         part.item?.let { s.saidItems += it }
         s.chars += part.chars
+        // 1.1: a long part pauses other sound, as OutputGuard decided (in the panel, each line's own decision does).
+        if (s.surface != Surface.PANEL) TurnFocus.volume(d.volume)
         lines.forEach(::say)
         val g = ++gen
         main.removeCallbacks(watchdog)
@@ -333,7 +336,8 @@ object RoutineVoice {
         val am = app.getSystemService(AudioManager::class.java)
         val mode = try { am.mode } catch (_: Throwable) { AudioManager.MODE_NORMAL }
         return PhoneState(
-            locked = Assistant.locked(app),
+            // 1.1: the lock screen only (a phone lock leaves the screen unlocked; routines are unchanged).
+            locked = Assistant.keyguard(app),
             screenOn = try { app.getSystemService(PowerManager::class.java).isInteractive } catch (_: Throwable) { true },
             callActive = mode == AudioManager.MODE_IN_CALL || mode == AudioManager.MODE_IN_COMMUNICATION,
             mediaPlaying = try { am.isMusicActive } catch (_: Throwable) { false },

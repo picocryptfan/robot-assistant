@@ -20,6 +20,12 @@ import app.heyrobot.core.VoiceModelLogic
 import app.heyrobot.core.installVerified
 import app.heyrobot.core.readOrNull
 import app.heyrobot.core.writeAtomic
+import app.heyrobot.R
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.PhraseWire
+import app.heyrobot.core.i18n.UiLabel
+import app.heyrobot.core.i18n.UiStrings
+import app.heyrobot.core.i18n.VoiceStrings
 import java.io.File
 import java.io.FileInputStream
 
@@ -122,7 +128,7 @@ object VoiceModelStore {
         val downloading = active.any(::running)
         if (!downloading && active.any { it.status == DownloadManager.STATUS_FAILED }) {
             val failed = active.first { it.status == DownloadManager.STATUS_FAILED }
-            prefs(ctx).edit().putString("fail_${b.id}", VoiceModelLogic.downloadText(b, 0, listOf(failed)).first).apply()
+            failed(ctx, b, VoiceModelLogic.downloadPhrase(b, 0, listOf(failed)).first)
             RLog.i("voice_download", "bundle" to RLog.Code(b.id), "op" to RLog.Code("failed"), "reason" to failed.reason)
             // Forget the failed rows: "Download" starts those files again.
             setIds(ctx, b, ids.filterValues { rows[it]?.status != DownloadManager.STATUS_FAILED })
@@ -132,26 +138,36 @@ object VoiceModelStore {
             downloading = downloading,
             downloaded = rem.isNotEmpty() && !downloading && rem.all { stagedComplete(ctx, b, it) },
             installing = installing == b,
-            bad = prefs(ctx).contains("bad_${b.id}"),
-            installFailed = prefs(ctx).contains("installfail_${b.id}"),
+            bad = prefs(ctx).contains("bad_${b.id}"), // l10n: not text (a preference key)
+            installFailed = prefs(ctx).contains("installfail_${b.id}"), // l10n: not text (a preference key)
         )
         val status = VoiceModelLogic.status(b, facts)
         var percent = -1
+        // 1.1: in the menus' language.
+        val langs = AppLanguage.langs(ctx)
         val progress = when (status) {
             ModelStatus.DOWNLOADING -> {
                 val done = b.files.filter { it.name in v }.sumOf { it.bytes }
-                VoiceModelLogic.downloadText(b, done, active).let { percent = it.second; it.first }
+                VoiceModelLogic.downloadPhrase(b, done, active).let { percent = it.second; it.first }
             }
-            ModelStatus.VERIFYING -> { percent = installPercent; VoiceModelLogic.installText(installPercent) }
-            ModelStatus.UNVERIFIED -> "Downloaded. Checking the files next."
+            ModelStatus.VERIFYING -> { percent = installPercent; VoiceModelLogic.installPhrase(installPercent) }
+            ModelStatus.UNVERIFIED -> VoiceStrings.checkingNext()
             else -> null
-        }
+        }?.render(langs)
         val failure = when (status) {
-            ModelStatus.BAD -> "A downloaded file didn't match its checksum, so Robot deleted it. Tap Download to fetch it again."
-            ModelStatus.MISSING -> prefs(ctx).getString("fail_${b.id}", null)
+            ModelStatus.BAD -> VoiceStrings.checksumWrong("button" to UiLabel(UiStrings.download)).render(langs)
+            // Kept without a language (PhraseWire); one kept by 1.0, in English, as it is.
+            ModelStatus.MISSING -> prefs(ctx).getString("fail_${b.id}", null)?.let { s -> PhraseWire.decode(s)?.render(langs) ?: s }
             else -> null
         }
         return Snap(b, status, progress, percent, failure)
+    }
+
+    /** Keeps why [b]'s download or install failed, without a language (the screen says it in the menus' of the day). */
+    private fun failed(ctx: Context, b: VoiceBundle, why: Phrase, installFailed: Boolean = false) {
+        val e = prefs(ctx).edit().putString("fail_${b.id}", PhraseWire.encode(why))
+        if (installFailed) e.putBoolean("installfail_${b.id}", true)
+        e.apply()
     }
 
     // ------------------------------------------------------------------ download, install, delete
@@ -169,8 +185,9 @@ object VoiceModelStore {
         // (Gemma, the other voice models) will still need their space.
         val staged = rem.filter { stagedComplete(ctx, b, it) }.map { it.name }.toSet()
         val pending = pendingBytes(ctx, except = b) + ModelStore.pendingBytes(ctx) + MtModelStore.pendingBytes(ctx)
-        VoiceModelLogic.refuseDownload(b, snapshot(ctx, b).status, rem, freeBytes(ctx), staged, pending)?.let { return it }
-        val dir = staging(ctx, b) ?: return "The phone's storage isn't available right now."
+        val langs = AppLanguage.langs(ctx)
+        VoiceModelLogic.refuseDownloadText(b, snapshot(ctx, b).status, rem, freeBytes(ctx), staged, pending)?.let { return it.render(langs) }
+        val dir = staging(ctx, b) ?: return VoiceStrings.storageUnavailable().render(langs)
         dir.mkdirs()
         // Download again: a failed install may run again (once).
         prefs(ctx).edit().remove("bad_${b.id}").remove("fail_${b.id}").remove("installfail_${b.id}").apply()
@@ -186,8 +203,8 @@ object VoiceModelStore {
                 id?.let { dm.remove(it) }
                 staged(ctx, b, f)?.delete()
                 val req = DownloadManager.Request(Uri.parse(b.url(f)))
-                    .setTitle("Robot: ${b.title.lowercase()}")
-                    .setDescription(VoiceModelLogic.size(f.bytes))
+                    .setTitle(ctx.getString(R.string.voice_download_title, b.titleText.render(langs).lowercase()))
+                    .setDescription(VoiceModelLogic.sizeText(f.bytes).render(langs))
                     .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
                     .setDestinationInExternalFilesDir(ctx, null, "$STAGING/${b.id}/${f.name}")
                     .addRequestHeader("User-Agent", DownloadPolicy.userAgent(BuildConfig.VERSION_NAME))
@@ -200,7 +217,7 @@ object VoiceModelStore {
         } catch (t: Throwable) {
             setIds(ctx, b, ids)
             RLog.w("voice_download", t, "bundle" to RLog.Code(b.id))
-            "The download couldn't start."
+            VoiceStrings.downloadCouldntStart().render(langs)
         }
     }
 
@@ -243,8 +260,7 @@ object VoiceModelStore {
                 if (r != InstallResult.OK) {
                     if (r == InstallResult.IO_ERROR) {
                         // No automatic retry (the app would copy hundreds of MB every second): the person taps Download.
-                        prefs(ctx).edit().putString("fail_${b.id}", "Robot couldn't copy the files into its storage (is the phone full?). " +
-                            "Free some space, then tap Download to try again.").putBoolean("installfail_${b.id}", true).apply()
+                        failed(ctx, b, VoiceStrings.copyFailed("button" to UiLabel(UiStrings.download)), installFailed = true)
                     } else {
                         // The download is damaged: delete it so the next attempt fetches it again.
                         prefs(ctx).edit().putString("bad_${b.id}", f.name).apply()
@@ -272,7 +288,7 @@ object VoiceModelStore {
             return ok
         } catch (t: Throwable) {
             RLog.w("voice_install", t, "bundle" to RLog.Code(b.id))
-            prefs(ctx).edit().putString("fail_${b.id}", "Installing failed. Tap Download to try again.").putBoolean("installfail_${b.id}", true).apply()
+            failed(ctx, b, VoiceStrings.installFailed("button" to UiLabel(UiStrings.download)), installFailed = true)
             return false
         } finally {
             installing = null

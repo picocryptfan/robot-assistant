@@ -34,6 +34,7 @@ import app.heyrobot.core.ConversationSettings
 import app.heyrobot.core.ConversationSpeakers
 import app.heyrobot.core.IoCode
 import app.heyrobot.core.LangLabel
+import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.MicEvent
 import app.heyrobot.core.Pcm
 import app.heyrobot.core.RLog
@@ -51,7 +52,10 @@ import app.heyrobot.core.TranscriptWriter
 import app.heyrobot.core.VoiceBundle
 import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
+import app.heyrobot.R
+import app.heyrobot.sys.AppLanguage
 import app.heyrobot.sys.Assistant
+import app.heyrobot.sys.SettingsStore
 import app.heyrobot.sys.Transcripts
 import app.heyrobot.voice.AudioFrames
 import app.heyrobot.voice.ConversationEngine
@@ -142,6 +146,9 @@ object ConversationSession {
 
         /** A speaker as shown: the name you gave, "You", or the label. */
         fun nameOf(speaker: String): String = Transcript(names = names, me = me).nameOf(speaker)
+
+        /** [nameOf] as a phrase: your own lines are "You", « Moi ». */
+        fun nameText(speaker: String): app.heyrobot.core.i18n.Phrase = Transcript(names = names, me = me).nameText(speaker)
     }
 
     private val _state = MutableStateFlow(Ui())
@@ -151,6 +158,13 @@ object ConversationSession {
     val running: Boolean get() = _state.value.active
 
     private lateinit var app: Context
+
+    /**
+     * Your language ("fr" or "en") when nothing else is known (1.1, core LangLabel.yours): Settings › Language › "Robot
+     * answers in" when it is fixed, else the menus' language. A short line's prior, the interpreter's bottom half, your
+     * voiceprint's sentences and the summaries' "Your language" follow it.
+     */
+    fun yourLanguage(ctx: Context, s: RobotSettings = SettingsStore.load(ctx)): String = LangLabel.yours(AppLanguage.langs(ctx).ui, s.replyLang)
     private val ctl: Handler by lazy { Handler(HandlerThread("robot-conv-ctl").apply { start() }.looper) }
     private var recovered = false
 
@@ -268,7 +282,7 @@ object ConversationSession {
                 // Half started (the transcript and the engine made, then something threw): undone like a stop, so
                 // nothing goes on recording, holding the wake lock or keeping the wake word asleep.
                 if (writer != null) return@post stopNow(ConvStop.ERROR)
-                "Transcribing couldn't start."
+                app.getString(R.string.conv_start_failed)
             }
             if (why != null) {
                 val last = synchronized(startLock) {
@@ -284,18 +298,18 @@ object ConversationSession {
     private fun startNow(mode: ConvMode, entry: ConvEntry, resumeId: String?): String? {
         VoiceHub.init(app)
         val s = VoiceHub.settings
-        if (!Assistant.granted(app, Manifest.permission.RECORD_AUDIO)) return "Robot needs the microphone permission (Robot app › Get started)."
+        if (!Assistant.granted(app, Manifest.permission.RECORD_AUDIO)) return app.getString(R.string.conv_needs_mic)
         val decoder = VoiceEngines.segmentDecoder()
-        if (decoder == null || !decoder.available) return "Transcribing needs the speech recognition model: download it in the Robot app (Model › Voice models)."
+        if (decoder == null || !decoder.available) return app.getString(R.string.conv_needs_asr)
         val store = Transcripts.store(app)
-        if (ConversationRules.diskFull(store.freeBytes())) return "Storage is nearly full (under 200 MB free): Robot can't save a transcript."
+        if (ConversationRules.diskFull(store.freeBytes())) return app.getString(R.string.conv_storage_full)
         val locked = Assistant.locked(app)
-        if (!ConversationLock.mayStart(locked, s)) return "Unlock your phone to start transcribing (Settings › Conversation › Start from the lock screen)."
+        if (!ConversationLock.mayStart(locked, s)) return app.getString(R.string.conv_unlock_to_start)
         val now = System.currentTimeMillis()
         val w = if (resumeId != null) TranscriptWriter.resume(store, resumeId, now)
-            ?: return "That transcript was deleted or can't be opened."
+            ?: return app.getString(R.string.conv_resume_gone)
         else TranscriptWriter.start(store, TranscriptIds.new(LocalDateTime.now()), now, mode, s.convPairChoice)
-            ?: return "Robot couldn't create the transcript on this phone."
+            ?: return app.getString(R.string.conv_create_failed)
         // Speaker labels (phase 5.3): the speaker model when it is there and "Tell speakers apart" is on, seeded with your
         // voiceprint if you made one. A resumed transcript's people get new labels (S1′): their voices are gone.
         val embedder = VoiceEngines.speakerEmbedder()
@@ -305,11 +319,11 @@ object ConversationSession {
         val sp = ConversationSpeakers(on, ConversationSettings.maxSpeakers(s, mode),
             if (resumeId != null) SpeakerLabels.resumeMark(so.speakers + so.merges.keys) else "", mine?.vector)
         mine?.vector?.fill(0f)
-        val e = ConversationEngine(app, decoder, LangLabel.yours(), Output(w, sp), speakers = sp, embedder = embedder)
+        val e = ConversationEngine(app, decoder, yourLanguage(app, s), Output(w, sp), speakers = sp, embedder = embedder)
         if (!e.start()) {
             // A new transcript with nothing in it goes again (not left as "Stopped unexpectedly"); a resumed one is closed.
             if (resumeId == null) store.delete(w.id) else w.close(System.currentTimeMillis(), SessionStatus.INTERRUPTED)
-            return "The voice detector couldn't start."
+            return app.getString(R.string.conv_vad_failed)
         }
         discarded = false
         writer = w
@@ -327,7 +341,7 @@ object ConversationSession {
         // Lines from before a crash show only when the phone is unlocked (a screen over the lock screen shows nothing older).
         val earlier = if (resumeId != null && ConversationLock.showsEarlier(locked)) w.current().lines.takeLast(ConversationRules.LIVE_LINES) else emptyList()
         val pair = s.convPairChoice
-        val theirs = pair.other(LangLabel.yours()) ?: pair.first
+        val theirs = pair.other(yourLanguage(app, s)) ?: pair.first
         val translate = mode == ConvMode.TRANSCRIBE && s.convTranslate
         // The fast engine as the session starts (its files downloaded since, or an engine that rested, count again).
         FastTranslation.recheck(app)
@@ -416,14 +430,14 @@ object ConversationSession {
         VoiceHub.conversationWake(false)
         ctl.removeCallbacks(tick)
         val note = when (why) {
-            ConvStop.DISK -> "Stopped: storage is nearly full. The transcript is saved."
-            ConvStop.ERROR -> "Stopped after an error. What was heard is saved."
+            ConvStop.DISK -> app.getString(R.string.conv_stopped_disk)
+            ConvStop.ERROR -> app.getString(R.string.conv_stopped_error)
             else -> null
         }
         synchronized(startLock) {
             _state.update {
                 val ended = Ui(savedId = if (discarded) null else w.id, lines = if (discarded) emptyList() else it.lines, total = if (discarded) 0 else it.total,
-                    notice = if (discarded) "This transcript was deleted." else note, speakers = if (discarded) emptyList() else it.speakers,
+                    notice = if (discarded) app.getString(R.string.conv_deleted) else note, speakers = if (discarded) emptyList() else it.speakers,
                     names = if (discarded) emptyMap() else it.names, me = if (discarded) null else it.me, similarLeft = if (discarded) 0 else similar.size)
                 // A start asked for while this one was saving runs next on this thread: it stays STARTING.
                 if (pendingStarts > 0) ended.copy(status = Status.STARTING) else ended
@@ -473,8 +487,19 @@ object ConversationSession {
     /** You paused it (the screen, the notification, by voice). It stays paused until you resume. */
     fun userPause() = ctl.post { pauseNow(ConvPause.USER) }
 
-    /** You resumed it: every pause you can end ends (not the microphone being taken or the phone being too hot). */
+    /**
+     * You resumed it: every pause you can end ends (not the microphone being taken or the phone being too hot). Only where
+     * a new one could start: not during someone else's phone lock, nor on the lock screen with "Start from the lock
+     * screen" off (the screen, the notification and the panel all come here).
+     */
     fun userResume() = ctl.post {
+        if (!::app.isInitialized) return@post
+        val refused = app.getString(R.string.conv_unlock_to_start)
+        if (!ConversationLock.mayStart(Assistant.locked(app), VoiceHub.settings)) {
+            _state.update { it.copy(notice = refused) }
+            return@post
+        }
+        _state.update { if (it.notice == refused) it.copy(notice = null) else it }
         pauses.remove(ConvPause.USER)
         pauses.remove(ConvPause.PANEL)
         resumeIfFree()
@@ -627,7 +652,7 @@ object ConversationSession {
             if (writer !== w) return
             if (r.decodeMs < 0) {
                 if (++unusable >= 3 && running) {
-                    _state.update { it.copy(notice = "Speech recognition stopped working. What was heard before is saved.") }
+                    _state.update { it.copy(notice = app.getString(R.string.conv_asr_stopped)) }
                     stop(ConvStop.ERROR)
                 }
                 return
@@ -772,7 +797,7 @@ object ConversationSession {
         VoiceLog.add(VoiceEvent.CONV_TTS, LangCode.of(lang), behind, 0)
         if (!speakNoticed && _state.value.mode == ConvMode.TRANSCRIBE) {
             speakNoticed = true
-            _state.update { it.copy(notice = "Robot doesn't listen while it speaks: what is said meanwhile isn't transcribed.") }
+            _state.update { it.copy(notice = app.getString(R.string.conv_not_while_speaking)) }
         }
     }
 
@@ -975,8 +1000,10 @@ object ConversationSession {
             if (ConversationRules.diskFull(free)) return stopNow(ConvStop.DISK)
             if (!longNoticed && now - w.meta.createdAt >= ConversationRules.LONG_NOTICE_MS) {
                 longNoticed = true
-                val mb = if (free >= 0) ", ${free / (1024 * 1024)} MB free" else ""
-                _state.update { it.copy(notice = "Still transcribing — ${(now - w.meta.createdAt) / 3_600_000} h$mb.") }
+                val hours = ((now - w.meta.createdAt) / 3_600_000).toInt()
+                val still = if (free >= 0) app.getString(R.string.conv_still_hours_free, hours, (free / (1024 * 1024)).toInt())
+                    else app.getString(R.string.conv_still_hours, hours)
+                _state.update { it.copy(notice = still) }
                 ConversationNotices.changed(app)
             }
         }
@@ -1047,7 +1074,7 @@ object ConversationSession {
             if (nowSevere) VoiceLog.add(VoiceEvent.CONV_THERMAL, status, ThermalStep.FAST_ONLY.id)
         }
         if (hot) {
-            if (ConvPause.THERMAL !in pauses) _state.update { it.copy(notice = "Paused: the phone is too hot. It goes on when it cools down.") }
+            if (ConvPause.THERMAL !in pauses) _state.update { it.copy(notice = app.getString(R.string.conv_paused_hot)) }
             pauseNow(ConvPause.THERMAL)
         } else if (ConvPause.THERMAL in pauses) {
             pauses.remove(ConvPause.THERMAL)

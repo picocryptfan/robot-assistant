@@ -12,6 +12,7 @@ import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import app.heyrobot.core.HelperVoices
 import app.heyrobot.core.Escalation
@@ -37,6 +38,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import app.heyrobot.title
 
 /**
  * Settings › Helpers, a helper's page and Add a helper, as Android-style pages: each choice writes its own setting, the
@@ -187,5 +189,32 @@ class HelpersScreensTest {
         rule.onRow("Use").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "ChatGPT app")).performClick()
         rule.inDialog("OpenAI API").performClick()
         assertEquals(app.heyrobot.core.AskRoute.API, host.last.helper("hgpt")!!.route)
+    }
+
+    /**
+     * 1.0.2, from the phone: after a key was refused over http the page said "Last checked: the server answered." (no server
+     * had been reached). The line now says what the last check found: the key wasn't sent, or it failed and why.
+     */
+    @Test fun testConnectionsLineSaysWhatTheLastCheckFound() {
+        val home = HelperConfig.of(Presets.HOME, "hhome", "am_puck")
+        val f = app.heyrobot.core.helpers.HelperFacts(failure = app.heyrobot.core.HelperFailure.KEY_OVER_HTTP, checkedAt = 1)
+        val at = Snapshot(facts = facts().copy(helperFacts = mapOf("hhome" to f)))
+        rule.showSettings(SettingsHost(RobotSettings(helpers = listOf(home)))) { s, u ->
+            HelperScreen("hhome", s, at, u, log.actions, SnackbarHostState(), onBack = {})
+        }
+        rule.scrollToText("Test connection")
+        rule.onNodeWithText("Last checked: the key wasn't sent over http, so nothing was asked.").assertExists()
+    }
+
+    @Test fun aFailedCheckSaysSoInTheStatusLinesWords() {
+        val home = HelperConfig.of(Presets.HOME, "hhome", "am_puck")
+        val f = app.heyrobot.core.helpers.HelperFacts(failure = app.heyrobot.core.HelperFailure.UNREACHABLE, models = listOf("a", "b"), checkedAt = 1)
+        val at = Snapshot(facts = facts().copy(helperFacts = mapOf("hhome" to f)))
+        rule.showSettings(SettingsHost(RobotSettings(helpers = listOf(home)))) { s, u ->
+            HelperScreen("hhome", s, at, u, log.actions, SnackbarHostState(), onBack = {})
+        }
+        rule.scrollToText("Test connection")
+        val why = app.heyrobot.core.HelperFailure.UNREACHABLE.say(app.heyrobot.core.helpers.HelperWho.of(home))
+        rule.onNodeWithText("Last checked: it didn't work. $why").assertExists()
     }
 }

@@ -179,7 +179,7 @@ class WakeWord(private val assets: AssetManager, vadGate: Boolean = true) {
         return try {
             // sherpa-onnx answers a set it can't encode with a null stream (the vendored OnlineStream refuses it too).
             spotter.createStream(keywords).also {
-                check(it.ptr != 0L) { "null stream" }
+                check(it.ptr != 0L) { "null stream" } // l10n: not text (a developer's error)
                 stream = it
                 streamKws = spotter
                 streamKeywords = keywords

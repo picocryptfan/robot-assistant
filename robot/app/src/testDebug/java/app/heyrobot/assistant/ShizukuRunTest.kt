@@ -2,6 +2,12 @@
 package app.heyrobot.assistant
 
 import android.app.KeyguardManager
+import android.content.ComponentName
+import android.content.IntentFilter
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageInfo
+import android.provider.Settings
+import android.speech.RecognitionService
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import app.heyrobot.core.ShizukuOutcome
@@ -63,6 +69,30 @@ class ShizukuRunTest {
         assertEquals(ShizukuRefusal.LOCKED, r.refusal)
         assertEquals(listOf(Triple(2, ShizukuOutcome.REFUSED.id, ShizukuRefusal.LOCKED.id)), events().map { Triple(it.a, it.b, it.c) })
         nothingSent()
+    }
+
+    /**
+     * 1.2 (every-android-phone, Step 6): another installed speech recognizer is set (a stock phone's own): the recognizer
+     * fix would replace it for every app, so :voice never sends it, whatever the page showed; the repair fix goes on to its
+     * usual checks.
+     */
+    @Test fun neverTheRecognizerFixOverAnotherInstalledRecognizer() {
+        val other = ComponentName("com.example.speech", "com.example.speech.Recognizer")
+        val pm = shadowOf(ctx.packageManager)
+        pm.installPackage(PackageInfo().apply { packageName = other.packageName; applicationInfo = ApplicationInfo().apply { packageName = other.packageName } })
+        pm.addServiceIfNotPresent(other)
+        pm.addIntentFilterForService(other, IntentFilter(RecognitionService.SERVICE_INTERFACE))
+        Settings.Secure.putString(ctx.contentResolver, "voice_recognition_service", other.flattenToString())
+        assertEquals(app.heyrobot.core.RecognizerRepair.Kept.OTHER, app.heyrobot.sys.RecognizerKeeper.kept(ctx))
+        val r = runFix("recognizer").shizuku!!
+        assertEquals(ShizukuOutcome.REFUSED, r.outcome)
+        assertEquals(ShizukuRefusal.NOT_NEEDED, r.refusal)
+        assertEquals(listOf(Triple(1, ShizukuOutcome.REFUSED.id, ShizukuRefusal.NOT_NEEDED.id)), events().map { Triple(it.a, it.b, it.c) })
+        // The grant replaces nothing: it goes on to Termux's checks (none here).
+        assertEquals(ShizukuRefusal.TERMUX_NOT_READY, runFix("repair").shizuku!!.refusal)
+        nothingSent()
+        // Still set as it was.
+        assertEquals(other.flattenToString(), Settings.Secure.getString(ctx.contentResolver, "voice_recognition_service"))
     }
 
     @Test fun onlyToATermuxSetUpAndTrusted() {

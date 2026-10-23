@@ -1,0 +1,29 @@
+make my 2026 tax pack	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+make my tax pack for 2025	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+make my tax pack	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+prepare my tax pack for last year	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+put together my 2025 tax pack	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+export my tax pack	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+make my 2026 expense report	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+make my expense report for this year	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+prepare my business expense report for 2025	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+fais mon dossier d'impôts 2026	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+prépare mon dossier d'impôts de 2025	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+fais mon dossier d'impôts de l'an dernier	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+fais mon rapport de dépenses 2026	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+prépare mon rapport de dépenses pour cette année	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+how do I file my taxes	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+what's the tax on this	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+make a pizza	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+when is the tax deadline	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+make an expense	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+export my contacts	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, PEOPLE]	-
+calculate my taxes for 2026	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+make my bed	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+how much tax did I pay in 2025	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+remind me to do my taxes tomorrow	-	-	-	-	-	RemindOn(title=Do my taxes, whenText=tomorrow)	-	-	-	-	-	-	-	[CORE, NOTES, CALENDAR]	-
+search the web for tax pack	-	-	-	-	-	-	-	-	Search(query=tax pack, google=false)	-	-	-	-	[CORE, WEB]	-
+fais mes impôts	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+quand est la date limite pour les impôts	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+prépare un rapport	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+rappelle-moi de faire mes impôts demain	-	-	-	-	-	RemindOn(title=Faire mes impôts, whenText=demain)	-	-	-	-	-	-	-	[CORE, NOTES, CALENDAR]	-

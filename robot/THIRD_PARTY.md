@@ -58,18 +58,21 @@ the archive always matches what they build. See the README's "Releasing".
 | Wake word model (zipformer, GigaSpeech, 3.3M) | 2024-01-01 | Apache-2.0 | in the APK |
 | Anthropic Java SDK | 2.71.0 | MIT | in the APK |
 | OkHttp | 4.12.0 | Apache-2.0 | in the APK |
-| jsoup | 1.15.1 | MIT | in the APK |
+| jsoup | 1.23.2 | MIT | in the APK |
 | Readability4J (Robot's copy) | 1.0.8 (dankito, 170d052e) | Apache-2.0 | in the APK |
 | Termux's constant strings (TermuxConstants.java) | termux-app 8629e63 | MIT | in the APK |
 | Okio | 3.6.0 | Apache-2.0 | in the APK |
 | Public Suffix List (in OkHttp) | as in OkHttp 4.12.0 | MPL-2.0 | in the APK |
-| Jackson | 2.19.4 | Apache-2.0 | in the APK |
-| FastDoubleParser (in jackson-core) | as in jackson-core 2.19.4 | MIT | in the APK |
+| Jackson | 2.21.8 | Apache-2.0 | in the APK |
+| FastDoubleParser (in jackson-core) | as in jackson-core 2.21.8 | MIT | in the APK |
+| Schubfach (in jackson-core) | as in jackson-core 2.21.8 | MIT | in the APK |
 | ClassMate | 1.7.0 | Apache-2.0 | in the APK |
 | jsonschema-generator | 4.38.0 | Apache-2.0 | in the APK |
 | Swagger Core annotations | 2.2.50 | Apache-2.0 | in the APK |
 | SLF4J API | 2.0.16 | MIT | in the APK |
 | Standard Webhooks | 1.2.0 | MIT | in the APK |
+| Bouncy Castle (Argon2 and BLAKE2b sources only) | 1.81 (r1rv81) | MIT | in the APK |
+| EFF's long word list for passphrases | eff_large_wordlist.txt, 2016-07-18 | CC-BY-3.0-US | in the APK |
 | LiteRT-LM | 0.18.0 | Apache-2.0 | in the APK |
 | LiteRT NPU runtime for Google Tensor | 2.3.0 | Apache-2.0 | in the APK |
 | llama.cpp (with ggml) | b11200 (81bc6b83) | MIT | in the APK |
@@ -83,9 +86,10 @@ the archive always matches what they build. See the README's "Releasing".
 | Abseil (in SentencePiece) | as bundled in browsermt/sentencepiece at 8cbdf137 | Apache-2.0 | in the APK |
 | Darts-clone (in SentencePiece) | as bundled in browsermt/sentencepiece at 8cbdf137 | BSD-3-Clause | in the APK |
 | Gson | 2.14.0 | Apache-2.0 | in the APK |
-| Kotlin standard library and kotlin-reflect | 2.4.0 | Apache-2.0 | in the APK |
+| Kotlin standard library and kotlin-reflect | 2.4.21 (kotlin-reflect 2.4.0) | Apache-2.0 | in the APK |
+| kotlinx.serialization | 1.7.3 | Apache-2.0 | in the APK |
 | kotlinx.coroutines | 1.11.0 | Apache-2.0 | in the APK |
-| Jetpack Compose and AndroidX | Compose BOM 2025.06.01 (1.8.3), Material 3 1.3.2 | Apache-2.0 | in the APK |
+| Jetpack Compose and AndroidX | Compose BOM 2026.06.01 (1.11.4), Material 3 1.3.2 | Apache-2.0 | in the APK |
 | Material Symbols | google/material-design-icons at 49d4db35 | Apache-2.0 | in the APK |
 | Tatoeba sentences (CC0 export) | sentences_CC0, downloaded 2026-10-11 | CC0-1.0 | in the APK |
 | Annotation libraries | as resolved | Apache-2.0 | in the APK |
@@ -106,15 +110,15 @@ the archive always matches what they build. See the README's "Releasing".
 | Wikipedia text | service | CC-BY-SA-4.0 | online service |
 | Brave Search API | service | LicenseRef-brave-search-terms | online service |
 | DuckDuckGo Instant Answer API | service | LicenseRef-duckduckgo-api | online service |
-| Android Gradle Plugin | 8.8.2 | Apache-2.0 | build and tests only |
-| Kotlin compiler and its Compose plugin | 2.4.0 | Apache-2.0 | build and tests only |
+| Android Gradle Plugin | 8.13.2 | Apache-2.0 | build and tests only |
+| Kotlin compiler and its Compose plugin | 2.4.21 | Apache-2.0 | build and tests only |
 | JUnit | 4.13.2 | EPL-1.0 | build and tests only |
 | org.json (JSON-java) | 20180813 | JSON | build and tests only |
 | OkHttp MockWebServer | 4.12.0 | Apache-2.0 | build and tests only |
-| Robolectric | 4.16.1 | MIT | build and tests only |
+| Robolectric | 4.17 | MIT | build and tests only |
 | Robolectric's Android runtime (android-all-instrumented) | 15-robolectric-13954326-i7 | Apache-2.0 | build and tests only |
-| Compose UI test and AndroidX Test | 1.8.3 (Compose BOM 2025.06.01) | Apache-2.0 | build and tests only |
-| Roborazzi | 1.49.0 | Apache-2.0 | build and tests only |
+| Compose UI test and AndroidX Test | 1.11.4 (Compose BOM 2026.06.01) | Apache-2.0 | build and tests only |
+| Roborazzi | 1.76.0 | Apache-2.0 | build and tests only |
 | sherpa-onnx Python package | 1.13.8 | Apache-2.0 | build and tests only |
 | NumPy | as installed | BSD-3-Clause | build and tests only |
 | SentencePiece (Python) | as installed | Apache-2.0 | build and tests only |
@@ -248,9 +252,10 @@ What it brings with it at run time (resolved by Gradle, versions as built):
 |---|---|
 | `com.squareup.okhttp3:okhttp:4.12.0`, `com.squareup.okio:okio:3.6.0`, `com.squareup.okio:okio-jvm:3.6.0` | Apache-2.0 |
 | the Public Suffix List, compiled into OkHttp (`publicsuffixes.gz`; source: publicsuffix.org) | MPL-2.0 |
-| `com.fasterxml.jackson.core:jackson-core`, `-databind`, `-annotations` 2.19.4; `jackson-datatype-jdk8`, `-jsr310`, `jackson-module-kotlin` 2.19.4 | Apache-2.0 |
-| FastDoubleParser (bundled inside jackson-core 2.19.4, its LICENSE in the APK; with code from fast_float, MIT, and bigint, BSD-2-Clause) | MIT |
-| `org.jetbrains.kotlin:kotlin-reflect` (for jackson-module-kotlin, which asks for 1.9.25; Gradle resolves the 2.4.0 that LiteRT-LM brings, and that one is in the APK) | Apache-2.0 |
+| `com.fasterxml.jackson.core:jackson-core`, `-databind` 2.21.8, `-annotations` 2.21; `jackson-datatype-jdk8`, `-jsr310`, `jackson-module-kotlin` 2.21.8 (1.1: the SDK asks for 2.19.4; `:helpers` lifts them with `jackson-bom` 2.21.8 for security fixes) | Apache-2.0 |
+| FastDoubleParser (bundled inside jackson-core 2.21.8, its LICENSE in the APK; with code from fast_float, MIT, bigint, BSD-2-Clause, and fast_double_parser, BSL-1.0) | MIT |
+| Schubfach (bundled inside jackson-core 2.21.8, Copyright 2018-2020 Raffaello Giulietti, its LICENSE in the APK) | MIT |
+| `org.jetbrains.kotlin:kotlin-reflect` (for jackson-module-kotlin, which asks for 2.1.21; Gradle resolves the 2.4.0 that LiteRT-LM brings, and that one is in the APK) | Apache-2.0 |
 | `com.github.victools:jsonschema-generator`, `-module-jackson`, `-module-swagger-2` 4.38.0; `com.fasterxml:classmate:1.7.0` | Apache-2.0 |
 | `io.swagger.core.v3:swagger-annotations:2.2.50`, `com.google.errorprone:error_prone_annotations:2.50.0` | Apache-2.0 |
 | `org.slf4j:slf4j-api:2.0.16` (no binding: it logs nothing) | MIT |
@@ -264,7 +269,7 @@ Tests only (not in the APK): `com.squareup.okhttp3:mockwebserver:4.12.0` (Apache
 network tests talk to through the SDK's base-URL override (and, 0.6.0, the helpers' clients; 0.9, web search's search
 transport and page fetcher).
 
-### jsoup 1.15.1 (MIT) and Robot's copy of Readability4J 1.0.8 (Apache-2.0): reading result pages (0.9 web search)
+### jsoup 1.23.2 (MIT) and Robot's copy of Readability4J 1.0.8 (Apache-2.0): reading result pages (0.9 web search)
 
 When web search reads a result page from the phone (`:helpers` module, `app.heyrobot.helpers.web`, the `:voice` process
 only), jsoup parses it (an HTML parser with no JavaScript engine; nothing on the page is loaded) and Robot's copy of
@@ -272,14 +277,42 @@ Readability4J finds the article in it, as Firefox's Reader View does.
 
 | artifact | licence | sha256 of the jar |
 |---|---|---|
-| `org.jsoup:jsoup:1.15.1` | MIT (Copyright (c) 2009-2022 Jonathan Hedley; its LICENSE in the APK) | `246947b4fa5fb5fcd446c7dae46ab1ff1779b31f6af7a33e1e0aabfbdb6d8749` |
+| `org.jsoup:jsoup:1.23.2` | MIT (Copyright (c) 2009-2026 Jonathan Hedley; its LICENSE in the APK) | `e9d8c856856680427f096d156f02a414289985c930998fcb519ce5be39b42003` |
 
 Readability4J 1.0.8 (https://github.com/dankito/Readability4J, commit `170d052e99db58ecac85a77cdaa63ac8253be1fd`,
 Copyright 2017 dankito, Apache-2.0) is a Kotlin port of Mozilla's Readability.js (Copyright (c) 2010 Arc90 Inc,
 Apache-2.0). It is not a dependency: its source is copied into `helpers/src/main/java/app/heyrobot/helpers/web/readability/`
 with its LICENSE and a NOTICE that says what Robot changed (the package name; every slf4j logging call removed, so no
-logging library sees page text; built against jsoup 1.15.1 instead of 1.11.2; its "extended" variant and tests not
+logging library sees page text; built against jsoup 1.23.2 instead of 1.11.2; its "extended" variant and tests not
 copied). The NOTICE is in the APK (`licenses/notices/readability4j-NOTICE.txt`) and on the Licences screen.
+
+### EFF's long word list (CC BY 3.0 US): the passphrase Robot offers for a backup (1.1)
+
+Back up now offers a passphrase of six words picked with `SecureRandom` from the Electronic Frontier Foundation's long
+word list for dice passphrases (7,776 words, about 77 bits for six). The file is
+`app/src/main/assets/eff_large_wordlist.txt`, unchanged from https://www.eff.org/files/2016/07/18/eff_large_wordlist.txt
+(downloaded 2026-10-18, sha256 `addd35536511597a02fa0a9ff1e5284677b8883b83e986e43f15a3db996b903e`). "EFF's Long
+Wordlist" by the Electronic Frontier Foundation (https://www.eff.org/dice), licensed under the Creative Commons
+Attribution 3.0 United States licence; its text ships in the APK (`licenses/CC-BY-3.0-US.txt`) and on the Licences screen.
+
+### Bouncy Castle 1.81 (MIT), Argon2 and BLAKE2b sources only: Argon2id for encrypted backups (1.1)
+
+A backup (Settings › Back up and restore, 1.1) is encrypted with a key Argon2id makes from your passphrase (RFC 9106's
+second recommended settings: 64 MiB, 3 passes, 4 lanes). Android has no Argon2, so Robot carries Bouncy Castle's: not
+the library, only its `Argon2BytesGenerator`, `Argon2Parameters`, its BLAKE2b digest and the interfaces, exceptions and
+helpers they need to compile, 20 files in `core/src/main/java/app/heyrobot/thirdparty/bouncycastle/`, their package
+renamed from `org.bouncycastle` to `app.heyrobot.thirdparty.bouncycastle` (so they never meet another copy of Bouncy
+Castle, such as Robolectric's in the app's tests), each starting with a comment naming its source, with the licence
+(`LICENSE`) and a `NOTICE` there. Copied from https://github.com/bcgit/bc-java at tag `r1rv81` (Bouncy Castle 1.81,
+commit `7cf6d995`), the release Maven Central publishes as `bcprov-jdk18on-1.81.jar` (sha256
+`249f396412b0c0ce67f25c8197da757b241b8be3ec4199386c00704a2457459b`); the copy gives the same output as that jar's
+classes, and the NOTICE lists each file's SHA-256 as published and as copied (core's `VendoredBouncyCastleTest` checks
+them). Besides the package, one change: `Blake2bDigest`'s three calls to Bouncy Castle's services registry are removed
+(they would bring most of the library and change no output). Core's `backup/BackupKdf.kt` is the only code that uses
+them; nothing is registered as a security provider, so the backup's AES-256-GCM is Android's own `Cipher`. The NOTICE
+ships in the APK (`licenses/notices/bouncycastle-NOTICE.txt`) and on the Licences screen, with the licence text
+(`licenses/MIT-bouncycastle.txt`, as `org.bouncycastle.LICENSE` states it in 1.81). With the backup's core code, it adds
+about 107 KB to the release APK.
 
 ## Downloaded by the app (not in the APK; Model › Voice models)
 
@@ -521,16 +554,17 @@ with their Tatoeba ids, that the table never saw. `langid/colloquial.tsv` (62 sh
 
 | dependency | version |
 |---|---|
-| Jetpack Compose (ui, foundation, animation, runtime, material-ripple), BOM `androidx.compose:compose-bom` | 2025.06.01 (1.8.3) |
-| `androidx.compose.material3:material3` | 1.3.2 |
+| Jetpack Compose (ui, foundation, animation, runtime, material-ripple), BOM `androidx.compose:compose-bom` | 2026.06.01 (1.11.4) |
+| `androidx.compose.material3:material3` (held at 1.3.2 in app/build.gradle: 1.4 restyles the outlined buttons) | 1.3.2 |
 | `androidx.compose.material:material-icons-core` (transitive) | 1.7.8 |
-| `androidx.activity:activity-compose` | 1.10.1 |
-| `androidx.core:core-ktx` (FileProvider) | 1.16.0 |
-| `androidx.lifecycle` (runtime, runtime-compose, viewmodel, process) | 2.8.7 |
-| `androidx.savedstate:savedstate-ktx` | 1.2.1 |
-| other AndroidX (annotation, collection, arch-core, emoji2, startup, profileinstaller, tracing, autofill, graphics-path, customview-poolingcontainer, interpolator, versionedparcelable, concurrent-futures) | as resolved by the above |
-| `org.jetbrains.kotlin:kotlin-stdlib` | 2.4.0 |
+| `androidx.activity:activity-compose` | 1.13.0 |
+| `androidx.core:core-ktx` (FileProvider) | 1.18.0 |
+| `androidx.lifecycle` (runtime, runtime-compose, viewmodel, viewmodel-savedstate, process) | 2.10.0 |
+| `androidx.savedstate` (savedstate, savedstate-ktx, savedstate-compose) | 1.5.0 |
+| other AndroidX (navigationevent; since Compose 1.11 also transition, window, dynamicanimation, legacy-support-core-utils, loader, documentfile, localbroadcastmanager and print; annotation, collection, arch-core, emoji2, startup, profileinstaller, tracing, autofill, graphics-path, customview-poolingcontainer, interpolator, versionedparcelable, concurrent-futures) | as resolved by the above |
+| `org.jetbrains.kotlin:kotlin-stdlib` | 2.4.21 |
 | `org.jetbrains.kotlinx:kotlinx-coroutines-android` | 1.11.0 |
+| `org.jetbrains.kotlinx:kotlinx-serialization-core` (brought by savedstate) | 1.7.3 |
 | `com.google.errorprone:error_prone_annotations`, `com.google.guava:listenablefuture`, `org.jetbrains:annotations`, `org.jspecify:jspecify` | annotations only |
 
 The icons in `app/src/main/java/app/heyrobot/ui/common/Icons.kt` are path data from Google's **Material Symbols
@@ -548,12 +582,12 @@ Phase 2 adds no dependency. Robot hands drafts to apps you install (Cheogram, Pr
 calendar app) through Android intents only; nothing of them is bundled. Their source (Cheogram: GPL-3.0; Proton Mail
 for Android: GPL-3.0) was read to match what they accept; no code was copied.
 
-Build and test only (not in the APK): Android Gradle Plugin 8.8.2, Kotlin and its Compose compiler plugin
-2.4.0, JUnit 4.13.2 (EPL-1.0), org.json 20180813 (JSON licence, tests only). The UI tests (debug unit tests, 0.4.x
-redesign): Robolectric 4.16.1 (MIT) with its Android runtime `android-all-instrumented` 15-robolectric-13954326-i7
-(Android 15, Apache-2.0), Compose `ui-test-junit4` 1.8.3 from the same BOM (Apache-2.0) with AndroidX Test (Apache-2.0),
-Roborazzi 1.49.0 (`roborazzi`, `roborazzi-compose`, `roborazzi-junit-rule`; Apache-2.0); Compose `ui-test-manifest`
-1.8.3 (Apache-2.0) is in the debug build only, its test activity not exported. The tools in `tools/` use the
+Build and test only (not in the APK): Android Gradle Plugin 8.13.2, Kotlin and its Compose compiler plugin
+2.4.21, JUnit 4.13.2 (EPL-1.0), org.json 20180813 (JSON licence, tests only). The UI tests (debug unit tests, 0.4.x
+redesign): Robolectric 4.17 (MIT) with its Android runtime `android-all-instrumented` 15-robolectric-13954326-i7
+(Android 15, Apache-2.0), Compose `ui-test-junit4` 1.11.4 from the same BOM (Apache-2.0) with AndroidX Test (Apache-2.0),
+Roborazzi 1.76.0 (`roborazzi`, `roborazzi-compose`, `roborazzi-junit-rule`; Apache-2.0); Compose `ui-test-manifest`
+1.11.4 (Apache-2.0) is in the debug build only, its test activity not exported. The tools in `tools/` use the
 `sherpa-onnx==1.13.8` Python wheel (Apache-2.0), numpy (BSD-3-Clause), sentencepiece (Apache-2.0) and pypinyin (MIT)
 on the build machine only; `tools/make_langid.py` uses Python's standard library only.
 
@@ -588,7 +622,7 @@ on the build machine only; `tools/make_langid.py` uses Python's standard library
   and each answer's source be credited where the answers show, so the card says "Results from DuckDuckGo" and lists each
   source with its link (Wikipedia's text keeps its CC BY-SA 4.0 credit); Robot names itself in its `t` parameter and is
   free and non-commercial (https://duckduckgo.com/api, read through an archived copy: the page doesn't open from the
-  build machine). Up to 3 result pages may be read from the phone (the sites see its IP address; never with DuckDuckGo's
+  build machine). Up to 5 result pages (3 by default) may be read from the phone (the sites see its IP address; never with DuckDuckGo's
   short answers); their text is used for one answer and never stored. A search in your browser (1.0: Startpage,
   DuckDuckGo, Brave Search, Mojeek, Qwant, Ecosia, Google, Bing) is your browser's: Robot only opens the engine's search
   address and uses none of its results.

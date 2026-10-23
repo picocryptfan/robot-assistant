@@ -7,6 +7,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.os.PersistableBundle
+import app.heyrobot.R
 import app.heyrobot.assistant.HelperLink
 import app.heyrobot.core.AppHandOff
 import app.heyrobot.core.AppShareCode
@@ -24,12 +25,15 @@ import app.heyrobot.core.HelperRoute
 import app.heyrobot.core.RLog
 import app.heyrobot.core.SummaryCost
 import app.heyrobot.core.SummaryJob
+import app.heyrobot.core.i18n.ConversationStrings
+import app.heyrobot.core.i18n.Phrase
 import app.heyrobot.core.helpers.HelperConfig
 import app.heyrobot.core.helpers.HelperWho
 import app.heyrobot.core.helpers.HelperWords
 import app.heyrobot.core.helpers.Protocol
 import app.heyrobot.helpers.HelperOutcome
 import app.heyrobot.helpers.HelperTurnListener
+import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.HandOffIntents
 import app.heyrobot.sys.HelperSpendStore
 import java.time.Instant
@@ -46,9 +50,9 @@ import kotlinx.coroutines.withContext
 /** A helper's API ([h]): Robot gets the summary back and keeps it with the transcript. [chars]: what the card sends. */
 class ApiHelper(private val ctx: Context, val h: HelperConfig, chars: Int, budgetUsed: Boolean = false) : Helper {
     override val id: String get() = idFor(h)
-    override val title: String get() = "${h.name} (API)"
+    override val title: String get() = "${h.name} (API)" // l10n: not text (a helper's name in code; the card names the company)
     /** The card's line, with the price estimated from the text's length and the helper's own price (SummaryCost). */
-    override val disclosure: Disclosure = Disclosure.api(h, SummaryCost.line(h, chars, Instant.now()), budgetUsed)
+    override val disclosure: Disclosure = Disclosure.api(h, SummaryCost.cardText(h, chars, Instant.now()), budgetUsed)
     override val route: HelperRoute get() = HelperRoute.API
 
     override fun maxInputTokens(): Int = maxInputTokens(h)
@@ -62,10 +66,10 @@ class ApiHelper(private val ctx: Context, val h: HelperConfig, chars: Int, budge
         private set
 
     override suspend fun summarize(job: SummaryJob, listener: HelperListener): HelperResult {
-        if (!HelperGate.allowed(job) || job.helper != id) return HelperResult.Failed("Nothing was sent: Robot needs your OK on the card.")
+        if (!HelperGate.allowed(job) || job.helper != id) return HelperResult.Failed(ConversationStrings.needsYourOk())
         // More than one request takes: it would leave the phone only to be refused there.
-        if (!ConsentCard.apiFits(job.blocks, maxInputTokens())) return HelperResult.Failed("Nothing was sent. " + ConsentCard.TOO_LONG_FOR_API)
-        if (!HelperLink.networkAllowed(ctx)) return HelperResult.Failed(HelperFailure.NO_INTERNET.text)
+        if (!ConsentCard.apiFits(job.blocks, maxInputTokens())) return HelperResult.Failed(ConversationStrings.nothingSentTooLong())
+        if (!HelperLink.networkAllowed(ctx)) return HelperResult.Failed(HelperFailure.NO_INTERNET.sayText(HelperWho.of(h)))
         val session = withContext(Dispatchers.IO) { HelperLink.transcriptSession(ctx, h) } ?: return HelperResult.Failed(noKey())
         val text = StringBuilder()
         try {
@@ -85,12 +89,12 @@ class ApiHelper(private val ctx: Context, val h: HelperConfig, chars: Int, budge
             })
             costKnown = session.lastReport.costKnown
             return when (out) {
-                is HelperOutcome.Done -> if (text.isBlank()) HelperResult.Failed("${h.name} sent nothing back.")
+                is HelperOutcome.Done -> if (text.isBlank()) HelperResult.Failed(ConversationStrings.helperSentNothing("name" to h.name))
                     else HelperResult.Done(text.toString().trim(), h.model, (spent * 1_000_000).toLong())
-                HelperOutcome.Declined -> HelperResult.Failed("${h.name} declined to summarize this conversation.")
-                is HelperOutcome.Failed -> HelperResult.Failed(out.failure.say(HelperWho.of(h)))
+                HelperOutcome.Declined -> HelperResult.Failed(ConversationStrings.helperDeclined("name" to h.name))
+                is HelperOutcome.Failed -> HelperResult.Failed(out.failure.sayText(HelperWho.of(h)))
                 // No tools were offered: a call can't come; if it did, nothing runs.
-                is HelperOutcome.Calls -> HelperResult.Failed("${h.name} answered with something Robot can't use.")
+                is HelperOutcome.Calls -> HelperResult.Failed(ConversationStrings.helperUnusable("name" to h.name))
             }
         } finally {
             HelperLink.done(session)
@@ -98,19 +102,19 @@ class ApiHelper(private val ctx: Context, val h: HelperConfig, chars: Int, budge
     }
 
     /** Why there was no session: no key, one that couldn't be read just now (kept), or one that was removed. */
-    private fun noKey(): String {
+    private fun noKey(): Phrase {
         val w = HelperWords(HelperWho.of(h))
         return when {
-            HelperLink.unavailable(h.id) -> w.keyUnavailable
-            HelperLink.unreadable(h.id) -> w.keyUnreadable
-            else -> HelperFailure.NO_KEY.say(HelperWho.of(h))
+            HelperLink.unavailable(h.id) -> w.keyUnavailableText
+            HelperLink.unreadable(h.id) -> w.keyUnreadableText
+            else -> HelperFailure.NO_KEY.sayText(HelperWho.of(h))
         }
     }
 
     companion object {
         /** Claude's id as before 1.0.0 (its log code and saved jobs: stored name kept); another helper's from its own id. */
         const val CLAUDE_JOB_ID = "claude_api"
-        fun idFor(h: HelperConfig): String = if (h.id == HelperConfig.CLAUDE_ID) CLAUDE_JOB_ID else "api_${h.id}"
+        fun idFor(h: HelperConfig): String = if (h.id == HelperConfig.CLAUDE_ID) CLAUDE_JOB_ID else "api_${h.id}" // l10n: not text (an id)
         const val MAX_TOKENS = 16_000L
         /** A transcript of up to about 150,000 tokens goes to Claude in one request (about 10 hours of talk). */
         const val MAX_INPUT_TOKENS = 150_000
@@ -126,20 +130,22 @@ class AppShareHelper(private val ctx: Context, val h: HelperConfig) : Helper {
     private val pkg: String = h.presetOf.app.orEmpty()
     private val appName: String = h.presetOf.defaultName
     override val id: String get() = idFor(h)
-    override val title: String get() = "$appName app"
+    override val title: String get() = "$appName app" // l10n: not text (a helper's name in code; the card names the app)
     override val disclosure: Disclosure = if (pkg == ClaudeAppLink.PACKAGE) Disclosure.claudeApp() else Disclosure.app(appName)
     override val route: HelperRoute get() = HelperRoute.APP_SHARE
 
     override fun maxInputTokens(): Int = ConsentCard.APP_MAX_CHARS / 3
 
-    override suspend fun summarize(job: SummaryJob, listener: HelperListener): HelperResult = HelperResult.Failed("The $appName app gets a share, not a request.")
+    override suspend fun summarize(job: SummaryJob, listener: HelperListener): HelperResult = HelperResult.Failed(ConversationStrings.appGetsAShare("appName" to appName))
 
     /**
      * The share for [job], or the clipboard and the app's launch when the share isn't taken; null when it is too long
-     * for the app (the card offers export instead) or the app isn't installed.
+     * for the app (the card offers export instead), the app isn't installed, or the phone is locked.
      */
     fun intent(job: SummaryJob): Pair<Intent, AppShareCode>? {
         if (!HelperGate.allowed(job) || job.helper != id) return null
+        // The last gate before the app: no share while the phone is locked (the lock screen, or a phone lock).
+        if (Assistant.locked(ctx)) return null
         if (pkg.isEmpty() || job.appText.length > ConsentCard.APP_MAX_CHARS || !HandOffIntents.installed(ctx, pkg)) return null
         val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, job.appText).setPackage(pkg)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -147,7 +153,7 @@ class AppShareHelper(private val ctx: Context, val h: HelperConfig) : Helper {
         // Fallback: the clipboard (marked sensitive: other people's words), then the app; you paste it there.
         val launch = ctx.packageManager.getLaunchIntentForPackage(pkg)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) ?: return null
         try {
-            val clip = ClipData.newPlainText("Conversation for $appName", job.appText)
+            val clip = ClipData.newPlainText(ctx.getString(R.string.conv_clip_for, appName), job.appText)
             clip.description.extras = PersistableBundle().apply { putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true) }
             ctx.getSystemService(ClipboardManager::class.java).setPrimaryClip(clip)
         } catch (t: Throwable) {
@@ -160,6 +166,6 @@ class AppShareHelper(private val ctx: Context, val h: HelperConfig) : Helper {
     companion object {
         /** Claude's id as before 1.0.0 (its log code and saved jobs: stored name kept); another helper's from its own id. */
         const val CLAUDE_JOB_ID = "claude_app"
-        fun idFor(h: HelperConfig): String = if (h.id == HelperConfig.CLAUDE_ID) CLAUDE_JOB_ID else "app_${h.id}"
+        fun idFor(h: HelperConfig): String = if (h.id == HelperConfig.CLAUDE_ID) CLAUDE_JOB_ID else "app_${h.id}" // l10n: not text (an id)
     }
 }

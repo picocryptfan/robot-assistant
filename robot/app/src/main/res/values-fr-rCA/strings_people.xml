@@ -1,0 +1,253 @@
+<!-- People and notes (Robot Notes' launcher icon), in Québec French (tu): the l10n work package WP3. The ids of
+     values/strings_people.xml; each value written with the glossary (robot/l10n/glossary.tsv) and the OQLF's spaces
+     (tools/fr_typo.py, FrenchTypographyTest). -->
+<resources>
+    <string name="notes_name">Notes de Robot</string>
+
+    <!-- Robot Notes (ui/NotesScreen.kt). -->
+    <string name="notes_subtitle">Enregistrées sur ce téléphone seulement. Dis «&#160;note&#160;: …&#160;» pour en ajouter une.</string>
+    <string name="notes_search">Chercher dans les notes</string>
+    <string name="notes_clear">Effacer</string>
+    <string name="notes_none">Aucune note pour l’instant</string>
+    <string name="notes_none_detail">Demande à Robot de noter quelque chose, ou touche Nouvelle note.</string>
+    <string name="notes_no_match">Aucune note ne correspond</string>
+    <string name="notes_no_match_detail">Essaie d’autres mots.</string>
+    <string name="notes_new">Nouvelle note</string>
+    <string name="notes_note">Note</string>
+    <string name="notes_share_title">Partager la note</string>
+    <string name="notes_share_nothing">Rien sur ce téléphone ne peut recevoir la note.</string>
+    <string name="notes_share">Partager</string>
+    <string name="notes_delete">Supprimer</string>
+    <string name="notes_deleted_banner">Cette note a été supprimée.</string>
+    <string name="notes_not_restored">La note n’a pas pu être restaurée.</string>
+    <string name="notes_restore">Restaurer</string>
+    <string name="notes_title_field">Titre</string>
+    <string name="notes_not_saved">Pas enregistrée&#160;: restaure-la pour la garder</string>
+    <string name="notes_saved_when">Enregistrée %1$s</string>
+    <string name="notes_delete_title">Supprimer cette note&#8239;?</string>
+    <string name="notes_delete_text">Elle ne pourra pas être récupérée.</string>
+    <string name="notes_deleted">Note supprimée.</string>
+    <string name="notes_cancel">Annuler</string>
+
+    <!-- Settings › People, notes and calendar (ui/settings/PeopleNotesCalendarSettings.kt). -->
+    <string name="people_texts">Textos</string>
+    <string name="people_texting_app">Appli de textos</string>
+    <string name="people_text_sms">Appli SMS</string>
+    <string name="people_text_off">Désactivé</string>
+    <string name="people_text_cheogram_detail">Les numéros passent par la passerelle SMS&#8239;; les adresses XMPP, directement</string>
+    <string name="people_not_installed">Non installée</string>
+    <string name="people_text_sms_detail">L’appli SMS du téléphone, avec le texte déjà rempli</string>
+    <string name="people_text_off_detail">Robot n’écrit pas de textos</string>
+    <string name="people_gateway">Passerelle SMS</string>
+    <string name="people_gateway_field">Passerelle</string>
+    <string name="people_gateway_help">Le domaine par lequel ton appli de messagerie envoie les textos aux numéros (JMP&#160;: cheogram.com).</string>
+    <string name="people_region">Région du téléphone</string>
+    <string name="people_region_own">Celle de ce téléphone (%1$s)</string>
+    <string name="people_region_unknown">inconnue</string>
+    <string name="people_region_field">Région</string>
+    <string name="people_region_help">Deux lettres, pour les numéros sans indicatif de pays (US, FR, DE…). Vide&#160;: celle de ce téléphone (%1$s).</string>
+    <string name="people_region_invalid">Deux lettres, comme US ou FR</string>
+    <string name="people_email">Courriel</string>
+    <string name="people_email_app">Appli de courriel</string>
+    <string name="people_email_ask">Demander chaque fois</string>
+    <string name="people_email_proton_detail">Ouvre la fenêtre de rédaction de Proton Mail avec le brouillon</string>
+    <string name="people_email_proton_missing">Non installée&#160;: Robot demande chaque fois</string>
+    <string name="people_email_ask_detail">Android demande quelle appli de courriel utiliser</string>
+    <string name="people_calendar">Agenda</string>
+    <string name="people_allow_calendar">Autoriser l’agenda</string>
+    <string name="people_allow_calendar_detail">Robot ajoute alors les événements lui-même</string>
+    <string name="people_allow">Autoriser</string>
+    <string name="people_event_calendar">Agenda des nouveaux événements</string>
+    <string name="people_no_calendar">Aucun agenda ici n’accepte de nouveaux événements</string>
+    <string name="people_automatic">Automatique</string>
+    <string name="people_automatic_now">Automatique · maintenant %1$s</string>
+    <string name="people_calendar_id">Agenda %1$s</string>
+    <string name="people_now">Maintenant&#160;: %1$s</string>
+    <string name="people_event_length">Durée d’un nouvel événement</string>
+    <string name="people_people_detail">Qui Robot connaît en plus de tes contacts, et comment tu les appelles</string>
+    <string name="people_notes_detail">Tes notes, à lire, modifier, chercher et partager</string>
+    <string name="people_access">Accès aux contacts et à l’agenda</string>
+    <string name="people_access_detail">Autoriser ou vérifier ce que Robot peut lire</string>
+    <string name="people_settings_footer">Robot n’envoie jamais rien lui-même&#160;: les textos et les courriels s’ouvrent dans l’appli comme brouillons, et tu touches Envoyer là-bas. Tant que l’agenda n’est pas autorisé, ou quand aucun agenda de ce téléphone n’accepte de nouveaux événements, ton appli d’agenda s’ouvre avec l’événement déjà rempli. La durée sert pour un nouvel événement quand tu ne dis pas quand il finit.</string>
+
+    <!-- Settings › People (ui/PeopleScreen.kt): the list. -->
+    <string name="people_unreadable_file">Ce fichier n’a pas pu être lu, ou il dépasse 8&#160;Mo.</string>
+    <string name="people_nothing_to_reach">Personne dans ce fichier n’a de numéro, de courriel ou d’adresse XMPP.</string>
+    <string name="people_export_failed">Le fichier n’a pas pu être écrit.</string>
+    <plurals name="people_exported">
+        <item quantity="one">%1$d personne exportée.</item>
+        <item quantity="many">%1$d personnes exportées.</item>
+        <item quantity="other">%1$d personnes exportées.</item>
+    </plurals>
+    <string name="people_cheogram_unreadable">La réponse de Cheogram n’a pas pu être lue.</string>
+    <string name="people_cheogram_no_address">Cheogram n’a pas dit qui a été choisi, ou Robot ne peut pas utiliser cette adresse.</string>
+    <string name="people_cheogram_nobody">Personne n’a été choisi dans Cheogram.</string>
+    <string name="people_not_saved">Robot n’a pas pu l’enregistrer.</string>
+    <string name="people_picker_nothing">Le sélecteur de contacts n’a renvoyé aucun contact.</string>
+    <string name="people_contact_unreadable">Robot n’a pas pu lire ce contact.</string>
+    <string name="people_contact_empty">Ce contact n’a ni numéro ni courriel à ajouter.</string>
+    <string name="people_more">Plus d’options</string>
+    <string name="people_import_vcf">Importer un fichier de contacts (.vcf)</string>
+    <string name="people_no_opener">Aucune appli de ce téléphone n’ouvre de fichiers.</string>
+    <string name="people_export_vcf">Exporter (.vcf)</string>
+    <string name="people_no_saver">Aucune appli de ce téléphone n’enregistre de fichiers.</string>
+    <string name="people_delete_all">Supprimer toutes les personnes</string>
+    <string name="people_intro">Les personnes que Robot connaît en plus de tes contacts&#160;: à qui texter ou écrire un courriel, et comment tu les appelles. Gardées sur ce téléphone seulement, jamais envoyées à une IA externe, et absentes des sauvegardes d’Android.</string>
+    <string name="people_damaged">Robot ne peut pas lire son fichier de personnes</string>
+    <string name="people_damaged_detail">Il est peut-être endommagé. Robot n’y change rien, et ne connaît personne ici, tant que tu ne recommences pas. Recommencer met l’ancien fichier de côté (people.json.bad, dans les fichiers de Robot) et commence une liste vide&#8239;; importe ta dernière exportation pour retrouver tout le monde.</string>
+    <string name="people_start_over">Recommencer</string>
+    <string name="people_add">Ajouter une personne</string>
+    <string name="people_add_detail">Tape un nom, des numéros, des courriels et des adresses XMPP</string>
+    <string name="people_add_contact">Ajouter depuis les contacts du téléphone</string>
+    <string name="people_add_contact_detail">Un contact, aucune autorisation requise</string>
+    <string name="people_add_cheogram">Ajouter depuis Cheogram</string>
+    <string name="people_add_cheogram_detail">Choisis quelqu’un dans la liste de Cheogram</string>
+    <string name="people_cheogram_didnt_open">La liste de Cheogram ne s’est pas ouverte.</string>
+    <string name="people_remembering">Retenir</string>
+    <string name="people_remember_picks">Retenir qui tu choisis</string>
+    <string name="people_remember_picks_detail">Quand tu choisis dans une liste, ou sur une carte («&#160;Toujours utiliser ceci pour maman&#160;»)</string>
+    <string name="people_learn">Apprendre des noms à partir des notifications</string>
+    <string name="people_learn_names">Apprendre des noms à partir des notifications de messages</string>
+    <string name="people_learn_names_detail">Qui t’écrit, jamais le message. Fonctionne seulement avec Cheogram pour l’instant</string>
+    <string name="people_access_needed">Requis&#160;: trois étapes</string>
+    <string name="people_access_allowed">Accès aux notifications autorisé</string>
+    <string name="people_access_cheogram_only">Les expéditeurs de conversations en tête-à-tête seulement</string>
+    <string name="people_access_still">L’accès aux notifications est encore autorisé</string>
+    <string name="people_access_still_detail">Robot ignore les notifications tant que ceci est désactivé</string>
+    <string name="people_open">Ouvrir</string>
+    <string name="people_learned">Appris des notifications (%1$d)</string>
+    <string name="people_keep">Garder</string>
+    <string name="people_keep_named">Garder %1$s</string>
+    <string name="people_remove">Retirer</string>
+    <string name="people_remove_named">Retirer %1$s</string>
+    <plurals name="people_learned_more">
+        <item quantity="one">…et %1$d autre dans la liste plus bas.</item>
+        <item quantity="many">…et %1$d autres dans la liste plus bas.</item>
+        <item quantity="other">…et %1$d autres dans la liste plus bas.</item>
+    </plurals>
+    <string name="people_no_one">Personne pour l’instant</string>
+    <string name="people_search">Chercher des personnes</string>
+    <string name="people_clear_search">Effacer la recherche</string>
+    <string name="people_no_match">Personne ne correspond.</string>
+    <string name="people_yours">Tes personnes (%1$d)</string>
+    <string name="people_footer">Importer un fichier de contacts (.vcf), dans le menu&#160;: dans la page de contacts de ton fournisseur de courriel, sélectionne tout et exporte en vCard (.vcf). Robot ne garde que les noms, les surnoms, les numéros, les courriels et les adresses XMPP. Exporter (.vcf) fait une sauvegarde, et un fichier que n’importe quelle appli de contacts peut importer.\n\nAjouter depuis Cheogram&#160;: sa liste dit «&#160;Créer un raccourci&#160;»&#8239;; rien ne va sur ton écran d’accueil.</string>
+    <!-- Importing a contacts file. -->
+    <plurals name="people_import_title">
+        <item quantity="one">Importer %1$d personne&#8239;?</item>
+        <item quantity="many">Importer %1$d personnes&#8239;?</item>
+        <item quantity="other">Importer %1$d personnes&#8239;?</item>
+    </plurals>
+    <plurals name="people_count_numbers">
+        <item quantity="one">%1$d numéro</item>
+        <item quantity="many">%1$d numéros</item>
+        <item quantity="other">%1$d numéros</item>
+    </plurals>
+    <plurals name="people_count_emails">
+        <item quantity="one">%1$d courriel</item>
+        <item quantity="many">%1$d courriels</item>
+        <item quantity="other">%1$d courriels</item>
+    </plurals>
+    <plurals name="people_count_xmpp">
+        <item quantity="one">%1$d adresse XMPP</item>
+        <item quantity="many">%1$d adresses XMPP</item>
+        <item quantity="other">%1$d adresses XMPP</item>
+    </plurals>
+    <string name="people_in_file">Dans le fichier&#160;: %1$s, %2$s, %3$s.</string>
+    <plurals name="people_skipped">
+        <item quantity="one">%1$d contact n’a aucun moyen d’être joint et reste à l’écart.</item>
+        <item quantity="many">%1$d contacts n’ont aucun moyen d’être joints et restent à l’écart.</item>
+        <item quantity="other">%1$d contacts n’ont aucun moyen d’être joints et restent à l’écart.</item>
+    </plurals>
+    <plurals name="people_count_new">
+        <item quantity="one">%1$d nouvelle personne</item>
+        <item quantity="many">%1$d nouvelles personnes</item>
+        <item quantity="other">%1$d nouvelles personnes</item>
+    </plurals>
+    <plurals name="people_count_updated">
+        <item quantity="one">%1$d personne</item>
+        <item quantity="many">%1$d personnes</item>
+        <item quantity="other">%1$d personnes</item>
+    </plurals>
+    <string name="people_merge">%1$s&#8239;; %2$s déjà ici (le même numéro, courriel ou adresse XMPP) reçoivent ce qui est nouveau.</string>
+    <string name="people_keeps_only">Robot ne garde que les noms, les surnoms, les numéros, les courriels et les adresses XMPP&#160;: pas d’adresses postales, de dates de naissance, de notes ni de photos.</string>
+    <string name="people_import_failed">L’importation n’a pas pu être enregistrée.</string>
+    <string name="people_imported">Importé. Nouvelles personnes&#160;: %1$d. Mises à jour&#160;: %2$d.</string>
+    <string name="people_import">Importer</string>
+    <string name="people_cancel">Annuler</string>
+    <string name="people_legacy_text">Choisis un numéro ou une adresse courriel&#8239;; Robot l’ajoute avec le nom du contact.</string>
+    <string name="people_no_contacts_app">Aucune appli de contacts sur ce téléphone.</string>
+    <string name="people_a_number">Un numéro</string>
+    <string name="people_an_email">Un courriel</string>
+    <string name="people_start_over_title">Recommencer&#8239;?</string>
+    <string name="people_start_over_text">Robot met de côté le fichier qu’il ne peut pas lire, sous le nom people.json.bad, et commence une liste de personnes vide.</string>
+    <string name="people_empty_now">La liste de personnes est maintenant vide.</string>
+    <string name="people_not_set_aside">Robot n’a pas pu mettre le fichier de côté.</string>
+    <string name="people_delete_all_title">Supprimer toutes les personnes&#8239;?</string>
+    <string name="people_delete_all_text">Robot oublie tout le monde ici et comment tu les appelles, et peut réapprendre quelqu’un que tu as retiré. Les contacts du téléphone ne sont pas touchés. C’est irréversible.</string>
+    <string name="people_all_deleted">Personnes supprimées.</string>
+    <string name="people_not_deleted">Les personnes n’ont pas pu être supprimées.</string>
+    <string name="people_delete_all_button">Tout supprimer</string>
+    <string name="people_open_access">Ouvre %1$s, ou %2$s.</string>
+    <!-- Settings › People › Notification access, and what learning from Cheogram reads. -->
+    <string name="people_access_title">Accès aux notifications</string>
+    <string name="people_access_allowed_detail">Ce que Personnes et Messages activent, rien d’autre</string>
+    <string name="people_access_footer">Pour apprendre des noms, Robot ne regarde que les notifications d’une seule appli de messagerie, et parmi elles, seulement l’expéditeur d’une conversation en tête-à-tête. Avec Réglages › Messages activé, il lit aussi les messages des applis que tu y actives, en mémoire seulement. Réglages › Personnes et Réglages › Messages disent ce que Robot lit, où c’est gardé, et comment le reprendre.</string>
+    <string name="people_steps_title">Autoriser l’accès aux notifications</string>
+    <string name="people_steps_why">Android appelle l’accès aux notifications un paramètre restreint pour les applis installées à partir d’un fichier plutôt que d’une boutique d’applis, comme Robot&#160;: des applis malveillantes installées ainsi s’en sont servies pour lire les messages et les codes de connexion des gens. Il faut donc trois étapes.</string>
+    <string name="people_step_1">1. Touche Accès aux notifications et active l’accès de Robot (dans une liste, touche d’abord Robot). Si Android dit «&#160;Paramètre restreint&#160;», touche OK.</string>
+    <string name="people_step_2">2. Touche Infos sur l’appli, puis ⋮ (en haut à droite) › Autoriser les paramètres restreints, et confirme&#8239;; Android peut demander ton NIP ou ton empreinte digitale. Pas de tel élément&#8239;? Android ne bloque pas Robot&#160;: saute cette étape.</string>
+    <string name="people_app_info">Infos sur l’appli</string>
+    <string name="people_step_3">3. Touche de nouveau Accès aux notifications, active l’accès de Robot et touche Autoriser.</string>
+    <string name="people_access_again">Accès aux notifications, de nouveau</string>
+    <string name="people_privacy_title">Ce que Robot lit, et où ça va</string>
+    <string name="people_privacy_1">L’accès aux notifications permet à une appli de voir les notifications de toutes les applis. Robot ne demande à Android que les conversations, laisse tomber tout de suite tout sauf celles de cette appli, et n’en apprend rien tant que cet interrupteur est désactivé. Réglages › Messages, si tu l’actives, utilise le même accès pour lire les applis que tu y choisis, en mémoire seulement.</string>
+    <string name="people_privacy_2">D’un message dans une conversation en tête-à-tête, Robot ne garde que le nom et l’adresse de l’expéditeur et lequel de tes comptes l’a reçu. Il ne regarde, ne garde ni ne consigne jamais ce que dit le message, et les conversations de groupe ne lui apprennent rien. Il vérifie aussi la signature de l’appli&#160;: une appli qui se fait passer pour elle n’apprend rien à Robot.</string>
+    <string name="people_privacy_3">Les noms restent sur ce téléphone, dans le stockage privé de Robot, hors des sauvegardes d’Android. Robot ne les envoie jamais nulle part de lui-même&#160;: ni à une IA externe, ni à aucun autre modèle d’IA en ligne. Le modèle de Robot, sur le téléphone, ne voit un nom que quand il cherche quelqu’un pour toi. C’est seulement si tu choisis de partager avec une IA externe une conversation où Robot a cherché quelqu’un (Inclure, une IA externe de confiance pour le contenu personnel, ou Sécurité et confidentialité › Envoyer du contenu personnel aux IA externes automatiquement) que ce que Robot a dit sur cette personne peut partir avec.</string>
+    <string name="people_privacy_4">Pour le reprendre&#160;: désactive cet interrupteur, et Robot arrête d’apprendre tout de suite. Ensuite, désactive Robot dans Accès aux notifications. Les noms déjà appris restent jusqu’à ce que tu touches Retirer sur eux, ou Supprimer toutes les personnes.</string>
+    <string name="people_also_called">Aussi appelé %1$s</string>
+    <string name="people_seen_in_cheogram">vu dans une notification</string>
+
+    <!-- Settings › People › a person. -->
+    <string name="people_check_red">Vérifie ce qui est marqué en rouge.</string>
+    <string name="people_deleted_meanwhile">Cette personne a été supprimée entre-temps&#160;: Robot ne l’a pas remise.</string>
+    <string name="people_new_person">Nouvelle personne</string>
+    <string name="people_person">Personne</string>
+    <string name="people_save">Enregistrer</string>
+    <string name="people_delete">Supprimer</string>
+    <string name="people_person_deleted">Cette personne a été supprimée.</string>
+    <string name="people_seen_banner">Vu dans une notification</string>
+    <string name="people_seen_banner_detail">C’est l’expéditeur du message qui a choisi ce nom. Tant que tu ne gardes ou ne modifies pas cette personne, Robot montre toujours une carte d’abord, et ne la propose jamais à la place de quelqu’un que tu connais.</string>
+    <string name="people_kept">Gardé.</string>
+    <string name="people_name">Nom</string>
+    <string name="people_name_needed">Un nom est requis.</string>
+    <string name="people_also_called_field">Aussi appelé</string>
+    <string name="people_also_called_help">Les noms que tu lui donnes, séparés par des virgules&#160;: maman, mom. Dit exactement, ça désigne cette personne.</string>
+    <string name="people_nicknames">Surnoms</string>
+    <string name="people_nicknames_help">Les autres noms sous lesquels on la connaît, comme dans un fichier de contacts. Ils correspondent comme n’importe quel nom, sans passer devant les autres.</string>
+    <string name="people_numbers">Numéros</string>
+    <string name="people_remove_number">Retirer le numéro</string>
+    <string name="people_add_number">Ajouter un numéro</string>
+    <string name="people_emails">Courriels</string>
+    <string name="people_remove_email">Retirer le courriel</string>
+    <string name="people_add_email">Ajouter un courriel</string>
+    <string name="people_address">Adresse</string>
+    <string name="people_remove_address">Retirer l’adresse</string>
+    <string name="people_account">Ton compte Cheogram (facultatif)</string>
+    <string name="people_account_help">Rempli quand tu choisis la personne dans Cheogram&#160;: Robot ouvre alors sa conversation directement dans ce compte.</string>
+    <string name="people_add_xmpp">Ajouter une adresse XMPP</string>
+    <string name="people_texts_go_to">Les textos vont toujours à %1$s</string>
+    <string name="people_emails_go_to">Les courriels vont toujours à %1$s</string>
+    <string name="people_forget">Oublier</string>
+    <string name="people_source_changed">%1$s · modifié %2$s</string>
+    <string name="people_save_first">Enregistre d’abord.</string>
+    <string name="people_no_contacts_insert">Aucune appli de contacts sur ce téléphone n’accepte de nouveaux contacts.</string>
+    <string name="people_save_to_contacts">Enregistrer dans les contacts du téléphone</string>
+    <string name="people_save_to_contacts_detail">Ouvre ton appli Contacts avec tout déjà rempli&#160;: choisis le compte et enregistre là. Tes applis de messagerie et de courriel et le composeur connaissent alors le nom aussi. Robot lui-même n’écrit jamais dans tes contacts.</string>
+    <string name="people_delete_title">Supprimer %1$s&#8239;?</string>
+    <string name="people_this_person">cette personne</string>
+    <string name="people_delete_text">Robot oublie cette personne et comment tu l’appelles. Les contacts du téléphone ne sont pas touchés.</string>
+    <string name="people_deleted">Supprimé.</string>
+    <string name="people_not_deleted_one">Robot n’a pas pu la supprimer.</string>
+    <string name="people_save_changes">Enregistrer tes changements&#8239;?</string>
+    <string name="people_discard">Abandonner</string>
+</resources>

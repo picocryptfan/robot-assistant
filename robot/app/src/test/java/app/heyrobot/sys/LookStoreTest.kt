@@ -5,6 +5,7 @@ import app.heyrobot.core.LookSettings
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.After
 import org.junit.Test
 import java.io.File
 import java.nio.file.Files
@@ -12,6 +13,8 @@ import java.nio.file.Files
 /** look.json on disk: written whole (never half), read back as written, and the defaults when it is missing or damaged. */
 class LookStoreTest {
     private val dir: File = Files.createTempDirectory("look").toFile()
+
+    @After fun removeTemp() { dir.deleteRecursively() }
     private val f = File(dir, LookSettings.FILE)
 
     @Test fun aMissingFileGivesTheDefaults() {

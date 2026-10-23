@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.termux
 
+import app.heyrobot.core.i18n.Lang
+import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.TermuxStrings
+import app.heyrobot.core.i18n.UiLabel
+import app.heyrobot.core.i18n.UiStrings
+
 // Pure. Whether a Termux command or script runs now, shows its card, needs a tap, or is refused. The fixed rules, which no setting loosens:
 //  - every command shows a Run / Edit / Cancel card; the only exceptions are your own scripts set to Just do it and,
 //    with "Read-only commands without a card" on, commands on the parsed read-only allowlist (both off by default);
@@ -38,37 +45,54 @@ enum class TermuxVerdict {
     REFUSE,
 }
 
-/** Why a decision was made, in words for the card or for Robot to say. */
-enum class TermuxReason(val en: String, val fr: String) {
-    OFF("Termux is off in Settings › Termux.", "Termux est désactivé dans Réglages › Termux."),
-    COMMANDS_OFF("Termux commands are off in Settings › Termux.", "Les commandes Termux sont désactivées dans Réglages › Termux."),
-    SCRIPT_OFF("That script is off in Settings › Termux.", "Ce script est désactivé dans Réglages › Termux."),
-    HELPERS_OFF("Helpers may not ask for Termux commands (Settings › Termux).", "Les assistants ne peuvent pas demander de commandes Termux (Réglages › Termux)."),
-    LOCKED("Unlock your phone to run this in Termux.", "Déverrouillez votre téléphone pour lancer ceci dans Termux."),
-    API_OFF("Termux:API commands are off in Settings › Termux.", "Les commandes Termux:API sont désactivées dans Réglages › Termux."),
-    OWN_SECRET("This holds one of Robot's own keys. Robot never puts them in a command.", "Ceci contient une des clés de Robot. Robot ne les met jamais dans une commande."),
-    KEY_SHAPE("This holds what looks like an API key, and you didn't type it. Robot won't run it.",
-        "Ceci contient ce qui ressemble à une clé d'API, et vous ne l'avez pas tapée. Robot ne la lancera pas."),
-    FORK_BOMB("This would start copies of itself until the phone stalls. Robot won't run it.",
-        "Ceci se recopierait sans fin jusqu'à bloquer le téléphone. Robot ne le lancera pas."),
-    TOO_LONG("This command is too long for Robot to check (at most 4,096 characters).", "Cette commande est trop longue pour que Robot la vérifie (4 096 caractères au plus)."),
-    EMPTY("There is no command to run.", "Il n'y a pas de commande à lancer."),
-    CANT_SEND("This command holds a character Termux can't receive.", "Cette commande contient un caractère que Termux ne peut pas recevoir."),
-    NOT_A_SCRIPT("That isn't one of your scripts in ~/robot.", "Ce n'est pas un de vos scripts dans ~/robot."),
-    BAD_ARGUMENTS("Robot couldn't split the arguments: check the quotes; no line breaks.", "Robot n'a pas pu séparer les arguments : vérifiez les guillemets ; pas de retour à la ligne."),
+/**
+ * Why a decision was made, in words for the card or for Robot to say ([text]; [en] its English, what the card and the
+ * model read until the turn's cards take phrases). A Robot page named in it is in the menus' language, and so is the
+ * button it says to tap ("Settings › Termux", "Run": core UiStrings).
+ */
+enum class TermuxReason {
+    OFF, COMMANDS_OFF, SCRIPT_OFF, HELPERS_OFF, LOCKED, API_OFF, OWN_SECRET, KEY_SHAPE, FORK_BOMB, TOO_LONG, EMPTY, CANT_SEND, NOT_A_SCRIPT,
+    BAD_ARGUMENTS,
 
-    ASK_FIRST("Every command shows its card first.", "Chaque commande montre d'abord sa carte."),
-    FROM_CONTENT("Robot read this from content it didn't write: check the card, then tap Run.",
-        "Robot a lu ceci dans un contenu qu'il n'a pas écrit : vérifiez la carte, puis touchez Exécuter."),
-    WARNINGS("This command has warnings: check the card, then tap Run.", "Cette commande a des avertissements : vérifiez la carte, puis touchez Exécuter."),
-    UNREADABLE("Robot couldn't read this command fully: check the card, then tap Run.",
-        "Robot n'a pas pu lire cette commande en entier : vérifiez la carte, puis touchez Exécuter."),
-    TAP_SETTING("Commands run only with a tap (Settings › Termux).", "Les commandes ne se lancent qu'en touchant (Réglages › Termux)."),
+    ASK_FIRST, FROM_CONTENT, WARNINGS, UNREADABLE, TAP_SETTING,
 
-    READ_ONLY("A read-only command on Robot's list.", "Une commande de lecture seule de la liste de Robot."),
-    YOUR_SCRIPT("Your script, set to Just do it.", "Votre script, réglé sur Sans demander.");
+    READ_ONLY, YOUR_SCRIPT;
 
-    fun text(fr: Boolean): String = if (fr) this.fr else en
+    val text: Phrase get() = when (this) {
+        OFF -> TermuxStrings.reasonOff("path" to SETTINGS)
+        COMMANDS_OFF -> TermuxStrings.reasonCommandsOff("path" to SETTINGS)
+        SCRIPT_OFF -> TermuxStrings.reasonScriptOff("path" to SETTINGS)
+        HELPERS_OFF -> TermuxStrings.reasonHelpersOff("path" to SETTINGS)
+        LOCKED -> TermuxStrings.reasonLocked()
+        API_OFF -> TermuxStrings.reasonApiOff("path" to SETTINGS)
+        OWN_SECRET -> TermuxStrings.reasonOwnSecret()
+        KEY_SHAPE -> TermuxStrings.reasonKeyShape()
+        FORK_BOMB -> TermuxStrings.reasonForkBomb()
+        TOO_LONG -> TermuxStrings.reasonTooLong("n" to CommandAnalyzer.MAX_CHARS)
+        EMPTY -> TermuxStrings.reasonEmpty()
+        CANT_SEND -> TermuxStrings.reasonCantSend()
+        NOT_A_SCRIPT -> TermuxStrings.reasonNotAScript()
+        BAD_ARGUMENTS -> TermuxStrings.reasonBadArguments()
+        ASK_FIRST -> TermuxStrings.reasonAskFirst()
+        FROM_CONTENT -> TermuxStrings.reasonFromContent("run" to RUN)
+        WARNINGS -> TermuxStrings.reasonWarnings("run" to RUN)
+        UNREADABLE -> TermuxStrings.reasonUnreadable("run" to RUN)
+        TAP_SETTING -> TermuxStrings.reasonTapSetting("path" to SETTINGS)
+        READ_ONLY -> TermuxStrings.reasonReadOnly()
+        YOUR_SCRIPT -> TermuxStrings.reasonYourScript("level" to ScriptLevel.AUTO.text)
+    }
+
+    val en: String get() = text.en()
+
+    fun text(fr: Boolean): String = text.render(Langs.of(if (fr) Lang.FR else Lang.EN))
+
+    companion object {
+        /** Settings › Termux, as a sentence names it. */
+        val SETTINGS: UiLabel get() = UiStrings.inSettings(UiStrings.termux)
+
+        /** The card's Run button, as a sentence names it. */
+        val RUN: UiLabel get() = UiLabel(UiStrings.run)
+    }
 }
 
 /** What a tap-only card's tap is for (the gate's AskWhy.COMMAND and AskWhy.FROM_CONTENT when wired). */
@@ -86,29 +110,33 @@ data class TermuxDecision(val verdict: TermuxVerdict, val reasons: List<TermuxRe
      * What Robot says: why it refuses, or why a spoken or typed yes can't run this card ("This command deletes files or
      * empties them: check the card, then tap Run."); null otherwise.
      */
-    fun say(fr: Boolean = false): String? = when (verdict) {
-        TermuxVerdict.REFUSE -> reasons.firstOrNull()?.text(fr)
-        TermuxVerdict.TAP_ONLY -> tapWords(fr)
+    fun sayText(): Phrase? = when (verdict) {
+        TermuxVerdict.REFUSE -> reasons.firstOrNull()?.text
+        TermuxVerdict.TAP_ONLY -> tapWords()
         else -> null
     }
 
     /** What Robot says when the card appears and replies are spoken (B5.3); "no" always works. */
-    fun prompt(fr: Boolean = false): String? = when (verdict) {
-        TermuxVerdict.CARD -> if (fr) "Lancer ceci dans Termux ? Dites oui ou non." else "Run this in Termux? Say yes or no."
-        TermuxVerdict.TAP_ONLY -> tapWords(fr) + if (fr) " Ou dites non." else " Or say no."
+    fun promptText(): Phrase? = when (verdict) {
+        TermuxVerdict.CARD -> TermuxStrings.prompt()
+        TermuxVerdict.TAP_ONLY -> TermuxStrings.orSayNo("text" to tapWords())
         else -> null
     }
 
-    private fun tapWords(fr: Boolean): String {
-        if (TermuxReason.FROM_CONTENT in reasons) return TermuxReason.FROM_CONTENT.text(fr)
+    /** [sayText] in English ([fr]: in French): the card's and the model's words until the turn's cards take phrases. */
+    fun say(fr: Boolean = false): String? = sayText()?.render(langs(fr))
+
+    /** [promptText] in English ([fr]: in French). */
+    fun prompt(fr: Boolean = false): String? = promptText()?.render(langs(fr))
+
+    private fun langs(fr: Boolean) = Langs.of(if (fr) Lang.FR else Lang.EN)
+
+    private fun tapWords(): Phrase {
+        if (TermuxReason.FROM_CONTENT in reasons) return TermuxReason.FROM_CONTENT.text
         val w = warnings.firstOrNull { it != CommandWarning.UNREADABLE }
-        if (w != null) {
-            val what = w.text(fr).substringBefore(':').substringBefore('.').trim()
-            val lower = what.replaceFirstChar { it.lowercaseChar() }
-            return if (fr) "Cette commande $lower : vérifiez la carte, puis touchez Exécuter." else "This command $lower: check the card, then tap Run."
-        }
-        if (CommandWarning.UNREADABLE in warnings) return TermuxReason.UNREADABLE.text(fr)
-        return TermuxReason.TAP_SETTING.text(fr)
+        if (w?.what != null) return TermuxStrings.commandWarns("what" to w.what(), "run" to TermuxReason.RUN)
+        if (CommandWarning.UNREADABLE in warnings) return TermuxReason.UNREADABLE.text
+        return TermuxReason.TAP_SETTING.text
     }
 }
 

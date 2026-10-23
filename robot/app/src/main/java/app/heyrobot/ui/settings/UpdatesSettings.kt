@@ -48,7 +48,16 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.SecureFlagPolicy
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.ui.res.stringResource
+import app.heyrobot.R
 import app.heyrobot.core.feedback.FeedbackDiagnostics
+import app.heyrobot.core.i18n.AndroidPath
+import app.heyrobot.core.i18n.Lang
+import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.i18n.UiStrings
+import app.heyrobot.core.i18n.UpdateStrings
+import app.heyrobot.ui.theme.LocalLangs
+import app.heyrobot.ui.theme.str
 import app.heyrobot.core.update.FoundRelease
 import app.heyrobot.core.update.GitHubRepo
 import app.heyrobot.core.update.GitHubToken
@@ -126,106 +135,105 @@ class UpdatesActions(
     val report: () -> Unit = {},
 )
 
-const val UPDATES_SENT = "To check, Robot asks GitHub (api.github.com) for the repository's newest releases, and it downloads an update " +
-    "from GitHub's servers. GitHub sees your IP address and Robot's version in the request; nothing else is sent. An access token, " +
-    "if you add one, goes to api.github.com only."
-
-const val UPDATES_CHECKED = "Before installing, Robot checks the file's SHA-256 against the release's SHA256SUMS, then that it is Robot, " +
-    "the release's version, newer than this one, and signed with Robot's key. Android's own window then asks you to confirm."
-
 @Composable
 fun UpdatesScreen(ui: UpdatesUi, a: UpdatesActions, onBack: () -> Unit) {
     var tokenOpen by rememberSaveable { mutableStateOf(false) }
     var removeOpen by rememberSaveable { mutableStateOf(false) }
     val s = ui.settings
     val idle = ui.work == null
-    PreferenceScreen("Updates", onBack) {
+    val langs = LocalLangs.current
+    val releaseTitle = ui.offer?.let { if (it.testBuild) stringResource(R.string.update_test_build, it.version) else "Robot ${it.version}" } // l10n: not text (the app's name and version)
+    val automatic = stringResource(R.string.update_automatic)
+    val advanced = UiStrings.advanced().str()
+    val footer = stringResource(R.string.update_footer)
+    PreferenceScreen(UiStrings.updates().str(), onBack) {
         preferenceGroup(null, "version") {
-            PreferenceItem("Robot ${ui.installed}", "The version on this phone", RIcons.Info)
+            PreferenceItem("Robot ${ui.installed}", stringResource(R.string.update_installed_detail), RIcons.Info) // l10n: not text (the app's name and version)
             PreferenceItem(
-                if (ui.work == Updater.Work.Checking) "Checking…" else "Check now",
+                if (ui.work == Updater.Work.Checking) stringResource(R.string.update_checking) else UiStrings.checkNow().str(),
                 ui.lastCheck,
                 RIcons.Refresh,
                 enabled = idle && ui.repo != null,
                 onClick = a.check,
             )
-            ui.message?.let { StatusPreference("Update", it, Mark.WARN) }
+            ui.message?.let { StatusPreference(stringResource(R.string.update_status), it, Mark.WARN) }
             if (ui.failed || ui.message != null || ui.refused != null) {
-                PreferenceItem("Report this", "Send the developer a bug report with the updater's codes: you choose the app it goes with", RIcons.Message,
+                PreferenceItem(stringResource(R.string.update_report), stringResource(R.string.update_report_detail), RIcons.Message,
                     onClick = a.report)
             }
         }
         ui.offer?.let { offer ->
-            preferenceGroup(if (offer.testBuild) "Test build ${offer.version}" else "Robot ${offer.version}", "release") {
+            preferenceGroup(releaseTitle, "release") {
                 ReleaseRow(ui, offer, a)
             }
             if (!ui.canInstall) {
                 preferenceGroup(null, "allow") {
                     StatusPreference(
-                        "Allow Robot to install updates",
-                        "Android asks you to allow this once, in Settings › Apps › Special app access › Install unknown apps › Robot. " +
-                            "Robot installs only its own updates.",
+                        stringResource(R.string.update_allow),
+                        stringResource(R.string.update_allow_detail, AndroidPath.INSTALL_UNKNOWN_APPS.render(langs.system)),
                         Mark.TODO,
-                        action = { TextButton(onClick = a.allowInstalls, modifier = Modifier.heightIn(min = 48.dp)) { Text("Open") } },
+                        action = { TextButton(onClick = a.allowInstalls, modifier = Modifier.heightIn(min = 48.dp)) { Text(UiStrings.open().str()) } },
                     )
                 }
             }
         }
-        preferenceGroup("Automatic", "auto") {
-            SwitchPreference("Check for updates automatically", if (s.autoCheck) "Once a day, in the background" else "Only when you tap Check now", s.autoCheck) {
+        preferenceGroup(automatic, "auto") {
+            SwitchPreference(stringResource(R.string.update_auto_check),
+                stringResource(if (s.autoCheck) R.string.update_auto_check_on else R.string.update_auto_check_off), s.autoCheck) {
                 a.change(s.copy(autoCheck = it))
             }
-            SwitchPreference("Download updates on Wi-Fi", "Downloads and checks an update on Wi-Fi, then tells you it's ready to install",
+            SwitchPreference(stringResource(R.string.update_wifi), stringResource(R.string.update_wifi_detail),
                 s.wifiDownload, enabled = s.autoCheck) { a.change(s.copy(wifiDownload = it)) }
-            SwitchPreference("Include test builds", "Pre-releases, to try new things early. They may have problems.", s.testBuilds) {
+            SwitchPreference(stringResource(R.string.update_test_builds), stringResource(R.string.update_test_builds_detail), s.testBuilds) {
                 a.change(s.copy(testBuilds = it))
             }
             SwitchPreference(
-                "Install updates without asking",
-                if (ui.otherOwner != null) "Android asks anyway: another app store keeps Robot's updates"
-                else "Android installs Robot's own updates without its confirmation window. It may still ask, for example when another app store keeps Robot's updates.",
+                stringResource(R.string.update_silent),
+                stringResource(if (ui.otherOwner != null) R.string.update_silent_other_owner else R.string.update_silent_detail),
                 s.installWithoutAsking && ui.otherOwner == null,
                 enabled = ui.otherOwner == null,
             ) { a.change(s.copy(installWithoutAsking = it)) }
         }
-        preferenceGroup("Advanced", "advanced") {
+        preferenceGroup(advanced, "advanced") {
             val own = ui.repo != null && ui.repo == ui.defaultRepo
+            val invalid = stringResource(R.string.update_repository_invalid)
             TextPreference(
-                "Repository",
+                stringResource(R.string.update_repository),
                 ui.repo?.slug.orEmpty(),
-                emptySummary = "None",
-                fieldLabel = "owner/name",
-                supporting = "A fork's GitHub repository, as owner/name or its link. Leave it empty for Robot's own.",
+                emptySummary = stringResource(R.string.update_none),
+                fieldLabel = stringResource(R.string.update_repository_field),
+                supporting = stringResource(R.string.update_repository_hint),
                 icon = RIcons.Folder,
                 enabled = idle,
-                validate = { t -> if (t.isBlank() || GitHubRepo.parse(t) != null) null else "Not a GitHub repository (owner/name)" },
+                validate = { t -> if (t.isBlank() || GitHubRepo.parse(t) != null) null else invalid },
             ) { t ->
                 val r = GitHubRepo.parse(t)
                 a.change(s.copy(repo = r?.takeIf { it != ui.defaultRepo }?.slug, skipped = null))
             }
             if (!own && ui.defaultRepo != null) {
-                PreferenceItem("Use Robot's own repository", ui.defaultRepo.slug, RIcons.Refresh, enabled = idle,
+                PreferenceItem(stringResource(R.string.update_own_repository), ui.defaultRepo.slug, RIcons.Refresh, enabled = idle,
                     onClick = { a.change(s.copy(repo = null, skipped = null)) })
             }
             PreferenceItem(
-                "Access token",
+                stringResource(R.string.update_token),
                 when {
                     ui.token != null -> ui.token
-                    ui.tokenUnreadable -> "The saved token couldn't be read on this phone and was removed. Add it again."
-                    else -> "None. Only needed while the repository is private."
+                    ui.tokenUnreadable -> stringResource(R.string.update_token_unreadable)
+                    else -> stringResource(R.string.update_token_none)
                 },
                 RIcons.Lock,
                 onClick = { tokenOpen = true },
             )
             if (ui.token != null) {
-                PreferenceItem("Remove the access token", "Then only a public repository can be checked", RIcons.Delete, onClick = { removeOpen = true })
+                PreferenceItem(stringResource(R.string.update_token_remove), stringResource(R.string.update_token_remove_detail), RIcons.Delete,
+                    onClick = { removeOpen = true })
             }
         }
-        preferenceFooter("What is sent: $UPDATES_SENT\n\nWhat is checked: $UPDATES_CHECKED")
+        preferenceFooter(footer)
     }
     if (tokenOpen) TokenDialog(onDismiss = { tokenOpen = false }, onSave = { tokenOpen = false; a.saveToken(it) })
     if (removeOpen) {
-        ConfirmDialog("Remove the access token?", "Robot can then check only a public repository.", "Remove",
+        ConfirmDialog(stringResource(R.string.update_token_remove_title), stringResource(R.string.update_token_remove_text), stringResource(R.string.update_remove),
             onDismiss = { removeOpen = false }, onConfirm = { removeOpen = false; a.removeToken() })
     }
 }
@@ -235,6 +243,7 @@ fun UpdatesScreen(ui: UpdatesUi, a: UpdatesActions, onBack: () -> Unit) {
 @Composable
 private fun ReleaseRow(ui: UpdatesUi, offer: FoundRelease, a: UpdatesActions) {
     val c = MaterialTheme.colorScheme
+    val lang = LocalLangs.current.ui
     val skipped = ui.settings.skipped?.let { app.heyrobot.core.update.RobotVersion.parse(it) } == offer.parsedVersion
     Column(
         Modifier.fillMaxWidth()
@@ -243,37 +252,40 @@ private fun ReleaseRow(ui: UpdatesUi, offer: FoundRelease, a: UpdatesActions) {
             .padding(horizontal = RobotTokens.prefPaddingH, vertical = RobotTokens.prefPaddingV),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        val facts = listOfNotNull(UpdateText.published(offer.publishedAt), UpdateText.size(offer.apk.size), if (offer.testBuild) "test build" else null)
+        val facts = listOfNotNull(UpdateText.published(offer.publishedAt, lang = lang), UpdateText.size(offer.apk.size, lang),
+            if (offer.testBuild) stringResource(R.string.update_test_build_fact) else null)
         Text(facts.joinToString(" · "), style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant)
         if (offer.notes.isNotEmpty()) Text(offer.notes, style = MaterialTheme.typography.bodyMedium)
-        ui.refused?.let { Text("Robot refused this release's file before: $it", style = MaterialTheme.typography.bodyMedium, color = c.error) }
+        ui.refused?.let { Text(stringResource(R.string.update_refused, it), style = MaterialTheme.typography.bodyMedium, color = c.error) }
         when (val w = ui.work) {
             is Updater.Work.Downloading -> {
                 val pct = if (w.total > 0) (w.done * 100 / w.total).toInt() else 0
-                val label = if (w.total > 0) "Downloading… $pct % (${UpdateText.size(w.done)} of ${UpdateText.size(w.total)})" else "Downloading…"
+                val label = if (w.total > 0) stringResource(R.string.update_downloading_progress, pct, UpdateText.size(w.done, lang), UpdateText.size(w.total, lang))
+                    else stringResource(R.string.update_downloading)
+                val percent = stringResource(R.string.update_percent, pct)
                 Text(label, style = MaterialTheme.typography.bodyMedium)
-                if (w.total > 0) LinearProgressIndicator(progress = { w.done.toFloat() / w.total }, modifier = Modifier.fillMaxWidth().semantics { stateDescription = "$pct %" })
+                if (w.total > 0) LinearProgressIndicator(progress = { w.done.toFloat() / w.total }, modifier = Modifier.fillMaxWidth().semantics { stateDescription = percent })
                 else LinearProgressIndicator(Modifier.fillMaxWidth())
-                TextButton(onClick = a.stop, modifier = Modifier.heightIn(min = 48.dp)) { Text("Stop") }
+                TextButton(onClick = a.stop, modifier = Modifier.heightIn(min = 48.dp)) { Text(UiStrings.stop().str()) }
             }
             Updater.Work.Verifying -> {
-                Text("Checking the file…", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.update_verifying), style = MaterialTheme.typography.bodyMedium)
                 LinearProgressIndicator(Modifier.fillMaxWidth())
             }
-            Updater.Work.Installing -> Text("Installing… Android may ask you to confirm.", style = MaterialTheme.typography.bodyMedium)
+            Updater.Work.Installing -> Text(stringResource(R.string.update_installing), style = MaterialTheme.typography.bodyMedium)
             else -> {
-                if (skipped) Text("You skipped this version: Robot won't tell you about it.", style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant)
-                if (ui.ready) Text("Downloaded and checked.", style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant)
+                if (skipped) Text(stringResource(R.string.update_skipped), style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant)
+                if (ui.ready) Text(stringResource(R.string.update_ready), style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     val enabled = ui.work == null
-                    if (ui.ready) Button(onClick = a.install, enabled = enabled, modifier = Modifier.heightIn(min = 48.dp)) { Text("Install") }
-                    else Button(onClick = a.download, enabled = enabled, modifier = Modifier.heightIn(min = 48.dp)) { Text("Download") }
-                    if (skipped) OutlinedButton(onClick = a.unskip, enabled = enabled, modifier = Modifier.heightIn(min = 48.dp)) { Text("Don't skip") }
-                    else OutlinedButton(onClick = a.skip, enabled = enabled, modifier = Modifier.heightIn(min = 48.dp)) { Text("Skip this version") }
+                    if (ui.ready) Button(onClick = a.install, enabled = enabled, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.update_install)) }
+                    else Button(onClick = a.download, enabled = enabled, modifier = Modifier.heightIn(min = 48.dp)) { Text(UiStrings.download().str()) }
+                    if (skipped) OutlinedButton(onClick = a.unskip, enabled = enabled, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.update_unskip)) }
+                    else OutlinedButton(onClick = a.skip, enabled = enabled, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.update_skip)) }
                 }
             }
         }
-        TextButton(onClick = a.openGitHub, modifier = Modifier.heightIn(min = 48.dp)) { Text("See it on GitHub") }
+        TextButton(onClick = a.openGitHub, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.update_github)) }
     }
 }
 
@@ -288,7 +300,7 @@ private fun TokenDialog(onDismiss: () -> Unit, onSave: (String) -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(securePolicy = SecureFlagPolicy.SecureOn),
-        title = { Text("Access token") },
+        title = { Text(stringResource(R.string.update_token)) },
         text = {
             val view = LocalView.current
             DisposableEffect(view) {
@@ -296,23 +308,22 @@ private fun TokenDialog(onDismiss: () -> Unit, onSave: (String) -> Unit) {
                 onDispose {}
             }
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Only for a private repository: a fine-grained token that can read its contents, or a classic one with the repo scope. " +
-                    "Robot encrypts it on this phone and sends it to api.github.com only.", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.update_token_text), style = MaterialTheme.typography.bodyMedium)
                 OutlinedTextField(
                     value = text,
                     onValueChange = { text = it.trim() },
                     singleLine = true,
-                    label = { Text("Token") },
+                    label = { Text(stringResource(R.string.update_token_field)) },
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
                     isError = text.isNotEmpty() && !ok,
-                    supportingText = { if (text.isNotEmpty() && !ok) Text("That doesn't look like a GitHub token (github_pat_ or ghp_ followed by letters, digits and _).") },
+                    supportingText = { if (text.isNotEmpty() && !ok) Text(stringResource(R.string.update_token_invalid)) },
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
         },
-        confirmButton = { TextButton(onClick = { val t = text; text = ""; onSave(t) }, enabled = ok) { Text("Save") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        confirmButton = { TextButton(onClick = { val t = text; text = ""; onSave(t) }, enabled = ok) { Text(UiStrings.save().str()) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(UiStrings.cancel().str()) } },
     )
 }
 
@@ -322,6 +333,12 @@ internal fun UpdatesRoute(snackbar: SnackbarHostState, onBack: () -> Unit, onRep
     val ctx = LocalContext.current
     val app = ctx.applicationContext
     val scope = rememberCoroutineScope()
+    val langs = LocalLangs.current
+    val openInstall = stringResource(R.string.update_open_install, AndroidPath.INSTALL_UNKNOWN_APPS.render(langs.system))
+    val noBrowser = stringResource(R.string.update_no_browser)
+    val tokenSaved = stringResource(R.string.update_token_saved)
+    val tokenNotSaved = stringResource(R.string.update_token_not_saved)
+    val tokenRemoved = stringResource(R.string.update_token_removed)
     UpdateStore.settings(app)
     val settings by UpdateStore.settings
     val state by UpdateStore.state
@@ -347,12 +364,12 @@ internal fun UpdatesRoute(snackbar: SnackbarHostState, onBack: () -> Unit, onRep
         settings = settings,
         repo = facts.repo,
         defaultRepo = facts.defaultRepo,
-        lastCheck = UpdateText.lastCheck(state, System.currentTimeMillis()),
+        lastCheck = UpdateText.lastCheck(state, System.currentTimeMillis(), lang = langs.ui),
         offer = offer,
         ready = facts.ready,
-        refused = state.refusedWhy?.takeIf { offer != null && state.refusedApk == offer.apk.id }?.let { UpdateText.fail(it) },
+        refused = state.refusedWhy?.takeIf { offer != null && state.refusedApk == offer.apk.id }?.let { UpdateText.fail(it, lang = langs.ui) },
         work = work,
-        message = message,
+        message = message?.render(langs),
         canInstall = facts.canInstall,
         otherOwner = facts.otherOwner,
         token = facts.token,
@@ -366,7 +383,7 @@ internal fun UpdatesRoute(snackbar: SnackbarHostState, onBack: () -> Unit, onRep
         stop = { Updater.cancel() },
         install = {
             if (!UpdateInstaller.allowed(app)) {
-                try { ctx.startActivity(UpdateInstaller.allowIntent(app)) } catch (_: Exception) { say("Open Settings › Apps › Special app access › Install unknown apps › Robot.") }
+                try { ctx.startActivity(UpdateInstaller.allowIntent(app)) } catch (_: Exception) { say(openInstall) }
             } else Updater.installNow(app)
         },
         skip = { offer?.let { Updater.skip(app, it.version) } },
@@ -375,10 +392,10 @@ internal fun UpdatesRoute(snackbar: SnackbarHostState, onBack: () -> Unit, onRep
             val r = facts.repo
             if (offer != null && r != null) try {
                 ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(r.releasePage(offer.tag))).addCategory(Intent.CATEGORY_BROWSABLE))
-            } catch (_: Exception) { say("No browser to open it.") }
+            } catch (_: Exception) { say(noBrowser) }
         },
         allowInstalls = {
-            try { ctx.startActivity(UpdateInstaller.allowIntent(app)) } catch (_: Exception) { say("Open Settings › Apps › Special app access › Install unknown apps › Robot.") }
+            try { ctx.startActivity(UpdateInstaller.allowIntent(app)) } catch (_: Exception) { say(openInstall) }
         },
         change = { Updater.setSettings(app, it) },
         saveToken = { t ->
@@ -386,14 +403,14 @@ internal fun UpdatesRoute(snackbar: SnackbarHostState, onBack: () -> Unit, onRep
                 val saved = withContext(Dispatchers.IO) { UpdateToken.save(app, t) }
                 if (saved) UpdateToken.clearClipboard(ctx, t)
                 facts = facts.copy(token = withContext(Dispatchers.IO) { UpdateToken.masked(app) }, tokenUnreadable = false)
-                say(if (saved) "The token is saved." else "The token couldn't be saved on this phone.")
+                say(if (saved) tokenSaved else tokenNotSaved)
             }
         },
         removeToken = {
             scope.launch {
                 withContext(Dispatchers.IO) { UpdateToken.delete(app) }
                 facts = facts.copy(token = null, tokenUnreadable = false)
-                say("The token was removed.")
+                say(tokenRemoved)
             }
         },
         report = onReport,
@@ -412,12 +429,16 @@ private data class RouteFacts(
     val loaded: Boolean = false,
 )
 
-/** The Updates row's state in Settings › About: an update on offer, or when Robot last checked. */
-fun updatesSummary(s: UpdateSettings, offer: FoundRelease?, lastCheck: Long, now: Long): String = when {
-    offer != null && s.skipped != offer.version -> "Robot ${offer.version} is available"
-    !s.autoCheck -> if (lastCheck > 0) "Checked " + UpdateText.whenText(lastCheck, now).replaceFirstChar { it.lowercase() } + " · automatic checks off" else "Automatic checks are off"
-    lastCheck > 0 -> "Checked " + UpdateText.whenText(lastCheck, now).replaceFirstChar { it.lowercase() }
-    else -> "Checks once a day"
+/** The Updates row's state in Settings › About: an update on offer, or when Robot last checked; in [lang] (English by default). */
+fun updatesSummary(s: UpdateSettings, offer: FoundRelease?, lastCheck: Long, now: Long, lang: Lang = Lang.EN): String {
+    val l = Langs.of(lang)
+    fun checked() = UpdateText.whenText(lastCheck, now, lang = lang).replaceFirstChar { it.lowercase() }
+    return when {
+        offer != null && s.skipped != offer.version -> UpdateText.availableTitleText(offer.version)
+        !s.autoCheck -> if (lastCheck > 0) UpdateStrings.summaryCheckedOff("when" to checked()) else UpdateStrings.summaryAutoOff()
+        lastCheck > 0 -> UpdateStrings.summaryChecked("when" to checked())
+        else -> UpdateStrings.summaryDaily()
+    }.render(l)
 }
 
 /** The way into Updates from Settings › About: a row of its group, its state under the title. */
@@ -425,13 +446,14 @@ fun updatesSummary(s: UpdateSettings, offer: FoundRelease?, lastCheck: Long, now
 internal fun UpdatesEntry(a: AppActions) {
     val app = LocalContext.current.applicationContext
     val state by UpdateStore.state
+    val lang = LocalLangs.current.ui
     var summary by remember { mutableStateOf("") }
-    LaunchedEffect(state) {
+    LaunchedEffect(state, lang) {
         summary = withContext(Dispatchers.IO) {
             val s = UpdateStore.settings(app)
             val st = UpdateStore.state(app)
-            updatesSummary(s, UpdateDecision.offered(st, UpdateStore.repo(app), Updater.installed()), st.lastCheck, System.currentTimeMillis())
+            updatesSummary(s, UpdateDecision.offered(st, UpdateStore.repo(app), Updater.installed()), st.lastCheck, System.currentTimeMillis(), lang)
         }
     }
-    PreferenceItem("Updates", summary.ifEmpty { null }, onClick = { a.openPage(Page.Settings(SettingsRoutes.UPDATES)) })
+    PreferenceItem(UiStrings.updates().str(), summary.ifEmpty { null }, onClick = { a.openPage(Page.Settings(SettingsRoutes.UPDATES)) })
 }

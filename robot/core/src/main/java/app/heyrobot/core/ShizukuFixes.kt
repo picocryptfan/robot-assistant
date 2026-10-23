@@ -18,7 +18,7 @@ object ShizukuPath {
     /** Settings asks the :voice process for this set-up run (Cmd.TERMUX's run, with the fix's id). */
     const val RUN = "shizuku"
 
-    private const val ADB_SHELL = "adb shell "
+    private const val ADB_SHELL = "adb shell " // l10n: not text (a shell command)
 
     /** [adb] as the phone's shell runs it ("adb shell settings put …" → "settings put …"); null when it isn't an adb shell command. */
     fun shell(adb: String): String? {
@@ -57,7 +57,7 @@ object ShizukuPath {
      * for the terminal's package in place of "PKG"), and the dex is made read-only (Android 14 and later won't load a
      * writable one).
      */
-    const val TERMUX_LINE = "mv ~/rish ~/rish_shizuku.dex \$PREFIX/bin/ && sed -i 's/\"PKG\"/\"com.termux\"/' \$PREFIX/bin/rish && " +
+    const val TERMUX_LINE = "mv ~/rish ~/rish_shizuku.dex \$PREFIX/bin/ && sed -i 's/\"PKG\"/\"com.termux\"/' \$PREFIX/bin/rish && " + // l10n: not text (shell for Termux)
         "chmod 700 \$PREFIX/bin/rish && chmod 400 \$PREFIX/bin/rish_shizuku.dex"
 
     /** Run once by hand in Termux: Shizuku asks whether Termux may use it (allow Termux, and only Termux). Prints uid=2000(shell). */
@@ -71,6 +71,8 @@ enum class ShizukuRefusal(override val id: Int, override val title: String) : Lo
     TERMUX_NOT_READY(3, "Termux not set up and trusted"),
     TEST_KEY(4, "Termux's public test key"),
     TERMUX_CHANGED(5, "Termux changed since you trusted it"),
+    /** 1.2: the recognizer fix while another installed speech recognizer is set: it would replace that one (AdbFixes.notNeeded). */
+    NOT_NEEDED(6, "another speech recognizer is set"),
 }
 
 /** How a fix sent through Shizuku ended (voice log TERMUX_ADB_FIX's b). */
@@ -98,10 +100,15 @@ object ShizukuRun {
      */
     fun offered(check: TermuxCheck, ready: Boolean): Boolean = ready && check.status == TermuxStatus.READY
 
-    /** Why fix [fixId] isn't sent now, or null: it may be ([command] is then what goes). Checked again in :voice before it goes. */
-    fun refusal(fixId: String?, check: TermuxCheck, ready: Boolean, locked: Boolean): ShizukuRefusal? = when {
+    /**
+     * Why fix [fixId] isn't sent now, or null: it may be ([command] is then what goes). Checked again in :voice before it
+     * goes. 1.2: [kept], what keeps Robot the assistant now (RecognizerRepair.kept): the recognizer fix isn't sent while
+     * another installed recognizer is set.
+     */
+    fun refusal(fixId: String?, check: TermuxCheck, ready: Boolean, locked: Boolean, kept: RecognizerRepair.Kept): ShizukuRefusal? = when {
         ShizukuPath.command(fixId) == null -> ShizukuRefusal.NOT_A_FIX
         locked -> ShizukuRefusal.LOCKED
+        AdbFixes.ALL.any { it.id == fixId && AdbFixes.notNeeded(it, kept) } -> ShizukuRefusal.NOT_NEEDED
         check.status == TermuxStatus.TEST_KEY -> ShizukuRefusal.TEST_KEY
         check.status == TermuxStatus.UPDATED || check.status == TermuxStatus.CHANGED -> ShizukuRefusal.TERMUX_CHANGED
         !offered(check, ready) -> ShizukuRefusal.TERMUX_NOT_READY

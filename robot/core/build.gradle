@@ -16,6 +16,8 @@ kotlin { compilerOptions { jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget
 dependencies {
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0'
     testImplementation 'junit:junit:4.13.2'
-    // Real org.json for JVM tests (android.jar's copy is a stub that throws).
+    // Real org.json for JVM tests (android.jar's copy is a stub that throws). 1.1: kept at 20180813, which reads numbers as
+    // Android's own org.json does (30.5 a Double); 20231013 and later read them as BigDecimal, so the tests would stop
+    // modelling the phone. Its advisories (deep nesting, DoS) concern untrusted input, and here it parses only the tests' text.
     testImplementation 'org.json:json:20180813'
 }

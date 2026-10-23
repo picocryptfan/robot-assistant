@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.output
 
+import app.heyrobot.core.i18n.HandsFreeStrings
+import app.heyrobot.core.i18n.Lang
+import app.heyrobot.core.i18n.Msg
+import app.heyrobot.core.i18n.Phrase
 import app.heyrobot.core.LogCode
 
-// Pure. Where a sentence may be spoken (design §1.3 `OutputGuard`, §3.7 rules 1–2, §4.9 rule 3): checked before each
+// Pure. Where a sentence may be spoken: checked before each
 // sentence is queued (SherpaTextToSpeech.write) and again whenever the route changes while it plays. Personal sentences
 // play only on a private device when a headset started the session, never on a car or a Bluetooth speaker you didn't
 // confirm, and wait for an unlock on a locked phone unless car mode's trusted session (§4.6) or a routine's "Everything"
@@ -21,7 +25,7 @@ import app.heyrobot.core.LogCode
 // | 6 | car session, personal, and it came by itself (routine, message) | "Read message text aloud when others may hear": ask (default), always, or never (kept for parking) |
 // | 7 | otherwise | plays: over the call route when the session holds it, else ducking short lines and pausing for long ones when other media plays; in the car a long answer is shortened |
 
-/** Whether a sentence is personal (design §1.3): anything from contacts, People, calendar, notes, messages, a place, phone status, or a personal conversation. */
+/** Whether a sentence is personal: anything from contacts, People, calendar, notes, messages, a place, phone status, or a personal conversation. */
 enum class SpeechClass { PUBLIC, PERSONAL }
 
 /** Where a sentence comes from. */
@@ -50,8 +54,12 @@ data class Utterance(val cls: SpeechClass, val source: SpeechSource, val chars: 
 }
 
 /** Car mode's "Read message text aloud when others may hear" (§4.4), also used for calendar titles a routine reads in the car. */
-enum class ReadAloud(val title: String) {
-    ASK("Ask each time"), ALWAYS("Always"), NEVER("Never");
+enum class ReadAloud(private val msg: Msg) {
+    ASK(HandsFreeStrings.askEachTime), ALWAYS(HandsFreeStrings.always), NEVER(HandsFreeStrings.never);
+
+    /** 1.1: Settings' words without a language yet; [title] is their English. */
+    val text: Phrase get() = msg()
+    val title: String get() = text.en()
 }
 
 /**
@@ -144,7 +152,7 @@ sealed class OutputDecision {
     data class Hold(val why: HoldWhy, val keep: Keep, val sayUnlock: Boolean = false) : OutputDecision()
 }
 
-/** What changed the route while a sentence played (design §1.3 rule 3). */
+/** What changed the route while a sentence played. */
 enum class RouteSignal {
     /** AudioTrack.OnRoutingChangedListener. */
     ROUTING_CHANGED,
@@ -247,19 +255,17 @@ object OutputGuard {
 
 /** The words OutputGuard's decisions say. */
 object OutputLines {
-    val UNLOCK_TO_HEAR = Line("Unlock to hear it.", "Déverrouille pour l'entendre.")
-    val UNLOCK_TO_SEE = Line("Unlock to see the answer.", "Déverrouille pour voir la réponse.")
-    val READ_ALOUD = Line("Others may hear it. Read it aloud?", "D'autres pourraient l'entendre. Je le lis à voix haute?")
-    val KEEP_FOR_LOOK = Line("I'll keep that for when you can look at the phone.", "Je garde ça pour quand tu pourras regarder le téléphone.")
+    val UNLOCK_TO_HEAR = Line(HandsFreeStrings.unlockToHear())
+    val UNLOCK_TO_SEE = Line(HandsFreeStrings.unlockToSee())
+    val READ_ALOUD = Line(HandsFreeStrings.readAloud())
+    val KEEP_FOR_LOOK = Line(HandsFreeStrings.keepForLook())
 
     /** "Is “Pixel Buds Pro” headphones only you can hear? Say yes or no." The name is the device's own (never logged). */
-    fun privateQuestion(name: String, lang: SpokenLang): String {
+    fun privateQuestion(name: String, lang: Lang): String = spoken(privateQuestionText(name), lang)
+
+    /** 1.1: [privateQuestion] without a language yet. */
+    fun privateQuestionText(name: String): Phrase {
         val n = DeviceMemory.clean(name)
-        return when (lang) {
-            SpokenLang.EN -> if (n.isEmpty()) "Are these headphones only you can hear? Say yes or no."
-                else "Is “$n” headphones only you can hear? Say yes or no."
-            SpokenLang.FR -> if (n.isEmpty()) "Est-ce que ce sont des écouteurs que toi seul peux entendre? Dis oui ou non."
-                else "Est-ce que « $n », ce sont des écouteurs que toi seul peux entendre? Dis oui ou non."
-        }
+        return if (n.isEmpty()) HandsFreeStrings.privateQuestion() else HandsFreeStrings.privateQuestionNamed("name" to n)
     }
 }

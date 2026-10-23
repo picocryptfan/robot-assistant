@@ -10,6 +10,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import app.heyrobot.core.AdbCheck
 import app.heyrobot.core.AdbFixes
+import app.heyrobot.core.RecognizerRepair
 import app.heyrobot.core.ShizukuOutcome
 import app.heyrobot.core.ShizukuPath
 import app.heyrobot.core.ShizukuRefusal
@@ -19,6 +20,7 @@ import app.heyrobot.ui.testing.ActionLog
 import app.heyrobot.ui.testing.PHONE
 import app.heyrobot.ui.testing.inDialog
 import app.heyrobot.ui.testing.scrollToText
+import app.heyrobot.ui.testing.shot
 import app.heyrobot.ui.testing.show
 import app.heyrobot.ui.testing.touchTargetProblems
 import org.junit.Assert.assertEquals
@@ -28,6 +30,8 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import app.heyrobot.title
+import app.heyrobot.why
 
 /**
  * Settings › Advanced › ADB fixes: a status row per fix, and a fix's page with its commands and Copy. 1.0: each fix also
@@ -99,6 +103,69 @@ class AdbFixesTest {
         rule.scrollToText("Set up Termux in Settings › Termux first", substring = true)
         rule.onNodeWithContentDescription("Run this fix with Shizuku through Termux").assertDoesNotExist()
         rule.scrollToText("Not sent: unlock your phone first.")
+    }
+
+    // 1.2 (every-android-phone, Step 6): another installed speech recognizer is set (a stock phone's own).
+    private val recognizer = AdbFixes.ALL.single { it.id == "recognizer" }
+    private val other = RecognizerRepair.Kept.OTHER
+
+    @Test fun overAnotherRecognizerTheRecognizerFixIsNotNeeded() {
+        rule.show { AdbFixesList(AdbNow(kept = other), log.actions, SnackbarHostState(), onBack = {}) }
+        rule.onNodeWithText(recognizer.title).assert(hasText("Not needed"))
+        // The grant replaces nothing: as before.
+        rule.onNodeWithText(repair.title).assert(hasText("Not done"))
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
+        rule.shot("adb_fixes_other_recognizer")
+    }
+
+    @Test fun itsPageSaysWhyAndOffersNothingToCopyOrRun() {
+        val sent = ArrayList<String>()
+        rule.show { AdbFixPage(recognizer, emptyMap(), ShizukuUi(offered = true), SnackbarHostState(), onBack = {}, kept = other) { sent += it } }
+        rule.onNodeWithText("Not needed").assertExists()
+        rule.onNodeWithText("Another app's speech recognizer is set on this phone", substring = true).assertExists()
+        rule.scrollToText(recognizer.why)
+        for (gone in listOf("With a computer (adb)", "Without a computer (Shizuku)", recognizer.commands.joinToString("\n"), "Run with Shizuku through Termux"))
+            rule.onNodeWithText(gone).assertDoesNotExist()
+        for (gone in listOf("Copy the adb commands", "Copy the commands for rish", "Run this fix with Shizuku through Termux"))
+            rule.onNodeWithContentDescription(gone).assertDoesNotExist()
+        assertEquals(emptyList<String>(), sent)
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
+        rule.shot("adb_fix_recognizer_not_needed")
+    }
+
+    @Test fun noRecognizerSetOrOneUninstalledReadsAsBefore() {
+        // GrapheneOS (none set), unreadable, or one no longer installed: the commands and the run, as before.
+        rule.show { AdbFixPage(recognizer, emptyMap(), ShizukuUi(offered = true), SnackbarHostState(), onBack = {}, kept = RecognizerRepair.Kept.NONE) {} }
+        rule.onNodeWithText("Not done").assertExists()
+        rule.scrollToText(recognizer.commands.joinToString("\n"))
+        rule.scrollToText("Run with Shizuku through Termux")
+        rule.onNodeWithContentDescription("Run this fix with Shizuku through Termux").assertExists()
+    }
+
+    @Test fun aRunRefusedOverAnotherRecognizerSaysSo() {
+        // :voice refused it (another recognizer was set by the time it checked): the page says why.
+        rule.show {
+            AdbFixPage(recognizer, emptyMap(), ShizukuUi(offered = true, result = ShizukuResult("recognizer", 1, ShizukuOutcome.REFUSED, refusal = ShizukuRefusal.NOT_NEEDED)),
+                SnackbarHostState(), onBack = {}) {}
+        }
+        rule.scrollToText("Not sent: another app's speech recognizer is set, and this fix would replace it.")
+    }
+
+    @Test @Config(qualifiers = "fr-rCA-w411dp-h891dp-xhdpi")
+    fun notNeededInFrench() {
+        rule.show { AdbFixesList(AdbNow(kept = other), log.actions, SnackbarHostState(), onBack = {}) }
+        rule.onNodeWithText("Rester l\u2019assistant après un redémarrage").assert(hasText("Pas nécessaire"))
+        rule.shot("adb_fixes_other_recognizer_fr")
+    }
+
+    @Test @Config(qualifiers = "fr-rCA-w411dp-h891dp-xhdpi")
+    fun itsPageInFrench() {
+        rule.show { AdbFixPage(recognizer, emptyMap(), ShizukuUi(offered = true), SnackbarHostState(), onBack = {}, kept = other) {} }
+        rule.onNodeWithText("Pas nécessaire").assertExists()
+        rule.onNodeWithText("La reconnaissance vocale d\u2019une autre appli est choisie sur ce téléphone", substring = true).assertExists()
+        rule.onNodeWithText("Avec un ordinateur (adb)").assertDoesNotExist()
+        rule.onNodeWithContentDescription("Copier les commandes adb").assertDoesNotExist()
+        rule.shot("adb_fix_recognizer_not_needed_fr")
     }
 
     @Test fun anUnknownFixGoesBack() {

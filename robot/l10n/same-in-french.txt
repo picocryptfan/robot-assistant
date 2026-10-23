@@ -1,0 +1,37 @@
+# Values that are the same word in English and in French, on purpose (ResourcesCompleteTest, UiLabelTest): a French value
+# identical to its English fails unless it is here. Names and acronyms (Robot, Termux, ADB) are brands, not listed.
+Actions
+Conversation
+Licences
+Menus
+Messages
+Notes
+Routines
+Suggestions
+Termux
+Transcription
+Photo
+Photos
+Note
+Suggestions (%1$d)
+OK
+Pause
+Notifications
+Date
+%1$d min
+%1$d s
+Licence
+Source
+Phrase
+Version
+Web
+Assistant
+Contacts
+%1$s · %2$s
+Normal
+Long
+Questions
+Document
+Documents
+Conversations
+Total

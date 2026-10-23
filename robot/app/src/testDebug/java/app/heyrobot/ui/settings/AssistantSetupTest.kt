@@ -6,6 +6,7 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import app.heyrobot.core.helpers.HelperConfig
 import app.heyrobot.core.helpers.Presets
@@ -16,6 +17,7 @@ import app.heyrobot.ui.testing.PHONE
 import app.heyrobot.ui.testing.facts
 import app.heyrobot.ui.testing.onRow
 import app.heyrobot.ui.testing.scrollToText
+import app.heyrobot.ui.testing.shot
 import app.heyrobot.ui.testing.show
 import app.heyrobot.ui.testing.touchTargetProblems
 import org.junit.Assert.assertEquals
@@ -53,6 +55,40 @@ class AssistantSetupTest {
         rule.onRow("ADB fixes").performClick()
         assertEquals(listOf("openPage ${Page.AdbFixes}", "askPermissions", "askContacts", "askCalendar", "openPage ${Page.AdbFixes}"), log)
         rule.scrollToText("Robot checks 3 minutes after every restart", substring = true)
+    }
+
+    /** 1.2 (every-android-phone, Step 6): a phone with its own speech recognizer set, installed (a stock phone's). */
+    private val ownRecognizer = facts(recognizerIsRobot = false).copy(recognizer = "com.example.speech/.Recognizer", recognizerInstalled = true)
+
+    @Test fun anotherInstalledRecognizerIsNotWarnedAboutOrReplaced() {
+        rule.show { SetupScreen(ownRecognizer, log.actions, SnackbarHostState(), onBack = {}, helpers = claude) }
+        rule.onNode(hasText("Default speech recognizer")).assert(hasText("Set to another app (1 installed). Android should keep Robot as the assistant with it too."))
+        rule.onNode(hasText("Survives restarts")).assert(hasText("Probably: another app's speech recognizer is set", substring = true))
+        rule.onNodeWithContentDescription("Fix it with ADB fixes").assertDoesNotExist()
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
+        rule.shot("assistant_setup_other_recognizer")
+        // The footer's restart paragraph (and its one-time fix) is left out; the rest of the footer stays.
+        rule.scrollToText("ADB fixes")
+        rule.onNodeWithText("Robot checks 3 minutes after every restart", substring = true).assertDoesNotExist()
+    }
+
+    @Test fun aRecognizerNoLongerInstalledStillAsksForTheFix() {
+        // Android clears it at boot: today's warning and Fix, as with none set.
+        rule.show { SetupScreen(ownRecognizer.copy(recognizerInstalled = false), log.actions, SnackbarHostState(), onBack = {}, helpers = claude) }
+        rule.onNode(hasText("Default speech recognizer")).assert(hasText("Not set to Robot (another app", substring = true))
+        rule.onNode(hasText("Survives restarts")).assert(hasText("Not yet", substring = true))
+        rule.onNodeWithContentDescription("Fix it with ADB fixes").performClick()
+        assertEquals(listOf("openPage ${Page.AdbFixes}"), log)
+        rule.scrollToText("Robot checks 3 minutes after every restart", substring = true)
+    }
+
+    @Test @Config(qualifiers = "fr-rCA-w411dp-h891dp-xhdpi")
+    fun anotherInstalledRecognizerInFrench() {
+        rule.show { SetupScreen(ownRecognizer, log.actions, SnackbarHostState(), onBack = {}, helpers = claude) }
+        rule.onNode(hasText("Reconnaissance vocale par défaut")).assert(hasText("Réglée sur une autre appli (1 installée).", substring = true))
+        rule.onNode(hasText("Résiste aux redémarrages")).assert(hasText("Probablement\u00a0: la reconnaissance vocale d\u2019une autre appli", substring = true))
+        rule.onNodeWithContentDescription("Le corriger avec les correctifs ADB").assertDoesNotExist()
+        rule.shot("assistant_setup_other_recognizer_fr")
     }
 
     @Test fun theAppRowOnlyForAHelperThatOpensIt() {

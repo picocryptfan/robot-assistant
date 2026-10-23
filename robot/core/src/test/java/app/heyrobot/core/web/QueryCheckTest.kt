@@ -99,7 +99,7 @@ class QueryCheckTest {
     }
 
     @Test fun emailsNeverGoEvenInYourOwnWords() {
-        for (q in listOf("john.doe@example.com", "who is jdoe@example.org", "john dot doe at example dot com", "jdoe (at) example (dot) org", "jdoe [at] example [dot] org",
+        for (q in listOf("john.doe@example.com", "who is jdoe@example.org", "john dot doe at example dot com", "jdoe (at) example (dot) org", "jdoe [at] example [dot] org", "jdoe {at} example {dot} org",
             "marie chez example point org", "jdoe＠example.com", "x﹫y.com", "@handle")) {
             assertEquals(q, QueryRefusal.EMAIL, refused(q))
         }

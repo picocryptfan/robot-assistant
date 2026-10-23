@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.Msg
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.TurnStrings
+
 // Pure. Every action the model asks for passes this gate before ToolExecutor runs it.
 
 enum class GateDecision {
@@ -57,6 +61,9 @@ object ApprovalGate {
             // 0.7: nothing is saved to or removed from memory on the lock screen, whatever "Works on the lock screen" says
             // ("Use memory on the lock screen" lets it be read there, never changed).
             locked && memoryWrite(tool) -> GateDecision.NEEDS_UNLOCK
+            // 1.4: Robot Files' reads never run on a locked phone or during a phone lock, whatever "Works on the lock screen"
+            // holds (a restored settings file can't add them: its key needs the phone unlocked anyway, files-1.4-plan.md §5.3).
+            locked && files(tool) -> GateDecision.NEEDS_UNLOCK
             locked && tool !in settings.lockedTools -> GateDecision.NEEDS_UNLOCK
             tool == ToolName.ASK_HELPER -> GateDecision.CONFIRM
             // 0.7: a memory the model proposes without your asking, or in a conversation with content, is a card, never silent.
@@ -78,23 +85,30 @@ object ApprovalGate {
     /** remember and forget change memory: never on the lock screen. */
     fun memoryWrite(tool: ToolName): Boolean = tool == ToolName.REMEMBER || tool == ToolName.FORGET
 
+    /** 1.4: find_files and read_file read Robot Files: never on the lock screen either. */
+    fun files(tool: ToolName): Boolean = tool.group == ToolGroup.FILES
+
     /** [tool] can't run with the phone [locked] under [settings] (checked again after a card, the phone may have locked). */
-    fun lockedOut(tool: ToolName, locked: Boolean, settings: RobotSettings): Boolean = locked && (memoryWrite(tool) || tool !in settings.lockedTools)
+    fun lockedOut(tool: ToolName, locked: Boolean, settings: RobotSettings): Boolean = locked && (memoryWrite(tool) || files(tool) || tool !in settings.lockedTools)
 
     /** The same for an action that decides for itself what works locked (0.9: a Termux script you allowed there, never a command). */
-    fun lockedOut(a: Action, locked: Boolean, settings: RobotSettings): Boolean = locked && (memoryWrite(a.tool) || !a.worksLocked(settings.lockedTools))
+    fun lockedOut(a: Action, locked: Boolean, settings: RobotSettings): Boolean = locked && (memoryWrite(a.tool) || files(a.tool) || !a.worksLocked(settings.lockedTools))
 
     /** What an action refused for the lock says: memory's own line for remember and forget. */
-    fun unlockLine(tool: ToolName): String = when (tool) {
-        ToolName.REMEMBER -> app.heyrobot.core.memory.MemoryAccess.UNLOCK_TO_SAVE
-        ToolName.FORGET -> app.heyrobot.core.memory.MemoryAccess.UNLOCK_TO_CHANGE
-        else -> "Unlock your phone, then ask again."
+    fun unlockLine(tool: ToolName): String = unlockText(tool).en()
+
+    /** [unlockLine] in words without a language yet (1.1): the card's line in the reply language. */
+    fun unlockText(tool: ToolName): Phrase = when (tool) {
+        ToolName.REMEMBER -> app.heyrobot.core.memory.MemoryAccess.unlockToSave()
+        ToolName.FORGET -> app.heyrobot.core.memory.MemoryAccess.unlockToChange()
+        ToolName.FIND_FILES, ToolName.READ_FILE -> app.heyrobot.core.i18n.FilesStrings.locked()
+        else -> TurnStrings.unlockThenAsk()
     }
 
     /** One of [why] needs a card with these settings. */
     fun asks(why: Set<AskWhy>, s: RobotSettings): Boolean =
         AskWhy.PICK in why || AskWhy.ONLINE in why || AskWhy.MESSAGE in why || AskWhy.SEARCH in why || AskWhy.SEARCH_PERSONAL in why || (AskWhy.WHO in why && s.whoCards) || (AskWhy.LEARNED in why && s.learnedCards) || (AskWhy.DELETE in why && s.deleteCards) ||
-            AskWhy.TERMUX in why || AskWhy.COMMAND in why || AskWhy.FROM_CONTENT in why
+            AskWhy.TERMUX in why || AskWhy.COMMAND in why || AskWhy.FROM_CONTENT in why || AskWhy.REMINDER in why
 
     /**
      * Content in the conversation makes this action ask first, under [mode] ([asked]: the person asked for it this turn;
@@ -116,30 +130,40 @@ object ApprovalGate {
     private val DRAFTS = setOf(ToolName.SEND_TEXT, ToolName.DRAFT_EMAIL, ToolName.CALL)
 }
 
-/** What happened to one action; also what the model is told about it. */
-enum class ActionStatus(val label: String) {
-    PENDING("Waiting for you"),
-    DONE("Done"),
+/**
+ * What happened to one action; also what the model is told about it. [label] is the card's state in English (and what a
+ * replayed conversation tells the model); [text] the same words without a language yet (1.1: a card shows them in the
+ * menus' language).
+ */
+enum class ActionStatus(private val msg: Msg) {
+    PENDING(TurnStrings.statusPending),
+    DONE(TurnStrings.statusDone),
     /**
      * Handed to another app as a draft (Cheogram, the SMS app, Proton Mail, the calendar app's editor): nothing is
      * sent or saved until the person does it there, so the model is never told "done".
      */
-    DRAFT_OPENED("Draft opened"),
-    DECLINED("Cancelled"),
-    NEEDS_UNLOCK("Unlock to do this"),
-    DISABLED("Turned off in settings"),
-    FAILED("Didn't work"),
-    INVALID("Couldn't understand the request"),
+    DRAFT_OPENED(TurnStrings.statusDraftOpened),
+    DECLINED(TurnStrings.statusDeclined),
+    NEEDS_UNLOCK(TurnStrings.statusNeedsUnlock),
+    DISABLED(TurnStrings.statusDisabled),
+    FAILED(TurnStrings.statusFailed),
+    INVALID(TurnStrings.statusInvalid),
     /** Over the limit of actions in one answer ([TurnRules.MAX_CALLS]): not run. */
-    SKIPPED("Not done"),
+    SKIPPED(TurnStrings.statusSkipped),
     /** Robot needs a permission (contacts, calendar) the person grants in the main app. */
-    NEEDS_PERMISSION("Needs your permission"),
+    NEEDS_PERMISSION(TurnStrings.statusNeedsPermission),
     /** No contact (or note) matches what was asked. */
-    NOT_FOUND("Not found"),
+    NOT_FOUND(TurnStrings.statusNotFound),
     /** The app it hands over to isn't installed ("Install Cheogram", "No email app"). */
-    NO_APP("App not installed"),
+    NO_APP(TurnStrings.statusNoApp),
     /** The person tapped Undo on the card (a note Robot had just saved). */
-    UNDONE("Undone");
+    UNDONE(TurnStrings.statusUndone);
+
+    /** The card's state, in words without a language yet. */
+    val text: Phrase get() = msg()
+
+    /** The card's state in English ("Done"): History's replay to the model, and the screens not yet moved to [text]. */
+    val label: String get() = text.en()
 
     /**
      * The tool response sent back to the model ([detail] is a short, fixed-vocabulary explanation; [results] a read

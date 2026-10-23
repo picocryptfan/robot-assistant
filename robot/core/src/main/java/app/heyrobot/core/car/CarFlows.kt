@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.car
 
+import app.heyrobot.core.i18n.HandsFreeStrings
+import app.heyrobot.core.output.spoken
 import app.heyrobot.core.messages.VoiceReply
 import app.heyrobot.core.output.AnswerCode
 import app.heyrobot.core.output.HandsFreeSafety
@@ -9,9 +11,9 @@ import app.heyrobot.core.output.ReplyWords
 import app.heyrobot.core.output.SpokenCard
 import app.heyrobot.core.output.SpokenCards
 import app.heyrobot.core.output.SpokenChoice
-import app.heyrobot.core.output.SpokenLang
+import app.heyrobot.core.i18n.Lang
 
-// Pure. The car's multi-step flows as state machines (design §4.5): a call (choices, read-back, yes) and a message
+// Pure. The car's multi-step flows as state machines: a call (choices, read-back, yes) and a message
 // (announce, read, reply, read-back, send). CarModeController keeps one flow at a time, gives it each thing heard (the
 // transcript, "" for silence) and carries out what it returns: say a line and listen again, place the call, send the
 // reply, or hand it to the screen's own card (the call tool's, or the reply's), as outside the car. Robot's own last line
@@ -39,7 +41,7 @@ data class CallFlowState(val plan: CallPlan, val tries: Int = 0, val rereads: In
 
 object CallFlow {
     /** Start from CallTarget.plan: ask, or say why not (and show the call tool's card when that is why). */
-    fun start(plan: CallPlan, asked: String, lang: SpokenLang): Pair<CallFlowState, List<FlowEffect>> {
+    fun start(plan: CallPlan, asked: String, lang: Lang): Pair<CallFlowState, List<FlowEffect>> {
         val st = CallFlowState(plan)
         return when (plan) {
             is CallPlan.Confirm -> ask(st, plan.card, lang)
@@ -50,13 +52,13 @@ object CallFlow {
         }
     }
 
-    private fun ask(st: CallFlowState, card: SpokenCard, lang: SpokenLang): Pair<CallFlowState, List<FlowEffect>> {
+    private fun ask(st: CallFlowState, card: SpokenCard, lang: Lang): Pair<CallFlowState, List<FlowEffect>> {
         val p = SpokenCards.prompt(card, lang)
         return st.copy(said = p) to listOf(FlowEffect.Say(p, true))
     }
 
     /** [heard] (a transcript; "" for silence) in answer to the current card. */
-    fun on(st: CallFlowState, heard: String, lang: SpokenLang, wakePhrases: List<String> = emptyList()): Pair<CallFlowState, List<FlowEffect>> {
+    fun on(st: CallFlowState, heard: String, lang: Lang, wakePhrases: List<String> = emptyList()): Pair<CallFlowState, List<FlowEffect>> {
         if (st.done) return st to emptyList()
         val card = when (val p = st.plan) {
             is CallPlan.Confirm -> p.card
@@ -92,7 +94,7 @@ data class MessageFlowState(
  * (core messages HandsFreeReplies): only [VoiceReply.BY_VOICE] is sent after the read-back; the rest goes to the screen's
  * reply card.
  */
-data class MessageFlowContext(val settings: CarSettings, val safety: HandsFreeSafety, val locked: Boolean, val trusted: Boolean, val lang: SpokenLang,
+data class MessageFlowContext(val settings: CarSettings, val safety: HandsFreeSafety, val locked: Boolean, val trusted: Boolean, val lang: Lang,
     val voice: VoiceReply = VoiceReply.TAP_ONLY)
 
 object MessageFlow {

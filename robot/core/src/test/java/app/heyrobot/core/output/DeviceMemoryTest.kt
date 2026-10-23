@@ -8,7 +8,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Remembered headsets and cars (design §3.9 DeviceMatch: name plus tail, collisions, renames). */
+/** Remembered headsets and cars. */
 class DeviceMemoryTest {
     private val buds = SeenDevice(RouteType.BT_A2DP, "Pixel Buds Pro", "XX:XX:XX:XX:EE:FF")
     private val budsSco = buds.copy(type = RouteType.BT_SCO)
@@ -168,7 +168,7 @@ class DeviceMemoryTest {
     }
 }
 
-/** Remembered devices coming and going, with the grace that rides out a flapping link (design §2.1, §4.8). */
+/** Remembered devices coming and going, with the grace that rides out a flapping link. */
 class DevicePresenceTest {
     private val buds = SeenDevice(RouteType.BT_A2DP, "Pixel Buds Pro", "XX:XX:XX:XX:EE:FF")
     private val budsSco = buds.copy(type = RouteType.BT_SCO)

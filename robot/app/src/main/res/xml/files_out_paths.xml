@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 1.4, Robot Files (F7): a copy of one file, written for Share or Open with another app, served with a one-time read grant
+     and deleted when Robot takes it back. Never the sealed files (files/files/), nothing else. -->
+<paths>
+    <cache-path name="out" path="files_out/" />
+</paths>

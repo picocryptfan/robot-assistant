@@ -25,6 +25,17 @@ enum class ToolGroup {
     WEB,
     /** 0.9: Termux (TermuxRouter's words), described only while Settings › Termux is on. */
     TERMUX,
+    /**
+     * 1.1, Skills phase B: your own skills, at most 3, found for a question's words (core skills SkillSelect). No ToolName
+     * is in it: its tools are the skills' specs (BrainMsg.Generate.skills), and it gives way after Termux and web search.
+     */
+    SKILLS,
+    /**
+     * 1.4, Robot Files (files-1.4-plan.md §5.1, D7): find_files and read_file, described only while Robot Files is on and
+     * the phone unlocked, with no phone lock, for words about your files. Appended last: ToolBudget.OPTIONAL's "the rest"
+     * runs in reverse, so it is the first of them to give way after memory's tools.
+     */
+    FILES,
 }
 
 object ToolRouter {
@@ -38,7 +49,11 @@ object ToolRouter {
     private val NOTES = setOf("note", "remember", "write down", "list", "jot", "liste", "save", "remind", "reminder", "rappelle")
     private val CALENDAR = setOf("calendar", "event", "appointment", "meeting", "schedule", "agenda", "busy", "free", "today",
         "tomorrow", "tonight", "weekend", "week", "morning", "afternoon", "evening", "coming up", "remind", "reminder",
-        "rendez vous", "rdv", "calendrier", "reunion", "demain", "aujourdhui", "rappelle") + WEEKDAYS + MONTHS + JOURS
+        "rendez vous", "rdv", "calendrier", "reunion", "demain", "aujourdhui", "rappelle",
+        // 1.1 (phone, 22 Oct): « Ajoute un film ce soir de 22 h à 1 h » named no day, so add_event wasn't described and the
+        // model set a timer. French's parts of the day and week, and noon and midnight in both languages.
+        "soir", "soiree", "ce soir", "cette nuit", "matin", "matinee", "apres midi", "avant midi", "midi", "minuit", "noon", "midnight",
+        "semaine", "fin de semaine", "evenement") + WEEKDAYS + MONTHS + JOURS
     private val WEEKDAYS get() = setOf("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
     private val JOURS get() = setOf("lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche")
     /** Not "march" or "may": they are everyday verbs as well. */
@@ -61,6 +76,13 @@ object ToolRouter {
     /** 0.7, what you ask Robot to keep about you or drop ("remember that …", "souviens-toi", "oublie ça"). */
     private val MEMORY = setOf("remember", "forget", "know about me", "keep in mind", "memorize", "memorise", "souviens", "rappelle toi",
         "retiens", "oublie", "garde en memoire", "sais sur moi")
+    /**
+     * 1.4, Robot Files (files-1.4-plan.md §5.1): your files by their kinds' words, and "my files". A word too many only costs
+     * the two tools' tokens; the tools exist only while Robot Files is on and the phone unlocked ([tools]' files).
+     */
+    private val FILES = setOf("receipt", "bill", "invoice", "statement", "document", "lease", "warranty", "contract", "slip", "tax slip",
+        "my files", "my file", "robot files", "recu", "facture", "bail", "garantie", "contrat", "feuillet", "mes fichiers", "mon fichier",
+        "fichiers de robot")
     private val ELISION = Regex("""\b([dljnsmtc]|qu)['’](?=\p{L})""")
 
     /** "Stop YouTube", "close Chrome", "arrête YouTube": a verb that may stop an app, then (not) one of these (0.4.0). */
@@ -76,8 +98,11 @@ object ToolRouter {
 
     /** "let Sarah know", "let my sister know". */
     private val LET_KNOW = Regex("""\blet (?:\w+ ){1,3}know\b""")
-    /** A clock time ("3pm", "3 p.m.", "15:30", "15h", "15h30"), an ordinal day ("the 14th"), March or May with a day. */
-    private val WHEN = Regex("""\d\s?[ap]\.?m\b|\d:\d\d|\b\d{1,2}h\d{0,2}\b|\b\d{1,2}(?:st|nd|rd|th)\b|\b(?:march|may) \d{1,2}\b|\b\d{1,2} (?:of )?(?:march|may)\b""")
+    /**
+     * A clock time ("3pm", "3 p.m.", "15:30", "15h", "15h30", and as the transcriber and French write it, « 22 h », « 9 h 30 »),
+     * an ordinal day ("the 14th"), March or May with a day.
+     */
+    private val WHEN = Regex("""\d\s?[ap]\.?m\b|\d:\d\d|\b\d{1,2}h\d{0,2}\b|\b\d{1,2} h(?: ?\d{2})?\b|\b\d{1,2}(?:st|nd|rd|th)\b|\b(?:march|may) \d{1,2}\b|\b\d{1,2} (?:of )?(?:march|may)\b""")
 
     /** The groups this question needs: always CORE, plus each group one of its words appears in. */
     fun route(question: String): Set<ToolGroup> {
@@ -87,8 +112,8 @@ object ToolRouter {
         fun has(keys: Set<String>) = keys.any { k ->
             if (' ' in k) padded.contains(" $k ")
             else words.withIndex().any { (i, w) ->
-                inflects(w, k) && !(k == "tell" && i + 1 < words.size && "tell ${words[i + 1]}" in NOT_PEOPLE) &&
-                    !(k == "free" && i + 1 < words.size && "free ${words[i + 1]}" in NOT_CALENDAR)
+                inflects(w, k) && !(k == "tell" && i + 1 < words.size && "tell ${words[i + 1]}" in NOT_PEOPLE) && // l10n: not text (heard words)
+                    !(k == "free" && i + 1 < words.size && "free ${words[i + 1]}" in NOT_CALENDAR) // l10n: not text (heard words)
             }
         }
         return buildSet {
@@ -102,6 +127,7 @@ object ToolRouter {
             if (has(MEMORY) && !app.heyrobot.core.memory.MemoryCommands.staysNote(question)) add(ToolGroup.MEMORY)
             if (app.heyrobot.core.web.WebRouter.wants(question)) add(ToolGroup.WEB)
             if (app.heyrobot.core.termux.TermuxRouter.calls(question)) add(ToolGroup.TERMUX)
+            if (has(FILES)) add(ToolGroup.FILES)
         }
     }
 
@@ -189,6 +215,20 @@ object ToolRouter {
         }
     }
 
+    /**
+     * 1.1 (phone, 22 Oct): your words ask for an event ("add a movie tonight", « planifie un appel ce soir »): a verb that
+     * adds or schedules, not right after a word that names a thing, with the calendar's words ([route]). "Remind me" alone
+     * isn't one: a reminder at a time may still be an alarm (AlarmWords).
+     */
+    fun asksEvent(question: String): Boolean {
+        val words = words(question)
+        val verbs = EVENT_ASK + ADD - REMIND
+        return ToolGroup.CALENDAR in route(question) && words.withIndex().any { (i, w) -> w in verbs && (i == 0 || words[i - 1] !in NAMING) }
+    }
+
+    /** [asksEvent]'s words that aren't an event's by themselves. */
+    private val REMIND = setOf("remind", "rappelle")
+
     /** "Stop YouTube", "close the Signal app", "arrête Chrome"; not "stop the timer", "stop talking" or "close the door". */
     private fun stopsAnApp(words: List<String>): Boolean = words.withIndex().any { (i, w) ->
         w in STOP_VERBS && i + 1 < words.size && (words[i + 1] !in NOT_AN_APP || words.drop(i + 1).any { it == "app" || it == "appli" || it == "application" })
@@ -209,12 +249,13 @@ object ToolRouter {
      * HelperSettings.localTool). remember and forget only with [memory] (0.7: Settings › Memory's main switch); web_search only
      * with [web] (0.9: Settings › Web search on and set up); a Termux tool only when in [termux] (0.9: Settings › Termux on,
      * set up, and that tool on); browser_search only with [browser] (1.0: the question names a search engine or the browser).
+     * 1.4: find_files and read_file only with [files] (Robot Files on, the phone unlocked, no phone lock).
      */
     fun tools(groups: Set<ToolGroup>, settings: RobotSettings, askHelper: Boolean = false, memory: Boolean = false, web: Boolean = false,
-        termux: Set<ToolName> = emptySet(), browser: Boolean = false): List<ToolName> = ToolName.entries.filter { t ->
+        termux: Set<ToolName> = emptySet(), browser: Boolean = false, files: Boolean = false): List<ToolName> = ToolName.entries.filter { t ->
         t.group in groups && t.forModel && settings.approval(t) != Approval.OFF && !(t == ToolName.SEND_TEXT && settings.textApp == TextApp.OFF) &&
             (t != ToolName.ASK_HELPER || askHelper) && (t.group != ToolGroup.MEMORY || memory) && (t != ToolName.WEB_SEARCH || web) && (!t.termux || t in termux) &&
-            (t != ToolName.BROWSER_SEARCH || browser)
+            (t != ToolName.BROWSER_SEARCH || browser) && (t.group != ToolGroup.FILES || files)
     }
 
     /** "core.people" for the logs (a fixed identifier, never the question). */

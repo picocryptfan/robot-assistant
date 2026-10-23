@@ -167,10 +167,10 @@ class FreeUpTest {
         assertEquals(listOf("YouTube", "Camera", "Files", "Calculator", "Chrome"), top.map { it.label })
         assertEquals(now - 5 * min, top[0].lastUsed)
         assertEquals("YouTube · used 5 min ago · 40 min on screen today", FreeUp.appChoice(top[0], now, fr = false))
-        assertEquals("YouTube · utilisée il y a 5 min · 40 min à l'écran aujourd'hui", FreeUp.appChoice(top[0], now, fr = true))
+        assertEquals("YouTube · utilisée il y a 5\u00A0min · 40\u00A0min à l’écran aujourd’hui", FreeUp.appChoice(top[0], now, fr = true))
         assertEquals("Camera · used 20 min ago", FreeUp.appChoice(top[1], now, fr = false))
         assertEquals("2 h 05 ago", FreeUp.ago(125 * min, fr = false))
-        assertEquals("à l'instant", FreeUp.ago(10_000, fr = true))
+        assertEquals("à l’instant", FreeUp.ago(10_000, fr = true))
         assertTrue(FreeUp.likelyInMemory(emptyList(), now).isEmpty())
     }
 
@@ -182,20 +182,21 @@ class FreeUpTest {
             "Apps you used lately that are likely still in memory: YouTube, Chrome and Maps. Tap one to open its App info, where you can force stop it. " +
             "Robot never stops an app itself, and Android frees memory by itself when it needs to.",
             FreeUp.advice(mem, 2_000_000_000, recent, now, fr = false))
-        assertEquals("5,1 Go libres sur 12 Go de mémoire. Décharger le modèle de Robot libère environ 2 Go tout de suite; il se recharge à la prochaine question. " +
-            "Les applis utilisées récemment, sans doute encore en mémoire : YouTube, Chrome et Maps. Touches-en une pour ouvrir sa page Infos sur l'appli, où tu peux forcer l'arrêt. " +
-            "Robot n'arrête jamais une appli lui-même, et Android libère de la mémoire tout seul quand il en a besoin.",
+        // 1.1: the same words, with French typography (core FrTypo: ’, a no-break space before ":" and the units, a narrow one before ";").
+        assertEquals("5,1\u00A0Go libres sur 12\u00A0Go de mémoire. Décharger le modèle de Robot libère environ 2\u00A0Go tout de suite\u202F; il se recharge à la prochaine question. " +
+            "Les applis utilisées récemment, sans doute encore en mémoire\u00A0: YouTube, Chrome et Maps. Touches-en une pour ouvrir sa page Infos sur l’appli, où tu peux forcer l’arrêt. " +
+            "Robot n’arrête jamais une appli lui-même, et Android libère de la mémoire tout seul quand il en a besoin.",
             FreeUp.advice(mem, 2_000_000_000, recent, now, fr = true))
         // Without Usage access: what it would add, and the button; the model not loaded; low memory said.
         val noAccess = FreeUp.advice(mem.copy(low = true), null, null, now, fr = false)
         assertTrue(noAccess, noAccess.startsWith("5.1 GB of 12 GB of memory is free (Android says memory is low). Robot's model isn't loaded now."))
         assertTrue(noAccess, noAccess.contains("With Usage access, Robot could also name the apps you used lately, so you can stop one: tap the button to turn it on."))
-        assertTrue(FreeUp.advice(mem, null, null, now, fr = true).contains("Avec l'accès aux données d'utilisation"))
+        assertTrue(FreeUp.advice(mem, null, null, now, fr = true).contains("Avec l’accès aux données d’utilisation"))
         assertTrue(FreeUp.advice(mem, null, emptyList(), now, fr = false).contains("No other app was used in the last 3 hours."))
         assertEquals("Unload Robot's model · about 2 GB", FreeUp.unloadChoice(2_000_000_000, fr = false))
-        assertEquals("Décharger le modèle de Robot · environ 4,1 Go", FreeUp.unloadChoice(4_100_000_000, fr = true))
-        assertEquals("340 Mo", FreeUp.sizeFr(340_000_000))
+        assertEquals("Décharger le modèle de Robot · environ 4,1\u00A0Go", FreeUp.unloadChoice(4_100_000_000, fr = true))
+        assertEquals("340\u00A0Mo", FreeUp.sizeFr(340_000_000))
         // Never a promise to stop anything: an app's info opens and you tap Force stop.
-        for (fr in listOf(false, true)) assertTrue(FreeUp.pickNote(fr).contains(if (fr) "Forcer l'arrêt" else "Force stop"))
+        for (fr in listOf(false, true)) assertTrue(FreeUp.pickNote(fr).contains(if (fr) "Forcer l’arrêt" else "Force stop"))
     }
 }

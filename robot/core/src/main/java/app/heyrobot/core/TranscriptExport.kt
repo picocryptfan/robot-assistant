@@ -1,50 +1,90 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.ConversationStrings
+import app.heyrobot.core.i18n.Fmt
+import app.heyrobot.core.i18n.Lang
+import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.i18n.Phrase
 import java.text.Normalizer
 import java.time.Instant
 import java.time.ZoneId
+import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 // Pure. A transcript as a Markdown or plain text file (docs/conversation-mode.md 6.3), made on demand when you export
 // or share it, and the search over transcripts (6.5): an accent- and case-insensitive scan now, the hooks 0.7 memory
-// will index through. Memory only ever sees a transcript you let Robot remember.
+// will index through. Memory only ever sees a transcript you let Robot remember. 1.1: an export is written in the menus'
+// language when you make it ([Langs], core ConversationStrings); the lines' times stay "14:03" in both, as the screens show
+// them, so a summary's [14:03] still points at its line.
 
 /** [translations]: a line's translations under it. [times]: the clock time of each line. [names]: names, or S1/S2. */
 data class ExportOptions(val translations: Boolean = true, val times: Boolean = true, val names: Boolean = true)
 
-object TranscriptExport {
-    const val CREDIT = "Transcribed on this phone by Robot (Parakeet v3)."
-    /** Translations by Robot's own model (the one chosen in Settings › Model, 0.4.1) or the fast engine. */
-    const val CREDIT_TRANSLATIONS = "Translations: Robot's model / Bergamot (marked \"fast\")."
+/**
+ * A transcript's dates in a language (1.1): "11 October 2026" / « 11 octobre 2026 », "11 Oct" / « 11 octobre », "14:02" /
+ * « 14 h 02 ». English is 1.0's, to the character; French takes core Fmt's month names and times.
+ */
+object TranscriptDates {
+    private val DAY_EN = DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.US)
+    private val DAY_MONTH_EN = DateTimeFormatter.ofPattern("d MMM", Locale.US)
+    private val HM = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
 
-    private val DAY = DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.US)
+    fun dayMonthYear(z: ZonedDateTime, lang: Lang): String = if (lang == Lang.FR) dayMonth(z, lang) + " " + z.year else DAY_EN.format(z)
+
+    /** « 11 octobre », « 1er octobre » (Fmt.day without its weekday). */
+    fun dayMonth(z: ZonedDateTime, lang: Lang): String =
+        if (lang == Lang.FR) Fmt.day(z.toLocalDate(), Lang.FR).substringAfter(' ') else DAY_MONTH_EN.format(z)
+
+    fun time(z: ZonedDateTime, lang: Lang): String = if (lang == Lang.FR) Fmt.clock(z.toLocalTime(), Lang.FR) else HM.format(z)
+}
+
+object TranscriptExport {
+    /** "Transcribed on this phone by Robot (Parakeet v3).", and [CREDIT] its English. */
+    val credit: Phrase get() = ConversationStrings.credit()
+    val CREDIT: String get() = credit.en()
+    /** Translations by Robot's own model (the one chosen in Settings › Model, 0.4.1) or the fast engine. */
+    val creditTranslations: Phrase get() = ConversationStrings.creditTranslations()
+    val CREDIT_TRANSLATIONS: String get() = creditTranslations.en()
+
     private val HM = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
     private val HMS = DateTimeFormatter.ofPattern("HH:mm:ss", Locale.US)
     private val FILE = DateTimeFormatter.ofPattern("yyyy-MM-dd HHmm", Locale.US)
 
-    private val LANG_NAMES = mapOf("fr" to "French", "en" to "English")
+    /** "French", "English" (« français », « anglais »); another language's code as it is. */
+    fun langNameText(lang: String): Phrase = when (lang) {
+        "fr" -> ConversationStrings.langFr()
+        "en" -> ConversationStrings.langEn()
+        else -> Phrase.plain(lang.uppercase(Locale.ROOT))
+    }
 
-    fun langName(lang: String): String = LANG_NAMES[lang] ?: lang.uppercase(Locale.ROOT)
+    /** [langNameText] in English. */
+    fun langName(lang: String): String = langNameText(lang).en()
 
     /** "FR", "FR?" (from the prior), "?" (not known). */
     fun langTag(l: TranscriptLine): String = l.lang?.let { it.uppercase(Locale.ROOT) + if (l.prior) "?" else "" } ?: "?"
 
-    fun speaker(t: Transcript, label: String, o: ExportOptions): String = if (o.names) t.nameOf(label) else label
+    fun speakerText(t: Transcript, label: String, o: ExportOptions): Phrase = if (o.names) t.nameText(label) else Phrase.plain(label)
 
-    /** "[microphone unavailable 14:03–14:07]". */
-    fun gapText(meta: TranscriptMeta, g: TranscriptGap, zone: ZoneId): String {
+    /** [speakerText] in English. */
+    fun speaker(t: Transcript, label: String, o: ExportOptions): String = speakerText(t, label, o).en()
+
+    /** "[microphone unavailable 14:03–14:07]" / « [micro indisponible 14:03–14:07] ». */
+    fun gapPhrase(meta: TranscriptMeta, g: TranscriptGap, zone: ZoneId): Phrase {
         val why = when (g.why) {
-            TranscriptEvent.GAP_MIC -> "microphone unavailable"
-            TranscriptEvent.GAP_PAUSE -> "paused"
-            TranscriptEvent.GAP_CALL -> "phone call"
-            TranscriptEvent.GAP_CRASH -> "stopped unexpectedly"
-            TranscriptEvent.GAP_BEHIND -> "not transcribed"
-            else -> "nothing recorded"
+            TranscriptEvent.GAP_MIC -> ConversationStrings.gapMic
+            TranscriptEvent.GAP_PAUSE -> ConversationStrings.gapPause
+            TranscriptEvent.GAP_CALL -> ConversationStrings.gapCall
+            TranscriptEvent.GAP_CRASH -> ConversationStrings.gapCrash
+            TranscriptEvent.GAP_BEHIND -> ConversationStrings.gapBehind
+            else -> ConversationStrings.gapOther
         }
-        return "[$why ${at(meta, g.t0, zone, HM)}–${at(meta, g.t1, zone, HM)}]"
+        return ConversationStrings.gap("why" to why(), "from" to at(meta, g.t0, zone, HM), "to" to at(meta, g.t1, zone, HM))
     }
+
+    /** [gapPhrase] in English. */
+    fun gapText(meta: TranscriptMeta, g: TranscriptGap, zone: ZoneId): String = gapPhrase(meta, g, zone).en()
 
     private fun at(meta: TranscriptMeta, seconds: Double, zone: ZoneId, f: DateTimeFormatter): String =
         f.format(Instant.ofEpochMilli(meta.createdAt + (seconds * 1000).toLong()).atZone(zone))
@@ -52,76 +92,88 @@ object TranscriptExport {
     /** The clock time of a moment of the session ("14:03"), for summaries and their [time] links. */
     fun clock(meta: TranscriptMeta, seconds: Double, zone: ZoneId): String = at(meta, seconds, zone, HM)
 
-    private fun header(meta: TranscriptMeta, t: Transcript, o: ExportOptions, zone: ZoneId): List<String> {
+    private fun header(meta: TranscriptMeta, t: Transcript, o: ExportOptions, zone: ZoneId, l: Langs): List<String> {
         val start = Instant.ofEpochMilli(meta.createdAt).atZone(zone)
         val endMs = if (meta.endedAt > meta.createdAt) meta.endedAt else meta.createdAt + (t.lines.maxOfOrNull { it.t1 } ?: 0.0).times(1000).toLong()
         val minutes = ((endMs - meta.createdAt) / 60_000).coerceAtLeast(0)
         val end = Instant.ofEpochMilli(endMs).atZone(zone)
         val speakers = t.speakers.joinToString(", ") { s ->
-            val shown = speaker(t, s, o)
+            val shown = speakerText(t, s, o).render(l)
             // "Marie (S1)", so a label in a summary or an older copy still points at someone; "You" for your enrolled voice.
             if (o.names && shown != s && s != SpeakerClusterer.ME) "$shown ($s)" else shown
         }
+        val langs = t.langs.joinToString(", ") { langNameText(it).render(l) }
         val translated = o.translations && t.lines.any { it.translations.isNotEmpty() }
-        return listOfNotNull(
-            "Date: ${DAY.format(start)}, ${HM.format(start)}–${HM.format(end)} ($minutes min)",
-            "Speakers: ${speakers.ifEmpty { "none" }}",
-            "Languages: ${t.langs.joinToString(", ") { langName(it) }.ifEmpty { "none" }}",
-            CREDIT + if (translated) " $CREDIT_TRANSLATIONS" else "",
-        )
+        return listOf(
+            ConversationStrings.headerDate("day" to TranscriptDates.dayMonthYear(start, l.say), "from" to HM.format(start), "to" to HM.format(end),
+                "min" to minutes.toString()),
+            ConversationStrings.headerSpeakers("list" to speakers.ifEmpty { ConversationStrings.noSpeakers().render(l) }),
+            ConversationStrings.headerLanguages("list" to langs.ifEmpty { ConversationStrings.noLanguages().render(l) }),
+            if (translated) Phrase.join(credit, creditTranslations) else credit,
+        ).map { it.render(l) }
     }
 
     /** Lines and gaps in time order. */
     private fun items(t: Transcript): List<Any> = (t.lines.map { it.t0 to it } + t.gaps.map { it.t0 to it }).sortedBy { it.first }.map { it.second }
 
-    fun markdown(meta: TranscriptMeta, t: Transcript, o: ExportOptions = ExportOptions(), zone: ZoneId = ZoneId.systemDefault()): String = buildString {
-        append("# ").append(md(meta.title.ifBlank { "Conversation" })).append("\n\n")
-        for (h in header(meta, t, o, zone)) append("- ").append(md(h)).append('\n')
-        for (x in items(t)) {
-            append('\n')
-            when (x) {
-                is TranscriptGap -> append('*').append(md(gapText(meta, x, zone))).append("*\n")
-                is TranscriptLine -> {
-                    append("**")
-                    if (o.times) append("[").append(at(meta, x.t0, zone, HMS)).append("] ")
-                    append(md(speaker(t, x.speaker, o))).append(" (").append(langTag(x)).append("):** ").append(md(x.text))
-                    if (x.edited) append(" _(edited)_")
-                    append('\n')
-                    if (o.translations) for (tr in x.translations.values) {
-                        append("> ").append(tr.to.uppercase(Locale.ROOT)).append(": ").append(md(tr.text))
-                        if (tr.fast) append(" _(fast)_")
+    /** The export as Markdown, its words in [l] (the menus' language when you export it; English by default). */
+    fun markdown(meta: TranscriptMeta, t: Transcript, o: ExportOptions = ExportOptions(), zone: ZoneId = ZoneId.systemDefault(), l: Langs = Langs.EN): String =
+        buildString {
+            val edited = ConversationStrings.edited().render(l)
+            val fast = ConversationStrings.fast().render(l)
+            append("# ").append(md(meta.title.ifBlank { ConversationStrings.titleDefault().render(l) })).append("\n\n")
+            for (h in header(meta, t, o, zone, l)) append("- ").append(md(h)).append('\n')
+            for (x in items(t)) {
+                append('\n')
+                when (x) {
+                    is TranscriptGap -> append('*').append(md(gapPhrase(meta, x, zone).render(l))).append("*\n")
+                    is TranscriptLine -> {
+                        append("**")
+                        if (o.times) append("[").append(at(meta, x.t0, zone, HMS)).append("] ")
+                        append(md(speakerText(t, x.speaker, o).render(l))).append(" (").append(langTag(x)).append("):** ").append(md(x.text))
+                        if (x.edited) append(" _(").append(edited).append(")_")
                         append('\n')
+                        if (o.translations) for (tr in x.translations.values) {
+                            append("> ").append(tr.to.uppercase(Locale.ROOT)).append(": ").append(md(tr.text))
+                            if (tr.fast) append(" _(").append(fast).append(")_")
+                            append('\n')
+                        }
                     }
                 }
             }
         }
-    }
 
-    fun text(meta: TranscriptMeta, t: Transcript, o: ExportOptions = ExportOptions(), zone: ZoneId = ZoneId.systemDefault()): String = buildString {
-        append(meta.title.ifBlank { "Conversation" }).append('\n')
-        for (h in header(meta, t, o, zone)) append(h).append('\n')
-        for (x in items(t)) {
-            append('\n')
-            when (x) {
-                is TranscriptGap -> append(gapText(meta, x, zone)).append('\n')
-                is TranscriptLine -> {
-                    if (o.times) append("[").append(at(meta, x.t0, zone, HMS)).append("] ")
-                    append(speaker(t, x.speaker, o)).append(" (").append(langTag(x)).append("): ").append(x.text)
-                    if (x.edited) append(" (edited)")
-                    append('\n')
-                    if (o.translations) for (tr in x.translations.values) {
-                        append("    ").append(tr.to.uppercase(Locale.ROOT)).append(": ").append(tr.text)
-                        if (tr.fast) append(" (fast)")
+    /** The export as plain text, its words in [l]. */
+    fun text(meta: TranscriptMeta, t: Transcript, o: ExportOptions = ExportOptions(), zone: ZoneId = ZoneId.systemDefault(), l: Langs = Langs.EN): String =
+        buildString {
+            val edited = ConversationStrings.edited().render(l)
+            val fast = ConversationStrings.fast().render(l)
+            append(meta.title.ifBlank { ConversationStrings.titleDefault().render(l) }).append('\n')
+            for (h in header(meta, t, o, zone, l)) append(h).append('\n')
+            for (x in items(t)) {
+                append('\n')
+                when (x) {
+                    is TranscriptGap -> append(gapPhrase(meta, x, zone).render(l)).append('\n')
+                    is TranscriptLine -> {
+                        if (o.times) append("[").append(at(meta, x.t0, zone, HMS)).append("] ")
+                        append(speakerText(t, x.speaker, o).render(l)).append(" (").append(langTag(x)).append("): ").append(x.text)
+                        if (x.edited) append(" (").append(edited).append(")")
                         append('\n')
+                        if (o.translations) for (tr in x.translations.values) {
+                            append("    ").append(tr.to.uppercase(Locale.ROOT)).append(": ").append(tr.text)
+                            if (tr.fast) append(" (").append(fast).append(")")
+                            append('\n')
+                        }
                     }
                 }
             }
         }
-    }
 
-    /** "Transcript 2026-10-11 1402.md". */
-    fun fileName(meta: TranscriptMeta, extension: String, zone: ZoneId = ZoneId.systemDefault()): String =
-        "Transcript " + FILE.format(Instant.ofEpochMilli(meta.createdAt).atZone(zone)) + "." + extension
+    /** "Transcript 2026-10-11 1402.md" / « Transcription 2026-10-11 1402.md ». */
+    fun fileName(meta: TranscriptMeta, extension: String, zone: ZoneId = ZoneId.systemDefault(), l: Langs = Langs.EN): String {
+        val name = ConversationStrings.fileName("stamp" to FILE.format(Instant.ofEpochMilli(meta.createdAt).atZone(zone))).render(l)
+        return "$name.$extension"
+    }
 
     /**
      * Words people said, safe in Markdown: the characters that would start emphasis, a link, code or HTML are escaped,

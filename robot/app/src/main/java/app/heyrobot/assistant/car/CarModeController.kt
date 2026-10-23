@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.assistant.car
 
-import app.heyrobot.core.output.SpokenLang
+import app.heyrobot.core.car.CarWhy
+import app.heyrobot.lock.LockSignals
+import app.heyrobot.core.i18n.HandsFreeStrings
+import app.heyrobot.core.i18n.Lang
 import app.heyrobot.core.Playback
 import app.heyrobot.core.headset.EntryKind
 import app.heyrobot.core.output.SessionKind
@@ -44,7 +47,7 @@ import app.heyrobot.sys.AudioDevices
 import app.heyrobot.sys.HandsFreeFiles
 import app.heyrobot.voice.SessionRoute
 
-// VOICE PROCESS (0.8). Car mode (design §4.6, §4.8 CarModeController): core's CarModeMachine decides, this carries it out.
+// VOICE PROCESS (0.8). Car mode: core's CarModeMachine decides, this carries it out.
 // Your car connecting (the device list, while car mode is on in Settings and a car is added) starts it in under a
 // second; it ends 30 s after the car goes. On: the speaking service in the foreground with the car's notification
 // (routines' RoutineSpeakingService, mediaPlayback: car mode speaks with the screen off for the whole drive), "Car mode
@@ -73,7 +76,7 @@ object CarModeController {
 
     private val settings: CarSettings get() = HandsFreeFiles.store(app).carSettings()
 
-    val END_TEXT = Line("Ending car mode.", "Fin du mode auto.")
+    val END_TEXT = Line(HandsFreeStrings.endingCar())
 
     /** HandsFreeHub.reload: Settings changed (car mode turned off ends it), and the devices are read again. */
     fun reload() {
@@ -155,7 +158,11 @@ object CarModeController {
                 VoiceLog.add(VoiceEvent.CAR_TRUSTED, if (e.on) 1 else 0, e.why.id)
                 RoutineSpeakingService.refreshCar()
             }
-            is CarEffect.Logged -> VoiceLog.add(VoiceEvent.CAR_MODE, if (e.on) 1 else 0, e.why.id)
+            is CarEffect.Logged -> {
+                VoiceLog.add(VoiceEvent.CAR_MODE, if (e.on) 1 else 0, e.why.id)
+                // 1.1, Phone lock (§9.3): only car mode your remembered car started counts, never one you asked for.
+                LockSignals.car(app, e.on, e.on && state.startedBy == CarWhy.CAR_CONNECTED && state.car != null)
+            }
             is CarEffect.WakeAt -> main.postDelayed({ input(CarInput.Tick(now())) }, (e.at - now()).coerceAtLeast(0) + 50)
         }
     }
@@ -252,7 +259,7 @@ object CarVoice {
 }
 
 /**
- * "Do Not Disturb while driving" (off, design §4.5 flow 5): Robot's own "Driving (Robot)" rule of TYPE_DRIVING, made
+ * "Do Not Disturb while driving" (off): Robot's own "Driving (Robot)" rule of TYPE_DRIVING, made
  * once and switched with car mode; your own override wins, as Android does. Only with Do Not Disturb access, which you
  * grant from Settings › Car mode's row; without it nothing happens.
  */
@@ -282,7 +289,8 @@ object CarDnd {
     private fun ruleId(ctx: Context, nm: NotificationManager): String {
         val prefs = ctx.getSharedPreferences("car", Context.MODE_PRIVATE)
         prefs.getString(PREF, null)?.takeIf { nm.getAutomaticZenRule(it) != null }?.let { return it }
-        val name = if (HandsFreeHub.lang == SpokenLang.FR) "Conduite (Robot)" else "Driving (Robot)"
+        // Android's Do Not Disturb settings list it: the menus' language.
+        val name = HandsFreeStrings.drivingRobot().render(HandsFreeHub.screen)
         val rule = AutomaticZenRule.Builder(name, condition(ctx))
             .setType(AutomaticZenRule.TYPE_DRIVING)
             .setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_PRIORITY)

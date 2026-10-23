@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import app.heyrobot.R
 import app.heyrobot.core.ActionStatus
 import app.heyrobot.core.Attachment
 import app.heyrobot.core.ToolName

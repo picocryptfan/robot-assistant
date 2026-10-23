@@ -215,7 +215,7 @@ object UpdateFilesNames {
      * continued with a Range request only ever continues the same file: an APK replaced on GitHub (a new id) starts over.
      */
     fun part(version: String, apkId: Long): String {
-        require(apkId > 0) { "not a release file" }
+        require(apkId > 0) { "not a release file" } // l10n: not text (a developer's error)
         return apk(version) + "." + apkId + PART
     }
 }

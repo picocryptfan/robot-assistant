@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.memory
 
-// Pure. What looks like a secret (design §A10): a PIN or NIP, a password or mot de passe, a door code, a card, SIN/NAS,
+import app.heyrobot.core.i18n.Lang
+import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.i18n.MemoryStrings
+import app.heyrobot.core.i18n.Msg
+import app.heyrobot.core.i18n.Phrase
+
+// Pure. What looks like a secret: a PIN or NIP, a password or mot de passe, a door code, a card, SIN/NAS,
 // passport or account number, a recovery phrase or an API key, and any long run of digits that isn't a phone number. An
 // item that looks like one is still saved (no refusal), but marked secret: shown only on screen after unlock, never
 // spoken unless you ask for it by name, never put in a prompt unless the question names it, never pinned, and never sent
@@ -9,16 +15,24 @@ package app.heyrobot.core.memory
 // read aloud), a miss costs more, so the words are generous; numbers that are clearly not secrets ("Room 1203", a date,
 // a phone number, an area or postal code) are left alone.
 
-/** What kind of secret a text holds, with what Robot says instead of it ("Remember: [a code, kept in Memory]"). */
-enum class SecretKind(val en: String, val fr: String) {
-    PASSWORD("a password", "un mot de passe"),
-    PIN("a PIN", "un NIP"),
-    CODE("a code", "un code"),
-    CARD("a card number", "un numéro de carte"),
-    ID_NUMBER("an ID number", "un numéro d'identité"),
-    ACCOUNT("an account number", "un numéro de compte"),
-    KEY("a key", "une clé"),
-    LONG_NUMBER("a long number", "un long numéro"),
+/**
+ * What kind of secret a text holds, with what Robot says instead of it ("Remember: [a code, kept in Memory]"). 1.1: its
+ * words are core i18n's ([MemoryStrings]); [en] and [fr] render them.
+ */
+enum class SecretKind(private val msg: Msg) {
+    PASSWORD(MemoryStrings.secretPassword),
+    PIN(MemoryStrings.secretPin),
+    CODE(MemoryStrings.secretCode),
+    CARD(MemoryStrings.secretCard),
+    ID_NUMBER(MemoryStrings.secretId),
+    ACCOUNT(MemoryStrings.secretAccount),
+    KEY(MemoryStrings.secretKey),
+    LONG_NUMBER(MemoryStrings.secretLongNumber);
+
+    /** "a code", « un code », without a language yet. */
+    val text: Phrase get() = msg()
+    val en: String get() = text.en()
+    val fr: String get() = text.render(Langs.of(Lang.FR))
 }
 
 object SecretDetector {
@@ -113,8 +127,12 @@ object SecretDetector {
     }
 
     /** What Robot keeps or says instead of a secret ("[a code, kept in Memory]"), in English or French. */
-    fun placeholder(kinds: Set<SecretKind>, fr: Boolean = false): String {
-        val k = SecretKind.entries.firstOrNull { it in kinds } ?: SecretKind.CODE
-        return if (fr) "[${k.fr}, gardé en mémoire]" else "[${k.en}, kept in Memory]"
-    }
+    fun placeholder(kinds: Set<SecretKind>, fr: Boolean = false): String =
+        placeholderText(kinds).render(if (fr) Langs.of(Lang.FR) else Langs.EN)
+
+    /** [placeholder] in words without a language yet. */
+    fun placeholderText(kinds: Set<SecretKind>): Phrase = MemoryStrings.secretPlaceholder("kind" to kindOf(kinds).text)
+
+    /** The kind a placeholder names: the first of [kinds] in [SecretKind]'s order, a code when none. */
+    fun kindOf(kinds: Set<SecretKind>): SecretKind = SecretKind.entries.firstOrNull { it in kinds } ?: SecretKind.CODE
 }

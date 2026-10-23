@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.ui.settings
 
+import app.heyrobot.core.i18n.UiStrings
+import app.heyrobot.ui.theme.str
 import androidx.compose.runtime.Composable
 import app.heyrobot.BuildConfig
 import app.heyrobot.R
@@ -13,31 +15,32 @@ import app.heyrobot.ui.pref.PreferenceScreen
 import app.heyrobot.ui.pref.preferenceFooter
 import app.heyrobot.ui.pref.preferenceGroup
 
-// MAIN PROCESS. Settings › About (0.4.x redesign): the version, the setup guide (1.0), Updates (the built-in updater, 0.6.0), Send feedback (0.7)
-// and the Licences (0.4.5), and room for more rows in the same group.
+// MAIN PROCESS. Settings › About (0.4.x redesign): the version, the setup guide (1.0), Updates (the built-in updater, 0.6.0), Send feedback (0.7),
+// Support Robot (1.1) and the Licences (0.4.5), and room for more rows in the same group.
 
 @Composable
 fun AboutSettingsScreen(a: AppActions, onBack: () -> Unit) {
-    PreferenceScreen("About", onBack) {
+    val footer = stringResource(R.string.about_footer)
+    val trademark = stringResource(R.string.about_trademark)
+    PreferenceScreen(UiStrings.about().str(), onBack) {
         preferenceGroup(null, "about") {
-            PreferenceItem("Version", "Robot™ ${BuildConfig.VERSION_NAME}")
+            PreferenceItem(stringResource(R.string.about_version), "Robot™ ${BuildConfig.VERSION_NAME}") // l10n: not text (the app's name and version)
             // 1.0: the setup guide again, where Finish later left it or from Welcome.
             PreferenceItem(stringResource(R.string.guide_about_row), stringResource(R.string.guide_about_detail), onClick = a.openGuide)
             // The built-in updater (0.6.0): an update on offer, or when Robot last checked.
             UpdatesEntry(a)
             // 0.7: a bug report or an idea, as plain text you send with the app you choose.
-            PreferenceItem("Send feedback", "A bug or an idea, to the developer: you choose the app it goes with",
+            PreferenceItem(UiStrings.sendFeedback().str(), stringResource(R.string.about_feedback_detail),
                 onClick = { a.openPage(Page.Settings(SettingsRoutes.feedback(FeedbackEntry.ABOUT))) })
-            PreferenceItem("Licences", "Robot's licence and source code, and every part it uses with its licence and notices",
+            // 1.1: Ko-fi and the donation addresses.
+            PreferenceItem(stringResource(R.string.about_support_title), stringResource(R.string.about_support_detail),
+                onClick = { a.openPage(Page.Settings(SettingsRoutes.SUPPORT)) })
+            PreferenceItem(UiStrings.licences().str(), stringResource(R.string.about_licences_detail),
                 onClick = { a.openPage(Page.Licences) })
             // More rows of About go here, one line each.
         }
-        preferenceFooter(
-            "Free software under the GNU GPL version 3, with NO WARRANTY. It uses LiteRT-LM, sherpa-onnx with espeak-ng, ONNX Runtime, " +
-                "Jetpack Compose and more, and downloads models such as Gemma 4 and Parakeet when you ask: each with its licence, " +
-                "credits and notices under Licences.",
-        )
+        preferenceFooter(footer)
         // Trademark claim (13 Oct 2026): unregistered marks, so ™ and never ®.
-        preferenceFooter("Robot™ and Robot Assistant™ are trademarks of the Robot project.", "trademark")
+        preferenceFooter(trademark, "trademark")
     }
 }

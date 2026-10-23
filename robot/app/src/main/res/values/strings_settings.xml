@@ -1,0 +1,262 @@
+<!-- Settings' pages (the l10n work package WP8): ids start with settings_, safety_, about_, display_, actions_,
+     history_, and the French is in values-fr-rCA/strings_settings.xml. 1.1 split strings.xml into one file per area,
+     ids and texts unchanged. -->
+<resources>
+    <!-- Settings' root: the rows' states that aren't core's (the titles are core UiStrings, the other states SettingsStrings). -->
+    <string name="settings_root_weather_home">Home: %1$s</string>
+    <string name="settings_root_weather_none">No home set</string>
+    <string name="settings_root_history_on">Saving conversations</string>
+    <string name="settings_root_history_off">Not saving conversations</string>
+    <string name="settings_root_setup_checking">Checking…</string>
+    <string name="settings_root_setup_attention">Needs attention</string>
+    <string name="settings_root_setup_ok">Robot is your assistant</string>
+    <string name="settings_root_advanced">ADB fixes, voice log</string>
+    <string name="settings_problem">Problem</string>
+    <!-- Settings › About (the version, the guide, Updates, Send feedback, Licences). -->
+    <string name="about_version">Version</string>
+    <string name="about_trademark">Robot™ and Robot Assistant™ are trademarks of the Robot project.</string>
+    <string name="about_feedback_detail">A bug or an idea, to the developer: you choose the app it goes with</string>
+    <string name="about_licences_detail">Robot\'s licence and source code, and every part it uses with its licence and notices</string>
+    <string name="about_footer">Free software under the GNU GPL version 3, with NO WARRANTY. It uses LiteRT-LM, sherpa-onnx with espeak-ng, ONNX Runtime, Jetpack Compose and more, and downloads models such as Gemma 4 and Parakeet when you ask: each with its licence, credits and notices under Licences.</string>
+    <!-- Settings › Advanced. -->
+    <string name="settings_advanced_adb_detail">One-time fixes with a computer, such as staying the assistant after a restart</string>
+    <string name="settings_advanced_log_detail">What the voice side did, for when Robot didn\'t respond</string>
+    <string name="settings_advanced_footer">The voice log keeps no words and no audio, only what happened and how long it took.</string>
+    <!-- Settings › Display. -->
+    <string name="display_colours">Colours</string>
+    <string name="display_wallpaper">Use wallpaper colours</string>
+    <string name="display_wallpaper_on">Match your wallpaper</string>
+    <string name="display_wallpaper_off">Robot\'s blue</string>
+    <string name="display_footer">Light or dark follows your phone.</string>
+    <!-- Settings › History. -->
+    <string name="history_save">Save conversations</string>
+    <string name="history_media">Screenshots and photos</string>
+    <string name="history_media_kept">Kept with the conversations</string>
+    <string name="history_media_not_kept">Not kept</string>
+    <string name="history_delete_all">Delete all conversations</string>
+    <string name="history_delete_all_detail">Everything in History</string>
+    <string name="history_footer_media">Kept in Robot\'s private storage on this phone; a conversation about your screen only once you tap Keep. Thumbnails and screen text are kept too (Safety &amp; privacy).</string>
+    <string name="history_footer_no_media">Kept in Robot\'s private storage on this phone; a conversation about your screen only once you tap Keep. Photos and screen contents aren\'t saved (Safety &amp; privacy).</string>
+    <string name="history_delete_title">Delete all conversations?</string>
+    <string name="history_delete_text">This can\'t be undone.</string>
+    <string name="history_delete_confirm">Delete all</string>
+    <!-- The settings pages' frame (ui/pref): the top bar's Back and a status row's symbol, named for TalkBack. -->
+    <string name="settings_back">Back</string>
+    <string name="settings_status_done">Done</string>
+    <string name="settings_status_todo">To do</string>
+    <!-- Settings › Actions: what each level means, the groups, "Find the nearest place online" and its search server, the footer. -->
+    <string name="actions_intro">What Robot may do when you ask.</string>
+    <string name="actions_auto_detail">Robot does it at once (Safety &amp; privacy may still show a card)</string>
+    <string name="actions_ask_detail">A card first: you confirm or cancel</string>
+    <string name="actions_off_detail">Robot doesn\'t do it</string>
+    <string name="actions_group_core">Timers, apps and maps</string>
+    <string name="actions_group_people">Texts, calls and email</string>
+    <string name="actions_group_notes">Notes</string>
+    <string name="actions_group_calendar">Calendar</string>
+    <string name="actions_group_weather">Weather and the phone</string>
+    <string name="actions_group_web">Web</string>
+    <string name="actions_nearest">Find the nearest place online</string>
+    <string name="actions_server_default">OpenStreetMap\'s Nominatim (%1$s)</string>
+    <string name="actions_server_field">Nominatim server</string>
+    <string name="actions_server_hint">Its address, such as nominatim.example.org. Encrypted (HTTPS) only. Empty: OpenStreetMap\'s.</string>
+    <string name="actions_server_reset">Reset to OpenStreetMap\'s</string>
+    <string name="actions_server_reset_detail">Use %1$s again</string>
+    <string name="actions_footer_locked">On the lock screen: %1$s; everything else asks you to unlock. When “Just do it” still shows a card (after Robot read something, a name it isn\'t sure of, a helper\'s requests) is in Safety &amp; privacy.</string>
+    <string name="actions_footer_helper_cards">Anything a helper asks Robot to do always shows a card first.</string>
+    <string name="actions_footer_helper_levels">A helper\'s requests follow the levels above and When Robot asks first.</string>
+    <string name="actions_footer_nearest">Find the nearest place online: for “directions to the nearest pharmacy”, what would go is the words and your area (about 1 km), to %1$s.</string>
+    <string name="actions_footer_maps_off">Maps search and directions are Off.</string>
+    <string name="actions_footer_default_server">The search server is OpenStreetMap\'s Nominatim (%1$s), the default; to use another Nominatim, such as your own, type its address.</string>
+    <string name="actions_footer_own_server">%1$s: the words and your area go to this server instead of OpenStreetMap\'s.</string>
+    <!-- Settings › Assistant setup: is Robot the digital assistant and does it stay one, the permissions, People, notes and calendar's, the helpers', the footer. -->
+    <string name="settings_setup_tools">Weather and phone status</string>
+    <string name="settings_setup_assistant">Assistant</string>
+    <string name="settings_setup_role">Robot is the digital assistant</string>
+    <string name="settings_setup_role_ok">Android lists Robot as your assistant</string>
+    <string name="settings_setup_role_todo">Pick Robot in %1$s</string>
+    <string name="settings_setup_running">The assistant is running</string>
+    <string name="settings_setup_running_ok">The corner swipe and “hey robot” open Robot</string>
+    <string name="settings_setup_running_lost">Android chose Robot but isn\'t running it. This happens after a restart: pick Robot again.</string>
+    <string name="settings_setup_not_yet">Not yet</string>
+    <string name="settings_setup_unknown">Android didn\'t say</string>
+    <string name="settings_setup_screen">Screen sharing</string>
+    <string name="settings_setup_screen_open">Open the assistant\'s screen settings</string>
+    <string name="settings_setup_recognizer">Default speech recognizer</string>
+    <string name="settings_setup_recognizer_ok">Set to Robot, so Android keeps Robot as the assistant after a restart</string>
+    <string name="settings_setup_survives">Survives restarts</string>
+    <string name="settings_setup_survives_yes">Yes: Robot is the speech recognizer, so Android keeps it the assistant.</string>
+    <string name="settings_setup_survives_no">Not yet: Android may turn Robot off at the next restart. A one-time fix with a computer solves it.</string>
+    <string name="settings_setup_survives_other">Probably: another app\'s speech recognizer is set, which should keep Robot the assistant too. Robot leaves it as it is.</string>
+    <string name="settings_setup_keeps_itself">Robot keeps this set itself.</string>
+    <string name="settings_setup_fix">Fix</string>
+    <string name="settings_setup_fix_label">Fix it with ADB fixes</string>
+    <string name="settings_setup_listening">Listening for wake words</string>
+    <string name="settings_setup_yes">Yes</string>
+    <string name="settings_setup_no">No</string>
+    <string name="settings_setup_listening_later">Starts when Robot is the running assistant</string>
+    <string name="settings_setup_android">Assistant settings</string>
+    <string name="settings_setup_android_detail">Android\'s Digital assistant app page</string>
+    <string name="settings_setup_test">Test</string>
+    <string name="settings_setup_test_label">Test the headset button</string>
+    <string name="settings_setup_permissions">Permissions</string>
+    <string name="settings_setup_mic">Microphone</string>
+    <string name="settings_setup_allowed">Allowed</string>
+    <string name="settings_setup_mic_todo">Needed for wake words and voice questions</string>
+    <string name="settings_setup_mic_allow">Allow the microphone</string>
+    <string name="settings_setup_notifications">Notifications</string>
+    <string name="settings_setup_notifications_todo">Needed for the restart reminder</string>
+    <string name="settings_setup_notifications_allow">Allow notifications</string>
+    <string name="settings_setup_adb_detail">Make Robot stay the assistant after a restart</string>
+    <string name="settings_setup_footer_restart">After a restart: Android 17 keeps a non-system assistant across a restart only when a default speech recognizer is set, and it never picks one from an app like Robot by itself. GrapheneOS has no screen to choose one. So after a restart, Android may quietly turn Robot off as your assistant. Robot checks 3 minutes after every restart. If it was turned off, you get a notification: tap it, choose “Digital assistant app” and pick Robot again. To make it stay, use the one-time fix in %1$s.</string>
+    <string name="settings_setup_footer_people">People, notes and calendar: Robot asks for these only when you tap Allow. What it reads stays on the phone; texts and emails open as drafts and you press Send.</string>
+    <string name="settings_setup_footer_cheogram">Optional: Settings › People can learn names from your messaging app\'s notifications. It is off, and needs no access while it is off.</string>
+    <string name="settings_setup_footer_helpers">Helpers: Robot uses the network for four things only: downloading its models, a helper when you ask for one, the weather (Open-Meteo) when you ask for it, and your own AI server, if you add one.</string>
+    <string name="settings_setup_contacts">Contacts</string>
+    <string name="settings_setup_contacts_ok">Allowed: Robot finds the person you name</string>
+    <string name="settings_setup_contacts_todo">To text or email someone by name, and to look up a number</string>
+    <string name="settings_setup_contacts_allow">Allow contacts</string>
+    <string name="settings_setup_calendar">Calendar</string>
+    <string name="settings_setup_calendar_ok">Allowed: Robot reads your events and adds new ones</string>
+    <string name="settings_setup_calendar_todo">To read your events and add new ones (without it, your calendar app opens to add one)</string>
+    <string name="settings_setup_calendar_allow">Allow the calendar</string>
+    <string name="settings_setup_cheogram_ok">Installed: texts open there as drafts</string>
+    <string name="settings_setup_cheogram_todo">Not installed: texts use the SMS app</string>
+    <string name="settings_setup_proton_ok">Installed: emails open there as drafts</string>
+    <string name="settings_setup_proton_todo">Not installed: Android asks which email app to use</string>
+    <string name="settings_setup_cheogram_notifications">Message notifications</string>
+    <string name="settings_setup_cheogram_notifications_ok">Notification access allowed: Robot keeps who messages you, never the text</string>
+    <string name="settings_setup_cheogram_notifications_todo">Needs notification access: three steps</string>
+    <string name="settings_setup_no_ask">Android doesn\'t ask?</string>
+    <string name="settings_setup_app_settings">Open Robot\'s app settings</string>
+    <string name="settings_setup_network">Network</string>
+    <string name="settings_setup_network_ok">Allowed, as Android reports it. If a helper says “No internet” while you\'re online, check Robot\'s Network permission.</string>
+    <string name="settings_setup_network_off">Turned off for Robot: no helper can be reached</string>
+    <string name="settings_setup_key">%1$s API key</string>
+    <string name="settings_setup_key_none_app">None: questions open the %1$s app instead (Settings › Helpers › %2$s)</string>
+    <string name="settings_setup_key_none">None (Settings › Helpers › %1$s)</string>
+    <string name="settings_setup_helper_app">%1$s app</string>
+    <string name="settings_setup_not_installed">Not installed</string>
+    <string name="settings_setup_claude_clipboard">Installed. Robot opens the app and puts your question on the clipboard.</string>
+    <string name="settings_setup_claude_ways">Installed · opens with: %1$s</string>
+    <string name="settings_setup_way_app">claude:// link</string>
+    <string name="settings_setup_way_web">claude.ai link</string>
+    <string name="settings_setup_way_share">share</string>
+    <plurals name="settings_setup_recognizer_none">
+        <item quantity="one">Not set to Robot (none set; %1$d installed). After a restart Android may turn Robot off.</item>
+        <item quantity="other">Not set to Robot (none set; %1$d installed). After a restart Android may turn Robot off.</item>
+    </plurals>
+    <plurals name="settings_setup_recognizer_other">
+        <item quantity="one">Not set to Robot (another app; %1$d installed). After a restart Android may turn Robot off.</item>
+        <item quantity="other">Not set to Robot (another app; %1$d installed). After a restart Android may turn Robot off.</item>
+    </plurals>
+    <plurals name="settings_setup_recognizer_other_kept">
+        <item quantity="one">Set to another app (%1$d installed). Android should keep Robot as the assistant with it too.</item>
+        <item quantity="other">Set to another app (%1$d installed). Android should keep Robot as the assistant with it too.</item>
+    </plurals>
+    <!-- Settings › Weather and Assistant setup › Weather and phone status (ToolsSettings). -->
+    <string name="settings_weather_home">Home for weather</string>
+    <string name="settings_weather_not_set">Not set</string>
+    <string name="settings_weather_footer">Robot gets the weather from Open-Meteo (open-meteo.com) over the internet, with no account and no key. Only the place goes: a town you name, your Home for weather, or where the phone is, rounded to about 1 km. °F in the United States, Liberia and Myanmar (by the phone region), °C elsewhere.\n\nThe Home for weather is used when Robot can\'t tell where you are. It is looked up once with Open-Meteo when you save it, then kept on the phone.</string>
+    <string name="settings_weather_saved">Home for weather: %1$s.</string>
+    <string name="settings_weather_failed">Robot couldn\'t look that up.</string>
+    <string name="settings_weather_now">Now: %1$s (%2$s, %3$s)</string>
+    <string name="settings_weather_town">Town</string>
+    <string name="settings_weather_another_town">Another town</string>
+    <string name="settings_weather_town_hint">A town, like Montreal or Paris, Texas.</string>
+    <string name="settings_weather_look_up">Look up</string>
+    <string name="settings_weather_clear">Clear</string>
+    <string name="settings_location">Location (optional)</string>
+    <string name="settings_location_ok">Allowed, approximate only (about 1 km)</string>
+    <string name="settings_location_todo">For “the weather here” and “the nearest …”</string>
+    <string name="settings_usage">Usage access (optional)</string>
+    <string name="settings_usage_ok">On: Robot can tell which apps use the most space</string>
+    <string name="settings_usage_todo">So Robot can tell which apps use the most space</string>
+    <string name="settings_media">Photos and videos (optional)</string>
+    <string name="settings_media_partial">Only the ones you picked</string>
+    <string name="settings_media_ok">Allowed: Robot can show your largest ones</string>
+    <string name="settings_media_todo">So Robot can show your largest ones to free storage</string>
+    <string name="settings_tools_note">Weather and phone status are all optional. The weather comes from Open-Meteo over the internet; your phone\'s status is read on the phone and never leaves it. Location is approximate only: “the weather here” and “the nearest pharmacy” use where the phone is, rounded to about 1 km; without it, Robot uses your Home for weather and your maps app\'s search. You turn Usage access on for Robot in Android\'s settings. Photos and videos: to free storage, Robot can show your largest ones (only the ones you picked, if you chose that; allow again to pick more, or all), and Android asks before any is deleted. Robot doesn\'t ask for All files access: Android clears apps\' caches by itself when space runs low, and each app\'s info page clears its own.</string>
+    <!-- Settings › Safety & privacy: when Robot asks first, the lock screen, what helpers may get, direct answers, what History keeps. -->
+    <string name="safety_intro">How careful Robot is. Each action\'s own level (Just do it, Ask first, Off) is in Settings › Actions; these rules decide when “Just do it” still shows a card first.</string>
+    <string name="safety_cards">Cards</string>
+    <string name="safety_when_asks">When Robot asks first</string>
+    <string name="safety_helper_cards">Card when a helper asks Robot to do something</string>
+    <string name="safety_helper_cards_detail">A helper\'s input may come from web pages</string>
+    <string name="safety_who_cards">Card when who-to isn\'t certain</string>
+    <string name="safety_who_cards_detail">Several matches, a near match, or a number the model wrote</string>
+    <string name="safety_learned_cards">Card for names learned from notifications</string>
+    <string name="safety_learned_cards_detail">Whoever sent the message chose that name</string>
+    <string name="safety_voice_cards">Answer cards by voice</string>
+    <string name="safety_voice_cards_detail">Say yes or no while a card waits</string>
+    <string name="safety_delete_cards">Card before deleting files</string>
+    <string name="safety_delete_cards_detail">Large photos and videos, and Robot\'s cache</string>
+    <string name="safety_locked">Works on the lock screen</string>
+    <string name="safety_locked_default">On by default</string>
+    <string name="safety_locked_reset">Back to timers and alarms</string>
+    <string name="safety_locked_reset_detail">Only the default actions work locked</string>
+    <string name="safety_personal_on">Screen text, photos and what Robot read may go</string>
+    <string name="safety_personal_off">Only your question goes by itself</string>
+    <string name="safety_voice_yes">Voice yes can send personal content</string>
+    <string name="safety_voice_yes_on">A spoken or typed yes can send it</string>
+    <string name="safety_voice_yes_off">Only a tap sends it</string>
+    <string name="safety_answers">Answers</string>
+    <string name="safety_direct">Direct answers</string>
+    <string name="safety_direct_detail">No refusals or added warnings</string>
+    <string name="safety_keep_media">Keep screenshots and photos in history</string>
+    <string name="safety_keep_media_no_history">Saving conversations is off</string>
+    <string name="safety_keep_media_on">A thumbnail and the screen\'s text</string>
+    <string name="safety_keep_media_off">Only that there was one</string>
+    <string name="safety_remove_media">Remove saved screenshots and photos</string>
+    <string name="safety_remove_media_detail">From every saved conversation</string>
+    <string name="safety_remove_title">Remove saved screenshots and photos?</string>
+    <string name="safety_remove_text">The conversations stay; their thumbnails and screen text are removed. This can\'t be undone.</string>
+    <string name="safety_remove_confirm">Remove</string>
+    <string name="safety_footer">When Robot asks first: when something Robot read (a screen, a photo, a note, an event, a contact, the weather, a helper\'s answer) makes an action ask first.\n\nWho-to isn\'t certain: several people or numbers fit, a name only nearly matches, the model wrote a number or address itself, or an app name matched loosely. Off: Robot takes the best match.\n\nAnswer cards by voice: while a card waits, say “yes”, “do it”, “send it” or “oui”, or “no”, “cancel” or “annule” (or type it). Robot listens when replies are spoken or you asked by voice; the mic answers the card too. A card for a name learned from a notification, or when Robot isn\'t sure who or which, still needs a tap (a no works). Off: a tap, or a typed yes or no.\n\nCard before deleting files: a large photo or video (Android still asks too), or Robot\'s cache. Off: Robot goes straight to Android\'s confirmation for the largest one.\n\nWorks on the lock screen: a locked phone can\'t tell who is asking. Questions always work; the actions turned on above too. Everything else asks you to unlock.\n\nSend personal content to helpers automatically, for every helper: when Robot checks with a helper by itself, it may include the conversation\'s screen text, photos and what it read (your calendar, notes, contacts, location), and what Robot reads for a helper goes without “Share with …”. Off: only your question goes, and anything more needs a tap. Bringing a helper into the conversation and “ask a helper about my screen” always ask first. Voice yes can send personal content, for every helper: off, a spoken or typed “yes” never sends your screen, a photo or what Robot read to a helper; only a tap does. A helper you trust with personal content (on its page in Settings › Helpers) gets what Robot read without asking, but your screen and photos still need a tap. These two switches go further, for every helper.\n\nDirect answers: Robot helps with whatever you ask without refusing or adding warnings; it still says when something isn\'t possible.\n\nKeep screenshots and photos in history: off, Robot saves only that a question had a screen or a photo. On, a small thumbnail and the screen\'s text are saved with the conversation, in Robot\'s private storage on this phone, for you to see in History (a screen conversation is still saved only after Keep). They are never sent to a helper or read to the model again. Saving conversations itself is in Settings › History.</string>
+    <!-- Settings › About › Licences: Robot's own notice and source, each part and its licence (the licence texts stay as they are). -->
+    <string name="about_loading">Loading…</string>
+    <string name="about_licence">Licence</string>
+    <string name="about_licences_missing">Robot\'s licence list is missing from this build.</string>
+    <string name="about_licences_read_gpl">Read the GNU General Public License v3</string>
+    <string name="about_licences_source">Source code</string>
+    <string name="about_licences_source_link">Robot\'s source code for this version</string>
+    <string name="about_licences_gpl_source">Source for the GPL components</string>
+    <string name="about_licences_gpl_text">espeak-ng (GPL-3.0-or-later) is built into sherpa-onnx\'s library, which Robot ships as a ready-made file. Each release of Robot comes with the complete source of that library and of what it links (espeak-ng, sherpa-onnx, their dependencies and ONNX Runtime), at:</string>
+    <string name="about_licences_bundle">The source bundle of this version\'s GPL components</string>
+    <string name="about_licences_open_link">Open %1$s in the browser</string>
+    <string name="about_licences_open">Open in the browser</string>
+    <string name="about_licences_read">Read its licence</string>
+    <string name="about_licences_no_part">Robot\'s licence list doesn\'t have this part.</string>
+    <string name="about_licences_page">Its page</string>
+    <!-- 1.1: Settings › About › Support Robot (ui/settings/SupportSettings.kt). The addresses are data, not text. -->
+    <string name="about_support_title">Support Robot</string>
+    <string name="about_support_detail">Ko-fi, once or monthly, or a crypto address</string>
+    <string name="about_support_intro">Robot is free, and I make it alone. If it\'s useful to you, you can support it on Ko-fi, once or monthly, or with one of the addresses below. Either way, you get the same app as everyone else.</string>
+    <string name="about_support_addresses">Addresses</string>
+    <string name="about_support_copy">Copy</string>
+    <string name="about_support_copy_label">Copy the %1$s address</string>
+    <string name="about_support_qr">QR code</string>
+    <string name="about_support_qr_show">Show the %1$s address as a QR code</string>
+    <string name="about_support_qr_label">QR code of the %1$s address</string>
+    <string name="about_support_close">Close</string>
+    <string name="about_support_copied">Copied. Paste it in your wallet app.</string>
+    <string name="about_support_no_browser">No browser on this phone.</string>
+    <!-- Names of a platform and of currencies, the same in every language. -->
+    <string name="about_support_kofi" translatable="false">Ko-fi</string>
+    <string name="about_support_bitcoin" translatable="false">Bitcoin</string>
+    <string name="about_support_lightning" translatable="false">Lightning</string>
+    <string name="about_support_monero" translatable="false">Monero</string>
+    <string name="about_support_ethereum" translatable="false">Ethereum</string>
+    <string name="about_licences_licence">The licence</string>
+    <string name="about_licences_its">Its licence</string>
+    <string name="about_licences_no_text">No licence text ships for this part: see its page and the licence\'s link above.</string>
+    <string name="about_licences_text_missing">This text is missing from this build.</string>
+    <!-- The reminder after a restart or an update turned Robot off as the assistant (sys/Assistant.kt, BootCheck). -->
+    <string name="settings_restart_channel">Assistant after a restart</string>
+    <string name="settings_restart_channel_detail">Tells you when Android turned Robot off as the assistant after a restart.</string>
+    <string name="settings_restart_title">Turn Robot back on</string>
+    <string name="settings_restart_text_restart">Android turned Robot off as your assistant during the restart. Tap, choose Digital assistant app, and pick Robot again.</string>
+    <string name="settings_restart_text_update">Android turned Robot off as your assistant during the update. Tap, choose Digital assistant app, and pick Robot again.</string>
+    <!-- Names the app gives when Android or a file has none (sys/Calendars.kt, sys/KeystoreSecret.kt). -->
+    <string name="settings_calendar_unnamed">Calendar</string>
+    <string name="settings_key_saved">Saved</string>
+</resources>

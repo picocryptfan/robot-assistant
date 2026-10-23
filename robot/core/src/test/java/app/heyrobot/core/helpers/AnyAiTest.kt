@@ -107,7 +107,7 @@ class AnyAiTest {
     @Test fun routeWordsNameTheApp() {
         assertEquals("Claude app", HelperSettings.routeTitle(Presets.ANTHROPIC, AskRoute.APP))
         assertEquals("Claude API", HelperSettings.routeTitle(Presets.ANTHROPIC, AskRoute.API))
-        assertEquals(AskRoute.APP.detail, HelperSettings.routeDetail(Presets.ANTHROPIC, AskRoute.APP))
+        assertEquals(AskRoute.APP.detailText.en(), HelperSettings.routeDetail(Presets.ANTHROPIC, AskRoute.APP))
         assertEquals("ChatGPT app", HelperSettings.routeTitle(Presets.OPENAI, AskRoute.APP))
         assertEquals("OpenAI API", HelperSettings.routeTitle(Presets.OPENAI, AskRoute.API))
         assertEquals("Opens the Grok app with your question; you press Send there, with your own account. Robot doesn't hear the answer.",

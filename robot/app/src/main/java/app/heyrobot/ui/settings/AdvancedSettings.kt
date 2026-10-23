@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.ui.settings
 
+import androidx.compose.ui.res.stringResource
+import app.heyrobot.R
+import app.heyrobot.core.i18n.UiStrings
+import app.heyrobot.ui.theme.str
 import androidx.compose.runtime.Composable
 import app.heyrobot.ui.AppActions
 import app.heyrobot.ui.Page
@@ -14,12 +18,13 @@ import app.heyrobot.ui.pref.preferenceGroup
 
 @Composable
 fun AdvancedSettingsScreen(a: AppActions, onBack: () -> Unit) {
-    PreferenceScreen("Advanced", onBack) {
+    val footer = stringResource(R.string.settings_advanced_footer)
+    PreferenceScreen(UiStrings.advanced().str(), onBack) {
         preferenceGroup(null, "rows") {
-            PreferenceItem("ADB fixes", "One-time fixes with a computer, such as staying the assistant after a restart", RIcons.Terminal,
+            PreferenceItem(UiStrings.adbFixes().str(), stringResource(R.string.settings_advanced_adb_detail), RIcons.Terminal,
                 onClick = { a.openPage(Page.AdbFixes) })
-            PreferenceItem("Voice log", "What the voice side did, for when Robot didn't respond", RIcons.History, onClick = { a.openPage(Page.VoiceLog) })
+            PreferenceItem(UiStrings.voiceLog().str(), stringResource(R.string.settings_advanced_log_detail), RIcons.History, onClick = { a.openPage(Page.VoiceLog) })
         }
-        preferenceFooter("The voice log keeps no words and no audio, only what happened and how long it took.")
+        preferenceFooter(footer)
     }
 }

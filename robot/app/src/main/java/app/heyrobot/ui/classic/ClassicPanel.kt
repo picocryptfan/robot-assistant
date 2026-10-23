@@ -100,6 +100,13 @@ import app.heyrobot.core.ScreenAccess
 import app.heyrobot.core.ScreenChip
 import app.heyrobot.core.Tip
 import app.heyrobot.core.ToolName
+import app.heyrobot.R
+import androidx.compose.ui.res.stringResource
+import app.heyrobot.core.i18n.PanelStrings
+import app.heyrobot.core.i18n.TurnStrings
+import app.heyrobot.ui.common.cardStatusLine
+import app.heyrobot.ui.theme.LocalLangs
+import app.heyrobot.ui.theme.str
 import app.heyrobot.ui.common.ActionView
 import app.heyrobot.ui.common.CardActions
 import app.heyrobot.ui.common.MarkdownText
@@ -113,6 +120,7 @@ import app.heyrobot.ui.common.TurnUi
 import app.heyrobot.ui.common.answerSemantics
 import app.heyrobot.ui.common.spans
 import app.heyrobot.ui.common.toolIcon
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 // Main and voice processes. The classic look, the only one the assistant panel has since 1.0: Robot 0.6.0's panel and
@@ -174,11 +182,11 @@ fun ClassicHeader(
                 // A toggle, so TalkBack says "Speak replies, checked" or "not checked"; drawn as before (no colour when on).
                 IconToggleButton(checked = speak, onCheckedChange = { onToggleSpeak() }, modifier = Modifier.size(48.dp),
                     colors = IconButtonDefaults.iconToggleButtonColors(checkedContentColor = LocalContentColor.current)) {
-                    Icon(if (speak) RIcons.VolumeUp else RIcons.VolumeOff, "Speak replies")
+                    Icon(if (speak) RIcons.VolumeUp else RIcons.VolumeOff, stringResource(R.string.panel_speak_replies))
                 }
-                IconButton(onClick = onNew, modifier = Modifier.size(48.dp)) { Icon(RIcons.Add, "New conversation") }
-                IconButton(onClick = onSettings, modifier = Modifier.size(48.dp)) { Icon(RIcons.Settings, "Settings") }
-                IconButton(onClick = onClose, modifier = Modifier.size(48.dp)) { Icon(RIcons.Close, "Close") }
+                IconButton(onClick = onNew, modifier = Modifier.size(48.dp)) { Icon(RIcons.Add, stringResource(R.string.panel_new_conversation)) }
+                IconButton(onClick = onSettings, modifier = Modifier.size(48.dp)) { Icon(RIcons.Settings, stringResource(R.string.panel_settings)) }
+                IconButton(onClick = onClose, modifier = Modifier.size(48.dp)) { Icon(RIcons.Close, stringResource(R.string.panel_close)) }
             }
             // A polite live region, so TalkBack says each new state once. Drawn 6 dp higher, close under "Robot" (the
             // buttons' 48 dp row leaves room), with the header's 6 dp below it. 1.0.2: it wraps whole (the lock screen's list of
@@ -190,7 +198,7 @@ fun ClassicHeader(
                     TextButton(onClick = onKeep, modifier = Modifier.heightIn(min = 48.dp)) {
                         Icon(RIcons.Bookmark, null, Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("Keep")
+                        Text(stringResource(R.string.panel_keep))
                     }
                 }
             }
@@ -230,7 +238,7 @@ fun ClassicHelperModeChip(name: String, onBack: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp)) {
         AssistChip(
             onClick = onBack,
-            label = { Text("Talking with $name · Back to Robot") },
+            label = { Text(stringResource(R.string.panel_talking_with_back, name)) },
             leadingIcon = { Icon(RIcons.Cloud, null, Modifier.size(AssistChipDefaults.IconSize), tint = MaterialTheme.colorScheme.tertiary) },
             colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer, labelColor = MaterialTheme.colorScheme.onTertiaryContainer),
             modifier = Modifier.heightIn(min = 48.dp),
@@ -250,7 +258,7 @@ fun ClassicNoticeBar(text: String, action: String?, onAction: () -> Unit, onDism
             Spacer(Modifier.width(10.dp))
             Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).padding(vertical = 8.dp))
             if (action != null) TextButton(onClick = onAction) { Text(action) }
-            IconButton(onClick = onDismiss, modifier = Modifier.size(48.dp)) { Icon(RIcons.Close, "Dismiss", Modifier.size(18.dp)) }
+            IconButton(onClick = onDismiss, modifier = Modifier.size(48.dp)) { Icon(RIcons.Close, stringResource(R.string.panel_dismiss), Modifier.size(18.dp)) }
         }
     }
 }
@@ -265,8 +273,8 @@ fun ClassicBrainBanner(problem: String?, openRobot: Boolean, onOpenRobot: () -> 
         Row(Modifier.padding(start = 14.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(RIcons.Warning, null, Modifier.size(20.dp))
             Spacer(Modifier.width(10.dp))
-            Text(problem ?: "The model isn't ready.", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-            if (openRobot) TextButton(onClick = onOpenRobot) { Text("Open Robot") }
+            Text(problem ?: stringResource(R.string.panel_model_not_ready), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            if (openRobot) TextButton(onClick = onOpenRobot) { Text(stringResource(R.string.panel_open_robot)) }
         }
     }
 }
@@ -276,10 +284,9 @@ fun ClassicBrainBanner(problem: String?, openRobot: Boolean, onOpenRobot: () -> 
 @Composable
 fun ClassicEmptyState(locked: Boolean, lockedTools: Set<ToolName>, screenAvailable: Boolean, modifier: Modifier) {
     Column(modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp)) {
-        Text(if (locked) LockScreen.headline(lockedTools) else "Ask me anything.", style = MaterialTheme.typography.headlineSmall)
+        Text(if (locked) LockScreen.headline(lockedTools, LocalLangs.current) else stringResource(R.string.panel_ask_me_anything), style = MaterialTheme.typography.headlineSmall)
         Text(
-            if (screenAvailable) "I can also look at what's on your screen."
-            else "Type, take a photo, or say “hey robot” next time.",
+            stringResource(if (screenAvailable) R.string.panel_can_see_screen else R.string.panel_type_photo_or_say),
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp),
         )
     }
@@ -290,7 +297,7 @@ fun ClassicEmptyState(locked: Boolean, lockedTools: Set<ToolName>, screenAvailab
 fun ClassicSuggestions(tips: List<Tip>, onPick: (Tip) -> Unit) {
     if (tips.isEmpty()) return
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        for (t in tips) SuggestionChip(onClick = { onPick(t) }, label = { Text(t.text, maxLines = 2) }, modifier = Modifier.weight(1f).heightIn(min = 48.dp))
+        for (t in tips) SuggestionChip(onClick = { onPick(t) }, label = { Text(t.phrase.str(), maxLines = 2) }, modifier = Modifier.weight(1f).heightIn(min = 48.dp))
     }
 }
 
@@ -303,9 +310,9 @@ fun ClassicListeningRow(partial: String, transcribing: Boolean, card: Boolean = 
             Icon(RIcons.Mic, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onPrimary)
         }
         Spacer(Modifier.width(12.dp))
-        Text(partial.ifEmpty { if (transcribing) "Writing it down…" else if (card) "Listening: yes or no?" else "Listening…" },
+        Text(partial.ifEmpty { (if (transcribing) PanelStrings.writingItDown() else if (card) PanelStrings.listeningYesOrNo() else PanelStrings.listening()).str() },
             style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-        if (!transcribing) TextButton(onClick = onDone) { Text("Done") }
+        if (!transcribing) TextButton(onClick = onDone) { Text(stringResource(R.string.panel_done)) }
     }
 }
 
@@ -330,17 +337,19 @@ fun ClassicContextRow(draft: Attachment?, thumb: Bitmap?, readClaude: Boolean, o
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(if (draft == Attachment.SCREEN) "Your screen" else "Photo", style = MaterialTheme.typography.titleSmall)
-                Text("Goes with your next question", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(if (draft == Attachment.SCREEN) R.string.panel_your_screen else R.string.panel_photo), style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.panel_goes_with_next), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            IconButton(onClick = onRemove, modifier = Modifier.size(48.dp)) { Icon(RIcons.Close, if (draft == Attachment.SCREEN) "Remove screen" else "Remove photo") }
+            IconButton(onClick = onRemove, modifier = Modifier.size(48.dp)) {
+                Icon(RIcons.Close, stringResource(if (draft == Attachment.SCREEN) R.string.panel_remove_screen else R.string.panel_remove_photo))
+            }
         }
     } else if (readClaude) {
         // Over the Claude app (your corner swipe): its last answer, read aloud in Claude's voice.
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp)) {
             AssistChip(
                 onClick = onReadClaude,
-                label = { Text("Read Claude's answer") },
+                label = { Text(stringResource(R.string.panel_read_claude_answer)) },
                 leadingIcon = { Icon(RIcons.Cloud, null, Modifier.size(AssistChipDefaults.IconSize)) },
                 modifier = Modifier.heightIn(min = 48.dp),
             )
@@ -351,10 +360,10 @@ fun ClassicContextRow(draft: Attachment?, thumb: Bitmap?, readClaude: Boolean, o
 @Composable
 fun ClassicAttachRow(locked: Boolean, onDone: () -> Unit, onCamera: () -> Unit, onPhotos: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        BigChoice(RIcons.Camera, "Camera", Modifier.weight(1f)) { onDone(); onCamera() }
-        BigChoice(RIcons.Image, "Photos", Modifier.weight(1f)) { onDone(); onPhotos() }
+        BigChoice(RIcons.Camera, stringResource(R.string.panel_camera), Modifier.weight(1f)) { onDone(); onCamera() }
+        BigChoice(RIcons.Image, stringResource(R.string.panel_photos), Modifier.weight(1f)) { onDone(); onPhotos() }
     }
-    if (locked) Text("Unlock to use the camera or your photos.", style = MaterialTheme.typography.bodySmall,
+    if (locked) Text(stringResource(R.string.panel_unlock_for_your_photos), style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 20.dp))
 }
 
@@ -392,18 +401,19 @@ class ClassicInputActions(
     val stopSpeaking: () -> Unit,
     val micPressed: () -> Unit,
     val micReleased: () -> Unit,
+    val micHeld: () -> Unit = {},
 )
 
 @Composable
 fun ClassicInputRow(st: ClassicInputState, input: String, onInput: (String) -> Unit, onSend: () -> Unit, focus: FocusRequester, actions: ClassicInputActions) {
     Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 12.dp, top = 6.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         // No camera while a turn runs: the panel would hide with the answer still going.
-        IconButton(onClick = actions.attach, enabled = !st.busy, modifier = Modifier.size(52.dp)) { Icon(RIcons.Camera, "Add a photo") }
+        IconButton(onClick = actions.attach, enabled = !st.busy, modifier = Modifier.size(52.dp)) { Icon(RIcons.Camera, stringResource(R.string.panel_add_photo)) }
         if (st.screenChip != ScreenChip.HIDDEN) ScreenButton(st, actions.attachScreen)
         TextField(
             value = input,
             onValueChange = onInput,
-            placeholder = { Text(if (st.confirming) "Yes or no…" else if (st.hasDraft) "Ask about it…" else "Ask Robot…") },
+            placeholder = { Text(stringResource(if (st.confirming) R.string.panel_yes_or_no else if (st.hasDraft) R.string.panel_ask_about_it else R.string.panel_ask_robot)) },
             shape = RoundedCornerShape(26.dp),
             maxLines = 5,
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Send),
@@ -420,13 +430,15 @@ fun ClassicInputRow(st: ClassicInputState, input: String, onInput: (String) -> U
         when {
             // A card waits: the mic (or Send, for a typed "yes" or "no") answers it; Stop still declines it and ends the answer.
             st.confirming -> {
-                IconButton(onClick = actions.stop, modifier = Modifier.size(48.dp)) { Icon(RIcons.Stop, "Stop") }
-                if (canSend) FilledIconButton(onClick = onSend, modifier = Modifier.size(56.dp)) { Icon(RIcons.Send, "Send") }
+                IconButton(onClick = actions.stop, modifier = Modifier.size(48.dp)) { Icon(RIcons.Stop, stringResource(R.string.panel_stop)) }
+                if (canSend) FilledIconButton(onClick = onSend, modifier = Modifier.size(56.dp)) { Icon(RIcons.Send, stringResource(R.string.panel_send)) }
                 else MicButton(listening = st.cardListening, hint = st.micHint, actions = actions)
             }
-            st.busy -> FilledIconButton(onClick = actions.stop, modifier = Modifier.size(56.dp)) { Icon(RIcons.Stop, "Stop") }
-            st.speaking && !canSend -> FilledTonalIconButton(onClick = actions.stopSpeaking, modifier = Modifier.size(56.dp)) { Icon(RIcons.Stop, "Stop speaking") }
-            canSend -> FilledIconButton(onClick = onSend, modifier = Modifier.size(56.dp)) { Icon(RIcons.Send, "Send") }
+            st.busy -> FilledIconButton(onClick = actions.stop, modifier = Modifier.size(56.dp)) { Icon(RIcons.Stop, stringResource(R.string.panel_stop)) }
+            st.speaking && !canSend -> FilledTonalIconButton(onClick = actions.stopSpeaking, modifier = Modifier.size(56.dp)) {
+                Icon(RIcons.Stop, stringResource(R.string.panel_stop_speaking))
+            }
+            canSend -> FilledIconButton(onClick = onSend, modifier = Modifier.size(56.dp)) { Icon(RIcons.Send, stringResource(R.string.panel_send)) }
             else -> MicButton(listening = st.listening, hint = st.micHint, actions = actions)
         }
     }
@@ -439,10 +451,11 @@ fun ClassicInputRow(st: ClassicInputState, input: String, onInput: (String) -> U
 @Composable
 private fun ScreenButton(st: ClassicInputState, onClick: () -> Unit) {
     val ready = st.screenChip == ScreenChip.READY
-    val state = ScreenAccess.iconDescription(st.screenChip)
+    val state = ScreenAccess.iconText(st.screenChip)?.str()
+    val label = listOfNotNull(TurnStrings.askAboutScreen().str(), state).joinToString(". ")
     IconButton(
         onClick = onClick, enabled = !st.busy && !st.hasDraft,
-        modifier = Modifier.size(52.dp).semantics { contentDescription = "Ask about this screen" + (state?.let { ". $it" } ?: "") },
+        modifier = Modifier.size(52.dp).semantics { contentDescription = label },
     ) {
         BadgedBox(badge = { if (!ready) Badge(containerColor = MaterialTheme.colorScheme.tertiary) }) {
             // 1.0: the theme's outline colour (3:1 or more against the panel) instead of a faded one, with the dot.
@@ -451,8 +464,11 @@ private fun ScreenButton(st: ClassicInputState, onClick: () -> Unit) {
     }
 }
 
+/** A press longer than this is a hold (push-to-talk), not a tap. */
+private const val HOLD_MS = 450L
+
 /**
- * Tap to talk (ends on silence), or hold and release (push-to-talk). While voice input can't work ([hint], e.g.
+ * Tap to talk (ends on silence), or hold and release (push-to-talk: while held, silence doesn't end it). While voice input can't work ([hint], e.g.
  * "Download voice models"), the tooltip says why when the panel opens and on every press; the press still shows
  * the notice and the keyboard.
  */
@@ -462,6 +478,9 @@ private fun MicButton(listening: Boolean, hint: String?, actions: ClassicInputAc
     val tip = rememberTooltipState()
     val scope = rememberCoroutineScope()
     LaunchedEffect(hint) { if (hint != null) tip.show() }
+    val talkTo = if (hint != null) stringResource(R.string.panel_talk_to_robot_why, hint) else stringResource(R.string.panel_talk_to_robot)
+    val talk = stringResource(R.string.panel_talk)
+    val listeningState = stringResource(R.string.panel_listening_state)
     TooltipBox(
         positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
         tooltip = { PlainTooltip { Text(hint.orEmpty()) } },
@@ -473,18 +492,25 @@ private fun MicButton(listening: Boolean, hint: String?, actions: ClassicInputAc
             Modifier.size(56.dp).clip(CircleShape)
                 .background(if (listening) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer)
                 .semantics {
-                    contentDescription = if (hint != null) "Talk to Robot. $hint" else "Talk to Robot"
-                    if (listening) stateDescription = "Listening"
+                    contentDescription = talkTo
+                    if (listening) stateDescription = listeningState
                     role = Role.Button
-                    onClick(label = "Talk") { actions.micPressed(); true }
+                    onClick(label = talk) { actions.micPressed(); true }
                 }
                 .pointerInput(hint) {
                     detectTapGestures(onPress = {
                         if (hint != null) scope.launch { tip.show() }
-                        val t0 = System.currentTimeMillis()
                         actions.micPressed()
-                        val released = tryAwaitRelease()
-                        if (released && System.currentTimeMillis() - t0 > 450) actions.micReleased()
+                        // Held past a tap: push-to-talk. Letting go ends the question, and so does sliding off the
+                        // button (a cancelled press), or it would wait for the 30 s cap.
+                        var held = false
+                        val hold = scope.launch { delay(HOLD_MS); held = true; actions.micHeld() }
+                        try {
+                            tryAwaitRelease()
+                        } finally {
+                            hold.cancel()
+                            if (held) actions.micReleased()
+                        }
                     })
                 },
             contentAlignment = Alignment.Center,
@@ -516,10 +542,11 @@ fun ClassicBubbleTurn(t: TurnUi, actions: TurnActions, modifier: Modifier = Modi
 
 @Composable
 fun UserBubble(text: String, attachment: Attachment, thumb: Bitmap?, modifier: Modifier = Modifier, screenText: String? = null) {
+    val youSaid = stringResource(R.string.card_you, text)
     Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
         if (thumb != null) {
             Image(
-                bitmap = thumb.asImageBitmap(), contentDescription = if (attachment == Attachment.SCREEN) "Screen" else "Photo",
+                bitmap = thumb.asImageBitmap(), contentDescription = stringResource(if (attachment == Attachment.SCREEN) R.string.panel_screen else R.string.panel_photo),
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.padding(bottom = 4.dp).size(132.dp).clip(RoundedCornerShape(18.dp)),
             )
@@ -529,11 +556,12 @@ fun UserBubble(text: String, attachment: Attachment, thumb: Bitmap?, modifier: M
         // "Keep screenshots and photos in history": the screen's text kept with the question, a few lines until tapped.
         if (!screenText.isNullOrBlank()) {
             var open by remember { mutableStateOf(false) }
+            val toggle = stringResource(if (open) R.string.panel_show_less else R.string.panel_show_all)
             Surface(
                 color = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                 shape = RoundedCornerShape(14.dp),
                 modifier = Modifier.padding(bottom = 4.dp).widthIn(max = 320.dp).heightIn(min = 48.dp)
-                    .clickable(onClickLabel = if (open) "Show less" else "Show all") { open = !open },
+                    .clickable(onClickLabel = toggle) { open = !open },
             ) {
                 Text(screenText, style = MaterialTheme.typography.bodySmall, maxLines = if (open) Int.MAX_VALUE else 4,
                     overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
@@ -548,7 +576,7 @@ fun UserBubble(text: String, attachment: Attachment, thumb: Bitmap?, modifier: M
             ) {
                 // One TalkBack heading per exchange, "You: …", so a swipe by headings goes from question to question.
                 Text(text, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(horizontal = 16.dp, vertical = 11.dp)
-                    .semantics { contentDescription = "You: $text"; heading() })
+                    .semantics { contentDescription = youSaid; heading() })
             }
         }
     }
@@ -562,7 +590,7 @@ private fun AttachmentTag(a: Attachment) {
     ) {
         Icon(if (a == Attachment.SCREEN) RIcons.Phone else RIcons.Image, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
         Spacer(Modifier.width(6.dp))
-        Text(if (a == Attachment.SCREEN) "Screen" else "Photo", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSecondaryContainer)
+        Text(stringResource(if (a == Attachment.SCREEN) R.string.panel_screen else R.string.panel_photo), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSecondaryContainer)
     }
 }
 
@@ -589,12 +617,13 @@ fun AssistantBubble(
     home: Boolean = false,
     announce: Boolean = false,
 ) {
+    val errorState = stringResource(R.string.card_error)
     Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
         if (fromHelper && !error) {
             Row(Modifier.padding(start = 12.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(if (home) RIcons.Home else RIcons.Cloud, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.tertiary)
                 Spacer(Modifier.width(5.dp))
-                Text(if (readBack) "Claude, from the Claude app" else by ?: "Helper", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.tertiary)
+                Text(if (readBack) stringResource(R.string.panel_claude_from_app) else by ?: PanelStrings.helperLabel().str(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.tertiary)
             }
         }
         for (a in actions) {
@@ -618,13 +647,13 @@ fun AssistantBubble(
             ) {
                 // An error says so in words too, not only by its colour.
                 Box(Modifier.padding(horizontal = 16.dp, vertical = 11.dp).answerSemantics(streaming, announce && text.isNotBlank())
-                    .then(if (error) Modifier.semantics(mergeDescendants = true) { stateDescription = "Error" } else Modifier)) {
+                    .then(if (error) Modifier.semantics(mergeDescendants = true) { stateDescription = errorState } else Modifier)) {
                     if (text.isBlank()) TypingDots() else MarkdownText(text, streaming)
                 }
             }
         }
         if (stopped) {
-            Text("Stopped", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            Text(stringResource(R.string.panel_stopped), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 12.dp, top = 4.dp))
         }
         for (line in footer) {
@@ -658,25 +687,22 @@ fun ClassicActionCard(a: ActionView, onConfirm: ((String, Boolean) -> Unit)?, mo
                     Image(a.icon.asImageBitmap(), null, Modifier.size(40.dp))
                 } else {
                     Box(Modifier.size(40.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
-                        Icon(toolIcon(a.tool), null, Modifier.size(22.dp))
+                        Icon(if (a.files) RIcons.Folder else toolIcon(a.tool), null, Modifier.size(22.dp))
                     }
                 }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(spans(Markdown.inline(a.summary), Color.Unspecified, caret = false), style = MaterialTheme.typography.titleSmall)
-                    val line = when (a.status) {
-                        ActionStatus.PENDING -> a.detail ?: if (a.choices.isNotEmpty()) "Which one?" else "Do you want Robot to do this?"
-                        ActionStatus.DONE, ActionStatus.DRAFT_OPENED -> a.detail ?: a.status.label
-                        else -> listOfNotNull(a.status.label, a.detail).joinToString(". ")
-                    }
+                    // 1.1: the card's state in the menus' language, its line as the turn said it (ui/common, WP1's).
+                    val line = cardStatusLine(a)
                     Text(line, style = MaterialTheme.typography.bodyMedium,
                         color = if (bad) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSecondaryContainer)
                 }
-                if (a.status.succeeded) Icon(RIcons.Check, a.status.label, Modifier.size(22.dp))
-                if (a.status == ActionStatus.NEEDS_UNLOCK) Icon(RIcons.Lock, "Locked", Modifier.size(22.dp))
+                if (a.status.succeeded) Icon(RIcons.Check, a.status.text.str(), Modifier.size(22.dp))
+                if (a.status == ActionStatus.NEEDS_UNLOCK) Icon(RIcons.Lock, stringResource(R.string.card_locked), Modifier.size(22.dp))
             }
             a.picture?.let {
-                Image(it.asImageBitmap(), "The picture that would be sent", Modifier.padding(top = 10.dp).heightIn(max = 160.dp).clip(RoundedCornerShape(12.dp)))
+                Image(it.asImageBitmap(), stringResource(R.string.card_picture_sent), Modifier.padding(top = 10.dp).heightIn(max = 160.dp).clip(RoundedCornerShape(12.dp)))
             }
             if (a.status == ActionStatus.PENDING && onConfirm != null) {
                 if (a.choices.isNotEmpty() && more != null) {
@@ -694,26 +720,38 @@ fun ClassicActionCard(a: ActionView, onConfirm: ((String, Boolean) -> Unit)?, mo
                             FilledTonalButton(onClick = { more.choose(a.id, i, keep) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(label) }
                         }
                         if (a.more > 0) {
-                            Text("…and ${a.more} more. Say the full name to pick one of those.", style = MaterialTheme.typography.bodySmall,
+                            Text(androidx.compose.ui.res.pluralStringResource(R.plurals.card_and_more, a.more, a.more), style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSecondaryContainer)
                         }
-                        OutlinedButton(onClick = { onConfirm(a.id, false) }, modifier = Modifier.align(Alignment.End).heightIn(min = 48.dp)) { Text("Cancel") }
+                        OutlinedButton(onClick = { onConfirm(a.id, false) }, modifier = Modifier.align(Alignment.End).heightIn(min = 48.dp)) {
+                            Text(stringResource(R.string.card_cancel))
+                        }
                     }
                 } else {
+                    // 1.1: a skill's save card: a tap on a chip changes it (a value asked each time, the level, the name).
+                    if (a.chips.isNotEmpty() && more != null) {
+                        Column(Modifier.fillMaxWidth().padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            a.chips.forEachIndexed { i, label ->
+                                OutlinedButton(onClick = { more.choose(a.id, app.heyrobot.core.Card.CHIP + i, false) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                                    Text(spans(Markdown.inline(label), Color.Unspecified, caret = false), style = MaterialTheme.typography.bodyMedium)
+                                }
+                            }
+                        }
+                    }
                     Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
                         verticalAlignment = Alignment.CenterVertically) {
-                        OutlinedButton(onClick = { onConfirm(a.id, false) }, modifier = Modifier.heightIn(min = 48.dp)) { Text(a.cancel ?: "Cancel") }
-                        Button(onClick = { onConfirm(a.id, true) }, modifier = Modifier.weight(1f, fill = false).heightIn(min = 48.dp)) { Text(a.confirm ?: "Do it") }
+                        OutlinedButton(onClick = { onConfirm(a.id, false) }, modifier = Modifier.heightIn(min = 48.dp)) { Text(a.cancel ?: stringResource(R.string.card_cancel)) }
+                        Button(onClick = { onConfirm(a.id, true) }, modifier = Modifier.weight(1f, fill = false).heightIn(min = 48.dp)) { Text(a.confirm ?: stringResource(R.string.card_do_it)) }
                     }
                 }
             }
             val allowContacts = a.allowContacts && a.status == ActionStatus.PENDING
             if (more != null && (a.undo || a.status == ActionStatus.NEEDS_PERMISSION || a.openApp != null || allowContacts)) {
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
-                    if (a.undo) TextButton(onClick = { more.undo(a.id) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Undo") }
+                    if (a.undo) TextButton(onClick = { more.undo(a.id) }, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.card_undo)) }
                     a.openApp?.let { label -> FilledTonalButton(onClick = { more.openApp(a.id) }, modifier = Modifier.heightIn(min = 48.dp)) { Text(label) } }
-                    if (a.status == ActionStatus.NEEDS_PERMISSION) FilledTonalButton(onClick = more.allow, modifier = Modifier.heightIn(min = 48.dp)) { Text("Allow") }
-                    if (allowContacts) TextButton(onClick = more.allow, modifier = Modifier.heightIn(min = 48.dp)) { Text("Allow contacts") }
+                    if (a.status == ActionStatus.NEEDS_PERMISSION) FilledTonalButton(onClick = more.allow, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.card_allow)) }
+                    if (allowContacts) TextButton(onClick = more.allow, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.card_allow_contacts)) }
                 }
             }
             if (!a.body.isNullOrBlank()) {
@@ -748,12 +786,12 @@ fun ClassicOfferCard(o: OfferView, onDismiss: () -> Unit, onAccept: () -> Unit) 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(RIcons.Cloud, null, Modifier.size(22.dp))
                 Spacer(Modifier.width(10.dp))
-                Text(if (!o.api) "Open the ${o.app} app with: «${o.text.take(120)}${if (o.text.length > 120) "…" else ""}»"
-                    else if (o.asWell) "Want ${o.name}'s take as well?" else "Want me to check with ${o.name}?",
+                Text(if (!o.api) stringResource(R.string.panel_open_app_with, o.app, o.text.take(120) + if (o.text.length > 120) "…" else "")
+                    else if (o.asWell) stringResource(R.string.panel_want_take_as_well, o.name) else stringResource(R.string.panel_want_check_with, o.name),
                     style = MaterialTheme.typography.titleSmall)
             }
             if (o.sends.isNotEmpty()) {
-                Text("Sends: " + o.sends.joinToString(", ").lowercase().replaceFirstChar { it.uppercase() } + ".", style = MaterialTheme.typography.bodyMedium,
+                Text(stringResource(R.string.panel_sends, o.sends.joinToString(", ").lowercase().replaceFirstChar { it.uppercase() }), style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(top = 6.dp))
             }
             o.preview?.let {
@@ -761,9 +799,9 @@ fun ClassicOfferCard(o: OfferView, onDismiss: () -> Unit, onAccept: () -> Unit) 
                     overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
             }
             Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End)) {
-                TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) { Text("No thanks") }
+                TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.panel_no_thanks)) }
                 FilledTonalButton(onClick = onAccept, modifier = Modifier.heightIn(min = 48.dp)) {
-                    Text(if (o.api) "Send" else "Open the app")
+                    Text(stringResource(if (o.api) R.string.panel_send else R.string.panel_open_app))
                 }
             }
         }

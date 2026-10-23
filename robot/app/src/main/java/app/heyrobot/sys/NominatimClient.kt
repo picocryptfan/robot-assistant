@@ -53,7 +53,7 @@ object NominatimClient {
         if (!Assistant.granted(ctx, Manifest.permission.INTERNET)) throw NearbyFailure(NearbyFail.NO_NETWORK_PERMISSION)
         if (abort.cancelled || abort.remainingMs() < NearbySearch.MIN_MS) throw NearbySearch.ended(abort)
         val u = URL(url)
-        require(u.protocol == "https" && u.host == server.host && u.port == server.port && u.path.startsWith(server.path + "/")) { "not the chosen Nominatim server" }
+        require(u.protocol == "https" && u.host == server.host && u.port == server.port && u.path.startsWith(server.path + "/")) { "not the chosen Nominatim server" } // l10n: not text (a developer's error)
         val c = u.openConnection() as HttpURLConnection
         val forget = abort.onCancel { c.disconnect() }
         try {
@@ -74,7 +74,7 @@ object NominatimClient {
             throw when (e) {
                 is UnknownHostException, is ConnectException, is NoRouteToHostException, is SocketTimeoutException -> NearbyFailure(NearbyFail.NO_INTERNET)
                 is SecurityException -> NearbyFailure(NearbyFail.NO_NETWORK_PERMISSION)
-                is IOException -> NearbyFailure(if (e.message?.contains("EACCES") == true || e.message?.contains("Permission denied") == true) NearbyFail.NO_NETWORK_PERMISSION else NearbyFail.NO_INTERNET)
+                is IOException -> NearbyFailure(if (e.message?.contains("EACCES") == true || e.message?.contains("Permission denied") == true) NearbyFail.NO_NETWORK_PERMISSION else NearbyFail.NO_INTERNET) // l10n: not text (the system's error message, matched)
                 else -> e
             }
         } finally {

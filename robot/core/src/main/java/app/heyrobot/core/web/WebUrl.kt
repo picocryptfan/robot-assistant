@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.web
 
+import app.heyrobot.core.i18n.Msg
+import app.heyrobot.core.i18n.WebStrings
 import java.net.IDN
 import java.util.Locale
 
@@ -119,20 +121,26 @@ data class WebUrl(val scheme: String, val host: String, val port: Int, val path:
     }
 }
 
-/** Why a result page wasn't read, as its card line says ("tsn.ca: not a public address") and the log counts it. */
-enum class PageSkip(val code: Int, val text: String) {
-    NOT_FROM_RESULTS(1, "not one of the search results"),
-    NOT_WEB(2, "not a web address"),
-    NOT_SECURE(3, "not secure"),
-    NOT_PUBLIC(4, "not a public address"),
-    PORT(5, "an unusual port"),
-    TOO_MANY_REDIRECTS(6, "too many redirects"),
-    PDF(7, "a PDF, which Robot can't read"),
-    NOT_HTML(8, "not a web page Robot can read"),
-    VIDEO(9, "a video"),
-    NEEDS_JS(10, "needs JavaScript"),
-    TOO_SLOW(11, "took too long"),
-    FAILED(12, "didn't load"),
+/**
+ * Why a result page wasn't read, as its card line says ("tsn.ca: not a public address": [label]) and the log counts it
+ * ([code]; the voice log names it by [text], its English).
+ */
+enum class PageSkip(val code: Int, val label: Msg) {
+    NOT_FROM_RESULTS(1, WebStrings.skipNotFromResults),
+    NOT_WEB(2, WebStrings.skipNotWeb),
+    NOT_SECURE(3, WebStrings.skipNotSecure),
+    NOT_PUBLIC(4, WebStrings.skipNotPublic),
+    PORT(5, WebStrings.skipPort),
+    TOO_MANY_REDIRECTS(6, WebStrings.skipRedirects),
+    PDF(7, WebStrings.skipPdf),
+    NOT_HTML(8, WebStrings.skipNotHtml),
+    VIDEO(9, WebStrings.skipVideo),
+    NEEDS_JS(10, WebStrings.skipNeedsJs),
+    TOO_SLOW(11, WebStrings.skipTooSlow),
+    FAILED(12, WebStrings.skipFailed),
+    ;
+
+    val text: String get() = label().en()
 }
 
 /** A URL Robot may open now ([upgraded]: an http:// result tried as https://), or why not. */

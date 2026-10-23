@@ -5,6 +5,9 @@ import app.heyrobot.core.helpers.HelperConfig
 import app.heyrobot.core.helpers.HelperSettings
 import app.heyrobot.core.helpers.HelperWho
 import app.heyrobot.core.helpers.HelperWords
+import app.heyrobot.core.i18n.HelperStrings
+import app.heyrobot.core.i18n.Msg
+import app.heyrobot.core.i18n.Phrase
 import java.time.LocalDate
 
 // Pure. The Anthropic API (docs/ask-claude.md): Claude's models and their published prices, a request's price as the API
@@ -20,12 +23,15 @@ data class AnthropicPrices(val input: Double, val output: Double, val cacheRead:
  * Prices as published (https://platform.claude.com/docs/en/about-claude/pricing.md, read 2026-10-11): cache reads are
  * 0.05x input on Opus 5.5 and Sonnet 5.5, 0.025x on Fable 5.1, 0.1x on Haiku 5.5; 5-minute cache writes 1.25x.
  */
-enum class AnthropicModel(val id: String, val title: String, val detail: String, private val prices: AnthropicPrices, private val longPrices: AnthropicPrices?, val fallback: Boolean) {
-    OPUS("claude-opus-5-5", "Claude Opus 5.5", "Recommended for most questions: \$4 per million tokens in, \$20 out.", AnthropicPrices(4.0, 20.0, 0.20, 5.0), null, true),
-    SONNET("claude-sonnet-5-5", "Claude Sonnet 5.5", "Fast and capable: \$2 in, \$10 out.", AnthropicPrices(2.0, 10.0, 0.10, 2.5), null, true),
-    HAIKU("claude-haiku-5-5", "Claude Haiku 5.5", "The fastest and cheapest: \$0.10 in, \$0.50 out.", AnthropicPrices(0.10, 0.50, 0.01, 0.125), AnthropicPrices(0.50, 2.50, 0.05, 0.625), false),
+enum class AnthropicModel(val id: String, val title: String, private val detailMsg: Msg, private val prices: AnthropicPrices, private val longPrices: AnthropicPrices?, val fallback: Boolean) {
+    OPUS("claude-opus-5-5", "Claude Opus 5.5", HelperStrings.modelOpus, AnthropicPrices(4.0, 20.0, 0.20, 5.0), null, true), // l10n: not text (model names)
+    SONNET("claude-sonnet-5-5", "Claude Sonnet 5.5", HelperStrings.modelSonnet, AnthropicPrices(2.0, 10.0, 0.10, 2.5), null, true), // l10n: not text (model names)
+    HAIKU("claude-haiku-5-5", "Claude Haiku 5.5", HelperStrings.modelHaiku, AnthropicPrices(0.10, 0.50, 0.01, 0.125), AnthropicPrices(0.50, 2.50, 0.05, 0.625), false), // l10n: not text (model names)
     /** 0.6.0: for the hardest questions; slower, and its thinking is always on (as on Opus 5.5). */
-    FABLE("claude-fable-5-1", "Claude Fable 5.1", "For the hardest questions, slower: \$10 in, \$50 out.", AnthropicPrices(10.0, 50.0, 0.25, 12.50), null, true);
+    FABLE("claude-fable-5-1", "Claude Fable 5.1", HelperStrings.modelFable, AnthropicPrices(10.0, 50.0, 0.25, 12.50), null, true); // l10n: not text (model names)
+
+    /** What it is for and its price, as words without a language yet (1.1: Settings shows them in the menus' language). */
+    val detailText: Phrase get() = detailMsg()
 
     /** The rate card for a request whose prompt (all input, cached or not) had [promptTokens]. */
     fun prices(promptTokens: Long): AnthropicPrices = if (longPrices != null && promptTokens > LONG_PROMPT) longPrices else prices
@@ -92,7 +98,7 @@ object AnthropicKeyFormat {
         k.all { it in 'A'..'Z' || it in 'a'..'z' || it in '0'..'9' || it == '-' || it == '_' }
 
     /** "sk-ant-…AB12": shown in Settings. */
-    fun mask(k: String): String = "sk-ant-…" + k.takeLast(4)
+    fun mask(k: String): String = "sk-ant-…" + k.takeLast(4) // l10n: not text (a masked key)
 }
 
 // The Claude helper as Robot 0.3 to 0.5 had it (the Claude preset since 0.6.0): its words, its settings, and the format
@@ -127,15 +133,18 @@ object ClaudeWords {
     val OFF = W.off
     val LOCKED = W.locked
     val JOINED = W.joined
-    const val LEFT = "Back to Robot."
+    val LEFT: String get() = HelperStrings.backToRobot().en()
     val NOT_HERE = W.notHere
     val BUDGET = W.budget
     /** A reply cut at its length limit before it said anything (its thinking used the room). */
     val CUT_EMPTY = W.cutEmpty
     val KEY_UNREADABLE = W.keyUnreadable
+    /** [KEY_UNREADABLE] and [KEY_UNAVAILABLE] without a language yet (1.1: a summary says them in the menus' language). */
+    val keyUnreadableText: Phrase get() = W.keyUnreadableText
+    val keyUnavailableText: Phrase get() = W.keyUnavailableText
     /** The saved key couldn't be read just now (a passing Keystore error): it is kept. */
     val KEY_UNAVAILABLE = W.keyUnavailable
-    const val SWIPE_TO_READ = "Open the Claude app, then swipe up from the corner and tap “Read Claude's answer”."
+    val SWIPE_TO_READ: String get() = HelperStrings.swipeToRead().en()
     /** The offer under a reply: Robot didn't answer (a hedge, or the pre-router) ... */
     val OFFER = W.offer
     /** ... or under Robot's own answer, after the local model first handed the question over. */

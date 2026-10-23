@@ -1,0 +1,53 @@
+# What Robot's voices are given for clock times, before (develop/1.1 at 88d4e2d0) and after VoiceForm.clock.
+# Run: tools/voice_phonemes.sh SHERPA_X64_JNI_TARBALL KOKORO_DIR tools/voice_phonemes/times.tsv
+# French: Robot's own times (Fmt.clock, the brief, the car's next event), the model's and a person's.
+fr-b01	fr	Il est 7 h 02.
+fr-a01	fr	Il est 7 heures 2.
+fr-b02	fr	Rendez-vous à 12 h 30.
+fr-a02	fr	Rendez-vous à 12 heures 30.
+fr-b03	fr	Rendez-vous à 12:30.
+fr-b04	fr	Rendez-vous à 12h30.
+fr-b05	fr	Il est 21 h.
+fr-a05	fr	Il est vingt et une heures.
+fr-b06	fr	Il est 1 h.
+fr-a06	fr	Il est une heure.
+fr-b07	fr	À 0 h 15.
+fr-a07	fr	À minuit 15.
+fr-a08	fr	À minuit.
+fr-a09	fr	À midi.
+fr-b10	fr	De 9 h à 10 h 30.
+fr-a10	fr	De 9 heures à 10 heures 30.
+fr-b11	fr	De 9 h–10 h 30.
+fr-b12	fr	Ça dure 1 h 30.
+fr-a12	fr	Ça dure une heure 30.
+fr-b13	fr	À 13 h 21.
+fr-a13	fr	À 13 heures vingt et une.
+fr-b14	fr	Prochain: Dentist à 15 h 00.
+fr-a14	fr	Prochain: Dentist à 15 heures.
+fr-a15	fr	À 19 heures 5.
+fr-a16	fr	Le souper est à 18 heures.
+fr-a17	fr	Il y a 2 heures.
+# French numbers the rule must leave alone.
+fr-n01	fr	3,5 km
+fr-n02	fr	1,5 gigaoctet libre.
+fr-n03	fr	version 1.1
+fr-n04	fr	Appelle le 514 555-1234.
+fr-n05	fr	Il y a 12 habitants.
+fr-n06	fr	Il a fait 1,5 h de route.
+# English: Robot's own ("7:02", "19:30" from Fmt.clock on screen; "3:00 PM" from the car) and the model's.
+en-b01	en	It's 7:02.
+en-a01	en	It's 7 oh 2.
+en-b02	en	At 12:30 p.m.
+en-b03	en	At 19:30.
+en-b04	en	At 7:00.
+en-a04	en	At 7 o'clock.
+en-b05	en	Next: Dentist at 3:00 PM.
+en-a05	en	Next: Dentist at 3 p.m.
+en-b06	en	At 19:00.
+en-a06	en	At 19 hundred.
+en-b07	en	At 9:05 p.m.
+en-a07	en	At 9 oh 5 p.m.
+en-b08	en	At 0:15.
+en-a08	en	At 12:15 a.m.
+en-b09	en	At 07:30.
+en-a09	en	At 7:30.

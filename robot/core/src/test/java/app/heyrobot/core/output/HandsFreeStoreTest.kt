@@ -11,13 +11,16 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.nio.file.Files
 
 /** Headset and car mode's files (0.8): their own JSON next to settings.json, defaults when absent, written under one lock. */
 class HandsFreeStoreTest {
-    private fun dir(): File = Files.createTempDirectory("handsfree").toFile()
+    @get:Rule val tmpRoot = TemporaryFolder()
+    private fun dir(): File = Files.createTempDirectory(tmpRoot.root.toPath(), "handsfree").toFile()
 
     private val buds = SeenDevice(RouteType.BT_A2DP, "Pixel Buds Pro", "XX:XX:XX:XX:EE:FF")
     private val car = SeenDevice(RouteType.BT_SCO, "MyCar", "XX:XX:XX:XX:12:34")

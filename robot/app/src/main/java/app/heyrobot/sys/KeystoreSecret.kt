@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.sys
 
+import app.heyrobot.R
 import android.content.ClipboardManager
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
@@ -48,7 +49,7 @@ class KeystoreSecret(
 
     /** The masked form ("Saved" if its note is gone), or null when none is saved. */
     fun masked(ctx: Context): String? = if (!saved(ctx)) null else
-        readOrNull(meta(ctx))?.let { try { JSONObject(it).optString("masked").takeIf { m -> m.isNotEmpty() } } catch (_: Exception) { null } } ?: "Saved"
+        readOrNull(meta(ctx))?.let { try { JSONObject(it).optString("masked").takeIf { m -> m.isNotEmpty() } } catch (_: Exception) { null } } ?: ctx.getString(R.string.settings_key_saved)
 
     /** A saved secret could never be decrypted again and was removed (Settings says so until a new one is saved). */
     fun unreadable(ctx: Context): Boolean = !saved(ctx) &&

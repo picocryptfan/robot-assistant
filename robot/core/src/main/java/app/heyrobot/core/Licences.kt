@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.Msg
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.SettingsStrings
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -9,12 +12,17 @@ import org.json.JSONObject
 // app/src/main/assets/licenses/components.json, next to the texts it names; the app's LicencesTest keeps it in step with
 // THIRD_PARTY.md, with the libraries the release build packs and with the files in assets/licenses/.
 
-/** Where a part is: in the APK, downloaded when you ask, an online service, or only on the build machine. */
-enum class LicenceWhere(val id: String, val title: String) {
-    APP("app", "In the app"),
-    DOWNLOAD("download", "Downloaded when you ask"),
-    SERVICE("service", "Online services Robot asks, when you ask"),
-    BUILD("build", "Used only to build and test Robot (not in the app)");
+/**
+ * Where a part is: in the APK, downloaded when you ask, an online service, or only on the build machine. 1.1: [titleText]
+ * is the section's title without a language yet (the Licences screen shows it with `str()`).
+ */
+enum class LicenceWhere(val id: String, private val titleMsg: Msg) {
+    APP("app", SettingsStrings.licencesApp),
+    DOWNLOAD("download", SettingsStrings.licencesDownload),
+    SERVICE("service", SettingsStrings.licencesService),
+    BUILD("build", SettingsStrings.licencesBuild);
+
+    val titleText: Phrase get() = titleMsg()
 
     companion object {
         fun of(id: String): LicenceWhere? = entries.firstOrNull { it.id == id }
@@ -89,22 +97,22 @@ data class LicenceBook(val robot: RobotLicence, val licences: Map<String, Licenc
     /** What is wrong with the list (the app's LicencesTest fails on any): one line each. */
     fun problems(): List<String> {
         val out = mutableListOf<String>()
-        components.groupBy { it.id }.filter { it.value.size > 1 }.keys.forEach { out += "id $it twice" }
-        components.groupBy { it.name }.filter { it.value.size > 1 }.keys.forEach { out += "name $it twice" }
-        if (!robot.sourceBundle.contains(RobotLicence.VERSION) || !robot.sourceTag.contains(RobotLicence.VERSION)) out += "Robot's source links need {version}"
-        if (!robot.source.startsWith("https://")) out += "Robot's source isn't an https link"
+        components.groupBy { it.id }.filter { it.value.size > 1 }.keys.forEach { out += "id $it twice" } // l10n: not text (a developer's error)
+        components.groupBy { it.name }.filter { it.value.size > 1 }.keys.forEach { out += "name $it twice" } // l10n: not text (a developer's error)
+        if (!robot.sourceBundle.contains(RobotLicence.VERSION) || !robot.sourceTag.contains(RobotLicence.VERSION)) out += "Robot's source links need {version}" // l10n: not text (a developer's error)
+        if (!robot.source.startsWith("https://")) out += "Robot's source isn't an https link" // l10n: not text (a developer's error)
         for (c in components) {
-            if (c.licence !in licences) out += "${c.id}: licence ${c.licence} isn't in the licences"
-            if (c.name.isBlank() || c.version.isBlank() || c.copyright.isBlank()) out += "${c.id}: a name, version and copyright line are needed"
-            if (!c.url.startsWith("https://")) out += "${c.id}: its link isn't https"
+            if (c.licence !in licences) out += "${c.id}: licence ${c.licence} isn't in the licences" // l10n: not text (a developer's error)
+            if (c.name.isBlank() || c.version.isBlank() || c.copyright.isBlank()) out += "${c.id}: a name, version and copyright line are needed" // l10n: not text (a developer's error)
+            if (!c.url.startsWith("https://")) out += "${c.id}: its link isn't https" // l10n: not text (a developer's error)
             // What Robot distributes (in the APK, or downloaded by it) comes with its full licence text.
             if ((c.where == LicenceWhere.APP || c.where == LicenceWhere.DOWNLOAD) && c.licence != OWN_FILE && textFile(c) == null) {
-                out += "${c.id}: no licence text"
+                out += "${c.id}: no licence text" // l10n: not text (a developer's error)
             }
-            if (c.where != LicenceWhere.APP && c.maven.isNotEmpty()) out += "${c.id}: Maven artifacts are for parts in the app"
-            for (n in c.notices) if (n.title.isBlank()) out += "${c.id}: a notice without a title"
+            if (c.where != LicenceWhere.APP && c.maven.isNotEmpty()) out += "${c.id}: Maven artifacts are for parts in the app" // l10n: not text (a developer's error)
+            for (n in c.notices) if (n.title.isBlank()) out += "${c.id}: a notice without a title" // l10n: not text (a developer's error)
         }
-        for (f in files()) if (!f.startsWith("licenses/") || ".." in f) out += "$f isn't under licenses/"
+        for (f in files()) if (!f.startsWith("licenses/") || ".." in f) out += "$f isn't under licenses/" // l10n: not text (a developer's error)
         return out
     }
 
@@ -118,7 +126,7 @@ data class LicenceBook(val robot: RobotLicence, val licences: Map<String, Licenc
          * The GPL's Appropriate Legal Notices (its section 0 and 5(d)): free software, no warranty, and where the licence
          * is (the Licences screen opens it).
          */
-        const val NOTICE = "Robot is free software: you can redistribute it and/or modify it under the terms of the GNU General " +
+        const val NOTICE = "Robot is free software: you can redistribute it and/or modify it under the terms of the GNU General " + // l10n: not text (the GPL's legal notice, kept in English)
             "Public License as published by the Free Software Foundation, version 3. Robot is distributed in the hope that it will " +
             "be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A " +
             "PARTICULAR PURPOSE. See the GNU General Public License for more details."
@@ -126,7 +134,7 @@ data class LicenceBook(val robot: RobotLicence, val licences: Map<String, Licenc
         /** Throws IllegalArgumentException when [json] isn't the list. */
         fun parse(json: String): LicenceBook {
             val o = try { JSONObject(json) } catch (e: Exception) { throw IllegalArgumentException("not JSON", e) }
-            require(o.optInt("format") == 1) { "unknown format" }
+            require(o.optInt("format") == 1) { "unknown format" } // l10n: not text (a developer's error)
             val r = o.getJSONObject("robot")
             val robot = RobotLicence(r.getString("name"), r.getString("licence"), r.getString("copyright"), r.getString("text"),
                 r.getString("source"), r.getString("sourceTag"), r.getString("sourceBundle"))

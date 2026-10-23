@@ -72,7 +72,7 @@ class BrainService : Service() {
                 BrainProtocol.REQ_UNLOAD -> { engine.unload("asked"); sink.emit(BrainProtocol.EV_UNLOADED, BrainMsg.Empty) }
                 BrainProtocol.REQ_GENERATE -> engine.generate(key, payload as BrainMsg.Generate, BrainWire.takeImage(msg), sink)
                 BrainProtocol.REQ_TOOL_RESULT -> engine.toolResult(key, payload as BrainMsg.ToolResult, sink)
-                BrainProtocol.REQ_ONE_SHOT -> engine.oneShot(key, payload as BrainMsg.OneShot, sink)
+                BrainProtocol.REQ_ONE_SHOT -> engine.oneShot(key, payload as BrainMsg.OneShot, BrainWire.takeImage(msg), sink)
                 BrainProtocol.REQ_CANCEL -> engine.cancel(BrainScheduler.Key(reply.binder, (payload as BrainMsg.Cancel).target))
                 BrainProtocol.REQ_CLOSE_CONV -> engine.closeConv((payload as BrainMsg.CloseConv).convId)
             }

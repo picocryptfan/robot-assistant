@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.voice
 
+import app.heyrobot.core.ListenPause
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -24,15 +25,110 @@ class UtteranceTest {
         return out
     }
 
-    @Test fun aQuestionEndsWhenTheVadFlagDrops() {
-        // The VAD reports speech from 0.6 s and drops its flag 0.5 s after the speech ended at 3.0 s.
+    /**
+     * The Silero VAD's speech flag as sherpa-onnx keeps it, for speech that is really there at [spoken] (ms -> true):
+     * up after [Endpointer.VAD_MIN_SPEECH_S] of speech, down after [Endpointer.VAD_MIN_SILENCE_S] of silence, speech
+     * coming back inside that silence keeping it up.
+     */
+    private class VadFlag(private val spoken: (Long) -> Boolean) {
+        private val minSpeech = (Endpointer.VAD_MIN_SPEECH_S * Endpointer.RATE).toLong()
+        private val minSilence = (Endpointer.VAD_MIN_SILENCE_S * Endpointer.RATE).toLong()
+        private var now = 0L
+        private var startedAt = -1L
+        private var quietSince = -1L
+        private var up = false
+
+        /** The flag after the 32 ms frame ending at [t] ms (frames in order, one call each). */
+        fun at(t: Long): Boolean {
+            now += 512
+            if (spoken(t)) {
+                quietSince = -1
+                if (up) return true
+                if (startedAt < 0) startedAt = now
+                if (now - startedAt < minSpeech) return false
+                up = true
+                return true
+            }
+            startedAt = -1
+            if (!up) return false
+            if (quietSince < 0) quietSince = now
+            if (now - quietSince < minSilence) return true
+            quietSince = -1
+            up = false
+            return false
+        }
+    }
+
+    private fun pause(ms: Int) = Endpointer(Endpointer.Config(silenceSamples = Endpointer.windowFor(ms)))
+
+    /** Speech from 0.5 s to 2 s, a pause of [gapMs], speech again for 1.2 s, then silence up to 10 s. */
+    private fun withPause(e: Endpointer, gapMs: Int) = run(e, 10_000, VadFlag { t -> t in 500..2_000 || t in (2_000 + gapMs)..(3_200 + gapMs) }::at)
+
+    @Test fun aQuestionEndsAfterTheChosenPause() {
+        // Speech from 0.6 s to 3.0 s: the flag drops about 0.25 s later, and the question ends 1 s (Normal) after that.
         val e = Endpointer()
-        val ev = run(e, 6_000) { t -> t in 600..3_500 }
+        val ev = run(e, 6_000, VadFlag { t -> t in 600..3_000 }::at)
         assertEquals(listOf(Endpointer.Event.SPEECH, Endpointer.Event.END), ev.map { it.first })
-        assertTrue(ev[1].second in 3_500..3_540)
+        assertTrue(ev[1].second.toString(), ev[1].second in 4_200..4_350)
         assertTrue(e.heardSpeech)
         // Once ended, nothing more.
         assertEquals(Endpointer.Event.NONE, e.onFrame(true, frame))
+    }
+
+    @Test fun aPauseOfPointEightSecondsDoesNotEndTheQuestionAtNormal() {
+        val ev = withPause(Endpointer(), 800)
+        assertEquals(listOf(Endpointer.Event.SPEECH, Endpointer.Event.END), ev.map { it.first })
+        // It ends after the second part, not in the pause.
+        assertTrue(ev[1].second.toString(), ev[1].second > 4_000)
+    }
+
+    @Test fun theSamePauseEndsTheQuestionAtShort() {
+        val ev = withPause(pause(ListenPause.SHORT.ms), 800)
+        assertEquals(listOf(Endpointer.Event.SPEECH, Endpointer.Event.END), ev.map { it.first })
+        assertTrue(ev[1].second.toString(), ev[1].second in 2_000..2_900)
+    }
+
+    @Test fun everyChoiceWaitsThroughAShorterPauseAndEndsOnALongerOne() {
+        for (p in ListenPause.entries) {
+            val through = withPause(pause(p.ms), p.ms - 100)
+            assertTrue("$p: ${through.last()}", through.last().second > 3_100 + p.ms)
+            val cut = withPause(pause(p.ms), p.ms + 300)
+            assertTrue("$p: ${cut.last()}", cut.last().first == Endpointer.Event.END && cut.last().second < 2_000 + p.ms + 300)
+        }
+    }
+
+    @Test fun speechComingBackResetsTheCount() {
+        // Four pauses of 0.7 s: 2.8 s of silence in all, none of them long enough at Normal.
+        val talk = listOf(500L..1_500L, 2_200L..3_000L, 3_700L..4_500L, 5_200L..6_000L, 6_700L..7_500L)
+        val ev = run(Endpointer(), 12_000, VadFlag { t -> talk.any { t in it } }::at)
+        assertEquals(listOf(Endpointer.Event.SPEECH, Endpointer.Event.END), ev.map { it.first })
+        assertTrue(ev[1].second.toString(), ev[1].second in 8_700..8_850)
+    }
+
+    @Test fun aHeldButtonIgnoresAThreeSecondPauseAndEndsOnRelease() {
+        val e = Endpointer()
+        e.held = true
+        val ev = run(e, 10_000, VadFlag { t -> t in 500..2_000 || t in 5_000..6_000 }::at)
+        assertEquals(listOf(Endpointer.Event.SPEECH), ev.map { it.first })
+        // Letting go: SpeechToText.stop() ends it (decode what there is); the endpointer, no longer held, ends it too.
+        e.held = false
+        assertEquals(Endpointer.Event.END, e.onFrame(false, frame))
+        assertEquals(Endpointer.Event.NONE, e.cut())
+    }
+
+    @Test fun aHeldButtonWaitsPastTheNoSpeechTimeoutButNotPastTheCap() {
+        val e = Endpointer()
+        e.held = true
+        assertEquals(emptyList<Pair<Endpointer.Event, Long>>(), run(e, 10_000) { false })
+        val ev = run(e, 30_000) { false }
+        assertEquals(listOf(Endpointer.Event.MAX_LENGTH), ev.map { it.first })
+    }
+
+    @Test fun aCardsYesEndsAfterAboutPointSixSeconds() {
+        val e = Endpointer(Endpointer.Config(silenceSamples = Endpointer.CARD_WINDOW_SAMPLES))
+        val ev = run(e, 3_000, VadFlag { t -> t in 300..700 }::at)
+        assertEquals(listOf(Endpointer.Event.SPEECH, Endpointer.Event.END), ev.map { it.first })
+        assertTrue(ev[1].second.toString(), ev[1].second in 1_250..1_400)
     }
 
     @Test fun silenceGivesUpAfterSixSeconds() {

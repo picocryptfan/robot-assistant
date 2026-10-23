@@ -1,15 +1,25 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.ConversationStrings
+import app.heyrobot.core.i18n.Msg
+import app.heyrobot.core.i18n.Phrase
 import java.util.Locale
 
 // Pure. Translation in conversation mode (docs/conversation-mode.md 4): the language pair, the engines' common
 // interface, and the guards every translation passes before it is shown or spoken (MtGuard). Gemma (through :brain's
 // one-shot request, phase 5.4) and Bergamot ([BergamotTranslator], over the :mt process) both implement Translator.
 
-/** The languages a conversation translates between. 0.5.0 has one pair; more follow the same shape. */
-enum class LangPair(val id: String, val first: String, val second: String, val title: String) {
-    FR_EN("fr-en", "fr", "en", "French ↔ English");
+/**
+ * The languages a conversation translates between. 0.5.0 has one pair; more follow the same shape. 1.1: [titleText] is its
+ * name in a sentence ("French ↔ English", « français ↔ anglais »), [title] its English.
+ */
+enum class LangPair(val id: String, val first: String, val second: String, private val label: Msg) {
+    FR_EN("fr-en", "fr", "en", ConversationStrings.pairFrEn);
+
+    val titleText: Phrase get() = label()
+
+    val title: String get() = titleText.en()
 
     fun has(lang: String?): Boolean = lang == first || lang == second
 

@@ -7,7 +7,7 @@ import app.heyrobot.core.MtEngine
 import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLogEntry
 
-// Pure. The voice log's codes for messages (VoiceEvent 190 to 199, design §C2 renumbered into 0.7's range): which app,
+// Pure. The voice log's codes for messages (VoiceEvent 190 to 199): which app,
 // how a reply went, how a card was answered. Codes and counts only: never a name, an address or a word of a message
 // (VoiceLogTest checks the recording API takes nothing else).
 
@@ -81,7 +81,7 @@ enum class ListenerEvent(override val id: Int, override val title: String) : Log
     DROPPED(8, "dropped every message held"),
 }
 
-/** What the quarantine did (design §B10). */
+/** What the quarantine did. */
 enum class GuardCode(override val id: Int, override val title: String) : LogCode {
     ASKED(1, "a message is in the conversation: an action asked first"),
     TAP_REQUIRED(2, "a message is in the conversation: an action for someone else needed a tap"),
@@ -103,27 +103,27 @@ enum class MsgRefusal(override val id: Int, override val title: String) : LogCod
 object MessageLog {
     private fun <E> code(entries: List<E>, id: Int): String where E : Enum<E>, E : LogCode = entries.firstOrNull { it.id == id }?.title ?: "#$id"
 
-    private fun app(id: Int): String = if (id == 0) "several apps" else code(MsgAppCode.entries, id)
+    private fun app(id: Int): String = if (id == 0) "several apps" else code(MsgAppCode.entries, id) // l10n: not text (voice log)
 
     /** One messages event in words (VoiceLogText.describe hands these over). */
     fun describe(e: VoiceLogEntry): String {
         val (a, b, c) = Triple(e.a, e.b, e.c)
         return when (e.event) {
-            VoiceEvent.MSG_READ -> "Read $b message${if (b == 1) "" else "s"} from " + app(a) + if (c == 1) " (phone locked)" else ""
-            VoiceEvent.MSG_SUMMARY -> "Summary of $a conversation${if (a == 1) "" else "s"} ($b messages) in $c s"
-            VoiceEvent.MSG_TRANSLATE -> "Message translated to " + code(LangCode.entries, a) + " by " + (if (b == 0) "nothing (no engine answered)" else code(MtEngine.entries, b)) + " in $c ms"
-            VoiceEvent.MSG_REPLY -> "Reply in " + app(a) + " " + code(ReplyRouteCode.entries, b) + ": " + code(ReplyEnd.entries, c)
-            VoiceEvent.MSG_REPLY_CARD -> "Reply card: " + code(CardEnd.entries, a) + (if (b == 1) " · translated" else "") + (if (c == 1) " · group" else "")
-            VoiceEvent.MSG_MARK -> "After reading, " + app(b) + ": " + code(MarkKind.entries, a)
-            VoiceEvent.MSG_HIDDEN -> "Message hidden from Robot in " + app(a) + ": " + code(HiddenCode.entries, b)
+            VoiceEvent.MSG_READ -> "Read $b message${if (b == 1) "" else "s"} from " + app(a) + if (c == 1) " (phone locked)" else "" // l10n: not text (voice log)
+            VoiceEvent.MSG_SUMMARY -> "Summary of $a conversation${if (a == 1) "" else "s"} ($b messages) in $c s" // l10n: not text (voice log)
+            VoiceEvent.MSG_TRANSLATE -> "Message translated to " + code(LangCode.entries, a) + " by " + (if (b == 0) "nothing (no engine answered)" else code(MtEngine.entries, b)) + " in $c ms" // l10n: not text (voice log)
+            VoiceEvent.MSG_REPLY -> "Reply in " + app(a) + " " + code(ReplyRouteCode.entries, b) + ": " + code(ReplyEnd.entries, c) // l10n: not text (voice log)
+            VoiceEvent.MSG_REPLY_CARD -> "Reply card: " + code(CardEnd.entries, a) + (if (b == 1) " · translated" else "") + (if (c == 1) " · group" else "") // l10n: not text (voice log)
+            VoiceEvent.MSG_MARK -> "After reading, " + app(b) + ": " + code(MarkKind.entries, a) // l10n: not text (voice log)
+            VoiceEvent.MSG_HIDDEN -> "Message hidden from Robot in " + app(a) + ": " + code(HiddenCode.entries, b) // l10n: not text (voice log)
             VoiceEvent.MSG_LISTENER -> when (a) {
                 ListenerEvent.PINNED_FIRST_USE.id, ListenerEvent.SIGNER_CHANGED.id, ListenerEvent.NOT_PINNED.id ->
-                    "Notification listener " + code(ListenerEvent.entries, a) + ": " + app(b)
-                else -> "Notification listener " + code(ListenerEvent.entries, a) + " · $b conversations held"
+                    "Notification listener " + code(ListenerEvent.entries, a) + ": " + app(b) // l10n: not text (voice log)
+                else -> "Notification listener " + code(ListenerEvent.entries, a) + " · $b conversations held" // l10n: not text (voice log)
             }
-            VoiceEvent.MSG_GUARD -> "Messages guard: " + code(GuardCode.entries, a)
-            VoiceEvent.MSG_REFUSED -> "Messages not read: " + code(MsgRefusal.entries, a)
-            else -> "#${e.event.id}"
+            VoiceEvent.MSG_GUARD -> "Messages guard: " + code(GuardCode.entries, a) // l10n: not text (voice log)
+            VoiceEvent.MSG_REFUSED -> "Messages not read: " + code(MsgRefusal.entries, a) // l10n: not text (voice log)
+            else -> "#${e.event.id}" // l10n: not text (voice log)
         }
     }
 

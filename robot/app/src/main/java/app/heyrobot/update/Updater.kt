@@ -24,6 +24,9 @@ import app.heyrobot.core.update.UpdatePick
 import app.heyrobot.core.update.UpdateSettings
 import app.heyrobot.core.update.UpdateState
 import app.heyrobot.core.update.UpdateText
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.UpdateStrings
+import app.heyrobot.sys.AppLanguage
 import app.heyrobot.core.update.VerifiedDownload
 import java.io.File
 import java.io.FileInputStream
@@ -45,8 +48,8 @@ object Updater {
 
     val work: MutableState<Work?> = mutableStateOf(null)
 
-    /** What the page should say about what you last asked for (null: nothing new). */
-    val message: MutableState<String?> = mutableStateOf(null)
+    /** What the page should say about what you last asked for (null: nothing new), shown in the menus' language. */
+    val message: MutableState<Phrase?> = mutableStateOf(null)
 
     private val running = AtomicBoolean(false)
     @Volatile private var abort: Abort? = null
@@ -59,18 +62,18 @@ object Updater {
     /** "Check now": its result is the page's last-check line (a failure included), so nothing more to say. */
     fun checkNow(ctx: Context) = launch(Work.Checking) { a -> check(ctx, a, null); null }
 
-    fun downloadNow(ctx: Context) = launch(Work.Downloading(0, 0)) { a -> download(ctx, a, null)?.let { UpdateText.fail(it) } }
+    fun downloadNow(ctx: Context) = launch(Work.Downloading(0, 0)) { a -> download(ctx, a, null)?.let { UpdateText.failText(it) } }
 
-    fun installNow(ctx: Context) = launch(Work.Verifying) { install(ctx) }
+    fun installNow(ctx: Context) = launch(Work.Verifying) { install(ctx)?.let(Phrase::plain) }
 
     /** Stop: a download keeps what it has. */
     fun cancel() {
         abort?.cancel()
     }
 
-    private fun launch(first: Work, job: (Abort) -> String?): Boolean {
+    private fun launch(first: Work, job: (Abort) -> Phrase?): Boolean {
         if (!running.compareAndSet(false, true)) {
-            message.value = UpdateText.fail(UpdateFail.BUSY)
+            message.value = UpdateText.failText(UpdateFail.BUSY)
             return false
         }
         val a = Abort()
@@ -82,7 +85,7 @@ object Updater {
                 message.value = job(a)
             } catch (t: Throwable) {
                 RLog.w("update_work", t)
-                message.value = UpdateText.fail(UpdateFail.SERVICE)
+                message.value = UpdateText.failText(UpdateFail.SERVICE)
             } finally {
                 work.value = null
                 abort = null
@@ -262,13 +265,17 @@ object Updater {
 
     /**
      * Checks the downloaded APK again as it is now (its SHA-256, then package, version and signer) and hands it to Android.
-     * What to tell you, or null once Android's window (or, without asking, the install) takes over. Blocking.
+     * What to tell you (in the menus' language), or null once Android's window (or, without asking, the install) takes over.
+     * Blocking.
      */
     internal fun install(ctx: Context): String? {
-        if (!UpdateInstaller.allowed(ctx)) return INSTALL_NOT_ALLOWED
+        val langs = AppLanguage.langs(ctx)
+        if (!UpdateInstaller.allowed(ctx)) return UpdateStrings.allowFirst().render(langs)
+        // 1.1: an update ends :lock, so it waits for the phone lock to end (docs/plans/phone-lock-design.md §12).
+        if (app.heyrobot.lock.PhoneLockNow.on(ctx)) return app.heyrobot.core.i18n.LockStrings.updateWaits().render(langs)
         val st = UpdateStore.state(ctx)
-        val found = UpdateDecision.offered(st, UpdateStore.repo(ctx), installed()) ?: return UpdateText.UP_TO_DATE
-        val d = ready(ctx, st) ?: return "Download the update first."
+        val found = UpdateDecision.offered(st, UpdateStore.repo(ctx), installed()) ?: return UpdateStrings.upToDate().render(langs)
+        val d = ready(ctx, st) ?: return UpdateStrings.downloadFirst().render(langs)
         val file = File(UpdateStore.downloads(ctx), d.file)
         work.value = Work.Verifying
         val again = if (sha256(file) != d.sha256) UpdateFail.CHECKSUM_MISMATCH
@@ -276,22 +283,20 @@ object Updater {
         if (again != null) {
             file.delete()
             UpdateStore.update(ctx) { it.copy(downloaded = null) }
-            return UpdateText.fail(again)
+            return UpdateText.failText(again).render(langs)
         }
-        if (UpdateStore.downloads(ctx).usableSpace < d.size + UpdateDecision.SPACE_MARGIN) return UpdateText.fail(UpdateFail.NO_SPACE)
+        if (UpdateStore.downloads(ctx).usableSpace < d.size + UpdateDecision.SPACE_MARGIN) return UpdateText.failText(UpdateFail.NO_SPACE).render(langs)
         work.value = Work.Installing
-        UpdateInstaller.install(ctx, file, d.sha256, d.version, UpdateStore.settings(ctx).installWithoutAsking)?.let { return UpdateText.fail(it) }
+        UpdateInstaller.install(ctx, file, d.sha256, d.version, UpdateStore.settings(ctx).installWithoutAsking)?.let { return UpdateText.failText(it).render(langs) }
         UpdateNotices.cancel(ctx)
         UpdateStore.update(ctx) { it.copy(install = null, installVersion = d.version) }
         return null
     }
 
-    const val INSTALL_NOT_ALLOWED = "Allow Robot to install apps first (the button above)."
-
     /** The install session ended (InstallStatusReceiver). Success usually never arrives here: the update ends this process. */
     fun onInstallResult(ctx: Context, outcome: InstallOutcome, version: String?) {
         UpdateStore.update(ctx) { it.copy(install = outcome, installVersion = version ?: it.installVersion) }
-        val text = UpdateText.install(outcome, version)
+        val text = UpdateText.installText(outcome, version)
         message.value = text
         RLog.i("update_result", "outcome" to outcome)
         if (outcome != InstallOutcome.SUCCESS && outcome != InstallOutcome.CANCELLED && !UpdateInstaller.inFront()) UpdateNotices.failed(ctx, text)
@@ -333,6 +338,8 @@ object Updater {
         UpdateJobs.ensure(ctx, UpdateStore.settings(ctx))
         // 1.0: and Termux's weekly update check, while it is on.
         TermuxUpdateCheck.ensure(ctx)
+        // 1.1: and the backup reminder, while it is on.
+        UpdateJobs.ensureBackupReminder(ctx, app.heyrobot.sys.BackupFiles.prefs(ctx).remind)
     }
 
     /**
@@ -353,11 +360,11 @@ object Updater {
         RLog.i("update_done", "op" to RLog.Code("replaced"))
     }
 
-    /** "Robot updated to …" for the app to show, once, when no notification said it. Background thread. */
+    /** "Robot updated to …" for the app to show, once, when no notification said it, in the menus' language. Background thread. */
     fun takeUpdatedNotice(ctx: Context): String? {
         val v = UpdateStore.state(ctx).updatedTo ?: return null
         UpdateStore.update(ctx) { it.copy(updatedTo = null) }
-        return UpdateText.updatedTitle(v) + "."
+        return UpdateText.updatedLine(v).render(AppLanguage.langs(ctx))
     }
 
     /** Keeps only the checked download and the partial file of the release offered now; anything else in the folder goes. */

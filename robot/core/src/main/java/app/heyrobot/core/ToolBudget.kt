@@ -13,8 +13,11 @@ object ToolBudget {
     /** The least room a new turn always keeps (estimated tokens, as ContextWindow counts them). */
     const val MIN_TURN_TOKENS = 240
 
-    /** The groups that may give way, first to last: Termux, web search, memory's tools, then the rest but the core tools. */
-    val OPTIONAL: List<ToolGroup> = listOf(ToolGroup.TERMUX, ToolGroup.WEB, ToolGroup.MEMORY).let { big -> big + (ToolGroup.entries - ToolGroup.CORE - big.toSet()).reversed() }
+    /**
+     * The groups that may give way, first to last: Termux, web search, your skills (1.1), memory's tools, then the rest but
+     * the core tools.
+     */
+    val OPTIONAL: List<ToolGroup> = listOf(ToolGroup.TERMUX, ToolGroup.WEB, ToolGroup.SKILLS, ToolGroup.MEMORY).let { big -> big + (ToolGroup.entries - ToolGroup.CORE - big.toSet()).reversed() }
 
     /**
      * The groups to describe this turn: [groups] (the conversation's) less the optional ones that would leave the new turn

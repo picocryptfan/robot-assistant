@@ -37,20 +37,24 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import app.heyrobot.R
 import app.heyrobot.core.SpeakerClusterer
 import app.heyrobot.core.SpeakerLabels
 import app.heyrobot.core.Transcript
 import app.heyrobot.core.TranscriptEdits
 import app.heyrobot.core.TranscriptLine
+import app.heyrobot.ui.theme.str
 
 // Main and voice processes (phase 5.3, docs/conversation-mode.md 5.3). Speakers on a transcript screen, shared by the
 // live transcript (voice process, through the session) and the library's transcript (main app, through the store): a
 // chip per line with the speaker's colour and name; tap a chip to name the speaker, say they are the same person as
 // another, or "this is me"; long-press a line to give it to another speaker or split it where someone else started; and
-// the card for two speakers who sound alike. Every choice is one more event in the transcript's file.
+// the card for two speakers who sound alike. Every choice is one more event in the transcript's file. 1.1: its words are
+// strings_conversation.xml's, in the menus' language; your own lines are "You", « Moi » (core SpeakerLabels.you).
 
 /** What a screen does with your choices (the session's writer, or the store when nothing records the transcript). */
 interface SpeakerActions {
@@ -70,6 +74,10 @@ data class SpeakerView(val speakers: List<String>, val names: Map<String, String
     private val t = Transcript(names = names, me = me)
 
     fun nameOf(speaker: String): String = t.nameOf(speaker)
+
+    /** [nameOf] in the screen's language ("You", « Moi »). */
+    @Composable
+    fun name(speaker: String): String = t.nameText(speaker).str()
 
     /** Who a line or speaker can go to: the transcript's speakers without "?", you first. */
     val targets: List<String> get() = TranscriptEdits.targets(speakers, me)
@@ -108,11 +116,12 @@ fun speakerColour(speaker: String): Color {
 /** The chip on a line: the speaker's colour and name ("Speaker" when there is one voice). Tappable when [onClick] isn't null. */
 @Composable
 fun SpeakerChip(speaker: String, shown: String, onClick: (() -> Unit)?) {
+    val desc = if (onClick != null) stringResource(R.string.conv_speaker_tap_desc, shown) else stringResource(R.string.conv_speaker_desc, shown)
     Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh,
         // 1.0: a tappable chip reserves a 48 dp target around its 24 dp look.
         modifier = (if (onClick != null) Modifier.minimumInteractiveComponentSize() else Modifier)
             .heightIn(min = 24.dp).clip(RoundedCornerShape(12.dp)).then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .semantics { contentDescription = if (onClick != null) "Speaker: $shown. Tap to name or merge." else "Speaker: $shown" }) {
+            .semantics { contentDescription = desc }) {
         Row(Modifier.padding(horizontal = 8.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(10.dp).clip(CircleShape).background(speakerColour(speaker)))
             Spacer(Modifier.width(6.dp))
@@ -126,12 +135,12 @@ fun SpeakerChip(speaker: String, shown: String, onClick: (() -> Unit)?) {
 fun SimilarCard(view: SpeakerView, from: String, to: String, onMerge: () -> Unit, onDecline: () -> Unit) {
     Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("${view.nameOf(from)} sounds like ${view.nameOf(to)}. The same person?", style = MaterialTheme.typography.bodyLarge)
-            Text("Merging gives all of ${view.nameOf(from)}'s lines to ${view.nameOf(to)}. Robot never merges by itself.",
+            Text(stringResource(R.string.conv_sounds_like, view.name(from), view.name(to)), style = MaterialTheme.typography.bodyLarge)
+            Text(stringResource(R.string.conv_merging_gives, view.name(from), view.name(to)),
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                FilledTonalButton(onClick = onMerge, modifier = Modifier.heightIn(min = 48.dp)) { Text("Merge") }
-                OutlinedButton(onClick = onDecline, modifier = Modifier.heightIn(min = 48.dp)) { Text("Not the same") }
+                FilledTonalButton(onClick = onMerge, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.conv_merge)) }
+                OutlinedButton(onClick = onDecline, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.conv_not_the_same)) }
             }
         }
     }
@@ -146,7 +155,8 @@ private fun Pick(view: SpeakerView, except: String?, someoneElse: Boolean, pick:
                 verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(12.dp).clip(CircleShape).background(speakerColour(s)))
                 Spacer(Modifier.width(10.dp))
-                Text(view.nameOf(s) + if (view.nameOf(s) != s && s != SpeakerClusterer.ME) " ($s)" else "", style = MaterialTheme.typography.bodyLarge)
+                val shown = view.name(s)
+                Text(if (view.nameOf(s) != s && s != SpeakerClusterer.ME) "$shown ($s)" else shown, style = MaterialTheme.typography.bodyLarge)
             }
         }
         if (someoneElse) {
@@ -155,7 +165,7 @@ private fun Pick(view: SpeakerView, except: String?, someoneElse: Boolean, pick:
                 verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(12.dp).clip(CircleShape).background(speakerColour(next)))
                 Spacer(Modifier.width(10.dp))
-                Text("Someone else ($next)", style = MaterialTheme.typography.bodyLarge)
+                Text(stringResource(R.string.conv_someone_else_label, next), style = MaterialTheme.typography.bodyLarge)
             }
         }
     }
@@ -169,47 +179,49 @@ fun SpeakerEditDialog(edit: SpeakerEdit?, view: SpeakerView, actions: SpeakerAct
         null -> {}
         is SpeakerEdit.Menu -> AlertDialog(
             onDismissRequest = { done(null) },
-            title = { Text(view.nameOf(edit.speaker)) },
+            title = { Text(view.name(edit.speaker)) },
             text = {
                 Column {
                     if (edit.speaker != SpeakerClusterer.UNKNOWN) {
                         TextButton(onClick = { done(SpeakerEdit.Rename(edit.speaker)) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                            Text("Name this speaker", Modifier.fillMaxWidth())
+                            Text(stringResource(R.string.conv_name_speaker), Modifier.fillMaxWidth())
                         }
                         if (view.targets.size > 1) TextButton(onClick = { done(SpeakerEdit.Merge(edit.speaker)) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                            Text("Same person as…", Modifier.fillMaxWidth())
+                            Text(stringResource(R.string.conv_same_person_as), Modifier.fillMaxWidth())
                         }
                         if (!view.isMe(edit.speaker)) TextButton(onClick = { actions.thisIsMe(edit.speaker); done(null) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                            Text("This is me", Modifier.fillMaxWidth())
+                            Text(stringResource(R.string.conv_this_is_me), Modifier.fillMaxWidth())
                         }
-                    } else Text("Robot couldn't tell who said these lines (too short, nobody just before). Long-press a line to give it to someone.")
+                    } else Text(stringResource(R.string.conv_unknown_speaker))
                 }
             },
             confirmButton = {},
-            dismissButton = { TextButton(onClick = { done(null) }) { Text("Close") } },
+            dismissButton = { TextButton(onClick = { done(null) }) { Text(stringResource(R.string.conv_close)) } },
         )
         is SpeakerEdit.Rename -> {
             var name by remember(edit) { mutableStateOf(view.names[edit.speaker].orEmpty()) }
             AlertDialog(
                 onDismissRequest = { done(null) },
-                title = { Text(if (view.isMe(edit.speaker)) "Your name here" else "Name ${edit.speaker}") },
+                title = { Text(if (view.isMe(edit.speaker)) stringResource(R.string.conv_your_name_here) else stringResource(R.string.conv_name_label, edit.speaker)) },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(name, { name = it.take(SpeakerLabels.MAX_NAME) }, singleLine = true, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
-                        Text("Kept in this transcript only, never linked to a voice. Empty: back to ${if (view.isMe(edit.speaker)) SpeakerLabels.YOU else edit.speaker}.",
+                        OutlinedTextField(name, { name = it.take(SpeakerLabels.MAX_NAME) }, singleLine = true, label = { Text(stringResource(R.string.conv_name)) }, modifier = Modifier.fillMaxWidth())
+                        Text(stringResource(R.string.conv_name_kept, if (view.isMe(edit.speaker)) SpeakerLabels.you.str() else edit.speaker),
                             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 },
-                confirmButton = { TextButton(onClick = { actions.rename(edit.speaker, name); done(null) }) { Text("Save") } },
-                dismissButton = { TextButton(onClick = { done(null) }) { Text("Cancel") } },
+                confirmButton = { TextButton(onClick = { actions.rename(edit.speaker, name); done(null) }) { Text(stringResource(R.string.conv_save)) } },
+                dismissButton = { TextButton(onClick = { done(null) }) { Text(stringResource(R.string.conv_cancel)) } },
             )
         }
         is SpeakerEdit.Merge -> AlertDialog(
             onDismissRequest = { done(null) },
-            title = { Text(if (edit.speaker == SpeakerClusterer.ME) "Who else is you?" else "${view.nameOf(edit.speaker)} is the same person as…") },
+            title = { Text(if (edit.speaker == SpeakerClusterer.ME) stringResource(R.string.conv_who_else_is_you)
+                else stringResource(R.string.conv_same_person_title, view.name(edit.speaker))) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(if (edit.speaker == SpeakerClusterer.ME) "Their lines become yours." else "All of ${view.nameOf(edit.speaker)}'s lines go to the one you pick.",
+                    Text(if (edit.speaker == SpeakerClusterer.ME) stringResource(R.string.conv_lines_become_yours)
+                        else stringResource(R.string.conv_lines_go_to, view.name(edit.speaker)),
                         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Pick(view, except = edit.speaker, someoneElse = false) { other ->
                         // "Me" is never merged into someone else: the other way round.
@@ -219,38 +231,38 @@ fun SpeakerEditDialog(edit: SpeakerEdit?, view: SpeakerView, actions: SpeakerAct
                 }
             },
             confirmButton = {},
-            dismissButton = { TextButton(onClick = { done(null) }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { done(null) }) { Text(stringResource(R.string.conv_cancel)) } },
         )
         is SpeakerEdit.LineMenu -> AlertDialog(
             onDismissRequest = { done(null) },
-            title = { Text("This line") },
+            title = { Text(stringResource(R.string.conv_this_line)) },
             text = {
                 Column {
                     TextButton(onClick = { done(SpeakerEdit.Move(edit.line)) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                        Text("Someone else said it", Modifier.fillMaxWidth())
+                        Text(stringResource(R.string.conv_someone_else_said), Modifier.fillMaxWidth())
                     }
                     if (TranscriptEdits.wordStarts(edit.line.text).size >= 2) TextButton(onClick = { done(SpeakerEdit.Split(edit.line)) },
                         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                        Text("Two people said it: split", Modifier.fillMaxWidth())
+                        Text(stringResource(R.string.conv_two_people_split), Modifier.fillMaxWidth())
                     }
                 }
             },
             confirmButton = {},
-            dismissButton = { TextButton(onClick = { done(null) }) { Text("Close") } },
+            dismissButton = { TextButton(onClick = { done(null) }) { Text(stringResource(R.string.conv_close)) } },
         )
         is SpeakerEdit.Move -> AlertDialog(
             onDismissRequest = { done(null) },
-            title = { Text("Who said it?") },
+            title = { Text(stringResource(R.string.conv_who_said_it)) },
             text = { Pick(view, except = edit.line.speaker, someoneElse = true) { s -> actions.move(edit.line.i, s); done(null) } },
             confirmButton = {},
-            dismissButton = { TextButton(onClick = { done(null) }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { done(null) }) { Text(stringResource(R.string.conv_cancel)) } },
         )
         is SpeakerEdit.Split -> {
             val starts = remember(edit) { TranscriptEdits.wordStarts(edit.line.text) }
             var at by remember(edit) { mutableStateOf<Int?>(null) }
             AlertDialog(
                 onDismissRequest = { done(null) },
-                title = { Text(if (at == null) "Where did the other person start?" else "Who said the rest?") },
+                title = { Text(stringResource(if (at == null) R.string.conv_where_other_started else R.string.conv_who_said_rest)) },
                 text = {
                     val cut = at
                     if (cut == null) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -264,12 +276,12 @@ fun SpeakerEditDialog(edit: SpeakerEdit?, view: SpeakerView, actions: SpeakerAct
                             }
                         }
                     } else Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("“" + edit.line.text.substring(cut).trim() + "”", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.conv_quoted, edit.line.text.substring(cut).trim()), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Pick(view, except = null, someoneElse = true) { s -> actions.split(edit.line.i, cut, s); done(null) }
                     }
                 },
                 confirmButton = {},
-                dismissButton = { TextButton(onClick = { done(null) }) { Text("Cancel") } },
+                dismissButton = { TextButton(onClick = { done(null) }) { Text(stringResource(R.string.conv_cancel)) } },
             )
         }
     }

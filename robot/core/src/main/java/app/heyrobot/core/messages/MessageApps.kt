@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.messages
 
-// Pure. The messaging apps Robot may read and answer (design §B3, §B11), and what each one's notification actions do,
+// Pure. The messaging apps Robot may read and answer, and what each one's notification actions do,
 // as read in their source (Cheogram master 2f223af7, Signal-Android 92f5ccd3, GrapheneOS Messaging e34a84fd). Molly and
 // Google Messages weren't checked: their reply behaviour is marked unverified, and a card says so.
 
@@ -25,8 +25,15 @@ enum class MessageApp(
     SIGNAL("Signal", listOf("org.thoughtcrime.securesms"), verified = true, replyMarksRead = true, markReadTellsSender = true),
     /** Signal's code; the package name is the one Molly publishes (not checked on the phone yet). */
     MOLLY("Molly", listOf("im.molly.app"), verified = false, replyMarksRead = true, markReadTellsSender = true),
-    MESSAGING("Messaging (SMS)", listOf("com.android.messaging"), verified = true, sms = true),
-    GOOGLE_MESSAGES("Google Messages", listOf("com.google.android.apps.messaging"), verified = false, sms = true);
+    MESSAGING(app.heyrobot.core.i18n.MessageStrings.appMessaging().en(), listOf("com.android.messaging"), verified = true, sms = true),
+    GOOGLE_MESSAGES("Google Messages", listOf("com.google.android.apps.messaging"), verified = false, sms = true); // l10n: not text (an app's name)
+
+    /**
+     * 1.1: the app's name in a sentence, without a language yet: the names Robot reads in the apps' own words, except the
+     * phone's own Messaging app (« Messagerie (SMS) »). [title] stays English: the model, the logs, History's old lines.
+     */
+    val titleText: app.heyrobot.core.i18n.Phrase
+        get() = if (this == MESSAGING) app.heyrobot.core.i18n.MessageStrings.appMessaging() else app.heyrobot.core.i18n.Phrase.plain(title)
 
     companion object {
         fun of(packageName: String?): MessageApp? = entries.firstOrNull { packageName != null && packageName in it.packages }

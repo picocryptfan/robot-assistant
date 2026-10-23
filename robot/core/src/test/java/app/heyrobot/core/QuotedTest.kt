@@ -6,7 +6,7 @@ import app.heyrobot.core.memory.MemoryTaint
 import app.heyrobot.core.messages.MessageCommand
 import app.heyrobot.core.messages.MessagesRouter
 import app.heyrobot.core.output.MessageNotice
-import app.heyrobot.core.output.SpokenLang
+import app.heyrobot.core.i18n.Lang
 import app.heyrobot.core.web.QueryCard
 import app.heyrobot.core.web.QueryCheck
 import app.heyrobot.core.web.QueryVerdict

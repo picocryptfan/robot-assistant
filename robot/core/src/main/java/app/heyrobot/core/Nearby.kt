@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.InfoStrings
+import app.heyrobot.core.i18n.Msg
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.UiLabel
+import app.heyrobot.core.i18n.UiStrings
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.Normalizer
@@ -54,25 +59,31 @@ data class NearestAnswer(val choice: NearestOnline, val at: Long) {
 data class NearbyPlace(val name: String, val address: String?, val lat: Double, val lon: Double)
 
 /** Why the nearest place couldn't be found online, for the card and the log (codes only, never where). */
-enum class NearbyFail(override val id: Int, override val title: String, val text: String) : LogCode {
-    NO_INTERNET(1, "no internet", "No internet: Robot couldn't reach OpenStreetMap"),
-    NO_NETWORK_PERMISSION(2, "no network permission", "Robot isn't allowed to use the network"),
-    BUSY(3, "rate limited", "OpenStreetMap's search is busy just now"),
-    SERVICE(4, "service error", "OpenStreetMap's search didn't answer properly"),
-    NOTHING(5, "nothing nearby", "OpenStreetMap knows no such place near you"),
-    NO_LOCATION(6, "no location", "Robot couldn't tell where you are"),
-    NOT_ALLOWED(7, "location not allowed", "Robot may not see where you are (allow location in the Robot app)"),
-    TIMEOUT(8, "took too long", "Finding it online took too long"),
-    STOPPED(9, "stopped", "Stopped"),
+enum class NearbyFail(override val id: Int, override val title: String, private val msg: Msg) : LogCode {
+    NO_INTERNET(1, "no internet", InfoStrings.nearbyNoInternet),
+    NO_NETWORK_PERMISSION(2, "no network permission", InfoStrings.nearbyNoNetwork),
+    BUSY(3, "rate limited", InfoStrings.nearbyBusy),
+    SERVICE(4, "service error", InfoStrings.nearbyService),
+    NOTHING(5, "nothing nearby", InfoStrings.nearbyNothing),
+    NO_LOCATION(6, "no location", InfoStrings.nearbyNoLocation),
+    NOT_ALLOWED(7, "location not allowed", InfoStrings.nearbyNotAllowed),
+    TIMEOUT(8, "took too long", InfoStrings.nearbyTimeout),
+    STOPPED(9, "stopped", InfoStrings.nearbyStopped),
     ;
 
-    /** [text], naming the search server you chose when it isn't OpenStreetMap's (Settings › Actions › Search server). */
-    fun text(server: NearbyServer): String = if (server.isDefault) text else when (this) {
-        NO_INTERNET -> "No internet: Robot couldn't reach ${server.name}"
-        BUSY -> "${server.name} is busy just now"
-        SERVICE -> "${server.name} didn't answer properly"
-        else -> text
+    /** Why, in English (the model and the log's line); [phrase] in words without a language yet (the card). */
+    val text: String get() = phrase().en()
+
+    fun phrase(server: NearbyServer = NearbyServer.DEFAULT): Phrase = when {
+        this == NO_INTERNET -> msg("server" to server.sentTo)
+        server.isDefault -> msg()
+        this == BUSY -> InfoStrings.nearbyServerBusy("server" to server.name)
+        this == SERVICE -> InfoStrings.nearbyServerService("server" to server.name)
+        else -> msg()
     }
+
+    /** [text], naming the search server you chose when it isn't OpenStreetMap's (Settings › Actions › Search server). */
+    fun text(server: NearbyServer): String = phrase(server).en()
 }
 
 /**
@@ -98,7 +109,10 @@ class NearbyServer private constructor(
     val isDefault: Boolean get() = this == DEFAULT
 
     /** Who gets the words and the area, for the first-use card and Settings. */
-    val label: String get() = if (isDefault) "OpenStreetMap's Nominatim" else "the Nominatim server at $name"
+    val label: String get() = labelText.en()
+
+    /** [label] in words without a language yet (1.1). */
+    val labelText: Phrase get() = if (isDefault) InfoStrings.nominatimOsm() else InfoStrings.nominatimAt("server" to name)
 
     /** The card's "Sent to …" line. */
     val sentTo: String get() = if (isDefault) "OpenStreetMap" else name
@@ -111,7 +125,15 @@ class NearbyServer private constructor(
     override fun toString() = base
 
     /** What checking a typed address found: the server, or why it can't be used ([problem], a line for Settings). */
-    data class Checked(val server: NearbyServer?, val problem: String?)
+    /** [problem]: why not, in English; [problemText] the same words without a language yet (1.1: Settings shows them). */
+    data class Checked(val server: NearbyServer?, val problem: String?) {
+        var problemText: Phrase? = problem?.let(Phrase::plain)
+            private set
+
+        constructor(server: NearbyServer?, problem: Phrase) : this(server, problem.en()) {
+            problemText = problem
+        }
+    }
 
     companion object {
         val DEFAULT = NearbyServer(Nearby.HOST, -1, "")
@@ -131,18 +153,18 @@ class NearbyServer private constructor(
          * pasted search link ("…/search?q=x" without its query is the same server). Empty: OpenStreetMap's.
          */
         fun check(text: String?): Checked {
-            fun no(why: String) = Checked(null, why)
+            fun no(why: Phrase) = Checked(null, why)
             var t = text?.trim().orEmpty()
             if (t.isEmpty()) return Checked(DEFAULT, null)
-            if (t.length > MAX_LENGTH) return no("That address is too long.")
+            if (t.length > MAX_LENGTH) return no(InfoStrings.serverTooLong())
             val scheme = Regex("^([A-Za-z][A-Za-z0-9+.-]*)://").find(t)
             if (scheme != null) {
-                if (!scheme.groupValues[1].equals("https", ignoreCase = true)) return no("Use an https:// address: the words and your area only go encrypted.")
+                if (!scheme.groupValues[1].equals("https", ignoreCase = true)) return no(InfoStrings.serverHttps("scheme" to "https://"))
                 t = t.substring(scheme.value.length)
             }
-            if (t.any { it.isWhitespace() }) return no("An address has no spaces.")
-            if ('?' in t || '#' in t) return no("Type the server's address without a search (nothing after ? or #).")
-            if ('@' in t) return no("Type the server's address without a user name.")
+            if (t.any { it.isWhitespace() }) return no(InfoStrings.serverSpaces())
+            if ('?' in t || '#' in t) return no(InfoStrings.serverQuery())
+            if ('@' in t) return no(InfoStrings.serverUser())
             val slash = t.indexOf('/')
             val authority = if (slash < 0) t else t.substring(0, slash)
             var path = if (slash < 0) "" else t.substring(slash)
@@ -150,16 +172,16 @@ class NearbyServer private constructor(
             val host = (if (colon < 0) authority else authority.substring(0, colon)).lowercase(java.util.Locale.ROOT).removeSuffix(".")
             var port = -1
             if (colon >= 0) {
-                port = authority.substring(colon + 1).toIntOrNull()?.takeIf { it in 1..65535 } ?: return no("The port must be a number from 1 to 65535.")
+                port = authority.substring(colon + 1).toIntOrNull()?.takeIf { it in 1..65535 } ?: return no(InfoStrings.serverPort())
                 if (port == 443) port = -1
             }
-            if (!hostOk(host)) return no("That isn't a server address Robot can use (a name like nominatim.example.org, or an IPv4 address).")
+            if (!hostOk(host)) return no(InfoStrings.serverHost())
             path = path.trimEnd('/')
             for (end in listOf("/search.php", "/search")) if (path.endsWith(end, ignoreCase = true)) path = path.dropLast(end.length).trimEnd('/')
             if (path.isNotEmpty()) {
                 val segments = path.removePrefix("/").split('/')
                 if (segments.any { it.isEmpty() || it == "." || it == ".." || !SEGMENT.matches(it) }) {
-                    return no("The path after the server's name may hold only letters, digits, dots, dashes and underscores.")
+                    return no(InfoStrings.serverPath())
                 }
             }
             return Checked(NearbyServer(host, port, path), null)
@@ -261,7 +283,7 @@ object Nearby {
      */
     const val HOST = "nominatim.openstreetmap.org"
     /** The card's credit for what OpenStreetMap found (its data is ODbL; Nominatim's usage policy asks for attribution). */
-    const val ATTRIBUTION = "Data © OpenStreetMap contributors, ODbL"
+    const val ATTRIBUTION = "Data © OpenStreetMap contributors, ODbL" // l10n: not text (a licence credit, as OpenStreetMap writes it)
 
     /**
      * Nominatim's usage policy: a User-Agent that identifies the application. The app, its version ([version], the
@@ -269,7 +291,7 @@ object Nearby {
      * or the person.
      */
     fun userAgent(version: String): String =
-        "${AppId.product(version)} (${AppId.PACKAGE}; Android voice assistant, GPL-3.0)"
+        "${AppId.product(version)} (${AppId.PACKAGE}; Android voice assistant, GPL-3.0)" // l10n: not text (an HTTP header)
 
     /**
      * [query] may go to Nominatim: a kind of place or a name ("pharmacy", "Tim Hortons", "7-Eleven"), at most 6 words and 60
@@ -280,6 +302,14 @@ object Nearby {
         val q = query.trim()
         return q.isNotEmpty() && q.length <= 60 && q.split(Regex("\\s+")).size <= 6 && !q.contains('@') && !Regex("\\d{3,}").containsMatchIn(q)
     }
+
+    /**
+     * A town named for the weather may go to Open-Meteo's geocoder by the same rule: every name its searches would send
+     * (OpenMeteo.searches: the part before a comma, and shorter forms of it; what follows a comma stays on the phone) is
+     * [sendable]. A place the model wrote from what it read could otherwise carry an address, a number or a few words of
+     * anything to Open-Meteo, with no card when you asked about the weather.
+     */
+    fun weatherSendable(place: String): Boolean = OpenMeteo.searches(place).all { sendable(it.name) }
 
     /** Nominatim's usage policy: at most one request a second. */
     const val MIN_GAP_MS = 1_000L
@@ -311,16 +341,18 @@ object Nearby {
     fun mode(settings: RobotSettings, answer: NearestAnswer?): NearestOnline =
         if (answer != null && answer.at > settings.nearestOnlineAt) answer.choice else settings.nearestOnline
 
-    /** The first-use card's buttons and its tick box. */
-    const val ALLOW_ALWAYS = "Allow always"
-    const val JUST_THIS_TIME = "Just this time"
-    const val NO_SEARCH = "No, search the map"
-    const val DONT_ASK = "Don't ask again"
+    /** The first-use card's buttons and its tick box (English; the card shows them in the menus' language). */
+    val ALLOW_ALWAYS: String get() = UiStrings.allowAlways().en()
+    val JUST_THIS_TIME: String get() = InfoStrings.justThisTime().en()
+    val NO_SEARCH: String get() = InfoStrings.noSearchMap().en()
+    val DONT_ASK: String get() = InfoStrings.dontAskAgain().en()
 
     /** The first-use card's line: exactly what would leave the phone, and to whom (the search server in Settings). */
-    fun consentNote(what: String, server: NearbyServer = NearbyServer.DEFAULT): String =
-        "To find the closest one, Robot would send “$what” and your area (about 1 km) to ${server.label}. Nothing " +
-            "else leaves the phone. “$NO_SEARCH” uses your maps app's search instead, on the phone."
+    fun consentNote(what: String, server: NearbyServer = NearbyServer.DEFAULT): String = consentText(what, server).en()
+
+    /** [consentNote] in words without a language yet. */
+    fun consentText(what: String, server: NearbyServer = NearbyServer.DEFAULT): Phrase =
+        InfoStrings.nearbyConsent("what" to what, "server" to server.labelText, "no" to UiLabel(InfoStrings.noSearchMap))
 
     /**
      * The maps action [a] ready for its card: [wanted] is "the nearest …" in the model's or your words, and something
@@ -336,21 +368,29 @@ object Nearby {
             withNearest(a, nearest = true, consent = null),
             why = setOf(AskWhy.ONLINE),
             choices = listOf(
-                Choice(ALLOW_ALWAYS, always, always),
-                Choice(JUST_THIS_TIME, withNearest(a, nearest = true, consent = NearestConsent.ONCE), always),
-                Choice(NO_SEARCH, withNearest(a, nearest = false, consent = NearestConsent.NO), withNearest(a, nearest = false, consent = NearestConsent.NEVER)),
+                Choice(UiStrings.allowAlways(), always, always),
+                Choice(InfoStrings.justThisTime(), withNearest(a, nearest = true, consent = NearestConsent.ONCE), always),
+                Choice(InfoStrings.noSearchMap(), withNearest(a, nearest = false, consent = NearestConsent.NO), withNearest(a, nearest = false, consent = NearestConsent.NEVER)),
             ),
             note = consentNote(what, server),
             remember = DONT_ASK,
+            noteText = consentText(what, server),
+            rememberText = InfoStrings.dontAskAgain(),
         )
     }
 
     /** The card's line when the nearest place couldn't be found and Organic Maps' search opened instead ([navigate]: directions). */
-    fun instead(why: NearbyFail, navigate: Boolean, server: NearbyServer = NearbyServer.DEFAULT): String =
-        "${why.text(server)}, so Robot opened your maps app's search instead" + if (navigate) ": pick the place, then tap Route." else "."
+    fun instead(why: NearbyFail, navigate: Boolean, server: NearbyServer = NearbyServer.DEFAULT): String = insteadText(why, navigate, server).en()
+
+    /** [instead] in words without a language yet. */
+    fun insteadText(why: NearbyFail, navigate: Boolean, server: NearbyServer = NearbyServer.DEFAULT): Phrase =
+        (if (navigate) InfoStrings.nearbyInsteadRoute else InfoStrings.nearbyInstead)("why" to why.phrase(server))
 
     /** The card while it waits or runs: no place yet, and the words it was asked for. */
-    fun describe(what: String) = "Find the nearest “$what” online (OpenStreetMap) and open the route in your maps app"
+    fun describe(what: String) = describeText(what).en()
+
+    /** [describe] in words without a language yet. */
+    fun describeText(what: String): Phrase = InfoStrings.nearbyDescribe("what" to what)
 
     /** Two decimals (about 1 km): all OpenStreetMap learns of where you are. */
     fun coord(v: Double): String = String.format(Locale.US, "%.2f", v)
@@ -363,7 +403,7 @@ object Nearby {
         val la = coord(lat).toDouble()
         val lo = coord(lon).toDouble()
         val box = listOf(lo - half, la + half, lo + half, la - half).joinToString(",") { coord(it) }
-        return "${server.base}/search?q=${UriText.strict(query.trim())}&format=jsonv2&limit=$LIMIT&bounded=1&viewbox=$box"
+        return "${server.base}/search?q=${UriText.strict(query.trim())}&format=jsonv2&limit=$LIMIT&bounded=1&viewbox=$box" // l10n: not text (a URL)
     }
 
     /** Nominatim's answer (jsonv2), or null when it isn't one. Places without a usable position are left out. */
@@ -423,17 +463,20 @@ object Nearby {
         places.map { it to metres(lat, lon, it.lat, it.lon) }.minByOrNull { it.second }
 
     /** "about 450 m", "about 1.2 km", "about 12 km"; in miles for the phone regions that use them (WeatherUnits). */
-    fun distance(metres: Double, units: WeatherUnits): String = if (units == WeatherUnits.IMPERIAL) {
+    fun distance(metres: Double, units: WeatherUnits): String = distanceText(metres, units).en()
+
+    /** [distance] in words without a language yet (« environ 1,2 km »). */
+    fun distanceText(metres: Double, units: WeatherUnits): Phrase = if (units == WeatherUnits.IMPERIAL) {
         val mi = metres / 1609.344
         when {
-            mi < 0.1 -> "about ${(metres * 3.28084 / 50).roundToInt().coerceAtLeast(1) * 50} ft"
-            mi < 10 -> "about ${String.format(Locale.US, "%.1f", mi)} mi"
-            else -> "about ${mi.roundToInt()} mi"
+            mi < 0.1 -> InfoStrings.aboutFeet("n" to ((metres * 3.28084 / 50).roundToInt().coerceAtLeast(1) * 50).toString())
+            mi < 10 -> InfoStrings.aboutMiles("n" to InfoStrings.decimal(String.format(Locale.US, "%.1f", mi)))
+            else -> InfoStrings.aboutMiles("n" to mi.roundToInt().toString())
         }
     } else when {
-        metres < 1_000 -> "about ${(metres / 50).roundToInt().coerceAtLeast(1) * 50} m"
-        metres < 10_000 -> "about ${String.format(Locale.US, "%.1f", metres / 1_000)} km"
-        else -> "about ${(metres / 1_000).roundToInt()} km"
+        metres < 1_000 -> InfoStrings.aboutMetres("n" to ((metres / 50).roundToInt().coerceAtLeast(1) * 50).toString())
+        metres < 10_000 -> InfoStrings.aboutKm("n" to InfoStrings.decimal(String.format(Locale.US, "%.1f", metres / 1_000)))
+        else -> InfoStrings.aboutKm("n" to (metres / 1_000).roundToInt().toString())
     }
 }
 

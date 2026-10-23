@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.assistant.handsfree
 
+import app.heyrobot.core.i18n.HandsFreeStrings
+import app.heyrobot.core.output.spoken
 import app.heyrobot.assistant.conversation.ConversationSession
 import android.os.Bundle
 import android.os.SystemClock
@@ -34,12 +36,14 @@ import app.heyrobot.core.headset.EntryKind
 import app.heyrobot.core.headset.HeadsetAnnounce
 import app.heyrobot.core.messages.AnnounceSenders
 import app.heyrobot.core.messages.HandsFreeReplies
-import app.heyrobot.core.messages.Lang
+import app.heyrobot.core.i18n.Lang
 import app.heyrobot.core.messages.MessagePeople
 import app.heyrobot.core.messages.MessageQuarantine
 import app.heyrobot.core.messages.MessageThread
 import app.heyrobot.core.messages.MessagesFile
 import app.heyrobot.core.messages.MessagesLocked
+import app.heyrobot.core.lock.SomeoneElseLock
+import app.heyrobot.lock.PhoneLockNow
 import app.heyrobot.core.messages.ReplyRequest
 import app.heyrobot.core.output.MessageNotice
 import app.heyrobot.core.output.OutputContext
@@ -50,7 +54,6 @@ import app.heyrobot.core.output.RouteType
 import app.heyrobot.core.output.SeenDevice
 import app.heyrobot.core.output.SpeechClass
 import app.heyrobot.core.output.SpeechSource
-import app.heyrobot.core.output.SpokenLang
 import app.heyrobot.core.output.Trust
 import app.heyrobot.core.output.Utterance
 import app.heyrobot.core.output.AskWhat
@@ -65,7 +68,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
-// VOICE PROCESS (0.8). New messages announced hands-free (design §3.8 H3, §4.10 C3), on 0.7's messages and their rules.
+// VOICE PROCESS (0.8). New messages announced hands-free, on 0.7's messages and their rules.
 // The main process's MessageTap says only that a conversation has a new message (its key, and whether Do Not Disturb
 // lets it through: Cmd.MESSAGE_NEW); this asks the bridge for it as any read does, so 0.7's lock rules hold ("Messages on
 // the lock screen", Off by default: nothing is announced while locked), and decides with core: Settings › Messages ›
@@ -87,8 +90,8 @@ object HandsFreeMessages {
 
     private val app get() = VoiceHub.app
     private val scope = MainScope()
-    private val lang: SpokenLang get() = HandsFreeHub.lang
-    private fun msgLang(l: SpokenLang) = if (l == SpokenLang.FR) Lang.FR else Lang.EN
+    private val lang: Lang get() = HandsFreeHub.lang
+    private fun msgLang(l: Lang) = if (l == Lang.FR) Lang.FR else Lang.EN
 
     /** An announcement decided, waiting for its panel to open (RAM only). */
     private class Opening(val thread: MessageThread, val notice: MessageNotice, val car: Boolean, val first: String, val readNow: Boolean,
@@ -136,7 +139,7 @@ object HandsFreeMessages {
 
     private suspend fun decide(key: String, dnd: Boolean) {
         val f = withContext(Dispatchers.IO) { MessagesStore.reload(app) }
-        val s = f.settings
+        val s = SomeoneElseLock.messages(f.settings, PhoneLockNow.someoneElse(app))
         if (!s.on || !s.announce) return
         if (RobotVoiceService.instance == null) return
         // In the car only while it is there: car mode started without a car, or the car gone (its last 30 s), is not
@@ -260,7 +263,7 @@ object HandsFreeMessages {
                 AnnounceNext.Quiet -> {
                     f.waiting = false
                     log(AnnounceCode.ANNOUNCED)
-                    host.text(replyId, if (lang == SpokenLang.FR) "D'accord." else "Okay.")
+                    host.text(replyId, spoken(HandsFreeStrings.okay(), lang))
                     PanelHandsFree.endQuietly()
                 }
                 is AnnounceNext.Ask -> {
@@ -273,7 +276,7 @@ object HandsFreeMessages {
         val c = f.context ?: return
         // A "send" within 3 s of Robot saying the message's words doesn't count (0.7's echo rule): asked again.
         if (st.step == MessageStep.READ_BACK && !PanelMessages.voiceYesNow()) {
-            return say(replyId, host, if (lang == SpokenLang.FR) MessageQuarantine.SAY_YES_AGAIN_FR.substringAfter(", ") else "Say send again.", listen = true)
+            return say(replyId, host, spoken(HandsFreeStrings.saySendAgain(), lang), listen = true)
         }
         val (next, fx) = MessageFlow.on(st, heard, c, wake)
         f.car2 = next

@@ -21,7 +21,6 @@ import app.heyrobot.core.WeatherPlace
 import app.heyrobot.core.memory.MemorySettings
 import app.heyrobot.ui.Page
 import app.heyrobot.ui.Snapshot
-import app.heyrobot.ui.Tab
 import app.heyrobot.ui.testing.ActionLog
 import app.heyrobot.ui.testing.PHONE
 import app.heyrobot.ui.testing.PIXEL_10_PRO
@@ -41,7 +40,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
-/** The Settings tab: twenty-one rows (0.7 added Memory and Messages, 0.8 Routines, Headset and Car mode, 0.9 Web search and Termux), each with its state under the title, each opening its page. */
+/** The Settings tab: twenty-four rows (0.7 added Memory and Messages, 0.8 Routines, Headset and Car mode, 0.9 Web search and Termux, 1.1 Language and Skills, 1.4 Files), each with its state under the title, each opening its page. */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35], qualifiers = PHONE)
@@ -58,11 +57,14 @@ class SettingsRootTest {
     @Test fun eachRowOpensItsPage() {
         open()
         val rows = listOf(
+            // 1.4: Model at the top, a page of Settings since Files took its tab.
+            "Model" to "openPage ${Page.Settings(SettingsRoutes.MODEL)}",
             "Wake word" to "openPage ${Page.WakePhrases}",
             "Voice" to "openPage ${Page.Settings(SettingsRoutes.VOICE)}",
             "Actions" to "openPage ${Page.Settings(SettingsRoutes.ACTIONS)}",
             "Safety & privacy" to "openPage ${Page.Safety}",
             "Routines" to "openPage ${Page.Settings(SettingsRoutes.ROUTINES)}",
+            "Skills" to "openPage ${Page.Settings(SettingsRoutes.SKILLS)}",
             "Headset" to "openPage ${Page.Settings(SettingsRoutes.HEADSET)}",
             "Car mode" to "openPage ${Page.Settings(SettingsRoutes.CAR)}",
             "People, notes and calendar" to "openPage ${Page.Settings(SettingsRoutes.PEOPLE_NOTES_CALENDAR)}",
@@ -72,10 +74,11 @@ class SettingsRootTest {
             "Helpers" to "openPage ${Page.Helpers}",
             "Conversation" to "openPage ${Page.ConversationSettings}",
             "Termux" to "openPage ${Page.Settings(SettingsRoutes.TERMUX)}",
-            "Model" to "openTab ${Tab.MODEL}",
             "Memory" to "openPage ${Page.Settings(SettingsRoutes.MEMORY)}",
+            "Files" to "openPage ${Page.Settings(SettingsRoutes.FILES)}",
             "History" to "openPage ${Page.Settings(SettingsRoutes.HISTORY)}",
             "Display" to "openPage ${Page.Settings(SettingsRoutes.DISPLAY)}",
+            "Language" to "openPage ${Page.Settings(SettingsRoutes.LANGUAGE)}",
             "Assistant setup" to "openSetup",
             "Advanced" to "openPage ${Page.Settings(SettingsRoutes.ADVANCED)}",
             "About" to "openPage ${Page.Settings(SettingsRoutes.ABOUT)}",
@@ -123,8 +126,14 @@ class SettingsRootTest {
         assertEquals("On · 2 scripts", termuxSummary(t.copy(enabled = true), 2))
         assertEquals("On · commands ask first", termuxSummary(t.copy(enabled = true), 0))
         open(s)
+        // 1.4: Model at the top, its summary as the tab had it.
+        rule.onNodeWithText("Model").assert(hasText("Fast · stays loaded 5 min"))
         rule.onNodeWithText("Wake word").assert(hasText("On · “hey robot” and 2 others"))
+        rule.scrollToText("Weather")
         rule.onNodeWithText("Weather").assert(hasText("Home: Montreal"))
+        // 1.4: Robot Files, counted without the key: nothing yet.
+        rule.scrollToText("Files")
+        rule.onRow("Files").assert(hasText("No files yet"))
     }
 
     @Test fun setupThatNeedsAttentionSaysSo() {
@@ -142,7 +151,7 @@ class SettingsRootTest {
     @Test fun theRootIsCategoriesOnly() {
         open()
         val rows = listOf("Wake word", "Voice", "Actions", "Safety & privacy", "People, notes and calendar", "Messages", "Weather", "Web search", "Helpers",
-            "Conversation", "Model", "Memory", "History", "Display", "Assistant setup", "Advanced", "About")
+            "Conversation", "Model", "Memory", "History", "Display", "Language", "Assistant setup", "Advanced", "About")
         assertTrue(rows.size <= 18)
         for (title in rows) {
             rule.scrollToText(title)

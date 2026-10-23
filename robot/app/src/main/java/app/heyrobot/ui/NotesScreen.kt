@@ -58,6 +58,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import app.heyrobot.core.Note
 import app.heyrobot.core.NoteSearch
+import androidx.compose.ui.res.stringResource
+import app.heyrobot.R
 import app.heyrobot.sys.NotesFiles
 import app.heyrobot.ui.common.RIcons
 import kotlinx.coroutines.Dispatchers
@@ -74,11 +76,11 @@ fun NotesScreen(notes: List<Note>, a: AppActions, modifier: Modifier) {
     val shown = remember(notes, query) { if (query.isBlank()) notes else NoteSearch.find(query, notes, limit = notes.size) }
     Box(modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
-            ScreenTitle("Robot Notes", "Saved on this phone only. Say “note: …” to add one.")
+            ScreenTitle(stringResource(R.string.notes_name), stringResource(R.string.notes_subtitle))
             OutlinedTextField(
                 value = query, onValueChange = { query = it }, singleLine = true,
-                placeholder = { Text("Search notes") }, leadingIcon = { Icon(RIcons.Search, null) },
-                trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(RIcons.Close, "Clear") } },
+                placeholder = { Text(stringResource(R.string.notes_search)) }, leadingIcon = { Icon(RIcons.Search, null) },
+                trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(RIcons.Close, stringResource(R.string.notes_clear)) } },
                 shape = RoundedCornerShape(20.dp),
                 modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
             )
@@ -87,8 +89,8 @@ fun NotesScreen(notes: List<Note>, a: AppActions, modifier: Modifier) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(RIcons.Note, null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(12.dp))
-                        Text(if (notes.isEmpty()) "No notes yet" else "No note matches", style = MaterialTheme.typography.titleMedium)
-                        Text(if (notes.isEmpty()) "Ask Robot to note something, or tap New note." else "Try other words.",
+                        Text(stringResource(if (notes.isEmpty()) R.string.notes_none else R.string.notes_no_match), style = MaterialTheme.typography.titleMedium)
+                        Text(stringResource(if (notes.isEmpty()) R.string.notes_none_detail else R.string.notes_no_match_detail),
                             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
@@ -99,7 +101,7 @@ fun NotesScreen(notes: List<Note>, a: AppActions, modifier: Modifier) {
             }
         }
         ExtendedFloatingActionButton(
-            onClick = { a.openNote(null) }, icon = { Icon(RIcons.Add, null) }, text = { Text("New note") },
+            onClick = { a.openNote(null) }, icon = { Icon(RIcons.Add, null) }, text = { Text(stringResource(R.string.notes_new)) },
             modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
         )
     }
@@ -205,16 +207,18 @@ fun NoteScreen(noteId: String?, version: Int, a: AppActions, snackbar: SnackbarH
     BackHandler { leave() }
     Scaffold(
         topBar = {
-            BackBar(if (id == null) "New note" else "Note", ::leave) {
+            BackBar(stringResource(if (id == null) R.string.notes_new else R.string.notes_note), ::leave) {
                 IconButton(onClick = {
                     val subject = title.trim()
                     val body = listOf(subject, text.trim()).filter { it.isNotEmpty() }.joinToString("\n\n")
                     if (body.isEmpty()) return@IconButton
                     val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, body)
                     if (subject.isNotEmpty()) send.putExtra(Intent.EXTRA_SUBJECT, subject)
-                    try { ctx.startActivity(Intent.createChooser(send, "Share the note")) } catch (_: Exception) { a.say("Nothing on this phone can take the note.") }
-                }) { Icon(RIcons.Share, "Share") }
-                if (!deleted) IconButton(onClick = { confirmDelete = true }) { Icon(RIcons.Delete, "Delete") }
+                    try { ctx.startActivity(Intent.createChooser(send, ctx.getString(R.string.notes_share_title))) } catch (_: Exception) {
+                        a.say(ctx.getString(R.string.notes_share_nothing))
+                    }
+                }) { Icon(RIcons.Share, stringResource(R.string.notes_share)) }
+                if (!deleted) IconButton(onClick = { confirmDelete = true }) { Icon(RIcons.Delete, stringResource(R.string.notes_delete)) }
             }
         },
         snackbarHost = { SnackbarHost(snackbar) },
@@ -227,28 +231,28 @@ fun NoteScreen(noteId: String?, version: Int, a: AppActions, snackbar: SnackbarH
                     Surface(color = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer,
                         shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
                         Row(Modifier.padding(start = 14.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text("This note was deleted.", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                            Text(stringResource(R.string.notes_deleted_banner), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                             TextButton(onClick = {
                                 val cur = id
                                 val now = System.currentTimeMillis()
                                 val ok = if (cur == null) false else store.save(Note(cur, title.trim(), text.trim(), if (created > 0) created else now, now))
-                                if (ok) { deleted = false; saved = key(title, text); updated = now } else a.say("The note couldn't be restored.")
-                            }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Restore") }
+                                if (ok) { deleted = false; saved = key(title, text); updated = now } else a.say(ctx.getString(R.string.notes_not_restored))
+                            }, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.notes_restore)) }
                         }
                     }
                 }
                 OutlinedTextField(
-                    value = title, onValueChange = { title = it }, singleLine = true, label = { Text("Title") }, enabled = loaded,
+                    value = title, onValueChange = { title = it }, singleLine = true, label = { Text(stringResource(R.string.notes_title_field)) }, enabled = loaded,
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                     modifier = Modifier.fillMaxWidth(),
                 )
                 OutlinedTextField(
-                    value = text, onValueChange = { text = it }, label = { Text("Note") }, enabled = loaded,
+                    value = text, onValueChange = { text = it }, label = { Text(stringResource(R.string.notes_note)) }, enabled = loaded,
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                     modifier = Modifier.fillMaxWidth().heightIn(min = noteMin),
                 )
                 if (updated > 0) {
-                    Text(if (deleted) "Not saved: restore it to keep it" else "Saved ${DateUtils.getRelativeTimeSpanString(updated)}",
+                    Text(if (deleted) stringResource(R.string.notes_not_saved) else stringResource(R.string.notes_saved_when, DateUtils.getRelativeTimeSpanString(updated)),
                         style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(bottom = 12.dp))
                 }
@@ -258,18 +262,18 @@ fun NoteScreen(noteId: String?, version: Int, a: AppActions, snackbar: SnackbarH
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
-            title = { Text("Delete this note?") },
-            text = { Text("It can't be brought back.") },
+            title = { Text(stringResource(R.string.notes_delete_title)) },
+            text = { Text(stringResource(R.string.notes_delete_text)) },
             confirmButton = {
                 TextButton(onClick = {
                     confirmDelete = false
                     deleted = true
                     id?.let { store.delete(it) }
-                    a.say("Note deleted.")
+                    a.say(ctx.getString(R.string.notes_deleted))
                     onBack()
-                }) { Text("Delete") }
+                }) { Text(stringResource(R.string.notes_delete)) }
             },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(stringResource(R.string.notes_cancel)) } },
         )
     }
 }

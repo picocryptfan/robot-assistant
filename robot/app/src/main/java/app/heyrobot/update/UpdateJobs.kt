@@ -22,6 +22,8 @@ object UpdateJobs {
     const val DOWNLOAD = 4_802
     /** 1.0: Termux's weekly update check. */
     const val TERMUX = 4_803
+    /** 1.1: "Remind me to back up every month" (BackupReminders), daily while it is on. */
+    const val BACKUP_REMINDER = 4_804
     private const val DAY_MS = 24L * 3600 * 1000
     private const val FLEX_MS = 6L * 3600 * 1000
 
@@ -87,6 +89,24 @@ object UpdateJobs {
         }
     }
 
+    /** 1.1: the backup reminder's daily job, while [on]; no network, persisted across restarts. */
+    fun ensureBackupReminder(ctx: Context, on: Boolean) {
+        val js = scheduler(ctx) ?: return
+        try {
+            if (!on) {
+                js.cancel(BACKUP_REMINDER)
+                return
+            }
+            if (js.getPendingJob(BACKUP_REMINDER) != null) return
+            js.schedule(JobInfo.Builder(BACKUP_REMINDER, ComponentName(ctx, UpdateJobService::class.java))
+                .setPeriodic(DAY_MS, FLEX_MS)
+                .setPersisted(true)
+                .build())
+        } catch (t: Throwable) {
+            RLog.w("backup_remind_job", t)
+        }
+    }
+
     fun cancelDownload(ctx: Context) {
         try { scheduler(ctx)?.cancel(DOWNLOAD) } catch (_: Throwable) {}
     }
@@ -129,6 +149,7 @@ class UpdateJobService : JobService() {
                     UpdateJobs.CHECK -> { Updater.autoCheck(app, a, params.network); false }
                     UpdateJobs.DOWNLOAD -> Updater.autoDownload(app, a, params.network)
                     UpdateJobs.TERMUX -> { TermuxUpdateCheck.autoCheck(app, a, params.network); false }
+                    UpdateJobs.BACKUP_REMINDER -> { BackupReminders.run(app); false }
                     else -> false
                 }
             } catch (t: Throwable) {

@@ -1,0 +1,160 @@
+<!-- Routines and the morning brief (the l10n work package WP4): ids start with routine_, brief_, and the French is
+     in values-fr-rCA/strings_routines.xml. 1.1 split strings.xml into one file per area, ids and texts unchanged. The
+     sentences Robot says in a routine turn, a routine's card and its notifications' words are core's (RoutineStrings,
+     BriefStrings); these are Settings › Routines' and the notifications' own. -->
+<resources>
+    <!-- The notifications (assistant/routines RoutineSpeakingService). -->
+    <string name="routine_channel_speaking">Routine speaking</string>
+    <string name="routine_channel_speaking_detail">Shown while a routine or the morning brief speaks, with Next and Stop.</string>
+    <string name="routine_channel">Routines</string>
+    <string name="routine_channel_detail">Things a routine left for you to tap, and routines that couldn\'t speak.</string>
+    <string name="routine_speaking_text">Say “hey robot, next”, or tap a button.</string>
+    <string name="routine_next">Next</string>
+    <string name="routine_repeat">Repeat</string>
+    <string name="routine_stop">Stop</string>
+    <string name="routine_ran_public">Robot ran a routine</string>
+    <string name="routine_something_to_say">Robot has something to say</string>
+    <string name="routine_play">Play</string>
+    <string name="routine_something_for_you">Robot has something for you</string>
+    <string name="routine_open_robot">Open Robot</string>
+
+    <!-- Settings › Routines (ui/settings/RoutinesSettings.kt). -->
+    <string name="routine_not_running">Not running</string>
+    <string name="routine_paused">Routines paused</string>
+    <string name="routine_start_over">Start over</string>
+    <string name="routine_locked_phone">Locked phone</string>
+    <string name="routine_brief_on">Morning brief on</string>
+    <string name="routine_yours">Your routines</string>
+    <string name="routine_on">%1$s on</string>
+    <string name="routine_add">Add a routine</string>
+    <string name="routine_add_hint">Or say: “every weekday at 7, tell me the weather and my calendar”</string>
+    <string name="routine_ready">Ready (%1$d)</string>
+    <string name="routine_when_run">When routines run</string>
+    <string name="routine_run_locked">Routines can run while the phone is locked</string>
+    <string name="routine_run_locked_on">Only the lock screen\'s actions and the brief\'s lock level</string>
+    <string name="routine_run_locked_off">They wait for the unlock</string>
+    <string name="routine_online">Routines may go online by themselves</string>
+    <string name="routine_online_on">Only the services each routine\'s card listed</string>
+    <string name="routine_online_off">Weather skipped: routines may not go online</string>
+    <string name="routine_needs">What routines need</string>
+    <string name="routine_assistant">Robot as the assistant</string>
+    <string name="routine_assistant_ok">Robot is your assistant: triggers are heard</string>
+    <string name="routine_exact_alarms">Exact alarms</string>
+    <string name="routine_exact_alarms_ok">Allowed: routines at a time run on time</string>
+    <string name="routine_exact_alarms_no">Not allowed: a routine at a time may come late</string>
+    <string name="routine_notifications">Notifications</string>
+    <string name="routine_notifications_ok">Allowed: Ready cards and the speaking notification show</string>
+    <string name="routine_notifications_no">Not allowed: you won\'t see what waits for you</string>
+    <string name="routine_allow">Allow</string>
+    <string name="routine_clock">Clock\'s alarms</string>
+    <string name="routine_clock_ok">GrapheneOS Clock is installed: Robot hears when you turn off an alarm</string>
+    <string name="routine_clock_no">GrapheneOS Clock isn\'t installed: “When I turn off my alarm” can\'t start a routine</string>
+    <!-- 1.2: where a start after an alarm is picked (a routine's page, the brief's, the guide) on a phone without GrapheneOS Clock. -->
+    <string name="routine_alarm_needs_clock">Needs the GrapheneOS Clock app, which isn\'t on this phone: turning off an alarm won\'t start anything. Support for other clock apps is planned.</string>
+    <string name="routine_calendar">Calendar</string>
+    <string name="routine_calendar_ok">Allowed: the brief reads today\'s events</string>
+    <string name="routine_calendar_no">Not allowed: the brief can\'t read your day</string>
+    <string name="routine_where">Where for the weather</string>
+    <string name="routine_where_location">Approximate location allowed</string>
+    <string name="routine_where_location_home">Approximate location allowed, else your Home for weather</string>
+    <string name="routine_where_home">Your Home for weather (location not allowed)</string>
+    <string name="routine_where_none">No location and no Home for weather: the brief can\'t tell the weather</string>
+    <string name="routine_footer">Routines are fixed steps you approve on a card when you save them; no model ever picks what a routine does, so something it reads can\'t make it act. By themselves they read, set timers and alarms, turn the flashlight on or off and save a fixed note; opening an app, a draft, maps or a new event waits for you as a Ready card. Freeing memory or storage and asking a helper are never offered.\n\nOn the lock screen the brief says the time and the weather without your town, then “Unlock to hear your day”; the rest follows if you unlock within 15 minutes. Routines go online only to Open-Meteo for the weather, and only when their card listed it. They are kept on this phone, never logged and never sent to a helper.</string>
+    <string name="routine_start_over_title">Start over?</string>
+    <string name="routine_start_over_text">Robot keeps the file it can\'t read as routines.json.bad and starts with no routines.</string>
+    <string name="routine_cancel">Cancel</string>
+    <string name="routine_save">Save</string>
+    <string name="routine_ok">OK</string>
+
+    <!-- The morning brief's card and page. -->
+    <string name="brief_turn_on_title">Turn on the morning brief?</string>
+    <string name="brief_card_change">You can change when it runs and what it says on its page.</string>
+    <string name="brief_turn_on">Turn on</string>
+    <string name="brief_title">Morning brief</string>
+    <string name="brief_use">Use the morning brief</string>
+    <string name="brief_runs">Runs</string>
+    <string name="brief_silences">Clock silences after</string>
+    <string name="brief_minutes">%1$d min</string>
+    <string name="brief_silences_default">Clock\'s default. Set as in Clock › Settings › Silence after</string>
+    <string name="brief_what">What it says</string>
+    <string name="brief_item_greeting">Greeting, time and date</string>
+    <string name="brief_item_weather">Weather</string>
+    <string name="brief_item_calendar">Today\'s calendar</string>
+    <string name="brief_item_reminders">Brief reminders</string>
+    <string name="brief_item_messages">Unread messages</string>
+    <string name="brief_item_closing">Closing</string>
+    <string name="brief_messages_detail">How many, by app, from Settings › Messages; never who or what</string>
+    <string name="brief_privacy">Privacy and voice</string>
+    <string name="brief_lock">On the lock screen</string>
+    <string name="brief_lock_time_weather">The default. The weather without your town, then “Unlock to hear your day”</string>
+    <string name="brief_lock_everything">Your calendar and reminders too, to anyone near the phone</string>
+    <string name="brief_lock_nothing">Nothing is said until you unlock</string>
+    <string name="brief_finish">Finish when I unlock</string>
+    <string name="brief_finish_detail">The rest within 15 minutes of the unlock</string>
+    <string name="brief_language">Language</string>
+    <string name="brief_lang_follow">Follow Robot</string>
+    <string name="brief_lang_follow_detail">The language Robot answers in (Settings › Language)</string>
+    <string name="brief_lang_fr" translatable="false">Français (Québec)</string>
+    <string name="brief_prepare">Get ready while the alarm rings</string>
+    <string name="brief_prepare_detail">The weather and the voice load while it rings</string>
+    <string name="brief_hear_now">Hear it now</string>
+    <string name="brief_hear_now_detail">Opens Robot and reads it, as if you had asked</string>
+    <string name="brief_none_waiting">None waiting</string>
+    <string name="brief_none_hint">Say “remind me in the morning to bring the passport”</string>
+    <string name="brief_remove">Remove “%1$s”</string>
+    <string name="brief_footer">Fixed sentences, no model: the time and date, the weather from Open-Meteo where the phone is (else your Home for weather), today\'s events (how many, and the first five), and your brief reminders, about a minute at most. Only the weather goes online: the area around you, rounded, to Open-Meteo; nothing about you. While it speaks, say “hey robot, next”, “repeat” or “stop”, or use its notification.</string>
+
+    <!-- A routine's page (the editor). -->
+    <string name="routine_when">When</string>
+    <string name="routine_time">Time</string>
+    <string name="routine_days">Days</string>
+    <string name="routine_after">After</string>
+    <string name="routine_alarms_from">Alarms from</string>
+    <string name="routine_alarms_until">Alarms until</string>
+    <string name="routine_speak">Speak</string>
+    <string name="routine_start_time">At a time</string>
+    <string name="routine_start_alarm">When I turn off an alarm</string>
+    <string name="routine_start_unlock">At the first unlock after a time</string>
+    <string name="routine_start_headset_on">When headphones connect</string>
+    <string name="routine_start_headset_off">When headphones disconnect</string>
+    <string name="routine_start_car_on">When the car connects</string>
+    <string name="routine_start_car_off">When the car disconnects</string>
+    <string name="routine_start_charging_on">When charging starts</string>
+    <string name="routine_start_charging_off">When charging stops</string>
+    <string name="routine_start_asked">Only when I ask</string>
+    <string name="routine_lock_follow">Follow Settings › Routines</string>
+    <string name="routine_lock_wait">Wait for the unlock</string>
+    <string name="routine_name">Name</string>
+    <string name="routine_name_empty">Give it a name</string>
+    <string name="routine_name_hint">Up to %1$d characters, such as Leaving work.</string>
+    <string name="routine_at_most">At most %1$d characters.</string>
+    <string name="routine_on_title">On</string>
+    <string name="routine_on_detail">Runs when its trigger comes</string>
+    <string name="routine_off_detail">Off: it never runs by itself</string>
+    <string name="routine_starts">Starts</string>
+    <string name="routine_date">Date</string>
+    <string name="routine_which">Which</string>
+    <string name="routine_any_headphones">Any headphones Robot remembers</string>
+    <string name="routine_any_car">Any car Robot remembers</string>
+    <string name="routine_which_none">Robot remembers headphones and cars with headset mode; until then this routine waits.</string>
+    <string name="routine_only_days">Only on these days</string>
+    <string name="routine_once_a_day">At most once a day</string>
+    <string name="routine_once_a_day_detail">A trigger that comes again the same day is ignored</string>
+    <string name="routine_do">Do</string>
+    <string name="routine_move_up">Move step %1$d up</string>
+    <string name="routine_remove_step">Remove step %1$d</string>
+    <string name="routine_add_step">Add a step</string>
+    <string name="routine_add_step_hint">Read the brief, say a sentence, set a timer…</string>
+    <string name="routine_speak_group">Speak and the lock screen</string>
+    <string name="routine_last_run">Last run</string>
+    <string name="routine_run_now">Run now</string>
+    <string name="routine_run_now_detail">Opens Robot and runs it, as if you had asked</string>
+    <string name="routine_delete">Delete</string>
+    <string name="routine_edit_footer">Each step\'s words are fixed when you save; a routine never asks a model what to do. Save shows the routine\'s card first: what starts it, what each step does by itself, where it speaks and what goes online.</string>
+    <string name="routine_cant_save">Can\'t save yet</string>
+    <string name="routine_delete_title">Delete “%1$s”?</string>
+    <string name="routine_delete_text">It won\'t run again. This can\'t be undone.</string>
+    <string name="routine_add_button">Add</string>
+    <string name="routine_time_hint">On a 24-hour clock, as 07:30.</string>
+    <string name="routine_time_problem">A time such as 07:30.</string>
+</resources>

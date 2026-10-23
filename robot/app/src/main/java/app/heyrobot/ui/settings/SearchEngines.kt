@@ -40,11 +40,12 @@ import app.heyrobot.ui.pref.IntroPreference
 import app.heyrobot.ui.pref.RadioPreference
 import app.heyrobot.ui.pref.preferenceGroup
 import app.heyrobot.ui.theme.RobotTokens
+import app.heyrobot.ui.theme.str
 
 // MAIN PROCESS. 1.0: every search engine and service with its privacy level (core web Engines.kt), as Settings › Web
 // search and the setup guide's web page list them: "Robot reads the results" (the services set-up offers) and "Opens in
 // your browser" (the engines browser_search opens, the default ticked). Each row: the name, its line (who runs it, whose
-// results, what is kept, which country; in strings.xml) and its level's chip.
+// results, what is kept, which country; in strings_web.xml) and its level's chip (core WebStrings).
 
 @StringRes
 fun engineLine(e: BrowserEngine): Int = when (e) {
@@ -78,9 +79,10 @@ fun PrivacyChip(level: PrivacyLevel, modifier: Modifier = Modifier) {
         PrivacyLevel.MEDIUM -> c.tertiaryContainer to c.onTertiaryContainer
         PrivacyLevel.LOW -> c.errorContainer to c.onErrorContainer
     }
-    val desc = stringResource(R.string.privacy_level_desc, level.title)
+    val title = level.label().str()
+    val desc = stringResource(R.string.privacy_level_desc, title)
     Surface(color = bg, contentColor = fg, shape = RoundedCornerShape(8.dp), modifier = modifier.clearAndSetSemantics { contentDescription = desc }) {
-        Text(level.title, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
+        Text(title, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
     }
 }
 
@@ -92,7 +94,7 @@ fun LazyListScope.readsResultsList(title: String, intro: String, services: List<
     preferenceGroup(title, "reads") {
         for (s in services) {
             val line = stringResource(serviceLine(s))
-            RadioPreference(s.title, if (s == inUse) stringResource(R.string.web_in_use, line) else line, selected = s == inUse,
+            RadioPreference(s.titleText.str(), if (s == inUse) stringResource(R.string.web_in_use, line) else line, selected = s == inUse,
                 trailing = { PrivacyChip(s.level) }) { onPick(s) }
         }
     }

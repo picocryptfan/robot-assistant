@@ -4,6 +4,7 @@ package app.heyrobot.sys
 import android.Manifest
 import android.content.Context
 import app.heyrobot.core.Abort
+import app.heyrobot.core.i18n.Phrase
 import app.heyrobot.core.Forecast
 import app.heyrobot.core.GeoAnswer
 import app.heyrobot.core.OpenMeteo
@@ -30,8 +31,12 @@ object OpenMeteoClient {
      * Why a request gave no usable answer, and Open-Meteo's HTTP status if it answered at all. [detail]: the words for it
      * when they say more than [WeatherFail.text] (a town found, but not where it was said to be).
      */
-    class Failure(val why: WeatherFail, val http: Int = 0, val detail: String? = null) : Exception(why.name) {
+    class Failure(val why: WeatherFail, val http: Int = 0, val detail: String? = null, private val detailPhrase: Phrase? = detail?.let(Phrase::plain)) :
+        Exception(why.name) {
         val text: String get() = detail ?: why.text
+
+        /** 1.1: [text] without a language yet (Settings › Weather shows it in the menus' language). */
+        val phrase: Phrase get() = detailPhrase ?: why.phrase
     }
 
     private const val TIMEOUT_MS = 8_000
@@ -47,7 +52,7 @@ object OpenMeteoClient {
     fun geocode(ctx: Context, name: String, abort: Abort = Abort()): WeatherPlace =
         when (val a = OpenMeteo.resolve(name) { s -> OpenMeteo.places(get(ctx, OpenMeteo.geocodeUrl(s), abort)) ?: throw Failure(WeatherFail.SERVICE) }) {
             is GeoAnswer.Found -> a.place.place()
-            is GeoAnswer.NotThere -> throw Failure(WeatherFail.NO_PLACE, detail = a.detail)
+            is GeoAnswer.NotThere -> throw Failure(WeatherFail.NO_PLACE, detail = a.detail, detailPhrase = a.why)
             GeoAnswer.None -> throw Failure(WeatherFail.NO_PLACE)
         }
 
@@ -64,7 +69,7 @@ object OpenMeteoClient {
         if (!Assistant.granted(ctx, Manifest.permission.INTERNET)) throw Failure(WeatherFail.NO_NETWORK_PERMISSION)
         if (abort.cancelled || abort.remainingMs() < MIN_MS) throw ended(abort)
         val u = URL(url)
-        require(u.protocol == "https" && u.host in HOSTS) { "not an Open-Meteo URL" }
+        require(u.protocol == "https" && u.host in HOSTS) { "not an Open-Meteo URL" } // l10n: not text (a developer's error)
         val c = u.openConnection() as HttpURLConnection
         // Stop (or the deadline) disconnects: a blocked connect or read then fails at once.
         val forget = abort.onCancel { c.disconnect() }
@@ -92,7 +97,7 @@ object OpenMeteoClient {
                 is UnknownHostException, is ConnectException, is NoRouteToHostException, is SocketTimeoutException -> Failure(WeatherFail.NO_INTERNET)
                 is SecurityException -> Failure(WeatherFail.NO_NETWORK_PERMISSION)
                 // A socket refused by the Network toggle fails with EACCES; anything else is the connection.
-                is IOException -> Failure(if (e.message?.contains("EACCES") == true || e.message?.contains("Permission denied") == true) WeatherFail.NO_NETWORK_PERMISSION else WeatherFail.NO_INTERNET)
+                is IOException -> Failure(if (e.message?.contains("EACCES") == true || e.message?.contains("Permission denied") == true) WeatherFail.NO_NETWORK_PERMISSION else WeatherFail.NO_INTERNET) // l10n: not text (the system's error message, matched)
                 else -> e
             }
         } finally {

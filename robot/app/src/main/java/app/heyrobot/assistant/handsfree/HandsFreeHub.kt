@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.assistant.handsfree
 
+import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.i18n.ReplyLang
+import app.heyrobot.sys.AppLanguage
 import android.app.Activity
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothHeadset
@@ -33,14 +36,14 @@ import app.heyrobot.core.output.DeviceMemory
 import app.heyrobot.core.output.HeadsetFile
 import app.heyrobot.core.output.PhoneState
 import app.heyrobot.core.output.SeenDevice
-import app.heyrobot.core.output.SpokenLang
+import app.heyrobot.core.i18n.Lang
 import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.AudioDevices
 import app.heyrobot.sys.HandsFreeFiles
 import app.heyrobot.voice.SessionRoute
 import java.util.Locale
 
-// VOICE PROCESS (0.8). What headset mode and car mode share in :voice (design §1.1, §3.6, §4.8): their files read once
+// VOICE PROCESS (0.8). What headset mode and car mode share in :voice: their files read once
 // and again after Settings changes them (Cmd.HANDSFREE), the headset button's start (HeadsetEntryActivity), the one
 // session at a time (a headset's, or the car's), and the system callbacks they need, registered only while needed: the
 // audio devices (a session's headset going, your car coming and going while car mode is on), ACTION_AUDIO_BECOMING_NOISY
@@ -57,8 +60,18 @@ object HandsFreeHub {
     var session: HeadsetSession? = null; private set
     @Volatile private var running = false
 
-    /** The language hands-free lines are said in: the phone's (English, or Québec French). */
-    val lang: SpokenLang get() = SpokenLang.of(Locale.getDefault().toLanguageTag())
+    /**
+     * 1.1: the languages of what hands-free says with nothing heard (an announcement, car mode starting): Settings ›
+     * Language › "Robot answers in", else the menus' (core ReplyLang.unheard), no longer the phone's; Robot's pages and its
+     * screens' and notifications' words in the menus', Android's in the phone's.
+     */
+    val langs: Langs get() = AppLanguage.langs(app).let { it.copy(say = ReplyLang.unheard(it.ui, VoiceHub.settings.replyLang)) }
+
+    /** The language hands-free lines are said in ([langs]'s). */
+    val lang: Lang get() = langs.say
+
+    /** The menus' languages, for a screen's or a notification's words (the car screen, its notification). */
+    val screen: Langs get() = langs.let { it.copy(say = it.ui) }
 
     /** VoiceHub.onReady: Robot is the assistant; car mode listens for your car if it is on. */
     fun start() {
@@ -119,7 +132,7 @@ object HandsFreeHub {
     private var bvraAt = 0L
 
     /**
-     * HeadsetEntryActivity: a headset's button (design §3.6). Robot isn't the running assistant: a toast says so.
+     * HeadsetEntryActivity: a headset's button. Robot isn't the running assistant: a toast says so.
      * During a phone call nothing happens: the call's audio is never touched. Otherwise the panel opens for a headset
      * session (or the car's, with car mode on), and the headset is told Robot listens when that is allowed.
      */
@@ -142,7 +155,7 @@ object HandsFreeHub {
         when (d) {
             EntryDecision.Ignore, EntryDecision.NotTrusted -> return
             EntryDecision.NotAssistant -> {
-                android.widget.Toast.makeText(ctx, HeadsetEntry.NOT_ASSISTANT, android.widget.Toast.LENGTH_SHORT).show()
+                android.widget.Toast.makeText(ctx, HeadsetEntry.notAssistant.render(AppLanguage.langs(ctx)), android.widget.Toast.LENGTH_SHORT).show()
                 return
             }
             is EntryDecision.Show -> {

@@ -116,7 +116,7 @@ class AnthropicClient private constructor(internal val sdk: SdkClient) : AutoClo
             is AnthropicException -> HelperFailure.UNKNOWN
             // OkHttp refuses a header value it can't send ("Unexpected char … in x-api-key value"): the saved key has a
             // character a key never has. The message (which quotes the value) is never read beyond its start or logged.
-            is IllegalArgumentException -> if (t.message?.startsWith("Unexpected char") == true) HelperFailure.KEY_REFUSED else HelperFailure.UNKNOWN
+            is IllegalArgumentException -> if (t.message?.startsWith("Unexpected char") == true) HelperFailure.KEY_REFUSED else HelperFailure.UNKNOWN // l10n: not text (OkHttp's exception message)
             is IOException -> io(t)
             else -> HelperFailure.UNKNOWN
         }

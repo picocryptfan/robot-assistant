@@ -65,6 +65,17 @@ class ToolRouterTest {
         assertEquals(setOf(ToolGroup.CORE, ToolGroup.CALENDAR), route("set an alarm for 7am"))
     }
 
+    @Test fun yourFilesByTheirWordsInBothLanguages() {
+        // 1.4 (files-1.4-plan.md §5.1): the kinds' words and "my files", English and Québec French.
+        for (q in listOf("what was the total on my Costco receipt", "how much was my hydro bill", "when does my lease end", "find the invoice from Bell",
+            "is my warranty still good", "what's in my files", "quel est le total de mon reçu Costco", "ma facture d'Hydro", "mon bail finit quand",
+            "ma garantie", "mon feuillet T4", "cherche dans mes fichiers")) assertTrue(q, ToolGroup.FILES in route(q))
+        for (q in listOf("what time is it", "text Mom I'm late", "delete big files", "free up space", "set a timer for 5 minutes", "libère de l'espace"))
+            assertFalse(q, ToolGroup.FILES in route(q))
+        // Their two reads are read tools of their own group: "asked" follows the group, as find_notes does.
+        assertTrue(ToolName.FIND_FILES in ToolRouter.asked("find my Costco receipt") && ToolName.READ_FILE in ToolRouter.asked("ma facture d'Hydro"))
+    }
+
     @Test fun toolsFollowTheGroupsAndTheSettings() {
         val d = RobotSettings()
         assertEquals(Prompt.CORE_TOOLS, ToolRouter.tools(core, d))
@@ -74,16 +85,23 @@ class ToolRouterTest {
         val termux = setOf(ToolName.TERMUX_SCRIPT, ToolName.TERMUX_COMMAND)
         // 1.0: browser_search only when the question names an engine or the browser (BrowserRouter.named).
         val browser = ToolName.BROWSER_SEARCH
-        assertEquals(ToolName.entries - ToolName.ASK_HELPER - ToolName.CALL - ToolName.REMEMBER - ToolName.FORGET - ToolName.WEB_SEARCH - termux - browser,
+        // 1.4: find_files and read_file only while Robot Files can be read (PanelFileTools.open: on, unlocked, no phone lock).
+        val files = setOf(ToolName.FIND_FILES, ToolName.READ_FILE)
+        assertEquals(ToolName.entries - ToolName.ASK_HELPER - ToolName.CALL - ToolName.REMEMBER - ToolName.FORGET - ToolName.WEB_SEARCH - termux - browser - files,
             ToolRouter.tools(ToolGroup.entries.toSet(), d))
-        assertEquals(ToolName.entries - ToolName.ASK_HELPER - ToolName.CALL - ToolName.WEB_SEARCH - termux - browser,
+        assertEquals(ToolName.entries - ToolName.ASK_HELPER - ToolName.CALL - ToolName.WEB_SEARCH - termux - browser - files,
             ToolRouter.tools(ToolGroup.entries.toSet(), d, memory = true))
         // 0.9: web_search only with Settings › Web search on (and its group: the words called for it).
-        assertEquals(ToolName.entries - ToolName.ASK_HELPER - ToolName.CALL - ToolName.REMEMBER - ToolName.FORGET - termux - browser,
+        assertEquals(ToolName.entries - ToolName.ASK_HELPER - ToolName.CALL - ToolName.REMEMBER - ToolName.FORGET - termux - browser - files,
             ToolRouter.tools(ToolGroup.entries.toSet(), d, web = true))
-        assertEquals(ToolName.entries - ToolName.ASK_HELPER - ToolName.CALL - ToolName.REMEMBER - ToolName.FORGET - ToolName.WEB_SEARCH - browser,
+        assertEquals(ToolName.entries - ToolName.ASK_HELPER - ToolName.CALL - ToolName.REMEMBER - ToolName.FORGET - ToolName.WEB_SEARCH - browser - files,
             ToolRouter.tools(ToolGroup.entries.toSet(), d, termux = termux))
         assertEquals(Prompt.CORE_TOOLS + browser, ToolRouter.tools(route("look it up on Google"), d, browser = true))
+        assertEquals(ToolName.entries - ToolName.ASK_HELPER - ToolName.CALL - ToolName.REMEMBER - ToolName.FORGET - ToolName.WEB_SEARCH - termux - browser,
+            ToolRouter.tools(ToolGroup.entries.toSet(), d, files = true))
+        assertEquals(Prompt.CORE_TOOLS + files, ToolRouter.tools(route("what was the total on my Costco receipt"), d, files = true))
+        assertEquals(Prompt.CORE_TOOLS, ToolRouter.tools(route("what was the total on my Costco receipt"), d))
+        assertEquals(Prompt.CORE_TOOLS, ToolRouter.tools(core, d, files = true))
         assertEquals(Prompt.CORE_TOOLS + ToolName.WEB_SEARCH + browser, ToolRouter.tools(route("look it up on DuckDuckGo"), d, web = true, browser = true))
         assertEquals(Prompt.CORE_TOOLS, ToolRouter.tools(core, d, browser = true))
         assertEquals(Prompt.CORE_TOOLS, ToolRouter.tools(core, d, termux = termux))

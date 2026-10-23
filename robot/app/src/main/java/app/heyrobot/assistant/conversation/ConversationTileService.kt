@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.content.Intent
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
+import app.heyrobot.R
 import app.heyrobot.core.ConvEntry
 import app.heyrobot.core.ConvStop
 import app.heyrobot.core.RLog
@@ -31,10 +32,10 @@ class ConversationTileService : TileService() {
         val t = qsTile ?: return
         val ui = ConversationSession.state.value
         t.state = if (ui.active) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
-        t.label = "Transcribe"
+        t.label = getString(R.string.tile_transcribe)
         t.subtitle = when {
-            ui.status == ConversationSession.Status.PAUSED -> "Paused"
-            ui.active -> "On"
+            ui.status == ConversationSession.Status.PAUSED -> getString(R.string.tile_paused)
+            ui.active -> getString(R.string.tile_on)
             else -> null
         }
         try { t.updateTile() } catch (_: Throwable) {}

@@ -55,7 +55,10 @@ class RobotSession(ctx: Context) : VoiceInteractionSession(ctx), LifecycleOwner,
     override fun onCreateContentView(): View {
         // Volume keys stop Robot talking (Settings › Voice). The dialog's key listener sees them before its views; the
         // KeyEvent.Callback overrides below are the session's own path for whatever reaches it after.
-        window?.setOnKeyListener { _, keyCode, event -> onVolumeKey(keyCode, event) }
+        window?.setOnKeyListener { _, keyCode, event -> onVolumeKey(keyCode, event) || PanelEscape.onKey(keyCode, event, ::keyboardShown, ::hideKeyboard, ::onBackPressed) }
+        // 1.1: a backstop for any other way the window is cancelled (and so removed) without the session hiding: the
+        // system's session must be hidden too, or it ignores every later show (PanelEscape).
+        window?.setOnCancelListener { hide() }
         window?.window?.let { w ->
             // A wake word with the screen off lights it up.
             @Suppress("DEPRECATION")
@@ -153,6 +156,14 @@ class RobotSession(ctx: Context) : VoiceInteractionSession(ctx), LifecycleOwner,
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean = onVolumeKey(keyCode, event) || super.onKeyDown(keyCode, event)
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean = onVolumeKey(keyCode, event) || super.onKeyUp(keyCode, event)
+
+    // ------------------------------------------------------------------ Escape (PanelEscape)
+
+    private fun keyboardShown(): Boolean = window?.window?.decorView?.rootWindowInsets?.isVisible(android.view.WindowInsets.Type.ime()) == true
+
+    private fun hideKeyboard() {
+        window?.window?.decorView?.windowInsetsController?.hide(android.view.WindowInsets.Type.ime())
+    }
 
     // ------------------------------------------------------------------ PanelHost
 

@@ -3,8 +3,7 @@ package app.heyrobot.voice
 
 import android.media.AudioDeviceInfo
 
-// VOICE PROCESS (0.8). What a headset or car session asks of the microphone and of Robot's voice (design §3.6
-// HeadsetSession): the capture with VOICE_COMMUNICATION while the session holds the call route (an LE Audio headset's
+// VOICE PROCESS (0.8). What a headset or car session asks of the microphone and of Robot's voice: the capture with VOICE_COMMUNICATION while the session holds the call route (an LE Audio headset's
 // microphone is listed only for it; SCO's for both), pinned to the headset's input; Robot's voice pinned to its output and
 // watched while it plays (OutputGuard: a route change onto a device that isn't private stops it at once). Set by the
 // session in the app's :voice code, read by Listener (between questions: a question's audio never has a gap) and by the
@@ -32,7 +31,6 @@ object CaptureRoute {
 }
 
 /**
- * Robot's voice pinned to [device] (AudioTrack.setPreferredDevice, design §1.3 rule 4: a second Bluetooth device
- * connecting doesn't take it), and [onRouted] told on the main thread whenever its track's route changes (rule 3).
+ * Robot's voice pinned to [device] (AudioTrack.setPreferredDevice), and [onRouted] told on the main thread whenever its track's route changes (rule 3).
  */
 class OutputPin(val device: AudioDeviceInfo?, val onRouted: (AudioDeviceInfo?) -> Unit)

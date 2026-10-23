@@ -8,7 +8,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-// Pure. What of memory goes to the model with a question, and in what words (design §A6.4). Two places inside the
+// Pure. What of memory goes to the model with a question, and in what words. Two places inside the
 // 4,096-token window: the pinned preferences at the end of the system prompt (byte-stable while the pinned list is,
 // so the live conversation keeps its cached prefix), and the retrieved items just before the new question, in the
 // same user turn (so the system prompt and the history are never re-read for them). Tokens are estimated as
@@ -75,7 +75,7 @@ object PromptPacking {
         var secretsLeftOut = 0
         val candidates = ranked.map { it.item }.distinctBy { it.id }.filter { item ->
             when {
-                item.id in pinnedIds || item.id in alreadyGiven || item.expired(now) -> false
+                item.id in pinnedIds || item.id in alreadyGiven || item.expired(now) || item.filing != null -> false
                 item.secret && !(unlocked && secretNamed(question, item)) -> { secretsLeftOut++; false }
                 else -> true
             }
@@ -116,7 +116,8 @@ object PromptPacking {
         val sb = StringBuilder(PINNED_HEAD)
         val kept = ArrayList<MemoryItem>()
         for (item in items) {
-            if (!item.pinned || item.secret || item.expired(now)) continue
+            // 1.4: a filing rule is never pinned, and never in a prompt even if a file said it was (§4.5).
+            if (!item.pinned || item.secret || item.expired(now) || item.filing != null) continue
             if (kept.size >= budget.maxPinned) break
             val said = sentence(item.text).replace('“', '"').replace('”', '"')
             if (said.isEmpty()) continue
@@ -134,7 +135,7 @@ object PromptPacking {
      */
     fun notesFor(ids: List<String>, items: List<MemoryItem>, now: Long, zone: ZoneId = ZoneId.systemDefault(), dates: Boolean = true): String? {
         val byId = items.associateBy { it.id }
-        val lines = ids.distinct().mapNotNull { byId[it] }.filter { !it.secret && !it.expired(now) && sentence(it.text).isNotEmpty() }
+        val lines = ids.distinct().mapNotNull { byId[it] }.filter { !it.secret && !it.expired(now) && it.filing == null && sentence(it.text).isNotEmpty() }
             .map { noteLine(it, zone, dates) }
         return if (lines.isEmpty()) null else NOTES_HEAD + "\n" + lines.joinToString("\n") + "\n\n"
     }
@@ -143,7 +144,7 @@ object PromptPacking {
     fun noteLine(item: MemoryItem, zone: ZoneId, dates: Boolean = true): String {
         val text = sentence(item.text)
         val from = from(item)
-        val saved = if (dates) "saved ${DATE.format(Instant.ofEpochMilli(item.createdAt).atZone(zone))}" else null
+        val saved = if (dates) "saved ${DATE.format(Instant.ofEpochMilli(item.createdAt).atZone(zone))}" else null // l10n: not text (model prompt)
         val tail = listOfNotNull(from, saved).joinToString(", ")
         return if (tail.isEmpty()) "• $text" else "• $text ($tail)"
     }
@@ -155,7 +156,7 @@ object PromptPacking {
     private fun from(item: MemoryItem): String? = when {
         !item.tainted -> null
         item.source.own -> IMPORTED
-        else -> item.sourceLabel?.let { "from ${ScreenText.sanitize(it).replace(Regex("\\s+"), " ").trim()}" } ?: "not from the user's own words"
+        else -> item.sourceLabel?.let { "from ${ScreenText.sanitize(it).replace(Regex("\\s+"), " ").trim()}" } ?: "not from the user's own words" // l10n: not text (model prompt)
     }
 
     /** An imported item the user hasn't confirmed as theirs: it may come from someone else's file. */

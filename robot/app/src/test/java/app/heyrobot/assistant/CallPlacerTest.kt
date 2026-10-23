@@ -2,6 +2,10 @@
 package app.heyrobot.assistant
 
 import android.content.Intent
+import app.heyrobot.Flat
+import app.heyrobot.Source
+import app.heyrobot.assertHas
+import app.heyrobot.assertInOrder
 import app.heyrobot.assistant.car.CallPlacer
 import app.heyrobot.core.car.CallRules
 import app.heyrobot.core.car.CallSetting
@@ -12,7 +16,7 @@ import org.junit.Test
 import java.io.File
 
 /**
- * 0.8's calls (design §4.5 flow 2, §4.9 rule 6): the dialer by default; ACTION_CALL only after car mode's spoken yes with
+ * 0.8's calls: the dialer by default; ACTION_CALL only after car mode's spoken yes with
  * the Phone permission and both switches on; an emergency number only ever opens the dialer. The emergency class is a
  * seam: these tests mark an ordinary number as one, so nothing here names or dials a real emergency number.
  */
@@ -64,5 +68,23 @@ class CallPlacerTest {
             "        /** The panel's own call from your words (never a model's): it may be the call tool, which no model is told about. */\n" +
             "        override val appCalls: Boolean get() = true"))
         assertEquals(1, Regex("override val appCalls").findAll(pc).count())
+    }
+
+    @Test fun duringALockAnEmergencyNumberOpensTheEmergencyDialer() {
+        val root = File(System.getProperty("robot.rootDir"), "app/src/main/java/app/heyrobot")
+        fun flat(p: String) = Flat(Source.strip(File(root, p).readText(), keepStrings = true))
+        // 1.1, Phone lock §6: a lock covers the ordinary dialer but never the phone's own emergency dialer, so during a lock
+        // an emergency number goes there first, and to the ordinary dialer only when it can't open, saying so.
+        assertInOrder(flat("assistant/car/CallPlacer.kt").body("fun run("),
+            "val locked = a.emergency && PhoneLockNow.on(ctx)",
+            "val sos = locked && LockSignals.emergencyDialer(ctx, Uri.fromParts(\"tel\", CallTarget.dialable(number), null))",
+            "val ok = sos || try { launch(intentFor(number, way, a.emergency)",
+            "locked && !sos -> ToolStrings.dialerCovered()",
+            "a.emergency -> ToolStrings.dialerWithNumber()")
+        // The cover's Emergency call opens the same one, a system app's only, never another app's. The action is named only where it
+        // is opened (LockSignals, every process) and where the gate learns which app it is (LockEngine, :lock).
+        assertHas(flat("lock/LockCoverActivity.kt").body("private fun emergency("), "LockSignals.emergencyDialer(this)")
+        val users = root.walkTopDown().filter { it.isFile && it.extension == "kt" && it.readText().contains("EMERGENCY_DIAL") }.map { it.name }.sorted().toList()
+        assertEquals(listOf("LockEngine.kt", "LockSignals.kt"), users)
     }
 }

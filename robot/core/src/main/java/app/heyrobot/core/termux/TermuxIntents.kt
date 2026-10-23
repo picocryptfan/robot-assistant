@@ -60,18 +60,18 @@ object TermuxPaths {
     /** TERMUX_FILES_DIR_PATH. */
     const val FILES = "/data/data/com.termux/files"
     /** TERMUX_HOME_DIR_PATH: ~ */
-    const val HOME = "$FILES/home"
+    const val HOME = "$FILES/home" // l10n: not text (a path)
     /** TERMUX_PREFIX_DIR_PATH: $PREFIX */
-    const val PREFIX = "$FILES/usr"
+    const val PREFIX = "$FILES/usr" // l10n: not text (a path)
     /** TERMUX_BIN_PREFIX_DIR_PATH. */
-    const val BIN = "$PREFIX/bin"
+    const val BIN = "$PREFIX/bin" // l10n: not text (a path)
     /** TERMUX_TMP_PREFIX_DIR_PATH: $TMPDIR */
-    const val TMP = "$PREFIX/tmp"
-    const val BASH = "$BIN/bash"
+    const val TMP = "$PREFIX/tmp" // l10n: not text (a path)
+    const val BASH = "$BIN/bash" // l10n: not text (a path)
     /** Android's other name for the same app data folder. */
     private const val FILES_ALIAS = "/data/user/0/com.termux/files"
     /** Termux's links to shared storage (termux-setup-storage): ~/storage/shared is /storage/emulated/0. */
-    const val STORAGE_LINKS = "$HOME/storage"
+    const val STORAGE_LINKS = "$HOME/storage" // l10n: not text (a path)
 
     /** Parameters a path may start with; any other expansion makes it unknown. */
     private val KNOWN = mapOf("HOME" to HOME, "PREFIX" to PREFIX, "TMPDIR" to TMP)

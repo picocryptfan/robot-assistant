@@ -3,8 +3,6 @@ package app.heyrobot.voice
 
 import android.content.Context
 import android.media.AudioAttributes
-import android.media.AudioFocusRequest
-import android.media.AudioManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -12,6 +10,7 @@ import android.os.SystemClock
 import android.speech.tts.UtteranceProgressListener
 import app.heyrobot.core.Playback
 import app.heyrobot.core.RLog
+import app.heyrobot.core.SpeechText
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
@@ -85,11 +84,9 @@ interface TextToSpeech {
 class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
     private val app = ctx.applicationContext
     private val main = Handler(Looper.getMainLooper())
-    private val audio = app.getSystemService(AudioManager::class.java)
     @Volatile private var playback = Playback.ASSISTANT
     /** The playback of the current speaking run (call audio only if the mode could be taken). */
     private var runPlayback = Playback.ASSISTANT
-    private var focus = CallAudio.focus(playback)
     /** Checks in a row the engine was quiet although sentences are outstanding ([SpeechWatchdog]). */
     private var quiet = 0
     private val watchdog = object : Runnable {
@@ -148,7 +145,7 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
         tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) = started(utteranceId)
             override fun onDone(utteranceId: String?) = finished(utteranceId)
-            @Deprecated("Deprecated in Java")
+            @Deprecated("Deprecated in Java") // l10n: not text (a note for developers)
             override fun onError(utteranceId: String?) = finished(utteranceId)
             override fun onError(utteranceId: String?, errorCode: Int) = finished(utteranceId)
             override fun onStop(utteranceId: String?, interrupted: Boolean) = finished(utteranceId)
@@ -208,15 +205,16 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
     /** The phone's voice has no second speaker here: the other voice is the same one at a lower pitch. */
     override fun speakOther(sentence: String, speaker: Int?, lang: String?) = queue(sentence, other = true)
 
-    private fun queue(sentence: String, other: Boolean) {
+    private fun queue(said: String, other: Boolean) {
+        // The phone's engine may be espeak-ng too: no control character reaches it (core SpeechText.forEngine).
+        val sentence = SpeechText.forEngine(said)
         if (sentence.isBlank()) return
         main.post {
             if (failed) return@post
             if (setOutstanding(outstanding.get() + 1) == 1) {
                 runPlayback = if (playback == Playback.CALL && CallAudio.begin(app, this)) Playback.CALL else Playback.ASSISTANT
-                focus = CallAudio.focus(runPlayback)
                 if (ready) tts.setAudioAttributes(CallAudio.attributes(runPlayback))
-                audio.requestAudioFocus(focus)
+                TurnFocus.speaking(app, this, runPlayback, true)
                 quiet = 0
                 main.removeCallbacks(watchdog)
                 main.postDelayed(watchdog, SpeechWatchdog.CHECK_MS)
@@ -234,7 +232,7 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
         if (f != 0) risky[id] = f
         // Pitch applies to the next speak() call: set it for every sentence.
         tts.setPitch(if (other) OTHER_PITCH else 1.0f)
-        val r = tts.speak(sentence, android.speech.tts.TextToSpeech.QUEUE_ADD, Bundle(), id)
+        val r = tts.speak(SpeechText.forEngine(sentence), android.speech.tts.TextToSpeech.QUEUE_ADD, Bundle(), id)
         // Never started: the sentence playing now keeps its guard.
         if (r != android.speech.tts.TextToSpeech.SUCCESS) {
             risky.remove(id)
@@ -255,7 +253,7 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
         main.removeCallbacks(watchdog)
         echo.reset()
         risky.clear()
-        audio.abandonAudioFocusRequest(focus)
+        TurnFocus.speaking(app, this, runPlayback, false)
         CallAudio.end(app, this)
         listener?.onSpeakingChanged(false)
     }

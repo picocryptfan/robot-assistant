@@ -10,5 +10,5 @@ Copyright (c) 2010 Arc90 Inc, licensed under the Apache License, Version 2.0.
 https://github.com/mozilla/readability
 
 Changes made for Robot (2026): the package name; every slf4j logging call removed, so no
-logging library ever sees page text; built against jsoup 1.15.1 instead of 1.11.2. The
+logging library ever sees page text; built against jsoup 1.23.2 instead of 1.11.2. The
 "extended" variant and the tests are not copied; Robot's tests use a few of Mozilla's test pages.

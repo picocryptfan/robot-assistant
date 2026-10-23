@@ -179,7 +179,7 @@ object ChatWire {
         for (b in blocks) when (b) {
             is HelperBlock.Text -> parts.put(JSONObject().put("type", "text").put("text", b.text))
             is HelperBlock.Image -> parts.put(JSONObject().put("type", "image_url").put("image_url",
-                JSONObject().put("url", "data:image/jpeg;base64," + Base64.getEncoder().encodeToString(b.jpeg))))
+                JSONObject().put("url", "data:image/jpeg;base64," + Base64.getEncoder().encodeToString(b.jpeg)))) // l10n: not text (the wire format)
         }
         return m.put("content", parts)
     }
@@ -235,7 +235,7 @@ class ChatReply {
     /** One payload (the text after `data: `). Throws only on a payload that isn't JSON; the caller skips it. */
     fun add(payload: String): Step {
         val p = payload.trim()
-        if (p == "[DONE]") {
+        if (p == "[DONE]") { // l10n: not text (the wire format)
             doneSeen = true
             return Step(think.flush())
         }
@@ -383,7 +383,7 @@ class ChatReply {
             val arr = JSONArray()
             for ((i, c) in calls) {
                 // A call without an id (some local servers): one is made up, the same in the echo and the result.
-                val id = c.id ?: "call_robot_$i"
+                val id = c.id ?: "call_robot_$i" // l10n: not text (the wire format)
                 val name = c.name.orEmpty()
                 val args = parseArgs(c.args.toString())
                 arr.put(JSONObject().put("id", id).put("type", "function")

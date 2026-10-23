@@ -15,6 +15,10 @@ class RobotApp : Application() {
         super.onCreate()
         val p = getProcessName()
         RLog.i("proc_start", "proc" to RLog.Code(if (p.contains(':')) p.substringAfter(':') else "main"))
+        // 1.1: a restore's settings files and locks.json, staged by :voice, written by their one writer (sys/RestoreApply).
+        if (!p.contains(':')) app.heyrobot.sys.RestoreApply.recover(this)
+        // 1.4: Robot Files' recovery and its screen-off and unlock hooks, in main and :voice only (sys/FilesVault.kt).
+        app.heyrobot.sys.RobotFiles.start(this)
         strictMode()
     }
 

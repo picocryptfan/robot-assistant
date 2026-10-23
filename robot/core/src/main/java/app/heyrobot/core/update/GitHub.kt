@@ -16,7 +16,7 @@ import java.net.URLEncoder
  */
 data class GitHubRepo(val owner: String, val name: String) {
     init {
-        require(validOwner(owner) && validName(name)) { "not a GitHub repository" }
+        require(validOwner(owner) && validName(name)) { "not a GitHub repository" } // l10n: not text (a developer's error)
     }
 
     val slug: String get() = "$owner/$name"
@@ -200,7 +200,7 @@ object ByteRange {
     private val CONTENT_RANGE = Regex("""bytes (\d{1,15})-(\d{1,15})/(\d{1,15}|\*)""")
 
     /** The "Range" header asking for the rest of a file from byte [from]. */
-    fun request(from: Long): String = "bytes=$from-"
+    fun request(from: Long): String = "bytes=$from-" // l10n: not text (an HTTP header)
 
     /** Whether a 206 answer's Content-Range ("bytes 100-999/1000") is exactly the rest of a [total]-byte file from [from]. */
     fun continues(contentRange: String?, from: Long, total: Long): Boolean {

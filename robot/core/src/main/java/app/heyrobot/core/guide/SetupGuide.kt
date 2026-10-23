@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.guide
 
+import app.heyrobot.core.i18n.Phrase
 import app.heyrobot.core.LockScreen
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.memory.MemorySettings
@@ -31,6 +32,8 @@ enum class GuideStep(val id: String) {
     WEATHER("weather"),
     CONVERSATION("conversation"),
     ROUTINES("routines"),
+    /** 1.1: Phone lock, optional and off ("Skip this step" leaves it off); the setup itself is in Settings › Phone lock. */
+    PHONE_LOCK("phone-lock"),
     HEADSET_CAR("headset-car"),
     HELPERS("helpers"),
     WEB_TERMUX("web-termux"),
@@ -119,10 +122,15 @@ enum class GuideItem {
     TRANSLATE_TRANSCRIPTS, FAST_TRANSLATION, BRIEF, HEADSET_BUTTON, CAR_MODE, HELPERS, WEB_SEARCH, TERMUX, AUTO_UPDATES, TEST_BUILDS,
     /** 1.0: the engine a search in your browser uses (needs no set-up). */
     BROWSER_ENGINE,
+    /** 1.1: "Remind me to back up every month", off. */
+    BACKUP_REMINDER,
 }
 
-/** [on] for a switch, or [value] for a choice (a name from core, as Settings shows it); [on] null with [value] null: not set. */
-data class SummaryLine(val item: GuideItem, val on: Boolean? = null, val value: String? = null)
+/**
+ * [on] for a switch, or [valueText] for a choice (a name from core, as Settings shows it, without a language yet: the
+ * summary shows it in the menus' language); [on] null with [valueText] null: not set.
+ */
+data class SummaryLine(val item: GuideItem, val on: Boolean? = null, val valueText: Phrase? = null)
 
 /** Everything the summary reads: the settings files as they are now, and what Android says about the phone. */
 data class GuideChoices(
@@ -137,6 +145,8 @@ data class GuideChoices(
     /** 1.0: Settings › Web search's default engine for a search in your browser (its name, as Settings shows it). */
     val browserEngine: String = app.heyrobot.core.web.BrowserEngine.DEFAULT.title,
     val termuxOn: Boolean = false,
+    /** 1.1: the monthly backup reminder (backup.json). */
+    val backupRemind: Boolean = false,
     /** A helper can answer (a key saved, or your own server). */
     val helpersSetUp: Boolean = false,
     val brainReady: Boolean = false,
@@ -149,7 +159,7 @@ data class GuideChoices(
     val cheogramInstalled: Boolean = false,
     val protonInstalled: Boolean = false,
     /** "Find the nearest place online" as Settings › Actions shows it (a card's lasting answer counts). */
-    val nearest: String = robot.nearestOnline.title,
+    val nearestText: Phrase = robot.nearestOnline.titleText,
 )
 
 object GuideSummary {
@@ -160,23 +170,23 @@ object GuideSummary {
             SummaryLine(GuideItem.BRAIN, on = c.brainReady),
             SummaryLine(GuideItem.VOICE_MODELS, on = c.voiceReady),
             SummaryLine(GuideItem.ASSISTANT, on = c.assistant),
-            SummaryLine(GuideItem.ROBOT_VOICE, value = r.voiceChoice.title),
+            SummaryLine(GuideItem.ROBOT_VOICE, valueText = r.voiceChoice.titleText),
             SummaryLine(GuideItem.WAKE_WORD, on = r.wakeWord),
             SummaryLine(GuideItem.ONLY_WHILE_CHARGING, on = r.wakeWord && r.wakeOnlyWhileCharging),
-            SummaryLine(GuideItem.ASK_FIRST, value = r.safetyCards.title),
+            SummaryLine(GuideItem.ASK_FIRST, valueText = r.safetyCards.titleText),
             SummaryLine(GuideItem.VOICE_CARDS, on = r.voiceCards),
-            SummaryLine(GuideItem.LOCK_SCREEN, value = LockScreen.allowed(r.lockedTools)),
-            SummaryLine(GuideItem.TEXT_APP, value = r.textAppFor(c.cheogramInstalled).title),
-            SummaryLine(GuideItem.EMAIL_APP, value = r.emailAppFor(c.protonInstalled).title),
+            SummaryLine(GuideItem.LOCK_SCREEN, valueText = Phrase.plain(LockScreen.allowed(r.lockedTools))),
+            SummaryLine(GuideItem.TEXT_APP, valueText = r.textAppFor(c.cheogramInstalled).titleText),
+            SummaryLine(GuideItem.EMAIL_APP, valueText = r.emailAppFor(c.protonInstalled).titleText),
             SummaryLine(GuideItem.CONTACTS, on = c.contacts),
             SummaryLine(GuideItem.CALENDAR, on = c.calendar),
             SummaryLine(GuideItem.MESSAGES, on = c.messages.on),
             SummaryLine(GuideItem.ANNOUNCE, on = c.messages.on && c.messages.announce),
             SummaryLine(GuideItem.MEMORY, on = c.memory.on),
             SummaryLine(GuideItem.MEMORY_LOCKED, on = c.memory.on && c.memory.onLockScreen),
-            SummaryLine(GuideItem.WEATHER_HOME, value = r.weatherHome?.name),
+            SummaryLine(GuideItem.WEATHER_HOME, valueText = r.weatherHome?.name?.let(Phrase::plain)),
             SummaryLine(GuideItem.LOCATION, on = c.location),
-            SummaryLine(GuideItem.NEAREST, value = c.nearest),
+            SummaryLine(GuideItem.NEAREST, valueText = c.nearestText),
             SummaryLine(GuideItem.TRANSLATE_TRANSCRIPTS, on = r.convTranslate),
             SummaryLine(GuideItem.FAST_TRANSLATION, on = c.fastTranslation),
             SummaryLine(GuideItem.BRIEF, on = c.routines.briefEnabled),
@@ -184,10 +194,11 @@ object GuideSummary {
             SummaryLine(GuideItem.CAR_MODE, on = c.carOn),
             SummaryLine(GuideItem.HELPERS, on = c.helpersSetUp),
             SummaryLine(GuideItem.WEB_SEARCH, on = c.webOn),
-            SummaryLine(GuideItem.BROWSER_ENGINE, value = c.browserEngine),
+            SummaryLine(GuideItem.BROWSER_ENGINE, valueText = Phrase.plain(c.browserEngine)),
             SummaryLine(GuideItem.TERMUX, on = c.termuxOn),
             SummaryLine(GuideItem.AUTO_UPDATES, on = c.updates.autoCheck),
             SummaryLine(GuideItem.TEST_BUILDS, on = c.updates.testBuilds),
+            SummaryLine(GuideItem.BACKUP_REMINDER, on = c.backupRemind),
         )
     }
 }

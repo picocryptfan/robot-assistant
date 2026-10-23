@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.InfoStrings
+import app.heyrobot.core.i18n.Lang
+import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.i18n.Phrase
 import java.text.Normalizer
 import java.time.Instant
 import java.time.ZoneId
@@ -82,47 +86,68 @@ object FreeUp {
         "all", "everything", "background", "background apps", "apps", "other apps", "none")
 
     /** A card button for a file: "IMG_2041.jpg · 12 MB · Mar 1, 2026" (the name cut to 40 characters). */
-    fun fileChoice(f: MediaFile, zone: ZoneId): String =
-        listOfNotNull(NoteSearch.cut(f.name.replace(Regex("\\s+"), " ").trim().ifEmpty { if (f.video) "A video" else "A photo" }, 40),
-            PhoneStatus.size(f.bytes), f.date?.let { day(it, zone) }).joinToString(" · ")
+    fun fileChoice(f: MediaFile, zone: ZoneId): String = fileChoiceText(f, zone).en()
 
-    /** What the card says (and saves) once a file is picked: no name. "Delete a video (1.2 GB, Mar 1, 2026)". */
-    fun fileSummary(f: MediaFile, zone: ZoneId): String =
-        "Delete a ${if (f.video) "video" else "photo"} (" + listOfNotNull(PhoneStatus.size(f.bytes), f.date?.let { day(it, zone) }).joinToString(", ") + ")"
-
-    /** A card button for an app: "Signal · 12 GB, cache 1.2 GB". */
-    fun appChoice(a: AppSize): String = "${NoteSearch.cut(a.label.replace(Regex("\\s+"), " ").trim(), 30)} · ${PhoneStatus.size(a.bytes)}" +
-        if (a.cacheBytes >= 1_000_000) ", cache ${PhoneStatus.size(a.cacheBytes)}" else ""
-
-    /** "Chrome, YouTube and Maps". */
-    fun names(labels: List<String>): String = when (labels.size) {
-        0 -> ""
-        1 -> labels[0]
-        else -> labels.dropLast(1).joinToString(", ") + " and " + labels.last()
+    /** [fileChoice] in words without a language yet (a button: the menus' language). */
+    fun fileChoiceText(f: MediaFile, zone: ZoneId): Phrase {
+        val name = NoteSearch.cut(f.name.replace(Regex("\\s+"), " ").trim(), 40).takeIf { it.isNotEmpty() }?.let(Phrase::plain)
+            ?: if (f.video) InfoStrings.aVideo() else InfoStrings.aPhoto()
+        return Phrase.Join(listOfNotNull(name, PhoneStatus.sizeText(f.bytes), f.date?.let { day(it, zone) }), " · ")
     }
 
+    /** What the card says (and saves) once a file is picked: no name. "Delete a video (1.2 GB, Mar 1, 2026)". */
+    fun fileSummary(f: MediaFile, zone: ZoneId): String = fileSummaryText(f, zone).en()
+
+    /** [fileSummary] in words without a language yet. */
+    fun fileSummaryText(f: MediaFile, zone: ZoneId): Phrase {
+        val details = Phrase.Join(listOfNotNull(PhoneStatus.sizeText(f.bytes), f.date?.let { day(it, zone) }), ", ")
+        return (if (f.video) InfoStrings.deleteVideo else InfoStrings.deletePhoto)("details" to details)
+    }
+
+    /** A card button for an app: "Signal · 12 GB, cache 1.2 GB". */
+    fun appChoice(a: AppSize): String = appChoiceText(a).en()
+
+    /** [appChoice] in words without a language yet. */
+    fun appChoiceText(a: AppSize): Phrase {
+        val name = a.nameText
+        return if (a.cacheBytes >= 1_000_000) InfoStrings.appChoiceCache("appName" to name, "size" to PhoneStatus.sizeText(a.bytes), "cache" to PhoneStatus.sizeText(a.cacheBytes))
+        else InfoStrings.appChoice("appName" to name, "size" to PhoneStatus.sizeText(a.bytes))
+    }
+
+    /** "Chrome, YouTube and Maps" (for the model: English). */
+    fun names(labels: List<String>): String = Phrase.ListOf(labels.map(Phrase::plain)).en()
+
     /** The free_memory card once Robot's model is unloaded: what Android reports came back. */
-    fun freedLine(before: Long, after: Long): String {
+    fun freedLine(before: Long, after: Long): String = freedText(before, after).en()
+
+    /** [freedLine] in words without a language yet. */
+    fun freedText(before: Long, after: Long): Phrase {
         val freed = after - before
-        return if (freed >= 100_000_000) "Freed about ${PhoneStatus.size(freed)}: ${PhoneStatus.size(after)} of memory available now."
-        else "Robot's model is unloaded. Android hasn't counted the memory as free yet (${PhoneStatus.size(after)} available)."
+        return if (freed >= 100_000_000) InfoStrings.freed("freed" to PhoneStatus.sizeText(freed), "available" to PhoneStatus.sizeText(after))
+        else InfoStrings.notFreedYet("available" to PhoneStatus.sizeText(after))
     }
 
     /** Robot among the largest apps: most of it is its models, which clearing its storage would delete. */
-    const val ROBOT_LABEL = "Robot (models, don't clear)"
+    val ROBOT_LABEL: String get() = InfoStrings.robotModels().en()
 
     /** A picked file's card until Android's confirmation answers; then [DELETED] or [KEPT]. */
-    const val DELETE_WAITING = "Waiting for your answer in Android's confirmation: it's deleted only if you allow it there."
-    const val DELETED = "Deleted."
-    const val KEPT = "Not deleted: you didn't allow it."
+    val DELETE_WAITING: String get() = InfoStrings.deleteWaiting().en()
+    val DELETED: String get() = InfoStrings.deleted().en()
+    val KEPT: String get() = InfoStrings.notDeleted().en()
 
     /** The unload card's line until the answer ends; then it says what came back ([freedLine]). */
-    const val UNLOADING = "Robot's model unloads when this answer ends (about 2 GB, 4 GB for an E4B model)."
+    val UNLOADING: String get() = InfoStrings.unloading().en()
+
+    /** A card's line, in any of Robot's languages, is [DELETE_WAITING]'s (1.1: a French card waits in French). */
+    fun isDeleteWaiting(detail: String?): Boolean = detail != null && Lang.entries.any { InfoStrings.deleteWaiting().render(Langs.of(it)) == detail }
+
+    /** The same for [UNLOADING]. */
+    fun isUnloading(detail: String?): Boolean = detail != null && Lang.entries.any { InfoStrings.unloading().render(Langs.of(it)) == detail }
 
     /** What the model is told about freeing memory: what Robot did, and what Android does by itself. */
-    const val MEMORY_FOR_MODEL = "Robot's own model (about 2 GB, or 4 GB for an E4B model) is unloaded as soon as this answer ends and loads again for the next question. " +
-        "Android frees memory by itself when it needs it. Robot can't stop other apps (Android doesn't allow it), but it can open an app's " +
-        "info page where the person taps Force stop: that helps most when one app misbehaves, and the app may start again."
+    const val MEMORY_FOR_MODEL = "Robot's own model (about 2 GB, or 4 GB for an E4B model) is unloaded as soon as this answer ends and loads again for the next question. " + // l10n: not text (model prompt)
+        "Android frees memory by itself when it needs it. Robot can't stop other apps (Android doesn't allow it), but it can open an app's " + // l10n: not text (model prompt)
+        "info page where the person taps Force stop: that helps most when one app misbehaves, and the app may start again." // l10n: not text (model prompt)
 
     // ------------------------------------------------------------------ 0.7.0: "free up memory", with recommendations
 
@@ -174,91 +199,94 @@ object FreeUp {
             .sortedWith(compareByDescending<RecentApp> { it.lastUsed }.thenByDescending { it.foregroundMs }).take(n)
 
     /** "5 min ago", "il y a 5 min", "2 h ago". */
-    fun ago(ms: Long, fr: Boolean): String {
+    fun ago(ms: Long, fr: Boolean): String = agoText(ms).render(langs(fr))
+
+    /** [ago] in words without a language yet. */
+    fun agoText(ms: Long): Phrase {
         val min = (ms.coerceAtLeast(0) / 60_000L).toInt()
-        val v = when {
-            min < 1 -> if (fr) "à l'instant" else "just now"
-            min < 60 -> "$min min"
-            else -> "${min / 60} h" + (min % 60).let { if (it >= 5) " ${it.toString().padStart(2, '0')}" else "" }
+        return when {
+            min < 1 -> InfoStrings.justNow()
+            min < 60 -> InfoStrings.agoMinutes("n" to min.toString())
+            min % 60 >= 5 -> InfoStrings.agoHoursMinutes("h" to (min / 60).toString(), "m" to (min % 60).toString().padStart(2, '0'))
+            else -> InfoStrings.agoHours("h" to (min / 60).toString())
         }
-        return if (min < 1) v else if (fr) "il y a $v" else "$v ago"
     }
 
     /** A size as Québec French writes it: "2,1 Go", "340 Mo". */
-    fun sizeFr(bytes: Long): String = PhoneStatus.size(bytes).replace(" GB", " Go").replace(" MB", " Mo").replace(" KB", " ko").replace('.', ',')
+    fun sizeFr(bytes: Long): String = PhoneStatus.sizeText(bytes).render(Langs.of(Lang.FR))
 
-    private fun size(bytes: Long, fr: Boolean) = if (fr) sizeFr(bytes) else PhoneStatus.size(bytes)
+    /** 1.0's French switch, as languages. */
+    private fun langs(fr: Boolean): Langs = Langs.of(if (fr) Lang.FR else Lang.EN)
 
     /** "5.1 GB of 12 GB of memory is free (Android says memory is low)." · « 5,1 Go libres sur 12 Go de mémoire. » */
-    fun memoryNow(m: MemoryFacts, fr: Boolean): String =
-        if (fr) "${size(m.available, true)} libres sur ${size(m.total, true)} de mémoire" + (if (m.low) " (Android dit que la mémoire est basse)" else "") + "."
-        else "${size(m.available, false)} of ${size(m.total, false)} of memory is free" + (if (m.low) " (Android says memory is low)" else "") + "."
+    fun memoryNow(m: MemoryFacts, fr: Boolean): String = memoryNowText(m).render(langs(fr))
+
+    /** [memoryNow] in words without a language yet. */
+    fun memoryNowText(m: MemoryFacts): Phrase =
+        (if (m.low) InfoStrings.memoryFreeLow else InfoStrings.memoryFree)("available" to PhoneStatus.sizeText(m.available), "total" to PhoneStatus.sizeText(m.total))
 
     /** The card's first button: Robot's model, unloaded when the answer ends ([modelBytes]: about how much it holds; null: not loaded). */
-    fun unloadChoice(modelBytes: Long?, fr: Boolean): String = when {
-        modelBytes == null -> if (fr) "Décharger le modèle de Robot (pas chargé en ce moment)" else "Unload Robot's model (not loaded now)"
-        fr -> "Décharger le modèle de Robot · environ ${size(modelBytes, true)}"
-        else -> "Unload Robot's model · about ${size(modelBytes, false)}"
-    }
+    fun unloadChoice(modelBytes: Long?, fr: Boolean): String = unloadChoiceText(modelBytes).render(langs(fr))
+
+    /** [unloadChoice] in words without a language yet. */
+    fun unloadChoiceText(modelBytes: Long?): Phrase =
+        if (modelBytes == null) InfoStrings.unloadNotLoaded() else InfoStrings.unloadAbout("size" to PhoneStatus.sizeText(modelBytes))
 
     /** An app's button: "YouTube · used 5 min ago · 40 min on screen today", its App info opens (Force stop is there). */
-    fun appChoice(a: RecentApp, now: Long, fr: Boolean): String {
+    fun appChoice(a: RecentApp, now: Long, fr: Boolean): String = appChoiceText(a, now).render(langs(fr))
+
+    /** [appChoice] in words without a language yet. */
+    fun appChoiceText(a: RecentApp, now: Long): Phrase {
         val name = NoteSearch.cut(a.label.replace(Regex("\\s+"), " ").trim(), 30)
         val on = (a.foregroundMs / 60_000L).toInt()
-        return if (fr) "$name · utilisée ${ago(now - a.lastUsed, true)}" + (if (on >= 1) " · $on min à l'écran aujourd'hui" else "")
-        else "$name · used ${ago(now - a.lastUsed, false)}" + (if (on >= 1) " · $on min on screen today" else "")
+        val ago = agoText(now - a.lastUsed)
+        return if (on >= 1) InfoStrings.recentAppOnScreen("appName" to name, "ago" to ago, "n" to on.toString()) else InfoStrings.recentApp("appName" to name, "ago" to ago)
     }
 
     /** Without Usage access, the button that opens Android's page for it. */
-    fun usageAccessChoice(fr: Boolean): String =
-        if (fr) "Activer l'accès aux données d'utilisation, pour voir les applis utilisées récemment" else "Turn on Usage access, to see the apps you used lately"
+    fun usageAccessChoice(fr: Boolean): String = usageAccessChoiceText().render(langs(fr))
+
+    fun usageAccessChoiceText(): Phrase = InfoStrings.turnOnUsageAccessToSee()
 
     /** The card's line while it waits: what its buttons do. */
-    fun pickNote(fr: Boolean): String = if (fr) "Touche un choix : le modèle de Robot se décharge à la fin de cette réponse; une appli ouvre sa page Infos sur l'appli, " +
-        "où tu touches Forcer l'arrêt. Robot n'arrête jamais une appli lui-même."
-        else "Tap one: Robot's model unloads when this answer ends; an app opens its App info, where you tap Force stop. Robot never stops an app itself."
+    fun pickNote(fr: Boolean): String = pickNoteText().render(langs(fr))
+
+    fun pickNoteText(): Phrase = InfoStrings.pickNote()
 
     /**
      * What Robot says to "free up memory": how much memory is free, what unloading its model gives, the apps used lately
      * that may still be in memory ([recent]; null: no Usage access) and how to stop one, and that Android frees memory by
      * itself. Robot can't stop another app (Android 14 and later): it opens the app's info, where you tap Force stop.
      */
-    fun advice(m: MemoryFacts, modelBytes: Long?, recent: List<RecentApp>?, now: Long, fr: Boolean): String {
-        val parts = ArrayList<String>()
-        parts += memoryNow(m, fr)
-        parts += when {
-            modelBytes == null && fr -> "Le modèle de Robot n'est pas chargé en ce moment."
-            modelBytes == null -> "Robot's model isn't loaded now."
-            fr -> "Décharger le modèle de Robot libère environ ${size(modelBytes, true)} tout de suite; il se recharge à la prochaine question."
-            else -> "Unloading Robot's model frees about ${size(modelBytes, false)} at once; it loads again for your next question."
-        }
-        parts += when {
-            recent == null && fr -> "Avec l'accès aux données d'utilisation, Robot pourrait aussi nommer les applis que tu as utilisées récemment, pour en arrêter une : touche le bouton pour l'activer."
-            recent == null -> "With Usage access, Robot could also name the apps you used lately, so you can stop one: tap the button to turn it on."
-            recent.isEmpty() && fr -> "Aucune autre appli n'a servi dans les 3 dernières heures."
-            recent.isEmpty() -> "No other app was used in the last 3 hours."
-            fr -> "Les applis utilisées récemment, sans doute encore en mémoire : ${namesFr(recent.map { it.label })}. Touches-en une pour ouvrir sa page Infos sur l'appli, où tu peux forcer l'arrêt."
-            else -> "Apps you used lately that are likely still in memory: ${names(recent.map { it.label })}. Tap one to open its App info, where you can force stop it."
-        }
-        parts += if (fr) "Robot n'arrête jamais une appli lui-même, et Android libère de la mémoire tout seul quand il en a besoin."
-            else "Robot never stops an app itself, and Android frees memory by itself when it needs to."
-        return parts.joinToString(" ")
-    }
+    fun advice(m: MemoryFacts, modelBytes: Long?, recent: List<RecentApp>?, now: Long, fr: Boolean): String =
+        adviceText(m, modelBytes, recent, now).render(langs(fr))
+
+    /** [advice] in words without a language yet. */
+    @Suppress("UNUSED_PARAMETER")
+    fun adviceText(m: MemoryFacts, modelBytes: Long?, recent: List<RecentApp>?, now: Long): Phrase = Phrase.Join(listOf(
+        memoryNowText(m),
+        if (modelBytes == null) InfoStrings.modelNotLoaded() else InfoStrings.unloadingFrees("size" to PhoneStatus.sizeText(modelBytes)),
+        when {
+            recent == null -> InfoStrings.withUsageAccess()
+            recent.isEmpty() -> InfoStrings.noOtherApp()
+            else -> InfoStrings.recentApps("appNames" to Phrase.ListOf(recent.map { Phrase.plain(it.label) }))
+        },
+        InfoStrings.neverStops(),
+    ))
 
     /** On the lock screen "free up memory" says only what is free: which apps you used stays private until you unlock. */
-    fun unlockToFree(fr: Boolean): String = if (fr) "Déverrouille ton téléphone pour voir ce que tu peux décharger ou arrêter."
-        else "Unlock your phone to see what you can unload or stop."
+    fun unlockToFree(fr: Boolean): String = unlockToFreeText().render(langs(fr))
+
+    fun unlockToFreeText(): Phrase = InfoStrings.unlockToFree()
 
     /** « Chrome, YouTube et Maps ». */
-    fun namesFr(labels: List<String>): String = when (labels.size) {
-        0 -> ""
-        1 -> labels[0]
-        else -> labels.dropLast(1).joinToString(", ") + " et " + labels.last()
+    fun namesFr(labels: List<String>): String = Phrase.ListOf(labels.map(Phrase::plain)).render(Langs.of(Lang.FR))
+
+    /** "Mar 1, 2026" / « 1er mars 2026 ». */
+    private fun day(ms: Long, zone: ZoneId): Phrase {
+        val d = Instant.ofEpochMilli(ms).atZone(zone).toLocalDate()
+        return InfoStrings.date("month" to EventText.monthText(d.monthValue), "day" to EventText.dayOfMonth(d), "year" to d.year.toString())
     }
-
-    private val DAY = DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.US)
-
-    private fun day(ms: Long, zone: ZoneId) = Instant.ofEpochMilli(ms).atZone(zone).format(DAY)
 
     fun plain(s: String) = Normalizer.normalize(s, Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "").lowercase(Locale.ROOT)
         .replace("'", "").replace("’", "").replace(Regex("[^a-z0-9]+"), " ").trim()

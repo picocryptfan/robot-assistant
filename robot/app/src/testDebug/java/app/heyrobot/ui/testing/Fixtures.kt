@@ -40,7 +40,7 @@ class ActionLog : ArrayList<String>() {
         openTranscriptionCheck = { add("openTranscriptionCheck") }, mtDownload = { add("mtDownload") }, mtCancel = { add("mtCancel") },
         mtDelete = { add("mtDelete") }, openVoiceprint = { add("openVoiceprint") }, deleteVoiceprint = { add("deleteVoiceprint") },
         runRoutine = { add("runRoutine $it") }, openReady = { add("openReady $it") }, askPermission = { add("askPermission $it") },
-        tryGpuAgain = { add("tryGpuAgain") }, tryTpuAgain = { add("tryTpuAgain") }, reportText = { "REPORT for ${it.model.id}" }, copyReport = { add("copyReport $it") },
+        checkModel = { add("checkModel") }, tryGpuAgain = { add("tryGpuAgain") }, tryTpuAgain = { add("tryTpuAgain") }, reportText = { "REPORT for ${it.model.id}" }, copyReport = { add("copyReport $it") },
         shareReport = { add("shareReport $it") }, dismissProblem = { add("dismissProblem ${it.time}") },
         deleteProblem = { add("deleteProblem ${it.time}") }, openGuide = { add("openGuide") },
     )
@@ -51,6 +51,11 @@ val PIXEL_10_PRO = Phone("Google", "Pixel 10 Pro", "Google", "Tensor G5", 16_000
 val PIXEL_9A = Phone("Google", "Pixel 9a", "Google", "Tensor G4", 7_600_000_000L)
 /** 0.8: a Pixel 11 (Tensor G6): Fast is the Tensor G6's TPU build, in beta. */
 val PIXEL_11 = Phone("Google", "Pixel 11", "Google", "Tensor G6", 12_000_000_000L)
+/**
+ * 1.2: a Galaxy S25 (Snapdragon 8 Elite) as Android is expected to name it (Build.SOC_MANUFACTURER "QTI", Build.SOC_MODEL
+ * "SM8750": UNVERIFIED until the Test Bench reads a real one): the general E2B, GPU or CPU, no NPU build.
+ */
+val GALAXY_S25 = Phone("samsung", "SM-S931W", "QTI", "SM8750", 11_500_000_000L)
 
 /**
  * Settings as a page holds them: [start], then every copy the page's update wrote, in order ([saved]), the page shown

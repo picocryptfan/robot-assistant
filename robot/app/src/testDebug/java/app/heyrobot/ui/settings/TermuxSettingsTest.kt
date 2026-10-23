@@ -97,6 +97,19 @@ class TermuxSettingsTest {
         assertTrue(saved.none { it.enabled })
     }
 
+    /** 1.1: French menus (values-fr-rCA and core's TermuxStrings): the page, its checklist and its choices in Québec French. */
+    @Config(qualifiers = "fr-rCA-w411dp-h891dp-xhdpi")
+    @Test fun inFrench() {
+        open(ready)
+        rule.onNode(hasText("Laisser Robot utiliser Termux") and isToggleable()).assertExists()
+        rule.onNodeWithText("Termux 0.118.3 depuis F-Droid").assertExists()
+        rule.onNodeWithText("Termux installé").assertExists()
+        rule.scrollToText("Tes scripts")
+        rule.scrollToText("Commandes écrites par Robot")
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
+        assertEquals("Activé · 2 scripts", termuxSummaryText(ready.settings.copy(enabled = true), 2).render(app.heyrobot.core.i18n.Langs.of(app.heyrobot.core.i18n.Lang.FR)))
+    }
+
     @Test fun aNewVersionAsksYouToTrustIt() {
         val newer = fdroid.copy(versionName = "0.119.0", versionCode = 1030, lastUpdateTime = may2025 + 86_400_000)
         open(ready.copy(check = TermuxIdentity.check(newer, ready.settings.trustedSigner, trusted = ready.settings.trusted())))

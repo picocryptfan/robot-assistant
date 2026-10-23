@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.Msg
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.RoutineStrings
 import java.util.Locale
 
 // Pure. The wake phrases (0.2.3): a few phrases the user picks in Settings › Voice › Wake words, each with a
@@ -10,10 +13,17 @@ import java.util.Locale
 // added only while Robot speaks. Every keyword threshold Robot uses is in KwsThresholds.
 
 /** How readily a wake phrase fires: Low wakes by accident least, High hears a quiet or far voice best. */
-enum class WakeSensitivity(val title: String, val detail: String) {
-    LOW("Low", "Fewer accidental wakes; say it clearly"),
-    MEDIUM("Medium", "As “hey robot” was tested: 10 of 10 close, 5 of 5 across the room, no false wake in 2 hours"),
-    HIGH("High", "Hears you more easily, wakes by accident more often"),
+enum class WakeSensitivity(private val titleMsg: Msg, private val detailMsg: Msg) {
+    LOW(RoutineStrings.wakeLow, RoutineStrings.wakeLowDetail),
+    MEDIUM(RoutineStrings.wakeMedium, RoutineStrings.wakeMediumDetail),
+    HIGH(RoutineStrings.wakeHigh, RoutineStrings.wakeHighDetail),
+    ;
+
+    /** 1.1: Settings' words without a language yet; [title] and [detail] are their English. */
+    val titleText: Phrase get() = titleMsg()
+    val detailText: Phrase get() = detailMsg()
+    val title: String get() = titleText.en()
+    val detail: String get() = detailText.en()
 }
 
 /**
@@ -21,11 +31,17 @@ enum class WakeSensitivity(val title: String, val detail: String) {
  * talks (the spotter for her talking, [KwsThresholds.stop] and [KwsThresholds.talkWake]). Medium is what 0.2.3 to 0.4.0
  * shipped; Low hears her own voice as you less often, High hears a quiet or far voice over her more easily.
  */
-enum class InterruptSensitivity(val title: String, val detail: String) {
-    LOW("Low", "Fewer false stops from Robot's own voice or the TV; say it clearly"),
-    MEDIUM("Medium", "As tested: “stop” over Robot's voice at arm's length"),
-    HIGH("High", "Hears you over Robot more easily, from further away; stops by accident more often"),
+enum class InterruptSensitivity(private val titleMsg: Msg, private val detailMsg: Msg) {
+    LOW(RoutineStrings.wakeLow, RoutineStrings.interruptLowDetail),
+    MEDIUM(RoutineStrings.wakeMedium, RoutineStrings.interruptMediumDetail),
+    HIGH(RoutineStrings.wakeHigh, RoutineStrings.interruptHighDetail),
     ;
+
+    /** 1.1: Settings' words without a language yet; [title] and [detail] are their English. */
+    val titleText: Phrase get() = titleMsg()
+    val detailText: Phrase get() = detailMsg()
+    val title: String get() = titleText.en()
+    val detail: String get() = detailText.en()
 
     companion object {
         /**
@@ -111,7 +127,7 @@ object WakePhrases {
     const val MAX_PHRASES = 8
     /** Said while Robot speaks, "stop" ends the reply: no wake phrase may use it. */
     const val RESERVED = "stop"
-    const val SHORT_WARNING = "Short words like 'robot' trigger by accident more often."
+    val SHORT_WARNING: String get() = RoutineStrings.wakeShort().en()
 
     val DEFAULT: List<WakePhrase> = listOf(WakePhrase(1, "hey robot", WakeSensitivity.MEDIUM, true))
 
@@ -132,18 +148,21 @@ object WakePhrases {
      * Why [text] can't be a wake phrase (shape only: the spelling is KwsSpeller's), or null. [others]: the phrases
      * already in the list (a phrase being edited is left out by the caller).
      */
-    fun problem(text: String, others: List<WakePhrase> = emptyList()): String? {
+    fun problem(text: String, others: List<WakePhrase> = emptyList()): String? = problemText(text, others)?.en()
+
+    /** 1.1: [problem] without a language yet. */
+    fun problemText(text: String, others: List<WakePhrase> = emptyList()): Phrase? {
         val t = clean(text)
         val w = words(t)
         return when {
-            t.isEmpty() -> "Type a phrase."
-            t.length > MAX_CHARS -> "At most $MAX_CHARS characters."
-            !ALLOWED.matches(t) -> "Use only the letters A to Z, spaces and apostrophes."
-            w.size > MAX_WORDS -> "Use 1 to $MAX_WORDS words."
-            w.any { word -> word.none { it.isLetter() } } -> "Each word needs a letter."
-            w.any { it.lowercase(Locale.ROOT).trim('\'') == RESERVED } -> "“Stop” is reserved: saying it stops Robot talking."
-            others.any { key(it.text) == key(t) } -> "That phrase is already in the list."
-            others.size >= MAX_PHRASES -> "At most $MAX_PHRASES wake phrases."
+            t.isEmpty() -> RoutineStrings.wakeType()
+            t.length > MAX_CHARS -> RoutineStrings.wakeTooLong("max" to MAX_CHARS)
+            !ALLOWED.matches(t) -> RoutineStrings.wakeLetters()
+            w.size > MAX_WORDS -> RoutineStrings.wakeWords("max" to MAX_WORDS)
+            w.any { word -> word.none { it.isLetter() } } -> RoutineStrings.wakeLetter()
+            w.any { it.lowercase(Locale.ROOT).trim('\'') == RESERVED } -> RoutineStrings.wakeStop()
+            others.any { key(it.text) == key(t) } -> RoutineStrings.wakeTaken()
+            others.size >= MAX_PHRASES -> RoutineStrings.wakeTooMany("max" to MAX_PHRASES)
             else -> null
         }
     }
@@ -194,21 +213,33 @@ object WakePhrases {
      * For [outer]'s card, from [inside]'s pairs: only when it is off while a phrase inside it is on, which is the one
      * case where it doesn't do what it says (saying it still wakes Robot); null otherwise. Both on is fine.
      */
-    fun insideWarning(outer: WakePhrase, pairs: List<Pair<WakePhrase, WakePhrase>>): String? {
+    fun insideWarning(outer: WakePhrase, pairs: List<Pair<WakePhrase, WakePhrase>>): String? = insideWarningText(outer, pairs)?.en()
+
+    /** 1.1: [insideWarning] without a language yet. */
+    fun insideWarningText(outer: WakePhrase, pairs: List<Pair<WakePhrase, WakePhrase>>): Phrase? {
         if (outer.enabled) return null
         val inners = pairs.filter { it.second.id == outer.id }.map { it.first }
         if (inners.isEmpty()) return null
-        val names = inners.joinToString(" and ") { "“${it.text}”" }
-        return if (inners.size == 1) "“${outer.text}” is off, but $names is on and still hears it. Turn off $names too."
-        else "“${outer.text}” is off, but $names are on and still hear it. Turn them off too."
+        val names = quotedAnd(inners)
+        return if (inners.size == 1) RoutineStrings.wakeOffOne("phrase" to outer.text, "names" to names)
+        else RoutineStrings.wakeOffMany("phrase" to outer.text, "names" to names)
+    }
+
+    /** "“a” and “b”" / « « a » et « b » »: each phrase quoted the language's way, joined by "and" (a list of two or more, as 1.0). */
+    private fun quotedAnd(list: List<WakePhrase>): Phrase {
+        val q = list.map { RoutineStrings.quoted("name" to it.text) }
+        return if (q.size <= 2) Phrase.ListOf(q) else q.drop(1).fold(q[0]) { a, b -> Phrase.ListOf(listOf(a, b)) }
     }
 
     /** For [inner]'s card, a plain note: the longer phrases it hears too, whatever their switch says; null if none. */
-    fun insideNote(inner: WakePhrase, pairs: List<Pair<WakePhrase, WakePhrase>>): String? {
+    fun insideNote(inner: WakePhrase, pairs: List<Pair<WakePhrase, WakePhrase>>): String? = insideNoteText(inner, pairs)?.en()
+
+    /** 1.1: [insideNote] without a language yet. */
+    fun insideNoteText(inner: WakePhrase, pairs: List<Pair<WakePhrase, WakePhrase>>): Phrase? {
         val outers = pairs.filter { it.first.id == inner.id }.map { it.second }
         if (outers.isEmpty()) return null
-        val them = if (outers.size == 1) "it" else "them"
-        return "Also hears " + outers.joinToString(" and ") { "“${it.text}”" } + ": while this is on, saying $them wakes Robot even with $them off."
+        val names = quotedAnd(outers)
+        return if (outers.size == 1) RoutineStrings.wakeAlsoOne("names" to names) else RoutineStrings.wakeAlsoMany("names" to names)
     }
 }
 
@@ -220,16 +251,24 @@ object WakePhrases {
 class KwsSpeller(private val encoder: SentencePieceEncoder, val tokens: Set<String>) {
     sealed class Result {
         data class Ok(val tokens: List<String>) : Result()
-        data class Refused(val why: String) : Result()
+        data class Refused(val why: String) : Result() {
+            /** 1.1: [why] without a language yet (Settings shows it in the menus' language); not part of equality. */
+            var text: Phrase = Phrase.plain(why)
+                private set
+
+            constructor(text: Phrase) : this(text.en()) {
+                this.text = text
+            }
+        }
     }
 
     fun spell(phrase: String): Result {
         val t = WakePhrases.clean(phrase).uppercase(Locale.ROOT)
-        if (t.isEmpty()) return Result.Refused("Type a phrase.")
-        val pieces = try { encoder.encode(t) } catch (e: Exception) { return Result.Refused("Robot couldn't spell that for the wake-word model.") }
-        if (pieces.isEmpty()) return Result.Refused("Type a phrase.")
+        if (t.isEmpty()) return Result.Refused(RoutineStrings.wakeType())
+        val pieces = try { encoder.encode(t) } catch (e: Exception) { return Result.Refused(RoutineStrings.wakeCantSpell()) }
+        if (pieces.isEmpty()) return Result.Refused(RoutineStrings.wakeType())
         val unknown = pieces.firstOrNull { it !in tokens }
-        if (unknown != null) return Result.Refused("The wake-word model can't spell “${unknown.trimStart(SentencePieceEncoder.SPACE)}”.")
+        if (unknown != null) return Result.Refused(RoutineStrings.wakeCantSpellToken("token" to unknown.trimStart(SentencePieceEncoder.SPACE)))
         return Result.Ok(pieces)
     }
 

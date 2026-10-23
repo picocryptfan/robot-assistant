@@ -107,4 +107,26 @@ class ConversationSettingsTest {
         open()
         rule.shot("conversation_light")
     }
+
+    /** 1.1: French menus (values-fr-rCA and core's ConversationStrings): the page, its choices and its dialogs in Québec French. */
+    @Config(qualifiers = "fr-rCA-w411dp-h891dp-xhdpi")
+    @Test fun inFrench() {
+        val host = open()
+        rule.onRow("Mots en direct").assertExists()
+        rule.onRow("Distinguer les intervenants").assert(hasText("Il faut le modèle des intervenants (40\u00A0Mo)"))
+        rule.onNodeWithContentDescription("Télécharger le modèle des intervenants").assertExists()
+        rule.scrollToText("Résumés en")
+        rule.onRow("Résumés en").performClick()
+        rule.inDialog("Ta langue").assertExists()
+        rule.inDialog("English").assertExists()
+        rule.inDialog("Français").performClick()
+        assertEquals("fr", host.last.convSummaryLang)
+        rule.scrollToText("Moteur de traduction rapide (52\u00A0Mo)")
+        rule.onNodeWithContentDescription("Télécharger le moteur de traduction rapide").assertExists()
+        rule.scrollToText("Afficher le rappel de nouveau")
+        rule.onRow("Afficher le rappel de nouveau").performClick()
+        assertEquals("say Le rappel s’affichera avant la prochaine transcription.", log.last())
+        rule.scrollToText("donnée biométrique", substring = true)
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
+    }
 }

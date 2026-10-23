@@ -215,9 +215,33 @@ object OneShotRules {
     /** The reply's cap in a context of [maxTokens]: what [req] asked, never past the reply's room (a quarter of a short context). */
     fun maxChunks(req: BrainMsg.OneShot, maxTokens: Int): Int = minOf(req.maxChunks, Limits.MAX_REPLY_CHUNKS, ContextWindow.replyReserve(maxTokens)).coerceAtLeast(1)
 
-    /** The estimate of what [req] sends: its system prompt, the template and its one turn. */
+    /** The estimate of what [req] sends: its system prompt, the template and its one turn (with its picture, 1.4's FILE_READ). */
     fun tokens(req: BrainMsg.OneShot): Int =
-        TokenEstimate.text(req.system) + TEMPLATE_TOKENS + TokenEstimate.turn(PromptTurn(PromptRole.USER, req.text))
+        TokenEstimate.text(req.system) + TEMPLATE_TOKENS + TokenEstimate.turn(PromptTurn(PromptRole.USER, req.text, req.hasImage))
+
+    /**
+     * 1.4 (Robot Files, plan §4.2): the largest picture a one-shot takes. `:files` sends a page as a JPEG of at most 1,024
+     * px, far under this; anything larger isn't one of those, and never reaches the model's decoder.
+     */
+    const val MAX_IMAGE_BYTES = 4 * 1024 * 1024
+
+    /**
+     * Whether :brain may send [req] with [image] to a model that sees pictures or not ([vision]): null when it may, else
+     * the error to answer at once. The picture's shape is checked first (only a FILE_READ that says it has one, a JPEG by its
+     * first three bytes, at most [MAX_IMAGE_BYTES]): a bad request stays one whatever the model. Then a picture to a model
+     * without vision is NO_VISION, a clean refusal the caller handles (the file waits; core files FileReadOutcome).
+     * Nothing here decodes the picture: the model's own engine does, as for the panel's photos.
+     */
+    fun imageCheck(req: BrainMsg.OneShot, image: ByteArray?, vision: Boolean): BrainError? = when {
+        image == null && !req.hasImage -> null
+        image == null || !req.hasImage || req.kind != OneShotKind.FILE_READ -> BrainError.BAD_REQUEST
+        image.size > MAX_IMAGE_BYTES || !isJpeg(image) -> BrainError.BAD_REQUEST
+        !vision -> BrainError.NO_VISION
+        else -> null
+    }
+
+    /** A JPEG's start of image and the next marker's first byte (FF D8 FF), nothing more. */
+    private fun isJpeg(b: ByteArray): Boolean = b.size >= 3 && b[0] == 0xFF.toByte() && b[1] == 0xD8.toByte() && b[2] == 0xFF.toByte()
 
     /** [req] and its reply's room fit a context of [maxTokens] (else TOO_LONG: the client cuts it, or uses the fast engine). */
     fun fits(req: BrainMsg.OneShot, maxTokens: Int): Boolean = tokens(req) + ContextWindow.replyReserve(maxTokens) <= maxTokens

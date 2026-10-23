@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.Lang
+import app.heyrobot.core.i18n.ReplyLang
+import app.heyrobot.core.i18n.ReplyLangChoice
 import java.io.InputStream
 import java.text.Normalizer
 import java.util.Locale
@@ -189,7 +192,7 @@ class LangId private constructor(
          */
         val FALLBACK: LangId by lazy {
             val fr = setOf("le", "la", "les", "des", "du", "de", "un", "une", "est", "et", "que", "qui", "pas", "pour", "avec", "dans", "sur",
-                "je", "tu", "il", "elle", "nous", "vous", "ils", "elles", "ce", "cette", "ces", "mais", "ou", "très", "aussi", "sont", "être",
+                "je", "tu", "il", "elle", "nous", "vous", "ils", "elles", "ce", "cette", "ces", "mais", "ou", "très", "aussi", "sont", "être", // l10n: not text (words to recognise French by)
                 "plus", "au", "aux", "en", "mon", "ma", "mes", "ton", "ta", "tes", "votre", "notre", "peut", "fait", "comme", "bien", "oui",
                 "non", "merci", "bonjour", "salut", "ça", "c'est", "j'ai", "quoi", "pourquoi", "comment", "où", "quand", "rien", "tout")
             val en = setOf("the", "is", "and", "of", "to", "in", "that", "it", "you", "for", "with", "are", "this", "be", "was", "at", "by", "or",
@@ -242,6 +245,13 @@ object LangLabel {
 
     /** "fr" for a French phone, else "en": your language when nothing else is known (0.5.0 labels fr and en only). */
     fun yours(locale: Locale = Locale.getDefault()): String = if (locale.language == "fr") "fr" else "en"
+
+    /**
+     * 1.1: your language as Robot's reply language decides it with nothing heard (core ReplyLang.unheard): Settings ›
+     * Language › "Robot answers in" when it is fixed, else the menus' language [ui]. Conversation mode's prior for a short
+     * line, the interpreter's bottom half, your voiceprint's sentences and the summaries' "Your language" follow it.
+     */
+    fun yours(ui: Lang, setting: ReplyLangChoice): String = ReplyLang.unheard(ui, setting).id
 
     /** "FR", "EN", "FR?": the tag on a line. */
     fun tag(l: LineLang): String = l.lang.uppercase(Locale.ROOT) + if (l.fromPrior) "?" else ""

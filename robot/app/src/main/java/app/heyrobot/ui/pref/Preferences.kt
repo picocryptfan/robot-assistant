@@ -2,6 +2,8 @@
 package app.heyrobot.ui.pref
 
 import androidx.compose.foundation.background
+import androidx.compose.ui.res.stringResource
+import app.heyrobot.R
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -117,7 +119,7 @@ fun PreferenceScreen(
         topBar = {
             LargeTopAppBar(
                 title = { Text(title) },
-                navigationIcon = { if (onBack != null) IconButton(onClick = onBack) { Icon(RIcons.Back, "Back") } },
+                navigationIcon = { if (onBack != null) IconButton(onClick = onBack) { Icon(RIcons.Back, stringResource(R.string.settings_back)) } },
                 actions = actions,
                 colors = TopAppBarDefaults.largeTopAppBarColors(containerColor = bg, scrolledContainerColor = bg),
                 scrollBehavior = scroll,
@@ -627,9 +629,9 @@ fun StatusPreference(
 fun StatusIcon(status: Mark, modifier: Modifier = Modifier) {
     val c = MaterialTheme.colorScheme
     when (status) {
-        Mark.OK -> Icon(RIcons.Check, "Done", modifier, tint = c.primary)
-        Mark.TODO -> Icon(RIcons.Unchecked, "To do", modifier, tint = c.onSurfaceVariant)
-        Mark.WARN -> Icon(RIcons.Error, "Problem", modifier, tint = c.error)
+        Mark.OK -> Icon(RIcons.Check, stringResource(R.string.settings_status_done), modifier, tint = c.primary)
+        Mark.TODO -> Icon(RIcons.Unchecked, stringResource(R.string.settings_status_todo), modifier, tint = c.onSurfaceVariant)
+        Mark.WARN -> Icon(RIcons.Error, stringResource(R.string.settings_problem), modifier, tint = c.error)
     }
 }
 

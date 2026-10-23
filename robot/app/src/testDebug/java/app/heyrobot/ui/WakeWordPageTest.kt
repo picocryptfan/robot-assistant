@@ -161,4 +161,24 @@ class WakeWordPageTest {
         assertEquals(1, reports)
         assertTrue(rule.touchTargetProblems().isEmpty())
     }
+
+    /** 1.1: French menus (values-fr-rCA/strings_voice.xml, WP4's sensitivities): the wake word page and the barge-in test's page. */
+    @Config(qualifiers = "fr-rCA-w411dp-h891dp-xhdpi")
+    @Test fun inFrench() {
+        open()
+        rule.onNodeWithText("Utiliser les mots d\u2019éveil").assertIsOn()
+        rule.onNodeWithText("“hey robot”").assert(hasText("Sensibilité Moyenne"))
+        rule.onNodeWithContentDescription("Écouter «\u00A0hey robot\u00A0»").assertIsOn()
+        rule.scrollToText("Tester les mots d\u2019éveil")
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
+    }
+
+    @Config(qualifiers = "fr-rCA-w411dp-h891dp-xhdpi")
+    @Test fun theBargeInTestInFrench() {
+        rule.show { BargeTestScreen(RobotSettings(), Snapshot(), log.actions, SnackbarHostState(), onBack = {}) }
+        rule.onNodeWithText("T\u2019entendre pendant que Robot parle\u00A0:", substring = true).assertExists()
+        rule.onNodeWithText("Lancer le test").assertExists()
+        rule.onNodeWithText("Essai silencieux").assertExists()
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
+    }
 }

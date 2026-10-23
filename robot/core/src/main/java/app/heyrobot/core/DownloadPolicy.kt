@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.ModelStrings
+import app.heyrobot.core.i18n.Phrase
 import app.heyrobot.core.update.GitHubHosts
 
 // Pure (1.0). What every file Robot asks Android's download manager for carries, and when Robot asks about mobile data
@@ -18,12 +20,10 @@ object DownloadPolicy {
     /** Whether a download of [bytes] asks first. */
     fun asksFirst(bytes: Long): Boolean = bytes >= LARGE_BYTES
 
-    fun title(bytes: Long): String = "Download ${VoiceModelLogic.size(bytes)}?"
+    fun titleText(bytes: Long): Phrase = ModelStrings.downloadQuestion("size" to VoiceModelLogic.sizeText(bytes))
 
-    fun text(bytes: Long): String = "Robot can't tell whether you're on Wi-Fi or mobile data. On mobile data, " +
-        "${VoiceModelLogic.size(bytes)} may use up your plan or cost you.\n\n" +
-        "Wait for Wi-Fi: the download starts once the phone is on Wi-Fi (or another network that isn't metered)."
+    fun textPhrase(bytes: Long): Phrase = ModelStrings.downloadMobileData("size" to VoiceModelLogic.sizeText(bytes))
 
-    const val WAIT = "Wait for Wi-Fi"
-    const val ANYWAY = "Download anyway"
+    val waitText: Phrase get() = ModelStrings.waitForWifi()
+    val anywayText: Phrase get() = ModelStrings.downloadAnyway()
 }

@@ -469,7 +469,7 @@ class LiteRtLmTest {
         val ownFp = "3000000000|1"
         val tpu = OwnModel("mine", 3_000_000_000, sha, ownFp, check(e2bG5()))
         // A Tensor G5 build: never on the TPU until you allowed it, nor on the CPU at all.
-        assertEquals("Your model file waits for you to allow the TPU in the Robot app › Model.",
+        assertEquals("Your model file waits for you to allow the TPU in the Robot app › Settings › Model.",
             LoadCheck.refuse(own, ModelBackend.TPU, ownFp, null, tpu.toJson().toString()))
         assertNotNull(LoadCheck.refuse(own, ModelBackend.CPU, ownFp, null, tpu.toJson().toString()))
         val allowed = tpu.copy(tpuAllowed = true).toJson().toString()

@@ -83,10 +83,10 @@ class HeadsetSetupTest {
         fun at(h: Int) = now.withHour(h).toInstant().toEpochMilli()
         val events = listOf(app.heyrobot.core.CalendarEvent(at(8), at(8) + 1_800_000, false, "Gym", null),
             app.heyrobot.core.CalendarEvent(at(15), at(16), false, "Dentist", null), app.heyrobot.core.CalendarEvent(at(0), at(23), true, "Holiday", null))
-        assertEquals("Next: Dentist at 3:00 PM.", app.heyrobot.core.car.WhatsNext.line(events, now, app.heyrobot.core.output.SpokenLang.EN))
-        assertEquals("Prochain : Dentist à 15 h 00.", app.heyrobot.core.car.WhatsNext.line(events, now, app.heyrobot.core.output.SpokenLang.FR))
-        assertEquals("Nothing else on your calendar today.", app.heyrobot.core.car.WhatsNext.line(events.take(1), now, app.heyrobot.core.output.SpokenLang.EN))
-        assertEquals("Now: Dentist.", app.heyrobot.core.car.WhatsNext.line(events, now.withHour(15).withMinute(30), app.heyrobot.core.output.SpokenLang.EN))
+        assertEquals("Next: Dentist at 3:00 PM.", app.heyrobot.core.car.WhatsNext.line(events, now, app.heyrobot.core.i18n.Lang.EN))
+        assertEquals("Prochain: Dentist à 15 heures.", app.heyrobot.core.car.WhatsNext.line(events, now, app.heyrobot.core.i18n.Lang.FR))
+        assertEquals("Nothing else on your calendar today.", app.heyrobot.core.car.WhatsNext.line(events.take(1), now, app.heyrobot.core.i18n.Lang.EN))
+        assertEquals("Now: Dentist.", app.heyrobot.core.car.WhatsNext.line(events, now.withHour(15).withMinute(30), app.heyrobot.core.i18n.Lang.EN))
     }
 
     @Test fun carModesSummaryAndWhetherItStartsByItself() {

@@ -3,7 +3,7 @@ package app.heyrobot.core.memory
 
 import kotlin.math.sqrt
 
-// Pure. Which remembered items a question needs (design §A6). Two ways, behind one interface: BM25 over the words
+// Pure. Which remembered items a question needs. Two ways, behind one interface: BM25 over the words
 // (always there), and the on-device embedding model when you download it (better search: paraphrase and the other
 // language). Here the embedding side is the maths only, cosine over FloatArray vectors; computing a vector is :brain's
 // job later (the LiteRT-LM embedding engine behind a REQ_EMBED request), so [TextEmbedder] is only the seam. The
@@ -91,7 +91,7 @@ class EmbeddingRetriever(private val index: EmbeddingIndex, private val minScore
 
 /**
  * The embedding order, plus the BM25 hits that hold a name or a number from the question ("Julie", "P3", "1203") and
- * that the embedding missed: embeddings blur rare exact tokens (design §A6.1: fusion only as a boost). Without a
+ * that the embedding missed: embeddings blur rare exact tokens. Without a
  * query vector, words only.
  */
 class HybridRetriever(private val embedding: EmbeddingRetriever, private val words: Bm25Retriever = Bm25Retriever()) : Retriever {
@@ -165,10 +165,10 @@ object Vectors {
     }
 }
 
-/** Which side of a search a text is on: EmbeddingGemma wants a prefix for each (the model card's, design §A6.2). */
+/** Which side of a search a text is on: EmbeddingGemma wants a prefix for each (the model card's). */
 enum class EmbedRole(val prefix: String) {
-    QUERY("task: search result | query: "),
-    DOCUMENT("title: none | text: ");
+    QUERY("task: search result | query: "), // l10n: not text (model prompt)
+    DOCUMENT("title: none | text: "); // l10n: not text (model prompt)
 
     fun input(text: String): String = prefix + text
 }
@@ -196,5 +196,8 @@ object SearchModel {
     const val MAX_INPUT_CHUNK = 1_024
     /** The least cosine for an item to go into a prompt (no threshold separates "no answer" cleanly: the prompt says "only if they help"). */
     const val MIN_SCORE = 0.60
-    const val TITLE = "Download the search model (165 MB, Google's EmbeddingGemma 2, Apache-2.0)"
+    val TITLE: String get() = titleText().en()
+
+    /** [TITLE] in words without a language yet. */
+    fun titleText(): app.heyrobot.core.i18n.Phrase = app.heyrobot.core.i18n.MemoryStrings.searchModelTitle()
 }

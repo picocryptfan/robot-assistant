@@ -1,0 +1,198 @@
+<!-- Phone lock (1.1, docs/plans/phone-lock-design.md §14): ids start with lock_, and the French is in
+     values-fr-rCA/strings_lock.xml. Settings › Phone lock, its setup and editor (main process), the cover, the code pad and
+     the notices (the :lock process). The sentences with times, counts and names in them are core's (LockStrings). -->
+<resources>
+    <!-- Android's accessibility list and consent screen (res/xml/lock_accessibility.xml). -->
+    <string name="lock_a11y_label">Robot phone lock</string>
+    <string name="lock_a11y_description">Phone lock uses this to see which app comes to the front, so it can cover apps during a lock you set in Robot. It never reads what\'s on the screen and never taps anything.</string>
+
+    <!-- Settings › Phone lock. -->
+    <string name="lock_intro">During a lock, every app but calls, alarms and Robot is covered. It\'s a habit you set for yourself, or a rule for someone who will mostly respect it: it isn\'t proof against a determined person.</string>
+    <string name="lock_switch_on">Locks cover your apps at the times you set.</string>
+    <string name="lock_switch_off">No lock comes on.</string>
+    <string name="lock_damaged">Phone lock\'s file can\'t be read, so every lock is off.</string>
+    <string name="lock_start_over">Start over</string>
+    <string name="lock_start_over_title">Start Phone lock over?</string>
+    <string name="lock_start_over_text">The file that can\'t be read is kept aside, and Phone lock starts again with no locks.</string>
+    <string name="lock_needs_code_title">Changes need the lock code</string>
+    <string name="lock_needs_code">Enter the lock code to change Phone lock. Turning a lock on doesn\'t need it.</string>
+    <string name="lock_enter_code">Enter the lock code</string>
+    <string name="lock_who">Who the locks are for</string>
+    <string name="lock_for_me">Me</string>
+    <string name="lock_for_someone">Someone else (a child, a shared phone)</string>
+    <string name="lock_code_needed_someone">Set a lock code first: locks for someone else need one.</string>
+    <string name="lock_code">Lock code</string>
+    <string name="lock_code_none">None</string>
+    <string name="lock_code_is_set">Set</string>
+    <string name="lock_code_set">Set a code</string>
+    <string name="lock_code_change">Change the code</string>
+    <string name="lock_code_remove">Remove the code</string>
+    <string name="lock_code_remove_title">Remove the lock code?</string>
+    <string name="lock_code_remove_text">Changes to Phone lock won\'t need it any more. Locks for someone else need a code, so they come back to you.</string>
+    <string name="lock_code_forgot">Forgot the code? There\'s no way to recover it. Outside a lock, Settings › Apps › Robot › Storage › Clear storage removes all of Robot\'s data, the locks and the code included.</string>
+    <string name="lock_locks">Locks</string>
+    <string name="lock_add">Add a lock</string>
+    <string name="lock_add_hint">For example, Bedtime from 22:00 to 7:00.</string>
+    <string name="lock_on">%1$s on</string>
+    <string name="lock_kind_time">Time of day</string>
+    <string name="lock_rules">How locks work</string>
+    <string name="lock_end_early">End early</string>
+    <string name="lock_end_off">Off</string>
+    <string name="lock_end_off_detail">A lock runs to its end.</string>
+    <string name="lock_end_wait">After a wait</string>
+    <string name="lock_end_wait_detail">End early starts a wait; then you can end the lock for 5 minutes.</string>
+    <string name="lock_end_code">With the code</string>
+    <string name="lock_end_code_detail">The lock code ends a lock early.</string>
+    <string name="lock_end_fixed">With the code: locks for someone else always need it.</string>
+    <string name="lock_wait_len">Wait before ending early</string>
+    <string name="lock_warn">Warn before a lock starts</string>
+    <string name="lock_warn_off">Off</string>
+    <string name="lock_show_left">Show time left on the cover</string>
+    <string name="lock_show_left_on">The cover says how many minutes are left.</string>
+    <string name="lock_show_left_off">The cover says only when the phone opens.</string>
+    <string name="lock_more">More</string>
+    <string name="lock_history">What happened</string>
+    <string name="lock_history_summary">When locks started and ended, and anything Robot noticed</string>
+    <string name="lock_history_empty">Nothing yet.</string>
+    <string name="lock_history_footer">Kept for 30 days, on this phone only, never in a backup.</string>
+    <string name="lock_access">Access</string>
+    <string name="lock_access_a11y">Accessibility access</string>
+    <string name="lock_access_on">On: Phone lock sees which app comes to the front.</string>
+    <string name="lock_access_off">Off: tap to set it up.</string>
+    <string name="lock_access_notifications">Notifications</string>
+    <string name="lock_access_notifications_ok">On: warnings before a lock, and a notice while one is on.</string>
+    <string name="lock_access_notifications_no">Off: no warning before a lock starts.</string>
+    <string name="lock_allow">Allow</string>
+    <string name="lock_cant_stop">What a lock can\'t stop</string>
+    <string name="lock_cant_stop_summary">Phone lock is a habit, not a wall</string>
+    <string name="lock_cant_stop_1">During a lock, the ways to turn Robot off from the phone are covered: Android\'s Settings, app stores, the installer and the launcher\'s menus.</string>
+    <string name="lock_cant_stop_2">Restarting in safe mode (touch and hold Power off in the power menu): Robot doesn\'t run there. After a normal restart the lock comes back if it is still within its time, and What happened notes the gap.</string>
+    <string name="lock_cant_stop_3">In safe mode, or outside a lock: uninstalling Robot, or clearing its storage, removes every lock and the code.</string>
+    <string name="lock_cant_stop_4">Outside a lock: turning off Robot\'s accessibility access or force stopping Robot turns Phone lock off. What happened notes it, and the next lock says it couldn\'t start.</string>
+    <string name="lock_cant_stop_5">A computer with USB debugging can do anything. On a child\'s phone, turn Developer options off.</string>
+    <string name="lock_cant_stop_6">The notification shade stays usable during a lock, with its replies and quick settings, because covering it would also cover the lock screen. A picture-in-picture video started before a lock may stay on top.</string>
+    <string name="lock_cant_stop_7">Phone lock locks only the user Robot runs in, not another user or a private space.</string>
+    <string name="lock_cant_stop_8">Changing the date or time outside a lock moves Time of day locks with the clock.</string>
+
+    <!-- Setup. -->
+    <string name="lock_setup_title">Set up Phone lock</string>
+    <string name="lock_setup_why">Phone lock uses Android\'s accessibility access to see which app comes to the front, so it can cover apps during a lock. It never reads what\'s on the screen and never taps anything. Android will say Robot can “view and control the screen”: that\'s Android\'s wording for every app with this access.</string>
+    <string name="lock_setup_restricted">Android calls accessibility access a restricted setting for apps installed from a file instead of an app store, as Robot is: harmful apps installed that way have used it to read people\'s screens. So it can take three steps.</string>
+    <string name="lock_setup_1">1. Tap Open accessibility settings, find Robot phone lock (under Downloaded apps) and turn it on. If Android says “Restricted setting”, tap OK.</string>
+    <string name="lock_setup_open">Open accessibility settings</string>
+    <string name="lock_setup_2">2. Tap App info, then ⋮ (top right) › Allow restricted settings, and confirm; Android may ask for your PIN or fingerprint. No such item? Android isn\'t blocking Robot (perhaps you already allowed it for People): skip this step.</string>
+    <string name="lock_app_info">App info</string>
+    <string name="lock_setup_3">3. Back in accessibility settings, turn on Robot phone lock and tap Allow.</string>
+    <string name="lock_setup_again">Accessibility settings again</string>
+    <string name="lock_setup_done">Phone lock\'s access is on.</string>
+    <string name="lock_setup_reminder">Android may remind you now and then that Robot has this access. Tapping the reminder during a lock shows the cover.</string>
+
+    <!-- The lock editor. -->
+    <string name="lock_new">New lock</string>
+    <string name="lock_default_name">Bedtime</string>
+    <string name="lock_name">Name</string>
+    <string name="lock_name_hint">Up to 40 characters</string>
+    <string name="lock_name_problem">A name is 1 to 40 characters, on one line.</string>
+    <string name="lock_from">From</string>
+    <string name="lock_to">To</string>
+    <string name="lock_time_hint">A time on a 24-hour clock, like 22:00</string>
+    <string name="lock_time_problem">Write a time like 22:00.</string>
+    <string name="lock_days">Days</string>
+    <string name="lock_days_note">The days it starts on: 22:00 to 7:00 on Sunday runs into Monday morning.</string>
+    <string name="lock_same_times">A lock can\'t start and end at the same time.</string>
+    <string name="lock_stays_open">What stays open</string>
+    <string name="lock_always_open">Emergency calls, incoming calls, Clock, and Robot as on the lock screen</string>
+    <string name="lock_extra_apps">Other apps</string>
+    <string name="lock_extra_apps_none">None</string>
+    <string name="lock_extra_apps_hint">Up to 5 apps that stay open during this lock.</string>
+    <string name="lock_this_lock">This lock</string>
+    <string name="lock_this_lock_on">On</string>
+    <string name="lock_this_lock_off">Off: it doesn\'t come on.</string>
+    <string name="lock_save">Save</string>
+    <string name="lock_cancel">Cancel</string>
+    <string name="lock_delete">Delete</string>
+    <string name="lock_delete_title">Delete this lock?</string>
+    <string name="lock_too_many">Phone lock holds 10 locks at most.</string>
+    <string name="lock_not_saved">The lock couldn\'t be saved.</string>
+
+    <!-- The cover (LockCoverActivity). -->
+    <string name="lock_cover_ask">Ask Robot</string>
+    <string name="lock_cover_emergency">Emergency call</string>
+    <string name="lock_cover_end">End early</string>
+    <string name="lock_cover_change">Change locks</string>
+    <string name="lock_cover_no_early">This lock can\'t be ended early.</string>
+    <string name="lock_cover_end_now">End the lock now</string>
+    <string name="lock_cover_someone">Set with a lock code.</string>
+    <string name="lock_cover_open">Your phone is open.</string>
+
+    <!-- The code pad (LockCodeActivity). -->
+    <string name="lock_code_enter">Enter the lock code</string>
+    <string name="lock_code_new">Choose a lock code: 4 to 12 digits</string>
+    <string name="lock_code_new_hint">6 digits is a good length. Robot keeps only a check of it, under a key that never leaves this phone.</string>
+    <string name="lock_code_again">Enter it again</string>
+    <string name="lock_code_wrong">That\'s not the code.</string>
+    <string name="lock_code_mismatch">The two codes aren\'t the same. Start again.</string>
+    <string name="lock_code_short">A lock code has 4 to 12 digits.</string>
+    <string name="lock_code_ok">OK</string>
+    <string name="lock_code_delete">Delete a digit</string>
+    <string name="lock_code_typed">%1$d digits typed</string>
+    <string name="lock_code_lost">The lock code can\'t be checked any more, so locks for someone else were turned off. Set a new code.</string>
+    <string name="lock_code_saved">The lock code is set.</string>
+    <string name="lock_code_removed">The lock code is removed.</string>
+    <string name="lock_code_failed">The lock code couldn\'t be saved.</string>
+    <string name="lock_code_not_now">Robot couldn\'t check the code just now. Nothing changed. Try again.</string>
+    <string name="lock_code_not_saved">Robot couldn\'t save that just now, so nothing changed. If the phone\'s storage is full, free some space, then try again.</string>
+
+    <!-- The notices (LockNotices). -->
+    <string name="lock_channel">Phone lock</string>
+    <string name="lock_channel_detail">Before a lock starts, while one is on, and when one couldn\'t start.</string>
+    <string name="lock_channel_on">Phone lock is on</string>
+    <string name="lock_channel_on_detail">A quiet notice while a lock is on, with when the phone opens.</string>
+    <string name="lock_warn_skip">Skip this time</string>
+    <string name="lock_notice_on_text">Tap to see what stays open.</string>
+    <string name="lock_notice_failed">Phone lock couldn\'t start: its access in Android\'s settings is off.</string>
+
+    <!-- Phase B: After the alarm, One app first and Daily limit, usage access, the extras. -->
+    <string name="lock_add_title">Add a lock</string>
+    <string name="lock_kind_alarm">After the alarm</string>
+    <string name="lock_kind_alarm_detail">No phone for a while after you turn off your alarm.</string>
+    <string name="lock_kind_time_detail">From a time to a time, on the days you choose.</string>
+    <string name="lock_kind_app">One app first</string>
+    <string name="lock_kind_app_detail">Only one app until you\'ve spent a set time in it, or a daily limit.</string>
+    <string name="lock_alarm_length">Length</string>
+    <string name="lock_alarm_from">Alarms from</string>
+    <string name="lock_alarm_to">Alarms until</string>
+    <string name="lock_alarm_starts">Starts when you turn off the alarm</string>
+    <string name="lock_alarm_note">A snoozed alarm doesn\'t start it. If the alarm rings until Clock silences it, the lock starts the next time you unlock, within 3 hours.</string>
+    <string name="lock_alarm_needs_clock">Needs the GrapheneOS Clock app. Support for other clock apps is planned.</string>
+    <string name="lock_app">App</string>
+    <string name="lock_app_choose">Choose an app</string>
+    <string name="lock_app_needed">Choose the app first.</string>
+    <string name="lock_app_mode">How it works</string>
+    <string name="lock_mode_first">Only this app until you\'ve spent the time in it</string>
+    <string name="lock_mode_limit">Daily limit</string>
+    <string name="lock_mode_limit_detail">Once today\'s screen time reaches the amount, only this app until the time you set.</string>
+    <string name="lock_app_start">Starts</string>
+    <string name="lock_app_start_at">At a time</string>
+    <string name="lock_app_start_alarm">When I turn off my alarm</string>
+    <string name="lock_app_at">At</string>
+    <string name="lock_app_minutes">Minutes in the app</string>
+    <string name="lock_app_latest">Ends anyway after</string>
+    <string name="lock_latest_problem">Ends anyway after has to be longer than the minutes in the app.</string>
+    <string name="lock_app_note">Only time with the app in front, the screen on and unlocked counts.</string>
+    <string name="lock_limit_amount">Screen time today</string>
+    <string name="lock_limit_until">Then only this app until</string>
+    <string name="lock_access_usage">Usage access</string>
+    <string name="lock_access_usage_on">On: One app first can count the time in its app.</string>
+    <string name="lock_access_usage_off">Off: tap to allow it. Without it, One app first can\'t count, and the lock lasts until its latest end.</string>
+    <string name="lock_setup_4">4. Only for One app first: tap Open usage access, find Robot and turn it on. On Android 15 and later this is a restricted setting too, and step 2 already covers it.</string>
+    <string name="lock_setup_usage">Open usage access</string>
+    <string name="lock_extra_people">Calls to People you choose</string>
+    <string name="lock_extra_people_empty">No People yet. Add them in Settings › People.</string>
+    <string name="lock_extra_maps">Maps</string>
+    <string name="lock_extra_maps_on">Your maps app stays open, and Robot can show places and routes.</string>
+    <string name="lock_extra_maps_off">Covered during this lock.</string>
+    <string name="lock_extra_music">Music</string>
+    <string name="lock_extra_music_hint">A music app that stays open during this lock.</string>
+    <string name="lock_none">None</string>
+</resources>

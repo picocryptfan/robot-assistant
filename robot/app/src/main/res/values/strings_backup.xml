@@ -1,0 +1,164 @@
+<!-- Back up and restore (1.1, docs/plans/backup-1.1-design.md §9): ids start with backup_, and the French is in
+     values-fr-rCA/strings_backup.xml. Settings › Back up and restore (main process) and the backup window (:voice). The
+     sentences core returns are in core's catalog, core/i18n/BackupStrings.kt. -->
+<resources>
+    <string name="backup_row_last">Last backup: %1$s</string>
+    <string name="backup_row_never">Last backup: never</string>
+    <string name="backup_now">Back up now</string>
+    <string name="backup_now_detail">Choose what goes in, then where to save it</string>
+    <string name="backup_last">Last backup</string>
+    <string name="backup_last_detail">%1$s · %2$s · %3$s, checked</string>
+    <string name="backup_remind">Remind me to back up every month</string>
+    <string name="backup_remind_detail">A notification when your last backup is a month old. Robot can\'t back up by itself: it never keeps your passphrase.</string>
+    <string name="backup_last_none">No backup yet</string>
+    <string name="backup_footer">A backup is one file, encrypted with a passphrase you choose. Robot never keeps the passphrase: without it nobody can open the file, Robot included. Models aren\'t in it: they download again. Android\'s own backup stays off for Robot.</string>
+    <string name="backup_title">Back up</string>
+    <string name="backup_choose_title">What goes in</string>
+    <string name="backup_line">%1$s · %2$s</string>
+    <string name="backup_two">%1$s, %2$s</string>
+    <string name="backup_empty">Nothing yet</string>
+    <string name="backup_memory_cant">Can\'t be opened just now: unlock your phone, or leave Memory out</string>
+    <string name="backup_files_cant">Can\'t be read now: Settings › Files says why</string>
+    <string name="backup_history_travel">Left out while travel mode is on: it holds answers from Robot Files</string>
+    <string name="backup_sum_settings">Voice, wake phrases, actions, safety, helpers (without keys), web search, Termux, display, updates</string>
+    <string name="backup_sum_voiceprint">Made on this phone</string>
+    <string name="backup_vp_warning">Biometric: it needs a strong passphrase, and comes back only from a backup you mark as your own.</string>
+    <string name="backup_pictures">Saved screenshots and photos</string>
+    <string name="backup_recordings">Recordings</string>
+    <!-- 1.4: Robot Files' videos, a row under Files on Back up now's list. -->
+    <string name="backup_videos">Videos</string>
+    <string name="backup_never">Never in a backup: Robot\'s models and voices (they download again), the updater\'s access token, and the apps Robot trusts (you confirm them again).</string>
+    <string name="backup_total">About %1$s in all</string>
+    <string name="backup_next">Next</string>
+    <string name="backup_cancel">Cancel</string>
+    <string name="backup_keys_title">Put your keys in the backup?</string>
+    <string name="backup_keys_text">Anyone with this file and its passphrase can use your API keys (and spend your money) and read the passwords and codes you asked Memory to keep. You can also leave them out and paste the keys again on the new phone.</string>
+    <string name="backup_keys_yes">Include them</string>
+    <string name="backup_keys_no">Leave them out</string>
+    <string name="backup_vp_title">Put your voiceprint in the backup?</string>
+    <string name="backup_vp_text">Your voiceprint is biometric: it is how Robot knows your voice in a transcript. Anyone with this file and its passphrase has it. It comes back only from a backup you mark as your own, on a phone that has no voiceprint yet. Making it again takes about a minute in Settings › Conversation › Your voice.</string>
+    <string name="backup_vp_yes">Include it</string>
+    <string name="backup_vp_no">Leave it out</string>
+    <string name="backup_pass_title">Passphrase</string>
+    <string name="backup_pass_generated">Robot made this passphrase for you. Save it somewhere safe, like your password manager.</string>
+    <string name="backup_pass_lost">If you lose the passphrase, nobody can open this backup, Robot included.</string>
+    <string name="backup_pass_another">Another</string>
+    <string name="backup_pass_copy">Copy</string>
+    <string name="backup_pass_copied">Copied. Robot clears the clipboard in a minute.</string>
+    <string name="backup_pass_saved">I saved this passphrase somewhere safe</string>
+    <string name="backup_pass_again">Type it again, or paste it</string>
+    <string name="backup_pass_mismatch">That isn\'t the same passphrase.</string>
+    <string name="backup_pass_own">Use my own</string>
+    <string name="backup_pass_robots">Use Robot\'s passphrase</string>
+    <string name="backup_pass_field">Passphrase</string>
+    <string name="backup_pass_short">Use at least 12 characters, or Robot\'s passphrase.</string>
+    <string name="backup_pass_easy">Too easy to guess.</string>
+    <string name="backup_pass_fair">Fair: Robot\'s passphrase is stronger.</string>
+    <string name="backup_pass_fair_keys">Fair isn\'t enough with keys or your voiceprint in the backup: make it longer, or use Robot\'s.</string>
+    <string name="backup_pass_strong">Strong.</string>
+    <string name="backup_pass_edge">It starts or ends with a space: check that it is what you meant.</string>
+    <string name="backup_pass_safe">The estimate can\'t know a song lyric or a pet\'s name: Robot\'s passphrase is the safe choice.</string>
+    <string name="backup_choose_place">Choose where to save it</string>
+    <string name="backup_file_name">Robot backup %1$s.robotbackup</string>
+    <string name="backup_starting">Getting ready…</string>
+    <string name="backup_working">Backing up… %1$s (%2$d of %3$d)</string>
+    <string name="backup_checking">Checking the file…</string>
+    <string name="backup_done">Backup saved and checked · %1$s</string>
+    <string name="backup_done_keep">Keep it somewhere other than this phone: a USB drive, your computer, a synced folder.</string>
+    <string name="backup_close">Done</string>
+    <string name="backup_cancelled">Backup cancelled. Nothing was saved.</string>
+    <string name="backup_failed">Robot couldn\'t make the backup. Try again.</string>
+    <string name="backup_try_again">Try again</string>
+    <string name="backup_restore_row">Restore from a backup</string>
+    <string name="backup_restore_row_detail">From a file you saved</string>
+    <string name="backup_restore_title">Restore</string>
+    <string name="backup_restore_choosing">Choose the backup file…</string>
+    <string name="backup_restore_copying">Copying the backup…</string>
+    <string name="backup_restore_pass_intro">Type the backup\'s passphrase, or let your password manager fill it.</string>
+    <string name="backup_restore_open">Open</string>
+    <string name="backup_restore_opening">Opening…</string>
+    <string name="backup_restore_checking">Checking the backup…</string>
+    <string name="backup_restore_header">Robot backup · %1$s · made by Robot %2$s</string>
+    <string name="backup_restore_replace">Replace what\'s here</string>
+    <string name="backup_restore_mode_add">Added to what\'s on this phone</string>
+    <string name="backup_restore_mode_replace">Replaces what\'s on this phone</string>
+    <string name="backup_restore_code">Enter this phone\'s lock code</string>
+    <string name="backup_restore_code_detail">Phone lock comes back only with it.</string>
+    <string name="backup_restore_mine">This backup is my own, from my own phone</string>
+    <string name="backup_restore_mine_detail">Leave this off for a file someone gave you. Robot then treats what it restores as something it read, keeps the safer settings, and leaves out keys and the voiceprint.</string>
+    <string name="backup_restore_again">You\'ll do these again: download the models, make Robot the assistant and allow the microphone, the ADB fixes, the permissions as you turn things on, Messages\' set-up, trusting Termux, the keys and voiceprint you didn\'t include, and the updater\'s token.</string>
+    <string name="backup_restore_go">Restore</string>
+    <string name="backup_restore_restart_note">Robot restarts once it has restored.</string>
+    <string name="backup_restore_working">Restoring… %1$s</string>
+    <string name="backup_restore_finishing">Finishing, then restarting Robot…</string>
+    <string name="backup_restore_result_title">Last restore · %1$s</string>
+    <string name="backup_restore_result_line">%1$s: %2$s</string>
+    <string name="backup_restore_result_done">restored</string>
+    <string name="backup_restore_result_failed">not restored, and nothing of it changed. Try again.</string>
+    <string name="backup_restore_result_locked">not restored: the phone locked. Unlock and restore again.</string>
+    <string name="backup_restore_result_unlock">finishes after you unlock the phone</string>
+    <string name="backup_restore_result_room">not finished yet (short of free space, or a storage error). Robot tries again each time you unlock the phone.</string>
+    <string name="backup_restore_result_earlier">not restored, and nothing of it changed: an earlier restore of it hasn\'t finished (short of free space, or a storage error). Free up space, then restore again.</string>
+    <string name="backup_restore_result_others">From a backup not marked as yours: memories show Imported, restored routines and skills are off, and keys were left out.</string>
+    <string name="backup_restore_result_close">Close this</string>
+    <plurals name="backup_restore_kept">
+        <item quantity="one">Kept safer: %1$d setting that lets Robot act with fewer questions keeps this phone\'s value.</item>
+        <item quantity="other">Kept safer: %1$d settings that let Robot act with fewer questions keep this phone\'s values.</item>
+    </plurals>
+    <plurals name="backup_n_people">
+        <item quantity="one">%1$d person</item>
+        <item quantity="other">%1$d people</item>
+    </plurals>
+    <plurals name="backup_n_items">
+        <item quantity="one">%1$d item</item>
+        <item quantity="other">%1$d items</item>
+    </plurals>
+    <plurals name="backup_n_private">
+        <item quantity="one">%1$d private</item>
+        <item quantity="other">%1$d private</item>
+    </plurals>
+    <plurals name="backup_n_notes">
+        <item quantity="one">%1$d note</item>
+        <item quantity="other">%1$d notes</item>
+    </plurals>
+    <plurals name="backup_n_conversations">
+        <item quantity="one">%1$d conversation</item>
+        <item quantity="other">%1$d conversations</item>
+    </plurals>
+    <plurals name="backup_n_transcripts">
+        <item quantity="one">%1$d transcript</item>
+        <item quantity="other">%1$d transcripts</item>
+    </plurals>
+    <plurals name="backup_n_skills">
+        <item quantity="one">%1$d skill</item>
+        <item quantity="other">%1$d skills</item>
+    </plurals>
+    <plurals name="backup_n_routines">
+        <item quantity="one">%1$d routine</item>
+        <item quantity="other">%1$d routines</item>
+    </plurals>
+    <plurals name="backup_n_devices">
+        <item quantity="one">%1$d headset or car</item>
+        <item quantity="other">%1$d headsets and cars</item>
+    </plurals>
+    <plurals name="backup_n_locks">
+        <item quantity="one">%1$d lock</item>
+        <item quantity="other">%1$d locks</item>
+    </plurals>
+    <plurals name="backup_n_codes">
+        <item quantity="one">%1$d code in Memory</item>
+        <item quantity="other">%1$d codes in Memory</item>
+    </plurals>
+    <plurals name="backup_n_recordings">
+        <item quantity="one">%1$d recording</item>
+        <item quantity="other">%1$d recordings</item>
+    </plurals>
+    <plurals name="backup_n_files">
+        <item quantity="one">%1$d file</item>
+        <item quantity="other">%1$d files</item>
+    </plurals>
+    <plurals name="backup_n_videos">
+        <item quantity="one">%1$d video</item>
+        <item quantity="other">%1$d videos</item>
+    </plurals>
+</resources>

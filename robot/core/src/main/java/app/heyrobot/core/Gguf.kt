@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.Arg
+import app.heyrobot.core.i18n.ModelStrings
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.PhraseWire
+import app.heyrobot.core.i18n.UiStrings
 import org.json.JSONObject
 import java.io.File
 import java.security.MessageDigest
@@ -52,14 +57,17 @@ data class GgufReport(
     val fileBytes: Long = 0,
     /** The phone's memory when checked (bytes, ActivityManager's totalMem); 0: unknown, no memory check. */
     val totalRam: Long = 0,
-    /** Why the file couldn't be read ([readable] false). */
-    val problem: String? = null,
+    /** Why the file couldn't be read ([readable] false); 1.1: in words without a language yet ([problem]: its English). */
+    val problemText: Phrase? = null,
     /**
      * 0.4.5: SHA-256 of the whole header, byte for byte (the metadata, the vocabulary, the chat template and the tensor
      * list, as far as the tensor data): :brain's check before a load must find exactly this, not only the same fields.
      */
     val headerSha256: String? = null,
 ) {
+    /** [problemText] in English. */
+    val problem: String? get() = problemText?.en()
+
     /** "Q4_K_M", or null when the file doesn't say. */
     val quantisation: String? get() = GgufCheck.FILE_TYPES[fileType]
 
@@ -87,60 +95,73 @@ data class GgufReport(
         kvBytesPerToken.coerceAtLeast(0) * (contextTokens.takeIf { it > 0 } ?: ContextWindow.MAX_TOKENS) + GgufCheck.WORK_BYTES
 
     /** Too big for this phone's memory next to Robot's voice and Android; null when it fits or the memory is unknown. */
-    val memoryProblem: String? get() {
+    val memoryProblemText: Phrase? get() {
         if (totalRam <= 0) return null
         val room = totalRam - GgufCheck.VOICE_BYTES - GgufCheck.SYSTEM_BYTES
         return if (memoryBytes <= room) null
-        else "It needs about ${ModelLogic.gb(memoryBytes)} of memory while it runs, and next to Robot's voice (about " +
-            "${ModelLogic.gb(GgufCheck.VOICE_BYTES)}) and Android this phone has about ${ModelLogic.gb(room.coerceAtLeast(0))} for it. Choose a smaller file " +
-            "(fewer parameters, or a smaller quantisation such as Q4_K_M)."
+        else ModelStrings.ggufMemory("need" to ModelLogic.gbText(memoryBytes), "voice" to ModelLogic.gbText(GgufCheck.VOICE_BYTES),
+            "room" to ModelLogic.gbText(room.coerceAtLeast(0)))
     }
+
+    val memoryProblem: String? get() = memoryProblemText?.en()
 
     /** Why Robot can't run it here at all; null when it can. */
-    val unusable: String? get() = when {
-        !readable -> problem ?: "It isn't a GGUF model file."
-        architecture == null -> "It doesn't say what kind of model it is (general.architecture)."
-        architecture !in GgufCheck.ARCHITECTURES -> "Its architecture “$architecture” isn't one that llama.cpp ${GgufCheck.LLAMA_TAG} knows."
-        architecture in GgufCheck.NOT_CHAT -> "It's a “$architecture” model, which doesn't write answers (an encoder, an embedding, " +
-            "a speech, a draft or a diffusion model)."
-        tokenizer == null -> "It has no tokenizer (tokenizer.ggml.model)."
-        contextLength <= 0 -> "It doesn't say its context length ($architecture.context_length)."
-        contextLength < ContextWindow.MIN_TOKENS -> "It was trained for only $contextLength tokens of context; Robot needs at least " +
-            "${ContextWindow.MIN_TOKENS} to chat (${ContextWindow.MAX_TOKENS} for actions)."
-        !chatTemplate -> "It has no chat template (tokenizer.chat_template), so Robot can't write a conversation for it."
-        else -> memoryProblem
+    val unusableText: Phrase? get() = when {
+        !readable -> problemText ?: ModelStrings.notGguf()
+        architecture == null -> ModelStrings.noArchitecture()
+        architecture !in GgufCheck.ARCHITECTURES -> ModelStrings.unknownArchitecture("arch" to architecture, "tag" to GgufCheck.LLAMA_TAG)
+        architecture in GgufCheck.NOT_CHAT -> ModelStrings.notChat("arch" to architecture)
+        tokenizer == null -> ModelStrings.noTokenizer()
+        contextLength <= 0 -> ModelStrings.noContextLength("arch" to architecture)
+        contextLength < ContextWindow.MIN_TOKENS -> ModelStrings.trainedShort("n" to contextLength.toString(),
+            "min" to ContextWindow.MIN_TOKENS.toString(), "max" to ContextWindow.MAX_TOKENS.toString())
+        !chatTemplate -> ModelStrings.noChatTemplate("key" to "tokenizer.chat_template")
+        else -> memoryProblemText
     }
 
+    /** [unusableText] in English. */
+    val unusable: String? get() = unusableText?.en()
+
     /** What the check found, a line each, for Settings › Model. */
-    fun lines(): List<String> = buildList {
+    fun linesText(): List<Phrase> = buildList {
         if (!readable) {
-            add(unusable ?: "Robot couldn't read it.")
+            add(unusableText ?: ModelStrings.couldntReadIt())
             return@buildList
         }
-        val what = listOfNotNull(architecture?.let { "architecture $it" }, if (parameters > 0) "about ${billions(parameters)} parameters" else null)
-        add("GGUF file, version $version" + (name?.let { ": “$it”" } ?: "") + (if (what.isNotEmpty()) " (${what.joinToString(", ")})" else "") + ".")
-        add("Quantisation: " + (quantisation ?: if (fileType >= 0) "type $fileType" else "not stated") + ".")
-        val why = unusable
+        val what = listOfNotNull(architecture?.let { ModelStrings.architecture("arch" to it) },
+            if (parameters > 0) ModelStrings.aboutParameters("n" to billions(parameters)) else null)
+        val whatText = Phrase.Join(what, ", ")
+        add(when {
+            name != null && what.isNotEmpty() -> ModelStrings.ggufFileNamedWhat("version" to version.toString(), "name" to name, "what" to whatText)
+            name != null -> ModelStrings.ggufFileNamed("version" to version.toString(), "name" to name)
+            what.isNotEmpty() -> ModelStrings.ggufFileWhat("version" to version.toString(), "what" to whatText)
+            else -> ModelStrings.ggufFile("version" to version.toString())
+        })
+        add(ModelStrings.quantisation("q" to (quantisation?.let { Phrase.plain(it) }
+            ?: if (fileType >= 0) ModelStrings.quantType("n" to fileType.toString()) else ModelStrings.notStated())))
+        val why = unusableText
         when {
-            shortContext && why == null -> add(String.format(Locale.US, "Short context (%,d tokens): chat only — no actions, shorter memory.", contextLength))
-            contextLength > 0 -> add(String.format(Locale.US, "Context: %,d tokens (Robot uses %,d).", contextLength,
-                contextTokens.takeIf { it > 0 } ?: ContextWindow.MAX_TOKENS))
+            shortContext && why == null -> add(ModelStrings.shortContext("n" to Arg.Count(contextLength)))
+            contextLength > 0 -> add(ModelStrings.contextLine("n" to Arg.Count(contextLength),
+                "used" to Arg.Count((contextTokens.takeIf { it > 0 } ?: ContextWindow.MAX_TOKENS).toLong())))
         }
         if (why != null) {
-            licence?.let { add("Licence the file names: “$it”.") }
+            licence?.let { add(ModelStrings.licenceNamed("licence" to it)) }
             add(why)
             return@buildList
         }
-        add(String.format(Locale.US, "Memory: about %s while it runs (the file and the cache for Robot's %,d tokens), beside about %s for Robot's voice.",
-            ModelLogic.gb(memoryBytes), contextTokens, ModelLogic.gb(GgufCheck.VOICE_BYTES)))
-        add("Runs on the CPU with llama.cpp: slower than Fast on the TPU, and more battery.")
-        add("Can see photos: no. It reads text only: a photo question won't work, and a screen question uses only the screen's text.")
-        if (!shortContext) add("Actions (timers, texts, notes…) use Robot's text format: they may not work with every model.")
-        if (thinkSwitch) add("It can think before it answers: Settings › Model › “Let the model think first” (off: it answers directly).")
-        else if (thinks) add("It may think before it answers, whatever “Let the model think first” says (its template has no switch " +
-            "for it): answers can take longer. The thinking is never shown or read out.")
-        licence?.let { add("Licence the file names: “$it”. Check its terms where you got it.") }
+        add(ModelStrings.ggufMemoryLine("need" to ModelLogic.gbText(memoryBytes), "n" to Arg.Count(contextTokens.toLong()),
+            "voice" to ModelLogic.gbText(GgufCheck.VOICE_BYTES)))
+        add(ModelStrings.ggufCpu())
+        add(ModelStrings.ggufNoPhotos())
+        if (!shortContext) add(ModelStrings.ggufActions())
+        if (thinkSwitch) add(ModelStrings.thinkSwitch("page" to UiStrings.inSettings(UiStrings.model)))
+        else if (thinks) add(ModelStrings.thinksAnyway())
+        licence?.let { add(ModelStrings.licenceCheck("licence" to it)) }
     }
+
+    /** [linesText] in English. */
+    fun lines(): List<String> = linesText().map { it.en() }
 
     fun toJson(): JSONObject = JSONObject().apply {
         put("readable", readable); put("version", version); put("tensors", tensors)
@@ -148,14 +169,18 @@ data class GgufReport(
         licence?.let { put("licence", it) }; put("fileType", fileType); put("contextLength", contextLength); put("blocks", blocks)
         put("kvBytesPerToken", kvBytesPerToken); put("parameters", parameters); tokenizer?.let { put("tokenizer", it) }
         put("chatTemplate", chatTemplate); put("templateThinking", templateThinking); put("templateThinkTags", templateThinkTags)
-        put("fileBytes", fileBytes); put("totalRam", totalRam); problem?.let { put("problem", it) }; headerSha256?.let { put("headerSha256", it) }
+        put("fileBytes", fileBytes); put("totalRam", totalRam); headerSha256?.let { put("headerSha256", it) }
+        // 1.1: the problem's English for an older Robot, and its words without a language for this one.
+        problemText?.let { put("problem", it.en()); put("problemPhrase", PhraseWire.toJson(it)) }
     }
 
     companion object {
         private val SHA = Regex("^[0-9a-f]{64}$")
 
-        private fun billions(n: Long): String = if (n >= 1_000_000_000L) String.format(Locale.US, "%.1f billion", n / 1e9)
-            else String.format(Locale.US, "%,d million", n / 1_000_000)
+        private fun billions(n: Long): Phrase = if (n >= 1_000_000_000L) {
+            val (int, frac) = String.format(Locale.US, "%.1f", n / 1e9).split('.')
+            ModelStrings.billions(int.toLong(), "frac" to frac)
+        } else ModelStrings.millions(n / 1_000_000)
 
         fun fromJson(o: JSONObject?): GgufReport? {
             if (o == null) return null
@@ -170,7 +195,8 @@ data class GgufReport(
                     tokenizer = text("tokenizer", GgufCheck.MAX_SHOWN), chatTemplate = o.optBoolean("chatTemplate"),
                     templateThinking = o.optBoolean("templateThinking"), templateThinkTags = o.optBoolean("templateThinkTags"),
                     fileBytes = o.optLong("fileBytes").coerceAtLeast(0), totalRam = o.optLong("totalRam").coerceAtLeast(0),
-                    problem = if (o.has("problem")) o.optString("problem").take(300) else null,
+                    problemText = PhraseWire.fromJson(o.optJSONObject("problemPhrase"))
+                        ?: if (o.has("problem")) Phrase.plain(o.optString("problem").take(300)) else null,
                     headerSha256 = o.optString("headerSha256").takeIf { SHA.matches(it) },
                 )
             } catch (_: Exception) { null }
@@ -286,15 +312,16 @@ object GgufCheck {
     fun check(file: File, totalRam: Long = 0): GgufReport = try {
         FileByteSource(file).use { check(it, totalRam) }
     } catch (_: Exception) {
-        GgufReport(readable = false, problem = "Robot couldn't read the file.")
+        GgufReport(readable = false, problemText = ModelStrings.couldntReadFile())
     }
 
     fun check(src: ByteSource, totalRam: Long = 0): GgufReport = try {
         read(src, totalRam.coerceAtLeast(0))
     } catch (e: LiteRtLmFormat) {
-        GgufReport(readable = false, problem = "It isn't a GGUF model file Robot can read (${e.message}).", fileBytes = src.size)
+        // The parser's detail stays English (a diagnostic, as the voice log's), inside a sentence in your language.
+        GgufReport(readable = false, problemText = ModelStrings.ggufUnreadableDetail("detail" to e.message.orEmpty()), fileBytes = src.size)
     } catch (_: Exception) {
-        GgufReport(readable = false, problem = "It isn't a GGUF model file Robot can read.", fileBytes = src.size)
+        GgufReport(readable = false, problemText = ModelStrings.ggufUnreadable(), fileBytes = src.size)
     }
 
     /** Integer metadata Robot reads (any integer type), by key; per-layer arrays count by their largest element. */
@@ -311,31 +338,32 @@ object GgufCheck {
 
     private fun read(src: ByteSource, totalRam: Long): GgufReport {
         val r = Reader(src, minOf(src.size, MAX_HEADER))
-        if (src.size < 24) throw LiteRtLmFormat("too short")
+        if (src.size < 24) throw LiteRtLmFormat("too short") // l10n: not text (a parser's detail, a diagnostic)
         val magic = String(r.bytes(4), Charsets.ISO_8859_1)
-        if (magic != MAGIC) return GgufReport(readable = false, problem = "It isn't a GGUF model file.", fileBytes = src.size)
+        if (magic != MAGIC) return GgufReport(readable = false, problemText = ModelStrings.notGguf(), fileBytes = src.size)
         val version = r.u32()
-        if (version and 0xFFFF == 0L) return GgufReport(readable = false, problem = "It is a big-endian GGUF file; this phone reads little-endian ones.", fileBytes = src.size)
-        if (version != 2L && version != 3L) return GgufReport(readable = false, problem = "It is GGUF version $version; llama.cpp reads versions 2 and 3.", fileBytes = src.size)
+        if (version and 0xFFFF == 0L) return GgufReport(readable = false, problemText = ModelStrings.bigEndian(), fileBytes = src.size)
+        if (version != 2L && version != 3L) return GgufReport(readable = false, problemText = ModelStrings.ggufVersionUnsupported("version" to version.toString()),
+            fileBytes = src.size)
         val nTensors = r.u64()
         val nKv = r.u64()
-        if (nTensors < 0 || nTensors > MAX_TENSORS) throw LiteRtLmFormat("too many tensors")
-        if (nKv < 0 || nKv > MAX_KV) throw LiteRtLmFormat("too many metadata entries")
+        if (nTensors < 0 || nTensors > MAX_TENSORS) throw LiteRtLmFormat("too many tensors") // l10n: not text (a parser's detail, a diagnostic)
+        if (nKv < 0 || nKv > MAX_KV) throw LiteRtLmFormat("too many metadata entries") // l10n: not text (a parser's detail, a diagnostic)
         val keys = HashSet<String>()
         val ints = HashMap<String, Long>()
         val strings = HashMap<String, String>()
         var alignmentType = -1
         repeat(nKv.toInt()) {
             val key = r.string(MAX_KEY)
-            if (key.isEmpty()) throw LiteRtLmFormat("an empty key")
-            if (!keys.add(key)) throw LiteRtLmFormat("a key twice")
+            if (key.isEmpty()) throw LiteRtLmFormat("an empty key") // l10n: not text (a parser's detail, a diagnostic)
+            if (!keys.add(key)) throw LiteRtLmFormat("a key twice") // l10n: not text (a parser's detail, a diagnostic)
             val type = r.u32().toInt()
             // As llama.cpp: general.alignment, when there, must be a u32 (checked below, whatever type it came as).
             if (key == "general.alignment") alignmentType = type
             if (type == T_ARRAY) {
                 val elem = r.u32().toInt()
                 val n = r.u64()
-                if (n < 0 || n > MAX_ARRAY) throw LiteRtLmFormat("an array too long")
+                if (n < 0 || n > MAX_ARRAY) throw LiteRtLmFormat("an array too long") // l10n: not text (a parser's detail, a diagnostic)
                 when {
                     elem == T_STRING -> repeat(n.toInt()) { r.skipString() }
                     elem in SIZES -> {
@@ -347,7 +375,7 @@ object GgufCheck {
                             ints[key] = max
                         } else r.skip(n * size)
                     }
-                    else -> throw LiteRtLmFormat("an array of type $elem")
+                    else -> throw LiteRtLmFormat("an array of type $elem") // l10n: not text (a parser's detail, a diagnostic)
                 }
             } else {
                 when {
@@ -355,55 +383,54 @@ object GgufCheck {
                     type in SIZES -> {
                         if (wanted(key) && type.isInteger()) ints[key] = r.int(type) else r.skip(SIZES.getValue(type).toLong())
                     }
-                    else -> throw LiteRtLmFormat("a value of type $type")
+                    else -> throw LiteRtLmFormat("a value of type $type") // l10n: not text (a parser's detail, a diagnostic)
                 }
             }
         }
         // One part of a model split over several files: llama.cpp would look for the others by the file's name, which Robot
         // gives its own (own_model.gguf), so it could never load. Said here, with how to join them.
         val parts = ints[SPLIT_COUNT] ?: 0
-        if (parts > 1) return GgufReport(readable = false, problem = "It is one part of a model split into $parts files; Robot needs " +
-            "the whole model in one file (llama.cpp's llama-gguf-split --merge joins the parts).", fileBytes = src.size)
+        if (parts > 1) return GgufReport(readable = false, problemText = ModelStrings.splitFile("n" to parts.toString()), fileBytes = src.size)
         // As llama.cpp: general.alignment, when there, is a u32 power of two.
         val alignment = if (alignmentType < 0) 32L else {
-            if (alignmentType != T_UINT32) throw LiteRtLmFormat("an alignment that isn't a u32")
+            if (alignmentType != T_UINT32) throw LiteRtLmFormat("an alignment that isn't a u32") // l10n: not text (a parser's detail, a diagnostic)
             ints.getValue("general.alignment")
         }
-        if (alignment <= 0 || alignment > MAX_ALIGNMENT || alignment and (alignment - 1) != 0L) throw LiteRtLmFormat("a bad alignment")
+        if (alignment <= 0 || alignment > MAX_ALIGNMENT || alignment and (alignment - 1) != 0L) throw LiteRtLmFormat("a bad alignment") // l10n: not text (a parser's detail, a diagnostic)
         // The tensors: names, shapes, types, and their places, which follow each other in order (as llama.cpp requires).
         val names = HashSet<String>()
         var expected = 0L
         var parameters = 0L
         repeat(nTensors.toInt()) {
             val name = r.string(MAX_NAME - 1)
-            if (!names.add(name)) throw LiteRtLmFormat("a tensor twice")
+            if (!names.add(name)) throw LiteRtLmFormat("a tensor twice") // l10n: not text (a parser's detail, a diagnostic)
             val dims = r.u32()
-            if (dims > MAX_DIMS) throw LiteRtLmFormat("a tensor with $dims dimensions")
+            if (dims > MAX_DIMS) throw LiteRtLmFormat("a tensor with $dims dimensions") // l10n: not text (a parser's detail, a diagnostic)
             var elements = 1L
             val ne = LongArray(MAX_DIMS) { 1L }
             for (d in 0 until dims.toInt()) {
                 val n = r.i64()
-                if (n < 0) throw LiteRtLmFormat("a negative dimension")
+                if (n < 0) throw LiteRtLmFormat("a negative dimension") // l10n: not text (a parser's detail, a diagnostic)
                 ne[d] = n
-                elements = try { Math.multiplyExact(elements, n) } catch (_: ArithmeticException) { throw LiteRtLmFormat("a tensor too large") }
+                elements = try { Math.multiplyExact(elements, n) } catch (_: ArithmeticException) { throw LiteRtLmFormat("a tensor too large") } // l10n: not text (a parser's detail, a diagnostic)
             }
             val type = r.u32().toInt()
-            val (block, bytes) = TENSOR_TYPES[type] ?: throw LiteRtLmFormat("a tensor type llama.cpp $LLAMA_TAG doesn't know ($type)")
-            if (ne[0] % block != 0L) throw LiteRtLmFormat("a tensor row that doesn't fill its blocks")
-            val size = try { Math.multiplyExact(elements / block, bytes.toLong()) } catch (_: ArithmeticException) { throw LiteRtLmFormat("a tensor too large") }
+            val (block, bytes) = TENSOR_TYPES[type] ?: throw LiteRtLmFormat("a tensor type llama.cpp $LLAMA_TAG doesn't know ($type)") // l10n: not text (a parser's detail, a diagnostic)
+            if (ne[0] % block != 0L) throw LiteRtLmFormat("a tensor row that doesn't fill its blocks") // l10n: not text (a parser's detail, a diagnostic)
+            val size = try { Math.multiplyExact(elements / block, bytes.toLong()) } catch (_: ArithmeticException) { throw LiteRtLmFormat("a tensor too large") } // l10n: not text (a parser's detail, a diagnostic)
             val offset = r.u64()
-            if (offset != expected) throw LiteRtLmFormat("a tensor out of place")
-            val padded = pad(size, alignment) ?: throw LiteRtLmFormat("a tensor too large")
-            if (padded > Long.MAX_VALUE - expected) throw LiteRtLmFormat("tensors too large")
+            if (offset != expected) throw LiteRtLmFormat("a tensor out of place") // l10n: not text (a parser's detail, a diagnostic)
+            val padded = pad(size, alignment) ?: throw LiteRtLmFormat("a tensor too large") // l10n: not text (a parser's detail, a diagnostic)
+            if (padded > Long.MAX_VALUE - expected) throw LiteRtLmFormat("tensors too large") // l10n: not text (a parser's detail, a diagnostic)
             expected += padded
             parameters = if (elements > Long.MAX_VALUE - parameters) Long.MAX_VALUE else parameters + elements
         }
         // The tensor data starts at the next aligned position, and must all be in the file.
-        val dataStart = pad(r.pos, alignment) ?: throw LiteRtLmFormat("a bad data position")
+        val dataStart = pad(r.pos, alignment) ?: throw LiteRtLmFormat("a bad data position") // l10n: not text (a parser's detail, a diagnostic)
         // llama.cpp maps the open file it is given (llama_model_load_from_file_ptr) only when its tensor data starts on the
         // CPU's 32-byte tensor alignment, which general.alignment 32 (the default) or more always gives.
-        if (dataStart % MAP_ALIGNMENT != 0L) throw LiteRtLmFormat("tensor data off llama.cpp's 32-byte boundary")
-        if (nTensors > 0 && (dataStart > src.size || expected > src.size - dataStart)) throw LiteRtLmFormat("cut short: its tensors run past the end")
+        if (dataStart % MAP_ALIGNMENT != 0L) throw LiteRtLmFormat("tensor data off llama.cpp's 32-byte boundary") // l10n: not text (a parser's detail, a diagnostic)
+        if (nTensors > 0 && (dataStart > src.size || expected > src.size - dataStart)) throw LiteRtLmFormat("cut short: its tensors run past the end") // l10n: not text (a parser's detail, a diagnostic)
         val arch = strings["general.architecture"]?.let { printable(it, MAX_SHOWN) }
         val template = strings["tokenizer.chat_template"]
         fun archInt(suffix: String): Long = arch?.let { ints["$it.$suffix"] } ?: 0L
@@ -456,7 +483,7 @@ object GgufCheck {
         private var windowAt = 0L
 
         private fun need(n: Long) {
-            if (n < 0 || pos > limit - n) throw LiteRtLmFormat(if (limit < src.size) "a header too large" else "cut short")
+            if (n < 0 || pos > limit - n) throw LiteRtLmFormat(if (limit < src.size) "a header too large" else "cut short") // l10n: not text (a parser's detail, a diagnostic)
         }
 
         fun bytes(n: Int): ByteArray {
@@ -509,13 +536,13 @@ object GgufCheck {
         /** A GGUF string: a u64 length, then UTF-8 bytes; longer than [max] is a damaged file. */
         fun string(max: Int): String {
             val n = u64()
-            if (n < 0 || n > max) throw LiteRtLmFormat("a string too long")
+            if (n < 0 || n > max) throw LiteRtLmFormat("a string too long") // l10n: not text (a parser's detail, a diagnostic)
             return bytes(n.toInt()).toString(Charsets.UTF_8)
         }
 
         fun skipString() {
             val n = u64()
-            if (n < 0 || n > MAX_STRING) throw LiteRtLmFormat("a string too long")
+            if (n < 0 || n > MAX_STRING) throw LiteRtLmFormat("a string too long") // l10n: not text (a parser's detail, a diagnostic)
             skip(n)
         }
 

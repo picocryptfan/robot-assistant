@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.ui
 
+import androidx.compose.ui.res.stringResource
+import app.heyrobot.R
+import app.heyrobot.core.i18n.UiStrings
+import app.heyrobot.ui.theme.str
 import android.content.Context
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -76,14 +80,14 @@ private fun rememberBook(): Pair<LicenceBook?, Boolean> {
 @Composable
 fun LicencesScreen(onOpen: (Page) -> Unit, onBack: () -> Unit) {
     val (book, done) = rememberBook()
-    Scaffold(topBar = { BackBar("Licences", onBack) }) { pad ->
+    Scaffold(topBar = { BackBar(UiStrings.licences().str(), onBack) }) { pad ->
         LazyColumn(
             Modifier.fillMaxSize().padding(pad),
             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             if (book == null) {
-                item { Text(if (done) "Robot's licence list is missing from this build." else "Loading…") }
+                item { Text(stringResource(if (done) R.string.about_licences_missing else R.string.about_loading)) }
                 return@LazyColumn
             }
             item { RobotCard(book, onOpen) }
@@ -92,7 +96,7 @@ fun LicencesScreen(onOpen: (Page) -> Unit, onBack: () -> Unit) {
                 if (list.isEmpty()) continue
                 item(key = "h-${w.id}") {
                     // A small category header, as SectionCard's and Settings' groups have (0.4.x look).
-                    Text(w.title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
+                    Text(w.titleText.str(), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(top = 8.dp).semantics { heading() })
                 }
                 items(list, key = { it.id }) { c -> ComponentRow(book, c) { onOpen(Page.Licence(c.id)) } }
@@ -111,15 +115,13 @@ private fun RobotCard(book: LicenceBook, onOpen: (Page) -> Unit) {
         Text(r.copyright, style = MaterialTheme.typography.bodyMedium)
         Text(LicenceBook.NOTICE, style = MaterialTheme.typography.bodyMedium)
         OutlinedButton(onClick = { onOpen(Page.Licence(ROBOT_LICENCE)) }, modifier = Modifier.heightIn(min = 48.dp)) {
-            Text("Read the GNU General Public License v3")
+            Text(stringResource(R.string.about_licences_read_gpl))
         }
-        Text("Source code", style = MaterialTheme.typography.titleSmall)
-        Link(r.sourceAt(version), "Robot's source code for this version")
-        Text("Source for the GPL components", style = MaterialTheme.typography.titleSmall)
-        Text("espeak-ng (GPL-3.0-or-later) is built into sherpa-onnx's library, which Robot ships as a ready-made file. Each " +
-            "release of Robot comes with the complete source of that library and of what it links (espeak-ng, sherpa-onnx, their " +
-            "dependencies and ONNX Runtime), at:", style = MaterialTheme.typography.bodyMedium, color = muted)
-        Link(r.bundleAt(version), "The source bundle of this version's GPL components")
+        Text(stringResource(R.string.about_licences_source), style = MaterialTheme.typography.titleSmall)
+        Link(r.sourceAt(version), stringResource(R.string.about_licences_source_link))
+        Text(stringResource(R.string.about_licences_gpl_source), style = MaterialTheme.typography.titleSmall)
+        Text(stringResource(R.string.about_licences_gpl_text), style = MaterialTheme.typography.bodyMedium, color = muted)
+        Link(r.bundleAt(version), stringResource(R.string.about_licences_bundle))
     }
 }
 
@@ -127,18 +129,20 @@ private fun RobotCard(book: LicenceBook, onOpen: (Page) -> Unit) {
 @Composable
 private fun Link(url: String, what: String) {
     val uri = LocalUriHandler.current
+    val label = stringResource(R.string.about_licences_open_link, what)
     SelectionContainer { Text(url, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace) }
-    TextButton(onClick = { runCatching { uri.openUri(url) } }, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Open $what in the browser" }) {
-        Text("Open in the browser")
+    TextButton(onClick = { runCatching { uri.openUri(url) } }, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = label }) {
+        Text(stringResource(R.string.about_licences_open))
     }
 }
 
 @Composable
 private fun ComponentRow(book: LicenceBook, c: ThirdPartyComponent, onClick: () -> Unit) {
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val read = stringResource(R.string.about_licences_read)
     Column(
         Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(12.dp))
-            .clickable(role = Role.Button, onClickLabel = "Read its licence", onClick = onClick).padding(vertical = 6.dp),
+            .clickable(role = Role.Button, onClickLabel = read, onClick = onClick).padding(vertical = 6.dp),
     ) {
         Text("${c.name} · ${c.version}", style = MaterialTheme.typography.bodyLarge)
         Text(book.licenceOf(c)?.name ?: c.licence, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
@@ -163,7 +167,7 @@ fun LicenceScreen(id: String, file: String?, onOpen: (Page) -> Unit, onBack: () 
     }
     val title = when {
         id == ROBOT_LICENCE -> book?.robot?.name ?: "Robot"
-        else -> c?.name ?: "Licence"
+        else -> c?.name ?: stringResource(R.string.about_licence)
     }
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val text = pieces
@@ -174,7 +178,7 @@ fun LicenceScreen(id: String, file: String?, onOpen: (Page) -> Unit, onBack: () 
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (book == null || (c == null && id != ROBOT_LICENCE)) {
-                item { Text(if (!done) "Loading…" else "Robot's licence list doesn't have this part.") }
+                item { Text(stringResource(if (!done) R.string.about_loading else R.string.about_licences_no_part)) }
                 return@LazyColumn
             }
             item {
@@ -184,14 +188,14 @@ fun LicenceScreen(id: String, file: String?, onOpen: (Page) -> Unit, onBack: () 
                         Text(book.licenceOf(c)?.name ?: c.licence, style = MaterialTheme.typography.titleSmall)
                         Text(c.copyright, style = MaterialTheme.typography.bodyMedium)
                         c.note?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = muted) }
-                        Link(c.url, "Its page")
-                        book.licenceOf(c)?.url?.let { if (book.textFile(c) == null) Link(it, "The licence") }
+                        Link(c.url, stringResource(R.string.about_licences_page))
+                        book.licenceOf(c)?.url?.let { if (book.textFile(c) == null) Link(it, stringResource(R.string.about_licences_licence)) }
                         for (n in c.notices) {
                             OutlinedButton(onClick = { onOpen(Page.Licence(c.id, n.file)) }, enabled = n.file != file,
                                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(n.title) }
                         }
                         if (file != null) {
-                            book.textFile(c)?.let { OutlinedButton(onClick = { onOpen(Page.Licence(c.id)) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Its licence") } }
+                            book.textFile(c)?.let { OutlinedButton(onClick = { onOpen(Page.Licence(c.id)) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(stringResource(R.string.about_licences_its)) } }
                             Text(c.notices.firstOrNull { it.file == file }?.title ?: file, style = MaterialTheme.typography.titleSmall,
                                 modifier = Modifier.semantics { heading() })
                         }
@@ -202,9 +206,9 @@ fun LicenceScreen(id: String, file: String?, onOpen: (Page) -> Unit, onBack: () 
                 }
             }
             when {
-                path == null -> item { Text("No licence text ships for this part: see its page and the licence's link above.", color = muted) }
-                text == null -> item { Text("Loading…", color = muted) }
-                text.isEmpty() -> item { Text("This text is missing from this build.", color = MaterialTheme.colorScheme.error) }
+                path == null -> item { Text(stringResource(R.string.about_licences_no_text), color = muted) }
+                text == null -> item { Text(stringResource(R.string.about_loading), color = muted) }
+                text.isEmpty() -> item { Text(stringResource(R.string.about_licences_text_missing), color = MaterialTheme.colorScheme.error) }
                 else -> items(text.size) { i ->
                     SelectionContainer { Text(text[i], style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace) }
                 }

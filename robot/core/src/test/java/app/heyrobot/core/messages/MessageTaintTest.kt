@@ -7,6 +7,7 @@ import app.heyrobot.core.GateDecision
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.SafetyCards
 import app.heyrobot.core.ToolName
+import app.heyrobot.core.i18n.Lang
 import app.heyrobot.core.memory.MemoryCommands
 import app.heyrobot.core.memory.SpokenTurn
 import app.heyrobot.core.memory.Suggestions

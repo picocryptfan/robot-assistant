@@ -33,6 +33,7 @@ import app.heyrobot.core.ModelMove
 import app.heyrobot.core.OneShotRules
 import app.heyrobot.core.OwnModel
 import app.heyrobot.core.Priority
+import app.heyrobot.core.PrefillBudget
 import app.heyrobot.core.Prompt
 import app.heyrobot.core.PromptFit
 import app.heyrobot.core.PromptMarkers
@@ -43,6 +44,9 @@ import app.heyrobot.core.ThinkFilter
 import app.heyrobot.core.Thinking
 import app.heyrobot.core.TokenEstimate
 import app.heyrobot.core.ToolMode
+import app.heyrobot.core.i18n.ModelStrings
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.VoiceStrings
 import app.heyrobot.core.readOrNull
 import java.io.File
 import java.nio.channels.FileChannel
@@ -152,10 +156,11 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
     /** The loaded model's context (4,096 when none is loaded: nothing is sent then anyway). */
     private fun maxTokens(): Int = loaded?.maxTokens ?: ContextWindow.MAX_TOKENS
 
-    private fun failed(req: BrainMsg.Load, failure: LoadFailure, error: String, ms: Long = 0): BrainMsg.Loaded {
+    /** 1.1: [error] goes to the app without a language (PhraseWire), its English beside it as before. */
+    private fun failed(req: BrainMsg.Load, failure: LoadFailure, error: Phrase, ms: Long = 0): BrainMsg.Loaded {
         RLog.i("brain_load", "ok" to false, "model" to RLog.Code(req.model.id), "backend" to RLog.Code(req.backend.id), "format" to ModelFormat.GGUF,
             "failure" to failure)
-        return BrainMsg.Loaded(false, false, ms, error, req.model, req.backend, failure, ModelFormat.GGUF)
+        return BrainMsg.Loaded(false, false, ms, error.en(), req.model, req.backend, failure, ModelFormat.GGUF, error)
     }
 
     private fun totalRam(): Long = try {
@@ -178,13 +183,13 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
         // Only your own GGUF file, in Robot's own storage, under its fixed name.
         val allowed = listOfNotNull(ctx.getExternalFilesDir(null), ctx.filesDir).any { f.canonicalPath.startsWith(it.canonicalPath + File.separator) }
         if (!allowed || !f.isFile || f.name != ModelFiles.OWN_GGUF || req.model != BrainModel.OWN || req.format != ModelFormat.GGUF) {
-            return failed(req, LoadFailure.NO_FILE, "The model file is missing.")
+            return failed(req, LoadFailure.NO_FILE, VoiceStrings.engineFileMissing())
         }
-        if (req.backend != ModelBackend.CPU) return failed(req, LoadFailure.NOT_ALLOWED, "A GGUF file runs on the CPU only.")
+        if (req.backend != ModelBackend.CPU) return failed(req, LoadFailure.NOT_ALLOWED, VoiceStrings.ggufCpuOnly())
         // One open file from here to llama.cpp: its header is read through it, and the isolated process gets that very
         // descriptor, so nothing put at the path after the check is ever what llama.cpp parses.
         val pfd = try { ParcelFileDescriptor.open(f, ParcelFileDescriptor.MODE_READ_ONLY) } catch (_: Exception) {
-            return failed(req, LoadFailure.NO_FILE, "The model file is missing.")
+            return failed(req, LoadFailure.NO_FILE, VoiceStrings.engineFileMissing())
         }
         return ParcelFileDescriptor.AutoCloseInputStream(pfd).use { input -> loadOpen(req, f, pfd, input.channel) }
     }
@@ -200,27 +205,27 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
         // The app's record, read here again: your file as checked (size and time unchanged), a GGUF file, on the CPU, and the
         // context Robot's prompts are made for with it (4,096, or a short file's own: chat only).
         val record = readOrNull(File(File(ctx.filesDir, "robot"), ModelFiles.OWN_RECORD))
-        LoadCheck.refuse(req.model, req.backend, ModelFiles.fingerprint(f.length(), f.lastModified()), null, record,
+        LoadCheck.refuseText(req.model, req.backend, ModelFiles.fingerprint(f.length(), f.lastModified()), null, record,
             maxTokens = req.maxTokens, format = ModelFormat.GGUF)?.let { return failed(req, LoadFailure.NOT_ALLOWED, it) }
         // The file open is the one whose size and time were just compared: the one at the path now.
-        if (!sameFile(pfd, f)) return failed(req, LoadFailure.NOT_ALLOWED, LoadCheck.CHANGED)
+        if (!sameFile(pfd, f)) return failed(req, LoadFailure.NOT_ALLOWED, LoadCheck.changedText)
         // 1.0.1: a file still outside internal storage (until the app moves it in) is trusted on its whole SHA-256, read
         // through the very descriptor llama.cpp gets (core ModelMove).
         if (ModelMove.hashBeforeLoad(f, ctx.filesDir)) {
             val want = OwnModel.fromJson(record)?.sha256
             val got = try { ModelMove.sha256(channel) } catch (_: Exception) { null }
             RLog.i("brain_hash", "model" to RLog.Code(req.model.id), "ok" to (want != null && got == want))
-            if (want == null || got != want) return failed(req, LoadFailure.NOT_ALLOWED, LoadCheck.CHANGED)
+            if (want == null || got != want) return failed(req, LoadFailure.NOT_ALLOWED, LoadCheck.changedText)
         }
         // The header read again through the open file, and the same as the one the app checked and showed you; its
         // context too (never a cache larger than the model was trained for, nor a short one for a file that isn't).
         val r = GgufCheck.check(ChannelByteSource(channel), totalRam())
-        r.unusable?.let { return failed(req, LoadFailure.NOT_ALLOWED, it) }
-        if (r.contextTokens != req.maxTokens) return failed(req, LoadFailure.NOT_ALLOWED, LoadCheck.wrongContext(r.contextTokens))
+        r.unusableText?.let { return failed(req, LoadFailure.NOT_ALLOWED, it) }
+        if (r.contextTokens != req.maxTokens) return failed(req, LoadFailure.NOT_ALLOWED, LoadCheck.wrongContextText(r.contextTokens))
         val recorded = OwnModel.fromJson(record)?.gguf
-        if (recorded == null || recorded.copy(totalRam = 0) != r.copy(totalRam = 0)) return failed(req, LoadFailure.NOT_ALLOWED, LoadCheck.CHANGED)
+        if (recorded == null || recorded.copy(totalRam = 0) != r.copy(totalRam = 0)) return failed(req, LoadFailure.NOT_ALLOWED, LoadCheck.changedText)
         // The library in this build, and a CPU it runs on (read here: the isolated process needn't see /proc).
-        if (!File(ctx.applicationInfo.nativeLibraryDir, LIBRARY).isFile) return failed(req, LoadFailure.ENGINE, LlamaIpc.NOT_IN_BUILD)
+        if (!File(ctx.applicationInfo.nativeLibraryDir, LIBRARY).isFile) return failed(req, LoadFailure.ENGINE, VoiceStrings.llamaNotInBuild())
         cpuProblem()?.let { return failed(req, LoadFailure.ENGINE, it) }
         // One engine in the whole process, whichever engine or service loads it (EngineSlot); its model's memory is the
         // isolated process's, and the slot is held until that process is gone.
@@ -250,29 +255,32 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
             loading.get(LOAD_LIMIT_MS, TimeUnit.MILLISECONDS)
         } catch (_: TimeoutException) {
             stuck(l, "load")
-            return letGo(l, req, LoadFailure.TIMEOUT, "llama.cpp didn't finish loading the file.", t0)
+            return letGo(l, req, LoadFailure.TIMEOUT, VoiceStrings.llamaTimeout(), t0)
         } catch (e: ExecutionException) {
-            if (e.cause is LlamaLink.Gone) return letGo(l, req, LoadFailure.PROCESS, "llama.cpp stopped while it read the file.", t0)
+            if (e.cause is LlamaLink.Gone) return letGo(l, req, LoadFailure.PROCESS, VoiceStrings.llamaStopped(), t0)
             RLog.w("brain_load", e.cause ?: e, "format" to ModelFormat.GGUF)
-            return letGo(l, req, LoadFailure.ENGINE, "llama.cpp couldn't load the file.", t0)
+            return letGo(l, req, LoadFailure.ENGINE, VoiceStrings.llamaCouldntLoad(), t0)
         }
         when (out) {
-            LoadFailure.PROCESS -> return letGo(l, req, LoadFailure.PROCESS, "Robot couldn't start llama.cpp's process.", t0)
-            NOT_ISOLATED -> return letGo(l, req, LoadFailure.NOT_ALLOWED, NOT_ISOLATED, t0)
-            is String -> return letGo(l, req, LoadFailure.ENGINE, out, t0)
+            LoadFailure.PROCESS -> return letGo(l, req, LoadFailure.PROCESS, VoiceStrings.llamaNoProcess(), t0)
+            NOT_ISOLATED -> return letGo(l, req, LoadFailure.NOT_ALLOWED, VoiceStrings.llamaNotIsolated(), t0)
+            // The isolated process's own answer, a code it shares with :brain (LlamaIpc), in words here.
+            LlamaIpc.NOT_IN_BUILD -> return letGo(l, req, LoadFailure.ENGINE, VoiceStrings.llamaNotInBuild(), t0)
+            LlamaIpc.NOT_ISOLATED -> return letGo(l, req, LoadFailure.ENGINE, VoiceStrings.llamaOnlyIsolated(), t0)
+            is String -> return letGo(l, req, LoadFailure.ENGINE, Phrase.plain(out), t0)
         }
         val res = out as LlamaIpc.LoadResult
         val control = res.control
         val user = res.userDefined
         if (res.handle == 0L || control == null || user == null) {
             return letGo(l, req, LoadFailure.ENGINE, when (res.why) {
-                LlamaIpc.LOAD_CONTEXT -> "llama.cpp couldn't make room for its context (memory)."
-                LlamaIpc.LOAD_TEMPLATE -> "llama.cpp couldn't read the file's chat template."
-                else -> "llama.cpp couldn't load the file."
+                LlamaIpc.LOAD_CONTEXT -> VoiceStrings.llamaNoContext()
+                LlamaIpc.LOAD_TEMPLATE -> VoiceStrings.llamaNoTemplate()
+                else -> VoiceStrings.llamaCouldntLoad()
             }, t0)
         }
         // Both parsers succeeded but read the header differently: llama.cpp would run a file Robot didn't check.
-        if (res.trainContext != r.contextLength) return letGo(l, req, LoadFailure.NOT_ALLOWED, DIFFERENT, t0)
+        if (res.trainContext != r.contextLength) return letGo(l, req, LoadFailure.NOT_ALLOWED, VoiceStrings.llamaDifferent(), t0)
         val ms = SystemClock.elapsedRealtime() - t0
         link = l
         handle = res.handle
@@ -289,13 +297,13 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
     }
 
     /** Null when this CPU runs Robot's llama.cpp library (core LlamaCpu, from /proc/cpuinfo), else why not. */
-    private fun cpuProblem(): String? {
+    private fun cpuProblem(): Phrase? {
         val missing = LlamaCpu.missing(try { File("/proc/cpuinfo").readText() } catch (_: Exception) { null })
-        return if (missing.isEmpty()) null else "This phone's CPU lacks what Robot's llama.cpp is built for (${missing.joinToString(", ")})."
+        return if (missing.isEmpty()) null else VoiceStrings.llamaCpu("missing" to missing.joinToString(", "))
     }
 
     /** A load that ended without a model: its process ends, and the slot goes once it is gone. */
-    private fun letGo(l: LlamaLink, req: BrainMsg.Load, failure: LoadFailure, error: String, t0: Long): BrainMsg.Loaded {
+    private fun letGo(l: LlamaLink, req: BrainMsg.Load, failure: LoadFailure, error: Phrase, t0: Long): BrainMsg.Loaded {
         l.end("load_failed")
         settle(l)
         return failed(req, failure, error, SystemClock.elapsedRealtime() - t0)
@@ -424,10 +432,14 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
         // Robot's own text protocol for actions: the call syntax in the system prompt. Chat only (a short context): none.
         val mode = BrainPolicy.modeFor(max, ToolMode.TEXT_CALLS)
         val tools = BrainPolicy.toolsFor(mode, req.toolNames)
+        // 1.1, Skills phase B: your skills' calls in the same text syntax (core skills SkillSpecs.callExample).
+        val skills = BrainPolicy.skillsFor(mode, req.skills)
         val plan = Thinking.gguf(report, req.think)
-        val system = plan.system(req.system + Prompt.textCallHint(tools))
+        val system = plan.system(req.system + Prompt.textCallHint(tools, skills))
         val think = plan.enableThinking ?: req.think
-        val firstBudget = ContextWindow.historyBudget(Prompt.fixedTokens(req.system, tools), TokenEstimate.turn(PromptTurn(PromptRole.USER, req.text)), max)
+        // 1.2: llama.cpp runs on the CPU: a slow path's reading budget caps the history as on :brain's CPU (core PrefillBudget).
+        val firstBudget = PrefillBudget.history(Prompt.fixedTokens(req.system, tools, skills, req.compact), TokenEstimate.turn(PromptTurn(PromptRole.USER, req.text)),
+            max, req.readBudget)
         val run = Run(job, req.convId, sink, h, ++runs, mode).also { it.strip = plan.stripThinking }
         running = run
         write(run, system, req.history, req.text, think, firstBudget)
@@ -562,8 +574,13 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
      * REQ_ONE_SHOT (0.6.0 for GGUF files): a translation or a summary step at its [BrainMsg.OneShot.priority], its own
      * system prompt and its one turn (core OneShotRules), thinking off; its budget is the loaded model's context.
      */
-    override fun oneShot(key: BrainScheduler.Key, req: BrainMsg.OneShot, sink: BrainEngine.Sink) {
+    override fun oneShot(key: BrainScheduler.Key, req: BrainMsg.OneShot, image: ByteArray?, sink: BrainEngine.Sink) {
         if (handle == 0L) return sink.emit(BrainProtocol.EV_ERROR, BrainMsg.Error(BrainError.NOT_LOADED, null))
+        // Text only (1.4): a FILE_READ's picture is refused before it waits, NO_VISION (or BAD_REQUEST for a bad one); the
+        // caller keeps the file for a model that sees. The bytes are never kept here.
+        OneShotRules.imageCheck(req, image, vision = false)?.let {
+            return sink.emit(BrainProtocol.EV_ERROR, BrainMsg.Error(it, if (it == BrainError.NO_VISION) "text only" else null))
+        }
         submit(key, req.priority, sink) { job -> startOneShot(job, req, sink) }
     }
 
@@ -714,14 +731,20 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
         val tps = if (genMs > 0) generated * 1000.0 / genMs else -1.0
         val tokens = stats?.get(LlamaIpc.STATS_POSITION)?.toInt() ?: -1
         val gaveWay = run.giveWay && reason == DoneReason.CANCELLED
+        // 1.2: the tokens it read for this reply are the prompt less the part its memory kept (a reused conversation reads
+        // only the new turn), in the prompt's time.
+        val read = stats?.let { (it[LlamaIpc.STATS_PROMPT] - it[LlamaIpc.STATS_REUSED]).coerceAtLeast(0) } ?: -1L
+        val readTps = BrainMsg.Done.Speed.rate(read, stats?.get(LlamaIpc.STATS_PROMPT_MS) ?: 0L)
         RLog.i("brain_reply", "reason" to reason, "chunks" to run.chunks, "ttftMs" to ttft, "tokens" to tokens, "tps" to tps,
             "prompt" to (stats?.get(LlamaIpc.STATS_PROMPT) ?: -1L), "promptMs" to (stats?.get(LlamaIpc.STATS_PROMPT_MS) ?: -1L),
-            "generated" to generated, "mode" to run.mode, "oneShot" to run.oneShot, "gaveWay" to gaveWay, "format" to ModelFormat.GGUF)
+            "generated" to generated, "mode" to run.mode, "oneShot" to run.oneShot, "gaveWay" to gaveWay, "format" to ModelFormat.GGUF,
+            "read" to read, "readTps" to readTps)
         // It gave way: no terminal event; the scheduler queues it again (EV_QUEUED) and it starts over later.
         if (gaveWay) return scheduler.ended(run.job, terminalSent = false)
         // Robot's text protocol: the app may read a reply that is nothing but calls as calls; never in chat only.
         run.sink.emit(BrainProtocol.EV_DONE, BrainMsg.Done(reason, tokens, ttft, tps, rebuilt = (stats?.get(LlamaIpc.STATS_REUSED) ?: 0L) == 0L,
-            textCalls = BrainPolicy.acceptsCalls(run.mode)))
+            textCalls = BrainPolicy.acceptsCalls(run.mode), prefillTokens = BrainMsg.Done.Speed.count(read.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()),
+            prefillTps = readTps, decodeTokens = if (stats == null) -1 else BrainMsg.Done.Speed.count(generated.toInt())))
         scheduler.ended(run.job)
     }
 
@@ -732,7 +755,7 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
      */
     private fun stuck(l: LlamaLink, where: String) {
         RLog.i("brain_stuck", "in" to RLog.Code(where), "format" to ModelFormat.GGUF)
-        l.end("stuck_$where")
+        l.end("stuck_$where") // l10n: not text (a code for the log)
         backstop(l)
     }
 
@@ -783,16 +806,16 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
         private const val LIBRARY = "librobot_llama.so"
         /** generate()'s result when the isolated process went away under it. */
         private const val LOST = Int.MIN_VALUE
-        private const val NOT_ISOLATED = "llama.cpp's process isn't an isolated one, so Robot won't give it the file."
+        /** hello()'s answer from a process that isn't isolated (a code; said in words by VoiceStrings.llamaNotIsolated). */
+        private const val NOT_ISOLATED = "not_isolated_hello"
         /** How long llama.cpp may take to load a file (a few seconds; minutes for a large one read from flash the first time)… */
         private const val LOAD_LIMIT_MS = 180_000L
         /** … and to format and count a prompt (milliseconds) before :brain gives it up for stuck and ends its process… */
         private const val PREPARE_LIMIT_MS = 30_000L
         /** … and to come back from a reply it was told to stop (a second or two: a 512-token batch's slowest step). */
         private const val STOP_LIMIT_MS = 15_000L
-        private const val STOPPING = "The model is still stopping. Try again in a moment."
+        private val STOPPING: Phrase get() = ModelStrings.stopping()
         /** A one-shot's run has no conversation id of the app's. */
         private const val ONE_SHOT_CONV = ""
-        private const val DIFFERENT = "llama.cpp read this file's header differently from Robot's check, so Robot won't run it."
     }
 }

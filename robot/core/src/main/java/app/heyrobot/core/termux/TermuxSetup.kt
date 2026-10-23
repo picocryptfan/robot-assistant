@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.termux
 
+import app.heyrobot.core.i18n.AndroidPath
+import app.heyrobot.core.i18n.Msg
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.TermuxStrings
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -90,16 +94,23 @@ data class TermuxSetupStatus(
 /** One line of the checklist: done, to do, or a warning (the page draws each as Assistant setup's rows do). */
 enum class SetupMark { OK, TODO, WARN }
 
-data class SetupLine(val step: SetupStep, val mark: SetupMark, val text: String)
+/** One line of the checklist: [phrase] says it ([text] its English). */
+data class SetupLine(val step: SetupStep, val mark: SetupMark, val phrase: Phrase) {
+    val text: String get() = phrase.en()
+}
 
-enum class SetupStep(val title: String) {
-    INSTALLED("Termux installed"),
-    OPENED("Opened once"),
-    PERMISSION("Robot may run commands in Termux"),
-    EXTERNAL_APPS("Termux allows other apps"),
-    TEST("Test"),
-    FOLDER("Your scripts folder"),
-    TRUST("Trust this Termux"),
+/** The checklist's steps ([label]: their titles; [title] its English). */
+enum class SetupStep(val label: Msg) {
+    INSTALLED(TermuxStrings.stepInstalled),
+    OPENED(TermuxStrings.stepOpened),
+    PERMISSION(TermuxStrings.stepPermission),
+    EXTERNAL_APPS(TermuxStrings.stepExternalApps),
+    TEST(TermuxStrings.stepTest),
+    FOLDER(TermuxStrings.stepFolder),
+    TRUST(TermuxStrings.stepTrust),
+    ;
+
+    val title: String get() = label().en()
 }
 
 object TermuxSetup {
@@ -107,9 +118,16 @@ object TermuxSetup {
     const val FDROID_URL = "https://f-droid.org/en/packages/com.termux/"
 
     /** The line to paste in Termux (B5.1 step 4); termux-reload-settings, because Termux reads its properties once. */
-    const val ALLOW_LINE = "mkdir -p ~/.termux && echo 'allow-external-apps=true' >> ~/.termux/termux.properties && termux-reload-settings"
+    const val ALLOW_LINE = "mkdir -p ~/.termux && echo 'allow-external-apps=true' >> ~/.termux/termux.properties && termux-reload-settings" // l10n: not text (a command to paste)
 
-    const val ALLOW_WARNING = "With this, any app you give Robot's Termux permission to can run commands in Termux. Give it to Robot only."
+    /** Under [ALLOW_LINE]: who the permission lets in. */
+    val allowWarning: Phrase get() = TermuxStrings.allowWarning()
+
+    /** [allowWarning] in English. */
+    val ALLOW_WARNING: String get() = allowWarning.en()
+
+    /** Termux's property that lets other apps run commands (a name, the same in every language). */
+    const val EXTERNAL_APPS = "allow-external-apps"
 
     /** A set-up run that started this long ago and never wrote its end is over (its process died). */
     const val RUNNING_STALE_MS = 60_000L
@@ -121,51 +139,49 @@ object TermuxSetup {
     fun lines(check: TermuxCheck, granted: Boolean, setupStatus: TermuxSetupStatus, trusted: String?): List<SetupLine> {
         val status = forThis(check, setupStatus)
         val installed = when (check.status) {
-            TermuxStatus.READY -> SetupLine(SetupStep.INSTALLED, SetupMark.OK, check.line())
-            TermuxStatus.TEST_KEY -> SetupLine(SetupStep.INSTALLED, SetupMark.WARN, check.line())
-            TermuxStatus.UNKNOWN_SIGNER -> SetupLine(SetupStep.INSTALLED, if (trusted != null) SetupMark.OK else SetupMark.WARN, check.line())
-            TermuxStatus.NOT_INSTALLED -> SetupLine(SetupStep.INSTALLED, SetupMark.TODO, "Not installed. Get it from F-Droid (not Google Play: that version can't take commands from other apps).")
-            else -> SetupLine(SetupStep.INSTALLED, SetupMark.WARN, check.line())
+            TermuxStatus.READY -> SetupLine(SetupStep.INSTALLED, SetupMark.OK, check.lineText())
+            TermuxStatus.TEST_KEY -> SetupLine(SetupStep.INSTALLED, SetupMark.WARN, check.lineText())
+            TermuxStatus.UNKNOWN_SIGNER -> SetupLine(SetupStep.INSTALLED, if (trusted != null) SetupMark.OK else SetupMark.WARN, check.lineText())
+            TermuxStatus.NOT_INSTALLED -> SetupLine(SetupStep.INSTALLED, SetupMark.TODO, TermuxStrings.setupNotInstalled())
+            else -> SetupLine(SetupStep.INSTALLED, SetupMark.WARN, check.lineText())
         }
         val tested = status.testAt > 0
         val opened = when {
-            status.testOk -> SetupLine(SetupStep.OPENED, SetupMark.OK, "Termux is set up")
-            status.testFailure == TermuxFailure.NOT_SET_UP -> SetupLine(SetupStep.OPENED, SetupMark.TODO, "Open Termux once so it can finish installing, then Test again.")
-            else -> SetupLine(SetupStep.OPENED, SetupMark.TODO, "Open Termux once so it finishes installing. The Test checks it.")
+            status.testOk -> SetupLine(SetupStep.OPENED, SetupMark.OK, TermuxStrings.setupDone())
+            status.testFailure == TermuxFailure.NOT_SET_UP -> SetupLine(SetupStep.OPENED, SetupMark.TODO, TermuxStrings.setupOpenAgain())
+            else -> SetupLine(SetupStep.OPENED, SetupMark.TODO, TermuxStrings.setupOpenOnce())
         }
-        val permission = if (granted) SetupLine(SetupStep.PERMISSION, SetupMark.OK, "Allowed")
-            else SetupLine(SetupStep.PERMISSION, SetupMark.TODO, "Android asks you. If it no longer does: App info › Permissions › Additional permissions.")
+        val permission = if (granted) SetupLine(SetupStep.PERMISSION, SetupMark.OK, TermuxStrings.setupAllowed())
+            else SetupLine(SetupStep.PERMISSION, SetupMark.TODO, TermuxStrings.setupAndroidAsks("path" to AndroidPath.APP_ADDITIONAL_PERMISSIONS))
         val external = when {
-            status.testOk -> SetupLine(SetupStep.EXTERNAL_APPS, SetupMark.OK, "allow-external-apps is on")
-            status.testFailure == TermuxFailure.EXTERNAL_APPS_OFF -> SetupLine(SetupStep.EXTERNAL_APPS, SetupMark.TODO,
-                "allow-external-apps is off: paste this line in Termux, then Test again.")
-            else -> SetupLine(SetupStep.EXTERNAL_APPS, SetupMark.TODO, "Paste this line in Termux:")
+            status.testOk -> SetupLine(SetupStep.EXTERNAL_APPS, SetupMark.OK, TermuxStrings.setupExternalOn("setting" to EXTERNAL_APPS))
+            status.testFailure == TermuxFailure.EXTERNAL_APPS_OFF -> SetupLine(SetupStep.EXTERNAL_APPS, SetupMark.TODO, TermuxStrings.setupExternalOff("setting" to EXTERNAL_APPS))
+            else -> SetupLine(SetupStep.EXTERNAL_APPS, SetupMark.TODO, TermuxStrings.setupPasteLine())
         }
         val test = when {
-            status.running == "test" -> SetupLine(SetupStep.TEST, SetupMark.TODO, "Testing…")
-            status.testOk && !status.timeout -> SetupLine(SetupStep.TEST, SetupMark.WARN,
-                "Termux answered in ${status.testMs} ms, but GNU timeout is missing: run pkg install coreutils in Termux.")
-            status.testOk -> SetupLine(SetupStep.TEST, SetupMark.OK, "Termux answered in ${status.testMs} ms")
-            tested -> SetupLine(SetupStep.TEST, SetupMark.WARN, (status.testFailure ?: TermuxFailure.INTERNAL).en)
-            else -> SetupLine(SetupStep.TEST, SetupMark.TODO, "Robot runs: echo robot-ok; command -v timeout")
+            status.running == "test" -> SetupLine(SetupStep.TEST, SetupMark.TODO, TermuxStrings.setupTesting())
+            status.testOk && !status.timeout -> SetupLine(SetupStep.TEST, SetupMark.WARN, TermuxStrings.setupNoTimeout("ms" to status.testMs.toString()))
+            status.testOk -> SetupLine(SetupStep.TEST, SetupMark.OK, TermuxStrings.setupAnswered("ms" to status.testMs.toString()))
+            tested -> SetupLine(SetupStep.TEST, SetupMark.WARN, (status.testFailure ?: TermuxFailure.INTERNAL).text)
+            else -> SetupLine(SetupStep.TEST, SetupMark.TODO, TermuxStrings.setupRobotRuns("command" to TermuxRun.TEST_SCRIPT))
         }
         val folder = when {
-            status.running == "list" || status.running == "folder" -> SetupLine(SetupStep.FOLDER, SetupMark.TODO, "Looking…")
-            status.listAt == 0L -> SetupLine(SetupStep.FOLDER, SetupMark.TODO, "~/robot: not listed yet (optional)")
-            status.folderMissing -> SetupLine(SetupStep.FOLDER, SetupMark.TODO, "~/robot doesn't exist yet (optional)")
-            status.listFailure != null -> SetupLine(SetupStep.FOLDER, SetupMark.WARN, status.listFailure.en)
-            status.scripts.isEmpty() -> SetupLine(SetupStep.FOLDER, SetupMark.OK, "~/robot: no scripts yet")
-            else -> SetupLine(SetupStep.FOLDER, SetupMark.OK, "~/robot: " + (if (status.scripts.size == 1) "1 script" else "${status.scripts.size} scripts"))
+            status.running == "list" || status.running == "folder" -> SetupLine(SetupStep.FOLDER, SetupMark.TODO, TermuxStrings.setupLooking())
+            status.listAt == 0L -> SetupLine(SetupStep.FOLDER, SetupMark.TODO, TermuxStrings.setupNotListed())
+            status.folderMissing -> SetupLine(SetupStep.FOLDER, SetupMark.TODO, TermuxStrings.setupFolderMissing())
+            status.listFailure != null -> SetupLine(SetupStep.FOLDER, SetupMark.WARN, status.listFailure.text)
+            status.scripts.isEmpty() -> SetupLine(SetupStep.FOLDER, SetupMark.OK, TermuxStrings.setupNoScripts())
+            else -> SetupLine(SetupStep.FOLDER, SetupMark.OK, TermuxStrings.setupScripts(status.scripts.size))
         }
         val signer = check.signer
         val trust = when {
-            check.status == TermuxStatus.CHANGED -> SetupLine(SetupStep.TRUST, SetupMark.WARN, "Termux was reinstalled or replaced: check where it came from, then set it up again.")
+            check.status == TermuxStatus.CHANGED -> SetupLine(SetupStep.TRUST, SetupMark.WARN, TermuxStrings.setupReinstalled())
             // 1.0, the update lock: Settings › Termux says what changed above the checklist, with Trust this version.
-            check.status == TermuxStatus.UPDATED && trusted != null -> SetupLine(SetupStep.TRUST, SetupMark.WARN, "Trusted · signer " + short(trusted))
-            trusted != null && trusted == signer -> SetupLine(SetupStep.TRUST, SetupMark.OK, "Trusted · signer " + short(trusted))
-            trusted != null -> SetupLine(SetupStep.TRUST, SetupMark.OK, "Trusted · signer " + short(trusted) + " (in its signing history)")
-            signer != null -> SetupLine(SetupStep.TRUST, SetupMark.TODO, "Robot records this Termux's signer " + short(signer) + " and checks it before every run.")
-            else -> SetupLine(SetupStep.TRUST, SetupMark.TODO, "Install Termux first")
+            check.status == TermuxStatus.UPDATED && trusted != null -> SetupLine(SetupStep.TRUST, SetupMark.WARN, TermuxStrings.setupTrusted("signer" to short(trusted)))
+            trusted != null && trusted == signer -> SetupLine(SetupStep.TRUST, SetupMark.OK, TermuxStrings.setupTrusted("signer" to short(trusted)))
+            trusted != null -> SetupLine(SetupStep.TRUST, SetupMark.OK, TermuxStrings.setupTrustedHistory("signer" to short(trusted)))
+            signer != null -> SetupLine(SetupStep.TRUST, SetupMark.TODO, TermuxStrings.setupRecordsSigner("signer" to short(signer)))
+            else -> SetupLine(SetupStep.TRUST, SetupMark.TODO, TermuxStrings.setupInstallFirst())
         }
         return listOf(installed, opened, permission, external, test, folder, trust)
     }

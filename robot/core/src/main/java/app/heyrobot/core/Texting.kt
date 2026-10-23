@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.InfoStrings
+import app.heyrobot.core.i18n.Phrase
 import java.util.Locale
 
 // Pure. Texting without the model (0.2.3). The small model's choice of tool is unreliable: "text mom" made it look Mom
@@ -274,15 +276,19 @@ object TextCommand {
      * Robot's reply to a cancel: "Okay, no text to Mom." After a bare "no", also how to send it anyway, since it may
      * have been the message ("To send “No thanks”, say “text Mom no thanks”.").
      */
-    fun cancelReply(name: String, answer: String, kind: Cancel, wakePhrases: List<String> = emptyList()): String {
+    fun cancelReply(name: String, answer: String, kind: Cancel, wakePhrases: List<String> = emptyList()): String =
+        cancelReplyText(name, answer, kind, wakePhrases).en()
+
+    /** [cancelReply] in words without a language yet (Robot says it in the reply language; the command stays the one Robot understands). */
+    fun cancelReplyText(name: String, answer: String, kind: Cancel, wakePhrases: List<String> = emptyList()): Phrase {
         val n = display(name)
         val said = stripWake(answer, wakePhrases, loose = true).trim { !it.isLetterOrDigit() }
-        if (kind == Cancel.EXPLICIT || said.isEmpty()) return "Okay, no text to $n."
-        return "Okay, no text to $n. To send “${said.replaceFirstChar { it.titlecase(Locale.ROOT) }}”, say “text $n ${said.lowercase(Locale.ROOT)}”."
+        if (kind == Cancel.EXPLICIT || said.isEmpty()) return InfoStrings.noTextTo("name" to n)
+        return InfoStrings.noTextToSay("name" to n, "message" to said.replaceFirstChar { it.titlecase(Locale.ROOT) }, "said" to said.lowercase(Locale.ROOT))
     }
 
     /** Wake phrases Robot strips without your list: "hey robot" and its kin, and "robot" alone. */
-    private val DEFAULT_WAKE = listOf("hey robot", "hi robot", "ok robot", "okay robot", "hello robot", "hé robot", "dis robot", "robot")
+    private val DEFAULT_WAKE = listOf("hey robot", "hi robot", "ok robot", "okay robot", "hello robot", "hé robot", "dis robot", "robot") // l10n: not text (heard words)
 
     /** A word and where it is: letters and digits, with the apostrophes inside it ("I'm"). */
     private class Tok(val w: String, val start: Int, val end: Int)
@@ -326,7 +332,10 @@ object TextCommand {
     }
 
     /** "What should the text to Mom say?" (the name as asked, capitalised). */
-    fun askMessage(name: String): String = "What should the text to ${display(name)} say?"
+    fun askMessage(name: String): String = askMessageText(name).en()
+
+    /** [askMessage] in words without a language yet. */
+    fun askMessageText(name: String): Phrase = InfoStrings.whatShouldTextSay("name" to display(name))
 
     fun display(name: String): String = name.split(' ').joinToString(" ") { w -> w.replaceFirstChar { it.titlecase(Locale.ROOT) } }
 }
@@ -339,14 +348,24 @@ object TextCommand {
 object LookupFallback {
     const val CODE_MAY_BE_IN_CHEOGRAM = "not_in_phone_contacts_may_be_in_cheogram"
 
-    /** [detail] for the card, [forModel] for the tool response, [openCheogram]: the card offers to open Cheogram. */
-    data class NotFound(val detail: String, val forModel: String, val openCheogram: Boolean)
+    /**
+     * [detail] for the card, [forModel] for the tool response, [openCheogram]: the card offers to open Cheogram. [text]:
+     * 1.1, [detail] in words without a language yet.
+     */
+    data class NotFound(val detail: String, val forModel: String, val openCheogram: Boolean) {
+        var text: Phrase = Phrase.plain(detail)
+            private set
+
+        constructor(text: Phrase, forModel: String, openCheogram: Boolean) : this(text.en(), forModel, openCheogram) {
+            this.text = text
+        }
+    }
 
     fun notFound(name: String, textApp: TextApp, cheogramInstalled: Boolean): NotFound =
         if (textApp == TextApp.CHEOGRAM && cheogramInstalled) {
-            NotFound("No contact matches “$name” on the phone. They may be in Cheogram's own list.", CODE_MAY_BE_IN_CHEOGRAM, true)
+            NotFound(InfoStrings.noContactCheogram("name" to name), CODE_MAY_BE_IN_CHEOGRAM, true)
         } else {
-            val d = "No contact matches “$name”."
-            NotFound(d, d, false)
+            val d = InfoStrings.noContact("name" to name)
+            NotFound(d, d.en(), false)
         }
 }

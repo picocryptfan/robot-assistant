@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.Lang
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -99,7 +100,7 @@ class RoutineStoreTest {
 
     @Test fun theOtherFilesRoundTrip() {
         val rs = RoutineSettings(runLocked = false, online = false, briefEnabled = true, briefItems = listOf(BriefItem.GREETING, BriefItem.CALENDAR),
-            briefLock = BriefLock.NOTHING, finishOnUnlock = false, briefLang = BriefLang.FR, briefPrepare = false, clockSilenceMinutes = 15,
+            briefLock = BriefLock.NOTHING, finishOnUnlock = false, briefLang = Lang.FR, briefPrepare = false, clockSilenceMinutes = 15,
             alarmWindow = TimeWindow(LocalTime.of(5, 0), LocalTime.of(11, 0)),
             briefTrigger = RoutineTrigger.At(LocalTime.of(6, 30), setOf(DayOfWeek.MONDAY)), briefOutput = RoutineOutput.HEADSET_ONLY, briefOnline = true)
         assertEquals(rs, store.editSettings { rs })

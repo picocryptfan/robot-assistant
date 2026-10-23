@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.ToolStrings
 import app.heyrobot.core.web.BrowserEngine
 
 // Pure. 1.0: browser_search, a search in your browser (core web Engines.kt, BrowserSearch.kt). It opens the engine's own
@@ -12,10 +13,10 @@ import app.heyrobot.core.web.BrowserEngine
  * browser_search: [query] in [engine] (null until prepared: the one you said, or your default). [own]: the words are
  * exactly your own phrase's this turn ("search DuckDuckGo for …"), so no card was needed for them (BrowserGate).
  */
-data class BrowserSearchAction(val query: String, val engine: BrowserEngine? = null, val own: Boolean = false) : Action() {
+data class BrowserSearchAction(val query: String, val engine: BrowserEngine? = null, val own: Boolean = false) : Action.Worded() {
     override val tool get() = ToolName.BROWSER_SEARCH
-    override fun describe() = "Search ${engine?.title ?: "the web"} for “$query” in your browser"
-    override val confirmLabel get() = "Search"
+    override fun summary() = engine?.let { ToolStrings.browserSearch("engine" to it.title, "query" to query) } ?: ToolStrings.browserSearchWeb("query" to query)
+    override val confirmText get() = ToolStrings.search()
     override val online get() = false
     override fun worksLocked(lockedTools: Set<ToolName>) = false
 }
@@ -24,14 +25,15 @@ object BrowserCalls {
     /** Two short parameters (every token here is paid on every rebuild that describes it). */
     val SPEC = ToolSpec(ToolName.BROWSER_SEARCH, "Search in the user's browser.", listOf(
         ToolParam("query", "string", "Short search words", true),
-        ToolParam("engine", "string", "e.g. google; omit for theirs", false),
+        ToolParam("engine", "string", "e.g. google; omit for theirs", false, "Omit for theirs"),
     ))
 
     /** The query as written (BrowserGate decides whether it may open), and the engine when it names one Robot knows. */
     fun parse(a: Map<String, Any?>, text: (Map<String, Any?>, Int, Array<out String>) -> String?): ParsedCall {
-        val query = text(a, MAX_QUERY, arrayOf("query", "q", "search", "text", "words")) ?: return ParsedCall.Invalid(ToolName.BROWSER_SEARCH.id, "query is required")
+        val query = text(a, MAX_QUERY, arrayOf("query", "q", "search", "text", "words"))
+            ?: return ParsedCall.Invalid(ToolName.BROWSER_SEARCH.id, ToolStrings.isRequired("arg" to "query"))
         val named = text(a, 40, arrayOf("engine", "site", "with", "provider"))
-        val engine = named?.let { BrowserEngine.of(it) ?: return ParsedCall.Invalid(ToolName.BROWSER_SEARCH.id, "engine must be one of ${ENGINES}") }
+        val engine = named?.let { BrowserEngine.of(it) ?: return ParsedCall.Invalid(ToolName.BROWSER_SEARCH.id, ToolStrings.engineOneOf("engines" to ENGINES)) }
         return ParsedCall.Ok(BrowserSearchAction(query, engine))
     }
 

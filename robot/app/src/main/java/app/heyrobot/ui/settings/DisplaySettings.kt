@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.ui.settings
 
+import androidx.compose.ui.res.stringResource
+import app.heyrobot.R
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.SettingsStrings
+import app.heyrobot.core.i18n.UiStrings
+import app.heyrobot.ui.theme.str
 import androidx.compose.runtime.Composable
 import app.heyrobot.core.LookSettings
 import app.heyrobot.ui.pref.PreferenceScreen
@@ -18,15 +24,19 @@ import app.heyrobot.ui.pref.preferenceGroup
  */
 @Composable
 fun DisplaySettingsScreen(look: LookSettings, onChange: (LookSettings) -> Unit, onBack: () -> Unit) {
-    PreferenceScreen("Display", onBack) {
-        preferenceGroup("Colours", "colours") {
-            SwitchPreference("Use wallpaper colours", if (look.wallpaperColors) "Match your wallpaper" else "Robot's blue", look.wallpaperColors) {
+    val colours = stringResource(R.string.display_colours)
+    val footer = stringResource(R.string.display_footer)
+    PreferenceScreen(UiStrings.display().str(), onBack) {
+        preferenceGroup(colours, "colours") {
+            SwitchPreference(stringResource(R.string.display_wallpaper),
+                stringResource(if (look.wallpaperColors) R.string.display_wallpaper_on else R.string.display_wallpaper_off), look.wallpaperColors) {
                 onChange(look.copy(wallpaperColors = it))
             }
         }
-        preferenceFooter("Light or dark follows your phone.")
+        preferenceFooter(footer)
     }
 }
 
-/** The Display row's state: "Wallpaper colours" or "Robot's colours". */
-fun displaySummary(l: LookSettings): String = if (l.wallpaperColors) "Wallpaper colours" else "Robot's colours"
+/** [displaySummary] in words without a language yet: "Wallpaper colours" or "Robot's colours". */
+fun displaySummaryText(l: LookSettings): Phrase =
+    if (l.wallpaperColors) SettingsStrings.wallpaperColours() else SettingsStrings.robotColours()

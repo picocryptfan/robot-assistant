@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.web
 
+import app.heyrobot.core.i18n.Msg
+import app.heyrobot.core.i18n.WebStrings
+
 // Pure. 1.0: the search engines Robot can hand your words to in your browser, and every engine and service with its
 // privacy level (the user: "include some public search engines… easy and free… listing them with their privacy level").
 // Google's Custom Search JSON API is closed to new customers, Bing's Search APIs were retired on 11 August 2025, and
@@ -10,18 +13,20 @@ package app.heyrobot.core.web
 // 2026, sources in README's "Search engines and their privacy levels"), never from how an engine describes itself. The
 // lines people read are in the app's strings; core keeps the names, the addresses and the facts.
 
-/** How private an engine or a service is, made from [PrivacyFacts] ([of]). */
-enum class PrivacyLevel(val title: String) {
+/** How private an engine or a service is, made from [PrivacyFacts] ([of]). [label]: its chip's word; [title] its English. */
+enum class PrivacyLevel(val label: Msg) {
     /** Your words aren't kept with your IP address or an account (beyond security logs of days), and no profile is made of them. */
-    HIGH("High"),
+    HIGH(WebStrings.privacyHigh),
     /**
      * Your words go with your IP address (or part of it, or an account) to a company that keeps them for weeks or months (itself
      * or its results partner), but by its policy no advertising profile is made of them without your consent.
      */
-    MEDIUM("Medium"),
+    MEDIUM(WebStrings.privacyMedium),
     /** Your searches are kept tied to you and used for advertising or personalisation, or whoever sees them answers to no policy. */
-    LOW("Low"),
+    LOW(WebStrings.privacyLow),
     ;
+
+    val title: String get() = label().en()
 
     companion object {
         fun of(f: PrivacyFacts): PrivacyLevel = when {
@@ -62,21 +67,21 @@ enum class BrowserEngine(
     val policy: String,
     val names: List<String>,
 ) {
-    STARTPAGE(1, "startpage", "Startpage", "https://www.startpage.com/sp/search?query={q}", "Surfboard Holding B.V. (part-owned by System1, a US advertising company, since 2019)",
-        "Netherlands", "Google", PrivacyFacts(keptWithIp = false, profiles = false), "https://www.startpage.com/en/privacy-policy/", listOf("startpage", "start page")),
-    DUCKDUCKGO(2, "duckduckgo", "DuckDuckGo", "https://duckduckgo.com/?q={q}", "Duck Duck Go, Inc.", "United States", "mostly Microsoft Bing, with its own crawler",
+    STARTPAGE(1, "startpage", "Startpage", "https://www.startpage.com/sp/search?query={q}", "Surfboard Holding B.V. (part-owned by System1, a US advertising company, since 2019)", // l10n: not text (names and facts, never translated)
+        "Netherlands", "Google", PrivacyFacts(keptWithIp = false, profiles = false), "https://www.startpage.com/en/privacy-policy/", listOf("startpage", "start page")), // l10n: not text (names and facts, never translated)
+    DUCKDUCKGO(2, "duckduckgo", "DuckDuckGo", "https://duckduckgo.com/?q={q}", "Duck Duck Go, Inc.", "United States", "mostly Microsoft Bing, with its own crawler", // l10n: not text (names and facts, never translated)
         PrivacyFacts(keptWithIp = false, profiles = false), "https://duckduckgo.com/privacy", listOf("duckduckgo", "duck duck go", "duckduck go", "duck duckgo")),
-    BRAVE(3, "brave", "Brave Search", "https://search.brave.com/search?q={q}", "Brave Software, Inc.", "United States", "its own index",
+    BRAVE(3, "brave", "Brave Search", "https://search.brave.com/search?q={q}", "Brave Software, Inc.", "United States", "its own index", // l10n: not text (names and facts, never translated)
         PrivacyFacts(keptWithIp = false, profiles = false), "https://search.brave.com/help/privacy-policy", listOf("brave search", "brave")),
-    MOJEEK(4, "mojeek", "Mojeek", "https://www.mojeek.com/search?q={q}", "Mojeek Ltd", "United Kingdom", "its own index",
+    MOJEEK(4, "mojeek", "Mojeek", "https://www.mojeek.com/search?q={q}", "Mojeek Ltd", "United Kingdom", "its own index", // l10n: not text (names and facts, never translated)
         PrivacyFacts(keptWithIp = false, profiles = false), "https://www.mojeek.com/about/privacy", listOf("mojeek", "mo jeek")),
-    QWANT(5, "qwant", "Qwant", "https://www.qwant.com/?q={q}", "Qwant", "France", "its own index (Staan, with Ecosia) and Microsoft Bing",
+    QWANT(5, "qwant", "Qwant", "https://www.qwant.com/?q={q}", "Qwant", "France", "its own index (Staan, with Ecosia) and Microsoft Bing", // l10n: not text (names and facts, never translated)
         PrivacyFacts(keptWithIp = true, profiles = false), "https://about.qwant.com/en/legal/confidentialite/", listOf("qwant", "kwant")),
-    ECOSIA(6, "ecosia", "Ecosia", "https://www.ecosia.org/search?q={q}", "Ecosia GmbH", "Germany", "Microsoft Bing, Staan, and Google's if you agree",
+    ECOSIA(6, "ecosia", "Ecosia", "https://www.ecosia.org/search?q={q}", "Ecosia GmbH", "Germany", "Microsoft Bing, Staan, and Google's if you agree", // l10n: not text (names and facts, never translated)
         PrivacyFacts(keptWithIp = true, profiles = false), "https://support.ecosia.org/article/377-ip-addresses", listOf("ecosia")),
-    GOOGLE(7, "google", "Google", "https://www.google.com/search?q={q}", "Google LLC", "United States", "its own index",
+    GOOGLE(7, "google", "Google", "https://www.google.com/search?q={q}", "Google LLC", "United States", "its own index", // l10n: not text (names and facts, never translated)
         PrivacyFacts(keptWithIp = true, profiles = true), "https://policies.google.com/privacy", listOf("google")),
-    BING(8, "bing", "Bing", "https://www.bing.com/search?q={q}", "Microsoft Corporation", "United States", "its own index",
+    BING(8, "bing", "Bing", "https://www.bing.com/search?q={q}", "Microsoft Corporation", "United States", "its own index", // l10n: not text (names and facts, never translated)
         PrivacyFacts(keptWithIp = true, profiles = true), "https://privacy.microsoft.com/privacystatement", listOf("bing")),
     ;
 

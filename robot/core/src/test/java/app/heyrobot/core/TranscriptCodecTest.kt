@@ -122,6 +122,20 @@ class TranscriptCodecTest {
         }
     }
 
+    @Test fun earlierNamesKeptThroughASnapshot() {
+        val log = listOf(
+            TranscriptEvent.Line(0, 0.0, 1.0, "S1", "fr", "a"), TranscriptEvent.Line(1, 2.0, 3.0, "S2", "fr", "b"),
+            TranscriptEvent.Rename("S1", "Bob"), TranscriptEvent.Rename("S1", "Robert"), TranscriptEvent.Rename("S2", "Luc"), TranscriptEvent.Merge("S2", "S1"),
+        ).joinToString("") { TranscriptCodec.encode(it) + "\n" }
+        val r = TranscriptCodec.read(log)
+        assertEquals(mapOf("S1" to listOf("Bob", "Luc")), r.formerNames)
+        assertEquals(r, TranscriptCodec.load(TranscriptCodec.snapshot(r), log))
+        // A snapshot written before earlier names were kept: the whole log is folded, so they're there.
+        val old = org.json.JSONObject(TranscriptCodec.snapshot(r)).apply { remove("former") }.toString()
+        assertNull(TranscriptCodec.fromSnapshot(old))
+        assertEquals(r, TranscriptCodec.load(old, log))
+    }
+
     @Test fun aSnapshotPlusTheRestEqualsTheWholeLog() {
         val lines = events.map { TranscriptCodec.encode(it) + "\n" }
         val full = TranscriptCodec.read(lines.joinToString(""))

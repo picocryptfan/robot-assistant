@@ -1,0 +1,48 @@
+Robot's copy of Bouncy Castle's Argon2 (1.1: encrypted backups)
+
+Source: Bouncy Castle 1.81, https://github.com/bcgit/bc-java at tag r1rv81 (7cf6d995313e4bad26eb0c75e86769c4700f20eb),
+core/src/main/java/. The release published on Maven Central as org.bouncycastle:bcprov-jdk18on:1.81
+(bcprov-jdk18on-1.81.jar, sha256 249f396412b0c0ce67f25c8197da757b241b8be3ec4199386c00704a2457459b). The copied code
+gives the same output as that jar's own classes: Argon2id, Argon2i and Argon2d with 60 random settings, the backup's
+64 MiB setting, and 200 BLAKE2b digests (checked on the build machine, 2026-10-12); BackupKdfTest checks RFC 9106's
+Argon2id test vector and RFC 7693's BLAKE2b one.
+
+Licence: the Bouncy Castle licence (MIT), in LICENSE next to this file; in the app, Settings › About › Licences.
+Copyright (c) 2000-2023 The Legion of the Bouncy Castle Inc. (https://www.bouncycastle.org).
+
+Copied: the 20 files below and nothing else of Bouncy Castle: Argon2BytesGenerator and Argon2Parameters, the BLAKE2b
+digest they use, and the interfaces, exceptions and helpers those need to compile. No security provider, no JCA class.
+Only core's backup/BackupKdf.kt uses them (ProcessIsolationTest).
+
+What Robot changed:
+- The package: org.bouncycastle became app.heyrobot.thirdparty.bouncycastle (its package and import lines), so the copy
+  never meets a Bouncy Castle library another part of the build carries (Robolectric's, in the app's tests, is a
+  signed jar whose packages can't take other classes).
+- Each file starts with a comment naming where it came from, above its package line.
+- Blake2bDigest.java: the three CryptoServicesRegistrar.checkConstraints(...) calls in its constructors and the import
+  of CryptoServicesRegistrar are removed. They report a digest's use to Bouncy Castle's services registry, which
+  would bring most of the library with it; they change no output.
+
+Each file's SHA-256 (its path at the tag): as published at the tag, then as copied, read without the comment above its
+package line and with the package's old name (VendoredBouncyCastleTest checks the second):
+
+org/bouncycastle/crypto/CharToByteConverter.java              1b580ac0dfe276edd1179ef02fe7f600acfebab0c885541a30e87e1c219adf89  1b580ac0dfe276edd1179ef02fe7f600acfebab0c885541a30e87e1c219adf89
+org/bouncycastle/crypto/CipherParameters.java                 30d32bdb9c782a37b1c8437bc522b344767418b06f0ee5d0f710023c89041a7e  30d32bdb9c782a37b1c8437bc522b344767418b06f0ee5d0f710023c89041a7e
+org/bouncycastle/crypto/CryptoServicePurpose.java             80c4489dea3c90b0cce10ecdf09fb6e22cb50b92f3e03f26817bbe2618b6dd82  80c4489dea3c90b0cce10ecdf09fb6e22cb50b92f3e03f26817bbe2618b6dd82
+org/bouncycastle/crypto/DataLengthException.java              3441db3c532ab5990a8e14d2f0b63dddd8a853510c14b4c8546a708a8e20fe96  3441db3c532ab5990a8e14d2f0b63dddd8a853510c14b4c8546a708a8e20fe96
+org/bouncycastle/crypto/Digest.java                           c402f28cde7ff452c23d8c3095d3a83926002d98112d9b0175ef54685401c1f8  c402f28cde7ff452c23d8c3095d3a83926002d98112d9b0175ef54685401c1f8
+org/bouncycastle/crypto/ExtendedDigest.java                   c9d627426df7274d14d8b77609040e715137778136a7399b83516739d1f62b4b  c9d627426df7274d14d8b77609040e715137778136a7399b83516739d1f62b4b
+org/bouncycastle/crypto/OutputLengthException.java            dbbce8b0df311f707bcb943186daf07753b766eca0679f84e9f2375f0759d1f3  dbbce8b0df311f707bcb943186daf07753b766eca0679f84e9f2375f0759d1f3
+org/bouncycastle/crypto/PBEParametersGenerator.java           870c8d29cc0aebb3838c1801484cac401dd3a184426fd32085c7a1c9c117b369  870c8d29cc0aebb3838c1801484cac401dd3a184426fd32085c7a1c9c117b369
+org/bouncycastle/crypto/PasswordConverter.java                ee9fffb5425da1a02bfe9d2ea2739a17397728ce4733e33f10c87efa36f7e174  ee9fffb5425da1a02bfe9d2ea2739a17397728ce4733e33f10c87efa36f7e174
+org/bouncycastle/crypto/RuntimeCryptoException.java           492f2f4073f4a87de9d3c87d9c321d04eb5c251da6670f5c11b716eb65d683e9  492f2f4073f4a87de9d3c87d9c321d04eb5c251da6670f5c11b716eb65d683e9
+org/bouncycastle/crypto/digests/Blake2bDigest.java            e8edca40441cd4cead4c90d7eb8fe46c8e7896d7f063a23b0219ba3e84d6b302  89fd9deb6b8e0f0b4b2fd2b6e29ed1547cf0e7e14814b36ad07b2ffeb36b191a
+org/bouncycastle/crypto/generators/Argon2BytesGenerator.java  6bea4ac9bff328f32566e8ee0e0cc33a6bb605a0c20e5c9a743af5d69db41491  6bea4ac9bff328f32566e8ee0e0cc33a6bb605a0c20e5c9a743af5d69db41491
+org/bouncycastle/crypto/params/Argon2Parameters.java          d801315e02435fb8e7dae69e8c56d6c39049789432b1d3ae7ff03d9ef3872c95  d801315e02435fb8e7dae69e8c56d6c39049789432b1d3ae7ff03d9ef3872c95
+org/bouncycastle/util/Arrays.java                             8f9d90ed4f084e8381de9d650cb8544e1910e27958621c576c2b9dfd1fbd80d3  8f9d90ed4f084e8381de9d650cb8544e1910e27958621c576c2b9dfd1fbd80d3
+org/bouncycastle/util/Longs.java                              f71a28023c57ef54824b2d817aaf376143d284082d2cedcd2edc361445893391  f71a28023c57ef54824b2d817aaf376143d284082d2cedcd2edc361445893391
+org/bouncycastle/util/Objects.java                            499ee80084524131c0fce325d42256e77af941a4ff5074591dbcc14768fe077b  499ee80084524131c0fce325d42256e77af941a4ff5074591dbcc14768fe077b
+org/bouncycastle/util/Pack.java                               4212222ba1056f60f4d9e9295767e7df7e192f3d4e2d0bd784b0afeb647b3de0  4212222ba1056f60f4d9e9295767e7df7e192f3d4e2d0bd784b0afeb647b3de0
+org/bouncycastle/util/StringList.java                         37c24768a5e19e9791f4d7d5ce44aa437a1eac89c03f192252c23812f3ad8517  37c24768a5e19e9791f4d7d5ce44aa437a1eac89c03f192252c23812f3ad8517
+org/bouncycastle/util/Strings.java                            bcad88a4bacb4b801806e3d25146ffa71b1948994a57d006f843c6200aabdcb5  bcad88a4bacb4b801806e3d25146ffa71b1948994a57d006f843c6200aabdcb5
+org/bouncycastle/util/encoders/UTF8.java                      35ab09afca4f9898556da39046c38968cf4daf23d6afe336bdb76d0a2da0d7f0  35ab09afca4f9898556da39046c38968cf4daf23d6afe336bdb76d0a2da0d7f0

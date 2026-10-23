@@ -111,14 +111,19 @@ class PageSaverTest {
             // The updater's notifications open Updates alone: Back goes to About, where its row is.
             Page.Settings(SettingsRoutes.UPDATES) to Page.Settings(SettingsRoutes.ABOUT),
             Page.Settings("voice/barge-in") to Page.Settings("voice"),
-            // 0.7: Send feedback goes back to About when it was opened there, else to the tabs (the Model tab, the panel).
+            // 1.1: Support Robot sits under About.
+            Page.Settings(SettingsRoutes.SUPPORT) to Page.Settings(SettingsRoutes.ABOUT),
+            // 0.7: Send feedback goes back to About when it was opened there, else to the tabs (Settings › Model, the panel).
             Page.Settings(SettingsRoutes.feedback(FeedbackEntry.ABOUT)) to Page.Settings(SettingsRoutes.ABOUT),
             Page.Settings(SettingsRoutes.feedback(FeedbackEntry.MODEL_PROBLEM, FeedbackKind.BUG, 1_760_000_000_000L)) to null,
             Page.Settings(SettingsRoutes.feedback(FeedbackEntry.VOICE, FeedbackKind.IDEA)) to null,
             Page.Settings("display") to null,
-            // A model's page sits under the Model tab.
-            Page.Settings(ModelRoutes.model(BrainModel.SMARTER)) to null,
-            Page.Settings(ModelRoutes.voice(VoiceBundle.STT)) to null,
+            // A model's page sits under Settings › Model (1.4: a page of Settings, the tab Files took), which sits under the tabs.
+            Page.Settings(ModelRoutes.model(BrainModel.SMARTER)) to Page.Settings(SettingsRoutes.MODEL),
+            Page.Settings(ModelRoutes.voice(VoiceBundle.STT)) to Page.Settings(SettingsRoutes.MODEL),
+            Page.Settings(SettingsRoutes.MODEL) to null,
+            // 1.4: scanning opens from the Files tab's Scan button, and Back goes there.
+            Page.Settings(SettingsRoutes.FILES_SCAN) to null,
             Page.Transcripts to null,
             Page.Helpers to null,
             Page.ConversationSettings to null,
@@ -135,7 +140,10 @@ class PageSaverTest {
     @Test fun theLinksFromOutsideOpenWhatTheyName() {
         assertEquals(AppRoutes.Target(tab = Tab.NOTES, notesIcon = true), AppRoutes.target(AppPages.NOTES))
         assertEquals(AppRoutes.Target(page = Page.Setup(people = true)), AppRoutes.target(AppPages.PERMISSIONS))
-        assertEquals(AppRoutes.Target(tab = Tab.MODEL), AppRoutes.target(AppPages.MODEL))
+        assertEquals(AppRoutes.Target(tab = Tab.SETTINGS, page = Page.Settings(SettingsRoutes.MODEL)), AppRoutes.target(AppPages.MODEL))
+        // 1.4: a filing notification opens the Files tab; the "Robot Files" icon too, Back then leaving the app.
+        assertEquals(AppRoutes.Target(tab = Tab.FILES), AppRoutes.target(AppPages.FILES))
+        assertEquals(AppRoutes.Target(tab = Tab.FILES, filesIcon = true), AppRoutes.target(AppPages.FILES_ICON))
         assertEquals(AppRoutes.Target(page = Page.Transcripts), AppRoutes.target(AppPages.TRANSCRIPTS))
         assertEquals(AppRoutes.Target(page = Page.Transcript("20261011-1402-7f3a")), AppRoutes.target("transcripts:20261011-1402-7f3a"))
         assertEquals(AppRoutes.Target(page = Page.Transcript("20261011-1402-7f3a", 12)), AppRoutes.target("transcripts:20261011-1402-7f3a:12"))
@@ -168,7 +176,7 @@ class PageSaverTest {
         /** Every route ui/settings/SettingsNav.kt opens. */
         val SETTINGS_ROUTES = listOf(SettingsRoutes.VOICE, SettingsRoutes.BARGE_IN, SettingsRoutes.ACTIONS, SettingsRoutes.PEOPLE_NOTES_CALENDAR,
             SettingsRoutes.WEATHER, SettingsRoutes.HISTORY, SettingsRoutes.DISPLAY, SettingsRoutes.ADVANCED, SettingsRoutes.ABOUT,
-            SettingsRoutes.UPDATES, SettingsRoutes.NOTIFICATION_ACCESS, SettingsRoutes.adbFix("recognizer"),
+            SettingsRoutes.UPDATES, SettingsRoutes.NOTIFICATION_ACCESS, SettingsRoutes.adbFix("recognizer"), SettingsRoutes.SUPPORT,
             // 0.7: Send feedback, from About, a model problem and the panel.
             SettingsRoutes.feedback(FeedbackEntry.ABOUT), SettingsRoutes.feedback(FeedbackEntry.MODEL_PROBLEM, FeedbackKind.BUG, 1_760_000_000_000L),
             SettingsRoutes.feedback(FeedbackEntry.VOICE, FeedbackKind.IDEA)) +

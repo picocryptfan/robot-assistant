@@ -1,0 +1,183 @@
+<!-- The model pages, in Québec French (tu): the l10n work package WP7. The ids of values/strings_model.xml; each
+     value written with the glossary (robot/l10n/glossary.tsv) and the OQLF's spaces (tools/fr_typo.py,
+     FrenchTypographyTest). "Fast", "Smarter" and "Uncensored" are « Rapide », « Plus futé » and « Sans censure » (the user, 15 and 19 Oct 2026). -->
+<resources>
+    <!-- Words several pages share. -->
+    <string name="model_unknown">inconnu</string>
+    <string name="model_bytes">%1$s (%2$s octets)</string>
+    <string name="model_delete">Supprimer</string>
+    <string name="model_cancel">Annuler</string>
+    <string name="model_download_size">Télécharger %1$s</string>
+    <string name="model_cancel_download">Annuler le téléchargement</string>
+    <string name="model_free_on_phone">Libre sur ce téléphone&#160;: %1$s.</string>
+    <string name="model_delete_title">Supprimer «&#160;%1$s&#160;»&#8239;?</string>
+    <string name="model_details_cd">Détails de %1$s</string>
+
+    <!-- Why a model can't be chosen yet, and its row in Robot uses. -->
+    <string name="model_not_ready_other_tpu">Conçu pour le TPU du %1$s, que ce téléphone n’a pas</string>
+    <string name="model_not_ready_allow_tpu">Autorise d’abord le TPU pour lui</string>
+    <string name="model_not_ready_no_gguf">Cette version de Robot ne peut pas faire fonctionner les fichiers GGUF</string>
+    <string name="model_not_ready_getting">Préparation en cours…</string>
+    <string name="model_not_ready_bad">Son fichier ne peut pas être utilisé</string>
+    <string name="model_not_ready_download">Pas téléchargé · %1$s</string>
+    <string name="model_not_ready_import">Importe d’abord un fichier</string>
+    <string name="model_row_chat_only">Conversation seulement (contexte court)&#160;: pas d’actions</string>
+    <string name="model_row_chat_only_photos">Conversation seulement (contexte court)&#160;: pas d’actions, voit les photos</string>
+    <string name="model_row_own_file">Un fichier .litertlm ou .gguf</string>
+    <string name="model_row_tight_memory">Juste pour la mémoire de ce téléphone</string>
+    <string name="model_row_ready">Prêt</string>
+    <string name="model_keep_always">Toujours</string>
+    <string name="model_keep_minutes">%1$d&#160;min</string>
+
+    <!-- The Model tab. -->
+    <string name="model_group_problem">Problème du modèle</string>
+    <string name="model_group_problems">Derniers problèmes du modèle</string>
+    <string name="model_group_uses">Robot utilise</string>
+    <string name="model_fallback_row">Utilisé automatiquement si Rapide (bêta) ne se charge pas sur le TPU · %1$s</string>
+    <string name="model_until_ready">Tant que «&#160;%1$s&#160;» n’est pas prêt, Robot utilise Rapide</string>
+    <string name="model_in_memory">En mémoire maintenant</string>
+    <string name="model_group_phone">Ce téléphone</string>
+    <string name="model_chip_fields">Puce, telle qu’Android la nomme</string>
+    <string name="model_tpu_failed_when">%1$s. Robot fait fonctionner la version générale de Rapide sur le CPU.</string>
+    <string name="model_try_tpu_again">Réessayer le TPU</string>
+    <string name="model_try_tpu_again_summary">À la prochaine question. S’il échoue encore, Robot revient de lui-même à la version générale</string>
+    <string name="model_group_thinking">Réflexion</string>
+    <string name="model_think_first">Laisser le modèle réfléchir d’abord</string>
+    <string name="model_think_first_summary">Qwen3, MiniCPM 5 et certains fichiers GGUF</string>
+    <string name="model_group_memory">Mémoire</string>
+    <string name="model_keep_loaded">Garder le modèle chargé</string>
+    <string name="model_keep_default">Par défaut</string>
+    <string name="model_keep_summary">%1$s après la fermeture du panneau</string>
+    <string name="model_group_voice">Modèles de voix</string>
+    <string name="model_footer_intro">Les modèles fonctionnent sur ce téléphone. Robot va en ligne seulement pour télécharger celui que tu choisis. Peu importe le modèle qui répond, les cartes et les interrupteurs de Robot (Réglages › Actions, Sécurité et confidentialité) décident de ce qui te demande d’abord, et rien ne quitte le téléphone sauf si tu le demandes. Les questions d’une nouvelle conversation prennent plus de temps avec les modèles plus lents.</string>
+    <string name="model_footer_general_failed">Sur ce téléphone, Rapide est la version générale de Gemma 4 E2B&#160;: la version TPU ne s’est pas chargée ici.</string>
+    <string name="model_footer_general">Sur ce téléphone, Rapide est la version générale de Gemma 4 E2B&#160;: la version Tensor G5 demande un Pixel 10.</string>
+    <string name="model_footer_g6">Sur ce téléphone, Rapide est la version Tensor G6 (bêta).</string>
+    <string name="model_footer_tpu">La prise en charge du TPU dans Robot&#160;:</string>
+    <string name="model_footer_speeds">Les vitesses sur les pages des modèles sont mesurées sur un Pixel 10 Pro quand elles le disent, sinon ce sont des estimations, chacune avec sa source.</string>
+    <string name="model_footer_gpu">Utiliser le GPU&#160;: sur le GPU, Rapide commence à répondre plus tôt, consomme moins de batterie et laisse le CPU à la voix de Robot&#8239;; le CPU peut écrire un peu plus vite. Si le GPU échoue, Robot passe de lui-même au CPU et te le dit.</string>
+    <string name="model_footer_think">Laisser le modèle réfléchir d’abord&#160;: certains modèles peuvent raisonner avant de répondre&#160;: Qwen3, MiniCPM 5, et les fichiers GGUF dont le gabarit de conversation le permet. Activé, ils le peuvent&#160;: les réponses prennent plus de temps, et la réflexion n’est jamais montrée ni lue à voix haute. Désactivé, Robot leur demande de répondre directement. Les modèles Gemma de Robot répondent de la même façon dans les deux cas.</string>
+    <string name="model_footer_keep_tpu">Garder le modèle chargé après la fermeture du panneau (%1$s&#8239;; il se recharge en environ 2 secondes).</string>
+    <string name="model_footer_keep_cpu">Garder le modèle chargé après la fermeture du panneau (%1$s&#8239;; il se recharge en quelques secondes une fois son cache écrit).</string>
+    <string name="model_footer_memory">environ %1$s de mémoire</string>
+    <string name="model_footer_memory_file">environ la taille de son fichier en mémoire</string>
+    <string name="model_footer_downloads">À propos des téléchargements&#160;: chaque modèle se télécharge de Hugging Face seulement quand tu touches Télécharger, épinglé à un commit de son dépôt&#8239;; Robot vérifie le SHA-256 du fichier avant de le charger, et le téléchargement reprend de lui-même si la connexion est coupée. Tu peux aussi télécharger un fichier sur un ordinateur et l’importer. Rien de ce que tu dis ou écris ne va à Hugging Face. Les modèles de voix servent à parler à Robot et à l’entendre répondre. Ils fonctionnent sur le téléphone&#8239;; rien de ce que tu dis n’en sort. Chaque fichier est vérifié (SHA-256) avant que Robot l’utilise. Wi-Fi recommandé.</string>
+
+    <!-- Where Fast runs, on a phone without the Tensor G5's TPU build. -->
+    <string name="model_use_gpu">Utiliser le GPU</string>
+    <string name="model_use_gpu_summary">Recommandé. S’il échoue, Robot passe de lui-même au CPU</string>
+    <string name="model_gpu_failed_when">%1$s. Robot fait fonctionner Rapide sur le CPU.</string>
+    <string name="model_try_gpu_again">Réessayer le GPU</string>
+    <string name="model_try_gpu_again_summary">À la prochaine question. S’il échoue encore, Robot revient de lui-même au CPU</string>
+    <string name="model_where_fast_runs">Où Rapide fonctionne</string>
+    <string name="model_where_fast_runs_cpu">Sur le CPU&#160;: Robot n’utilise pas le GPU de ce téléphone (%1$s, comme sur le Pixel 10)</string>
+    <string name="model_fast_on">Rapide sur le %1$s</string>
+    <string name="model_fast_on_now">Rapide sur le %1$s (maintenant)</string>
+
+    <!-- A model problem and its report. -->
+    <string name="model_report_intro">Robot a fait un rapport que tu peux lire, puis copier ou partager si tu veux aider à régler le problème&#160;: des codes, ce téléphone et sa version d’Android, le fichier du modèle et les 50 derniers événements du journal vocal. Jamais ce que tu as dit ou demandé. Robot n’envoie rien de lui-même.</string>
+    <string name="model_copy_report">Copier le rapport</string>
+    <string name="model_share_report">Partager le rapport</string>
+    <string name="model_send_bug">Envoyer comme rapport de bogue</string>
+    <string name="model_hide_report">Masquer le rapport</string>
+    <string name="model_show_report">Afficher le rapport</string>
+    <string name="model_dismiss">Ignorer</string>
+    <string name="model_report_subject">Rapport de problème de Robot</string>
+    <string name="model_share_report_title">Partager le rapport de problème</string>
+    <string name="model_making_report">Préparation du rapport…</string>
+    <string name="model_expanded">Déplié</string>
+    <string name="model_collapsed">Replié</string>
+    <string name="model_hide">Masquer</string>
+    <string name="model_show">Afficher</string>
+    <string name="model_share">Partager</string>
+    <string name="model_problem_channel">Problèmes du modèle</string>
+    <string name="model_problem_channel_text">Quand le modèle de Robot échoue et que Robot passe à une autre façon de le faire fonctionner. Robot n’envoie jamais de rapport de lui-même.</string>
+    <string name="model_problem_title">Le modèle de Robot a eu un problème</string>
+    <string name="model_problem_report">L’appli Robot › Modèle a un rapport que tu peux copier ou partager, si tu veux.</string>
+
+    <!-- A built-in model's page. -->
+    <string name="model_bad_checksum">La somme de contrôle du fichier est fausse, alors Robot ne le chargera pas. Supprime-le et télécharge-le de nouveau.</string>
+    <string name="model_import_file">Importer un fichier</string>
+    <string name="model_check_file">Vérifier le fichier</string>
+    <string name="model_check_again">Vérifier de nouveau</string>
+    <string name="model_delete_file">Supprimer le fichier</string>
+    <string name="model_on_this_phone">Sur ce téléphone, sur le %1$s. %2$s</string>
+    <string name="model_on_the_measured">Sur le %1$s. %2$s</string>
+    <string name="model_memory_title">La mémoire de ce téléphone</string>
+    <string name="model_group_details">Détails</string>
+    <string name="model_download_size_title">Taille du téléchargement</string>
+    <string name="model_size_gpu_cache">%1$s, plus un cache que son premier chargement écrit&#160;: environ %2$s sur le GPU, jusqu’à %3$s sur le CPU</string>
+    <string name="model_size_cpu_cache">%1$s, plus environ %2$s de cache que le CPU écrit à son premier chargement</string>
+    <string name="model_cache_now">Cache maintenant</string>
+    <string name="model_free_space">Espace libre</string>
+    <string name="model_licence">Licence</string>
+    <string name="model_source">Source</string>
+    <string name="model_source_value">%1$s au commit %2$s\n%3$s</string>
+    <string name="model_publisher_terms">Conditions de l’éditeur</string>
+    <string name="model_terms_ticked">Tu les as cochées le %1$s&#160;: recherche et expérimentation personnelle seulement, et tu es responsable de ses résultats.</string>
+    <string name="model_terms_ask">Son éditeur te demande de confirmer deux conditions avant de le télécharger&#160;: recherche et expérimentation personnelle seulement, et tu es responsable de ses résultats.</string>
+    <string name="model_delete_file_only">Retire son fichier (%1$s) de ce téléphone.</string>
+    <string name="model_delete_file_cache">Retire son fichier (%1$s) et son cache (%2$s) de ce téléphone.</string>
+    <string name="model_delete_back_to_fast">Robot revient à Rapide.</string>
+    <string name="model_delete_none_left">Robot ne pourra pas répondre tant que tu n’auras pas téléchargé ou importé un modèle de nouveau.</string>
+
+    <!-- Your own model file's page. -->
+    <string name="model_import_another">Importer un autre fichier</string>
+    <string name="model_import_model_file">Importer un fichier de modèle</string>
+    <string name="model_group_inside">Ce que Robot a trouvé dedans</string>
+    <string name="model_size">Taille</string>
+    <string name="model_chat_only">Conversation seulement</string>
+    <string name="model_chat_only_photos">Il a été conçu pour %1$d jetons de contexte, alors Robot lui donne une consigne courte et aucune action (minuteries, textos, notes, l’agenda…) et garde moins de la conversation. Demande une action et Robot te le dit et t’offre cette page, où tu peux choisir Rapide. Il voit les photos.</string>
+    <string name="model_chat_only_no_photos">Il a été conçu pour %1$d jetons de contexte, alors Robot lui donne une consigne courte et aucune action (minuteries, textos, notes, l’agenda…) et garde moins de la conversation. Demande une action et Robot te le dit et t’offre cette page, où tu peux choisir Rapide. Il ne voit pas les photos.</string>
+    <string name="model_run_on_tpu">Faire fonctionner sur le TPU</string>
+    <string name="model_run_on_tpu_summary">Une version pour le %1$s&#160;: lis d’abord les risques</string>
+    <string name="model_stop_tpu">Ne plus le faire fonctionner sur le TPU</string>
+    <string name="model_stop_tpu_summary">Robot n’utilisera pas le TPU pour lui</string>
+    <string name="model_own_footer">Un fichier .litertlm (LiteRT-LM) ou .gguf (llama.cpp). Robot le copie&#8239;; il faut encore la taille du fichier en espace libre, plus de la place pour un cache quand LiteRT-LM le fait fonctionner sur le CPU (un .gguf n’en a pas besoin).</string>
+    <string name="model_own_footer_no_gguf">Cette version de Robot ne peut pas faire fonctionner les fichiers .gguf (sa bibliothèque llama.cpp n’a pas été compilée).</string>
+    <string name="model_import_warn_title">N’importe qu’un fichier auquel tu fais confiance</string>
+    <string name="model_import_warning">Un fichier .litertlm fonctionne avec les autorisations de Robot&#160;: LiteRT-LM le lit dans le processus du modèle de Robot, qui peut accéder à tes contacts, ton agenda, tes messages, ta mémoire et Internet. Robot vérifie d’abord la structure du fichier, pas le modèle qu’il contient, alors un fichier fait pour attaquer LiteRT-LM pourrait agir comme Robot. N’importe que des fichiers auxquels tu fais confiance, venus de leurs auteurs. (Un fichier .gguf fonctionne dans un processus séparé, sans autorisations.)</string>
+    <string name="model_choose_file">Choisir un fichier</string>
+    <string name="model_runs_tpu">Fonctionne sur le TPU&#160;: tu l’as autorisé.</string>
+    <string name="model_runs_no_gguf">Cette version de Robot ne peut pas faire fonctionner les fichiers GGUF&#160;: sa bibliothèque llama.cpp n’a pas été compilée. Une version faite avec tools/build_llama.sh le peut.</string>
+    <string name="model_runs_gguf_cpu">Fonctionne sur le CPU avec llama.cpp, projeté en mémoire (sans cache). Attends-toi à ce qu’il soit plus lent que Rapide&#160;: environ la vitesse des modèles E4B pour un fichier 4B, plus rapide pour un plus petit.</string>
+    <string name="model_runs_cpu_cache">Fonctionne sur le CPU&#160;: à peu près aussi lent que les modèles E4B ou plus, selon sa taille. Son cache contient %1$s maintenant.</string>
+    <string name="model_runs_cpu_first">Fonctionne sur le CPU&#160;: à peu près aussi lent que les modèles E4B ou plus, selon sa taille. Son premier chargement écrit un cache à côté de lui.</string>
+    <string name="model_runs_other_chip">Il a été compilé pour le TPU du %1$s (%2$s), que ce téléphone n’a pas, et une version TPU ne peut fonctionner ni sur le CPU ni sur le TPU d’une autre puce&#160;: Robot ne peut pas l’utiliser ici.</string>
+    <string name="model_runs_waits_tpu">Attend que tu autorises le TPU (Faire fonctionner sur le TPU, plus haut).</string>
+    <string name="model_runs_cant">Robot ne peut pas le faire fonctionner sur ce téléphone. Supprime-le pour libérer l’espace.</string>
+    <string name="model_tpu_dialog_title">Faire fonctionner ce fichier sur le TPU&#8239;?</string>
+    <string name="model_tpu_dialog_intro">La vérification de Robot dit que ce fichier a été compilé pour le TPU du %1$s, que ce téléphone a. Ce n’est pas le modèle Rapide épinglé de Robot, alors Robot ne peut pas s’en porter garant&#160;:</string>
+    <string name="model_tpu_risk_code">La plus grande partie est du code TPU compilé que personne ne peut examiner. Il passe par le pilote TPU du téléphone et les bibliothèques constructeur de Google, hors de ce que le processus séparé du modèle de Robot peut contenir.</string>
+    <string name="model_tpu_risk_crash">Une version mauvaise ou mal assortie peut faire planter le modèle de Robot, bloquer le TPU jusqu’au redémarrage du téléphone ou, rarement, redémarrer le téléphone.</string>
+    <string name="model_tpu_risk_sha">Son SHA-256 prouve seulement que le fichier est celui que tu as choisi, pas qu’il est sûr.</string>
+    <string name="model_tpu_risk_terms">Le compilateur Tensor de Google est une bêta fermée dont les conditions interdisent de partager ce qu’il produit sans la permission de Google&#160;: une version TPU qui n’a pas été publiée par Google a peut-être été partagée en violation de ces conditions.</string>
+    <string name="model_tpu_risk_cards">Les cartes et les interrupteurs de Robot s’appliquent toujours, comme avec chaque modèle&#160;: ce qui te demande d’abord ne change pas.</string>
+    <string name="model_tpu_cant_cpu">Une version TPU ne peut pas fonctionner sur le CPU&#160;: sans le TPU, Robot ne l’utilise pas.</string>
+
+    <!-- A publisher's conditions, before its file downloads or is imported. -->
+    <string name="model_terms_title_import">Avant d’importer «&#160;%1$s&#160;»</string>
+    <string name="model_terms_title_download">Avant de télécharger «&#160;%1$s&#160;»</string>
+    <string name="model_terms_quote">«&#160;%1$s&#160;» (%2$s, sur la page du modèle)</string>
+    <string name="model_terms_confirm_import">Confirmer et importer</string>
+    <string name="model_terms_confirm_download">Confirmer et télécharger</string>
+
+    <!-- A voice model's page. -->
+    <string name="model_voice_footer">Pour parler à Robot et l’entendre répondre. Il fonctionne sur le téléphone&#8239;; rien de ce que tu dis n’en sort. Le fichier est vérifié (SHA-256) avant que Robot l’utilise. Wi-Fi recommandé.</string>
+    <string name="model_voice_delete_speakers">Les transcriptions ne distinguent plus les intervenants (chaque ligne est «&#160;Intervenant&#160;») jusqu’à ce que tu le télécharges de nouveau (%1$s). Ton empreinte vocale, si tu en as fait une, reste jusqu’à ce que tu la supprimes dans Réglages › Conversation.</string>
+    <string name="model_voice_delete_stt">Robot se rabat sur le remplaçant (la saisie seulement) jusqu’à ce que tu le télécharges de nouveau (%1$s).</string>
+    <string name="model_voice_delete_tts">Robot se rabat sur le remplaçant (la voix du téléphone) jusqu’à ce que tu le télécharges de nouveau (%1$s).</string>
+
+    <!-- What ModelStore says about a download or an import (the snackbar, the download's notification). -->
+    <string name="model_copying">Copie&#160;: %1$s</string>
+    <string name="model_checking_percent">Vérification du fichier&#160;: %1$d&#160;%%</string>
+    <string name="model_moving_percent">Déplacement dans le stockage de Robot&#160;: %1$d&#160;%%</string>
+    <string name="model_download_description">Modèle d’IA de Robot (%1$s)</string>
+    <string name="model_your_file">ton fichier</string>
+    <string name="model_out_of_space">Le téléphone a manqué d’espace libre pendant la copie (%1$s copiés).</string>
+    <string name="model_wrong_size">Ce fichier n’est pas le modèle&#160;: sa taille est fausse.</string>
+    <string name="model_too_small">Ce fichier est trop petit pour être un modèle.</string>
+    <string name="model_cant_move">Robot n’a pas pu mettre le fichier copié en place.</string>
+    <string name="model_copy_failed">La copie a échoué (%1$s).</string>
+    <string name="model_in_use">Robot a «&#160;%1$s&#160;» en mémoire en ce moment. Choisis d’abord un autre modèle&#160;: Robot le libère tout de suite, puis réessaie.</string>
+</resources>

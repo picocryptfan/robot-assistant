@@ -56,6 +56,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import app.heyrobot.BuildConfig
+import app.heyrobot.R
+import androidx.compose.ui.res.stringResource
+import app.heyrobot.core.i18n.UiStrings
+import app.heyrobot.ui.theme.str
+import app.heyrobot.ui.theme.LocalLangs
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.RoutineStrings
 import app.heyrobot.core.BargeIn
 import app.heyrobot.core.BargeRun
 import app.heyrobot.core.BargeTestLogic
@@ -132,19 +139,21 @@ import kotlinx.coroutines.withContext
 internal fun InterruptSlider(value: InterruptSensitivity, enabled: Boolean = true, onChange: (InterruptSensitivity) -> Unit) {
     var level by remember(value) { mutableFloatStateOf(value.ordinal.toFloat()) }
     val shown = InterruptSensitivity.at(level)
+    val title = stringResource(R.string.voice_interrupt)
+    val shownTitle = shown.titleText.str()
     Column {
         Slider(value = level, onValueChange = { level = it }, enabled = enabled, valueRange = 0f..(InterruptSensitivity.entries.size - 1).toFloat(),
             steps = InterruptSensitivity.entries.size - 2,
             // Read now: level was just set by onValueChange, whether or not the screen has been drawn since.
             onValueChangeFinished = { onChange(InterruptSensitivity.at(level)) },
-            modifier = Modifier.semantics { contentDescription = "Interrupt sensitivity"; stateDescription = shown.title })
+            modifier = Modifier.semantics { contentDescription = title; stateDescription = shownTitle })
         Row(Modifier.fillMaxWidth()) {
-            for (v in InterruptSensitivity.entries) Text(v.title, style = MaterialTheme.typography.labelMedium,
+            for (v in InterruptSensitivity.entries) Text(v.titleText.str(), style = MaterialTheme.typography.labelMedium,
                 color = if (v == shown) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f), textAlign = when (v.ordinal) { 0 -> TextAlign.Start; InterruptSensitivity.entries.size - 1 -> TextAlign.End; else -> TextAlign.Center })
         }
-        Text("How readily Robot hears “stop” and your wake phrases while it talks. ${shown.detail}." +
-            if (shown == InterruptSensitivity.MEDIUM) " (default)" else "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(if (shown == InterruptSensitivity.MEDIUM) R.string.voice_interrupt_text_default else R.string.voice_interrupt_text, shown.detailText.str()),
+            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -164,20 +173,28 @@ fun WakePhrasesScreen(s: RobotSettings, update: (RobotSettings) -> Unit, a: AppA
     }
     var adding by rememberSaveable { mutableStateOf(false) }
     var opened by rememberSaveable { mutableStateOf<Int?>(null) }
-    fun problem(text: String): String? = WakePhrases.problem(text, s.wakePhrases) ?: speller?.spell(text)?.let { (it as? KwsSpeller.Result.Refused)?.why }
-        ?: if (spellerMissing) "Robot can't check wake words: its keyword spelling file is missing from this build." else null
+    val kwsMissing = stringResource(R.string.voice_kws_missing)
+    val langs = LocalLangs.current
+    fun problem(text: String): String? = WakePhrases.problemText(text, s.wakePhrases)?.render(langs)
+        ?: speller?.spell(text)?.let { (it as? KwsSpeller.Result.Refused)?.text?.render(langs) }
+        ?: if (spellerMissing) kwsMissing else null
     val on = s.wakeWord
     // "robot" inside "hey robot": with "hey robot" off, saying it still fires "robot". A warning on that phrase only; a
     // plain note on the shorter one's.
     val inside = WakePhrases.inside(s.wakePhrases)
-    PreferenceScreen("Wake word", onBack, snackbar = snackbar) {
-        item(key = "main") { MainSwitchBar("Use wake words", on) { update(s.copy(wakeWord = it)) } }
+    val useWakeWords = stringResource(R.string.voice_use_wake_words)
+    val groupPhrases = stringResource(R.string.voice_wake_phrases)
+    val footer = wakeFooter()
+    PreferenceScreen(UiStrings.wakeWord().str(), onBack, snackbar = snackbar) {
+        item(key = "main") { MainSwitchBar(useWakeWords, on) { update(s.copy(wakeWord = it)) } }
         preferenceGroup(null, "when") {
-            SwitchPreference("Only while charging", "Saves battery", s.wakeOnlyWhileCharging, enabled = on) { update(s.copy(wakeOnlyWhileCharging = it)) }
+            SwitchPreference(stringResource(R.string.voice_only_charging), stringResource(R.string.voice_saves_battery), s.wakeOnlyWhileCharging, enabled = on) {
+                update(s.copy(wakeOnlyWhileCharging = it))
+            }
         }
-        preferenceGroup("Wake phrases", "phrases") {
+        preferenceGroup(groupPhrases, "phrases") {
             if (s.wakePhrases.none { it.enabled }) {
-                StatusPreference("No wake phrase is on", "Only the corner swipe opens Robot. “Stop” still works while Robot talks.", Mark.WARN)
+                StatusPreference(stringResource(R.string.voice_no_phrase_on), stringResource(R.string.voice_no_phrase_on_detail), Mark.WARN)
             }
             for (p in s.wakePhrases) {
                 val refused = (speller?.spell(p.text) as? KwsSpeller.Result.Refused) != null
@@ -185,35 +202,38 @@ fun WakePhrasesScreen(s: RobotSettings, update: (RobotSettings) -> Unit, a: AppA
                 TwoTargetSwitchPreference(
                     "“${p.text}”",
                     when {
-                        refused -> "Can't be used: tap for why"
-                        note -> "Sensitivity ${p.sensitivity.title} · tap for a note"
-                        else -> "Sensitivity ${p.sensitivity.title}"
+                        refused -> stringResource(R.string.voice_phrase_refused)
+                        note -> stringResource(R.string.voice_phrase_note, p.sensitivity.titleText.str())
+                        else -> stringResource(R.string.voice_phrase_sensitivity, p.sensitivity.titleText.str())
                     },
                     p.enabled,
                     onClick = { opened = p.id },
                     onCheckedChange = { e -> update(s.copy(wakePhrases = s.wakePhrases.map { if (it.id == p.id) it.copy(enabled = e) else it })) },
-                    switchLabel = "Listen for “${p.text}”",
+                    switchLabel = stringResource(R.string.voice_listen_for, p.text),
                     enabled = on,
                 )
             }
-            PreferenceItem("Add a wake phrase", "1 to 4 words", RIcons.Add, enabled = on, onClick = { adding = true })
+            PreferenceItem(stringResource(R.string.voice_add_phrase), stringResource(R.string.voice_add_phrase_summary), RIcons.Add, enabled = on,
+                onClick = { adding = true })
         }
         preferenceGroup(null, "test") {
-            PreferenceItem("Test wake words", "See which phrase Robot hears, as you say it", RIcons.Search, onClick = { a.openPage(Page.WakeTest) })
+            PreferenceItem(stringResource(R.string.voice_test_wake), stringResource(R.string.voice_test_wake_summary), RIcons.Search,
+                onClick = { a.openPage(Page.WakeTest) })
         }
-        preferenceFooter(wakeFooter())
+        preferenceFooter(footer)
     }
     s.wakePhrases.firstOrNull { it.id == opened }?.let { p ->
-        PhraseDialog(p, speller, WakePhrases.insideWarning(p, inside), WakePhrases.insideNote(p, inside), onDismiss = { opened = null },
+        PhraseDialog(p, speller, WakePhrases.insideWarningText(p, inside), WakePhrases.insideNoteText(p, inside), onDismiss = { opened = null },
             onPick = { v -> opened = null; update(s.copy(wakePhrases = s.wakePhrases.map { if (it.id == p.id) it.copy(sensitivity = v) else it })) },
             onRemove = { opened = null; update(s.copy(wakePhrases = s.wakePhrases.filter { it.id != p.id })) })
     }
     if (adding) {
+        val startsLow = stringResource(R.string.voice_starts_low, RoutineStrings.wakeShort().str())
         EditDialog(
-            "Add a wake phrase", "", "Phrase", "1 to 4 words: letters, spaces and apostrophes, up to 24 characters. “Stop” is reserved.",
+            stringResource(R.string.voice_add_phrase), "", stringResource(R.string.voice_phrase), stringResource(R.string.voice_phrase_rules),
             validate = { if (it.isBlank()) null else problem(it) },
-            confirm = "Add",
-            hint = { if (it.isNotBlank() && WakePhrases.singleWord(it)) WakePhrases.SHORT_WARNING + " It starts at Low." else null },
+            confirm = stringResource(R.string.voice_add),
+            hint = { if (it.isNotBlank() && WakePhrases.singleWord(it)) startsLow else null },
             canSave = { it.isNotBlank() && speller != null },
             maxLength = 40,
             onDismiss = { adding = false },
@@ -228,18 +248,20 @@ fun WakePhrasesScreen(s: RobotSettings, update: (RobotSettings) -> Unit, a: AppA
 }
 
 /** The Wake word page's footer: what wake words do, and what each sensitivity means. */
-private fun wakeFooter(): String =
-    "Say any of these to open Robot. Each runs on the phone: the microphone stays on while Robot listens, and nothing is " +
-        "recorded or saved. A longer phrase wakes Robot by accident less often. Only while charging saves battery.\n\n" +
-        WakeSensitivity.entries.joinToString("\n") { v ->
-            val p = KwsThresholds.wake(v)
-            "${v.title}: ${v.detail}. (Threshold ${p.threshold}, boost ${p.boost}.)"
-        } +
-        "\n\nTry a new phrase in Test wake words, from across the room too, before you rely on it."
+@Composable
+private fun wakeFooter(): String {
+    val res = LocalContext.current.resources
+    val langs = LocalLangs.current
+    val levels = WakeSensitivity.entries.joinToString("\n") { v ->
+        val p = KwsThresholds.wake(v)
+        res.getString(R.string.voice_wake_footer_level, v.titleText.render(langs), v.detailText.render(langs), p.threshold.toString(), p.boost.toString())
+    }
+    return listOf(stringResource(R.string.voice_wake_footer), levels, stringResource(R.string.voice_wake_footer_try)).joinToString("\n\n")
+}
 
 /** One phrase: its sensitivity as radio rows (a pick saves and closes), what to know about it, and Remove. */
 @Composable
-private fun PhraseDialog(p: WakePhrase, speller: KwsSpeller?, insideWarning: String?, insideNote: String?, onDismiss: () -> Unit,
+private fun PhraseDialog(p: WakePhrase, speller: KwsSpeller?, insideWarning: Phrase?, insideNote: Phrase?, onDismiss: () -> Unit,
     onPick: (WakeSensitivity) -> Unit, onRemove: () -> Unit) {
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     AlertDialog(
@@ -247,7 +269,7 @@ private fun PhraseDialog(p: WakePhrase, speller: KwsSpeller?, insideWarning: Str
         title = { Text("“${p.text}”") },
         text = {
             Column(Modifier.selectableGroup().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Sensitivity", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
+                Text(stringResource(R.string.voice_sensitivity), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.semantics { heading() })
                 for (v in WakeSensitivity.entries) {
                     val sel = v == p.sensitivity
@@ -259,22 +281,22 @@ private fun PhraseDialog(p: WakePhrase, speller: KwsSpeller?, insideWarning: Str
                         RadioButton(selected = sel, onClick = null)
                         Spacer(Modifier.width(16.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(v.title, style = MaterialTheme.typography.bodyLarge)
-                            Text(v.detail, style = MaterialTheme.typography.bodyMedium, color = muted)
+                            Text(v.titleText.str(), style = MaterialTheme.typography.bodyLarge)
+                            Text(v.detailText.str(), style = MaterialTheme.typography.bodyMedium, color = muted)
                         }
                     }
                 }
-                if (p.words == 1) Text(WakePhrases.SHORT_WARNING, style = MaterialTheme.typography.bodyMedium, color = muted)
-                insideWarning?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error) }
-                insideNote?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = muted) }
+                if (p.words == 1) Text(RoutineStrings.wakeShort().str(), style = MaterialTheme.typography.bodyMedium, color = muted)
+                insideWarning?.let { Text(it.str(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error) }
+                insideNote?.let { Text(it.str(), style = MaterialTheme.typography.bodyMedium, color = muted) }
                 (speller?.spell(p.text) as? KwsSpeller.Result.Refused)?.let {
-                    Text("${it.why} Robot doesn't listen for this one.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+                    Text(stringResource(R.string.voice_not_listened, it.text.str()), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
                 }
-                Text("No. ${p.id} in the voice log", style = MaterialTheme.typography.bodySmall, color = muted)
+                Text(stringResource(R.string.voice_phrase_number, p.id), style = MaterialTheme.typography.bodySmall, color = muted)
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-        dismissButton = { TextButton(onClick = onRemove) { Text("Remove") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.voice_cancel)) } },
+        dismissButton = { TextButton(onClick = onRemove) { Text(stringResource(R.string.voice_remove)) } },
     )
 }
 
@@ -282,7 +304,7 @@ private fun PhraseDialog(p: WakePhrase, speller: KwsSpeller?, insideWarning: Str
 @Composable
 fun InterruptPreference(value: InterruptSensitivity, enabled: Boolean = true, onChange: (InterruptSensitivity) -> Unit) {
     PreferenceBlock {
-        Text("Interrupt sensitivity", style = prefTitleStyle(),
+        Text(stringResource(R.string.voice_interrupt), style = prefTitleStyle(),
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.38f), modifier = Modifier.clearAndSetSemantics {})
         InterruptSlider(value, enabled, onChange)
     }
@@ -299,45 +321,49 @@ fun BargeTestScreen(s: RobotSettings, snap: Snapshot, a: AppActions, snackbar: S
     val model = s.voiceChoice.bundle
     val missing = model != null && snap.voice.firstOrNull { it.bundle == model }?.let { it.status != ModelStatus.VERIFIED } == true
     val modelName = when (model) {
-        VoiceBundle.KOKORO -> "Kokoro"
-        VoiceBundle.KITTEN -> "Kitten"
+        VoiceBundle.KOKORO -> "Kokoro" // l10n: not text (a voice's name)
+        VoiceBundle.KITTEN -> "Kitten" // l10n: not text (a voice's name)
         else -> null
     }
     val r = snap.bargeTest
+    val langs = LocalLangs.current
     val running = r?.state == BenchState.RUNNING && System.currentTimeMillis() - r.started < BargeTestLogic.TIMEOUT_MS + 10_000
     val names = s.wakePhrases.associate { it.id to it.text }
-    PreferenceScreen("Barge-in test", onBack, snackbar = snackbar) {
-        item(key = "setup") {
-            // Core's line speaks as you ("Hear me …", shared with other branches): the page says it as the Voice page does.
-            IntroPreference(BargeTestLogic.setup(s.bargeIn, s.playback, s.voiceChoice == VoiceChoice.SYSTEM || missing, if (missing) modelName else null, s.interrupt)
-                .replaceFirst("Hear me while Robot talks", "Hear you while Robot talks"))
-        }
-        preferenceGroup("Run", "runs") {
-            PreferenceItem("Run the test", if (running) "Testing…" else "Say “stop” or one wake phrase, once", enabled = !running,
-                onClick = { a.bargeTest(BargeRun.FIRST) })
-            PreferenceItem("Count run", "Say them as often as you like", enabled = !running, onClick = { a.bargeTest(BargeRun.COUNT) })
-            PreferenceItem("Silent run", "Stay quiet", enabled = !running, onClick = { a.bargeTest(BargeRun.SILENT) })
-            PreferenceItem("Tricky words", "Stay quiet while Robot reads words like “stop”", enabled = !running, onClick = { a.bargeTest(BargeRun.TRICKY) })
+    // The settings it runs with, as the Voice page says them (core BargeTestLogic.setup's, which speaks as you: "Hear me …").
+    val phoneVoice = s.voiceChoice == VoiceChoice.SYSTEM || missing
+    val setup = listOfNotNull(stringResource(R.string.voice_barge_setup, s.bargeIn.titleText.str(), s.interrupt.titleText.str(), s.playback.titleText.str()),
+        if (!phoneVoice) null else if (missing && modelName != null) stringResource(R.string.voice_barge_phone_voice_missing, modelName)
+        else stringResource(R.string.voice_barge_phone_voice)).joinToString(" · ")
+    val groupRuns = stringResource(R.string.voice_barge_runs)
+    val groupLast = stringResource(R.string.voice_barge_last)
+    val footer = stringResource(R.string.voice_barge_footer)
+    PreferenceScreen(stringResource(R.string.voice_barge_test), onBack, snackbar = snackbar) {
+        item(key = "setup") { IntroPreference(setup) }
+        preferenceGroup(groupRuns, "runs") {
+            PreferenceItem(stringResource(R.string.voice_barge_run), stringResource(if (running) R.string.voice_testing else R.string.voice_barge_run_summary),
+                enabled = !running, onClick = { a.bargeTest(BargeRun.FIRST) })
+            PreferenceItem(stringResource(R.string.voice_barge_count), stringResource(R.string.voice_barge_count_summary), enabled = !running,
+                onClick = { a.bargeTest(BargeRun.COUNT) })
+            PreferenceItem(stringResource(R.string.voice_barge_silent), stringResource(R.string.voice_barge_silent_summary), enabled = !running,
+                onClick = { a.bargeTest(BargeRun.SILENT) })
+            PreferenceItem(stringResource(R.string.voice_barge_tricky), stringResource(R.string.voice_barge_tricky_summary), enabled = !running,
+                onClick = { a.bargeTest(BargeRun.TRICKY) })
         }
         if (r != null) {
-            preferenceGroup("Last result", "result") {
+            preferenceGroup(groupLast, "result") {
                 PreferenceBlock(Modifier.semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite }) {
                     if (running) LinearProgressIndicator(Modifier.fillMaxWidth())
-                    for (line in BargeTestLogic.lines(r) { names[it] }) {
+                    // Its results are diagnostics (English, as the voice log); why it failed is in the menus' language (1.1).
+                    val lines = BargeTestLogic.lines(r) { names[it] }.toMutableList()
+                    if (r.state == BenchState.FAILED && lines.isNotEmpty()) r.noteText?.let { lines[0] = it.render(langs) }
+                    for (line in lines) {
                         Text(line, style = MaterialTheme.typography.bodyMedium,
                             color = if (r.state == BenchState.FAILED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
                     }
                 }
             }
         }
-        preferenceFooter(
-            "Robot reads a paragraph of about 20 seconds. Run the test: say “stop” or one wake phrase, once; Robot stops when it hears " +
-                "it, and the result says what it heard and how fast it went quiet. Count run: Robot reads to the end while you say " +
-                "“stop” and your wake phrases as often as you like, a few seconds apart; the result lists each one it heard. Silent " +
-                "run: stay quiet; it counts anything Robot hears anyway. Tricky words: stay quiet while Robot reads words like “stop” " +
-                "(step, steep, stamp, bus stop); it shows how often its own words fire, and how many of those are set aside. Try " +
-                "each mode and each interrupt sensitivity in Settings › Voice: the result says which it ran with.",
-        )
+        preferenceFooter(footer)
     }
 }
 
@@ -350,6 +376,7 @@ private fun readLog(ctx: Context): List<VoiceLogEntry> =
 @Composable
 fun WakeTestScreen(s: RobotSettings, snap: Snapshot, onBack: () -> Unit) {
     val ctx = LocalContext.current
+    val langs = LocalLangs.current
     val opened = remember { System.currentTimeMillis() }
     var hits by remember { mutableStateOf<List<VoiceLogEntry>>(emptyList()) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -374,20 +401,21 @@ fun WakeTestScreen(s: RobotSettings, snap: Snapshot, onBack: () -> Unit) {
     }
     DisposableEffect(Unit) { onDispose { Cmd.send(ctx, Cmd.WAKE_TEST, android.os.Bundle().apply { putBoolean(Cmd.EXTRA_ON, false) }) } }
     val names = s.wakePhrases.associate { it.id to it.text }
-    Scaffold(topBar = { BackBar("Test wake words", onBack) }) { pad ->
+    Scaffold(topBar = { BackBar(stringResource(R.string.voice_test_wake), onBack) }) { pad ->
         Column(Modifier.fillMaxSize().padding(pad).padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             val listening = snap.facts?.listening
-            StatusRow(if (listening == true) Mark.OK else Mark.WARN, if (listening == true) "Listening" else "Not listening",
-                if (listening == true) "Say a wake phrase. Robot won't open while this screen shows."
-                else snap.facts?.listeningNote ?: "Robot must be the running assistant with the wake word on.")
-            Text("On: " + s.wakePhrases.filter { it.enabled }.joinToString(" · ") { "“${it.text}” (${it.sensitivity.title})" }.ifEmpty { "none" },
+            StatusRow(if (listening == true) Mark.OK else Mark.WARN, stringResource(if (listening == true) R.string.voice_listening else R.string.voice_not_listening),
+                if (listening == true) stringResource(R.string.voice_listening_detail)
+                else snap.facts?.listeningNote ?: stringResource(R.string.voice_not_listening_detail))
+            val on = s.wakePhrases.filter { it.enabled }.joinToString(" · ") { "“${it.text}” (${it.sensitivity.titleText.render(langs)})" }
+            Text(stringResource(R.string.voice_wake_on, on.ifEmpty { stringResource(R.string.voice_wake_on_none) }),
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             HorizontalDivider()
-            if (hits.isEmpty()) Text("Nothing heard yet.", style = MaterialTheme.typography.bodyLarge)
+            if (hits.isEmpty()) Text(stringResource(R.string.voice_nothing_heard), style = MaterialTheme.typography.bodyLarge)
             LazyColumn {
                 items(hits) { e ->
                     ListItem(
-                        headlineContent = { Text(names[e.a]?.let { "“$it”" } ?: "Phrase no. ${e.a} (removed)") },
+                        headlineContent = { Text(names[e.a]?.let { "“$it”" } ?: stringResource(R.string.voice_phrase_removed, e.a)) },
                         trailingContent = { Text(VoiceLogText.ago(now - e.time), style = MaterialTheme.typography.labelSmall) },
                     )
                 }
@@ -413,34 +441,34 @@ fun VoiceLogScreen(s: RobotSettings, snackbar: SnackbarHostState, onBack: () -> 
             delay(1_000)
         }
     }
+    val copiedText = stringResource(R.string.voice_log_copied)
     LaunchedEffect(copied) {
         if (copied) {
-            snackbar.showSnackbar("Copied. Paste it in a message, or take a screenshot.")
+            snackbar.showSnackbar(copiedText)
             copied = false
         }
     }
     val names = s.wakePhrases.associate { it.id to it.text }
     Scaffold(
         topBar = {
-            BackBar("Voice log", onBack) {
+            BackBar(UiStrings.voiceLog().str(), onBack) {
                 IconButton(onClick = {
                     // Wake phrases by number only: what leaves the screen never holds a phrase's words (0.7).
-                    val text = VoiceLogText.plain(entries, System.currentTimeMillis(), "Robot ${BuildConfig.VERSION_NAME} voice log")
-                    ctx.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Robot voice log", text))
+                    val text = VoiceLogText.plain(entries, System.currentTimeMillis(), "Robot ${BuildConfig.VERSION_NAME} voice log") // l10n: not text (the copied log, a diagnostic: English)
+                    ctx.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Robot voice log", text)) // l10n: not text (a clip label)
                     copied = true
-                }, enabled = entries.isNotEmpty()) { Icon(RIcons.Copy, "Copy log") }
+                }, enabled = entries.isNotEmpty()) { Icon(RIcons.Copy, stringResource(R.string.voice_log_copy)) }
             }
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { pad ->
         LazyColumn(Modifier.fillMaxSize().padding(pad).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             item {
-                Text("The last ${entries.size} things the voice side did, newest first: no words, no audio, only what happened and how long it took. " +
-                    "When Robot didn't respond, take a screenshot or tap Copy log right away.",
+                Text(stringResource(R.string.voice_log_intro, entries.size),
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 8.dp))
-                OutlinedButton(onClick = onReport, modifier = Modifier.heightIn(min = 48.dp)) { Text("Send as bug report") }
+                OutlinedButton(onClick = onReport, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.voice_log_send)) }
             }
-            if (entries.isEmpty()) item { Text("Nothing yet. Robot's voice side writes here once it runs as the assistant.") }
+            if (entries.isEmpty()) item { Text(stringResource(R.string.voice_log_empty)) }
             items(entries) { e ->
                 Row {
                     Text(VoiceLogText.ago(now - e.time), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,

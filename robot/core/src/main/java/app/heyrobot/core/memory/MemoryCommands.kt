@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.memory
 
+import app.heyrobot.core.i18n.Lang
+import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.i18n.MemoryStrings
+import app.heyrobot.core.i18n.Phrase
 import java.text.Normalizer
 import java.time.DayOfWeek
 import java.time.Instant
@@ -9,8 +13,7 @@ import java.time.ZoneId
 import java.time.temporal.TemporalAdjusters
 import java.util.Locale
 
-// Pure. What your words mean for memory, decided by code before anything reaches the model (design §A3.1, the router
-// part of "MemoryRouter"). Anchored at the start of what you said, with only filler in front ("hey robot", "please",
+// Pure. What your words mean for memory, decided by code before anything reaches the model. Anchored at the start of what you said, with only filler in front ("hey robot", "please",
 // "okay", "can you", "s'il te plaît", "peux-tu"), so "my sister said remember that…" or a sentence about forgetting is
 // never a command. Only an explicit form saves: English and Québec French "remember that …", "remember: …", "remember
 // my …", "keep in mind that …", "don't forget that …", "souviens-toi que …", "retiens que …", "n'oublie pas que …" and
@@ -70,7 +73,7 @@ sealed class MemoryCommand {
      * [until]: it ends then. Robot answers "Got it: …" with Undo; from content (a message, the screen) it is a card.
      */
     data class Remember(val text: String, val kind: MemoryKind, val secret: Boolean, val until: Until?, override val language: String) : MemoryCommand() {
-        override fun toString(): String = "Remember(kind=$kind, secret=$secret, until=$until, language=$language, chars=${text.length})"
+        override fun toString(): String = "Remember(kind=$kind, secret=$secret, until=$until, language=$language, chars=${text.length})" // l10n: not text (toString for logs and tests)
     }
 
     /** "Forget that": the item saved or used last in this conversation, with Undo (nothing then: ordinary talk). */
@@ -78,7 +81,7 @@ sealed class MemoryCommand {
 
     /** "Forget my sister's birthday": search; one clear match is deleted with Undo, several make a pick card. */
     data class Forget(val query: String, override val language: String) : MemoryCommand() {
-        override fun toString(): String = "Forget(language=$language, chars=${query.length})"
+        override fun toString(): String = "Forget(language=$language, chars=${query.length})" // l10n: not text (toString for logs and tests)
     }
 
     /** "Forget everything": never by voice. Robot says to open Settings › Memory. */
@@ -86,7 +89,7 @@ sealed class MemoryCommand {
 
     /** "What do you remember about Julie?": the items about [about] (up to 10), read aloud. */
     data class Recall(val about: String, override val language: String) : MemoryCommand() {
-        override fun toString(): String = "Recall(language=$language, chars=${about.length})"
+        override fun toString(): String = "Recall(language=$language, chars=${about.length})" // l10n: not text (toString for logs and tests)
     }
 
     /** "What do you know about me?": a count, the most used read aloud, and an Open Memory button. */
@@ -271,20 +274,19 @@ object MemoryCommands {
      * What Robot says after saving: "Got it: your sister's birthday is May 3." (your words turned to "you"), or in French
      * "C'est noté : « … »." A secret is never read back: "Got it: a code, kept in Memory."
      */
-    fun saidBack(c: MemoryCommand.Remember): String {
-        if (c.secret) {
-            val k = SecretDetector.placeholder(SecretDetector.find(c.text), c.language == "fr").trim('[', ']')
-            return if (c.language == "fr") "C'est noté : $k." else "Got it: $k."
+    fun saidBack(c: MemoryCommand.Remember): String = saidBackText(c).render(if (c.language == "fr") Langs.of(Lang.FR) else Langs.EN)
+
+    /** [saidBack] in words without a language yet (made for the command's language: English turns your words to "you"). */
+    fun saidBackText(c: MemoryCommand.Remember): Phrase {
+        if (c.secret) return MemoryStrings.gotItSecret("kind" to SecretDetector.kindOf(SecretDetector.find(c.text)).text)
+        if (c.language == "fr") return MemoryStrings.gotItQuoted("text" to c.text)
+        val you = "you" to toYou(c.text)
+        return when (c.until) {
+            Until.TONIGHT -> MemoryStrings.gotItTonight(you)
+            Until.TOMORROW -> MemoryStrings.gotItTomorrow(you)
+            Until.END_OF_WEEK -> MemoryStrings.gotItWeek(you)
+            null -> MemoryStrings.gotIt(you)
         }
-        if (c.language == "fr") return "C'est noté : « ${c.text} »."
-        val body = toYou(c.text)
-        val end = when (c.until) {
-            Until.TONIGHT -> " until tonight"
-            Until.TOMORROW -> " until tomorrow"
-            Until.END_OF_WEEK -> " until the end of the week"
-            null -> ""
-        }
-        return "Got it: $body$end."
     }
 
     /**

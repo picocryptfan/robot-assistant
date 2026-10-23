@@ -308,22 +308,51 @@ class EscalationTest {
         assertTrue(Prompt.system(now, locked = false, askHelper = askHelper).contains("call ask_claude instead of guessing"))
     }
 
-    /** Gemma handed over without a word: unless Claude answers right away, Robot's own answer comes first. */
+    /**
+     * Gemma handed over without a word: Robot's own answer comes first, whatever the decision. 1.1 (the user, 19 Oct: "own
+     * notes first then helper"): with Automatic too, where before the helper was asked straight away.
+     */
     @Test fun ownAnswerBeforeAnyOffer() {
-        for (decision in EscalationDecision.entries) for (handedOver in listOf(false, true)) for (said in listOf(false, true)) {
-            val expected = handedOver && !said && decision != EscalationDecision.AUTO
-            assertEquals("$decision $handedOver $said", expected, EscalationPolicy.ownAnswerFirst(decision, handedOver, said))
+        for (handedOver in listOf(false, true)) for (said in listOf(false, true)) {
+            assertEquals("$handedOver $said", handedOver && !said, EscalationPolicy.ownAnswerFirst(handedOver, said))
         }
         // The phone test: a screen question (personal), so an offer; Gemma called ask_claude with nothing written.
-        assertTrue(EscalationPolicy.ownAnswerFirst(d(personal = true), handedOver = true, said = false))
-        // "Not Claude": no offer at all, but still an answer.
-        assertTrue(EscalationPolicy.ownAnswerFirst(d(declined = true), handedOver = true, said = false))
-        // Automatic: Claude answers, nothing to add first.
-        assertFalse(EscalationPolicy.ownAnswerFirst(d(), handedOver = true, said = false))
+        assertEquals(EscalationDecision.OFFER, d(personal = true))
+        assertTrue(EscalationPolicy.ownAnswerFirst(handedOver = true, said = false))
+        // Gemma wrote something before handing over, or a hedge (not a hand-over): as before, no second run.
+        assertFalse(EscalationPolicy.ownAnswerFirst(handedOver = true, said = true))
+        assertFalse(EscalationPolicy.ownAnswerFirst(handedOver = false, said = false))
         // The words around it.
         assertEquals("Want me to check with Claude?", ClaudeWords.OFFER)
         assertEquals("Want Claude's take as well?", ClaudeWords.OFFER_AS_WELL)
         assertEquals("I'd rather check that with Claude.", ClaudeWords.RATHER)
+    }
+
+    /**
+     * 1.1, Automatic: Robot's own answer stands and the helper isn't asked; only a missing answer, a refusal or a "not
+     * sure" (Hedge) goes to it. Ask me first, the lock screen and Off (or "not Claude") are as before: the own answer
+     * changes nothing about them.
+     */
+    @Test fun automaticAsksTheHelperOnlyWhenTheOwnAnswerIsMissingOrUnsure() {
+        val auto = d()
+        assertEquals(EscalationDecision.AUTO, auto)
+        fun after(decision: EscalationDecision, text: String?, acted: Boolean = false) = EscalationPolicy.afterOwnAnswer(decision,
+            answered = text != null || acted, hedged = EscalationPolicy.ownAnswerHedged(text.orEmpty(), acted))
+        // An answer from Memory's notes: the turn ends there.
+        assertEquals(EscalationDecision.NONE, after(auto, "Your test word is banana."))
+        assertEquals(EscalationDecision.NONE, after(auto, "Ton mot test, c'est banane."))
+        // Something done (a card) is an answer too.
+        assertEquals(EscalationDecision.NONE, after(auto, null, acted = true))
+        // Nothing at all (no words, or the run failed), a "not sure", a refusal, no current information: the helper is asked.
+        for (t in listOf(null, "", "I'm not sure.", "I don't know your test word.", "I can't help with that.", "Je ne sais pas.",
+            "I don't have access to real-time information.")) assertEquals("$t", EscalationDecision.AUTO, after(auto, t))
+        // Every other decision is unchanged, whatever the own answer said.
+        val ask = d(claudeSettings(claudeEnabled = true, claudeHelp = Escalation.ASK))
+        assertEquals(EscalationDecision.OFFER, ask)
+        val off = d(claudeSettings(claudeEnabled = true, claudeHelp = Escalation.OFF))
+        assertEquals(EscalationDecision.NONE, off)
+        for (decision in listOf(ask, off, d(locked = true), d(declined = true), d(personal = true), d(budget = true)))
+            for (t in listOf(null, "Your test word is banana.", "I'm not sure.")) assertEquals("$decision $t", decision, after(decision, t))
     }
 
     @Test fun defaultRouteFollowsTheKey() {

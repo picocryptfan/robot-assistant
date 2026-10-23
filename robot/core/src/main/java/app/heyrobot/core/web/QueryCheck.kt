@@ -2,7 +2,9 @@
 package app.heyrobot.core.web
 
 import app.heyrobot.core.HelperContext
-
+import app.heyrobot.core.i18n.Msg
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.WebStrings
 // Pure. The check every query passes before it may leave the phone (design A10.3, "Queries as an exfiltration
 // channel"): an injected page, screen text or another AI's answer could make the model search for your address or a
 // number from your calendar, so the query carries only what the person could have meant to send.
@@ -54,7 +56,7 @@ data class QueryContext(
     val blindContent: Boolean = content && untrusted.isEmpty(),
 ) {
     override fun toString(): String =
-        "QueryContext(said=${said.size}, untrusted=${untrusted.size}, personal=${personal.size}, content=$content, isPersonal=$isPersonal, memory=${memory.size}, " +
+        "QueryContext(said=${said.size}, untrusted=${untrusted.size}, personal=${personal.size}, content=$content, isPersonal=$isPersonal, memory=${memory.size}, " + // l10n: not text (a debug form)
             "blind=$blindPersonal/$blindContent)"
 }
 
@@ -70,11 +72,15 @@ sealed class QueryVerdict {
     data class Refuse(val why: QueryRefusal) : QueryVerdict()
 }
 
-/** Why a query shows its card. [tapOnly]: a spoken yes can't send it. */
-enum class QueryCard(val note: String, val tapOnly: Boolean) {
-    PERSONAL("This search uses words from something Robot read on your phone, not from what you said.", true),
-    CONTENT("This search uses words from a web page, your screen or another AI's answer, not from what you said.", false),
-    UNKNOWN("This search uses words you didn't say, in a conversation with content Robot didn't write.", false),
+/** Why a query shows its card ([noteText]; [note] its English). [tapOnly]: a spoken yes can't send it. */
+enum class QueryCard(val noteMsg: Msg, val tapOnly: Boolean) {
+    PERSONAL(WebStrings.queryPersonal, true),
+    CONTENT(WebStrings.queryContent, false),
+    UNKNOWN(WebStrings.queryUnknown, false),
+    ;
+
+    val noteText: Phrase get() = noteMsg()
+    val note: String get() = noteText.en()
 }
 
 /** Why a query never goes; [code] for the log. */
@@ -84,12 +90,15 @@ enum class QueryRefusal(val code: Int) {
     MEMORY(10);
 
     /** What Robot says. */
-    val text: String get() = when (this) {
-        EMPTY -> "There was nothing to search for."
-        TOO_LONG, TOO_MANY_WORDS -> "That search was too long to send."
-        MEMORY -> "That search used something Robot remembers about you, and what Robot remembers never goes to a search service, so Robot didn't send it."
-        else -> WebFail.QUERY_REFUSED.text(null)
+    val textPhrase: Phrase get() = when (this) {
+        EMPTY -> WebStrings.queryEmpty()
+        TOO_LONG, TOO_MANY_WORDS -> WebStrings.queryTooLong()
+        MEMORY -> WebStrings.queryMemory()
+        else -> WebFail.QUERY_REFUSED.textPhrase(null)
     }
+
+    /** [textPhrase] in English (the card and the model read the same words until the turn's cards take phrases). */
+    val text: String get() = textPhrase.en()
 }
 
 object QueryCheck {
@@ -99,8 +108,10 @@ object QueryCheck {
     const val MAX_DIGITS = 6
 
     private val SPACE = Regex("\\s+")
+    // Every brace and bracket escaped: Android's regex engine (ICU) refuses a bare "}", and this object's first use would
+    // throw (1.1's web search, ExceptionInInitializerError). RegexPortabilityTest checks every regex Robot builds at start.
     private val EMAIL_WORDS = Regex(
-        "\\b[\\p{L}\\p{N}._%+-]+\\s*(?:\\(at\\)|\\[at]|\\{at}|\\s(?:at|arobase|chez)\\s)\\s*[\\p{L}\\p{N}-]+\\s*(?:\\(dot\\)|\\[dot]|\\{dot}|\\s(?:dot|point)\\s|\\.)\\s*" +
+        "\\b[\\p{L}\\p{N}._%+-]+\\s*(?:\\(at\\)|\\[at\\]|\\{at\\}|\\s(?:at|arobase|chez)\\s)\\s*[\\p{L}\\p{N}-]+\\s*(?:\\(dot\\)|\\[dot\\]|\\{dot\\}|\\s(?:dot|point)\\s|\\.)\\s*" +
             "(?:com|org|net|ca|fr|io|me|info|edu|gov|uk|de|be|ch|qc|eu|co|us|app|dev)\\b",
     )
     private val LINK_DATA = Regex("(?:[\\p{L}\\p{N}-]+\\.)+[a-z]{2,}(?::\\d+)?/\\S*[?=&#]|[\\p{L}_][\\p{L}\\p{N}_]*=\\S")

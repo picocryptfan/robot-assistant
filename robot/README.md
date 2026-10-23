@@ -40,6 +40,214 @@ The design documents linked under `docs/` in this file (and `docs/plans/`) are p
 
 Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `THIRD_PARTY.md`.
 
+## What's new in 1.1
+
+Robot 1.1.0 is everything built since 1.0.1, in one release, from `release/1.1`: Robot Files, the groundwork for other
+Android phones (planned as 1.2), Québec French, the fixes made on `release/1.0` after 1.0.1 (never released on their
+own), a few new settings, three more features (Phone lock, Back up and restore, Skills) and the web search fix. Settings
+stay at schema 13: each new feature keeps its own file in `files/robot/`. This list says what changed; the feature
+sections below have the details and the phone checks. Skills that connect to other services, shared lists and Robot to
+Robot are being built on their own branches and are not in 1.1.
+
+- **Robot Files** ([Robot Files (1.1)](#robot-files-11)). A private filing cabinet: the Files tab replaces the Model tab
+  (the model's page is Settings › Model, at the top of Settings), a second launcher icon, Robot Files, opens it, and Robot
+  Files is a share target. Files come in from the share sheet, a camera scan, "file this" in the panel, or Save to Robot
+  Files on a transcript; Robot reads them on the phone (`:files`, an isolated process, decodes; Robot's model reads
+  pictures) and files them in drawers, asks in Inbox when it isn't sure, and learns filing rules into Memory. Each file is
+  sealed with its own key under `robot_files_v1`, a Keystore key that needs the phone unlocked. By voice: find, ask
+  about one file, spending, bills due, returns, warranties, expiry, subscriptions; a tax pack and an expense report
+  export to a folder you pick, not encrypted. Settings › Files holds the levels and switches, and travel mode.
+- **Travel mode** (Settings › Files). The drawers you choose are out of sight everywhere (Files, the panel, `find_files`
+  and `read_file`, History, Home's Continue, Memory's rules and Export, the brief, notices, backups) until you confirm on
+  Android's own screen with the PIN, pattern or password only (`BiometricPrompt` with `DEVICE_CREDENTIAL` alone, hence
+  the new `USE_BIOMETRIC` permission). A privacy screen, not encryption.
+- **Files in backups.** A `FILES` category, last in the list and on by default, with a Videos row: each file's plain
+  bytes inside the backup's encryption, the catalogue, and Settings › Files. A restore seals every file again under the
+  new phone's key. Someone else's files go to Inbox without tags, people or reminders, and their backup can't turn Robot
+  Files, reading text in images or the brief's Files lines back on. Travel mode on: backups and restores leave Files out,
+  and History too while it holds answers from your files.
+- **Other Android phones** ([Other Android phones (1.1)](#other-android-phones-11)). Chip names and Android's raw chip
+  fields, a GPU self-test once per OS build before the first question, a shorter prompt on a slow CPU, a warning before
+  setup ends on a slow or small phone, speeds measured on the phone, and the stock Android and One UI fixes that need no
+  phone. Nothing of it has run on a phone that isn't a Pixel.
+- **Web search on phones.** `QueryCheck`'s e-mail pattern had a bare `}` that the JVM takes and Android's ICU regex
+  engine refuses, so the object's first use threw `ExceptionInInitializerError` on the phone: Robot's web search failed
+  every time in 1.0.x, and so did a browser search with words Robot's model wrote (your own words skip the check). The
+  braces are escaped; `RegexPortabilityTest` scans every static regex in Robot's classes (about 420) for the differences ICU is known to refuse (a
+  second one, in `FileReading`'s one-line fence, was found on the phone before 1.1.0 and added);
+  RLog names a failure's causes by class (`cause1=`, `cause2=`), never their messages. What a search sends is unchanged.
+
+- **Québec French** ([French and languages (1.1, WP0)](#french-and-languages-11-wp0)). Settings › Language sets the menus
+  (the phone's language, or English, or French) and, separately, the language Robot answers in (the language you speak, the same as the menus, English or Français). Screens, cards, the
+  setup guide, notifications and what Robot says are in Québec French, written with « tu ». Robot still only works in
+  English and Québec French. When Robot answers in names a language, the model is told it too (see
+  [Settings › Language](#settings--language)); its answers can still drift, and a web answer is in English or French, picked from the question's words, whatever the setting.
+- **The fixes made on `release/1.0` after 1.0.1**, never released on their own (`docs/release-notes-1.0.2.md`):
+  - Robot never claims an action that didn't happen. When you cancel a card, or no contact matched, it writes the reply
+    from what really happened and removes any sentence that says otherwise.
+  - The weather for a named place works when you add a day ("the weather in Paris tomorrow"); an email's subject had the
+    same flaw.
+  - An email to someone who isn't in your contacts is not reported as drafted, and a placeholder like "[Recipient Name]"
+    is never taken for a contact. Robot asks who it's for.
+  - Memories you pinned, and ones saved from Robot's own remember card, count as personal for helpers, as PRIVACY.md says:
+    a question Robot sends by itself carries no memory unless you trust that helper.
+  - In landscape the panel's text field stays above the keyboard, and the status line and title are not cut off at the
+    largest text size.
+  - A key Robot won't send over plain http says so on the helper's page, in the connection test and in the voice log.
+  - Settings › Memory shows what you add or forget from the panel while it's open.
+  - Your own GGUF model: after a message is refused for holding one of the model's control texts, the conversation goes
+    on without that part. A conversation reopened from History refuses once more before it recovers.
+- **Wait before answering** (Settings › Voice). How long Robot waits after you stop talking before it takes your question
+  as finished: Short (0.6 s of silence), Normal (1 s, the default), Long (1.6 s) or Very long (2.5 s). It replaces the
+  fixed 0.5 s. Hold the mic button and Robot keeps listening until you let go, whatever the pause. The headset's and
+  car mode's follow-up window waits for a question that is under way.
+- **Reminders on a date.** Ask Robot to remind you on a date and it adds it to your calendar with an alert. It no
+  longer sets an alarm you didn't give a time for, and for a timer, an alarm, an event or a note its
+  reply is the card's own words, so it can't promise a day or time the card doesn't show. "Remind me to call the
+  bank on the twentieth of November", "remind me tomorrow at 8 to bring the passport" or « rappelle-moi d'appeler le
+  dentiste le vingt novembre » is recognised before the model (after brief reminders, which stay as they were) and shows
+  add_event's card. That card always asks first, whatever Settings › Actions says for new events, and names the calendar
+  set in Settings › People, notes and calendar › Calendar for new events (on Automatic, the primary one). With no time
+  said, it's an all-day event with an alert at 9:00 that day; with a time, the event at that time with an alert then.
+  Robot writes the alert into the calendar itself, because the calendar app's own default alert doesn't apply to an
+  event another app adds. With no calendar Robot may write to, your calendar app's editor opens instead, and the card
+  says to add the alert there. An alarm (set_alarm) now runs only for a clock time in your own words this turn: with
+  none, Robot asks "What time should the alarm ring?"; with a time the call doesn't match, the model is told; and when
+  your words name a day the alarm wouldn't ring on ("on the 20th", "next Friday", "tomorrow at 7" said at 6 a.m.),
+  Robot offers the calendar reminder on its card instead, since Android's alarms have no date. After a timer, an alarm,
+  an event or a note that was done, Robot's reply is its own line from the card ("Alarm set for 18:00."), with no
+  follow-up from the model; after any other action, a sentence about it that names a day, a time or a length its card
+  doesn't show is removed and Robot's line follows. Dates as people say them now read in both languages: "the
+  twentieth of November", "November twentieth", "the 21st", « le vingtième novembre ». [To check on a phone: the Test
+  Bench's dated-reminders test.]
+- **Automatic update checks run.** Android 14 and later refuse a job with a network constraint from an app without
+  `ACCESS_NETWORK_STATE`, and 1.0.x didn't declare it, so `UpdateJobs` never scheduled the daily check (4801), the Wi-Fi
+  download (4802) or Termux's weekly check (4803): `JobScheduler` threw `SecurityException` and Robot only logged it,
+  while the switches showed On. Check now always worked. 1.1 declares the permission; `ProcessIsolationTest` pins it to
+  every job with a network constraint and `verify_apk.sh` expects it. A 1.0.x phone never hears about 1.1 by itself:
+  Settings › About › Updates › Check now. [To check on a phone: `adb shell dumpsys jobscheduler` lists 4801, and 4803
+  once Termux is set up.]
+- **Found on the phone before release.** "Remind me", "remind me about it" or « rappelle-moi ça » with nothing else, as
+  a new conversation's first words, is `RoutineCommand.RemindWhat`: Robot asks "What should I remind you about, and
+  when?" instead of the model saving a note. "Cancel my 6:30 alarm", "stop the timer", « annule ma minuterie » is
+  `CantCancel`, answered by code in both languages: Android lets an app set alarms and timers, never cancel them, so
+  Robot says it can't and offers the clock app on a card only a tap opens (locked, the line alone); it matches only when
+  the alarm or timer comes right after the verb, so "delete my alarm routine" stays a routine's. « Ajoute un film ce
+  soir de 22 h à 1 h » set a one-minute timer: French parts of the day, noon, midnight and « 22 h » now describe the
+  calendar's tools, and a timer or alarm your words didn't name shows its card when they ask for an event or name a
+  time range (`AlarmWords.event`). Esc on a hardware keyboard is Back on the panel (`PanelEscape`): the on-screen
+  keyboard first, then the session's hide. Android 14's `Dialog` cancelled itself on Esc, removing the panel's window
+  while the session stayed shown, so the panel never came back until a force stop.
+- **Your music pauses while you ask.** Robot pauses your music or video while you ask, and starts it again after the
+  answer. From the moment Robot listens (the button, a tap, the wake word, the headset or car button, a follow-up) it
+  holds Android's exclusive transient audio focus, the kind meant for speech recognition, so players pause. The panel
+  gives it back about half a second after the turn is over: the answer said or shown, Stop, the panel closed, nothing
+  heard, or a headset session's follow-up window closed. If a turn hangs, the music comes back after a minute with
+  nothing heard, said or done in the panel. Robot's voice asks for focus through the same requester, so it never hands
+  the focus back mid-answer. Outside a question (a typed one, a routine), a long answer pauses other sound instead of
+  lowering it, as OutputGuard decides. During a call, Robot's or another app's, nothing changes, and the wake word,
+  while it only listens for its word, takes no focus: loud music can still drown it out. [To check on a phone: the
+  Test Bench's pause-media test.]
+- **Phone lock** (Settings › Phone lock; design in `docs/plans`, private). Off until you set it up. During a
+  lock, every app but emergency calls, incoming calls, Clock and Robot is covered by a screen with Ask Robot, Emergency
+  call and, if the lock allows it, End early. Three kinds: Time of day (from a time to a time, on the days you choose),
+  After the alarm (a set length after you turn off a GrapheneOS Clock alarm) and One app first (only one app until
+  you've spent a set time in it, or a Daily limit on screen time). Locks are for you or for someone else (a child, a
+  shared phone); locks for someone else need a lock code (4 to 12 digits; Robot keeps only a check of it, under a
+  Keystore key). By voice: "lock the phone until 7", "how long is left", "end the lock", "skip a lock", and the
+  same in French. To see which app comes to the front, Phone lock uses one accessibility service, in its own `:lock`
+  process: window-state events only, no window content (`canRetrieveWindowContent="false"`), no gestures. Daily limit and
+  One app first read Android's usage access; a lock sets one exact alarm. **What it can't stop at Standard strength**
+  (Settings › Phone lock › What a lock can't stop): a restart in safe mode, where Robot doesn't run; uninstalling Robot
+  or clearing its storage in safe mode or outside a lock (the lock code can't be recovered either); switching off
+  Robot's accessibility access or force stopping Robot outside a lock; a computer with USB debugging; the notification
+  shade and a picture-in-picture video started before a lock; another user or a private space; and moving the clock
+  outside a lock. It is a habit for yourself or a rule for someone who will mostly respect it, not a wall. Strict
+  strength (device owner) is on file for later. Setup takes up to four steps because Android treats accessibility access
+  as a restricted setting for apps installed from a file.
+  - *Locks by voice.* A second lock by voice never ends the one that is on sooner: when that one already lasts as long,
+    Robot says "Your phone is already locked until 8:00." and nothing changes; otherwise its end moves later and the
+    record says "Lock by voice made longer, until 9:00". During a lock for someone else no lock by voice starts, and
+    none changes it: "A lock for someone else is on. Only the lock code ends or changes it." (`LockSchedule.startVoice`,
+    checked again when you tap Lock.) A lock by voice is recorded as started, or as couldn't start, and the cover shows
+    at once.
+  - *Calls during a lock.* A lock's People row (Calls to People you choose) shows the Phone permission and asks for it
+    through the main app. With it, during a lock with the screen unlocked, the call tool's card for one of those People
+    places the call from its Call (`ACTION_CALL`), because the lock covers the dialer but not the call screen. That needs
+    the call tool on Ask first, the default; on Just do it the dialer opens, covered. Car mode's spoken calls keep to the
+    lock's list during any lock, the lock screen included, and a number said aloud is called only when it is one of
+    those People's or an emergency number. An emergency number still only opens a dialer: during a lock, the phone's
+    own emergency dialer (`com.android.phone.EmergencyDialer.DIAL`, a system app's only, named outright) with the
+    number filled in, which the lock never covers, and you tap Call there. The cover's Emergency call button opens the
+    same one. A headset session's call to one of the lock's People opens the ordinary dialer, which the lock covers.
+  - *Storage full.* When `state.json` can't be written, `:lock` keeps the state it worked out, so locks still start and
+    end, writes it again at every refresh (at least once a minute while windows change) and shows "Phone lock couldn't save its state" until a
+    write works. Until then Robot's other processes, and `:lock` after a restart, see only the last saved state.
+  - *The lock code.* Only a key gone for good counts as lost: the Keystore has nothing under the alias `code.json` names,
+    or Android says the key can never be used again. Any other Keystore or storage error changes nothing, and the pad
+    says "Robot couldn't check the code just now. Nothing changed. Try again." or "Robot couldn't save that just now, so
+    nothing changed." with a hint about full storage. A new code's key goes under the alias the old one doesn't use
+    (`robot_lock_code_v1` and `robot_lock_code_v1b` take turns), and the old code keeps working until the new one is
+    saved and reads back. The pad also counts wrong tries in `:lock` itself, so their waits hold when `state.json` can't
+    take them; a new or removed code starts that count over.
+- **Back up and restore** (Settings › Back up and restore). Back up now writes one file, `.robotbackup`, to a place you
+  choose, encrypted with a passphrase (Argon2id and AES-256-GCM; Robot offers a generated one, or you type your own of at
+  least 12 characters). Robot never keeps the passphrase, so nobody can open the file without it, Robot included, and
+  it never uploads the file. You choose what goes in: settings (without keys), People, Memory, headset and car mode,
+  routines, Phone lock's locks, skills, notes, History, transcripts (and their recordings, if you tick them), and, off
+  unless you tick them, helpers' and search keys with Memory's private codes, and your voiceprint. The voiceprint has its
+  own warning and needs a strong passphrase; it comes back only from a backup you mark as your own, on a phone with no
+  voiceprint yet. Models, the updater's token and the apps Robot trusts are never in a backup. After saving, Robot reads
+  the file back to check it. Restore reads and checks the whole file first, shows a preview by category, and writes each
+  category whole or not at all; it then restarts Robot. A file you don't mark as your own restores more carefully:
+  memories show as imported, routines and skills arrive off, keys and the voiceprint are left out. A monthly reminder
+  (off by default) is only a notification, because Robot can't back up by itself. Android's own backup stays off.
+- **Settings › About › Support Robot.** Ko-fi first, then five crypto addresses, each with Copy and a QR code Robot draws
+  itself. The page makes no network call: a tap on Ko-fi opens your browser, and nothing else leaves the phone. It
+  never reminds you.
+- **Automatic help answers from Robot's own notes first.** With a helper set to Automatic, Robot answers from what it
+  remembers and its tools, and asks the helper only when that answer is missing, failed or unsure (a refusal, "I'm not
+  sure"). Before, a question could go to the helper with the answer sitting in Memory.
+- **Skills, phase A** (Settings › Skills; « compétence » in French, and « skill » is heard too). A skill is a name, up
+  to 3 questions with defaults and 1 to 8 of Robot's own actions, kept in `skills.json` (version 1, at most 100; a later
+  Robot's file whose names and questions carry more languages, such as `es` or `de`, loads, and those languages are never
+  run or asked here but written back unchanged, `SkillCodec`). You
+  teach one by voice ("teach a skill called heading home: text Sam I'm on my way, then open the route home") or say
+  "save that as a skill" after Robot did the actions. Then say its name, or "run heading home", with the values in your
+  words ("pasta for 8 minutes"). You can also ask what a skill does, list your skills and delete one (always a tap).
+  Each skill is Just do it, Ask first or Off; new skills start at Ask first. Every step goes through its own card as it
+  would alone, so a skill never skips a card, and skills never run on a locked phone. Phase A uses no model. It saves
+  in Back up and restore's Skills category (`skills.json`, and phase B's switch below; the last runs in
+  `skills_state.json` are never backed up, logged or sent).
+- **Skills, phase B** (Settings › Skills › Let Robot's model pick skills, on by default). When your words fit up to 3
+  of your skills (a word search over their names and the kinds of their steps), Robot describes them to its model on the
+  phone, which can pick one and fill its questions from what you said. If your words didn't name the skill ("I'm making
+  tea" for Tea time), Robot asks "Did you mean “Tea time”?" first. A value the model wrote is marked "written by Robot's
+  model" on the card, with Change beside it. When the model gave values, a skill is Simple, Careful or Risky: a point
+  for each step past 2, one for each value the model gave (two for a text) and three for each step that texts or
+  emails someone; 3 to 5 is Careful, 6 or more Risky. A Simple one runs as its level says. A Careful one, which every
+  skill that texts or emails is at least, shows its card until that model filled that skill right 9 of the last 10
+  times, and then runs at Just do it with "Ran “Heading home”, filled by Fast." A Risky one always shows its card and
+  needs a tap. Ask first still always asks, and every step still shows its own card. The model sees a skill's name, a
+  one-line summary of its kinds of steps ("Texts someone, then opens a route.") and its questions, never the steps or
+  their fixed values. Skills are never described to a helper, on a locked phone or to a chat-only model.
+  Settings › Skills shows each skill's fills by model once there are 5 ("On Fast: 9 of the last 10 right"). Those
+  counts are kept in `skills_state.json` on the phone, are never backed up, and start over after a restore or when you
+  change the skill's names, questions or steps (not its level). The switch is in `skill_settings.json` and goes into a backup with your skills; restoring a file
+  that isn't your own never turns it on.
+- **Library updates.** Jackson 2.21.8 (from 2.19.4) and jsoup 1.23.2 (from 1.15.1), both shipped in the app, for their
+  security fixes; newer AndroidX and Compose libraries; and the Android Gradle plugin 8.13.2 and Kotlin 2.4.21 to build it.
+  Material 3 stays at 1.3.2 on purpose: 1.4 restyles the outlined buttons, and Robot's look doesn't change.
+- **Permissions.** Two new, both normal permissions granted at install: `USE_BIOMETRIC`, for travel mode's confirm
+  screen, and `ACCESS_NETWORK_STATE`, which lets an app see whether the phone is online and which Android requires
+  before a job can wait for a network (the update jobs above; Robot doesn't read the network state itself). `GpuCheckService`
+  in `:voice` is not exported and requires the signature permission `ai.robot_app.permission.INTERNAL`.
+- **Privacy.** PRIVACY.md now covers Robot Files and travel mode, files in backups, `speeds.txt` and `gpu_check.txt`, the
+  chip fields in reports, the accessibility service, usage access for screen time, backups, `skills.json`, what Robot's
+  model is told about your skills, the Support page, the network-state permission, the date and country in a helper's
+  first message, up to 5 result pages (3 by default), GitHub receiving a feedback issue's text when its page opens (Send
+  feedback's note says so too), and the Phone permission for a phone lock's call card. Android's own backup and device-to-device transfer are still off.
+
 ## The fixes from my security review after 1.0 (1.0.1)
 
 After 1.0.0 shipped I reviewed Robot's security again. It was my own review, not an outside audit. Each fix comes with
@@ -381,8 +589,8 @@ guide version you last saw, the page Finish later left it on, the version you fi
 | 16 | Updates and feedback | Check for updates automatically (on), Include test builds (off), Send feedback (hey@robot-app.ai) | Settings › About › Updates, Send feedback |
 | 17 | You're set up | Every feature on or off now with its Settings path (core `GuideSummary`), a privacy recap, "Try saying…" in English and French, four of the examples | |
 
-Every word of the guide (and of its Home and About rows) is in `res/values/strings.xml`, ready for 1.1's French; the
-names of values (a voice, an app, a chip) are core's, as Settings shows them. Each page uses Settings' rows
+Every word of the guide (and of its Home and About rows) is in `res/values/strings_guide.xml` (1.1 split `strings.xml` by
+area), ready for 1.1's French; the names of values (a voice, an app, a chip) are core's, as Settings shows them. Each page uses Settings' rows
 (`ui/pref`), so it looks like Android's Settings, light or dark; each
 example and each privacy line is one TalkBack stop, titles are headings, every target is 48 dp or more.
 
@@ -415,6 +623,1024 @@ the summary, Home's and About's rows, and four goldens: What Robot can do (light
    title is announced as a heading, each example and privacy line is read in one stop, and Back, Skip this step and
    Next stay reachable (on two lines).
 8. **Again.** Settings › About › Setup guide after Done: *done when* it opens at Welcome with every choice as you left it.
+
+## Robot Files (1.1)
+
+Robot's private filing cabinet (design and build plan in `docs/plans/files-design.md` and `files-1.4-plan.md`, private;
+built as "1.4" and shipped in 1.1). Everything stays on the phone, sealed; Robot asks before it deletes anything.
+
+Where it lives: the Robot app's Files tab (it replaced the Model tab; the model's page is Settings › Model, at the top of
+Settings), a launcher icon, Robot Files (`.ui.FilesLauncher`, an alias of the main activity), the share sheet (Robot
+Files) and Settings › Files. Every Files screen is `FLAG_SECURE`, and checks the lock gate every second.
+
+### Getting files in
+
+- The share target, `FilesShareActivity`: `SEND` and `SEND_MULTIPLE` of any type, up to 20 items, shared text kept as a
+  text file of at most 256 KiB. Nothing is read before you tap Add. `file:` URIs, other users' and Robot's own providers
+  are refused; so is a share while the phone is locked or a phone lock is on, checked when it opens and again at the tap.
+  Touches are refused while another app draws over it. "Shared from …" names the app only when
+  `launchedFromPackage` confirms it. Opening a source has 15 s, an idle copy 20 s, a whole copy 180 s.
+- Scanning (Files › Scan, the Scan a document page): the system camera writes into `cache/scan` through
+  `ScanProvider`; you drag the four corners; `:files` straightens each page and makes one PDF (at most 20 pages).
+- "File this" (« classe ça ») in the panel files what the panel holds, a photo you showed or the screen you asked about,
+  with its full bytes. Save to Robot Files on a transcript.
+- Every file gets its provenance (where it came from, the app when Android confirms it, the time, SHA-256, size and the
+  type sniffed from its bytes). A file with the same SHA-256 as one you have asks first. Adding needs twice the file's
+  size plus 1 GiB free, checked again every 8 MiB; at most 200 MiB a file and 5,000 files.
+
+### Sealed storage
+
+`core/files/FileStore.kt` keeps everything in `files/files/`: `index.enc` (the catalogue), `blobs/<id>.rf` (each file),
+`thumbs/<id>.rf`, an `incoming/` folder per process, and `journal.json` (ids being deleted, nothing else). Every
+sealed stream gets a fresh random 256-bit key, wrapped by `robot_files_v1` with the purpose and the file's id as additional
+data, so a wrapped key can't be moved to another file; the bytes are AES-256-GCM in 64 KiB chunks (the backup's own
+`SealStream`), the 96-byte header authenticated by every chunk. `robot_files_v1` is AES-256-GCM in the Keystore's TEE,
+`setUnlockedDeviceRequired(true)`, randomized, never exported, no StrongBox and no user authentication (as memory's
+key); it's created only when `containsAlias` is false. Each process's store is dropped at every screen-off and opens
+again after an unlock. Deleting overwrites each file's wrapped key in place before unlinking, so what remains can't be
+opened (a copy taken earlier, while the key exists, still can). A crash in an add or a delete is finished at the next
+start. If the key is gone (Android removes it when the screen lock is removed, it seems: to check on a phone), Settings ›
+Files keeps the files and offers Restore from a backup or Delete them all.
+
+### Reading and filing
+
+- `:files` (`.parse.FileParseService`) is the only place a file's bytes are decoded: an isolated process with no
+  permissions, a fresh instance per link, a HELLO that proves it runs under an isolated uid before anything is sent,
+  hand-written big-endian frames decoded strictly (20,000 mutations fuzzed), its answer header read as a plain int. Input
+  is at most 64 MiB, 32,768 px a side and 260 MP; 3 pages are rendered for reading, 10 for text; text is capped at 64 KiB;
+  a 20 s watchdog and a 22 s link timeout. Images are re-encoded to drop their metadata for thumbnails and stripped copies
+  (PNG stays PNG, others JPEG). A PDF's text layer is read on Android 15 and later only; on 14 the first page is read as a
+  picture.
+- The type comes from the first bytes, never the name or the sender's claim. ZIP, HTML, SVG and scripts, a ZIP appended
+  to a picture or a PDF, and markup deep in a text are `DANGEROUS`: held in Inbox, never parsed, never quoted to the model.
+- `FilingRun` (`:voice`, nothing while locked or during a phone lock): `FileRules` and `FileFields` on the text layer
+  first; the model only when needed, through `:brain`'s `FILE_READ` one-shot (a JPEG of at most 4 MiB, checked) or
+  `READ_TEXT`, its kind taken only when the words agree. `FileFields` re-reads every amount, date, currency, tax and
+  merchant by code; a picture's total that subtotal plus taxes doesn't back, or that sits on a cash or change line, keeps
+  the file in Inbox with "Check the total". Three tries at most. `Filer` picks the drawer, name and tags by code.
+- Drawers: Receipts, Bills, Documents, Medical, Taxes, Trips and events, Photos and media, Conversations, and yours.
+  Levels per kind in Settings › Files: File it on its own (the default), Ask me first, Off (stays in Inbox, unread).
+- Rules (`FilesRouter`, English and Québec French): "Esso receipts go under Car", a move from the Files screens, or a
+  second file from the same merchant tagged the same way become a `filing` item in Memory (memory's codec v1 kept; a Robot
+  without Files takes it as a plain fact). Recall never uses them as facts. With Memory off no rule is kept.
+
+### Asking and money
+
+- `find_files` (up to 3 results: name, kind, drawer, date, merchant, total; never a file's text) and `read_file` (answers
+  from the first 4,000 characters of the text the sealed index keeps, through a tool-free `FILE_ANSWER` one-shot, its text
+  framed by `FileQuote` as information only). Both are off while locked, during a phone lock and with Files off;
+  `ApprovalGate` refuses them locked whatever `lockedTools` says. A medical file, an ID, or a file whose text holds a
+  secret (`SecretDetector`, memory's rule) is private: find shows only its number, kind, drawer and date, and its answer is
+  shown, never spoken, with a placeholder in History. What Robot read from other files reaches a helper only through a
+  card a tap answers (`Personal.FILES`). File answers carry a `Quoted.record` content record that a Robot without Files
+  reads as content.
+- Spending is summed in whole cents per currency by code (`FileMoney`); totals Robot couldn't check are counted and left
+  out. Coming up: bills due within 14 days, returns 14, warranties 30, expiry 90. Reminder cards: Add to my brief (kept in
+  the file's sealed entry) or Add to calendar (`add_event` with an alert, always tap-only). Subscriptions (the same
+  merchant 3 months running) are listed, never acted on. Clean-up suggestions in Settings › Files › Files that could go.
+- Deleting: always your tap, with a 10-second Undo held in memory by one holder per process; the file is really deleted
+  after 10 s, or when you leave or the phone locks.
+- Share and Open hand over a one-use copy from `cache/files_out` through `FilesOutProvider`: a read grant on one URI,
+  revoked and the copy deleted when you return, at screen-off, at lock, after 15 minutes or at the next start; `:voice`
+  also deletes copies and scan photos older than 15 minutes at start and unlock. With Strip location from photos I send
+  (on), a photo goes re-encoded without its metadata; a video, an image `:files` can't decode or one over 64 MiB asks first;
+  other files go as they are.
+- Tax pack and expense report (`FilePack`): "make my 2026 tax pack" (no year said: last year), « fais mon dossier d'impôts
+  2026 », or Files › Export. A card only opens the pack's page; Export is a tap, to a folder you pick with
+  `OpenDocumentTree` (no kept grant): each file as Share would send it, then a UTF-8 CSV of the index's values (formula
+  text neutralized). The lock is checked before each file and after each write; a cut copy is deleted.
+
+### Travel mode
+
+`core/files/TravelMode.kt`. `travel` and `hidden` in `files_settings.json`; a view without the hidden drawers that
+`FileStore` refuses to write through, read by every screen, the panel, `find_files`, `read_file`, the brief, notices,
+the pack, moves and duplicate checks. While drawers are hidden, a conversation holding a Files answer shows as
+placeholders in History, Home and Continue (title and questions too), Settings › Memory and Memory's Export leave out rules
+naming a hidden drawer, and Back up now leaves History out. Turning travel mode off, unhiding a drawer while it's on, and
+showing hidden drawers (10 minutes, until Robot stops or the screen goes off, main app only) each take the PIN, pattern or
+password on `BiometricPrompt` with `DEVICE_CREDENTIAL` alone (`sys/DevicePin`); if that screen can't be shown, nothing
+changes. A damaged or newer `files_settings.json` fails closed: travel on, every drawer hidden, until Off with the PIN.
+Both writers share one cross-process lock, and a save changes only what you changed. Hidden drawers' names are in
+`files_settings.json`, outside Robot's own encryption. While travel mode is on, backups and restores leave Files out
+(`PlanSkip.FILES_TRAVEL`).
+
+### Files in backups
+
+`BackupCategory.FILES`, appended last (a Robot without Files skips `files` by name): each file's plain bytes as
+`blob/<id>` (at most 200 MiB each; damaged files, and videos when the Videos row is off, stay out), then `index.json`
+naming only the files whose bytes went in whole, then `files_settings.json`. No thumbnails: they're made again. Verify
+recounts every file's size and SHA-256 against the catalogue. Restore seals each file again under this phone's key in
+`restore/files/` (staging counts as sealed), gives restored files intake's second type check, then `FileStore.restoreIn`
+(Replace's deletes, index, move), repeatable at every step; Add skips an id or SHA-256 already here. Someone else's files
+go to Inbox (`NOT_YOURS`, a "File in …" chip; tags, People links and reminders dropped), and `RestoreSafety` keeps
+their backup from turning Robot Files, reading text in images or the brief's Files lines on, keeps travel mode on and
+adds the backup's hidden drawers even from your own backup. Settings › Files is merged at the finish over the file as it
+is then, only once the files went in. A backup over 32 GiB is refused before writing. With the key gone, the old cabinet
+is deleted before staging, so Replace is the way back.
+
+### On the phone (Robot Files)
+
+None of these has run yet. The Test Bench gets Files tests (FL) with the phone run.
+
+1. Share a PDF, three photos and a text from other apps; scan two pages; "file this" on a photo. Each lands in Inbox, then
+   its drawer, with the right provenance.
+2. `:files` on GrapheneOS: `ImageDecoder` (JPEG, PNG, HEIC, WebP), `PdfRenderer` and its text API from a shared memory
+   descriptor; whether the regions are memfd or ashmem, and whether the isolated process can shrink one.
+3. Fast and Smarter reading 20 demo receipts as pictures: time, memory and how many totals they misread.
+4. With a fingerprint enrolled: travel mode on, then Show hidden drawers and Off. Only the PIN may work.
+5. Remove the screen lock with files present: which exception `robot_files_v1` throws, and what Settings › Files says.
+6. Open a PDF with another app, let Android stop Robot's main process, then
+   `adb shell run-as ai.robot_app ls -R cache/files_out`.
+7. Back up with files, reset the phone, restore: every file opens, hidden drawers stay hidden.
+
+## Other Android phones (1.1)
+
+The groundwork for phones that aren't Pixels (design in `docs/plans/every-android-phone-1.2-design.md`, private; built
+as "1.2", jobs 1 to 6). Nothing here has run on a phone that isn't a Pixel. Pixels come first: GrapheneOS runs on them,
+and the point is to keep Google off the phone.
+
+- Chips (`Socs.of`): `SOC_MANUFACTURER` and `SOC_MODEL` name Qualcomm SM8450 to SM8850 (Snapdragon), Samsung `s5e`
+  (Exynos) and MediaTek `MT` chips; each behaves as any non-Google chip did before. `Chip.tensor` means "made by Google".
+  Settings › Model, the model problem report and the feedback report show the raw fields ("Chip, as Android names it").
+  `PhoneDecisionsTest` freezes every decision for about 60 phones.
+- Measured speeds (`SpeedLog`): `filesDir/robot/speeds.txt` keeps numbers only (the last 20 replies per model, backend,
+  file and OS build), outside backups, fed by panel replies in `:voice`, read by Settings › Model and by the prompt
+  budget below. Settings › Model shows "Measured on this phone" after 3 answers; an OS update brings the estimate back.
+- The GPU self-test (`GpuCheck`): three fixed local turns in their own conversation (ready, 2 plus 3, a 5-minute timer
+  call), once per OS build after a GPU or beta TPU load, before the first question, and from the setup guide through
+  `GpuCheckService` in `:voice` (not exported, `INTERNAL` signature permission). Not loading, an error, a stop, a stall
+  (30 s a turn), garbage or an empty reply move Fast to the CPU or the general build; a wrong answer, no call or under
+  2 tokens a second is noted and the GPU kept. The record, `filesDir/robot/gpu_check.txt`, is keyed by model, backend,
+  file, engine and OS build, outside backups; GPU and TPU failure records now carry the OS build, so an update gives the
+  GPU another chance.
+- The compact prompt (`PrefillBudget`, `PromptCut`): only the CPU gets a reading budget (the measured median, else the
+  estimate, else 53 tokens a second, times 8 s). Under 416 tokens a second a rebuilt conversation's history is capped;
+  under 187.5 the compact form too. Safety lines appear exactly once in every form; GPU and TPU prompts are unchanged
+  (`PromptFrozenTest`).
+- The warning (`PhoneFit`): slow (Fast on the CPU, or a first word over 10 s), tight (under 7 GB) or too small (under
+  5 GB); unknown memory never warns, and it never blocks the guide. In the guide's phone step and Settings › Model, with
+  buttons that do what they say (Use the GPU back on, Translate transcripts off, Helpers).
+- Stock Android and One UI, without a phone: the system voice named from the default text-to-speech engine; the
+  recognizer fix reads "Not needed" where another installed recognizer is set (Settings › Advanced › ADB fixes, and
+  refused in `:voice` too); on a phone without GrapheneOS Clock, routines that start after an alarm say so before the
+  yes; Phone lock's never-open list moved to `LockGate` and is enforced whatever a lock or a backup allows, with app
+  stores, file managers, the phone's care and wellbeing apps and Smart Switch added.
+
+### On the phone (other Android phones)
+
+The Test Bench holds these as build "1.2": v12-chip-pixel10, v12-chip-fields-pixel8, v12-chip-fields-s25,
+v12-chip-fields-exynos-budget, v12-speeds-measure, v12-speeds-os-update, v12-speeds-private, v12-gpu-selftest-run,
+v12-gpu-selftest-note, v12-gpu-selftest-home, v12-gpu-try-again, v12-gpu-os-update, v12-gpu-none-pixel10,
+v12-prompt-compact-gpu-off, v12-prompt-tools-still-work, v12-warning-cpu, v12-warning-4gb, v12-warning-6gb,
+v12-warning-none-pixel10, v12-voice-name, v12-recognizer, v12-adb-not-needed, v12-clock-warning, v12-words-from-phone,
+v12-lock-stock-pixel, v12-lock-oneui-call, v12-lock-oneui-emergency, v12-lock-oneui-escapes, v12-lock-oneui-other-apps,
+v12-lock-oneui-stopping. The Galaxy and budget-phone ones wait for those phones.
+
+## French and languages (1.1, WP0)
+
+1.1 makes every word Robot shows or says translatable and adds Québec French. WP0
+is the foundation the other packages (WP1 to WP9) build on. Nothing you see changes yet but one new page, Settings ›
+Language: every English screen and every golden screenshot is 1.0's.
+
+- **Two homes for words.** Robot's screens use Android string resources, now one file per area,
+  `res/values/strings_<area>.xml` (19 areas, 20 with 1.1's `backup`; ids prefixed by area: `guide_`, `termux_`, `memory_`, `lang_`…).
+  `strings.xml` keeps only `app_name` (`translatable="false"`). 1.0's 504 strings moved with their ids and texts
+  unchanged. Each area has its French file, `res/values-fr-rCA/strings_<area>.xml`, empty until its package fills it.
+  What `:core` says or labels comes from core's catalog (`core/i18n`): one Kotlin object per area (`BriefStrings`,
+  `MemoryStrings`…, 20, empty, all listed in `Catalogs`; 21 with `BackupStrings`), each entry a `Msg` with its English and its French (`fr = null`
+  while it's drafted: English shows).
+- **A sentence without a language yet.** Core returns a `Phrase`: a catalog entry with typed arguments (a count, a size,
+  a time, a date, a duration, your words, another phrase, a Robot screen, an Android screen). The code that shows or
+  speaks it renders it: `render(langs)` in the reply language for what Robot says, `phrase.str()` on a screen
+  (RobotTheme's `LocalLangs`), `phrase.en()` for the model and the logs. French typography (`FrTypo`), numbers, sizes,
+  times and dates (`Fmt`: « 1,5 Go », « 7 h 02 », « lundi 12 octobre »), plural forms (`Plural`, CLDR's: French 0 and 1
+  are singular) and the voice's form (`VoiceForm`: no typography characters or quotes, « 1,5 gigaoctet ») are core's own,
+  so the JVM tests and the phone give the same words. `UiStrings` holds Robot's page titles and the buttons a reply names,
+  in both languages (« Réglages › Mémoire »); `AndroidPath` holds Android's own screens, rendered in the phone's language
+  (« Paramètres › Applications › Robot › Langue »). `PhraseWire` carries a phrase between processes as its id and
+  arguments. `ReplyLang` decides the reply language once per turn: a fixed setting, else what you said when it is sure,
+  else the previous turn's for ten minutes, else the menus'. Each area moves its own flows onto it.
+- **One language type.** Messages, the brief and hands-free all use core's `i18n.Lang`, with the
+  same constants, ids and `of(tag)`: `messages.json` and `routine_settings.json` read as before.
+- **Settings.** `settings.json` stays schema 13, with two optional fields: `replyLang` (written only when you choose
+  something other than "The language you speak") and `menusNoticeSeen` (Home's one-time notice about French menus, which
+  a later package shows once the menus are French). Older files read as the defaults.
+- **The build.** `generateLocaleConfig` writes Android's per-app language list from the resources (en-US, the default
+  resources' language in `res/resources.properties`, and fr-CA) and the manifest's `android:localeConfig`. Debug builds
+  get the en-XA and ar-XB pseudo-locales (`pseudoLocalesEnabled`). The manifest gains `android:supportsRtl="true"`. No
+  permission changes; `ProcessIsolationTest` and `tools/verify_apk.sh` check the locale config and `supportsRtl`.
+
+### Settings › Language
+
+A new row, first in Settings' last group, opens:
+
+| Row | Choices | Default | Kept by |
+| --- | --- | --- | --- |
+| Menus | Phone's language · English · Français (Canada) | Phone's language | Android (`LocaleManager`; Settings › Apps › Robot › Language shows the same) |
+| Robot answers in | The language you speak · Same as the menus · English · Français | The language you speak | `settings.json` `replyLang` |
+| Android's language page for Robot | Opens it | | |
+
+The footer says "Robot understands English and French whatever you choose here. Words the model reads stay in English."
+
+When Robot answers in names a language (English, Français, or the same as the menus), the model's system prompt carries
+one line, "Answer in English." or "Answer in Québec French (tu)." (`Prompt.answerInLine`, from `ReplyLang.answerIn`), last
+in `Prompt.system` after the lock-screen and car lines (memory's tool line and a pinned note, when present, come after it),
+and last in the chat-only prompt too. With the language you speak, the default, there is no line: the prompts are byte for byte what
+they were (`PromptTest`), and Gemma answers in the question's language. The line is about 10 tokens. It doesn't bind the
+model: its answer can still drift into another language, unmeasured so far. Web answers keep their own line, English or French
+picked from the question's words (`WebRouter.lang`, `WebAnswer.dateLine`), whatever the setting. A helper isn't told either.
+The page is `ui/settings/LanguageSettings.kt` and `sys/AppLanguage.kt`; its words are in `strings_language.xml` with their
+French, so with French menus this page is already French. This step only added the row; the sections below move each area's flows onto `ReplyLang`, and robot/l10n/areas-done.txt lists the areas that are done (in 1.1, all but backup).
+
+### The guards
+
+- `UserTextGuardTest` (app, JVM) reads every module's sources with the inventory script's lexer and rules
+  (`l10n/scan_rules.json`, shared) and fails on a user-visible literal outside the catalogs and resources that its area's
+  baseline doesn't list (`app/src/test/resources/l10n/baseline-<area>.txt`: the file and the SHA-1 of the text). The
+  baselines hold 1.0's 5,596 literals in 18 areas and only shrink: a line whose literal is gone fails too ("delete
+  this line"), and an area with none left deletes its file. A literal that isn't words anyone reads or hears ends its
+  line with `// l10n: not text (reason)`. Each run writes the scan to `app/build/l10n/`.
+- `ResourcesCompleteTest`: one file per area holding only its own id prefixes, the French under the same file name,
+  `strings.xml` only `app_name`. For an area in `l10n/areas-done.txt`: every string has its French with the same
+  placeholders, French plurals have one, many and other, nothing is left the same as its English but the words in
+  `l10n/same-in-french.txt`, and no value starts or ends with a space. WP0's own area, `language`, is the first done.
+- `FrenchTypographyTest`: every value in `values-fr-rCA` is what core's `FrTypo` makes of it (a no-break space before ":"
+  and inside « », a narrow one before ; ! ?, ’ and …); `python3 -I robot/tools/fr_typo.py robot --fix` writes the spaces
+  as `&#160;` and `&#8239;`.
+- `GlossaryTest`: `l10n/glossary.tsv` (86 terms, the design's §6.2): no forbidden variant in any French value,
+  resources or catalogs; tutoiement; « Réglages › » only before a Robot page's title.
+- Core: `CatalogsTest` renders every entry of every catalog in both languages, on screen and aloud, and writes
+  `core/build/l10n/core.tsv` for the review sheet; `FmtTest`, `PluralTest`, `FrTypoTest`, `VoiceFormTest`,
+  `ReplyLangTest`, `PhraseWireTest`, `PhraseTest`, `UiLabelTest`, `LangTest`. `LengthReport` (app) prints French labels
+  much longer than their English.
+- `python3 -I robot/tools/strings_inventory.py robot` prints the inventory (the design's §3); `--area <area>` lists an
+  area's remaining literals with their lines; `--check` compares the script's scan with the baselines (they agree
+  literal for literal).
+
+The inventory on WP0's tree: 443 Kotlin files (101,981 lines); in the code, 4,382 different English texts that people
+see or hear (5,343 occurrences; 2,400 different in `:app`, 2,026 in `:core`) and 397 French ones, beside 1.0's 504
+resource strings; the guard's baselines hold 5,596 literals (412 of them French) in 242 files.
+
+### Decided by default (to confirm)
+
+The design's open questions (§14), each with the design's own recommendation:
+
+1. **The buttons stay English under French text** on English menus (question 1): a French card's summary over **Do it**
+   and **Cancel**. Buttons follow the menus' language, sentences the reply language; one `Langs` field changes it.
+2. **French uses a narrow no-break space (U+202F) before ; ! ?** (question 5): the OQLF's "fine" space, which it allows
+   where software has it, rather than its default of no space. One constant switches it: `FrTypo.FINE` (and `FINE` in
+   `tools/fr_typo.py`).
+3. **Diagnostics stay English in 1.1** (question 6): the voice log's lines, the feedback report's diagnostic block and the
+   `LogCode` titles. Their pages get French titles; the guard leaves the lines out.
+4. **Helpers are « IA externes »** (question 3); « assistant » stays Android's digital assistant.
+5. Robot's Settings are « Réglages », Android's « Paramètres » (question 2).
+6. A France, Swiss or Belgian French phone gets the Québec French through Android's fallback (question 7): there is no
+   `values-fr`.
+7. Robot is « il » (question 8).
+
+Decided since (15 and 19 Oct): questions 1, 3 and 5 as above, and question 4: the built-in models are « Rapide »,
+« Plus futé » and « Sans censure ». Still open: questions 2 and 6 to 10, among them a second reader (question 9) and the
+brief's own Language row (question 10: kept as it is; WP4 moved its default).
+
+WP0 also decided:
+
+- Its own area, `language` (Settings › Language and `UiStrings`), is marked done in `l10n/areas-done.txt`, so the
+  completeness tests check a real area from the start.
+- In `ReplyLang`, a line of one or two words isn't sure even when the language table is ("OK", "Marie-Ève"): it keeps the
+  previous turn's language (the design's §2, story 3), and has its own only when there is none to keep.
+- The Language row reuses the Message icon: a new symbol would change the icons sheet's golden.
+- The design's §5.3 pilot (Settings › Display, About, Advanced and History, and the brief's calendar lines, in French) is
+  left to WP8 and WP4: WP0 translates nothing that exists.
+
+### On the phone (1.1 WP0)
+
+1. **Nothing else changed.** Install over 1.0.0-rc1 and open Robot: *done when* Home, Settings, the panel, the setup
+   guide and a timer by voice look and sound as in rc1, and your settings are kept.
+2. **The page.** Settings › Language: *done when* it shows Menus (Phone's language), Robot answers in (The language you
+   speak), Android's language page for Robot (Settings › Apps › Robot › Language) and the footer.
+3. **French menus.** Menus › Français (Canada): *done when* the screen comes back on the Language page in French
+   (« Langue », « Robot répond en », « La langue que tu parles », the footer), the other screens stay English (their
+   packages translate them), and nothing crashes. The list's Cancel stays English until WP8.
+4. **Android's page agrees.** Tap Android's language page for Robot: *done when* Settings › Apps › Robot › Language opens
+   with Français (Canada) chosen and lists English (United States) and Français (Canada). Choose English (United States)
+   there: *done when* Robot's Language page says English.
+5. **The phone's language.** Menus › Phone's language: *done when* the page follows the phone: English on an English
+   phone, French with the phone set to français (Canada), without choosing anything in Robot.
+6. **The voice process.** With French menus, say "hey robot" and set a timer: *done when* the panel and the timer work as
+   before (their words stay English until WP2) and the voice log shows the turn and no crash.
+7. **Robot answers in.** Choose Français, leave the page and open it again: *done when* it still says Français. Nothing
+   answers in French yet: each area moves onto it.
+8. **Android's French words.** With the phone in français (Canada), open each Android screen core `AndroidPath` names
+   (Applications › Robot › Autorisations, Langue and Notifications; Applications par défaut › Application d'assistant
+   numérique; Accès spécial des applications › Installer des applis inconnues and Accès aux données d'utilisation;
+   Notifications › Notifications des appareils et des applis; À propos du téléphone; Système › Langues and Options pour
+   les développeurs): *done when* each title is noted as the phone writes it, and `AndroidPath`'s French is fixed where
+   it differs.
+9. **Pseudo-locale (debug build).** A debug build's locale config also lists en-XA and ar-XB (checked in the generated
+   file): in Android's language page for Robot, pick English (XA): *done when* Settings › Language shows accented words in
+   brackets, and the plain English elsewhere is what the area packages still have to move (the guard's baselines).
+10. **Right to left.** Pick Arabic (XB) the same way (or set the phone to a right-to-left language): *done when* Robot
+    opens, its screens mirror, and nothing is cut or overlapping; note what doesn't mirror yet (the back arrow).
+
+### The turn, the cards and the tool results (1.1, WP1)
+
+Every word of an action's card, the turn's own lines and the read tools' answers is in core's catalog (`TurnStrings`,
+`ToolStrings`, `InfoStrings`: 532 entries) or `strings_cards.xml` (34 strings: the cards' buttons, the chat's and the
+reply card's labels), with its Québec French; area `cards` is done.
+
+- **What a card says follows the turn's reply language; its buttons follow the menus.** `TurnRunner` takes the turn's
+  `Langs` (English until the panel passes the ones ReplyLang decides): the summary, the line, the body, the choices' and
+  the tick box's words are rendered in them, the button (`Card.confirm`) in the menus' language, and what text-call mode
+  says in the voice's form. `Action.summary()`, `confirmText` and `bodyText()` are the words without a language;
+  `describe()`, `confirmLabel` and `body()` stay 1.0's English. `Executed`, `Prepared.Refused`, `Prepared.Ready`, `Choice`,
+  `ParsedCall.Invalid` and `Read.Unreadable` carry their words as a `Phrase` beside the English, so other areas' code keeps
+  compiling and every English test and golden is unchanged.
+- **The model reads English.** Tool results, invalid-call and skipped-action reasons go to the model as before, whatever
+  the card shows: « Robot fait au plus 2 actions par réponse. » on the card, "Robot does at most 2 actions per answer." in
+  the tool result. ToolExecutor and BrowserSearchTool no longer hand the model a resource string.
+- **Dates, times and numbers** keep 1.0's English ("Tue Oct 14, 15:00–16:00", "1.0 mi") and write French its own way
+  (« mardi 14 octobre, 15 h à 16 h », « 1,0 mi », « 57 Go »). A card's state ("Done", « Fait ») is core's, shown in the
+  menus' language and replayed to the model in English.
+- **Settled by matching words:** a card's line in any language is still known (`FreeUp.isUnloading`,
+  `FreeUp.isDeleteWaiting`, `Quoted.of`).
+
+### On the phone (1.1 WP1)
+
+1. **Nothing changed in English.** Phone and Robot in English: set a timer, ask the weather, "text Mom I'm late", "free up
+   memory", ask about a photo with a wake-word panel: *done when* every card, button, line and spoken word is rc1's.
+2. **French menus.** Settings › Language › Menus › Français (Canada), then "text Mom I'm late": *done when* the card's
+   buttons and hints are French (« Annuler », « Ouvrir dans Cheogram pour Maman », « Veux-tu que Robot fasse ceci ? »,
+   « Lequel ? », « En attente de toi »), a done card says « Fait », and the reply card under a message says « Modifier »,
+   « Ouvrir la conversation », « Envoyer ». The card's own sentence follows the reply language once the panel passes it
+   (WP2); until then it stays English.
+3. **French speaker, English menus** (with WP2): « mets une minuterie de 5 minutes »: *done when* the card reads « Régler
+   une minuterie de 5 minutes » and « Minuterie de 5 minutes réglée. », and its buttons stay English.
+4. **The model's view** (with WP2): ask in French for three timers at once: *done when* the third card says « Robot fait
+   au plus 2 actions par réponse. » and a debug build's prompt dump shows the English sentence in the tool result.
+5. **The read tools.** In French, « quel temps fera-t-il demain », « qu'est-ce que j'ai à mon agenda cette semaine »,
+   « comment va ma batterie »: *done when* the cards read « Prévisions pour là où tu es, d'Open-Meteo. », « demain, mardi 13
+   octobre : couvert, max. 13 °C … », « 3 événements du lundi 12 octobre au dimanche 18 octobre. », « Batterie : 64 %, en
+   charge … », and no line shows a box for the narrow space before « ? » or « : ».
+6. **Free up memory in French.** « libère de la mémoire »: *done when* the choices are French, and after the answer the
+   card's line becomes « Environ 2 Go libérés … » (the panel settles it by `FreeUp.isUnloading`, WP2).
+7. **History keeps what you saw.** A French turn's card, then menus back to English: *done when* History shows that card
+   as it was, in French, and the new turns' cards in English.
+
+### Web search and Termux in French (1.1, WP6)
+
+- **Done areas: `web` and `termux`.** Settings › Web search (its rows, choices, dialogs and footer, the engines and services
+  with their privacy levels), a web answer's card, Settings › Termux (its checklist, its update check, its settings) and a
+  Termux command's card are in Québec French with French menus. The app's words are in `strings_web.xml` and
+  `strings_termux.xml` with their French; core's are `WebStrings` and `TermuxStrings`: the services' names, the first
+  search's card, why a search failed or wasn't sent, what Robot says while it searches, the answer card's lines and credits,
+  Robot's warnings on a command, why a command needs a tap or is refused, the set-up checklist, how a run ended and History's
+  line. Both baselines are gone. F-Droid and Google Play are `translatable="false"`.
+- **What the model reads stays English.** A web search's or a Termux call's refusal, note, choices and result are phrases
+  (WP1's `Prepared` and `Executed` constructors): the card says them in the turn's reply language (once the panel passes it,
+  WP2) and Gemma reads their English. The update lock's text comes from the resources: Gemma gets the English ones, the card
+  the menus'. What Gemma reads of a command's output is English; the card's labels in it (« [masqué : …] », « [erreurs] »)
+  follow the menus. The English wrappers other areas still call are `@Deprecated` for WP9. WebAnswer's prompts, the French
+  one included, don't change.
+- **French fixed on the way.** TermuxPolicy's French (« vous », never shown before) is « tu » now, names the buttons as the
+  menus show them (« touche Lancer », core UiStrings) and Robot's pages through `UiLabel` (« Réglages › Termux »). Termux's
+  "Just do it" is « Faire sans demander » (the glossary's), and its sizes are « 3,5 ko ».
+
+### On the phone (1.1 WP6)
+
+1. **Settings › Web search.** Menus › Français (Canada), then Réglages › Recherche web: *done when* the title, every row, its
+   choices (« Demander avant de chercher » › « Demander la première fois »…), the engines' list with « Élevé », « Moyen »,
+   « Faible » and the footer are French, the names (Startpage, DuckDuckGo, Brave…) as they are, and nothing is cut.
+2. **Set-up.** Configurer › « Réponses instantanées DuckDuckGo »: *done when* the dialog says « Activer la recherche web ? »
+   with « Quand tu le demandes, Robot envoie tes mots de recherche à DuckDuckGo… », the "?" on the same line as its word and
+   no box where its narrow space is.
+3. **A web answer.** With web search on, ask "who won the Stanley Cup this year?": *done when* the card under the answer says
+   « Recherche web · … », « Envoyé à … : « … » » and its credits in French, and English menus give 1.0's card.
+4. **Settings › Termux.** Réglages › Termux: *done when* the checklist (« Termux installé », « Ouvert une fois »…), its
+   buttons, the settings, « Mises à jour de Termux » and the footer are French. Note Android's own words for « Infos sur
+   l'appli › Autorisations › Autorisations supplémentaires » and fix the string if the phone says otherwise.
+5. **A Termux card.** Ask "run du -sh ~ in Termux": *done when* the card says « Lancer dans Termux » with « Lancer »,
+   « Modifier » and « Annuler », « Dans : ~ · Limite de temps : 60 s » and, after the run, « Code 0 · … s »; a command that
+   prints a key shows « [masqué : …] » on the card.
+6. **The model's view.** With one script in ~/robot, ask « lance mon script nope »: *done when* the card says « Ce n'est pas
+   un de tes scripts dans ~/robot. Les tiens : … » (in French once the panel passes the reply language, WP2) and a debug
+   build's prompt dump shows "That isn't one of your scripts in ~/robot. Yours: …" in the tool result.
+7. **English menus.** Back to English: *done when* both pages, both cards and Settings' rows read as in 1.0.
+
+### The panel and Home in French (1.1, WP2a)
+
+- **Done areas: `panel` and `home`.** The panel in both looks (its header, status line, hints, field, buttons, notices,
+  Classic's words), CheogramPick's and the search key's windows, Home, History, a saved conversation and the main app's
+  messages are in Québec French with French menus. The screens' words are in `strings_panel.xml` and `strings_home.xml`;
+  what the panel says by itself and the words its pure functions give the screen (`panelStatus`, `inputPlaceholder`,
+  `FabMode`, `noticeAction`) are core's `PanelStrings`, with MemoryPanel's, BrainLink's and VoiceHub's lines. Home's tabs
+  are core `UiStrings`, as replies name them. Both baselines are gone.
+- **Each question gets its reply language.** PanelController decides it once per question with `ReplyLang` (Settings ›
+  Language › Robot answers in; else what LangId hears when it is sure, or the router's own match: « libère de la mémoire »;
+  else the last turn's for ten minutes; else the menus') and passes it to every `TurnRunner`, so a card's summary and line,
+  Robot's own replies, the free-up card's choices and « Environ 2 Go libérés » follow it while the buttons follow the menus.
+  A routine's Run now (nothing heard) takes the setting, else the menus'. Robot's own sentences in a French turn are spoken
+  with Kokoro's French voice (Siwis) while Robot's voice is Heart or Siwis, as messages already were. Notices and the panel's chrome follow the menus.
+- **Helpers, first part (WP2b).** What Robot says about a helper (`HelperWords`: « Claude réfléchit… », « Veux-tu aussi
+  l'avis de Claude ? »), why one failed (`ClaudeFailure.sayText`), what an offer sends and what a conversation holds that is
+  personal are core's `HelperStrings`, in the turn's reply language (status lines in the menus'). What a helper is sent
+  (its requests, the Claude app's text, Robot's tool results) stays English. Settings › Helpers, the connection window and
+  the presets' descriptions followed in WP2b's second part (below).
+- **Unchanged:** every English word, golden and test (one source test now looks for `Quoted.record(turnLangs)`). The
+  model reads English as before. Other areas' words (messages, routines, hands-free, conversation mode's consent line)
+  stay as their packages leave them.
+
+### On the phone (1.1 WP2a)
+
+1. **English as before.** Phone and Robot in English: open the panel by the corner swipe and by "hey robot", ask a question,
+   set a timer, "free up memory", open History: *done when* every word, card and spoken line is 1.0's.
+2. **French menus, the panel.** Settings › Language › Menus › Français (Canada), then the corner swipe: *done when* the
+   header's buttons (« Lire les réponses à voix haute », « Nouvelle conversation », « Réglages », « Fermer » for TalkBack),
+   « Sur ce téléphone », « Écris une question ou touche le micro. », the field's « Écris une question » and the camera menu
+   (« Prendre une photo », « Choisir une photo ») are French; in Settings › Display › Classic look too (« Demande-moi
+   n'importe quoi. », « Privé, sur l'appareil »), with nothing cut.
+3. **A French question, English menus.** Menus back to English, then « mets une minuterie de 5 minutes »: *done when* the
+   card's summary and line are French, its buttons **Do it** / **Cancel**, and Robot's spoken words use the French voice.
+   Then "OK": still French; a minute later "what's the weather": English.
+4. **Free up memory in French.** « libère de la mémoire »: *done when* Robot says what is free in French, the card's choices
+   are French, and after choosing to unload the model the line becomes « Environ … Go libérés … » (not stuck on its waiting
+   line). The same with a picked file to delete: Android's confirmation answered, the card says « Supprimé. » or « Pas
+   supprimé : tu ne l’as pas autorisé. ».
+5. **Robot answers in.** Settings › Language › Robot answers in › Français, then "set a timer for 5 minutes": *done when* the
+   card and the spoken line are French.
+6. **Home and History in French.** French menus, open Robot: *done when* the tabs (« Accueil », « Notes », « Historique »,
+   « Modèle », « Réglages »), Home's cards (« Salut, je suis Robot », « Façons de demander »), History (« Tout supprimer »,
+   its dialog) and a saved conversation's « Continuer » are French, and a snackbar (delete History: « Historique supprimé. »)
+   too.
+7. **Lock screen.** Locked, French menus, the corner swipe: *done when* « Verrouillé : … » lists what works there in French and
+   « Déverrouille pour utiliser l'appareil photo ou les photos » shows under the camera's menu.
+8. **A helper in French.** With Claude set up, « demande à Claude quelle est la capitale du Bhoutan »: *done when* the status
+   says « Claude réfléchit… » (French menus) and, with Claude's key removed, Robot says « Ajoute d'abord ta clé d'API Claude
+   dans les réglages de Robot … » in the French voice; with no internet, « Pas d'Internet … (Paramètres › Applications ›
+   Robot › Autorisations) » on a French phone.
+
+### Messages, memory, people and notes in French (1.1, WP3)
+
+- **Done areas: `messages`, `memory` and `people`.** Settings › Messages (its window included), Settings › Memory (its
+  import, 1.0's, included), Settings › People with each person and Notification access, Settings › People, notes and
+  calendar, and Robot Notes are in Québec French with French menus: `strings_messages.xml`, `strings_memory.xml` (1.0's 48
+  import strings translated) and `strings_people.xml` with their French. Core's words are `MessageStrings` (reading your
+  messages, a summary, a reply and its card, the quarantine, History's lines, the settings' choices, what the panel says
+  in a messages turn), `MemoryStrings` (what Robot answers a memory command, the lock screen's lines, the secret kinds,
+  History's placeholders, an item's source and dates, the settings' choices) and `PeopleStrings` (a new event's length).
+  The three baselines are gone; 1.0's inline French (138 texts) moved into the catalogs.
+- **The reply language.** A messages turn speaks the language its router heard (it matched a French or an English phrase),
+  unless Settings › Language › "Robot answers in" fixes one (core `ReplyLang`); a page Robot names in it ("Settings ›
+  Messages", « Réglages › Messages ») and a button it tells you to tap (« Touche Send ») are in the menus' language. The
+  messages' own words, a sender's name and an app's name are never translated; the voice gets French without its
+  typography. Memory's answers are phrases too (`MemoryReplies.*Text`), still said by the panel through 1.0's
+  `fr` wrappers until WP2 passes the turn's languages.
+- **What stays English.** The prompts (a summary's, a draft's, a translation's), a message line the model reads ("[14:02]
+  Mom (Cheogram): …", "[a photo]"), a memory note's "saved Oct 9" in the prompt, the tool's arguments ("this week"), the
+  voice log's lines and History's three marks Conversation matches ("Messages Robot read you (not kept)" and the like;
+  `MessageReading.keptText` shows them in the menus' language). `MessageQuarantine.forbidden` and the card line stay
+  English for the model; the card's words are `forbiddenText`. Settings' Messages and Memory rows keep their English
+  (`messagesSummary`, `memorySummary`) until Settings' root shows `messagesSummaryText`/`memorySummaryText` (WP8).
+- **French fixed on the way.** « appli » for Robot's own sentences (1.0 said « application »), « touche » for « appuie »,
+  one word each for a read receipt (« accusé de lecture ») and the carrier (« opérateur »), « 1 chose » where 1.0 wrote
+  « une chose » (plural forms name their count). The memory's dates are written out (« enregistré le 1er octobre »).
+
+### On the phone (1.1 WP3)
+
+1. **Settings › Messages.** Menus › Français (Canada), then Réglages › Messages: *done when* the title, the switch « Lire
+   mes messages », the window « Lire tes messages ? », every row, its choices (« Jusqu'à ce que la notification
+   disparaisse », « Robot envoie après ta confirmation »…) and the footer are French, the apps' names as they are
+   (« Messagerie (SMS) » for the phone's own), and nothing is cut.
+2. **Reading in French.** With a Cheogram message waiting, say « lis mes messages »: *done when* Robot says « 1 conversation :
+   Maman. Maman, dans Cheogram, 1 message : … Répondre ou arrêter ? » in the French voice, the message in its own
+   language's voice, the screen shows the narrow space before « ? » without a box, and History keeps « Robot a lu 1
+   message de Maman (Cheogram) ».
+3. **French speaker, English menus.** Menus in English, after a reading « réponds que j'arrive »: *done when* the reply card's line says
+   « Touche Send pour l'envoyer. » (the button as the card shows it), « Envoyer en anglais » if offered, and Send sends it.
+   « marque comme lu »: « Marqué comme lu : … ».
+4. **A setting fixes the language.** Settings › Language › Robot answers in › English, then « lis mes messages »: *done when*
+   Robot answers in English.
+5. **Memory in French.** « souviens-toi que Julie aime les tulipes », « qu'est-ce que tu sais sur moi », « oublie ça »: *done
+   when* Robot says « C'est noté : « Julie aime les tulipes ». », « Je retiens 1 chose. Par exemple : … », « C'est
+   oublié. », and the voice reads no « guillemet ». With memory full (or the debug fixture), « retiens que … »: « Efface des
+   choses dans Settings › Memory d'abord. » with English menus, « … dans Réglages › Mémoire … » with French menus.
+6. **Settings › Memory.** *done when* the page, an item's line (« Épinglé · enregistré le 11 septembre »), its dialog
+   (« Épinglé », « Privé », « Enregistrer »), Export's and Delete all's dialogs, Import's preview (« Importer des
+   souvenirs », « 2 souvenirs ajoutés. ») and the footer are French.
+7. **People and notes.** Réglages › Personnes, a person, Accès aux notifications, Réglages › Personnes, notes et agenda,
+   and the Notes tab (« Notes de Robot »): *done when* every word but names and addresses is French, the phone kinds read
+   « Cellulaire », « Domicile », « Travail », and the steps name Android's own pages as the phone writes them (note any
+   that differ: « Accès aux notifications », « Infos sur l'appli », « Autoriser les paramètres restreints »).
+8. **English menus.** Back to English: *done when* every one of these pages, a reading, a reply card and memory's answers
+   read as in 1.0.
+
+### Conversation mode and translation in French (1.1, WP5)
+
+- **Done area: `conversation`.** The transcript screen and the interpreter, the recording notification, the Quick Settings
+  tile and the launcher shortcuts, Transcripts and a transcript, the speakers' chips and dialogs, the summary screen and its
+  consent card, Your voice, the Transcription check and Settings › Conversation (the speaker model, the fast translation
+  engine's download and speed test) are in Québec French with French menus: `strings_conversation.xml` with its French.
+  Core's words are `ConversationStrings`: a transcript's title and length, an export's header, pauses and marks, your own
+  lines ("You", « Moi »), a summary's labels and what its check couldn't find, the consent card (what goes, where, the
+  names toggle, too long), why a summary stopped or wasn't sent, the check's results and why clips were refused, and the
+  fast engine's name, problems and speed result. The baseline (552 literals) is gone.
+- **Which language.** Screens, notifications and channel names follow the menus; an export is written in the menus'
+  language when you make it (« Transcription 2026-10-11 1402.md », « Date : 11 octobre 2026 … »). Each half of the
+  interpreter speaks its own language whatever the menus say (« Parle : Robot traduit. » on the French half). "Your
+  language" (a short line's prior, the interpreter's bottom half, your voiceprint's sentences, summaries in "Your
+  language") follows Settings › Language › "Robot answers in" when it is fixed, else the menus (core `LangLabel.yours`,
+  through `ReplyLang`), no longer the phone's locale. `ConversationRouter.lang` says which language a voice command was
+  said in, for the panel's reply language.
+- **What stays English.** What Gemma and Claude read: the lines a summary reads ("[14:03] Speaker 2 (fr): …", "User"), the
+  summary's prompts and note labels, and the request sent to Claude ("Summarize this conversation in French.",
+  "[Conversation of …]"). The copied reports (the Transcription check's and the speed test's) are diagnostics, and the
+  sentences you read stay one list per language. The lines' times stay "14:03" in both languages, so a summary's [14:03]
+  still points at its line.
+- **French decided on the way.** A speaker is « intervenant », a voiceprint « empreinte vocale », the fast engine « moteur
+  de traduction rapide » (its translations « rapide »), a clip « extrait », a pass mark « seuil ». The interpreter's French
+  half says tu (1.0 said vous to the other person). English is 1.0's to the character, "1 words" and "1 lines" included.
+
+### On the phone (1.1 WP5)
+
+1. **Settings › Conversation.** Menus › Français (Canada), then Réglages › Conversation: *done when* every row, its summary,
+   the choices (« Résumés en » › « Ta langue », English, Français), the dialogs, « Moteur de traduction rapide (52 Mo) » and
+   the footer are French (the speaker model's description stays English until WP7), and nothing is cut.
+2. **Transcribing.** Start from the tile: *done when* the tile says « Transcrire », the screen « Avant de commencer » and
+   « Démarrer », the notification « Robot transcrit » with « 3 lignes · … », « Pause », « Arrêter », « Ouvrir »; Paramètres ›
+   Notifications › Robot names the channel « Transcription d'une conversation ». Pause from the notification: « En pause ».
+3. **The interpreter.** Menu › « Interprète (face à face) » with their language French: *done when* the top half says
+   « Parle : Robot traduit. » and its button reads « Parler en français », the bottom half "Speak: Robot translates." (and
+   the other way round with French menus and English for them).
+4. **Transcripts.** Réglages › Conversation › Transcriptions: *done when* a transcript is « Conversation · 11 octobre,
+   14 h 02 », its header « 12 min · 3 lignes · français, anglais », a line « modifiée », a translation « rapide », a chip
+   « Intervenant » or « Moi », and « Enregistrer en Markdown (.md) » proposes « Transcription 2026-10-11 1402.md » whose
+   header reads « Date : … », « Intervenants : … », « Langues : … ».
+5. **Speakers.** Tap a chip, long-press a line, merge two speakers: *done when* the dialogs (« Nommer cet intervenant »,
+   « Même personne que… », « Qui l'a dite ? ») and the merge card (« S3 ressemble à S1. Est-ce la même personne ? ») are
+   French.
+6. **A summary.** « Résumer »: *done when* the screen, its progress (« Lecture de la partie 1… ») and the label « Résumé de
+   Robot — fait sur ce téléphone par … » are French; « Une IA plus puissante » shows « Envoyer cette conversation à
+   Claude ? » and « Destination : Anthropic (…), par Internet, avec ta clé d'API. », and a debug build's request to Claude
+   is English.
+7. **Your voice.** Settings › Language › Robot answers in › Français, then « Configurer ta voix »: *done when* the screen is
+   « Ta voix » and the three sentences to read are the French ones; with "The language you speak" and English menus, the
+   English ones.
+8. **The Transcription check.** *done when* the page, the modes and the results (« français (Québec) : 8 % de mots erronés
+   … Seuil de réussite 15 % : réussi. ») are French, no line starts with « % » or « : », and « Copier le rapport » copies
+   English.
+9. **The fast engine.** Download it, then « Tester la vitesse de traduction »: *done when* the download notification says
+   « Robot : moteur de traduction rapide », the steps « Chargement du moteur… », and the result (« Vitesse : médiane de … »,
+   « Dernier test : il y a 1 min. ») is French; « Copier le résultat » copies English.
+10. **By voice.** « dis robot, transcris cette conversation », then « mets en pause », « reprends la transcription » and
+    « arrête de transcrire »: *done when* each is understood (the panel's replies are WP2's).
+11. **English menus.** Back to English: *done when* every one of these screens, the notification and an export read as in
+    1.0.
+
+### Routines and the morning brief in French (1.1, WP4a)
+
+- **Done area: `routines`.** Settings › Routines (its warnings, rows, Ready list, what routines need and the footer), a
+  routine's page (the editor: its triggers, steps, dialogs and card), the morning brief's page, the routines'
+  notifications and Settings › Voice's wake-phrase words are in Québec French with French menus. The screens' words are
+  in `strings_routines.xml`; core's are `RoutineStrings` (a routine's card, when it runs, the editor's steps and what is
+  wrong with them, Ready cards, a run's summary, the last run, the notifications' titles, the locked phone's lines, what
+  the panel says in a routine turn, the wake phrases' sensitivities and problems) and `BriefStrings` (every sentence of
+  the brief). The baseline is gone; the 1.0 French in `Brief.kt`, `RoutineRouter.kt`, `RoutineRuntime.kt` and
+  `PanelRoutines.kt` moved into the catalogs.
+- **The reply language.** A routine command said in the panel answers in the language the routine router heard
+  (`RoutineRouter.lang`: a French phrase, or a routine read in French or English), else in what LangId hears, unless
+  Settings › Language › "Robot answers in" fixes one (core `ReplyLang`; `PanelRoutines.Host.langs`, which the panel can
+  later answer with its own turn's languages). Its card's sentences follow it; the card's buttons (Save, Cancel, Delete,
+  Do it) and a page it names (« Réglages › Routines ») follow the menus. A run nobody asked for, Run now and a Ready
+  card's tap say things in the setting's language, else the menus' (`ReplyLang.unheard`); so do the routines'
+  notifications, whose own words (channels, buttons) follow the menus.
+- **The brief's Language row now defaults to "Follow Robot"** (the design's §7.2): unset, the brief speaks the reply
+  language (the setting, else the menus'; in a panel turn, the turn's), no longer the phone's. English and Français
+  (Québec) are kept as they were.
+- **Shown and said.** The brief and a routine's spoken parts carry two forms: the screen's (French with its no-break
+  spaces and « ») in the panel's bubble and the silent notification, and the voice's (core `VoiceForm`: no typography
+  characters, « 30 pour cent ») for Kokoro. English is the same in both.
+- **What stays English.** A routine's saved name ("Morning routine" when it was made in English, « Routine du matin » in
+  French: the name is then yours), the voice log's codes (`TriggerKind`, `StepCode`, `StepGo`), a tool step's result
+  when its tool gives no phrase, and the English wrappers other areas still call (`describe()`, `title`, `badge`,
+  `RoutineCards.card`, `RoutineTexts.*`, `routinesSummary`), each with its phrase twin for WP9.
+- **French fixed on the way.** The brief's weather words are core `Wmo`'s (WP1: « pluie légère » where 1.0 said
+  « faible pluie »); the brief says « événement » where 1.0 said « rendez-vous » (GlossaryTest reads its « vous » as
+  vouvoiement); a routine's card, list and Settings were English only in 1.0 and are French now.
+
+### On the phone (1.1 WP4a)
+
+1. **English as before.** Phone and Robot in English: "every weekday at 7, tell me the weather and my calendar", "list my
+   routines", "brief me", Settings › Routines and a routine's page: *done when* every word, card and spoken line is 1.0's.
+2. **Settings › Routines in French.** Menus › Français (Canada), then Réglages › Routines, the morning brief's page and a
+   routine's page: *done when* every row, choice, dialog (« Ajouter une étape », « Supprimer « … » ? ») and footer is
+   French, the times read « 7 h », the days « en semaine », « chaque lundi et vendredi », and nothing is cut.
+3. **A routine by voice in French.** « chaque matin de semaine à 7 h, dis-moi la météo pis mon agenda »: *done when* Robot
+   says « Voici la routine. Dis oui pour l'enregistrer. » in the French voice, the card reads « Enregistrer la routine
+   « Routine du matin » ? », « Quand : en semaine à 7 h », and its buttons are the menus' (Save / Cancel on English menus).
+   « oui »: « Enregistrée. ». « quelles sont mes routines »: the list in French.
+4. **The brief in French.** Settings › Language › Robot answers in › Français (or the brief's Language › Français
+   (Québec)), then « mon résumé du matin »: *done when* it says « Bon matin. Il est … », the weather with « pour cent » (not
+   « pourcentage » or a pause), « Tu as N événements aujourd'hui », in the French voice, and the panel's bubble shows the
+   same words with « 30 % » and no box for the narrow spaces.
+5. **Follow Robot.** The brief's Language on « Suivre Robot » (the default), Robot answers in › English: *done when* the brief
+   at its time is English; Robot answers in › Français: French.
+6. **Notifications.** A routine with « Ne pas parler (notification seulement) », French menus: *done when* the notification
+   is titled « Routine « … » faite » with the French words, and Android's channels (Paramètres › Notifications ›
+   Robot) read « Routine qui parle » and « Routines ». A Ready card's notification: « Robot a 1 chose prête pour toi ».
+7. **Clock's words.** Check GrapheneOS Clock's French settings page: *done when* « Horloge › Paramètres › Silence après »
+   (the brief's page) is noted as the phone writes it, and the string fixed if it differs.
+
+### Headset and car mode in French (1.1, WP4b)
+
+- **Done area: `handsfree`.** Settings › Headset, Settings › Car mode (Add your car and the dialogs included), the car
+  screen, car mode's notification and the headset button's toast are in Québec French with French menus
+  (`strings_handsfree.xml`). Core's words are `HandsFreeStrings`: every spoken line (OutputGuard's, the spoken cards', calls,
+  messages in the car and the headset, navigation, "what's next"), the settings' choices, Settings › Headset's button and
+  device lines, the summaries Settings' rows can show (`carSummaryText`, `headsetSummaryText`) and what the panel says in
+  a hands-free turn. The baseline is gone; the 1.0 French in `car/*`, `headset/*`, `output/*`, `PanelHandsFree.kt`,
+  `HandsFreeMessages.kt`, `CarModeController.kt`, `CarModeActivity.kt` and `CarNotices.kt` moved into the catalog.
+- **The language.** Hands-free no longer follows the phone's language (`Locale.getDefault()`): with nothing heard (an
+  announcement, car mode starting) it speaks Settings › Language › "Robot answers in", else the menus' (`HandsFreeHub.langs`,
+  core `ReplyLang.unheard`); a hands-free panel turn takes `PanelRoutines.Host.langs`. The car screen, its notification,
+  the Do Not Disturb mode's name and Settings follow the menus.
+- **Said and shown.** A spoken line (core `Line`) keeps its English and, for French, the voice's form (no typography
+  characters, « 30 pour cent », "›" as a pause); `Line.shown` gives a screen its French typography. 1.0's French lines read
+  the same aloud but for the typographic apostrophe.
+- **What stays English.** The voice log's codes, the call tool's labels ("mobile", which the router matches; « domicile »
+  is understood too now), a parked reply's command ("reply to “Marie”: …", which the messages router reads back), the
+  car-mode prompt line (`CarSpeech.PROMPT_LINE`) and the English wrappers other areas still call (`HandsFreeNotice.TEXT`,
+  `HeadsetEntry.NOT_ASSISTANT`, `CarSetup.summary`, `headsetSummary`).
+- **French fixed on the way.** « appli » for « app », « touche » for « appuie sur », a phone's home number « domicile » (not
+  « maison »), « Redis « envoie » » for 1.0's cut « ou redis oui. », and « un événement » for an untitled one.
+
+### On the phone (1.1 WP4b)
+
+1. **English as before.** Phone and Robot in English, a Bluetooth headset and a car: the headset button, "call Mom", car mode
+   starting and ending, "navigate home", a message announced: *done when* every spoken line, the car screen and both
+   Settings pages are 1.0's.
+2. **Settings in French.** Menus › Français (Canada): Réglages › Écouteurs, Réglages › Mode auto, Ajouter ta voiture and the
+   device dialogs: *done when* every row, choice (« Annoncer de » › « Les personnes que tu choisis »), dialog and footer is
+   French and nothing is cut; note Android's own words for « Appareils à proximité » and « Autorisation Téléphone ».
+3. **The car screen.** Car mode on with French menus: *done when* the screen reads « Mode auto », « Parler », « Appeler »,
+   « Aller au domicile », « Terminer le mode auto », the notification « Dis « hey robot » ou presse le bouton vocal de ton
+   auto. » with « Terminer », and the big buttons' French fits (two lines at most).
+4. **Car mode speaks French.** Robot answers in › Français (or French menus with « La langue que tu parles »): *done when*
+   « Mode auto activé. », « Appeler Martine, cellulaire, qui finit par 0101? », « Message de Marie. Je te le lis? » and
+   « Je garde ça pour quand tu seras stationné. » are said in the French voice, with no « guillemet » read and no odd pause.
+5. **English answers in.** Robot answers in › English with a French phone: *done when* car mode and the headset speak English
+   (1.0 followed the phone: this is the intended change).
+6. **Do Not Disturb.** « Ne pas déranger en conduisant » on with French menus: *done when* Android's Do Not Disturb settings
+   list « Conduite (Robot) ».
+7. **From your drive.** End car mode with something kept: *done when* the notification says « De ton trajet : 1 chose » and its
+   tap fills the field as before.
+
+### The model, the engines and the voice in French (1.1, WP7)
+
+- **Done areas: `model` and `voice`.** The Model tab (Robot uses, This phone, Thinking, Memory, Voice models, the footer), a
+  model's page, your own model file's page with its TPU dialog and its import warning, a publisher's conditions, a voice
+  model's page, the model problems and their notification, Settings › Voice, Settings › Wake word, Interrupt sensitivity,
+  the barge-in test's page, Test wake words and the voice log's page are in Québec French with French menus
+  (`strings_model.xml`, `strings_voice.xml`). Core's words are `ModelStrings` (the models' names and descriptions, a
+  download's state, progress and space, why one can't start, what Robot's check found in your own file, why :brain refuses
+  a file, why Robot uses Fast, a model problem's headline, this phone's TPU and the speeds with their sources, the
+  mobile-data question, the model's errors) and `VoiceStrings` (the voice models, their downloads and installs, the voice
+  engines' states, the speed test's results and steps, what voice input tells the panel, :brain's load failures). Both
+  baselines are gone. The voice models' sizes and the fast translation engine's are one function now
+  (`VoiceModelLogic.sizeText`; `MtModelLogic.sizeText` calls it).
+- **Names.** Fast, Smarter and Uncensored stay the built-in models' names (« Fast (bêta) », « Smarter, plus lent »); the
+  models', chips' and phones' names, LiteRT-LM, GGUF and llama.cpp are as they are.
+- **Across processes, without a language.** :brain sends why a model didn't load as `PhraseWire` beside its English
+  (`BrainMsg.Loaded.errorPhrase`); BrainKeeper says it, and why Robot uses Fast, in the menus' language. The voice process
+  writes the speed test's step (`VoiceBench.stepText`), the wake word's status note (`notePhrase`) and the barge-in test's
+  failure (`BargeTestResult.noteText`) the same way, and your own file's check keeps its problem (`problemPhrase`), so a
+  page shows them in the menus' language of the day. A download's failure is kept that way too. Voice input's hints and
+  failures are in the menus' language (`ScreenLangs` in :voice). Older records read as their English.
+- **What stays English.** The problem report (a diagnostic you copy or share), the voice log, the barge-in test's results,
+  the speed test's fixed sentences, a model file's parser detail (« … (détail technique : a tensor too large) »), a
+  publisher's own conditions (quoted, « dans ses propres mots (en anglais) »), the model's prompts, and the values other
+  areas name (a voice, how the voice plays, the volume key's choices: core `VoiceChoice`, `BargeIn`, `Playback`, `StopKey`).
+  Every English word, golden and test is 1.0's (one source test now finds the import warning in `strings_model.xml`).
+
+### On the phone (1.1 WP7)
+
+1. **English as before.** Phone and Robot in English: the Model tab, a model's page, your own file's page, Settings › Voice,
+   Settings › Wake word and the barge-in test: *done when* every word is 1.0's.
+2. **The Model tab in French.** Menus › Français (Canada), then Modèle: *done when* « Robot utilise », « Fast », « Smarter,
+   plus lent » with « Pas téléchargé · 3,66 Go », « Ce téléphone » and its TPU line, « Laisser le modèle réfléchir
+   d'abord », « Garder le modèle chargé », « Modèles de voix » and the footer are French, no box shows for the narrow space
+   before « ? » or « : », and nothing is cut.
+3. **A download in French.** A model's page › « Télécharger 3,66 Go »: *done when* the mobile-data question (« Télécharger
+   3,66 Go ? », « Attendre le Wi-Fi », « Télécharger quand même »), the progress (« 1,20 Go sur 3,66 Go (32 %) ») and
+   Android's download notification (« Modèle d'IA de Robot (3,66 Go) ») are French; with Wi-Fi off, « En pause à … : en
+   attente d'une connexion réseau ».
+4. **Your own file in French.** Import a .gguf (or a .litertlm): *done when* the warning (« N'importe qu'un fichier en qui tu
+   as confiance »), « Ce que Robot a trouvé dedans » with its lines (« Fichier GGUF, version 3 : … », « Quantification :
+   Q4_K_M. ») and where it runs are French; switch the menus back to English: *done when* the same check reads in English
+   without checking the file again.
+5. **A model that doesn't load.** Choose a model, then delete its file outside Robot (or use the debug fixture): *done when*
+   the panel says « « Smarter, plus lent » n'est pas encore sur ce téléphone, alors Robot utilise Fast. Télécharge-le dans
+   l'appli Robot › Modèle. » with French menus, and a load that fails in :brain shows its reason in French.
+6. **Settings › Voice and Wake word in French.** *done when* Réglages › Voix (« La voix de Robot », « Vitesse 1,0× »,
+   « Lire les réponses à voix haute », « Dépannage », the footer) and Réglages › Mot d'éveil (« Utiliser les mots d'éveil »,
+   « Sensibilité Moyenne », « Ajouter une phrase d'éveil ») are French; the voices' own names (Heart, Siwis, Kitten) and how
+   the voice plays stay as Settings names them.
+7. **Voice input in French.** With the voice models deleted, touch the mic: *done when* the panel says « La saisie vocale a
+   besoin des modèles de voix : télécharge-les dans l'appli Robot (Modèle › Modèles de voix). … ».
+8. **The speed and barge-in tests.** « Tester la vitesse de la voix »: *done when* its steps (« Chargement de la
+   reconnaissance vocale… ») and results (« Reconnaissance vocale : 5,3 s de parole transcrites en … ») are French. The
+   barge-in test with the panel open: *done when* « Ferme d'abord le panneau… » shows in French and stays French after the
+   menus are switched and back (its other results stay English, as the voice log).
+9. **A model problem in French.** After a GPU failure (Pixel 9a, or the debug fixture): *done when* the notification
+   (« Le modèle de Robot a eu un problème ») and Modèle › Problème du modèle are French, and Copier le rapport copies the
+   English report.
+
+### Helpers in French (1.1, WP2b)
+
+- **Done area: `helpers`.** Settings › Helpers, a helper's page (its status, connection, key, names, model, what it may do,
+  voice, trust, prices, cap and footer), Add a helper with its address and "Is this computer yours?" dialogs, the model and
+  price dialogs, and a helper's connection window (its key, Test connection, Check actions and what they found) are in
+  Québec French with French menus: « IA externes », « Ajouter une IA externe », « Quand Robot a besoin d'aide ». The
+  screens' words are in `strings_helpers.xml`; core's are `HelperStrings`: Claude's models and their prices, how hard a
+  helper thinks, Claude's voices, the Claude app or API, when Robot needs help (`Escalation.labelText` is Settings' « Demander
+  d'abord »), the presets (titles, companies, billing, data use, web search notes, their models), the name and key rules, the
+  address hints (`LanRule`) and the Test line of a search service that isn't a SearXNG (`SearchClient.testText`, shown by the
+  web search window). The baseline is gone.
+- **Amounts.** Prices, budgets and spend keep 1.0's English ("$0.15", "$12.50", "Today: $0.00 of $1.00") and are written
+  « 0,15 $ US », « Aujourd'hui : 0,00 $ US sur 1,00 $ US » in French (core `HelperFormat`); the price table's day is
+  « 11 octobre 2026 » (`Pricing.dateText`), seconds « 1,2 s ».
+- **What stays as it is.** The presets' default names ("My server", "Helper": they become your helper's name), company,
+  product and model names, the companies' own key pages ("console.anthropic.com › API keys"), example addresses, and what a
+  helper is sent. The English wrappers (`title`, `detail`, `billing`, `why`, `warning`, `hint`, `SearchClient.test`) stay for
+  other areas' code until WP9.
+
+### On the phone (1.1 WP2b)
+
+1. **English as before.** Phone and Robot in English: Settings › Helpers, Claude's page, Add a helper › Your own server's
+   address dialog, and the key window from Claude's « Add key »: *done when* every word is 1.0's.
+2. **Settings › Helpers in French.** Menus › Français (Canada), Réglages › IA externes: *done when* the intro, « Tes IA
+   externes », « Ajouter une IA externe », « Quand Robot a besoin d'aide » with « Demander d'abord · Claude », « Budget
+   quotidien pour toutes les IA externes » with « Aujourd'hui : 0,00 $ US sur 1,00 $ US (une estimation) » and the footer are
+   French, the "$ US" never alone at a line's start, and nothing is cut.
+3. **A helper's page.** Open Claude: *done when* « Utiliser Claude », « Ajouter une clé », « Appli Claude » / « API Claude »,
+   « Niveau de réflexion de Claude » (« Automatique »…), « Voix de Claude » (« Emma (britannique, femme) »), « De confiance
+   pour le contenu personnel », the model dialog's prices (« 4 $ US par million de jetons en entrée… ») and the footer are
+   French.
+4. **Add a helper.** Ajouter une IA externe › Ton propre serveur, type « box.tail1234.ts.net »: *done when* the dialog says
+   « L'adresse de ton serveur » and « C'est un nom Tailscale : il ne se résout que lorsque Tailscale est activé. », and a
+   wrong address « Ce n'est pas une adresse que Robot peut utiliser… ».
+5. **The key window.** Add an OpenAI helper and paste a key that doesn't start with sk-: *done when* the window says « ChatGPT :
+   clé d'API », « Crée une clé sur platform.openai.com › API keys, puis colle-la ici. … » and « Les clés OpenAI commencent
+   habituellement par sk-. … »; after Save, Test connection says « Test de ChatGPT… » and then « ChatGPT fonctionne » with
+   « Connexion établie : … modèles à choisir dans les réglages. Une question test a reçu une réponse en 1,2 s. ».
+6. **Your server's Test connection.** With a home server on http: *done when* the window ends with « Cette connexion n'est
+   pas chiffrée : … » and the helper's page shows « Non chiffrée ».
+7. **A search service's Test.** Réglages › Recherche web with Brave and its key, Test: *done when* the window says « API Brave
+   Search a répondu : 20 résultats », and with English menus "Brave Search API answered: 20 results".
+
+### Settings, the setup guide, updates and feedback in French (1.1, WP8)
+
+- **Done areas: `settings`, `updates`, `adb` and `guide`.** Settings' root and every page left to WP8 (Actions, Safety &
+  privacy, Weather, Display, History, Assistant setup, Advanced, About, Licences), the settings pages' frame and dialogs
+  (Back, Save, Cancel, a status row's symbol), Settings › About › Updates and Send feedback, ADB fixes with Shizuku, the
+  reminder after a restart, the updater's notifications and the whole setup guide are in Québec French with French menus
+  (`strings_settings.xml`, `strings_updates.xml`, `strings_adb.xml`, `strings_guide.xml`). Core's words are
+  `SettingsStrings` (Settings.kt's choices: approval levels, when Robot speaks, the voices, the texting and email apps,
+  "Find the nearest place online"; `BargeIn`, `Playback` and `StopKey`; the Licences' sections; the ADB fixes; the rows'
+  states), `UpdateStrings` (every line of the updater, its notifications, the last check, the Updates row) and
+  `FeedbackStrings` (the form's kinds, prompts and diagnostics). The four baselines are gone.
+- **Settings' root** shows each row's title from core `UiStrings` (so a reply's « Réglages › Mémoire » is the row's own
+  title) and its state in the menus' language: `…SummaryText(…).str()` for every row, the other areas' too (routines,
+  headset, car, messages, memory, web search, Termux). The English wrappers (`wakeSummary`, `actionsSummary`,
+  `displaySummary`, `escalationLabel`…) stay for other areas and the tests.
+- **Times, dates and sizes.** The updater's lines take a language (`UpdateText.fail`, `lastCheck`, `whenText`,
+  `published`, `size`): English keeps 1.0's "Last checked today at 09:05" and "97 MB", French writes « Dernière
+  vérification : aujourd'hui à 9 h 05 » and « 97 Mo »; a message the page shows after you asked for something is a phrase
+  until it is drawn (`Updater.message`), and the notifications are written in the menus' language when they are posted.
+- **The guide.** Its first page has a Language row (Menus: Phone's language, English, Français (Canada)); choosing one
+  recreates the guide in that language on the same page (its step is in its file). With French menus, the things you can
+  say are French first, with the English beside them (« Traduis cette conversation » · “Be my interpreter”): Robot
+  understands both. The summary's choices are core's, in the menus' language. The contact address is an argument, the
+  same in both languages.
+- **Android's screens** are named in the phone's language (core `AndroidPath`): the digital assistant app, Install unknown
+  apps, Robot's permissions, About phone and Developer options.
+- **What stays English.** The message Send feedback builds (its header, your words, the diagnostics: the developer reads
+  it), the voice log, the licence texts and the GPL notice, ADB and rish commands, model and chip names, the voices' names
+  (Heart, Siwis, Kitten), Robot's version ("Robot 1.1.0"), and the English wrappers other areas call.
+- **Decided here.** « Quand Robot demande d'abord » for "When Robot asks first" (WP6 and WP3 already quote it); a GitHub
+  release is a « publication », a repository a « dépôt », an access token a « jeton d'accès »; Skip this version is
+  « Ignorer cette version »; the guide's last button « Terminer », Send feedback's Done « OK »; Clear (the Home for
+  weather) « Retirer », since « Effacer » isn't a button word. The fr-CA screenshots `settings_root_fr`, `safety_fr`,
+  `prefs_fr_font200` (Safety & privacy at twice the text size), `guide_welcome_fr` and `guide_summary_fr` are recorded.
+
+### On the phone (1.1 WP8)
+
+1. **English as before.** Phone and Robot in English: Settings' root, Actions, Safety & privacy, Weather (look up a town),
+   Assistant setup, About › Updates (Check now) and Send feedback, ADB fixes and the setup guide from About: *done when*
+   every word is 1.0's and Updates still says "Last checked today at 09:05".
+2. **Settings in French.** Menus › Français (Canada), then Réglages: *done when* every row reads as the screenshot
+   `settings_root_fr` (« Mot d'éveil · Activé · « hey robot » », « Sécurité et confidentialité · Quand tu ne l'as pas
+   demandé · verrouillé : questions, minuteries et alarmes »…), each page opens in French, and no box shows for the
+   narrow space before « ? », « ; » or « : ».
+3. **Safety & privacy and Actions.** *done when* Réglages › Sécurité et confidentialité shows « Quand Robot demande
+   d'abord » with « Par défaut. … » before the default's line, and Réglages › Actions shows each action's level
+   (« Demander d'abord · utilise Internet »), « Trouver l'endroit le plus proche en ligne » and the footer naming the
+   search server.
+4. **Assistant setup.** With Robot not the assistant: *done when* the row says « Choisis Robot dans Paramètres ›
+   Applications › Applications par défaut › Application d'assistant numérique » in the phone's language, and Android's page
+   has that name (note it if it differs).
+5. **The restart reminder.** Restart the phone with Robot the assistant and no recognizer fix: *done when* the notification
+   reads « Réactiver Robot » and its channel is « Assistant après un redémarrage » in Paramètres › Notifications.
+6. **Updates in French.** Réglages › À propos › Mises à jour › Vérifier maintenant: *done when* the line reads « Dernière
+   vérification : aujourd'hui à 9 h 05. Tu es à jour. » (the time as the phone's clock), an update on offer shows its
+   date and size in French (« dimanche 11 octobre 2026 · 97 Mo »), « Télécharger », « Ignorer cette version », and an update's notifications
+   (« Robot 1.1.1 est disponible ») are French. A failed check (airplane mode) reads « Pas d'Internet. Robot réessaiera plus
+   tard. »
+7. **Send feedback in French.** *done when* the form shows « Bogue », « Idée », « Autre », « Qu'est-ce qui s'est passé ? »,
+   « Ajouter au message » with each diagnostic, and Partager's sheet is titled « Envoyer le commentaire avec »; Aperçu shows
+   the message in English (« ROBOT FEEDBACK v1 », "Kind: Bug report").
+8. **ADB fixes in French.** Réglages › Avancé › Correctifs ADB: *done when* each fix, « État », « Pourquoi », the Shizuku
+   steps and the footer are French, the commands are unchanged, and Android's « Numéro de build », « Débogage USB » and
+   « Débogage sans fil » match the phone's words (note them if not).
+9. **The setup guide in French.** Réglages › À propos › Guide de configuration: *done when* every page is French, the
+   examples read French first (« Traduis cette conversation » · “Be my interpreter”), and the summary's choices are French
+   (« Demander chaque fois · Réglages › Personnes, notes et agenda »). Say three of the French examples: *done when* Robot
+   does what the page says (« Lis mes messages », « Mets une minuterie de 10 minutes », « Souviens-toi que … »).
+10. **The guide's language row.** On the guide's first page, Langue › Menus › English: *done when* the guide comes back in
+    English on its first page, and Settings › Language says English; back to Français (Canada) the same way.
+
+### Wiring and cleanup in French (1.1, WP9a)
+
+WP9a translates nothing: it moves the call sites the packages left on English String wrappers onto their phrases, removes
+the wrappers, and closes three test gaps. Every English word, golden and test is unchanged.
+
+- **The panel.** `decideLangs` gets the router's match for a conversation command (`ConversationRouter.lang`), a routine
+  command (`RoutineRouter.lang`) and a memory command (`MemoryPanel.lang`), as it already had for "free up memory", so a
+  French « liste mes routines » is answered in French whatever the setting says elsewhere. `PanelRoutines.Host.langs`
+  returns `turnLangs`; « Je transcris. » inserts the `ConsentRecord.line` phrase; a memory command's replies, cards and
+  refusals are `MemoryReplies.…Text()` and `MemoryAccess.unlockToSave()`/`unlockToChange()` in the turn's languages (a
+  helper's `Prepared.Refused` and `Executed` carry them as phrases); `BrainError.textPhrase()`, `MessageQuarantine.
+  checkAndTapText()`, `AfterMessages.Refused.phrase` and `Pricing.lineText` render in `turnLangs`. Turn.kt, Safety.kt and
+  Approval.kt use `forbiddenText`, `cardLineText()`, `TermuxCalls.unprepared` and `MemoryAccess.unlockTo…()`.
+- **Home and Settings.** The mobile-data dialog is `DownloadPolicy`'s phrases; the `home_*` toasts name a model or voice
+  bundle by `titleText`; Robot's row among the largest apps is `InfoStrings.robotModels()` (`AppSize.labelText`); Settings ›
+  Voice and the barge-in page show the catalog's titles and details; the fast translation engine's progress, failure and
+  space messages are phrases in the menus' language (`MtModelStore`, a failure kept with PhraseWire); the last web Test's
+  line is kept with PhraseWire too (an older record reads as its English).
+- **Removed** (nothing in the app calls them): the String wrappers of ModelState (`BrainModel.title`, `ModelLogic.refuse`…),
+  Phones, VoiceModels, VoiceStatus, DownloadPolicy, BrainProtocol, `GpuFailure.what` and `TpuFailure.what`; the helpers'
+  (`Preset.title`, `CatalogModel.detail`, `NameCheck.why`, `LanRule.NOT_LOCAL`, `SearchClient.test()`…); Settings' and
+  BargeIn's `title`/`detail`; the ADB fixes', feedback kinds', `SummaryLine.value` and `GuideChoices.nearest`; Settings'
+  `…Summary` String functions and `escalationLabel`; the deprecated web, memory and messages ones; `UpdateText`'s fixed
+  English constants; `ConversationStrings.sizeGb`/`sizeMb`.
+- **Kept.** `UpdateText.fail`, `whenText`, `lastCheck`, `published` and `size`: English keeps 1.0's "09:05" and "12 Oct",
+  where `Fmt`'s typed arguments write "9:05" and "Monday October 12", so these take a language and return a String (the
+  Updates page uses them). `Pricing.line`, `ClaudeCost.line` and the other areas' wrappers that no note lists stay. The JVM
+  and Robolectric tests read English through test-only `EnglishView.kt` files (each wrapper's `.en()`), so no assertion
+  changed.
+- **The test gaps.** GlossaryTest's "le Robot" rule keeps the brand "Robot" when it strips brand names, and a test proves
+  the rule can fail. `AndroidPath` has Build number, USB debugging, Wireless debugging (parts of a path a sentence
+  continues: `partial`), App info › Permissions › Additional permissions and Settings › Apps › Special app access ›
+  Notification access, used by the ADB page, Shizuku's steps, Termux's setup and the Notification access steps instead of
+  words spelled in resources. `ConversationSettings.summaryLang` takes the menus' language and "Robot answers in", not
+  `Locale.getDefault()`.
+
+### On the phone (1.1 WP9a)
+
+1. **English as before.** Phone and Robot in English: open the panel, say "transcribe this conversation", "list my routines",
+   "remember that my sister is called Julie", ask the weather, free up memory: *done when* every word is rc1's.
+2. **French commands, English menus.** « transcris cette conversation », « liste mes routines », « souviens-toi que ma sœur
+   s'appelle Julie »: *done when* Robot's reply, its consent line and the cards are French, their buttons English.
+3. **French menus, the model and the downloads.** Réglages › Modèle, then a large download: *done when* the dialog
+   « Télécharger … ? » with its two buttons and the toasts naming a model are French, and the largest-apps card reads
+   « Robot (modèles, ne pas vider) ».
+4. **Réglages › Voix.** *done when* the voice, the barge-in modes, how her voice plays and the stop key read in French.
+5. **Android's words.** Réglages › Avancé › Correctifs ADB and the Termux and Notification access steps: *done when* « Numéro de
+   build », « Débogage USB », « Débogage sans fil » and the paths match the phone's (note a difference in `AndroidPath`).
+
+### Review and screenshots in French (1.1, WP9b)
+
+WP9b read every French string beside its English (2,925 resource values in 21 areas, 2,616 core catalog entries;
+backup's French waits on its open questions) and fixed what was plainly wrong. The choices left to make are in
+`docs/l10n-review-1.1.md`.
+
+- **67 fixes**: meaning, grammar and agreement, two « Fast » left in English, the glossary (« Notes de Robot », « IA
+  externe »), register (Robot never says « pis »), consistency, and lines too long for their place (the car screen's
+  title, the panel's waiting line).
+- **Typography by rule.** `FrTypo` and `tools/fr_typo.py` keep a time or duration on one line (« 7 h 30 », « 10 min »,
+  « 3 s », no-break spaces; never the « s' » of « s'arrête »), and leave code in backticks and a bare `claude://` alone.
+  The brief's clock is core `Fmt.clock`'s. The reply card quotes your words through `MessageStrings`, with French spacing inside « » and
+  before the colon; the English is unchanged.
+- **20 French goldens** (`*_fr.png`): the design's 18, less the standard panel's two that 1.0 removed (its classic
+  panel has both), and Phone lock, Skills and Support Robot: `panel_classic_answer_card_fr`, `action_cards_fr`,
+  `action_cards_fr_font200`, `reply_card_fr`, `routines_fr`, `car_screen_fr`, `phone_lock_fr`, `skills_fr`,
+  `support_fr` beside WP1–WP8's eleven.
+- Tests changed only where their expected French did (the new spaces, the fixed words); none was loosened.
+
+### On the phone (1.1 WP9b)
+
+Menus in Français (Canada) for each step.
+
+1. **The car screen.** Unlock once, then start car mode (« mode auto »): *done when* the title reads « Mode auto ·
+   déverrouillé » in full, on one line.
+2. **The panel's waiting line.** « texte à Marie que j'arrive », so a card waits: *done when* « Je t'attends : touche
+   la carte ou dis oui ou non » fits on one line under « Robot ».
+3. **The reply card.** Messages on, a message in English, then « réponds-lui : j'arrive »: *done when* your words show
+   as « J'arrive » with spaces inside the guillemets, and the tick box reads « Envoyer en anglais : « … » ».
+4. **Times stay whole.** Réglages › Routines and Réglages › Blocage du téléphone, also at the largest text size: *done
+   when* no time such as « 4 h » or « 22 h » is split between the number and « h ».
+5. **The voice reads times.** French replies, « règle une alarme pour 7 h 30 », then « résumé du matin », then a
+   question the model answers with a time (« dis-moi l’heure du coucher du soleil à Montréal »): *done when* the voice
+   says the times as times (« sept heures trente »), never « ache » or « virgule », with no pause or odd sound where the
+   no-break spaces are, and the screen still shows « 7 h 30 ». In English, "set an alarm for 7:05": "seven oh five", not
+   "seven zero five" (core `VoiceForm.clock`; `tools/voice_phonemes.sh` shows what the voice is given on a computer).
+
+## Encrypted backup (1.1, phase 1: core)
+
+1.1's Back up and restore makes one file, encrypted with a passphrase you choose,
+that carries what you chose to keep to a new phone. Phase 1 was the core only: the file format, its crypto, the records
+and every rule of a restore, in pure, JVM-tested code (`core/backup/`), with no screen, no manifest change and no
+permission. Android's own backup stays off for Robot. The backup window (`:voice`), Settings › Back up and restore, the
+restore and the monthly reminder have been built on it since: "What's new in 1.1" at the top lists what you see.
+
+- **The file** (`BackupFormat`, `BackupStream`, `BackupContainer`). A 48-byte header (`ROBOTBAK`, format 1, the key
+  derivation's settings, a 16-byte random salt, the chunk size, the version code that made it), then AES-256-GCM in
+  64 KiB chunks (age's STREAM: each chunk's nonce is its number and a "last" flag, the whole header is every chunk's
+  additional data), through Android's own `Cipher` (Conscrypt). Inside, records: the manifest first, one entry per file
+  (`{"c":"notes","n":"<id>.json","v":1}`), the end record last with the counts. A changed byte, chunks swapped, repeated
+  or dropped, a cut file and bytes after the end are all refused; a cut inside the last chunk and a changed byte in it
+  can't be told apart (both read "incomplete"), and a changed header or first chunk reads as a wrong passphrase. Reading
+  is strict (StrictJson metas of at most 4 KiB, 200,000 records, 32 GiB, each category's names and caps, §8.2), and memory
+  stays flat: a 1 GiB backup is written and read back through a pipe in 2.6–2.9 s here, the heap growing by 0.5 MB.
+- **The key** (`BackupKdf`). Argon2id v1.3 (RFC 9106's second recommended settings: 64 MiB, 3 passes, 4 lanes, 32-byte
+  key) of the passphrase's NFC UTF-8 bytes, not trimmed. Argon2 is **Robot's copy of Bouncy Castle 1.81's** (MIT): not
+  the library, only its `Argon2BytesGenerator`, `Argon2Parameters`, its BLAKE2b digest and the 17 helpers they need to
+  compile, in `core/src/main/java/app/heyrobot/thirdparty/bouncycastle/` (their package renamed from `org.bouncycastle`
+  to `app.heyrobot.thirdparty.bouncycastle`: Robolectric's own signed Bouncy Castle, in the app's tests, refuses other
+  classes in its packages), each starting with a comment naming its source, with `LICENSE` and a `NOTICE` (bc-java tag
+  `r1rv81`; each file's SHA-256 as published and as copied, which `VendoredBouncyCastleTest` checks; the copy gives the
+  same output as `bcprov-jdk18on-1.81.jar`'s classes, sha256 `249f3964…2457459b` in `THIRD_PARTY.md`, checked with
+  random settings on the build machine). Besides the package, one change: `Blake2bDigest`'s three calls to Bouncy
+  Castle's services registry are removed. `BackupKdf` is the only user; nothing is registered as a security provider.
+  The password bytes are zeroed once Argon2id has them, the key when the job ends (`BackupKey.close`). A header asking
+  for more than t 1–10, m 19–256 MiB, p 1–8 is refused before any work. KDF id 2 (PBKDF2, the design's fallback) is
+  reserved and refused by this reader. **Measured here** (JDK 21, 4 cores, `BackupKdfTest`): 143–249 ms for the design's
+  settings over three runs of three; the phone's time is phase 2's check B2 (EST 1–4 s).
+- **The size.** The unsigned release APK was 59,846,262 bytes on `develop/1.1` at 3f5fec5 (WP0): +106,719 bytes over
+  that commit (59,739,543) for the whole backup core with the copy, +163,307 over 1.0's ad7aa0e (59,682,955; WP0 is the
+  rest); with WP1 merged in, 59,926,866. (The whole `bcprov` jar, tried first, added 3.1 MB and three classes that refer
+  to `javax.naming`, which `verify_apk.sh` refuses.) `verify_apk.sh` checks that the generator and `BackupKdf` are in
+  the dex and no other Bouncy Castle class is.
+- **Restore's rules** (`RestoreReader`, `RestorePlan`, `RestoreSafety`, `RestoreRefs`, `RestoreTaint`, `RestoreJournal`).
+  The whole file is read and checked before anything of yours is written; only a `VerifiedBackup` lets the second pass
+  hand entries out. Per category: the backup's on a phone that has none, else Add (the default) or Replace; Settings
+  replace, keys only where this phone has none; History only with saving History on, Memory only with Memory on; a
+  category this Robot doesn't know, or holding a newer schema, is skipped by name; a refused entry refuses its category.
+  Adding the same backup twice adds nothing. "This backup is my own" is off by default: then memories are content,
+  restored conversations carry a content record ("Restored from a backup file", replayed as quoted information,
+  `Quoted.RESTORED`), people are unconfirmed, routines and new helpers arrive off (a routine that's off runs only after a tap on its card,
+  never a spoken yes), headsets ask again whether only you
+  hear them, keys and codes are skipped, and every setting that lets Robot act with fewer questions, or sends your words
+  to a server the file chose, keeps this phone's value (`SaferField`, listed). Trust is never restored either way
+  (Messages' pins, the trusted Termux, Cheogram's signer, one-time answers), and this phone's own values stay (its
+  calendar, its voiceprint, the model terms confirmed here, the search model, Home's language notice).
+  `RestoreSafetyCoverageTest` classifies every field of every settings type by reflection (it already caught WP0's
+  `replyLang` and `menusNoticeSeen`). The journal makes each category all or nothing across a crash.
+- **Also**: the passphrase check and generator (`Passphrases.kt`; the word list is phase 2's asset), the monthly
+  reminder's timing and the two small files (`backup.json`, `backup_state.json`), `MemoryRestore`, `TranscriptStore.restore`,
+  and the sentences (`core/i18n/BackupStrings.kt`, a new `backup` area, English only for now; `BackupWords` maps each code).
+- **Decided by default (to confirm).** A restored conversation's record goes on the last turn the file brought, not the
+  first (so its turns, and none you add later, are framed); a new helper arriving off is listed as kept safer; beyond the
+  design's list, the SMS gateway, the nearest-place server, your SearXNG addresses, the updates fork, the feedback number,
+  a helper's address and budget, the web search cap, card answers by voice, Termux's command level and hidden secrets,
+  routines' locked and online switches, the brief, and car mode's lock use, calls, read-aloud and trusted hours are
+  guarded too; "this phone's value" for the phone-specific fields rather than the defaults, so a restore onto a phone
+  already set up keeps its voiceprint flag and calendar.
+- **Fixtures and tests.** `core/src/test/resources/backup/`: `backup-v1-basic.robotbackup` (every category, passphrase
+  "crate-mosaic-unlocked-plaza-humming-oxygen"), `backup-v1-newer.robotbackup` (a "1.3" file with a newer settings schema
+  and an unknown category), `backup-v2-format.robotbackup`; they must restore in every later release
+  (`BackupGoldenTest`, which also checks the writer still makes the same bytes). The tests: `BackupKdfTest` (RFC 9106's
+  Argon2id vector), `BackupStreamTest`, `BackupLargeStreamTest` (1 GiB), `BackupContainerTest`, `PassphraseTest`,
+  `RestorePlanTest`, `RestoreSafetyTest`, `RestoreSafetyCoverageTest`, `RestoreTaintTest`, `RestoreTrustTest`,
+  `RestoreRefsTest`, `RestoreJournalTest`, `BackupDowngradeTest`, `BackupGoldenTest`, `BackupLogTest`,
+  `BackupReminderTest`, `BackupWordsTest`, `VendoredBouncyCastleTest` (with RFC 7693's BLAKE2b vector in `BackupKdfTest`);
+  `ProcessIsolationTest` checks that only `BackupKdf.kt` names Bouncy Castle, that the copy is those 20 files and no
+  build file names Bouncy Castle, and that nothing registers a provider; `tools/verify_apk.sh` that its Argon2 generator
+  and `BackupKdf` are in the dex (and no other Bouncy Castle class) and the Licences list names it with its notice;
+  `LicencesTest` its entry, text and notice.
+
+### On the phone (1.1 backup, phase 1)
+
+1. **Nothing changed.** Install over the previous build: *done when* Home, Settings, the panel and a timer by voice work
+   as before, your settings are kept, and Android asks for no new permission.
+2. **The licence.** Settings › About › Licences: *done when* "Bouncy Castle (Argon2 and BLAKE2b sources only)" 1.81
+   (r1rv81) is in the app's list, MIT, its text opens with "Copyright (c) 2000-2023 The Legion of the Bouncy Castle
+   Inc." and its NOTICE lists the 20 files Robot copied.
+3. **Robot's encryption is still Android's.** Open Settings › Memory (the list shows), Settings › Helpers › Claude › Test
+   connection with your key, and a web search with a key: *done when* each works as before (no provider is added, so
+   the Keystore and Conscrypt are untouched), and `adb logcat -d | grep -ci bouncycastle` is 0.
+4. **The APK.** `tools/verify_apk.sh` on the signed release: *done when* it passes, including "Bouncy Castle's
+   Argon2BytesGenerator (Robot's copy) and core's BackupKdf in the dex", "no Bouncy Castle class but the 20 Robot
+   copied" and the size under 100 MB.
+5. **Argon2id's time** waits for phase 2's window (check B2: under 5 s on the slowest supported Pixel, else lower t).
 
 ## Termux updates, the update lock and the Shizuku path (1.0)
 
@@ -812,7 +2038,7 @@ helpers, the engine hardening and the built-in updater; each has its section bel
 
 | Module | Runs in | Holds |
 |---|---|---|
-| `:app` | main + `:voice` | `ui/` (main: home, history, model manager, settings, assistant setup), `assistant/` (`:voice`: the VoiceInteractionService, the Compose panel in the session, the recognizer stub, tools, the brain binding), `sys/` (storage, model store, restart check), `boot/`, `update/` (main: the updater, Settings › About › Updates) |
+| `:app` | main + `:voice` + `:lock` + `:files` | `ui/` (main: home, history, Robot Files, settings with the model manager, assistant setup), `assistant/` (`:voice`: the VoiceInteractionService, the Compose panel in the session, the recognizer stub, tools, the brain binding), `sys/` (storage, model store, restart check), `boot/`, `update/` (main: the updater, Settings › About › Updates) |
 | `:brain` | `:brain`, `:llama` | `BrainService` (Messenger) and its two engines, one model at a time: `GemmaEngine`, the only code that touches LiteRT-LM (the model you chose, on the TPU, the CPU, or since 0.4.7 the GPU for the general Gemma 4 E2B where Robot offers it), and since 0.4.5 `LlamaEngine` (your own GGUF file, on the CPU), which runs llama.cpp in `LlamaService`'s isolated `:llama` process, where `LlamaNative` is the only code that loads Robot's llama.cpp library; since 0.5.0 a priority queue for the panel, translations and summaries, and one-shot requests (in both engines since 0.6.0) |
 | `:voice` | `:voice` | microphone loop (with echo cancellation while Robot speaks), Silero VAD + the wake phrases (and "STOP" while speaking), speech to text (Parakeet v3) and text to speech (Kokoro, Kitten) on sherpa-onnx, the placeholders while the voice models are missing, the voice speed test; since 0.5.0 conversation mode's segments and decoding (`ConversationEngine`) and its speakers' voice embeddings (`SpeakerEmbedder`, TitaNet-S) |
 | `:helpers` | `:voice` | The helpers' clients, the only HTTP code for helpers (`app.heyrobot.helpers`: `HelperSession`, `HelperTurn`, `OpenAiSession` on plain OkHttp, `HelperHttp`, `HelperProbe`), and Anthropic's API client on the official Anthropic Java SDK (`app.heyrobot.helpers.anthropic`: `AnthropicClient`, `AnthropicRequests`, `AnthropicSession`, `AnthropicHistory`), the only code that links the SDK |
@@ -830,6 +2056,12 @@ helpers, the engine hardening and the built-in updater; each has its section bel
 - `:llama` (0.4.5) is an `android:isolatedProcess` service that only `:brain` binds (`BIND_AUTO_CREATE | BIND_IMPORTANT`),
   for one GGUF model at a time: not exported, no permissions, no network, none of Robot's files ("llama.cpp in its own
   isolated process" below).
+- Phone lock (1.1) has a small process of its own, `:lock` (`lock/`): the accessibility service, the cover, the code pad and
+  the exact-alarm receiver. It never loads the model, and it outlives the panel and Settings. See [What's new in 1.1](#whats-new-in-11).
+- Robot Files (1.1) decodes every file in `:files` (`.parse.FileParseService`): an `android:isolatedProcess` service, not
+  exported, no permissions, bound with `bindIsolatedService` and a fresh instance per link; it gets bytes in a read-only
+  shared memory region and writes into one the caller made. The sealed store (`core/files/FileStore.kt`) is used by the
+  main app and `:voice`, each behind the vault's lock gate (`app/sys/FilesVault.kt`). See [Robot Files (1.1)](#robot-files-11).
 - Routines (0.8) run in `:voice` (`assistant/routines/`: the trigger hub, the runner, the speaking service and its manifest
   receiver), their files are `app/sys/Routines.kt`'s (both processes, under one lock), Settings › Routines is the main
   app's; see [Routines and the morning brief](#routines-and-the-morning-brief-08).
@@ -2179,7 +3411,7 @@ it goes to PanelController as before, which this step doesn't change.
   this for “mom”" above them, and Cancel and **Do it** (or the card's own words: "Open in Cheogram for Mom", Include and
   Start fresh, Send) at the end, then Undo, Open Cheogram, Allow or Allow contacts. The message now comes before the
   choices and buttons, so TalkBack reads summary, state, message, choices, buttons. The offer under a reply reads "Ask
-  Claude?" or "Also ask Jarvis?", "Sends: your question.", Not now and Send ("Ask in the Claude app?" and Open Claude
+  Claude?" or "Also ask Jarvis?", "Sends: your question, today's date and your country." (1.1; "your question and today's date" when Robot doesn't know your country), Not now and Send ("Ask in the Claude app?" and Open Claude
   without a key). Conversation mode's lines and cards ("Transcribing. …", Include and Start fresh) and the helpers'
   answers use these same parts, in both looks.
 - **Notices** are neutral rows (an info symbol, the text, their button, Dismiss); the missing model keeps the error
@@ -2384,7 +3616,7 @@ or a cancel reaches it as the same one-way stop, inside a prompt being read too.
   Android's own microphone dot shows too. A partial wake lock is held only while a session runs.
 - **Audio.** The session takes its frames from the same `Listener` the wake word uses (a sink, never a second
   microphone), or opens a capture of its own when the wake word isn't listening. Silero's per-frame speech probability
-  feeds the conversation rules (`Segmenter`): a line ends after 0.25 s of silence (0.5 s, as questions use, loses the
+  feeds the conversation rules (`Segmenter`): a line ends after 0.25 s of silence (0.5 s, as questions used before 1.1, loses the
   English half of an English-then-French turn), is cut at 15 s at its quietest frame, and gets 0.2 s of padding from
   the session's own 20 s ring. Each segment is decoded by the same Parakeet as questions, in turn with them (one model
   in memory). A segment with too few words for its speech (under 0.9 a second over 3 s) is heard again in two halves,
@@ -2457,8 +3689,9 @@ or a cancel reaches it as the same one-way stop, inside a prompt being read too.
   voiceprint, which is encrypted with an Android Keystore key of its own (AES-256-GCM, not exportable) into
   `files/robot/me.voiceprint` (written and read by the voice process only). Each session decrypts it once to seed a fixed
   speaker "Me", so your lines say "You". The recordings stay in memory and are dropped once embedded. **A voiceprint is
-  biometric data**: it is never in settings (`meVoiceprint` only says one exists), a log, an intent or a backup, never
-  sent anywhere, and **Delete** (Settings › Conversation, or the Your voice screen) removes the file and its key at once;
+  biometric data**: it is never in settings (`meVoiceprint` only says one exists), a log or an intent, never
+  sent anywhere, and in a backup only if you tick "Your voiceprint" in Back up now (off by default, with its own warning;
+  1.1), and **Delete** (Settings › Conversation, or the Your voice screen) removes the file and its key at once;
   a session running then stops using it. A voiceprint that can't be decrypted any more is deleted, never guessed.
 - **What is kept:** the labels and your changes, in the transcript. The voices of a session (its embeddings) live in
   memory and are forgotten when it stops; only your voiceprint, if you made one, is stored.
@@ -2470,7 +3703,8 @@ or a cancel reaches it as the same one-way stop, inside a prompt being read too.
 ### Transcripts
 
 - **Where:** `filesDir/transcripts/<id>/` (`meta.json`, `lines.jsonl` append-only, `snapshot.json`), the app's private,
-  credential-encrypted storage, never backed up or transferred (`allowBackup=false` and the extraction rules). The format
+  credential-encrypted storage, left out of Android's backup and transfer (`allowBackup=false` and the extraction rules);
+  since 1.1 Back up now can include them, in Robot's own encrypted file. The format
   is §6 of the design: each line, each language fix and each pause is one more record; nothing is rewritten.
 - **The library** (Home › Conversation › Transcripts, Settings › Conversation, the shortcut "Transcripts"): newest first,
   with the date, length and "Recording now" or "Stopped unexpectedly"; a search over the words (accents and case
@@ -2952,6 +4186,10 @@ is read on the lock screen.
 - **"Send my replies to Mom without a card"** (People › Mom, while messages are on; off): your own dictated words to her
   in a one-to-one chat, on an unlocked phone, go after "Sending to Mom: I'll be late" and 3 seconds to say "stop" (or tap
   Stop, or close the panel). Anything you say in those 3 seconds but a yes stops it too ("no, wait, don't send it").
+  Once stopped (and when a send finds a newer message), it is a card from then on (1.1, core `ReplyPlanner.stopped`): a
+  tap on Send sends it, and a spoken yes only with "Answer reply cards by voice" on. A reply card takes a yes or a no
+  only while it is the last thing Robot asked about: a yes to a later question ("Want more?", "Read it?", an offer under
+  a later reply) is that question's, and the card's Send still works.
   Only to her own address in People (Cheogram's address, or a JMP number against her phones): a sender read as Mom by
   name alone (Signal gives no address, and anyone can choose a name) always gets the card, and a sender writing from an
   address nobody in People has is read under the name they chose, never as Mom. "Card before sending a reply" off does
@@ -3058,8 +4296,8 @@ number, Signal, and an SMS number. Put "Mom" in People with your test number as 
 17. **Open the chat; I press Send:** set it, then reply: the chat opens with your words; nothing is sent, ever (watch the
     other phone for a minute).
 18. **Without a card:** People › Mom › "Send my replies to Mom without a card" on. "Reply I'm on my way": Robot says it,
-    and it goes 3 seconds after she stops talking. Again, and say "stop": nothing is sent, the card waits for Send; again,
-    and say "no, wait": the same. A group, a draft ("answer her for me") or "reply in French: …" still show a card that
+    and it goes 3 seconds after she stops talking. Again, and say "stop": nothing is sent, the card waits for Send, and a
+    "yes" now sends nothing (with "Answer reply cards by voice" off); again, and say "no, wait": the same. A group, a draft ("answer her for me") or "reply in French: …" still show a card that
     needs a tap; so does Mom on Signal (her name only). From the second phone, a new Cheogram account whose nickname is
     Mom's name in People is read under that nickname, never as "Mom", and "reply to Mom" doesn't find it.
 19. **Their language:** Mom writes in French; "reply I'll be there at six": the card offers "Send in French: «…»"
@@ -4083,7 +5321,10 @@ weather (the other read tools don't: nothing leaves the phone).
 ### Weather
 
 Robot runs on the phone and goes online when you ask: the weather comes from **Open-Meteo** (`api.open-meteo.com`, and
-`geocoding-api.open-meteo.com` to find a town), with no account and no key. The request comes from the assistant's
+`geocoding-api.open-meteo.com` to find a town), with no account and no key. Since 1.1 a town named for the weather goes
+to the geocoder only when it passes the nearest place's rule (`Nearby.weatherSendable`: no address, number, email or long
+run of words); otherwise Robot sends nothing and says "That place looked like it contained personal details, so Robot
+didn't send it to Open-Meteo. Name a town instead." The request comes from the assistant's
 process (`:voice`, where tools run), over HTTPS with short timeouts, no redirects and a plain "Robot" User-Agent (Android's
 default names the phone model). `sys/OpenMeteoClient.kt` and `sys/NominatimClient.kt` (the nearest place) are the only
 HTTP code outside the Claude SDK (`ProcessIsolationTest` checks it); `core/Weather.kt` builds the URLs and reads the
@@ -4195,9 +5436,10 @@ straight to Android's own confirmation for the largest one (Android still asks).
   « mon téléphone est lent » are decided by code before the model (core `FreeUp.asked`, after the messages, feedback and
   memory routers). Robot says, in the language you asked in, how much memory Android reports free
   (`ActivityManager.MemoryInfo`), what unloading its model gives (about 2 GB, 4 GB for an E4B, when it is loaded), and,
-  with Usage access, the apps used in the last 3 hours that are likely still in memory, most recent first (core
-  `FreeUp.likelyInMemory`, never the app you are in, Robot, the keyboard, the home screen, messaging, clock, VPN or
-  foreground-service apps); then a card to pick from: "Unload Robot's model · about 2 GB", one button per app ("YouTube ·
+  with Usage access, how many apps used in the last 3 hours are likely still in memory (core `FreeUp.likelyInMemory`,
+  never the app you are in, Robot, the keyboard, the home screen, messaging, clock, VPN or foreground-service apps).
+  Since 1.1 the reply names none of them: it is said aloud, kept in the conversation and may go to a helper or a search,
+  so the apps are named only on the card's buttons, most recent first. Then a card to pick from: "Unload Robot's model · about 2 GB", one button per app ("YouTube ·
   used 5 min ago · 40 min on screen today") that opens its App info, where you tap Force stop, and, without Usage
   access, "Turn on Usage access, to see the apps you used lately". Robot never stops an app itself. On the lock screen it
   says only what is free ("Unlock your phone to see what you can unload or stop."). The model's own free_memory call
@@ -4659,7 +5901,7 @@ and for the rest of the conversation neither offers Claude nor checks with it, u
 
 Anthropic's Consumer Terms (effective 8 October 2025, §3 item 7) forbid using the Claude apps "through automated or
 non-human means, whether through a bot, script, or otherwise", except through an API key. So Robot never automates the
-app: no accessibility service, no typing, tapping or sending in it, no reading it in the background. It only prefills,
+app: no accessibility service for it (1.1's Phone lock has one, for another job: it sees only which app is in front), no typing, tapping or sending in it, no reading it in the background. It only prefills,
 and you press Send. To hear the answer, open the panel **with the corner swipe** over the Claude app and tap **"Read
 Claude's answer"** (shown only when an answer can be found in the Claude app's own window): Robot takes the last answer
 from the screen text the swipe hands to every assistant (pure heuristics in `ClaudeAppAnswer`, tested), reads it in
@@ -5274,7 +6516,7 @@ exactly an allowlist (the app, Robot Notes, the three assistant services, since 
 listener, and AndroidX's profile installer), and that no `ui/`, `sys/`, `boot/`, `people/` or `RobotApp` class in the
 dex refers to sherpa-onnx, LiteRT or the assistant, voice and brain packages. Since 0.3.0 also: no main-process class refers to the Anthropic SDK, OkHttp or the `:helpers` module while
 the SDK's client is packaged; the key window runs in `:voice` and isn't exported; the Claude app's `<queries>`; INTERNET
-stays the only network permission; no accessibility service; nothing shaped like an API key anywhere in the APK.
+stays the only network permission; since 1.1 exactly one accessibility service, Phone lock's, in `:lock`; nothing shaped like an API key anywhere in the APK.
 
 ### On the phone (0.2.0, with the 0.2.1 and 0.2.2 fixes)
 
@@ -5317,7 +6559,7 @@ stays the only network permission; no accessibility service; nothing shaped like
 ## Voice (0.1.1; memory rule 0.1.2; fixes 0.1.3)
 
 - Speech to text: NVIDIA Parakeet TDT 0.6B v3 int8 (`SherpaSpeechToText`). Push-to-talk, or right after "hey robot";
-  a Silero VAD of its own ends the question after 0.5 s of silence (20 s max speech, 30 s cap), or the button does.
+  a Silero VAD of its own ends the question after 0.5 s of silence (20 s max speech, 30 s cap), or the button does. Since 1.1 the silence is Settings › Voice › Wait before answering: 1 s by default, 0.6, 1.6 or 2.5 s on choice.
   The words appear while you talk (the buffer is decoded again about every 0.7 s, one decode at a time; can be
   turned off). Audio stays in memory.
 - Text to speech: Kokoro v1.0 fp32, voice "Heart" (`af_heart`) by default, "Siwis" (`ff_siwis`, French) for later;
@@ -5727,9 +6969,13 @@ one asking. Design: `../docs/plans/routines-headset-car-design.md` §1 and §4; 
 - **Calls** ("call Mom", "appelle maman", the screen's Call): spoken choices ("Mom: mobile, or work?"), the number read
   back, then the dialer opens with it; "Call directly after a spoken yes" (with the Phone permission) places it, by the
   contact's full international number (1.0: "+33 6 …" keeps its "+"). On the locked phone the trusted session calls
-  People and contacts only; a number said aloud needs the unlock (1.0).
+  People and contacts only; a number said aloud needs the unlock (1.0). During a phone lock (1.1), car mode calls only
+  the People that lock lets you call, the lock screen included, and a number said aloud only when it is one of theirs or
+  an emergency number.
   Emergency numbers always open the dialer and are never called by Robot. A call placed after a spoken yes is car mode's
-  alone. Outside car mode, "call Mom" is the call tool's card (never described to the model, which can't call it); in a
+  alone. Since 1.1 there is one other direct call: during a phone lock with the screen unlocked, the call tool's card
+  for one of the People that lock allows places the call from its Call, with the Phone permission and the call tool on
+  Ask first (see Phone lock in [What's new in 1.1](#whats-new-in-11)). Outside car mode, "call Mom" is the call tool's card (never described to the model, which can't call it); in a
   headset session on headphones you confirmed private, unlocked, the choices and the read-back are spoken instead and
   the yes opens the dialer with the number, where you tap Call (anywhere else in a headset session, the card). A name
   learned from a notification, more than three numbers, or no usable answer twice: the call tool's own card shows on
@@ -5882,9 +7128,12 @@ The page also says "Google, Bing, Startpage and DuckDuckGo have no full search A
 browser instead." Since 1.0 every service and engine is listed with its privacy level ("Search engines and their privacy
 levels (1.0)" below).
 
-After the service (and its address), **one consent screen**: "When you ask, Robot sends your search words to … To
-answer, it may open up to 3 of the result pages from this phone, like a browser without cookies: those sites see your
-IP address. Nothing else leaves the phone." **Turn on web search** or **Not now**. Then, for a service with a key, the
+After the service (and its address), **one consent screen**, one sentence per recipient (1.1, as PRIVACY.md says it): "When
+you ask, Robot sends your search words to …", then "A who, what or where question also goes to Wikipedia." while
+Encyclopedia lookups are on, "A question about books also goes to Open Library." while Book lookups are on, "To answer,
+it may open up to 3 of the result pages from this phone, like a browser without cookies: those sites see your IP
+address." with the number Settings allows (at most 5, 3 by default; none, no sentence), and "Nothing else leaves the
+phone." **Turn on web search** or **Not now**. Then, for a service with a key, the
 **set-up window** opens to paste it; it runs in the assistant's process (`:voice`), like a helper's connection window:
 the key is encrypted there (its own Android Keystore key, `robot_search_brave`…), never passes through the main app,
 the window is FLAG_SECURE and the clipboard is cleared if it still holds the key. **Test** (in the same window) sends
@@ -6023,7 +7272,7 @@ Mojeek) joins the helpers' one daily budget, and the card shows it when Settings
   `TurnResult.web`); `OneShotKind.WEB_ANSWER`; voice log events 160 to 163.
 - `:helpers` (`app.heyrobot.helpers.web`, the `:voice` process only): `WebTransport` (your SearXNG as a home helper,
   every company over https only, no redirects), `SearchClient`, `PageFetcher` (`PageRules`, `PublicOnlyDns`,
-  `PublicGuard`), `PageReader` (jsoup 1.15.1 and `readability/`, Robot's copy of Readability4J 1.0.8 with its logging
+  `PublicGuard`), `PageReader` (jsoup 1.23.2 and `readability/`, Robot's copy of Readability4J 1.0.8 with its logging
   removed), `WebSearch`.
 - `:app`: `assistant/WebTool.kt` (the tool's prepare and run, `WebKeys`), `WebSearchActivity` (the set-up window), the
   panel's one-shot answer and the card (`ui/common/WebCard.kt`, both looks), `sys/WebFiles.kt` (`web.json`,
@@ -6195,7 +7444,8 @@ browser goes from your browser, with its cookies: an engine you're signed in to 
   with Robot's User-Agent (core `DuckDuckGoWire`; it answers 202 as often as 200). The API asks to be credited with each
   answer's source, so the card says **"Results from DuckDuckGo"** and numbers each source with its link (Wikipedia's text
   keeps its CC BY-SA 4.0 line); `t` names the app, the same for everyone. A bang is never followed, the answer's image
-  never loaded. Its consent: "When you ask, Robot sends your search words to DuckDuckGo. Nothing else leaves the phone."
+  never loaded. Its consent: "When you ask, Robot sends your search words to DuckDuckGo. Nothing else leaves the phone.", with the
+  Wikipedia and Open Library sentences above when those lookups are on.
   Settings › About › Licences lists it (78 entries); the network security config denies cleartext to `duckduckgo.com`.
 - **A public SearXNG**: set-up offers a short list shipped in the APK (core `PublicSearxng`): `searx.tiekoetter.com`,
   `search.hbubli.cc`, `baresearch.org`, `priv.au`, `anonsearch.win`, picked on searx.space on 12 October 2026 for a

@@ -19,12 +19,12 @@ object ProtectedBroadcasts {
     val ACTIONS = setOf(Intent.ACTION_USER_PRESENT, Intent.ACTION_SCREEN_ON, Intent.ACTION_SCREEN_OFF)
 
     fun filter(vararg actions: String): IntentFilter {
-        require(actions.isNotEmpty() && actions.all { it in ACTIONS }) { "not a protected system broadcast" }
+        require(actions.isNotEmpty() && actions.all { it in ACTIONS }) { "not a protected system broadcast" } // l10n: not text (a developer's error)
         return IntentFilter().apply { actions.forEach(::addAction) }
     }
 
     fun register(ctx: Context, r: BroadcastReceiver, filter: IntentFilter, handler: Handler? = null) {
-        for (i in 0 until filter.countActions()) require(filter.getAction(i) in ACTIONS) { "not a protected system broadcast" }
+        for (i in 0 until filter.countActions()) require(filter.getAction(i) in ACTIONS) { "not a protected system broadcast" } // l10n: not text (a developer's error)
         ctx.registerReceiver(r, filter, null, handler, Context.RECEIVER_EXPORTED)
     }
 }

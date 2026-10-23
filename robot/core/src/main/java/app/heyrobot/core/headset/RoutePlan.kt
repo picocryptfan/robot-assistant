@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.headset
 
+import app.heyrobot.core.i18n.HandsFreeStrings
+import app.heyrobot.core.i18n.Phrase
 import app.heyrobot.core.LogCode
 import app.heyrobot.core.output.DeviceMemory
 import app.heyrobot.core.output.DeviceRole
@@ -8,8 +10,7 @@ import app.heyrobot.core.output.Line
 import app.heyrobot.core.output.RouteType
 import app.heyrobot.core.output.SeenDevice
 
-// Pure. How a headset session routes the microphone and Robot's voice (design §3.1 "Microphone and output routing",
-// §3.6 HeadsetSession, §3.9 RoutePlan). VERIFIED in AOSP's audio policy (Engine.cpp, android-17.0.0_r1):
+// Pure. How a headset session routes the microphone and Robot's voice. VERIFIED in AOSP's audio policy (Engine.cpp, android-17.0.0_r1):
 // - Bluetooth classic (HFP): the microphone is SCO only (A2DP has none). setCommunicationDevice(SCO) makes the engine pick
 //   the SCO headset microphone for both VOICE_COMMUNICATION and VOICE_RECOGNITION.
 // - LE Audio (TYPE_BLE_HEADSET): its microphone only for VOICE_COMMUNICATION with the LE device as communication device;
@@ -74,15 +75,23 @@ sealed class RouteFallback {
     data class End(val say: Line) : RouteFallback()
 }
 
-/** What a route costs, for Settings › Headset's explanation (EST, design §3.1 "Latency"; measured in H0.5). */
-data class RouteCost(val routeMs: IntRange, val musicPauses: Boolean, val note: String)
+/** What a route costs, for Settings › Headset's explanation (EST). */
+data class RouteCost(val routeMs: IntRange, val musicPauses: Boolean, val note: String) {
+    /** 1.1: [note] without a language yet (Settings › Headset shows it in the menus' language); not part of equality. */
+    var noteText: Phrase = Phrase.plain(note)
+        private set
+
+    constructor(routeMs: IntRange, musicPauses: Boolean, note: Phrase) : this(routeMs, musicPauses, note.en()) {
+        noteText = note
+    }
+}
 
 object RoutePlanner {
     /** How long a session waits for the communication device and the headset input (§3.6). */
     const val ROUTE_TIMEOUT_MS = 3_000L
 
-    val ON_PHONE = Line("I'll listen on the phone.", "Je vais écouter sur le téléphone.")
-    val NO_HEADSET_MIC = Line("The headset microphone didn't connect.", "Le micro des écouteurs ne s'est pas connecté.")
+    val ON_PHONE = Line(HandsFreeStrings.onPhone())
+    val NO_HEADSET_MIC = Line(HandsFreeStrings.noHeadsetMic())
 
     /**
      * The route for a session started by [entry] with [devices] connected (outputs and inputs, as AudioManager lists
@@ -166,9 +175,9 @@ object RoutePlanner {
     }
 
     fun cost(plan: RoutePlan): RouteCost = when (plan.mic) {
-        MicRoute.SCO -> RouteCost(300..1_500, true, "Music pauses while Robot listens and answers; call-quality sound (8 to 32 kHz, by headset).")
-        MicRoute.LE_AUDIO -> RouteCost(300..1_500, true, "Music pauses while Robot listens and answers.")
-        MicRoute.WIRED, MicRoute.USB -> RouteCost(0..100, false, "No switch needed; music lowers while Robot talks.")
-        MicRoute.PHONE -> RouteCost(0..100, false, "The phone listens: keep it near you. Music keeps its quality.")
+        MicRoute.SCO -> RouteCost(300..1_500, true, HandsFreeStrings.costSco())
+        MicRoute.LE_AUDIO -> RouteCost(300..1_500, true, HandsFreeStrings.costLe())
+        MicRoute.WIRED, MicRoute.USB -> RouteCost(0..100, false, HandsFreeStrings.costWired())
+        MicRoute.PHONE -> RouteCost(0..100, false, HandsFreeStrings.costPhone())
     }
 }

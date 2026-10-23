@@ -14,6 +14,10 @@ import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
 import app.heyrobot.core.VoiceBundle
 import app.heyrobot.core.WordAccuracy
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.UiLabel
+import app.heyrobot.core.i18n.UiStrings
+import app.heyrobot.core.i18n.VoiceStrings
 import com.k2fsa.sherpa.onnx.FeatureConfig
 import com.k2fsa.sherpa.onnx.OfflineModelConfig
 import com.k2fsa.sherpa.onnx.OfflineRecognizer
@@ -32,7 +36,8 @@ import java.util.concurrent.atomic.AtomicInteger
 // after "hey robot" (spec item 3), with NVIDIA Parakeet TDT 0.6B v3 int8 (docs/voice-plan.md 4.5-4.7):
 //  - audio comes from the always-on Listener (or a capture of its own when the wake word is off), with a
 //    short pre-roll; it stays in memory and is dropped after the decode: never written to disk;
-//  - a Silero VAD of its own (0.5 s minimum silence, 20 s maximum speech) ends the question, or the button;
+//  - a Silero VAD of its own (0.25 s minimum silence, 20 s maximum speech) and the pause you chose (Endpointer) end
+//    the question, or the button: held, only its release ends it;
 //  - while the person speaks, the whole buffer is decoded again about every 0.7 s for live partial text;
 //  - one decode at a time, on the "robot-stt" thread; the model loads on first use (a question starting, never just
 //    the panel opening) and is freed after 5 minutes unused (IdlePolicy), or on the rare memory-pressure signal.
@@ -122,12 +127,13 @@ class SherpaSpeechToText internal constructor(
     private var vad: Vad? = null
     @Volatile private var session: Session? = null
     @Volatile private var livePartials = true
+    @Volatile private var pauseMs = Endpointer.DEFAULT_PAUSE_MS
     /** Conversation sessions and the Transcription check holding the model loaded (the idle unload waits for them). */
     private val holds = AtomicInteger()
 
-    private inner class Session(val id: Int, val listener: SpeechToText.Listener, val source: AudioFrames, val own: Listener?) {
+    private inner class Session(val id: Int, val listener: SpeechToText.Listener, val source: AudioFrames, val own: Listener?, window: Long) {
         val buffer = SampleBuffer(MAX_SAMPLES)
-        val endpointer = Endpointer()
+        val endpointer = Endpointer(Endpointer.Config(silenceSamples = window))
         val scheduler = PartialScheduler()
         @Volatile var preRoll: FloatArray? = null
         @Volatile var ended = false
@@ -143,16 +149,28 @@ class SherpaSpeechToText internal constructor(
 
     override val available: Boolean get() = slot.state.usable
 
+    /** 1.1: the panel's notices are in the menus' language. */
+    private fun shown(p: Phrase): String = ScreenLangs.shown(ctx, p)
+
+    private val voicePage: UiLabel get() = UiStrings.inSettings(UiStrings.voice)
+
     override val hint: String? get() = when (slot.state) {
-        EngineState.MISSING -> "Download voice models"
-        EngineState.BROKEN -> "Voice input is off after two crashes (Settings › Voice)"
-        EngineState.FAILED -> "Voice input couldn't start (Settings › Voice)"
+        EngineState.MISSING -> shown(VoiceStrings.sttHintDownload())
+        EngineState.BROKEN -> shown(VoiceStrings.sttHintBroken("page" to voicePage))
+        EngineState.FAILED -> shown(VoiceStrings.sttHintFailed("page" to voicePage))
         else -> null
     }
 
-    override fun configure(livePartials: Boolean) {
+    override fun configure(livePartials: Boolean, pauseMs: Int) {
         this.livePartials = livePartials
+        this.pauseMs = pauseMs
     }
+
+    override fun holdOpen() {
+        session?.let { if (!it.ended) it.endpointer.held = true }
+    }
+
+    override val hearing: Boolean get() = session?.let { !it.cancelled && it.endpointer.heardSpeech } ?: false
 
     override fun prewarm() {
         slot.refresh()
@@ -167,8 +185,8 @@ class SherpaSpeechToText internal constructor(
             Vad(ctx.assets, VadModelConfig(
                 sileroVadModelConfig = SileroVadModelConfig(
                     model = "vad/silero_vad.onnx", threshold = 0.5f,
-                    // The flag drops after 0.5 s of silence: that is the end of the question.
-                    minSilenceDuration = MIN_SILENCE_S, minSpeechDuration = 0.25f, windowSize = Listener.FRAME,
+                    // The flag drops after 0.25 s of silence; Endpointer counts on to the pause you chose.
+                    minSilenceDuration = Endpointer.VAD_MIN_SILENCE_S, minSpeechDuration = Endpointer.VAD_MIN_SPEECH_S, windowSize = Listener.FRAME,
                     // The default 5 s would cut a longer question into pieces.
                     maxSpeechDuration = MAX_SPEECH_S,
                 ),
@@ -180,14 +198,14 @@ class SherpaSpeechToText internal constructor(
         }
     }
 
-    private fun unavailableMessage(st: EngineState): String = when (st) {
-        EngineState.MISSING -> PlaceholderSpeechToText.MESSAGE
-        EngineState.BROKEN -> "Voice input is turned off: it crashed twice while loading. Tap “Try again” in the Robot app (Settings › Voice), or type your question."
-        EngineState.FAILED -> "Voice input couldn't start. Tap “Try again” in the Robot app (Settings › Voice), or type your question."
-        else -> "Voice input isn't ready. Type your question for now."
-    }
+    private fun unavailableMessage(st: EngineState): String = shown(when (st) {
+        EngineState.MISSING -> PlaceholderSpeechToText.messageText
+        EngineState.BROKEN -> VoiceStrings.sttBroken("tryAgain" to UiLabel(UiStrings.tryAgain), "page" to voicePage)
+        EngineState.FAILED -> VoiceStrings.sttFailed("tryAgain" to UiLabel(UiStrings.tryAgain), "page" to voicePage)
+        else -> VoiceStrings.sttNotReady()
+    })
 
-    override fun start(listener: SpeechToText.Listener) {
+    override fun start(listener: SpeechToText.Listener, shortAnswer: Boolean) {
         cancel()
         slot.refresh()
         val st = slot.state
@@ -197,7 +215,7 @@ class SherpaSpeechToText internal constructor(
         }
         val v = endVad() ?: run {
             VoiceLog.add(VoiceEvent.STT_END, SttEnd.ERROR)
-            return listener.onError(SpeechToText.Reason.ERROR, "Voice input couldn't start. Type your question for now.")
+            return listener.onError(SpeechToText.Reason.ERROR, shown(VoiceStrings.sttCouldntStart()))
         }
         synchronized(vadLock) { v.reset() }
         var own: Listener? = null
@@ -207,7 +225,7 @@ class SherpaSpeechToText internal constructor(
             if (!l.start()) {
                 l.stop()
                 VoiceLog.add(VoiceEvent.STT_END, SttEnd.MIC_BUSY)
-                return listener.onError(SpeechToText.Reason.MIC, "Robot can't use the microphone. Allow it in the Robot app, or close the app that is recording.")
+                return listener.onError(SpeechToText.Reason.MIC, shown(VoiceStrings.sttNoMic()))
             }
             own = l
             l
@@ -215,9 +233,12 @@ class SherpaSpeechToText internal constructor(
         if (src.silenced == true) {
             own?.stop()
             VoiceLog.add(VoiceEvent.STT_END, SttEnd.MIC_BUSY)
-            return listener.onError(SpeechToText.Reason.MIC, "Another app is using the microphone.")
+            return listener.onError(SpeechToText.Reason.MIC, shown(VoiceStrings.sttMicBusy()))
         }
-        val s = Session(ids.incrementAndGet(), listener, src, own)
+        // 1.1: other apps' sound pauses from here until the panel ends the turn (TurnFocus), before the first frame is read.
+        TurnFocus.listen(ctx)
+        val window = if (shortAnswer) Endpointer.CARD_WINDOW_SAMPLES else Endpointer.windowFor(pauseMs)
+        val s = Session(ids.incrementAndGet(), listener, src, own, window)
         session = s
         // If the microphone is closed under the question ("listen only while charging" and the charger is pulled,
         // another app takes it), the question ends with what was said; the watchdog catches a capture that stalls.
@@ -227,7 +248,7 @@ class SherpaSpeechToText internal constructor(
         listener.onListening()
         // Loads while the person speaks (nothing to do once loaded).
         worker.execute { load() }
-        RLog.i("stt_start", "ownMic" to (own != null), "preRollMs" to pre.size * 1000L / Listener.SAMPLE_RATE, "loaded" to (slot.value != null))
+        RLog.i("stt_start", "ownMic" to (own != null), "pauseMs" to window * 1000 / Listener.SAMPLE_RATE, "preRollMs" to pre.size * 1000L / Listener.SAMPLE_RATE, "loaded" to (slot.value != null))
         VoiceLog.add(VoiceEvent.STT_START, pre.size * 1000 / Listener.SAMPLE_RATE, if (slot.value != null) 1 else 0, if (own != null) 1 else 0)
     }
 
@@ -337,8 +358,8 @@ class SherpaSpeechToText internal constructor(
         RLog.i("stt_final", "end" to RLog.Code(why))
         VoiceLog.add(VoiceEvent.STT_END, endCode(why))
         if (s.cancelled) return
-        if (why == "mic_stopped") s.listener.onError(SpeechToText.Reason.MIC, "The microphone stopped before you spoke. Tap the mic and try again.")
-        else s.listener.onError(SpeechToText.Reason.NO_SPEECH, "I didn't hear anything. Tap the mic and try again.")
+        if (why == "mic_stopped") s.listener.onError(SpeechToText.Reason.MIC, shown(VoiceStrings.sttMicStopped()))
+        else s.listener.onError(SpeechToText.Reason.NO_SPEECH, shown(VoiceStrings.sttNothingHeard()))
     }
 
     /** No more audio will come for [s] (its capture stopped, or the watchdog fired): end it with what was heard. */
@@ -386,7 +407,7 @@ class SherpaSpeechToText internal constructor(
         } catch (t: Throwable) {
             RLog.w("stt_decode", t)
             VoiceLog.add(VoiceEvent.STT_END, SttEnd.ERROR)
-            if (!s.cancelled) s.listener.onError(SpeechToText.Reason.ERROR, "Voice input failed. Type your question for now.")
+            if (!s.cancelled) s.listener.onError(SpeechToText.Reason.ERROR, shown(VoiceStrings.sttDecodeFailed()))
         } finally {
             if (session === s) session = null
         }
@@ -476,7 +497,6 @@ class SherpaSpeechToText internal constructor(
     }
 
     companion object {
-        const val MIN_SILENCE_S = 0.5f
         const val MAX_SPEECH_S = 20f
         /** A question is capped at 30 s (Endpointer); the buffer a little above. */
         private const val MAX_SAMPLES = 31 * Listener.SAMPLE_RATE

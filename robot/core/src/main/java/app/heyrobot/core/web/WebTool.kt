@@ -15,6 +15,12 @@ import app.heyrobot.core.Priority
 import app.heyrobot.core.ToolName
 import app.heyrobot.core.TurnRole
 import app.heyrobot.core.TurnRules
+import app.heyrobot.core.i18n.Arg
+import app.heyrobot.core.i18n.Lang
+import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.UiStrings
+import app.heyrobot.core.i18n.WebStrings
 import org.json.JSONObject
 import java.time.LocalDate
 
@@ -48,7 +54,9 @@ sealed class WebOutcome {
 
     /** Nothing to answer from: [why] in fixed words, naming [service]. */
     data class Failed(val service: SearchService?, val why: WebFail) : WebOutcome() {
-        val text: String get() = why.text(service).let { if (it.endsWith(".")) it else "$it." }
+        /** What Robot says: [why] as a sentence. */
+        val sentence: Phrase get() = why.sentence(service)
+
     }
 }
 
@@ -95,7 +103,7 @@ object WebGate {
         val folded = WebWords.fold(query)
         val m = NEAR_ME.find(folded) ?: return query
         // The fold keeps the length of plain words, so the match's place is the query's (accents decomposed aside).
-        return if (folded.length == query.length) query.replaceRange(m.range, "near $town") else NEAR_ME.replace(folded, "near $town")
+        return if (folded.length == query.length) query.replaceRange(m.range, "near $town") else NEAR_ME.replace(folded, "near $town") // l10n: not text (search words)
     }
 
     /**
@@ -108,18 +116,17 @@ object WebGate {
      */
     fun prepare(a: Action.WebSearch, s: WebSettings, answer: WebConsentAnswer?, ctx: QueryContext, searchesToday: Int, home: String? = null,
         question: String = a.query): Prepared {
-        if (!WebConsent.on(s, answer)) return Prepared.Refused(ActionStatus.DISABLED, "Web search is off: turn it on in Robot's Settings › Web search.")
-        val service = s.service ?: return Prepared.Refused(ActionStatus.DISABLED, WebFail.OFF.text(null) + ".")
-        if (searchesToday >= s.dailySearches) {
-            return Prepared.Refused(ActionStatus.FAILED, "${WebFail.DAILY_CAP.text(service)} (${s.dailySearches}). Settings › Web search can raise it.")
-        }
+        // The card says these in the reply language; the model reads their English (Prepared's phrases, 1.1).
+        if (!WebConsent.on(s, answer)) return Prepared.Refused(ActionStatus.DISABLED, OFF_TURN_ON)
+        val service = s.service ?: return Prepared.Refused(ActionStatus.DISABLED, WebFail.OFF.sentence(null))
+        if (searchesToday >= s.dailySearches) return Prepared.Refused(ActionStatus.FAILED, dailyCap(s.dailySearches))
         val why = LinkedHashSet<AskWhy>()
-        val notes = ArrayList<String>()
+        val notes = ArrayList<Phrase>()
         val query = when (val v = QueryCheck.check(withTown(a.query, s.addTown, home), ctx)) {
-            is QueryVerdict.Refuse -> return Prepared.Refused(ActionStatus.FAILED, v.why.text)
+            is QueryVerdict.Refuse -> return Prepared.Refused(ActionStatus.FAILED, v.why.textPhrase)
             is QueryVerdict.Card -> {
                 why += if (v.why.tapOnly) AskWhy.SEARCH_PERSONAL else AskWhy.SEARCH
-                notes += v.why.note
+                notes += v.why.noteText
                 v.query
             }
             is QueryVerdict.Send -> v.query
@@ -128,32 +135,44 @@ object WebGate {
         // 1.0 (network-1): the card names everyone the words go to (Wikipedia, Open Library: WebAlso), not only the service.
         val also = WebAlso.names(s, service, question.ifBlank { query })
         val card = WebConsent.card(WebConsent.ask(s, answer), service, query, pagesFromPhone(s), also)
+        fun note() = Phrase.Join(notes.toList())
         if (card == null) {
             // A query card with no consent card still says who besides the service would get the words.
-            if (notes.isNotEmpty() && also.isNotEmpty()) notes += WebConsent.note(service, pagesFromPhone(s), also)
-            return Prepared.Ready(action, why, note = notes.joinToString(" ").ifEmpty { null })
+            if (notes.isNotEmpty() && also.isNotEmpty()) notes += WebConsent.noteText(service, pagesFromPhone(s), also)
+            return if (notes.isEmpty()) Prepared.Ready(action, why) else Prepared.Ready(action, why, note = note().en(), noteText = note())
         }
-        notes += card.note
-        if (!card.tapOnly) return Prepared.Ready(action, why + AskWhy.SEARCH, note = notes.joinToString(" "))
+        notes += card.noteText
+        if (!card.tapOnly) return Prepared.Ready(action, why + AskWhy.SEARCH, note = note().en(), noteText = note())
         val always = action.copy(consent = WebConsentChoice.ALWAYS)
         return Prepared.Ready(
             action,
             why = why + AskWhy.ONLINE,
             choices = listOf(
-                Choice(WebConsent.ALLOW_ALWAYS, always, always),
-                Choice(WebConsent.JUST_THIS_TIME, action.copy(consent = WebConsentChoice.ONCE), always),
-                Choice(WebConsent.NO, action.copy(consent = WebConsentChoice.NO), action.copy(consent = WebConsentChoice.NEVER)),
+                Choice(WebConsent.allowAlways, always, always),
+                Choice(WebConsent.justThisTime, action.copy(consent = WebConsentChoice.ONCE), always),
+                Choice(WebConsent.no, action.copy(consent = WebConsentChoice.NO), action.copy(consent = WebConsentChoice.NEVER)),
             ),
-            note = notes.joinToString(" "),
+            note = note().en(),
             remember = card.remember,
+            noteText = note(),
+            rememberText = card.rememberText,
         )
     }
 
     /** The search runs ([consent] null: no card was needed; Allow always or Just this time). "No" and "No, don't ask again" don't. */
     fun searches(consent: WebConsentChoice?): Boolean = consent != WebConsentChoice.NO && consent != WebConsentChoice.NEVER
 
+    /** "Web search is off: turn it on in Robot's Settings › Web search." */
+    val OFF_TURN_ON: Phrase get() = WebStrings.offTurnOn("path" to UiStrings.inSettings(UiStrings.webSearch))
+
+    /** "That's today's limit of web searches (100). Settings › Web search can raise it." */
+    fun dailyCap(searches: Int): Phrase = WebStrings.dailyCapRaise("n" to Arg.Plain(searches.toString()), "path" to UiStrings.inSettings(UiStrings.webSearch))
+
     /** What the card says when you answered No: no search, and Gemma answers without it. */
-    const val NOT_SEARCHED = "Not searched: Robot answers without the web."
+    val notSearched: Phrase get() = WebStrings.notSearched()
+
+    /** [notSearched] in English. */
+    val NOT_SEARCHED: String get() = notSearched.en()
 }
 
 /**
@@ -194,6 +213,9 @@ object WebQueryContext {
                 continue
             }
             if (t.role != TurnRole.ASSISTANT) continue
+            // What Robot Files' router answered (ChatTurn.files: a total, a due date, a drawer's or a file's name) is personal,
+            // word for word. Its words are all the model ever saw of it: the router's cards have no tool, so no record.
+            if (t.files) personal += t.text
             if (t.actions.any { it.content && it.tool != ToolName.WEB_SEARCH } && !fresh) blindPersonal = true
             val web = t.actions.any { it.tool == ToolName.WEB_SEARCH && it.content }
             if (t.fromHelper || t.readBack || web) untrusted += t.text
@@ -240,14 +262,12 @@ fun readTexts(results: List<Map<String, Any?>>?): List<String> {
 
 /** What Robot says and shows while a search works (A4.3), in the question's language. */
 object WebStatus {
-    fun searching(lang: String?): String = if (lang == "fr") "Je cherche sur le web…" else "Searching the web…"
+    val searchingText: Phrase get() = WebStrings.searching()
 
     /** "Reading 3 pages…" (spoken once), and with [done] the panel's count ("Reading pages 1/3…"). */
-    fun reading(pages: Int, lang: String?, done: Int? = null): String = when {
-        done != null -> if (lang == "fr") "Je lis les pages $done/$pages…" else "Reading pages $done/$pages…"
-        lang == "fr" -> "Je lis $pages page${if (pages == 1) "" else "s"}…"
-        else -> "Reading $pages page${if (pages == 1) "" else "s"}…"
-    }
+    fun readingText(pages: Int, done: Int? = null): Phrase =
+        if (done != null) WebStrings.readingDone("done" to done, "n" to pages) else WebStrings.reading(pages)
+
 }
 
 /** The WEB_ANSWER one-shot as :brain's request (REQ_ONE_SHOT, the panel's priority, no tools, no history). */
@@ -282,22 +302,22 @@ object WebPrices {
 
 /** A search service's key as pasted in the set-up window: where to get one, whether it can be one, and its masked form. */
 object WebKeyFormat {
-    /** Where each service's key comes from (design A4.1, "Where do I get one?"). */
-    fun where(service: SearchService): String = when (service) {
-        SearchService.BRAVE -> "Create a key at api-dashboard.search.brave.com (Search plan; a card on file even for the free credit) and paste it here."
-        SearchService.KAGI -> "Create an API token at kagi.com/settings › API (pay per use) and paste it here."
-        SearchService.MOJEEK -> "Mojeek gives keys through its sales contact (mojeek.com/services/search/web-search-api); paste yours here."
-        else -> ""
+    /** Where each service's key comes from (design A4.1, "Where do I get one?"); null for a service without a key. */
+    fun whereText(service: SearchService): Phrase? = when (service) {
+        SearchService.BRAVE -> WebStrings.keyWhereBrave()
+        SearchService.KAGI -> WebStrings.keyWhereKagi()
+        SearchService.MOJEEK -> WebStrings.keyWhereMojeek()
+        else -> null
     }
 
     /** Why [key] can't be a key (empty, spaces, too short or long), or null. */
-    fun problem(key: String): String? {
+    fun problemText(key: String): Phrase? {
         val k = key.trim()
         return when {
-            k.isEmpty() -> "Paste the key."
-            k.any { it.isWhitespace() || it.code < 0x21 || it.code > 0x7E } -> "A key has no spaces or special characters: copy it again."
-            k.length < 10 -> "That's too short for a key."
-            k.length > 300 -> "That's too long for a key."
+            k.isEmpty() -> WebStrings.keyEmpty()
+            k.any { it.isWhitespace() || it.code < 0x21 || it.code > 0x7E } -> WebStrings.keyCharacters()
+            k.length < 10 -> WebStrings.keyShort()
+            k.length > 300 -> WebStrings.keyLong()
             else -> null
         }
     }

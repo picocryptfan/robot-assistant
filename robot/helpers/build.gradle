@@ -23,12 +23,18 @@ kotlin { compilerOptions { jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget
 dependencies {
     implementation project(':core')
     implementation 'com.anthropic:anthropic-java:2.71.0'
+    // 1.1: the SDK asks for Jackson 2.19.4, which has HIGH advisories (GHSA-7hhh-6rmp-j9qf, GHSA-p6pp-m3f8-5c89,
+    // GHSA-cxp5-3px4-pw24, GHSA-wv8q-qhhj-9h54 and others) fixed in 2.21.7; this lifts every Jackson module to 2.21.8.
+    implementation platform('com.fasterxml.jackson:jackson-bom:2.21.8')
     // The version the SDK already brings, named so the helpers' own transport doesn't rest on a transitive dependency.
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0'
     // 0.9 web search: the HTML parser under Robot's copy of Readability4J (web/readability), for result pages read from the
     // phone. No JavaScript engine. In the :voice process only, with the rest of this module (ProcessIsolationTest).
-    implementation 'org.jsoup:jsoup:1.15.1'
+    implementation 'org.jsoup:jsoup:1.23.2'
+    // jsoup's nullness annotations, which it builds against and doesn't ship ("provided"): Kotlin needs them to compile
+    // against jsoup 1.23. The version AndroidX already brings into the app (THIRD_PARTY.md, the annotations row).
+    compileOnly 'org.jspecify:jspecify:1.0.0'
     // Network tests against a local mock server through the SDK's base-URL override: no real key, no network.
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.json:json:20180813'

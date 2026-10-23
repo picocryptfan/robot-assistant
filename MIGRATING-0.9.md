@@ -19,8 +19,9 @@ Both apps are called Robot; long-press an icon › App info shows which version 
    when it is your own file, then tap Import. Without the tick, Robot treats the imported items as something it read
    (an action they lead to asks first) until you open one in Settings › Memory and tap This is mine. Then let Robot
    delete the file (it offers to), or delete it yourself.
-4. Models. 1.0 downloads its models again, from its first screen (or the Model tab, Settings › Voice and Settings ›
-   Conversation). Robot's model can come from a file you already have instead: the Model tab › the model › Import a file
+4. Models. 1.0 downloads its models again, from its first screen (or Settings › Model, Settings › Voice and Settings ›
+   Conversation; before 1.1, Settings › Model was the Model tab). Robot's model can come from a file you already have
+   instead: Settings › Model › the model › Import a file
    copies it and checks its SHA-256 as a download is. The copy 0.9 downloaded is in 0.9's own folder, which the file
    picker can't open; with adb you can copy it out first (`adb shell ls /sdcard/Android/data/app.heyrobot/files/`, then
    `adb shell cp /sdcard/Android/data/app.heyrobot/files/<file> /sdcard/Download/`), import it, and delete the copy in

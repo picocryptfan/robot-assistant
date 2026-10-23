@@ -2,6 +2,8 @@
 package app.heyrobot.core.web
 
 import app.heyrobot.core.UriText
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.WebStrings
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
@@ -13,19 +15,22 @@ import java.util.Locale
 // markup, character references and invisible characters before anything shows or reads them, and only http(s) URLs
 // are kept. A request's toString never shows its URL (a Mojeek key rides in it), the query or a key.
 
-/** Who returned a result: the card credits it ([credit]), the answer's sources name it. */
-enum class SearchProvider(val title: String, val credit: String?) {
+/** Who returned a result: the card credits it ([creditText]; [credit] its English), the answer's sources name it. */
+enum class SearchProvider(val title: String, val creditText: Phrase?) {
     SEARXNG("SearXNG", null),
     /** Brave's attribution line is optional; the card shows it while "Powered by Brave" is on. */
-    BRAVE("Brave", "Powered by Brave"),
+    BRAVE("Brave", WebStrings.creditBrave()),
     KAGI("Kagi", null),
     MOJEEK("Mojeek", null),
     /** Text under CC BY-SA 4.0: the card credits the article with a link and the licence (WikipediaWire.credit). */
-    WIKIPEDIA("Wikipedia", "Wikipedia text: CC BY-SA 4.0"),
+    WIKIPEDIA("Wikipedia", WebStrings.creditWikipediaText()),
     /** 0.9, Book lookups (off by default): "From Open Library" with its link. */
-    OPEN_LIBRARY("Open Library", "From Open Library"),
+    OPEN_LIBRARY("Open Library", WebStrings.creditOpenLibrary()),
     /** 1.0, DuckDuckGo's Instant Answers: its API asks to credit DuckDuckGo, and the source of each answer (the card's numbered source). */
-    DUCKDUCKGO("DuckDuckGo", "Results from DuckDuckGo"),
+    DUCKDUCKGO("DuckDuckGo", WebStrings.creditDuckDuckGo()),
+    ;
+
+    val credit: String? get() = creditText?.en()
 }
 
 /**
@@ -63,7 +68,7 @@ class SearchRequest(val method: String, val url: String, val headers: List<Pair<
     val carriesKey: Boolean get() = headers.any { it.first.lowercase(java.util.Locale.ROOT) !in PLAIN_HEADERS } ||
         KEY_PARAM.containsMatchIn(url.substringAfter('?', "")) || url.substringAfter("://").substringBefore('/').contains('@')
 
-    override fun toString(): String = "SearchRequest($method $host)"
+    override fun toString(): String = "SearchRequest($method $host)" // l10n: not text (a debug form)
 
     private companion object {
         val PLAIN_HEADERS = setOf("user-agent", "accept", "accept-language", "content-type")
@@ -203,8 +208,8 @@ object SearxngWire {
     /** The search: the query words, the safe-search level (0, 1, 2) and, when known, the question's language. */
     fun request(base: Base, query: String, lang: String?, safe: SafeSearch, userAgent: String): SearchRequest {
         val level = when (safe) { SafeSearch.OFF -> 0; SafeSearch.MODERATE -> 1; SafeSearch.STRICT -> 2 }
-        val url = "${base.url}/search?q=${SearchWire.encode(query)}&format=json&safesearch=$level&pageno=1" +
-            (SearchWire.lang(lang)?.let { "&language=$it" } ?: "")
+        val url = "${base.url}/search?q=${SearchWire.encode(query)}&format=json&safesearch=$level&pageno=1" + // l10n: not text (a request address)
+            (SearchWire.lang(lang)?.let { "&language=$it" } ?: "") // l10n: not text (a request address)
         return SearchRequest("GET", url, listOf("User-Agent" to userAgent, "Accept" to "application/json"))
     }
 
@@ -244,14 +249,15 @@ object SearxngWire {
     private fun clean(a: JSONArray?): List<String> = SearchWire.strings(a).map { SearchWire.text(it, SearchWire.TITLE_CHARS) }.filter { it.isNotEmpty() }.take(5)
 
     /** Test's line: "JSON on · 9 results · engines: brave, duckduckgo, wikipedia". */
-    fun testLine(answer: SearchAnswer, service: SearchService = SearchService.SEARXNG_HOME): String = when (answer) {
-        is SearchAnswer.Failed -> answer.why.text(service)
+    fun testLineText(answer: SearchAnswer, service: SearchService = SearchService.SEARXNG_HOME): Phrase = when (answer) {
+        is SearchAnswer.Failed -> answer.why.textPhrase(service)
         is SearchAnswer.Results -> {
             val engines = answer.results.flatMap { it.engines }.distinct().sorted()
-            "JSON on · ${answer.results.size} result${if (answer.results.size == 1) "" else "s"}" +
-                (if (engines.isNotEmpty()) " · engines: " + engines.joinToString(", ") else "")
+            if (engines.isEmpty()) WebStrings.testLine(answer.results.size)
+            else WebStrings.testLineEngines(answer.results.size, "engines" to engines.joinToString(", "))
         }
     }
+
 }
 
 /**
@@ -267,8 +273,8 @@ object BraveWire {
     /** Web search: [count] results (at most [ServiceTerms.Brave.MAX_COUNT]), with up to 5 extra snippets each. */
     fun request(key: String, query: String, lang: String?, safe: SafeSearch, userAgent: String, count: Int = WebLimits.MAX_RESULTS,
         extraSnippets: Boolean = true): SearchRequest {
-        val url = "$SEARCH?q=${SearchWire.encode(query)}&count=${count.coerceIn(1, ServiceTerms.Brave.MAX_COUNT)}&safesearch=${safe.name.lowercase(Locale.ROOT)}" +
-            (SearchWire.lang(lang)?.let { "&search_lang=$it" } ?: "") + (if (extraSnippets) "&extra_snippets=true" else "")
+        val url = "$SEARCH?q=${SearchWire.encode(query)}&count=${count.coerceIn(1, ServiceTerms.Brave.MAX_COUNT)}&safesearch=${safe.name.lowercase(Locale.ROOT)}" + // l10n: not text (a request address)
+            (SearchWire.lang(lang)?.let { "&search_lang=$it" } ?: "") + (if (extraSnippets) "&extra_snippets=true" else "") // l10n: not text (a request address)
         return SearchRequest("GET", url, headers(key, userAgent))
     }
 
@@ -337,7 +343,7 @@ object KagiWire {
             .put("safe_search", safe != SafeSearch.OFF)
         if (extract > 0) body.put("extract", JSONObject().put("count", extract.coerceIn(1, ServiceTerms.Kagi.MAX_EXTRACT)))
         return SearchRequest("POST", SEARCH, listOf("User-Agent" to userAgent, "Accept" to "application/json",
-            "Content-Type" to "application/json", "Authorization" to "Bearer $key"), body.toString())
+            "Content-Type" to "application/json", "Authorization" to "Bearer $key"), body.toString()) // l10n: not text (an HTTP header)
     }
 
     fun parse(status: Int, body: String?, retryAfter: String? = null): SearchAnswer {
@@ -386,8 +392,8 @@ object MojeekWire {
     const val SNIPPET = 300
 
     fun request(key: String, query: String, lang: String?, safe: SafeSearch, userAgent: String, count: Int = WebLimits.MAX_RESULTS): SearchRequest {
-        val url = "$SEARCH?api_key=${UriText.strict(key.trim())}&q=${SearchWire.encode(query)}&fmt=json&t=${count.coerceIn(1, ServiceTerms.Mojeek.MAX_RESULTS)}" +
-            "&safe=${if (safe == SafeSearch.OFF) 0 else 1}&dlen=$SNIPPET" + (SearchWire.lang(lang)?.let { "&lb=${it.uppercase(Locale.ROOT)}&lbb=100" } ?: "")
+        val url = "$SEARCH?api_key=${UriText.strict(key.trim())}&q=${SearchWire.encode(query)}&fmt=json&t=${count.coerceIn(1, ServiceTerms.Mojeek.MAX_RESULTS)}" + // l10n: not text (a request address)
+            "&safe=${if (safe == SafeSearch.OFF) 0 else 1}&dlen=$SNIPPET" + (SearchWire.lang(lang)?.let { "&lb=${it.uppercase(Locale.ROOT)}&lbb=100" } ?: "") // l10n: not text (a request address)
         return SearchRequest("GET", url, listOf("User-Agent" to userAgent, "Accept" to "application/json"))
     }
 
@@ -426,12 +432,6 @@ object ServiceTerms {
          * formats disabled." https://docs.searxng.org/dev/search_api.html
          */
         const val JSON_OFF_STATUS = 403
-        /**
-         * A public instance's limiter rate-limits and blocks clients that look like bots:
-         * https://docs.searxng.org/admin/searx.limiter.html. Its admin "does not know whether their requests are logged"
-         * from the user's side: https://docs.searxng.org/own-instance.html
-         */
-        const val PUBLIC_WARNING = "Run by someone you don't know: they can see and keep your searches."
     }
 
     /** Brave Search API. */
@@ -503,6 +503,6 @@ object ServiceTerms {
          */
         const val NEEDS_CONTACT = true
         /** Text CC BY-SA 4.0; credit by a link to the page plus the licence: https://en.wikipedia.org/wiki/Wikipedia:Reusing_Wikipedia_content */
-        const val LICENCE = "CC BY-SA 4.0"
+        const val LICENCE = "CC BY-SA 4.0" // l10n: not text (a licence's name)
     }
 }

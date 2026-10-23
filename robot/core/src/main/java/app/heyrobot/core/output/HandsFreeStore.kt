@@ -60,7 +60,7 @@ data class CarFile(val on: Boolean = false, val settings: CarSettings = CarSetti
 
 /** Home and Work, for "navigate home" and "take me to work". */
 data class Places(val home: SavedPlace? = null, val work: SavedPlace? = null) {
-    override fun toString(): String = "Places(home=${home != null}, work=${work != null})"
+    override fun toString(): String = "Places(home=${home != null}, work=${work != null})" // l10n: not text (toString, for the logs)
 
     fun encode(): String = JSONObject().put("v", VERSION).apply {
         home?.let { put("home", place(it)) }

@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.ConversationStrings
+import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.i18n.Phrase
 import java.util.Locale
 
 // Pure. The pieces of conversation mode's capture that need no microphone and no model (docs/conversation-mode.md 1,
@@ -267,22 +270,28 @@ class MinuteStats {
 
 /** How a transcript is called where it has no title of its own. */
 object TranscriptTitles {
-    private val DAY = java.time.format.DateTimeFormatter.ofPattern("d MMM, HH:mm", Locale.US)
-
-    /** "Conversation · 11 Oct, 14:02", or the title you gave it. */
-    fun shown(meta: TranscriptMeta, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): String =
-        meta.title.trim().ifEmpty { "Conversation · " + DAY.format(java.time.Instant.ofEpochMilli(meta.createdAt).atZone(zone)) }
+    /**
+     * "Conversation · 11 Oct, 14:02" (« Conversation · 11 octobre, 14 h 02 » in [l]'s French), or the title you gave it.
+     * English by default.
+     */
+    fun shown(meta: TranscriptMeta, zone: java.time.ZoneId = java.time.ZoneId.systemDefault(), l: Langs = Langs.EN): String = meta.title.trim().ifEmpty {
+        val z = java.time.Instant.ofEpochMilli(meta.createdAt).atZone(zone)
+        ConversationStrings.titleDated("day" to TranscriptDates.dayMonth(z, l.say), "time" to TranscriptDates.time(z, l.say)).render(l)
+    }
 
     /** A title as you typed it: one line, at most 80 characters. */
     fun clean(s: String): String = s.replace(Regex("\\s+"), " ").trim().take(80)
 
-    /** "12 min", "1 h 05", "under a minute". */
-    fun duration(ms: Long): String {
+    /** "12 min", "1 h 05", "under a minute" (« moins d'une minute »). */
+    fun durationText(ms: Long): Phrase {
         val m = (ms / 60_000).coerceAtLeast(0)
         return when {
-            m == 0L -> "under a minute"
-            m < 60 -> "$m min"
-            else -> String.format(Locale.US, "%d h %02d", m / 60, m % 60)
+            m == 0L -> ConversationStrings.underAMinute()
+            m < 60 -> ConversationStrings.minutes("n" to "$m")
+            else -> ConversationStrings.hours("h" to "${m / 60}", "mm" to String.format(Locale.US, "%02d", m % 60))
         }
     }
+
+    /** [durationText] in English. */
+    fun duration(ms: Long): String = durationText(ms).en()
 }

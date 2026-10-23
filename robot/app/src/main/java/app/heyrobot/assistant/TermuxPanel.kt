@@ -5,8 +5,13 @@ import app.heyrobot.core.ActionStatus
 import app.heyrobot.core.AskWhy
 import app.heyrobot.core.Card
 import app.heyrobot.core.TermuxScriptAction
+import app.heyrobot.core.i18n.Lang
+import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.i18n.TermuxStrings
+import app.heyrobot.core.i18n.TurnStrings
 import app.heyrobot.core.termux.TermuxCardInfo
 import app.heyrobot.core.termux.TermuxCards
+import app.heyrobot.core.termux.TermuxReason
 import app.heyrobot.core.termux.TermuxSettings
 import app.heyrobot.ui.common.TermuxCardChange
 import app.heyrobot.ui.common.TermuxCardView
@@ -15,7 +20,8 @@ import app.heyrobot.ui.common.TermuxCardView
 // prepared (the command, Robot's warnings, Gemma's reason) and its live state (running, the outcome), drawn by ui/common
 // TermuxCard in the panel's bubbles; and what the card's buttons ask for besides Run and Cancel (an edited command,
 // another limit, Open in Termux). Once it ran, the card's summary is History's saved line ("Ran a command in Termux (exit 0)"): the
-// command and its output are shown, never saved.
+// command and its output are shown, never saved. 1.1: History keeps its English; the card draws it in the screen's
+// language (TermuxCardView.saved).
 
 object TermuxPanel {
     /** [ui] with its Termux card when [c] is a Termux action's (unchanged otherwise). */
@@ -33,7 +39,7 @@ object TermuxPanel {
 
     private fun view(ui: UiAction, info: TermuxCardInfo, script: String?): UiAction {
         val base = ui.termux!!.copy(
-            command = info.command, script = script, chips = info.chips(), red = info.redLine(), why = info.why, readsAs = info.readsAs,
+            command = info.command, script = script, chips = info.chipTexts, red = info.redText, why = info.why, readsAs = info.readsAsText,
             fromContent = info.fromContent, terminal = info.terminal, tapOnly = info.tapOnly, where = info.workdir, limitSeconds = info.limitSeconds,
             editable = script == null, personal = info.personal,
         )
@@ -49,13 +55,15 @@ object TermuxPanel {
         val withEdit = t.copy(running = l?.running == true, limitSeconds = TermuxSettings.limit(edit?.limitSeconds ?: t.limitSeconds),
             edited = edit?.command?.takeIf { it != t.command })
         if (o == null) {
-            val stopped = ui.status == ActionStatus.DECLINED && ui.detail == "Stopped."
-            return ui.copy(termux = withEdit, summary = if (stopped) TermuxCards.savedLine(t.script, null, stopped = true) else ui.summary)
+            // The turn's "Stopped." card, in whichever language the turn said it.
+            val stopped = ui.status == ActionStatus.DECLINED && Lang.entries.any { ui.detail == TurnStrings.stopped().render(Langs.of(it)) }
+            if (!stopped) return ui.copy(termux = withEdit)
+            return ui.copy(termux = withEdit.copy(saved = TermuxCards.savedText(t.script, null, stopped = true)), summary = TermuxCards.savedLine(t.script, null, stopped = true))
         }
         return ui.copy(
             summary = if (ui.status == ActionStatus.PENDING) ui.summary else TermuxCards.savedLine(t.script, o.exit),
-            termux = withEdit.copy(exitLine = TermuxCards.exitLine(o), output = o.output?.card?.takeIf { it.isNotEmpty() },
-                size = o.output?.let { TermuxCards.size(it.length) }, cut = o.output?.truncated == true, masked = o.output?.masked ?: 0),
+            termux = withEdit.copy(saved = TermuxCards.savedText(t.script, o.exit), exitLine = TermuxCards.exitText(o), output = o.output?.card?.takeIf { it.isNotEmpty() },
+                size = o.output?.let { TermuxCards.sizeText(it.length) }, cut = o.output?.truncated == true, masked = o.output?.masked ?: 0),
         )
     }
 
@@ -72,8 +80,9 @@ object TermuxPanel {
                 PanelController.confirm(actionId, true)
             }
             // Editing: a spoken or typed yes would run what the card no longer shows, so only a tap on Run answers it now.
+            // The card draws its own line while you edit (TermuxCard: TermuxStrings.editing, in the screen's language).
             TermuxCardChange.Editing -> PanelController.updateCard(actionId) {
-                it.copy(tapFor = AskWhy.COMMAND, detail = "You're editing the command: tap Run when it's ready.", termux = t.copy(editing = true))
+                it.copy(tapFor = AskWhy.COMMAND, detail = TermuxStrings.editing("run" to TermuxReason.RUN).en(), termux = t.copy(editing = true))
             }
             TermuxCardChange.OpenInTermux -> {
                 TermuxTool.edit(t.key, TermuxTool.Edit(terminal = true))

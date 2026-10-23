@@ -18,6 +18,8 @@ import app.heyrobot.BuildConfig
 import app.heyrobot.R
 import app.heyrobot.core.AppCrash
 import app.heyrobot.core.AppExit
+import app.heyrobot.core.CheckLog
+import app.heyrobot.core.CheckRecord
 import app.heyrobot.core.ExitFacts
 import app.heyrobot.core.GpuFailure
 import app.heyrobot.core.GpuTrying
@@ -55,29 +57,74 @@ object Problems {
     private fun noteFile(ctx: Context) = File(Paths.dir(ctx), ModelProblem.FILE)
     private fun listFile(ctx: Context) = File(Paths.dir(ctx), ProblemList.FILE)
 
-    /** The GPU failure Robot remembers, or null. Any process. */
-    fun gpuFailure(ctx: Context): GpuFailure? = GpuFailure.decode(readOrNull(gpuFile(ctx)))
+    /**
+     * The GPU failure Robot remembers, or null. Any process. 1.2: only while it holds on this Android build (core
+     * GpuFailure.inForce): after a system update every process reads none, and the GPU is checked again.
+     */
+    fun gpuFailure(ctx: Context): GpuFailure? = gpuFailureFiled(ctx)?.takeIf { it.inForce(Build.FINGERPRINT) }
 
-    /** [VOICE] The GPU failed: the CPU from now on, until you try the GPU again. */
-    fun gpuFailed(ctx: Context, f: GpuFailure) = try { writeAtomic(gpuFile(ctx), f.encode()) } catch (t: Throwable) { RLog.w("gpu_failed_save", t) }
+    /** The record as it is in the file, whatever its build. */
+    private fun gpuFailureFiled(ctx: Context): GpuFailure? = GpuFailure.decode(readOrNull(gpuFile(ctx)))
 
-    /** [MAIN] "Try the GPU again" in Settings › Model. */
+    /** [VOICE] The GPU failed: the CPU from now on, until you try the GPU again (1.2: or Android's build changes; written with this build). */
+    fun gpuFailed(ctx: Context, f: GpuFailure) = try { writeAtomic(gpuFile(ctx), f.stamped(Build.FINGERPRINT).encode()) } catch (t: Throwable) { RLog.w("gpu_failed_save", t) }
+
+    /** [MAIN] "Try the GPU again" in Settings › Model: 1.2, the check's record too, so the next load checks again. */
     fun forgetGpuFailure(ctx: Context) {
         gpuFile(ctx).delete()
         tryingFile(ctx).delete()
+        checkFile(ctx).delete()
     }
 
     private fun tpuFile(ctx: Context) = File(Paths.dir(ctx), app.heyrobot.core.TpuFailure.FILE)
 
-    /** 0.8: the beta TPU build's failure Robot remembers (Fast is then the general build), or null. Any process. */
-    fun tpuFailure(ctx: Context): app.heyrobot.core.TpuFailure? = app.heyrobot.core.TpuFailure.decode(readOrNull(tpuFile(ctx)))
+    /** 0.8: the beta TPU build's failure Robot remembers (Fast is then the general build), or null. Any process. 1.2: as [gpuFailure]. */
+    fun tpuFailure(ctx: Context): app.heyrobot.core.TpuFailure? = tpuFailureFiled(ctx)?.takeIf { it.inForce(Build.FINGERPRINT) }
 
-    /** [VOICE] The beta TPU build didn't load: the general build from now on, until you try the TPU again. */
-    fun tpuFailed(ctx: Context, f: app.heyrobot.core.TpuFailure) = try { writeAtomic(tpuFile(ctx), f.encode()) } catch (t: Throwable) { RLog.w("tpu_failed_save", t) }
+    private fun tpuFailureFiled(ctx: Context): app.heyrobot.core.TpuFailure? = app.heyrobot.core.TpuFailure.decode(readOrNull(tpuFile(ctx)))
 
-    /** [MAIN] "Try the TPU again" in Settings › Model. */
+    /** [VOICE] The beta TPU build didn't load: the general build from now on, until you try the TPU again (1.2: or Android's build changes). */
+    fun tpuFailed(ctx: Context, f: app.heyrobot.core.TpuFailure) = try { writeAtomic(tpuFile(ctx), f.stamped(Build.FINGERPRINT).encode()) } catch (t: Throwable) { RLog.w("tpu_failed_save", t) }
+
+    /** [MAIN] "Try the TPU again" in Settings › Model: 1.2, the check's record too. */
     fun forgetTpuFailure(ctx: Context) {
         tpuFile(ctx).delete()
+        checkFile(ctx).delete()
+    }
+
+    /**
+     * [VOICE] 1.2: the failure records against this Android build. One from 1.1 or 0.8 (no build) gets this build written
+     * into it, so it holds until the next update; one from another build is deleted, once: the GPU (or the beta TPU build)
+     * gets another chance, checked first (core GpuCheck). Returns what changed, for the log: 0 nothing, 1 stamped, 2 dropped.
+     */
+    fun fingerprintFailures(ctx: Context): Int {
+        val fp = Build.FINGERPRINT
+        var changed = 0
+        gpuFailureFiled(ctx)?.let { f ->
+            when {
+                f.build == null -> { gpuFailed(ctx, f.stamped(fp)); changed = maxOf(changed, 1) }
+                !f.inForce(fp) -> { gpuFile(ctx).delete(); changed = 2 }
+            }
+        }
+        tpuFailureFiled(ctx)?.let { f ->
+            when {
+                f.build == null -> { tpuFailed(ctx, f.stamped(fp)); changed = maxOf(changed, 1) }
+                !f.inForce(fp) -> { tpuFile(ctx).delete(); changed = 2 }
+            }
+        }
+        return changed
+    }
+
+    private fun checkFile(ctx: Context) = File(Paths.dir(ctx), CheckLog.FILE)
+
+    /** 1.2: the self-tests run on this phone (core CheckLog), oldest first. Any process. */
+    fun checks(ctx: Context): List<CheckRecord> = CheckLog.decode(readOrNull(checkFile(ctx)))
+
+    /** [VOICE] 1.2: a self-test ended with [r]. */
+    fun checked(ctx: Context, r: CheckRecord) {
+        try {
+            synchronized(this) { writeAtomic(checkFile(ctx), CheckLog.add(readOrNull(checkFile(ctx)), r)) }
+        } catch (t: Throwable) { RLog.w("check_save", t) }
     }
 
     /** [VOICE] A GPU load is about to start, or (null) has answered. */
@@ -143,16 +190,17 @@ object Problems {
     private fun notify(ctx: Context, p: ModelProblem) {
         try {
             val nm = ctx.getSystemService(NotificationManager::class.java)
-            nm.createNotificationChannel(NotificationChannel(CHANNEL, "Model problems", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                description = "When Robot's model fails and Robot switches to another way to run it. Robot never sends a report itself."
+            // 1.1: in the menus' language (Android gives every process of Robot its per-app language), named again at each notice.
+            nm.createNotificationChannel(NotificationChannel(CHANNEL, ctx.getString(R.string.model_problem_channel), NotificationManager.IMPORTANCE_DEFAULT).apply {
+                description = ctx.getString(R.string.model_problem_channel_text)
             })
             val target = Intent().setClassName(ctx.packageName, "app.heyrobot.ui.MainActivity")
                 .putExtra(AppPages.EXTRA, AppPages.MODEL).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             val open = PendingIntent.getActivity(ctx, NOTICE_ID, target, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-            val text = p.headline() + " Robot app › Model has a report you can copy or share, if you want to."
+            val text = listOf(p.headlineText().render(AppLanguage.langs(ctx)), ctx.getString(R.string.model_problem_report)).joinToString(" ")
             nm.notify(NOTICE_ID, Notification.Builder(ctx, CHANNEL)
                 .setSmallIcon(R.drawable.ic_robot)
-                .setContentTitle("Robot's model had a problem")
+                .setContentTitle(ctx.getString(R.string.model_problem_title))
                 .setContentText(text)
                 .setStyle(Notification.BigTextStyle().bigText(text))
                 .setCategory(Notification.CATEGORY_ERROR)
@@ -172,7 +220,7 @@ object Problems {
             robotVersion = BuildConfig.VERSION_NAME,
             versionCode = BuildConfig.VERSION_CODE,
             phone = ModelStore.phone(ctx),
-            android = "${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})",
+            android = "${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})", // l10n: not text (the problem report, a diagnostic: English)
             fingerprint = Build.FINGERPRINT.orEmpty(),
             fileBytes = ModelStore.file(ctx, p.model).let { if (it.isFile) it.length() else -1 },
             exits = exits(ctx, p),
@@ -260,7 +308,7 @@ object Problems {
             robotVersion = BuildConfig.VERSION_NAME,
             versionCode = BuildConfig.VERSION_CODE,
             phone = ModelStore.phone(ctx),
-            android = "${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})",
+            android = "${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})", // l10n: not text (the problem report, a diagnostic: English)
             fingerprint = Build.FINGERPRINT.orEmpty(),
             fileBytes = -1,
             exits = all.filter { it !== e && kotlin.math.abs(it.facts.time - time) < 10 * 60_000L }.take(2).map { it.facts },
@@ -284,15 +332,15 @@ object Problems {
 
     /** [MAIN] Puts the report on the clipboard, marked sensitive (Android then hides its preview). */
     fun copy(ctx: Context, text: String) {
-        val clip = ClipData.newPlainText("Robot problem report", text)
+        val clip = ClipData.newPlainText("Robot problem report", text) // l10n: not text (a clip label)
         clip.description.extras = PersistableBundle().apply { putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true) }
         ctx.getSystemService(ClipboardManager::class.java).setPrimaryClip(clip)
     }
 
     /** [MAIN] Android's share sheet with the report as plain text: you pick where it goes, or nowhere. */
     fun share(ctx: Context, text: String) {
-        val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_SUBJECT, "Robot problem report")
+        val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_SUBJECT, ctx.getString(R.string.model_report_subject))
             .putExtra(Intent.EXTRA_TEXT, text)
-        ctx.startActivity(Intent.createChooser(send, "Share the problem report").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        ctx.startActivity(Intent.createChooser(send, ctx.getString(R.string.model_share_report_title)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 }

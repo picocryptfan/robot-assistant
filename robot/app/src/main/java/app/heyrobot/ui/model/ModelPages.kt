@@ -38,8 +38,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import app.heyrobot.R
 import app.heyrobot.core.BrainModel
 import app.heyrobot.core.ModelBackend
 import app.heyrobot.core.ModelCatalogue
@@ -57,10 +60,16 @@ import app.heyrobot.core.OwnModel
 import app.heyrobot.core.PhoneStatus
 import app.heyrobot.core.Phones
 import app.heyrobot.core.RobotSettings
+import app.heyrobot.core.MeasuredSpeed
+import app.heyrobot.core.SpeedKey
+import app.heyrobot.core.SpeedLog
 import app.heyrobot.core.Speeds
 import app.heyrobot.core.TpuSupport
 import app.heyrobot.core.VoiceBundle
 import app.heyrobot.core.VoiceModelLogic
+import app.heyrobot.core.deviceFailureText
+import app.heyrobot.core.i18n.Fmt
+import app.heyrobot.core.i18n.UiStrings
 import app.heyrobot.ui.AppActions
 import app.heyrobot.ui.Mark
 import app.heyrobot.ui.Page
@@ -79,11 +88,12 @@ import app.heyrobot.ui.pref.TwoTargetPreference
 import app.heyrobot.ui.pref.preferenceFooter
 import app.heyrobot.ui.pref.preferenceGroup
 import app.heyrobot.ui.settings.SettingsRoutes
-import java.util.Locale
+import app.heyrobot.ui.theme.LocalLangs
+import app.heyrobot.ui.theme.str
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-// MAIN PROCESS. The Model tab (0.4.1; 0.4.x redesign): which model Robot uses as radio rows,
+// MAIN PROCESS. Settings › Model (0.4.1; 0.4.x redesign; a tab until 1.4): which model Robot uses as radio rows,
 // each with a button to its own page (download, import, check, delete, where it comes from), "Let the model think first",
 // how long the model stays loaded, and the voice models, each with its page. Your own model file's page says what Robot's
 // check found in it, and runs it on the TPU only after its warning dialog, bound to that file's SHA-256 (0.4.1). 0.4.5:
@@ -91,35 +101,40 @@ import kotlinx.coroutines.withContext
 // at the top, this phone and its chip (which Fast it gets, whether Robot uses its TPU), and where Fast runs on a phone
 // without the Tensor G5's TPU build: "Use the GPU" with "Try the GPU again" after a failure, and this phone's estimated
 // speeds; only this phone's Fast is listed. 0.7: the problem's "Send as bug report" (Settings › About › Send feedback), and
-// the last 10 problems as a list, each with Show, Share, Send as bug report and Delete.
+// the last 10 problems as a list, each with Show, Share, Send as bug report and Delete. 1.1: the pages' words are in
+// strings_model.xml, core's (a model's name and state, what the check found, this phone's TPU and speeds) in ModelStrings,
+// both with their Québec French; the problem report stays English (a diagnostic).
 
 /** The route of a model's page (Settings › Model › one model), and of a voice model's. */
 object ModelRoutes {
-    fun model(m: BrainModel) = "model/${m.id}"
-    fun voice(b: VoiceBundle) = "model/voice/${b.name}"
+    fun model(m: BrainModel) = "model/${m.id}" // l10n: not text (a route)
+    fun voice(b: VoiceBundle) = "model/voice/${b.name}" // l10n: not text (a route)
 }
 
 private fun mark(st: ModelStatus?): Mark = when (st) { ModelStatus.VERIFIED -> Mark.OK; ModelStatus.BAD -> Mark.WARN; else -> Mark.TODO }
 
-private fun free(snap: Snapshot): String = if (snap.freeBytes >= 0) ModelLogic.gb(snap.freeBytes) else "unknown"
+@Composable
+private fun free(snap: Snapshot): String = if (snap.freeBytes >= 0) ModelLogic.gbText(snap.freeBytes).str() else stringResource(R.string.model_unknown)
 
 /** "4.1 GB (4,123,456,789 bytes)". */
-private fun bytes(n: Long): String = "${ModelLogic.gb(n)} (${String.format(Locale.US, "%,d", n)} bytes)"
+@Composable
+private fun bytes(n: Long): String = stringResource(R.string.model_bytes, ModelLogic.gbText(n).str(), Fmt.int(n, LocalLangs.current.ui))
 
 /** Why a model can't be chosen yet, or null when it can. */
+@Composable
 internal fun notReady(m: BrainModel, snap: Snapshot): String? {
     if (snap.ready(m)) return null
     val st = snap.model(m)?.status
     return when {
         // 0.4.7: a TPU build runs only where Robot has the TPU; 0.8: the TPU of the chip its stamp names (Tensor G5 or G6).
         m == BrainModel.OWN && st == ModelStatus.VERIFIED && snap.own?.tensorBuild != null && snap.own?.report?.runsOnTpuOf(snap.phone) != true ->
-            "Built for the ${snap.own?.tensorBuild?.title}'s TPU, which this phone doesn't have"
-        m == BrainModel.OWN && st == ModelStatus.VERIFIED && snap.own?.tensorBuild != null -> "Allow the TPU for it first"
-        m == BrainModel.OWN && st == ModelStatus.VERIFIED && snap.own?.format == ModelFormat.GGUF && !snap.ggufEngine -> "This build of Robot can't run GGUF files"
-        st == ModelStatus.DOWNLOADING || st == ModelStatus.IMPORTING || st == ModelStatus.VERIFYING -> "Getting it ready…"
-        st == ModelStatus.BAD -> "Its file can't be used"
-        m.builtIn -> "Not downloaded · ${ModelLogic.gb(m.bytes)}"
-        else -> "Import a file first"
+            stringResource(R.string.model_not_ready_other_tpu, snap.own?.tensorBuild?.title.orEmpty())
+        m == BrainModel.OWN && st == ModelStatus.VERIFIED && snap.own?.tensorBuild != null -> stringResource(R.string.model_not_ready_allow_tpu)
+        m == BrainModel.OWN && st == ModelStatus.VERIFIED && snap.own?.format == ModelFormat.GGUF && !snap.ggufEngine -> stringResource(R.string.model_not_ready_no_gguf)
+        st == ModelStatus.DOWNLOADING || st == ModelStatus.IMPORTING || st == ModelStatus.VERIFYING -> stringResource(R.string.model_not_ready_getting)
+        st == ModelStatus.BAD -> stringResource(R.string.model_not_ready_bad)
+        m.builtIn -> stringResource(R.string.model_not_ready_download, ModelLogic.gbText(m.bytes).str())
+        else -> stringResource(R.string.model_not_ready_import)
     }
 }
 
@@ -127,118 +142,136 @@ internal fun notReady(m: BrainModel, snap: Snapshot): String? {
  * A model's row in "Robot uses": which model, then Ready or what it needs first, or (your own short-context file) chat
  * only. How fast each is, at length, is on its page.
  */
+@Composable
 internal fun modelRowSummary(m: BrainModel, snap: Snapshot): String {
     // Your own file, checked and short (0.4.3): said where you choose it, not only on its page.
     val short = if (m == BrainModel.OWN && snap.ready(m)) snap.own?.takeIf { it.shortContext }
-        ?.let { o -> "Chat only (short context): no actions" + if (o.vision) ", can see photos" else "" } else null
-    val name = if (m == BrainModel.OWN) snap.own?.name ?: "A .litertlm or .gguf file" else m.modelName
+        ?.let { o -> stringResource(if (o.vision) R.string.model_row_chat_only_photos else R.string.model_row_chat_only) } else null
+    val name = if (m == BrainModel.OWN) snap.own?.name ?: stringResource(R.string.model_row_own_file) else m.modelName
     // 0.4.7: an E4B model on a phone with 8 GB or less (the warning in full is on its page).
-    val memory = ModelCatalogue.memoryWarning(m, snap.phone)?.let { "Tight on this phone's memory" }
-    return listOfNotNull(name, short, notReady(m, snap) ?: "Ready".takeIf { short == null }, memory).joinToString(" · ")
+    val memory = ModelCatalogue.memoryWarningText(m, snap.phone)?.let { stringResource(R.string.model_row_tight_memory) }
+    return listOfNotNull(name, short, notReady(m, snap) ?: stringResource(R.string.model_row_ready).takeIf { short == null }, memory).joinToString(" · ")
 }
 
 /** Where [m] runs on this phone now: the GPU or the CPU for the general E2B (0.4.7), else its own backend. */
 internal fun runsHere(m: BrainModel, s: RobotSettings, snap: Snapshot): ModelBackend =
     ModelCatalogue.backend(m, snap.phone, s.modelGpu, snap.gpuFailure?.model == m)
 
+/**
+ * 1.2 (design Step 5): what Robot measured for [m] on [b] on this phone (core SpeedLog's medians for its file and this Android
+ * build), or null until it has enough answers.
+ */
+internal fun measuredHere(m: BrainModel, b: ModelBackend, snap: Snapshot): MeasuredSpeed? =
+    SpeedLog.measured(snap.speeds, SpeedKey.of(m, b, if (m == BrainModel.OWN) snap.own?.sha256 else m.sha256, snap.build))
+
 /** "Thu, 11 Oct 2026, 14:05": when a problem happened. */
 private fun dateTime(t: Long): String = java.text.DateFormat.getDateTimeInstance().format(java.util.Date(t))
 
-/** "Always", "5 min". */
-private fun keepLabel(m: Int): String = if (m == RobotSettings.KEEP_ALWAYS) "Always" else "$m min"
-
-/** The Model tab. */
+/** Settings › Model (the Model tab until 1.4, when Files took its place: files-1.4-plan.md Q1). */
 @Composable
-fun ModelScreen(s: RobotSettings, update: (RobotSettings) -> Unit, snap: Snapshot, busy: String?, a: AppActions, modifier: Modifier = Modifier) {
+fun ModelScreen(s: RobotSettings, update: (RobotSettings) -> Unit, snap: Snapshot, busy: String?, a: AppActions, modifier: Modifier = Modifier,
+    onBack: (() -> Unit)? = null, snackbar: SnackbarHostState? = null) {
     val phone = snap.phone
+    val langs = LocalLangs.current
+    val res = LocalContext.current.resources
     // 0.4.7: either Fast in the file is this phone's Fast.
     val chosen = snap.resolve(s.brainModelChoice)
-    PreferenceScreen("Model", onBack = null, modifier = modifier) {
-        snap.problem?.let { p -> preferenceGroup("Model problem", "problem") { ProblemRows(p, a) } }
+    val groupProblem = stringResource(R.string.model_group_problem)
+    val groupProblems = stringResource(R.string.model_group_problems)
+    val groupUses = stringResource(R.string.model_group_uses)
+    val groupPhone = stringResource(R.string.model_group_phone)
+    val groupThinking = stringResource(R.string.model_group_thinking)
+    val groupMemory = stringResource(R.string.model_group_memory)
+    val groupVoice = stringResource(R.string.model_group_voice)
+    val footer = modelFooter(s, snap, chosen)
+    PreferenceScreen(UiStrings.model().str(), onBack = onBack, modifier = modifier, snackbar = snackbar) {
+        snap.problem?.let { p -> preferenceGroup(groupProblem, "problem") { ProblemRows(p, a) } }
         // 0.7: the last 10 problems, under the open one, or at the end of the tab once it is dismissed.
         val earlier = snap.problems.filter { it.time != snap.problem?.time }
-        if (snap.problem != null && earlier.isNotEmpty()) preferenceGroup("Last model problems", "problems") { ProblemListRows(earlier, a) }
-        preferenceGroup("Robot uses", "uses") {
+        if (snap.problem != null && earlier.isNotEmpty()) preferenceGroup(groupProblems, "problems") { ProblemListRows(earlier, a) }
+        preferenceGroup(groupUses, "uses") {
             for (m in ModelCatalogue.models(phone, snap.tpuFailure != null)) {
                 // 0.8, a Tensor G6: the general build as Fast (beta)'s fallback, to download before the TPU build ever fails. Not a
                 // choice of its own (Robot switches to it by itself), so a row that opens its page, with Download there.
                 if (m == ModelCatalogue.fallback(phone, snap.tpuFailure != null)) {
-                    PreferenceItem(ModelCatalogue.FALLBACK_TITLE, "Used by itself if Fast (beta) doesn't load on the TPU · " + modelRowSummary(m, snap),
+                    PreferenceItem(ModelCatalogue.fallbackTitleText.str(), stringResource(R.string.model_fallback_row, modelRowSummary(m, snap)),
                         leading = { StatusIcon(mark(snap.model(m)?.status)) }, onClick = { a.openPage(Page.Settings(ModelRoutes.model(m))) },
                         trailing = { Icon(RIcons.Chevron, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) })
                     continue
                 }
                 val ready = snap.ready(m)
-                TwoTargetPreference(m.title, modelRowSummary(m, snap),
+                val title = m.titleText.str()
+                TwoTargetPreference(title, modelRowSummary(m, snap),
                     // Tapping the chosen one again saves too: Robot then retries a model that didn't load.
                     onClick = { update(s.copy(brainModel = m.id)) },
                     enabled = ready || chosen == m, role = Role.RadioButton, selected = chosen == m,
                     leading = { RadioButton(selected = chosen == m, onClick = null, enabled = ready || chosen == m) }) {
-                    IconButton(onClick = { a.openPage(Page.Settings(ModelRoutes.model(m))) }) { Icon(RIcons.Chevron, "${m.title} details") }
+                    IconButton(onClick = { a.openPage(Page.Settings(ModelRoutes.model(m))) }) {
+                        Icon(RIcons.Chevron, stringResource(R.string.model_details_cd, title))
+                    }
                 }
             }
             if (!snap.ready(chosen) && chosen != snap.fast) {
-                StatusPreference("Until “${chosen.title}” is ready, Robot uses Fast", notReady(chosen, snap), Mark.WARN)
+                StatusPreference(stringResource(R.string.model_until_ready, chosen.titleText.str()), notReady(chosen, snap), Mark.WARN)
             }
-            snap.loaded?.let { PreferenceItem("In memory now", "${it.title} (${it.modelName})", RIcons.Chip) }
+            snap.loaded?.let { PreferenceItem(stringResource(R.string.model_in_memory), "${it.titleText.str()} (${it.modelNameText.str()})", RIcons.Chip) }
         }
-        preferenceGroup("This phone", "phone") {
-            StatusPreference(Phones.line(phone).removePrefix("This phone: "), Phones.tpuLine(phone),
-                if (phone.tpu != TpuSupport.NONE) Mark.OK else Mark.TODO)
+        preferenceGroup(groupPhone, "phone") {
+            StatusPreference(Phones.phoneText(phone).str(), Phones.tpuLineText(phone).str(), if (phone.tpu != TpuSupport.NONE) Mark.OK else Mark.TODO)
+            // 1.2: Android's own SoC fields, on every phone, so a test phone shows what it says.
+            PreferenceItem(stringResource(R.string.model_chip_fields), Phones.socFieldsText(phone).str(), RIcons.Chip)
             // 0.8: the beta TPU build didn't load here: the general build until you try the TPU again.
             snap.tpuFailure?.let { f ->
-                StatusPreference("The TPU ${f.what}", "${dateTime(f.time)}. Robot runs Fast's general build on the CPU.", Mark.WARN)
-                PreferenceItem("Try the TPU again", "At the next question. If it fails again, Robot goes back to the general build by itself",
+                StatusPreference(f.titleText.str(), stringResource(R.string.model_tpu_failed_when, dateTime(f.time)), Mark.WARN)
+                PreferenceItem(stringResource(R.string.model_try_tpu_again), stringResource(R.string.model_try_tpu_again_summary),
                     RIcons.Refresh, onClick = a.tryTpuAgain)
             }
+            // 1.2 (design Step 8): the setup guide's warning on a slow or small phone (core PhoneFit); "Use the GPU" is just below.
+            snap.fit(s.modelGpu).takeIf { it.shows }?.let { f -> StatusPreference(f.titleText.render(langs), f.lines.joinToString(" ") { it.render(langs) }, Mark.WARN) }
             if (snap.fast.gpu) WhereFastRuns(s, update, snap, a)
         }
-        preferenceGroup("Thinking", "thinking") {
-            SwitchPreference("Let the model think first", "Qwen3, MiniCPM 5 and some GGUF files", s.modelThinks) { update(s.copy(modelThinks = it)) }
+        preferenceGroup(groupThinking, "thinking") {
+            SwitchPreference(stringResource(R.string.model_think_first), stringResource(R.string.model_think_first_summary), s.modelThinks) {
+                update(s.copy(modelThinks = it))
+            }
         }
-        preferenceGroup("Memory", "memory") {
-            ListPreference("Keep the model loaded", s.keepModelMinutes, RobotSettings.KEEP_CHOICES, ::keepLabel,
-                { if (it == 5) "The default" else null }, RIcons.Timer,
-                summary = keepLabel(s.keepModelMinutes) + " after the panel closes") { update(s.copy(keepModelMinutes = it)) }
+        preferenceGroup(groupMemory, "memory") {
+            val keepLabel = { m: Int -> if (m == RobotSettings.KEEP_ALWAYS) res.getString(R.string.model_keep_always) else res.getString(R.string.model_keep_minutes, m) }
+            val byDefault = stringResource(R.string.model_keep_default)
+            ListPreference(stringResource(R.string.model_keep_loaded), s.keepModelMinutes, RobotSettings.KEEP_CHOICES, keepLabel,
+                { if (it == 5) byDefault else null }, RIcons.Timer,
+                summary = stringResource(R.string.model_keep_summary, keepLabel(s.keepModelMinutes))) { update(s.copy(keepModelMinutes = it)) }
         }
-        if (snap.problem == null && earlier.isNotEmpty()) preferenceGroup("Last model problems", "problems") { ProblemListRows(earlier, a) }
-        preferenceGroup("Voice models", "voice") {
+        if (snap.problem == null && earlier.isNotEmpty()) preferenceGroup(groupProblems, "problems") { ProblemListRows(earlier, a) }
+        preferenceGroup(groupVoice, "voice") {
             for (b in VoiceBundle.entries) {
                 val v = snap.voice(b) ?: continue
-                PreferenceItem(b.title, "${VoiceModelLogic.headline(v.status)} · ${VoiceModelLogic.size(b.bytes)}",
+                PreferenceItem(b.titleText.render(langs), listOf(VoiceModelLogic.headlineText(v.status), VoiceModelLogic.sizeText(b.bytes)).joinToString(" · ") { it.render(langs) },
                     leading = { StatusIcon(mark(v.status)) }, onClick = { a.openPage(Page.Settings(ModelRoutes.voice(b))) },
                     trailing = { Icon(RIcons.Chevron, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) })
             }
         }
-        val memory = if (chosen.memoryBytes > 0) "about ${PhoneStatus.size(chosen.memoryBytes)} of memory" else "about its file's size in memory"
-        preferenceFooter(
-            "Models run on this phone. Robot goes online only to download one you pick. Whichever model answers, Robot's cards and " +
-                "switches (Settings › Actions, Safety & privacy) decide what asks you first, and nothing leaves the phone unless you ask. " +
-                "Questions in a new conversation take longer with the slower models." +
-                // A Pixel 10's choice (or the default) on another phone: read as this phone's Fast, the file left as it is.
-                (if (s.brainModelChoice.isFast && s.brainModelChoice != snap.fast) when (snap.fast) {
-                    BrainModel.GENERAL -> " Fast on this phone is Gemma 4 E2B's general build" +
-                        (if (snap.tpuFailure != null) ": the TPU build didn't load here." else ": the Tensor G5 build needs a Pixel 10.")
-                    BrainModel.FAST_G6 -> " Fast on this phone is the Tensor G6 build (beta)."
-                    else -> ""
-                } else "") +
-                "\n\nTPU support in Robot:\n" + Phones.TPU_LIST.joinToString("\n") { "• $it" } +
-                "\nSpeeds on the models' pages are measured on a Pixel 10 Pro where they say so, otherwise estimates, each with where it comes from." +
-                (if (snap.fast.gpu && ModelCatalogue.gpuOffered(phone)) "\n\nUse the GPU: on the GPU, Fast starts answering sooner, uses less " +
-                    "battery and leaves the CPU to Robot's voice; the CPU may write a little faster. If the GPU fails, Robot switches to the " +
-                    "CPU by itself and says so." else "") +
-                "\n\nLet the model think first: some models can reason before they answer: Qwen3, MiniCPM 5, and GGUF files whose chat " +
-                "template allows it. On, they may: answers take longer, and the thinking is never shown or read out. Off, Robot asks " +
-                "them to answer directly. Robot's own Gemma models answer the same either way.\n\n" +
-                "Keep the model loaded after the panel closes ($memory; " +
-                (if (runsHere(chosen, s, snap) == ModelBackend.TPU) "it loads again in about 2 seconds)." else "it loads again in a few seconds once its cache is written).") +
-                "\n\nAbout the downloads: each model downloads from Hugging Face only when you tap Download, pinned to one commit of its " +
-                "repository; Robot checks the file's SHA-256 before it is ever loaded, and the download resumes by itself if the " +
-                "connection drops. You can also download a file on a computer and import it. Nothing you say or type goes to Hugging " +
-                "Face. The voice models are for talking to Robot and hearing it answer. They run on the phone; nothing you say leaves " +
-                "it. Each file is checked (SHA-256) before Robot uses it. Wi-Fi recommended.",
-        )
+        preferenceFooter(footer)
     }
+}
+
+/** The Model tab's footer, its paragraphs joined. */
+@Composable
+private fun modelFooter(s: RobotSettings, snap: Snapshot, chosen: BrainModel): String {
+    // A Pixel 10's choice (or the default) on another phone: read as this phone's Fast, the file left as it is.
+    val fastNote = if (s.brainModelChoice.isFast && s.brainModelChoice != snap.fast) when (snap.fast) {
+        BrainModel.GENERAL -> stringResource(if (snap.tpuFailure != null) R.string.model_footer_general_failed else R.string.model_footer_general)
+        BrainModel.FAST_G6 -> stringResource(R.string.model_footer_g6)
+        else -> null
+    } else null
+    val memory = if (chosen.memoryBytes > 0) stringResource(R.string.model_footer_memory, app.heyrobot.core.PhoneStatus.sizeText(chosen.memoryBytes).str())
+        else stringResource(R.string.model_footer_memory_file)
+    val gpu = if (snap.fast.gpu && ModelCatalogue.gpuOffered(snap.phone)) stringResource(R.string.model_footer_gpu) else null
+    val keep = stringResource(if (runsHere(chosen, s, snap) == ModelBackend.TPU) R.string.model_footer_keep_tpu else R.string.model_footer_keep_cpu, memory)
+    val tpu = stringResource(R.string.model_footer_tpu) + "\n" + Phones.tpuListText.map { it.str() }.joinToString("\n") { "• $it" } + "\n" +
+        stringResource(R.string.model_footer_speeds)
+    return listOfNotNull(listOfNotNull(stringResource(R.string.model_footer_intro), fastNote).joinToString(" "), tpu, gpu,
+        stringResource(R.string.model_footer_think), keep, stringResource(R.string.model_footer_downloads)).joinToString("\n\n")
 }
 
 /**
@@ -253,21 +286,21 @@ private fun WhereFastRuns(s: RobotSettings, update: (RobotSettings) -> Unit, sna
     val failure = snap.gpuFailure?.takeIf { it.model == g }
     val now = runsHere(g, s, snap)
     if (offered) {
-        SwitchPreference("Use the GPU", "Recommended. If it fails, Robot switches to the CPU by itself", s.modelGpu) { update(s.copy(modelGpu = it)) }
+        SwitchPreference(stringResource(R.string.model_use_gpu), stringResource(R.string.model_use_gpu_summary), s.modelGpu) { update(s.copy(modelGpu = it)) }
         if (failure != null) {
-            StatusPreference("The GPU ${failure.what}", "${dateTime(failure.time)}. Robot runs Fast on the CPU.", Mark.WARN)
-            PreferenceItem("Try the GPU again", "At the next question. If it fails again, Robot goes back to the CPU by itself",
+            StatusPreference(failure.titleText.str(), stringResource(R.string.model_gpu_failed_when, dateTime(failure.time)), Mark.WARN)
+            PreferenceItem(stringResource(R.string.model_try_gpu_again), stringResource(R.string.model_try_gpu_again_summary),
                 RIcons.Refresh, onClick = a.tryGpuAgain)
         }
     } else {
-        PreferenceItem("Where Fast runs", "On the CPU: Robot doesn't use this phone's GPU (${p.chip.gpu.title}, as on the Pixel 10)")
+        PreferenceItem(stringResource(R.string.model_where_fast_runs), stringResource(R.string.model_where_fast_runs_cpu, p.chip.gpu.title))
     }
     for (b in if (offered) listOf(ModelBackend.GPU, ModelBackend.CPU) else listOf(ModelBackend.CPU)) {
-        val e = Speeds.of(g, b, p) ?: continue
+        val e = Speeds.of(g, b, p, measuredHere(g, b, snap)) ?: continue
         PreferenceBlock {
-            Text("Fast on the ${b.title}" + if (b == now) " (now)" else "", style = MaterialTheme.typography.titleSmall)
-            Text(e.text(), style = MaterialTheme.typography.bodyMedium)
-            Text(e.source, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(if (b == now) R.string.model_fast_on_now else R.string.model_fast_on, b.titleOn(p.chip)), style = MaterialTheme.typography.titleSmall)
+            Text(e.textPhrase().str(), style = MaterialTheme.typography.bodyMedium)
+            Text(e.sourceText.str(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -283,21 +316,23 @@ private fun ProblemRows(p: ModelProblem, a: AppActions) {
     LaunchedEffect(p.time) {
         text = withContext(Dispatchers.IO) { try { a.reportText(p) } catch (_: Exception) { null } }
     }
-    StatusPreference(p.headline(), dateTime(p.time), Mark.WARN)
+    StatusPreference(p.headlineText().str(), dateTime(p.time), Mark.WARN)
     PreferenceBlock {
-        Text("Robot made a report you can read, then copy or share if you want to help fix it: codes, this phone and its Android " +
-            "build, the model file and the last 50 voice log events. Never what you said or asked. Robot sends nothing itself.",
-            style = MaterialTheme.typography.bodyMedium)
+        Text(stringResource(R.string.model_report_intro), style = MaterialTheme.typography.bodyMedium)
         Buttons {
-            Button(onClick = { text?.let(a.copyReport) }, enabled = text != null, modifier = Modifier.heightIn(min = 48.dp)) { Text("Copy report") }
-            OutlinedButton(onClick = { text?.let(a.shareReport) }, enabled = text != null, modifier = Modifier.heightIn(min = 48.dp)) { Text("Share report") }
+            Button(onClick = { text?.let(a.copyReport) }, enabled = text != null, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.model_copy_report)) }
+            OutlinedButton(onClick = { text?.let(a.shareReport) }, enabled = text != null, modifier = Modifier.heightIn(min = 48.dp)) {
+                Text(stringResource(R.string.model_share_report))
+            }
             // 0.7: Send feedback as a bug report, this report ticked (you read and send it there).
-            OutlinedButton(onClick = { a.openPage(bugReport(p)) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Send as bug report") }
-            TextButton(onClick = { shown = !shown }, modifier = Modifier.heightIn(min = 48.dp)) { Text(if (shown) "Hide the report" else "Show the report") }
-            TextButton(onClick = { a.dismissProblem(p) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Dismiss") }
+            OutlinedButton(onClick = { a.openPage(bugReport(p)) }, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.model_send_bug)) }
+            TextButton(onClick = { shown = !shown }, modifier = Modifier.heightIn(min = 48.dp)) {
+                Text(stringResource(if (shown) R.string.model_hide_report else R.string.model_show_report))
+            }
+            TextButton(onClick = { a.dismissProblem(p) }, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.model_dismiss)) }
         }
         if (shown) SelectionContainer {
-            Text(text ?: "Making the report…", style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+            Text(text ?: stringResource(R.string.model_making_report), style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
         }
     }
 }
@@ -311,10 +346,12 @@ private fun bugReport(p: ModelProblem): Page = Page.Settings(SettingsRoutes.feed
  */
 @Composable
 private fun ProblemListRows(list: List<ModelProblem>, a: AppActions) {
+    val expanded = stringResource(R.string.model_expanded)
+    val collapsed = stringResource(R.string.model_collapsed)
     for (q in list) {
         var open by rememberSaveable(q.time) { mutableStateOf(false) }
-        PreferenceItem(dateTime(q.time), ProblemList.row(q), leading = { StatusIcon(Mark.WARN) },
-            modifier = Modifier.semantics { stateDescription = if (open) "Expanded" else "Collapsed" }, onClick = { open = !open })
+        PreferenceItem(dateTime(q.time), ProblemList.rowText(q).str(), leading = { StatusIcon(Mark.WARN) },
+            modifier = Modifier.semantics { stateDescription = if (open) expanded else collapsed }, onClick = { open = !open })
         if (open) ProblemActions(q, a)
     }
 }
@@ -328,15 +365,19 @@ private fun ProblemActions(q: ModelProblem, a: AppActions) {
         text = withContext(Dispatchers.IO) { try { a.reportText(q) } catch (_: Exception) { null } }
     }
     PreferenceBlock {
-        Text(q.headline(), style = MaterialTheme.typography.bodyMedium)
+        Text(q.headlineText().str(), style = MaterialTheme.typography.bodyMedium)
         Buttons {
-            TextButton(onClick = { shown = !shown }, modifier = Modifier.heightIn(min = 48.dp)) { Text(if (shown) "Hide" else "Show") }
-            OutlinedButton(onClick = { text?.let(a.shareReport) }, enabled = text != null, modifier = Modifier.heightIn(min = 48.dp)) { Text("Share") }
-            OutlinedButton(onClick = { a.openPage(bugReport(q)) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Send as bug report") }
-            TextButton(onClick = { a.deleteProblem(q) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Delete") }
+            TextButton(onClick = { shown = !shown }, modifier = Modifier.heightIn(min = 48.dp)) {
+                Text(stringResource(if (shown) R.string.model_hide else R.string.model_show))
+            }
+            OutlinedButton(onClick = { text?.let(a.shareReport) }, enabled = text != null, modifier = Modifier.heightIn(min = 48.dp)) {
+                Text(stringResource(R.string.model_share))
+            }
+            OutlinedButton(onClick = { a.openPage(bugReport(q)) }, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.model_send_bug)) }
+            TextButton(onClick = { a.deleteProblem(q) }, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.model_delete)) }
         }
         if (shown) SelectionContainer {
-            Text(text ?: "Making the report…", style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+            Text(text ?: stringResource(R.string.model_making_report), style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
         }
     }
 }
@@ -389,68 +430,84 @@ private fun ModelPage(m: BrainModel, s: RobotSettings, update: (RobotSettings) -
     var askTerms by remember { mutableStateOf<Pair<ModelTerms, Boolean>?>(null) }
     fun download() { val t = ModelTerms.missing(s, m); if (t != null) askTerms = t to false else a.download(m) }
     fun import() { val t = ModelTerms.missing(s, m); if (t != null) askTerms = t to true else a.import(m) }
-    PreferenceScreen(ModelCatalogue.title(m, snap.phone, snap.tpuFailure != null), onBack, snackbar = snackbar) {
+    val memoryTitle = stringResource(R.string.model_memory_title)
+    val groupDetails = stringResource(R.string.model_group_details)
+    PreferenceScreen(ModelCatalogue.titleText(m, snap.phone, snap.tpuFailure != null).str(), onBack, snackbar = snackbar) {
         if (ms == null) return@PreferenceScreen
         val st = ms.status
         preferenceGroup(null, "state") {
-            StatusPreference(m.modelName, ModelLogic.headline(st, m), mark(st))
+            StatusPreference(m.modelName, ModelLogic.headlineText(st, m).str(), mark(st))
             PreferenceBlock {
-                ModelNotes.of(m.modelName)?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-                Text(m.speed, style = MaterialTheme.typography.bodyMedium)
-                Text(m.about, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                ModelNotes.ofText(m.modelName)?.let { Text(it.str(), style = MaterialTheme.typography.bodyMedium) }
+                Text(m.speedText.str(), style = MaterialTheme.typography.bodyMedium)
+                Text(m.aboutText.str(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 // 0.4.7: this phone's figures for it, measured or estimated, with where they come from (Fast on a Tensor G5
                 // says its measured figures itself).
                 // 0.8: the Tensor G6 build (beta) says "Estimate, not measured" with where its figure comes from.
-                if (m != BrainModel.FAST) Speeds.of(m, runsHere(m, s, snap), snap.phone)?.let { e ->
-                    Text("On this phone, on the ${runsHere(m, s, snap).title}. ${e.text()}", style = MaterialTheme.typography.bodyMedium)
-                    Text(e.source, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // 1.2: what Robot measured on this phone comes first, Fast's on a Tensor G5 too.
+                val here = measuredHere(m, runsHere(m, s, snap), snap)
+                if (m != BrainModel.FAST || here != null) Speeds.of(m, runsHere(m, s, snap), snap.phone, here)?.let { e ->
+                    Text(stringResource(if (e.here) R.string.model_on_the_measured else R.string.model_on_this_phone, runsHere(m, s, snap).titleOn(snap.phone.chip),
+                        e.textPhrase().str()), style = MaterialTheme.typography.bodyMedium)
+                    Text(e.sourceText.str(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                if (st == ModelStatus.BAD) Text("The file's checksum is wrong, so Robot won't load it. Delete it and download it again.",
+                if (st == ModelStatus.BAD) Text(stringResource(R.string.model_bad_checksum),
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
                 Buttons {
                     when (st) {
                         ModelStatus.MISSING, ModelStatus.BAD -> {
                             Button(onClick = ::download, enabled = busy == null, modifier = Modifier.heightIn(min = 48.dp)) {
-                                Icon(RIcons.Download, null); Spacer(Modifier.width(8.dp)); Text("Download ${ModelLogic.gb(m.bytes)}")
+                                Icon(RIcons.Download, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.model_download_size, ModelLogic.gbText(m.bytes).str()))
                             }
-                            OutlinedButton(onClick = ::import, enabled = busy == null, modifier = Modifier.heightIn(min = 48.dp)) { Text("Import a file") }
+                            OutlinedButton(onClick = ::import, enabled = busy == null, modifier = Modifier.heightIn(min = 48.dp)) {
+                                Text(stringResource(R.string.model_import_file))
+                            }
                         }
-                        ModelStatus.DOWNLOADING -> OutlinedButton(onClick = { a.cancelDownload(m) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Cancel download") }
-                        ModelStatus.UNVERIFIED -> Button(onClick = { a.verify(m) }, enabled = busy == null, modifier = Modifier.heightIn(min = 48.dp)) { Text("Check the file") }
+                        ModelStatus.DOWNLOADING -> OutlinedButton(onClick = { a.cancelDownload(m) }, modifier = Modifier.heightIn(min = 48.dp)) {
+                            Text(stringResource(R.string.model_cancel_download))
+                        }
+                        ModelStatus.UNVERIFIED -> Button(onClick = { a.verify(m) }, enabled = busy == null, modifier = Modifier.heightIn(min = 48.dp)) {
+                            Text(stringResource(R.string.model_check_file))
+                        }
                         ModelStatus.VERIFIED -> {
-                            OutlinedButton(onClick = { a.verify(m) }, enabled = busy == null, modifier = Modifier.heightIn(min = 48.dp)) { Text("Check again") }
-                            OutlinedButton(onClick = { confirmDelete = true }, enabled = busy == null, modifier = Modifier.heightIn(min = 48.dp)) { Text("Delete") }
+                            OutlinedButton(onClick = { a.verify(m) }, enabled = busy == null, modifier = Modifier.heightIn(min = 48.dp)) {
+                                Text(stringResource(R.string.model_check_again))
+                            }
+                            OutlinedButton(onClick = { confirmDelete = true }, enabled = busy == null, modifier = Modifier.heightIn(min = 48.dp)) {
+                                Text(stringResource(R.string.model_delete))
+                            }
                         }
                         ModelStatus.IMPORTING, ModelStatus.VERIFYING -> {}
                     }
                     if (st == ModelStatus.BAD || st == ModelStatus.UNVERIFIED) {
-                        TextButton(onClick = { confirmDelete = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Delete the file") }
+                        TextButton(onClick = { confirmDelete = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.model_delete_file)) }
                     }
                 }
             }
         }
         // 0.4.7: an E4B model on a phone with 8 GB or less.
-        ModelCatalogue.memoryWarning(m, snap.phone)?.let { w -> preferenceGroup(null, "memory") { StatusPreference("This phone's memory", w, Mark.WARN) } }
+        ModelCatalogue.memoryWarningText(m, snap.phone)?.let { w ->
+            preferenceGroup(null, "memory") { StatusPreference(memoryTitle, w.str(), Mark.WARN) }
+        }
         item(key = "progress") { ProgressBlock(ms.progress, ms.percent, ms.failure.takeIf { st == ModelStatus.MISSING }) }
-        preferenceGroup("Details", "details") {
-            PreferenceItem("Download size", ModelLogic.gb(m.bytes) + when {
+        preferenceGroup(groupDetails, "details") {
+            val size = ModelLogic.gbText(m.bytes).str()
+            PreferenceItem(stringResource(R.string.model_download_size_title), when {
                 // 0.4.7: the general E2B's first load writes a cache where it runs.
-                m.gpu -> ", plus a cache its first load writes: about ${ModelLogic.gb(ModelFiles.GPU_CACHE_BYTES)} on the GPU, " +
-                    "up to ${ModelLogic.gb(m.cacheBytes)} on the CPU"
-                m.cacheBytes > 0 -> ", plus about ${ModelLogic.gb(m.cacheBytes)} of cache the CPU writes on its first load"
-                else -> ""
+                m.gpu -> stringResource(R.string.model_size_gpu_cache, size, ModelLogic.gbText(ModelFiles.GPU_CACHE_BYTES).str(), ModelLogic.gbText(m.cacheBytes).str())
+                m.cacheBytes > 0 -> stringResource(R.string.model_size_cpu_cache, size, ModelLogic.gbText(m.cacheBytes).str())
+                else -> size
             })
-            if (ms.cacheBytes > 0) PreferenceItem("Cache now", ModelLogic.gb(ms.cacheBytes))
-            PreferenceItem("Free space", free(snap))
-            PreferenceItem("Licence", "${m.publisher} · ${m.licence}")
-            PreferenceItem("Source", "${m.repo} at commit ${m.commit?.take(12)}\n${m.file}")
+            if (ms.cacheBytes > 0) PreferenceItem(stringResource(R.string.model_cache_now), ModelLogic.gbText(ms.cacheBytes).str())
+            PreferenceItem(stringResource(R.string.model_free_space), free(snap))
+            PreferenceItem(stringResource(R.string.model_licence), "${m.publisherText.str()} · ${m.licenceText.str()}")
+            PreferenceItem(stringResource(R.string.model_source), stringResource(R.string.model_source_value, m.repo.toString(), m.commit?.take(12).toString(), m.file))
             val terms = s.confirmedTerms[ModelTerms.of(m)?.id]
             if (terms != null) {
-                PreferenceItem("Publisher's conditions", "You ticked them on ${java.text.DateFormat.getDateInstance().format(java.util.Date(terms))}: " +
-                    "research and personal experimentation only, and you're responsible for its outputs.")
+                PreferenceItem(stringResource(R.string.model_publisher_terms),
+                    stringResource(R.string.model_terms_ticked, java.text.DateFormat.getDateInstance().format(java.util.Date(terms))))
             } else if (ModelTerms.of(m) != null) {
-                PreferenceItem("Publisher's conditions", "Its publisher asks you to confirm two conditions before you download it: research and " +
-                    "personal experimentation only, and you're responsible for its outputs.")
+                PreferenceItem(stringResource(R.string.model_publisher_terms), stringResource(R.string.model_terms_ask))
             }
         }
         item(key = "sha") { ShaFooter(m.sha256.orEmpty()) }
@@ -471,18 +528,20 @@ private fun ModelPage(m: BrainModel, s: RobotSettings, update: (RobotSettings) -
 private fun DeleteModelDialog(m: BrainModel, s: RobotSettings, snap: Snapshot, a: AppActions, close: () -> Unit) {
     val ms = snap.model(m)
     val others = ModelCatalogue.models(snap.phone).any { it != m && snap.ready(it) }
-    ConfirmDialog("Delete “${m.title}”?",
-        "Removes its file (${ModelLogic.gb(ms?.fileBytes ?: 0)})" + (if ((ms?.cacheBytes ?: 0) > 0) " and its cache (${ModelLogic.gb(ms!!.cacheBytes)})" else "") +
-            " from this phone." + (if (m == snap.resolve(s.brainModelChoice) && m != snap.fast) " Robot goes back to Fast." else "") +
-            (if (!others) " Robot can't answer until you download or import a model again." else ""),
-        "Delete", onDismiss = close) { close(); a.deleteModel(m) }
+    val file = ModelLogic.gbText(ms?.fileBytes ?: 0).str()
+    val removes = if ((ms?.cacheBytes ?: 0) > 0) stringResource(R.string.model_delete_file_cache, file, ModelLogic.gbText(ms!!.cacheBytes).str())
+        else stringResource(R.string.model_delete_file_only, file)
+    ConfirmDialog(stringResource(R.string.model_delete_title, m.titleText.str()),
+        listOfNotNull(removes, stringResource(R.string.model_delete_back_to_fast).takeIf { m == snap.resolve(s.brainModelChoice) && m != snap.fast },
+            stringResource(R.string.model_delete_none_left).takeIf { !others }).joinToString(" "),
+        stringResource(R.string.model_delete), onDismiss = close) { close(); a.deleteModel(m) }
 }
 
 /** The file's SHA-256, selectable, in monospace, as the page's footer. */
 @Composable
 private fun ShaFooter(sha: String) {
     if (sha.isEmpty()) return
-    SelectionContainer { FooterPreference("SHA-256\n$sha") }
+    SelectionContainer { FooterPreference("SHA-256\n$sha") } // l10n: not text (a hash)
 }
 
 /**
@@ -498,60 +557,74 @@ private fun OwnModelPage(s: RobotSettings, snap: Snapshot, busy: String?, a: App
     var askTpu by rememberSaveable { mutableStateOf(false) }
     var warnImport by rememberSaveable { mutableStateOf(false) }
     val ms = snap.model(m)
-    PreferenceScreen(ModelCatalogue.title(m, snap.phone, snap.tpuFailure != null), onBack, snackbar = snackbar) {
+    val groupInside = stringResource(R.string.model_group_inside)
+    val footer = listOfNotNull(stringResource(R.string.model_own_footer), stringResource(R.string.model_own_footer_no_gguf).takeIf { !snap.ggufEngine },
+        stringResource(R.string.model_free_on_phone, free(snap))).joinToString(" ")
+    PreferenceScreen(ModelCatalogue.titleText(m, snap.phone, snap.tpuFailure != null).str(), onBack, snackbar = snackbar) {
         if (ms == null) return@PreferenceScreen
         val st = ms.status
         val own = snap.own.takeIf { st == ModelStatus.VERIFIED || st == ModelStatus.BAD }
         preferenceGroup(null, "state") {
-            StatusPreference(own?.name ?: "A .litertlm or .gguf file", ModelLogic.headline(st, m), mark(st))
+            StatusPreference(own?.name ?: stringResource(R.string.model_row_own_file), ModelLogic.headlineText(st, m).str(), mark(st))
             PreferenceBlock {
                 // A file whose name (or a GGUF file's general.name) says MedGemma: one factual line here, never added to its answers (0.4.3).
-                (ModelNotes.of(own?.name) ?: ModelNotes.of(own?.gguf?.name))?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-                Text(m.speed, style = MaterialTheme.typography.bodyMedium)
-                Text(m.about, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                (ModelNotes.ofText(own?.name) ?: ModelNotes.ofText(own?.gguf?.name))?.let { Text(it.str(), style = MaterialTheme.typography.bodyMedium) }
+                Text(m.speedText.str(), style = MaterialTheme.typography.bodyMedium)
+                Text(m.aboutText.str(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Buttons {
                     OutlinedButton(onClick = { warnImport = true }, enabled = busy == null && st != ModelStatus.IMPORTING && st != ModelStatus.VERIFYING,
                         modifier = Modifier.heightIn(min = 48.dp)) {
-                        Icon(RIcons.Folder, null); Spacer(Modifier.width(8.dp)); Text(if (ms.fileBytes > 0) "Import another file" else "Import a model file")
+                        Icon(RIcons.Folder, null); Spacer(Modifier.width(8.dp))
+                        Text(stringResource(if (ms.fileBytes > 0) R.string.model_import_another else R.string.model_import_model_file))
                     }
-                    if (st == ModelStatus.VERIFIED) OutlinedButton(onClick = { a.verify(m) }, enabled = busy == null, modifier = Modifier.heightIn(min = 48.dp)) { Text("Check again") }
-                    if (st == ModelStatus.UNVERIFIED) Button(onClick = { a.verify(m) }, enabled = busy == null, modifier = Modifier.heightIn(min = 48.dp)) { Text("Check the file") }
+                    if (st == ModelStatus.VERIFIED) OutlinedButton(onClick = { a.verify(m) }, enabled = busy == null, modifier = Modifier.heightIn(min = 48.dp)) {
+                        Text(stringResource(R.string.model_check_again))
+                    }
+                    if (st == ModelStatus.UNVERIFIED) Button(onClick = { a.verify(m) }, enabled = busy == null, modifier = Modifier.heightIn(min = 48.dp)) {
+                        Text(stringResource(R.string.model_check_file))
+                    }
                     if (ms.fileBytes > 0 && st != ModelStatus.IMPORTING && st != ModelStatus.VERIFYING) {
-                        OutlinedButton(onClick = { confirmDelete = true }, enabled = busy == null, modifier = Modifier.heightIn(min = 48.dp)) { Text("Delete") }
+                        OutlinedButton(onClick = { confirmDelete = true }, enabled = busy == null, modifier = Modifier.heightIn(min = 48.dp)) {
+                            Text(stringResource(R.string.model_delete))
+                        }
                     }
                 }
             }
         }
         item(key = "progress") { ProgressBlock(ms.progress, ms.percent, null) }
         if (own != null) {
-            preferenceGroup("What Robot found inside", "inside") {
-                PreferenceItem("Size", bytes(own.bytes))
-                PreferenceBlock { for (line in own.lines()) Text("• $line", style = MaterialTheme.typography.bodyMedium) }
-                PreferenceBlock { Text(runsOn(own, snap, ms.cacheBytes), style = MaterialTheme.typography.bodyMedium) }
+            preferenceGroup(groupInside, "inside") {
+                PreferenceItem(stringResource(R.string.model_size), bytes(own.bytes))
+                PreferenceBlock { for (line in own.linesText()) Text("• ${line.str()}", style = MaterialTheme.typography.bodyMedium) }
+                PreferenceBlock {
+                    Text(runsOn(own, snap, ms.cacheBytes), style = MaterialTheme.typography.bodyMedium)
+                    // 1.2: Robot has no figure for your own file until it measures it here.
+                    own.backend?.let { b -> measuredHere(m, b, snap)?.let { Speeds.of(m, b, snap.phone, it) } }?.let { e ->
+                        Text(e.textPhrase().str(), style = MaterialTheme.typography.bodyMedium)
+                        Text(e.sourceText.str(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
                 // Built for 2,048 to 4,095 tokens (0.4.3), a .litertlm or a .gguf alike: chat only.
                 if (own.shortContext && own.runsOn != null) {
-                    StatusPreference("Chat only", "It was built for ${own.contextTokens} tokens of context, so Robot gives it a short prompt and no actions " +
-                        "(timers, texts, notes, the calendar…) and keeps less of the conversation. Ask for an action and Robot says so and " +
-                        "offers this page, where you can choose Fast. " + (if (own.vision) "It can see photos." else "It can't see photos."), Mark.TODO)
+                    StatusPreference(stringResource(R.string.model_chat_only),
+                        stringResource(if (own.vision) R.string.model_chat_only_photos else R.string.model_chat_only_no_photos, own.contextTokens), Mark.TODO)
                 }
                 // 0.4.7: only where Robot has the TPU; 0.8: the TPU of the chip its stamp names (a Tensor G5, or in beta a G6).
                 if (own.tensorBuild != null && !own.tpuAllowed && st == ModelStatus.VERIFIED && own.report.runsOnTpuOf(snap.phone)) {
-                    PreferenceItem("Run on the TPU", "A ${own.tensorBuild?.title} build: read the risks first", RIcons.Warning, onClick = { askTpu = true })
+                    PreferenceItem(stringResource(R.string.model_run_on_tpu), stringResource(R.string.model_run_on_tpu_summary, own.tensorBuild?.title.orEmpty()),
+                        RIcons.Warning, onClick = { askTpu = true })
                 }
-                if (own.tpuAllowed) PreferenceItem("Stop running it on the TPU", "Robot won't use the TPU for it", onClick = { a.allowOwnTpu(false, null) })
+                if (own.tpuAllowed) PreferenceItem(stringResource(R.string.model_stop_tpu), stringResource(R.string.model_stop_tpu_summary),
+                    onClick = { a.allowOwnTpu(false, null) })
             }
         }
-        preferenceFooter(
-            "A .litertlm (LiteRT-LM) or .gguf (llama.cpp) file. Robot copies it; it needs the file's size again in free space, plus room " +
-                "for a cache when LiteRT-LM runs it on the CPU (a .gguf needs none)." +
-                (if (snap.ggufEngine) "" else " This build of Robot can't run .gguf files (its llama.cpp library wasn't built).") +
-                " Free on this phone: ${free(snap)}.",
-        )
+        preferenceFooter(footer)
         if (own != null) item(key = "sha") { ShaFooter(own.sha256) }
     }
     if (confirmDelete) DeleteModelDialog(m, s, snap, a) { confirmDelete = false }
     // 1.0 audit (native-01, ipc-5): a .litertlm runs inside Robot's model process, with Robot's permissions.
-    if (warnImport) ConfirmDialog("Only import a file you trust", OWN_FILE_WARNING, "Choose a file", onDismiss = { warnImport = false }) {
+    if (warnImport) ConfirmDialog(stringResource(R.string.model_import_warn_title), stringResource(R.string.model_import_warning),
+        stringResource(R.string.model_choose_file), onDismiss = { warnImport = false }) {
         warnImport = false
         a.import(m)
     }
@@ -559,30 +632,18 @@ private fun OwnModelPage(s: RobotSettings, snap: Snapshot, busy: String?, a: App
     if (askTpu && own != null) TpuDialog(own, onDismiss = { askTpu = false }) { askTpu = false; a.allowOwnTpu(true, own.sha256) }
 }
 
-/**
- * The warning before your own file is picked (1.0 audit, native-01 and ipc-5): a .litertlm is read by LiteRT-LM inside
- * Robot's model process, which LiteRT-LM needs for the GPU and the TPU, so it runs with Robot's own permissions; Robot
- * checks its container strictly first, but not the model inside. A .gguf runs in an isolated process.
- */
-internal const val OWN_FILE_WARNING = "A .litertlm file runs with Robot's own permissions: LiteRT-LM reads it inside Robot's model " +
-    "process, which can reach your contacts, calendar, messages, memory and the internet. Robot checks the file's layout first, " +
-    "not the model inside it, so a file made to attack LiteRT-LM could act as Robot. Only import files you trust, from their " +
-    "makers. (A .gguf file runs in a separate process with no permissions.)"
-
 /** Where your own file runs, and how fast. */
+@Composable
 private fun runsOn(own: OwnModel, snap: Snapshot, cacheBytes: Long): String = when {
-    own.backend == ModelBackend.TPU -> "Runs on the TPU: you allowed it."
-    own.format == ModelFormat.GGUF && own.backend != null && !snap.ggufEngine ->
-        "This build of Robot can't run GGUF files: its llama.cpp library wasn't built. A build made with tools/build_llama.sh can."
-    own.format == ModelFormat.GGUF && own.backend == ModelBackend.CPU -> "Runs on the CPU with llama.cpp, memory-mapped (no cache). " +
-        "Expect it to be slower than Fast: about the speed of the E4B models for a 4B file, faster for a smaller one."
-    own.backend == ModelBackend.CPU -> "Runs on the CPU: about as slow as the E4B models or slower, depending on its size. " +
-        if (cacheBytes > 0) "Its cache holds ${ModelLogic.gb(cacheBytes)} now." else "Its first load writes a cache next to it."
-    own.tensorBuild != null && !own.report.runsOnTpuOf(snap.phone) -> "It was compiled for the ${own.tensorBuild?.title}'s TPU " +
-        "(${own.tensorBuild?.let { Phones.seriesOf(it) }}), which this phone doesn't have, and a TPU build can't run on the CPU nor on another " +
-        "chip's TPU: Robot can't use it here."
-    own.tensorBuild != null -> "Waits for you to allow the TPU (Run on the TPU, above)."
-    else -> "Robot can't run it on this phone. Delete it to free the space."
+    own.backend == ModelBackend.TPU -> stringResource(R.string.model_runs_tpu)
+    own.format == ModelFormat.GGUF && own.backend != null && !snap.ggufEngine -> stringResource(R.string.model_runs_no_gguf)
+    own.format == ModelFormat.GGUF && own.backend == ModelBackend.CPU -> stringResource(R.string.model_runs_gguf_cpu)
+    own.backend == ModelBackend.CPU -> if (cacheBytes > 0) stringResource(R.string.model_runs_cpu_cache, ModelLogic.gbText(cacheBytes).str())
+        else stringResource(R.string.model_runs_cpu_first)
+    own.tensorBuild != null && !own.report.runsOnTpuOf(snap.phone) -> stringResource(R.string.model_runs_other_chip, own.tensorBuild?.title.orEmpty(),
+        own.tensorBuild?.let { Phones.seriesOf(it) }.toString())
+    own.tensorBuild != null -> stringResource(R.string.model_runs_waits_tpu)
+    else -> stringResource(R.string.model_runs_cant)
 }
 
 /**
@@ -594,31 +655,23 @@ private fun TpuDialog(own: OwnModel, onDismiss: () -> Unit, onAllow: () -> Unit)
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = { Icon(RIcons.Warning, null) },
-        title = { Text("Run this file on the TPU?") },
+        title = { Text(stringResource(R.string.model_tpu_dialog_title)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Robot's check says this file was compiled for the ${own.tensorBuild?.title ?: "Tensor"}'s TPU, which this phone has. It isn't Robot's pinned Fast model, so " +
-                    "Robot can't vouch for it:", style = MaterialTheme.typography.bodyMedium)
-                for (risk in TPU_RISKS) Text("• $risk", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.model_tpu_dialog_intro, own.tensorBuild?.title ?: "Tensor"), style = MaterialTheme.typography.bodyMedium) // l10n: not text (a chip's name)
+                for (risk in TPU_RISKS) Text("• " + stringResource(risk), style = MaterialTheme.typography.bodyMedium)
                 Text("${own.name} · ${bytes(own.bytes)}\nSHA-256 ${own.sha256}", style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
-                Text("A TPU build can't run on the CPU: without the TPU, Robot doesn't use it.", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.model_tpu_cant_cpu), style = MaterialTheme.typography.bodyMedium)
             }
         },
-        confirmButton = { TextButton(onClick = onAllow) { Text("Run on the TPU") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        confirmButton = { TextButton(onClick = onAllow) { Text(stringResource(R.string.model_run_on_tpu)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.model_cancel)) } },
     )
 }
 
 /** The risks of a TPU build Robot didn't pin (research 4, "Security and legal"). */
-private val TPU_RISKS = listOf(
-    "Most of it is compiled TPU code that nobody can review. It runs through the phone's own TPU driver and Google's vendor libraries, " +
-        "outside what Robot's separate model process can contain.",
-    "A bad or mismatched build can crash Robot's model, hang the TPU until the phone restarts, or, rarely, restart the phone.",
-    "Its SHA-256 only proves the file is the one you picked, not that it is safe.",
-    "Google's Tensor compiler is a closed beta whose terms forbid sharing what it builds without Google's permission: a TPU build " +
-        "not published by Google may have been shared against them.",
-    "Robot's cards and switches still apply, as with every model: what asks you first doesn't change.",
-)
+private val TPU_RISKS = listOf(R.string.model_tpu_risk_code, R.string.model_tpu_risk_crash, R.string.model_tpu_risk_sha, R.string.model_tpu_risk_terms,
+    R.string.model_tpu_risk_cards)
 
 /**
  * A model publisher's conditions as tick boxes, in its own words (core ModelTerms), before its file downloads or is
@@ -629,11 +682,11 @@ private fun TermsDialog(t: ModelTerms, importing: Boolean, onDismiss: () -> Unit
     var ticked by remember(t) { mutableStateOf(emptySet<Int>()) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Before you ${if (importing) "import" else "download"} “${t.model.title}”") },
+        title = { Text(stringResource(if (importing) R.string.model_terms_title_import else R.string.model_terms_title_download, t.model.titleText.str())) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(ModelTerms.INTRO, style = MaterialTheme.typography.bodyMedium)
-                Text("“${t.prompt}” (${t.publisher}, on the model's page)", style = MaterialTheme.typography.bodySmall)
+                Text(ModelTerms.introText.str(), style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.model_terms_quote, t.prompt, t.publisher), style = MaterialTheme.typography.bodySmall)
                 t.ticks.forEachIndexed { i, words ->
                     Row(
                         Modifier.fillMaxWidth().heightIn(min = 48.dp)
@@ -645,13 +698,15 @@ private fun TermsDialog(t: ModelTerms, importing: Boolean, onDismiss: () -> Unit
                         Text(words, style = MaterialTheme.typography.bodyMedium)
                     }
                 }
-                Text(ModelTerms.ALSO, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(ModelTerms.alsoText.str(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
         confirmButton = {
-            TextButton(onClick = onConfirm, enabled = t.complete(ticked)) { Text(if (importing) "Confirm and import" else "Confirm and download") }
+            TextButton(onClick = onConfirm, enabled = t.complete(ticked)) {
+                Text(stringResource(if (importing) R.string.model_terms_confirm_import else R.string.model_terms_confirm_download))
+            }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.model_cancel)) } },
     )
 }
 
@@ -660,33 +715,41 @@ private fun TermsDialog(t: ModelTerms, importing: Boolean, onDismiss: () -> Unit
 private fun VoiceModelPage(b: VoiceBundle, snap: Snapshot, a: AppActions, snackbar: SnackbarHostState, onBack: () -> Unit) {
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
     val v = snap.voice(b)
-    PreferenceScreen(b.title, onBack, snackbar = snackbar) {
+    val title = b.titleText.str()
+    val size = VoiceModelLogic.sizeText(b.bytes).str()
+    val footer = stringResource(R.string.model_voice_footer) + " " + stringResource(R.string.model_free_on_phone, free(snap))
+    PreferenceScreen(title, onBack, snackbar = snackbar) {
         if (v == null) return@PreferenceScreen
         preferenceGroup(null, "state") {
-            StatusPreference("${b.title} · ${VoiceModelLogic.size(b.bytes)}", VoiceModelLogic.headline(v.status), mark(v.status))
+            StatusPreference("$title · $size", VoiceModelLogic.headlineText(v.status).str(), mark(v.status))
             PreferenceBlock {
-                Text(b.about, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(b.aboutText.str(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Buttons {
                     when (v.status) {
                         ModelStatus.MISSING, ModelStatus.BAD -> Button(onClick = { a.voiceDownload(b) }, modifier = Modifier.heightIn(min = 48.dp)) {
-                            Icon(RIcons.Download, null); Spacer(Modifier.width(8.dp)); Text("Download ${VoiceModelLogic.size(b.bytes)}")
+                            Icon(RIcons.Download, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.model_download_size, size))
                         }
-                        ModelStatus.DOWNLOADING -> OutlinedButton(onClick = { a.voiceCancel(b) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Cancel download") }
-                        ModelStatus.VERIFIED -> OutlinedButton(onClick = { confirmDelete = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Delete") }
+                        ModelStatus.DOWNLOADING -> OutlinedButton(onClick = { a.voiceCancel(b) }, modifier = Modifier.heightIn(min = 48.dp)) {
+                            Text(stringResource(R.string.model_cancel_download))
+                        }
+                        ModelStatus.VERIFIED -> OutlinedButton(onClick = { confirmDelete = true }, modifier = Modifier.heightIn(min = 48.dp)) {
+                            Text(stringResource(R.string.model_delete))
+                        }
                         else -> {}
                     }
                 }
             }
         }
         item(key = "progress") { ProgressBlock(v.progress, v.percent, v.failure) }
-        preferenceFooter("For talking to Robot and hearing it answer. It runs on the phone; nothing you say leaves it. The file is checked " +
-            "(SHA-256) before Robot uses it. Wi-Fi recommended. Free on this phone: ${free(snap)}.")
+        preferenceFooter(footer)
     }
     if (confirmDelete) {
-        ConfirmDialog("Delete “${b.title}”?",
-            if (b == VoiceBundle.SPEAKERS) "Transcripts stop telling speakers apart (every line is “Speaker”) until you download it again " +
-                "(${VoiceModelLogic.size(b.bytes)}). A voiceprint of yours, if you made one, stays until you delete it in Settings › Conversation."
-            else "Robot falls back to the stand-in (${if (b == VoiceBundle.STT) "typing only" else "the phone's voice"}) until you download it again (${VoiceModelLogic.size(b.bytes)}).",
-            "Delete", onDismiss = { confirmDelete = false }) { confirmDelete = false; a.voiceDelete(b) }
+        ConfirmDialog(stringResource(R.string.model_delete_title, title),
+            stringResource(when (b) {
+                VoiceBundle.SPEAKERS -> R.string.model_voice_delete_speakers
+                VoiceBundle.STT -> R.string.model_voice_delete_stt
+                else -> R.string.model_voice_delete_tts
+            }, size),
+            stringResource(R.string.model_delete), onDismiss = { confirmDelete = false }) { confirmDelete = false; a.voiceDelete(b) }
     }
 }

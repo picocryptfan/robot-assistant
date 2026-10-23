@@ -4,6 +4,7 @@ package app.heyrobot.core.output
 import android.bluetooth.BluetoothClass
 import android.media.AudioDeviceInfo
 import android.app.NotificationManager
+import app.heyrobot.core.i18n.Lang
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -98,9 +99,9 @@ class AudioRouteTest {
     }
 
     @Test fun languages() {
-        assertEquals(SpokenLang.FR, SpokenLang.of("fr-CA"))
-        assertEquals(SpokenLang.FR, SpokenLang.of(" FR "))
-        assertEquals(SpokenLang.EN, SpokenLang.of("en-US"))
-        assertEquals(SpokenLang.EN, SpokenLang.of(null))
+        assertEquals(Lang.FR, Lang.of("fr-CA"))
+        assertEquals(Lang.FR, Lang.of(" FR "))
+        assertEquals(Lang.EN, Lang.of("en-US"))
+        assertEquals(Lang.EN, Lang.of(null))
     }
 }

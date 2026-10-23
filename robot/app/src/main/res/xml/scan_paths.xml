@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 1.4, Robot Files: the camera's photo of a page being scanned, read into RAM and deleted at once. Nothing else. -->
+<paths>
+    <cache-path name="scan" path="scan/" />
+</paths>

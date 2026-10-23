@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.headset
 
+import app.heyrobot.core.i18n.HandsFreeStrings
+import app.heyrobot.core.i18n.Msg
+import app.heyrobot.core.i18n.Phrase
 import app.heyrobot.core.output.GuardSettings
 import app.heyrobot.core.output.HandsFreeSafety
 import app.heyrobot.core.output.ReadAloud
@@ -22,21 +25,36 @@ import org.json.JSONObject
  * - [PHONE_MIC]: the phone's microphone, Robot heard in the headset over A2DP or LE: no route switch (faster), music keeps
  *   its quality and the headset's battery lasts longer, but the phone must be near you.
  */
-enum class ListenWith(val title: String) {
-    HEADSET_MIC("Headset microphone (if it has one)"),
-    PHONE_MIC("Phone microphone"),
+enum class ListenWith(private val msg: Msg) {
+    HEADSET_MIC(HandsFreeStrings.headsetMic),
+    PHONE_MIC(HandsFreeStrings.phoneMic),
+    ;
+
+    /** 1.1: Settings' words without a language yet; [title] is their English. */
+    val text: Phrase get() = msg()
+    val title: String get() = text.en()
 }
 
 /** "Announce from" (0.7): people you choose, or everyone. */
-enum class AnnounceFrom(val title: String) {
-    CHOSEN_PEOPLE("People you choose"),
-    EVERYONE("Everyone"),
+enum class AnnounceFrom(private val msg: Msg) {
+    CHOSEN_PEOPLE(HandsFreeStrings.peopleYouChoose),
+    EVERYONE(HandsFreeStrings.everyone),
+    ;
+
+    /** 1.1: Settings' words without a language yet; [title] is their English. */
+    val text: Phrase get() = msg()
+    val title: String get() = text.en()
 }
 
 /** "Read the text" (0.7): ask first ("Message from Marie. Read it?"), or read it at once. */
-enum class AnnounceRead(val title: String) {
-    ASK_FIRST("Ask first"),
-    ALWAYS("Always"),
+enum class AnnounceRead(private val msg: Msg) {
+    ASK_FIRST(HandsFreeStrings.askFirst),
+    ALWAYS(HandsFreeStrings.always),
+    ;
+
+    /** 1.1: Settings' words without a language yet; [title] is their English. */
+    val text: Phrase get() = msg()
+    val title: String get() = text.en()
 }
 
 data class HeadsetSettings(

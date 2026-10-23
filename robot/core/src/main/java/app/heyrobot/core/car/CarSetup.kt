@@ -1,18 +1,20 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.car
 
+import app.heyrobot.core.i18n.HandsFreeStrings
+import app.heyrobot.core.i18n.Phrase
 import app.heyrobot.core.output.DeviceMemory
 import app.heyrobot.core.output.DeviceRole
 import app.heyrobot.core.output.RouteType
 import app.heyrobot.core.output.SeenDevice
 
-// Pure. Settings › Car mode › Add your car (design §4.3 "Setup", §4.4): the Bluetooth devices Android lists now (paired
+// Pure. Settings › Car mode › Add your car: the Bluetooth devices Android lists now (paired
 // and connected: AudioManager's outputs, A2DP and SCO of one car counting once), cars Bluetooth says are cars first, and
 // what car mode's switch and status rows say.
 
 /** One device "Add your car" offers: [seen] as Android listed it, [suggested] when Bluetooth says car audio or hands-free. */
 data class CarCandidate(val seen: SeenDevice, val suggested: Boolean) {
-    override fun toString(): String = "CarCandidate(suggested=$suggested)"
+    override fun toString(): String = "CarCandidate(suggested=$suggested)" // l10n: not text (toString, for the logs)
 }
 
 object CarSetup {
@@ -31,10 +33,13 @@ object CarSetup {
     }
 
     /** Settings › Car mode's summary row: "Off", "On · no car added", "On · 1 car", "On · 2 cars". */
-    fun summary(on: Boolean, memory: DeviceMemory): String {
-        if (!on) return "Off"
+    fun summary(on: Boolean, memory: DeviceMemory): String = summaryText(on, memory).en()
+
+    /** 1.1: [summary] without a language yet (Settings' row shows it in the menus' language). */
+    fun summaryText(on: Boolean, memory: DeviceMemory): Phrase {
+        if (!on) return HandsFreeStrings.summaryOff()
         val n = memory.cars.count { it.enabled }
-        return "On · " + when (n) { 0 -> "no car added"; 1 -> "1 car"; else -> "$n cars" }
+        return HandsFreeStrings.summaryOn("cars" to if (n == 0) HandsFreeStrings.noCar() else HandsFreeStrings.cars(n))
     }
 
     /**
@@ -54,20 +59,20 @@ object CarSetup {
     fun startsByItself(on: Boolean, s: CarSettings, memory: DeviceMemory): Boolean = on && s.startOnConnect && CarSettings.hasCar(memory)
 }
 
-/** "What's next" in the car (design §4.5 flow 4): today's next event only, in one short sentence. */
+/** "What's next" in the car: today's next event only, in one short sentence. */
 object WhatsNext {
     /** The event in [events] (CalendarEvent) still to come or under way at [now], said as one line; a line saying so when none is left. */
-    fun line(events: List<app.heyrobot.core.CalendarEvent>, now: java.time.ZonedDateTime, lang: app.heyrobot.core.output.SpokenLang): String {
+    fun line(events: List<app.heyrobot.core.CalendarEvent>, now: java.time.ZonedDateTime, lang: app.heyrobot.core.i18n.Lang): String =
+        app.heyrobot.core.output.spoken(lineText(events, now, lang), lang)
+
+    /** 1.1: [line] without a language yet, its time already in [lang]'s words ("9:30 AM", « 9 h 30 »). */
+    fun lineText(events: List<app.heyrobot.core.CalendarEvent>, now: java.time.ZonedDateTime, lang: app.heyrobot.core.i18n.Lang): Phrase {
         val nowMs = now.toInstant().toEpochMilli()
-        val e = events.filter { !it.allDay && it.end > nowMs }.minByOrNull { it.begin }
-        val fr = lang == app.heyrobot.core.output.SpokenLang.FR
-        if (e == null) return if (fr) "Plus rien à ton agenda aujourd'hui." else "Nothing else on your calendar today."
+        val e = events.filter { !it.allDay && it.end > nowMs }.minByOrNull { it.begin } ?: return HandsFreeStrings.nothingElse()
         val t = java.time.Instant.ofEpochMilli(e.begin).atZone(now.zone).toLocalTime()
-        val title = e.title.replace(Regex("\\s+"), " ").trim().take(80).ifEmpty { if (fr) "un rendez-vous" else "an event" }
-        return when {
-            e.begin <= nowMs -> if (fr) "En ce moment : $title." else "Now: $title."
-            fr -> "Prochain : $title à ${t.hour} h ${"%02d".format(t.minute)}."
-            else -> "Next: $title at ${java.time.format.DateTimeFormatter.ofPattern("h:mm a", java.util.Locale.US).format(t)}."
-        }
+        val title: Any = e.title.replace(Regex("\\s+"), " ").trim().take(80).ifEmpty { null } ?: HandsFreeStrings.anEvent()
+        val time = if (lang == app.heyrobot.core.i18n.Lang.FR) "${t.hour} h ${"%02d".format(t.minute)}"
+            else java.time.format.DateTimeFormatter.ofPattern("h:mm a", java.util.Locale.US).format(t)
+        return if (e.begin <= nowMs) HandsFreeStrings.nowEvent("title" to title) else HandsFreeStrings.nextEvent("title" to title, "time" to time)
     }
 }

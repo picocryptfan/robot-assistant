@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- 1.1, Skills (docs/plans/skills-1.1-plan.md §9, §10): Settings › Skills, a skill's page, and the notification for a
+     skill's next step. What Robot says about skills is core's catalog (core i18n SkillStrings). -->
+<resources>
+    <!-- The notification for a skill's next step (assistant/skills SkillContinue). -->
+    <string name="skill_channel">Skills</string>
+    <string name="skill_channel_detail">The next step of a skill, after an app opens</string>
+
+    <!-- Settings › Skills. -->
+    <string name="skill_intro">Teach a skill by voice: “teach a skill called heading home: text Sam I\'m on my way, then open the route home.” Or ask Robot to do something, then say “save that as a skill.”</string>
+    <string name="skill_yours">Your skills</string>
+    <string name="skill_none_yet">None yet</string>
+    <plurals name="skills_n">
+        <item quantity="one">%d skill</item>
+        <item quantity="other">%d skills</item>
+    </plurals>
+    <string name="skill_paused">Skills are paused</string>
+    <string name="skill_start_over">Start over</string>
+    <string name="skill_start_over_title">Start over?</string>
+    <string name="skill_start_over_text">Robot keeps the file it couldn\'t read aside as skills.json.bad, and you start with no skills.</string>
+    <string name="skill_footer">A skill runs its steps on your phone, one at a time. Each step still shows its own card when its action asks first, so a skill never skips a card. Skills never run on a locked phone.</string>
+
+    <!-- A skill's page. -->
+    <string name="skill_name">Name</string>
+    <string name="skill_name_supporting">1 to 40 characters on one line</string>
+    <string name="skill_other_names">Also answers to</string>
+    <string name="skill_in_english">In English</string>
+    <string name="skill_in_french">In French</string>
+    <string name="skill_add_name">Add a name</string>
+    <string name="skill_name_words">1 to 5 words</string>
+    <string name="skill_remove_name">Remove “%1$s”</string>
+    <string name="skill_level">Level</string>
+    <string name="skill_questions">Questions</string>
+    <string name="skill_default">Default</string>
+    <string name="skill_default_minutes">In minutes</string>
+    <string name="skill_default_time">As 07:30</string>
+    <string name="skill_remove">Remove</string>
+    <string name="skill_remove_question">Remove “%1$s”: its value stays at the default</string>
+    <string name="skill_steps">Steps</string>
+    <string name="skill_move_up">Move step %1$d up</string>
+    <string name="skill_move_down">Move step %1$d down</string>
+    <string name="skill_remove_step">Remove step %1$d</string>
+    <string name="skill_last_run">Last run</string>
+    <string name="skill_made">Made</string>
+    <string name="skill_mine">These steps are mine</string>
+    <string name="skill_mine_detail">Then Just do it can be chosen</string>
+    <string name="skill_delete">Delete skill</string>
+    <string name="skill_delete_title">Delete “%1$s”?</string>
+    <string name="skill_delete_text">This can\'t be undone.</string>
+    <string name="skill_invalid_default">Not a value this question can take.</string>
+
+    <!-- Phase B (plan §9): the model and your skills. -->
+    <string name="skill_model_picks">Let Robot\'s model pick skills</string>
+    <string name="skill_model_picks_summary">Up to 3 of your skills are described to Robot\'s model when your words fit them. Off: only their names run them.</string>
+    <string name="skill_fills">Fills by Robot\'s model</string>
+</resources>

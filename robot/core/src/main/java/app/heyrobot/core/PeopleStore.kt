@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.InfoStrings
+import app.heyrobot.core.i18n.Phrase
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -19,16 +21,21 @@ import java.util.UUID
 // you include them, excluded from Android backup like the rest of Robot's files.
 
 /** Where a person came from (shown in Settings › People). */
-enum class PersonSource(val title: String) {
-    MANUAL("Added by you"),
-    VCARD("From a contacts file"),
-    CHEOGRAM_PICK("Picked in Cheogram"),
-    PHONE_PICKER("From the phone's contacts"),
+enum class PersonSource(private val msg: app.heyrobot.core.i18n.Msg) {
+    MANUAL(InfoStrings.sourceManual),
+    VCARD(InfoStrings.sourceVcard),
+    CHEOGRAM_PICK(InfoStrings.sourceCheogramPick),
+    PHONE_PICKER(InfoStrings.sourcePhonePicker),
     /** Seen in a Cheogram message notification ("Learn names from Cheogram notifications"). */
-    NOTIFICATION("Seen in a notification"),
-    SHARE("Shared to Robot"),
+    NOTIFICATION(InfoStrings.sourceNotification),
+    SHARE(InfoStrings.sourceShare),
     /** "Always use this for …" on a card, for one of the phone's contacts ([Person.systemLookupKey]). */
-    REMEMBERED("Remembered from a card"),
+    REMEMBERED(InfoStrings.sourceRemembered);
+
+    /** Where they came from, in words without a language yet (1.1: Settings › People shows it with `str()`). */
+    val titleText: Phrase get() = msg()
+
+    val title: String get() = titleText.en()
 }
 
 /**
@@ -281,12 +288,18 @@ object People {
     const val MAX_NAME = 100
     const val MAX_EACH = 20
 
-    fun label(kind: PhoneKind): String = when (kind) {
-        PhoneKind.MOBILE -> "Mobile"
-        PhoneKind.HOME -> "Home"
-        PhoneKind.WORK -> "Work"
-        PhoneKind.OTHER -> "Other"
+    fun label(kind: PhoneKind): String = labelText(kind).en()
+
+    /** [label] in words without a language yet. */
+    fun labelText(kind: PhoneKind): Phrase = when (kind) {
+        PhoneKind.MOBILE -> InfoStrings.phoneMobile()
+        PhoneKind.HOME -> InfoStrings.phoneHome()
+        PhoneKind.WORK -> InfoStrings.phoneWork()
+        PhoneKind.OTHER -> InfoStrings.phoneOther()
     }
+
+    /** A number's [label] as words without a language yet: one of [label]'s own in the reader's language, anything else as it is. */
+    fun labelText(label: String): Phrase = PhoneKind.entries.firstOrNull { label(it) == label }?.let(::labelText) ?: Phrase.plain(label)
 
     private fun line(s: String, max: Int): String = ToolCalls.safeTake(s.replace(Regex("\\s+"), " ").trim(), max)
 

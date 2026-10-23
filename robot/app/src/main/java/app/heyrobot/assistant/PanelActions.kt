@@ -30,6 +30,8 @@ interface PanelActions {
 
     fun micPressed()
     fun micReleased()
+    /** Held past a tap: silence doesn't end the question, the release does. */
+    fun micHeld() {}
     /** Stop: ends the turn (and declines a waiting card). */
     fun stopGenerating()
     /** Quiets the voice (and ends a reply still being written, 0.4.6). */
@@ -71,6 +73,7 @@ interface PanelActions {
         override fun readClaudeAnswer() { PanelController.readClaudeAnswer() }
         override fun micPressed() { PanelController.micPressed() }
         override fun micReleased() { PanelController.micReleased() }
+        override fun micHeld() { PanelController.micHeld() }
         override fun stopGenerating() { PanelController.stopGenerating() }
         override fun stopSpeaking() { PanelController.stopSpeaking() }
         override fun confirm(actionId: String, yes: Boolean) { PanelController.confirm(actionId, yes) }

@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.Arg
+import app.heyrobot.core.i18n.ModelStrings
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.UiLabel
+import app.heyrobot.core.i18n.UiStrings
 import java.util.Locale
 
 // Pure. The model catalogue (0.4.1) and the model manager's state: which file each model is, where each stands, what to
@@ -44,6 +49,12 @@ enum class ModelBackend(val id: String, val title: String) {
      */
     GPU("gpu", "GPU");
 
+    /**
+     * 1.2: this backend's name on screen on a phone with [chip]: the accelerator follows the chip ("TPU" on a Tensor, "NPU"
+     * on a Snapdragon, Chip.accelerator); [title] stays as the reports' and the logs' name.
+     */
+    fun titleOn(chip: Chip): String = if (this == TPU) chip.accelerator else title
+
     companion object {
         fun of(id: String?): ModelBackend? = entries.firstOrNull { it.id == id }
     }
@@ -68,8 +79,6 @@ enum class ModelBackend(val id: String, val title: String) {
  */
 enum class BrainModel(
     val id: String,
-    /** The choice's name in Settings › Model. */
-    val title: String,
     val modelName: String,
     /** The file's name in Robot's storage. */
     val file: String,
@@ -92,13 +101,13 @@ enum class BrainModel(
     val fromGoogle: Boolean,
 ) {
     FAST(
-        id = "e2b_tpu", title = "Fast", modelName = "Gemma 4 E2B (Tensor G5)",
+        id = "e2b_tpu", modelName = "Gemma 4 E2B (Tensor G5)", // l10n: not text (a model's name)
         file = "gemma-4-E2B-it_Google_Tensor_G5.litertlm",
         url = "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/" +
             "b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1/gemma-4-E2B-it_Google_Tensor_G5.litertlm",
         bytes = 3_113_545_589L, sha256 = "af1082986639ecde7db95d91be6fe54f8b6b458104734c5bafc204e69d6852dc",
         backend = ModelBackend.TPU, contextTokens = 4096, cacheBytes = 0, memoryBytes = 2_000_000_000L,
-        publisher = "litert-community (Google)", repo = "litert-community/gemma-4-E2B-it-litert-lm",
+        publisher = "litert-community (Google)", repo = "litert-community/gemma-4-E2B-it-litert-lm", // l10n: not text (a publisher's name)
         commit = "b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1", licence = "Apache-2.0", fromGoogle = true,
     ),
     /**
@@ -109,13 +118,13 @@ enum class BrainModel(
      * load on the TPU, Robot runs [GENERAL] instead and remembers that (TpuFailure) until you try the TPU again.
      */
     FAST_G6(
-        id = "e2b_tpu_g6", title = "Fast (beta)", modelName = "Gemma 4 E2B (Tensor G6)",
+        id = "e2b_tpu_g6", modelName = "Gemma 4 E2B (Tensor G6)", // l10n: not text (a model's name)
         file = "gemma-4-E2B-it_Google_Tensor_G6.litertlm",
         url = "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/" +
             "b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1/gemma-4-E2B-it_Google_Tensor_G6.litertlm",
         bytes = 3_313_938_293L, sha256 = "f86c7c19c736e9307267946edef58b0a45494a9127036d54d90dd6b7617c95b7",
         backend = ModelBackend.TPU, contextTokens = 4096, cacheBytes = 0, memoryBytes = 2_000_000_000L,
-        publisher = "litert-community (Google)", repo = "litert-community/gemma-4-E2B-it-litert-lm",
+        publisher = "litert-community (Google)", repo = "litert-community/gemma-4-E2B-it-litert-lm", // l10n: not text (a publisher's name)
         commit = "b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1", licence = "Apache-2.0", fromGoogle = true,
     ),
     /**
@@ -127,44 +136,44 @@ enum class BrainModel(
      * E4B ratio rounded up), the larger of the two.
      */
     GENERAL(
-        id = "e2b", title = "Fast", modelName = "Gemma 4 E2B",
+        id = "e2b", modelName = "Gemma 4 E2B", // l10n: not text (a model's name)
         file = "gemma-4-E2B-it.litertlm",
         url = "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/" +
             "b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1/gemma-4-E2B-it.litertlm",
         bytes = 2_588_147_712L, sha256 = "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c",
         backend = ModelBackend.CPU, contextTokens = 4096, cacheBytes = 2_000_000_000L, memoryBytes = 2_600_000_000L,
-        publisher = "litert-community (Google)", repo = "litert-community/gemma-4-E2B-it-litert-lm",
+        publisher = "litert-community (Google)", repo = "litert-community/gemma-4-E2B-it-litert-lm", // l10n: not text (a publisher's name)
         commit = "b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1", licence = "Apache-2.0", fromGoogle = true,
     ),
     SMARTER(
-        id = "e4b_cpu", title = "Smarter, slower", modelName = "Gemma 4 E4B (CPU)",
+        id = "e4b_cpu", modelName = "Gemma 4 E4B (CPU)", // l10n: not text (a model's name)
         file = "gemma-4-E4B-it.litertlm",
         url = "https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/resolve/" +
             "2eee7ac325f20eb8c9ac1d0e972f7c84663062da/gemma-4-E4B-it.litertlm",
         bytes = 3_659_530_240L, sha256 = "0b2a8980ce155fd97673d8e820b4d29d9c7d99b8fa6806f425d969b145bd52e0",
         // Measured on the Pixel 10 Pro (LiteRT-LM 0.18.0): 2.54 GB of caches on the first load, RSS 4,120 MB.
         backend = ModelBackend.CPU, contextTokens = 4096, cacheBytes = 2_600_000_000L, memoryBytes = 4_100_000_000L,
-        publisher = "litert-community (Google)", repo = "litert-community/gemma-4-E4B-it-litert-lm",
+        publisher = "litert-community (Google)", repo = "litert-community/gemma-4-E4B-it-litert-lm", // l10n: not text (a publisher's name)
         commit = "2eee7ac325f20eb8c9ac1d0e972f7c84663062da", licence = "Apache-2.0", fromGoogle = true,
     ),
     UNCENSORED(
-        id = "e4b_cpu_uncensored", title = "Uncensored, slower", modelName = "Gemma 4 E4B abliterated (CPU)",
+        id = "e4b_cpu_uncensored", modelName = "Gemma 4 E4B abliterated (CPU)", // l10n: not text (a model's name)
         file = "gemma-4-E4B-it-abliterated.litertlm",
         url = "https://huggingface.co/olekk/gemma-4-E4B-it-abliterated-litert-lm/resolve/" +
             "a4eecccd3b0ba1777660180cda60a396eedcb8aa/gemma-4-E4B-it-abliterated.litertlm",
         bytes = 3_659_530_240L, sha256 = "f5a6625e0368e853743c91b39fa6ac6a8add1fc4825b18f98f518966610f2a88",
         // Google's E4B file with 2.45% of two kinds of weights changed: the same layout, so the same speed and memory.
         backend = ModelBackend.CPU, contextTokens = 4096, cacheBytes = 2_600_000_000L, memoryBytes = 4_100_000_000L,
-        publisher = "olekk (community build, not from Google)", repo = "olekk/gemma-4-E4B-it-abliterated-litert-lm",
+        publisher = ModelStrings.publisherOlekk().en(), repo = "olekk/gemma-4-E4B-it-abliterated-litert-lm",
         commit = "a4eecccd3b0ba1777660180cda60a396eedcb8aa", licence = "Apache-2.0", fromGoogle = false,
     ),
     OWN(
-        id = "own", title = "Your own model file", modelName = "A .litertlm or .gguf file you picked",
+        id = "own", modelName = ModelStrings.ownModelName().en(),
         // A fixed name: the picked file's own name is never a path (nor a reason to trust it). A GGUF file is kept as
         // ModelFiles.OWN_GGUF instead (its contents decide which, after the copy).
         file = "own_model.litertlm", url = null, bytes = -1, sha256 = null,
         backend = ModelBackend.CPU, contextTokens = 4096, cacheBytes = -1, memoryBytes = -1,
-        publisher = "you", repo = null, commit = null, licence = "the file's own", fromGoogle = false,
+        publisher = ModelStrings.publisherYou().en(), repo = null, commit = null, licence = ModelStrings.licenceOwn().en(), fromGoogle = false,
     );
 
     /** Downloaded from a pinned URL (not [OWN]). */
@@ -189,41 +198,45 @@ enum class BrainModel(
     /** Where it may run: its own backend, and the GPU for [gpu] (your own file: as its check found, LoadCheck). */
     fun runsOn(b: ModelBackend): Boolean = b == backend || (gpu && b == ModelBackend.GPU)
 
+    /** The choice's name in Settings › Model ("Fast", "Smarter, slower": the names stay English in French, « Smarter, plus lent »). */
+    val titleText: Phrase get() = when (this) {
+        FAST, GENERAL -> ModelStrings.titleFast()
+        FAST_G6 -> ModelStrings.titleFastBeta()
+        SMARTER -> ModelStrings.titleSmarter()
+        UNCENSORED -> ModelStrings.titleUncensored()
+        OWN -> ModelStrings.titleOwn()
+    }
+
+    /** [modelName], your own file's in words ("A .litertlm or .gguf file you picked"). */
+    val modelNameText: Phrase get() = if (this == OWN) ModelStrings.ownModelName() else Phrase.plain(modelName)
+
+    /** Who published the file, in words where it is words ("olekk (community build, not from Google)"). */
+    val publisherText: Phrase get() = when (this) {
+        UNCENSORED -> ModelStrings.publisherOlekk()
+        OWN -> ModelStrings.publisherYou()
+        else -> Phrase.plain(publisher)
+    }
+
+    val licenceText: Phrase get() = if (this == OWN) ModelStrings.licenceOwn() else Phrase.plain(licence)
+
     /** One line for the choice in Settings › Model: speed, memory, battery, from the 0.4.1 phone measurements. */
-    val speed: String get() = when (this) {
-        FAST -> "Writes about 17 tokens (word pieces) a second; a new conversation starts answering in about 3 s. " +
-            "About 2 GB of memory, light on the battery. Sees photos."
-        FAST_G6 -> "Beta. Estimated from the Tensor G5 build (not measured on a Tensor G6): about 17 tokens (word pieces) a second, " +
-            "a new conversation starting to answer in about 3 s, about 2 GB of memory. Sees photos."
-        GENERAL -> "The same model as the Pixel 10's Fast, built to run on the GPU or the CPU. About 2.6 GB of memory. Sees photos."
-        SMARTER -> "Better answers, slower: about 8 tokens a second, and about 21 s before the first word of a new " +
-            "conversation (later answers about 1 to 3 s). About 4 GB of memory and more battery (about 9 W while it writes, " +
-            "against 3.5 W). Sees photos, more slowly."
-        UNCENSORED -> "Like Smarter: about 8 tokens a second, about 21 s before the first word of a new conversation, " +
-            "about 4 GB of memory and more battery."
-        OWN -> "Runs on the CPU (a .gguf with llama.cpp), unless Robot's check proves a .litertlm was compiled for the TPU of " +
-            "the phone's own chip (a Tensor G5, or in beta a Tensor G6) and you allow that."
+    val speedText: Phrase get() = when (this) {
+        FAST -> ModelStrings.speedFast()
+        FAST_G6 -> ModelStrings.speedFastG6()
+        GENERAL -> ModelStrings.speedGeneral()
+        SMARTER -> ModelStrings.speedSmarter()
+        UNCENSORED -> ModelStrings.speedUncensored()
+        OWN -> ModelStrings.speedOwn()
     }
 
     /** What it is, in plain words. */
-    val about: String get() = when (this) {
-        FAST -> "Gemma 4 E2B, compiled by Google for the Tensor G5's TPU (the Pixel 10 series). Robot's model since 0.1."
-        FAST_G6 -> "Gemma 4 E2B, compiled by Google for the Tensor G6's TPU (the Pixel 11 series). A beta: Robot hasn't run it on a " +
-            "Pixel 11 yet. If it doesn't load on the TPU, Robot switches to the general build by itself (download it too, to " +
-            "have it ready) and remembers that until you choose Try the TPU again."
-        GENERAL -> "Gemma 4 E2B from Google, the general build of the model the Pixel 10 runs on its TPU: Google " +
-            "publishes no TPU build for this phone's chip, so it runs on the GPU or the CPU. The first load writes a cache " +
-            "next to it (about 0.8 GB on the GPU, up to 2 GB on the CPU)."
-        SMARTER -> "Gemma 4 E4B from Google, the larger of the two small Gemma 4 models, run on the CPU: no Tensor TPU " +
-            "build of it exists. The first load writes about 2.5 GB of cache next to it."
-        UNCENSORED -> "A community build of Gemma 4 E4B with the model's own refusals removed (olekk; not from Google). " +
-            "Robot's own cards and switches still apply: actions still ask you first as Settings › Actions and Safety & privacy " +
-            "say. Its maker spot-checked it but ran no benchmark, and it may still refuse " +
-            "now and then; the publisher asks that it be used for research and personal experimentation, says you own its outputs, " +
-            "and says Google's Gemma Prohibited Use Policy still applies."
-        OWN -> "A LiteRT-LM (.litertlm) or GGUF (.gguf) file. Robot copies it into its own storage, shows its size and " +
-            "SHA-256, and checks what is inside before it can be chosen. Robot is written for Gemma 4: another model may " +
-            "answer oddly and actions may not work."
+    val aboutText: Phrase get() = when (this) {
+        FAST -> ModelStrings.aboutFast()
+        FAST_G6 -> ModelStrings.aboutFastG6("tryAgain" to ModelStrings.tryTpuAgain())
+        GENERAL -> ModelStrings.aboutGeneral()
+        SMARTER -> ModelStrings.aboutSmarter()
+        UNCENSORED -> ModelStrings.aboutUncensored("actions" to UiStrings.inSettings(UiStrings.actions), "safety" to UiLabel(UiStrings.safety))
+        OWN -> ModelStrings.aboutOwn()
     }
 
     companion object {
@@ -247,7 +260,7 @@ enum class BrainModel(
  */
 enum class ModelTerms(val id: String, val model: BrainModel, val publisher: String, val prompt: String, val ticks: List<String>) {
     UNCENSORED(
-        id = "olekk/gemma-4-E4B-it-abliterated-litert-lm@a4eecccd",
+        id = "olekk/gemma-4-E4B-it-abliterated-litert-lm@a4eecccd", // l10n: not text (the model card's id)
         model = BrainModel.UNCENSORED,
         publisher = "olekk",
         // The card's extra_gated_prompt and extra_gated_fields at commit a4eecccd, word for word.
@@ -255,8 +268,8 @@ enum class ModelTerms(val id: String, val model: BrainModel, val publisher: Stri
             "or unsafe requests. It is released for research and personal experimentation only. By requesting access you confirm " +
             "you are using it responsibly and accept sole responsibility for any outputs and downstream use.",
         ticks = listOf(
-            "I use this for research / personal experimentation only",
-            "I accept responsibility for the outputs and any downstream use",
+            "I use this for research / personal experimentation only", // l10n: not text (the publisher's own words, quoted)
+            "I accept responsibility for the outputs and any downstream use", // l10n: not text (the publisher's own words, quoted)
         ),
     );
 
@@ -265,10 +278,9 @@ enum class ModelTerms(val id: String, val model: BrainModel, val publisher: Stri
 
     companion object {
         /** Robot's words around the publisher's: where they come from, and what still applies. */
-        const val INTRO = "Its publisher asks everyone who downloads it to confirm two things first:"
-        const val ALSO = "Google's Gemma Prohibited Use Policy still applies, as its publisher says, and Robot's cards and " +
-            "switches still decide what asks you first."
-        const val REFUSED = "Tick its publisher's two boxes on its card first."
+        val introText: Phrase get() = ModelStrings.termsIntro()
+        val alsoText: Phrase get() = ModelStrings.termsAlso()
+        val refusedText: Phrase get() = ModelStrings.termsRefused()
 
         fun of(m: BrainModel): ModelTerms? = entries.firstOrNull { it.model == m }
 
@@ -292,7 +304,7 @@ object ModelFiles {
      * The CPU's weight cache (0.4.7: and the GPU's program and weight caches, beside it), under filesDir; deleted with the
      * model. Null on the TPU (LiteRT-LM keeps no cache there).
      */
-    fun cacheDir(m: BrainModel, backend: ModelBackend = m.backend): String? = if (backend != ModelBackend.TPU) "litert_cache/${m.id}" else null
+    fun cacheDir(m: BrainModel, backend: ModelBackend = m.backend): String? = if (backend != ModelBackend.TPU) "litert_cache/${m.id}" else null // l10n: not text (a path)
 
     /** What the GPU's first load of [GENERAL][BrainModel.GENERAL] writes, about (the lab: 745 MB of weights, 11 MB of programs). */
     const val GPU_CACHE_BYTES = 900_000_000L
@@ -391,26 +403,27 @@ object Download {
     const val STATUS_SUCCESSFUL = 8
     const val STATUS_FAILED = 16
 
-    /** Reasons in plain words (and HTTP codes for a failure). */
-    fun reasonText(status: Int, reason: Int): String = when (status) {
+    /** Reasons in plain words (and HTTP codes for a failure); null for a status that has none. */
+    fun reasonPhrase(status: Int, reason: Int): Phrase? = when (status) {
         STATUS_PAUSED -> when (reason) {
-            1 -> "waiting to retry: couldn't reach the server"
-            2 -> "waiting for a network connection"
-            3 -> "waiting for Wi-Fi (too large for mobile data)"
-            else -> "paused"
+            1 -> ModelStrings.reasonRetry()
+            2 -> ModelStrings.reasonNetwork()
+            3 -> ModelStrings.reasonWifi()
+            else -> ModelStrings.reasonPaused()
         }
         STATUS_FAILED -> when (reason) {
-            in 100..599 -> "the server answered with error $reason"
-            1001 -> "the phone couldn't write the file"
-            1004 -> "the connection broke"
-            1006 -> "the phone ran out of space"
-            1007 -> "no storage was available"
-            1008 -> "the download couldn't resume and must start again"
-            1009 -> "the file already exists"
-            else -> "an unknown error"
+            in 100..599 -> ModelStrings.reasonHttp("code" to reason.toString())
+            1001 -> ModelStrings.reasonWrite()
+            1004 -> ModelStrings.reasonConnection()
+            1006 -> ModelStrings.reasonSpace()
+            1007 -> ModelStrings.reasonStorage()
+            1008 -> ModelStrings.reasonResume()
+            1009 -> ModelStrings.reasonExists()
+            else -> ModelStrings.reasonUnknown()
         }
-        else -> ""
+        else -> null
     }
+
 }
 
 object ModelLogic {
@@ -435,38 +448,39 @@ object ModelLogic {
      * plain words. [freeBytes] < 0 = unknown (allowed). [pendingBytes]: what downloads under way (voice models, another
      * model) will still take (DownloadManager does not reserve their space).
      */
-    fun spaceProblem(
+    fun spaceProblemText(
         m: BrainModel, freeBytes: Long, reclaimableBytes: Long, needBytes: Long = ModelFiles.needBytes(m), pendingBytes: Long = 0,
         fileBytes: Long = m.bytes, gguf: Boolean = false,
-    ): String? {
+    ): Phrase? {
         if (freeBytes < 0) return null
         val pending = pendingBytes.coerceAtLeast(0)
         val free = freeBytes + reclaimableBytes
         if (free - pending >= needBytes) return null
-        val left = if (pending > 0) "only ${gb((free - pending).coerceAtLeast(0))} will be left once the downloads under way finish"
-        else "${gb(free)} is free"
+        val left = if (pending > 0) ModelStrings.leftPending("size" to gbText((free - pending).coerceAtLeast(0)))
+        else ModelStrings.leftFree("size" to gbText(free))
         val cache = if (m == BrainModel.OWN) (if (gguf) 0 else ModelFiles.cacheEstimate(fileBytes)) else m.cacheBytes
-        val what = if (cache > 0 && fileBytes > 0) "the ${gb(fileBytes)} file, about ${gb(cache)} for the cache the CPU writes on its first load, and 1 GB to spare"
-        else "the file plus 1 GB to spare"
-        return "Not enough free space: ${name(m)} needs ${gb(needBytes)} ($what) and $left."
+        val what = if (cache > 0 && fileBytes > 0) ModelStrings.needWithCache("file" to gbText(fileBytes), "cache" to gbText(cache))
+        else ModelStrings.needFile()
+        return ModelStrings.notEnoughSpace("name" to nameText(m), "need" to gbText(needBytes), "what" to what, "left" to left)
     }
 
     /** "Gemma 4 E2B (Tensor G5)", "Gemma 4 E2B", or "Your model file". */
-    fun name(m: BrainModel): String = if (m == BrainModel.OWN) "Your model file" else m.modelName
+    fun nameText(m: BrainModel): Phrase = if (m == BrainModel.OWN) ModelStrings.ownFileName() else Phrase.plain(m.modelName)
 
     /**
      * Null when a download of [m] may start, else why not. [busyWith]: another model whose download or import is
      * under way (one at a time, so the space check holds).
      */
-    fun refuseDownload(m: BrainModel, status: ModelStatus, freeBytes: Long, existingBytes: Long, pendingBytes: Long = 0, busyWith: BrainModel? = null): String? = when {
-        !m.builtIn -> "This one has no download: import your file."
-        busyWith != null && busyWith != m -> "“${busyWith.title}” is downloading or being copied. Wait for it to finish, or cancel it first."
+    fun refuseDownloadText(m: BrainModel, status: ModelStatus, freeBytes: Long, existingBytes: Long, pendingBytes: Long = 0,
+        busyWith: BrainModel? = null): Phrase? = when {
+        !m.builtIn -> ModelStrings.noDownload()
+        busyWith != null && busyWith != m -> ModelStrings.busyWith("model" to busyWith.titleText)
         else -> when (status) {
-            ModelStatus.DOWNLOADING -> "The download is already running."
-            ModelStatus.IMPORTING -> "An import is running."
-            ModelStatus.VERIFYING -> "The model is being checked."
-            ModelStatus.VERIFIED, ModelStatus.UNVERIFIED -> "The model is already on this phone."
-            ModelStatus.MISSING, ModelStatus.BAD -> spaceProblem(m, freeBytes, existingBytes, pendingBytes = pendingBytes)
+            ModelStatus.DOWNLOADING -> ModelStrings.alreadyDownloading()
+            ModelStatus.IMPORTING -> ModelStrings.importRunning()
+            ModelStatus.VERIFYING -> ModelStrings.beingChecked()
+            ModelStatus.VERIFIED, ModelStatus.UNVERIFIED -> ModelStrings.alreadyHere()
+            ModelStatus.MISSING, ModelStatus.BAD -> spaceProblemText(m, freeBytes, existingBytes, pendingBytes = pendingBytes)
         }
     }
 
@@ -475,46 +489,52 @@ object ModelLogic {
      * takes only its own file (the exact size, then the SHA-256); your own file any size from [OWN_MIN_BYTES]. [gguf]: the
      * picked file starts like a GGUF file (0.4.5), which needs no room for a cache.
      */
-    fun refuseImport(m: BrainModel, status: ModelStatus, docBytes: Long, freeBytes: Long, reclaimableBytes: Long, pendingBytes: Long = 0, busyWith: BrainModel? = null,
-        gguf: Boolean = false): String? = when {
-        busyWith != null && busyWith != m -> "“${busyWith.title}” is downloading or being copied. Wait for it to finish, or cancel it first."
-        status == ModelStatus.IMPORTING -> "An import is already running."
-        status == ModelStatus.VERIFYING -> "The model is being checked."
-        status == ModelStatus.VERIFIED && m.builtIn -> "The model is already on this phone and checked."
-        m.builtIn && docBytes >= 0 && docBytes != m.bytes -> String.format(Locale.US,
-            "That file isn't the model: it has %,d bytes and %s has %,d.", docBytes, m.file, m.bytes)
-        !m.builtIn && docBytes in 0 until OWN_MIN_BYTES -> String.format(Locale.US, "That file is too small to be a model (%,d bytes).", docBytes)
-        m.builtIn -> spaceProblem(m, freeBytes, reclaimableBytes, pendingBytes = pendingBytes)
+    fun refuseImportText(m: BrainModel, status: ModelStatus, docBytes: Long, freeBytes: Long, reclaimableBytes: Long, pendingBytes: Long = 0,
+        busyWith: BrainModel? = null, gguf: Boolean = false): Phrase? = when {
+        busyWith != null && busyWith != m -> ModelStrings.busyWith("model" to busyWith.titleText)
+        status == ModelStatus.IMPORTING -> ModelStrings.importAlreadyRunning()
+        status == ModelStatus.VERIFYING -> ModelStrings.beingChecked()
+        status == ModelStatus.VERIFIED && m.builtIn -> ModelStrings.alreadyChecked()
+        m.builtIn && docBytes >= 0 && docBytes != m.bytes -> ModelStrings.wrongSize("bytes" to Arg.Count(docBytes), "file" to m.file,
+            "expected" to Arg.Count(m.bytes))
+        !m.builtIn && docBytes in 0 until OWN_MIN_BYTES -> ModelStrings.tooSmall("bytes" to Arg.Count(docBytes))
+        m.builtIn -> spaceProblemText(m, freeBytes, reclaimableBytes, pendingBytes = pendingBytes)
         // Unknown size: the copy watches the free space as it goes.
         docBytes < 0 -> null
-        else -> spaceProblem(m, freeBytes, reclaimableBytes, ModelFiles.needBytes(m, docBytes, gguf && !m.builtIn), pendingBytes, fileBytes = docBytes, gguf = gguf && !m.builtIn)
+        else -> spaceProblemText(m, freeBytes, reclaimableBytes, ModelFiles.needBytes(m, docBytes, gguf && !m.builtIn), pendingBytes, fileBytes = docBytes,
+            gguf = gguf && !m.builtIn)
     }
 
     /** One line for the model card. */
-    fun headline(status: ModelStatus, m: BrainModel = BrainModel.FAST): String = when (status) {
-        ModelStatus.MISSING -> if (m.builtIn) "Not downloaded" else "No file yet"
-        ModelStatus.DOWNLOADING -> "Downloading"
-        ModelStatus.IMPORTING -> "Copying the file"
-        ModelStatus.VERIFYING -> "Checking the file"
-        ModelStatus.UNVERIFIED -> if (m.builtIn) "Downloaded, not checked yet" else "Copied, not checked yet"
-        ModelStatus.VERIFIED -> "Ready"
-        ModelStatus.BAD -> if (m.builtIn) "The file is damaged" else "Robot can't use this file"
+    fun headlineText(status: ModelStatus, m: BrainModel = BrainModel.FAST): Phrase = when (status) {
+        ModelStatus.MISSING -> if (m.builtIn) ModelStrings.notDownloaded() else ModelStrings.noFileYet()
+        ModelStatus.DOWNLOADING -> ModelStrings.downloading()
+        ModelStatus.IMPORTING -> ModelStrings.copying()
+        ModelStatus.VERIFYING -> ModelStrings.checking()
+        ModelStatus.UNVERIFIED -> if (m.builtIn) ModelStrings.downloadedUnchecked() else ModelStrings.copiedUnchecked()
+        ModelStatus.VERIFIED -> ModelStrings.ready()
+        ModelStatus.BAD -> if (m.builtIn) ModelStrings.damaged() else ModelStrings.cantUse()
     }
 
     /** Download progress in plain words from DownloadManager's status, reason and byte count. */
-    fun downloadText(m: BrainModel, status: Int, reason: Int, soFar: Long): String = when (status) {
-        Download.STATUS_PENDING -> "Waiting to start"
-        Download.STATUS_RUNNING -> String.format(Locale.US, "%s of %s (%d%%)", gb(soFar), gb(m.bytes), percent(soFar, m.bytes))
-        Download.STATUS_PAUSED -> String.format(Locale.US, "Paused at %s: %s", gb(soFar), Download.reasonText(status, reason))
-        Download.STATUS_FAILED -> "The download failed: ${Download.reasonText(status, reason)}. Tap Download to try again."
-        Download.STATUS_SUCCESSFUL -> "Downloaded"
-        else -> "Download status unknown"
+    fun downloadPhrase(m: BrainModel, status: Int, reason: Int, soFar: Long): Phrase = when (status) {
+        Download.STATUS_PENDING -> ModelStrings.waitingToStart()
+        Download.STATUS_RUNNING -> ModelStrings.progress("done" to gbText(soFar), "total" to gbText(m.bytes), "percent" to percent(soFar, m.bytes).toString())
+        Download.STATUS_PAUSED -> ModelStrings.pausedAt("done" to gbText(soFar), "reason" to Download.reasonPhrase(status, reason))
+        Download.STATUS_FAILED -> ModelStrings.downloadFailed("reason" to Download.reasonPhrase(status, reason), "button" to UiLabel(UiStrings.download))
+        Download.STATUS_SUCCESSFUL -> ModelStrings.downloaded()
+        else -> ModelStrings.statusUnknown()
     }
 
     /** Truncated, never rounded up: 100% only when every byte is there. [total] <= 0: 0. */
     fun percent(bytes: Long, total: Long): Int = if (total <= 0) 0 else (bytes.coerceIn(0, total) * 100 / total).toInt()
 
-    fun gb(bytes: Long): String = String.format(Locale.US, "%.2f GB", bytes / 1e9)
+    /** A model's size, two decimals as 1.0 writes it: "3.11 GB", « 3,11 Go ». */
+    fun gbText(bytes: Long): Phrase {
+        val (int, frac) = String.format(Locale.US, "%.2f", bytes / 1e9).split('.')
+        return ModelStrings.gb("int" to int, "frac" to frac)
+    }
+
 }
 
 /** Whether the voice process can load a model now, as its files say (ModelStore.plan). */
@@ -554,50 +574,51 @@ data class LoadPlan(
  * a Tensor G5 alone, the GPU only for the general E2B and only where ModelCatalogue offers it.
  */
 object LoadCheck {
-    const val CHANGED = "The model file changed since Robot checked it. Open the Robot app › Model to check it again."
-    const val NO_TPU = "This phone has no TPU Robot can use: the TPU builds run on a Tensor G5 (Pixel 10) and, in beta, a Tensor G6 (Pixel 11)."
+    val changedText: Phrase get() = ModelStrings.changed("page" to UiStrings.inSettings(UiStrings.model))
+    val noTpuText: Phrase get() = ModelStrings.noTpu()
+    val noGpuText: Phrase get() = ModelStrings.noGpu()
 
     /** 0.8: a TPU build for one chip on a phone with another (the phone's TPU library refuses another chip's code). */
-    fun otherChip(built: Chip, phone: Chip): String = "This file was compiled for the ${built.title}'s TPU, and this phone has a " +
-        (phone.title.ifEmpty { "chip without that TPU" }) + ": a TPU runs only the build made for its own chip."
-    const val NO_GPU = "Robot doesn't use this phone's GPU."
+    fun otherChipText(built: Chip, phone: Chip): Phrase = if (phone.title.isEmpty()) ModelStrings.otherChipNone("built" to built.title)
+        else ModelStrings.otherChip("built" to built.title, "phone" to phone.title)
 
     /** The context asked for isn't the one Robot's prompts are made for with this file. */
-    fun wrongContext(expected: Int): String = "Robot's prompts are made for $expected tokens of context with this model."
+    fun wrongContextText(expected: Int): Phrase = ModelStrings.wrongContext("n" to expected.toString())
 
     /**
      * Null when [m] may load on [backend] with a context of [maxTokens] as a file of [format]; else why not, in plain
      * words. [fingerprintNow]: the file's now ([ModelFiles.fingerprint]); [mark]: the built-in model's verified mark;
      * [ownRecord]: your own file's record.
      */
-    fun refuse(m: BrainModel, backend: ModelBackend, fingerprintNow: String, mark: String?, ownRecord: String?,
-        maxTokens: Int = ContextWindow.MAX_TOKENS, format: ModelFormat = ModelFormat.LITERT_LM, phone: Phone? = null): String? {
+    fun refuseText(m: BrainModel, backend: ModelBackend, fingerprintNow: String, mark: String?, ownRecord: String?,
+        maxTokens: Int = ContextWindow.MAX_TOKENS, format: ModelFormat = ModelFormat.LITERT_LM, phone: Phone? = null): Phrase? {
         if (phone != null) {
-            if (backend == ModelBackend.TPU && phone.tpu == TpuSupport.NONE) return NO_TPU
-            if (backend == ModelBackend.GPU && !ModelCatalogue.gpuOffered(phone)) return NO_GPU
+            if (backend == ModelBackend.TPU && phone.tpu == TpuSupport.NONE) return noTpuText
+            if (backend == ModelBackend.GPU && !ModelCatalogue.gpuOffered(phone)) return noGpuText
             // 0.8: a Tensor G5 build never runs on a Tensor G6, nor the reverse.
-            if (backend == ModelBackend.TPU) m.tpuChip?.let { c -> if (c != phone.chip) return otherChip(c, phone.chip) }
+            if (backend == ModelBackend.TPU) m.tpuChip?.let { c -> if (c != phone.chip) return otherChipText(c, phone.chip) }
         }
         if (m.builtIn) {
-            if (format != ModelFormat.LITERT_LM) return "“${m.title}” is a LiteRT-LM file."
-            if (!m.runsOn(backend)) return "“${m.title}” runs on the ${m.backend.title} only."
-            if (maxTokens != m.contextTokens) return wrongContext(m.contextTokens)
-            return if (mark?.trim() == "${m.sha256}|$fingerprintNow") null else CHANGED
+            if (format != ModelFormat.LITERT_LM) return ModelStrings.isLiteRtLm("model" to m.titleText)
+            if (!m.runsOn(backend)) return ModelStrings.runsOnlyOn("model" to m.titleText, "backend" to m.backend.title)
+            if (maxTokens != m.contextTokens) return wrongContextText(m.contextTokens)
+            return if (mark?.trim() == "${m.sha256}|$fingerprintNow") null else changedText
         }
-        val own = OwnModel.fromJson(ownRecord) ?: return CHANGED
-        if (own.fingerprint != fingerprintNow) return CHANGED
+        val own = OwnModel.fromJson(ownRecord) ?: return changedText
+        if (own.fingerprint != fingerprintNow) return changedText
         // A record of the other kind of file: whatever is there now wasn't checked as what it is.
-        if (own.format != format) return CHANGED
+        if (own.format != format) return changedText
         val where = own.backend
         // 0.8: your own TPU build runs only on the chip its stamp names.
-        if (backend == ModelBackend.TPU && phone != null) own.tensorBuild?.let { c -> if (c != phone.chip) return otherChip(c, phone.chip) }
+        if (backend == ModelBackend.TPU && phone != null) own.tensorBuild?.let { c -> if (c != phone.chip) return otherChipText(c, phone.chip) }
         return when {
-            where == backend -> if (maxTokens == own.contextTokens) null else wrongContext(own.contextTokens)
-            where == null && own.tensorBuild != null -> "Your model file waits for you to allow the TPU in the Robot app › Model."
-            where == null -> own.unusable ?: "Robot can't run your model file on this phone."
-            else -> "Your model file runs on the ${where.title}, not the ${backend.title}."
+            where == backend -> if (maxTokens == own.contextTokens) null else wrongContextText(own.contextTokens)
+            where == null && own.tensorBuild != null -> ModelStrings.ownWaitsTpu("page" to UiStrings.inSettings(UiStrings.model))
+            where == null -> own.unusableText ?: ModelStrings.ownCantRun()
+            else -> ModelStrings.ownRunsOn("where" to where.title, "backend" to backend.title)
         }
     }
+
 }
 
 /**
@@ -606,12 +627,13 @@ object LoadCheck {
  * screen only: it never decides what Robot trusts or allows.
  */
 object ModelNotes {
-    const val MEDICAL = "Not a medical device: check health information with a professional."
+    val medicalText: Phrase get() = ModelStrings.medical()
 
     /** "MedGemma", "medgemma-1.5-4b-it…", "Med-Gemma", "med_gemma": any case, any separators. */
     fun medical(name: String?): Boolean = name != null && name.lowercase(Locale.ROOT).filter { it.isLetterOrDigit() }.contains("medgemma")
 
-    fun of(name: String?): String? = if (medical(name)) MEDICAL else null
+    fun ofText(name: String?): Phrase? = if (medical(name)) medicalText else null
+
 }
 
 /** Why Robot used Fast instead of the model you chose (the voice log stores [id]). */
@@ -639,11 +661,21 @@ object ModelChoice {
     sealed class Decision {
         /** Load [model]; [instead] and [why] say it replaces the one you chose. */
         data class Load(val model: BrainModel, val instead: BrainModel? = null, val why: FallbackWhy? = null) : Decision()
-        /** Nothing can load now: [problem] in plain words; [openApp]: the fix is in the Robot app (a download, a check). */
-        data class NoLoad(val problem: String, val openApp: Boolean) : Decision()
+        /**
+         * Nothing can load now: [problem] in plain words (English); [openApp]: the fix is in the Robot app (a download, a
+         * check). 1.1: [text] is the same without a language yet (equality stays [problem]'s, as before).
+         */
+        data class NoLoad(val problem: String, val openApp: Boolean) : Decision() {
+            var text: Phrase = Phrase.plain(problem)
+                private set
+
+            constructor(text: Phrase, openApp: Boolean) : this(text.en(), openApp) {
+                this.text = text
+            }
+        }
     }
 
-    const val NO_MODEL = "Robot's model isn't on this phone yet. Open the Robot app to download it."
+    val noModelText: Phrase get() = ModelStrings.noModel()
 
     /**
      * [chosenFailedBefore]: [chosen] failed to load earlier in this process, or stopped it ([earlier] says which; Fast is
@@ -656,7 +688,7 @@ object ModelChoice {
         fast: BrainModel = BrainModel.FAST,
     ): Decision {
         if (chosen == fast) {
-            return if (fastState == ModelAvailability.READY) Decision.Load(fast) else Decision.NoLoad(NO_MODEL, openApp = true)
+            return if (fastState == ModelAvailability.READY) Decision.Load(fast) else Decision.NoLoad(noModelText, openApp = true)
         }
         val why = when {
             chosenState != ModelAvailability.READY -> whyFor(chosenState)
@@ -669,11 +701,15 @@ object ModelChoice {
 
     /** After [tried] failed to load: Fast instead (when it is ready and wasn't the one), else nothing. */
     fun afterFailure(tried: BrainModel, failure: LoadFailure, fastState: ModelAvailability, detail: String? = null,
+        fast: BrainModel = BrainModel.FAST): Decision = afterFailure(tried, failure, fastState, detail?.let { Phrase.plain(it) }, fast)
+
+    /** [detail]: :brain's own words, in a language or not yet (1.1). */
+    fun afterFailure(tried: BrainModel, failure: LoadFailure, fastState: ModelAvailability, detail: Phrase?,
         fast: BrainModel = BrainModel.FAST): Decision = when {
         // The last engine is still being let go of: nothing is wrong with the model, ask again in a moment.
-        failure == LoadFailure.STOPPING -> Decision.NoLoad(STOPPING, openApp = false)
+        failure == LoadFailure.STOPPING -> Decision.NoLoad(stoppingText, openApp = false)
         tried != fast && fastState == ModelAvailability.READY -> Decision.Load(fast, tried, FallbackWhy.LOAD_FAILED)
-        tried == fast -> Decision.NoLoad(detail ?: FAST_FAILED, openApp = false)
+        tried == fast -> Decision.NoLoad(detail ?: fastFailedText, openApp = false)
         else -> Decision.NoLoad(alone(tried, FallbackWhy.LOAD_FAILED), openApp = true)
     }
 
@@ -687,25 +723,36 @@ object ModelChoice {
         ModelAvailability.UNUSABLE, ModelAvailability.READY -> FallbackWhy.UNUSABLE
     }
 
-    const val STOPPING = "The model is still stopping. Try again in a moment."
-    const val FAST_FAILED = "The model didn't load in time."
+    val stoppingText: Phrase get() = ModelStrings.stopping()
+    val fastFailedText: Phrase get() = ModelStrings.fastFailed()
+
+    private val page: UiLabel get() = UiStrings.inSettings(UiStrings.model)
+
+    /** What happened to [wanted], as the start of a sentence ("“Smarter, slower” isn't on this phone yet"). */
+    private fun what(wanted: BrainModel, why: FallbackWhy, detail: Phrase?): Phrase {
+        val model = "model" to wanted.titleText
+        return when (why) {
+            FallbackWhy.NOT_DOWNLOADED -> ModelStrings.whyNotDownloaded(model)
+            FallbackWhy.NOT_CHECKED -> ModelStrings.whyNotChecked(model)
+            FallbackWhy.NEEDS_TPU_OK -> ModelStrings.whyNeedsTpu(model, "page" to page)
+            FallbackWhy.UNUSABLE -> ModelStrings.whyUnusable(model, "page" to page)
+            FallbackWhy.LOAD_FAILED -> if (detail != null) ModelStrings.whyLoadFailedDetail(model, "detail" to detail) else ModelStrings.whyLoadFailed(model)
+            FallbackWhy.FAILED_EARLIER -> ModelStrings.whyFailedEarlier(model)
+            FallbackWhy.STOPPED -> ModelStrings.whyStopped(model)
+        }
+    }
 
     /** "“Smarter, slower” …" with "you" in it: what happened, then what you can do. */
-    fun fallbackText(wanted: BrainModel, why: FallbackWhy, detail: String? = null): String {
-        val name = "“${wanted.title}”"
+    fun fallbackPhrase(wanted: BrainModel, why: FallbackWhy, detail: Phrase? = null): Phrase {
+        val using = ModelStrings.usingFast("what" to what(wanted, why, detail))
         return when (why) {
-            FallbackWhy.NOT_DOWNLOADED -> "$name isn't on this phone yet, so Robot is using Fast. " +
-                (if (wanted.builtIn) "Download it" else "Import it") + " in the Robot app › Model."
-            FallbackWhy.NOT_CHECKED -> "$name hasn't been checked yet, so Robot is using Fast. Open the Robot app › Model to check it."
-            FallbackWhy.NEEDS_TPU_OK -> "$name waits for you to allow the TPU in the Robot app › Model, so Robot is using Fast."
-            FallbackWhy.UNUSABLE -> "Robot can't use $name (the Robot app › Model says why), so Robot is using Fast."
-            FallbackWhy.LOAD_FAILED -> "$name didn't load" + (detail?.let { " ($it)" } ?: "") + ", so Robot is using Fast."
-            FallbackWhy.FAILED_EARLIER -> "$name didn't load earlier, so Robot is using Fast. Tap it again in the Robot app › Model to retry."
-            FallbackWhy.STOPPED -> "$name stopped unexpectedly, so Robot is using Fast. Tap it again in the Robot app › Model to retry."
+            FallbackWhy.NOT_DOWNLOADED -> Phrase.join(using, (if (wanted.builtIn) ModelStrings.downloadIt else ModelStrings.importIt)("page" to page))
+            FallbackWhy.NOT_CHECKED -> Phrase.join(using, ModelStrings.checkIt("page" to page))
+            FallbackWhy.FAILED_EARLIER, FallbackWhy.STOPPED -> Phrase.join(using, ModelStrings.retryIt("page" to page))
+            else -> using
         }
     }
 
     /** No Fast to fall back on either. */
-    private fun alone(wanted: BrainModel, why: FallbackWhy): String = fallbackText(wanted, why).substringBefore(", so Robot is using Fast") +
-        ", and Fast isn't on this phone either. Open the Robot app › Model."
+    private fun alone(wanted: BrainModel, why: FallbackWhy): Phrase = ModelStrings.fastMissingToo("what" to what(wanted, why, null), "page" to page)
 }

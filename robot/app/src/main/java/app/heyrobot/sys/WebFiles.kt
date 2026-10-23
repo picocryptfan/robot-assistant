@@ -5,6 +5,8 @@ import android.content.Context
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import app.heyrobot.core.RLog
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.PhraseWire
 import app.heyrobot.core.readOrNull
 import app.heyrobot.core.web.SearchService
 import app.heyrobot.core.web.WebConsentAnswer
@@ -82,16 +84,22 @@ object WebCounts {
     }
 }
 
-/** What the last Test found, for Settings: the service, whether it worked, its line ("JSON on · 9 results · …"), when. */
-data class WebTest(val service: SearchService, val ok: Boolean, val line: String, val at: Long) {
-    fun toJson(): String = JSONObject().put("service", service.name).put("ok", ok).put("line", line).put("at", at).toString()
+/**
+ * What the last Test found, for Settings: the service, whether it worked, its line ("JSON on · 9 results · …"), when. 1.1: the
+ * line is kept without a language (PhraseWire) so Settings shows it in the menus' language; an older record's plain English
+ * reads as it is.
+ */
+data class WebTest(val service: SearchService, val ok: Boolean, val line: Phrase, val at: Long) {
+    constructor(service: SearchService, ok: Boolean, line: String, at: Long) : this(service, ok, Phrase.plain(line), at)
+
+    fun toJson(): String = JSONObject().put("service", service.name).put("ok", ok).put("line", PhraseWire.encode(line)).put("at", at).toString()
 
     companion object {
         fun file(ctx: Context) = File(Paths.dir(ctx), "web_test.json")
 
         fun load(ctx: Context): WebTest? = try {
             val o = JSONObject(readOrNull(file(ctx)) ?: return null)
-            WebTest(SearchService.valueOf(o.getString("service")), o.optBoolean("ok"), o.optString("line"), o.optLong("at"))
+            WebTest(SearchService.valueOf(o.getString("service")), o.optBoolean("ok"), o.optString("line").let { PhraseWire.decode(it) ?: Phrase.plain(it) }, o.optLong("at"))
         } catch (_: Exception) {
             null
         }
@@ -114,8 +122,8 @@ object WebKeyFiles {
     fun dir(ctx: Context) = File(Paths.dir(ctx), "web")
 
     fun store(service: SearchService): KeystoreSecret {
-        val id = requireNotNull(service.keyId) { "no key" }
-        return KeystoreSecret("robot_$id", id, LOG) { dir(it) }
+        val id = requireNotNull(service.keyId) { "no key" } // l10n: not text (a developer's error)
+        return KeystoreSecret("robot_$id", id, LOG) { dir(it) } // l10n: not text (a Keystore alias)
     }
 
     fun saved(ctx: Context, service: SearchService): Boolean = service.keyId != null && store(service).saved(ctx)

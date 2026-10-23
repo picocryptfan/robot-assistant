@@ -1,42 +1,53 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.termux
 
+import app.heyrobot.core.i18n.Lang
+import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.i18n.Msg
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.TermuxStrings
 import java.util.EnumSet
 
 // Pure. Robot's own reading of a Termux command: the warnings the
-// card shows as chips, in plain English and French, from the parsed command and never from the model's explanation.
+// card shows as chips, in plain English and French (core i18n TermuxStrings), from the parsed command and never from the model's explanation.
 // Anything Robot can't follow (nested shells, substitutions, keywords, a program known only by running something, a
 // script) makes the command "complex": always a card, answered by a tap, its warnings still shown. TermuxPolicy decides
 // from this; ReadOnlyCommands is the strict allowlist.
 
-/** One thing a command does that the card warns about. Every warning makes the card need a tap (B7.1 rule 4). */
-enum class CommandWarning(val en: String, val fr: String, /** The card's red line. */ val red: Boolean = false) {
-    UNREADABLE("Robot couldn't read this command fully", "Robot n'a pas pu lire cette commande en entier"),
-    HIDDEN_CHARACTERS("Has hidden or look-alike characters", "Contient des caractères cachés ou trompeurs"),
+/**
+ * One thing a command does that the card warns about. Every warning makes the card need a tap (B7.1 rule 4). 1.1: its
+ * words are core's catalog (TermuxStrings): [label] the chip, [what] the same after "This command …" (null for
+ * [UNREADABLE], which says it whole); [en] and [fr] are the chip's English and French.
+ */
+enum class CommandWarning(val label: Msg, val what: Msg?, /** The card's red line. */ val red: Boolean = false) {
+    UNREADABLE(TermuxStrings.warnUnreadable, null),
+    HIDDEN_CHARACTERS(TermuxStrings.warnHidden, TermuxStrings.warnHiddenWhat),
     /** rm, rmdir, unlink, shred, find -delete, git clean, truncate, a > redirection over a file (what was in it is lost). */
-    DELETES("Deletes files or empties them", "Supprime ou vide des fichiers"),
-    OVERWRITES("Changes, overwrites or moves files", "Modifie, écrase ou déplace des fichiers"),
-    OUTSIDE_HOME("Changes files outside Termux's home folder", "Modifie des fichiers hors du dossier de Termux"),
-    INTERNET("Uses the internet", "Utilise Internet"),
-    INTERNET_CODE("Runs code from the internet", "Exécute du code venu d'Internet"),
-    PACKAGES("Changes installed packages", "Modifie les paquets installés"),
+    DELETES(TermuxStrings.warnDeletes, TermuxStrings.warnDeletesWhat),
+    OVERWRITES(TermuxStrings.warnOverwrites, TermuxStrings.warnOverwritesWhat),
+    OUTSIDE_HOME(TermuxStrings.warnOutsideHome, TermuxStrings.warnOutsideHomeWhat),
+    INTERNET(TermuxStrings.warnInternet, TermuxStrings.warnInternetWhat),
+    INTERNET_CODE(TermuxStrings.warnInternetCode, TermuxStrings.warnInternetCodeWhat),
+    PACKAGES(TermuxStrings.warnPackages, TermuxStrings.warnPackagesWhat),
     /** su, sudo, tsu: GrapheneOS isn't rooted, but such a command is never silent. */
-    ROOT("Asks for root rights", "Demande les droits root"),
+    ROOT(TermuxStrings.warnRoot, TermuxStrings.warnRootWhat),
     /** 1.0: Shizuku's rish (Settings › Advanced › ADB fixes puts it in $PREFIX/bin): a shell with ADB's rights. */
-    ADB_RIGHTS("Runs with ADB's rights through Shizuku", "S'exécute avec les droits d'ADB via Shizuku"),
-    KEEPS_RUNNING("Keeps running later, without Robot", "Continue de tourner ensuite, sans Robot"),
-    RUNS_FOREVER("May never end by itself: the time limit stops it", "Peut ne jamais finir : la limite de temps l'arrête"),
+    ADB_RIGHTS(TermuxStrings.warnAdbRights, TermuxStrings.warnAdbRightsWhat),
+    KEEPS_RUNNING(TermuxStrings.warnKeepsRunning, TermuxStrings.warnKeepsRunningWhat),
+    RUNS_FOREVER(TermuxStrings.warnRunsForever, TermuxStrings.warnRunsForeverWhat),
     /** Refused outright (TermuxPolicy): a function that starts copies of itself. */
-    FORK_BOMB("Starts copies of itself without end until the phone stalls", "Se recopie sans fin jusqu'à bloquer le téléphone"),
-    SENDS("Sends a text or places a call right away. Robot's own texting only opens a draft.",
-        "Envoie un texto ou passe un appel tout de suite. Robot, lui, ouvre seulement un brouillon.", red = true),
-    PERSONAL_DATA("Reads your personal phone data", "Lit vos données personnelles"),
-    CAPTURES("Uses the camera or the microphone", "Utilise l'appareil photo ou le micro"),
-    PRIVATE_FILES("Reads private files", "Lit des fichiers privés"),
-    SECRET("Contains what looks like a password or key: Termux's process list and error reports would show it",
-        "Contient ce qui ressemble à un mot de passe ou une clé : la liste des processus et les rapports d'erreur de Termux l'afficheraient"),
-    NEEDS_TERMINAL("Needs a terminal: open it in Termux", "A besoin d'un terminal : ouvrez-la dans Termux"),
+    FORK_BOMB(TermuxStrings.warnForkBomb, TermuxStrings.warnForkBombWhat),
+    SENDS(TermuxStrings.warnSends, TermuxStrings.warnSendsWhat, red = true),
+    PERSONAL_DATA(TermuxStrings.warnPersonalData, TermuxStrings.warnPersonalDataWhat),
+    CAPTURES(TermuxStrings.warnCaptures, TermuxStrings.warnCapturesWhat),
+    PRIVATE_FILES(TermuxStrings.warnPrivateFiles, TermuxStrings.warnPrivateFilesWhat),
+    SECRET(TermuxStrings.warnSecret, TermuxStrings.warnSecretWhat),
+    NEEDS_TERMINAL(TermuxStrings.warnNeedsTerminal, TermuxStrings.warnNeedsTerminalWhat),
     ;
+
+    val text: Phrase get() = label()
+    val en: String get() = text.en()
+    val fr: String get() = text.render(Langs.of(Lang.FR))
 
     fun text(fr: Boolean): String = if (fr) this.fr else en
 }
@@ -101,6 +112,9 @@ class CommandAnalysis internal constructor(
     val tapOnly: Boolean get() = complex || warnings.isNotEmpty()
 
     fun chips(fr: Boolean = false): List<String> = warnings.map { it.text(fr) }
+
+    /** The chips' words. */
+    val chipTexts: List<Phrase> get() = warnings.map { it.text }
 }
 
 object CommandAnalyzer {
@@ -646,7 +660,7 @@ object CommandAnalyzer {
         }
         if (prog == "perl" && v.any { it == "-i" || (it.startsWith("-") && !it.startsWith("--") && it.drop(1).startsWith("i")) }) acc += CommandWarning.OVERWRITES
         val code = v.withIndex().firstOrNull { (k, a) -> k + 1 < v.size && a in setOf("-c", "-e", "-E", "-r", "--eval", "-p", "--print") }?.let { v[it.index + 1] }
-        if (code != null && "fork" in code && ("while" in code || "loop" in code || "for(;;)" in code || "for (;;)" in code)) acc += CommandWarning.FORK_BOMB
+        if (code != null && "fork" in code && ("while" in code || "loop" in code || "for(;;)" in code || "for (;;)" in code)) acc += CommandWarning.FORK_BOMB // l10n: not text (code it looks for)
         acc.complex = true
         if (args.isEmpty() || (args.size == 1 && v[0] == "-")) {
             stdinCode(c, parse, acc, 0, shell = false)
@@ -1016,7 +1030,7 @@ object CommandAnalyzer {
             if (p in PRIVATE_DIRS) return true
             if (p.startsWith(".") && p.length > 1 && p != ".." && p.any { it == '*' || it == '?' || it == '[' }) return true
             if (k == parts.size - 1 || parts.drop(k + 1).all { it.isEmpty() }) {
-                if (p in PRIVATE_FILES || p.startsWith(".env.") || PRIVATE_SUFFIXES.any { p.endsWith(it) && p.length > it.length }) return true
+                if (p in PRIVATE_FILES || p.startsWith(".env.") || PRIVATE_SUFFIXES.any { p.endsWith(it) && p.length > it.length }) return true // l10n: not text (a file name)
                 if (p.startsWith("id_") && p.length > 3 && !p.endsWith(".pub")) return true
             }
         }

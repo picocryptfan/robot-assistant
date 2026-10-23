@@ -15,17 +15,17 @@ import app.heyrobot.core.output.RouteType
 import app.heyrobot.core.output.SeenDevice
 import app.heyrobot.core.output.SessionKind
 import app.heyrobot.core.output.SpokenChoice
-import app.heyrobot.core.output.SpokenLang
+import app.heyrobot.core.i18n.Lang
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-private val EN = SpokenLang.EN
-private val FR = SpokenLang.FR
+private val EN = Lang.EN
+private val FR = Lang.FR
 
-/** Calls hands-free (design §4.5 flow 2, §4.11 CallTarget). */
+/** Calls hands-free. */
 class CallTargetTest {
     private val momMobile = PhoneCandidate("Martine Martin", "+1 514 555 0101", PhoneLabel.MOBILE)
     private val momWork = PhoneCandidate("Martine Martin", "+1 514 555 0202", PhoneLabel.WORK)
@@ -34,7 +34,7 @@ class CallTargetTest {
     private val direct = CallRules(CallSetting.CALL_AFTER_YES, hasCallPermission = true)
     private val emergency = { n: String -> EmergencyNumbers.basic(n, "CA") }
 
-    private fun plan(asked: String, c: List<PhoneCandidate>, rules: CallRules = dialer, locked: Boolean = false, trusted: Boolean = false, lang: SpokenLang = EN) =
+    private fun plan(asked: String, c: List<PhoneCandidate>, rules: CallRules = dialer, locked: Boolean = false, trusted: Boolean = false, lang: Lang = EN) =
         CallTarget.plan(asked, c, rules, locked, trusted, lang, emergency)
 
     @Test fun oneNumberIsReadBack() {
@@ -51,9 +51,9 @@ class CallTargetTest {
             assertEquals(s, CallNext.Place("+15145550101", CallWay.DIAL), CallTarget.answer(p, SpokenChoice.answer(s, p.card), 0, 0, EN))
         }
         assertEquals(CallNext.Cancelled("Okay, no call."), CallTarget.answer(p, SpokenChoice.answer("no", p.card), 0, 0, EN))
-        assertEquals(CallNext.Cancelled("D'accord, pas d'appel."), CallTarget.answer(p, SpokenChoice.answer("non", p.card), 0, 0, FR))
+        assertEquals(CallNext.Cancelled("D’accord, pas d’appel."), CallTarget.answer(p, SpokenChoice.answer("non", p.card), 0, 0, FR))
         assertEquals(CallNext.OnScreen("It's on the screen."), CallTarget.answer(p, SpokenChoice.answer("", p.card), 1, 0, EN))
-        assertEquals(CallNext.OnScreen("C'est à l'écran."), CallTarget.answer(p, SpokenChoice.answer("", p.card), 1, 0, FR))
+        assertEquals(CallNext.OnScreen("C’est à l’écran."), CallTarget.answer(p, SpokenChoice.answer("", p.card), 1, 0, FR))
         assertEquals(CallNext.Reread, CallTarget.answer(p, SpokenChoice.answer("repeat", p.card), 0, 0, EN))
     }
 
@@ -82,7 +82,7 @@ class CallTargetTest {
     @Test fun emergencyNumbersAlwaysOpenTheDialer() {
         val e = plan("911", emptyList(), direct)
         assertEquals(CallPlan.Emergency("911", "I can't place emergency calls. The dialer is open with 911; tap Call."), e)
-        assertEquals("Je ne peux pas faire d'appels d'urgence. Le composeur est ouvert avec le 911; appuie sur Appeler.", (plan("911", emptyList(), lang = FR) as CallPlan.Emergency).say)
+        assertEquals("Je ne peux pas faire d’appels d’urgence. Le composeur est ouvert avec le 911; touche Appeler.", (plan("911", emptyList(), lang = FR) as CallPlan.Emergency).say)
         // Locked, untrusted: still the dialer (Android's emergency dialer), never refused.
         assertTrue(plan("9 1 1", emptyList(), direct, locked = true) is CallPlan.Emergency)
         assertTrue(plan("112", emptyList(), direct) is CallPlan.Emergency)
@@ -128,10 +128,10 @@ class CallTargetTest {
         // An XMPP address next to a number: the number.
         assertEquals(momMobile, (plan("Mom", listOf(PhoneCandidate("Martine", "m@x.example", xmpp = true), momMobile)) as CallPlan.Confirm).target)
         assertEquals(CallPlan.Refuse("I don't have a number for Bob.", CallRefuse.NOT_FOUND), plan("Bob", emptyList()))
-        assertEquals(CallPlan.Refuse("Je n'ai pas de numéro pour Bob.", CallRefuse.NOT_FOUND), plan("Bob", emptyList(), lang = FR))
+        assertEquals(CallPlan.Refuse("Je n’ai pas de numéro pour Bob.", CallRefuse.NOT_FOUND), plan("Bob", emptyList(), lang = FR))
         // A name learned from Cheogram: the call tool's card on the screen, which checks it.
         assertEquals(CallPlan.OnScreen("Check who it is on the screen.", CallOnScreen.LEARNED), plan("Marie", listOf(momMobile.copy(learned = true))))
-        assertEquals(CallPlan.OnScreen("Vérifie qui c'est à l'écran.", CallOnScreen.LEARNED), plan("Marie", listOf(momMobile.copy(learned = true)), lang = FR))
+        assertEquals(CallPlan.OnScreen("Vérifie qui c’est à l’écran.", CallOnScreen.LEARNED), plan("Marie", listOf(momMobile.copy(learned = true)), lang = FR))
         assertFalse(momMobile.toString().contains("Martine") || momMobile.toString().contains("0101"))
     }
 }
@@ -155,7 +155,7 @@ class CarMessagesTest {
         assertTrue(CarMessages.announce(marie, s.copy(announce = CarAnnounce.READ_WHOLE), false, false, true, EN) is CarAnnouncement.Announce)
         assertEquals(CarAnnouncement.ReadNow("Marie says: On se voit à 5?"),
             CarMessages.announce(marie, s.copy(announce = CarAnnounce.READ_WHOLE, readAloud = ReadAloud.ALWAYS), false, false, true, EN))
-        assertEquals("Marie dit : On se voit à 5?", CarMessages.says(marie, FR))
+        assertEquals("Marie dit: On se voit à 5?", CarMessages.says(marie, FR))
         assertTrue(CarMessages.offersReply(marie, s, safety))
         assertFalse(CarMessages.offersReply(marie.copy(group = "Famille"), s, safety))
         assertFalse(CarMessages.offersReply(marie.copy(replyable = false), s, safety))
@@ -178,13 +178,13 @@ class CarMessagesTest {
         }
         val d = (CarMessages.startReply(marie, "tell her I'm 10 minutes away", s, safety, false, false, EN, VoiceReply.BY_VOICE) as ReplyStart.ReadBack)
         assertEquals("Reply to Marie: I'm 10 minutes away. Send?", d.say)
-        assertEquals("Réponse à Marie : I'm 10 minutes away. J'envoie?", CarMessages.readBack(d.draft, FR))
+        assertEquals("Réponse à Marie: I'm 10 minutes away. J’envoie?", CarMessages.readBack(d.draft, FR))
         assertEquals("Reply to Marie: See you at 5? Send?", CarMessages.readBack(d.draft.copy(text = "See you at 5?"), EN))
         // "No" at the read-back sends nothing; silence twice hands the words to the screen's reply card (MessageFlow).
         val card = CarMessages.card(d.draft, EN)
         assertEquals(ReplyNext.Done("Okay, not sent.", ReplyEnd.DECLINED), CarMessages.answer(d.draft, SpokenChoice.answer("no", card), 0, 0, EN))
         assertEquals(ReplyNext.Done("Your reply is on the screen.", ReplyEnd.SILENCE), CarMessages.answer(d.draft, SpokenChoice.answer("", card), 1, 0, EN))
-        assertEquals(ReplyNext.Done("Ta réponse est à l'écran.", ReplyEnd.SILENCE), CarMessages.answer(d.draft, SpokenChoice.answer("", card), 1, 0, FR))
+        assertEquals(ReplyNext.Done("Ta réponse est à l’écran.", ReplyEnd.SILENCE), CarMessages.answer(d.draft, SpokenChoice.answer("", card), 1, 0, FR))
         assertEquals(ReplyNext.AskAgain("Say yes or no."), CarMessages.answer(d.draft, SpokenChoice.answer("send it to Bob", card), 0, 0, EN))
         // Robot's own read-back heard back is never a "send".
         assertFalse(CarMessages.answer(d.draft, SpokenChoice.answer("I'm 10 minutes away send", card, d.say), 0, 0, EN) is ReplyNext.Send)
@@ -195,7 +195,7 @@ class CarMessagesTest {
         assertEquals("A new message just came. Your reply is on the screen.", CarMessages.result(ReplyResult.NEW_MESSAGES, "Cheogram", EN))
         assertEquals("I can't send that by voice. Your reply is on the screen.", CarMessages.result(ReplyResult.NO_REPLY_ACTION, "Cheogram", EN))
         assertEquals(CarGate.UNLOCK_ONCE.en, CarMessages.result(ReplyResult.LOCKED, "Cheogram", EN))
-        for (r in ReplyResult.entries) for (l in SpokenLang.entries) {
+        for (r in ReplyResult.entries) for (l in Lang.entries) {
             val line = CarMessages.result(r, "Cheogram", l)
             assertFalse(line, line.contains("park") || line.contains("stationn"))
         }
@@ -268,13 +268,13 @@ class DrivingTest {
         val r = CarNavigate.plan(NavDestination.Home, s, here, locked = false, trusted = false, lang = EN) as NavPlan.Route
         assertEquals("om://route?sll=45.520000,-73.580000&saddr=Here&dll=45.500000,-73.600000&daddr=Maison&type=vehicle", r.uri)
         assertEquals("Route ready in your maps app. Tap Start to go.", r.say)
-        assertEquals("L'itinéraire est prêt dans ton application de cartes. Appuie sur Démarrer pour partir.",
+        assertEquals("L’itinéraire est prêt dans ton appli de cartes. Touche Démarrer pour partir.",
             CarNavigate.plan(NavDestination.Home, s, here, false, false, FR).say)
         assertEquals(NavKind.HOME, r.kind)
         // Without a position: the place itself.
         assertTrue((CarNavigate.plan(NavDestination.Home, s, null, false, false, EN) as NavPlan.Route).uri.startsWith("geo:45.500000,-73.600000"))
         assertEquals(NavPlan.NoPlace("Save your work address in Settings › Car mode first."), CarNavigate.plan(NavDestination.Work, s, here, false, false, EN))
-        assertEquals("Enregistre d'abord l'adresse de la maison dans Réglages › Mode auto.", CarNavigate.plan(NavDestination.Home, CarSettings(), here, false, false, FR).say)
+        assertEquals("Enregistre d’abord l’adresse de ton domicile dans Réglages, Mode auto.", CarNavigate.plan(NavDestination.Home, CarSettings(), here, false, false, FR).say)
         // Locked: a saved place in a trusted session; otherwise unlock.
         assertEquals(NavPlan.Unlock("Unlock to start the route."), CarNavigate.plan(NavDestination.Home, s, here, true, false, EN))
         assertEquals(CarNavigate.ROUTE_LOCKED.en, CarNavigate.plan(NavDestination.Home, s, here, true, true, EN).say)

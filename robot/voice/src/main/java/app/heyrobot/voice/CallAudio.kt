@@ -4,7 +4,6 @@ package app.heyrobot.voice
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
-import android.media.AudioFocusRequest
 import android.media.AudioManager
 import app.heyrobot.core.Playback
 import app.heyrobot.core.RLog
@@ -22,9 +21,6 @@ internal object CallAudio {
     fun attributes(p: Playback): AudioAttributes = AudioAttributes.Builder()
         .setUsage(if (p == Playback.CALL) AudioAttributes.USAGE_VOICE_COMMUNICATION else AudioAttributes.USAGE_ASSISTANT)
         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()
-
-    fun focus(p: Playback): AudioFocusRequest =
-        AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK).setAudioAttributes(attributes(p)).build()
 
     /**
      * May Robot take the communication mode now? Only from the normal mode (or when it is already Robot's): during

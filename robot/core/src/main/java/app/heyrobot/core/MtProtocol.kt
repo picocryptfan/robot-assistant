@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.ConversationStrings
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.UiStrings
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -84,17 +87,20 @@ enum class MtError(override val id: Int, override val title: String) : LogCode {
     DISCONNECTED(8, "its process stopped"),
     TIMEOUT(9, "no answer in time");
 
-    fun text(): String = when (this) {
-        NO_ENGINE -> "The fast translation engine isn't in this build of Robot."
-        NOT_DOWNLOADED -> "Download the fast translation engine first (Settings › Conversation)."
-        LOAD_FAILED -> "The fast translation engine's files didn't load. Delete them and download them again."
-        BAD_REQUEST -> "Robot asked the fast translation engine for something it doesn't do."
-        BUSY -> "The fast translation engine has too many lines waiting."
-        FAILED -> "The fast translation engine failed on a line."
-        CANCELLED -> "Stopped."
-        DISCONNECTED -> "The fast translation engine stopped. Robot starts it again the next time."
-        TIMEOUT -> "The fast translation engine didn't answer in time."
+    /** Why, for the screen (core ConversationStrings); [text] is its English. */
+    fun textPhrase(): Phrase = when (this) {
+        NO_ENGINE -> ConversationStrings.mtNoEngine()
+        NOT_DOWNLOADED -> ConversationStrings.mtNotDownloaded("page" to UiStrings.inSettings(UiStrings.conversation))
+        LOAD_FAILED -> ConversationStrings.mtLoadFailed()
+        BAD_REQUEST -> ConversationStrings.mtBadRequest()
+        BUSY -> ConversationStrings.mtBusy()
+        FAILED -> ConversationStrings.mtFailed()
+        CANCELLED -> ConversationStrings.stopped()
+        DISCONNECTED -> ConversationStrings.mtDisconnected()
+        TIMEOUT -> ConversationStrings.mtTimeout()
     }
+
+    fun text(): String = textPhrase().en()
 
     companion object {
         fun of(name: String?): MtError? = entries.firstOrNull { it.name == name }

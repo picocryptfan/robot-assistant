@@ -144,7 +144,7 @@ class HelperContextTest {
         // "Send personal content to helpers automatically" on: the last turns go as they would in a plain conversation.
         assertTrue(texts(HelperContext.escalation("q", history, now, "CA", personal = setOf(Personal.CALENDAR), includePersonal = true)).contains("second answer"))
         val p = HelperContext.payload("q", history, now, "CA", personal = setOf(Personal.CALENDAR), includePersonal = true)
-        assertEquals(listOf("Your question", "The last turns of this conversation"), p.sends)
+        assertEquals(listOf(QUESTION, "The last turns of this conversation"), p.sends)
     }
 
     @Test fun personalContentIsListed() {
@@ -162,23 +162,37 @@ class HelperContextTest {
         assertEquals(emptySet<Personal>(), HelperContext.personal(listOf(user("q"), robot("a", claude = true))))
     }
 
+    /** The card's first line: the question goes with the context line, today's date and your country (HelperPrompt.context). */
+    private val QUESTION = "Your question, today's date and your country"
+
+    @Test fun theCardSaysTheDateAndCountryGoToo() {
+        val p = HelperContext.payload("why", emptyList(), now, "CA", personal = emptySet())
+        assertEquals(listOf(QUESTION), p.sends)
+        assertTrue(texts(p.blocks).contains("Canada") && texts(p.blocks).contains("10 October 2026"))
+        assertEquals(listOf("Ta question, la date d’aujourd’hui et ton pays"), p.sendsText.map { it.render(app.heyrobot.core.i18n.Langs.of(app.heyrobot.core.i18n.Lang.FR)) })
+        // No country known: none goes, and the card doesn't say it does.
+        val none = HelperContext.payload("why", emptyList(), now, "", personal = emptySet())
+        assertEquals(listOf("Your question and today's date"), none.sends)
+        assertFalse(texts(none.blocks).contains("The user is in"))
+    }
+
     @Test fun anOffersPayloadIsFixedAndSaysWhatGoes() {
         val plain = listOf(user("first question"), robot("first answer"))
         val p = HelperContext.payload("why", plain, now, "CA", personal = emptySet())
-        assertEquals(listOf("Your question", "The last turns of this conversation"), p.sends)
+        assertEquals(listOf(QUESTION, "The last turns of this conversation"), p.sends)
         assertTrue(p.personal.isEmpty())
         assertTrue(texts(p.blocks).contains("first answer"))
         // A screen question: its text and screenshot, which only a tap may send.
         val screen = HelperContext.payload("what is this", plain, now, "CA", personal = setOf(Personal.SCREEN), attachment = Attachment.SCREEN,
             shared = Shared(screenText = "Invoice 42", image = byteArrayOf(1)))
-        assertEquals(listOf("Your question", "Your screen's text", "A screenshot"), screen.sends)
+        assertEquals(listOf(QUESTION, "Your screen's text", "A screenshot"), screen.sends)
         assertEquals(setOf(Personal.SCREEN), screen.personal)
         assertEquals("Invoice 42", screen.preview)
         assertFalse(texts(screen.blocks).contains("first answer"))
         assertEquals(1, screen.blocks.count { it is HelperBlock.Image })
         val photo = HelperContext.payload("what is this", emptyList(), now, "CA", personal = setOf(Personal.PHOTO), attachment = Attachment.PHOTO,
             shared = Shared(image = byteArrayOf(1)))
-        assertEquals(listOf("Your question", "The photo"), photo.sends)
+        assertEquals(listOf(QUESTION, "The photo"), photo.sends)
         assertEquals(setOf(Personal.PHOTO), photo.personal)
     }
 

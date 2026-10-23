@@ -24,6 +24,11 @@ import app.heyrobot.core.ModelStatus
 import app.heyrobot.core.OwnModel
 import app.heyrobot.core.Phone
 import app.heyrobot.core.DownloadPolicy
+import app.heyrobot.R
+import app.heyrobot.core.i18n.ModelStrings
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.PhraseWire
+import app.heyrobot.core.i18n.VoiceStrings
 import app.heyrobot.core.RLog
 import app.heyrobot.core.readOrNull
 import app.heyrobot.core.writeAtomic
@@ -164,7 +169,8 @@ object ModelStore {
 
     /** Process-local work in progress (the main process runs both); one model at a time. */
     @Volatile var importing: BrainModel? = null; private set
-    @Volatile var importText: String? = null; private set
+    /** The copy's progress (1.1: without a language yet, shown in the menus'). */
+    @Volatile private var importPhrase: Phrase? = null
     @Volatile var verifying: BrainModel? = null; private set
     @Volatile var verifyPercent: Int? = null; private set
     /** 1.0.1: the model moving into internal storage ([moveIn]), and how far. */
@@ -214,9 +220,9 @@ object ModelStore {
             model = m,
             status = status(ctx, m),
             progress = when (m) {
-                importing -> importText?.let { "Copying: $it" }
-                verifying -> verifyPercent?.let { "Checking the file: $it%" }
-                moving -> movePercent?.let { "Moving into Robot's own storage: $it%" }
+                importing -> importPhrase?.let { ctx.getString(R.string.model_copying, it.render(AppLanguage.langs(ctx))) }
+                verifying -> verifyPercent?.let { ctx.getString(R.string.model_checking_percent, it) }
+                moving -> movePercent?.let { ctx.getString(R.string.model_moving_percent, it) }
                 else -> dl?.first
             },
             percent = when (m) {
@@ -255,11 +261,12 @@ object ModelStore {
      * the phone is on Wi-Fi or another unmetered network (1.0, core DownloadPolicy: Robot can't see the network itself).
      */
     fun startDownload(ctx: Context, m: BrainModel, anyNetwork: Boolean = true): String? {
-        val url = m.url ?: return "This one has no download: import your file."
+        val langs = AppLanguage.langs(ctx)
+        val url = m.url ?: return ModelStrings.noDownload().render(langs)
         val existing = (allFiles(ctx, m) + part(ctx, m)).filter { it.isFile }.sumOf { it.length() } + cacheBytes(ctx, m)
         // Voice-model and fast-engine downloads under way still need their space (DownloadManager reserves none).
         val pending = VoiceModelStore.pendingBytes(ctx) + pendingBytes(ctx, except = m) + MtModelStore.pendingBytes(ctx)
-        ModelLogic.refuseDownload(m, status(ctx, m), freeBytes(ctx), existing, pending, busyWith(ctx))?.let { return it }
+        ModelLogic.refuseDownloadText(m, status(ctx, m), freeBytes(ctx), existing, pending, busyWith(ctx))?.let { return it.render(langs) }
         stopMove()
         allFiles(ctx, m).forEach { it.delete() }
         part(ctx, m).delete()
@@ -268,7 +275,7 @@ object ModelStore {
         prefs(ctx).edit().remove(key(m, "bad")).apply()
         val req = DownloadManager.Request(Uri.parse(url))
             .setTitle(m.modelName)
-            .setDescription("Robot's AI model (${ModelLogic.gb(m.bytes)})")
+            .setDescription(ctx.getString(R.string.model_download_description, ModelLogic.gbText(m.bytes).render(langs)))
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
             .setDestinationInExternalFilesDir(ctx, null, m.file)
             .addRequestHeader("User-Agent", DownloadPolicy.userAgent(BuildConfig.VERSION_NAME))
@@ -280,7 +287,7 @@ object ModelStore {
             null
         } catch (t: Throwable) {
             RLog.w("model_download", t)
-            "The download couldn't start."
+            VoiceStrings.downloadCouldntStart().render(langs)
         }
     }
 
@@ -319,16 +326,20 @@ object ModelStore {
             null -> { prefs(ctx).edit().remove(k).apply(); null }
             DownloadManager.STATUS_SUCCESSFUL -> { prefs(ctx).edit().remove(k).apply(); null }
             DownloadManager.STATUS_FAILED -> {
-                prefs(ctx).edit().remove(k).putString(key(m, "last_failure"), ModelLogic.downloadText(m, q.status, q.reason, q.soFar)).apply()
+                // 1.1: kept without a language (PhraseWire), so it shows in the menus' language of the day.
+                prefs(ctx).edit().remove(k).putString(key(m, "last_failure"), PhraseWire.encode(ModelLogic.downloadPhrase(m, q.status, q.reason, q.soFar))).apply()
                 RLog.i("model_download", "op" to RLog.Code("failed"), "model" to RLog.Code(m.id), "reason" to q.reason)
                 null
             }
-            else -> ModelLogic.downloadText(m, q.status, q.reason, q.soFar) to if (q.status == DownloadManager.STATUS_RUNNING) ModelLogic.percent(q.soFar, m.bytes) else -1
+            else -> ModelLogic.downloadPhrase(m, q.status, q.reason, q.soFar).render(AppLanguage.langs(ctx)) to
+                if (q.status == DownloadManager.STATUS_RUNNING) ModelLogic.percent(q.soFar, m.bytes) else -1
         }
     }
 
     /** The last failed download's or copy's explanation (shown until the next attempt). */
+    /** The last download's failure in the menus' language (one kept by 1.0, in English, as it is). */
     fun lastFailure(ctx: Context, m: BrainModel): String? = prefs(ctx).getString(key(m, "last_failure"), null)
+        ?.let { s -> PhraseWire.decode(s)?.render(AppLanguage.langs(ctx)) ?: s }
 
     fun cancelDownload(ctx: Context, m: BrainModel) {
         val k = key(m, "download_id")
@@ -353,7 +364,7 @@ object ModelStore {
     } catch (_: Exception) { null }
         // Shown on the TPU's warning card: no control or invisible formatting characters (a right-to-left override could
         // make "…ldom.litertlm" read as another name).
-        ?.filter { !it.isISOControl() && Character.getType(it) != Character.FORMAT.toInt() }?.take(120)?.ifBlank { null } ?: "your file"
+        ?.filter { !it.isISOControl() && Character.getType(it) != Character.FORMAT.toInt() }?.take(120)?.ifBlank { null } ?: ctx.getString(R.string.model_your_file)
 
     /** The picked file starts like a GGUF file (it needs no room for a cache then); its first bytes only. */
     private fun docIsGguf(ctx: Context, uri: Uri): Boolean = try {
@@ -362,12 +373,12 @@ object ModelStore {
 
     /** Null when an import into [m] may start, else why not. */
     fun refuseImport(ctx: Context, m: BrainModel, uri: Uri): String? {
-        if (loadedNow(ctx) == m) return inUse(m)
+        if (loadedNow(ctx) == m) return inUse(ctx, m)
         val reclaim = (listOf(part(ctx, m)) + allFiles(ctx, m)).filter { it.isFile }.sumOf { it.length() } +
             cacheBytes(ctx, m)
-        return ModelLogic.refuseImport(m, status(ctx, m), docSize(ctx, uri), freeBytes(ctx), reclaim,
+        return ModelLogic.refuseImportText(m, status(ctx, m), docSize(ctx, uri), freeBytes(ctx), reclaim,
             VoiceModelStore.pendingBytes(ctx) + pendingBytes(ctx, except = m) + MtModelStore.pendingBytes(ctx), busyWith(ctx),
-            gguf = m == BrainModel.OWN && docIsGguf(ctx, uri))
+            gguf = m == BrainModel.OWN && docIsGguf(ctx, uri))?.render(AppLanguage.langs(ctx))
     }
 
     /**
@@ -378,7 +389,7 @@ object ModelStore {
     fun import(ctx: Context, m: BrainModel, uri: Uri): String? {
         refuseImport(ctx, m, uri)?.let { return it }
         importing = m
-        importText = "Starting"
+        importPhrase = ModelStrings.starting()
         val part = part(ctx, m)
         val total = if (m.builtIn) m.bytes else docSize(ctx, uri)
         try {
@@ -410,36 +421,37 @@ object ModelStore {
                             val free = freeBytes(ctx)
                             if (free in 0 until BrainModel.HEADROOM / 2) {
                                 part.delete()
-                                return "The phone ran out of free space while copying (${ModelLogic.gb(done)} copied)."
+                                return ctx.getString(R.string.model_out_of_space, ModelLogic.gbText(done).render(AppLanguage.langs(ctx)))
                             }
                         }
-                        importText = if (total > 0) "${ModelLogic.gb(done)} of ${ModelLogic.gb(total)} (${ModelLogic.percent(done, total)}%)" else ModelLogic.gb(done)
+                        importPhrase = if (total > 0) ModelStrings.progress("done" to ModelLogic.gbText(done), "total" to ModelLogic.gbText(total),
+                            "percent" to ModelLogic.percent(done, total).toString()) else ModelLogic.gbText(done)
                     }
                     out.fd.sync()
                 }
             }
             if (m.builtIn && done != m.bytes) {
                 part.delete()
-                return "That file isn't the model: its size is wrong."
+                return ctx.getString(R.string.model_wrong_size)
             }
             if (done < ModelLogic.OWN_MIN_BYTES) {
                 part.delete()
-                return "That file is too small to be a model."
+                return ctx.getString(R.string.model_too_small)
             }
             // Your own file goes where its kind of file goes (its first bytes say which, never its name).
             val target = if (m == BrainModel.OWN) File(dir(ctx), ModelFiles.ownFile(formatOf(part) ?: ModelFormat.LITERT_LM)) else File(dir(ctx), m.file)
             if (!part.renameTo(target)) {
                 part.delete()
-                return "Couldn't move the copied file into place."
+                return ctx.getString(R.string.model_cant_move)
             }
             RLog.i("model_import", "ok" to true, "model" to RLog.Code(m.id), "format" to (if (m == BrainModel.OWN) formatOf(target) else ModelFormat.LITERT_LM))
             return null
         } catch (t: Throwable) {
             part.delete()
             RLog.w("model_import", t)
-            return "The copy failed (${t.javaClass.simpleName})."
+            return ctx.getString(R.string.model_copy_failed, t.javaClass.simpleName)
         } finally {
-            importText = null
+            importPhrase = null
             importing = null
         }
     }
@@ -491,7 +503,7 @@ object ModelStore {
                 val before = own(ctx)
                 // A TPU allowed for this very file (same SHA-256) stays allowed; anything else asks again.
                 val allowed = gguf == null && before != null && before.sha256 == sha && before.tpuAllowed && report.tensorBuild != null
-                val name = prefs(ctx).getString(OWN_NAME, null) ?: before?.name ?: "your file"
+                val name = prefs(ctx).getString(OWN_NAME, null) ?: before?.name ?: ctx.getString(R.string.model_your_file)
                 val record = OwnModel(name, total, sha, fp, report, allowed, System.currentTimeMillis(), gguf)
                 writeAtomic(ownRecord(ctx), record.toJson().toString())
                 // The record names the inside copy now (the same bytes): the outside one goes.
@@ -591,11 +603,11 @@ object ModelStore {
         return names.none { File(outsideDir, it).exists() }
     }
 
-    private fun inUse(m: BrainModel) = "Robot has “${m.title}” loaded right now. Choose another model first: Robot lets go of it right away, then try again."
+    private fun inUse(ctx: Context, m: BrainModel) = ctx.getString(R.string.model_in_use, m.titleText.render(AppLanguage.langs(ctx)))
 
     /** Null when [m]'s file, cache, marks and download are gone, else why not: never the model in memory. */
     fun delete(ctx: Context, m: BrainModel): String? {
-        if (loadedNow(ctx) == m) return inUse(m)
+        if (loadedNow(ctx) == m) return inUse(ctx, m)
         cancelDownload(ctx, m)
         stopMove()
         prefs(ctx).edit().remove(key(m, "download_id")).remove(key(m, "bad")).remove(key(m, "last_failure")).apply()
@@ -616,5 +628,5 @@ object ModelStore {
     private const val OWN_NAME = "own_name"
 
     /** Neither kind of model file Robot reads, by its first bytes. */
-    private val NOT_A_MODEL = app.heyrobot.core.LiteRtLmReport(readable = false, problem = "It isn't a model file Robot can read (a .litertlm or .gguf file).")
+    private val NOT_A_MODEL = app.heyrobot.core.LiteRtLmReport(readable = false, problemText = ModelStrings.notAModel())
 }

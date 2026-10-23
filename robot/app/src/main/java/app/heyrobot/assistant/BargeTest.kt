@@ -15,6 +15,9 @@ import app.heyrobot.core.VoiceLog
 import app.heyrobot.core.writeAtomic
 import app.heyrobot.sys.Paths
 import app.heyrobot.voice.VoiceOutput
+import app.heyrobot.core.i18n.PanelStrings
+import app.heyrobot.core.i18n.UiLabel
+import app.heyrobot.core.i18n.UiStrings
 
 // VOICE PROCESS. Settings › Voice › "Barge-in test" (0.2.3): Robot reads a fixed paragraph of about 20 s with no word
 // like "stop" and no wake phrase, and the user says "stop" or a wake phrase at any point; the result says whether
@@ -44,12 +47,12 @@ object BargeTest {
             hub.settings.playback, count = run == BargeRun.COUNT, tricky = run == BargeRun.TRICKY, interrupt = hub.interruptInUse)
         val l = hub.listener
         if (l == null || !l.running || !l.wakeWordLoaded) {
-            write(base.copy(state = BenchState.FAILED, note = "Robot isn't listening for wake words right now. Turn the wake word on (Settings › Voice) " +
-                "and check Assistant setup, then try again."))
+            write(base.copy(state = BenchState.FAILED).withNote(PanelStrings.bargeNotListening("page" to UiStrings.inSettings(UiStrings.voice),
+                "setup" to UiLabel(UiStrings.assistantSetup))))
             return
         }
         if (PanelController.shown) {
-            write(base.copy(state = BenchState.FAILED, note = "Close Robot's panel first, then start the test from here."))
+            write(base.copy(state = BenchState.FAILED).withNote(PanelStrings.bargeClosePanel()))
             return
         }
         hub.stopVoice(TtsStop.TEST)
@@ -137,7 +140,8 @@ object BargeTest {
         VoiceHub.main.removeCallbacks(timeout)
         var res = (r ?: return).copy(mic = lastMic, aec = lastAec)
         res = when {
-            timedOut && speakStartE == 0L -> res.copy(state = BenchState.FAILED, note = "Robot's voice didn't start. Check Settings › Voice › Test the voice.")
+            timedOut && speakStartE == 0L -> res.copy(state = BenchState.FAILED).withNote(PanelStrings.bargeNoVoice("page" to UiStrings.inSettings(UiStrings.voice,
+                UiStrings.testTheVoice)))
             timedOut -> res.copy(state = BenchState.DONE, note = "", spokeMs = SystemClock.elapsedRealtime() - speakStartE)
             else -> res.copy(state = BenchState.DONE, note = "")
         }

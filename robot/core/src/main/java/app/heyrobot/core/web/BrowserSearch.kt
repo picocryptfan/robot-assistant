@@ -5,6 +5,7 @@ import app.heyrobot.core.ActionStatus
 import app.heyrobot.core.AskWhy
 import app.heyrobot.core.BrowserSearchAction
 import app.heyrobot.core.Prepared
+import app.heyrobot.core.i18n.Phrase
 
 // Pure. 1.0: a search in your browser (Engines.kt). Your own words in a phrase that names an engine or your browser
 // ("search DuckDuckGo for …", "look up … on Google", « cherche sur Startpage … », « cherche … dans mon navigateur ») open
@@ -200,9 +201,13 @@ object BrowserGate {
         val engine = engine(a, said, default)
         if (own(a, said, default)) return Prepared.Ready(a.copy(query = norm(a.query), engine = engine, own = true))
         return when (val v = QueryCheck.check(a.query, ctx)) {
-            is QueryVerdict.Refuse -> Prepared.Refused(ActionStatus.FAILED, v.why.text)
-            is QueryVerdict.Card -> Prepared.Ready(a.copy(query = v.query, engine = engine), why = setOf(if (v.why.tapOnly) AskWhy.SEARCH_PERSONAL else AskWhy.SEARCH),
-                note = listOfNotNull(v.why.note, note(engine)).joinToString(" "))
+            is QueryVerdict.Refuse -> Prepared.Refused(ActionStatus.FAILED, v.why.textPhrase)
+            is QueryVerdict.Card -> {
+                // 1.1: QueryCheck's line in the reply language, the app's line ([note]) as the app wrote it.
+                val text = Phrase.Join(listOfNotNull(v.why.noteText, note(engine)?.let(Phrase::plain)))
+                Prepared.Ready(a.copy(query = v.query, engine = engine), why = setOf(if (v.why.tapOnly) AskWhy.SEARCH_PERSONAL else AskWhy.SEARCH),
+                    note = text.en(), noteText = text)
+            }
             is QueryVerdict.Send -> Prepared.Ready(a.copy(query = v.query, engine = engine), why = setOf(AskWhy.SEARCH), note = note(engine))
         }
     }

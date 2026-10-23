@@ -3,7 +3,6 @@ package app.heyrobot.voice
 
 import android.content.Context
 import android.media.AudioFormat
-import android.media.AudioManager
 import android.media.AudioTrack
 import android.os.Handler
 import android.os.Looper
@@ -25,7 +24,7 @@ import java.util.concurrent.Callable
 import java.util.concurrent.Executors
 
 // VOICE PROCESS ONLY, :voice module only (sherpa-onnx). Replies read aloud by Kokoro v1.0 fp32 (af_heart, or
-// ff_siwis for French later) or Kitten nano 0.8 fp32 (docs/voice-plan.md 4.8-4.9). Pieces of text are queued as
+// ff_siwis for French replies) or Kitten nano 0.8 fp32 (docs/voice-plan.md 4.8-4.9). Pieces of text are queued as
 // the reply streams (the panel's SentenceSplitter makes the first one short); one "robot-tts" thread synthesises
 // them in order, sentence by sentence (sherpa calls back once per sentence), and writes the audio into a
 // streaming AudioTrack (assistant usage, speech content; or voice-communication usage with "Call audio", CallAudio)
@@ -45,14 +44,12 @@ class SherpaTextToSpeech internal constructor(
 
     private val worker = Executors.newSingleThreadExecutor { r -> Thread(r, "robot-tts") }
     private val main = Handler(Looper.getMainLooper())
-    private val audio = ctx.getSystemService(AudioManager::class.java)
     @Volatile private var playback = Playback.ASSISTANT
-    /** The playback the current [track] was built with, and the focus request of the speaking run. */
+    /** The playback the current [track] was built with. */
     private var trackPlayback = Playback.ASSISTANT
     /** 0.8: a headset or car session's pin ([setPin]), and the one the current [track] was built with. */
     @Volatile private var pin: OutputPin? = null
     private var trackPin: OutputPin? = null
-    private var focus = CallAudio.focus(Playback.ASSISTANT)
     private var runPlayback = Playback.ASSISTANT
 
     /** Guards the queue, [speaking], [pumping] and the run statistics. Taken before [trackLock], never after. */
@@ -161,10 +158,10 @@ class SherpaTextToSpeech internal constructor(
                 // A run keeps the playback it started with (the track is rebuilt for the next one if it changed); call
                 // audio only if the phone isn't in another app's call.
                 runPlayback = if (playback == Playback.CALL && CallAudio.begin(ctx, this)) Playback.CALL else Playback.ASSISTANT
-                focus = CallAudio.focus(runPlayback)
-                audio.requestAudioFocus(focus)
+                // 1.1: inside a question's focus (TurnFocus) this changes nothing; outside one it ducks or pauses other sound.
+                TurnFocus.speaking(ctx, this, runPlayback, true)
             } else {
-                audio.abandonAudioFocusRequest(focus)
+                TurnFocus.speaking(ctx, this, runPlayback, false)
                 CallAudio.end(ctx, this)
             }
         } catch (_: Throwable) {}
@@ -239,9 +236,11 @@ class SherpaTextToSpeech internal constructor(
         val t = ensureTrack(tts.sampleRate()) ?: return fallBack(item, c, "track")
         val t0 = SystemClock.elapsedRealtime()
         val start = synchronized(trackLock) { written }
-        echo.open(start, item.text)
+        // Clock times as espeak must get them in this piece's language: the model's « 12:30 », Robot's English "7:02".
+        val text = PieceText.of(item.text, item.speaker, item.lang, c.lang)
+        echo.open(start, text)
         var frames = 0L
-        val ok = generate(tts, item.text, generation(c, item.speaker, item.lang)) { samples ->
+        val ok = generate(tts, text, generation(c, item.speaker, item.lang)) { samples ->
             if (frames == 0L) synchronized(stateLock) {
                 if (firstAudioMs < 0 && item.gen == gen) firstAudioMs = SystemClock.elapsedRealtime() - runStart
             }
@@ -266,7 +265,7 @@ class SherpaTextToSpeech internal constructor(
             queue.clear()
             // Quietly: VoiceOutput carries on with the phone's voice, so the panel stays "speaking".
             speaking = false
-            try { audio.abandonAudioFocusRequest(focus) } catch (_: Throwable) {}
+            try { TurnFocus.speaking(ctx, this, runPlayback, false) } catch (_: Throwable) {}
             CallAudio.end(ctx, this)
             r
         }
@@ -282,7 +281,8 @@ class SherpaTextToSpeech internal constructor(
     private fun generate(tts: OfflineTts, text: String, config: GenerationConfig, sink: TtsSink): Boolean {
         val cb = TtsCallback(sink)
         val ok = try {
-            tts.generateWithConfigAndCallback(text, config, cb)
+            // The last step before espeak-ng: no control character, whatever came before (core SpeechText.forEngine).
+            tts.generateWithConfigAndCallback(SpeechText.forEngine(text), config, cb)
             true
         } catch (e: Throwable) {
             RLog.w("tts_generate", e)

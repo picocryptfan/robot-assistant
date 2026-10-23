@@ -119,7 +119,7 @@ class MessagesLink(ctx: Context) : AutoCloseable {
     suspend fun unread(): UnreadCount? = ask(MessagesProtocol.REQ_UNREAD, null)?.let(MessageUnread::fromJson)
 
     /** "Always for Mom": the main process keeps it in messages.json. */
-    suspend fun replyLang(person: String, lang: app.heyrobot.core.messages.Lang?): Boolean =
+    suspend fun replyLang(person: String, lang: app.heyrobot.core.i18n.Lang?): Boolean =
         MessageWire.ok(ask(MessagesProtocol.REQ_REPLY_LANG, MessageWire.replyLang(person, lang)))
 
     override fun close() {

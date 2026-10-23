@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.Lang
 import app.heyrobot.core.output.OutputContext
 import app.heyrobot.core.output.OutputDecision
 import app.heyrobot.core.output.OutputGuard
@@ -15,6 +16,12 @@ import app.heyrobot.core.output.SpeechClass
 import app.heyrobot.core.output.SpeechSource
 import app.heyrobot.core.output.Trust
 import app.heyrobot.core.output.Utterance
+import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.i18n.Msg
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.RoutineStrings
+import app.heyrobot.core.i18n.UiLabel
+import app.heyrobot.core.i18n.UiStrings
 import org.json.JSONObject
 import java.time.Instant
 import java.time.LocalDateTime
@@ -37,7 +44,7 @@ import java.util.Locale
  */
 object BriefRoutine {
     const val ID = "morning-brief"
-    const val NAME = "Morning brief"
+    const val NAME = "Morning brief" // l10n: not text (the built-in routine's saved name; shown as RoutineStrings.morningBrief, RoutineTexts.name)
 
     fun of(rs: RoutineSettings): Routine {
         val trigger = when (val t = rs.briefTrigger) {
@@ -49,8 +56,12 @@ object BriefRoutine {
     }
 
     /** Settings' choices for when the brief runs. */
-    enum class When(val title: String) {
-        ALARM("When I turn off my alarm"), TIME("At a time"), UNLOCK("At the first unlock"), ASKED("Only when I ask");
+    enum class When(private val msg: Msg) {
+        ALARM(RoutineStrings.whenAlarm), TIME(RoutineStrings.whenTime), UNLOCK(RoutineStrings.whenUnlock), ASKED(RoutineStrings.whenAsked);
+
+        /** 1.1: Settings' words without a language yet; [title] is their English. */
+        val text: Phrase get() = msg()
+        val title: String get() = text.en()
 
         companion object {
             fun of(t: RoutineTrigger): When = when (t) {
@@ -131,20 +142,23 @@ object RoutinePlan {
      * The sentence a run says about a step that didn't run as itself, or null: skipped weather ("Weather skipped: routines
      * may not go online."). A step on a Ready card or waiting for the unlock is said once at the end ([closing]).
      */
-    fun skipLine(go: StepGo, step: RoutineStep, lang: BriefLang): String? = when {
+    fun skipLine(go: StepGo, step: RoutineStep, lang: Lang): String? = skipText(go, step)?.let { BriefComposer.shown(it, lang) }
+
+    /** 1.1: [skipLine] without a language yet. */
+    fun skipText(go: StepGo, step: RoutineStep): Phrase? = when {
         step.online == null -> null
-        go == StepGo.SKIP_OFFLINE -> BriefComposer.missingText(BriefWeatherMissing.NOT_ONLINE, lang)
-        go == StepGo.SKIP_NO_CONSENT -> if (lang == BriefLang.EN) "Weather skipped: this routine's card didn't list it." else "Météo sautée : la carte de cette routine ne l'indiquait pas."
+        go == StepGo.SKIP_OFFLINE -> BriefComposer.missingPhrase(BriefWeatherMissing.NOT_ONLINE)
+        go == StepGo.SKIP_NO_CONSENT -> RoutineStrings.skippedNoConsent()
         else -> null
     }
 
     /** What a run that left things for you says last: "1 thing is ready for you on the phone." and "Unlock to hear the rest." */
-    fun closing(ready: Int, waiting: Int, lang: BriefLang): List<String> = listOfNotNull(
-        ready.takeIf { it > 0 }?.let {
-            if (lang == BriefLang.EN) (if (it == 1) "1 thing is ready for you on the phone." else "$it things are ready for you on the phone.")
-            else (if (it == 1) "1 chose t'attend sur le téléphone." else "$it choses t'attendent sur le téléphone.")
-        },
-        waiting.takeIf { it > 0 }?.let { if (lang == BriefLang.EN) "Unlock to hear the rest." else "Déverrouille pour entendre le reste." },
+    fun closing(ready: Int, waiting: Int, lang: Lang): List<String> = closingText(ready, waiting).map { BriefComposer.shown(it, lang) }
+
+    /** 1.1: [closing] without a language yet. */
+    fun closingText(ready: Int, waiting: Int): List<Phrase> = listOfNotNull(
+        ready.takeIf { it > 0 }?.let { RoutineStrings.readyOnPhone(it) },
+        waiting.takeIf { it > 0 }?.let { RoutineStrings.unlockRest() },
     )
 }
 
@@ -154,8 +168,11 @@ object RoutinePlan {
  * One piece of a run's speech that "next", "skip" and "repeat" move by: a brief item (the weather, the calendar), or one
  * step's result. [personal]: OutputGuard's class (a calendar title, a note, a place).
  */
-data class SpokenPart(val lines: List<String>, val personal: Boolean, val code: StepCode, val item: BriefItem? = null) {
+data class SpokenPart(val lines: List<String>, val personal: Boolean, val code: StepCode, val item: BriefItem? = null,
+    /** 1.1: [lines] as the screen shows them (French with its no-break spaces); the voice says [lines]. */
+    val shown: List<String> = lines) {
     val text: String get() = lines.joinToString(" ")
+    val shownText: String get() = shown.joinToString(" ")
     val chars: Int get() = text.length
 }
 
@@ -188,8 +205,9 @@ object BriefParts {
         val out = mutableListOf<SpokenPart>()
         for (l in lines) {
             val last = out.lastOrNull()
-            if (last != null && l.item != null && last.item == l.item) out[out.lastIndex] = last.copy(lines = last.lines + l.text, personal = last.personal || l.personal)
-            else out += SpokenPart(listOf(l.text), l.personal, StepCode.BRIEF, l.item)
+            if (last != null && l.item != null && last.item == l.item) {
+                out[out.lastIndex] = last.copy(lines = last.lines + l.text, shown = last.shown + l.shown, personal = last.personal || l.personal)
+            } else out += SpokenPart(listOf(l.text), l.personal, StepCode.BRIEF, l.item, listOf(l.shown))
         }
         return out
     }
@@ -232,7 +250,7 @@ object RoutineCatchUp {
     fun fired(scheduledAt: Long, now: ZonedDateTime): MissedRun = RoutineSchedule.missed(Instant.ofEpochMilli(scheduledAt).atZone(now.zone), now)
 }
 
-/** What :voice listens for, so nothing is registered that no routine uses (design §2.7). */
+/** What :voice listens for, so nothing is registered that no routine uses. */
 object TriggerNeeds {
     /**
      * The trigger kinds the enabled [routines] wait for; [waitingForUnlock]: a held part or a run waits for the unlock, so
@@ -329,7 +347,11 @@ object RoutineOutputs {
 /** A routine phrase the panel handled, for the voice log (150 ROUTINE_COMMAND, a). */
 enum class RoutineCommandCode(override val id: Int, override val title: String) : LogCode {
     BRIEF_NOW(1, "the brief now"), CREATE(2, "make a routine"), RUN(3, "run a routine"), LIST(4, "list the routines"),
-    DELETE(5, "delete a routine"), REMIND(6, "a brief reminder");
+    DELETE(5, "delete a routine"), REMIND(6, "a brief reminder"), REMIND_ON(7, "a dated reminder"),
+    /** 1.1: "remind me about it", nothing to remind and no time: Robot asked what and when. */
+    REMIND_WHAT(8, "a reminder with nothing to remind"),
+    /** 1.1: "cancel my alarm": Robot can't, and offered the clock app. */
+    CANT_CANCEL(9, "an alarm or timer to cancel");
 
     companion object {
         fun of(c: RoutineCommand): RoutineCommandCode = when (c) {
@@ -339,6 +361,9 @@ enum class RoutineCommandCode(override val id: Int, override val title: String) 
             RoutineCommand.ListAll -> LIST
             is RoutineCommand.Delete -> DELETE
             is RoutineCommand.Remind -> REMIND
+            is RoutineCommand.RemindOn -> REMIND_ON
+            RoutineCommand.RemindWhat -> REMIND_WHAT
+            is RoutineCommand.CantCancel -> CANT_CANCEL
         }
     }
 }
@@ -353,26 +378,34 @@ enum class SpeechWay(override val id: Int, override val title: String) : LogCode
 // ---------------------------------------------------------------------------------------------- the editor
 
 /**
- * The steps Settings › Routines' editor offers (design §2.3 "Do"), each one of Robot's tools with its one argument, or a
+ * The steps Settings › Routines' editor offers, each one of Robot's tools with its one argument, or a
  * routine-only step. Texts, emails and new events come from routines made by voice (two arguments each); never
  * freeing memory or storage or asking a helper.
  */
-enum class StepChoice(val title: String, val field: String? = null, val hint: String? = null) {
-    BRIEF("Read your morning brief"),
-    SAY("Say a sentence", "What Robot says", "One line, up to ${RoutineCheck.MAX_SAY} characters."),
-    REMINDERS("Read your brief reminders"),
-    WEATHER("Tell the weather here today"),
-    CALENDAR("Read today's calendar"),
-    PHONE("Say the phone's status"),
-    NOTES("Find notes", "Words to look for", null),
-    TIMER("Set a timer", "Minutes", "1 to 1440."),
-    ALARM("Set an alarm", "Time", "As 06:30, on a 24-hour clock."),
-    FLASH_ON("Turn the flashlight on"),
-    FLASH_OFF("Turn the flashlight off"),
-    NOTE("Add a note", "The note's text", null),
-    OPEN_APP("Open an app", "The app's name", "It waits for you: a Ready card you tap."),
-    MAPS_SEARCH("Search Organic Maps", "What to search for", "It waits for you: a Ready card you tap."),
-    MAPS_NAVIGATE("Directions in Organic Maps", "Where to", "It waits for you: a Ready card you tap.");
+enum class StepChoice(private val titleMsg: Msg, private val fieldMsg: Msg? = null, private val hintMsg: Msg? = null) {
+    BRIEF(RoutineStrings.stepBrief),
+    SAY(RoutineStrings.chooseSay, RoutineStrings.fieldSay, RoutineStrings.hintSay),
+    REMINDERS(RoutineStrings.stepReminders),
+    WEATHER(RoutineStrings.chooseWeather),
+    CALENDAR(RoutineStrings.chooseCalendar),
+    PHONE(RoutineStrings.choosePhone),
+    NOTES(RoutineStrings.chooseNotes, RoutineStrings.fieldNotes, null),
+    TIMER(RoutineStrings.chooseTimer, RoutineStrings.fieldTimer, RoutineStrings.hintTimer),
+    ALARM(RoutineStrings.chooseAlarm, RoutineStrings.fieldAlarm, RoutineStrings.hintAlarm),
+    FLASH_ON(RoutineStrings.chooseFlashOn),
+    FLASH_OFF(RoutineStrings.chooseFlashOff),
+    NOTE(RoutineStrings.chooseNote, RoutineStrings.fieldNote, null),
+    OPEN_APP(RoutineStrings.chooseOpenApp, RoutineStrings.fieldOpenApp, RoutineStrings.hintReady),
+    MAPS_SEARCH(RoutineStrings.chooseMapsSearch, RoutineStrings.fieldMapsSearch, RoutineStrings.hintReady),
+    MAPS_NAVIGATE(RoutineStrings.chooseMapsNavigate, RoutineStrings.fieldMapsNavigate, RoutineStrings.hintReady);
+
+    /** 1.1: the editor's words without a language yet; [title], [field] and [hint] are their English. */
+    val titleText: Phrase get() = titleMsg()
+    val fieldText: Phrase? get() = fieldMsg?.invoke()
+    val hintText: Phrase? get() = hintMsg?.invoke("max" to RoutineCheck.MAX_SAY)
+    val title: String get() = titleText.en()
+    val field: String? get() = fieldText?.en()
+    val hint: String? get() = hintText?.en()
 
     /** The step for [arg] (what was typed, when [field] asks for something), or null when it can't be used. */
     fun build(arg: String? = null): RoutineStep? {
@@ -400,12 +433,12 @@ enum class StepChoice(val title: String, val field: String? = null, val hint: St
     }
 
     /** What is wrong with [arg], in a line for the edit dialog; null when it can be used. */
-    fun problem(arg: String?): String? = if (build(arg) != null) null else when {
-        arg.isNullOrBlank() -> "Type ${field?.replaceFirstChar { it.lowercase(Locale.ROOT) } ?: "something"}."
-        this == TIMER -> "A number of minutes, 1 to 1440."
-        this == ALARM -> "A time such as 06:30."
-        this == SAY -> "One line, up to ${RoutineCheck.MAX_SAY} characters."
-        else -> "Robot can't use that."
+    fun problem(arg: String?, l: Langs = Langs.EN): String? = if (build(arg) != null) null else when {
+        arg.isNullOrBlank() -> RoutineStrings.typeField("what" to (fieldText?.render(l)?.replaceFirstChar { it.lowercase(Locale.ROOT) } ?: RoutineStrings.something().render(l))).render(l)
+        this == TIMER -> RoutineStrings.problemTimer().render(l)
+        this == ALARM -> RoutineStrings.problemAlarm().render(l)
+        this == SAY -> RoutineStrings.hintSay("max" to RoutineCheck.MAX_SAY).render(l)
+        else -> RoutineStrings.problemUnusable().render(l)
     }
 
     /** "runs by itself", "waits for you", and "goes online: Open-Meteo (the weather)" for the weather. */
@@ -415,7 +448,7 @@ enum class StepChoice(val title: String, val field: String? = null, val hint: St
     fun sample(): RoutineStep = build(when (this) { TIMER -> "5"; ALARM -> "07:00"; else -> "x" })!!
 
     companion object {
-        fun badge(s: RoutineStep): String = RoutineGate.classOf(s).badge + (s.online?.let { " · goes online: ${it.title}" } ?: "")
+        fun badge(s: RoutineStep): String = RoutineCards.badgeText(s).en()
 
         private fun tool(t: ToolName, args: Map<String, Any?>): RoutineStep? = when (val p = ToolCalls.parse(RawToolCall(t.id, args))) {
             is ParsedCall.Ok -> RoutineStep.Tool(p.action).takeIf { RoutineCodec.readBack(it) == it }
@@ -427,51 +460,91 @@ enum class StepChoice(val title: String, val field: String? = null, val hint: St
 // ---------------------------------------------------------------------------------------------- words
 
 object RoutineTexts {
-    private fun hm(t: LocalTime) = String.format(Locale.US, "%02d:%02d", t.hour, t.minute)
+    /** A routine's name as shown: yours as you wrote it; the built-in brief's in the reader's language (« Résumé du matin »). */
+    fun name(id: String, name: String): Phrase = if (id == BriefRoutine.ID) RoutineStrings.morningBrief() else Phrase.plain(name)
+
+    fun name(r: Routine): Phrase = name(r.id, r.name)
+
+    /** "a; b; c", French with its narrow space before each ";" (one entry per pair). */
+    fun semicolons(items: List<Phrase>): Phrase = items.reduce { a, b -> RoutineStrings.semicolon("a" to a, "b" to b) }
+
+    private fun cap(s: String) = s.replaceFirstChar { it.uppercase() }
 
     /** A routine's row: "every weekday at 07:00 · 2 steps", "only when you ask · 1 step · off". */
-    fun row(r: Routine): String = RoutineCards.whenText(r).replaceFirstChar { it.uppercase() } + " · " +
-        (if (r.steps.size == 1) "1 step" else "${r.steps.size} steps") + if (r.enabled) "" else " · off"
+    fun row(r: Routine, l: Langs = Langs.EN): String {
+        val args = arrayOf<Pair<String, Any?>>("when" to cap(RoutineCards.whenPhrase(r).render(l)), "steps" to RoutineStrings.steps(r.steps.size))
+        return (if (r.enabled) RoutineStrings.row(*args) else RoutineStrings.rowOff(*args)).render(l)
+    }
+
+    /** [row]'s first part: "Every weekday at 07:00", capitalised. */
+    fun whenRow(r: Routine, l: Langs = Langs.EN): String = cap(RoutineCards.whenPhrase(r).render(l))
 
     /** "Last run: today 06:47 · an alarm turned off · 1 step, 1 ready", "Not run yet". */
-    fun lastRun(rec: RunRecord?, now: ZonedDateTime): String {
-        rec ?: return "Not run yet"
+    fun lastRun(rec: RunRecord?, now: ZonedDateTime, l: Langs = Langs.EN): String =
+        (lastRunDetail(rec, now)?.let { RoutineStrings.lastRun("run" to it) } ?: RoutineStrings.notRunYet()).render(l)
+
+    /** [lastRun] without "Last run:", for a row titled so; "Not run yet" when it never ran. */
+    fun lastRunShort(rec: RunRecord?, now: ZonedDateTime, l: Langs = Langs.EN): String = (lastRunDetail(rec, now) ?: RoutineStrings.notRunYet()).render(l)
+
+    private fun lastRunDetail(rec: RunRecord?, now: ZonedDateTime): Phrase? {
+        rec ?: return null
         val at = Instant.ofEpochMilli(rec.at).atZone(now.zone)
-        val day = when (at.toLocalDate()) {
-            now.toLocalDate() -> "today"
-            now.toLocalDate().minusDays(1) -> "yesterday"
-            else -> BriefClock.dateEn(at.toLocalDate())
+        val day: Any = when (at.toLocalDate()) {
+            now.toLocalDate() -> RoutineStrings.today()
+            now.toLocalDate().minusDays(1) -> RoutineStrings.yesterday()
+            else -> at.toLocalDate()
         }
-        val extra = listOfNotNull(rec.ready.takeIf { it > 0 }?.let { "$it ready" }, rec.held.takeIf { it > 0 }?.let { "$it waited for the unlock" })
-        return "Last run: $day ${hm(at.toLocalTime())} · ${rec.kind.title} · " + (if (rec.steps == 1) "1 step" else "${rec.steps} steps") +
-            (if (extra.isEmpty()) "" else ", " + extra.joinToString(", "))
+        val counts = listOfNotNull(RoutineStrings.steps(rec.steps), rec.ready.takeIf { it > 0 }?.let { RoutineStrings.nReady(it) },
+            rec.held.takeIf { it > 0 }?.let { RoutineStrings.nWaitedUnlock(it) })
+        return RoutineStrings.run("day" to day, "time" to EventText.clock(at.hour, at.minute), "kind" to kind(rec.kind), "counts" to Phrase.Join(counts, ", "))
+    }
+
+    /** What started a run, as Settings names it ("an alarm turned off"); the voice log keeps [TriggerKind.title]. */
+    fun kind(k: TriggerKind): Phrase = when (k) {
+        TriggerKind.TIME -> RoutineStrings.kindTime()
+        TriggerKind.ALARM -> RoutineStrings.kindAlarm()
+        TriggerKind.UNLOCK -> RoutineStrings.kindUnlock()
+        TriggerKind.DEVICE -> RoutineStrings.kindDevice()
+        TriggerKind.CHARGING -> RoutineStrings.kindCharging()
+        TriggerKind.ASKED -> RoutineStrings.kindAsked()
     }
 
     /** The speaking notification's title. */
-    fun speaking(r: Routine): String = if (r.id == BriefRoutine.ID || r.steps == listOf(RoutineStep.Brief)) "Robot is reading your morning brief" else "Robot is running “${r.name}”"
+    fun speaking(r: Routine): String = speakingText(r).en()
+
+    fun speakingText(r: Routine): Phrase =
+        if (r.id == BriefRoutine.ID || r.steps == listOf(RoutineStep.Brief)) RoutineStrings.readingBrief() else RoutineStrings.running("name" to r.name)
 
     /** On the lock screen (the notification's public version): nothing about which routine. */
-    const val SPEAKING_PUBLIC = "Robot is speaking"
+    val SPEAKING_PUBLIC: String get() = RoutineStrings.speaking().en()
 
     /** Android didn't let Robot speak by itself: a tap does. */
-    fun readyToPlay(r: Routine): String = if (r.id == BriefRoutine.ID) "Morning brief ready" else "“${r.name}” is ready"
+    fun readyToPlay(r: Routine): String = readyToPlayText(r).en()
 
-    const val PLAY_TEXT = "Tap Play to hear it."
-    const val CONTINUE = "Continue your brief"
-    const val CONTINUE_TEXT = "Unlocked: tap to hear the rest."
+    fun readyToPlayText(r: Routine): Phrase = if (r.id == BriefRoutine.ID) RoutineStrings.briefReady() else RoutineStrings.isReady("name" to r.name)
+
+    val PLAY_TEXT: String get() = playText.en()
+    /** "Tap Play to hear it." (the notification's button, in the menus' language). */
+    val playText: Phrase get() = RoutineStrings.tapPlay("play" to UiLabel(UiStrings.play))
+    val CONTINUE: String get() = RoutineStrings.continueBrief().en()
+    val CONTINUE_TEXT: String get() = RoutineStrings.continueText().en()
 
     /** Robot isn't the assistant, so it can't speak: "Your morning brief is ready · Open Robot". */
-    fun notAssistant(r: Routine): String = if (r.id == BriefRoutine.ID) "Your morning brief is ready" else "Your “${r.name}” routine is ready"
-    const val NOT_ASSISTANT_TEXT = "Robot isn't your digital assistant right now, so it can't speak. Open Robot to set it up."
+    fun notAssistant(r: Routine): String = notAssistantText(r).en()
+
+    fun notAssistantText(r: Routine): Phrase = if (r.id == BriefRoutine.ID) RoutineStrings.briefIsReady() else RoutineStrings.routineIsReady("name" to r.name)
+    val NOT_ASSISTANT_TEXT: String get() = RoutineStrings.notAssistant().en()
 
     /** "Don't speak": what the run would have said, in a notification. */
-    fun silentTitle(r: Routine): String = "Ran “${r.name}”"
+    fun silentTitle(r: Routine): String = silentTitleText(r).en()
+
+    fun silentTitleText(r: Routine): Phrase = RoutineStrings.ran("name" to name(r))
 
     /** Settings › Routines' warnings. */
-    const val NEEDS_ASSISTANT = "Routines need Robot as the digital assistant."
-    const val NOT_LOCKED = "Routines don't run while the phone is locked: they wait for the unlock."
-    const val DAMAGED = "Robot can't read your routines file. Nothing runs until you start over; the file is kept aside."
-    const val TOO_NEW = "Your routines were saved by a newer Robot. Update Robot to use them."
+    val NEEDS_ASSISTANT: String get() = RoutineStrings.needsAssistant().en()
+    val NOT_LOCKED: String get() = RoutineStrings.notLocked().en()
+    val DAMAGED: String get() = RoutineStrings.damaged().en()
+    val TOO_NEW: String get() = RoutineStrings.tooNew().en()
 }
 
 // ---------------------------------------------------------------------------------------------- the editor's draft

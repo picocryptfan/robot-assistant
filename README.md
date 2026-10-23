@@ -23,7 +23,7 @@ crash reporting.
 | Pixel 10, 10 Pro, 10 Pro XL and 10 Pro Fold (Tensor G5) with GrapheneOS | Robot's fast model (Gemma 4 E2B) runs on the Tensor G5's TPU. I test on the Pixel 10 Pro; the others have the same chip, and I haven't tried them. |
 | Other Pixels (Pixel 6 to 9 and their a models, the 10a, Fold and Tablet: Tensor G1 to G4) | The same model runs on the CPU or GPU. It works, more slowly. I've tested these phones less. The 10a has a Tensor G4, so it is in this row. |
 | Pixel 11 (Tensor G6) | The TPU build is in beta. |
-| Snapdragon and other Android phones | Planned, after the Pixels. Other Android builds are untested for now. |
+| Samsung Galaxy and other Android phones with Android 14 or later | Should run on the GPU or CPU; untested. Since 1.1 Robot names their chips, checks the GPU before your first question, shortens what its model reads on a slow CPU, and warns before setup ends when answers will be slow or memory is tight. Testing on Galaxy phones is next; the Snapdragon NPU and a smaller model for phones with little memory are planned. |
 
 Robot needs Android 14 or later, arm64 only. I build and test it on GrapheneOS.
 
@@ -80,11 +80,27 @@ Coming from 0.9? Robot 1.0 installs beside it under a new app ID, and you move y
   (OpenStreetMap), your phone's storage, battery and memory, and freeing space. Robot asks first when an action
   needs it, and every rule about when it asks is a switch in Settings › Safety & privacy.
 - It remembers what you ask it to, encrypted on the phone.
+- Robot Files keeps your receipts, bills, documents and photos on the phone, each file encrypted. Share a file to it from
+  any app, scan paper with the camera, or say "file this", and Robot reads it on the phone and files it in a drawer.
+  Then ask "how much did I spend on gas in August" or "what bills are due this week". Travel mode hides the drawers you
+  choose until you confirm with your PIN. It's a privacy screen, not encryption.
 - It reads, summarizes, translates and answers your messages from the apps you choose. A reply
   goes only after you tap Send.
 - Conversation mode transcribes a conversation in English and French, on the phone, translates it (also face to
   face, aloud) and summarizes it.
-- Robot works in English and Québec French. It can also write down and read other languages, but it answers in English or French.
+- Robot works in English and Québec French. It can also write down and read other languages. What Robot says itself
+  (cards, confirmations, errors) follows Settings › Language › Robot answers in. When that setting names a language,
+  Robot's own model is told to answer in it. With the default, the language you speak, the model answers in the
+  language of your question, even one Robot doesn't speak. Either way the model can still drift into another language.
+  A web answer is in English or French, picked from your question's words, whatever the setting.
+- Phone lock covers every app but emergency calls, incoming calls, Clock and Robot for times you set, or until you've
+  spent a set time in one app. It is off until you set it up, and a habit rather than a wall: Settings › Phone lock ›
+  What a lock can't stop lists what it can't do. It uses one Android accessibility service that sees only which app is
+  in front.
+- Skills are short routines you teach Robot by voice ("teach a skill called heading home: text Sam I'm on my way, then
+  open the route home"). You say a skill's name to run it, and each step still shows its own card.
+- Back up and restore saves what you choose, your files included, into one encrypted file, protected by a passphrase
+  only you have, to a place you pick. Robot never uploads it.
 - Routines and a morning brief. Headset mode, where your headset's button opens Robot, and car mode.
 - Web search uses the service you choose: your own SearXNG, Brave, Kagi, Mojeek, DuckDuckGo's Instant Answers or a
   public SearXNG. It is off until you set it up, and answers name their sources. With nothing to set up, you can
@@ -109,6 +125,13 @@ My development notes, with the design, the checks and the history, are in [`robo
 - The nearest-place search uses OpenStreetMap's Nominatim server unless you pick another one in Settings › Actions ›
   Search server. You can switch servers there at any time without an update, or choose Never.
 - A helper's or web search key only ever goes over https.
+- Robot Files, backups, Phone lock and skills never go online. A file leaves the phone only when you share it, open it
+  with another app or export it (exports aren't encrypted), or when you tap a card that sends what Robot read from it to a
+  helper. Settings › About › Support Robot makes no network call until you tap its Ko-fi link.
+- PRIVACY.md lists every permission and why. 1.1 adds two. USE_BIOMETRIC lets travel mode ask for your PIN, pattern or
+  password on Android's own confirm screen (never a fingerprint or face). ACCESS_NETWORK_STATE lets the daily update
+  check, the download on Wi-Fi and Termux's weekly check wait for the network: Android requires it for that, and
+  without it those checks never ran in 1.0.x. On 1.0.x, tap Check now in Settings › About › Updates to get 1.1.
 - Logs hold codes and numbers only, never what you said.
 
 The full policy is in [`PRIVACY.md`](PRIVACY.md).

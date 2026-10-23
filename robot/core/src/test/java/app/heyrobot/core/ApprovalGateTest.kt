@@ -84,8 +84,9 @@ class ApprovalGateTest {
             }
         }
         val after = defaults.copy(safetyCards = SafetyCards.AFTER_READING)
-        assertEquals(setOf(ToolName.LOOKUP_CONTACT, ToolName.FIND_NOTES, ToolName.READ_CALENDAR, ToolName.WEATHER, ToolName.PHONE_STATUS, ToolName.WEB_SEARCH),
-            ToolName.entries.filter { it.reads }.toSet())
+        // 1.4 (F9): Robot Files' two reads, find_files and read_file, join them.
+        assertEquals(setOf(ToolName.LOOKUP_CONTACT, ToolName.FIND_NOTES, ToolName.READ_CALENDAR, ToolName.WEATHER, ToolName.PHONE_STATUS, ToolName.WEB_SEARCH,
+            ToolName.FIND_FILES, ToolName.READ_FILE), ToolName.entries.filter { it.reads }.toSet())
         for (t in ToolName.entries.filter { it.reads && !it.online }) assertEquals(t.name, GateDecision.RUN, ApprovalGate.decide(t, false, after, content = true))
         // A read that goes online (the weather) asks: screen text could otherwise send a word, or where you are, to Open-Meteo.
         assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(ToolName.WEATHER, false, after, content = true, asked = true))
@@ -131,7 +132,8 @@ class ApprovalGateTest {
         val t = ToolName.SEND_TEXT
         val s = allAuto
         assertEquals(GateDecision.RUN, ApprovalGate.decide(t, false, s))
-        for (why in AskWhy.entries) assertEquals(why.name, GateDecision.CONFIRM, ApprovalGate.decide(t, false, s, why = setOf(why)))
+        // (1.4: AskWhy.FILES is a helper card's reason only: the gate never sees it.)
+        for (why in AskWhy.entries - AskWhy.FILES) assertEquals(why.name, GateDecision.CONFIRM, ApprovalGate.decide(t, false, s, why = setOf(why)))
         assertEquals(GateDecision.RUN, ApprovalGate.decide(t, false, s.copy(whoCards = false), why = setOf(AskWhy.WHO)))
         assertEquals(GateDecision.RUN, ApprovalGate.decide(t, false, s.copy(learnedCards = false), why = setOf(AskWhy.LEARNED)))
         assertEquals(GateDecision.RUN, ApprovalGate.decide(ToolName.FREE_STORAGE, false, s.copy(deleteCards = false), why = setOf(AskWhy.DELETE)))
@@ -181,9 +183,12 @@ class ApprovalGateTest {
         val bools = listOf(false, true)
         // Every set of the first five reasons, and the Termux ones (0.9) alone and together.
         val termuxWhy = listOf(AskWhy.TERMUX, AskWhy.COMMAND, AskWhy.FROM_CONTENT)
-        val plain = AskWhy.entries - termuxWhy
+        // 1.1: a dated reminder's card (AskWhy.REMINDER) alone and with a who-to reason, so the sets don't double.
+        // (1.4: AskWhy.FILES is a helper card's reason only: the gate never sees it.)
+        val plain = AskWhy.entries - termuxWhy - AskWhy.FILES - AskWhy.REMINDER
         val reasons = (0 until (1 shl plain.size)).map { m -> plain.filterIndexed { i, _ -> m and (1 shl i) != 0 }.toSet() } +
-            listOf(setOf(AskWhy.TERMUX), setOf(AskWhy.COMMAND), setOf(AskWhy.FROM_CONTENT), setOf(AskWhy.TERMUX, AskWhy.COMMAND), setOf(AskWhy.TERMUX, AskWhy.FROM_CONTENT))
+            listOf(setOf(AskWhy.TERMUX), setOf(AskWhy.COMMAND), setOf(AskWhy.FROM_CONTENT), setOf(AskWhy.TERMUX, AskWhy.COMMAND), setOf(AskWhy.TERMUX, AskWhy.FROM_CONTENT),
+                setOf(AskWhy.REMINDER), setOf(AskWhy.REMINDER, AskWhy.WHO))
         var n = 0
         for (t in ToolName.entries) for (level in Approval.entries) for (mode in SafetyCards.entries) for (lockSet in listOf(LockScreen.DEFAULT, setOf(t)))
             for (claudeCards in bools) for (who in bools) for (learned in bools) for (delete in bools) for (helpers in bools) {
@@ -210,15 +215,18 @@ class ApprovalGateTest {
                             (!t.reads && t !in setOf(ToolName.SEND_TEXT, ToolName.DRAFT_EMAIL, ToolName.CALL))))),
                         t == ToolName.REMEMBER && (!asked || content),
                         why.any { it in termuxWhy },
+                        AskWhy.REMINDER in why,
                     )
                     val want = when {
                         // 0.9: TermuxPolicy decided when it was prepared (Settings › Termux, the lock, rules 2 to 5): only its reasons count.
                         t.termux -> if (why.any { it in termuxWhy } || AskWhy.PICK in why || AskWhy.ONLINE in why || AskWhy.MESSAGE in why ||
                             AskWhy.SEARCH in why || AskWhy.SEARCH_PERSONAL in why || (AskWhy.WHO in why && who) ||
-                            (AskWhy.LEARNED in why && learned) || (AskWhy.DELETE in why && delete)) GateDecision.CONFIRM else GateDecision.RUN
+                            (AskWhy.LEARNED in why && learned) || (AskWhy.DELETE in why && delete) || AskWhy.REMINDER in why) GateDecision.CONFIRM else GateDecision.RUN
                         level == Approval.OFF -> GateDecision.DISABLED
                         // 0.7: memory is never changed on the lock screen, whatever "Works on the lock screen" holds.
                         locked && (t == ToolName.REMEMBER || t == ToolName.FORGET) -> GateDecision.NEEDS_UNLOCK
+                        // 1.4: Robot Files' reads never run locked, whatever "Works on the lock screen" holds (files-1.4-plan.md §5.3).
+                        locked && (t == ToolName.FIND_FILES || t == ToolName.READ_FILE) -> GateDecision.NEEDS_UNLOCK
                         locked && t !in lockSet -> GateDecision.NEEDS_UNLOCK
                         cardReasons.any { it } -> GateDecision.CONFIRM
                         else -> GateDecision.RUN

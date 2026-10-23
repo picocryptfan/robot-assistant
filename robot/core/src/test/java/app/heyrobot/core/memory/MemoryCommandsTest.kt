@@ -155,7 +155,7 @@ class MemoryCommandsTest {
         val nip = remember("Souviens-toi que mon NIP est 1234")
         assertTrue(nip.secret)
         assertFalse(MemoryCommands.saidBack(nip).contains("1234"))
-        assertEquals("C'est noté : un NIP, gardé en mémoire.", MemoryCommands.saidBack(nip))
+        assertEquals("C’est noté\u00A0: un NIP, gardé en mémoire.", MemoryCommands.saidBack(nip))
         assertTrue(remember("Remember my wifi password is hunter2").secret)
     }
 
@@ -164,7 +164,7 @@ class MemoryCommandsTest {
         assertEquals("Got it: you parked on P3 until tonight.", MemoryCommands.saidBack(remember("Remember that I parked on P3 until tonight")))
         assertEquals("Got it: the cottage is on Lac Brome.", MemoryCommands.saidBack(remember("Remember that the cottage is on Lac Brome")))
         assertEquals("Got it: Léo has hockey on Tuesdays.", MemoryCommands.saidBack(remember("Remember that Léo has hockey on Tuesdays")))
-        assertEquals("C'est noté : « La fête de ma sœur est le 3 mai ».", MemoryCommands.saidBack(remember("Souviens-toi que la fête de ma sœur est le 3 mai")))
+        assertEquals("C’est noté\u00A0: «\u00A0La fête de ma sœur est le 3 mai\u00A0».", MemoryCommands.saidBack(remember("Souviens-toi que la fête de ma sœur est le 3 mai")))
     }
 
     @Test fun forgetThatRemovesTheLastItem() {

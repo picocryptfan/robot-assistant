@@ -24,10 +24,11 @@ import app.heyrobot.core.RoutineTexts
 import app.heyrobot.core.SpeechWay
 import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
+import app.heyrobot.core.i18n.Langs
 import app.heyrobot.sys.AppPages
 import app.heyrobot.sys.RoutineIntents
 
-// VOICE PROCESS (0.8). The routine's voice when nobody opened Robot (design §1.2): a mediaPlayback foreground service, not
+// VOICE PROCESS (0.8). The routine's voice when nobody opened Robot: a mediaPlayback foreground service, not
 // exported, in :voice where the voice is, alive only while a run speaks. Android 17 lets audio play in the background only
 // from a visible activity or a foreground service that isn't short; it needs FOREGROUND_SERVICE_MEDIA_PLAYBACK (a normal
 // permission, no prompt). Its notification is how you see and stop it: "Robot is reading your morning brief" with Next
@@ -167,13 +168,13 @@ object RoutineNotices {
 
     private fun channels(ctx: Context) {
         val nm = ctx.getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(NotificationChannel(CHANNEL_SPEAKING, "Routine speaking", NotificationManager.IMPORTANCE_LOW).apply {
-            description = "Shown while a routine or the morning brief speaks, with Next and Stop."
+        nm.createNotificationChannel(NotificationChannel(CHANNEL_SPEAKING, ctx.getString(R.string.routine_channel_speaking), NotificationManager.IMPORTANCE_LOW).apply {
+            description = ctx.getString(R.string.routine_channel_speaking_detail)
             setSound(null, null)
             enableVibration(false)
         })
-        nm.createNotificationChannel(NotificationChannel(CHANNEL, "Routines", NotificationManager.IMPORTANCE_DEFAULT).apply {
-            description = "Things a routine left for you to tap, and routines that couldn't speak."
+        nm.createNotificationChannel(NotificationChannel(CHANNEL, ctx.getString(R.string.routine_channel), NotificationManager.IMPORTANCE_DEFAULT).apply {
+            description = ctx.getString(R.string.routine_channel_detail)
             setSound(null, null)
         })
     }
@@ -199,23 +200,29 @@ object RoutineNotices {
     private fun publicVersion(ctx: Context, channel: String, title: String) =
         Notification.Builder(ctx, channel).setSmallIcon(R.drawable.ic_robot).setContentTitle(title).build()
 
+    /** 1.1: the routine's words in the reply-language setting, else the menus' (core ReplyLang.unheard); buttons in the menus'. */
+    private fun langs(ctx: Context): Langs = BriefSource.langs(ctx)
+
+    private fun publicSpeaking(l: Langs): String = app.heyrobot.core.i18n.RoutineStrings.speaking().render(l)
+
     /** The service's notification while a run speaks. */
     fun speaking(ctx: Context, r: Routine?): Notification {
         channels(ctx)
-        val title = r?.let(RoutineTexts::speaking) ?: RoutineTexts.SPEAKING_PUBLIC
+        val l = langs(ctx)
+        val title = r?.let { RoutineTexts.speakingText(it).render(l) } ?: publicSpeaking(l)
         return Notification.Builder(ctx, CHANNEL_SPEAKING)
             .setSmallIcon(R.drawable.ic_robot)
             .setContentTitle(title)
-            .setContentText("Say “hey robot, next”, or tap a button.")
+            .setContentText(ctx.getString(R.string.routine_speaking_text))
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setCategory(Notification.CATEGORY_SERVICE)
             .setVisibility(Notification.VISIBILITY_PRIVATE)
-            .setPublicVersion(publicVersion(ctx, CHANNEL_SPEAKING, RoutineTexts.SPEAKING_PUBLIC))
+            .setPublicVersion(publicVersion(ctx, CHANNEL_SPEAKING, publicSpeaking(l)))
             .setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
-            .addAction(Notification.Action.Builder(null, "Next", service(ctx, 8_401, RoutineSpeakingService.ACTION_NEXT)).build())
-            .addAction(Notification.Action.Builder(null, "Repeat", service(ctx, 8_402, RoutineSpeakingService.ACTION_REPEAT)).build())
-            .addAction(Notification.Action.Builder(null, "Stop", service(ctx, 8_403, RoutineSpeakingService.ACTION_STOP)).build())
+            .addAction(Notification.Action.Builder(null, ctx.getString(R.string.routine_next), service(ctx, 8_401, RoutineSpeakingService.ACTION_NEXT)).build())
+            .addAction(Notification.Action.Builder(null, ctx.getString(R.string.routine_repeat), service(ctx, 8_402, RoutineSpeakingService.ACTION_REPEAT)).build())
+            .addAction(Notification.Action.Builder(null, ctx.getString(R.string.routine_stop), service(ctx, 8_403, RoutineSpeakingService.ACTION_STOP)).build())
             .build()
     }
 
@@ -223,12 +230,14 @@ object RoutineNotices {
     fun ready(ctx: Context, cards: List<ReadyCard>) {
         if (cards.isEmpty()) return cancel(ctx, READY_ID)
         channels(ctx)
-        val title = ReadyCards.publicLine(cards.size)
-        val text = cards.joinToString("\n") { it.text() }
+        val l = langs(ctx)
+        val title = ReadyCards.publicText(cards.size).render(l)
+        val lines = cards.map { it.phrase().render(l) }
+        val text = lines.joinToString("\n")
         notify(ctx, READY_ID, Notification.Builder(ctx, CHANNEL)
             .setSmallIcon(R.drawable.ic_robot)
             .setContentTitle(title)
-            .setContentText(cards.last().text())
+            .setContentText(lines.last())
             .setStyle(Notification.BigTextStyle().bigText(text))
             .setVisibility(Notification.VISIBILITY_SECRET)
             .setPublicVersion(publicVersion(ctx, CHANNEL, title))
@@ -245,7 +254,7 @@ object RoutineNotices {
             .setSmallIcon(R.drawable.ic_robot)
             .setContentTitle(text)
             .setVisibility(Notification.VISIBILITY_SECRET)
-            .setPublicVersion(publicVersion(ctx, CHANNEL, "Robot ran a routine"))
+            .setPublicVersion(publicVersion(ctx, CHANNEL, ctx.getString(R.string.routine_ran_public)))
             .setContentIntent(openRoutines(ctx))
             .setOnlyAlertOnce(true)
             .setAutoCancel(true)
@@ -257,14 +266,15 @@ object RoutineNotices {
         channels(ctx)
         val play = PendingIntent.getForegroundService(ctx, 8_404, Intent(ctx, RoutineSpeakingService::class.java).setAction(RoutineSpeakingService.ACTION_PLAY),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val l = langs(ctx)
         notify(ctx, PLAY_ID, Notification.Builder(ctx, CHANNEL)
             .setSmallIcon(R.drawable.ic_robot)
-            .setContentTitle(RoutineTexts.readyToPlay(r))
-            .setContentText(RoutineTexts.PLAY_TEXT)
+            .setContentTitle(RoutineTexts.readyToPlayText(r).render(l))
+            .setContentText(RoutineTexts.playText.render(l))
             .setVisibility(Notification.VISIBILITY_SECRET)
-            .setPublicVersion(publicVersion(ctx, CHANNEL, "Robot has something to say"))
+            .setPublicVersion(publicVersion(ctx, CHANNEL, ctx.getString(R.string.routine_something_to_say)))
             .setContentIntent(play)
-            .addAction(Notification.Action.Builder(null, "Play", play).build())
+            .addAction(Notification.Action.Builder(null, ctx.getString(R.string.routine_play), play).build())
             .setAutoCancel(true)
             .build())
     }
@@ -276,10 +286,11 @@ object RoutineNotices {
         channels(ctx)
         val play = PendingIntent.getForegroundService(ctx, 8_405, Intent(ctx, RoutineSpeakingService::class.java).setAction(RoutineSpeakingService.ACTION_PLAY),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val l = langs(ctx)
         notify(ctx, CONTINUE_ID, Notification.Builder(ctx, CHANNEL)
             .setSmallIcon(R.drawable.ic_robot)
-            .setContentTitle(RoutineTexts.CONTINUE)
-            .setContentText(RoutineTexts.CONTINUE_TEXT)
+            .setContentTitle(app.heyrobot.core.i18n.RoutineStrings.continueBrief().render(l))
+            .setContentText(app.heyrobot.core.i18n.RoutineStrings.continueText().render(l))
             .setContentIntent(play)
             .setAutoCancel(true)
             .build())
@@ -289,15 +300,17 @@ object RoutineNotices {
     fun notAssistant(ctx: Context, r: Routine) {
         channels(ctx)
         VoiceLog.add(VoiceEvent.ROUTINE_SPEECH, SpeechWay.NO_ASSISTANT)
+        val l = langs(ctx)
+        val text = app.heyrobot.core.i18n.RoutineStrings.notAssistant().render(l)
         notify(ctx, NOT_ASSISTANT_ID, Notification.Builder(ctx, CHANNEL)
             .setSmallIcon(R.drawable.ic_robot)
-            .setContentTitle(RoutineTexts.notAssistant(r))
-            .setContentText(RoutineTexts.NOT_ASSISTANT_TEXT)
-            .setStyle(Notification.BigTextStyle().bigText(RoutineTexts.NOT_ASSISTANT_TEXT))
+            .setContentTitle(RoutineTexts.notAssistantText(r).render(l))
+            .setContentText(text)
+            .setStyle(Notification.BigTextStyle().bigText(text))
             .setVisibility(Notification.VISIBILITY_SECRET)
-            .setPublicVersion(publicVersion(ctx, CHANNEL, "Robot has something for you"))
+            .setPublicVersion(publicVersion(ctx, CHANNEL, ctx.getString(R.string.routine_something_for_you)))
             .setContentIntent(openRoutines(ctx))
-            .addAction(Notification.Action.Builder(null, "Open Robot", openRoutines(ctx)).build())
+            .addAction(Notification.Action.Builder(null, ctx.getString(R.string.routine_open_robot), openRoutines(ctx)).build())
             .setAutoCancel(true)
             .build())
     }
@@ -305,15 +318,16 @@ object RoutineNotices {
     /** "Don't speak (notification only)": what the run had to say, in the notification (its words only unlocked). */
     fun silent(ctx: Context, r: Routine, text: String) {
         if (text.isBlank()) return
+        val l = langs(ctx)
         channels(ctx)
         VoiceLog.add(VoiceEvent.ROUTINE_SPEECH, SpeechWay.SILENT)
         notify(ctx, SILENT_ID, Notification.Builder(ctx, CHANNEL)
             .setSmallIcon(R.drawable.ic_robot)
-            .setContentTitle(RoutineTexts.silentTitle(r))
+            .setContentTitle(RoutineTexts.silentTitleText(r).render(l))
             .setContentText(text)
             .setStyle(Notification.BigTextStyle().bigText(text))
             .setVisibility(Notification.VISIBILITY_SECRET)
-            .setPublicVersion(publicVersion(ctx, CHANNEL, "Robot ran a routine"))
+            .setPublicVersion(publicVersion(ctx, CHANNEL, ctx.getString(R.string.routine_ran_public)))
             .setAutoCancel(true)
             .build())
     }

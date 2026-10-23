@@ -71,10 +71,10 @@ object FeedbackFiles {
 
 /** [MAIN] The ways a message leaves Robot, each one you tap: none sends anything by itself. */
 object FeedbackSend {
-    /** Android's share sheet with the message as plain text (no subject: an SMS app would turn it into an MMS). */
-    fun shareIntent(text: String): Intent {
+    /** Android's share sheet with the message as plain text (no subject: an SMS app would turn it into an MMS), [title] over it. */
+    fun shareIntent(text: String, title: String): Intent {
         val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
-        return Intent.createChooser(send, "Send feedback with").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        return Intent.createChooser(send, title).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
 
     /** "Text it": your SMS app with [number] and the message filled in; you press Send there. */
@@ -109,7 +109,7 @@ object FeedbackClipboard {
 
     fun copy(ctx: Context, text: String) {
         val app = ctx.applicationContext
-        val clip = ClipData.newPlainText("Robot feedback", text)
+        val clip = ClipData.newPlainText("Robot feedback", text) // l10n: not text (the clip's label, which Android doesn't show)
         clip.description.extras = PersistableBundle().apply { putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true) }
         app.getSystemService(ClipboardManager::class.java).setPrimaryClip(clip)
         pending = text to System.currentTimeMillis()

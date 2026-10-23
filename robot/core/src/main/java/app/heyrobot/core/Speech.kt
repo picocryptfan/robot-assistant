@@ -26,7 +26,7 @@ class SentenceSplitter(private val maxChars: Int = 220, private val firstMinWord
         }
         // A very long run without punctuation: cut at the last comma or space so speech can start.
         if (buf.length > maxChars) {
-            val cut = buf.lastIndexOfAny(charArrayOf(',', ';', ':'), maxChars).takeIf { it > maxChars / 3 }
+            val cut = clauseBreak(maxChars).takeIf { it > maxChars / 3 }
                 ?: buf.lastIndexOf(" ", maxChars).takeIf { it > 0 } ?: maxChars
             val s = buf.substring(0, cut + 1).trim()
             buf.delete(0, cut + 1)
@@ -49,7 +49,8 @@ class SentenceSplitter(private val maxChars: Int = 220, private val firstMinWord
                     inWord = false
                     val prev = buf[i - 1]
                     val clause = (prev == ',' || prev == ';' || prev == ':') && words >= firstMinWords
-                    if (clause || words >= firstMaxWords) {
+                    // Never between a time's parts (« 12 | h 30 », « 12 h | 30 », "7:30 | p.m."): VoiceForm.clock needs it whole.
+                    if ((clause || words >= firstMaxWords) && !prev.isDigit() && !(prev == 'h' && afterNumber(i - 1))) {
                         val s = buf.substring(0, i).trim()
                         buf.delete(0, i)
                         return s.takeIf { it.isNotEmpty() }
@@ -60,6 +61,21 @@ class SentenceSplitter(private val maxChars: Int = 220, private val firstMinWord
             }
         }
         return null
+    }
+
+    /** True when the "h" at [h] stands alone after a number (« 12 h »). */
+    private fun afterNumber(h: Int): Boolean {
+        if (h > 0 && buf[h - 1].isLetter()) return false
+        var k = h - 1
+        while (k >= 0 && buf[k] == ' ') k--
+        return k >= 0 && buf[k].isDigit()
+    }
+
+    /** The last ", ; :" at or before [max] that isn't between two digits (« 1,5 », « 12:30 »), or -1. */
+    private fun clauseBreak(max: Int): Int {
+        var k = buf.lastIndexOfAny(charArrayOf(',', ';', ':'), max)
+        while (k > 0 && k + 1 < buf.length && buf[k - 1].isDigit() && buf[k + 1].isDigit()) k = buf.lastIndexOfAny(charArrayOf(',', ';', ':'), k - 1)
+        return k
     }
 
     /** The rest, at the end of the reply. */
@@ -175,14 +191,29 @@ object SpeechText {
      */
     private val CJK = Regex("""[\x{1100}-\x{11FF}\x{2E80}-\x{2FFF}\x{3000}-\x{9FFF}\x{A000}-\x{A4CF}\x{AC00}-\x{D7AF}\x{F900}-\x{FAFF}\x{FE30}-\x{FE4F}\x{FF00}-\x{FFEF}\x{20000}-\x{3134F}]+""")
 
+    /** C0 and C1 controls (tabs and line breaks too), and the line and paragraph separators: a space each. */
+    private val ENGINE_SPACE = Regex("[\\p{Cc}\\u2028\\u2029]")
+    /** Format characters (zero-width ones, soft hyphens, direction marks, tags) and lone surrogates: dropped. */
+    private val ENGINE_DROP = Regex("[\\p{Cf}\\p{Cs}]")
+
     /**
-     * Only what Robot's voices can say, and nothing sherpa-onnx would write to the log. CJK text is dropped: with no
-     * lexicon, Kokoro (1.13.8) sends every U+4E00-9FFF character through its Chinese path, which logs it ("Ignore
-     * OOV") whatever the debug setting, and the voices read English and French only. Fullwidth ASCII becomes ASCII.
-     * Blank when no letter or digit is left: sherpa logs a piece it cannot turn into sounds whole ("Failed to convert").
+     * [s] with no control character left, for a speech engine. espeak-ng (under Kokoro and Kitten, and perhaps the phone's
+     * own voice) reads U+0001 as the start of an embedded command whatever its options, and after "B" it copies the next
+     * word into a fixed array with no bound: a helper's answer, a web page or a message could write past it in :voice.
+     * Every text Robot hands a voice engine passes here: [sayable] first, then each engine's own call (voice
+     * SherpaTextToSpeech.generate and AndroidTextToSpeech, pinned by voice EngineTextTest).
+     */
+    fun forEngine(s: String): String = ENGINE_SPACE.replace(ENGINE_DROP.replace(s, ""), " ")
+
+    /**
+     * Only what Robot's voices can say, and nothing sherpa-onnx would write to the log. No control characters
+     * ([forEngine]). CJK text is dropped: with no lexicon, Kokoro (1.13.8) sends every U+4E00-9FFF character through its
+     * Chinese path, which logs it ("Ignore OOV") whatever the debug setting, and the voices read English and French only.
+     * Fullwidth ASCII becomes ASCII. Blank when no letter or digit is left: sherpa logs a piece it cannot turn into sounds
+     * whole ("Failed to convert").
      */
     fun sayable(s: String): String {
-        val ascii = buildString(s.length) { for (c in s) append(if (c in '\uFF01'..'\uFF5E') c - 0xFEE0 else c) }
+        val ascii = buildString(s.length) { for (c in forEngine(s)) append(if (c in '\uFF01'..'\uFF5E') c - 0xFEE0 else c) }
         val out = ascii.replace(CJK, " ").replace(Regex("""\(\s*\)|\[\s*]"""), " ").replace(Regex("""\s+"""), " ").replace(Regex(""" ([,.;:!?])"""), "$1")
             .trim().trimStart(',', ';', ':', '.', ' ')
         return if (out.any { it.isLetterOrDigit() }) out else ""

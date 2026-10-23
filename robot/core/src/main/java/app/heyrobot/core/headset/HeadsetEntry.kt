@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.headset
 
+import app.heyrobot.core.i18n.HandsFreeStrings
+import app.heyrobot.core.i18n.Phrase
 import app.heyrobot.core.LogCode
 
-// Pure. How a headset's button reaches Robot on Android 17 (design §3.1, VERIFIED in AOSP android-17.0.0_r1), and what
+// Pure. How a headset's button reaches Robot on Android 17, and what
 // HeadsetEntryActivity does with it (§3.6). The platform never routes a headset button to the assistant itself:
 //
 // | Button | What Android does | Robot gets |
@@ -86,7 +88,10 @@ object HeadsetEntry {
     /** HeadsetService waits this long for BluetoothHeadset.startVoiceRecognition before telling the headset it failed. */
     const val BVRA_ACK_MS = 5_000L
 
-    const val NOT_ASSISTANT = "Robot isn't the digital assistant"
+    val NOT_ASSISTANT: String get() = notAssistant.en()
+
+    /** 1.1: [NOT_ASSISTANT] without a language yet (a toast in the menus' language). */
+    val notAssistant: Phrase get() = HandsFreeStrings.notAssistant()
 
     fun kind(action: String?): EntryKind? = when (action) {
         VOICE_COMMAND -> EntryKind.BVRA
@@ -95,7 +100,7 @@ object HeadsetEntry {
     }
 
     /**
-     * What the trampoline does with [action] (design §3.9 `HeadsetEntry.decide`). [secure]: EXTRA_SECURE. [locked]: the
+     * What the trampoline does with [action]. [secure]: EXTRA_SECURE. [locked]: the
      * keyguard is up. [assistantRunning]: RobotVoiceService.instance exists. [buttonOn]: "Headset button opens Robot"
      * (the activity is disabled when off, so this only guards a stale start). [carMode]: car mode is on, so a voice
      * button is the car's. [mayAck]: "Answer the headset's voice button properly" is on and BLUETOOTH_CONNECT is granted:

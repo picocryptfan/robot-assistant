@@ -2,7 +2,7 @@
 package app.heyrobot.core.messages
 
 /**
- * Notification snapshots in the shapes the apps post (design §B3, read in their source): what the main process's
+ * Notification snapshots in the shapes the apps post: what the main process's
  * listener will copy out of a StatusBarNotification. Names, addresses and words are made up.
  */
 object Snapshots {

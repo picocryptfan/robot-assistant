@@ -1,17 +1,25 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.messages
 
+import app.heyrobot.core.i18n.Lang
+
 // Pure. A message someone sent you, as Robot keeps it: read from the app's notification (never from an SMS database,
-// never written to disk), in RAM only, for as long as Settings › Messages › "Keep messages for" says (design §B4,
-// §B12). The text is other people's words: content, never instructions (MessageTaint.kt). [toString] of everything
+// never written to disk), in RAM only, for as long as Settings › Messages › "Keep messages for" says. The text is other people's words: content, never instructions (MessageTaint.kt). [toString] of everything
 // here leaves the text and the names out, so a message can't reach a log line or a crash report by accident.
 
-/** What a message carries besides text; read as words ("Mom sent a photo"), never opened. */
-enum class AttachmentKind(val en: String, val fr: String) {
-    PHOTO("a photo", "une photo"),
-    VIDEO("a video", "une vidéo"),
-    VOICE("a voice message", "un message vocal"),
-    FILE("a file", "un fichier"),
+/**
+ * What a message carries besides text; read as words ("Mom sent a photo"), never opened. [text]: its words (core i18n);
+ * [en] what the model reads, [fr] the French.
+ */
+enum class AttachmentKind(private val msg: app.heyrobot.core.i18n.Msg) {
+    PHOTO(app.heyrobot.core.i18n.MessageStrings.photo),
+    VIDEO(app.heyrobot.core.i18n.MessageStrings.video),
+    VOICE(app.heyrobot.core.i18n.MessageStrings.voiceMessage),
+    FILE(app.heyrobot.core.i18n.MessageStrings.file);
+
+    val text: app.heyrobot.core.i18n.Phrase get() = msg()
+    val en: String get() = text.en()
+    val fr: String get() = text.render(app.heyrobot.core.i18n.Langs.of(Lang.FR))
 }
 
 /**
@@ -36,7 +44,7 @@ data class IncomingMessage(
     val historic: Boolean = false,
     val readByRobot: Boolean = false,
 ) {
-    override fun toString(): String = "IncomingMessage(id=$id, app=$app, fromMe=$fromMe, historic=$historic, chars=${text.length}, attachment=$attachment)"
+    override fun toString(): String = "IncomingMessage(id=$id, app=$app, fromMe=$fromMe, historic=$historic, chars=${text.length}, attachment=$attachment)" // l10n: not text (toString for logs and tests)
 }
 
 /** How Robot can answer a conversation. */
@@ -100,5 +108,5 @@ data class MessageThread(
     /** Who this is, in words: the group's or chat's title, else the newest sender's name, else the app. */
     val name: String get() = title ?: incoming.lastOrNull { it.senderName != null }?.senderName ?: app.title
 
-    override fun toString(): String = "MessageThread(app=$app, group=$isGroup, messages=${messages.size}, reply=$replyKind, hidden=$hidden)"
+    override fun toString(): String = "MessageThread(app=$app, group=$isGroup, messages=${messages.size}, reply=$replyKind, hidden=$hidden)" // l10n: not text (toString for logs and tests)
 }

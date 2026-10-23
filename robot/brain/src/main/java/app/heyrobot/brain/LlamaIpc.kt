@@ -37,6 +37,12 @@ internal object LlamaIpc {
     /** In: a piece of the reply (whole UTF-8 characters). Out: true to go on, false to stop. */
     const val CB_PIECE = IBinder.FIRST_CALL_TRANSACTION + 1
 
+    /**
+     * 1.1: every reply's first int, written by LlamaService itself (never Parcel.writeNoException, which may put Android's
+     * strict-mode or app-ops header first). :brain reads it as a plain number ([Reply]); anything else breaks the link.
+     */
+    const val REPLY_OK = 0
+
     /** Caps on what :brain reads back: a reply piece, and the special tokens' count and total size. */
     const val MAX_PIECE = 64 * 1024
     /**
@@ -77,8 +83,12 @@ internal object LlamaIpc {
     const val STATS_POSITION = 6
     const val STATS_COUNT = 7
 
-    const val NOT_IN_BUILD = "GGUF files can't run in this build of Robot: its llama.cpp library wasn't built (tools/build_llama.sh)."
-    const val NOT_ISOLATED = "llama.cpp runs only in Robot's isolated process."
+    /**
+     * hello()'s problems, as codes (1.1): :brain says them in words (core VoiceStrings.llamaNotInBuild, llamaOnlyIsolated),
+     * in the language the app reads them in.
+     */
+    const val NOT_IN_BUILD = "not_in_build"
+    const val NOT_ISOLATED = "not_isolated"
 
     /** LOAD's answer: [handle] 0 on failure ([why] a LOAD_* part), the context llama.cpp's parser read, the special tokens. */
     class LoadResult(val handle: Long, val why: Int, val trainContext: Long, val control: List<ByteArray>?, val userDefined: List<ByteArray>?)
@@ -105,5 +115,74 @@ internal object LlamaIpc {
             out += b
         }
         return out
+    }
+
+    /** A reply that breaks its layout ([Reply]): LlamaLink ends the process, as after a crash, and uses none of it. */
+    class BadReply : Exception()
+
+    /**
+     * 1.1: :brain's reading of one reply from the isolated process, which may be a hostile file's by then. The header is a
+     * plain int that must be [REPLY_OK]: never Parcel.readException, which unparcels and throws whatever exception the
+     * writer names (a Parcelable one included). Then numbers and byte arrays only, each read only while the reply still
+     * holds it (a Parcel read past its end gives 0 or null, not an error), arrays capped, and [end] refuses anything left
+     * over. Anything else throws [BadReply].
+     */
+    class Reply(private val p: Parcel) {
+        init {
+            if (int() != REPLY_OK) throw BadReply()
+        }
+
+        fun int(): Int {
+            need(4)
+            return p.readInt()
+        }
+
+        fun long(): Long {
+            need(8)
+            return p.readLong()
+        }
+
+        /** A string or null, as the writer's writeString; what it may say is the caller's to check. */
+        fun string(): String? {
+            need(4)
+            return p.readString()
+        }
+
+        /** One byte array of at most [max] bytes (never null). */
+        fun bytes(max: Int): ByteArray {
+            val at = p.dataPosition()
+            val n = int()
+            if (n < 0 || n > max) throw BadReply()
+            need(n.toLong())
+            p.setDataPosition(at)
+            val b = p.createByteArray()
+            if (b == null || b.size != n) throw BadReply()
+            return b
+        }
+
+        /** Exactly [count] longs, as writeLongArray writes them (never null). */
+        fun longs(count: Int): LongArray {
+            if (int() != count) throw BadReply()
+            need(8L * count)
+            return LongArray(count) { p.readLong() }
+        }
+
+        /** As [writeArrays] writes them: null (the writer sent none), or at most [maxCount] arrays of [maxBytes] in all. */
+        fun arrays(maxCount: Int, maxBytes: Int): List<ByteArray>? {
+            val n = int()
+            if (n == -1) return null
+            if (n < 0 || n > maxCount) throw BadReply()
+            var left = maxBytes
+            return List(n) { bytes(left).also { left -= it.size } }
+        }
+
+        /** The reply holds nothing more than what was read. */
+        fun end() {
+            if (p.dataAvail() != 0) throw BadReply()
+        }
+
+        private fun need(n: Long) {
+            if (p.dataAvail() < n) throw BadReply()
+        }
     }
 }

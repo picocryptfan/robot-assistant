@@ -31,8 +31,7 @@ import app.heyrobot.sys.MessagesStore
 import app.heyrobot.sys.NotificationAccess
 import app.heyrobot.sys.Paths
 
-// MAIN PROCESS. 0.7: how the voice process (the panel) asks for your messages and sends a reply (design §B4, core
-// MessagesProtocol): a bound service, not exported, guarded by Robot's signature permission, answering only Robot's own
+// MAIN PROCESS. 0.7: how the voice process (the panel) asks for your messages and sends a reply: a bound service, not exported, guarded by Robot's signature permission, answering only Robot's own
 // uid. It hands over what MessageTap holds in RAM, as the main process's own settings and lock allow (nothing while
 // locked unless "Messages on the lock screen" says so; names only for "Who messaged"); and for a reply it reads the
 // notification again and lets core ReplySend decide, so the recipient is always that notification's conversation and
@@ -84,18 +83,18 @@ class MessagesBridge : Service() {
 
     private fun locked(): Boolean = Assistant.locked(applicationContext)
 
-    private fun replyLang(person: String, lang: app.heyrobot.core.messages.Lang?) = setReplyLang(applicationContext, person, lang)
+    private fun replyLang(person: String, lang: app.heyrobot.core.i18n.Lang?) = setReplyLang(applicationContext, person, lang)
 
     /** On, and either unlocked or "Read and reply" on the lock screen. */
     private fun allowedNow(): Boolean {
-        val s = MessagesStore.current(applicationContext).settings
+        val s = app.heyrobot.core.lock.SomeoneElseLock.messages(MessagesStore.current(applicationContext).settings, app.heyrobot.lock.PhoneLockNow.someoneElse(applicationContext))
         return s.on && (!locked() || s.locked == MessagesLocked.READ_AND_REPLY)
     }
 
     /** The conversations, as the settings and the lock allow, with the listener's state. */
     private fun list(): String {
         val ctx = applicationContext
-        val s = MessagesStore.current(ctx).settings
+        val s = app.heyrobot.core.lock.SomeoneElseLock.messages(MessagesStore.current(ctx).settings, app.heyrobot.lock.PhoneLockNow.someoneElse(ctx))
         val locked = locked()
         val access = NotificationAccess.granted(ctx)
         // Access taken back while the listener was still bound: nothing it read stays.
@@ -114,7 +113,7 @@ class MessagesBridge : Service() {
     private fun reply(json: String?): ReplyAnswer {
         val ctx = applicationContext
         val req = MessageWire.request(json) ?: return ReplyAnswer(ReplyOutcome.FAILED)
-        val s = MessagesStore.current(ctx).settings
+        val s = app.heyrobot.core.lock.SomeoneElseLock.messages(MessagesStore.current(ctx).settings, app.heyrobot.lock.PhoneLockNow.someoneElse(ctx))
         val locked = locked()
         val held = MessageTap.buffer.thread(req.key)
         val fresh = held?.let { MessageTap.fresh(ctx, it.notificationKey) }
@@ -131,7 +130,7 @@ class MessagesBridge : Service() {
          * "Always for Mom" on a reply card: the main process stays messages.json's only writer, through the same locked
          * change as Settings (MessagesStore.update), so neither loses the other's. A People id and a language, nothing else.
          */
-        fun setReplyLang(ctx: android.content.Context, person: String, lang: app.heyrobot.core.messages.Lang?) =
+        fun setReplyLang(ctx: android.content.Context, person: String, lang: app.heyrobot.core.i18n.Lang?) =
             MessagesStore.update(ctx) { f -> f.copy(replyLang = if (lang == null) f.replyLang - person else f.replyLang + (person to lang)) }
     }
 

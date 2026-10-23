@@ -69,10 +69,10 @@ object TermuxRun {
 
     /** $0 of every wrapper (what Termux's process list shows). */
     private const val NAME = "robot"
-    private const val TMP = "\${TMPDIR:-${TermuxPaths.TMP}}"
+    private const val TMP = "\${TMPDIR:-${TermuxPaths.TMP}}" // l10n: not text (shell for Termux)
     /** Keep git and ssh from asking for anything (stdin is closed anyway). */
-    private const val ENV = "GIT_TERMINAL_PROMPT=0 SSH_ASKPASS_REQUIRE=never"
-    private const val PID = "p=\"$TMP/robot-\$1.pid\""
+    private const val ENV = "GIT_TERMINAL_PROMPT=0 SSH_ASKPASS_REQUIRE=never" // l10n: not text (shell for Termux)
+    private const val PID = "p=\"$TMP/robot-\$1.pid\"" // l10n: not text (shell for Termux)
     private const val WAIT = "echo \$! > \"\$p\"; wait \$!; s=\$?; rm -f \"\$p\"; exit \$s"
 
     /**
@@ -82,8 +82,8 @@ object TermuxRun {
      * /dev/null unless redirected, so the wrapper keeps a copy on descriptor 3).
      */
     fun wrapper(profile: Boolean = false, stdin: Boolean = false): String {
-        val bash = if (profile) "bash -l" else "bash --noprofile --norc"
-        val input = if (stdin) "<&3 3<&-" else "</dev/null"
+        val bash = if (profile) "bash -l" else "bash --noprofile --norc" // l10n: not text (shell for Termux)
+        val input = if (stdin) "<&3 3<&-" else "</dev/null" // l10n: not text (shell for Termux)
         val keep = if (stdin) "exec 3<&0\n" else ""
         return "$PID\n$keep$ENV timeout -k $KILL_AFTER_S \"\$2\" $bash -c \"\$3\" $input &\n$WAIT"
     }
@@ -102,15 +102,15 @@ object TermuxRun {
      * The fixed Stop run: $1 the run to stop. TERM to its whole process group, KILL 2 s later; nothing when its pid file
      * is gone (it already ended) or doesn't hold a number.
      */
-    val WRAP_STOP: String = "$PID\n" +
+    val WRAP_STOP: String = "$PID\n" + // l10n: not text (shell for Termux)
         "[ -f \"\$p\" ] || exit 0\n" +
         "g=\$(cat \"\$p\"); case \"\$g\" in ''|*[!0-9]*) exit 0;; esac\n" +
         "kill -TERM -- \"-\$g\" 2>/dev/null; sleep 2; kill -KILL -- \"-\$g\" 2>/dev/null; exit 0"
 
     /** The set-up test (B5.1 step 5): bash runs, and GNU timeout is there. */
-    const val TEST_SCRIPT = "echo robot-ok; command -v timeout"
+    const val TEST_SCRIPT = "echo robot-ok; command -v timeout" // l10n: not text (shell for Termux)
 
-    fun pidFile(execId: Int): String = "${TermuxPaths.TMP}/robot-$execId.pid"
+    fun pidFile(execId: Int): String = "${TermuxPaths.TMP}/robot-$execId.pid" // l10n: not text (shell for Termux)
 
     /** The result PendingIntent's data: robot-termux://run/<id>, unique per run (B8.2). */
     fun resultUri(execId: Int): String = "robot-termux://run/$execId"
@@ -121,7 +121,7 @@ object TermuxRun {
         return id.toIntOrNull()?.takeIf { it > 0 }
     }
 
-    private fun checkId(execId: Int) = require(execId > 0) { "execId must be positive" }
+    private fun checkId(execId: Int) = require(execId > 0) { "execId must be positive" } // l10n: not text (a developer's error)
 
     private fun bashArgs(script: String, vararg rest: String): List<String> = listOf("--noprofile", "--norc", "-c", script, NAME) + rest
 
@@ -129,8 +129,8 @@ object TermuxRun {
     fun command(execId: Int, command: String, limitSeconds: Int, kind: TermuxRunKind = TermuxRunKind.CARDED, profile: Boolean = false,
         stdin: String? = null, workdir: String = TermuxPaths.HOME): TermuxRunPlan {
         checkId(execId)
-        require(command.isNotBlank() && '\u0000' !in command) { "no command" }
-        require(workdir.startsWith("/") && workdir.none { it < ' ' }) { "workdir must be an absolute path" }
+        require(command.isNotBlank() && '\u0000' !in command) { "no command" } // l10n: not text (a developer's error)
+        require(workdir.startsWith("/") && workdir.none { it < ' ' }) { "workdir must be an absolute path" } // l10n: not text (a developer's error)
         val limit = TermuxSettings.limit(limitSeconds)
         return TermuxRunPlan(execId, kind, TermuxPaths.BASH, bashArgs(wrapper(profile, stdin != null), "$execId", "$limit", command), workdir, stdin, limit)
     }
@@ -138,9 +138,9 @@ object TermuxRun {
     /** One of your scripts with its arguments (already split by ShellLexer.argv), never through a shell. */
     fun script(execId: Int, name: String, args: List<String>, limitSeconds: Int, stdin: String? = null): TermuxRunPlan {
         checkId(execId)
-        require(args.none { a -> a.any { it == '\u0000' } }) { "NUL in an argument" }
+        require(args.none { a -> a.any { it == '\u0000' } }) { "NUL in an argument" } // l10n: not text (a developer's error)
         val limit = TermuxSettings.limit(limitSeconds)
-        require(stdin == null) { "scripts read /dev/null" }
+        require(stdin == null) { "scripts read /dev/null" } // l10n: not text (a developer's error)
         return TermuxRunPlan(execId, TermuxRunKind.SCRIPT, TermuxPaths.BASH,
             bashArgs(WRAP_SCRIPT, "$execId", "$limit", TermuxScripts.path(name), TermuxScripts.FOLDER, *args.toTypedArray()), TermuxScripts.FOLDER, null, limit)
     }
@@ -164,7 +164,7 @@ object TermuxRun {
      */
     fun terminal(execId: Int, command: String): TermuxRunPlan {
         checkId(execId)
-        require(command.isNotBlank() && '\u0000' !in command) { "no command" }
+        require(command.isNotBlank() && '\u0000' !in command) { "no command" } // l10n: not text (a developer's error)
         return TermuxRunPlan(execId, TermuxRunKind.TERMINAL, TermuxPaths.BASH, listOf("--noprofile", "--norc", "-c", command), TermuxPaths.HOME, null,
             TermuxSettings.MAX_LIMIT_S, runner = TermuxIntents.RUNNER_TERMINAL_SESSION, sessionAction = TermuxIntents.SESSION_ACTION_SWITCH_NO_ACTIVITY)
     }

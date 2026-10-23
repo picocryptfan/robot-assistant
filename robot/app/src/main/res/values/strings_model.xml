@@ -1,0 +1,185 @@
+<!-- The model pages (the l10n work package WP7): ids start with model_, and the French is in
+     values-fr-rCA/strings_model.xml. 1.1 split strings.xml into one file per area, ids and texts unchanged. The Model tab,
+     a model's page, your own model file's page, a voice model's page, the model problems and their notification, and what
+     ModelStore says about a download or an import. What core says (a model's name and description, its state, what Robot's
+     check found in your file, this phone's TPU and speeds) is core's ModelStrings; the problem report stays English. -->
+<resources>
+    <!-- Words several pages share. -->
+    <string name="model_unknown">unknown</string>
+    <string name="model_bytes">%1$s (%2$s bytes)</string>
+    <string name="model_delete">Delete</string>
+    <string name="model_cancel">Cancel</string>
+    <string name="model_download_size">Download %1$s</string>
+    <string name="model_cancel_download">Cancel download</string>
+    <string name="model_free_on_phone">Free on this phone: %1$s.</string>
+    <string name="model_delete_title">Delete “%1$s”?</string>
+    <string name="model_details_cd">%1$s details</string>
+
+    <!-- Why a model can't be chosen yet, and its row in Robot uses. -->
+    <string name="model_not_ready_other_tpu">Built for the %1$s\'s TPU, which this phone doesn\'t have</string>
+    <string name="model_not_ready_allow_tpu">Allow the TPU for it first</string>
+    <string name="model_not_ready_no_gguf">This build of Robot can\'t run GGUF files</string>
+    <string name="model_not_ready_getting">Getting it ready…</string>
+    <string name="model_not_ready_bad">Its file can\'t be used</string>
+    <string name="model_not_ready_download">Not downloaded · %1$s</string>
+    <string name="model_not_ready_import">Import a file first</string>
+    <string name="model_row_chat_only">Chat only (short context): no actions</string>
+    <string name="model_row_chat_only_photos">Chat only (short context): no actions, can see photos</string>
+    <string name="model_row_own_file">A .litertlm or .gguf file</string>
+    <string name="model_row_tight_memory">Tight on this phone\'s memory</string>
+    <string name="model_row_ready">Ready</string>
+    <string name="model_keep_always">Always</string>
+    <string name="model_keep_minutes">%1$d min</string>
+
+    <!-- The Model tab. -->
+    <string name="model_group_problem">Model problem</string>
+    <string name="model_group_problems">Last model problems</string>
+    <string name="model_group_uses">Robot uses</string>
+    <string name="model_fallback_row">Used by itself if Fast (beta) doesn\'t load on the TPU · %1$s</string>
+    <string name="model_until_ready">Until “%1$s” is ready, Robot uses Fast</string>
+    <string name="model_in_memory">In memory now</string>
+    <string name="model_group_phone">This phone</string>
+    <string name="model_chip_fields">Chip, as Android names it</string>
+    <string name="model_tpu_failed_when">%1$s. Robot runs Fast\'s general build on the CPU.</string>
+    <string name="model_try_tpu_again">Try the TPU again</string>
+    <string name="model_try_tpu_again_summary">At the next question. If it fails again, Robot goes back to the general build by itself</string>
+    <string name="model_group_thinking">Thinking</string>
+    <string name="model_think_first">Let the model think first</string>
+    <string name="model_think_first_summary">Qwen3, MiniCPM 5 and some GGUF files</string>
+    <string name="model_group_memory">Memory</string>
+    <string name="model_keep_loaded">Keep the model loaded</string>
+    <string name="model_keep_default">The default</string>
+    <string name="model_keep_summary">%1$s after the panel closes</string>
+    <string name="model_group_voice">Voice models</string>
+    <string name="model_footer_intro">Models run on this phone. Robot goes online only to download one you pick. Whichever model answers, Robot\'s cards and switches (Settings › Actions, Safety &amp; privacy) decide what asks you first, and nothing leaves the phone unless you ask. Questions in a new conversation take longer with the slower models.</string>
+    <string name="model_footer_general_failed">Fast on this phone is Gemma 4 E2B\'s general build: the TPU build didn\'t load here.</string>
+    <string name="model_footer_general">Fast on this phone is Gemma 4 E2B\'s general build: the Tensor G5 build needs a Pixel 10.</string>
+    <string name="model_footer_g6">Fast on this phone is the Tensor G6 build (beta).</string>
+    <string name="model_footer_tpu">TPU support in Robot:</string>
+    <string name="model_footer_speeds">Speeds on the models\' pages are measured on a Pixel 10 Pro where they say so, otherwise estimates, each with where it comes from.</string>
+    <string name="model_footer_gpu">Use the GPU: on the GPU, Fast starts answering sooner, uses less battery and leaves the CPU to Robot\'s voice; the CPU may write a little faster. If the GPU fails, Robot switches to the CPU by itself and says so.</string>
+    <string name="model_footer_think">Let the model think first: some models can reason before they answer: Qwen3, MiniCPM 5, and GGUF files whose chat template allows it. On, they may: answers take longer, and the thinking is never shown or read out. Off, Robot asks them to answer directly. Robot\'s own Gemma models answer the same either way.</string>
+    <string name="model_footer_keep_tpu">Keep the model loaded after the panel closes (%1$s; it loads again in about 2 seconds).</string>
+    <string name="model_footer_keep_cpu">Keep the model loaded after the panel closes (%1$s; it loads again in a few seconds once its cache is written).</string>
+    <string name="model_footer_memory">about %1$s of memory</string>
+    <string name="model_footer_memory_file">about its file\'s size in memory</string>
+    <string name="model_footer_downloads">About the downloads: each model downloads from Hugging Face only when you tap Download, pinned to one commit of its repository; Robot checks the file\'s SHA-256 before it is ever loaded, and the download resumes by itself if the connection drops. You can also download a file on a computer and import it. Nothing you say or type goes to Hugging Face. The voice models are for talking to Robot and hearing it answer. They run on the phone; nothing you say leaves it. Each file is checked (SHA-256) before Robot uses it. Wi-Fi recommended.</string>
+
+    <!-- Where Fast runs, on a phone without the Tensor G5's TPU build. -->
+    <string name="model_use_gpu">Use the GPU</string>
+    <string name="model_use_gpu_summary">Recommended. If it fails, Robot switches to the CPU by itself</string>
+    <string name="model_gpu_failed_when">%1$s. Robot runs Fast on the CPU.</string>
+    <string name="model_try_gpu_again">Try the GPU again</string>
+    <string name="model_try_gpu_again_summary">At the next question. If it fails again, Robot goes back to the CPU by itself</string>
+    <string name="model_where_fast_runs">Where Fast runs</string>
+    <string name="model_where_fast_runs_cpu">On the CPU: Robot doesn\'t use this phone\'s GPU (%1$s, as on the Pixel 10)</string>
+    <string name="model_fast_on">Fast on the %1$s</string>
+    <string name="model_fast_on_now">Fast on the %1$s (now)</string>
+
+    <!-- A model problem and its report. -->
+    <string name="model_report_intro">Robot made a report you can read, then copy or share if you want to help fix it: codes, this phone and its Android build, the model file and the last 50 voice log events. Never what you said or asked. Robot sends nothing itself.</string>
+    <string name="model_copy_report">Copy report</string>
+    <string name="model_share_report">Share report</string>
+    <string name="model_send_bug">Send as bug report</string>
+    <string name="model_hide_report">Hide the report</string>
+    <string name="model_show_report">Show the report</string>
+    <string name="model_dismiss">Dismiss</string>
+    <string name="model_making_report">Making the report…</string>
+    <string name="model_expanded">Expanded</string>
+    <string name="model_collapsed">Collapsed</string>
+    <string name="model_hide">Hide</string>
+    <string name="model_show">Show</string>
+    <string name="model_share">Share</string>
+    <string name="model_problem_channel">Model problems</string>
+    <string name="model_problem_channel_text">When Robot\'s model fails and Robot switches to another way to run it. Robot never sends a report itself.</string>
+    <string name="model_problem_title">Robot\'s model had a problem</string>
+    <string name="model_problem_report">Robot app › Model has a report you can copy or share, if you want to.</string>
+    <string name="model_report_subject">Robot problem report</string>
+    <string name="model_share_report_title">Share the problem report</string>
+
+    <!-- A built-in model's page. -->
+    <string name="model_bad_checksum">The file\'s checksum is wrong, so Robot won\'t load it. Delete it and download it again.</string>
+    <string name="model_import_file">Import a file</string>
+    <string name="model_check_file">Check the file</string>
+    <string name="model_check_again">Check again</string>
+    <string name="model_delete_file">Delete the file</string>
+    <string name="model_on_this_phone">On this phone, on the %1$s. %2$s</string>
+    <string name="model_on_the_measured">On the %1$s. %2$s</string>
+    <string name="model_memory_title">This phone\'s memory</string>
+    <string name="model_group_details">Details</string>
+    <string name="model_download_size_title">Download size</string>
+    <string name="model_size_gpu_cache">%1$s, plus a cache its first load writes: about %2$s on the GPU, up to %3$s on the CPU</string>
+    <string name="model_size_cpu_cache">%1$s, plus about %2$s of cache the CPU writes on its first load</string>
+    <string name="model_cache_now">Cache now</string>
+    <string name="model_free_space">Free space</string>
+    <string name="model_licence">Licence</string>
+    <string name="model_source">Source</string>
+    <string name="model_source_value">%1$s at commit %2$s\n%3$s</string>
+    <string name="model_publisher_terms">Publisher\'s conditions</string>
+    <string name="model_terms_ticked">You ticked them on %1$s: research and personal experimentation only, and you\'re responsible for its outputs.</string>
+    <string name="model_terms_ask">Its publisher asks you to confirm two conditions before you download it: research and personal experimentation only, and you\'re responsible for its outputs.</string>
+    <string name="model_delete_file_only">Removes its file (%1$s) from this phone.</string>
+    <string name="model_delete_file_cache">Removes its file (%1$s) and its cache (%2$s) from this phone.</string>
+    <string name="model_delete_back_to_fast">Robot goes back to Fast.</string>
+    <string name="model_delete_none_left">Robot can\'t answer until you download or import a model again.</string>
+
+    <!-- Your own model file's page. -->
+    <string name="model_import_another">Import another file</string>
+    <string name="model_import_model_file">Import a model file</string>
+    <string name="model_group_inside">What Robot found inside</string>
+    <string name="model_size">Size</string>
+    <string name="model_chat_only">Chat only</string>
+    <string name="model_chat_only_photos">It was built for %1$d tokens of context, so Robot gives it a short prompt and no actions (timers, texts, notes, the calendar…) and keeps less of the conversation. Ask for an action and Robot says so and offers this page, where you can choose Fast. It can see photos.</string>
+    <string name="model_chat_only_no_photos">It was built for %1$d tokens of context, so Robot gives it a short prompt and no actions (timers, texts, notes, the calendar…) and keeps less of the conversation. Ask for an action and Robot says so and offers this page, where you can choose Fast. It can\'t see photos.</string>
+    <string name="model_run_on_tpu">Run on the TPU</string>
+    <string name="model_run_on_tpu_summary">A %1$s build: read the risks first</string>
+    <string name="model_stop_tpu">Stop running it on the TPU</string>
+    <string name="model_stop_tpu_summary">Robot won\'t use the TPU for it</string>
+    <string name="model_own_footer">A .litertlm (LiteRT-LM) or .gguf (llama.cpp) file. Robot copies it; it needs the file\'s size again in free space, plus room for a cache when LiteRT-LM runs it on the CPU (a .gguf needs none).</string>
+    <string name="model_own_footer_no_gguf">This build of Robot can\'t run .gguf files (its llama.cpp library wasn\'t built).</string>
+    <string name="model_import_warn_title">Only import a file you trust</string>
+    <string name="model_import_warning">A .litertlm file runs with Robot\'s own permissions: LiteRT-LM reads it inside Robot\'s model process, which can reach your contacts, calendar, messages, memory and the internet. Robot checks the file\'s layout first, not the model inside it, so a file made to attack LiteRT-LM could act as Robot. Only import files you trust, from their makers. (A .gguf file runs in a separate process with no permissions.)</string>
+    <string name="model_choose_file">Choose a file</string>
+    <string name="model_runs_tpu">Runs on the TPU: you allowed it.</string>
+    <string name="model_runs_no_gguf">This build of Robot can\'t run GGUF files: its llama.cpp library wasn\'t built. A build made with tools/build_llama.sh can.</string>
+    <string name="model_runs_gguf_cpu">Runs on the CPU with llama.cpp, memory-mapped (no cache). Expect it to be slower than Fast: about the speed of the E4B models for a 4B file, faster for a smaller one.</string>
+    <string name="model_runs_cpu_cache">Runs on the CPU: about as slow as the E4B models or slower, depending on its size. Its cache holds %1$s now.</string>
+    <string name="model_runs_cpu_first">Runs on the CPU: about as slow as the E4B models or slower, depending on its size. Its first load writes a cache next to it.</string>
+    <string name="model_runs_other_chip">It was compiled for the %1$s\'s TPU (%2$s), which this phone doesn\'t have, and a TPU build can\'t run on the CPU nor on another chip\'s TPU: Robot can\'t use it here.</string>
+    <string name="model_runs_waits_tpu">Waits for you to allow the TPU (Run on the TPU, above).</string>
+    <string name="model_runs_cant">Robot can\'t run it on this phone. Delete it to free the space.</string>
+    <string name="model_tpu_dialog_title">Run this file on the TPU?</string>
+    <string name="model_tpu_dialog_intro">Robot\'s check says this file was compiled for the %1$s\'s TPU, which this phone has. It isn\'t Robot\'s pinned Fast model, so Robot can\'t vouch for it:</string>
+    <string name="model_tpu_risk_code">Most of it is compiled TPU code that nobody can review. It runs through the phone\'s own TPU driver and Google\'s vendor libraries, outside what Robot\'s separate model process can contain.</string>
+    <string name="model_tpu_risk_crash">A bad or mismatched build can crash Robot\'s model, hang the TPU until the phone restarts, or, rarely, restart the phone.</string>
+    <string name="model_tpu_risk_sha">Its SHA-256 only proves the file is the one you picked, not that it is safe.</string>
+    <string name="model_tpu_risk_terms">Google\'s Tensor compiler is a closed beta whose terms forbid sharing what it builds without Google\'s permission: a TPU build not published by Google may have been shared against them.</string>
+    <string name="model_tpu_risk_cards">Robot\'s cards and switches still apply, as with every model: what asks you first doesn\'t change.</string>
+    <string name="model_tpu_cant_cpu">A TPU build can\'t run on the CPU: without the TPU, Robot doesn\'t use it.</string>
+
+    <!-- A publisher's conditions, before its file downloads or is imported. -->
+    <string name="model_terms_title_import">Before you import “%1$s”</string>
+    <string name="model_terms_title_download">Before you download “%1$s”</string>
+    <string name="model_terms_quote">“%1$s” (%2$s, on the model\'s page)</string>
+    <string name="model_terms_confirm_import">Confirm and import</string>
+    <string name="model_terms_confirm_download">Confirm and download</string>
+
+    <!-- A voice model's page. -->
+    <string name="model_voice_footer">For talking to Robot and hearing it answer. It runs on the phone; nothing you say leaves it. The file is checked (SHA-256) before Robot uses it. Wi-Fi recommended.</string>
+    <string name="model_voice_delete_speakers">Transcripts stop telling speakers apart (every line is “Speaker”) until you download it again (%1$s). A voiceprint of yours, if you made one, stays until you delete it in Settings › Conversation.</string>
+    <string name="model_voice_delete_stt">Robot falls back to the stand-in (typing only) until you download it again (%1$s).</string>
+    <string name="model_voice_delete_tts">Robot falls back to the stand-in (the phone\'s voice) until you download it again (%1$s).</string>
+
+    <!-- What ModelStore says about a download or an import (the snackbar, the download's notification). -->
+    <string name="model_copying">Copying: %1$s</string>
+    <string name="model_checking_percent">Checking the file: %1$d%%</string>
+    <string name="model_moving_percent">Moving into Robot\'s own storage: %1$d%%</string>
+    <string name="model_download_description">Robot\'s AI model (%1$s)</string>
+    <string name="model_your_file">your file</string>
+    <string name="model_out_of_space">The phone ran out of free space while copying (%1$s copied).</string>
+    <string name="model_wrong_size">That file isn\'t the model: its size is wrong.</string>
+    <string name="model_too_small">That file is too small to be a model.</string>
+    <string name="model_cant_move">Couldn\'t move the copied file into place.</string>
+    <string name="model_copy_failed">The copy failed (%1$s).</string>
+    <string name="model_in_use">Robot has “%1$s” loaded right now. Choose another model first: Robot lets go of it right away, then try again.</string>
+</resources>

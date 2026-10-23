@@ -2,6 +2,7 @@
 package app.heyrobot.core.helpers
 
 import app.heyrobot.core.AnthropicCost
+import app.heyrobot.core.CostText
 import app.heyrobot.core.AnthropicModel
 import app.heyrobot.core.TokenUsage
 import org.junit.Assert.assertEquals

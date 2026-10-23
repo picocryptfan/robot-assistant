@@ -1,6 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.Fmt
+import app.heyrobot.core.i18n.InfoStrings
+import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.i18n.ListKind
+import app.heyrobot.core.i18n.Msg
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.TurnStrings
+import app.heyrobot.core.i18n.UiLabel
+import app.heyrobot.core.i18n.UiStrings
 import java.util.Locale
 
 // Pure. Settings › Safety & privacy (0.4.0): every rule that makes an action ask first, or keeps something on the phone,
@@ -10,19 +19,24 @@ import java.util.Locale
  * "Safety cards": when content Robot didn't write (screen text, a photo, what a read tool found, a helper's words) makes an
  * action that writes or leaves the phone show its card even under "Just do it".
  */
-enum class SafetyCards(val title: String, val detail: String) {
+enum class SafetyCards(private val titleMsg: Msg, private val detailMsg: Msg) {
     /** Before 0.4.0's switch, the only rule: any content in the conversation, every such action asks. */
-    AFTER_READING("Always after Robot reads something",
-        "Once a conversation has screen text, a photo, or something Robot read or a helper said, every action that writes or leaves the phone asks first."),
+    AFTER_READING(TurnStrings.cardsAfterReading, TurnStrings.cardsAfterReadingDetail),
     /**
      * The default: content forces a card for an action you didn't ask for in your own words this time, and (1.0.1) for
      * any action that changes or opens something, since content could have chosen its details.
      */
-    UNASKED("When you didn't ask for it",
-        "Content Robot read makes an action ask first when you didn't ask for that kind of action yourself this time, and always when it would change or open something. Text on a screen, in a photo or in what Robot found never counts as your words."),
+    UNASKED(TurnStrings.cardsUnasked, TurnStrings.cardsUnaskedDetail),
     /** Content never forces a card; only not being sure who (or which) does. */
-    UNSURE_ONLY("Only when Robot isn't sure who",
-        "Content never makes an action ask first. Cards still show for actions set to Ask first, and when Robot isn't sure who or which."),
+    UNSURE_ONLY(TurnStrings.cardsUnsureOnly, TurnStrings.cardsUnsureOnlyDetail);
+
+    /** The choice and what it means, in words without a language yet (1.1: Settings shows them with `str()`). */
+    val titleText: Phrase get() = titleMsg()
+    val detailText: Phrase get() = detailMsg()
+
+    /** The same in English. */
+    val title: String get() = titleText.en()
+    val detail: String get() = detailText.en()
 }
 
 /**
@@ -62,11 +76,25 @@ enum class AskWhy {
     COMMAND,
     /** 0.9: a Termux command in a conversation with content Robot didn't write (rule 3): always a card, answered by a tap. */
     FROM_CONTENT,
+    /**
+     * 1.4, Robot Files (F9): a helper's card that would send what Robot found in or read from your files (Personal.FILES):
+     * answered only by a tap, never a spoken yes, whatever "Voice yes can send personal content" says. A helper card's
+     * reason only, never the approval gate's (ApprovalGate.decide never sees it).
+     */
+    FILES,
+    /**
+     * 1.1: a dated reminder ("remind me to … on the 20th", or an alarm offered as one): an event with an alert, always on
+     * add_event's card, which a yes may answer, whatever Settings › Actions says for new events.
+     */
+    REMINDER,
 }
 
 /** The one-time line after updating to 0.4.0 ([RobotSettings.safetyNotice]); tapping it opens Settings › Safety & privacy. */
 object SafetyNotice {
-    const val TEXT = "New: Settings › Safety & privacy. Cards now appear when you didn't ask for an action."
+    /** The line, in words without a language yet (1.1). */
+    val text: Phrase get() = TurnStrings.safetyNotice("page" to UiStrings.inSettings(UiStrings.safety))
+
+    val TEXT: String get() = text.en()
 }
 
 /** What Robot may do while the phone is locked, as the panel and the model are told. */
@@ -77,28 +105,31 @@ object LockScreen {
     /** The actions that may be allowed there (Robot's own internal tool never is). */
     val CHOICES: List<ToolName> get() = ToolName.entries.filter { !it.internal }
 
-    /** "questions, timers and alarms" (the panel's status line), "questions only". */
-    fun allowed(tools: Set<ToolName>): String {
-        val names = CHOICES.filter { it in tools }.map { it.title.lowercase(Locale.ROOT) }
-        val all = listOf("questions") + names
-        return if (all.size == 1) "questions only" else all.dropLast(1).joinToString(", ") + " and " + all.last()
+    /** "questions, timers and alarms" (the panel's status line), "questions only"; in [l] (1.1: the menus' language). */
+    fun allowed(tools: Set<ToolName>, l: Langs = Langs.EN): String {
+        val names = CHOICES.filter { it in tools }.map { lower(it, l) }
+        if (names.isEmpty()) return TurnStrings.lockQuestionsOnly().render(l)
+        return Fmt.list(listOf(TurnStrings.lockQuestions().render(l)) + names, ListKind.AND, l.say)
     }
 
-    /** The empty panel's headline on the lock screen. */
-    fun headline(tools: Set<ToolName>): String = when {
-        tools == DEFAULT -> "Ask a question, or set a timer or alarm."
-        tools.isEmpty() -> "Ask a question."
-        else -> "Ask a question, or use: " + CHOICES.filter { it in tools }.joinToString(", ") { it.title.lowercase(Locale.ROOT) } + "."
+    /** The empty panel's headline on the lock screen, in [l] (1.1: the menus' language). */
+    fun headline(tools: Set<ToolName>, l: Langs = Langs.EN): String = when {
+        tools == DEFAULT -> TurnStrings.lockAskOrTimer().render(l)
+        tools.isEmpty() -> TurnStrings.lockAsk().render(l)
+        else -> TurnStrings.lockAskOrUse("list" to CHOICES.filter { it in tools }.joinToString(", ") { lower(it, l) }).render(l)
     }
+
+    /** A tool's title inside a sentence: "timers", « minuteries » (its first letter; a brand name keeps its capitals). */
+    private fun lower(t: ToolName, l: Langs): String = t.titleText.render(l).replaceFirstChar { it.lowercase(Locale.ROOT) }
 
     /**
      * The system prompt's line while locked. The default set keeps the exact words Robot always used (the prompt's tokens
-     * are counted and cached); another set names its actions.
+     * are counted and cached); another set names its actions. The model's words: English.
      */
     fun promptLine(tools: Set<ToolName>): String = when {
-        tools == DEFAULT -> " The phone is locked: you can answer questions and set timers and alarms only."
-        tools.isEmpty() -> " The phone is locked: you can answer questions only."
-        else -> " The phone is locked: you can answer questions and use only these actions: " +
+        tools == DEFAULT -> " The phone is locked: you can answer questions and set timers and alarms only." // l10n: not text (model prompt)
+        tools.isEmpty() -> " The phone is locked: you can answer questions only." // l10n: not text (model prompt)
+        else -> " The phone is locked: you can answer questions and use only these actions: " + // l10n: not text (model prompt)
             CHOICES.filter { it in tools }.joinToString(", ") { it.title.lowercase(Locale.ROOT) } + "."
     }
 }
@@ -119,15 +150,26 @@ object CardAnswer {
 
     /** What an answer does: decline, confirm, take the card's only choice, or say why a tap is needed ([Reply.say]). */
     enum class Does { DECLINE, CONFIRM, CHOOSE_ONLY, TAP }
-    data class Reply(val does: Does, val say: String? = null)
+    /** [text]: 1.1, [say] in words without a language yet (Robot says it in the reply language). */
+    data class Reply(val does: Does, val say: String? = null) {
+        var text: Phrase? = say?.let(Phrase::plain)
+            private set
 
-    const val PROMPT = "Say yes or no."
-    const val TAP_ONE = "Tap the one you mean on the card."
-    const val TAP_LEARNED = "Robot learned that name from a notification: check who it goes to on the card, then tap."
-    const val TAP_UNSURE = "Robot isn't sure who or which it is: check the card, then tap."
-    const val TAP_ONLINE = "Tap Allow always, Just this time or No on the card."
-    const val TAP_MESSAGE = app.heyrobot.core.messages.MessageQuarantine.CARD_LINE
-    const val TAP_SEARCH = "This search has words from something Robot read on your phone: check it on the card, then tap."
+        constructor(does: Does, text: Phrase) : this(does, text.en()) {
+            this.text = text
+        }
+    }
+
+    val PROMPT: String get() = TurnStrings.sayYesOrNo().en()
+    val TAP_ONE: String get() = TurnStrings.tapOne().en()
+    val TAP_LEARNED: String get() = TurnStrings.tapLearned().en()
+    val TAP_UNSURE: String get() = TurnStrings.tapUnsure().en()
+    val TAP_ONLINE: String get() = tapOnline().en()
+    val TAP_SEARCH: String get() = TurnStrings.tapSearch().en()
+
+    /** The first-use card's three buttons, by the names the card shows (the menus' language). */
+    private fun tapOnline(): Phrase = TurnStrings.tapOnline("always" to UiLabel(UiStrings.allowAlways), "once" to UiLabel(InfoStrings.justThisTime),
+        "no" to UiLabel(InfoStrings.no))
 
     /**
      * Why a card needs a tap, whatever is said ([Card.tapFor]): a name learned from a Cheogram notification (whoever sent
@@ -138,25 +180,32 @@ object CardAnswer {
         AskWhy.COMMAND).firstOrNull { it in why }
 
     /** What Robot says when a yes can't answer a card that needs a tap for [why]. */
-    fun tapWords(why: AskWhy): String = when (why) {
-        AskWhy.LEARNED -> TAP_LEARNED
-        AskWhy.WHO -> TAP_UNSURE
-        AskWhy.ONLINE -> TAP_ONLINE
-        AskWhy.MESSAGE -> TAP_MESSAGE
-        AskWhy.SEARCH_PERSONAL -> TAP_SEARCH
-        AskWhy.FROM_CONTENT -> TAP_FROM_CONTENT
-        AskWhy.COMMAND -> TAP_COMMAND
-        else -> TAP_ONE
+    fun tapWords(why: AskWhy): String = tapText(why).en()
+
+    /** [tapWords] in words without a language yet (1.1). */
+    fun tapText(why: AskWhy): Phrase = when (why) {
+        AskWhy.LEARNED -> TurnStrings.tapLearned()
+        AskWhy.WHO -> TurnStrings.tapUnsure()
+        AskWhy.ONLINE -> tapOnline()
+        AskWhy.MESSAGE -> app.heyrobot.core.messages.MessageQuarantine.cardLineText()
+        AskWhy.SEARCH_PERSONAL -> TurnStrings.tapSearch()
+        AskWhy.FROM_CONTENT -> TurnStrings.tapFromContent("run" to UiLabel(UiStrings.run))
+        AskWhy.COMMAND -> TurnStrings.tapCommand("run" to UiLabel(UiStrings.run))
+        AskWhy.FILES -> TurnStrings.tapFiles()
+        else -> TurnStrings.tapOne()
     }
 
-    const val TAP_FROM_CONTENT = "Robot read this from content it didn't write: check the card, then tap Run."
-    const val TAP_COMMAND = "This command has warnings: check the card, then tap Run."
+    val TAP_FROM_CONTENT: String get() = tapText(AskWhy.FROM_CONTENT).en()
+    val TAP_COMMAND: String get() = tapText(AskWhy.COMMAND).en()
 
     /** What Robot says when [card] starts waiting and replies are spoken: how it may be answered ("no" always works). */
-    fun prompt(card: Waiting): String = when {
-        card.tapFor != null -> (card.say ?: tapWords(card.tapFor)) + " Or say no."
-        card.choices > 1 -> "Tap the one you mean on the card, or say no."
-        else -> PROMPT
+    fun prompt(card: Waiting): String = promptText(card).en()
+
+    /** [prompt] in words without a language yet (1.1). A card's own words ([Waiting.say]) are as the card has them. */
+    fun promptText(card: Waiting): Phrase = when {
+        card.tapFor != null -> TurnStrings.orSayNo("why" to (card.say?.let(Phrase::plain) ?: tapText(card.tapFor)))
+        card.choices > 1 -> TurnStrings.tapOneOrNo()
+        else -> TurnStrings.sayYesOrNo()
     }
 
     /**
@@ -170,9 +219,10 @@ object CardAnswer {
         val kind = of(text, wakePhrases) ?: return null
         return when {
             kind == Kind.NO -> Reply(Does.DECLINE)
-            card.tapFor != null -> Reply(Does.TAP, card.say ?: tapWords(card.tapFor))
-            card.choices > 1 -> Reply(Does.TAP, TAP_ONE)
-            card.personal && !voiceYesPersonal -> Reply(Does.TAP, "Tap ${card.confirm ?: "the button"} to share it.")
+            card.tapFor != null -> Reply(Does.TAP, card.say?.let(Phrase::plain) ?: tapText(card.tapFor))
+            card.choices > 1 -> Reply(Does.TAP, TurnStrings.tapOne())
+            card.personal && !voiceYesPersonal -> Reply(Does.TAP,
+                card.confirm?.let { TurnStrings.tapToShare("button" to it) } ?: TurnStrings.tapButtonToShare())
             card.choices == 1 -> Reply(Does.CHOOSE_ONLY)
             else -> Reply(Does.CONFIRM)
         }

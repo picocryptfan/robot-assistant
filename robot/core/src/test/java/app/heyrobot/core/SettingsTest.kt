@@ -5,6 +5,8 @@ import app.heyrobot.core.helpers.HelperConfig
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import app.heyrobot.core.i18n.Lang
+import app.heyrobot.core.i18n.ReplyLangChoice
 
 class SettingsTest {
     @Test fun defaultsMatchTheSpec() {
@@ -173,10 +175,26 @@ class SettingsTest {
         assertEquals(false, ConversationSettings.speak(d.copy(convSpeak = false), ConvMode.INTERPRET))
         assertEquals(2, ConversationSettings.maxSpeakers(d, ConvMode.INTERPRET))
         assertEquals(6, ConversationSettings.maxSpeakers(d, ConvMode.TRANSCRIBE))
-        assertEquals("fr", ConversationSettings.summaryLang(d, java.util.Locale.CANADA_FRENCH))
-        assertEquals("en", ConversationSettings.summaryLang(d.copy(convSummaryLang = "en"), java.util.Locale.CANADA_FRENCH))
+        assertEquals("fr", ConversationSettings.summaryLang(d, Lang.FR))
+        assertEquals("en", ConversationSettings.summaryLang(d.copy(convSummaryLang = "en"), Lang.FR))
+        assertEquals("en", ConversationSettings.summaryLang(d.copy(replyLang = ReplyLangChoice.EN), Lang.FR))
         assertEquals(false, ConversationSettings.partials(d, screenOn = false, warm = false))
         assertEquals(false, ConversationSettings.partials(d, screenOn = true, warm = true))
+    }
+
+    @Test fun theListeningPauseRoundTripsAndIsWrittenOnlyWhenSet() {
+        val d = RobotSettings()
+        assertEquals(ListenPause.NORMAL, d.listenPause)
+        assertEquals(1_000, d.listenPause.ms)
+        assertEquals(false, d.toJson().has("listenPause"))
+        for (p in ListenPause.entries) assertEquals(p, RobotSettings.fromJson(d.copy(listenPause = p).toJson().toString()).listenPause)
+        // An older file, or an id this Robot doesn't know: Normal.
+        assertEquals(ListenPause.NORMAL, RobotSettings.fromJson("""{"schema":13,"listenPause":"forever"}""").listenPause)
+        assertEquals(listOf(600, 1_000, 1_600, 2_500), ListenPause.entries.map { it.ms })
+        // A restore carries it as is (RestoreSafety's AS_IS), from either phone.
+        for (mine in listOf(true, false)) {
+            assertEquals(ListenPause.LONG, app.heyrobot.core.backup.RestoreSafety.settings(d, d.copy(listenPause = ListenPause.LONG), mine).value.listenPause)
+        }
     }
 
     @Test fun conversationSettingsRoundTripAndMigrate() {

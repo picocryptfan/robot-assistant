@@ -38,6 +38,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.heyrobot.core.InterpreterVoice
 import app.heyrobot.core.TranscriptLine
+import app.heyrobot.core.i18n.ConversationStrings
+import app.heyrobot.core.i18n.Lang
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.ui.theme.LocalLangs
 import app.heyrobot.ui.common.RIcons
 
 // VOICE PROCESS. The Interpreter (docs/conversation-mode.md 5.2, phase 5.4): face to face, the phone flat between two
@@ -45,7 +49,9 @@ import app.heyrobot.ui.common.RIcons
 // large, what the other side last said translated into its language (with "fast" when the fast engine made it), and,
 // small, what Robot heard its own side say, so each can check. The direction follows each line's language; a half's
 // microphone button forces its language (hold it while you speak, or tap it on and off). A tap anywhere else stops the
-// translation being read aloud. Robot never translates itself: it doesn't listen while it speaks.
+// translation being read aloud. Robot never translates itself: it doesn't listen while it speaks. 1.1: each half's words are
+// in that half's language (core ConversationStrings), whatever the menus' language: the French half says « Parle : Robot
+// traduit. », the English one "Speak: Robot translates.".
 
 @Composable
 fun InterpreterScreen(ui: ConversationSession.Ui, modifier: Modifier = Modifier) {
@@ -55,16 +61,19 @@ fun InterpreterScreen(ui: ConversationSession.Ui, modifier: Modifier = Modifier)
     val lastMine = ui.lines.lastOrNull { it.lang == mine }
     Column(modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures(onTap = { ConversationSession.stopSpeaking() }) }) {
         // Turned to face the other person across the table.
-        Half(ui, lang = theirs, other = lastMine, own = lastTheirs, ownLabel = "Robot heard you",
-            modifier = Modifier.weight(1f).fillMaxWidth().graphicsLayer { rotationZ = 180f })
+        Half(ui, lang = theirs, other = lastMine, own = lastTheirs, modifier = Modifier.weight(1f).fillMaxWidth().graphicsLayer { rotationZ = 180f })
         HorizontalDivider()
-        Half(ui, lang = mine, other = lastTheirs, own = lastMine, ownLabel = "Robot heard you", modifier = Modifier.weight(1f).fillMaxWidth())
+        Half(ui, lang = mine, other = lastTheirs, own = lastMine, modifier = Modifier.weight(1f).fillMaxWidth())
     }
 }
 
+/** [p] in the half's language [lang] ("fr" or "en"), whatever the menus say. */
+@Composable
+private fun inHalf(p: Phrase, lang: String): String = p.render(LocalLangs.current.copy(say = Lang.of(lang)))
+
 /** One side: [other]'s last line translated into [lang], large; this side's own last line ([own]), small; its push-to-talk. */
 @Composable
-private fun Half(ui: ConversationSession.Ui, lang: String, other: TranscriptLine?, own: TranscriptLine?, ownLabel: String, modifier: Modifier) {
+private fun Half(ui: ConversationSession.Ui, lang: String, other: TranscriptLine?, own: TranscriptLine?, modifier: Modifier) {
     val tr = other?.translations?.get(lang)
     val working = other != null && other.i in ui.translating && tr == null
     val failed = other != null && ui.untranslated == other.i && tr == null
@@ -74,7 +83,7 @@ private fun Half(ui: ConversationSession.Ui, lang: String, other: TranscriptLine
             if (tr?.fast == true) {
                 Spacer(Modifier.width(8.dp))
                 Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.tertiaryContainer) {
-                    Text("fast", Modifier.padding(horizontal = 6.dp, vertical = 1.dp), style = MaterialTheme.typography.labelSmall)
+                    Text(inHalf(ConversationStrings.fast(), lang), Modifier.padding(horizontal = 6.dp, vertical = 1.dp), style = MaterialTheme.typography.labelSmall)
                 }
             }
         }
@@ -83,8 +92,8 @@ private fun Half(ui: ConversationSession.Ui, lang: String, other: TranscriptLine
                 when {
                     tr != null -> tr.text
                     working -> "…"
-                    failed -> if (lang == "fr") "Robot n'a pas pu traduire cela." else "Robot couldn't translate that."
-                    other == null -> if (lang == "fr") "Parlez : Robot traduit." else "Speak: Robot translates."
+                    failed -> inHalf(ConversationStrings.couldNotTranslate(), lang)
+                    other == null -> inHalf(ConversationStrings.speakRobotTranslates(), lang)
                     else -> ""
                 },
                 fontSize = 30.sp, lineHeight = 36.sp, style = MaterialTheme.typography.headlineMedium,
@@ -94,7 +103,7 @@ private fun Half(ui: ConversationSession.Ui, lang: String, other: TranscriptLine
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 if (own != null) {
-                    Text(if (lang == "fr") "Robot vous a entendu" else ownLabel, style = MaterialTheme.typography.labelSmall,
+                    Text(inHalf(ConversationStrings.heardYou(), lang), style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(own.text, style = MaterialTheme.typography.bodyMedium, fontStyle = FontStyle.Italic, maxLines = 3)
                 }
@@ -112,11 +121,11 @@ private fun Half(ui: ConversationSession.Ui, lang: String, other: TranscriptLine
 @Composable
 private fun PushToTalk(lang: String, held: Boolean) {
     val on by rememberUpdatedState(held)
-    val label = if (lang == "fr") "Parler en français" else "Speak English"
+    val label = inHalf(if (held) ConversationStrings.speakThisLanguageOn() else ConversationStrings.speakThisLanguage(), lang)
     Box(
         Modifier.size(64.dp).clip(CircleShape)
             .background(if (held) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer)
-            .semantics { contentDescription = label + if (held) ", on" else "" }
+            .semantics { contentDescription = label }
             .pointerInput(lang) {
                 detectTapGestures(onPress = {
                     val wasOn = on

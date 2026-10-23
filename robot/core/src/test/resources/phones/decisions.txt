@@ -1,0 +1,2281 @@
+# Robot's decisions from a phone's Build fields (PhoneDecisionsTest). Frozen: never re-record to make a change pass.
+== Google | Pixel 6 |  |  | 7600000000
+chip TENSOR_G1 · title “Tensor” · tensor true
+phone en: Pixel 6 (Tensor)
+phone fr: Pixel 6 (Tensor)
+tpu line en: Google publishes no TPU build of Gemma for the Tensor: Fast is Gemma 4 E2B's general build, on the GPU (recommended) or the CPU.
+tpu line fr: Google ne publie aucune version TPU de Gemma pour le Tensor : Rapide est la version générale de Gemma 4 E2B, sur le GPU (recommandé) ou le CPU.
+tpu NONE · gpu offered true · small memory true
+series of chip: Pixel 6
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #11 #12 #13 · refused #5
+  CPU: speed estimate #10 #11 #12 #13 · loads
+  GPU: speed estimate #14 #15 #16 #17 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #20 #21 #22 · refused #5
+  CPU: speed estimate #19 #20 #21 #22 · loads
+  GPU: speed estimate #19 #20 #21 #22 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #20 #21 #22 · refused #5
+  CPU: speed estimate #19 #20 #21 #22 · loads
+  GPU: speed estimate #19 #20 #21 #22 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel 6 Pro |  |  | 7600000000
+chip TENSOR_G1 · title “Tensor” · tensor true
+phone en: Pixel 6 Pro (Tensor)
+phone fr: Pixel 6 Pro (Tensor)
+tpu line en: Google publishes no TPU build of Gemma for the Tensor: Fast is Gemma 4 E2B's general build, on the GPU (recommended) or the CPU.
+tpu line fr: Google ne publie aucune version TPU de Gemma pour le Tensor : Rapide est la version générale de Gemma 4 E2B, sur le GPU (recommandé) ou le CPU.
+tpu NONE · gpu offered true · small memory true
+series of chip: Pixel 6
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #11 #12 #13 · refused #5
+  CPU: speed estimate #10 #11 #12 #13 · loads
+  GPU: speed estimate #14 #15 #16 #17 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #20 #21 #22 · refused #5
+  CPU: speed estimate #19 #20 #21 #22 · loads
+  GPU: speed estimate #19 #20 #21 #22 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #20 #21 #22 · refused #5
+  CPU: speed estimate #19 #20 #21 #22 · loads
+  GPU: speed estimate #19 #20 #21 #22 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel 6a |  |  | 7600000000
+chip TENSOR_G1 · title “Tensor” · tensor true
+phone en: Pixel 6a (Tensor)
+phone fr: Pixel 6a (Tensor)
+tpu line en: Google publishes no TPU build of Gemma for the Tensor: Fast is Gemma 4 E2B's general build, on the GPU (recommended) or the CPU.
+tpu line fr: Google ne publie aucune version TPU de Gemma pour le Tensor : Rapide est la version générale de Gemma 4 E2B, sur le GPU (recommandé) ou le CPU.
+tpu NONE · gpu offered true · small memory true
+series of chip: Pixel 6
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #11 #12 #13 · refused #5
+  CPU: speed estimate #10 #11 #12 #13 · loads
+  GPU: speed estimate #14 #15 #16 #17 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #20 #21 #22 · refused #5
+  CPU: speed estimate #19 #20 #21 #22 · loads
+  GPU: speed estimate #19 #20 #21 #22 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #20 #21 #22 · refused #5
+  CPU: speed estimate #19 #20 #21 #22 · loads
+  GPU: speed estimate #19 #20 #21 #22 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel 7 |  |  | 7600000000
+chip TENSOR_G2 · title “Tensor G2” · tensor true
+phone en: Pixel 7 (Tensor G2)
+phone fr: Pixel 7 (Tensor G2)
+tpu line en: Google publishes no TPU build of Gemma for the Tensor G2: Fast is Gemma 4 E2B's general build, on the GPU (recommended) or the CPU.
+tpu line fr: Google ne publie aucune version TPU de Gemma pour le Tensor G2 : Rapide est la version générale de Gemma 4 E2B, sur le GPU (recommandé) ou le CPU.
+tpu NONE · gpu offered true · small memory true
+series of chip: Pixel 7
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #25 #12 #26 · refused #5
+  CPU: speed estimate #10 #25 #12 #26 · loads
+  GPU: speed estimate #14 #27 #16 #28 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #29 #21 #30 · refused #5
+  CPU: speed estimate #19 #29 #21 #30 · loads
+  GPU: speed estimate #19 #29 #21 #30 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #29 #21 #30 · refused #5
+  CPU: speed estimate #19 #29 #21 #30 · loads
+  GPU: speed estimate #19 #29 #21 #30 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel 7 Pro |  |  | 7600000000
+chip TENSOR_G2 · title “Tensor G2” · tensor true
+phone en: Pixel 7 Pro (Tensor G2)
+phone fr: Pixel 7 Pro (Tensor G2)
+tpu line en: Google publishes no TPU build of Gemma for the Tensor G2: Fast is Gemma 4 E2B's general build, on the GPU (recommended) or the CPU.
+tpu line fr: Google ne publie aucune version TPU de Gemma pour le Tensor G2 : Rapide est la version générale de Gemma 4 E2B, sur le GPU (recommandé) ou le CPU.
+tpu NONE · gpu offered true · small memory true
+series of chip: Pixel 7
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #25 #12 #26 · refused #5
+  CPU: speed estimate #10 #25 #12 #26 · loads
+  GPU: speed estimate #14 #27 #16 #28 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #29 #21 #30 · refused #5
+  CPU: speed estimate #19 #29 #21 #30 · loads
+  GPU: speed estimate #19 #29 #21 #30 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #29 #21 #30 · refused #5
+  CPU: speed estimate #19 #29 #21 #30 · loads
+  GPU: speed estimate #19 #29 #21 #30 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel 7a |  |  | 7600000000
+chip TENSOR_G2 · title “Tensor G2” · tensor true
+phone en: Pixel 7a (Tensor G2)
+phone fr: Pixel 7a (Tensor G2)
+tpu line en: Google publishes no TPU build of Gemma for the Tensor G2: Fast is Gemma 4 E2B's general build, on the GPU (recommended) or the CPU.
+tpu line fr: Google ne publie aucune version TPU de Gemma pour le Tensor G2 : Rapide est la version générale de Gemma 4 E2B, sur le GPU (recommandé) ou le CPU.
+tpu NONE · gpu offered true · small memory true
+series of chip: Pixel 7
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #25 #12 #26 · refused #5
+  CPU: speed estimate #10 #25 #12 #26 · loads
+  GPU: speed estimate #14 #27 #16 #28 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #29 #21 #30 · refused #5
+  CPU: speed estimate #19 #29 #21 #30 · loads
+  GPU: speed estimate #19 #29 #21 #30 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #29 #21 #30 · refused #5
+  CPU: speed estimate #19 #29 #21 #30 · loads
+  GPU: speed estimate #19 #29 #21 #30 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel Fold |  |  | 7600000000
+chip TENSOR_G2 · title “Tensor G2” · tensor true
+phone en: Pixel Fold (Tensor G2)
+phone fr: Pixel Fold (Tensor G2)
+tpu line en: Google publishes no TPU build of Gemma for the Tensor G2: Fast is Gemma 4 E2B's general build, on the GPU (recommended) or the CPU.
+tpu line fr: Google ne publie aucune version TPU de Gemma pour le Tensor G2 : Rapide est la version générale de Gemma 4 E2B, sur le GPU (recommandé) ou le CPU.
+tpu NONE · gpu offered true · small memory true
+series of chip: Pixel 7
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #25 #12 #26 · refused #5
+  CPU: speed estimate #10 #25 #12 #26 · loads
+  GPU: speed estimate #14 #27 #16 #28 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #29 #21 #30 · refused #5
+  CPU: speed estimate #19 #29 #21 #30 · loads
+  GPU: speed estimate #19 #29 #21 #30 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #29 #21 #30 · refused #5
+  CPU: speed estimate #19 #29 #21 #30 · loads
+  GPU: speed estimate #19 #29 #21 #30 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel Tablet |  |  | 7600000000
+chip TENSOR_G2 · title “Tensor G2” · tensor true
+phone en: Pixel Tablet (Tensor G2)
+phone fr: Pixel Tablet (Tensor G2)
+tpu line en: Google publishes no TPU build of Gemma for the Tensor G2: Fast is Gemma 4 E2B's general build, on the GPU (recommended) or the CPU.
+tpu line fr: Google ne publie aucune version TPU de Gemma pour le Tensor G2 : Rapide est la version générale de Gemma 4 E2B, sur le GPU (recommandé) ou le CPU.
+tpu NONE · gpu offered true · small memory true
+series of chip: Pixel 7
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #25 #12 #26 · refused #5
+  CPU: speed estimate #10 #25 #12 #26 · loads
+  GPU: speed estimate #14 #27 #16 #28 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #29 #21 #30 · refused #5
+  CPU: speed estimate #19 #29 #21 #30 · loads
+  GPU: speed estimate #19 #29 #21 #30 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #29 #21 #30 · refused #5
+  CPU: speed estimate #19 #29 #21 #30 · loads
+  GPU: speed estimate #19 #29 #21 #30 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel 8 |  |  | 7600000000
+chip TENSOR_G3 · title “Tensor G3” · tensor true
+phone en: Pixel 8 (Tensor G3)
+phone fr: Pixel 8 (Tensor G3)
+tpu line en: Google publishes no TPU build of Gemma for the Tensor G3: Fast is Gemma 4 E2B's general build, on the GPU (recommended) or the CPU.
+tpu line fr: Google ne publie aucune version TPU de Gemma pour le Tensor G3 : Rapide est la version générale de Gemma 4 E2B, sur le GPU (recommandé) ou le CPU.
+tpu NONE · gpu offered true · small memory true
+series of chip: Pixel 8
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #31 #12 #32 · refused #5
+  CPU: speed estimate #10 #31 #12 #32 · loads
+  GPU: speed estimate #14 #33 #16 #34 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #35 #21 #36 · refused #5
+  CPU: speed estimate #19 #35 #21 #36 · loads
+  GPU: speed estimate #19 #35 #21 #36 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #35 #21 #36 · refused #5
+  CPU: speed estimate #19 #35 #21 #36 · loads
+  GPU: speed estimate #19 #35 #21 #36 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel 8 Pro |  |  | 7600000000
+chip TENSOR_G3 · title “Tensor G3” · tensor true
+phone en: Pixel 8 Pro (Tensor G3)
+phone fr: Pixel 8 Pro (Tensor G3)
+tpu line en: Google publishes no TPU build of Gemma for the Tensor G3: Fast is Gemma 4 E2B's general build, on the GPU (recommended) or the CPU.
+tpu line fr: Google ne publie aucune version TPU de Gemma pour le Tensor G3 : Rapide est la version générale de Gemma 4 E2B, sur le GPU (recommandé) ou le CPU.
+tpu NONE · gpu offered true · small memory true
+series of chip: Pixel 8
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #31 #12 #32 · refused #5
+  CPU: speed estimate #10 #31 #12 #32 · loads
+  GPU: speed estimate #14 #33 #16 #34 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #35 #21 #36 · refused #5
+  CPU: speed estimate #19 #35 #21 #36 · loads
+  GPU: speed estimate #19 #35 #21 #36 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #35 #21 #36 · refused #5
+  CPU: speed estimate #19 #35 #21 #36 · loads
+  GPU: speed estimate #19 #35 #21 #36 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel 8a |  |  | 7600000000
+chip TENSOR_G3 · title “Tensor G3” · tensor true
+phone en: Pixel 8a (Tensor G3)
+phone fr: Pixel 8a (Tensor G3)
+tpu line en: Google publishes no TPU build of Gemma for the Tensor G3: Fast is Gemma 4 E2B's general build, on the GPU (recommended) or the CPU.
+tpu line fr: Google ne publie aucune version TPU de Gemma pour le Tensor G3 : Rapide est la version générale de Gemma 4 E2B, sur le GPU (recommandé) ou le CPU.
+tpu NONE · gpu offered true · small memory true
+series of chip: Pixel 8
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #31 #12 #32 · refused #5
+  CPU: speed estimate #10 #31 #12 #32 · loads
+  GPU: speed estimate #14 #33 #16 #34 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #35 #21 #36 · refused #5
+  CPU: speed estimate #19 #35 #21 #36 · loads
+  GPU: speed estimate #19 #35 #21 #36 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #35 #21 #36 · refused #5
+  CPU: speed estimate #19 #35 #21 #36 · loads
+  GPU: speed estimate #19 #35 #21 #36 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel 9 |  |  | 7600000000
+chip TENSOR_G4 · title “Tensor G4” · tensor true
+phone en: Pixel 9 (Tensor G4)
+phone fr: Pixel 9 (Tensor G4)
+tpu line en: Google publishes no TPU build of Gemma for the Tensor G4: Fast is Gemma 4 E2B's general build, on the GPU (recommended) or the CPU.
+tpu line fr: Google ne publie aucune version TPU de Gemma pour le Tensor G4 : Rapide est la version générale de Gemma 4 E2B, sur le GPU (recommandé) ou le CPU.
+tpu NONE · gpu offered true · small memory true
+series of chip: Pixel 9
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #37 #12 #38 · refused #5
+  CPU: speed estimate #10 #37 #12 #38 · loads
+  GPU: speed estimate #14 #39 #16 #40 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel 9 Pro |  |  | 7600000000
+chip TENSOR_G4 · title “Tensor G4” · tensor true
+phone en: Pixel 9 Pro (Tensor G4)
+phone fr: Pixel 9 Pro (Tensor G4)
+tpu line en: Google publishes no TPU build of Gemma for the Tensor G4: Fast is Gemma 4 E2B's general build, on the GPU (recommended) or the CPU.
+tpu line fr: Google ne publie aucune version TPU de Gemma pour le Tensor G4 : Rapide est la version générale de Gemma 4 E2B, sur le GPU (recommandé) ou le CPU.
+tpu NONE · gpu offered true · small memory true
+series of chip: Pixel 9
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #37 #12 #38 · refused #5
+  CPU: speed estimate #10 #37 #12 #38 · loads
+  GPU: speed estimate #14 #39 #16 #40 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel 9 Pro XL |  |  | 7600000000
+chip TENSOR_G4 · title “Tensor G4” · tensor true
+phone en: Pixel 9 Pro XL (Tensor G4)
+phone fr: Pixel 9 Pro XL (Tensor G4)
+tpu line en: Google publishes no TPU build of Gemma for the Tensor G4: Fast is Gemma 4 E2B's general build, on the GPU (recommended) or the CPU.
+tpu line fr: Google ne publie aucune version TPU de Gemma pour le Tensor G4 : Rapide est la version générale de Gemma 4 E2B, sur le GPU (recommandé) ou le CPU.
+tpu NONE · gpu offered true · small memory true
+series of chip: Pixel 9
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #37 #12 #38 · refused #5
+  CPU: speed estimate #10 #37 #12 #38 · loads
+  GPU: speed estimate #14 #39 #16 #40 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel 9 Pro Fold |  |  | 7600000000
+chip TENSOR_G4 · title “Tensor G4” · tensor true
+phone en: Pixel 9 Pro Fold (Tensor G4)
+phone fr: Pixel 9 Pro Fold (Tensor G4)
+tpu line en: Google publishes no TPU build of Gemma for the Tensor G4: Fast is Gemma 4 E2B's general build, on the GPU (recommended) or the CPU.
+tpu line fr: Google ne publie aucune version TPU de Gemma pour le Tensor G4 : Rapide est la version générale de Gemma 4 E2B, sur le GPU (recommandé) ou le CPU.
+tpu NONE · gpu offered true · small memory true
+series of chip: Pixel 9
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #37 #12 #38 · refused #5
+  CPU: speed estimate #10 #37 #12 #38 · loads
+  GPU: speed estimate #14 #39 #16 #40 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel 9a |  |  | 7600000000
+chip TENSOR_G4 · title “Tensor G4” · tensor true
+phone en: Pixel 9a (Tensor G4)
+phone fr: Pixel 9a (Tensor G4)
+tpu line en: Google publishes no TPU build of Gemma for the Tensor G4: Fast is Gemma 4 E2B's general build, on the GPU (recommended) or the CPU.
+tpu line fr: Google ne publie aucune version TPU de Gemma pour le Tensor G4 : Rapide est la version générale de Gemma 4 E2B, sur le GPU (recommandé) ou le CPU.
+tpu NONE · gpu offered true · small memory true
+series of chip: Pixel 9
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #37 #12 #38 · refused #5
+  CPU: speed estimate #10 #37 #12 #38 · loads
+  GPU: speed estimate #14 #39 #16 #40 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel 10a |  |  | 7600000000
+chip TENSOR_G4 · title “Tensor G4” · tensor true
+phone en: Pixel 10a (Tensor G4)
+phone fr: Pixel 10a (Tensor G4)
+tpu line en: Google publishes no TPU build of Gemma for the Tensor G4: Fast is Gemma 4 E2B's general build, on the GPU (recommended) or the CPU.
+tpu line fr: Google ne publie aucune version TPU de Gemma pour le Tensor G4 : Rapide est la version générale de Gemma 4 E2B, sur le GPU (recommandé) ou le CPU.
+tpu NONE · gpu offered true · small memory true
+series of chip: Pixel 9
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #37 #12 #38 · refused #5
+  CPU: speed estimate #10 #37 #12 #38 · loads
+  GPU: speed estimate #14 #39 #16 #40 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel 10 |  |  | 7600000000
+chip TENSOR_G5 · title “Tensor G5” · tensor true
+phone en: Pixel 10 (Tensor G5)
+phone fr: Pixel 10 (Tensor G5)
+tpu line en: Its TPU is supported: Fast is Google's Tensor G5 build of Gemma 4 E2B, on the TPU.
+tpu line fr: Son TPU est pris en charge : Rapide est la version de Gemma 4 E2B pour le Tensor G5, de Google, sur le TPU.
+tpu SUPPORTED · gpu offered false · small memory true
+series of chip: Pixel 10
+tpuFailed false: fast FAST · fallback null · models [FAST, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast FAST · fallback null · models [FAST, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> FAST, Fast / Rapide -> FAST · runs TPU TPU TPU TPU · memory none
+  TPU: speed measured #43 #2 #44 #4 · loads
+  CPU: speed none · refused #6
+  GPU: speed none · refused #45
+FAST_G6: Fast (beta) / Rapide (bêta) -> FAST, Fast (beta) / Rapide (bêta) -> FAST · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #46
+  CPU: speed none · refused #9
+  GPU: speed none · refused #45
+GENERAL: Fast / Rapide -> FAST, Fast / Rapide -> FAST · runs CPU CPU CPU CPU · memory none
+  TPU: speed measured #47 #48 #49 #50 · refused #51
+  CPU: speed measured #47 #48 #49 #50 · loads
+  GPU: speed estimate #14 #52 #16 #53 · refused #45
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #18
+  TPU: speed measured #54 #55 #56 #57 · refused #23
+  CPU: speed measured #54 #55 #56 #57 · loads
+  GPU: speed measured #54 #55 #56 #57 · refused #45
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #18
+  TPU: speed measured #54 #55 #56 #57 · refused #24
+  CPU: speed measured #54 #55 #56 #57 · loads
+  GPU: speed measured #54 #55 #56 #57 · refused #45
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU true
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel 10 Pro |  |  | 7600000000
+chip TENSOR_G5 · title “Tensor G5” · tensor true
+phone en: Pixel 10 Pro (Tensor G5)
+phone fr: Pixel 10 Pro (Tensor G5)
+tpu line en: Its TPU is supported: Fast is Google's Tensor G5 build of Gemma 4 E2B, on the TPU.
+tpu line fr: Son TPU est pris en charge : Rapide est la version de Gemma 4 E2B pour le Tensor G5, de Google, sur le TPU.
+tpu SUPPORTED · gpu offered false · small memory true
+series of chip: Pixel 10
+tpuFailed false: fast FAST · fallback null · models [FAST, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast FAST · fallback null · models [FAST, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> FAST, Fast / Rapide -> FAST · runs TPU TPU TPU TPU · memory none
+  TPU: speed measured #43 #2 #44 #4 · loads
+  CPU: speed none · refused #6
+  GPU: speed none · refused #45
+FAST_G6: Fast (beta) / Rapide (bêta) -> FAST, Fast (beta) / Rapide (bêta) -> FAST · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #46
+  CPU: speed none · refused #9
+  GPU: speed none · refused #45
+GENERAL: Fast / Rapide -> FAST, Fast / Rapide -> FAST · runs CPU CPU CPU CPU · memory none
+  TPU: speed measured #47 #48 #49 #50 · refused #51
+  CPU: speed measured #47 #48 #49 #50 · loads
+  GPU: speed estimate #14 #52 #16 #53 · refused #45
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #18
+  TPU: speed measured #54 #55 #56 #57 · refused #23
+  CPU: speed measured #54 #55 #56 #57 · loads
+  GPU: speed measured #54 #55 #56 #57 · refused #45
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #18
+  TPU: speed measured #54 #55 #56 #57 · refused #24
+  CPU: speed measured #54 #55 #56 #57 · loads
+  GPU: speed measured #54 #55 #56 #57 · refused #45
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU true
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel 10 Pro XL |  |  | 7600000000
+chip TENSOR_G5 · title “Tensor G5” · tensor true
+phone en: Pixel 10 Pro XL (Tensor G5)
+phone fr: Pixel 10 Pro XL (Tensor G5)
+tpu line en: Its TPU is supported: Fast is Google's Tensor G5 build of Gemma 4 E2B, on the TPU.
+tpu line fr: Son TPU est pris en charge : Rapide est la version de Gemma 4 E2B pour le Tensor G5, de Google, sur le TPU.
+tpu SUPPORTED · gpu offered false · small memory true
+series of chip: Pixel 10
+tpuFailed false: fast FAST · fallback null · models [FAST, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast FAST · fallback null · models [FAST, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> FAST, Fast / Rapide -> FAST · runs TPU TPU TPU TPU · memory none
+  TPU: speed measured #43 #2 #44 #4 · loads
+  CPU: speed none · refused #6
+  GPU: speed none · refused #45
+FAST_G6: Fast (beta) / Rapide (bêta) -> FAST, Fast (beta) / Rapide (bêta) -> FAST · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #46
+  CPU: speed none · refused #9
+  GPU: speed none · refused #45
+GENERAL: Fast / Rapide -> FAST, Fast / Rapide -> FAST · runs CPU CPU CPU CPU · memory none
+  TPU: speed measured #47 #48 #49 #50 · refused #51
+  CPU: speed measured #47 #48 #49 #50 · loads
+  GPU: speed estimate #14 #52 #16 #53 · refused #45
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #18
+  TPU: speed measured #54 #55 #56 #57 · refused #23
+  CPU: speed measured #54 #55 #56 #57 · loads
+  GPU: speed measured #54 #55 #56 #57 · refused #45
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #18
+  TPU: speed measured #54 #55 #56 #57 · refused #24
+  CPU: speed measured #54 #55 #56 #57 · loads
+  GPU: speed measured #54 #55 #56 #57 · refused #45
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU true
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel 10 Pro Fold |  |  | 7600000000
+chip TENSOR_G5 · title “Tensor G5” · tensor true
+phone en: Pixel 10 Pro Fold (Tensor G5)
+phone fr: Pixel 10 Pro Fold (Tensor G5)
+tpu line en: Its TPU is supported: Fast is Google's Tensor G5 build of Gemma 4 E2B, on the TPU.
+tpu line fr: Son TPU est pris en charge : Rapide est la version de Gemma 4 E2B pour le Tensor G5, de Google, sur le TPU.
+tpu SUPPORTED · gpu offered false · small memory true
+series of chip: Pixel 10
+tpuFailed false: fast FAST · fallback null · models [FAST, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast FAST · fallback null · models [FAST, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> FAST, Fast / Rapide -> FAST · runs TPU TPU TPU TPU · memory none
+  TPU: speed measured #43 #2 #44 #4 · loads
+  CPU: speed none · refused #6
+  GPU: speed none · refused #45
+FAST_G6: Fast (beta) / Rapide (bêta) -> FAST, Fast (beta) / Rapide (bêta) -> FAST · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #46
+  CPU: speed none · refused #9
+  GPU: speed none · refused #45
+GENERAL: Fast / Rapide -> FAST, Fast / Rapide -> FAST · runs CPU CPU CPU CPU · memory none
+  TPU: speed measured #47 #48 #49 #50 · refused #51
+  CPU: speed measured #47 #48 #49 #50 · loads
+  GPU: speed estimate #14 #52 #16 #53 · refused #45
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #18
+  TPU: speed measured #54 #55 #56 #57 · refused #23
+  CPU: speed measured #54 #55 #56 #57 · loads
+  GPU: speed measured #54 #55 #56 #57 · refused #45
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #18
+  TPU: speed measured #54 #55 #56 #57 · refused #24
+  CPU: speed measured #54 #55 #56 #57 · loads
+  GPU: speed measured #54 #55 #56 #57 · refused #45
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU true
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel 11 |  |  | 7600000000
+chip TENSOR_G6 · title “Tensor G6” · tensor true
+phone en: Pixel 11 (Tensor G6)
+phone fr: Pixel 11 (Tensor G6)
+tpu line en: Its TPU is supported in beta: Fast is Google's Tensor G6 build of Gemma 4 E2B, on the TPU. Robot hasn't run it on a Pixel 11 yet; if it doesn't load, Robot switches to the general build on the CPU by itself.
+tpu line fr: Son TPU est pris en charge en bêta : Rapide est la version de Gemma 4 E2B pour le Tensor G6, de Google, sur le TPU. Robot ne l’a pas encore fait fonctionner sur un Pixel 11 ; s’il ne se charge pas, Robot passe de lui-même à la version générale sur le CPU.
+tpu BETA · gpu offered false · small memory true
+series of chip: Pixel 11
+tpuFailed false: fast FAST_G6 · fallback GENERAL · models [FAST_G6, GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> FAST_G6, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #58
+  CPU: speed none · refused #6
+  GPU: speed none · refused #45
+FAST_G6: Fast (beta) / Rapide (bêta) -> FAST_G6, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · loads
+  CPU: speed none · refused #9
+  GPU: speed none · refused #45
+GENERAL: Fast (general build, fallback) / Rapide (version générale, de secours) -> FAST_G6, Fast / Rapide -> GENERAL · runs CPU CPU CPU CPU · memory none
+  TPU: speed estimate #59 #48 #60 #50 · refused #51
+  CPU: speed estimate #59 #48 #60 #50 · loads
+  GPU: speed estimate #14 #52 #16 #53 · refused #45
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #61 #55 #62 #57 · refused #23
+  CPU: speed estimate #61 #55 #62 #57 · loads
+  GPU: speed estimate #61 #55 #62 #57 · refused #45
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #61 #55 #62 #57 · refused #24
+  CPU: speed estimate #61 #55 #62 #57 · loads
+  GPU: speed estimate #61 #55 #62 #57 · refused #45
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU true
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel 11 Pro |  |  | 7600000000
+chip TENSOR_G6 · title “Tensor G6” · tensor true
+phone en: Pixel 11 Pro (Tensor G6)
+phone fr: Pixel 11 Pro (Tensor G6)
+tpu line en: Its TPU is supported in beta: Fast is Google's Tensor G6 build of Gemma 4 E2B, on the TPU. Robot hasn't run it on a Pixel 11 yet; if it doesn't load, Robot switches to the general build on the CPU by itself.
+tpu line fr: Son TPU est pris en charge en bêta : Rapide est la version de Gemma 4 E2B pour le Tensor G6, de Google, sur le TPU. Robot ne l’a pas encore fait fonctionner sur un Pixel 11 ; s’il ne se charge pas, Robot passe de lui-même à la version générale sur le CPU.
+tpu BETA · gpu offered false · small memory true
+series of chip: Pixel 11
+tpuFailed false: fast FAST_G6 · fallback GENERAL · models [FAST_G6, GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> FAST_G6, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #58
+  CPU: speed none · refused #6
+  GPU: speed none · refused #45
+FAST_G6: Fast (beta) / Rapide (bêta) -> FAST_G6, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · loads
+  CPU: speed none · refused #9
+  GPU: speed none · refused #45
+GENERAL: Fast (general build, fallback) / Rapide (version générale, de secours) -> FAST_G6, Fast / Rapide -> GENERAL · runs CPU CPU CPU CPU · memory none
+  TPU: speed estimate #59 #48 #60 #50 · refused #51
+  CPU: speed estimate #59 #48 #60 #50 · loads
+  GPU: speed estimate #14 #52 #16 #53 · refused #45
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #61 #55 #62 #57 · refused #23
+  CPU: speed estimate #61 #55 #62 #57 · loads
+  GPU: speed estimate #61 #55 #62 #57 · refused #45
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #61 #55 #62 #57 · refused #24
+  CPU: speed estimate #61 #55 #62 #57 · loads
+  GPU: speed estimate #61 #55 #62 #57 · refused #45
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU true
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel 11 Pro XL |  |  | 7600000000
+chip TENSOR_G6 · title “Tensor G6” · tensor true
+phone en: Pixel 11 Pro XL (Tensor G6)
+phone fr: Pixel 11 Pro XL (Tensor G6)
+tpu line en: Its TPU is supported in beta: Fast is Google's Tensor G6 build of Gemma 4 E2B, on the TPU. Robot hasn't run it on a Pixel 11 yet; if it doesn't load, Robot switches to the general build on the CPU by itself.
+tpu line fr: Son TPU est pris en charge en bêta : Rapide est la version de Gemma 4 E2B pour le Tensor G6, de Google, sur le TPU. Robot ne l’a pas encore fait fonctionner sur un Pixel 11 ; s’il ne se charge pas, Robot passe de lui-même à la version générale sur le CPU.
+tpu BETA · gpu offered false · small memory true
+series of chip: Pixel 11
+tpuFailed false: fast FAST_G6 · fallback GENERAL · models [FAST_G6, GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> FAST_G6, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #58
+  CPU: speed none · refused #6
+  GPU: speed none · refused #45
+FAST_G6: Fast (beta) / Rapide (bêta) -> FAST_G6, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · loads
+  CPU: speed none · refused #9
+  GPU: speed none · refused #45
+GENERAL: Fast (general build, fallback) / Rapide (version générale, de secours) -> FAST_G6, Fast / Rapide -> GENERAL · runs CPU CPU CPU CPU · memory none
+  TPU: speed estimate #59 #48 #60 #50 · refused #51
+  CPU: speed estimate #59 #48 #60 #50 · loads
+  GPU: speed estimate #14 #52 #16 #53 · refused #45
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #61 #55 #62 #57 · refused #23
+  CPU: speed estimate #61 #55 #62 #57 · loads
+  GPU: speed estimate #61 #55 #62 #57 · refused #45
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #61 #55 #62 #57 · refused #24
+  CPU: speed estimate #61 #55 #62 #57 · loads
+  GPU: speed estimate #61 #55 #62 #57 · refused #45
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU true
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel 11 Pro Fold |  |  | 7600000000
+chip TENSOR_G6 · title “Tensor G6” · tensor true
+phone en: Pixel 11 Pro Fold (Tensor G6)
+phone fr: Pixel 11 Pro Fold (Tensor G6)
+tpu line en: Its TPU is supported in beta: Fast is Google's Tensor G6 build of Gemma 4 E2B, on the TPU. Robot hasn't run it on a Pixel 11 yet; if it doesn't load, Robot switches to the general build on the CPU by itself.
+tpu line fr: Son TPU est pris en charge en bêta : Rapide est la version de Gemma 4 E2B pour le Tensor G6, de Google, sur le TPU. Robot ne l’a pas encore fait fonctionner sur un Pixel 11 ; s’il ne se charge pas, Robot passe de lui-même à la version générale sur le CPU.
+tpu BETA · gpu offered false · small memory true
+series of chip: Pixel 11
+tpuFailed false: fast FAST_G6 · fallback GENERAL · models [FAST_G6, GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> FAST_G6, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #58
+  CPU: speed none · refused #6
+  GPU: speed none · refused #45
+FAST_G6: Fast (beta) / Rapide (bêta) -> FAST_G6, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · loads
+  CPU: speed none · refused #9
+  GPU: speed none · refused #45
+GENERAL: Fast (general build, fallback) / Rapide (version générale, de secours) -> FAST_G6, Fast / Rapide -> GENERAL · runs CPU CPU CPU CPU · memory none
+  TPU: speed estimate #59 #48 #60 #50 · refused #51
+  CPU: speed estimate #59 #48 #60 #50 · loads
+  GPU: speed estimate #14 #52 #16 #53 · refused #45
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #61 #55 #62 #57 · refused #23
+  CPU: speed estimate #61 #55 #62 #57 · loads
+  GPU: speed estimate #61 #55 #62 #57 · refused #45
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #61 #55 #62 #57 · refused #24
+  CPU: speed estimate #61 #55 #62 #57 · loads
+  GPU: speed estimate #61 #55 #62 #57 · refused #45
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU true
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel 6 | Google | Tensor | 7500000000
+chip TENSOR_G1 · title “Tensor” · tensor true
+phone en: Pixel 6 (Tensor)
+phone fr: Pixel 6 (Tensor)
+tpu line en: Google publishes no TPU build of Gemma for the Tensor: Fast is Gemma 4 E2B's general build, on the GPU (recommended) or the CPU.
+tpu line fr: Google ne publie aucune version TPU de Gemma pour le Tensor : Rapide est la version générale de Gemma 4 E2B, sur le GPU (recommandé) ou le CPU.
+tpu NONE · gpu offered true · small memory true
+series of chip: Pixel 6
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #11 #12 #13 · refused #5
+  CPU: speed estimate #10 #11 #12 #13 · loads
+  GPU: speed estimate #14 #15 #16 #17 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #63
+  TPU: speed estimate #19 #20 #21 #22 · refused #5
+  CPU: speed estimate #19 #20 #21 #22 · loads
+  GPU: speed estimate #19 #20 #21 #22 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #63
+  TPU: speed estimate #19 #20 #21 #22 · refused #5
+  CPU: speed estimate #19 #20 #21 #22 · loads
+  GPU: speed estimate #19 #20 #21 #22 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel 6a | Google | gs101 | 5700000000
+chip TENSOR_G1 · title “Tensor” · tensor true
+phone en: Pixel 6a (Tensor)
+phone fr: Pixel 6a (Tensor)
+tpu line en: Google publishes no TPU build of Gemma for the Tensor: Fast is Gemma 4 E2B's general build, on the GPU (recommended) or the CPU.
+tpu line fr: Google ne publie aucune version TPU de Gemma pour le Tensor : Rapide est la version générale de Gemma 4 E2B, sur le GPU (recommandé) ou le CPU.
+tpu NONE · gpu offered true · small memory true
+series of chip: Pixel 6
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #11 #12 #13 · refused #5
+  CPU: speed estimate #10 #11 #12 #13 · loads
+  GPU: speed estimate #14 #15 #16 #17 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #64
+  TPU: speed estimate #19 #20 #21 #22 · refused #5
+  CPU: speed estimate #19 #20 #21 #22 · loads
+  GPU: speed estimate #19 #20 #21 #22 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #64
+  TPU: speed estimate #19 #20 #21 #22 · refused #5
+  CPU: speed estimate #19 #20 #21 #22 · loads
+  GPU: speed estimate #19 #20 #21 #22 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel 7 | Google | GS201 | 7600000000
+chip TENSOR_G2 · title “Tensor G2” · tensor true
+phone en: Pixel 7 (Tensor G2)
+phone fr: Pixel 7 (Tensor G2)
+tpu line en: Google publishes no TPU build of Gemma for the Tensor G2: Fast is Gemma 4 E2B's general build, on the GPU (recommended) or the CPU.
+tpu line fr: Google ne publie aucune version TPU de Gemma pour le Tensor G2 : Rapide est la version générale de Gemma 4 E2B, sur le GPU (recommandé) ou le CPU.
+tpu NONE · gpu offered true · small memory true
+series of chip: Pixel 7
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #25 #12 #26 · refused #5
+  CPU: speed estimate #10 #25 #12 #26 · loads
+  GPU: speed estimate #14 #27 #16 #28 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #29 #21 #30 · refused #5
+  CPU: speed estimate #19 #29 #21 #30 · loads
+  GPU: speed estimate #19 #29 #21 #30 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #29 #21 #30 · refused #5
+  CPU: speed estimate #19 #29 #21 #30 · loads
+  GPU: speed estimate #19 #29 #21 #30 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel 8 | Google | Tensor G3 | 7600000000
+chip TENSOR_G3 · title “Tensor G3” · tensor true
+phone en: Pixel 8 (Tensor G3)
+phone fr: Pixel 8 (Tensor G3)
+tpu line en: Google publishes no TPU build of Gemma for the Tensor G3: Fast is Gemma 4 E2B's general build, on the GPU (recommended) or the CPU.
+tpu line fr: Google ne publie aucune version TPU de Gemma pour le Tensor G3 : Rapide est la version générale de Gemma 4 E2B, sur le GPU (recommandé) ou le CPU.
+tpu NONE · gpu offered true · small memory true
+series of chip: Pixel 8
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #31 #12 #32 · refused #5
+  CPU: speed estimate #10 #31 #12 #32 · loads
+  GPU: speed estimate #14 #33 #16 #34 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #35 #21 #36 · refused #5
+  CPU: speed estimate #19 #35 #21 #36 · loads
+  GPU: speed estimate #19 #35 #21 #36 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #35 #21 #36 · refused #5
+  CPU: speed estimate #19 #35 #21 #36 · loads
+  GPU: speed estimate #19 #35 #21 #36 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel 8 Pro | Google | zuma | 11500000000
+chip TENSOR_G3 · title “Tensor G3” · tensor true
+phone en: Pixel 8 Pro (Tensor G3)
+phone fr: Pixel 8 Pro (Tensor G3)
+tpu line en: Google publishes no TPU build of Gemma for the Tensor G3: Fast is Gemma 4 E2B's general build, on the GPU (recommended) or the CPU.
+tpu line fr: Google ne publie aucune version TPU de Gemma pour le Tensor G3 : Rapide est la version générale de Gemma 4 E2B, sur le GPU (recommandé) ou le CPU.
+tpu NONE · gpu offered true · small memory false
+series of chip: Pixel 8
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #31 #12 #32 · refused #5
+  CPU: speed estimate #10 #31 #12 #32 · loads
+  GPU: speed estimate #14 #33 #16 #34 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory none
+  TPU: speed estimate #19 #35 #21 #36 · refused #5
+  CPU: speed estimate #19 #35 #21 #36 · loads
+  GPU: speed estimate #19 #35 #21 #36 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory none
+  TPU: speed estimate #19 #35 #21 #36 · refused #5
+  CPU: speed estimate #19 #35 #21 #36 · loads
+  GPU: speed estimate #19 #35 #21 #36 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel 9a | Google | Tensor G4 | 7600000000
+chip TENSOR_G4 · title “Tensor G4” · tensor true
+phone en: Pixel 9a (Tensor G4)
+phone fr: Pixel 9a (Tensor G4)
+tpu line en: Google publishes no TPU build of Gemma for the Tensor G4: Fast is Gemma 4 E2B's general build, on the GPU (recommended) or the CPU.
+tpu line fr: Google ne publie aucune version TPU de Gemma pour le Tensor G4 : Rapide est la version générale de Gemma 4 E2B, sur le GPU (recommandé) ou le CPU.
+tpu NONE · gpu offered true · small memory true
+series of chip: Pixel 9
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #37 #12 #38 · refused #5
+  CPU: speed estimate #10 #37 #12 #38 · loads
+  GPU: speed estimate #14 #39 #16 #40 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel 9 Pro | Google | zumapro | 15500000000
+chip TENSOR_G4 · title “Tensor G4” · tensor true
+phone en: Pixel 9 Pro (Tensor G4)
+phone fr: Pixel 9 Pro (Tensor G4)
+tpu line en: Google publishes no TPU build of Gemma for the Tensor G4: Fast is Gemma 4 E2B's general build, on the GPU (recommended) or the CPU.
+tpu line fr: Google ne publie aucune version TPU de Gemma pour le Tensor G4 : Rapide est la version générale de Gemma 4 E2B, sur le GPU (recommandé) ou le CPU.
+tpu NONE · gpu offered true · small memory false
+series of chip: Pixel 9
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #37 #12 #38 · refused #5
+  CPU: speed estimate #10 #37 #12 #38 · loads
+  GPU: speed estimate #14 #39 #16 #40 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory none
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory none
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel 10a | Google | Tensor G4 | 7600000000
+chip TENSOR_G4 · title “Tensor G4” · tensor true
+phone en: Pixel 10a (Tensor G4)
+phone fr: Pixel 10a (Tensor G4)
+tpu line en: Google publishes no TPU build of Gemma for the Tensor G4: Fast is Gemma 4 E2B's general build, on the GPU (recommended) or the CPU.
+tpu line fr: Google ne publie aucune version TPU de Gemma pour le Tensor G4 : Rapide est la version générale de Gemma 4 E2B, sur le GPU (recommandé) ou le CPU.
+tpu NONE · gpu offered true · small memory true
+series of chip: Pixel 9
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #37 #12 #38 · refused #5
+  CPU: speed estimate #10 #37 #12 #38 · loads
+  GPU: speed estimate #14 #39 #16 #40 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel 10 Pro | Google | Tensor G5 | 15500000000
+chip TENSOR_G5 · title “Tensor G5” · tensor true
+phone en: Pixel 10 Pro (Tensor G5)
+phone fr: Pixel 10 Pro (Tensor G5)
+tpu line en: Its TPU is supported: Fast is Google's Tensor G5 build of Gemma 4 E2B, on the TPU.
+tpu line fr: Son TPU est pris en charge : Rapide est la version de Gemma 4 E2B pour le Tensor G5, de Google, sur le TPU.
+tpu SUPPORTED · gpu offered false · small memory false
+series of chip: Pixel 10
+tpuFailed false: fast FAST · fallback null · models [FAST, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast FAST · fallback null · models [FAST, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> FAST, Fast / Rapide -> FAST · runs TPU TPU TPU TPU · memory none
+  TPU: speed measured #43 #2 #44 #4 · loads
+  CPU: speed none · refused #6
+  GPU: speed none · refused #45
+FAST_G6: Fast (beta) / Rapide (bêta) -> FAST, Fast (beta) / Rapide (bêta) -> FAST · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #46
+  CPU: speed none · refused #9
+  GPU: speed none · refused #45
+GENERAL: Fast / Rapide -> FAST, Fast / Rapide -> FAST · runs CPU CPU CPU CPU · memory none
+  TPU: speed measured #47 #48 #49 #50 · refused #51
+  CPU: speed measured #47 #48 #49 #50 · loads
+  GPU: speed estimate #14 #52 #16 #53 · refused #45
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory none
+  TPU: speed measured #54 #55 #56 #57 · refused #23
+  CPU: speed measured #54 #55 #56 #57 · loads
+  GPU: speed measured #54 #55 #56 #57 · refused #45
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory none
+  TPU: speed measured #54 #55 #56 #57 · refused #24
+  CPU: speed measured #54 #55 #56 #57 · loads
+  GPU: speed measured #54 #55 #56 #57 · refused #45
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU true
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel 10 | Google | Tensor G4 | 11500000000
+chip TENSOR_G4 · title “Tensor G4” · tensor true
+phone en: Pixel 10 (Tensor G4)
+phone fr: Pixel 10 (Tensor G4)
+tpu line en: Google publishes no TPU build of Gemma for the Tensor G4: Fast is Gemma 4 E2B's general build, on the GPU (recommended) or the CPU.
+tpu line fr: Google ne publie aucune version TPU de Gemma pour le Tensor G4 : Rapide est la version générale de Gemma 4 E2B, sur le GPU (recommandé) ou le CPU.
+tpu NONE · gpu offered true · small memory false
+series of chip: Pixel 9
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #37 #12 #38 · refused #5
+  CPU: speed estimate #10 #37 #12 #38 · loads
+  GPU: speed estimate #14 #39 #16 #40 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory none
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory none
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel 11 | Google | Tensor G6 | 11500000000
+chip TENSOR_G6 · title “Tensor G6” · tensor true
+phone en: Pixel 11 (Tensor G6)
+phone fr: Pixel 11 (Tensor G6)
+tpu line en: Its TPU is supported in beta: Fast is Google's Tensor G6 build of Gemma 4 E2B, on the TPU. Robot hasn't run it on a Pixel 11 yet; if it doesn't load, Robot switches to the general build on the CPU by itself.
+tpu line fr: Son TPU est pris en charge en bêta : Rapide est la version de Gemma 4 E2B pour le Tensor G6, de Google, sur le TPU. Robot ne l’a pas encore fait fonctionner sur un Pixel 11 ; s’il ne se charge pas, Robot passe de lui-même à la version générale sur le CPU.
+tpu BETA · gpu offered false · small memory false
+series of chip: Pixel 11
+tpuFailed false: fast FAST_G6 · fallback GENERAL · models [FAST_G6, GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> FAST_G6, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #58
+  CPU: speed none · refused #6
+  GPU: speed none · refused #45
+FAST_G6: Fast (beta) / Rapide (bêta) -> FAST_G6, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · loads
+  CPU: speed none · refused #9
+  GPU: speed none · refused #45
+GENERAL: Fast (general build, fallback) / Rapide (version générale, de secours) -> FAST_G6, Fast / Rapide -> GENERAL · runs CPU CPU CPU CPU · memory none
+  TPU: speed estimate #59 #48 #60 #50 · refused #51
+  CPU: speed estimate #59 #48 #60 #50 · loads
+  GPU: speed estimate #14 #52 #16 #53 · refused #45
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory none
+  TPU: speed estimate #61 #55 #62 #57 · refused #23
+  CPU: speed estimate #61 #55 #62 #57 · loads
+  GPU: speed estimate #61 #55 #62 #57 · refused #45
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory none
+  TPU: speed estimate #61 #55 #62 #57 · refused #24
+  CPU: speed estimate #61 #55 #62 #57 · loads
+  GPU: speed estimate #61 #55 #62 #57 · refused #45
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU true
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel 11 Pro Fold | Google | Tensor G6 | 15500000000
+chip TENSOR_G6 · title “Tensor G6” · tensor true
+phone en: Pixel 11 Pro Fold (Tensor G6)
+phone fr: Pixel 11 Pro Fold (Tensor G6)
+tpu line en: Its TPU is supported in beta: Fast is Google's Tensor G6 build of Gemma 4 E2B, on the TPU. Robot hasn't run it on a Pixel 11 yet; if it doesn't load, Robot switches to the general build on the CPU by itself.
+tpu line fr: Son TPU est pris en charge en bêta : Rapide est la version de Gemma 4 E2B pour le Tensor G6, de Google, sur le TPU. Robot ne l’a pas encore fait fonctionner sur un Pixel 11 ; s’il ne se charge pas, Robot passe de lui-même à la version générale sur le CPU.
+tpu BETA · gpu offered false · small memory false
+series of chip: Pixel 11
+tpuFailed false: fast FAST_G6 · fallback GENERAL · models [FAST_G6, GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> FAST_G6, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #58
+  CPU: speed none · refused #6
+  GPU: speed none · refused #45
+FAST_G6: Fast (beta) / Rapide (bêta) -> FAST_G6, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · loads
+  CPU: speed none · refused #9
+  GPU: speed none · refused #45
+GENERAL: Fast (general build, fallback) / Rapide (version générale, de secours) -> FAST_G6, Fast / Rapide -> GENERAL · runs CPU CPU CPU CPU · memory none
+  TPU: speed estimate #59 #48 #60 #50 · refused #51
+  CPU: speed estimate #59 #48 #60 #50 · loads
+  GPU: speed estimate #14 #52 #16 #53 · refused #45
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory none
+  TPU: speed estimate #61 #55 #62 #57 · refused #23
+  CPU: speed estimate #61 #55 #62 #57 · loads
+  GPU: speed estimate #61 #55 #62 #57 · refused #45
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory none
+  TPU: speed estimate #61 #55 #62 #57 · refused #24
+  CPU: speed estimate #61 #55 #62 #57 · loads
+  GPU: speed estimate #61 #55 #62 #57 · refused #45
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU true
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel 99 | Google | Tensor G9 | 11500000000
+chip OTHER · title “” · tensor false
+phone en: Pixel 99
+phone fr: Pixel 99
+tpu line en: Robot has no TPU build for this phone: Fast is Gemma 4 E2B's general build, on the GPU (recommended) or the CPU.
+tpu line fr: Robot n’a aucune version TPU pour ce téléphone : Rapide est la version générale de Gemma 4 E2B, sur le GPU (recommandé) ou le CPU.
+tpu NONE · gpu offered true · small memory false
+series of chip: 
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #37 #12 #38 · refused #5
+  CPU: speed estimate #10 #37 #12 #38 · loads
+  GPU: speed estimate #14 #52 #16 #53 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory none
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory none
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel 9a |  |  | 0
+chip TENSOR_G4 · title “Tensor G4” · tensor true
+phone en: Pixel 9a (Tensor G4)
+phone fr: Pixel 9a (Tensor G4)
+tpu line en: Google publishes no TPU build of Gemma for the Tensor G4: Fast is Gemma 4 E2B's general build, on the GPU (recommended) or the CPU.
+tpu line fr: Google ne publie aucune version TPU de Gemma pour le Tensor G4 : Rapide est la version générale de Gemma 4 E2B, sur le GPU (recommandé) ou le CPU.
+tpu NONE · gpu offered true · small memory false
+series of chip: Pixel 9
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #37 #12 #38 · refused #5
+  CPU: speed estimate #10 #37 #12 #38 · loads
+  GPU: speed estimate #14 #39 #16 #40 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory none
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory none
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+==  |  |  |  | 0
+chip OTHER · title “” · tensor false
+phone en: Unknown phone
+phone fr: Téléphone inconnu
+tpu line en: Robot has no TPU build for this phone: Fast is Gemma 4 E2B's general build, on the GPU (recommended) or the CPU.
+tpu line fr: Robot n’a aucune version TPU pour ce téléphone : Rapide est la version générale de Gemma 4 E2B, sur le GPU (recommandé) ou le CPU.
+tpu NONE · gpu offered true · small memory false
+series of chip: 
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #37 #12 #38 · refused #5
+  CPU: speed estimate #10 #37 #12 #38 · loads
+  GPU: speed estimate #14 #52 #16 #53 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory none
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory none
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Fairphone | FP5 |  |  | 7600000000
+chip OTHER · title “” · tensor false
+phone en: Fairphone FP5
+phone fr: Fairphone FP5
+tpu line en: Robot has no TPU build for this phone: Fast is Gemma 4 E2B's general build, on the GPU (recommended) or the CPU.
+tpu line fr: Robot n’a aucune version TPU pour ce téléphone : Rapide est la version générale de Gemma 4 E2B, sur le GPU (recommandé) ou le CPU.
+tpu NONE · gpu offered true · small memory true
+series of chip: 
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #37 #12 #38 · refused #5
+  CPU: speed estimate #10 #37 #12 #38 · loads
+  GPU: speed estimate #14 #52 #16 #53 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Fairphone | FP5 | QTI | QCM6490 | 7600000000
+chip OTHER · title “” · tensor false
+phone en: Fairphone FP5
+phone fr: Fairphone FP5
+tpu line en: Robot has no TPU build for this phone: Fast is Gemma 4 E2B's general build, on the GPU (recommended) or the CPU.
+tpu line fr: Robot n’a aucune version TPU pour ce téléphone : Rapide est la version générale de Gemma 4 E2B, sur le GPU (recommandé) ou le CPU.
+tpu NONE · gpu offered true · small memory true
+series of chip: 
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #37 #12 #38 · refused #5
+  CPU: speed estimate #10 #37 #12 #38 · loads
+  GPU: speed estimate #14 #52 #16 #53 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== OnePlus | CPH2581 | Unisoc | T820 | 7600000000
+chip OTHER · title “” · tensor false
+phone en: OnePlus CPH2581
+phone fr: OnePlus CPH2581
+tpu line en: Robot has no TPU build for this phone: Fast is Gemma 4 E2B's general build, on the GPU (recommended) or the CPU.
+tpu line fr: Robot n’a aucune version TPU pour ce téléphone : Rapide est la version générale de Gemma 4 E2B, sur le GPU (recommandé) ou le CPU.
+tpu NONE · gpu offered true · small memory true
+series of chip: 
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #37 #12 #38 · refused #5
+  CPU: speed estimate #10 #37 #12 #38 · loads
+  GPU: speed estimate #14 #52 #16 #53 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== samsung | SM-S931W |  |  | 11500000000
+chip OTHER · title “” · tensor false
+phone en: Samsung SM-S931W
+phone fr: Samsung SM-S931W
+tpu line en: Robot has no TPU build for this phone: Fast is Gemma 4 E2B's general build, on the GPU (recommended) or the CPU.
+tpu line fr: Robot n’a aucune version TPU pour ce téléphone : Rapide est la version générale de Gemma 4 E2B, sur le GPU (recommandé) ou le CPU.
+tpu NONE · gpu offered true · small memory false
+series of chip: 
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #37 #12 #38 · refused #5
+  CPU: speed estimate #10 #37 #12 #38 · loads
+  GPU: speed estimate #14 #52 #16 #53 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory none
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory none
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== samsung | SM-S931W | samsung | SM-S931W | 11500000000
+chip OTHER · title “” · tensor false
+phone en: Samsung SM-S931W
+phone fr: Samsung SM-S931W
+tpu line en: Robot has no TPU build for this phone: Fast is Gemma 4 E2B's general build, on the GPU (recommended) or the CPU.
+tpu line fr: Robot n’a aucune version TPU pour ce téléphone : Rapide est la version générale de Gemma 4 E2B, sur le GPU (recommandé) ou le CPU.
+tpu NONE · gpu offered true · small memory false
+series of chip: 
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #37 #12 #38 · refused #5
+  CPU: speed estimate #10 #37 #12 #38 · loads
+  GPU: speed estimate #14 #52 #16 #53 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory none
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory none
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== samsung | SM-S931W | QTI | SM-S931W | 11500000000
+chip OTHER · title “” · tensor false
+phone en: Samsung SM-S931W
+phone fr: Samsung SM-S931W
+tpu line en: Robot has no TPU build for this phone: Fast is Gemma 4 E2B's general build, on the GPU (recommended) or the CPU.
+tpu line fr: Robot n’a aucune version TPU pour ce téléphone : Rapide est la version générale de Gemma 4 E2B, sur le GPU (recommandé) ou le CPU.
+tpu NONE · gpu offered true · small memory false
+series of chip: 
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #37 #12 #38 · refused #5
+  CPU: speed estimate #10 #37 #12 #38 · loads
+  GPU: speed estimate #14 #52 #16 #53 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory none
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory none
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+
+# Chips 1.2 names: every decision but the two lines that name the chip.
+== samsung | SM-S931W | QTI | SM8750 | 11500000000
+tpu NONE · gpu offered true · small memory false
+series of chip: -
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #37 #12 #38 · refused #5
+  CPU: speed estimate #10 #37 #12 #38 · loads
+  GPU: speed estimate #14 #52 #16 #53 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory none
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory none
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== samsung | SM-S931U | QTI | SM8750-AC | 11500000000
+tpu NONE · gpu offered true · small memory false
+series of chip: -
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #37 #12 #38 · refused #5
+  CPU: speed estimate #10 #37 #12 #38 · loads
+  GPU: speed estimate #14 #52 #16 #53 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory none
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory none
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== samsung | SM-S938B | Qualcomm | sm8750 | 11500000000
+tpu NONE · gpu offered true · small memory false
+series of chip: -
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #37 #12 #38 · refused #5
+  CPU: speed estimate #10 #37 #12 #38 · loads
+  GPU: speed estimate #14 #52 #16 #53 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory none
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory none
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== samsung | SM-S948B | Qualcomm | SM8850 | 11500000000
+tpu NONE · gpu offered true · small memory false
+series of chip: -
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #37 #12 #38 · refused #5
+  CPU: speed estimate #10 #37 #12 #38 · loads
+  GPU: speed estimate #14 #52 #16 #53 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory none
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory none
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== samsung | Pixel 9a | Qualcomm | SM8850 | 7600000000
+tpu NONE · gpu offered true · small memory true
+series of chip: -
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #37 #12 #38 · refused #5
+  CPU: speed estimate #10 #37 #12 #38 · loads
+  GPU: speed estimate #14 #52 #16 #53 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Google | Pixel 9a | QTI | SM8650 | 7600000000
+tpu NONE · gpu offered true · small memory true
+series of chip: -
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #37 #12 #38 · refused #5
+  CPU: speed estimate #10 #37 #12 #38 · loads
+  GPU: speed estimate #14 #52 #16 #53 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== samsung | SM-S921W | QTI | SM8650 | 7600000000
+tpu NONE · gpu offered true · small memory true
+series of chip: -
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #37 #12 #38 · refused #5
+  CPU: speed estimate #10 #37 #12 #38 · loads
+  GPU: speed estimate #14 #52 #16 #53 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== samsung | SM-S911W | QTI | SM8550 | 7600000000
+tpu NONE · gpu offered true · small memory true
+series of chip: -
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #37 #12 #38 · refused #5
+  CPU: speed estimate #10 #37 #12 #38 · loads
+  GPU: speed estimate #14 #52 #16 #53 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== samsung | SM-S901W | QTI | SM8450 | 7600000000
+tpu NONE · gpu offered true · small memory true
+series of chip: -
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #37 #12 #38 · refused #5
+  CPU: speed estimate #10 #37 #12 #38 · loads
+  GPU: speed estimate #14 #52 #16 #53 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== motorola | moto g | QTI | SM6375 | 3700000000
+tpu NONE · gpu offered true · small memory true
+series of chip: -
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #37 #12 #38 · refused #5
+  CPU: speed estimate #10 #37 #12 #38 · loads
+  GPU: speed estimate #14 #52 #16 #53 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #65
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #65
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== samsung | SM-S921B | Samsung | s5e9945 | 7600000000
+tpu NONE · gpu offered true · small memory true
+series of chip: -
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #37 #12 #38 · refused #5
+  CPU: speed estimate #10 #37 #12 #38 · loads
+  GPU: speed estimate #14 #52 #16 #53 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #18
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== samsung | SM-A566B | Samsung | s5e8855 | 5600000000
+tpu NONE · gpu offered true · small memory true
+series of chip: -
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #37 #12 #38 · refused #5
+  CPU: speed estimate #10 #37 #12 #38 · loads
+  GPU: speed estimate #14 #52 #16 #53 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #66
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #66
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Xiaomi | 24129PN74G | Mediatek | MT6991 | 11500000000
+tpu NONE · gpu offered true · small memory false
+series of chip: -
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #37 #12 #38 · refused #5
+  CPU: speed estimate #10 #37 #12 #38 · loads
+  GPU: speed estimate #14 #52 #16 #53 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory none
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory none
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+== Xiaomi | 23129RN51X | Mediatek | MT6769 | 3700000000
+tpu NONE · gpu offered true · small memory true
+series of chip: -
+tpuFailed false: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+tpuFailed true: fast GENERAL · fallback null · models [GENERAL, SMARTER, UNCENSORED, OWN]
+FAST: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #2 #3 #4 · refused #5
+  CPU: speed none · refused #6
+  GPU: speed none · refused #6
+FAST_G6: Fast (beta) / Rapide (bêta) -> GENERAL, Fast (beta) / Rapide (bêta) -> GENERAL · runs TPU TPU TPU TPU · memory none
+  TPU: speed estimate #1 #7 #3 #8 · refused #5
+  CPU: speed none · refused #9
+  GPU: speed none · refused #9
+GENERAL: Fast / Rapide -> GENERAL, Fast / Rapide -> GENERAL · runs GPU CPU CPU CPU · memory none
+  TPU: speed estimate #10 #37 #12 #38 · refused #5
+  CPU: speed estimate #10 #37 #12 #38 · loads
+  GPU: speed estimate #14 #52 #16 #53 · loads
+SMARTER: Smarter, slower / Plus futé, plus lent -> SMARTER, Smarter, slower / Plus futé, plus lent -> SMARTER · runs CPU CPU CPU CPU · memory #65
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #23
+UNCENSORED: Uncensored, slower / Sans censure, plus lent -> UNCENSORED, Uncensored, slower / Sans censure, plus lent -> UNCENSORED · runs CPU CPU CPU CPU · memory #65
+  TPU: speed estimate #19 #41 #21 #42 · refused #5
+  CPU: speed estimate #19 #41 #21 #42 · loads
+  GPU: speed estimate #19 #41 #21 #42 · refused #24
+OWN: Your own model file / Ton propre fichier de modèle -> OWN, Your own model file / Ton propre fichier de modèle -> OWN · runs CPU CPU CPU CPU · memory none
+  TPU: speed none
+  CPU: speed none
+  GPU: speed none
+own file stamped “Google Tensor_G5”: tensorBuild TENSOR_G5 · runs on this TPU false
+own file stamped “Google Tensor_G6”: tensorBuild TENSOR_G6 · runs on this TPU false
+own file stamped “Qualcomm SM8750”: tensorBuild null · runs on this TPU false
+own file stamped “Qualcomm SM8450”: tensorBuild null · runs on this TPU false
+
+# The texts.
+#1 Estimate: a new conversation starts answering in about 3 s, later answers in about 1 s, then about 13–14 words a second.
+#2 Robot measured this on a Pixel 10 Pro's TPU: about 500 to 560 tokens a second read, 17 to 18 written.
+#3 Estimation : une nouvelle conversation commence à répondre en environ 3 s, les réponses suivantes en environ 1 s, puis environ 13–14 mots par seconde.
+#4 Robot a mesuré ceci sur le TPU d’un Pixel 10 Pro : environ 500 à 560 jetons par seconde lus, 17 à 18 écrits.
+#5 This phone has no TPU Robot can use: the TPU builds run on a Tensor G5 (Pixel 10) and, in beta, a Tensor G6 (Pixel 11).
+#6 “Fast” runs on the TPU only.
+#7 Estimate, not measured: Robot hasn't run the Tensor G6 build yet. This is its measurement of the Tensor G5 build on a Pixel 10 Pro's TPU (about 500 to 560 tokens a second read, 17 to 18 written); the Tensor G6 build has the same compiled shapes. Google publishes no figure for it.
+#8 Estimation, pas une mesure : Robot n’a pas encore fait fonctionner la version Tensor G6. Voici sa mesure de la version Tensor G5 sur le TPU d’un Pixel 10 Pro (environ 500 à 560 jetons par seconde lus, 17 à 18 écrits) ; la version Tensor G6 a les mêmes formes compilées. Google ne publie aucun chiffre pour elle.
+#9 “Fast (beta)” runs on the TPU only.
+#10 Estimate: a new conversation starts answering in about 9–14 s, later answers in about 1 s, then about 9–12 words a second.
+#11 Estimated for a Tensor G4 as two thirds to four fifths of Robot's Pixel 10 Pro measurement of this file on the CPU (about 160 to 210 tokens a second read, 19 to 20 written). Google measured 557 tokens a second read and 46.9 written on a Galaxy S26 Ultra's CPU (its model card). A Tensor is older than a Tensor G4: expect it to be slower than this.
+#12 Estimation : une nouvelle conversation commence à répondre en environ 9–14 s, les réponses suivantes en environ 1 s, puis environ 9–12 mots par seconde.
+#13 Estimé pour un Tensor G4 aux deux tiers ou aux quatre cinquièmes de la mesure de ce fichier par Robot sur le CPU d’un Pixel 10 Pro (environ 160 à 210 jetons par seconde lus, 19 à 20 écrits). Google a mesuré 557 jetons par seconde lus et 46,9 écrits sur le CPU d’un Galaxy S26 Ultra (selon la page du modèle). Un Tensor est plus ancien qu’un Tensor G4 : attends-toi à ce qu’il soit plus lent que ça.
+#14 Estimate: a new conversation starts answering in about 3–5 s, later answers in about 1 s, then about 6–11 words a second.
+#15 Estimated for a Tensor G4's Mali GPU from Robot's run of this file on a Pixel 10 Pro's GPU (about 540 tokens a second read, 12 written). Google measured 3,808 tokens a second read and 52.1 written on a Galaxy S26 Ultra's GPU (its model card); this phone's GPU is much smaller. A Tensor is older than a Tensor G4: expect it to be slower than this.
+#16 Estimation : une nouvelle conversation commence à répondre en environ 3–5 s, les réponses suivantes en environ 1 s, puis environ 6–11 mots par seconde.
+#17 Estimé pour le GPU Mali d’un Tensor G4 à partir de l’essai de ce fichier par Robot sur le GPU d’un Pixel 10 Pro (environ 540 jetons par seconde lus, 12 écrits). Google a mesuré 3 808 jetons par seconde lus et 52,1 écrits sur le GPU d’un Galaxy S26 Ultra (selon la page du modèle) ; le GPU de ce téléphone est beaucoup plus petit. Un Tensor est plus ancien qu’un Tensor G4 : attends-toi à ce qu’il soit plus lent que ça.
+#18 This phone has 7.6 GB of memory: with the voice models loaded too, Android may stop this model while it answers. Fast is the safer choice here.
+#19 Estimate: a new conversation starts answering in about 27–33 s, later answers in about 3 s, then about 4–5 words a second.
+#20 Estimated for a Tensor G4 as two thirds to four fifths of Robot's Pixel 10 Pro measurement (about 70 tokens a second read, 8 written). A Tensor is older than a Tensor G4: expect it to be slower than this.
+#21 Estimation : une nouvelle conversation commence à répondre en environ 27–33 s, les réponses suivantes en environ 3 s, puis environ 4–5 mots par seconde.
+#22 Estimé pour un Tensor G4 aux deux tiers ou aux quatre cinquièmes de la mesure de Robot sur un Pixel 10 Pro (environ 70 jetons par seconde lus, 8 écrits). Un Tensor est plus ancien qu’un Tensor G4 : attends-toi à ce qu’il soit plus lent que ça.
+#23 “Smarter, slower” runs on the CPU only.
+#24 “Uncensored, slower” runs on the CPU only.
+#25 Estimated for a Tensor G4 as two thirds to four fifths of Robot's Pixel 10 Pro measurement of this file on the CPU (about 160 to 210 tokens a second read, 19 to 20 written). Google measured 557 tokens a second read and 46.9 written on a Galaxy S26 Ultra's CPU (its model card). A Tensor G2 is older than a Tensor G4: expect it to be slower than this.
+#26 Estimé pour un Tensor G4 aux deux tiers ou aux quatre cinquièmes de la mesure de ce fichier par Robot sur le CPU d’un Pixel 10 Pro (environ 160 à 210 jetons par seconde lus, 19 à 20 écrits). Google a mesuré 557 jetons par seconde lus et 46,9 écrits sur le CPU d’un Galaxy S26 Ultra (selon la page du modèle). Un Tensor G2 est plus ancien qu’un Tensor G4 : attends-toi à ce qu’il soit plus lent que ça.
+#27 Estimated for a Tensor G4's Mali GPU from Robot's run of this file on a Pixel 10 Pro's GPU (about 540 tokens a second read, 12 written). Google measured 3,808 tokens a second read and 52.1 written on a Galaxy S26 Ultra's GPU (its model card); this phone's GPU is much smaller. A Tensor G2 is older than a Tensor G4: expect it to be slower than this.
+#28 Estimé pour le GPU Mali d’un Tensor G4 à partir de l’essai de ce fichier par Robot sur le GPU d’un Pixel 10 Pro (environ 540 jetons par seconde lus, 12 écrits). Google a mesuré 3 808 jetons par seconde lus et 52,1 écrits sur le GPU d’un Galaxy S26 Ultra (selon la page du modèle) ; le GPU de ce téléphone est beaucoup plus petit. Un Tensor G2 est plus ancien qu’un Tensor G4 : attends-toi à ce qu’il soit plus lent que ça.
+#29 Estimated for a Tensor G4 as two thirds to four fifths of Robot's Pixel 10 Pro measurement (about 70 tokens a second read, 8 written). A Tensor G2 is older than a Tensor G4: expect it to be slower than this.
+#30 Estimé pour un Tensor G4 aux deux tiers ou aux quatre cinquièmes de la mesure de Robot sur un Pixel 10 Pro (environ 70 jetons par seconde lus, 8 écrits). Un Tensor G2 est plus ancien qu’un Tensor G4 : attends-toi à ce qu’il soit plus lent que ça.
+#31 Estimated for a Tensor G4 as two thirds to four fifths of Robot's Pixel 10 Pro measurement of this file on the CPU (about 160 to 210 tokens a second read, 19 to 20 written). Google measured 557 tokens a second read and 46.9 written on a Galaxy S26 Ultra's CPU (its model card). A Tensor G3 is older than a Tensor G4: expect it to be slower than this.
+#32 Estimé pour un Tensor G4 aux deux tiers ou aux quatre cinquièmes de la mesure de ce fichier par Robot sur le CPU d’un Pixel 10 Pro (environ 160 à 210 jetons par seconde lus, 19 à 20 écrits). Google a mesuré 557 jetons par seconde lus et 46,9 écrits sur le CPU d’un Galaxy S26 Ultra (selon la page du modèle). Un Tensor G3 est plus ancien qu’un Tensor G4 : attends-toi à ce qu’il soit plus lent que ça.
+#33 Estimated for a Tensor G4's Mali GPU from Robot's run of this file on a Pixel 10 Pro's GPU (about 540 tokens a second read, 12 written). Google measured 3,808 tokens a second read and 52.1 written on a Galaxy S26 Ultra's GPU (its model card); this phone's GPU is much smaller. A Tensor G3 is older than a Tensor G4: expect it to be slower than this.
+#34 Estimé pour le GPU Mali d’un Tensor G4 à partir de l’essai de ce fichier par Robot sur le GPU d’un Pixel 10 Pro (environ 540 jetons par seconde lus, 12 écrits). Google a mesuré 3 808 jetons par seconde lus et 52,1 écrits sur le GPU d’un Galaxy S26 Ultra (selon la page du modèle) ; le GPU de ce téléphone est beaucoup plus petit. Un Tensor G3 est plus ancien qu’un Tensor G4 : attends-toi à ce qu’il soit plus lent que ça.
+#35 Estimated for a Tensor G4 as two thirds to four fifths of Robot's Pixel 10 Pro measurement (about 70 tokens a second read, 8 written). A Tensor G3 is older than a Tensor G4: expect it to be slower than this.
+#36 Estimé pour un Tensor G4 aux deux tiers ou aux quatre cinquièmes de la mesure de Robot sur un Pixel 10 Pro (environ 70 jetons par seconde lus, 8 écrits). Un Tensor G3 est plus ancien qu’un Tensor G4 : attends-toi à ce qu’il soit plus lent que ça.
+#37 Estimated for a Tensor G4 as two thirds to four fifths of Robot's Pixel 10 Pro measurement of this file on the CPU (about 160 to 210 tokens a second read, 19 to 20 written). Google measured 557 tokens a second read and 46.9 written on a Galaxy S26 Ultra's CPU (its model card).
+#38 Estimé pour un Tensor G4 aux deux tiers ou aux quatre cinquièmes de la mesure de ce fichier par Robot sur le CPU d’un Pixel 10 Pro (environ 160 à 210 jetons par seconde lus, 19 à 20 écrits). Google a mesuré 557 jetons par seconde lus et 46,9 écrits sur le CPU d’un Galaxy S26 Ultra (selon la page du modèle).
+#39 Estimated for a Tensor G4's Mali GPU from Robot's run of this file on a Pixel 10 Pro's GPU (about 540 tokens a second read, 12 written). Google measured 3,808 tokens a second read and 52.1 written on a Galaxy S26 Ultra's GPU (its model card); this phone's GPU is much smaller.
+#40 Estimé pour le GPU Mali d’un Tensor G4 à partir de l’essai de ce fichier par Robot sur le GPU d’un Pixel 10 Pro (environ 540 jetons par seconde lus, 12 écrits). Google a mesuré 3 808 jetons par seconde lus et 52,1 écrits sur le GPU d’un Galaxy S26 Ultra (selon la page du modèle) ; le GPU de ce téléphone est beaucoup plus petit.
+#41 Estimated for a Tensor G4 as two thirds to four fifths of Robot's Pixel 10 Pro measurement (about 70 tokens a second read, 8 written).
+#42 Estimé pour un Tensor G4 aux deux tiers ou aux quatre cinquièmes de la mesure de Robot sur un Pixel 10 Pro (environ 70 jetons par seconde lus, 8 écrits).
+#43 Measured: a new conversation starts answering in about 3 s, later answers in about 1 s, then about 13–14 words a second.
+#44 Mesuré : une nouvelle conversation commence à répondre en environ 3 s, les réponses suivantes en environ 1 s, puis environ 13–14 mots par seconde.
+#45 Robot doesn't use this phone's GPU.
+#46 This file was compiled for the Tensor G6's TPU, and this phone has a Tensor G5: a TPU runs only the build made for its own chip.
+#47 Measured: a new conversation starts answering in about 7–9 s, later answers in about 1 s, then about 14–15 words a second.
+#48 Robot measured this file on a Pixel 10 Pro's CPU: about 160 to 210 tokens a second read, 19 to 20 written. Google measured 557 tokens a second read and 46.9 written on a Galaxy S26 Ultra's CPU (its model card).
+#49 Mesuré : une nouvelle conversation commence à répondre en environ 7–9 s, les réponses suivantes en environ 1 s, puis environ 14–15 mots par seconde.
+#50 Robot a mesuré ce fichier sur le CPU d’un Pixel 10 Pro : environ 160 à 210 jetons par seconde lus, 19 à 20 écrits. Google a mesuré 557 jetons par seconde lus et 46,9 écrits sur le CPU d’un Galaxy S26 Ultra (selon la page du modèle).
+#51 “Fast” runs on the CPU only.
+#52 No figure for this phone's GPU: this is the Tensor G4's estimate. Google measured 3,808 tokens a second read and 52.1 written on a Galaxy S26 Ultra's GPU (its model card).
+#53 Aucun chiffre pour le GPU de ce téléphone : voici l’estimation pour le Tensor G4. Google a mesuré 3 808 jetons par seconde lus et 52,1 écrits sur le GPU d’un Galaxy S26 Ultra (selon la page du modèle).
+#54 Measured: a new conversation starts answering in about 21 s, later answers in about 2 s, then about 6 words a second.
+#55 Robot measured Gemma 4 E4B on a Pixel 10 Pro's CPU: about 70 tokens a second read, 8 written.
+#56 Mesuré : une nouvelle conversation commence à répondre en environ 21 s, les réponses suivantes en environ 2 s, puis environ 6 mots par seconde.
+#57 Robot a mesuré Gemma 4 E4B sur le CPU d’un Pixel 10 Pro : environ 70 jetons par seconde lus, 8 écrits.
+#58 This file was compiled for the Tensor G5's TPU, and this phone has a Tensor G6: a TPU runs only the build made for its own chip.
+#59 Estimate: a new conversation starts answering in about 7–9 s, later answers in about 1 s, then about 14–15 words a second.
+#60 Estimation : une nouvelle conversation commence à répondre en environ 7–9 s, les réponses suivantes en environ 1 s, puis environ 14–15 mots par seconde.
+#61 Estimate: a new conversation starts answering in about 21 s, later answers in about 2 s, then about 6 words a second.
+#62 Estimation : une nouvelle conversation commence à répondre en environ 21 s, les réponses suivantes en environ 2 s, puis environ 6 mots par seconde.
+#63 This phone has 7.5 GB of memory: with the voice models loaded too, Android may stop this model while it answers. Fast is the safer choice here.
+#64 This phone has 5.7 GB of memory: with the voice models loaded too, Android may stop this model while it answers. Fast is the safer choice here.
+#65 This phone has 3.7 GB of memory: with the voice models loaded too, Android may stop this model while it answers. Fast is the safer choice here.
+#66 This phone has 5.6 GB of memory: with the voice models loaded too, Android may stop this model while it answers. Fast is the safer choice here.

@@ -1,0 +1,177 @@
+<!-- Back up and restore, in Québec French (tu): the ids of values/strings_backup.xml, written with the glossary
+     (robot/l10n/glossary.tsv) and the OQLF's spaces (tools/fr_typo.py, FrenchTypographyTest). -->
+<resources>
+    <string name="backup_row_last">Dernière sauvegarde&#160;: %1$s</string>
+    <string name="backup_row_never">Dernière sauvegarde&#160;: jamais</string>
+    <string name="backup_now">Sauvegarder maintenant</string>
+    <string name="backup_now_detail">Choisis ce qui va dedans, puis où l’enregistrer</string>
+    <string name="backup_last">Dernière sauvegarde</string>
+    <string name="backup_last_detail">%1$s · %2$s · %3$s, vérifiée</string>
+    <string name="backup_remind">Me rappeler de sauvegarder chaque mois</string>
+    <string name="backup_remind_detail">Une notification quand ta dernière sauvegarde a un mois. Robot ne peut pas sauvegarder tout seul&#160;: il ne garde jamais ta phrase de passe.</string>
+    <string name="backup_last_none">Aucune sauvegarde pour l’instant</string>
+    <string name="backup_footer">Une sauvegarde est un seul fichier, chiffré avec une phrase de passe que tu choisis. Robot ne garde jamais la phrase de passe&#160;: sans elle, personne ne peut ouvrir le fichier, pas même Robot. Les modèles n’y sont pas&#160;: ils se téléchargent de nouveau. La sauvegarde d’Android reste désactivée pour Robot.</string>
+    <string name="backup_title">Sauvegarder</string>
+    <string name="backup_choose_title">Ce qui va dedans</string>
+    <string name="backup_line">%1$s · %2$s</string>
+    <string name="backup_two">%1$s, %2$s</string>
+    <string name="backup_empty">Rien pour l’instant</string>
+    <string name="backup_memory_cant">Ne peut pas être ouverte pour l’instant&#160;: déverrouille ton téléphone, ou laisse la Mémoire de côté</string>
+    <string name="backup_files_cant">Ne peuvent pas être lus pour l’instant&#160;: Réglages › Fichiers dit pourquoi</string>
+    <string name="backup_history_travel">Laissé de côté pendant que le mode voyage est activé&#160;: il contient des réponses des Fichiers de Robot</string>
+    <string name="backup_sum_settings">Voix, mots d’éveil, actions, sécurité, IA externes (sans les clés), recherche Web, Termux, affichage, mises à jour</string>
+    <string name="backup_sum_voiceprint">Faite sur ce téléphone</string>
+    <string name="backup_vp_warning">Biométrique&#160;: elle demande une phrase de passe forte et revient seulement d’une sauvegarde que tu marques comme la tienne.</string>
+    <string name="backup_pictures">Captures d’écran et photos gardées</string>
+    <string name="backup_recordings">Enregistrements</string>
+    <string name="backup_videos">Vidéos</string>
+    <string name="backup_never">Jamais dans une sauvegarde&#160;: les modèles et les voix de Robot (ils se téléchargent de nouveau), le jeton d’accès des mises à jour, et les applis auxquelles Robot fait confiance (tu les confirmes de nouveau).</string>
+    <string name="backup_total">Environ %1$s en tout</string>
+    <string name="backup_next">Suivant</string>
+    <string name="backup_cancel">Annuler</string>
+    <string name="backup_keys_title">Mettre tes clés dans la sauvegarde&#8239;?</string>
+    <string name="backup_keys_text">Quiconque a ce fichier et sa phrase de passe peut utiliser tes clés d’API (et dépenser ton argent) et lire les mots de passe et les codes que tu as demandé à la Mémoire de garder. Tu peux aussi les laisser de côté et coller les clés de nouveau sur le nouveau téléphone.</string>
+    <string name="backup_keys_yes">Les inclure</string>
+    <string name="backup_keys_no">Les laisser de côté</string>
+    <string name="backup_vp_title">Mettre ton empreinte vocale dans la sauvegarde&#8239;?</string>
+    <string name="backup_vp_text">Ton empreinte vocale est biométrique&#160;: c’est ainsi que Robot reconnaît ta voix dans une transcription. Quiconque a ce fichier et sa phrase de passe l’a aussi. Elle revient seulement d’une sauvegarde que tu marques comme la tienne, sur un téléphone qui n’a pas encore d’empreinte vocale. La refaire prend environ une minute dans Réglages › Conversation › Ta voix.</string>
+    <string name="backup_vp_yes">L’inclure</string>
+    <string name="backup_vp_no">La laisser de côté</string>
+    <string name="backup_pass_title">Phrase de passe</string>
+    <string name="backup_pass_generated">Robot a fait cette phrase de passe pour toi. Enregistre-la dans un endroit sûr, comme ton gestionnaire de mots de passe.</string>
+    <string name="backup_pass_lost">Si tu perds la phrase de passe, personne ne peut ouvrir cette sauvegarde, pas même Robot.</string>
+    <string name="backup_pass_another">Une autre</string>
+    <string name="backup_pass_copy">Copier</string>
+    <string name="backup_pass_copied">Copiée. Robot vide le presse-papiers dans une minute.</string>
+    <string name="backup_pass_saved">J’ai enregistré cette phrase de passe dans un endroit sûr</string>
+    <string name="backup_pass_again">Tape-la de nouveau, ou colle-la</string>
+    <string name="backup_pass_mismatch">Ce n’est pas la même phrase de passe.</string>
+    <string name="backup_pass_own">Utiliser la mienne</string>
+    <string name="backup_pass_robots">Utiliser la phrase de passe de Robot</string>
+    <string name="backup_pass_field">Phrase de passe</string>
+    <string name="backup_pass_short">Utilise au moins 12 caractères, ou la phrase de passe de Robot.</string>
+    <string name="backup_pass_easy">Trop facile à deviner.</string>
+    <string name="backup_pass_fair">Correcte&#160;: la phrase de passe de Robot est plus forte.</string>
+    <string name="backup_pass_fair_keys">Correcte ne suffit pas avec des clés ou ton empreinte vocale dans la sauvegarde&#160;: allonge-la, ou utilise celle de Robot.</string>
+    <string name="backup_pass_strong">Forte.</string>
+    <string name="backup_pass_edge">Elle commence ou finit par une espace&#160;: vérifie que c’est bien ce que tu voulais.</string>
+    <string name="backup_pass_safe">L’estimation ne peut pas connaître des paroles de chanson ou le nom d’un animal&#160;: la phrase de passe de Robot est le choix sûr.</string>
+    <string name="backup_choose_place">Choisir où l’enregistrer</string>
+    <string name="backup_file_name">Sauvegarde Robot %1$s.robotbackup</string>
+    <string name="backup_starting">Préparation…</string>
+    <string name="backup_working">Sauvegarde… %1$s (%2$d sur %3$d)</string>
+    <string name="backup_checking">Vérification du fichier…</string>
+    <string name="backup_done">Sauvegarde enregistrée et vérifiée · %1$s</string>
+    <string name="backup_done_keep">Garde-la ailleurs que sur ce téléphone&#160;: une clé USB, ton ordinateur, un dossier synchronisé.</string>
+    <string name="backup_close">Terminé</string>
+    <string name="backup_cancelled">Sauvegarde annulée. Rien n’a été enregistré.</string>
+    <string name="backup_failed">Robot n’a pas pu faire la sauvegarde. Réessaie.</string>
+    <string name="backup_try_again">Réessayer</string>
+    <string name="backup_restore_row">Restaurer une sauvegarde</string>
+    <string name="backup_restore_row_detail">À partir d’un fichier que tu as enregistré</string>
+    <string name="backup_restore_title">Restaurer</string>
+    <string name="backup_restore_choosing">Choisis le fichier de sauvegarde…</string>
+    <string name="backup_restore_copying">Copie de la sauvegarde…</string>
+    <string name="backup_restore_pass_intro">Tape la phrase de passe de la sauvegarde, ou laisse ton gestionnaire de mots de passe la remplir.</string>
+    <string name="backup_restore_open">Ouvrir</string>
+    <string name="backup_restore_opening">Ouverture…</string>
+    <string name="backup_restore_checking">Vérification de la sauvegarde…</string>
+    <string name="backup_restore_header">Sauvegarde Robot · %1$s · faite par Robot %2$s</string>
+    <string name="backup_restore_replace">Remplacer ce qui est ici</string>
+    <string name="backup_restore_mode_add">Ajouté à ce qui est sur ce téléphone</string>
+    <string name="backup_restore_mode_replace">Remplace ce qui est sur ce téléphone</string>
+    <string name="backup_restore_code">Entrer le code de blocage de ce téléphone</string>
+    <string name="backup_restore_code_detail">Le blocage du téléphone revient seulement avec lui.</string>
+    <string name="backup_restore_mine">Cette sauvegarde est la mienne, de mon propre téléphone</string>
+    <string name="backup_restore_mine_detail">Laisse ceci désactivé pour un fichier que quelqu’un t’a donné. Robot traite alors ce qu’il restaure comme quelque chose qu’il a lu, garde les réglages les plus sûrs, et laisse de côté les clés et l’empreinte vocale.</string>
+    <string name="backup_restore_again">Tu referas ceci&#160;: télécharger les modèles, faire de Robot l’assistant et permettre le micro, les correctifs ADB, les autorisations au fur et à mesure, la configuration des Messages, la confiance envers Termux, les clés et l’empreinte vocale que tu n’as pas incluses, et le jeton des mises à jour.</string>
+    <string name="backup_restore_go">Restaurer</string>
+    <string name="backup_restore_restart_note">Robot redémarre une fois la restauration faite.</string>
+    <string name="backup_restore_working">Restauration… %1$s</string>
+    <string name="backup_restore_finishing">Fin de la restauration, puis redémarrage de Robot…</string>
+    <string name="backup_restore_result_title">Dernière restauration · %1$s</string>
+    <string name="backup_restore_result_line">%1$s&#160;: %2$s</string>
+    <string name="backup_restore_result_done">restauré</string>
+    <string name="backup_restore_result_failed">pas restauré, et rien n’a changé. Réessaie.</string>
+    <string name="backup_restore_result_locked">pas restauré&#160;: le téléphone s’est verrouillé. Déverrouille et restaure de nouveau.</string>
+    <string name="backup_restore_result_unlock">se termine quand tu déverrouilles le téléphone</string>
+    <string name="backup_restore_result_room">pas encore terminé (manque d’espace libre, ou erreur de stockage). Robot réessaie chaque fois que tu déverrouilles le téléphone.</string>
+    <string name="backup_restore_result_earlier">pas restauré, et rien n’a changé&#160;: une restauration précédente n’est pas terminée (manque d’espace libre, ou erreur de stockage). Libère de l’espace, puis restaure de nouveau.</string>
+    <string name="backup_restore_result_others">D’une sauvegarde qui n’est pas marquée comme la tienne&#160;: les souvenirs indiquent Importé, les routines et les compétences restaurées sont désactivées, et les clés ont été laissées de côté.</string>
+    <string name="backup_restore_result_close">Fermer ceci</string>
+    <plurals name="backup_restore_kept">
+        <item quantity="one">Gardé plus sûr&#160;: %1$d réglage qui laisserait Robot agir avec moins de questions garde la valeur de ce téléphone.</item>
+        <item quantity="many">Gardés plus sûrs&#160;: %1$d réglages qui laisseraient Robot agir avec moins de questions gardent les valeurs de ce téléphone.</item>
+        <item quantity="other">Gardés plus sûrs&#160;: %1$d réglages qui laisseraient Robot agir avec moins de questions gardent les valeurs de ce téléphone.</item>
+    </plurals>
+    <plurals name="backup_n_people">
+        <item quantity="one">%1$d personne</item>
+        <item quantity="many">%1$d personnes</item>
+        <item quantity="other">%1$d personnes</item>
+    </plurals>
+    <plurals name="backup_n_items">
+        <item quantity="one">%1$d élément</item>
+        <item quantity="many">%1$d éléments</item>
+        <item quantity="other">%1$d éléments</item>
+    </plurals>
+    <plurals name="backup_n_private">
+        <item quantity="one">dont %1$d privé</item>
+        <item quantity="many">dont %1$d privés</item>
+        <item quantity="other">dont %1$d privés</item>
+    </plurals>
+    <plurals name="backup_n_notes">
+        <item quantity="one">%1$d note</item>
+        <item quantity="many">%1$d notes</item>
+        <item quantity="other">%1$d notes</item>
+    </plurals>
+    <plurals name="backup_n_conversations">
+        <item quantity="one">%1$d conversation</item>
+        <item quantity="many">%1$d conversations</item>
+        <item quantity="other">%1$d conversations</item>
+    </plurals>
+    <plurals name="backup_n_transcripts">
+        <item quantity="one">%1$d transcription</item>
+        <item quantity="many">%1$d transcriptions</item>
+        <item quantity="other">%1$d transcriptions</item>
+    </plurals>
+    <plurals name="backup_n_skills">
+        <item quantity="one">%1$d compétence</item>
+        <item quantity="many">%1$d compétences</item>
+        <item quantity="other">%1$d compétences</item>
+    </plurals>
+    <plurals name="backup_n_routines">
+        <item quantity="one">%1$d routine</item>
+        <item quantity="many">%1$d routines</item>
+        <item quantity="other">%1$d routines</item>
+    </plurals>
+    <plurals name="backup_n_devices">
+        <item quantity="one">%1$d écouteur ou auto</item>
+        <item quantity="many">%1$d écouteurs et autos</item>
+        <item quantity="other">%1$d écouteurs et autos</item>
+    </plurals>
+    <plurals name="backup_n_locks">
+        <item quantity="one">%1$d blocage</item>
+        <item quantity="many">%1$d blocages</item>
+        <item quantity="other">%1$d blocages</item>
+    </plurals>
+    <plurals name="backup_n_codes">
+        <item quantity="one">%1$d code dans la Mémoire</item>
+        <item quantity="many">%1$d codes dans la Mémoire</item>
+        <item quantity="other">%1$d codes dans la Mémoire</item>
+    </plurals>
+    <plurals name="backup_n_recordings">
+        <item quantity="one">%1$d enregistrement</item>
+        <item quantity="many">%1$d enregistrements</item>
+        <item quantity="other">%1$d enregistrements</item>
+    </plurals>
+    <plurals name="backup_n_files">
+        <item quantity="one">%1$d fichier</item>
+        <item quantity="many">%1$d fichiers</item>
+        <item quantity="other">%1$d fichiers</item>
+    </plurals>
+    <plurals name="backup_n_videos">
+        <item quantity="one">%1$d vidéo</item>
+        <item quantity="many">%1$d vidéos</item>
+        <item quantity="other">%1$d vidéos</item>
+    </plurals>
+</resources>

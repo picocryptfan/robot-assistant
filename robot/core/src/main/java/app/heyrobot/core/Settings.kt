@@ -2,34 +2,50 @@
 package app.heyrobot.core
 
 import app.heyrobot.core.helpers.HelperConfig
+import app.heyrobot.core.i18n.Msg
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.ReplyLangChoice
+import app.heyrobot.core.i18n.SettingsStrings
 import org.json.JSONObject
 
 // Pure. settings.json is written by the main app only; the voice process re-reads it when the main app
 // says it changed (Cmd.SETTINGS).
 
-/** How freely Robot may run an action ("approval levels"). */
-enum class Approval(val title: String) {
-    AUTO("Just do it"),
-    ASK("Ask first"),
-    OFF("Off"),
+/** How freely Robot may run an action ("approval levels"). 1.1: [titleText] for Settings (`str()`). */
+enum class Approval(private val titleMsg: Msg) {
+    AUTO(SettingsStrings.approvalAuto),
+    ASK(SettingsStrings.approvalAsk),
+    OFF(SettingsStrings.approvalOff);
+
+    val titleText: Phrase get() = titleMsg()
 }
 
-enum class SpeakReplies(val title: String) {
-    VOICE("When I ask by voice"),
-    ALWAYS("Always"),
-    NEVER("Never"),
+enum class SpeakReplies(private val titleMsg: Msg) {
+    VOICE(SettingsStrings.speakVoice),
+    ALWAYS(SettingsStrings.speakAlways),
+    NEVER(SettingsStrings.speakNever);
+
+    val titleText: Phrase get() = titleMsg()
 }
 
 /**
  * The voice that reads replies (docs/voice-plan.md 1): Kokoro v1.0 "af_heart" (speaker 3) by default; Kokoro
- * "ff_siwis" (speaker 30, espeak language "fr") for French replies later; Kitten nano 0.8 as the small, fast
+ * "ff_siwis" (speaker 30, espeak language "fr"), which reads French replies while Robot's voice is either Kokoro voice
+ * (MessageVoices.french) and, picked as Robot's voice, English too, with espeak's French rules; Kitten nano 0.8 as the small, fast
  * fallback; or the phone's own text to speech. A voice whose model is not downloaded falls back to the phone's.
  */
-enum class VoiceChoice(val id: String, val title: String, val detail: String, val bundle: VoiceBundle?, val speaker: Int, val lang: String?) {
-    HEART("kokoro_af_heart", "Heart", "English, natural (Kokoro)", VoiceBundle.KOKORO, 3, null),
-    SIWIS("kokoro_ff_siwis", "Siwis", "French, for French replies in a later version (Kokoro)", VoiceBundle.KOKORO, 30, "fr"),
-    KITTEN("kitten_expr_voice_5_f", "Kitten", "English, faster and smaller, less natural", VoiceBundle.KITTEN, 7, null),
-    SYSTEM("system", "Phone's voice", "GrapheneOS Speech Services", null, 0, null);
+enum class VoiceChoice(val id: String, private val titleMsg: Msg, private val detailMsg: Msg, val bundle: VoiceBundle?, val speaker: Int, val lang: String?) {
+    HEART("kokoro_af_heart", SettingsStrings.voiceHeart, SettingsStrings.voiceHeartDetail, VoiceBundle.KOKORO, 3, null),
+    SIWIS("kokoro_ff_siwis", SettingsStrings.voiceSiwis, SettingsStrings.voiceSiwisDetail, VoiceBundle.KOKORO, 30, "fr"),
+    KITTEN("kitten_expr_voice_5_f", SettingsStrings.voiceKitten, SettingsStrings.voiceKittenDetail, VoiceBundle.KITTEN, 7, null),
+    SYSTEM("system", SettingsStrings.voiceSystem, SettingsStrings.voiceSystemDetail, null, 0, null);
+
+    /** 1.1: its name and line without a language yet (Settings shows them with `str()`). */
+    val titleText: Phrase get() = titleMsg()
+    val detailText: Phrase get() = detailMsg()
+
+    /** 1.2: the line with the phone's voice named as Android names its engine ([systemVoice], null: unknown; core SystemVoice). */
+    fun detailText(systemVoice: String?): Phrase = if (this == SYSTEM) SystemVoice.detailText(systemVoice) else detailText
 
     companion object {
         val DEFAULT = HEART
@@ -40,10 +56,13 @@ enum class VoiceChoice(val id: String, val title: String, val detail: String, va
 }
 
 /** Which app opens with a text: Cheogram (texts and XMPP, through the SMS gateway), the phone's SMS app, or none. */
-enum class TextApp(val title: String) {
-    CHEOGRAM("Cheogram"),
-    SMS("SMS app"),
-    OFF("Off"),
+enum class TextApp(private val titleMsg: Msg) {
+    CHEOGRAM(SettingsStrings.textCheogram),
+    SMS(SettingsStrings.textSms),
+    OFF(SettingsStrings.textOff);
+
+    /** 1.1: its name without a language yet (Settings shows it with `str()`). */
+    val titleText: Phrase get() = titleMsg()
 }
 
 /**
@@ -52,17 +71,23 @@ enum class TextApp(val title: String) {
  * first time, a card says what would leave the phone, and to which server, and you choose there ("Allow always", "Just
  * this time", "No, search the map"; [NearestAnswer] keeps a lasting answer).
  */
-enum class NearestOnline(val title: String, val detail: String) {
-    ASK("Ask the first time", "The first “nearest …” shows a card that says what would go online; you choose there."),
-    ALWAYS("Always", "Robot asks the search server below (OpenStreetMap's Nominatim unless you choose another) for that kind of " +
-        "place around where you are (about 1 km) and opens your maps app's route to the closest. It uses the internet."),
-    NEVER("Never", "Your maps app's search, which ranks places around you. Nothing goes online."),
+enum class NearestOnline(private val titleMsg: Msg, private val detailMsg: Msg) {
+    ASK(SettingsStrings.nearestAsk, SettingsStrings.nearestAskDetail),
+    ALWAYS(SettingsStrings.nearestAlways, SettingsStrings.nearestAlwaysDetail),
+    NEVER(SettingsStrings.nearestNever, SettingsStrings.nearestNeverDetail);
+
+    /** 1.1: the choice and its line without a language yet (Settings shows them with `str()`). */
+    val titleText: Phrase get() = titleMsg()
+    val detailText: Phrase get() = detailMsg()
 }
 
 /** Which app opens with an email draft: Proton Mail, or the system chooser every time. */
-enum class EmailApp(val title: String) {
-    PROTON("Proton Mail"),
-    ASK("Ask each time"),
+enum class EmailApp(private val titleMsg: Msg) {
+    PROTON(SettingsStrings.emailProton),
+    ASK(SettingsStrings.emailAsk);
+
+    /** 1.1: its name without a language yet (Settings shows it with `str()`). */
+    val titleText: Phrase get() = titleMsg()
 }
 
 data class RobotSettings(
@@ -76,6 +101,11 @@ data class RobotSettings(
     val voice: String = "",
     /** Show the words while you speak (decodes the speech so far about every 0.7 s; off saves battery). */
     val livePartials: Boolean = true,
+    /**
+     * Settings › Voice › "Wait before answering" (1.1): the pause a question may hold before Robot answers. Still schema
+     * 13, as replyLang: absent from older files, which read as the default; written only when set.
+     */
+    val listenPause: ListenPause = ListenPause.NORMAL,
     /**
      * Settings › "Direct answers" (0.4.0, on): the local model helps with whatever you ask without refusing or adding
      * warnings, and still says when something isn't possible ([Prompt.DIRECT]). Off: the model's own judgment.
@@ -247,6 +277,13 @@ data class RobotSettings(
      * whatever this says. Absent from older files: on, the default (no new schema needed, as "directAnswers").
      */
     val modelGpu: Boolean = true,
+    /**
+     * Settings › Language › "Robot answers in" (1.1): the language you speak (the default), the menus', English or French
+     * (core i18n ReplyLang). Still schema 13: absent from older files, which read as the default; written only when set.
+     */
+    val replyLang: ReplyLangChoice = ReplyLangChoice.SPOKEN,
+    /** 1.1: Home's one-time notice about French menus (Settings › Language) was seen. Absent: not yet; written once true. */
+    val menusNoticeSeen: Boolean = false,
 ) {
     val brainModelChoice: BrainModel get() = BrainModel.of(brainModel)
 
@@ -361,6 +398,9 @@ data class RobotSettings(
         put("brainModel", brainModelChoice.id)
         put("modelThinks", modelThinks)
         put("modelGpu", modelGpu)
+        if (replyLang != ReplyLangChoice.SPOKEN) put("replyLang", replyLang.id)
+        if (menusNoticeSeen) put("menusNoticeSeen", true)
+        if (listenPause != ListenPause.NORMAL) put("listenPause", listenPause.id)
     }
 
     companion object {
@@ -433,6 +473,9 @@ data class RobotSettings(
             // 0.9: not a level you set either: Settings › Termux (termux.json) and TermuxPolicy decide.
             ToolName.TERMUX_SCRIPT to Approval.ASK,
             ToolName.TERMUX_COMMAND to Approval.ASK,
+            // 1.4, Robot Files (F9): reads, not levels you set (Settings › Files governs them, as Memory does remember).
+            ToolName.FIND_FILES to Approval.AUTO,
+            ToolName.READ_FILE to Approval.AUTO,
         )
 
         /** The actions whose default became "Just do it" in schema 4. */
@@ -539,6 +582,10 @@ data class RobotSettings(
                 modelThinks = o.optInt("schema", 1) >= 10 && o.optBoolean("modelThinks", d.modelThinks),
                 // 0.4.7: absent (any older file) means on, the default.
                 modelGpu = o.optBoolean("modelGpu", d.modelGpu),
+                // 1.1, no new schema: absent (any older file) or unknown means the defaults.
+                replyLang = ReplyLangChoice.of(o.optString("replyLang")),
+                menusNoticeSeen = o.optBoolean("menusNoticeSeen", false),
+                listenPause = ListenPause.of(o.optString("listenPause")),
             )
         }
 

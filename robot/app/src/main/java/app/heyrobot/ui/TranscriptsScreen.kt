@@ -46,6 +46,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -57,21 +58,24 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import app.heyrobot.R
 import app.heyrobot.core.ExportKind
 import app.heyrobot.core.ExportOptions
 import app.heyrobot.core.SessionStatus
 import app.heyrobot.core.SummaryCheckFor
 import app.heyrobot.core.SummaryRecord
-import androidx.compose.ui.text.LinkAnnotation
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextLinkStyles
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.text.withLink
 import app.heyrobot.core.Transcript
 import app.heyrobot.core.TranscriptEdits
 import app.heyrobot.core.TranscriptEvent
@@ -83,14 +87,25 @@ import app.heyrobot.core.TranscriptLine
 import app.heyrobot.core.TranscriptMeta
 import app.heyrobot.core.TranscriptTitles
 import app.heyrobot.core.VoiceEvent
+import app.heyrobot.core.files.IntakeProblem
+import app.heyrobot.core.i18n.Arg
+import app.heyrobot.core.i18n.ConversationStrings
+import app.heyrobot.core.i18n.FilesStrings
+import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.sys.Cmd
 import app.heyrobot.sys.Exports
+import app.heyrobot.sys.FilesIntake
+import app.heyrobot.sys.IntakeStep
 import app.heyrobot.sys.Transcripts
 import app.heyrobot.ui.common.RIcons
+import app.heyrobot.ui.theme.LocalLangs
+import app.heyrobot.ui.theme.str
+import java.time.ZoneId
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.time.ZoneId
 
 // MAIN PROCESS. The Transcripts library (docs/conversation-mode.md 5.1, 6.3, phase 5.5): the transcripts on this phone,
 // newest first, a search over their words (accents and case ignored), one transcript to read, rename, export as
@@ -107,9 +122,10 @@ import java.time.ZoneId
 private data class Row(val meta: TranscriptMeta, val live: Boolean, val bytes: Long)
 
 /** How a transcript stands, in a few words (a RUNNING one nobody records any more stopped unexpectedly). */
+@Composable
 private fun statusText(m: TranscriptMeta, live: Boolean): String? = when {
-    live -> "Recording now"
-    m.status == SessionStatus.INTERRUPTED || m.status == SessionStatus.RUNNING -> "Stopped unexpectedly"
+    live -> stringResource(R.string.conv_recording_now)
+    m.status == SessionStatus.INTERRUPTED || m.status == SessionStatus.RUNNING -> stringResource(R.string.conv_stopped_unexpectedly)
     else -> null
 }
 
@@ -121,6 +137,7 @@ private fun durationOf(m: TranscriptMeta, t: Transcript?): Long = when {
 
 @Composable
 fun TranscriptsScreen(snackbar: SnackbarHostState, onOpen: (String, Int?) -> Unit, onBack: () -> Unit) {
+    NoRecentsPicture()
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var rows by remember { mutableStateOf<List<Row>?>(null) }
@@ -151,34 +168,34 @@ fun TranscriptsScreen(snackbar: SnackbarHostState, onOpen: (String, Int?) -> Uni
     }
     Scaffold(
         topBar = {
-            BackBar("Transcripts", onBack) {
-                if (!rows.isNullOrEmpty()) TextButton(onClick = { confirmAll = true }) { Text("Delete all") }
+            BackBar(stringResource(R.string.conv_transcripts), onBack) {
+                if (!rows.isNullOrEmpty()) TextButton(onClick = { confirmAll = true }) { Text(stringResource(R.string.conv_delete_all)) }
             }
         },
         floatingActionButton = {
             ExtendedFloatingActionButton(onClick = {
                 try { ctx.startActivity(Transcripts.startIntent(ctx, app.heyrobot.core.ConvEntry.APP.name)) } catch (_: Exception) {}
-            }, icon = { Icon(RIcons.Mic, null) }, text = { Text("Transcribe") })
+            }, icon = { Icon(RIcons.Mic, null) }, text = { Text(stringResource(R.string.conv_transcribe)) })
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { pad ->
         Column(Modifier.fillMaxSize().padding(pad).padding(horizontal = 16.dp)) {
-            Text("Conversations transcribed on this phone. They stay here unless you export or share them.",
+            Text(stringResource(R.string.conv_library_intro),
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(8.dp))
-            OutlinedTextField(query, { query = it }, singleLine = true, label = { Text("Search the words") },
+            OutlinedTextField(query, { query = it }, singleLine = true, label = { Text(stringResource(R.string.conv_search_words)) },
                 leadingIcon = { Icon(RIcons.Search, null) }, modifier = Modifier.fillMaxWidth())
             val list = rows
             when {
                 list == null -> {}
                 query.trim().length >= 2 -> LazyColumn(contentPadding = PaddingValues(vertical = 12.dp, horizontal = 0.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (hits.isEmpty()) item { Text("Nothing found.", style = MaterialTheme.typography.bodyMedium) }
+                    if (hits.isEmpty()) item { Text(stringResource(R.string.conv_nothing_found), style = MaterialTheme.typography.bodyMedium) }
                     items(hits, key = { "${it.transcriptId}/${it.line}" }) { h ->
                         val m = list.firstOrNull { it.meta.id == h.transcriptId }?.meta
                         Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainerLow,
                             modifier = Modifier.fillMaxWidth().clickable { onOpen(h.transcriptId, h.line) }) {
                             Column(Modifier.padding(12.dp)) {
-                                Text(m?.let { TranscriptTitles.shown(it) } ?: "Transcript", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                                Text(m?.let { TranscriptTitles.shown(it, l = LocalLangs.current) } ?: stringResource(R.string.conv_transcript), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                                 Text(h.snippet, style = MaterialTheme.typography.bodyMedium)
                             }
                         }
@@ -188,8 +205,8 @@ fun TranscriptsScreen(snackbar: SnackbarHostState, onOpen: (String, Int?) -> Uni
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(RIcons.Message, null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(12.dp))
-                        Text("No transcripts yet", style = MaterialTheme.typography.titleMedium)
-                        Text("Tap Transcribe, or say “hey robot, transcribe this conversation”.", style = MaterialTheme.typography.bodyMedium,
+                        Text(stringResource(R.string.conv_no_transcripts), style = MaterialTheme.typography.titleMedium)
+                        Text(stringResource(R.string.conv_no_transcripts_hint), style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
@@ -198,10 +215,11 @@ fun TranscriptsScreen(snackbar: SnackbarHostState, onOpen: (String, Int?) -> Uni
                         Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerLow,
                             modifier = Modifier.fillMaxWidth().clickable { onOpen(r.meta.id, null) }) {
                             Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                                Text(TranscriptTitles.shown(r.meta), style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(TranscriptTitles.shown(r.meta, l = LocalLangs.current), style = MaterialTheme.typography.titleSmall, maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis)
                                 val parts = listOfNotNull(
                                     DateUtils.getRelativeTimeSpanString(r.meta.createdAt).toString(),
-                                    TranscriptTitles.duration(durationOf(r.meta, null)).takeIf { r.meta.endedAt > r.meta.createdAt },
+                                    TranscriptTitles.durationText(durationOf(r.meta, null)).str().takeIf { r.meta.endedAt > r.meta.createdAt },
                                     statusText(r.meta, r.live),
                                 )
                                 Text(parts.joinToString(" · "), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -214,19 +232,19 @@ fun TranscriptsScreen(snackbar: SnackbarHostState, onOpen: (String, Int?) -> Uni
     }
     if (confirmAll) AlertDialog(
         onDismissRequest = { confirmAll = false },
-        title = { Text("Delete all transcripts?") },
-        text = { Text("This removes every transcript from this phone, and stops one being recorded. It can't be undone. (Deleting on flash storage isn't a secure erase.)") },
+        title = { Text(stringResource(R.string.conv_delete_all_title)) },
+        text = { Text(stringResource(R.string.conv_delete_all_text)) },
         confirmButton = {
             TextButton(onClick = {
                 confirmAll = false
                 scope.launch {
                     val n = withContext(Dispatchers.IO) { Transcripts.delete(ctx, null) }
                     tick++
-                    snackbar.showSnackbar(if (n == 1) "1 transcript deleted." else "$n transcripts deleted.")
+                    snackbar.showSnackbar(ctx.resources.getQuantityString(R.plurals.conv_deleted_count, n, n))
                 }
-            }) { Text("Delete all") }
+            }) { Text(stringResource(R.string.conv_delete_all)) }
         },
-        dismissButton = { TextButton(onClick = { confirmAll = false }) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = { confirmAll = false }) { Text(stringResource(R.string.conv_cancel)) } },
     )
 }
 
@@ -237,11 +255,31 @@ private fun resumed(): Boolean {
 }
 
 /** Lines and gap markers in time order. */
+/**
+ * Recents keeps no picture of the app while a transcript or the list is on screen (other people's words, which a picture
+ * would keep after you delete them). Counted, so moving from the list to a transcript doesn't turn it back on early.
+ */
+@Composable
+private fun NoRecentsPicture() {
+    val activity = LocalContext.current.let { c ->
+        var x: android.content.Context? = c
+        while (x is android.content.ContextWrapper && x !is android.app.Activity) x = x.baseContext
+        x as? android.app.Activity
+    }
+    DisposableEffect(activity) {
+        if (activity != null && noRecents++ == 0) activity.setRecentsScreenshotEnabled(false)
+        onDispose { if (activity != null && --noRecents == 0) activity.setRecentsScreenshotEnabled(true) }
+    }
+}
+
+private var noRecents = 0
+
 private fun timeline(t: Transcript): List<Any> = (t.lines.map { it.t0 to it } + t.gaps.map { it.t0 to it }).sortedBy { it.first }.map { it.second }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TranscriptScreen(id: String, focusLine: Int?, snackbar: SnackbarHostState, onBack: () -> Unit) {
+    NoRecentsPicture()
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var meta by remember { mutableStateOf<TranscriptMeta?>(null) }
@@ -255,6 +293,8 @@ fun TranscriptScreen(id: String, focusLine: Int?, snackbar: SnackbarHostState, o
     var edit by remember { mutableStateOf<SpeakerEdit?>(null) }
     var summaries by remember { mutableStateOf<List<Pair<Int, SummaryRecord>>>(emptyList()) }
     var jump by remember { mutableStateOf<Int?>(null) }
+    /** 1.4: a transcript saved to Robot Files that is a duplicate, waiting for your answer. */
+    var duplicate by remember { mutableStateOf<IntakeStep.Duplicate?>(null) }
     val zone = ZoneId.systemDefault()
     /** Your changes to speakers, appended to the transcript's file here (main app) when nothing records it. */
     val edits = remember(id) {
@@ -265,7 +305,7 @@ fun TranscriptScreen(id: String, focusLine: Int?, snackbar: SnackbarHostState, o
                         if (Transcripts.live(ctx) == id) null else Transcripts.store(ctx).edit(id, make) != null
                     }
                     tick++
-                    if (done == null) snackbar.showSnackbar("It's being recorded: change it on the transcript screen, or after it stops.")
+                    if (done == null) snackbar.showSnackbar(ctx.getString(R.string.conv_being_recorded))
                 }
             }
 
@@ -300,58 +340,79 @@ fun TranscriptScreen(id: String, focusLine: Int?, snackbar: SnackbarHostState, o
         }
     }
 
-    fun shown(m: TranscriptMeta) = m.copy(title = TranscriptTitles.shown(m, zone))
+    // Exports and titles in the menus' language, as the screen shows them.
+    val langs = LocalLangs.current
+
+    fun shown(m: TranscriptMeta) = m.copy(title = TranscriptTitles.shown(m, zone, langs))
 
     fun export(kind: ExportKind, m: TranscriptMeta, tr: Transcript): String =
-        if (kind == ExportKind.TEXT) TranscriptExport.text(shown(m), tr, ExportOptions(), zone) else TranscriptExport.markdown(shown(m), tr, ExportOptions(), zone)
+        if (kind == ExportKind.TEXT) TranscriptExport.text(shown(m), tr, ExportOptions(), zone, langs)
+        else TranscriptExport.markdown(shown(m), tr, ExportOptions(), zone, langs)
 
     val saveMd = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/markdown")) { uri -> uri?.let { save(ctx, scope, snackbar, it, meta, t, ExportKind.MARKDOWN, ::export) } }
     val saveTxt = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri -> uri?.let { save(ctx, scope, snackbar, it, meta, t, ExportKind.TEXT, ::export) } }
 
     Scaffold(
         topBar = {
-            BackBar(meta?.let { TranscriptTitles.shown(it, zone) } ?: "Transcript", onBack) {
+            BackBar(meta?.let { TranscriptTitles.shown(it, zone, langs) } ?: stringResource(R.string.conv_transcript), onBack) {
                 val m = meta
                 val tr = t
                 if (m != null && tr != null) {
                     IconButton(onClick = {
                         scope.launch {
-                            val f = withContext(Dispatchers.IO) { Exports.write(ctx, TranscriptExport.fileName(m, "md", zone), export(ExportKind.MARKDOWN, m, tr)) }
+                            val f = withContext(Dispatchers.IO) { Exports.write(ctx, TranscriptExport.fileName(m, "md", zone, langs), export(ExportKind.MARKDOWN, m, tr)) }
                             val uri = FileProvider.getUriForFile(ctx, Exports.AUTHORITY, f)
                             val send = Intent(Intent.ACTION_SEND).setType("text/markdown").putExtra(Intent.EXTRA_STREAM, uri)
-                                .putExtra(Intent.EXTRA_SUBJECT, TranscriptTitles.shown(m, zone)).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                .putExtra(Intent.EXTRA_SUBJECT, TranscriptTitles.shown(m, zone, langs)).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             Transcripts.log(ctx, VoiceEvent.CONV_EXPORT, ExportKind.SHARE.id)
                             // One line on the share sheet: what you send leaves Robot's care.
-                            ctx.startActivity(Intent.createChooser(send, "Share the transcript (the app you pick keeps its own copy)"))
+                            ctx.startActivity(Intent.createChooser(send, ctx.getString(R.string.conv_share_chooser)))
                         }
-                    }) { Icon(RIcons.Share, "Share") }
+                    }) { Icon(RIcons.Share, stringResource(R.string.conv_share)) }
                     Box {
-                        IconButton(onClick = { menu = true }) { Icon(RIcons.MoreVert, "More options") }
+                        IconButton(onClick = { menu = true }) { Icon(RIcons.MoreVert, stringResource(R.string.conv_more_options)) }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                            DropdownMenuItem(text = { Text("Summarize") }, enabled = tr.lines.isNotEmpty(), onClick = {
+                            DropdownMenuItem(text = { Text(stringResource(R.string.conv_summarize)) }, enabled = tr.lines.isNotEmpty(), onClick = {
                                 menu = false
                                 try { ctx.startActivity(Transcripts.summaryIntent(ctx, id)) } catch (_: Exception) {}
                             })
                             // Not while it records, as Rename: the session's own copy of meta.json is written back when it ends.
-                            DropdownMenuItem(text = { Text(if (m.important) "Not important" else "Mark important") }, enabled = !live, onClick = {
+                            DropdownMenuItem(text = { Text(stringResource(if (m.important) R.string.conv_not_important else R.string.conv_mark_important)) },
+                                enabled = !live, onClick = {
                                 menu = false
                                 scope.launch {
                                     withContext(Dispatchers.IO) { Transcripts.store(ctx).setImportant(id, !m.important) }
                                     tick++
                                 }
                             })
-                            DropdownMenuItem(text = { Text("Rename") }, enabled = !live, onClick = { menu = false; renaming = true })
-                            DropdownMenuItem(text = { Text("Save as Markdown (.md)") }, onClick = { menu = false; saveMd.launch(TranscriptExport.fileName(m, "md", zone)) })
-                            DropdownMenuItem(text = { Text("Save as text (.txt)") }, onClick = { menu = false; saveTxt.launch(TranscriptExport.fileName(m, "txt", zone)) })
-                            DropdownMenuItem(text = { Text("Copy") }, onClick = {
+                            DropdownMenuItem(text = { Text(stringResource(R.string.conv_rename)) }, enabled = !live, onClick = { menu = false; renaming = true })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.conv_save_md)) },
+                                onClick = { menu = false; saveMd.launch(TranscriptExport.fileName(m, "md", zone, langs)) })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.conv_save_txt)) },
+                                onClick = { menu = false; saveTxt.launch(TranscriptExport.fileName(m, "txt", zone, langs)) })
+                            // 1.4: into Robot Files' Inbox, as its Markdown export (not while it records, as Rename).
+                            DropdownMenuItem(text = { Text(stringResource(R.string.files_save_transcript)) }, enabled = !live, onClick = {
                                 menu = false
-                                val clip = ClipData.newPlainText(TranscriptTitles.shown(m, zone), export(ExportKind.TEXT, m, tr))
+                                scope.launch {
+                                    val name = TranscriptExport.fileName(m, "md", zone, langs)
+                                    val md = export(ExportKind.MARKDOWN, m, tr)
+                                    val step = withContext(Dispatchers.IO) {
+                                        FilesIntake.gateText(FilesIntake.gate(ctx))?.let { IntakeStep.Failed(IntakeProblem.LOCKED) to it }
+                                            ?: (FilesIntake.phone(ctx).addTranscript(name, md) to null)
+                                    }
+                                    savedToFiles(ctx, snackbar, step.first, step.second, langs) { duplicate = it }
+                                }
+                            })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.conv_copy)) }, onClick = {
+                                menu = false
+                                val clip = ClipData.newPlainText(TranscriptTitles.shown(m, zone, langs), export(ExportKind.TEXT, m, tr))
                                 // Other people's words: kept out of the clipboard's preview.
                                 clip.description.extras = PersistableBundle().apply { putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true) }
                                 ctx.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(clip)
                                 Transcripts.log(ctx, VoiceEvent.CONV_EXPORT, ExportKind.COPY.id)
                             })
-                            DropdownMenuItem(text = { Text(if (live) "Stop and delete" else "Delete") }, onClick = { menu = false; confirm = true })
+                            DropdownMenuItem(text = { Text(stringResource(if (live) R.string.conv_stop_and_delete else R.string.conv_delete)) },
+                                onClick = { menu = false; confirm = true })
                         }
                     }
                 }
@@ -362,7 +423,7 @@ fun TranscriptScreen(id: String, focusLine: Int?, snackbar: SnackbarHostState, o
         val m = meta
         val tr = t
         if (gone || m == null || tr == null) {
-            Box(Modifier.fillMaxSize().padding(pad), contentAlignment = Alignment.Center) { Text(if (gone) "This transcript was deleted." else "") }
+            Box(Modifier.fillMaxSize().padding(pad), contentAlignment = Alignment.Center) { Text(if (gone) stringResource(R.string.conv_deleted) else "") }
             return@Scaffold
         }
         val all = remember(tr) { timeline(tr) }
@@ -378,20 +439,20 @@ fun TranscriptScreen(id: String, focusLine: Int?, snackbar: SnackbarHostState, o
         LazyColumn(Modifier.fillMaxSize().padding(pad), state = list, contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 48.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item {
-                val langs = tr.langs.joinToString(", ") { TranscriptExport.langName(it) }.ifEmpty { "none yet" }
+                val spoken = tr.langs.joinToString(", ") { TranscriptExport.langNameText(it).render(langs) }.ifEmpty { stringResource(R.string.conv_none_yet) }
                 val parts = listOfNotNull(
                     DateUtils.formatDateTime(ctx, m.createdAt, DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_SHOW_TIME),
-                    TranscriptTitles.duration(durationOf(m, tr)),
-                    if (tr.lines.size == 1) "1 line" else "${tr.lines.size} lines",
-                    langs,
+                    TranscriptTitles.durationText(durationOf(m, tr)).str(),
+                    pluralStringResource(R.plurals.conv_lines, tr.lines.size, tr.lines.size),
+                    spoken,
                     statusText(m, live),
                 )
                 Text(parts.joinToString(" · "), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("${TranscriptExport.CREDIT} Nothing leaves the phone unless you share or export it.", style = MaterialTheme.typography.labelSmall,
+                Text(stringResource(R.string.conv_credit_nothing_leaves, TranscriptExport.credit.str()), style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             // The summaries kept with it, newest first: the label says who made it; [14:03] goes to that line.
-            for ((n, r) in summaries.asReversed()) item(key = "summary$n") {
+            for ((n, r) in summaries.asReversed()) item(key = "summary$n") { // l10n: not text (a list key)
                 SummaryCard(r, m, tr, zone, onLine = { jump = it }, onDelete = {
                     scope.launch {
                         withContext(Dispatchers.IO) { Transcripts.store(ctx).deleteSummary(id, n) }
@@ -404,20 +465,22 @@ fun TranscriptScreen(id: String, focusLine: Int?, snackbar: SnackbarHostState, o
                     onDecline = { edits.decline(similar.first, similar.second) })
             }
             items(all.size) { k ->
+                val changeWho = stringResource(R.string.conv_change_who)
                 when (val x = all[k]) {
-                    is TranscriptGap -> Text(TranscriptExport.gapText(m, x, zone), style = MaterialTheme.typography.bodySmall, fontStyle = FontStyle.Italic,
+                    is TranscriptGap -> Text(TranscriptExport.gapPhrase(m, x, zone).str(), style = MaterialTheme.typography.bodySmall, fontStyle = FontStyle.Italic,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                     is TranscriptLine -> Column(if (!live) Modifier.combinedClickable(onClick = {}, onLongClick = { edit = SpeakerEdit.LineMenu(x) },
-                        onLongClickLabel = "Change who said it") else Modifier) {
+                        onLongClickLabel = changeWho) else Modifier) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(TranscriptExport.clock(m, x.t0, zone), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Spacer(Modifier.width(8.dp))
-                            SpeakerChip(x.speaker, if (tr.oneVoice) "Speaker" else tr.nameOf(x.speaker), if (!live) ({ edit = SpeakerEdit.Menu(x.speaker) }) else null)
+                            SpeakerChip(x.speaker, if (tr.oneVoice) stringResource(R.string.conv_speaker) else tr.nameText(x.speaker).str(),
+                                if (!live) ({ edit = SpeakerEdit.Menu(x.speaker) }) else null)
                             Spacer(Modifier.width(8.dp))
                             Text(TranscriptExport.langTag(x), style = MaterialTheme.typography.labelMedium)
                             if (x.edited) {
                                 Spacer(Modifier.width(8.dp))
-                                Text("edited", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(ConversationStrings.edited().str(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                         Text(x.text, style = MaterialTheme.typography.bodyLarge,
@@ -425,7 +488,7 @@ fun TranscriptScreen(id: String, focusLine: Int?, snackbar: SnackbarHostState, o
                         for (tl in x.translations.values) Row(verticalAlignment = Alignment.CenterVertically) {
                             if (tl.fast) {
                                 Surface(shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.tertiaryContainer) {
-                                    Text("fast", Modifier.padding(horizontal = 5.dp), style = MaterialTheme.typography.labelSmall)
+                                    Text(ConversationStrings.fast().str(), Modifier.padding(horizontal = 5.dp), style = MaterialTheme.typography.labelSmall)
                                 }
                                 Spacer(Modifier.width(6.dp))
                             }
@@ -441,9 +504,9 @@ fun TranscriptScreen(id: String, focusLine: Int?, snackbar: SnackbarHostState, o
         var name by remember { mutableStateOf(meta?.title.orEmpty()) }
         AlertDialog(
             onDismissRequest = { renaming = false },
-            title = { Text("Rename") },
+            title = { Text(stringResource(R.string.conv_rename)) },
             text = {
-                OutlinedTextField(name, { name = it }, singleLine = true, label = { Text("Title (empty: the date)") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(name, { name = it }, singleLine = true, label = { Text(stringResource(R.string.conv_title_hint)) }, modifier = Modifier.fillMaxWidth())
             },
             confirmButton = {
                 TextButton(onClick = {
@@ -451,17 +514,43 @@ fun TranscriptScreen(id: String, focusLine: Int?, snackbar: SnackbarHostState, o
                     scope.launch {
                         val ok = withContext(Dispatchers.IO) { Transcripts.live(ctx) != id && Transcripts.store(ctx).rename(id, name) }
                         tick++
-                        if (!ok) snackbar.showSnackbar("It couldn't be renamed (it may be recording).")
+                        if (!ok) snackbar.showSnackbar(ctx.getString(R.string.conv_rename_failed))
                     }
-                }) { Text("Save") }
+                }) { Text(stringResource(R.string.conv_save)) }
             },
-            dismissButton = { TextButton(onClick = { renaming = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { renaming = false }) { Text(stringResource(R.string.conv_cancel)) } },
         )
+    }
+    duplicate?.let { d ->
+        AlertDialog(
+            onDismissRequest = {},
+            text = { Text(FilesStrings.duplicate("where" to Arg.Sub(
+                FilesStrings.where(d.of.drawer, d.of.name))).render(langs)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    duplicate = null
+                    scope.launch {
+                        val step = withContext(Dispatchers.IO) { FilesIntake.phone(ctx).anyway(d) }
+                        savedToFiles(ctx, snackbar, step, null, langs) { duplicate = it }
+                    }
+                }) { Text(stringResource(R.string.files_add_anyway)) }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    duplicate = null
+                    scope.launch { withContext(Dispatchers.IO) { FilesIntake.phone(ctx).drop(d) } }
+                }) { Text(stringResource(R.string.files_dont_add)) }
+            },
+        )
+    }
+    // The page goes with a duplicate still unanswered: its staged copy goes too.
+    DisposableEffect(Unit) {
+        onDispose { duplicate?.let { d -> Thread({ FilesIntake.phone(ctx).drop(d) }, "robot-files-transcript").start() } }  // l10n: not text (a thread's name)
     }
     if (confirm) AlertDialog(
         onDismissRequest = { confirm = false },
-        title = { Text(if (live) "Stop and delete this transcript?" else "Delete this transcript?") },
-        text = { Text("It is removed from this phone. Copies you shared or saved elsewhere stay where they are.") },
+        title = { Text(stringResource(if (live) R.string.conv_stop_delete_title else R.string.conv_delete_title)) },
+        text = { Text(stringResource(R.string.conv_delete_text)) },
         confirmButton = {
             TextButton(onClick = {
                 confirm = false
@@ -469,9 +558,9 @@ fun TranscriptScreen(id: String, focusLine: Int?, snackbar: SnackbarHostState, o
                     withContext(Dispatchers.IO) { Transcripts.delete(ctx, id) }
                     onBack()
                 }
-            }) { Text("Delete") }
+            }) { Text(stringResource(R.string.conv_delete)) }
         },
-        dismissButton = { TextButton(onClick = { confirm = false }) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = { confirm = false }) { Text(stringResource(R.string.conv_cancel)) } },
     )
 }
 
@@ -481,28 +570,44 @@ private fun SummaryCard(r: SummaryRecord, m: TranscriptMeta, t: Transcript, zone
     var confirm by remember { mutableStateOf(false) }
     Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(r.label(zone), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(r.label(zone, LocalLangs.current), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             val links = SummaryCheckFor.links(r.text, m, t, zone)
             val style = TextLinkStyles(SpanStyle(color = MaterialTheme.colorScheme.primary, textDecoration = TextDecoration.Underline))
             Text(buildAnnotatedString {
                 var at = 0
                 for ((range, line) in links) {
                     append(r.text.substring(at, range.first))
-                    withLink(LinkAnnotation.Clickable("line$line", style) { onLine(line) }) { append(r.text.substring(range)) }
+                    withLink(LinkAnnotation.Clickable("line$line", style) { onLine(line) }) { append(r.text.substring(range)) } // l10n: not text (a link's tag)
                     at = range.last + 1
                 }
                 append(r.text.substring(at))
             }, style = MaterialTheme.typography.bodyMedium)
-            TextButton(onClick = { confirm = true }) { Text("Delete this summary") }
+            TextButton(onClick = { confirm = true }) { Text(stringResource(R.string.conv_delete_summary)) }
         }
     }
     if (confirm) AlertDialog(
         onDismissRequest = { confirm = false },
-        title = { Text("Delete this summary?") },
-        text = { Text("The transcript stays.") },
-        confirmButton = { TextButton(onClick = { confirm = false; onDelete() }) { Text("Delete") } },
-        dismissButton = { TextButton(onClick = { confirm = false }) { Text("Cancel") } },
+        title = { Text(stringResource(R.string.conv_delete_summary_title)) },
+        text = { Text(stringResource(R.string.conv_delete_summary_text)) },
+        confirmButton = { TextButton(onClick = { confirm = false; onDelete() }) { Text(stringResource(R.string.conv_delete)) } },
+        dismissButton = { TextButton(onClick = { confirm = false }) { Text(stringResource(R.string.conv_cancel)) } },
     )
+}
+
+/**
+ * 1.4: what saving a transcript to Robot Files came to, in the snackbar: added, a duplicate to ask about ([ask]), or why not
+ * ([gate]: the phone locked, a phone lock, Robot Files off).
+ */
+private suspend fun savedToFiles(ctx: Context, snackbar: SnackbarHostState, step: IntakeStep, gate: Phrase?,
+    langs: Langs, ask: (IntakeStep.Duplicate) -> Unit) {
+    when (step) {
+        is IntakeStep.Added -> {
+            Cmd.send(ctx, Cmd.FILES)
+            snackbar.showSnackbar(FilesStrings.addedOne().render(langs))
+        }
+        is IntakeStep.Duplicate -> ask(step)
+        is IntakeStep.Failed -> snackbar.showSnackbar((gate ?: FilesStrings.problem(step.problem, step.need)).render(langs))
+    }
 }
 
 /** Writes the export to the file you chose (Android's file picker: no storage permission). */
@@ -517,6 +622,6 @@ private fun save(ctx: Context, scope: kotlinx.coroutines.CoroutineScope, snackba
             } catch (_: Exception) { false }
         }
         if (ok) Transcripts.log(ctx, VoiceEvent.CONV_EXPORT, kind.id)
-        snackbar.showSnackbar(if (ok) "Saved." else "It couldn't be saved there.")
+        snackbar.showSnackbar(ctx.getString(if (ok) R.string.conv_saved_there else R.string.conv_not_saved_there))
     }
 }

@@ -56,7 +56,7 @@ import org.robolectric.annotation.GraphicsMode
 import java.io.File
 
 /**
- * Settings › Messages (0.7, design §B11): everything off until you turn it on; turning it on says what Robot will do,
+ * Settings › Messages (0.7): everything off until you turn it on; turning it on says what Robot will do,
  * pre-ticks only your texting app and asks you to confirm; then the notification access steps; each app, group chats,
  * how replies go, the card, a spoken yes, reading, the lock screen; "Announce" waits for headset mode. It writes
  * messages.json, never settings.json.
@@ -198,6 +198,22 @@ class MessagesSettingsTest {
     @Test fun light() {
         open(on, access = true)
         rule.shot("messages_light")
+    }
+
+    /** 1.1: French menus (values-fr-rCA/strings_messages.xml and core's MessageStrings): the page and its choices in Québec French. */
+    @Config(qualifiers = "fr-rCA-w411dp-h891dp-xhdpi")
+    @Test fun inFrench() {
+        open(on, access = true)
+        rule.onNodeWithText("Lire mes messages").assertIsOn()
+        rule.onRow("Cheogram").assert(hasText("Installée · Marquer comme lu prévient l’expéditeur"))
+        rule.onNodeWithText("Accès aux notifications autorisé").assertExists()
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
+        rule.shot("messages_fr")
+        rule.scrollToText("Comment partent les réponses")
+        rule.onRow("Comment partent les réponses").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Robot envoie après ta confirmation"))
+        rule.scrollToText("Garder les messages")
+        rule.onRow("Garder les messages").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Jusqu’à ce que la notification disparaisse"))
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
     }
 
     @Test fun setupDialog() {

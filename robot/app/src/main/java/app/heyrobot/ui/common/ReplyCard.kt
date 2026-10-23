@@ -28,16 +28,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import app.heyrobot.R
 import app.heyrobot.core.Markdown
+import app.heyrobot.core.i18n.MessageStrings
 import app.heyrobot.ui.theme.RobotTokens
+import app.heyrobot.ui.theme.str
 
-// Main and voice processes. 0.7, the reply card (design §B5): "Reply to **Mom** · Cheogram", your words as they will go,
+// Main and voice processes. 0.7, the reply card: "Reply to **Mom** · Cheogram", your words as they will go,
 // the tick box that sends them in her language (with what Robot made of them), the card's notes (a group sees it, an
 // SMS may cost, Signal marks the chat read, Cheogram turns an emoji alone into a reaction), and Send, Edit, Open chat,
 // Cancel. A tap on Send sends; a spoken yes only where the card says so. The panel (assistant/PanelMessages) owns what
@@ -112,7 +116,7 @@ fun ReplyCard(r: ReplyCardView, onOp: ((ReplyOp) -> Unit)?, modifier: Modifier =
             error = r.state == ReplyCardState.FAILED || r.state == ReplyCardState.GONE,
             leading = { CardIcon(RIcons.Message) },
             trailing = when (r.state) {
-                ReplyCardState.SENT -> { { Icon(RIcons.Check, "Sent", tint = c.primary) } }
+                ReplyCardState.SENT -> { { Icon(RIcons.Check, stringResource(R.string.card_sent), tint = c.primary) } }
                 else -> null
             },
             modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
@@ -121,21 +125,21 @@ fun ReplyCard(r: ReplyCardView, onOp: ((ReplyOp) -> Unit)?, modifier: Modifier =
             Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
                 r.choices.forEachIndexed { i, label -> CardChoiceRow(label, onClick = { onOp?.invoke(ReplyOp.Pick(i)) }, icon = RIcons.Person) }
             }
-            if (onOp != null) CardButtons { TextButton(onClick = { onOp(ReplyOp.Cancel) }) { Text("Cancel") } }
+            if (onOp != null) CardButtons { TextButton(onClick = { onOp(ReplyOp.Cancel) }) { Text(stringResource(R.string.card_cancel)) } }
             return@PanelCard
         }
         if (editing && waiting) {
-            OutlinedTextField(draft, { draft = it }, label = { Text("Your reply") }, modifier = Modifier.fillMaxWidth().padding(top = 12.dp))
+            OutlinedTextField(draft, { draft = it }, label = { Text(stringResource(R.string.card_your_reply)) }, modifier = Modifier.fillMaxWidth().padding(top = 12.dp))
             CardButtons {
-                TextButton(onClick = { editing = false; draft = r.text }) { Text("Cancel") }
-                Button(onClick = { editing = false; onOp(ReplyOp.Edit(draft)) }, enabled = draft.isNotBlank()) { Text("Done") }
+                TextButton(onClick = { editing = false; draft = r.text }) { Text(stringResource(R.string.card_cancel)) }
+                Button(onClick = { editing = false; onOp(ReplyOp.Edit(draft)) }, enabled = draft.isNotBlank()) { Text(stringResource(R.string.card_done)) }
             }
             return@PanelCard
         }
-        if (r.text.isNotBlank()) CardInset("«${r.text}»")
+        if (r.text.isNotBlank()) CardInset(MessageStrings.replyQuote("text" to r.text).str())
         val tl = r.translation
         if (tl != null && r.translateLabel != null) {
-            Tick("${r.translateLabel}: «$tl»", r.translate, enabled = waiting) { onOp?.invoke(ReplyOp.Translate(it)) }
+            Tick(MessageStrings.replyTick("label" to r.translateLabel, "text" to tl).str(), r.translate, enabled = waiting) { onOp?.invoke(ReplyOp.Translate(it)) }
             r.alwaysLabel?.let { a -> if (r.translate) Tick(a, r.always, enabled = waiting) { onOp?.invoke(ReplyOp.Always(it)) } }
         }
         for (n in r.notes) {
@@ -146,18 +150,18 @@ fun ReplyCard(r: ReplyCardView, onOp: ((ReplyOp) -> Unit)?, modifier: Modifier =
             ReplyCardState.WAITING -> {
                 // The secondary actions on their own row, so the four fit at twice the text size too.
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = { editing = true }) { Text("Edit") }
-                    if (r.openChat) TextButton(onClick = { onOp(ReplyOp.OpenChat) }) { Text("Open chat") }
+                    TextButton(onClick = { editing = true }) { Text(stringResource(R.string.card_edit)) }
+                    if (r.openChat) TextButton(onClick = { onOp(ReplyOp.OpenChat) }) { Text(stringResource(R.string.card_open_chat)) }
                 }
                 CardButtons {
-                    TextButton(onClick = { onOp(ReplyOp.Cancel) }) { Text("Cancel") }
-                    Button(onClick = { onOp(ReplyOp.Send) }, modifier = Modifier.weight(1f, fill = false)) { Text("Send") }
+                    TextButton(onClick = { onOp(ReplyOp.Cancel) }) { Text(stringResource(R.string.card_cancel)) }
+                    Button(onClick = { onOp(ReplyOp.Send) }, modifier = Modifier.weight(1f, fill = false)) { Text(stringResource(R.string.card_send)) }
                 }
             }
-            ReplyCardState.STOP_WINDOW -> CardButtons { Button(onClick = { onOp(ReplyOp.Stop) }) { Text("Stop") } }
+            ReplyCardState.STOP_WINDOW -> CardButtons { Button(onClick = { onOp(ReplyOp.Stop) }) { Text(stringResource(R.string.card_stop)) } }
             ReplyCardState.GONE, ReplyCardState.FAILED -> CardButtons {
-                TextButton(onClick = { onOp(ReplyOp.Cancel) }) { Text("Cancel") }
-                if (r.openChat) FilledTonalButton(onClick = { onOp(ReplyOp.OpenChat) }) { Text("Open chat") }
+                TextButton(onClick = { onOp(ReplyOp.Cancel) }) { Text(stringResource(R.string.card_cancel)) }
+                if (r.openChat) FilledTonalButton(onClick = { onOp(ReplyOp.OpenChat) }) { Text(stringResource(R.string.card_open_chat)) }
             }
             else -> {}
         }

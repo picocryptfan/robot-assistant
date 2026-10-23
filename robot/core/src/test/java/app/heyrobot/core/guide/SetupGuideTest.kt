@@ -17,7 +17,7 @@ import org.junit.Test
 /** 1.0: the setup guide's order and moves, its file, when it opens by itself, what Home offers, and what the summary lists. */
 class SetupGuideTest {
     @Test fun seventeenPagesFromWelcomeToSummary() {
-        assertEquals(17, SetupGuide.COUNT)
+        assertEquals(18, SetupGuide.COUNT)
         assertEquals(GuideStep.WELCOME, GuideStep.entries.first())
         assertEquals(GuideStep.CAN_DO, GuideStep.WELCOME.next)
         assertEquals(GuideStep.SUMMARY, GuideStep.entries.last())
@@ -76,6 +76,28 @@ class SetupGuideTest {
         assertEquals(GuideState(seen = 1, finished = 1), GuideState.fromJson(GuideState(seen = 1, finished = 1).toJson()))
     }
 
+    /**
+     * 1.1 (phone, 22 Oct: after 1.0.1 to 1.1, Home said "Step 1 of 18: pick up where you left off"): an update keeps the
+     * file as it was. The guide's version is still 1, so it doesn't open by itself again; a page is kept by its id, so 1.1's
+     * new Phone lock page moves none; only a guide opened and left on Welcome (Finish later, Back or leaving the app there)
+     * shows Step 1. Finished in 1.0.1, Home offers it again instead.
+     */
+    @Test fun aFileFrom101CarriesOver() {
+        val finished = GuideState.fromJson("""{"v":1,"seen":1,"at":null,"finished":1,"skipped":[]}""")
+        assertFalse(SetupGuide.opensAtLaunch(finished))
+        assertEquals(HomeGuide.RUN_AGAIN, SetupGuide.home(finished))
+        val leftOnWelcome = GuideState.fromJson("""{"v":1,"seen":1,"at":"welcome","finished":0,"skipped":[]}""")
+        assertEquals(HomeGuide.CONTINUE, SetupGuide.home(leftOnWelcome))
+        assertEquals(1, leftOnWelcome.at!!.number)
+        assertEquals(18, SetupGuide.COUNT)
+        // Left on Routines in 1.0.1 (page 12 of 17): still Routines, page 12 of 18, the new Phone lock page after it.
+        val leftOnRoutines = GuideState.fromJson("""{"v":1,"seen":1,"at":"routines","finished":0,"skipped":["people"]}""")
+        assertEquals(GuideStep.ROUTINES, leftOnRoutines.at)
+        assertEquals(12, leftOnRoutines.at!!.number)
+        assertEquals(GuideStep.PHONE_LOCK, leftOnRoutines.at!!.next)
+        assertEquals(setOf(GuideStep.PEOPLE), leftOnRoutines.skipped)
+    }
+
     @Test fun theSummaryReadsEveryFile() {
         val r = RobotSettings(wakeOnlyWhileCharging = true, safetyCards = SafetyCards.AFTER_READING, weatherHome = WeatherPlace("Rimouski", 48.4, -68.5),
             lockedTools = setOf(ToolName.SET_TIMER))
@@ -107,7 +129,8 @@ class SetupGuideTest {
         }
         // Off until you choose: messages, announcements, the brief, car mode, helpers, web search, Termux, test builds.
         for (off in listOf(GuideItem.MESSAGES, GuideItem.ANNOUNCE, GuideItem.BRIEF, GuideItem.CAR_MODE, GuideItem.HELPERS, GuideItem.WEB_SEARCH,
-            GuideItem.TERMUX, GuideItem.TEST_BUILDS, GuideItem.MEMORY_LOCKED, GuideItem.ONLY_WHILE_CHARGING, GuideItem.TRANSLATE_TRANSCRIPTS)) {
+            GuideItem.TERMUX, GuideItem.TEST_BUILDS, GuideItem.MEMORY_LOCKED, GuideItem.ONLY_WHILE_CHARGING, GuideItem.TRANSLATE_TRANSCRIPTS,
+            GuideItem.BACKUP_REMINDER)) {
             assertEquals(off.name, false, lines.getValue(off).on)
         }
         assertNull(lines.getValue(GuideItem.WEATHER_HOME).value)

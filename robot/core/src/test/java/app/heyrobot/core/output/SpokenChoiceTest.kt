@@ -4,12 +4,13 @@ package app.heyrobot.core.output
 import app.heyrobot.core.AskWhy
 import app.heyrobot.core.CardAnswer
 import app.heyrobot.core.ToolName
+import app.heyrobot.core.i18n.Lang
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Spoken cards and spoken choices (design §1.4, §4.11 SpokenChoice): what is asked by voice, and what an answer means. */
+/** Spoken cards and spoken choices: what is asked by voice, and what an answer means. */
 class SpokenChoiceTest {
     private val callWords = listOf("call", "call her", "call him", "call them", "call it", "dial", "dial it", "appelle", "appelle la", "appelle le", "compose")
     private val twoMoms = SpokenCard("Call Mom", listOf(SpokenOption("Mom Martin, mobile", setOf("cell")), SpokenOption("Mom Martin, work")),
@@ -88,7 +89,7 @@ class SpokenChoiceTest {
     }
 
     @Test fun robotsOwnPromptHeardBackIsNeverAnAnswer() {
-        val prompt = SpokenCards.prompt(twoMoms, SpokenLang.EN)
+        val prompt = SpokenCards.prompt(twoMoms, Lang.EN)
         assertEquals("Call Mom: Mom Martin, mobile, or Mom Martin, work?", prompt)
         for (s in listOf("Mom Martin mobile or Mom Martin work", "mobile or Mom Martin work", "call mom mom martin mobile", "Call Mom: Mom Martin, mobile, or Mom Martin, work?")) {
             assertEquals(s, AnswerCode.ECHO, a(s, twoMoms, prompt).kind)
@@ -96,13 +97,13 @@ class SpokenChoiceTest {
         // A short answer that happens to be in the prompt is still an answer.
         assertEquals(0, a("Mom Martin, mobile", twoMoms, prompt).index)
         assertEquals(1, a("work", twoMoms, prompt).index)
-        val yesNo = SpokenCards.prompt(confirmCall, SpokenLang.EN) + " " + SpokenCards.hint(0, SpokenLang.EN)
+        val yesNo = SpokenCards.prompt(confirmCall, Lang.EN) + " " + SpokenCards.hint(0, Lang.EN)
         assertEquals(AnswerCode.ECHO, a("say yes or no", confirmCall, yesNo).kind)
         assertEquals(AnswerCode.ECHO, a("yes or no", confirmCall, yesNo).kind)
         assertEquals(AnswerCode.ECHO, a("call mom mobile ending 0101", confirmCall, yesNo).kind)
         assertEquals(AnswerCode.YES, a("yes", confirmCall, yesNo).kind)
         assertEquals(AnswerCode.NO, a("no", confirmCall, yesNo).kind)
-        val fr = SpokenCards.prompt(twoMoms.copy(action = "Appeler Maman"), SpokenLang.FR)
+        val fr = SpokenCards.prompt(twoMoms.copy(action = "Appeler Maman"), Lang.FR)
         assertEquals("Appeler Maman : Mom Martin, mobile, ou Mom Martin, work?", fr)
         assertEquals(AnswerCode.ECHO, a("mobile ou Mom Martin work", twoMoms, fr).kind)
     }
@@ -120,7 +121,7 @@ class SpokenChoiceTest {
     }
 
     @Test fun afterAnAnswer() {
-        val en = SpokenLang.EN
+        val en = Lang.EN
         assertEquals(SpokenStep.Confirm, SpokenChoice.next(a("yes", timer), 0, 0, 0, en))
         assertEquals(SpokenStep.Decline, SpokenChoice.next(a("no", twoMoms), 0, 0, 2, en))
         assertEquals(SpokenStep.Choose(1), SpokenChoice.next(a("la deuxième", twoMoms), 0, 0, 2, en))
@@ -129,15 +130,15 @@ class SpokenChoiceTest {
         assertEquals(SpokenStep.AskAgain("Say the first or the second, or no."), SpokenChoice.next(a("", twoMoms), 0, 0, 2, en))
         assertEquals(SpokenStep.Hold("I'll keep that for when you can look at the phone."), SpokenChoice.next(a("", twoMoms), 1, 0, 2, en))
         assertEquals(SpokenStep.Hold("I'll keep that for when you can look at the phone."), SpokenChoice.next(a("blah", timer), 1, 0, 0, en))
-        assertEquals(SpokenStep.Hold("Je garde ça pour quand tu pourras regarder le téléphone."), SpokenChoice.next(a("blah", timer), 1, 0, 0, SpokenLang.FR))
-        assertEquals(SpokenStep.AskAgain("Dis oui ou non."), SpokenChoice.next(a("mmm", timer), 0, 0, 0, SpokenLang.FR))
+        assertEquals(SpokenStep.Hold("Je garde ça pour quand tu pourras regarder le téléphone."), SpokenChoice.next(a("blah", timer), 1, 0, 0, Lang.FR))
+        assertEquals(SpokenStep.AskAgain("Dis oui ou non."), SpokenChoice.next(a("mmm", timer), 0, 0, 0, Lang.FR))
         assertEquals(SpokenStep.AskAgain("Say the first, the second or the third, or no."), SpokenChoice.next(a("yes", threeMoms), 0, 0, 3, en))
         // "Repeat" is re-read at most twice, then counts like any other non-answer.
         assertEquals(SpokenStep.Hold("I'll keep that for when you can look at the phone."), SpokenChoice.next(a("repeat", twoMoms), 1, SpokenChoice.MAX_REREADS, 2, en))
     }
 
     @Test fun whatMayBeAnsweredByVoice() {
-        val en = SpokenLang.EN
+        val en = Lang.EN
         val headset = CardContext(SessionKind.HEADSET)
         val car = CardContext(SessionKind.CAR)
         val look = "I'll keep that for when you can look at the phone."
@@ -181,7 +182,7 @@ class SpokenChoiceTest {
      * are answered in the car exactly as in a headset, unlocked and locked, with every other rule as it is.
      */
     @Test fun theCarAnswersCardsExactlyAsAHeadset() {
-        val en = SpokenLang.EN
+        val en = Lang.EN
         val formerlyHeld = listOf(ToolName.OPEN_APP, ToolName.SEND_TEXT, ToolName.DRAFT_EMAIL, ToolName.ADD_EVENT, ToolName.FREE_MEMORY, ToolName.FREE_STORAGE,
             ToolName.ASK_HELPER)
         val headset = CardContext(SessionKind.HEADSET)
@@ -203,7 +204,7 @@ class SpokenChoiceTest {
             assertTrue(t.id, SpokenCards.plan(card, car.copy(locked = true), en) is CardVoice.Ask)
         }
         // No card is ever refused or held because you are driving: nothing says "park" or "drive".
-        for (t in formerlyHeld) for (l in SpokenLang.entries) for (ctx in listOf(car, car.copy(locked = true), car.copy(voiceCards = false))) {
+        for (t in formerlyHeld) for (l in Lang.entries) for (ctx in listOf(car, car.copy(locked = true), car.copy(voiceCards = false))) {
             val say = when (val v = SpokenCards.plan(timer.copy(tool = t, personal = true), ctx, l)) {
                 is CardVoice.Defer -> v.say
                 is CardVoice.Ask -> v.prompt
@@ -214,12 +215,12 @@ class SpokenChoiceTest {
     }
 
     @Test fun promptsInBothLanguages() {
-        assertEquals("Set a timer for 10 minutes?", SpokenCards.prompt(timer.copy(action = "Set a timer for 10 minutes."), SpokenLang.EN))
+        assertEquals("Set a timer for 10 minutes?", SpokenCards.prompt(timer.copy(action = "Set a timer for 10 minutes."), Lang.EN))
         val simple = SpokenCard("Which app", listOf(SpokenOption("Signal"), SpokenOption("Molly"), SpokenOption("Cheogram")))
-        assertEquals("Which app: Signal, Molly, or Cheogram?", SpokenCards.prompt(simple, SpokenLang.EN))
-        assertEquals("Quelle app : Signal, Molly, ou Cheogram?", SpokenCards.prompt(simple.copy(action = "Quelle app"), SpokenLang.FR))
-        assertEquals("Which app: Signal or Molly?", SpokenCards.prompt(simple.copy(options = simple.options.take(2)), SpokenLang.EN))
-        assertEquals("Dis le premier ou le deuxième, ou non.", SpokenCards.hint(2, SpokenLang.FR))
+        assertEquals("Which app: Signal, Molly, or Cheogram?", SpokenCards.prompt(simple, Lang.EN))
+        assertEquals("Quelle app : Signal, Molly, ou Cheogram?", SpokenCards.prompt(simple.copy(action = "Quelle app"), Lang.FR))
+        assertEquals("Which app: Signal or Molly?", SpokenCards.prompt(simple.copy(options = simple.options.take(2)), Lang.EN))
+        assertEquals("Dis le premier ou le deuxième, ou non.", SpokenCards.hint(2, Lang.FR))
         assertEquals(1, a("Molly", simple).index)
         assertEquals(2, a("Cheogram please", simple).index)
     }

@@ -36,8 +36,7 @@ object HandsFreeFiles {
 }
 
 /**
- * The headset button's trampoline (design §3.4 "Headset button opens Robot": off disables it, so other apps get the
- * three intents), and who answers them now (Assistant setup's row; Robot sees the other handlers through its <queries>
+ * The headset button's trampoline, and who answers them now (Assistant setup's row; Robot sees the other handlers through its <queries>
  * for these three actions only).
  */
 object HeadsetButton {

@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.car.NavDestination
 import java.text.Normalizer
+import java.util.Locale
 
 // Pure. What Robot hands Organic Maps to search for (0.3.1). Organic Maps' search has no idea of "near me": it
 // searches the words, and already ranks results around you (or around the map's view when it has no position yet).
@@ -55,5 +57,26 @@ object MapsQuery {
         }
         if (near) q = ARTICLE.replace(q, "").trim().trimEnd(',').trim()
         return q.ifEmpty { original }
+    }
+}
+
+/**
+ * 1.1 (Skills, docs/plans/skills-1.1-plan.md D4): maps_navigate to "home" or "work" is the route to the place saved in
+ * Settings › Car mode, opened as car mode opens it, instead of a search for the word. Only these exact words, in English
+ * and Québec French; anything else ("home depot", "my home town") searches as before.
+ */
+object SavedPlace {
+    private val HOME = setOf("home", "my home", "la maison", "chez nous")
+    private val WORK = setOf("work", "my work", "le travail", "le bureau")
+
+    /** The saved place [destination] names, or null. */
+    fun of(destination: String): NavDestination? {
+        val k = Normalizer.normalize(destination, Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "").lowercase(Locale.ROOT)
+            .replace(Regex("[\\s.,!?]+"), " ").trim()
+        return when (k) {
+            in HOME -> NavDestination.Home
+            in WORK -> NavDestination.Work
+            else -> null
+        }
     }
 }

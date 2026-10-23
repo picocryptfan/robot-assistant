@@ -25,12 +25,18 @@ import app.heyrobot.core.TranslatePolicy
 import app.heyrobot.core.TranslateUse
 import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
+import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.i18n.MessageStrings
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.ReplyLang
+import app.heyrobot.core.i18n.UiLabel
+import app.heyrobot.core.i18n.UiStrings
 import app.heyrobot.core.messages.ActionOrigin
 import app.heyrobot.core.messages.AfterReading
 import app.heyrobot.core.messages.CardEnd
 import app.heyrobot.core.messages.ChatLinks
 import app.heyrobot.core.messages.GuardCode
-import app.heyrobot.core.messages.Lang
+import app.heyrobot.core.i18n.Lang
 import app.heyrobot.core.messages.LockedMessages
 import app.heyrobot.core.messages.MessageAccess
 import app.heyrobot.core.messages.MessageApp
@@ -64,6 +70,7 @@ import app.heyrobot.core.messages.ReplyRouteCode
 import app.heyrobot.core.messages.ReplySource
 import app.heyrobot.core.messages.ReplyText
 import app.heyrobot.core.messages.Spoken
+import app.heyrobot.sys.AppLanguage
 import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.CheogramIntents
 import app.heyrobot.sys.HandOffApps
@@ -81,7 +88,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.ZoneId
 
-// VOICE PROCESS. 0.7, your messages in the panel (design §B7–§B10; core messages decides, this does): "read my
+// VOICE PROCESS. 0.7, your messages in the panel: "read my
 // messages" reads them conversation by conversation, each in its own language's voice, then listens once for "reply",
 // "next" or "stop"; "what did Mom say?" by what you call her in People; a summary and a translation are one-shot
 // requests to Robot's model with no tools (a translation between French and English may come from the fast engine);
@@ -121,6 +128,12 @@ object PanelMessages {
      */
     @Volatile private var people: List<Person> = emptyList()
     @Volatile private var threads: List<MessageThread> = emptyList()
+
+    /**
+     * The SMS gateway Robot texts through (Settings' smsGateway): the one server where a sender's JID is a phone number
+     * to match against People (core MessagePeople); anywhere else a JID matches only the address a person has.
+     */
+    private val gateway: String get() = VoiceHub.settings.smsGateway
 
     /** Drops what this process holds of your messages' words after [IDLE_DROP_MS] without a question or a tap. */
     private var idle: Job? = null
@@ -176,6 +189,24 @@ object PanelMessages {
     }
 
     private fun fr(lang: Lang) = lang == Lang.FR
+
+    /** 1.1: a turn's languages: [lang] for what Robot says (the router's, as the reply language), the menus' and the phone's for the screens it names. */
+    private fun langs(lang: Lang): Langs = AppLanguage.langs(ctx).copy(say = lang)
+
+    /** [p] as the voice says it: English as shown, French without its typography (core VoiceForm), as the turn does. */
+    private fun voice(p: Phrase, l: Langs): String = if (l.say == Lang.EN) p.render(l) else p.render(l.voice)
+
+    /**
+     * 1.1: the reply language of a messages turn (core ReplyLang): the router's, which is sure (it matched one of its French or
+     * English phrases), unless Settings › Language › "Robot answers in" fixes one.
+     */
+    private fun replyLang(heard: Lang): Lang =
+        ReplyLang.decide(heard, true, null, System.currentTimeMillis(), AppLanguage.langs(ctx).ui, VoiceHub.settings.replyLang)
+
+    /** [p] said as one piece in [lang]'s voice. */
+    private fun spoken(p: Phrase, lang: Lang): Spoken = Spoken(voice(p, langs(lang)), fr(lang))
+
+    private val send: UiLabel get() = UiLabel(UiStrings.send)
 
     private fun sync() {
         val id = PanelController.state.value.convId
@@ -282,7 +313,7 @@ object PanelMessages {
         when (r) {
             is Routed.Echo -> {
                 VoiceLog.add(VoiceEvent.MSG_GUARD, GuardCode.FROM_MESSAGE)
-                say(replyId, if (fr(r.lang)) MessageQuarantine.NOT_FROM_MESSAGES_FR else MessageQuarantine.NOT_FROM_MESSAGES, r.lang)
+                say(replyId, MessageQuarantine.notFromMessagesText(), replyLang(r.lang))
             }
             is Routed.Command -> try {
                 command(replyId, r.cmd)
@@ -290,7 +321,7 @@ object PanelMessages {
                 throw e
             } catch (t: Throwable) {
                 RLog.w("messages_turn")
-                say(replyId, if (fr(r.cmd.lang)) "Robot n'a pas pu lire tes messages. Réessaie." else "Robot couldn't get to your messages. Please try again.", r.cmd.lang)
+                say(replyId, MessageStrings.couldntRead(), replyLang(r.cmd.lang))
             }
         }
     }
@@ -301,7 +332,7 @@ object PanelMessages {
         val p = withContext(Dispatchers.IO) { try { PeopleFiles.store(ctx).list() } catch (_: Throwable) { emptyList() } }
         people = p
         val r = link().list() ?: return null
-        val all = r.second.map { MessagePeople.named(it, p) }
+        val all = r.second.map { MessagePeople.named(it, p, gateway) }
         threads = all.map(::withoutText)
         touch()
         return r.first to all
@@ -311,21 +342,21 @@ object PanelMessages {
 
     private suspend fun command(replyId: String, cmd: MessageCommand) {
         val f = MessagesStore.current(ctx)
-        val s = f.settings
-        val lang = cmd.lang
+        val s = app.heyrobot.core.lock.SomeoneElseLock.messages(f.settings, app.heyrobot.lock.PhoneLockNow.someoneElse(ctx))
+        val lang = replyLang(cmd.lang)
         if (!s.on) {
             refused(MsgRefusal.OFF)
-            return say(replyId, if (fr(lang)) MessageAccess.OFF_FR else MessageAccess.OFF, lang)
+            return say(replyId, MessageAccess.offText(), lang)
         }
         if (s.allowlist.apps.isEmpty()) {
             refused(MsgRefusal.NO_APPS)
-            return say(replyId, MessageReader.noApps(lang), lang)
+            return say(replyId, MessageReader.noAppsText(), lang)
         }
         when (cmd) {
             is MessageCommand.Stop -> {
                 queue.clear()
                 reading = false
-                return say(replyId, MessageReader.stopped(lang), lang)
+                return say(replyId, MessageReader.stoppedText(), lang)
             }
             else -> {}
         }
@@ -334,34 +365,33 @@ object PanelMessages {
         // Locked with "Who messaged", only "read my messages" says who; the rest needs the phone unlocked.
         if (access == LockedMessages.UNLOCK_FIRST || (access == LockedMessages.NAMES_ONLY && cmd !is MessageCommand.Read && cmd !is MessageCommand.Reply)) {
             refused(if (access == LockedMessages.NAMES_ONLY) MsgRefusal.NAMES_ONLY else MsgRefusal.UNLOCK_FIRST)
-            return say(replyId, if (fr(lang)) MessageAccess.UNLOCK_FIRST_FR else MessageAccess.UNLOCK_FIRST, lang)
+            return say(replyId, MessageAccess.unlockFirstText(), lang)
         }
         if (cmd is MessageCommand.Mark) return mark(replyId, cmd)
-        val (status, all) = refresh() ?: return say(replyId,
-            if (fr(lang)) "Robot n'a pas pu joindre ses messages. Réessaie." else "Robot couldn't reach its messages. Please try again.", lang)
+        val (status, all) = refresh() ?: return say(replyId, MessageStrings.couldntReach(), lang)
         if (!status.access) {
             refused(MsgRefusal.NO_ACCESS)
-            return say(replyId, MessageReader.noAccess(lang), lang)
+            return say(replyId, MessageReader.noAccessText(), lang)
         }
         when (cmd) {
             is MessageCommand.Read -> read(replyId, all, lang, access == LockedMessages.NAMES_ONLY, locked, s.translate)
             is MessageCommand.FromWho -> {
-                val found = MessagePeople.find(cmd.who, all, people)
-                if (found.isEmpty()) return say(replyId, MessageReader.noneFrom(cmd.who, lang), lang)
+                val found = MessagePeople.find(cmd.who, all, people, gateway)
+                if (found.isEmpty()) return say(replyId, MessageReader.noneFromText(cmd.who), lang)
                 queue.clear()
                 queue.addAll(found.drop(1).map { it.key })
                 show(replyId, MessageReader.thread(found.first(), lang, more = found.size > 1, translations = others(found.first(), lang, s.translate),
-                    french = MessageLanguage.frenchLine(langId)), locked)
+                    french = MessageLanguage.frenchLine(langId), langs = langs(lang)), locked)
             }
             is MessageCommand.Next -> {
                 var t: MessageThread? = null
                 while (t == null && queue.isNotEmpty()) { val k = queue.removeAt(0); t = all.firstOrNull { it.key == k } }
                 if (t == null) {
                     reading = false
-                    return say(replyId, MessageReader.done(lang), lang)
+                    return say(replyId, MessageReader.doneText(), lang)
                 }
                 show(replyId, MessageReader.thread(t, lang, more = queue.isNotEmpty(), translations = others(t, lang, s.translate),
-                    french = MessageLanguage.frenchLine(langId)), locked)
+                    french = MessageLanguage.frenchLine(langId), langs = langs(lang)), locked)
             }
             is MessageCommand.Summarize -> summarize(replyId, all, lang)
             is MessageCommand.Translate -> translate(replyId, cmd, all, lang)
@@ -376,13 +406,13 @@ object PanelMessages {
         val unread = all.filter(::unread)
         if (unread.isEmpty()) {
             reading = false
-            return say(replyId, MessageReader.nothing(lang), lang)
+            return say(replyId, MessageReader.nothingText(), lang)
         }
         queue.clear()
         if (!namesOnly) queue.addAll(unread.drop(1).map { it.key })
-        val hint = if (!namesOnly && MessageSummaries.shouldSummarize(unread)) (if (fr(lang)) "Dis « résume » pour un résumé." else "Say “summarize” for a summary.") else null
+        val hint = if (!namesOnly && MessageSummaries.shouldSummarize(unread)) MessageStrings.hintSummarize() else null
         val tr = if (namesOnly) emptyMap() else others(unread.first(), lang, translate)
-        val page = MessageReader.start(unread, lang, namesOnly, tr, hint, MessageLanguage.frenchLine(langId))
+        val page = MessageReader.start(unread, lang, namesOnly, tr, null, MessageLanguage.frenchLine(langId), langs(lang), hint)
         if (namesOnly) VoiceLog.add(VoiceEvent.MSG_READ, MsgAppCode.idOf(unread.map { it.app }), 0, 1)
         show(replyId, page, locked)
     }
@@ -396,7 +426,7 @@ object PanelMessages {
         lastRead = t.key
         lastThread = t
         reading = true
-        taint = taint.with(t)
+        taint = taint.with(t, gateway)
         // Said aloud, the microphone may hear it back: that is the message, never a request (translated, too).
         saidAloud(page.heard.joinToString(" "))
         VoiceLog.add(VoiceEvent.MSG_READ, MsgAppCode.of(t.app).id, page.ids.size, if (locked) 1 else 0)
@@ -411,18 +441,15 @@ object PanelMessages {
 
     /** "Mark it as read", "clear it": the conversation read last, once. */
     private suspend fun mark(replyId: String, cmd: MessageCommand.Mark) {
-        val lang = cmd.lang
-        val key = lastRead ?: return say(replyId, MessageReader.noneRead(lang), lang)
-        val name = threads.firstOrNull { it.key == key }?.name ?: if (fr(lang)) "cette conversation" else "that conversation"
+        val lang = replyLang(cmd.lang)
+        val key = lastRead ?: return say(replyId, MessageReader.noneReadText(), lang)
+        val name: Any = threads.firstOrNull { it.key == key }?.name ?: MessageStrings.thatConversation()
         val read = cmd.kind == app.heyrobot.core.messages.MarkKind.READ
         val ok = if (read) link().markRead(key) else link().clear(key)
         say(replyId, when {
-            !ok && fr(lang) -> "La notification de $name n'est plus là."
-            !ok -> "$name's notification isn't there any more."
-            read && fr(lang) -> "Marqué comme lu : $name peut voir que tu l'as lu."
-            read -> "Marked as read: $name may see that you read it."
-            fr(lang) -> "Notification de $name effacée; la conversation reste non lue dans l'application."
-            else -> "Cleared $name's notification; the chat stays unread in the app."
+            !ok -> MessageStrings.markGone("name" to name)
+            read -> MessageStrings.markedRead("name" to name)
+            else -> MessageStrings.cleared("name" to name)
         }, lang)
     }
 
@@ -441,29 +468,27 @@ object PanelMessages {
 
     private suspend fun summarize(replyId: String, all: List<MessageThread>, lang: Lang) {
         val ts = all.filter(::unread).ifEmpty { all.filter { it.incoming.isNotEmpty() } }
-        if (ts.isEmpty()) return say(replyId, MessageReader.nothing(lang), lang)
+        if (ts.isEmpty()) return say(replyId, MessageReader.nothingText(), lang)
         val zone = ZoneId.systemDefault()
         val reqs = MessageSummaries.requests(ts, lang, zone)
-        if (reqs.isEmpty()) return say(replyId, MessageReader.nothing(lang), lang)
+        if (reqs.isEmpty()) return say(replyId, MessageReader.nothingText(), lang)
         val t0 = System.currentTimeMillis()
         val parts = ArrayList<String>()
         for (r in reqs) {
-            parts += oneShot(OneShotKind.SUMMARY_MAP, Priority.SUMMARY, r.system, r.user, SUMMARY_CHUNKS) ?: return say(replyId,
-                if (fr(lang)) "Le modèle de Robot n'a pas pu les résumer pour l'instant. Dis « lis mes messages » pour les entendre."
-                else "Robot's model couldn't summarize them right now. Say “read my messages” to hear them.", lang)
+            parts += oneShot(OneShotKind.SUMMARY_MAP, Priority.SUMMARY, r.system, r.user, SUMMARY_CHUNKS) ?: return say(replyId, MessageStrings.summaryFailed(), lang)
         }
         val summary = if (parts.size == 1) parts[0] else {
             val m = MessageSummaries.merge(parts, lang)
             oneShot(OneShotKind.SUMMARY_REDUCE, Priority.SUMMARY, m.system, m.user, SUMMARY_CHUNKS) ?: parts.joinToString("\n")
         }
         // Other people's words went into it: the conversation holds messages from here on.
-        for (t in ts) taint = taint.with(t)
+        for (t in ts) taint = taint.with(t, gateway)
         reading = true
         val misses = MessageSummaryText.misses(summary, ts, zone)
         kept[replyId] = MessageSummaryText.kept(ts.size, lang)
-        PanelController.messagesReply(replyId, MessageSummaryText.shown(summary, misses, lang))
+        PanelController.messagesReply(replyId, MessageSummaryText.shown(summary, misses, lang, langs(lang)))
         val french = MessageLanguage.frenchLine(langId)
-        speak(listOf(Spoken(MessageSummaries.label(lang), fr(lang))) + summary.lines().map { it.trim().trimStart('-', '*', '•').trim() }.filter { it.isNotEmpty() }
+        speak(listOf(spoken(MessageSummaries.labelText(), lang)) + summary.lines().map { it.trim().trimStart('-', '*', '•').trim() }.filter { it.isNotEmpty() }
             .map { Spoken(it, french(it)) })
         saidAloud(summary)
         VoiceLog.add(VoiceEvent.MSG_SUMMARY, ts.size, ts.sumOf { MessageReading.toRead(it).size }, ((System.currentTimeMillis() - t0) / 1000).toInt())
@@ -471,8 +496,8 @@ object PanelMessages {
 
     /** "Translate Pierre's message": each message not in the language you asked in, into it. */
     private suspend fun translate(replyId: String, cmd: MessageCommand.Translate, all: List<MessageThread>, lang: Lang) {
-        val t = cmd.who?.let { MessagePeople.find(it, all, people).firstOrNull() } ?: lastRead?.let { k -> all.firstOrNull { it.key == k } }
-            ?: return say(replyId, cmd.who?.let { MessageReader.noneFrom(it, lang) } ?: MessageReader.noneRead(lang), lang)
+        val t = cmd.who?.let { MessagePeople.find(it, all, people, gateway).firstOrNull() } ?: lastRead?.let { k -> all.firstOrNull { it.key == k } }
+            ?: return say(replyId, cmd.who?.let { MessageReader.noneFromText(it) } ?: MessageReader.noneReadText(), lang)
         val to = MessageLanguage.code(lang)
         val tr = HashMap<String, MessageTranslation>()
         for (m in MessageReading.toRead(t).takeLast(MessageReading.MAX_PER_THREAD)) {
@@ -482,13 +507,13 @@ object PanelMessages {
             translateOne(m.text, from, lang)?.let { tr[m.id] = it }
         }
         if (tr.isEmpty()) {
-            val already = if (fr(lang)) "Le message de ${t.name} est déjà en français, ou Robot n'a pas pu le traduire." else
-                "${t.name}'s message is already in English, or Robot couldn't translate it."
-            return show(replyId, MessageReader.thread(t, lang, more = queue.isNotEmpty(), french = MessageLanguage.frenchLine(langId)).let {
-                ReadPage(already + "\n\n" + it.shown, listOf(Spoken(already, fr(lang))) + it.spoken, it.ids, it.thread, it.kept, it.more, it.heard)
+            val already = MessageStrings.alreadyYours("name" to t.name)
+            return show(replyId, MessageReader.thread(t, lang, more = queue.isNotEmpty(), french = MessageLanguage.frenchLine(langId), langs = langs(lang)).let {
+                ReadPage(already.render(langs(lang)) + "\n\n" + it.shown, listOf(spoken(already, lang)) + it.spoken, it.ids, it.thread, it.kept, it.more, it.heard)
             }, Assistant.locked(ctx))
         }
-        show(replyId, MessageReader.thread(t, lang, more = queue.isNotEmpty(), translations = tr, french = MessageLanguage.frenchLine(langId)), Assistant.locked(ctx))
+        show(replyId, MessageReader.thread(t, lang, more = queue.isNotEmpty(), translations = tr, french = MessageLanguage.frenchLine(langId), langs = langs(lang)),
+            Assistant.locked(ctx))
     }
 
     /** While reading, with "Translate messages not in my languages" on: the messages in another language, translated. */
@@ -528,8 +553,8 @@ object PanelMessages {
     }
 
     private fun langName(code: String, inLang: Lang): String? = when (code) {
-        "fr" -> if (fr(inLang)) "français" else "French"
-        "en" -> if (fr(inLang)) "anglais" else "English"
+        "fr" -> MessageStrings.french().render(langs(inLang))
+        "en" -> MessageStrings.english().render(langs(inLang))
         else -> null
     }
 
@@ -568,6 +593,11 @@ object PanelMessages {
         var guessed = false
         /** [line] quotes a message ("Mom wrote again: «…»"): it goes with the rest of the message's words ([dropText]). */
         var lineHasMessage = false
+        /**
+         * Its 3 seconds were stopped, or it waits again after a send found newer messages: a card from then on, whatever
+         * "without a card" says (core ReplyPlanner.stopped), so only a tap, or a yes where cards take one, sends it.
+         */
+        var stopped = false
         var state = ReplyCardState.WAITING
         var line: String? = null
 
@@ -576,7 +606,7 @@ object PanelMessages {
     }
 
     private suspend fun reply(replyId: String, cmd: MessageCommand.Reply, all: List<MessageThread>, f: MessagesFile, locked: Boolean) {
-        val lang = cmd.lang
+        val lang = replyLang(cmd.lang)
         var to = cmd.to
         var words = cmd.words
         if (cmd.split && to != null) {
@@ -585,31 +615,27 @@ object PanelMessages {
             words = w.ifBlank { null }
         }
         val found = when {
-            to != null -> MessagePeople.find(to, all, people)
+            to != null -> MessagePeople.find(to, all, people, gateway)
             // The conversation read last, never another one in its place: gone from the shade meanwhile, its card finds out on
             // Send and offers the chat instead.
             lastRead != null -> all.filter { it.key == lastRead }.ifEmpty { listOfNotNull(lastThread?.takeIf { it.key == lastRead }) }
             else -> listOfNotNull(all.firstOrNull { it.incoming.any { m -> !m.historic } })
         }
         if (found.isEmpty()) {
-            return say(replyId, when {
-                to != null && fr(lang) -> "Aucun message de $to en ce moment. Pour lui écrire, dis « texte à $to … »."
-                to != null -> "No message from $to right now. To write to them, say “text $to …”."
-                else -> MessageReader.nothing(lang)
-            }, lang)
+            return say(replyId, if (to != null) MessageStrings.noMessageTo("name" to to) else MessageReader.nothingText(), lang)
         }
         card?.let { old -> if (old.state == ReplyCardState.WAITING || old.state == ReplyCardState.PICK) cancel(old, quiet = true) }
         val p = Pending(replyId, lang, found.first(), words?.let(ReplyText::of).orEmpty(), if (words == null) ReplySource.MODEL_DRAFT else ReplySource.DICTATED,
             cmd.inLang, if (found.size > 1) found else emptyList())
         p.guessed = to == null && lastRead == null
         card = p
-        kept[replyId] = MessageReading.replyKept(ReplyKept.CARD, p.thread.name, p.thread.app, lang)
+        kept[replyId] = MessageReading.replyKeptText(ReplyKept.CARD, p.thread.name, p.thread.app).render(langs(lang))
         if (p.choices.isNotEmpty()) {
             p.state = ReplyCardState.PICK
-            p.line = if (fr(lang)) "Plusieurs conversations correspondent. Touche celle que tu veux." else "Several conversations fit. Tap the one you mean."
-            PanelController.messagesReply(replyId, if (fr(lang)) "Répondre à qui ?" else "Reply to whom?")
+            p.line = MessageStrings.severalFit().render(langs(lang))
+            PanelController.messagesReply(replyId, MessageStrings.replyToWhom().render(langs(lang)))
             PanelController.messagesCard(replyId, view(p))
-            speak(listOf(Spoken(p.line!!, fr(lang))))
+            speak(listOf(spoken(MessageStrings.severalFit(), lang)))
             return
         }
         prepare(p, f, locked, first = true)
@@ -619,17 +645,16 @@ object PanelMessages {
     private suspend fun prepare(p: Pending, f: MessagesFile, locked: Boolean, first: Boolean) {
         val lang = p.lang
         val t = p.thread
-        p.person = MessagePeople.personOf(t, people)
+        p.person = MessagePeople.personOf(t, people, gateway)
         val theirs = langOfCode(MessageLanguage.ofThread(t, langId))
         if (p.text.isEmpty()) {
             // "Answer her for me": a draft by Robot's model, from the chat's last messages only (no memory, no tools); a tap sends it.
-            taint = taint.with(t)
+            taint = taint.with(t, gateway)
             val draft = oneShot(OneShotKind.SUMMARY_MAP, Priority.INTERPRETER, MessagePrompts.draft(theirs ?: lang), MessagePrompts.draftInput(t, ZoneId.systemDefault()), 160)
                 ?.let(MtGuard::clean)?.take(ReplyPlanner.MAX_CHARS)
             if (draft.isNullOrBlank()) {
                 card = null
-                return say(p.replyId, if (fr(lang)) "Robot n'a pas pu écrire de réponse. Dis ce qu'elle doit dire : « réponds … »." else
-                    "Robot couldn't draft a reply. Say what it should say: “reply …”.", lang)
+                return say(p.replyId, MessageStrings.draftFailed(), lang)
             }
             p.text = draft
             p.source = ReplySource.MODEL_DRAFT
@@ -646,7 +671,7 @@ object PanelMessages {
         }
         if (!plan(p, f, locked)) return
         val plan = p.plan!!
-        if (first) PanelController.messagesReply(p.replyId, headline(p, plain = true) + ".")
+        if (first) PanelController.messagesReply(p.replyId, said(p))
         lastRead = t.key
         lastThread = t
         when (plan.confirm) {
@@ -665,69 +690,68 @@ object PanelMessages {
     private suspend fun plan(p: Pending, f: MessagesFile = MessagesStore.current(ctx), locked: Boolean = Assistant.locked(ctx)): Boolean {
         val lang = p.lang
         // Only to the person's own address: a name the sender chose never sends without a card (core MessagePeople).
-        val noCard = MessagePeople.withoutCard(p.thread, people, f.noCard)
-        when (val r = ReplyPlanner.plan(p.thread, p.sendText, p.sendSource, f.settings, locked, noCard, sure = !p.guessed)) {
-            is ReplyPlan.Send -> { p.plan = r; return true }
+        val noCard = MessagePeople.withoutCard(p.thread, people, f.noCard, gateway)
+        when (val r = ReplyPlanner.plan(p.thread, p.sendText, p.sendSource, app.heyrobot.core.lock.SomeoneElseLock.messages(f.settings, app.heyrobot.lock.PhoneLockNow.someoneElse(ctx)), locked, noCard, sure = !p.guessed)) {
+            is ReplyPlan.Send -> { p.plan = if (p.stopped) ReplyPlanner.stopped(r, f.settings) else r; return true }
             is ReplyPlan.HandOff -> {
                 // "Open the chat; I press Send", or no reply action: the chat opens with your words. Nothing is sent by Robot.
                 p.plan = null
-                if (p.state != ReplyCardState.OPENED) PanelController.messagesReply(p.replyId, headline(p, plain = true) + ".")
+                if (p.state != ReplyCardState.OPENED) PanelController.messagesReply(p.replyId, said(p))
                 openChat(p)
                 return false
             }
             is ReplyPlan.Refused -> {
                 card = null
                 say(p.replyId, when (r.why) {
-                    RefuseWhy.OFF -> if (fr(lang)) MessageAccess.OFF_FR else MessageAccess.OFF
-                    RefuseWhy.EMPTY -> if (fr(lang)) "Que doit dire la réponse ?" else "What should the reply say?"
-                    RefuseWhy.TOO_LONG -> if (fr(lang)) "Cette réponse est trop longue (2 000 caractères au plus)." else "That reply is too long (2,000 characters at most)."
-                    RefuseWhy.LOCKED -> if (fr(lang)) MessageAccess.UNLOCK_FIRST_FR else MessageAccess.UNLOCK_FIRST
-                    RefuseWhy.AUTH_REQUIRED -> if (fr(lang)) "Déverrouille d'abord : cette application demande le téléphone déverrouillé pour répondre."
-                        else "Unlock first: this app needs the phone unlocked to reply."
+                    RefuseWhy.OFF -> MessageAccess.offText()
+                    RefuseWhy.EMPTY -> MessageStrings.replyEmpty()
+                    RefuseWhy.TOO_LONG -> MessageStrings.replyTooLong("max" to ReplyPlanner.MAX_CHARS)
+                    RefuseWhy.LOCKED -> MessageAccess.unlockFirstText()
+                    RefuseWhy.AUTH_REQUIRED -> MessageStrings.authRequired()
                 }, lang)
                 return false
             }
         }
     }
 
-    private fun headline(p: Pending, plain: Boolean = false): String {
-        val n = if (plain) p.thread.name else "**${p.thread.name}**"
-        val app = p.thread.app.title
-        return when {
-            fr(p.lang) && p.thread.isGroup -> "Répondre au groupe $n · $app"
-            fr(p.lang) -> "Répondre à $n · $app"
-            p.thread.isGroup -> "Reply to the group $n · $app"
-            else -> "Reply to $n · $app"
-        }
+    /** The card's headline: "Reply to **Mom** · Cheogram". */
+    private fun headline(p: Pending): String {
+        val n = "name" to "**${p.thread.name}**"
+        val app = "appName" to p.thread.app.titleText
+        return (if (p.thread.isGroup) MessageStrings.headlineGroup(n, app) else MessageStrings.headline(n, app)).render(langs(p.lang))
+    }
+
+    /** The answer above the card: "Reply to Mom · Cheogram." */
+    private fun said(p: Pending): String {
+        val n = "name" to p.thread.name
+        val app = "appName" to p.thread.app.titleText
+        return (if (p.thread.isGroup) MessageStrings.headlineGroupSaid(n, app) else MessageStrings.headlineSaid(n, app)).render(langs(p.lang))
     }
 
     private fun waitingLine(p: Pending): String {
         val yes = p.plan?.voiceYesCounts == true && VoiceHub.settings.voiceCards
         return when {
-            p.source == ReplySource.MODEL_DRAFT && fr(p.lang) -> "Robot a écrit ce brouillon. Vérifie-le, puis touche Envoyer."
-            p.source == ReplySource.MODEL_DRAFT -> "Robot drafted this. Check it, then tap Send."
-            yes && fr(p.lang) -> "Touche Envoyer, ou dis oui."
-            yes -> "Tap Send, or say yes."
-            fr(p.lang) -> "Touche Envoyer pour l'envoyer."
-            else -> "Tap Send to send it."
-        }
+            p.source == ReplySource.MODEL_DRAFT -> MessageStrings.drafted("send" to send)
+            yes -> MessageStrings.tapOrYes("send" to send)
+            else -> MessageStrings.tapSend("send" to send)
+        }.render(langs(p.lang))
     }
 
     private fun view(p: Pending): ReplyCardView {
-        val lang = p.lang
-        val toLangName = p.toLang?.let { if (it == Lang.FR) (if (fr(lang)) "français" else "French") else (if (fr(lang)) "anglais" else "English") }
+        val l = langs(p.lang)
+        val toLangName = p.toLang?.let { (if (it == Lang.FR) MessageStrings.french() else MessageStrings.english()) }
         return ReplyCardView(
-            headline = if (p.state == ReplyCardState.PICK) (if (fr(lang)) "Répondre à qui ?" else "Reply to whom?") else headline(p),
+            headline = if (p.state == ReplyCardState.PICK) MessageStrings.replyToWhom().render(l) else headline(p),
             state = p.state,
             line = p.line,
             text = p.text,
             translation = p.translation,
-            translateLabel = toLangName?.let { if (fr(lang)) "Envoyer en $it" else "Send in $it" },
+            translateLabel = toLangName?.let { MessageStrings.sendIn("lang" to it).render(l) },
             translate = p.translate,
-            alwaysLabel = p.person?.let { if (fr(lang)) "Toujours pour ${MessagePeople.callName(it)}" else "Always for ${MessagePeople.callName(it)}" },
+            alwaysLabel = p.person?.let { MessageStrings.alwaysFor("name" to MessagePeople.callName(it)).render(l) },
             always = p.always,
-            notes = p.plan?.notes.orEmpty().mapNotNull { ReplyPlanner.note(it, lang) },
-            choices = p.choices.map { "${it.name} · ${it.app.title}" },
+            notes = p.plan?.notes.orEmpty().mapNotNull { ReplyPlanner.noteText(it)?.render(l) },
+            choices = p.choices.map { "${it.name} · ${it.app.titleText.render(l)}" },
             openChat = chatIntent(p.thread, p.sendText) != null,
         )
     }
@@ -738,14 +762,9 @@ object PanelMessages {
     private fun speakCard(p: Pending) {
         val lang = p.lang
         val yes = p.plan?.voiceYesCounts == true && VoiceHub.settings.voiceCards
-        val head = if (fr(lang)) "Répondre à ${p.thread.name} :" else "Reply to ${p.thread.name}:"
-        val tail = when {
-            yes && fr(lang) -> "Je l'envoie ?"
-            yes -> "Send it?"
-            fr(lang) -> "Touche Envoyer pour l'envoyer."
-            else -> "Tap Send to send it."
-        }
-        speak(listOf(Spoken(head, fr(lang)), Spoken(p.sendText, MessageLanguage.frenchLine(langId)(p.sendText)), Spoken(tail, fr(lang))))
+        val head = MessageStrings.replyToHead("name" to p.thread.name)
+        val tail = if (yes) MessageStrings.sendIt() else MessageStrings.tapSend("send" to send)
+        speak(listOf(spoken(head, lang), Spoken(p.sendText, MessageLanguage.frenchLine(langId)(p.sendText)), spoken(tail, lang)))
         // A draft is Robot's model's words from the chat's messages: heard back, it is theirs too.
         if (p.sendSource == ReplySource.MODEL_DRAFT) saidAloud(p.sendText)
     }
@@ -754,9 +773,9 @@ object PanelMessages {
     private fun startWindow(p: Pending) {
         val lang = p.lang
         p.state = ReplyCardState.STOP_WINDOW
-        p.line = if (fr(lang)) "Envoi dans 3 secondes. Dis « arrête » ou touche Arrêter." else "Sending in 3 seconds. Say stop or tap Stop."
+        p.line = MessageStrings.sendingIn("stop" to UiLabel(UiStrings.stop)).render(langs(lang))
         update(p)
-        speak(listOf(Spoken(if (fr(lang)) "J'envoie à ${p.thread.name} :" else "Sending to ${p.thread.name}:", fr(lang)),
+        speak(listOf(spoken(MessageStrings.sendingTo("name" to p.thread.name), lang),
             Spoken(p.sendText, MessageLanguage.frenchLine(langId)(p.sendText))))
         window?.cancel()
         window = scope.launch {
@@ -774,14 +793,19 @@ object PanelMessages {
         }
     }
 
-    /** A reply in its 3 seconds becomes a card that waits for Send ([why]: the stop, or the panel closing). */
+    /**
+     * A reply in its 3 seconds becomes a card that waits for Send ([why]: the stop, or the panel closing): planned again as
+     * a card ([Pending.stopped]), so a later yes or ok, perhaps to another question, doesn't send it.
+     */
     private fun stopWindow(why: CardEnd) {
         val p = card ?: return
         if (p.state != ReplyCardState.STOP_WINDOW) return
         window?.cancel()
         window = null
+        p.stopped = true
+        p.plan = p.plan?.let { ReplyPlanner.stopped(it, MessagesStore.current(ctx).settings) }
         p.state = ReplyCardState.WAITING
-        p.line = if (fr(p.lang)) "Arrêté. Rien n'est envoyé ; touche Envoyer pour l'envoyer quand même." else "Stopped. Nothing was sent; tap Send to send it anyway."
+        p.line = MessageStrings.stoppedNothingSent("send" to send).render(langs(p.lang))
         update(p)
         VoiceLog.add(VoiceEvent.MSG_REPLY_CARD, why, if (p.translate) 1 else 0, if (p.thread.isGroup) 1 else 0)
     }
@@ -789,11 +813,11 @@ object PanelMessages {
     private fun cancel(p: Pending, quiet: Boolean = false) {
         window?.cancel()
         p.state = ReplyCardState.CANCELLED
-        p.line = if (fr(p.lang)) "Annulé. Rien n'a été envoyé." else "Cancelled. Nothing was sent."
+        p.line = MessageStrings.cancelledNothingSent().render(langs(p.lang))
         update(p)
         if (card === p) card = null
         VoiceLog.add(VoiceEvent.MSG_REPLY_CARD, CardEnd.CANCELLED, if (p.translate) 1 else 0, if (p.thread.isGroup) 1 else 0)
-        if (!quiet) PanelController.messagesKept(p.replyId, MessageReading.replyKept(ReplyKept.CANCELLED, p.thread.name, p.thread.app, p.lang))
+        if (!quiet) PanelController.messagesKept(p.replyId, MessageReading.replyKeptText(ReplyKept.CANCELLED, p.thread.name, p.thread.app).render(langs(p.lang)))
     }
 
     /** Sends the card's reply through the main process, which reads the notification again first (core ReplySend). */
@@ -805,64 +829,64 @@ object PanelMessages {
         val lang = p.lang
         val name = p.thread.name
         p.state = ReplyCardState.SENDING
-        p.line = if (fr(lang)) "Envoi…" else "Sending…"
+        p.line = MessageStrings.sending().render(langs(lang))
         update(p)
         val a = link().reply(ReplyRequest(p.thread.key, plan.text, plan.newestSeen)) ?: run {
             // No answer from the main process: it may have gone. Never sent again by itself.
             p.state = ReplyCardState.FAILED
-            p.line = if (fr(lang)) "Robot ne sait pas si c'est parti. Regarde la conversation avant de renvoyer." else
-                "Robot can't tell whether it went. Check the chat before sending it again."
+            p.line = MessageStrings.unknownSent().render(langs(lang))
             update(p)
             return
         }
         when (a.outcome) {
             ReplyOutcome.SENT -> {
                 p.state = ReplyCardState.SENT
-                p.line = if (fr(lang)) "Envoyé dans ${p.thread.app.title}." else "Sent in ${p.thread.app.title}."
+                p.line = MessageStrings.sentIn("appName" to p.thread.app.titleText).render(langs(lang))
                 update(p)
-                speak(listOf(Spoken(if (fr(lang)) "Envoyé." else "Sent.", fr(lang))))
+                speak(listOf(spoken(MessageStrings.sentShort(), lang)))
                 VoiceLog.add(VoiceEvent.MSG_REPLY_CARD, how, if (p.translate) 1 else 0, if (p.thread.isGroup) 1 else 0)
-                PanelController.messagesKept(p.replyId, MessageReading.replyKept(ReplyKept.SENT, name, p.thread.app, lang))
+                PanelController.messagesKept(p.replyId, MessageReading.replyKeptText(ReplyKept.SENT, name, p.thread.app).render(langs(lang)))
                 if (card === p) card = null
             }
             ReplyOutcome.NEW_MESSAGES -> {
-                val fresh = a.thread?.let { MessagePeople.named(it, people) } ?: p.thread
+                val fresh = a.thread?.let { MessagePeople.named(it, people, gateway) } ?: p.thread
                 val seen = plan.newestSeen ?: Long.MIN_VALUE
                 val newest = fresh.incoming.filter { !it.historic && it.time > seen }.lastOrNull()
                 p.thread = fresh
-                taint = taint.with(fresh)
+                taint = taint.with(fresh, gateway)
+                // It waits for Send now: a card, even when it was going without one.
+                p.stopped = true
                 if (!plan(p)) return
                 p.state = ReplyCardState.WAITING
                 val said = newest?.let { MessageReading.line(it, fresh, lang) } ?: ""
-                p.line = if (fr(lang)) "$name a écrit de nouveau : « $said ». L'envoyer quand même ?" else "$name wrote again: «$said». Still send?"
+                p.line = MessageStrings.wroteAgainLine("name" to name, "said" to said).render(langs(lang))
                 p.lineHasMessage = true
                 update(p)
-                speak(listOf(Spoken(if (fr(lang)) "$name a écrit de nouveau :" else "$name wrote again:", fr(lang)),
-                    Spoken(said, MessageLanguage.frenchLine(langId)(said)), Spoken(if (fr(lang)) "Touche Envoyer pour l'envoyer quand même." else "Tap Send to send it anyway.", fr(lang))))
+                speak(listOf(spoken(MessageStrings.wroteAgain("name" to name), lang),
+                    Spoken(said, MessageLanguage.frenchLine(langId)(said)), spoken(MessageStrings.tapSendAnyway("send" to send), lang)))
                 saidAloud(said)
             }
             ReplyOutcome.GONE, ReplyOutcome.CANCELED_PI, ReplyOutcome.CHANGED -> {
                 if (a.outcome == ReplyOutcome.CHANGED) VoiceLog.add(VoiceEvent.MSG_GUARD, GuardCode.RECIPIENT_MISMATCH)
                 p.state = ReplyCardState.GONE
-                p.line = if (fr(lang)) "La notification de $name n'est plus là. Ouvrir la conversation avec ta réponse ?" else
-                    "$name's notification is gone. Open the chat with your reply?"
+                p.line = MessageStrings.goneOpenChat("name" to name).render(langs(lang))
                 update(p)
-                speak(listOf(Spoken(p.line!!, fr(lang))))
+                speak(listOf(spoken(MessageStrings.goneOpenChat("name" to name), lang)))
             }
             ReplyOutcome.LOCKED, ReplyOutcome.AUTH_REQUIRED -> {
                 p.state = ReplyCardState.WAITING
-                p.line = if (fr(lang)) "Déverrouille le téléphone, puis touche Envoyer." else "Unlock your phone, then tap Send."
+                p.line = MessageStrings.unlockThenSend("send" to send).render(langs(lang))
                 update(p)
             }
             ReplyOutcome.OPEN_CHAT -> openChat(p)
             ReplyOutcome.OFF -> {
                 p.state = ReplyCardState.CANCELLED
-                p.line = if (fr(lang)) MessageAccess.OFF_FR else MessageAccess.OFF
+                p.line = MessageAccess.offText().render(langs(lang))
                 update(p)
             }
             ReplyOutcome.FAILED -> {
                 p.state = ReplyCardState.FAILED
-                p.line = if (fr(lang)) "Pas envoyé. Ouvrir la conversation avec ta réponse ?" else "Didn't send. Open the chat with your reply?"
+                p.line = MessageStrings.notSentOpenChat().render(langs(lang))
                 update(p)
             }
         }
@@ -883,23 +907,22 @@ object PanelMessages {
         val lang = p.lang
         window?.cancel()
         if (Assistant.locked(ctx)) {
-            p.line = if (fr(lang)) "Déverrouille le téléphone, puis touche Ouvrir la conversation." else "Unlock your phone, then tap Open chat."
+            p.line = MessageStrings.unlockThenOpen("open" to UiLabel(MessageStrings.openChatButton)).render(langs(lang))
             if (p.state != ReplyCardState.GONE && p.state != ReplyCardState.FAILED) p.state = ReplyCardState.WAITING
             return update(p)
         }
         val i = chatIntent(p.thread, p.sendText)
         if (i == null || !PanelController.messagesLaunch(i)) {
             p.state = ReplyCardState.FAILED
-            p.line = if (fr(lang)) "La conversation ne s'est pas ouverte dans ${p.thread.app.title}." else "The chat didn't open in ${p.thread.app.title}."
+            p.line = MessageStrings.chatDidntOpen("appName" to p.thread.app.titleText).render(langs(lang))
             return update(p)
         }
         p.state = ReplyCardState.OPENED
-        p.line = if (fr(lang)) "Brouillon ouvert : rien n'est envoyé tant que tu n'appuies pas sur Envoyer là-bas." else
-            "Opened a draft: nothing is sent until you press Send there."
+        p.line = MessageStrings.draftOpened("send" to send).render(langs(lang))
         update(p)
         VoiceLog.add(VoiceEvent.MSG_REPLY, MsgAppCode.of(p.thread.app).id, ReplyRouteCode.HAND_OFF.id, app.heyrobot.core.messages.ReplyEnd.OPENED.id)
         VoiceLog.add(VoiceEvent.MSG_REPLY_CARD, CardEnd.OPEN_CHAT, if (p.translate) 1 else 0, if (p.thread.isGroup) 1 else 0)
-        PanelController.messagesKept(p.replyId, MessageReading.replyKept(ReplyKept.OPENED, p.thread.name, p.thread.app, lang))
+        PanelController.messagesKept(p.replyId, MessageReading.replyKeptText(ReplyKept.OPENED, p.thread.name, p.thread.app).render(langs(lang)))
         if (card === p) card = null
     }
 
@@ -959,6 +982,9 @@ object PanelMessages {
             }
         }
         if (p.state != ReplyCardState.WAITING || p.plan == null) return false
+        // Only while the card is the last thing Robot asked about: a yes or a no after a later question (an offer under a
+        // later reply, an announcement's "Read it?", "Want more?") is that question's. The card's Send still works.
+        if (!lastAsked(p)) return false
         val kind = CardAnswer.of(q, wakes) ?: return false
         if (kind == CardAnswer.Kind.NO) {
             cancel(p)
@@ -966,16 +992,16 @@ object PanelMessages {
         }
         val yesCounts = p.plan!!.voiceYesCounts && (!fromVoice || VoiceHub.settings.voiceCards)
         if (!yesCounts) {
-            val words = if (fr(p.lang)) "Touche Envoyer sur la carte pour l'envoyer." else "Tap Send on the card to send it."
-            PanelController.notify(words)
-            speak(listOf(Spoken(words, fr(p.lang))))
+            val words = MessageStrings.tapSendOnCard("send" to send)
+            PanelController.notify(words.render(langs(p.lang)))
+            speak(listOf(spoken(words, p.lang)))
             return true
         }
         // A yes heard within 3 seconds of Robot saying a message's words may be Robot's own voice: only after that (a tap always works).
         if (fromVoice && !MessageQuarantine.voiceYesNow(heard(System.currentTimeMillis()), System.currentTimeMillis())) {
-            val words = if (fr(p.lang)) MessageQuarantine.SAY_YES_AGAIN_FR else MessageQuarantine.SAY_YES_AGAIN
-            PanelController.notify(words)
-            speak(listOf(Spoken(words, fr(p.lang))))
+            val words = MessageQuarantine.sayYesAgainText()
+            PanelController.notify(words.render(langs(p.lang)))
+            speak(listOf(spoken(words, p.lang)))
             if (PanelController.state.value.speak) PanelController.messagesListen(now = false)
             return true
         }
@@ -983,12 +1009,20 @@ object PanelMessages {
         return true
     }
 
+    /**
+     * [p] is the panel's newest question: its reply is the conversation's last, and no hands-free question came since (an
+     * announcement waiting for its answer, or PanelHandsFree's own: the private question, "Want more?", a call's).
+     */
+    private fun lastAsked(p: Pending): Boolean =
+        PanelController.state.value.turns.lastOrNull { it.role == app.heyrobot.core.TurnRole.ASSISTANT }?.id == p.replyId &&
+            !app.heyrobot.assistant.handsfree.HandsFreeMessages.waiting && !app.heyrobot.assistant.handsfree.PanelHandsFree.asking
+
     // ------------------------------------------------------------------ saying
 
-    /** A reply in Robot's own words (no message in it). */
-    private fun say(replyId: String, text: String, lang: Lang) {
-        PanelController.messagesReply(replyId, text)
-        speak(listOf(Spoken(text, fr(lang))))
+    /** A reply in Robot's own words (no message in it), in [lang] (its screens named in the menus' language). */
+    private fun say(replyId: String, text: Phrase, lang: Lang) {
+        PanelController.messagesReply(replyId, text.render(langs(lang)))
+        speak(listOf(spoken(text, lang)))
     }
 
     /**
@@ -1021,12 +1055,12 @@ object PanelMessages {
         sync()
         touch()
         val s = MessagesStore.current(ctx).settings
-        val page = MessageReader.thread(t, lang, more = false, translations = others(t, lang, s.translate), french = MessageLanguage.frenchLine(langId))
+        val page = MessageReader.thread(t, lang, more = false, translations = others(t, lang, s.translate), french = MessageLanguage.frenchLine(langId), langs = langs(lang))
         replyId?.let { kept[it] = page.kept }
         lastRead = t.key
         lastThread = t
         reading = false
-        taint = taint.with(t)
+        taint = taint.with(t, gateway)
         saidAloud(page.heard.joinToString(" "))
         VoiceLog.add(VoiceEvent.MSG_READ, MsgAppCode.of(t.app).id, page.ids.size, if (locked) 1 else 0)
         link().markReadByRobot(page.ids)

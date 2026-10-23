@@ -68,6 +68,21 @@ class TranscriptStore(val root: File) {
         } catch (x: Exception) { code(x, d) }
     }
 
+    /**
+     * 1.1 restore: a transcript folder a restore staged ([staged], a whole folder with its meta.json) moved into place in
+     * one rename, on the same storage. False when [id] isn't a transcript id, is already here (Add leaves yours alone),
+     * was deleted while this process runs, or the rename fails; a repeat of one that worked changes nothing.
+     */
+    @Synchronized
+    fun restore(staged: File, id: String): Boolean {
+        val d = dir(id) ?: return false
+        if (d.exists() || id in forgotten || !File(staged, TranscriptFiles.META).isFile) return false
+        root.mkdirs()
+        if (!staged.renameTo(d)) return false
+        TranscriptEvents.publish(TranscriptChange.Created(id))
+        return true
+    }
+
     fun meta(id: String): TranscriptMeta? = dir(id)?.let { readOrNull(File(it, TranscriptFiles.META)) }?.let(TranscriptMeta::fromJson)?.takeIf { it.id == id }
 
     /** Replaces meta.json; never creates the folder. */
@@ -302,7 +317,7 @@ class TranscriptStore(val root: File) {
     // file. A file that can't be opened in a folder that is there (no space to create it, too many open files) is not that.
     private fun code(x: Exception, d: File): IoCode = when {
         !d.isDirectory -> IoCode.MISSING
-        (x.message ?: "").contains("ENOSPC") || (x.message ?: "").contains("No space", ignoreCase = true) -> IoCode.NO_SPACE
+        (x.message ?: "").contains("ENOSPC") || (x.message ?: "").contains("No space", ignoreCase = true) -> IoCode.NO_SPACE // l10n: not text (the system's error message, matched)
         x is IOException -> IoCode.WRITE
         else -> IoCode.OTHER
     }

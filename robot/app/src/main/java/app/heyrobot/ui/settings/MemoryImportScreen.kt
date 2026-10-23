@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.heyrobot.R
+import app.heyrobot.ui.theme.str
 import app.heyrobot.core.memory.ImportPlan
 import app.heyrobot.core.memory.ImportProblem
 import app.heyrobot.core.memory.ImportRead
@@ -112,7 +113,7 @@ private fun CountRow(@StringRes title: Int, count: Int, detail: String? = null) 
  */
 @Composable
 private fun ImportRow(item: MemoryItem, now: Long, revealed: Boolean, toggle: () -> Unit) {
-    val line = MemoryDates.line(item, now) + if (item.tainted) " · " + stringResource(R.string.memory_import_from_content) else ""
+    val line = listOfNotNull(MemoryDates.lineText(item, now).str(), if (item.tainted) stringResource(R.string.memory_import_from_content) else null).joinToString(" · ")
     if (!item.secret) {
         PreferenceItem(item.text, line)
     } else {

@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.ToolStrings
+
 /**
  * 1.0.0: the hand-off to any helper's app (the Claude app's route, for every company with an Android app). Robot opens
  * the app with the question and steps aside; you press Send there. The Claude app keeps its links first (a, b); every
@@ -35,20 +38,25 @@ object AppHandOff {
         return w.dropLast(1).firstOrNull(resolves) ?: w.last().takeIf(resolves)
     }
 
-    /** The card's line while it waits: what goes, to which app, and that you send it ([app]: "ChatGPT"). */
-    fun note(app: String, text: String): String =
-        if (text.isBlank()) "Robot opens the $app app. Nothing goes to $app from Robot."
-        else "Robot opens the $app app with this text and copies it. Nothing is sent until you press Send in $app."
+    /** The card's line while it waits: what goes, to which app, and that you send it ([app]: "ChatGPT"). In English: [note]. */
+    fun noteText(app: String, text: String): Phrase =
+        if (text.isBlank()) ToolStrings.handOffNote("appName" to app) else ToolStrings.handOffNoteText("appName" to app)
+
+    fun note(app: String, text: String): String = noteText(app, text).en()
 
     /** What happened, for the card and the voice: [way] was used, [text] went with it (empty: the app only). */
-    fun done(app: String, way: Way, text: String): String = when {
-        text.isEmpty() -> "Opened $app."
-        way == Way.LAUNCH -> "Opened $app. Paste your question in $app: it's on the clipboard."
-        else -> "Opened $app with your question: press Send there if it isn't sent. It's on the clipboard too."
+    fun doneText(app: String, way: Way, text: String): Phrase = when {
+        text.isEmpty() -> ToolStrings.appOpened("appName" to app)
+        way == Way.LAUNCH -> ToolStrings.appPaste("appName" to app)
+        else -> ToolStrings.appWithQuestion("appName" to app)
     }
 
+    fun done(app: String, way: Way, text: String): String = doneText(app, way, text).en()
+
     /** No helper on opens an app, or its app isn't installed. */
-    fun install(app: String?): String = if (app == null) "No helper opens an app. Set one up in Robot's settings, under Helpers." else "Install $app."
+    fun installText(app: String?): Phrase = if (app == null) ToolStrings.noHelperApp() else ToolStrings.installApp("appName" to app)
+
+    fun install(app: String?): String = installText(app).en()
 
     /**
      * At most [max] characters, cut after the last sentence that fits when there is one in the second half, otherwise
@@ -76,9 +84,9 @@ object AppHandOff {
         val reply = turns.drop(turns.indexOf(asked) + 1).firstOrNull { it.role == TurnRole.ASSISTANT && !it.error && it.text.isNotBlank() }
         val said = reply?.takeIf { HelperContext.personal(turns).isEmpty() }?.let { firstSentence(it.text) }
         return buildString {
-            append("I asked my phone's assistant: “").append(q.trimEnd('.', '?', '!')).append("”.")
-            if (said != null) append(" It said: “").append(said.trimEnd('.')).append("”.")
-            append(" Can you help with that?")
+            append("I asked my phone's assistant: “").append(q.trimEnd('.', '?', '!')).append("”.") // l10n: not text (what the helper's app is given)
+            if (said != null) append(" It said: “").append(said.trimEnd('.')).append("”.") // l10n: not text (what the helper's app is given)
+            append(" Can you help with that?") // l10n: not text (what the helper's app is given)
         }
     }
 

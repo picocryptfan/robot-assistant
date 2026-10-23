@@ -1,0 +1,131 @@
+<!-- Voice and its models (the l10n work package WP7): ids start with voice_, and the French is in
+     values-fr-rCA/strings_voice.xml. 1.1 split strings.xml into one file per area, ids and texts unchanged. Settings ›
+     Voice, Settings › Wake word, Interrupt sensitivity, the barge-in test, Test wake words, the voice log's page and a voice
+     model's download. What core says (the voice models' names, their states, the engines' states, the speed test's
+     results) is core's VoiceStrings; the voice log's lines and the barge-in test's results stay English (diagnostics), and
+     the values other areas name (a voice, a sensitivity, how the voice plays) are theirs. -->
+<resources>
+    <!-- Settings › Voice. -->
+    <string name="voice_speak_voice">Voice only</string>
+    <string name="voice_speak_always">Always</string>
+    <string name="voice_speak_never">Never</string>
+    <string name="voice_speak_voice_detail">When you asked by voice or with a wake word</string>
+    <string name="voice_speak_always_detail">Also when you typed</string>
+    <string name="voice_speak_never_detail">Only the words on screen</string>
+    <string name="voice_barge_echo_detail">The default. Call mode with echo cancellation while Robot talks</string>
+    <string name="voice_barge_off_detail">The microphone hears Robot over you</string>
+    <string name="voice_barge_always_detail">Call mode the whole time the panel is open</string>
+    <string name="voice_stop_down_detail">The default</string>
+    <string name="voice_stop_either_detail">Volume up or down</string>
+    <string name="voice_stop_off_detail">The keys only change the volume</string>
+    <string name="voice_download_models">Download voice models</string>
+    <string name="voice_download_models_summary">%1$s · until then, typing and the phone\'s voice</string>
+    <string name="voice_open">Open</string>
+    <string name="voice_group_voice">Robot\'s voice</string>
+    <string name="voice_languages_note">Robot works in English and Québec French. It can also write down and read other languages, but it answers in English or French.</string>
+    <string name="voice_voice">Voice</string>
+    <string name="voice_not_downloaded_detail">%1$s. Not downloaded: the phone\'s voice speaks instead.</string>
+    <string name="voice_not_downloaded_summary">%1$s · not downloaded, the phone\'s voice speaks</string>
+    <string name="voice_speed">Speed</string>
+    <string name="voice_test_summary">Robot says a sentence</string>
+    <string name="voice_group_replies">Replies</string>
+    <string name="voice_speak_replies">Speak replies</string>
+    <string name="voice_show_words">Show words while you speak</string>
+    <string name="voice_more_battery">Uses more battery</string>
+    <string name="voice_wait">Wait before answering</string>
+    <string name="voice_wait_summary">%1$s · how long Robot waits after you stop talking. Choose Long if it cuts you off.</string>
+    <string name="voice_wait_short">Short</string>
+    <string name="voice_wait_normal">Normal</string>
+    <string name="voice_wait_long">Long</string>
+    <string name="voice_wait_very_long">Very long</string>
+    <string name="voice_wait_short_detail">0.6 s of silence</string>
+    <string name="voice_wait_normal_detail">The default. 1 s of silence</string>
+    <string name="voice_wait_long_detail">1.6 s of silence</string>
+    <string name="voice_wait_very_long_detail">2.5 s of silence</string>
+    <string name="voice_group_talks">While Robot talks</string>
+    <string name="voice_hear_you">Hear you while Robot talks</string>
+    <string name="voice_plays_as">Voice plays as</string>
+    <string name="voice_default_detail">The default. %1$s</string>
+    <string name="voice_stop_key">Volume key stops Robot</string>
+    <string name="voice_group_trouble">Troubleshooting</string>
+    <string name="voice_try_again">Try the voice models again</string>
+    <string name="voice_try_again_summary">After a crash or a failed load</string>
+    <string name="voice_test_speed">Test voice speed</string>
+    <string name="voice_testing">Testing…</string>
+    <string name="voice_test_speed_summary">Times the models on a built-in recording</string>
+    <string name="voice_barge_test">Barge-in test</string>
+    <string name="voice_barge_test_summary">Does Robot hear “stop” over its own voice?</string>
+    <string name="voice_transcription_check_summary">How well Robot writes down Québec French and English</string>
+    <string name="voice_log_summary">What the voice side did</string>
+    <string name="voice_footer">Speak replies: “Voice only” speaks when you asked by voice or with a wake word, not when you typed. Tap the conversation, press volume down, or say “stop” (when the wake word is on), to stop Robot talking. Show words while you speak writes down your question as you talk. Wait before answering: how long Robot waits after you stop talking before it answers; a shorter pause doesn\'t end your question. Hold the mic button and Robot keeps listening until you let go.\n\nHear you while Robot talks. Echo cancellation, the default: while Robot talks the microphone switches to the phone\'s call mode with echo cancellation, so “stop” and your wake words get through, and back to the best mode for questions when Robot is done. Off: the old way, the microphone hears Robot over you; tap the conversation or press the volume key to stop it. Always echo cancellation: call mode with echo cancellation the whole time the panel is open, no switching, questions a little less accurate.\n\nInterrupt sensitivity: how readily Robot hears “stop” and your wake phrases while it talks; the wake phrases\' own sensitivity stays.\n\nVolume key stops Robot: while Robot talks and the panel is on screen, the key stops Robot and doesn\'t change the volume. With the screen off or the panel closed it works as always.\n\nTest voice speed loads the downloaded models and times them on a built-in recording and two fixed sentences (nothing is played or saved). The barge-in test checks what Robot hears while it talks. The Transcription check shows how well Robot writes down Québec French and English: read sentences, or say anything and fix it; scored as conversations are decoded. The voice log lists what the voice side did, for when Robot didn\'t respond.</string>
+
+    <!-- Interrupt sensitivity. -->
+    <string name="voice_interrupt">Interrupt sensitivity</string>
+    <string name="voice_interrupt_text">How readily Robot hears “stop” and your wake phrases while it talks. %1$s.</string>
+    <string name="voice_interrupt_text_default">How readily Robot hears “stop” and your wake phrases while it talks. %1$s. (default)</string>
+
+    <!-- Settings › Wake word. -->
+    <string name="voice_kws_missing">Robot can\'t check wake words: its keyword spelling file is missing from this build.</string>
+    <string name="voice_use_wake_words">Use wake words</string>
+    <string name="voice_only_charging">Only while charging</string>
+    <string name="voice_saves_battery">Saves battery</string>
+    <string name="voice_wake_phrases">Wake phrases</string>
+    <string name="voice_no_phrase_on">No wake phrase is on</string>
+    <string name="voice_no_phrase_on_detail">Only the corner swipe opens Robot. “Stop” still works while Robot talks.</string>
+    <string name="voice_phrase_refused">Can\'t be used: tap for why</string>
+    <string name="voice_phrase_note">Sensitivity %1$s · tap for a note</string>
+    <string name="voice_phrase_sensitivity">Sensitivity %1$s</string>
+    <string name="voice_listen_for">Listen for “%1$s”</string>
+    <string name="voice_add_phrase">Add a wake phrase</string>
+    <string name="voice_add_phrase_summary">1 to 4 words</string>
+    <string name="voice_test_wake">Test wake words</string>
+    <string name="voice_test_wake_summary">See which phrase Robot hears, as you say it</string>
+    <string name="voice_phrase">Phrase</string>
+    <string name="voice_phrase_rules">1 to 4 words: letters, spaces and apostrophes, up to 24 characters. “Stop” is reserved.</string>
+    <string name="voice_add">Add</string>
+    <string name="voice_starts_low">%1$s It starts at Low.</string>
+    <string name="voice_wake_footer">Say any of these to open Robot. Each runs on the phone: the microphone stays on while Robot listens, and nothing is recorded or saved. A longer phrase wakes Robot by accident less often. Only while charging saves battery.</string>
+    <string name="voice_wake_footer_level">%1$s: %2$s. (Threshold %3$s, boost %4$s.)</string>
+    <string name="voice_wake_footer_try">Try a new phrase in Test wake words, from across the room too, before you rely on it.</string>
+    <string name="voice_sensitivity">Sensitivity</string>
+    <string name="voice_not_listened">%1$s Robot doesn\'t listen for this one.</string>
+    <string name="voice_phrase_number">No. %1$d in the voice log</string>
+    <string name="voice_cancel">Cancel</string>
+    <string name="voice_remove">Remove</string>
+
+    <!-- The barge-in test (its results stay English: a diagnostic, as the voice log). -->
+    <string name="voice_barge_setup">Hear you while Robot talks: %1$s · Interrupt sensitivity: %2$s · Robot\'s voice plays as %3$s</string>
+    <string name="voice_barge_phone_voice">the phone\'s voice</string>
+    <string name="voice_barge_phone_voice_missing">the phone\'s voice (%1$s isn\'t installed)</string>
+    <string name="voice_barge_runs">Run</string>
+    <string name="voice_barge_run">Run the test</string>
+    <string name="voice_barge_run_summary">Say “stop” or one wake phrase, once</string>
+    <string name="voice_barge_count">Count run</string>
+    <string name="voice_barge_count_summary">Say them as often as you like</string>
+    <string name="voice_barge_silent">Silent run</string>
+    <string name="voice_barge_silent_summary">Stay quiet</string>
+    <string name="voice_barge_tricky">Tricky words</string>
+    <string name="voice_barge_tricky_summary">Stay quiet while Robot reads words like “stop”</string>
+    <string name="voice_barge_last">Last result</string>
+    <string name="voice_barge_footer">Robot reads a paragraph of about 20 seconds. Run the test: say “stop” or one wake phrase, once; Robot stops when it hears it, and the result says what it heard and how fast it went quiet. Count run: Robot reads to the end while you say “stop” and your wake phrases as often as you like, a few seconds apart; the result lists each one it heard. Silent run: stay quiet; it counts anything Robot hears anyway. Tricky words: stay quiet while Robot reads words like “stop” (step, steep, stamp, bus stop); it shows how often its own words fire, and how many of those are set aside. Try each mode and each interrupt sensitivity in Settings › Voice: the result says which it ran with.</string>
+
+    <!-- Test wake words. -->
+    <string name="voice_listening">Listening</string>
+    <string name="voice_not_listening">Not listening</string>
+    <string name="voice_listening_detail">Say a wake phrase. Robot won\'t open while this screen shows.</string>
+    <string name="voice_not_listening_detail">Robot must be the running assistant with the wake word on.</string>
+    <string name="voice_wake_on">On: %1$s</string>
+    <string name="voice_wake_on_none">none</string>
+    <string name="voice_nothing_heard">Nothing heard yet.</string>
+    <string name="voice_phrase_removed">Phrase no. %1$d (removed)</string>
+
+    <!-- The voice log's page (its lines stay English: a diagnostic). -->
+    <string name="voice_log_copied">Copied. Paste it in a message, or take a screenshot.</string>
+    <string name="voice_log_copy">Copy log</string>
+    <string name="voice_log_intro">The last %1$d things the voice side did, newest first: no words, no audio, only what happened and how long it took. When Robot didn\'t respond, take a screenshot or tap Copy log right away.</string>
+    <string name="voice_log_send">Send as bug report</string>
+    <string name="voice_log_empty">Nothing yet. Robot\'s voice side writes here once it runs as the assistant.</string>
+
+    <!-- A voice model's download (Android's download notification). -->
+    <string name="voice_download_title">Robot: %1$s</string>
+</resources>

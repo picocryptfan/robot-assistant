@@ -4,8 +4,7 @@ package app.heyrobot.voice
 import android.content.Context
 import android.media.AudioDeviceInfo
 
-// VOICE PROCESS (0.8). A headset or car session's call route for the app's :voice code (design §3.6 HeadsetSession
-// "Begins" and "Ends"), sharing call audio's rule and owners (CallAudio): never during another app's call, the last owner
+// VOICE PROCESS (0.8). A headset or car session's call route for the app's :voice code, sharing call audio's rule and owners (CallAudio): never during another app's call, the last owner
 // out puts the phone back in its normal mode.
 object SessionRoute {
     /** Takes the communication mode with [device] as the call device; false during another call, or if Android refused. */

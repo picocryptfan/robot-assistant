@@ -102,6 +102,20 @@ object BrainPolicy {
     /** The tools described to a conversation at [mode]: none in chat only, whatever the request lists. */
     fun toolsFor(mode: ToolMode, requested: List<ToolName>): List<ToolName> = if (mode.tools) requested else emptyList()
 
+    /** 1.1, Skills phase B: the same for your skills' specs (BrainMsg.Generate.skills): none in chat only. */
+    fun skillsFor(mode: ToolMode, requested: List<app.heyrobot.core.skills.SkillToolSpec>): List<app.heyrobot.core.skills.SkillToolSpec> =
+        if (mode.tools) requested else emptyList()
+
+    /**
+     * What a live conversation's tools are compared by ([canReuse]): the tool ids, then each skill's spec whole (a skill
+     * changed since, or another one, rebuilds the conversation once), then whether they were described compact ([compact]).
+     */
+    fun toolKeys(tools: List<ToolName>, skills: List<app.heyrobot.core.skills.SkillToolSpec>, compact: Boolean = false): List<String> =
+        tools.map { it.id } + skills.map { it.openApiJson() } + if (compact) listOf(COMPACT_KEY) else emptyList()
+
+    /** 1.2: the tools were described in their compact form (PrefillBudget): a full conversation is never reused for it, nor the reverse. */
+    const val COMPACT_KEY = "(compact)" // l10n: not text (a key compared in :brain)
+
     /** Whether a call the model makes at [mode] reaches the app: never in chat only (no tool was described to it). */
     fun acceptsCalls(mode: ToolMode): Boolean = mode.tools
 

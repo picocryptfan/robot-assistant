@@ -1,0 +1,16 @@
+<!-- Settings › Language (the l10n work package WP0): ids start with lang_, and the French is in
+     values-fr-rCA/strings_language.xml. A language is named in its own words in every language, as Android's list does. -->
+<resources>
+    <string name="lang_title">Language</string>
+    <string name="lang_menus">Menus</string>
+    <string name="lang_menus_phone">Phone\'s language</string>
+    <string name="lang_name_en" translatable="false">English</string>
+    <string name="lang_name_fr_ca" translatable="false">Français (Canada)</string>
+    <string name="lang_name_fr" translatable="false">Français</string>
+    <string name="lang_reply">Robot answers in</string>
+    <string name="lang_reply_spoken">The language you speak</string>
+    <string name="lang_reply_menus">Same as the menus</string>
+    <string name="lang_android">Android\'s language page for Robot</string>
+    <string name="lang_android_failed">Android\'s language page didn\'t open.</string>
+    <string name="lang_footer">Robot understands English and French whatever you choose here. Words the model reads stay in English.</string>
+</resources>

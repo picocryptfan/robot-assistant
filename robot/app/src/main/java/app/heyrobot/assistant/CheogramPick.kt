@@ -38,6 +38,8 @@ import app.heyrobot.sys.CheogramIntents
 import app.heyrobot.sys.HandOffApps
 import app.heyrobot.sys.PeopleFiles
 import app.heyrobot.ui.theme.RobotTheme
+import app.heyrobot.R
+import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -56,8 +58,8 @@ class CheogramPickActivity : ComponentActivity() {
         data object Waiting : Step()
         /** "Remember as Mom?" before the chat opens. */
         data class Remember(val pick: CheogramPick) : Step()
-        /** Nobody usable came back: Cheogram's share screen instead? [title] says why. */
-        data class Nobody(val title: String) : Step()
+        /** Nobody usable came back: Cheogram's share screen instead? [title] says why (a string resource, 1.1). */
+        data class Nobody(val title: Int) : Step()
     }
 
     private var step by mutableStateOf<Step>(Step.Waiting)
@@ -81,7 +83,7 @@ class CheogramPickActivity : ComponentActivity() {
         super.onSaveInstanceState(outState)
         when (val s = step) {
             is Step.Remember -> outState.putStringArray(STATE_PICK, arrayOf(s.pick.name, s.pick.jid, s.pick.account))
-            is Step.Nobody -> outState.putString(STATE_NOBODY, s.title)
+            is Step.Nobody -> outState.putInt(STATE_NOBODY, s.title)
             Step.Waiting -> {}
         }
     }
@@ -89,21 +91,21 @@ class CheogramPickActivity : ComponentActivity() {
     private fun restore(b: Bundle?): Step? {
         b ?: return null
         b.getStringArray(STATE_PICK)?.let { a -> if (a.size == 3 && a[0] != null && a[1] != null) return Step.Remember(CheogramPick(a[0], a[1], a[2])) }
-        return b.getString(STATE_NOBODY)?.let { Step.Nobody(it) }
+        return b.getInt(STATE_NOBODY, 0).takeIf { it != 0 }?.let { Step.Nobody(it) }
     }
 
     private fun openList() {
-        val p = pkg ?: return nobody(PickOutcome.NO_LIST, "Cheogram isn't installed")
+        val p = pkg ?: return nobody(PickOutcome.NO_LIST, R.string.panel_cheogram_not_installed)
         try {
             list.launch(CheogramIntents.pick(p))
         } catch (_: ActivityNotFoundException) {
-            nobody(PickOutcome.NO_LIST, "Cheogram's contact list didn't open")
+            nobody(PickOutcome.NO_LIST, R.string.panel_cheogram_list_didnt_open)
         } catch (_: SecurityException) {
-            nobody(PickOutcome.NO_LIST, "Cheogram's contact list didn't open")
+            nobody(PickOutcome.NO_LIST, R.string.panel_cheogram_list_didnt_open)
         }
     }
 
-    private fun nobody(outcome: PickOutcome, title: String) {
+    private fun nobody(outcome: PickOutcome, title: Int) {
         VoiceLog.add(VoiceEvent.CHEOGRAM_PICK, outcome)
         step = Step.Nobody(title)
     }
@@ -112,10 +114,10 @@ class CheogramPickActivity : ComponentActivity() {
     private fun picked(code: Int, data: Intent?) {
         val (pick, readable) = if (code == RESULT_OK) CheogramIntents.read(data) else null to true
         when (CheogramLinks.outcome(code == RESULT_OK, readable, pick)) {
-            PickOutcome.CANCELLED -> nobody(PickOutcome.CANCELLED, "Nobody was picked")
-            PickOutcome.UNREADABLE -> nobody(PickOutcome.UNREADABLE, "Cheogram's answer couldn't be read")
+            PickOutcome.CANCELLED -> nobody(PickOutcome.CANCELLED, R.string.panel_cheogram_nobody)
+            PickOutcome.UNREADABLE -> nobody(PickOutcome.UNREADABLE, R.string.panel_cheogram_unreadable)
             PickOutcome.NO_ADDRESS, PickOutcome.NO_LIST ->
-                nobody(PickOutcome.NO_ADDRESS, if (pick == null) "Cheogram didn't say who was picked" else "Robot can't open a chat with that address")
+                nobody(PickOutcome.NO_ADDRESS, if (pick == null) R.string.panel_cheogram_no_who else R.string.panel_cheogram_bad_address)
             PickOutcome.PICKED -> if (pick != null) chosen(pick)
         }
     }
@@ -165,14 +167,14 @@ class CheogramPickActivity : ComponentActivity() {
         )
         val i = routes.indexOfFirst { start(it.second) }
         if (i >= 0) VoiceLog.add(VoiceEvent.CHEOGRAM_HANDOFF, routes[i].first, if (i > 0) 1 else 0)
-        else Toast.makeText(this, "Cheogram didn't open.", Toast.LENGTH_LONG).show()
+        else Toast.makeText(this, getString(R.string.panel_cheogram_didnt_open), Toast.LENGTH_LONG).show()
         finish()
     }
 
     private fun shareInstead() {
         val p = pkg
         if (p != null && start(CheogramIntents.share(p, message))) VoiceLog.add(VoiceEvent.CHEOGRAM_HANDOFF, CheogramRoute.SHARE, 1)
-        else Toast.makeText(this, "Cheogram didn't open.", Toast.LENGTH_LONG).show()
+        else Toast.makeText(this, getString(R.string.panel_cheogram_didnt_open), Toast.LENGTH_LONG).show()
         finish()
     }
 
@@ -194,49 +196,56 @@ class CheogramPickActivity : ComponentActivity() {
                 // "my mom" is kept (and shown) as "mom".
                 val asked = TextCommand.display(People.aliasName(spoken))
                 val same = spoken.isEmpty() || People.sameName(People.aliasName(spoken), s.pick.name)
+                // 1.1: whole sentences from the resources, the name styled where it falls in them.
+                val name = if (same) s.pick.name else asked
+                val heading = stringResource(if (same) R.string.panel_cheogram_remember_name else R.string.panel_cheogram_remember_as, name)
+                val calls = stringResource(R.string.panel_cheogram_calls_them, s.pick.name)
+                val keeps = stringResource(R.string.panel_cheogram_keeps)
                 AlertDialog(
                     onDismissRequest = { finish() },
                     properties = props,
-                    title = {
-                        Text(buildAnnotatedString {
-                            append(if (same) "Remember " else "Remember as ")
-                            withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(if (same) s.pick.name else asked) }
-                            append("?")
-                        })
-                    },
+                    title = { Text(styled(heading, name, SpanStyle(fontWeight = FontWeight.SemiBold))) },
                     text = {
                         Text(buildAnnotatedString {
                             if (!same) {
-                                append("Cheogram calls them ")
-                                withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { append(s.pick.name) }
-                                append(". ")
+                                append(styled(calls, s.pick.name, SpanStyle(fontStyle = FontStyle.Italic)))
+                                append(" ")
                             }
-                            append("Robot keeps this in People, on your phone only, so next time it opens their chat directly.")
+                            append(keeps)
                         })
                     },
                     confirmButton = {
                         TextButton(onClick = {
                             VoiceLog.add(VoiceEvent.CHEOGRAM_PICK, PickOutcome.PICKED, if (s.pick.account != null) 1 else 0, 1)
                             remember(s.pick)
-                        }) { Text("Remember") }
+                        }) { Text(stringResource(R.string.panel_cheogram_remember)) }
                     },
                     dismissButton = {
                         TextButton(onClick = {
                             VoiceLog.add(VoiceEvent.CHEOGRAM_PICK, PickOutcome.PICKED, if (s.pick.account != null) 1 else 0)
                             openChat(s.pick)
-                        }) { Text("Not now") }
+                        }) { Text(stringResource(R.string.panel_not_now)) }
                     },
                 )
             }
             is Step.Nobody -> AlertDialog(
                 onDismissRequest = { finish() },
                 properties = props,
-                title = { Text(s.title) },
-                text = { Text("Choose who to text in Cheogram's share screen instead? The message goes with it, and nothing is sent until you press Send.") },
-                confirmButton = { TextButton(onClick = ::shareInstead) { Text("Choose in Cheogram") } },
-                dismissButton = { TextButton(onClick = { finish() }) { Text("Cancel") } },
+                title = { Text(stringResource(s.title)) },
+                text = { Text(stringResource(R.string.panel_cheogram_share_instead)) },
+                confirmButton = { TextButton(onClick = ::shareInstead) { Text(stringResource(R.string.panel_cheogram_choose)) } },
+                dismissButton = { TextButton(onClick = { finish() }) { Text(stringResource(R.string.panel_cancel)) } },
             )
         }
+    }
+
+    /** [text] with [part] (a name in it) in [style]: the first place it appears. */
+    private fun styled(text: String, part: String, style: SpanStyle) = buildAnnotatedString {
+        val at = text.indexOf(part)
+        if (at < 0 || part.isEmpty()) return@buildAnnotatedString append(text)
+        append(text.substring(0, at))
+        withStyle(style) { append(part) }
+        append(text.substring(at + part.length))
     }
 
     companion object {

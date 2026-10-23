@@ -39,7 +39,7 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 /**
- * 0.7, the main process's copy of a notification (design §B2–§B5) with Android's own classes: a Cheogram-shaped
+ * 0.7, the main process's copy of a notification with Android's own classes: a Cheogram-shaped
  * MessagingStyle notification becomes core's snapshot field by field and parses into the conversation; an app that isn't
  * turned on, or "Read my messages" off, leaves nothing in RAM; and a reply fires the app's own action with your words under
  * its RemoteInput key, marked as typed, after core ReplySend's check.

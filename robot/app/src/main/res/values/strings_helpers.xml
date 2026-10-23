@@ -1,0 +1,263 @@
+<!-- Helpers (the l10n work package WP2): ids start with helper_, and the French is in
+     values-fr-rCA/strings_helpers.xml. 1.1 split strings.xml into one file per area, ids and texts unchanged. Core gives
+     these screens the presets' words, the models, the name and key rules and the address hints (core HelperStrings). -->
+<resources>
+    <!-- Settings › Helpers: a helper's line and status (the list and its page). -->
+    <string name="helper_status_off">Off</string>
+    <string name="helper_status_key_removed">The saved key couldn\'t be read and was removed: add it again</string>
+    <string name="helper_status_no_key_no_app">No key, and the %1$s app isn\'t installed</string>
+    <string name="helper_status_opens_app">Opens the %1$s app</string>
+    <string name="helper_no_key">No key</string>
+    <string name="helper_status_ready">Ready</string>
+    <string name="helper_status_ready_in">Ready · answered in %1$s s</string>
+    <string name="helper_status_find_server">Test connection to find the server</string>
+    <string name="helper_status_not_tested">Not tested yet</string>
+    <string name="helper_status_address_changed">Test connection again: the address changed</string>
+    <string name="helper_status_connected">Connected</string>
+    <string name="helper_line_your_server">Your server</string>
+    <string name="helper_line_no_model">no model chosen</string>
+    <string name="helper_line_trusted">trusted with personal content</string>
+
+    <!-- Settings › Helpers -->
+    <string name="helper_intro">Other AIs Robot asks only when you say so (“ask a helper …”, or “go get” and a helper\'s name) or when you let it check hard questions.</string>
+    <string name="helper_group_yours">Your helpers</string>
+    <string name="helper_none">No helpers</string>
+    <string name="helper_none_summary">Robot answers everything itself</string>
+    <string name="helper_add_summary">A company\'s model or its app, or a model on your own computer</string>
+    <string name="helper_or_app_no_key">or the %1$s app, without a key</string>
+    <string name="helper_group_when">When Robot needs help</string>
+    <string name="helper_auto_needs_key">%1$s needs an API key first: until then Robot asks first.</string>
+    <string name="helper_auto_needs_test">%1$s needs Test connection first: until then Robot asks first.</string>
+    <string name="helper_no_target">no helper to ask</string>
+    <string name="helper_ask">Ask</string>
+    <string name="helper_prices_unknown_title">Robot doesn\'t know %1$s\'s prices</string>
+    <string name="helper_prices_unknown_summary">So it asks first instead of checking by itself. Enter them on %1$s\'s page.</string>
+    <string name="helper_group_cost">Cost</string>
+    <string name="helper_daily_budget">Daily budget for all helpers</string>
+    <string name="helper_today_of">Today: %1$s of %2$s (an estimate)</string>
+    <string name="helper_spent_by">%1$s: %2$s</string>
+    <string name="helper_spent_today">Spent today</string>
+    <string name="helper_show_cost">Show cost</string>
+    <string name="helper_show_cost_summary">“≈ 1¢” under each helper\'s reply</string>
+    <string name="helper_footer_offline">Robot stays offline unless you ask for a helper (“ask a helper …”, “go get Jarvis”) or let Robot check hard questions with one. Only text leaves the phone: your voice is turned into text here, and a helper\'s answer is read by Robot\'s voices.</string>
+    <!-- %1$s: Safety & privacy › Send personal content to helpers automatically -->
+    <string name="helper_footer_sends_all">By itself, Robot sends your question and the last two turns of the conversation, with any screen text, photo or what it read (%1$s is on).</string>
+    <string name="helper_footer_sends_question">By itself, Robot sends only your question and the last two turns of plain conversation. Once a conversation has screen text, a photo, or what Robot read from your contacts, calendar or notes, the weather (where you are) or your phone\'s status, it sends only your question (more for helpers you trust with personal content); anything more goes only after you tap a card that lists it.</string>
+    <string name="helper_footer_current">Questions about news, prices or anything current go to %1$s by itself only when it can search the web; otherwise Robot answers and offers.</string>
+    <string name="helper_footer_budget">Daily budget: once it\'s reached, Robot asks before checking with a helper by itself until tomorrow. A helper whose prices Robot doesn\'t know isn\'t counted. Show cost: “≈ 1¢” under each helper\'s reply, estimated from the published prices (or the price the company reports); “cost unknown” when Robot can\'t tell.</string>
+
+    <!-- Add a helper -->
+    <string name="helper_group_companies">Companies</string>
+    <string name="helper_openrouter_detail">Hundreds of models from many companies, with one key</string>
+    <string name="helper_group_own">Your own AI</string>
+    <string name="helper_home_summary">A computer on your network, or reached through Tailscale</string>
+    <string name="helper_group_other">Other</string>
+    <string name="helper_other_summary">Any company with an OpenAI-compatible API (https)</string>
+    <string name="helper_add_footer">Who should Robot be able to ask? A company\'s model needs an API key from that company (paid separately from any app subscription). Without a key, a company with an app on this phone gets your question in its app: you press Send there, and Robot doesn\'t hear the answer. A model on your own computer needs no key and costs nothing, and is private when the computer is yours. For another company, you enter its OpenAI-compatible address (https).</string>
+    <string name="helper_mine_title">Is this computer yours?</string>
+    <!-- %1$s: the new helper's name ("My server") -->
+    <string name="helper_mine_text">Is this computer yours, and does it run the model itself (not passing questions on to a company)? If yes, Robot can include what it read for you (your calendar, notes, contacts) when it asks %1$s. Your screen and photos still need a tap every time. You can change this on its page.</string>
+    <string name="helper_mine_yes">Yes, it\'s mine</string>
+    <string name="helper_not_now">Not now</string>
+
+    <!-- Your server's address, or another company's API -->
+    <string name="helper_address_bad">That isn\'t an address Robot can use: a name or IP address, with http:// or https:// if you like, and a port.</string>
+    <string name="helper_address_https_only">Robot connects to a company only with https://.</string>
+    <string name="helper_address_blocked">That address can\'t be a server.</string>
+    <string name="helper_address_title_home">Your server\'s address</string>
+    <string name="helper_address_title_api">The API\'s address</string>
+    <!-- %1$s, %2$s, %3$s: example addresses -->
+    <string name="helper_address_home_hint">The computer running Ollama, LM Studio, llama.cpp, vLLM, LocalAI or Open WebUI: its IP address or name, such as %1$s, %2$s or %3$s. Without a port, Robot tries the usual ones.</string>
+    <string name="helper_address_api_hint">Its OpenAI-compatible address, such as %1$s.</string>
+    <string name="helper_address">Address</string>
+    <string name="helper_address_cleartext">Without https, anyone on the same Wi-Fi can read what Robot sends. Fine on your home network; on a shared one, use Tailscale or https.</string>
+
+    <!-- A helper's page -->
+    <string name="helper_use_name">Use %1$s</string>
+    <string name="helper_group_connection">Connection</string>
+    <string name="helper_address_none">None</string>
+    <string name="helper_change">Change</string>
+    <string name="helper_not_encrypted">Not encrypted</string>
+    <string name="helper_not_encrypted_summary">Anyone on the same Wi-Fi can read what Robot sends to %1$s. Use https or Tailscale on a network you share.</string>
+    <string name="helper_not_encrypted_summary_trusted">Anyone on the same Wi-Fi can read what Robot sends to %1$s, including the personal content you trust it with. Use https or Tailscale on a network you share.</string>
+    <string name="helper_no_key_optional">No key (not needed unless your server asks)</string>
+    <string name="helper_key_unreadable">Robot couldn\'t read the saved key (Android\'s keystore lost it), so it was removed. Add it again.</string>
+    <!-- %1$s: the company site's own page for keys ("console.anthropic.com › API keys") -->
+    <string name="helper_key_from">From %1$s.</string>
+    <string name="helper_replace">Replace</string>
+    <string name="helper_add_key">Add key</string>
+    <string name="helper_checked_answered">Last checked: a test question was answered.</string>
+    <!-- 1.0's English says "models" for one too; kept as it was. -->
+    <plurals name="helper_checked_answered_models">
+        <item quantity="one">Last checked: a test question was answered, %d models listed.</item>
+        <item quantity="other">Last checked: a test question was answered, %d models listed.</item>
+    </plurals>
+    <string name="helper_checked_server">Last checked: the server answered.</string>
+    <plurals name="helper_checked_server_models">
+        <item quantity="one">Last checked: the server answered, %d models listed.</item>
+        <item quantity="other">Last checked: the server answered, %d models listed.</item>
+    </plurals>
+    <string name="helper_not_reached">Robot hasn\'t reached %1$s yet.</string>
+    <!-- 1.0.2: the last check refused to send a key over http -->
+    <string name="helper_checked_key_not_sent">Last checked: the key wasn\'t sent over http, so nothing was asked.</string>
+    <!-- 1.0.2: the last check failed; %1$s: the helper's status line for that failure (a whole sentence) -->
+    <string name="helper_checked_failed">Last checked: it didn\'t work. %1$s</string>
+    <string name="helper_zdr">Only providers that keep nothing</string>
+    <string name="helper_zdr_summary">Zero data retention</string>
+    <string name="helper_use">Use</string>
+    <string name="helper_app_not_installed">The %1$s app isn\'t installed.</string>
+    <string name="helper_add_key_first">Add a key first.</string>
+    <string name="helper_group_names">Name used by voice</string>
+    <string name="helper_name">Name</string>
+    <string name="helper_name_hint">Say “ask %1$s …” or “go get %1$s”.</string>
+    <string name="helper_aliases">Also answers to</string>
+    <string name="helper_aliases_none">None</string>
+    <string name="helper_aliases_hint">Other names you call it, separated by commas (at most %1$d).</string>
+    <!-- %1$s: one of the names typed; %2$s: why it can't be used -->
+    <string name="helper_alias_problem">%1$s: %2$s</string>
+    <string name="helper_model">Model</string>
+    <string name="helper_model_none">None chosen</string>
+    <string name="helper_effort">How hard %1$s thinks</string>
+    <string name="helper_effort_auto">Low for spoken questions, medium for typed ones, high when you ask for it</string>
+    <string name="helper_group_may">What %1$s may do</string>
+    <string name="helper_search">Let %1$s search the web</string>
+    <string name="helper_search_cant">This model can\'t search the web through this connection.</string>
+    <string name="helper_actions">Let %1$s ask Robot to do things</string>
+    <string name="helper_actions_none">This model didn\'t use Robot\'s actions when Robot checked, so it gets none.</string>
+    <string name="helper_actions_summary">Timers, notes, messages and more, each with a card first</string>
+    <string name="helper_check_actions">Check actions</string>
+    <string name="helper_check_actions_summary">Whether this model uses Robot\'s actions</string>
+    <string name="helper_locked">Allow on lock screen</string>
+    <string name="helper_locked_summary">A locked phone can\'t show who is asking</string>
+    <string name="helper_group_voice">Voice and trust</string>
+    <string name="helper_voice">%1$s\'s voice</string>
+    <string name="helper_voice_also">Also %1$s\'s</string>
+    <string name="helper_trust">Trusted with personal content</string>
+    <!-- %1$s: Safety & privacy -->
+    <string name="helper_trust_all">Every helper gets it already (%1$s)</string>
+    <string name="helper_trust_on">What Robot read goes without asking</string>
+    <string name="helper_trust_off">Off: only your question goes by itself</string>
+    <string name="helper_prices_edit">Edit your prices</string>
+    <string name="helper_price_add">Add a price</string>
+    <string name="helper_prices_enter">Enter prices</string>
+    <string name="helper_prices_yours_summary">%1$s in, %2$s out, per million tokens</string>
+    <string name="helper_prices_unit">Dollars per million tokens</string>
+    <string name="helper_prices_published">Use the published prices</string>
+    <string name="helper_cap">Daily cap for %1$s</string>
+    <string name="helper_cap_none">None</string>
+    <string name="helper_cap_today_no_cap">Today: %1$s · no cap (an estimate)</string>
+    <string name="helper_remove">Remove %1$s</string>
+    <string name="helper_remove_summary">Its key and what Robot found about it</string>
+    <!-- %1$s: Trusted with personal content -->
+    <string name="helper_moved_trust_key">“%1$s” was turned off and the key was removed: the address changed. Add the key again if the server needs one.</string>
+    <string name="helper_moved_trust">“%1$s” was turned off: the address changed.</string>
+    <string name="helper_moved_key">The key was removed: Robot sends a key only to the host it was saved for. Add it again if the server needs one.</string>
+    <string name="helper_delete_key_title">Delete the %1$s key?</string>
+    <string name="helper_delete_key_text">Robot removes the key from this phone.</string>
+    <!-- %1$s: the helper's name; %2$s: the company's app -->
+    <string name="helper_delete_key_text_app">Robot removes the key from this phone. %1$s uses the %2$s app until you add a key again.</string>
+    <string name="helper_remove_title">Remove %1$s?</string>
+    <string name="helper_remove_text">Robot deletes its key and what it found about it. Conversations in History keep its answers.</string>
+    <string name="helper_remove_confirm">Remove</string>
+
+    <!-- A helper page's footer -->
+    <string name="helper_footer_zdr">Only providers that keep nothing (zero data retention): OpenRouter sends your questions only to providers that don\'t store them. Some models have none; then %1$s says so.</string>
+    <!-- %1$s: what Robot also hears, already in quotes ("cloud”, “clod"); %2$s: the helper's name -->
+    <string name="helper_footer_misheard">Robot also hears “%1$s” as %2$s, but only after “ask” or “go get”.</string>
+    <string name="helper_footer_effort">How hard %1$s thinks: Automatic is low for spoken questions (fast), medium for typed ones, high when you ask %1$s to “think hard” or “take your time”.</string>
+    <string name="helper_footer_effort_mistral">Mistral thinks either fully or not at all: Low means no thinking.</string>
+    <string name="helper_footer_effort_deepseek">For DeepSeek, High means its maximum.</string>
+    <string name="helper_footer_voice">%1$s\'s voice is a Kokoro voice, so you hear who is talking. With the Kitten voice helpers use Kitten\'s other voice; with the phone\'s voice, a lower pitch.</string>
+    <string name="helper_footer_trust">Trusted with personal content: off (the default), when Robot checks with %1$s by itself in a conversation that holds something personal (what Robot read from your calendar, notes or contacts, where you are, your phone\'s status), only your question goes; “go get %1$s” asks before including the conversation; a spoken yes never sends personal content. On: all of that goes to %1$s without asking. Your screen and photos still need a tap every time, and so does a conversation that had them. Turn it on only for a helper you\'d show your calendar to: a server that is yours, or a company whose terms you accept.</string>
+    <!-- %1$s: Safety & privacy › Send personal content to helpers automatically -->
+    <string name="helper_footer_trust_all">%1$s is on, so every helper gets this already.</string>
+    <!-- %1$s: Settings › Helpers -->
+    <string name="helper_footer_budget_where">The budget for all helpers is in %1$s.</string>
+
+    <!-- Where a helper's price comes from (its page's Cost group) -->
+    <string name="helper_price_free">Free: your own server. If you pay for its electricity or a rented machine, you can add a price.</string>
+    <string name="helper_price_yours">Your prices: %1$s per million tokens in, %2$s out.</string>
+    <!-- The published prices: the rates, then what changes them, joined by "; " as one sentence -->
+    <string name="helper_price_rates">%1$s per million tokens in, %2$s out</string>
+    <string name="helper_price_rates_cached">%1$s per million tokens in, %2$s out, %3$s for cached input</string>
+    <string name="helper_price_long">more for very long conversations</string>
+    <string name="helper_price_peak">double at peak hours</string>
+    <string name="helper_price_then">%1$s in and %2$s out after %3$s</string>
+    <!-- %1$s: the day the prices were read; %2$s: the page they were read from -->
+    <string name="helper_prices_as_of_from">Prices as of %1$s from %2$s.</string>
+    <string name="helper_prices_as_of">Prices as of %1$s.</string>
+    <string name="helper_prices_from">Prices from %1$s.</string>
+    <string name="helper_price_reported">%1$s reports what each answer cost; the cost line shows its figure.</string>
+    <string name="helper_price_unknown_home">Robot doesn\'t know this model\'s prices: replies show “cost unknown”, they aren\'t counted in today\'s spend, and Robot won\'t check with %1$s by itself. Enter the prices from what you pay.</string>
+    <!-- %2$s: the company -->
+    <string name="helper_price_unknown">Robot doesn\'t know this model\'s prices: replies show “cost unknown”, they aren\'t counted in today\'s spend, and Robot won\'t check with %1$s by itself. Enter the prices from %2$s\'s pricing page.</string>
+    <string name="helper_price_of">Price of %1$s</string>
+    <string name="helper_prices_for">Prices for %1$s</string>
+    <string name="helper_price_in">$ in</string>
+    <string name="helper_price_out">$ out</string>
+    <string name="helper_price_unit_for">Dollars per million tokens, for %1$s.</string>
+    <string name="helper_price_unit_this">Dollars per million tokens, for this model.</string>
+
+    <!-- The model dialog -->
+    <string name="helper_badges_t">(Can use Robot\'s actions.)</string>
+    <string name="helper_badges_s">(Can search the web.)</string>
+    <string name="helper_badges_v">(Can see pictures.)</string>
+    <string name="helper_badges_ts">(Can use Robot\'s actions, can search the web.)</string>
+    <string name="helper_badges_tv">(Can use Robot\'s actions, can see pictures.)</string>
+    <string name="helper_badges_sv">(Can search the web, can see pictures.)</string>
+    <string name="helper_badges_tsv">(Can use Robot\'s actions, can search the web, can see pictures.)</string>
+    <plurals name="helper_models_search">
+        <item quantity="one">Search %d model</item>
+        <item quantity="other">Search %d models</item>
+    </plurals>
+    <string name="helper_models_more">More models match: narrow the search.</string>
+    <string name="helper_model_yours">Entered by you</string>
+    <string name="helper_model_id">Model id</string>
+    <string name="helper_model_id_hint_home">Any model your server has, exactly as it\'s named.</string>
+    <string name="helper_model_id_hint">Any model %1$s offers, exactly as it\'s named.</string>
+    <string name="helper_models_listed_home">Test connection lists the models your server has.</string>
+    <string name="helper_models_listed">Test connection lists the models you can use.</string>
+    <string name="helper_models_refresh">Refresh list</string>
+
+    <!-- What a web search costs with a helper -->
+    <!-- %1$s: a price in cents ("1¢") -->
+    <string name="helper_search_anthropic">Up to 3 searches per question, about %1$s each. The answer lists the sites.</string>
+    <string name="helper_search_openrouter">OpenRouter\'s web search (5 results); its price is part of the cost OpenRouter reports. The answer lists the sites.</string>
+    <string name="helper_search_priced">%1$s\'s web search, about %2$s each. The answer lists the sites.</string>
+    <string name="helper_search_unpriced">%1$s\'s web search. The answer lists the sites.</string>
+
+    <!-- A helper's connection window (the :voice process): its key, Test connection and Check actions -->
+    <string name="helper_window_key_title">%1$s: API key</string>
+    <string name="helper_window_key_title_optional">%1$s: key (if your server asks for one)</string>
+    <!-- %1$s: the company site's own page for keys -->
+    <string name="helper_window_key_where">Create a key at %1$s and paste it here.</string>
+    <string name="helper_window_key_safe">Robot encrypts the key on this phone and only the assistant reads it.</string>
+    <string name="helper_window_api_key">API key</string>
+    <string name="helper_window_key_not_saved">The key couldn\'t be saved on this phone.</string>
+    <string name="helper_window_testing">Testing %1$s…</string>
+    <string name="helper_window_testing_home">Robot looks for your server at the address you gave (on the usual ports when you gave none), lists its models and asks it to reply “OK”.</string>
+    <string name="helper_window_testing_company">Robot lists %1$s\'s models for your key and asks the model to reply “OK” (a fraction of a cent).</string>
+    <string name="helper_window_ready">%1$s is ready</string>
+    <string name="helper_window_no_answer">%1$s didn\'t answer</string>
+    <!-- 1.0.2: a key Robot won't send over http, so nothing was asked -->
+    <string name="helper_window_key_not_sent">%1$s: key not sent</string>
+    <string name="helper_window_done">Done</string>
+    <string name="helper_probe_needs_key">This server asks for a key.</string>
+    <string name="helper_probe_needs_key_https">This server asks for a key, which Robot sends only over https.</string>
+    <plurals name="helper_probe_lists">
+        <item quantity="one">It lists %d model.</item>
+        <item quantity="other">It lists %d models.</item>
+    </plurals>
+    <string name="helper_probe_connected">Connected.</string>
+    <plurals name="helper_probe_connected_models">
+        <item quantity="one">Connected: %d model to choose from in Settings.</item>
+        <item quantity="other">Connected: %d models to choose from in Settings.</item>
+    </plurals>
+    <string name="helper_probe_answered">A test question was answered in %1$s s.</string>
+    <string name="helper_probe_no_usage">The server doesn\'t report its token counts.</string>
+    <string name="helper_probe_actions_yes">The model can use Robot\'s actions (always behind a card).</string>
+    <string name="helper_probe_actions_no">The model didn\'t use Robot\'s action when asked: actions are off for it.</string>
+    <!-- %1$s: the request parts the server refused, by their API names -->
+    <string name="helper_probe_dropped">Robot will leave out what the server didn\'t take: %1$s.</string>
+    <string name="helper_probe_cleartext">This connection isn\'t encrypted: anyone on your network can read it.</string>
+</resources>

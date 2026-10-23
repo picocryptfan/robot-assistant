@@ -59,6 +59,7 @@ class MemoryPanelTest {
     @After fun tearDown() {
         MemoryPanel.drop()
         MemoryPanel.newConversation()
+        dir.deleteRecursively()
     }
 
     private fun say(q: String, locked: Boolean = false, spoken: Boolean = true): MemoryAnswer {
@@ -118,7 +119,7 @@ class MemoryPanelTest {
         assertEquals("• Léo has hockey on Tuesdays", a.card!!.body)
         assertEquals("Put back in memory.", MemoryPanel.undo(a.card!!.undo!!))
         assertEquals(2, items().size)
-        assertEquals("C'est oublié.", say("Oublie ça").text)
+        assertEquals("C’est oublié.", say("Oublie ça").text)
     }
 
     @Test fun forgetSomethingSearchesAndAsksWhichWhenSeveralFit() {
@@ -204,7 +205,7 @@ class MemoryPanelTest {
         lockedNow = true
         assertEquals(MemoryRoute.Unlock("en", saving = true), MemoryPanel.route("Remember that Bob plays chess", locked = true))
         assertEquals("Unlock first to save to memory.", say("Remember that Bob plays chess", locked = true).text)
-        assertEquals("Déverrouille d'abord pour l'enregistrer en mémoire.", say("Souviens-toi que Bob joue aux échecs", locked = true).text)
+        assertEquals("Déverrouille d’abord pour l’enregistrer en mémoire.", say("Souviens-toi que Bob joue aux échecs", locked = true).text)
         assertEquals("Unlock first to change what I remember.", say("Forget Julie", locked = true).text)
         assertEquals("Unlock first to change what I remember.", say("Forget that", locked = true).text)
         // Reading still works there with "Use memory on the lock screen".
@@ -227,10 +228,11 @@ class MemoryPanelTest {
     }
 
     /**
-     * 1.0.2: a question's ids include the pinned items (PanelController keeps MemoryTurn.recall.ids, so a helper sees the
-     * conversation as personal), but those in the system prompt's pinned line never come back as notes in the history.
+     * 1.0.2, corrected in 1.1: the reply keeps every item the turn had, the pinned ones too (PanelController passes
+     * MemoryTurn.recall.ids to MemoryPanel.mark), so a helper sees the conversation as personal; the question keeps only the
+     * retrieved ones, whose notes come back in a rebuilt history.
      */
-    @Test fun pinnedIdsAreKeptButNeverGivenAgainAsNotes() {
+    @Test fun pinnedIdsGoOnTheReplyNotTheQuestion() {
         say("Remember that my sister Julie's birthday is May 3")
         say("Remember that I prefer Celsius")
         MemoryPanel.newConversation()
@@ -239,8 +241,10 @@ class MemoryPanelTest {
         val julie = items().first { it.text.contains("Julie") }
         assertEquals(listOf(pref.id), t.packed.pinnedIds)
         assertEquals(listOf(pref.id, julie.id), t.recall.ids)
-        assertEquals(null, t.notes(listOf(pref.id)))
-        assertEquals(t.notes(listOf(julie.id)), t.notes(listOf(pref.id, julie.id)))
+        assertEquals(listOf(julie.id), t.packed.retrievedIds)
+        MemoryPanel.mark("r-pinned", t.recall.ids)
+        val reply = MemoryPanel.forHistory(app.heyrobot.core.ChatTurn("r-pinned", app.heyrobot.core.TurnRole.ASSISTANT, "May 3.", 1))
+        assertEquals(listOf(pref.id, julie.id), reply.memoryIds)
     }
 
     @Test fun aChatQuestionGetsItsNotesAndHistoryKeepsTheIds() {
@@ -392,6 +396,6 @@ class MemoryPanelTest {
         assertNull(MemoryPanel.route("Remember to buy milk", false))
         assertNull(MemoryPanel.route("When is Julie's birthday?", false))
         assertTrue((MemoryPanel.route("Souviens-toi que Julie aime les tulipes", false) as MemoryRoute.Run).command is MemoryCommand.Remember)
-        assertEquals("C'est noté : « Julie aime les tulipes ».", say("Souviens-toi que Julie aime les tulipes").text)
+        assertEquals("C’est noté\u00A0: «\u00A0Julie aime les tulipes\u00A0».", say("Souviens-toi que Julie aime les tulipes").text)
     }
 }

@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.car
 
+import app.heyrobot.core.i18n.HandsFreeStrings
+import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.UiStrings
+import app.heyrobot.core.output.spoken
 import app.heyrobot.core.LogCode
 import app.heyrobot.core.OrganicMapsRoute
 import app.heyrobot.core.output.GuardSettings
@@ -10,10 +15,10 @@ import app.heyrobot.core.output.OutputDecision
 import app.heyrobot.core.output.OutputGuard
 import app.heyrobot.core.output.SpeechClass
 import app.heyrobot.core.output.SpeechSource
-import app.heyrobot.core.output.SpokenLang
+import app.heyrobot.core.i18n.Lang
 import app.heyrobot.core.output.Utterance
 
-// Pure. Car mode's output (design §4.3 "Spoken style" and "Car screen", §4.5 flows 1 and 6): short spoken answers ("Want
+// Pure. Car mode's output: short spoken answers ("Want
 // more?" after two sentences), no long text read out, and one status line on the big-button screen. 1.0 (the user, 13
 // Oct 2026): nothing is held for when you park; what needs the screen opens as it would outside the car, since a
 // passenger may be the one asking. Navigation opens your maps app's route preview (om://route: no link starts navigation
@@ -29,7 +34,7 @@ object CarSpeech {
      */
     const val PROMPT_LINE = " Car mode is on: answer in one or two short spoken sentences."
 
-    val WANT_MORE = Line("Want more?", "Tu en veux plus?")
+    val WANT_MORE = Line(HandsFreeStrings.wantMore())
 
     /** [spoken] now, and [rest] after "yes" to "Want more?" (null: nothing more). */
     data class Short(val spoken: String, val rest: String?)
@@ -40,7 +45,7 @@ object CarSpeech {
      * [text] for the car: at most [MAX_SENTENCES] sentences and [OutputGuard.DRIVING_MAX_CHARS] characters (cut at a
      * word), then "Want more?" when something was left out.
      */
-    fun shorten(text: String, lang: SpokenLang): Short {
+    fun shorten(text: String, lang: Lang): Short {
         val t = text.trim().replace(Regex("\\s+"), " ")
         if (t.isEmpty()) return Short("", null)
         val sentences = t.split(SENTENCE_END).filter { it.isNotBlank() }
@@ -74,7 +79,10 @@ object CarScreen {
     }
 
     /** The notification's and screen's title: with the key while trusted. */
-    fun title(trusted: Boolean, lang: SpokenLang): String = if (trusted) CarGate.INDICATOR.get(lang) else if (lang == SpokenLang.FR) "Mode auto" else "Car mode"
+    fun title(trusted: Boolean, lang: Lang): String = titleText(trusted).render(Langs.of(lang))
+
+    /** 1.1: [title] without a language yet (the notification and the car screen show it in the menus' language). */
+    fun titleText(trusted: Boolean): Phrase = if (trusted) HandsFreeStrings.indicator() else HandsFreeStrings.carMode()
 }
 
 /** Where "navigate …" goes. Also the voice log's CAR_NAV a. */
@@ -105,24 +113,24 @@ sealed class NavPlan {
 }
 
 object CarNavigate {
-    val ROUTE_READY = Line("Route ready in your maps app. Tap Start to go.", "L'itinéraire est prêt dans ton application de cartes. Appuie sur Démarrer pour partir.")
-    val ROUTE_LOCKED = Line("Route ready in your maps app. Unlock to see it, then tap Start.",
-        "L'itinéraire est prêt dans ton application de cartes. Déverrouille pour le voir, puis appuie sur Démarrer.")
-    val UNLOCK_TO_START = Line("Unlock to start the route.", "Déverrouille pour lancer l'itinéraire.")
-    val PICK_IN_MAPS = Line("Pick it in your maps app.", "Choisis-le dans ton application de cartes.")
-    val HERE = Line("Here", "Ici")
+    val ROUTE_READY = Line(HandsFreeStrings.routeReady())
+    val ROUTE_LOCKED = Line(HandsFreeStrings.routeLocked())
+    val UNLOCK_TO_START = Line(HandsFreeStrings.unlockToStart())
+    val PICK_IN_MAPS = Line(HandsFreeStrings.pickInMaps())
+    val HERE = Line(HandsFreeStrings.here())
 
-    fun noPlace(home: Boolean, lang: SpokenLang): String = when (lang) {
-        SpokenLang.EN -> "Save your ${if (home) "home" else "work"} address in Settings › Car mode first."
-        SpokenLang.FR -> "Enregistre d'abord l'adresse ${if (home) "de la maison" else "du travail"} dans Réglages › Mode auto."
-    }
+    fun noPlace(home: Boolean, lang: Lang): String = spoken(noPlaceText(home), lang)
+
+    /** 1.1: [noPlace] without a language yet (the page in the menus' language). */
+    fun noPlaceText(home: Boolean): Phrase =
+        (if (home) HandsFreeStrings.noHome else HandsFreeStrings.noWork)("page" to UiStrings.inSettings(UiStrings.carMode))
 
     /**
      * The plan for [dest]. [here]: the approximate position (README 0.4.0), or null. Locked: a saved place opens in a
      * trusted session (Organic Maps' screen then waits behind the lock, EST: phone check C2); anything else says
      * "Unlock to start the route".
      */
-    fun plan(dest: NavDestination, s: CarSettings, here: Pair<Double, Double>?, locked: Boolean, trusted: Boolean, lang: SpokenLang): NavPlan {
+    fun plan(dest: NavDestination, s: CarSettings, here: Pair<Double, Double>?, locked: Boolean, trusted: Boolean, lang: Lang): NavPlan {
         val saved = when (dest) {
             NavDestination.Home -> s.home ?: return NavPlan.NoPlace(noPlace(true, lang))
             NavDestination.Work -> s.work ?: return NavPlan.NoPlace(noPlace(false, lang))

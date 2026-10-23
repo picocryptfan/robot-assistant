@@ -46,17 +46,28 @@ class PhonesTest {
         }
     }
 
-    /** The SoC field wins over the name; another maker's phone is never a Tensor by its name; unknown chips are OTHER. */
+    /**
+     * The SoC field wins over the name; another maker's phone is never a Tensor by its name; unknown chips are OTHER. 1.2: a
+     * Snapdragon's SoC fields name it (before, any non-Google chip was OTHER), and it is still never a Tensor.
+     */
     @Test fun otherPhonesAreNeverTensors() {
         assertEquals(Chip.TENSOR_G4, Phone("Google", "Pixel 10", "Google", "Tensor G4").chip)
-        assertEquals(Chip.OTHER, Phone("samsung", "Pixel 9a", "Qualcomm", "SM8850").chip)
-        assertEquals(Chip.OTHER, Phone("samsung", "SM-S948B", "Qualcomm", "SM8850").chip)
+        assertEquals(Chip.SNAPDRAGON_8_ELITE_GEN5, Phone("samsung", "Pixel 9a", "Qualcomm", "SM8850").chip)
+        assertEquals(Chip.SNAPDRAGON_8_ELITE_GEN5, Phone("samsung", "SM-S948B", "Qualcomm", "SM8850").chip)
+        // A phone that calls itself a Google Pixel 9a but reports a Qualcomm chip: the SoC fields win, never the name.
+        assertEquals(Chip.SNAPDRAGON_8_GEN3, Phone("Google", "Pixel 9a", "QTI", "SM8650").chip)
+        for (p in listOf(Phone("samsung", "Pixel 9a", "Qualcomm", "SM8850"), Phone("Google", "Pixel 9a", "QTI", "SM8650"))) {
+            assertFalse(p.chip.tensor)
+            assertEquals(TpuSupport.NONE, p.tpu)
+        }
+        assertEquals(Chip.OTHER, Phone("samsung", "Pixel 9a").chip)
         assertEquals(Chip.OTHER, Phone("Google", "Pixel 99", "Google", "Tensor G9").chip)
         assertEquals(Chip.OTHER, Phone("", "").chip)
         assertEquals("Samsung SM-S948B", Phone("samsung", "SM-S948B").name)
         assertEquals("Pixel 9a", pixel9a.name)
         assertEquals("This phone: Pixel 9a (Tensor G4)", Phones.line(pixel9a))
-        assertEquals("This phone: Samsung SM-S948B", Phones.line(Phone("samsung", "SM-S948B", "Qualcomm", "SM8850")))
+        assertEquals("This phone: Samsung SM-S948B (Snapdragon 8 Elite Gen 5)", Phones.line(Phone("samsung", "SM-S948B", "Qualcomm", "SM8850")))
+        assertEquals("This phone: Samsung SM-S948B", Phones.line(Phone("samsung", "SM-S948B")))
     }
 
     /**

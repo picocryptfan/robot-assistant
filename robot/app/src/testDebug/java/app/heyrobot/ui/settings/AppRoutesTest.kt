@@ -33,7 +33,10 @@ class AppRoutesTest {
 
     @Test fun thePanelsLinks() {
         // A chat-only model's "Open Model", and a card's "Allow" (PanelController, through HandOffApps.robotPage).
-        assertEquals(AppRoutes.Target(tab = Tab.MODEL), open(HandOffApps.robotPage(ctx, AppPages.MODEL)))
+        assertEquals(AppRoutes.Target(tab = Tab.SETTINGS, page = Page.Settings(SettingsRoutes.MODEL)), open(HandOffApps.robotPage(ctx, AppPages.MODEL)))
+        // 1.4: the "Robot Files" icon (an alias of MainActivity) and a filing notification's tap: the Files tab.
+        assertEquals(AppRoutes.Target(tab = Tab.FILES, filesIcon = true), open(Intent().setClassName(ctx.packageName, AppPages.FILES_ALIAS)))
+        assertEquals(AppRoutes.Target(tab = Tab.FILES), open(main().putExtra(AppPages.EXTRA, AppPages.FILES)))
         assertEquals(AppRoutes.Target(page = Page.Setup(people = true)), open(HandOffApps.robotPage(ctx, AppPages.PERMISSIONS)))
         assertEquals(AppRoutes.Target(tab = Tab.NOTES, notesIcon = true), open(HandOffApps.robotPage(ctx, AppPages.NOTES)))
         // 0.7.0: the panel's Settings button opens the Settings tab.

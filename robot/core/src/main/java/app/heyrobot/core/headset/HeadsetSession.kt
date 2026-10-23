@@ -9,7 +9,7 @@ import app.heyrobot.core.output.PresenceEvent
 import app.heyrobot.core.output.RememberedDevice
 import app.heyrobot.core.output.SeenDevice
 
-// Pure. A headset session as a state machine (design §3.3 "Flow", §3.6 HeadsetSession, §3.7): the :voice HeadsetSession
+// Pure. A headset session as a state machine: the :voice HeadsetSession
 // feeds it what AudioManager, the Listener and the voice report, and carries out the effects it returns. Its seam is
 // the effects, so the design's "fake AudioManager" tests (§3.9: a route timeout leads to the fallback, a route change
 // mid-sentence to a stop, no route during a call) run here on the JVM.

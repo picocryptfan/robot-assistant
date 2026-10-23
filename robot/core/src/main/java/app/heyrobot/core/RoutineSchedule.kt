@@ -9,7 +9,7 @@ import java.time.LocalTime
 import java.time.ZoneId
 import java.time.ZonedDateTime
 
-// Pure (java.time). When routines fire (design §2.1, §2.7): one exact allow-while-idle alarm for the soonest next time
+// Pure (java.time). When routines fire: one exact allow-while-idle alarm for the soonest next time
 // over all routines (never setAlarmClock, which would become Android's "next alarm" and confuse AlarmWatch), rescheduled
 // after every edit, BOOT_COMPLETED, TIME_SET and TIMEZONE_CHANGED; what a late alarm does after Doze or a reboot; and
 // a ledger so each trigger runs a routine once. The AlarmManager calls and the receivers are wired in :voice later.

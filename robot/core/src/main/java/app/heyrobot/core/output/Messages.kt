@@ -39,7 +39,7 @@ data class MessageNotice(
 ) {
     val isGroup: Boolean get() = group != null
 
-    override fun toString(): String = "MessageNotice(app=$app, replyable=$replyable, group=$isGroup, hidden=$hidden, chars=${text.length})"
+    override fun toString(): String = "MessageNotice(app=$app, replyable=$replyable, group=$isGroup, hidden=$hidden, chars=${text.length})" // l10n: not text (toString, for the logs)
 }
 
 /** 0.7's messages, as the hands-free side reads them. */

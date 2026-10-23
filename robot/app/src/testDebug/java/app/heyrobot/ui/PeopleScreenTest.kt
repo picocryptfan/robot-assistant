@@ -128,4 +128,23 @@ class PeopleScreenTest {
         rule.scrollToText("Add person")
         rule.shot("people_light")
     }
+
+    /** 1.1: French menus (values-fr-rCA/strings_people.xml): the list and the notification access steps in Québec French. */
+    @Config(qualifiers = "fr-rCA-w411dp-h891dp-xhdpi")
+    @Test fun inFrench() {
+        val host = SettingsHost(RobotSettings())
+        rule.showSettings(host) { s, u -> PeopleScreen(s, u, null, log.actions, SnackbarHostState(), onOpen = { opened += it }, onBack = {}) }
+        rule.waitUntil(5_000) { runCatching { rule.scrollToText("Appris des notifications (1)") }.isSuccess }
+        rule.scrollToText("Ajouter une personne")
+        rule.onNodeWithText("Ajouter depuis les contacts du téléphone").assertExists()
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
+    }
+
+    @Config(qualifiers = "fr-rCA-w411dp-h891dp-xhdpi")
+    @Test fun notificationAccessInFrench() {
+        rule.show { NotificationAccessScreen(null, onBack = {}) }
+        rule.onNodeWithText("paramètre restreint pour les applis installées", substring = true).assertExists()
+        rule.onNodeWithText("Infos sur l’appli").assertExists()
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
+    }
 }

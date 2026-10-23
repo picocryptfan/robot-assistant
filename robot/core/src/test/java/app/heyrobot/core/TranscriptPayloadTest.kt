@@ -72,6 +72,47 @@ class TranscriptPayloadTest {
         assertTrue(c.withNames(replace = true) === c)
     }
 
+    @Test fun replaceNamesTakesEveryNameYouGave() {
+        val r = TranscriptFold().apply {
+            apply(TranscriptEvent.Line(0, 10.0, 14.0, "S1", "fr", "Marie Tremblay arrive avec Élise, puis Tremblay repart."))
+            apply(TranscriptEvent.Line(1, 20.0, 24.0, "S2", "fr", "Oui, marie et élise viennent de la gare avec Bob et Robert."))
+            apply(TranscriptEvent.Line(2, 30.0, 34.0, "S3", "fr", "Et Jean de la Roche aussi."))
+            apply(TranscriptEvent.Line(3, 40.0, 44.0, "S4", "en", "Hi."))
+            apply(TranscriptEvent.Rename("S1", "Marie Tremblay"))
+            // A name you changed: the earlier one is still in what was said.
+            apply(TranscriptEvent.Rename("S2", "Bob"))
+            apply(TranscriptEvent.Rename("S2", "Élise"))
+            // A merge drops one of two names.
+            apply(TranscriptEvent.Rename("S3", "Jean de la Roche"))
+            apply(TranscriptEvent.Rename("S5", "Robert"))
+            apply(TranscriptEvent.Merge("S5", "S3"))
+            // A speaker whose only line went to someone else.
+            apply(TranscriptEvent.Rename("S4", "Zoé"))
+            apply(TranscriptEvent.Speaker(3, "S1"))
+        }.result()
+        assertEquals(mapOf("S2" to listOf("Bob"), "S3" to listOf("Robert")), r.formerNames)
+        val c = ConsentCard.build("claude-api", "Claude", api, meta, r, now, "CA", "en", zone, anonymize = true)
+        val sent = c.blocks[2].text
+        for (n in listOf("Marie", "Tremblay", "Élise", "élise", "marie", "Bob", "Robert", "Jean", "Roche", "Zoé")) assertFalse("$n: $sent", sent.contains(n))
+        assertTrue(sent, sent.contains("Speaker 1 (fr): Speaker 1 arrive avec Speaker 2, puis Speaker 1 repart."))
+        assertTrue(sent, sent.contains("Speaker 2 (fr): Oui, Speaker 1 et Speaker 2 viennent de la gare avec Speaker 2 et Speaker 3."))
+        // A name's particles alone are everyday words: "de la gare" stays.
+        assertTrue(sent, sent.contains("Speaker 3 (fr): Et Speaker 3 aussi."))
+        // Every name here has its speaker: nobody is "someone".
+        assertFalse(sent, sent.contains("someone"))
+        // A name no speaker is heard under any more: "someone".
+        val gone = ConsentCard.build("claude-api", "Claude", api, meta, TranscriptFold().apply {
+            apply(TranscriptEvent.Line(0, 10.0, 14.0, "S1", "en", "Zoé said hi to Paul Martin and Anne Martin."))
+            apply(TranscriptEvent.Rename("S7", "Zoé"))
+            apply(TranscriptEvent.Rename("S1", "Paul Martin"))
+            apply(TranscriptEvent.Line(1, 20.0, 24.0, "S2", "en", "Martin?"))
+            apply(TranscriptEvent.Rename("S2", "Anne Martin"))
+        }.result(), now, "CA", "en", zone, anonymize = true).blocks[2].text
+        // A word two speakers' names share is "someone" too.
+        assertTrue(gone, gone.contains("Speaker 1 (en): someone said hi to Speaker 1 and Speaker 2."))
+        assertTrue(gone, gone.contains("Speaker 2 (en): someone?"))
+    }
+
     @Test fun noPathSendsWithoutYourTap() {
         // A job can't be made except from a card's Send: no public constructor.
         for (k in SummaryJob::class.java.declaredConstructors) assertTrue(k.toString(), Modifier.isPrivate(k.modifiers) || k.isSynthetic)

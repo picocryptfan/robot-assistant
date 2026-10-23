@@ -1,0 +1,84 @@
+<!-- The panel: its buttons, hints, chips and empty states, in Québec French (tu): the l10n work package WP2. The
+     ids of values/strings_panel.xml; each value written with the glossary (robot/l10n/glossary.tsv) and the OQLF's
+     spaces (tools/fr_typo.py, FrenchTypographyTest). -->
+<resources>
+    <string name="panel_said_locked">Dit pendant que le téléphone était verrouillé</string>
+
+    <string name="panel_close">Fermer</string>
+    <string name="panel_keep">Garder</string>
+    <string name="panel_speak_replies">Lire les réponses à voix haute</string>
+    <string name="panel_new_conversation">Nouvelle conversation</string>
+    <string name="panel_settings">Réglages</string>
+    <string name="panel_model_not_ready">Le modèle n’est pas prêt.</string>
+    <string name="panel_open_robot">Ouvrir Robot</string>
+    <string name="panel_photo">Photo</string>
+    <string name="panel_remove_screen">Retirer l’écran</string>
+    <string name="panel_remove_photo">Retirer la photo</string>
+    <string name="panel_read_claude_answer">Lire la réponse de Claude</string>
+    <string name="panel_add_photo">Ajouter une photo</string>
+    <string name="panel_cancel">Annuler</string>
+    <string name="panel_stop_speaking">Arrêter de parler</string>
+
+    <string name="panel_talking_with_back">Avec %1$s · Revenir à Robot</string>
+    <string name="panel_dismiss">Fermer</string>
+    <string name="panel_ask_me_anything">Demande-moi n’importe quoi.</string>
+    <string name="panel_can_see_screen">Je peux aussi regarder ce qui est sur ton écran.</string>
+    <string name="panel_type_photo_or_say">Écris, prends une photo, ou dis «&#160;hey robot&#160;» la prochaine fois.</string>
+    <string name="panel_done">OK</string>
+    <string name="panel_your_screen">Ton écran</string>
+    <string name="panel_goes_with_next">Part avec ta prochaine question</string>
+    <string name="panel_listening_state">À l’écoute</string>
+    <string name="panel_unlock_for_your_photos">Déverrouille pour utiliser l’appareil photo ou tes photos.</string>
+    <string name="panel_camera">Appareil photo</string>
+    <string name="panel_photos">Photos</string>
+    <string name="panel_yes_or_no">Oui ou non…</string>
+    <string name="panel_ask_about_it">Pose une question là-dessus…</string>
+    <string name="panel_ask_robot">Demande à Robot…</string>
+    <string name="panel_stop">Arrêter</string>
+    <string name="panel_send">Envoyer</string>
+    <string name="panel_talk_to_robot_why">Parler à Robot. %1$s</string>
+    <string name="panel_talk_to_robot">Parler à Robot</string>
+    <string name="panel_talk">Parler</string>
+    <string name="panel_screen">Écran</string>
+    <string name="panel_show_less">Afficher moins</string>
+    <string name="panel_show_all">Tout afficher</string>
+    <string name="panel_claude_from_app">Claude, depuis l’appli Claude</string>
+    <string name="panel_stopped">Arrêté</string>
+    <string name="panel_open_app_with">Ouvrir l’appli %1$s avec&#160;: «&#160;%2$s&#160;»</string>
+    <string name="panel_want_take_as_well">Veux-tu aussi l’avis de %1$s&#8239;?</string>
+    <string name="panel_want_check_with">Veux-tu que je vérifie avec %1$s&#8239;?</string>
+    <string name="panel_sends">Envoie&#160;: %1$s.</string>
+    <string name="panel_no_thanks">Non merci</string>
+    <string name="panel_open_app">Ouvrir l’appli</string>
+
+    <string name="panel_cheogram_not_installed">Cheogram n’est pas installé</string>
+    <string name="panel_cheogram_list_didnt_open">La liste de contacts de Cheogram ne s’est pas ouverte</string>
+    <string name="panel_cheogram_nobody">Personne n’a été choisi</string>
+    <string name="panel_cheogram_unreadable">La réponse de Cheogram est illisible</string>
+    <string name="panel_cheogram_no_who">Cheogram n’a pas dit qui a été choisi</string>
+    <string name="panel_cheogram_bad_address">Robot ne peut pas ouvrir de conversation avec cette adresse</string>
+    <string name="panel_cheogram_didnt_open">Cheogram ne s’est pas ouvert.</string>
+    <string name="panel_cheogram_remember_name">Retenir %1$s&#8239;?</string>
+    <string name="panel_cheogram_remember_as">Retenir sous le nom %1$s&#8239;?</string>
+    <string name="panel_cheogram_calls_them">Cheogram l’appelle %1$s.</string>
+    <string name="panel_cheogram_keeps">Robot garde ça dans Personnes, sur ton téléphone seulement, pour ouvrir directement sa conversation la prochaine fois.</string>
+    <string name="panel_cheogram_remember">Retenir</string>
+    <string name="panel_not_now">Pas maintenant</string>
+    <string name="panel_cheogram_share_instead">Choisir plutôt à qui écrire dans l’écran de partage de Cheogram&#8239;? Le message part avec, et rien n’est envoyé tant que tu ne touches pas Envoyer.</string>
+    <string name="panel_cheogram_choose">Choisir dans Cheogram</string>
+
+    <string name="panel_web_key_title">%1$s&#160;: clé d’API</string>
+    <string name="panel_web_key_where">%1$s Robot chiffre la clé sur ce téléphone et seule la partie assistant de Robot la lit.</string>
+    <string name="panel_web_api_key">Clé d’API</string>
+    <string name="panel_web_key_not_saved">La clé n’a pas pu être enregistrée sur ce téléphone.</string>
+    <string name="panel_web_save">Enregistrer</string>
+    <string name="panel_web_testing">Test de %1$s…</string>
+    <string name="panel_web_test_sends">Robot envoie le mot «&#160;test&#160;» une fois et lit ce qui revient.</string>
+    <string name="panel_web_works">%1$s fonctionne</string>
+    <string name="panel_web_didnt_work">%1$s n’a pas fonctionné</string>
+    <string name="panel_web_change_key">Changer la clé</string>
+    <string name="panel_web_test_again">Tester de nouveau</string>
+    <string name="panel_web_key_unreadable">La clé n’a pas pu être lue pour l’instant. Réessaie dans un moment.</string>
+
+    <string name="panel_couldnt_open_assistant">Impossible d’ouvrir l’assistant.</string>
+</resources>

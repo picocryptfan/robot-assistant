@@ -221,6 +221,20 @@ class HandsFreeSettingsTest {
         assertEquals("back", calls.last())
     }
 
+    /** WP9b: the car screen with the menus in French: its title from core, the buttons from strings_handsfree.xml, one status line. */
+    @Test @Config(qualifiers = "fr-rCA-w411dp-h891dp-xhdpi")
+    fun theCarScreenInFrench() {
+        val fr = app.heyrobot.core.i18n.Langs.of(app.heyrobot.core.i18n.Lang.FR)
+        rule.show(dark = true) {
+            CarModeScreen(CarScreenState(CarScreen.titleText(true).render(fr), trusted = true,
+                status = CarScreen.status("Appel de Martine Martin, cellulaire, sur une ligne bien trop longue"),
+                buttons = CarScreen.buttons(messages = false, home = true)), CarScreenActions(talk = {}, call = {}, navigateHome = {}, end = {}))
+        }
+        rule.onNodeWithText("Terminer le mode auto").assertExists()
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
+        rule.shot("car_screen_fr")
+    }
+
     @Test fun theCarScreenHasBigButtonsAndOneLine() {
         val taps = ArrayList<String>()
         rule.show(dark = true) {

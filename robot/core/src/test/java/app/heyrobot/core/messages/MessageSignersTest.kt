@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.messages
 
+import app.heyrobot.core.i18n.Lang
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.nio.file.Files
 import java.util.concurrent.CountDownLatch
@@ -18,6 +21,8 @@ import java.util.concurrent.TimeUnit
  * an app that was on at its first notification. messages.json changes one at a time, under its lock, read from the file.
  */
 class MessageSignersTest {
+    @get:Rule val tmpRoot = TemporaryFolder()
+
     private val signal = "a".repeat(64)
     private val other = "b".repeat(64)
     private val fdroid = "c".repeat(64)
@@ -107,7 +112,7 @@ class MessageSignersTest {
 
     /** Settings, People's switch and the bridge's "Always for …" writing at once: every change is in the file after. */
     @Test fun concurrentWritersLoseNothing() {
-        val dir = Files.createTempDirectory("messages").toFile()
+        val dir = Files.createTempDirectory(tmpRoot.root.toPath(), "messages").toFile()
         val file = File(dir, MessagesFile.FILE)
         val pool = Executors.newFixedThreadPool(8)
         val start = CountDownLatch(1)
@@ -133,6 +138,5 @@ class MessageSignersTest {
         assertTrue(f.settings.on)
         // Written whole: no temporary file left, and the lock beside it.
         assertEquals(setOf(MessagesFile.FILE, MessagesFile.LOCK), dir.list()!!.toSet())
-        dir.deleteRecursively()
     }
 }

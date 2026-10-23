@@ -19,6 +19,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -27,9 +29,14 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import app.heyrobot.R
 import app.heyrobot.core.ActionStatus
 import app.heyrobot.core.Markdown
 import app.heyrobot.core.ToolName
+import app.heyrobot.core.i18n.PanelStrings
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.TurnStrings
+import app.heyrobot.ui.theme.str
 
 // Main and voice processes: what the assistant panel and History show of a conversation besides its text (ui/common
 // Transcript.kt): what an action's card and the offer to ask a helper show, and Markdown. The bubbles and their cards are
@@ -65,6 +72,10 @@ data class ActionView(
     val allowContacts: Boolean = false,
     /** 0.9: a Termux command or script, drawn as its own card (TermuxCard). */
     val termux: TermuxCardView? = null,
+    /** 1.1: small buttons that change what the card does (a skill's save card: "12 minutes · fixed"); a tap answers it with core Card.CHIP + i. */
+    val chips: List<String> = emptyList(),
+    /** 1.4: a Robot Files card: the folder's symbol. */
+    val files: Boolean = false,
 )
 
 /** What a card can ask the panel for besides "Do it" and "Cancel". */
@@ -108,14 +119,16 @@ fun toolIcon(t: ToolName?): ImageVector = when (t) {
     ToolName.REMEMBER, ToolName.FORGET -> RIcons.BookmarkAdded
     ToolName.WEB_SEARCH, ToolName.BROWSER_SEARCH -> RIcons.Search
     ToolName.TERMUX_SCRIPT, ToolName.TERMUX_COMMAND -> RIcons.Terminal
+    ToolName.FIND_FILES, ToolName.READ_FILE -> RIcons.Folder
     null -> RIcons.Warning
 }
 
-/** The line under a card's summary: what it waits for, or how it went. */
+/** The line under a card's summary: what it waits for, or how it went (its state in the menus' language, its line as the turn said it). */
+@Composable
 fun cardStatusLine(a: ActionView): String = when (a.status) {
-    ActionStatus.PENDING -> a.detail ?: if (a.choices.isNotEmpty()) "Which one?" else "Do you want Robot to do this?"
-    ActionStatus.DONE, ActionStatus.DRAFT_OPENED -> a.detail ?: a.status.label
-    else -> listOfNotNull(a.status.label, a.detail).joinToString(". ")
+    ActionStatus.PENDING -> a.detail ?: stringResource(if (a.choices.isNotEmpty()) R.string.card_which_one else R.string.card_do_you_want)
+    ActionStatus.DONE, ActionStatus.DRAFT_OPENED -> a.detail ?: a.status.text.str()
+    else -> listOfNotNull(a.status.text.str(), a.detail).joinToString(". ")
 }
 
 /** A thumbnail kept with a question ([app.heyrobot.core.ChatTurn.picture], Base64 JPEG), or null if it can't be read. */
@@ -125,10 +138,13 @@ fun keptPicture(b64: String?): Bitmap? = try {
     null
 }
 
-/** The lines under a helper's reply ([by]: its name): the search and its domains, then the cost. */
-fun replyFooter(sources: List<String>, cost: String?, by: String? = null): List<String> = listOfNotNull(
-    if (sources.isNotEmpty()) "${by ?: "The helper"} searched the web · " + sources.joinToString(", ") else null,
-    cost,
+/** The lines under a helper's reply ([by]: its name): the search and its domains, then the cost. In English: [replyFooterText]. */
+fun replyFooter(sources: List<String>, cost: String?, by: String? = null): List<String> = replyFooterText(sources, cost, by).map { it.en() }
+
+/** [replyFooter] in words without a language yet (1.1: a screen shows them with `str()`, in the menus' language). */
+fun replyFooterText(sources: List<String>, cost: String?, by: String? = null): List<Phrase> = listOfNotNull(
+    if (sources.isNotEmpty()) TurnStrings.searchedWeb("name" to (by ?: PanelStrings.theHelperStart()), "sites" to sources.joinToString(", ")) else null,
+    cost?.let(Phrase::plain),
 )
 
 /** Light Markdown (core's parser); with a caret while the reply streams when [streaming]. */

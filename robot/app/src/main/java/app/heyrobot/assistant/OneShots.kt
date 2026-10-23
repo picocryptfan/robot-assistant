@@ -7,6 +7,7 @@ import app.heyrobot.core.BrainMsg
 import app.heyrobot.core.BrainProtocol
 import app.heyrobot.core.OneShotBudget
 import app.heyrobot.core.OneShotFold
+import app.heyrobot.core.OneShotKind
 import app.heyrobot.core.OneShotResult
 import app.heyrobot.core.OneShotStart
 import app.heyrobot.core.OneShotTransport
@@ -27,7 +28,18 @@ object BrainOneShots : OneShotTransport {
     /** How often the deadlines are looked at. */
     private const val WATCH_MS = 100L
 
-    override suspend fun run(req: BrainMsg.OneShot, budget: OneShotBudget, onText: (String) -> Unit): OneShotResult {
+    override suspend fun run(req: BrainMsg.OneShot, budget: OneShotBudget, onText: (String) -> Unit): OneShotResult = send(req, null, budget, onText)
+
+    /**
+     * 1.4 (Robot Files, plan §4.2): a FILE_READ of one page's picture, [jpeg] as `:files` made it. It crosses as a panel
+     * photo does (a read-only SharedMemory, never a file); a model without vision answers NO_VISION (OneShotResult.Failed),
+     * and the caller keeps the file for one that sees. A request that doesn't say it carries a picture isn't sent.
+     */
+    suspend fun runWithImage(req: BrainMsg.OneShot, jpeg: ByteArray, budget: OneShotBudget, onText: (String) -> Unit = {}): OneShotResult =
+        if (!req.hasImage || req.kind != OneShotKind.FILE_READ) OneShotResult.Failed(BrainError.BAD_REQUEST) else send(req, jpeg, budget, onText)
+
+    private suspend fun send(req: BrainMsg.OneShot, image: ByteArray?, budget: OneShotBudget, onText: (String) -> Unit): OneShotResult {
+        if (image == null && req.hasImage) return OneShotResult.Failed(BrainError.BAD_REQUEST)
         val ctx = VoiceHub.app
         val askedAt = SystemClock.elapsedRealtime()
         // A translation someone waits for doesn't wait for a model to load: the fast engine answers meanwhile, and the
@@ -44,7 +56,7 @@ object BrainOneShots : OneShotTransport {
             is OneShotStart.Wait.Ended -> return w.result
             is OneShotStart.Wait.Ready -> Triple(w.client, w.from, w.startBy)
         }
-        val (id, flow) = c.request(BrainProtocol.REQ_ONE_SHOT, req)
+        val (id, flow) = c.request(BrainProtocol.REQ_ONE_SHOT, req, image)
         val fold = OneShotFold(t0)
         val late = AtomicBoolean(false)
         val slow = AtomicBoolean(false)

@@ -140,7 +140,7 @@ class OpenAiSession(
             rollBack()
             return
         }
-        val why = if (stopped) "The user stopped before this ran." else "The turn ended before this ran."
+        val why = if (stopped) "The user stopped before this ran." else "The turn ended before this ran." // l10n: not text (tool result for the model)
         addResults(pending, pending.indices.map { i -> results.getOrNull(i) ?: mapOf("status" to "not_done", "detail" to why) })
         pending = emptyList()
         keep = messages.size
@@ -148,7 +148,7 @@ class OpenAiSession(
 
     private fun addResults(ids: List<String>, results: List<Map<String, Any?>>) {
         for ((i, id) in ids.withIndex()) {
-            val r = results.getOrNull(i) ?: mapOf("status" to "not_done", "detail" to "Robot didn't run this call.")
+            val r = results.getOrNull(i) ?: mapOf("status" to "not_done", "detail" to "Robot didn't run this call.") // l10n: not text (tool result for the model)
             messages += if (responses) RespWire.toolResult(id, r) else ChatWire.toolResult(id, r)
         }
     }
@@ -478,7 +478,7 @@ class OpenAiSession(
             is UnknownHostException, is ConnectException, is NoRouteToHostException -> if (home) HelperFailure.UNREACHABLE else HelperFailure.NO_INTERNET
             is InterruptedIOException -> if (home && !opened) HelperFailure.UNREACHABLE else HelperFailure.TIMEOUT
             // A header OkHttp can't send ("Unexpected char … in Authorization value"): the key has a character a key never has.
-            is IllegalArgumentException -> if (t.message?.startsWith("Unexpected char") == true) HelperFailure.KEY_REFUSED else HelperFailure.UNKNOWN
+            is IllegalArgumentException -> if (t.message?.startsWith("Unexpected char") == true) HelperFailure.KEY_REFUSED else HelperFailure.UNKNOWN // l10n: not text (OkHttp's exception message)
             is java.io.IOException -> if (home) HelperFailure.UNREACHABLE else HelperFailure.NO_INTERNET
             else -> HelperFailure.UNKNOWN
         }

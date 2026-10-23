@@ -351,11 +351,11 @@ object VCard {
             append(fold("N:;" + escape(p.name) + ";;;"))
             val nick = p.aliases + p.nicknames
             if (nick.isNotEmpty()) append(fold("NICKNAME:" + nick.joinToString(",") { escape(it) }))
-            for (t in p.phones) append(fold("TEL;TYPE=" + telType(t.kind) + ":" + escape(t.number)))
-            for (e in p.emails) append(fold("EMAIL;TYPE=INTERNET:" + escape(e)))
+            for (t in p.phones) append(fold("TEL;TYPE=" + telType(t.kind) + ":" + escape(t.number))) // l10n: not text (vCard fields)
+            for (e in p.emails) append(fold("EMAIL;TYPE=INTERNET:" + escape(e))) // l10n: not text (vCard fields)
             for (x in p.xmpp) {
                 val acct = x.account?.takeIf { Addresses.isAddress(it) && !it.contains('"') }?.let { ";$ACCOUNT_PARAM=\"$it\"" } ?: ""
-                append(fold("IMPP$acct:xmpp:" + x.jid))
+                append(fold("IMPP$acct:xmpp:" + x.jid)) // l10n: not text (vCard fields)
                 append(fold("X-JABBER:" + escape(x.jid)))
             }
             append(fold("END:VCARD"))

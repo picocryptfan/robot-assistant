@@ -1,20 +1,32 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
-import java.text.Normalizer
+import app.heyrobot.core.i18n.Lang
+import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.RoutineStrings
+import app.heyrobot.core.i18n.UiLabel
+import app.heyrobot.core.i18n.UiStrings
+import app.heyrobot.core.StepPhrases.Period
+import app.heyrobot.core.StepPhrases.Words
+import app.heyrobot.core.StepPhrases.actions
+import app.heyrobot.core.StepPhrases.clock
+import app.heyrobot.core.StepPhrases.clockPeriod
+import app.heyrobot.core.StepPhrases.resolve
 import java.time.DayOfWeek
 import java.time.LocalTime
 import java.time.ZonedDateTime
 import java.util.Locale
 import java.util.UUID
 
-// Pure. Routines by voice (design §2.3 `RoutineRouter`), English and Québec French, decided by code before anything
+// Pure. Routines by voice, English and Québec French, decided by code before anything
 // reaches Gemma, anchored at the start of what you said (only "hey robot", "please" and the like in front), like
 // HelperRouter. "Every weekday at 7, tell me the weather and my calendar" becomes a draft routine shown on its card; it is
 // never saved without your yes (or a tap, when it came from content). Steps map through the same words as the tools, "pis"
 // counts as "et", and a part not understood is never guessed: the card names it and points to Routines. It must not
 // misfire on ordinary talk ("every time I call Bob he…", "when I was at work", "chaque fois que…") or on a reminder with a
-// time, which stays an alarm or an event as today.
+// time and no day, which stays the model's. 1.1: a reminder with a day ("remind me to call the bank on the 20th", with or
+// without a time) is a dated reminder, an event with an alert on add_event's card (RoutineCommand.RemindOn).
 
 sealed class RoutineCommand {
     /** "morning brief", "what's my day", "mon résumé du matin", "bon matin" (as a whole utterance). */
@@ -34,6 +46,26 @@ sealed class RoutineCommand {
 
     /** "remind me in the morning to …", "add to my brief: …": a brief reminder ([tomorrow]: "tomorrow morning" was said). */
     data class Remind(val text: String, val tomorrow: Boolean) : RoutineCommand()
+
+    /**
+     * 1.1, a dated reminder: "remind me to call the bank on the twentieth of November", « rappelle-moi d'appeler le dentiste
+     * le vingt novembre », with or without a time. It becomes an event with an alert, on add_event's card ([title], and
+     * [whenText] as you said it).
+     */
+    data class RemindOn(val title: String, val whenText: String) : RoutineCommand()
+
+    /**
+     * 1.1 (phone, 22 Oct): "remind me", "remind me about it", « rappelle-moi ça »: nothing to remind and no time. In a new
+     * conversation Robot asks what and when (PanelRoutines), rather than the model saving a note of your words.
+     */
+    data object RemindWhat : RoutineCommand()
+
+    /**
+     * 1.1 (phone, 22 Oct: "Cancel my 6:30 alarm" became a card to set one for 23:30): "cancel my alarm", « annule ma
+     * minuterie ». Android lets an app set alarms and timers, not cancel them: Robot says so and offers your clock app, opened
+     * only by a tap ([timer]: a timer was named; [french]: said in French).
+     */
+    data class CantCancel(val timer: Boolean, val french: Boolean) : RoutineCommand()
 }
 
 /**
@@ -43,11 +75,13 @@ sealed class RoutineCommand {
  */
 data class RoutineDraft(
     val routine: Routine,
-    val lang: BriefLang,
+    val lang: Lang,
     val unparsed: List<String> = emptyList(),
     val refused: List<String> = emptyList(),
     val notes: List<String> = emptyList(),
     val fromContent: Boolean = false,
+    /** 1.1: [notes] without a language yet (the card shows them in the turn's reply language). */
+    val noteTexts: List<Phrase> = notes.map(Phrase::plain),
 ) {
     val problems: List<String> get() = RoutineCheck.problems(routine)
     val canSave: Boolean get() = problems.isEmpty()
@@ -59,74 +93,113 @@ data class RoutineDraft(
     fun save(nowMs: Long): Routine? = if (canSave) routine.copy(online = routine.needsOnline, created = nowMs, edited = nowMs) else null
 
     fun card(): RoutineCard = RoutineCards.card(this)
+
+    fun cardText(): RoutineCardText = RoutineCards.cardText(this)
 }
 
-/** The routine card (design §2.5 "Saving always shows a card"): what starts it, every step with its class, where it speaks, what goes online. */
+/** The routine card: what starts it, every step with its class, where it speaks, what goes online. */
 data class RoutineCard(val title: String, val lines: List<String>, val footer: String)
 
+/** 1.1: [RoutineCard] in words without a language yet: by voice in the turn's reply language, in Settings in the menus'. */
+data class RoutineCardText(val title: Phrase, val lines: List<Phrase>, val footer: Phrase) {
+    /** In [l] (English: [RoutineCards.card]'s words). */
+    fun render(l: Langs): RoutineCard = RoutineCard(title.render(l), lines.map { it.render(l) }, footer.render(l))
+}
+
 object RoutineCards {
-    private fun hm(t: LocalTime) = String.format(Locale.US, "%02d:%02d", t.hour, t.minute)
+    private val DAYS = listOf(RoutineStrings.monday, RoutineStrings.tuesday, RoutineStrings.wednesday, RoutineStrings.thursday, RoutineStrings.friday,
+        RoutineStrings.saturday, RoutineStrings.sunday)
+
+    /** "07:00", "17:30" (a 24-hour clock) / « 7 h », « 17 h 30 » (core EventText's). */
+    private fun hm(t: LocalTime): Phrase = EventText.clock(t.hour, t.minute)
 
     /** "every day", "every weekday", "on weekends", "every Monday and Friday". */
-    fun days(d: Set<DayOfWeek>): String = when (d) {
-        DayOfWeek.entries.toSet() -> "every day"
-        RoutineWords.WEEKDAYS -> "every weekday"
-        RoutineWords.WEEKEND -> "on weekends"
-        else -> d.sortedBy { it.value }.map { BriefClock.dayEn(it) }.let { n ->
-            "every " + if (n.size == 1) n[0] else n.dropLast(1).joinToString(", ") + " and " + n.last()
-        }
+    fun days(d: Set<DayOfWeek>): String = daysText(d).en()
+
+    /** [days] without a language yet (« tous les jours », « en semaine », « chaque lundi et vendredi »). */
+    fun daysText(d: Set<DayOfWeek>): Phrase = when (d) {
+        DayOfWeek.entries.toSet() -> RoutineStrings.everyDay()
+        RoutineWords.WEEKDAYS -> RoutineStrings.everyWeekday()
+        RoutineWords.WEEKEND -> RoutineStrings.onWeekends()
+        else -> RoutineStrings.everyDays("days" to Phrase.ListOf(d.sortedBy { it.value }.map { dayName(it) }))
     }
 
+    /** "Monday" / « lundi ». */
+    fun dayName(d: DayOfWeek): Phrase = DAYS[d.value - 1]()
+
     /** "every weekday at 07:00", "when you turn off an alarm between 04:00 and 12:00", "when your car connects". */
-    fun trigger(t: RoutineTrigger): String = when (t) {
-        is RoutineTrigger.At -> (t.once?.let { "on ${EventText.day(it, it.year)}" } ?: days(t.days)) + " at " + hm(t.time)
-        is RoutineTrigger.AlarmDismissed -> "when you turn off an alarm between ${hm(t.window.from)} and ${hm(t.window.to)}"
-        is RoutineTrigger.Unlock -> "the first time you unlock after ${hm(t.after)}"
-        is RoutineTrigger.Device -> {
-            val what = when (t.type) { DeviceKind.HEADSET -> "your headphones"; DeviceKind.CAR -> "your car" }
-            val verb = when { t.type == DeviceKind.HEADSET && t.connect -> "connect"; t.type == DeviceKind.HEADSET -> "disconnect"; t.connect -> "connects"; else -> "disconnects" }
-            "when $what $verb"
+    fun trigger(t: RoutineTrigger): String = triggerText(t).en()
+
+    /** [trigger] without a language yet. */
+    fun triggerText(t: RoutineTrigger): Phrase = when (t) {
+        is RoutineTrigger.At -> t.once?.let { RoutineStrings.onDateAt("date" to EventText.dayText(it, it.year), "time" to hm(t.time)) }
+            ?: RoutineStrings.daysAt("days" to daysText(t.days), "time" to hm(t.time))
+        is RoutineTrigger.AlarmDismissed -> RoutineStrings.alarmBetween("from" to hm(t.window.from), "to" to hm(t.window.to))
+        is RoutineTrigger.Unlock -> RoutineStrings.firstUnlock("time" to hm(t.after))
+        is RoutineTrigger.Device -> when {
+            t.type == DeviceKind.HEADSET && t.connect -> RoutineStrings.headphonesConnect()
+            t.type == DeviceKind.HEADSET -> RoutineStrings.headphonesDisconnect()
+            t.connect -> RoutineStrings.carConnects()
+            else -> RoutineStrings.carDisconnects()
         }
-        is RoutineTrigger.Charging -> if (t.start) "when charging starts" else "when charging stops"
-        RoutineTrigger.Asked -> "only when you ask"
+        is RoutineTrigger.Charging -> if (t.start) RoutineStrings.chargingStarts() else RoutineStrings.chargingStops()
+        RoutineTrigger.Asked -> RoutineStrings.onlyAsked()
     }
 
     /** The trigger with the routine's conditions ("when charging starts, between 18:00 and 04:00"). */
-    fun whenText(r: Routine): String {
+    fun whenText(r: Routine): String = whenPhrase(r).en()
+
+    /** [whenText] without a language yet. */
+    fun whenPhrase(r: Routine): Phrase {
         val c = r.conditions
-        if (r.trigger is RoutineTrigger.At || r.trigger == RoutineTrigger.Asked) return trigger(r.trigger)
-        return listOfNotNull(trigger(r.trigger), c.between?.let { "between ${hm(it.from)} and ${hm(it.to)}" }, c.days?.let { days(it) },
-            if (c.oncePerDay) "at most once a day" else null).joinToString(", ")
+        if (r.trigger is RoutineTrigger.At || r.trigger == RoutineTrigger.Asked) return triggerText(r.trigger)
+        return Phrase.Join(listOfNotNull(triggerText(r.trigger), c.between?.let { RoutineStrings.between("from" to hm(it.from), "to" to hm(it.to)) },
+            c.days?.let { daysText(it) }, if (c.oncePerDay) RoutineStrings.oncePerDay() else null), ", ")
     }
 
-    fun card(d: RoutineDraft): RoutineCard {
+    /** "runs by itself", "waits for you", and "goes online: Open-Meteo (the weather)" for the weather. */
+    fun badgeText(s: RoutineStep): Phrase {
+        val badge = RoutineGate.classOf(s).badgeText
+        return s.online?.let { RoutineStrings.badgeOnline("badge" to badge, "service" to it.text) } ?: badge
+    }
+
+    /** The card in English (as 1.0). */
+    fun card(d: RoutineDraft): RoutineCard = cardText(d).render(Langs.EN)
+
+    /** [card] without a language yet. */
+    fun cardText(d: RoutineDraft): RoutineCardText {
         val r = d.routine
+        val page = UiLabel(UiStrings.routines)
         val lines = buildList {
-            add("When: ${whenText(r)}")
-            r.steps.forEachIndexed { i, s ->
-                add("${i + 1}. ${s.describe()} · ${RoutineGate.classOf(s).badge}" + (s.online?.let { " · goes online: ${it.title}" } ?: ""))
-            }
-            add("Speaks: ${r.output.title}")
+            add(RoutineStrings.cardWhen("when" to whenPhrase(r)))
+            r.steps.forEachIndexed { i, s -> add(RoutineStrings.cardStep("i" to (i + 1).toString(), "step" to s.summary(), "badge" to badgeText(s))) }
+            add(RoutineStrings.cardSpeaks("output" to r.output.text))
             val online = r.needsOnline
-            add(if (online.isEmpty()) "Nothing goes online." else "Online by itself: " + online.joinToString(", ") { it.title } + ". Nothing about you is sent.")
-            for (u in d.unparsed) add("I didn't understand “$u”: edit it in Routines.")
-            for (x in d.refused) add("Routines can't free memory or storage, delete things or ask a helper: “$x” was left out.")
-            addAll(d.notes)
-            addAll(d.problems)
+            add(if (online.isEmpty()) RoutineStrings.nothingOnline() else RoutineStrings.onlineByItself("services" to Phrase.Join(online.map { it.text }, ", ")))
+            for (u in d.unparsed) add(RoutineStrings.notUnderstood("words" to u, "page" to page))
+            for (x in d.refused) add(RoutineStrings.leftOut("words" to x))
+            addAll(d.noteTexts)
+            addAll(RoutineCheck.problemTexts(r))
         }
         val footer = when {
-            !d.canSave -> "Edit it in Routines to save it."
-            d.fromContent -> "Tap Save: this routine came from the screen."
-            else -> "Say yes or tap Save."
+            !d.canSave -> RoutineStrings.editToSave("page" to page)
+            d.fromContent -> RoutineStrings.tapSaveFromScreen("save" to UiLabel(UiStrings.save))
+            else -> RoutineStrings.sayYesOrTapSave("save" to UiLabel(UiStrings.save))
         }
-        return RoutineCard("Save the routine “${r.name}”?", lines, footer)
+        return RoutineCardText(RoutineStrings.saveTitle("name" to r.name), lines, footer)
     }
 
     /** What Robot says for "list my routines". */
-    fun list(routines: List<Routine>): String {
-        if (routines.isEmpty()) return "You have no routines yet. Say, for example: every weekday at 7, tell me the weather and my calendar."
-        val items = routines.map { r -> "${r.name}, ${whenText(r)}" + if (r.enabled) "" else " (off)" }
-        return (if (routines.size == 1) "You have 1 routine: " else "You have ${routines.size} routines: ") + items.joinToString("; ") + "."
+    fun list(routines: List<Routine>): String = listText(routines).en()
+
+    /** [list] without a language yet (the built-in brief by its name in that language). */
+    fun listText(routines: List<Routine>): Phrase {
+        if (routines.isEmpty()) return RoutineStrings.listNone()
+        val items = routines.map { r ->
+            val name = RoutineTexts.name(r.id, r.name)
+            if (r.enabled) RoutineStrings.listItem("name" to name, "when" to whenPhrase(r)) else RoutineStrings.listItemOff("name" to name, "when" to whenPhrase(r))
+        }
+        return RoutineStrings.list(routines.size, "list" to RoutineTexts.semicolons(items))
     }
 }
 
@@ -138,60 +211,6 @@ object RoutineWords {
 }
 
 object RoutineRouter {
-    private enum class Period { AM, PM }
-
-    /** A word of the utterance: plain (no accents, apostrophes or case) and where it is in what was said. */
-    private class Tok(val w: String, val start: Int, val end: Int)
-
-    /** French elisions split ("j'éteins" → j, eteins; "d'apporter"); English contractions stay one word ("what's" → whats). */
-    private val ELISION = setOf("j", "l", "d", "qu", "c", "m", "t", "s", "n", "jusqu", "lorsqu", "puisqu")
-
-    private fun plain(s: String): String = Normalizer.normalize(s, Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "")
-        .lowercase(Locale.ROOT).replace("'", "").replace("’", "")
-
-    private class Words(val text: String) {
-        val t: List<Tok> = tokens(text)
-        val size: Int get() = t.size
-        fun w(i: Int): String? = t.getOrNull(i)?.w
-
-        /** The length of the longest of [phrases] (words separated by spaces) at [i], or 0. */
-        fun at(i: Int, phrases: Collection<String>): Int = phrases.maxOfOrNull { ph ->
-            val ws = ph.split(' ')
-            if (ws.indices.all { w(i + it) == ws[it] }) ws.size else 0
-        } ?: 0
-
-        fun at(i: Int, vararg phrases: String): Int = at(i, phrases.asList())
-
-        /** What was said from word [from] to before [to], as said (with closing brackets right after the last word). */
-        fun span(from: Int, to: Int): String {
-            if (from >= to || from >= size) return ""
-            var end = t[minOf(to, size) - 1].end
-            while (end < text.length && text[end] in ")]}") end++
-            return text.substring(t[from].start, end)
-        }
-
-        private fun tokens(text: String): List<Tok> {
-            val out = mutableListOf<Tok>()
-            var i = 0
-            fun digitAt(k: Int) = k in text.indices && text[k].isDigit()
-            while (i < text.length) {
-                val c = text[i]
-                if (c == ',' || c == ';' || (c == ':' && !(digitAt(i - 1) && digitAt(i + 1)))) { out += Tok(",", i, i + 1); i++; continue }
-                if (!c.isLetterOrDigit()) { i++; continue }
-                val start = i
-                while (i < text.length) {
-                    val ch = text[i]
-                    if (ch.isLetterOrDigit()) { i++; continue }
-                    if ((ch == ':' || ch == '.') && digitAt(i - 1) && digitAt(i + 1)) { i++; continue }
-                    if ((ch == '\'' || ch == '’') && i + 1 < text.length && text[i + 1].isLetter() && plain(text.substring(start, i)) !in ELISION) { i++; continue }
-                    break
-                }
-                out += Tok(plain(text.substring(start, i)), start, i)
-            }
-            return out
-        }
-    }
-
     // ------------------------------------------------------------------ words
 
     private val FILLER = listOf("hey robot", "hi robot", "ok robot", "okay robot", "hello robot", "he robot", "dis robot", "robot", "please",
@@ -206,7 +225,6 @@ object RoutineRouter {
         "thursday" to DayOfWeek.THURSDAY, "friday" to DayOfWeek.FRIDAY, "saturday" to DayOfWeek.SATURDAY, "sunday" to DayOfWeek.SUNDAY)
     private val DAYS_FR = mapOf("lundi" to DayOfWeek.MONDAY, "mardi" to DayOfWeek.TUESDAY, "mercredi" to DayOfWeek.WEDNESDAY,
         "jeudi" to DayOfWeek.THURSDAY, "vendredi" to DayOfWeek.FRIDAY, "samedi" to DayOfWeek.SATURDAY, "dimanche" to DayOfWeek.SUNDAY)
-    private val HOUR_WORDS = listOf("one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve")
 
     private val BRIEF_NOW = listOf("morning brief", "my morning brief", "the morning brief", "brief me", "give me my morning brief", "give me my brief",
         "give me the morning brief", "read my morning brief", "read me my morning brief", "read me my brief", "read my brief", "my brief",
@@ -240,25 +258,41 @@ object RoutineRouter {
         if (i >= p.size) return null
         create(p, i, now, names, id, fromContent, alarmWindow)?.let { return RoutineCommand.Create(it) }
         remind(p, i)?.let { return it }
+        remindOn(p, i, now)?.let { return it }
+        if (remindWhat(p, i)) return RoutineCommand.RemindWhat
         if (whole(p, i, BRIEF_NOW)) return RoutineCommand.BriefNow
         if (whole(p, i, LIST)) return RoutineCommand.ListAll
         named(p, i, DELETE, names)?.let { return RoutineCommand.Delete(it) }
         named(p, i, RUN, names)?.let { return RoutineCommand.Run(it) }
+        cantCancel(p, i)?.let { return it }
         return null
     }
 
     /** The French phrases a command other than a new routine starts with (a new routine's draft has its own language). */
     private val FRENCH_LEAD = listOf("liste mes routines", "quelles sont mes routines", "c est quoi mes routines", "montre moi mes routines",
         "mes routines", "quelles routines j ai", "supprime", "efface", "enleve", "retire", "lance", "demarre", "fais", "execute", "part", "roule",
-        "rappelle moi", "ajoute", "mets")
+        "rappelle moi", "ajoute", "mets", "fais moi penser")
 
     /**
      * 1.0: [cmd], routed from [text], was said in French, so Robot answers it in French (the locked phone's "Unlock first"
      * lines): a new routine by its draft's language; « liste mes routines », « supprime … », « rappelle-moi … », « ajoute à
      * mon résumé … » by the words they start with; a brief reminder also when its own words read as French.
      */
+    /**
+     * 1.1: the language [cmd] was surely said in, for the reply language (core ReplyLang's router match): French when
+     * [french] says so, English for a new routine read in English, else null (not sure: LangId decides).
+     */
+    fun lang(text: String, cmd: RoutineCommand): Lang? = when {
+        french(text, cmd) -> Lang.FR
+        cmd is RoutineCommand.Create -> Lang.EN
+        // 1.1: "remind me …", "set a reminder …" (the French leads are French's).
+        cmd is RoutineCommand.CantCancel -> if (cmd.french) Lang.FR else Lang.EN
+        cmd is RoutineCommand.RemindOn || cmd is RoutineCommand.RemindWhat -> Lang.EN
+        else -> null
+    }
+
     fun french(text: String, cmd: RoutineCommand): Boolean {
-        if (cmd is RoutineCommand.Create) return cmd.draft.lang == BriefLang.FR
+        if (cmd is RoutineCommand.Create) return cmd.draft.lang == Lang.FR
         val p = Words(text)
         var i = 0
         while (true) {
@@ -364,6 +398,100 @@ object RoutineRouter {
         return null
     }
 
+    // ------------------------------------------------------------------ dated reminders (1.1)
+
+    private val DATED_LEAD = listOf("remind me", "rappelle moi", "set a reminder", "set me a reminder", "add a reminder", "make a reminder",
+        "fais moi penser", "mets un rappel", "ajoute un rappel")
+    /** Between the lead and the thing: "to", "that", « de », « d' », « que », « à ». */
+    private val DATED_TO = listOf("to", "that", "about", "de", "d", "que", "qu", "a", "pour")
+
+    /**
+     * "Remind me to … on <date> [at <time>]" or "remind me on <date> to …", in English and French: what to remember and
+     * the words that say when, which must name a day (today, a weekday, a date, "in 3 days") and either a clock time or
+     * none ("tonight" alone or "Friday evening" is a time you didn't say: left to the model). Brief reminders came first.
+     */
+    private fun remindOn(p: Words, i: Int, now: ZonedDateTime): RoutineCommand.RemindOn? {
+        val lead = p.at(i, DATED_LEAD)
+        if (lead == 0) return null
+        val j = i + lead
+        if (j >= p.size) return null
+        val lang = if (p.at(i, "rappelle moi", "fais moi penser", "mets un rappel", "ajoute un rappel") > 0) Lang.FR else Lang.EN
+        fun dated(a: Int, b: Int): Boolean {
+            val m = WhenParser.reads(p.span(a, b), now, lang) ?: return false
+            return m.dated && !m.relative && (m.span.allDay || m.clock)
+        }
+        fun made(title: String, `when`: String): RoutineCommand.RemindOn? {
+            val t = title.trim().trimStart(',', ':', ' ').trimEnd(',', '.', '!', '?', ' ').trim()
+            if (t.isEmpty() || t.equals("it", true) || t.equals("ça", true) || t.equals("ca", true)) return null
+            return RoutineCommand.RemindOn(t.replaceFirstChar { it.uppercase() }, `when`.trim().trimEnd('.', '!', '?', ' '))
+        }
+        val to = p.at(j, DATED_TO)
+        if (to > 0) {
+            // "… to call the bank on the 20th": the longest end that reads as a day, after at least one word.
+            for (k in j + to + 1 until p.size) if (dated(k, p.size)) return made(p.span(j + to, k), p.span(k, p.size))
+            return null
+        }
+        // "… on the 20th to call the bank": the longest start that reads as a day, then "to" and the thing.
+        for (k in p.size - 2 downTo j + 1) {
+            val n = p.at(k, DATED_TO)
+            if (n > 0 && k + n < p.size && dated(j, k)) return made(p.span(k + n, p.size), p.span(j, k))
+        }
+        return null
+    }
+
+    // ------------------------------------------------------------------ alarms and timers Robot can't cancel (1.1)
+
+    private val CANCEL_EN = listOf("cancel", "delete", "remove", "turn off", "switch off", "shut off", "disable", "stop", "dismiss", "clear",
+        "get rid of", "unset")
+    private val CANCEL_FR = listOf("annule", "annuler", "supprime", "supprimer", "efface", "effacer", "enleve", "enlever", "retire", "retirer",
+        "desactive", "desactiver", "arrete", "arreter", "eteins", "eteindre", "ferme", "fermer", "stoppe")
+    private val ALARM_NOUNS = setOf("alarm", "alarms", "alarme", "alarmes", "reveil", "reveils", "cadran", "cadrans")
+    private val TIMER_NOUNS = setOf("timer", "timers", "countdown", "minuterie", "minuteries", "minuteur", "minuteurs", "rebours")
+    /** Words that ask for something else as well ("cancel the meeting and set an alarm"): left to the model. */
+    private val NOT_ONLY_CANCEL = setOf("set", "add", "create", "make", "new", "remind", "wake", "mets", "ajoute", "cree", "rappelle", "reveille", "programme")
+
+    /** Between the verb and the alarm or timer: "the", "my", « toutes mes », and its time ("7 am", "6:30", « 6 h 30 »). */
+    private val BEFORE_NOUN = setOf("the", "my", "all", "a", "an", "this", "that", "these", "those", "your", "every", "mon", "ma", "mes", "ton", "ta",
+        "tes", "l", "la", "le", "les", "un", "une", "ce", "cette", "ces", "tous", "toutes", "h", "am", "pm", "m", "p")
+    /** Right after the noun, these make it a name of something else: "my alarm routine", "the timer app". */
+    private val NOT_THE_CLOCK = setOf("routine", "routines", "skill", "skills", "competence", "competences", "note", "notes", "app", "appli",
+        "application", "code", "sound", "son")
+
+    /**
+     * "cancel my 6:30 alarm", "turn off the timer", « annule mon alarme de 6 h 30 »: a cancel verb first, then the alarm or the
+     * timer itself (only an article, a possessive or its time between them). After the routines' delete and run, so "delete my
+     * alarm routine" stays a routine's; "delete the note about my alarm code" is never one.
+     */
+    private fun cantCancel(p: Words, i: Int): RoutineCommand.CantCancel? {
+        val fr = p.at(i, CANCEL_FR)
+        val n = maxOf(p.at(i, CANCEL_EN), fr)
+        if (n == 0) return null
+        val rest = (i + n until p.size).mapNotNull { p.w(it) }
+        if (rest.size > 10 || rest.any { it in NOT_ONLY_CANCEL }) return null
+        val k = rest.indexOfFirst { w -> w !in BEFORE_NOUN && !w.matches(Regex("""\d{1,2}(?::\d{2})?""")) }
+        val noun = rest.getOrNull(k) ?: return null
+        val timer = noun in TIMER_NOUNS || (noun == "compte" && rest.getOrNull(k + 1) == "a" && rest.getOrNull(k + 2) == "rebours")
+        if (!timer && noun !in ALARM_NOUNS) return null
+        if (rest.getOrNull(k + 1) in NOT_THE_CLOCK) return null
+        return RoutineCommand.CantCancel(timer = timer, french = fr == n)
+    }
+
+    /** 1.1 (phone, 22 Oct): a reminder that names nothing to remind and no time ([RoutineCommand.RemindWhat]), as a whole utterance. */
+    private val REMIND_WHAT = listOf("remind me", "remind me about it", "remind me about that", "remind me about this", "remind me of it",
+        "remind me of that", "remind me of this", "remind me it", "remind me that", "set a reminder", "set me a reminder", "add a reminder",
+        "make a reminder", "rappelle moi", "rappelle moi ca", "rappelle moi cela", "rappelle moi le", "rappelle moi la", "rappelle le moi",
+        "rappelle la moi", "fais moi penser", "fais moi penser a ca", "fais moi penser a cela", "fais moi y penser", "mets un rappel",
+        "ajoute un rappel")
+    /** What may follow it: not "today" or "now", which say when. */
+    private val REMIND_WHAT_TAIL = listOf("please", "robot", "s il te plait", "s il vous plait", ",")
+
+    private fun remindWhat(p: Words, i: Int): Boolean {
+        var j = i + p.at(i, REMIND_WHAT)
+        if (j == i) return false
+        while (j < p.size) { val f = p.at(j, REMIND_WHAT_TAIL); if (f == 0) return false; j += f }
+        return true
+    }
+
     private fun reminder(raw: String, tomorrow: Boolean): RoutineCommand? {
         val t = raw.trim().trimStart(',', ':', ' ').trimEnd('.', '!', '?', ' ').trim()
         if (t.isEmpty() || HAS_TIME.containsMatchIn(t)) return null
@@ -373,8 +501,8 @@ object RoutineRouter {
     // ------------------------------------------------------------------ making a routine
 
     /** What starts the routine, read at the start: the trigger, its conditions, where the action part begins. */
-    private class TriggerRead(val trigger: RoutineTrigger, val end: Int, val lang: BriefLang, val conditions: RoutineConditions = RoutineConditions(),
-        val notes: List<String> = emptyList())
+    private class TriggerRead(val trigger: RoutineTrigger, val end: Int, val lang: Lang, val conditions: RoutineConditions = RoutineConditions(),
+        val notes: List<Phrase> = emptyList())
 
     private fun create(p: Words, i: Int, now: ZonedDateTime, names: List<String>, id: String, fromContent: Boolean, window: TimeWindow): RoutineDraft? {
         val trig = timeTrigger(p, i) ?: eventTrigger(p, i, window) ?: return null
@@ -386,7 +514,8 @@ object RoutineRouter {
         if (acts.steps.isEmpty() && acts.refused.isEmpty() && !(comma || acts.commandLike)) return null
         val name = unique(defaultName(trig.trigger, trig.lang), names)
         val routine = Routine(id, name, trig.trigger, acts.steps, created = now.toInstant().toEpochMilli(), conditions = trig.conditions)
-        return RoutineDraft(routine, trig.lang, acts.unparsed, acts.refused, trig.notes + acts.notes, fromContent)
+        val notes = trig.notes + acts.notes
+        return RoutineDraft(routine, trig.lang, acts.unparsed, acts.refused, notes.map { it.en() }, fromContent, notes)
     }
 
     private fun unique(name: String, names: List<String>): String {
@@ -395,28 +524,30 @@ object RoutineRouter {
         return (2..99).map { "$name $it" }.first { it.lowercase(Locale.ROOT) !in taken }
     }
 
-    private fun defaultName(t: RoutineTrigger, lang: BriefLang): String {
-        val en = lang == BriefLang.EN
-        return when (t) {
+    /** A new routine's name, in the language it was said in (it is then yours: never translated again). */
+    private fun defaultName(t: RoutineTrigger, lang: Lang): String {
+        val m = when (t) {
             is RoutineTrigger.At -> when (t.time.hour) {
-                in 0..11 -> if (en) "Morning routine" else "Routine du matin"
-                in 12..16 -> if (en) "Afternoon routine" else "Routine de l'après-midi"
-                else -> if (en) "Evening routine" else "Routine du soir"
+                in 0..11 -> RoutineStrings.nameMorning
+                in 12..16 -> RoutineStrings.nameAfternoon
+                else -> RoutineStrings.nameEvening
             }
-            is RoutineTrigger.AlarmDismissed -> if (en) "After my alarm" else "Après mon cadran"
-            is RoutineTrigger.Unlock -> if (en) "First unlock" else "Premier déverrouillage"
+            is RoutineTrigger.AlarmDismissed -> RoutineStrings.nameAfterAlarm
+            is RoutineTrigger.Unlock -> RoutineStrings.nameFirstUnlock
             is RoutineTrigger.Device -> when (t.type) {
-                DeviceKind.HEADSET -> if (t.connect) (if (en) "Headphones on" else "Écouteurs branchés") else (if (en) "Headphones off" else "Écouteurs débranchés")
-                DeviceKind.CAR -> if (t.connect) (if (en) "In the car" else "Dans l'auto") else (if (en) "Out of the car" else "Sortie de l'auto")
+                DeviceKind.HEADSET -> if (t.connect) RoutineStrings.nameHeadphonesOn else RoutineStrings.nameHeadphonesOff
+                DeviceKind.CAR -> if (t.connect) RoutineStrings.nameInCar else RoutineStrings.nameOutOfCar
             }
-            is RoutineTrigger.Charging -> if (t.start) (if (en) "Charging" else "Recharge") else (if (en) "Unplugged" else "Débranché")
-            RoutineTrigger.Asked -> if (en) "My routine" else "Ma routine"
+            is RoutineTrigger.Charging -> if (t.start) RoutineStrings.nameCharging else RoutineStrings.nameUnplugged
+            RoutineTrigger.Asked -> RoutineStrings.nameMine
         }
+        // Your words from then on: the plain apostrophe, as typed names have it.
+        return Phrase.M(m).render(Langs.of(lang)).replace('’', '\'')
     }
 
     // ------------------------------------------------------------------ times and days
 
-    private class Days(val days: Set<DayOfWeek>, val end: Int, val period: Period?, val lang: BriefLang)
+    private class Days(val days: Set<DayOfWeek>, val end: Int, val period: Period?, val lang: Lang)
 
     private val PERIOD_WORDS = mapOf("morning" to Period.AM, "mornings" to Period.AM, "evening" to Period.PM, "evenings" to Period.PM,
         "night" to Period.PM, "nights" to Period.PM, "afternoon" to Period.PM, "afternoons" to Period.PM,
@@ -476,7 +607,7 @@ object RoutineRouter {
             }
         }
         if (per == null) { val (pp, n) = period(p, j); if (pp != null) { per = pp; j += n } }
-        return Days(set, j, per, BriefLang.EN)
+        return Days(set, j, per, Lang.EN)
     }
 
     private fun daysFr(p: Words, i: Int): Days? {
@@ -513,7 +644,7 @@ object RoutineRouter {
             else -> return null
         }
         if (per == null) { val (pp, n) = period(p, j); if (pp != null) { per = pp; j += n } }
-        return Days(set, j, per, BriefLang.FR)
+        return Days(set, j, per, Lang.FR)
     }
 
     /** The period said in "matin de semaine" / "soirs de semaine", looking back from after it. */
@@ -523,96 +654,10 @@ object RoutineRouter {
         else -> null
     }
 
-    private enum class Kind { EXPLICIT, H24, BARE }
-
-    /** A clock time as said: [h] already on 24 hours when [kind] is EXPLICIT (am/pm, noon). */
-    private class Clock(val h: Int, val m: Int, val kind: Kind, val end: Int, val said: String)
-
-    private val CLOCK_TOKEN = Regex("""^(\d{1,2})(?:[:.](\d{2}))?(am|pm|h)?(\d{2})?$""")
-
-    private fun clock(p: Words, i: Int): Clock? {
-        val w = p.w(i) ?: return null
-        when (w) {
-            "noon", "midi" -> return Clock(12, 0, Kind.EXPLICIT, i + 1, p.span(i, i + 1))
-            "midnight", "minuit" -> return Clock(0, 0, Kind.EXPLICIT, i + 1, p.span(i, i + 1))
-        }
-        val word = HOUR_WORDS.indexOf(w)
-        if (word >= 0) {
-            var j = i + 1
-            if (p.w(j) == "oclock") j++
-            return finishAmPm(p, word + 1, 0, j, i, Kind.BARE)
-        }
-        val m = CLOCK_TOKEN.matchEntire(w) ?: return null
-        val h = m.groupValues[1].toInt()
-        var min = m.groupValues[2].ifEmpty { m.groupValues[4] }.toIntOrNull() ?: 0
-        var j = i + 1
-        when (m.groupValues[3]) {
-            "am", "pm" -> return amPm(h, min, m.groupValues[3], j, p.span(i, j))
-            "h" -> {
-                if (m.groupValues[4].isEmpty() && p.w(j)?.matches(Regex("""\d{2}""")) == true) { min = p.w(j)!!.toInt(); j++ }
-                return valid(h, min, Kind.H24, j, p.span(i, j))
-            }
-        }
-        if (p.at(j, "h", "heure", "heures") > 0) {
-            j++
-            if (p.w(j)?.matches(Regex("""\d{1,2}""")) == true) { min = p.w(j)!!.toInt(); j++ }
-            return valid(h, min, Kind.H24, j, p.span(i, j))
-        }
-        if (p.w(j) == "oclock") j++
-        val h24 = h >= 13 || h == 0 || (m.groupValues[2].isNotEmpty() && m.groupValues[1].length == 2 && m.groupValues[1].startsWith("0"))
-        return finishAmPm(p, h, min, j, i, if (h24) Kind.H24 else Kind.BARE)
-    }
-
-    private fun finishAmPm(p: Words, h: Int, min: Int, j: Int, i: Int, kind: Kind): Clock? {
-        val ap = p.at(j, "am", "pm", "a m", "p m")
-        if (ap > 0) return amPm(h, min, if (p.w(j)!!.startsWith("a")) "am" else "pm", j + ap, p.span(i, j + ap))
-        return valid(h, min, kind, j, p.span(i, j))
-    }
-
-    private fun amPm(h: Int, min: Int, ap: String, end: Int, said: String): Clock? {
-        if (h !in 1..12 || min !in 0..59) return null
-        val h24 = if (ap == "am") (if (h == 12) 0 else h) else (if (h == 12) 12 else h + 12)
-        return Clock(h24, min, Kind.EXPLICIT, end, said)
-    }
-
-    private fun valid(h: Int, min: Int, kind: Kind, end: Int, said: String): Clock? =
-        if (h in 0..23 && min in 0..59) Clock(h, min, kind, end, said) else null
-
-    /** "in the morning", "at night", "du matin", "du soir", "de l'après-midi", "le soir" after a time. */
-    private val CLOCK_PERIOD = mapOf("in the morning" to Period.AM, "in the evening" to Period.PM, "at night" to Period.PM, "in the afternoon" to Period.PM,
-        "tonight" to Period.PM, "du matin" to Period.AM, "du soir" to Period.PM, "de l apres midi" to Period.PM, "le matin" to Period.AM,
-        "le soir" to Period.PM)
-
-    /**
-     * The time [c] means. A bare 12-hour time ("at 7") takes the period said ("every morning", "in the evening"), else
-     * 6 to 11 are morning hours, 12 is noon and 1 to 5 afternoon ones ("every Friday at 5" is 17:00); the card then says
-     * how it was read ([note]).
-     */
-    private fun resolve(c: Clock, per: Period?, notes: MutableList<String>): LocalTime {
-        var h = c.h
-        when (c.kind) {
-            Kind.EXPLICIT -> Unit
-            Kind.H24 -> if (per == Period.PM && h in 1..11) h += 12
-            Kind.BARE -> when (per) {
-                Period.AM -> if (h == 12) h = 0
-                Period.PM -> if (h < 12) h += 12
-                null -> {
-                    if (h in 1..5) h += 12
-                    notes += "Read “${c.said}” as ${String.format(Locale.US, "%02d:%02d", h, c.m)}; change it in Routines if that's wrong."
-                }
-            }
-        }
-        return LocalTime.of(h, c.m)
-    }
-
-    private fun clockPeriod(p: Words, j: Int): Pair<Period?, Int> {
-        val n = p.at(j, CLOCK_PERIOD.keys)
-        return if (n == 0) null to 0 else CLOCK_PERIOD.getValue((j until j + n).joinToString(" ") { p.w(it)!! }) to n
-    }
 
     /** "every weekday at 7", "on weekends at 9:30", "chaque matin de semaine à 7 h", "à 7 h tous les jours". */
     private fun timeTrigger(p: Words, i: Int): TriggerRead? {
-        val notes = mutableListOf<String>()
+        val notes = mutableListOf<Phrase>()
         fun withTime(d: Days, at: Int): TriggerRead? {
             val lead = p.at(at, "at", "a", "vers", "around")
             if (lead == 0) return null
@@ -662,27 +707,27 @@ object RoutineRouter {
     /** "when I turn off my alarm", "quand je ferme mon cadran", "when I connect my headphones", "quand je me connecte à l'auto", … */
     private fun eventTrigger(p: Words, i: Int, window: TimeWindow): TriggerRead? {
         // English.
-        p.at(i, ALARM_EN_SUBJECT).takeIf { it > 0 }?.let { return TriggerRead(RoutineTrigger.AlarmDismissed(window), i + it, BriefLang.EN) }
+        p.at(i, ALARM_EN_SUBJECT).takeIf { it > 0 }?.let { return TriggerRead(RoutineTrigger.AlarmDismissed(window), i + it, Lang.EN) }
         val we = p.at(i, WHEN_EN)
         if (we > 0) {
             val j = i + we
-            p.at(j, ALARM_EN).takeIf { it > 0 }?.let { return TriggerRead(RoutineTrigger.AlarmDismissed(window), j + it, BriefLang.EN) }
-            p.at(j, UNLOCK_EN).takeIf { it > 0 }?.let { return TriggerRead(RoutineTrigger.Unlock(), j + it, BriefLang.EN) }
+            p.at(j, ALARM_EN).takeIf { it > 0 }?.let { return TriggerRead(RoutineTrigger.AlarmDismissed(window), j + it, Lang.EN) }
+            p.at(j, UNLOCK_EN).takeIf { it > 0 }?.let { return TriggerRead(RoutineTrigger.Unlock(), j + it, Lang.EN) }
             val connect = p.at(j, "connect to", "connect", "plug in", "put on", "pair", "turn on")
             val disconnect = p.at(j, "disconnect from", "disconnect", "unplug", "take off", "turn off")
             for ((n, on) in listOf(connect to true, disconnect to false)) if (n > 0) {
-                p.at(j + n, HEADSET_EN).takeIf { it > 0 }?.let { return TriggerRead(RoutineTrigger.Device(DeviceKind.HEADSET, connect = on), j + n + it, BriefLang.EN) }
-                p.at(j + n, CAR_EN).takeIf { it > 0 }?.let { return TriggerRead(RoutineTrigger.Device(DeviceKind.CAR, connect = on), j + n + it, BriefLang.EN) }
+                p.at(j + n, HEADSET_EN).takeIf { it > 0 }?.let { return TriggerRead(RoutineTrigger.Device(DeviceKind.HEADSET, connect = on), j + n + it, Lang.EN) }
+                p.at(j + n, CAR_EN).takeIf { it > 0 }?.let { return TriggerRead(RoutineTrigger.Device(DeviceKind.CAR, connect = on), j + n + it, Lang.EN) }
             }
             p.at(j, "get in the car", "get in my car", "get into the car", "get into my car").takeIf { it > 0 }?.let {
-                return TriggerRead(RoutineTrigger.Device(DeviceKind.CAR), j + it, BriefLang.EN)
+                return TriggerRead(RoutineTrigger.Device(DeviceKind.CAR), j + it, Lang.EN)
             }
             p.at(j, "get out of the car", "get out of my car", "leave the car").takeIf { it > 0 }?.let {
-                return TriggerRead(RoutineTrigger.Device(DeviceKind.CAR, connect = false), j + it, BriefLang.EN)
+                return TriggerRead(RoutineTrigger.Device(DeviceKind.CAR, connect = false), j + it, Lang.EN)
             }
             for ((list, start) in listOf(CHARGE_EN to true, UNPLUG_EN to false)) {
                 val n = p.at(j, list)
-                if (n > 0) return charging(p, j + n, start, BriefLang.EN)
+                if (n > 0) return charging(p, j + n, start, Lang.EN)
             }
             return null
         }
@@ -691,32 +736,32 @@ object RoutineRouter {
             val n = p.at(i + 1, list)
             if (n == 0) continue
             val v = p.at(i + 1 + n, "connect", "connects", "disconnect", "disconnects")
-            if (v > 0) return TriggerRead(RoutineTrigger.Device(kind, connect = p.w(i + 1 + n)!!.startsWith("connect")), i + 1 + n + v, BriefLang.EN)
+            if (v > 0) return TriggerRead(RoutineTrigger.Device(kind, connect = p.w(i + 1 + n)!!.startsWith("connect")), i + 1 + n + v, Lang.EN)
         }
         // French.
-        p.at(i, ALARM_FR_SUBJECT).takeIf { it > 0 }?.let { return TriggerRead(RoutineTrigger.AlarmDismissed(window), i + it, BriefLang.FR) }
+        p.at(i, ALARM_FR_SUBJECT).takeIf { it > 0 }?.let { return TriggerRead(RoutineTrigger.AlarmDismissed(window), i + it, Lang.FR) }
         val wf = p.at(i, WHEN_FR)
         if (wf > 0) {
             val j = i + wf
             p.at(j, ALARM_FR_VERB).takeIf { it > 0 }?.let { v ->
-                p.at(j + v, ALARM_FR_OBJ).takeIf { it > 0 }?.let { return TriggerRead(RoutineTrigger.AlarmDismissed(window), j + v + it, BriefLang.FR) }
+                p.at(j + v, ALARM_FR_OBJ).takeIf { it > 0 }?.let { return TriggerRead(RoutineTrigger.AlarmDismissed(window), j + v + it, Lang.FR) }
             }
-            p.at(j, UNLOCK_FR).takeIf { it > 0 }?.let { return TriggerRead(RoutineTrigger.Unlock(), j + it, BriefLang.FR) }
+            p.at(j, UNLOCK_FR).takeIf { it > 0 }?.let { return TriggerRead(RoutineTrigger.Unlock(), j + it, Lang.FR) }
             p.at(j, "branche", "connecte", "mets").takeIf { it > 0 }?.let { v ->
-                p.at(j + v, HEADSET_FR).takeIf { it > 0 }?.let { return TriggerRead(RoutineTrigger.Device(DeviceKind.HEADSET), j + v + it, BriefLang.FR) }
+                p.at(j + v, HEADSET_FR).takeIf { it > 0 }?.let { return TriggerRead(RoutineTrigger.Device(DeviceKind.HEADSET), j + v + it, Lang.FR) }
             }
             p.at(j, "debranche", "deconnecte", "enleve").takeIf { it > 0 }?.let { v ->
-                p.at(j + v, HEADSET_FR).takeIf { it > 0 }?.let { return TriggerRead(RoutineTrigger.Device(DeviceKind.HEADSET, connect = false), j + v + it, BriefLang.FR) }
+                p.at(j + v, HEADSET_FR).takeIf { it > 0 }?.let { return TriggerRead(RoutineTrigger.Device(DeviceKind.HEADSET, connect = false), j + v + it, Lang.FR) }
             }
             p.at(j, "me connecte", "embarque", "monte", "rentre").takeIf { it > 0 }?.let { v ->
-                p.at(j + v, CAR_FR).takeIf { it > 0 }?.let { return TriggerRead(RoutineTrigger.Device(DeviceKind.CAR), j + v + it, BriefLang.FR) }
+                p.at(j + v, CAR_FR).takeIf { it > 0 }?.let { return TriggerRead(RoutineTrigger.Device(DeviceKind.CAR), j + v + it, Lang.FR) }
             }
             p.at(j, "sors de l auto", "sors du char", "sors de la voiture", "debarque de l auto", "debarque du char").takeIf { it > 0 }?.let {
-                return TriggerRead(RoutineTrigger.Device(DeviceKind.CAR, connect = false), j + it, BriefLang.FR)
+                return TriggerRead(RoutineTrigger.Device(DeviceKind.CAR, connect = false), j + it, Lang.FR)
             }
             for ((list, start) in listOf(CHARGE_FR to true, UNPLUG_FR to false)) {
                 val n = p.at(j, list)
-                if (n > 0) return charging(p, j + n, start, BriefLang.FR)
+                if (n > 0) return charging(p, j + n, start, Lang.FR)
             }
             return null
         }
@@ -724,7 +769,7 @@ object RoutineRouter {
     }
 
     /** Charging starts or stops; "at night" or "le soir" after it: only between 18:00 and 04:00. */
-    private fun charging(p: Words, j: Int, start: Boolean, lang: BriefLang): TriggerRead {
+    private fun charging(p: Words, j: Int, start: Boolean, lang: Lang): TriggerRead {
         val night = p.at(j, NIGHT_WORDS)
         val morning = p.at(j, "in the morning", "le matin")
         val cond = when {
@@ -735,240 +780,6 @@ object RoutineRouter {
         return TriggerRead(RoutineTrigger.Charging(start), j + maxOf(night, morning), lang, cond)
     }
 
-    // ------------------------------------------------------------------ steps
-
-    private class Acts(val steps: List<RoutineStep>, val unparsed: List<String>, val refused: List<String>, val notes: List<String>, val commandLike: Boolean)
-
-    /** Between steps: ",", "and", "then", "et", "pis", "puis", "ensuite". */
-    private val SEP = setOf(",", "and", "then", "also", "et", "pis", "puis", "ensuite", "aussi")
-    private val COMMAND = setOf("tell", "give", "read", "say", "set", "start", "open", "turn", "launch", "play", "text", "send", "show", "check",
-        "call", "remind", "put", "switch", "wake", "search", "find", "navigate", "let", "whats", "what", "dis", "donne", "lis", "regle", "mets", "met",
-        "ouvre", "allume", "eteins", "lance", "joue", "envoie", "appelle", "montre", "rappelle", "demarre", "programme", "annonce", "verifie",
-        "cherche", "texte", "ecris", "fais")
-
-    private fun actions(p: Words, from: Int): Acts {
-        // Pieces between separators.
-        val pieces = mutableListOf<Pair<Int, Int>>()
-        var start = from
-        for (j in from..p.size) {
-            if (j == p.size || p.w(j) in SEP) {
-                if (j > start) pieces += start to j
-                start = j + 1
-            }
-        }
-        val steps = mutableListOf<RoutineStep>()
-        val unparsed = mutableListOf<String>()
-        val refused = mutableListOf<String>()
-        val notes = mutableListOf<String>()
-        var k = 0
-        while (k < pieces.size) {
-            val (a, b) = pieces[k]
-            when (val r = piece(p, a, b, notes)) {
-                is Piece.Step -> steps += r.step
-                Piece.Refused -> refused += p.span(a, b)
-                Piece.Unknown -> unparsed += p.span(a, b)
-                is Piece.Say -> {
-                    // A sentence runs on while what follows isn't a step of its own (or refused): "say good night and sweet
-                    // dreams, then turn off the flashlight" says "good night and sweet dreams", exactly as on the card.
-                    var end = b
-                    while (k + 1 < pieces.size && piece(p, pieces[k + 1].first, pieces[k + 1].second, mutableListOf()) == Piece.Unknown) {
-                        k++
-                        end = pieces[k].second
-                    }
-                    val text = p.span(r.from, end).trim()
-                    if (text.length > RoutineCheck.MAX_SAY) unparsed += p.span(a, end) else steps += RoutineStep.Say(text)
-                }
-            }
-            k++
-        }
-        val first = pieces.firstOrNull()?.let { p.w(it.first) }
-        return Acts(steps, unparsed, refused, notes, first in COMMAND)
-    }
-
-    private sealed class Piece {
-        data class Step(val step: RoutineStep) : Piece()
-        /** "say …": the sentence starts at word [from]. */
-        data class Say(val from: Int) : Piece()
-        data object Refused : Piece()
-        data object Unknown : Piece()
-    }
-
-    private val LEAD = listOf("please", "also", "and", "then", "s il te plait", "aussi")
-    private val NEVER = listOf("free up", "free memory", "free storage", "free space", "free some space", "clear the cache", "clear cache", "clean up",
-        "delete", "erase", "wipe", "uninstall", "remove", "ask claude", "ask cloud", "ask clyde", "ask claud", "ask clod", "get claude",
-        "libere", "liberer", "vide le cache", "supprime", "supprimer", "efface", "effacer", "nettoie", "desinstalle", "demande a claude",
-        "demande a cloud", "va chercher claude",
-        // 1.0.0: "Ask a helper"'s own phrases.
-        "ask the helper", "ask a helper", "ask my helper", "demande a l assistant", "demande a lassistant", "demande l assistant",
-        "demande a un assistant", "demande un assistant")
-    private val READ_VERBS = listOf("tell me about", "tell me", "give me", "read me", "read out", "read", "let me know", "show me", "whats on", "what is on",
-        "whats", "what is", "check", "how is", "hows", "dis moi", "donne moi", "lis moi", "lis", "annonce moi", "c est quoi", "quelle est", "quel est",
-        "verifie", "montre moi")
-
-    private fun piece(p: Words, from: Int, to: Int, notes: MutableList<String>): Piece {
-        var a = from
-        while (a < to) { val n = p.at(a, LEAD); if (n == 0) break; a += n }
-        if (a >= to) return Piece.Unknown
-        if ((a until to).any { p.at(it, NEVER) in 1..(to - it) }) return Piece.Refused
-        action(p, a, to, notes)?.let { return Piece.Step(it) }
-        val v = p.at(a, READ_VERBS)
-        read(p, a + v, to)?.let { return Piece.Step(it) }
-        if (v == 0 && p.at(a, "say", "dis") == 1 && a + 1 < to) return Piece.Say(a + 1)
-        return Piece.Unknown
-    }
-
-    private fun tool(name: String, vararg args: Pair<String, Any?>): RoutineStep? =
-        (ToolCalls.parse(RawToolCall(name, args.filter { it.second != null }.toMap())) as? ParsedCall.Ok)?.let { RoutineStep.Tool(it.action) }
-
-    private val ALARM_STEP = listOf("set an alarm for", "set an alarm at", "set the alarm for", "set the alarm at", "set my alarm for", "set my alarm at",
-        "set alarm for", "set alarm at", "wake me up at", "wake me at", "regle un reveil a", "regle un reveil pour", "regle le reveil a", "regle mon reveil a",
-        "mets un reveil a", "mets un reveil pour", "mets le reveil a", "mets un cadran a", "regle un cadran a", "regle mon cadran a", "regle le cadran a",
-        "mets le cadran a", "mets mon cadran a", "regle une alarme a", "mets une alarme a", "programme un reveil a", "reveille moi a")
-    private val TIMER_EN = listOf("set a timer for", "set the timer for", "start a timer for", "set timer for", "timer for", "a timer for")
-    private val TIMER_FR = listOf("mets une minuterie de", "regle une minuterie de", "part une minuterie de", "lance une minuterie de",
-        "demarre une minuterie de", "programme une minuterie de", "mets un minuteur de", "regle un minuteur de", "lance un minuteur de",
-        "mets une minuterie pour", "minuterie de", "une minuterie de")
-    private val UNITS = mapOf("minute" to 60, "minutes" to 60, "min" to 60, "mins" to 60, "hour" to 3600, "hours" to 3600, "heure" to 3600,
-        "heures" to 3600, "second" to 1, "seconds" to 1, "seconde" to 1, "secondes" to 1)
-    private val NUMBER_WORDS = mapOf("a" to 1, "an" to 1, "one" to 1, "two" to 2, "three" to 3, "four" to 4, "five" to 5, "ten" to 10, "fifteen" to 15,
-        "twenty" to 20, "thirty" to 30, "une" to 1, "un" to 1, "deux" to 2, "trois" to 3, "cinq" to 5, "dix" to 10, "quinze" to 15, "vingt" to 20, "trente" to 30)
-    private val LIGHT_ON = listOf("turn on the flashlight", "turn on the torch", "turn on the light", "turn the flashlight on", "turn the torch on",
-        "switch on the flashlight", "flashlight on", "torch on", "allume la lampe de poche", "allume la lampe", "allume le flash", "ouvre la lampe de poche",
-        "ouvre la lampe")
-    private val LIGHT_OFF = listOf("turn off the flashlight", "turn off the torch", "turn off the light", "turn the flashlight off", "turn the torch off",
-        "switch off the flashlight", "flashlight off", "torch off", "eteins la lampe de poche", "eteins la lampe", "eteins le flash", "ferme la lampe de poche",
-        "ferme la lampe")
-    private val NAVIGATE = listOf("directions to", "give me directions to", "get directions to", "navigate to", "the route to", "route to", "take me to",
-        "itineraire vers", "itineraire pour", "itineraire jusqu a", "amene moi a", "emmene moi a", "amene moi au", "emmene moi au")
-    private val SEARCH = listOf("search maps for", "search organic maps for", "search the map for", "cherche sur la carte")
-    private val OPEN = listOf("open up", "open", "launch", "start", "ouvre", "ouvrir", "lance", "demarre")
-
-    /** A step that does something: an alarm, a timer, the flashlight, maps, a text, an app. */
-    private fun action(p: Words, a: Int, to: Int, notes: MutableList<String>): RoutineStep? {
-        p.at(a, ALARM_STEP).takeIf { it > 0 }?.let { n ->
-            val c = clock(p, a + n) ?: return null
-            val (per, pn) = clockPeriod(p, c.end)
-            if (c.end + pn != to) return null
-            val t = resolve(c, per, notes)
-            return tool("set_alarm", "hour" to t.hour, "minute" to t.minute)
-        }
-        timer(p, a, to)?.let { return it }
-        if (p.at(a, LIGHT_ON) == to - a) return tool("flashlight", "on" to true)
-        if (p.at(a, LIGHT_OFF) == to - a) return tool("flashlight", "on" to false)
-        p.at(a, NAVIGATE).takeIf { it > 0 && a + it < to }?.let { return tool("maps_navigate", "destination" to p.span(a + it, to)) }
-        p.at(a, SEARCH).takeIf { it > 0 && a + it < to }?.let { return tool("maps_search", "query" to p.span(a + it, to)) }
-        if (p.at(a, "text", "send a text to", "send a message to", "message", "let") > 0) {
-            val req = TextCommand.parse(p.span(a, to), typed = false) ?: return null
-            return tool("send_text", "to" to req.name, "message" to (req.message ?: return null))
-        }
-        p.at(a, OPEN).takeIf { it > 0 && a + it < to }?.let { n ->
-            if (p.at(a + n, "a timer", "the timer", "une minuterie", "un minuteur") > 0) return null
-            var s = a + n
-            while (p.w(s) in setOf("the", "my", "l", "la", "le", "mon", "ma") && s + 1 < to) s++
-            var e = to
-            if (p.w(e - 1) in setOf("app", "application", "appli") && e - 1 > s) e--
-            return tool("open_app", "name" to p.span(s, e))
-        }
-        return null
-    }
-
-    private fun timer(p: Words, a: Int, to: Int): RoutineStep? {
-        fun seconds(at: Int): Pair<Long, Int>? {
-            val n = p.w(at)?.toIntOrNull() ?: NUMBER_WORDS[p.w(at)] ?: return null
-            val unit = UNITS[p.w(at + 1)] ?: return null
-            return n.toLong() * unit to at + 2
-        }
-        val lead = p.at(a, TIMER_EN + TIMER_FR)
-        if (lead > 0) {
-            val (s, end) = seconds(a + lead) ?: return null
-            if (end != to) return null
-            return tool("set_timer", "seconds" to s)
-        }
-        // "start a 10 minute timer".
-        val pre = p.at(a, "set a", "start a", "set an", "start an")
-        if (pre > 0) {
-            val (s, end) = seconds(a + pre) ?: return null
-            if (p.w(end) != "timer" || end + 1 != to) return null
-            return tool("set_timer", "seconds" to s)
-        }
-        return null
-    }
-
-    private val DET = setOf("my", "the", "a", "an", "mon", "ma", "mes", "la", "le", "les", "l", "un", "une", "about")
-    private val WEATHER_WORDS = listOf("weather", "forecast", "weather forecast", "weather report", "temperature", "meteo", "previsions",
-        "previsions meteo", "temps qu il fait", "temps quil fait")
-    private val DAY_TAIL = mapOf(
-        "today" to "today", "for today" to "today", "for the day" to "today", "tomorrow" to "tomorrow", "for tomorrow" to "tomorrow",
-        "this weekend" to "this weekend", "for the weekend" to "this weekend", "for this weekend" to "this weekend", "the weekend" to "this weekend",
-        "on the weekend" to "this weekend", "this week" to "this week", "for the week" to "this week", "for this week" to "this week",
-        "aujourdhui" to "today", "d aujourdhui" to "today", "pour aujourdhui" to "today", "de la journee" to "today", "pour la journee" to "today",
-        "demain" to "tomorrow", "de demain" to "tomorrow", "pour demain" to "tomorrow", "de la fin de semaine" to "this weekend",
-        "pour la fin de semaine" to "this weekend", "la fin de semaine" to "this weekend", "en fin de semaine" to "this weekend",
-        "cette fin de semaine" to "this weekend", "du week end" to "this weekend", "pour le week end" to "this weekend", "ce week end" to "this weekend",
-        "de la semaine" to "this week", "pour la semaine" to "this week", "cette semaine" to "this week")
-    private val HOME = listOf("at home", "for home", "at my place", "at my house", "at the house", "home", "a la maison", "chez moi", "chez nous",
-        "pour la maison", "de la maison")
-    private val HERE = listOf("here", "outside", "around here", "for here", "out", "ici", "dehors", "d ici")
-    private val PLACE_LEAD = setOf("in", "for", "at", "a", "au", "en", "pour", "de", "dans", "near")
-    private val CALENDAR = listOf("calendar", "agenda", "schedule", "day", "events", "appointments", "meetings", "next meeting", "next appointment",
-        "next event", "first meeting", "calendrier", "journee", "horaire", "rendez vous", "prochain rendez vous", "prochaine reunion", "reunions",
-        "evenements", "rdv", "prochain rdv")
-    private val BRIEF = listOf("morning brief", "brief", "briefing", "morning briefing", "daily brief", "resume", "resume du matin", "resume de la journee",
-        "bilan du matin", "resume quotidien")
-    private val REMINDERS = listOf("reminders", "brief reminders", "morning reminders", "rappels", "rappels du matin")
-    private val MESSAGES = listOf("messages", "unread messages", "new messages", "messages non lus", "nouveaux messages")
-    private val PHONE = listOf("battery", "battery level", "phone status", "storage", "batterie", "niveau de batterie", "stockage", "etat du telephone")
-
-    /** Something to read or say: the weather, the calendar, the brief, reminders, messages (0.7), the phone, notes. */
-    private fun read(p: Words, a0: Int, to: Int): RoutineStep? {
-        var a = a0
-        while (a < to && p.w(a) in DET) a++
-        if (a >= to) return null
-        p.at(a, WEATHER_WORDS).takeIf { it > 0 }?.let { return weather(p, a + it, to) }
-        p.at(a, BRIEF).takeIf { it == to - a }?.let { return RoutineStep.Brief }
-        p.at(a, REMINDERS).takeIf { it == to - a }?.let { return RoutineStep.Reminders }
-        p.at(a, MESSAGES).takeIf { it == to - a }?.let { return RoutineStep.Messages }
-        p.at(a, PHONE).takeIf { it == to - a }?.let { return tool("phone_status", "about" to p.span(a, to)) }
-        p.at(a, CALENDAR).takeIf { it > 0 }?.let { n ->
-            val rest = a + n
-            if (rest == to) return tool("read_calendar", "day" to "today")
-            val d = p.at(rest, DAY_TAIL.keys)
-            if (d > 0 && rest + d == to) return tool("read_calendar", "day" to DAY_TAIL.getValue(key(p, rest, d)))
-            return null
-        }
-        if (p.at(a, "notes about", "notes on", "notes sur", "notes a propos de") > 0 && a + 2 < to) {
-            val n = p.at(a, "notes about", "notes on", "notes sur", "notes a propos de")
-            return tool("find_notes", "query" to p.span(a + n, to))
-        }
-        return null
-    }
-
-    private fun key(p: Words, at: Int, n: Int): String = (at until at + n).joinToString(" ") { p.w(it)!! }
-
-    /** The weather's place and day after "the weather": here, home, a named town, today, tomorrow, the weekend. */
-    private fun weather(p: Words, from: Int, to: Int): RoutineStep? {
-        var j = from
-        var place: String? = null
-        var day: String? = null
-        while (j < to) {
-            val d = p.at(j, DAY_TAIL.keys)
-            if (d > 0) { day = DAY_TAIL.getValue(key(p, j, d)); j += d; continue }
-            val h = p.at(j, HOME)
-            if (h > 0) { place = "home"; j += h; continue }
-            val here = p.at(j, HERE)
-            if (here > 0) { place = null; j += here; continue }
-            if (p.w(j) in PLACE_LEAD && j + 1 < to) {
-                // The town runs to the end of the piece, or to a day said after it ("in Quebec City tomorrow").
-                var e = to
-                for (k in j + 2 until to) if (p.at(k, DAY_TAIL.keys) == to - k) { e = k; break }
-                place = p.span(j + 1, e)
-                j = e
-                continue
-            }
-            return null
-        }
-        return tool("weather", "place" to place, "day" to day)
-    }
 }
 
 /**
@@ -978,18 +789,27 @@ object RoutineRouter {
  * or hear what your routines are. The brief and running a routine keep their own lock rules.
  */
 object RoutineLockedPhone {
-    const val UNLOCK_CHANGE = "Unlock first: routines are only changed with the phone unlocked."
-    const val UNLOCK_LIST = "Unlock first: your routines are only listed with the phone unlocked."
-    const val UNLOCK_REMIND = "Unlock first: reminders for your brief are only added with the phone unlocked."
-    const val UNLOCK_CHANGE_FR = "Déverrouille d'abord : les routines ne se changent que téléphone déverrouillé."
-    const val UNLOCK_LIST_FR = "Déverrouille d'abord : la liste de tes routines n'est donnée que téléphone déverrouillé."
-    const val UNLOCK_REMIND_FR = "Déverrouille d'abord : les rappels de ton résumé ne s'ajoutent que téléphone déverrouillé."
+    val UNLOCK_CHANGE: String get() = RoutineStrings.unlockChange().en()
+    val UNLOCK_LIST: String get() = RoutineStrings.unlockList().en()
+    val UNLOCK_REMIND: String get() = RoutineStrings.unlockRemind().en()
+    val UNLOCK_CHANGE_FR: String get() = RoutineStrings.unlockChange().render(Langs.of(Lang.FR))
+    val UNLOCK_LIST_FR: String get() = RoutineStrings.unlockList().render(Langs.of(Lang.FR))
+    val UNLOCK_REMIND_FR: String get() = RoutineStrings.unlockRemind().render(Langs.of(Lang.FR))
 
     /** What Robot says instead of [cmd] on a [locked] phone, in French when [fr] ([RoutineRouter.french]); null when it may go on. */
-    fun refuse(cmd: RoutineCommand, locked: Boolean, fr: Boolean = false): String? = if (!locked) null else when (cmd) {
-        is RoutineCommand.Create, is RoutineCommand.Delete -> if (fr) UNLOCK_CHANGE_FR else UNLOCK_CHANGE
-        is RoutineCommand.Remind -> if (fr) UNLOCK_REMIND_FR else UNLOCK_REMIND
-        RoutineCommand.ListAll -> if (fr) UNLOCK_LIST_FR else UNLOCK_LIST
-        RoutineCommand.BriefNow, is RoutineCommand.Run -> null
+    fun refuse(cmd: RoutineCommand, locked: Boolean, fr: Boolean = false): String? = refuseText(cmd, locked)?.render(Langs.of(if (fr) Lang.FR else Lang.EN))
+
+    /** 1.1: [refuse] in a turn whose languages are [l]: the words without a language yet, which the turn renders in [l]. */
+    @Suppress("UNUSED_PARAMETER")
+    fun refuse(cmd: RoutineCommand, locked: Boolean, l: Langs): Phrase? = refuseText(cmd, locked)
+
+    /** 1.1: [refuse] without a language yet (the turn says it in its reply language). */
+    fun refuseText(cmd: RoutineCommand, locked: Boolean): Phrase? = if (!locked) null else when (cmd) {
+        is RoutineCommand.Create, is RoutineCommand.Delete -> RoutineStrings.unlockChange()
+        is RoutineCommand.Remind -> RoutineStrings.unlockRemind()
+        is RoutineCommand.RemindOn -> RoutineStrings.unlockRemindOn()
+        RoutineCommand.ListAll -> RoutineStrings.unlockList()
+        // 1.1: Robot only asks what and when.
+        RoutineCommand.BriefNow, is RoutineCommand.Run, RoutineCommand.RemindWhat, is RoutineCommand.CantCancel -> null
     }
 }

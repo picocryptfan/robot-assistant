@@ -21,14 +21,8 @@ object ControlRefusal {
     /** At most this many past turns are named in a detail. */
     const val MAX_NAMED = 64
 
-    /** Your message (or what went with it) held the text. */
-    const val QUESTION = "Robot didn't read your message: it holds text this model treats as a command. Try asking without that part."
 
-    /** An earlier turn held it: it is left out from now on. */
-    const val EARLIER = "Part of this conversation holds text this model treats as a command, so Robot leaves it out from now on. Ask again."
 
-    /** Nothing found on its own (the check itself failed): the conversation can't go on with this model. */
-    const val UNKNOWN = "This conversation holds text this model treats as a command, so Robot couldn't read it. Start a new conversation."
 
     /** Which messages held such a text: the new [question], and past turns by their index in Generate.history. */
     data class Found(val question: Boolean = false, val history: List<Int> = emptyList()) {
@@ -60,11 +54,14 @@ object ControlRefusal {
     fun find(question: String, history: List<String>, refused: (String) -> Boolean): Found =
         Found(refused(question), history.indices.filter { refused(history[it]) })
 
-    /** What the panel says for [f]. */
-    fun text(f: Found): String = when {
-        f.history.isNotEmpty() -> EARLIER
-        f.question -> QUESTION
-        else -> UNKNOWN
+    /**
+     * What the panel says for [f] (1.1: ModelStrings, in English or French): an earlier turn held it (left out from now
+     * on); your message held it; nothing found on its own (the check itself failed: start a new conversation).
+     */
+    fun text(f: Found): app.heyrobot.core.i18n.Phrase = when {
+        f.history.isNotEmpty() -> app.heyrobot.core.i18n.ModelStrings.errorControlEarlier()
+        f.question -> app.heyrobot.core.i18n.ModelStrings.errorControlQuestion()
+        else -> app.heyrobot.core.i18n.ModelStrings.errorControlUnknown()
     }
 
     /**

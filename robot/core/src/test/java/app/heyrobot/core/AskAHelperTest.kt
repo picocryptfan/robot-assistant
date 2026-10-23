@@ -52,6 +52,8 @@ class AskAHelperTest {
         assertEquals(ask("pourquoi le ciel est bleu"), route("demande à l'assistant pourquoi le ciel est bleu"))
         assertEquals(ask("pourquoi le ciel est bleu"), route("Demande à l’assistant pourquoi le ciel est bleu"))
         assertEquals(ask("pourquoi le ciel est bleu"), route("demande à un assistant pourquoi le ciel est bleu"))
+        // 1.1: the French tip, tapped, asks in the words it shows (TurnStrings.tipClaude).
+        assertEquals(ask("pourquoi le ciel est bleu"), route(app.heyrobot.core.i18n.TurnStrings.tipClaude().render(app.heyrobot.core.i18n.Langs.of(app.heyrobot.core.i18n.Lang.FR))))
         assertEquals(ask("pourquoi le ciel est bleu"), route("dis robot, demande à l'assistant pourquoi le ciel est bleu"))
         // The "à" not heard.
         assertEquals(ask("pourquoi le ciel est bleu"), route("demande l'assistant pourquoi le ciel est bleu"))

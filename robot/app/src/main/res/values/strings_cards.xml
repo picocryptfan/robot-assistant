@@ -1,0 +1,39 @@
+<!-- The turn's cards, the chat and the reply card (the l10n work package WP1): ids start with card_, and the French
+     is in values-fr-rCA/strings_cards.xml. Buttons and labels follow the menus' language; what a card says (its summary
+     and line) comes from core's catalog (TurnStrings, ToolStrings, InfoStrings) in the reply language. -->
+<resources>
+    <!-- An action's card (ui/common/Chat.kt). -->
+    <string name="card_which_one">Which one?</string>
+    <string name="card_do_you_want">Do you want Robot to do this?</string>
+    <string name="card_locked">Locked</string>
+    <string name="card_picture_sent">The picture that would be sent</string>
+    <plurals name="card_and_more">
+        <item quantity="one">…and %1$d more. Say the full name to pick one of those.</item>
+        <item quantity="other">…and %1$d more. Say the full name to pick one of those.</item>
+    </plurals>
+    <string name="card_cancel">Cancel</string>
+    <string name="card_do_it">Do it</string>
+    <string name="card_undo">Undo</string>
+    <string name="card_allow_contacts">Allow contacts</string>
+    <string name="card_allow">Allow</string>
+    <string name="card_dismiss">Dismiss</string>
+
+    <!-- The offer to ask a helper under a reply. -->
+    <string name="card_send">Send</string>
+
+    <!-- One turn of a conversation (ui/common/Transcript.kt). -->
+    <string name="card_you">You: %1$s</string>
+    <string name="card_error">Error</string>
+
+    <!-- The reply card under a message (ui/common/ReplyCard.kt). -->
+    <string name="card_sent">Sent</string>
+    <string name="card_your_reply">Your reply</string>
+    <string name="card_done">Done</string>
+    <string name="card_edit">Edit</string>
+    <string name="card_open_chat">Open chat</string>
+    <string name="card_stop">Stop</string>
+
+    <!-- What Robot hands to another app (ToolExecutor): the email chooser's title, a route's start in Organic Maps. -->
+    <string name="card_write_email_with">Write the email with</string>
+    <string name="card_your_position">Your position (approximate)</string>
+</resources>

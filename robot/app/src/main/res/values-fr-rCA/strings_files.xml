@@ -1,0 +1,310 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- Robot Files in Québec French (tu): the ids of values/strings_files.xml, each value written with the glossary
+     (robot/l10n/glossary.tsv: « Fichiers de Robot », « fichier », « chiffré », « boîte de réception ») and the OQLF's
+     spaces (tools/fr_typo.py, FrenchTypographyTest). -->
+<resources>
+    <string name="files_intro">Robot garde tes fichiers sur ce téléphone, chacun chiffré avec une clé qui ne fonctionne que quand le téléphone est déverrouillé.</string>
+    <string name="files_opening">Ouverture de tes fichiers…</string>
+    <string name="files_storage">Stockage</string>
+    <string name="files_none_yet">Aucun fichier pour l’instant</string>
+    <plurals name="files_usage">
+        <item quantity="one">%1$d fichier · %2$s</item>
+        <item quantity="many">%1$d de fichiers · %2$s</item>
+        <item quantity="other">%1$d fichiers · %2$s</item>
+    </plurals>
+    <string name="files_yours">Tes fichiers</string>
+    <string name="files_delete_all">Tout supprimer</string>
+    <string name="files_delete_all_detail">Chaque fichier des Fichiers de Robot, et la clé qui les ouvre</string>
+    <string name="files_delete_all_title">Supprimer tous tes fichiers&#8239;?</string>
+    <string name="files_delete_all_text">Robot supprime chaque fichier des Fichiers de Robot et la clé qui les ouvre. Les copies restent dans les sauvegardes que tu as déjà faites. C’est irréversible.</string>
+    <string name="files_all_deleted">Tes fichiers sont supprimés.</string>
+    <string name="files_not_deleted">Robot n’a pas pu supprimer tes fichiers. Réessaie.</string>
+
+    <string name="files_locked">Déverrouille ton téléphone pour utiliser tes fichiers.</string>
+    <string name="files_try_again">Réessayer</string>
+    <string name="files_key_gone">La clé des fichiers de Robot n’existe plus&#160;: tes fichiers ne peuvent donc pas être lus. Robot les garde jusqu’à ce que tu choisisses&#160;: les restaurer à partir d’une sauvegarde, ou les supprimer.</string>
+    <string name="files_restore">Restaurer à partir d’une sauvegarde</string>
+    <string name="files_restore_detail">Dans %s</string>
+    <string name="files_unreadable">Robot n’a pas pu lire la liste de tes fichiers. Recommencer en fait une nouvelle à partir de tes fichiers.</string>
+    <string name="files_too_new">La liste de tes fichiers vient d’une version plus récente de Robot&#160;: celle-ci ne peut donc ni la lire ni la changer. Mets Robot à jour, ou recommence.</string>
+    <string name="files_start_over">Recommencer</string>
+    <string name="files_start_over_detail">Tes fichiers reviennent dans la boîte de réception, sans leur nom</string>
+    <string name="files_start_over_title">Recommencer&#8239;?</string>
+    <string name="files_start_over_text">Robot met de côté la liste qu’il n’a pas pu lire, sous le nom index.enc.bad, et en fait une nouvelle à partir de tes fichiers. Ils reviennent dans la boîte de réception, sans leur nom.</string>
+    <plurals name="files_started_over">
+        <item quantity="one">Robot a fait une nouvelle liste&#160;: %d fichier est dans la boîte de réception.</item>
+        <item quantity="many">Robot a fait une nouvelle liste&#160;: %d de fichiers sont dans la boîte de réception.</item>
+        <item quantity="other">Robot a fait une nouvelle liste&#160;: %d fichiers sont dans la boîte de réception.</item>
+    </plurals>
+    <string name="files_not_started_over">Rien n’a changé. Réessaie.</string>
+
+    <string name="files_backup">Rappel de sauvegarde</string>
+    <string name="files_backup_detail">%s peut te le rappeler chaque mois</string>
+    <string name="files_footer">Tes fichiers ne s’affichent jamais sur l’écran de verrouillage, et la sauvegarde d’Android ne les prend jamais. Les documents médicaux et les pièces d’identité ne vont jamais à une IA externe.</string>
+    <!-- F5, l'arrivée des fichiers (§3) : la fenêtre de partage, ses boutons et ses lignes. -->
+    <string name="files_share_label">Fichiers de Robot</string>
+    <string name="files_share_title">Ajouter aux Fichiers de Robot</string>
+    <string name="files_share_add">Ajouter</string>
+    <string name="files_share_close">Fermer</string>
+    <string name="files_share_done">Terminé</string>
+    <string name="files_share_note">Ils attendent dans ta boîte de réception jusqu’à ce que Robot les classe.</string>
+    <string name="files_share_size_unknown">Taille inconnue</string>
+    <!-- %1$d : le fichier en cours, %2$d : combien. -->
+    <string name="files_share_adding">Ajout de %1$d sur %2$d…</string>
+    <string name="files_share_text">Texte partagé</string>
+    <string name="files_add_anyway">L’ajouter quand même</string>
+    <string name="files_dont_add">Ne pas l’ajouter</string>
+    <!-- F5, la numérisation (§3.2) : Réglages › Fichiers › Numériser un document, en attendant le bouton de l’écran Fichiers (F7). -->
+    <string name="files_scan">Numériser un document</string>
+    <string name="files_scan_start">Prends une photo de la première page, à plat et bien éclairée. Tu places ses coins ensuite.</string>
+    <string name="files_scan_next">Prends la page suivante, ou ajoute la numérisation aux Fichiers de Robot.</string>
+    <plurals name="files_scan_pages">
+        <item quantity="one">%d page prête</item>
+        <item quantity="many">%d de pages prêtes</item>
+        <item quantity="other">%d pages prêtes</item>
+    </plurals>
+    <string name="files_scan_take">Prendre une photo</string>
+    <string name="files_scan_add_page">Ajouter une page</string>
+    <string name="files_scan_add">Ajouter aux Fichiers de Robot</string>
+    <string name="files_scan_corners">Fais glisser les quatre coins aux coins de la page.</string>
+    <string name="files_scan_retake">Reprendre</string>
+    <string name="files_scan_use">Garder cette page</string>
+    <string name="files_scan_working">Un instant…</string>
+    <string name="files_scan_no_camera">L’appareil photo ne s’est pas ouvert.</string>
+    <!-- F5 : le menu d’une transcription. -->
+    <string name="files_save_transcript">Enregistrer dans les Fichiers de Robot</string>
+    <!-- F7, l’onglet Fichiers (§6.2 à §6.5) : la boîte de réception, les fichiers classés récemment, les tiroirs, la page d’un fichier,
+         la recherche, Partager et Ouvrir avec une autre appli. -->
+    <string name="files_search_hint">Chercher dans tes fichiers</string>
+    <string name="files_being_read">En cours de lecture</string>
+    <string name="files_recent">Classés récemment</string>
+    <string name="files_drawers">Tiroirs</string>
+    <string name="files_new_drawer">Nouveau tiroir</string>
+    <string name="files_drawer_name">Nom du tiroir</string>
+    <string name="files_create">Créer</string>
+    <string name="files_cancel">Annuler</string>
+    <string name="files_scan_button">Numériser</string>
+    <string name="files_empty">Rien ici pour l’instant. Partage un fichier vers les Fichiers de Robot depuis n’importe quelle appli, numérise un reçu, ou dis «&#160;classe ça&#160;».</string>
+    <string name="files_open_settings">Ouvrir %s</string>
+    <string name="files_check_total">Vérifier le total</string>
+    <string name="files_kind_receipt">Reçu</string>
+    <string name="files_kind_bill">Facture</string>
+    <string name="files_kind_document">Document</string>
+    <string name="files_kind_id">Pièce d’identité</string>
+    <string name="files_kind_tax_slip">Feuillet d’impôt</string>
+    <string name="files_kind_ticket">Billet ou réservation</string>
+    <string name="files_kind_medical">Document médical</string>
+    <string name="files_kind_photo">Photo</string>
+    <string name="files_kind_video">Vidéo</string>
+    <string name="files_kind_note">Note</string>
+    <string name="files_kind_transcript">Transcription</string>
+    <string name="files_kind_other">Autre chose</string>
+    <string name="files_all">Tous</string>
+    <string name="files_drawer_empty">Aucun fichier dans ce tiroir pour l’instant. Déplace un fichier ici depuis sa page.</string>
+    <string name="files_rename_drawer">Renommer le tiroir</string>
+    <string name="files_delete_drawer">Supprimer le tiroir</string>
+    <string name="files_drawer_not_empty">Déplace d’abord ses fichiers dans un autre tiroir.</string>
+    <string name="files_drawer_taken">Il y a déjà un tiroir avec ce nom.</string>
+    <string name="files_drawer_name_unused">Robot ne peut pas utiliser ce nom pour un tiroir. Essaie un autre nom.</string>
+    <string name="files_more">Plus d’options</string>
+    <string name="files_page_of">Page %1$d sur %2$d</string>
+    <string name="files_previous">Page précédente</string>
+    <string name="files_next">Page suivante</string>
+    <string name="files_no_preview">Robot n’affiche pas ce genre de fichier. Ouvre-le avec une autre appli pour le voir.</string>
+    <string name="files_preview_failed">Robot n’a pas pu afficher cette page.</string>
+    <string name="files_damaged">Ce fichier est endommagé.</string>
+    <string name="files_name">Nom</string>
+    <string name="files_named_by_you">Nommé par toi</string>
+    <string name="files_rename">Renommer</string>
+    <string name="files_save">Enregistrer</string>
+    <string name="files_details">Détails</string>
+    <string name="files_field_merchant">Commerçant</string>
+    <string name="files_field_date">Date</string>
+    <string name="files_field_total">Montant total</string>
+    <string name="files_field_currency">Devise</string>
+    <string name="files_field_due">Échéance</string>
+    <string name="files_field_expiry">Expiration</string>
+    <string name="files_field_account">Compte (4 derniers chiffres)</string>
+    <string name="files_field_card">Carte (4 derniers chiffres)</string>
+    <string name="files_field_slip">Feuillet</string>
+    <string name="files_field_year">Année</string>
+    <string name="files_field_period">Période</string>
+    <string name="files_field_category">Catégorie</string>
+    <string name="files_field_tax">Taxe (%s)</string>
+    <string name="files_read_by_robot">Lu par Robot</string>
+    <string name="files_set_by_you">Défini par toi</string>
+    <string name="files_field_hint_amount">Un montant, comme 84,12</string>
+    <string name="files_field_hint_date">Une date, comme 2026-08-14</string>
+    <string name="files_field_invalid">Robot n’a pas pu lire ça. Vérifie-le et réessaie.</string>
+    <string name="files_add_detail">Ajouter un détail</string>
+    <string name="files_remove_detail">Retirer</string>
+    <string name="files_drawer">Tiroir</string>
+    <string name="files_kind">Genre</string>
+    <string name="files_tags">Étiquettes</string>
+    <string name="files_add_tag">Ajouter une étiquette</string>
+    <string name="files_tag">Étiquette</string>
+    <string name="files_remove_named">Retirer %s</string>
+    <string name="files_link_person">Lier une personne</string>
+    <string name="files_no_people">Personne dans Personnes pour l’instant&#160;: ajoute des personnes dans %s.</string>
+    <string name="files_where_from">D’où il vient</string>
+    <string name="files_source">Provenance</string>
+    <string name="files_from_scan">Numérisé</string>
+    <string name="files_from_panel">Classé depuis une conversation avec Robot</string>
+    <string name="files_from_transcript">Enregistré depuis une transcription</string>
+    <string name="files_from_backup">D’une sauvegarde qui n’est pas la tienne</string>
+    <string name="files_from_recovered">Retrouvé par Robot&#160;: son nom et sa provenance ont été perdus</string>
+    <string name="files_from_unknown">Inconnue</string>
+    <string name="files_added">Ajouté</string>
+    <string name="files_size">Taille</string>
+    <string name="files_file_type">Type de fichier</string>
+    <string name="files_opened">Ouvert avec une autre appli</string>
+    <string name="files_yes">Oui</string>
+    <string name="files_no">Non</string>
+    <string name="files_filed">Classé</string>
+    <string name="files_filed_by_robot">Par Robot, %s</string>
+    <string name="files_filed_by_rule">Par ta règle, %s</string>
+    <string name="files_filed_by_you">Par toi, %s</string>
+    <string name="files_share">Partager</string>
+    <string name="files_open_with">Ouvrir avec une autre appli</string>
+    <string name="files_open_with_title">Ouvrir avec</string>
+    <string name="files_delete">Supprimer</string>
+    <string name="files_open_title">Ouvrir avec une autre appli&#8239;?</string>
+    <string name="files_open_text">L’appli reçoit une copie du fichier. Robot supprime sa copie quand tu reviens, mais l’appli peut en garder une.</string>
+    <string name="files_open">Ouvrir</string>
+    <string name="files_dangerous_open">Ce fichier pourrait installer ou lancer quelque chose. Ouvre-le seulement si tu sais d’où il vient.</string>
+    <string name="files_cant_strip_title">L’envoyer avec sa localisation&#8239;?</string>
+    <string name="files_cant_strip_text">Robot ne peut pas retirer la localisation et les autres détails de ce fichier. L’appli le reçoit tel que tu l’as ajouté.</string>
+    <string name="files_send_anyway">L’envoyer tel quel</string>
+    <string name="files_out_failed">Robot n’a pas pu faire une copie à envoyer. Réessaie.</string>
+    <string name="files_out_low_space">Pas assez d’espace sur le téléphone pour faire une copie.</string>
+    <string name="files_no_app">Aucune appli de ce téléphone ne peut prendre ce fichier.</string>
+    <string name="files_delete_title">Supprimer «&#160;%s&#160;»&#8239;?</string>
+    <string name="files_delete_text">Il reste dans les sauvegardes que tu as déjà faites.</string>
+    <string name="files_keep">Garder</string>
+    <string name="files_deleted">Fichier supprimé.</string>
+    <string name="files_not_deleted_one">Robot n’a pas pu le supprimer. Réessaie.</string>
+    <string name="files_undeleted">Le fichier est revenu.</string>
+    <string name="files_move_to">Déplacer dans</string>
+    <string name="files_search_none">Aucun résultat.</string>
+    <string name="files_not_now">Robot n’a pas pu faire ça maintenant. Réessaie.</string>
+    <string name="files_file_it">Le classer</string>
+    <string name="files_file_in">Classer dans %s</string>
+    <string name="files_in_inbox">Boîte de réception</string>
+    <plurals name="files_need_you">
+        <item quantity="one">%d a besoin de toi</item>
+        <item quantity="many">%d ont besoin de toi</item>
+        <item quantity="other">%d ont besoin de toi</item>
+    </plurals>
+    <plurals name="files_count">
+        <item quantity="one">%d fichier</item>
+        <item quantity="many">%d de fichiers</item>
+        <item quantity="other">%d fichiers</item>
+    </plurals>
+    <plurals name="files_total_receipts">
+        <item quantity="one">%1$s dans %2$d reçu</item>
+        <item quantity="many">%1$s dans %2$d de reçus</item>
+        <item quantity="other">%1$s dans %2$d reçus</item>
+    </plurals>
+    <plurals name="files_total_bills">
+        <item quantity="one">%1$s dans %2$d facture</item>
+        <item quantity="many">%1$s dans %2$d de factures</item>
+        <item quantity="other">%1$s dans %2$d factures</item>
+    </plurals>
+    <plurals name="files_to_check">
+        <item quantity="one">%d total à vérifier</item>
+        <item quantity="many">%d de totaux à vérifier</item>
+        <item quantity="other">%d totaux à vérifier</item>
+    </plurals>
+    <plurals name="files_found">
+        <item quantity="one">%d fichier trouvé</item>
+        <item quantity="many">%d de fichiers trouvés</item>
+        <item quantity="other">%d fichiers trouvés</item>
+    </plurals>
+    <!-- F10: reminders, the brief and clean-up suggestions (files-1.4-plan.md §6.6, §7). -->
+    <string name="files_field_return_by">Retour au plus tard le</string>
+    <string name="files_field_warranty">Garantie jusqu’au</string>
+    <string name="files_reminders_title">Rappels</string>
+    <string name="files_add_to_brief">Ajouter à mon résumé du matin</string>
+    <string name="files_add_to_calendar">Ajouter à l’agenda</string>
+    <string name="files_in_brief">Dans ton résumé du matin du %1$s</string>
+    <string name="files_remove_reminder">Retirer</string>
+    <string name="files_reminders_row">Rappels tirés des fichiers</string>
+    <string name="files_reminders_ask">Demander d’abord</string>
+    <string name="files_reminders_brief">Ajouter à mon résumé du matin sans demander</string>
+    <string name="files_reminders_off">Désactivé</string>
+    <string name="files_reminders_detail">Ajouter à ton agenda passe toujours par une carte.</string>
+    <string name="files_brief_row">Afficher dans le résumé du matin</string>
+    <string name="files_brief_detail">Ce que Robot a classé et tes rappels, seulement quand le téléphone est déverrouillé.</string>
+    <string name="files_cleanup_row">Suggestions de ménage</string>
+    <string name="files_cleanup_detail">Les fichiers qui ne semblent plus utiles. Supprimer demande toujours.</string>
+    <string name="files_cleanup_list">Fichiers qui pourraient partir</string>
+    <string name="files_not_saved">Robot n’a pas pu enregistrer ce réglage. Réessaie.</string>
+    <!-- FX2 (files-1.4-review.md finding 4): §6.6's rows for Robot Files on or off, the filing levels, reading text in images and stripping location. -->
+    <string name="files_on_row">Fichiers de Robot</string>
+    <string name="files_on_detail">Désactivés, Robot ne prend aucun nouveau fichier. Ceux que tu as restent comme ils sont.</string>
+    <string name="files_filing_title">Classement</string>
+    <string name="files_level_receipts">Reçus</string>
+    <string name="files_level_bills">Factures</string>
+    <string name="files_level_documents">Documents</string>
+    <string name="files_level_documents_detail">Aussi les pièces d’identité, les feuillets d’impôt, les billets et les documents médicaux</string>
+    <string name="files_level_photos">Photos et vidéos</string>
+    <string name="files_level_other">Autres fichiers</string>
+    <string name="files_level_other_detail">Notes, transcriptions et tout le reste</string>
+    <string name="files_level_auto">Classer sans demander</string>
+    <string name="files_level_ask">Demander d’abord</string>
+    <string name="files_level_off">Désactivé&#160;: il reste dans ta boîte de réception, sans être lu</string>
+    <string name="files_read_text_row">Lire le texte dans les images</string>
+    <string name="files_read_text_detail">Avec le modèle de Robot, sur ce téléphone. Désactivé, une photo est classée comme photo et Robot demande ce qu’est une numérisation.</string>
+    <string name="files_strip_row">Retirer la localisation des photos que j’envoie</string>
+    <string name="files_strip_detail">Une photo que tu partages ou ouvres avec une autre appli part sans sa localisation ni ses autres détails. Les exportations aussi.</string>
+    <!-- F12: business and personal, a tax pack and an expense report, travel mode (files-1.4-plan.md §4.4, §6.6, §7.2). -->
+    <string name="files_tag_business">Affaires</string>
+    <string name="files_tag_personal">Perso</string>
+    <string name="files_export">Exporter</string>
+    <string name="files_pack_tax">Dossier d’impôts</string>
+    <string name="files_pack_tax_detail">Les feuillets et documents fiscaux d’une année, avec un tableau de leurs détails</string>
+    <string name="files_pack_expenses">Rapport de dépenses</string>
+    <string name="files_pack_expenses_detail">Les fichiers étiquetés affaires d’une année, avec un tableau de leurs détails</string>
+    <string name="files_pack_what">Ce qui part&#160;: %1$s, et un tableau de leurs détails (un fichier CSV).</string>
+    <string name="files_pack_not_encrypted">Les copies ne sont pas chiffrées&#160;: quiconque peut ouvrir le dossier que tu choisis peut les lire.</string>
+    <string name="files_pack_export">Exporter dans un dossier</string>
+    <string name="files_pack_no_folder">Robot n’a pas pu créer de dossier à cet endroit. Choisis-en un autre.</string>
+    <string name="files_pack_failed">Robot n’a pas pu terminer l’exportation. Essaie un autre dossier.</string>
+    <plurals name="files_pack_damaged">
+        <item quantity="one">%d fichier ne peut pas être lu, alors il est laissé de côté.</item>
+        <item quantity="many">%d de fichiers ne peuvent pas être lus, alors ils sont laissés de côté.</item>
+        <item quantity="other">%d fichiers ne peuvent pas être lus, alors ils sont laissés de côté.</item>
+    </plurals>
+    <plurals name="files_pack_done">
+        <item quantity="one">%1$d fichier et son tableau copiés dans «&#160;%2$s&#160;».</item>
+        <item quantity="many">%1$d de fichiers et leur tableau copiés dans «&#160;%2$s&#160;».</item>
+        <item quantity="other">%1$d fichiers et leur tableau copiés dans «&#160;%2$s&#160;».</item>
+    </plurals>
+    <plurals name="files_pack_left_out">
+        <item quantity="one">%d fichier n’a pas été copié&#160;: le tableau dit lequel.</item>
+        <item quantity="many">%d de fichiers n’ont pas été copiés&#160;: le tableau dit lesquels.</item>
+        <item quantity="other">%d fichiers n’ont pas été copiés&#160;: le tableau dit lesquels.</item>
+    </plurals>
+    <plurals name="files_pack_stopped">
+        <item quantity="one">Robot s’est arrêté parce que le téléphone s’est verrouillé. %d fichier a été copié.</item>
+        <item quantity="many">Robot s’est arrêté parce que le téléphone s’est verrouillé. %d de fichiers ont été copiés.</item>
+        <item quantity="other">Robot s’est arrêté parce que le téléphone s’est verrouillé. %d fichiers ont été copiés.</item>
+    </plurals>
+    <string name="files_travel_title">Mode voyage</string>
+    <string name="files_travel_detail">Les tiroirs masqués et leurs fichiers restent hors de vue partout jusqu’à ce que tu confirmes avec ton NIP.</string>
+    <string name="files_travel_note">Un écran de confidentialité, pas du chiffrement&#160;: quiconque connaît ton NIP peut les afficher de nouveau. Tant que le mode voyage est activé, les sauvegardes et les restaurations laissent les Fichiers de Robot de côté, et la voix de Robot et ton résumé du matin ne parlent jamais des tiroirs masqués.</string>
+    <string name="files_hidden_title">Tiroirs masqués</string>
+    <string name="files_hidden_more">D’autres tiroirs peuvent être masqués. Affiche-les pour les modifier.</string>
+    <string name="files_show_hidden">Afficher les tiroirs masqués</string>
+    <string name="files_show_hidden_detail">Avec ton NIP, pendant 10 minutes, jusqu’à ce que tu quittes Robot ou que l’écran s’éteigne</string>
+    <string name="files_hidden_shown">Les tiroirs masqués s’affichent dans les Fichiers pendant 10 minutes, jusqu’à ce que tu quittes Robot ou que l’écran s’éteigne.</string>
+    <string name="files_travel_need_lock">Configure d’abord un verrouillage de l’écran&#160;: le mode voyage a besoin de ton NIP pour afficher de nouveau les tiroirs masqués.</string>
+    <string name="files_travel_choose">Choisis d’abord au moins un tiroir à masquer.</string>
+    <string name="files_confirm_title">Confirme que c’est toi</string>
+    <string name="files_confirm_off">Désactiver le mode voyage et afficher tes tiroirs masqués</string>
+    <string name="files_confirm_unhide">Ne plus masquer un tiroir</string>
+    <string name="files_confirm_show">Afficher tes tiroirs masqués</string>
+    <string name="files_not_confirmed">Pas confirmé&#160;: rien n’a changé.</string>
+    <string name="files_no_pin_screen">Robot n’a pas pu ouvrir l’écran qui demande ton NIP. Rien n’a changé.</string>
+</resources>

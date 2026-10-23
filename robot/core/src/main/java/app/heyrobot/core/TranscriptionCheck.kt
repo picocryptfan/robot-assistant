@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.ConversationStrings
+import app.heyrobot.core.i18n.Msg
+import app.heyrobot.core.i18n.Phrase
 import java.util.Locale
 
 // Pure. Settings › Voice › Transcription check (docs/conversation-mode.md 2.5, phase 5.0(a)): the gate for Québec French
 // before conversation mode is trusted. You read the sentences below (or say anything and correct what Robot wrote, or
 // import clips with their text), Robot decodes the recording exactly as a conversation would (the 0.25 s segments,
 // Parakeet v3) and counts the words it got wrong (Wer). The audio stays in memory; what is kept is numbers only (voice
-// log event 117), and "Copy report" copies numbers unless you tick "Include sentences".
+// log event 117), and "Copy report" copies numbers unless you tick "Include sentences". 1.1: the results on the screen
+// are core's catalog (ConversationStrings), in the menus' language; the copied report stays English (a diagnostic), and
+// the sentences you read are one list per language.
 
 /**
  * 0.8: the microphone a line was recorded with: the phone's, or a headset's or the car's (Settings › Voice ›
@@ -15,9 +20,13 @@ import java.util.Locale
  * routes it ([CheckMics.route]), so the headset's microphone can be measured against the phone's (headset mode's H0.5,
  * car mode's C0.3).
  */
-enum class CheckMic(val title: String) {
-    PHONE("phone mic"),
-    HEADSET("headset mic"),
+enum class CheckMic(val label: Msg) {
+    PHONE(ConversationStrings.micPhone),
+    HEADSET(ConversationStrings.micHeadset),
+    ;
+
+    /** [label] in English. */
+    val title: String get() = label().en()
 }
 
 object CheckMics {
@@ -40,13 +49,17 @@ object CheckMics {
 }
 
 /** How a line of the check was made. */
-enum class CheckMode(val title: String) {
+enum class CheckMode(val label: Msg) {
     /** One of [CheckSentences], read aloud. */
-    READ("read"),
+    READ(ConversationStrings.modeRead),
     /** Said freely, then corrected to what was really said. */
-    FREE("free"),
+    FREE(ConversationStrings.modeFree),
     /** An imported clip with its reference line. */
-    CLIP("clip"),
+    CLIP(ConversationStrings.modeClip),
+    ;
+
+    /** [label] in English. */
+    val title: String get() = label().en()
 }
 
 /**
@@ -56,39 +69,39 @@ enum class CheckMode(val title: String) {
  */
 object CheckSentences {
     val FR: List<String> = listOf(
-        "On se reprend-tu demain?",
-        "J'ai pogné un char de trafic sur le pont Champlain.",
-        "Peux-tu passer au dépanneur chercher du lait?",
-        "Il fait frette à matin, mets ta tuque.",
-        "Ma blonde pis moi, on s'en va au chalet en fin de semaine.",
-        "C'est correct, inquiète-toi pas avec ça.",
-        "Le souper est prêt, venez manger avant que ça refroidisse.",
-        "J'ai oublié mon cellulaire dans l'auto.",
-        "Ça m'a pris une éternité trouver un stationnement au centre-ville.",
-        "Veux-tu une poutine ou ben une pizza ce soir?",
-        "Les enfants jouent dehors dans la neige depuis le dîner.",
-        "Je suis brûlé, je vais me coucher de bonne heure.",
-        "Mon chum a magasiné toute la journée au centre d'achats.",
-        "Faut que j'appelle le garage pour mes pneus d'hiver.",
-        "Il mouille à boire debout, prends ton parapluie.",
-        "Elle est tannée d'attendre l'autobus au coin de la rue.",
-        "On va-tu voir la partie de hockey chez ton frère?",
-        "Ma mère nous invite à souper dimanche prochain.",
-        "J'ai de la misère à dormir quand il fait chaud de même.",
-        "Arrête de niaiser pis viens m'aider à pelleter l'entrée.",
+        "On se reprend-tu demain?", // l10n: not text (a sentence you read aloud, in its own language)
+        "J'ai pogné un char de trafic sur le pont Champlain.", // l10n: not text (a sentence you read aloud, in its own language)
+        "Peux-tu passer au dépanneur chercher du lait?", // l10n: not text (a sentence you read aloud, in its own language)
+        "Il fait frette à matin, mets ta tuque.", // l10n: not text (a sentence you read aloud, in its own language)
+        "Ma blonde pis moi, on s'en va au chalet en fin de semaine.", // l10n: not text (a sentence you read aloud, in its own language)
+        "C'est correct, inquiète-toi pas avec ça.", // l10n: not text (a sentence you read aloud, in its own language)
+        "Le souper est prêt, venez manger avant que ça refroidisse.", // l10n: not text (a sentence you read aloud, in its own language)
+        "J'ai oublié mon cellulaire dans l'auto.", // l10n: not text (a sentence you read aloud, in its own language)
+        "Ça m'a pris une éternité trouver un stationnement au centre-ville.", // l10n: not text (a sentence you read aloud, in its own language)
+        "Veux-tu une poutine ou ben une pizza ce soir?", // l10n: not text (a sentence you read aloud, in its own language)
+        "Les enfants jouent dehors dans la neige depuis le dîner.", // l10n: not text (a sentence you read aloud, in its own language)
+        "Je suis brûlé, je vais me coucher de bonne heure.", // l10n: not text (a sentence you read aloud, in its own language)
+        "Mon chum a magasiné toute la journée au centre d'achats.", // l10n: not text (a sentence you read aloud, in its own language)
+        "Faut que j'appelle le garage pour mes pneus d'hiver.", // l10n: not text (a sentence you read aloud, in its own language)
+        "Il mouille à boire debout, prends ton parapluie.", // l10n: not text (a sentence you read aloud, in its own language)
+        "Elle est tannée d'attendre l'autobus au coin de la rue.", // l10n: not text (a sentence you read aloud, in its own language)
+        "On va-tu voir la partie de hockey chez ton frère?", // l10n: not text (a sentence you read aloud, in its own language)
+        "Ma mère nous invite à souper dimanche prochain.", // l10n: not text (a sentence you read aloud, in its own language)
+        "J'ai de la misère à dormir quand il fait chaud de même.", // l10n: not text (a sentence you read aloud, in its own language)
+        "Arrête de niaiser pis viens m'aider à pelleter l'entrée.", // l10n: not text (a sentence you read aloud, in its own language)
     )
 
     val EN: List<String> = listOf(
-        "Can you grab some milk on your way home?",
-        "I left my phone charger in the car again.",
-        "Let's meet at the coffee shop near the library.",
-        "The kids want pancakes for breakfast tomorrow.",
-        "It's pouring outside, so bring an umbrella.",
-        "I'm running late because the bus never showed up.",
-        "Did you remember to call the dentist this morning?",
-        "We should clean the garage before the weekend.",
-        "My sister is coming over for dinner on Sunday.",
-        "Turn down the music, the baby is finally asleep.",
+        "Can you grab some milk on your way home?", // l10n: not text (a sentence you read aloud, in its own language)
+        "I left my phone charger in the car again.", // l10n: not text (a sentence you read aloud, in its own language)
+        "Let's meet at the coffee shop near the library.", // l10n: not text (a sentence you read aloud, in its own language)
+        "The kids want pancakes for breakfast tomorrow.", // l10n: not text (a sentence you read aloud, in its own language)
+        "It's pouring outside, so bring an umbrella.", // l10n: not text (a sentence you read aloud, in its own language)
+        "I'm running late because the bus never showed up.", // l10n: not text (a sentence you read aloud, in its own language)
+        "Did you remember to call the dentist this morning?", // l10n: not text (a sentence you read aloud, in its own language)
+        "We should clean the garage before the weekend.", // l10n: not text (a sentence you read aloud, in its own language)
+        "My sister is coming over for dinner on Sunday.", // l10n: not text (a sentence you read aloud, in its own language)
+        "Turn down the music, the baby is finally asleep.", // l10n: not text (a sentence you read aloud, in its own language)
     )
 
     /** French first, then English, each with its language. */
@@ -131,11 +144,15 @@ data class CheckTotal(val lang: String, val lines: Int, val readers: Int, val re
     }
 }
 
-enum class CheckVerdict(val title: String) {
-    PASSES("passes"),
-    FAILS("doesn't pass"),
-    SO_FAR_PASSES("under the mark so far"),
-    SO_FAR_FAILS("over the mark so far"),
+enum class CheckVerdict(val label: Msg) {
+    PASSES(ConversationStrings.verdictPasses),
+    FAILS(ConversationStrings.verdictFails),
+    SO_FAR_PASSES(ConversationStrings.verdictUnder),
+    SO_FAR_FAILS(ConversationStrings.verdictOver),
+    ;
+
+    /** [label] in English. */
+    val title: String get() = label().en()
 }
 
 object CheckReport {
@@ -143,11 +160,15 @@ object CheckReport {
     const val GATE_LINES = 20
     const val GATE_READERS = 2
 
-    fun langName(lang: String): String = when (lang) {
-        "fr" -> "French (Québec)"
-        "en" -> "English"
-        else -> lang.uppercase(Locale.ROOT)
+    /** "French (Québec)", "English" (« français (Québec) », « anglais »). */
+    fun langNameText(lang: String): Phrase = when (lang) {
+        "fr" -> ConversationStrings.checkLangFr()
+        "en" -> ConversationStrings.langEn()
+        else -> Phrase.plain(lang.uppercase(Locale.ROOT))
     }
+
+    /** [langNameText] in English. */
+    fun langName(lang: String): String = langNameText(lang).en()
 
     /**
      * Per language, French first; languages with no line are left out. 0.8: per microphone too (the phone's first), so
@@ -158,34 +179,46 @@ object CheckReport {
         .map { (k, ls) -> CheckTotal(k.first, ls.size, ls.map { it.reader }.distinct().size, Wer.total(ls.map { it.wer }), k.second) }
 
     /** "12% of words wrong (9% with accents not counted) over 20 lines, 2 readers. Pass mark 15%: passes." */
-    fun summary(t: CheckTotal): String {
+    fun summaryText(t: CheckTotal): Phrase {
         val noAccents = Math.round(t.result.rateWithoutAccents.coerceAtLeast(0.0) * 100).toInt()
-        val accents = if (t.result.accents > 0) " ($noAccents% with accents not counted)" else ""
-        val readers = if (t.readers == 1) "1 reader" else "${t.readers} readers"
-        val need = if (t.lang == "fr" && !t.enough) " The gate needs $GATE_LINES lines from $GATE_READERS readers." else ""
-        val mic = if (t.mic == CheckMic.PHONE) "" else ", ${t.mic.title}"
-        return "${langName(t.lang)}$mic: ${t.result.percent}% of words wrong$accents over ${t.lines} line${if (t.lines == 1) "" else "s"}, $readers. " +
-            "Pass mark ${Math.round(t.mark * 100)}%: ${t.verdict.title}.$need"
+        val who = if (t.mic == CheckMic.PHONE) langNameText(t.lang) else ConversationStrings.checkWhoMic("lang" to langNameText(t.lang), "mic" to t.mic.label())
+        val args = arrayOf("who" to who, "pct" to "${t.result.percent}", "lines" to ConversationStrings.linesCount(t.lines),
+            "readers" to ConversationStrings.readersCount(t.readers), "mark" to "${Math.round(t.mark * 100)}", "verdict" to t.verdict.label())
+        val main = if (t.result.accents > 0) ConversationStrings.checkSummaryAccents(*args, "plain" to "$noAccents") else ConversationStrings.checkSummary(*args)
+        return if (t.lang == "fr" && !t.enough) Phrase.join(main, ConversationStrings.checkNeed("lines" to "$GATE_LINES", "readers" to "$GATE_READERS")) else main
     }
 
+    /** [summaryText] in English (the copied report). */
+    fun summary(t: CheckTotal): String = summaryText(t).en()
+
     /** One line, numbers only: "3. FR read · 2 of 9 words wrong (22%) · 1 accent · heard as FR · decoded in 412 ms · 3.1 s". */
-    fun line(n: Int, l: CheckLine): String {
+    fun lineText(n: Int, l: CheckLine): Phrase {
         val w = l.wer
-        val acc = if (w.accents > 0) " · ${w.accents} accent${if (w.accents == 1) "" else "s"}" else ""
         val heardAs = l.detected?.uppercase(Locale.ROOT) ?: "?"
-        val mic = if (l.mic == CheckMic.PHONE) "" else " · ${l.mic.title}"
-        return "$n. ${l.lang.uppercase(Locale.ROOT)} ${l.mode.title} · reader ${l.reader}$mic · ${w.errors} of ${w.words} words wrong (${w.percent}%)$acc · " +
-            "heard as $heardAs · decoded in ${l.decodeMs} ms · " + String.format(Locale.US, "%.1f s", l.audioMs / 1000.0)
+        val (int, frac) = String.format(Locale.US, "%.1f", l.audioMs / 1000.0).split('.')
+        return Phrase.Join(listOfNotNull(
+            ConversationStrings.checkLineHead("n" to "$n", "lang" to l.lang.uppercase(Locale.ROOT), "mode" to l.mode.label()),
+            ConversationStrings.checkReader("n" to "${l.reader}"),
+            if (l.mic == CheckMic.PHONE) null else l.mic.label(),
+            ConversationStrings.checkWrong(w.errors, "words" to "${w.words}", "pct" to "${w.percent}"),
+            if (w.accents > 0) ConversationStrings.accentsCount(w.accents) else null,
+            ConversationStrings.checkHeardAs("lang" to heardAs),
+            ConversationStrings.checkDecoded("ms" to "${l.decodeMs}"),
+            ConversationStrings.secondsOneDecimal("int" to int, "frac" to frac),
+        ), " · ")
     }
+
+    /** [lineText] in English (the copied report). */
+    fun line(n: Int, l: CheckLine): String = lineText(n, l).en()
 
     /**
      * "Copy report": the totals and each line in numbers. The words said and heard only with [sentences] ("Include
      * sentences"), since your own words and other people's are personal.
      */
     fun text(lines: List<CheckLine>, sentences: Boolean, version: String): String = buildString {
-        append("Robot transcription check · Robot ").append(version).append(" · Parakeet v3 with conversation settings\n")
+        append("Robot transcription check · Robot ").append(version).append(" · Parakeet v3 with conversation settings\n") // l10n: not text (the copied report, a diagnostic: English)
         if (lines.isEmpty()) {
-            append("No lines yet.\n")
+            append("No lines yet.\n") // l10n: not text (the copied report, a diagnostic: English)
             return@buildString
         }
         for (t in totals(lines)) append(summary(t)).append('\n')
@@ -209,7 +242,15 @@ object CheckClips {
     sealed class Pairing {
         /** Each clip's name with its reference line, in the order to run them. */
         data class Ok(val pairs: List<Pair<String, String>>) : Pairing()
-        data class Refused(val why: String) : Pairing()
+        /** [why] in English; [whyText] for the screen. */
+        data class Refused(val why: String) : Pairing() {
+            var whyText: Phrase = Phrase.plain(why)
+                private set
+
+            constructor(text: Phrase) : this(text.en()) {
+                whyText = text
+            }
+        }
     }
 
     private fun base(name: String): String = name.substringAfterLast('/').substringBeforeLast('.').lowercase(Locale.ROOT)
@@ -220,9 +261,9 @@ object CheckClips {
      * in the order of the clips' names. Blank lines are ignored.
      */
     fun pair(names: List<String>, text: String): Pairing {
-        if (names.isEmpty()) return Pairing.Refused("No clips picked.")
+        if (names.isEmpty()) return Pairing.Refused(ConversationStrings.noClipsPicked())
         val lines = text.lines().map { it.trim() }.filter { it.isNotEmpty() }
-        if (lines.isEmpty()) return Pairing.Refused("The text file has no lines.")
+        if (lines.isEmpty()) return Pairing.Refused(ConversationStrings.textFileEmpty())
         val byName = names.associateBy { base(it) }
         val tabbed = lines.filter { '\t' in it }
         if (tabbed.isNotEmpty() && tabbed.size >= lines.size - 1) {
@@ -239,13 +280,12 @@ object CheckClips {
                     ?.trim() ?: return@mapNotNull null
                 clip to sentence
             }.distinctBy { it.first }
-            if (found.isEmpty()) return Pairing.Refused("None of the names in the text file matches a clip.")
+            if (found.isEmpty()) return Pairing.Refused(ConversationStrings.noNameMatches())
             val missing = names.size - found.size
-            if (missing > 0) return Pairing.Refused("$missing clip${if (missing == 1) " has" else "s have"} no line in the text file.")
+            if (missing > 0) return Pairing.Refused(ConversationStrings.clipsWithoutLine(missing))
             return Pairing.Ok(names.sortedBy { it.lowercase(Locale.ROOT) }.map { n -> n to found.first { it.first == n }.second })
         }
-        if (lines.size != names.size) return Pairing.Refused("${names.size} clip${if (names.size == 1) "" else "s"} but ${lines.size} line${if (lines.size == 1) "" else "s"}: " +
-            "the text file needs one line per clip, in the order of the clips' names.")
+        if (lines.size != names.size) return Pairing.Refused(ConversationStrings.clipsButLines(names.size, "lines" to ConversationStrings.linesCount(lines.size)))
         return Pairing.Ok(names.sortedBy { it.lowercase(Locale.ROOT) }.zip(lines))
     }
 }

@@ -87,7 +87,18 @@ data class AssistantFacts(
     /** 0.8: "Headset button opens Robot", and who answers its three intents now (null: not read). */
     val headsetButtonOn: Boolean = true,
     val headsetButton: Map<String, app.heyrobot.core.headset.ButtonHandler>? = null,
+    /** 1.2: [recognizer] names an installed recognition service (RecognizerKeeper's check, the one its repair uses). */
+    val recognizerInstalled: Boolean = false,
+    /** 1.2: GrapheneOS Clock is installed (RoutineFacts.clockInstalled), for the guide's morning brief "after your alarm". */
+    val clockInstalled: Boolean = true,
 ) {
+    /**
+     * 1.2 (every-android-phone, Step 6): what keeps Robot the assistant at the next boot (core RecognizerRepair.kept):
+     * another installed recognizer, a stock phone's own, means the guide and Assistant setup don't ask for the ADB fix.
+     */
+    val restartKept: RecognizerRepair.Kept get() = if (recognizerIsRobot) RecognizerRepair.Kept.ROBOT
+        else RecognizerRepair.kept(recognizer.takeUnless { it == "unset" || it == "unreadable" }, AdbFixes.RECOGNIZER, recognizerInstalled)
+
     /** Claude's masked key (null: none saved). */
     val claudeKey: String? get() = keys[app.heyrobot.core.helpers.HelperConfig.CLAUDE_ID]
     val claudeKeyUnreadable: Boolean get() = app.heyrobot.core.helpers.HelperConfig.CLAUDE_ID in keysUnreadable
@@ -120,10 +131,14 @@ object Assistant {
             recognizer = rec.ifEmpty { "unset" },
             recognizerIsRobot = ComponentName.unflattenFromString(rec)?.let { it.packageName == ctx.packageName && it.className == RECOGNIZER_CLASS } == true,
             recognizersFound = found,
+            recognizerInstalled = RecognizerKeeper.installed(ctx, rec),
+            clockInstalled = RoutineFacts.clockInstalled(ctx),
             micGranted = granted(ctx, Manifest.permission.RECORD_AUDIO),
             notificationsGranted = granted(ctx, Manifest.permission.POST_NOTIFICATIONS),
             listening = status?.optBoolean("listening"),
-            listeningNote = status?.optString("note")?.takeIf { it.isNotEmpty() },
+            // 1.1 (WP7): the voice process's note without a language, in the menus' (its English one from an older Robot).
+            listeningNote = app.heyrobot.core.i18n.PhraseWire.fromJson(status?.optJSONObject("notePhrase"))?.render(AppLanguage.langs(ctx))
+                ?: status?.optString("note")?.takeIf { it.isNotEmpty() },
             contactsGranted = granted(ctx, Manifest.permission.READ_CONTACTS),
             calendarGranted = granted(ctx, Manifest.permission.READ_CALENDAR) && granted(ctx, Manifest.permission.WRITE_CALENDAR),
             cheogramInstalled = HandOffApps.cheogram(ctx) != null,
@@ -161,7 +176,13 @@ object Assistant {
 
     fun granted(ctx: Context, p: String) = ctx.checkSelfPermission(p) == PackageManager.PERMISSION_GRANTED
 
-    fun locked(ctx: Context): Boolean = try { ctx.getSystemService(KeyguardManager::class.java).isKeyguardLocked } catch (_: Exception) { false }
+    /**
+     * The phone is locked: the lock screen is up, or (1.1) a phone lock is on, during which the panel keeps to the lock
+     * screen's rules (docs/plans/phone-lock-design.md §6). [keyguard] is the lock screen alone.
+     */
+    fun locked(ctx: Context): Boolean = keyguard(ctx) || app.heyrobot.lock.PhoneLockNow.on(ctx)
+
+    fun keyguard(ctx: Context): Boolean = try { ctx.getSystemService(KeyguardManager::class.java).isKeyguardLocked } catch (_: Exception) { false }
 
     /** Settings > Apps > Default apps > Digital assistant app (voice input settings first, as in the probe). */
     fun settingsIntent(ctx: Context): Intent? =
@@ -236,16 +257,16 @@ object BootCheck {
     private fun notifyMissing(ctx: Context, afterUpdate: Boolean) {
         try {
             val nm = ctx.getSystemService(NotificationManager::class.java)
-            nm.createNotificationChannel(NotificationChannel(CHANNEL, "Assistant after a restart", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "Tells you when Android turned Robot off as the assistant after a restart."
+            nm.createNotificationChannel(NotificationChannel(CHANNEL, ctx.getString(R.string.settings_restart_channel), NotificationManager.IMPORTANCE_HIGH).apply {
+                description = ctx.getString(R.string.settings_restart_channel_detail)
             })
             val target = Assistant.settingsIntent(ctx)
                 ?: Intent().setClassName(ctx.packageName, "app.heyrobot.ui.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             val open = PendingIntent.getActivity(ctx, REQ_OPEN, target, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-            val text = "Android turned Robot off as your assistant during the ${if (afterUpdate) "update" else "restart"}. Tap, choose Digital assistant app, and pick Robot again."
+            val text = ctx.getString(if (afterUpdate) R.string.settings_restart_text_update else R.string.settings_restart_text_restart)
             nm.notify(NOTICE_ID, Notification.Builder(ctx, CHANNEL)
                 .setSmallIcon(R.drawable.ic_robot)
-                .setContentTitle("Turn Robot back on")
+                .setContentTitle(ctx.getString(R.string.settings_restart_title))
                 .setContentText(text)
                 .setStyle(Notification.BigTextStyle().bigText(text))
                 .setCategory(Notification.CATEGORY_REMINDER)
@@ -274,8 +295,14 @@ object RecognizerKeeper {
 
     fun isRobot(ctx: Context): Boolean = RecognizerRepair.same(current(ctx), AdbFixes.RECOGNIZER)
 
+    /**
+     * 1.2: what keeps Robot the assistant at the next boot, read now (core RecognizerRepair.kept): another installed
+     * recognizer (OTHER) means Settings › Advanced › ADB fixes shows the recognizer fix as not needed and :voice never runs it.
+     */
+    fun kept(ctx: Context): RecognizerRepair.Kept = current(ctx).let { RecognizerRepair.kept(it, AdbFixes.RECOGNIZER, installed(ctx, it)) }
+
     /** [flattened] names an installed recognition service (direct-boot unaware ones too: this may run before unlock). */
-    private fun installed(ctx: Context, flattened: String?): Boolean {
+    fun installed(ctx: Context, flattened: String?): Boolean {
         val cn = flattened?.let { ComponentName.unflattenFromString(it) } ?: return false
         return try {
             ctx.packageManager.queryIntentServices(Intent(RecognitionService.SERVICE_INTERFACE),

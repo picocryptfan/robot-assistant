@@ -1,0 +1,13 @@
+<!-- Settings › Language, in Québec French (tu): the l10n work package WP0. The ids of values/strings_language.xml; each
+     value written with the glossary (robot/l10n/glossary.tsv) and the OQLF's spaces (tools/fr_typo.py, FrenchTypographyTest). -->
+<resources>
+    <string name="lang_title">Langue</string>
+    <string name="lang_menus">Menus</string>
+    <string name="lang_menus_phone">Langue du téléphone</string>
+    <string name="lang_reply">Robot répond en</string>
+    <string name="lang_reply_spoken">La langue que tu parles</string>
+    <string name="lang_reply_menus">La même que les menus</string>
+    <string name="lang_android">Page de langue d’Android pour Robot</string>
+    <string name="lang_android_failed">La page de langue d’Android ne s’est pas ouverte.</string>
+    <string name="lang_footer">Robot comprend l’anglais et le français, peu importe ce que tu choisis ici. Les mots que lit le modèle restent en anglais.</string>
+</resources>

@@ -24,6 +24,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import app.heyrobot.R
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.ToolName
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.UiStrings
+import app.heyrobot.core.i18n.WebStrings
 import app.heyrobot.core.web.CurrentInfo
 import app.heyrobot.core.web.KeepSources
 import app.heyrobot.core.web.ReadPages
@@ -59,6 +62,7 @@ import app.heyrobot.ui.pref.SwitchPreference
 import app.heyrobot.ui.pref.TextPreference
 import app.heyrobot.ui.pref.preferenceFooter
 import app.heyrobot.ui.pref.preferenceGroup
+import app.heyrobot.ui.theme.str
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -70,7 +74,8 @@ import kotlin.math.roundToInt
 // never loads the HTTP client or reads a key), then the consent screen ("sites see the phone's IP"). Then every behaviour
 // is a row with its default. 1.0: then every service and every engine with its privacy level, grouped "Robot reads the
 // results" (a tap sets one up; a public SearXNG from a short list) and "Opens in your browser" (a tap makes one the default
-// for browser_search; SearchEngines.kt). The settings live in web.json (sys WebStore), not in settings.json.
+// for browser_search; SearchEngines.kt). The settings live in web.json (sys WebStore), not in settings.json. 1.1: the page's
+// words are in strings_web.xml, with their French; the choices' names and the row's summary are core's (WebStrings).
 
 /** What the page shows besides the settings: the service's saved key (masked), today's searches, the last Test, the first search card's answer. */
 data class WebFacts(
@@ -85,9 +90,9 @@ data class WebFacts(
 )
 
 /** "On · your SearXNG", "Off", "Not set up": Settings' row. */
-fun webSummary(web: WebSettings, answer: WebConsentAnswer?): String {
-    val service = web.service ?: return "Not set up"
-    return (if (WebConsent.on(web, answer)) "On · " else "Off · ") + service.label
+fun webSummaryText(web: WebSettings, answer: WebConsentAnswer?): Phrase {
+    val service = web.service ?: return WebStrings.summaryNotSetUp()
+    return (if (WebConsent.on(web, answer)) WebStrings.summaryOn else WebStrings.summaryOff)("service" to service.labelText)
 }
 
 
@@ -157,6 +162,33 @@ fun WebSearchSettingsScreen(
     val browserHow = stringResource(R.string.web_browser_how)
     val levels = stringResource(R.string.web_levels)
     val offBrowser = stringResource(R.string.web_off_browser)
+    val ctx = LocalContext.current
+    val searchWith = stringResource(R.string.web_search_with)
+    val asking = stringResource(R.string.web_asking)
+    val answers = stringResource(R.string.web_answers)
+    val helpersHistory = stringResource(R.string.web_helpers_history)
+    val suggested = WebSetup.suggested(facts.homeServer)
+    val titles = SearchService.entries.associateWith { it.titleText.str() }
+    val pickLabels = SearchService.entries.associateWith { if (it == suggested) stringResource(R.string.web_suggested, titles.getValue(it)) else titles.getValue(it) }
+    val askLabels = WebAsk.entries.associateWith { it.label().str() }
+    val askDetails = WebAsk.entries.associateWith { stringResource(askDetail(it)) }
+    val readLabels = ReadPages.entries.associateWith { it.label().str() }
+    val readDetails = ReadPages.entries.associateWith { stringResource(readDetail(it)) }
+    val throughLabels = ReadThrough.entries.associateWith { it.label().str() }
+    val throughDetails = ReadThrough.entries.associateWith { stringResource(throughDetail(it)) }
+    val safeLabels = SafeSearch.entries.associateWith { it.label().str() }
+    val currentLabels = CurrentInfo.entries.associateWith { it.label().str() }
+    val currentDetails = CurrentInfo.entries.associateWith { stringResource(currentDetail(it)) }
+    val keepLabels = KeepSources.entries.associateWith { it.label().str() }
+    val keepDetails = KeepSources.entries.associateWith { stringResource(keepDetail(it)) }
+    // The footer: what leaves the phone (or that it's off), what a search costs, and where answers come from; then the engines.
+    val first = listOfNotNull(
+        service?.let { WebSetup.consentText(it, web).str() } ?: stringResource(R.string.web_off_until),
+        offBrowser.takeIf { service == null },
+        service?.let { stringResource(if (showCost) R.string.web_each_search_card else R.string.web_each_search, it.costText.str()) },
+        stringResource(R.string.web_answers_footer),
+    ).joinToString(" ")
+    val footer = listOf(first, WebSetup.notOffered.str(), browserHow, levels).joinToString("\n\n")
 
     /** After the consent: on, with a key or Test next. */
     fun turnOn(w: WebSettings) {
@@ -187,64 +219,74 @@ fun WebSearchSettingsScreen(
         }
     }
 
-    PreferenceScreen("Web search", onBack, snackbar = snackbar) {
+    PreferenceScreen(UiStrings.webSearch().str(), onBack, snackbar = snackbar) {
         item(key = "main") {
-            MainSwitchBar("Use web search", on, enabled = web.copy(on = true).ready || on) { want ->
+            MainSwitchBar(stringResource(R.string.web_use), on, enabled = web.copy(on = true).ready || on) { want ->
                 if (want && !web.on) consent = service?.name else onChange(web.copy(on = want, askAt = System.currentTimeMillis()))
             }
         }
-        preferenceGroup("Search with", "service") {
-            PreferenceItem(if (service == null) "Set up" else "Search service", service?.title ?: "Pick the service that searches for you", RIcons.Search,
-                onClick = { picking = true })
+        preferenceGroup(searchWith, "service") {
+            PreferenceItem(stringResource(if (service == null) R.string.web_set_up else R.string.web_service), service?.let { titles.getValue(it) }
+                ?: stringResource(R.string.web_pick_service), RIcons.Search, onClick = { picking = true })
             if (service?.needsAddress == true) {
                 val typed = (if (service == SearchService.SEARXNG_HOME) web.searxng else web.publicSearxng).orEmpty()
-                PreferenceItem("Address", typed.ifEmpty { "Not set" }, RIcons.Home, onClick = { address = service.name })
+                PreferenceItem(stringResource(R.string.web_address), typed.ifEmpty { stringResource(R.string.web_not_set) }, RIcons.Home, onClick = { address = service.name })
             }
             if (service?.needsKey == true) {
-                PreferenceItem("API key", facts.masked ?: "Not saved", RIcons.Lock, onClick = { window(WebWindow.MODE_KEY) })
-                if (facts.masked != null) PreferenceItem("Delete key", "Remove it from this phone", RIcons.Delete, onClick = { confirmDelete = true })
+                PreferenceItem(stringResource(R.string.web_api_key), facts.masked ?: stringResource(R.string.web_not_saved), RIcons.Lock, onClick = { window(WebWindow.MODE_KEY) })
+                if (facts.masked != null) PreferenceItem(stringResource(R.string.web_delete_key), stringResource(R.string.web_delete_key_summary), RIcons.Delete,
+                    onClick = { confirmDelete = true })
             }
             if (service != null) {
                 val t = facts.test?.takeIf { it.service == service }
-                PreferenceItem("Test", t?.line ?: "Sends the word “test” once and says what came back", RIcons.Refresh, enabled = web.ready || !on,
+                PreferenceItem(stringResource(R.string.web_test), t?.line?.str() ?: stringResource(R.string.web_test_summary), RIcons.Refresh, enabled = web.ready || !on,
                     onClick = { window(WebWindow.MODE_TEST) })
             }
         }
         if (service != null) {
-            preferenceGroup("Asking", "asking") {
-                ListPreference("Ask before searching", WebConsent.ask(web, facts.answer), WebAsk.entries, { it.title }, ::askDetail, RIcons.Shield, enabled = on) {
+            preferenceGroup(asking, "asking") {
+                ListPreference(stringResource(R.string.web_ask), WebConsent.ask(web, facts.answer), WebAsk.entries, { askLabels.getValue(it) }, { askDetails.getValue(it) },
+                    RIcons.Shield, enabled = on) {
                     onChange(web.copy(ask = it, askAt = System.currentTimeMillis()))
                 }
-                PreferenceItem("Works on the lock screen", if (lockScreen) "On (Safety & privacy)" else "Off · Safety & privacy decides", RIcons.Lock,
+                PreferenceItem(stringResource(R.string.web_lock), stringResource(if (lockScreen) R.string.web_lock_on else R.string.web_lock_off), RIcons.Lock,
                     onClick = openSafety)
-                SliderPreference("Daily searches", web.dailySearches.toFloat().coerceAtMost(DAILY_STEPS.last().toFloat()), DAILY_STEPS.first().toFloat()..DAILY_STEPS.last().toFloat(),
-                    steps = 0, valueText = { "Today ${facts.today} of ${daily(it)}" }, icon = RIcons.Timer, enabled = on) { onChange(web.copy(dailySearches = daily(it))) }
+                SliderPreference(stringResource(R.string.web_daily), web.dailySearches.toFloat().coerceAtMost(DAILY_STEPS.last().toFloat()), DAILY_STEPS.first().toFloat()..DAILY_STEPS.last().toFloat(),
+                    steps = 0, valueText = { ctx.getString(R.string.web_daily_value, facts.today, daily(it)) }, icon = RIcons.Timer, enabled = on) { onChange(web.copy(dailySearches = daily(it))) }
             }
-            preferenceGroup("Answers", "answers") {
-                ListPreference("Read result pages", web.readPages, ReadPages.entries, { it.title }, ::readDetail, RIcons.Note, enabled = on) { onChange(web.copy(readPages = it)) }
+            preferenceGroup(answers, "answers") {
+                ListPreference(stringResource(R.string.web_read_pages), web.readPages, ReadPages.entries, { readLabels.getValue(it) }, { readDetails.getValue(it) }, RIcons.Note,
+                    enabled = on) { onChange(web.copy(readPages = it)) }
                 val through = service == SearchService.BRAVE || service == SearchService.KAGI
-                ListPreference("Read pages through", if (through) web.readThrough else ReadThrough.PHONE, ReadThrough.entries, { it.title }, ::throughDetail, RIcons.Phone,
-                    enabled = on && through) { onChange(web.copy(readThrough = it)) }
-                SliderPreference("Pages per answer", web.pages.toFloat(), 1f..WebSettings.MAX_PAGES.toFloat(), steps = WebSettings.MAX_PAGES - 2,
+                ListPreference(stringResource(R.string.web_read_through), if (through) web.readThrough else ReadThrough.PHONE, ReadThrough.entries, { throughLabels.getValue(it) },
+                    { throughDetails.getValue(it) }, RIcons.Phone, enabled = on && through) { onChange(web.copy(readThrough = it)) }
+                SliderPreference(stringResource(R.string.web_pages), web.pages.toFloat(), 1f..WebSettings.MAX_PAGES.toFloat(), steps = WebSettings.MAX_PAGES - 2,
                     valueText = { "${it.roundToInt()}" }, icon = RIcons.Apps, enabled = on && web.readPages != ReadPages.NEVER) { onChange(web.copy(pages = it.roundToInt())) }
-                ListPreference("Safe search", web.safeSearch, SafeSearch.entries, { it.title }, icon = RIcons.Shield, enabled = on) { onChange(web.copy(safeSearch = it)) }
+                ListPreference(stringResource(R.string.web_safe_search), web.safeSearch, SafeSearch.entries, { safeLabels.getValue(it) }, icon = RIcons.Shield, enabled = on) {
+                    onChange(web.copy(safeSearch = it))
+                }
                 val wiki = WikipediaWire.allowed(WebUserAgent.CONTACT)
-                SwitchPreference("Encyclopedia lookups", if (wiki) "Who, what and where questions also ask Wikipedia" else "Wikipedia, not available yet: its rules need a contact address",
+                SwitchPreference(stringResource(R.string.web_encyclopedia), stringResource(if (wiki) R.string.web_encyclopedia_on else R.string.web_encyclopedia_unavailable),
                     web.wikipedia(), enabled = on && wiki, icon = RIcons.Info) { onChange(web.copy(encyclopedia = it)) }
-                SwitchPreference("Book lookups", "Questions about books also ask Open Library", web.books, enabled = on, icon = RIcons.Note) { onChange(web.copy(books = it)) }
-                SwitchPreference("Add my town to local searches", facts.home?.let { "“near me” becomes your Home for weather, ${it.substringBefore(',')}" }
-                    ?: "Set a Home for weather first", web.addTown, enabled = on && facts.home != null, icon = RIcons.Place) { onChange(web.copy(addTown = it)) }
+                SwitchPreference(stringResource(R.string.web_books), stringResource(R.string.web_books_summary), web.books, enabled = on, icon = RIcons.Note) {
+                    onChange(web.copy(books = it))
+                }
+                SwitchPreference(stringResource(R.string.web_town), facts.home?.let { stringResource(R.string.web_town_summary, it.substringBefore(',')) }
+                    ?: stringResource(R.string.web_town_no_home), web.addTown, enabled = on && facts.home != null, icon = RIcons.Place) { onChange(web.copy(addTown = it)) }
                 if (service == SearchService.BRAVE) {
-                    SwitchPreference("“Powered by Brave” line", "On Brave's answers (optional in Brave's terms)", web.poweredByBrave, enabled = on, icon = RIcons.Info) {
+                    SwitchPreference(stringResource(R.string.web_powered_by_brave), stringResource(R.string.web_powered_by_brave_summary), web.poweredByBrave, enabled = on,
+                        icon = RIcons.Info) {
                         onChange(web.copy(poweredByBrave = it))
                     }
                 }
             }
-            preferenceGroup("Helpers and history", "history") {
-                ListPreference("Current information", web.currentInfo, CurrentInfo.entries, { it.title }, ::currentDetail, RIcons.Cloud, enabled = on) {
+            preferenceGroup(helpersHistory, "history") {
+                ListPreference(stringResource(R.string.web_current_info), web.currentInfo, CurrentInfo.entries, { currentLabels.getValue(it) }, { currentDetails.getValue(it) },
+                    RIcons.Cloud, enabled = on) {
                     onChange(web.copy(currentInfo = it))
                 }
-                ListPreference("Keep sources in history", web.keepSources, KeepSources.entries, { it.title }, ::keepDetail, RIcons.History, enabled = on) {
+                ListPreference(stringResource(R.string.web_keep_sources), web.keepSources, KeepSources.entries, { keepLabels.getValue(it) }, { keepDetails.getValue(it) },
+                    RIcons.History, enabled = on) {
                     onChange(web.copy(keepSources = it))
                 }
             }
@@ -252,18 +294,12 @@ fun WebSearchSettingsScreen(
         // 1.0: every service and every engine with its privacy level.
         readsResultsList(readsTitle, readsIntro, WebSetup.order(facts.homeServer).filter { it.available() || it == service }, service.takeIf { on }, ::choose)
         browserList(browserTitle, browserIntro, web.browserEngine) { onChange(web.copy(browserEngine = it)) }
-        preferenceFooter(
-            (service?.let { WebSetup.consent(it) + " " } ?: "Off until you set it up. $offBrowser ") +
-                (service?.let { "Each search: ${it.cost}" + (if (showCost) " (the card shows it; it counts toward the helpers' daily budget)." else ".") + " " } ?: "") +
-                "Answers come from Robot's own model, which reads the results and pages as information, never as instructions. History keeps " +
-                "the answer and the sources' domains; titles, links and page text are never saved.\n\n" + WebSetup.NOT_OFFERED + "\n\n" + browserHow +
-                "\n\n" + levels,
-        )
+        preferenceFooter(footer)
     }
 
     if (picking) {
-        RadioDialog("Search with", service ?: WebSetup.suggested(facts.homeServer), WebSetup.order(facts.homeServer).filter { it.available() || it == service },
-            { it.title + if (it == WebSetup.suggested(facts.homeServer)) " (suggested)" else "" }, { lines[it] }, onDismiss = { picking = false }, onPick = ::picked)
+        RadioDialog(searchWith, service ?: suggested, WebSetup.order(facts.homeServer).filter { it.available() || it == service },
+            { pickLabels.getValue(it) }, { lines[it] }, onDismiss = { picking = false }, onPick = ::picked)
     }
     if (publicPick) {
         PublicSearxngDialog(web.publicSearxng, onDismiss = { publicPick = false }, onOther = { publicPick = false; address = SearchService.SEARXNG_PUBLIC.name }) { url ->
@@ -276,11 +312,12 @@ fun WebSearchSettingsScreen(
     address?.let { name ->
         val s = SearchService.valueOf(name)
         val public = s == SearchService.SEARXNG_PUBLIC
+        val invalid = stringResource(if (public) R.string.web_public_invalid else R.string.web_home_invalid)
         EditDialog(
-            if (public) "A public SearXNG" else "Your SearXNG", (if (public) web.publicSearxng else web.searxng).orEmpty(), "Address",
-            if (public) "https only. Its admin can see and keep your searches; many public servers refuse apps (JSON off)."
-            else "Such as 192.168.1.20:8888, or https://search.tail1234.ts.net. http:// only on your home network.",
-            validate = { t -> if (t.isBlank() || SearxngWire.base(t, public) != null) null else if (public) "An https address of a public server" else "An address on your network, or https" },
+            (if (public) WebStrings.publicTitle else WebStrings.homeCap)().str(), (if (public) web.publicSearxng else web.searxng).orEmpty(), stringResource(R.string.web_address),
+            if (public) stringResource(R.string.web_public_help) else stringResource(R.string.web_home_help, "192.168.1.20:8888", "https://search.tail1234.ts.net"),
+            validate = { t -> if (t.isBlank() || SearxngWire.base(t, public) != null) null else invalid },
+            confirm = UiStrings.save().str(),
             keyboard = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false),
             canSave = { it.isNotBlank() },
             onDismiss = { address = null },
@@ -295,14 +332,15 @@ fun WebSearchSettingsScreen(
         val s = SearchService.valueOf(name)
         AlertDialog(
             onDismissRequest = { consent = null },
-            title = { Text("Turn on web search?") },
-            text = { Text(WebSetup.consent(s)) },
-            confirmButton = { TextButton(onClick = { consent = null; turnOn(web.copy(service = s)) }) { Text("Turn on web search") } },
-            dismissButton = { TextButton(onClick = { consent = null }) { Text("Not now") } },
+            title = { Text(stringResource(R.string.web_turn_on_title)) },
+            text = { Text(WebSetup.consentText(s, web).str()) },
+            confirmButton = { TextButton(onClick = { consent = null; turnOn(web.copy(service = s)) }) { Text(stringResource(R.string.web_turn_on)) } },
+            dismissButton = { TextButton(onClick = { consent = null }) { Text(stringResource(R.string.web_not_now)) } },
         )
     }
     if (confirmDelete && service != null) {
-        app.heyrobot.ui.pref.ConfirmDialog("Delete the ${service.title} key?", "Robot can't search with ${service.label} until you add a key again.", "Delete",
+        app.heyrobot.ui.pref.ConfirmDialog(stringResource(R.string.web_delete_key_title, titles.getValue(service)),
+            stringResource(R.string.web_delete_key_text, service.labelText.str()), UiStrings.delete().str(),
             onDismiss = { confirmDelete = false }) {
             confirmDelete = false
             deleteKey(service)
@@ -315,30 +353,30 @@ private val DAILY_STEPS = listOf(10, 1_000)
 
 private fun daily(v: Float): Int = ((v / 10).roundToInt() * 10).coerceIn(DAILY_STEPS.first(), DAILY_STEPS.last())
 
-private fun askDetail(a: WebAsk): String = when (a) {
-    WebAsk.FIRST_TIME -> "The default. The first search shows a card you answer with a tap"
-    WebAsk.ALWAYS -> "A card before every search"
-    WebAsk.NEVER -> "No card (Actions and When Robot asks first still apply)"
+private fun askDetail(a: WebAsk): Int = when (a) {
+    WebAsk.FIRST_TIME -> R.string.web_ask_first_time
+    WebAsk.ALWAYS -> R.string.web_ask_always
+    WebAsk.NEVER -> R.string.web_ask_never
 }
 
-private fun readDetail(r: ReadPages): String = when (r) {
-    ReadPages.WHEN_NEEDED -> "The default. For how-to, why, steps, comparing or details; snippets otherwise"
-    ReadPages.ALWAYS -> "Every answer reads pages (slower)"
-    ReadPages.NEVER -> "Only the results' snippets: no site sees the phone"
+private fun readDetail(r: ReadPages): Int = when (r) {
+    ReadPages.WHEN_NEEDED -> R.string.web_read_when_needed
+    ReadPages.ALWAYS -> R.string.web_read_always
+    ReadPages.NEVER -> R.string.web_read_never
 }
 
-private fun throughDetail(r: ReadThrough): String = when (r) {
-    ReadThrough.PHONE -> "The default. The sites see the phone's IP address"
-    ReadThrough.SERVICE -> "Brave or Kagi read them for you: costs more, the sites don't see you"
+private fun throughDetail(r: ReadThrough): Int = when (r) {
+    ReadThrough.PHONE -> R.string.web_through_phone
+    ReadThrough.SERVICE -> R.string.web_through_service
 }
 
-private fun currentDetail(c: CurrentInfo): String = when (c) {
-    CurrentInfo.ROBOT_FIRST -> "The default. News, scores and prices stay with Robot"
-    CurrentInfo.HELPER_FIRST -> "Only when your helper can search the web itself"
+private fun currentDetail(c: CurrentInfo): Int = when (c) {
+    CurrentInfo.ROBOT_FIRST -> R.string.web_robot_first
+    CurrentInfo.HELPER_FIRST -> R.string.web_helper_first
 }
 
-private fun keepDetail(k: KeepSources): String = when (k) {
-    KeepSources.DOMAINS -> "The default. “nhl.com, tsn.ca” under the answer"
-    KeepSources.LINKS -> "The full addresses"
-    KeepSources.NONE -> "Only that Robot searched"
+private fun keepDetail(k: KeepSources): Int = when (k) {
+    KeepSources.DOMAINS -> R.string.web_keep_domains
+    KeepSources.LINKS -> R.string.web_keep_links
+    KeepSources.NONE -> R.string.web_keep_none
 }

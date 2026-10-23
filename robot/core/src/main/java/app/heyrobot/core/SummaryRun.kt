@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.ConversationStrings
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.UiStrings
 import org.json.JSONArray
 import org.json.JSONObject
 import java.security.MessageDigest
@@ -43,8 +46,18 @@ class LocalSummary(private val transport: OneShotTransport, private val budget: 
     sealed class Outcome {
         data class Done(val text: String, val parts: Int) : Outcome()
 
-        /** It stopped at part or merge [step] ([why] in plain words); the notes made so far are kept. */
-        data class Failed(val why: String, val step: Int) : Outcome()
+        /**
+         * It stopped at part or merge [step] ([why] in plain words, English; [whyText] for the screen); the notes made so
+         * far are kept.
+         */
+        data class Failed(val why: String, val step: Int) : Outcome() {
+            var whyText: Phrase = Phrase.plain(why)
+                private set
+
+            constructor(text: Phrase, step: Int) : this(text.en(), step) {
+                whyText = text
+            }
+        }
     }
 
     /**
@@ -54,7 +67,7 @@ class LocalSummary(private val transport: OneShotTransport, private val budget: 
     suspend fun run(lines: List<String>, lang: String, maxTokens: Int, cached: List<String?> = emptyList(), onProgress: (Progress) -> Unit = {},
         onNote: (Int, String) -> Unit = { _, _ -> }): Outcome {
         val plan = SummaryPlanner.plan(lines, lang, maxTokens)
-        if (plan.parts == 0) return Outcome.Failed("There is nothing in this transcript to summarize.", 0)
+        if (plan.parts == 0) return Outcome.Failed(ConversationStrings.nothingToSummarize(), 0)
         val steps = plan.parts + plan.reduceCalls
         val notes = ArrayList<String>()
         for ((k, call) in plan.map.withIndex()) {
@@ -100,20 +113,20 @@ class LocalSummary(private val transport: OneShotTransport, private val budget: 
 
     private sealed class Step {
         data class Ok(val text: String) : Step()
-        data class No(val why: String) : Step()
+        data class No(val why: Phrase) : Step()
     }
 
     /** One step: its text, or why it failed. A step that gave way starts over inside the transport; one cut at its cap keeps what came. */
     private suspend fun ask(kind: OneShotKind, call: SummaryCall): Step =
         when (val r = transport.run(BrainMsg.OneShot(kind, Priority.SUMMARY, call.system, call.user, call.maxChunks), budget)) {
-            is OneShotResult.Done -> Step.Ok(r.text.trim().ifEmpty { "- (nothing noted)" })
-            is OneShotResult.TimedOut -> Step.No("Robot's model took too long.")
-            OneShotResult.NotStarted -> Step.No("Robot's model was busy.")
-            OneShotResult.Cancelled -> Step.No("Robot's model stopped (it was unloaded or restarted).")
+            is OneShotResult.Done -> Step.Ok(r.text.trim().ifEmpty { "- (nothing noted)" }) // l10n: not text (a note the model reads next, English)
+            is OneShotResult.TimedOut -> Step.No(ConversationStrings.modelTookTooLong())
+            OneShotResult.NotStarted -> Step.No(ConversationStrings.modelBusy())
+            OneShotResult.Cancelled -> Step.No(ConversationStrings.modelStopped())
             is OneShotResult.Failed -> Step.No(when {
-                r.unavailable -> "Robot's model isn't ready. Open the assistant once, or check Settings › Model."
-                r.code == BrainError.TOO_LONG -> "A part was too long for Robot's model."
-                else -> "Robot's model ran into a problem."
+                r.unavailable -> ConversationStrings.modelNotReadyOpen("page" to UiStrings.inSettings(UiStrings.model))
+                r.code == BrainError.TOO_LONG -> ConversationStrings.partTooLong()
+                else -> ConversationStrings.modelProblem()
             })
         }
 }

@@ -5,14 +5,17 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.nio.file.Files
 
 class NotesTest {
+    @get:Rule val tmp = TemporaryFolder()
+
     private fun store(): Pair<NoteStore, File> {
-        val dir = Files.createTempDirectory("robot-notes").toFile()
-        dir.deleteOnExit()
+        val dir = Files.createTempDirectory(tmp.root.toPath(), "robot-notes").toFile()
         return NoteStore(dir) to dir
     }
 

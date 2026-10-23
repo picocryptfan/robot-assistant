@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.output
 
+import app.heyrobot.core.i18n.HandsFreeStrings
 import app.heyrobot.core.AskWhy
 import app.heyrobot.core.CardAnswer
 import app.heyrobot.core.HelperRouter
 import app.heyrobot.core.LogCode
 import app.heyrobot.core.TextCommand
 import app.heyrobot.core.ToolName
+import app.heyrobot.core.i18n.Lang
 
-// Pure. Spoken cards and spoken choices (design §1.4): in a headset session or car mode you can't look at the card, so a
+// Pure. Spoken cards and spoken choices: in a headset session or car mode you can't look at the card, so a
 // card is read as one short question with at most three choices ("Call Mom: Mom Martin, mobile, or Mom Martin, work?")
 // and answered by voice. It builds on the panel's CardAnswer: a plain yes or no is CardAnswer.of (the same words, the
 // same wake-phrase handling, everything said used up), and this adds choices by number or name ("the second one", "la
@@ -110,13 +112,13 @@ object SpokenCards {
     /** Choices read aloud at most (§1.4). */
     const val MAX_SPOKEN = 3
 
-    val UNLOCK_TO_ANSWER = Line("Unlock to answer that.", "Déverrouille pour répondre.")
+    val UNLOCK_TO_ANSWER = Line(HandsFreeStrings.unlockToAnswer())
 
     /**
      * How [card] is answered where [ctx] says, in [lang]. A headset and the car follow the same rules; the car differs only
      * on the lock screen, where a trusted car session answers car functions.
      */
-    fun plan(card: SpokenCard, ctx: CardContext, lang: SpokenLang): CardVoice {
+    fun plan(card: SpokenCard, ctx: CardContext, lang: Lang): CardVoice {
         if (ctx.session == SessionKind.PHONE) return CardVoice.Panel
         val car = ctx.session == SessionKind.CAR
         fun defer(why: CardVoiceCode) = CardVoice.Defer(OutputLines.KEEP_FOR_LOOK.get(lang), why)
@@ -130,28 +132,28 @@ object SpokenCards {
     }
 
     /** "Call Mom, mobile, ending 0101?"; with choices "Call Mom: Mom Martin, mobile, or Mom Martin, work?". */
-    fun prompt(card: SpokenCard, lang: SpokenLang): String {
+    fun prompt(card: SpokenCard, lang: Lang): String {
         val action = card.action.trim().trimEnd('.', '?', '!', ':', ' ')
         if (!card.picks) return "$action?"
         val labels = card.options.map { it.label.trim().trimEnd('.', '?', '!', ',', ';') }
         // Labels with commas of their own ("Mom Martin, mobile") are kept apart by a comma before "or" (two) or semicolons (three).
         val commas = labels.any { it.contains(',') }
-        val or = if (lang == SpokenLang.FR) "ou" else "or"
+        val or = if (lang == Lang.FR) "ou" else "or"
         val list = when {
             labels.size == 2 -> labels[0] + (if (commas) ", " else " ") + "$or " + labels[1]
             commas -> labels.dropLast(1).joinToString("; ") + "; $or " + labels.last()
             else -> labels.dropLast(1).joinToString(", ") + ", $or " + labels.last()
         }
-        val colon = if (lang == SpokenLang.FR) " :" else ":"
+        val colon = if (lang == Lang.FR) " :" else ":"
         return "$action$colon $list?"
     }
 
     /** The hint after an answer that wasn't one ("Say yes or no.", "Say the first or the second, or no."). */
-    fun hint(choices: Int, lang: SpokenLang): String = when {
-        choices <= 1 -> if (lang == SpokenLang.FR) "Dis oui ou non." else "Say yes or no."
-        choices == 2 -> if (lang == SpokenLang.FR) "Dis le premier ou le deuxième, ou non." else "Say the first or the second, or no."
-        else -> if (lang == SpokenLang.FR) "Dis le premier, le deuxième ou le troisième, ou non." else "Say the first, the second or the third, or no."
-    }
+    fun hint(choices: Int, lang: Lang): String = spoken(when {
+        choices <= 1 -> HandsFreeStrings.sayYesNo()
+        choices == 2 -> HandsFreeStrings.sayFirstOrSecond()
+        else -> HandsFreeStrings.sayFirstToThird()
+    }, lang)
 }
 
 object SpokenChoice {
@@ -294,7 +296,7 @@ object SpokenChoice {
      * yes or no), in [lang]. Nothing usable twice (silence, an echo, words that aren't an answer): the card waits for you,
      * in a headset and in the car alike (a call or a reply then shows on the screen: CallTarget, CarMessages).
      */
-    fun next(a: SpokenAnswer, tries: Int, rereads: Int, choices: Int, lang: SpokenLang): SpokenStep {
+    fun next(a: SpokenAnswer, tries: Int, rereads: Int, choices: Int, lang: Lang): SpokenStep {
         val hold = SpokenStep.Hold(OutputLines.KEEP_FOR_LOOK.get(lang))
         if (a.sure) when (a.kind) {
             AnswerCode.YES -> return SpokenStep.Confirm

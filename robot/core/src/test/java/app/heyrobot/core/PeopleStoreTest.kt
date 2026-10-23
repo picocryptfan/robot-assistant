@@ -7,14 +7,17 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.nio.file.Files
 import kotlin.concurrent.thread
 
 /** Robot's People: the file, the changes the app makes to it, and how People join the phone's contacts for a name. */
 class PeopleStoreTest {
-    private fun tmp(): File = Files.createTempDirectory("people").toFile().apply { deleteOnExit() }
+    @get:Rule val tmpRoot = TemporaryFolder()
+    private fun tmp(): File = Files.createTempDirectory(tmpRoot.root.toPath(), "people").toFile()
     private var n = 0
     private val ids: () -> String = { "id${++n}" }
 

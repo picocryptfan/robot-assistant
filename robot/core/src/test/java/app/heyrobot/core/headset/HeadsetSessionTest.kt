@@ -8,7 +8,7 @@ import app.heyrobot.core.output.PhoneState
 import app.heyrobot.core.output.PresenceEvent
 import app.heyrobot.core.output.RouteType
 import app.heyrobot.core.output.SeenDevice
-import app.heyrobot.core.output.SpokenLang
+import app.heyrobot.core.i18n.Lang
 import app.heyrobot.core.output.Trust
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -28,7 +28,7 @@ private val phoneMic = SeenDevice(RouteType.BUILTIN_MIC, sink = false)
 private val carSco = SeenDevice(RouteType.BT_SCO, "MyCar", "XX:XX:XX:XX:12:34")
 private val carA2dp = carSco.copy(type = RouteType.BT_A2DP)
 
-/** Which microphone and output a session uses (design §3.1, §3.9 RoutePlan). */
+/** Which microphone and output a session uses. */
 class RoutePlanTest {
     private val s = HeadsetSettings()
     private val memory = DeviceMemory()
@@ -108,7 +108,7 @@ class RoutePlanTest {
         assertEquals(RouteFallback.End(RoutePlanner.NO_HEADSET_MIC), RoutePlanner.onFailed(p, RouteFail.GONE, s, listOf(budsA2dp)))
         // No media output left for it: end.
         assertEquals(RouteFallback.End(RoutePlanner.NO_HEADSET_MIC), RoutePlanner.onFailed(p, RouteFail.TIMEOUT, s, listOf(budsSco)))
-        assertEquals("Le micro des écouteurs ne s'est pas connecté.", RoutePlanner.NO_HEADSET_MIC.fr)
+        assertEquals("Le micro des écouteurs ne s’est pas connecté.", RoutePlanner.NO_HEADSET_MIC.fr)
     }
 
     @Test fun theCaptureMustComeFromTheHeadset() {
@@ -126,7 +126,7 @@ class RoutePlanTest {
     }
 }
 
-/** A headset session as a state machine (design §3.3 flow, §3.9 "fake AudioManager" tests). */
+/** A headset session as a state machine. */
 class HeadsetSessionTest {
     private val s = HeadsetSettings()
     private val devices = listOf(speaker, budsA2dp, budsSco)
@@ -251,7 +251,7 @@ class HeadsetSessionTest {
     }
 }
 
-/** Headset mode on connect and disconnect, and first use (design §3.4, §2.1). */
+/** Headset mode on connect and disconnect, and first use. */
 class HeadsetAutoTest {
     private val memory = DeviceMemory().remember(budsSco, DeviceRole.HEADSET, 0)!!.first.remember(carSco, DeviceRole.CAR, 0)!!.first
     private val buds = memory.byNumber(1)!!
@@ -280,20 +280,20 @@ class HeadsetAutoTest {
     }
 }
 
-/** Messages announced in the headset (0.7; design §3.7 rule 5). */
+/** Messages announced in the headset (0.7). */
 class HeadsetAnnounceTest {
     private val marie = MessageNotice("CHEOGRAM:a#b", "Marie", "k1", "I'm on my way", "Cheogram", replyable = true)
     private val on = HeadsetSettings(announceMessages = true)
     private val unlocked = PhoneState(locked = false)
 
     private fun d(n: MessageNotice = marie, s: HeadsetSettings = on, routed: Boolean = true, trust: Trust = Trust.PRIVATE, phone: PhoneState = unlocked,
-        busy: Boolean = false, allowed: Boolean = true, lang: SpokenLang = SpokenLang.EN) = HeadsetAnnounce.decide(n, s, routed, trust, phone, busy, allowed, lang)
+        busy: Boolean = false, allowed: Boolean = true, lang: Lang = Lang.EN) = HeadsetAnnounce.decide(n, s, routed, trust, phone, busy, allowed, lang)
 
     @Test fun rows() {
         assertEquals(AnnounceDecision.Announce("Message from Marie. Read it?", asks = true), d())
-        assertEquals(AnnounceDecision.Announce("Message de Marie. Je te le lis?", asks = true), d(lang = SpokenLang.FR))
+        assertEquals(AnnounceDecision.Announce("Message de Marie. Je te le lis?", asks = true), d(lang = Lang.FR))
         assertEquals(AnnounceDecision.ReadNow("Marie says: I'm on my way"), d(s = on.copy(announceRead = AnnounceRead.ALWAYS)))
-        assertEquals(AnnounceDecision.ReadNow("Marie dit : I'm on my way"), d(s = on.copy(announceRead = AnnounceRead.ALWAYS), lang = SpokenLang.FR))
+        assertEquals(AnnounceDecision.ReadNow("Marie dit: I'm on my way"), d(s = on.copy(announceRead = AnnounceRead.ALWAYS), lang = Lang.FR))
         assertEquals(AnnounceDecision.Announce("Message from Marie in Famille. Read it?", asks = true), d(n = marie.copy(group = "Famille")))
         assertEquals(AnnounceDecision.Announce("Message from Marie. The app doesn't show the text.", asks = false), d(n = marie.copy(hidden = true)))
         assertEquals(AnnounceDecision.Skip(AnnounceCode.OFF), d(s = HeadsetSettings(announceMessages = false)))

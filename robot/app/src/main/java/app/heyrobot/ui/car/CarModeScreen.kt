@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.ui.car
 
+import androidx.compose.ui.res.stringResource
+import app.heyrobot.R
+import app.heyrobot.core.i18n.HandsFreeStrings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -37,14 +40,14 @@ import androidx.compose.ui.unit.sp
 import app.heyrobot.core.car.CarScreen
 import app.heyrobot.ui.common.RIcons
 
-// The car screen (0.8, design §4.3 "Car screen"): black, high contrast, big buttons (Talk, Call, Navigate home; Messages
+// The car screen (0.8): black, high contrast, big buttons (Talk, Call, Navigate home; Messages
 // once 0.7's messages are there), a small End car mode, and one status line of at most 40 characters. No bubbles, no
 // lists, no scrolling: nothing to read while driving. Used by CarModeActivity in :voice; the drawing is here so the tests
 // can take its picture.
 
 /** What the car screen shows. [title]: "Car mode", or "Car mode · unlocked features" with the key in the trusted session. */
 data class CarScreenState(
-    val title: String = "Car mode",
+    val title: String = HandsFreeStrings.carMode().en(),
     val trusted: Boolean = false,
     /** The one status line ("Listening…", "Calling Mom"). */
     val status: String = "",
@@ -70,7 +73,7 @@ fun CarModeScreen(s: CarScreenState, a: CarScreenActions, modifier: Modifier = M
     Box(modifier.fillMaxSize().background(Black).systemBarsPadding().padding(16.dp)) {
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (s.trusted) Icon(RIcons.Key, "Unlocked features on", tint = Accent, modifier = Modifier.size(28.dp).padding(end = 8.dp))
+                if (s.trusted) Icon(RIcons.Key, stringResource(R.string.car_unlocked_on), tint = Accent, modifier = Modifier.size(28.dp).padding(end = 8.dp))
                 Text(s.title, color = White, fontSize = 22.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f).semantics { heading() },
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
@@ -85,24 +88,25 @@ fun CarModeScreen(s: CarScreenState, a: CarScreenActions, modifier: Modifier = M
             }
             if (CarScreen.Button.END in s.buttons) {
                 TextButton(onClick = a.end, modifier = Modifier.align(Alignment.CenterHorizontally).heightIn(min = 48.dp)) {
-                    Text("End car mode", color = Muted, fontSize = 18.sp)
+                    Text(stringResource(R.string.car_end_mode), color = Muted, fontSize = 18.sp)
                 }
             }
         }
     }
 }
 
-private fun label(b: CarScreen.Button): Pair<String, ImageVector> = when (b) {
-    CarScreen.Button.TALK -> "Talk" to RIcons.Mic
-    CarScreen.Button.MESSAGES -> "Messages" to RIcons.Message
-    CarScreen.Button.CALL -> "Call" to RIcons.Call
-    CarScreen.Button.NAVIGATE_HOME -> "Navigate home" to RIcons.Navigate
-    CarScreen.Button.END -> "End car mode" to RIcons.Close
+private fun label(b: CarScreen.Button): Pair<Int, ImageVector> = when (b) {
+    CarScreen.Button.TALK -> R.string.car_talk to RIcons.Mic
+    CarScreen.Button.MESSAGES -> R.string.car_messages to RIcons.Message
+    CarScreen.Button.CALL -> R.string.car_call to RIcons.Call
+    CarScreen.Button.NAVIGATE_HOME -> R.string.car_navigate_home to RIcons.Navigate
+    CarScreen.Button.END -> R.string.car_end_mode to RIcons.Close
 }
 
 @Composable
 private fun BigButton(b: CarScreen.Button, a: CarScreenActions, modifier: Modifier) {
-    val (text, icon) = label(b)
+    val (res, icon) = label(b)
+    val text = stringResource(res)
     val onClick = when (b) {
         CarScreen.Button.TALK -> a.talk
         CarScreen.Button.MESSAGES -> a.messages

@@ -1,0 +1,55 @@
+<!-- ADB fixes, with a computer or Shizuku, in Québec French (tu): the l10n work package WP8. The ids of
+     values/strings_adb.xml; each value written with the glossary (robot/l10n/glossary.tsv) and the OQLF's spaces
+     (tools/fr_typo.py, FrenchTypographyTest). -->
+<resources>
+    <!-- ADB fixes without a computer: Shizuku (1.0). Shizuku's own labels are its French as far as known (UNVERIFIED on a phone). -->
+    <string name="adb_with_computer">Avec un ordinateur (adb)</string>
+    <string name="adb_without_computer">Sans ordinateur (Shizuku)</string>
+    <string name="adb_copy">Copier</string>
+    <string name="adb_copy_adb_label">Copier les commandes adb</string>
+    <string name="adb_copy_rish_label">Copier les commandes pour rish</string>
+    <string name="adb_copied_rish">Copié. Colle-le dans Termux.</string>
+    <string name="shizuku_group">Sans ordinateur&#160;: Shizuku</string>
+    <string name="shizuku_intro">Shizuku lance des commandes avec les droits d’adb, démarré par le %1$s d’Android au lieu d’un ordinateur. Fais d’abord «&#160;Laisser Robot réparer ça lui-même&#160;»&#160;: une fois que Robot peut écrire ce réglage-là, il rechoisit sa reconnaissance vocale lui-même après chaque redémarrage, alors tu n’as besoin de Shizuku qu’une seule fois.</string>
+    <string name="shizuku_step1_title">1. Installe Shizuku</string>
+    <string name="shizuku_step1">Par RikkaApps, seulement à partir de ses propres publications (github.com/RikkaApps/Shizuku/releases) ou d’IzzyOnDroid. Pour vérifier qu’il est authentique&#160;: son paquet est moe.shizuku.privileged.api, et son certificat de signature, qu’un vérificateur d’applis comme AppVerifier affiche, est celui que publie le projet Shizuku. Android refuse ensuite toute mise à jour signée avec une autre clé.</string>
+    <string name="shizuku_step2_title">2. Démarre-le avec le %1$s</string>
+    <string name="shizuku_step2">%1$s&#160;: touche %2$s sept fois. Puis %3$s › %4$s (il faut le Wi-Fi). Dans Shizuku, démarre-le par le %4$s et associe-le comme Shizuku l’indique. Après chaque redémarrage du téléphone, redémarre Shizuku de la même façon.</string>
+    <string name="shizuku_step3_title">3. Donne rish à Termux</string>
+    <string name="shizuku_step3">Dans Shizuku&#160;: Utiliser Shizuku dans les applis de terminal › Exporter les fichiers, et choisis le dossier personnel de Termux (Termux, dans le menu du sélecteur de fichiers). Puis colle cette ligne dans Termux&#160;:</string>
+    <string name="shizuku_step3_label">Copier la ligne à coller dans Termux</string>
+    <string name="shizuku_step4_title">4. Autorise Termux, et seulement Termux</string>
+    <string name="shizuku_step4">Dans Termux, lance %1$s une fois&#160;: Shizuku demande si Termux peut l’utiliser. Autorise-le. La réponse est uid=2000(shell).</string>
+    <string name="shizuku_step5_title">5. Lance chaque correctif</string>
+    <string name="shizuku_step5">La page de chaque correctif a sa commande pour rish&#160;: la même commande sans «&#160;adb shell&#160;», sous la forme rish -c ’…’, avec Copier. Avec Termux configuré dans Robot, Robot peut l’envoyer à Termux pour toi.</string>
+    <string name="shizuku_safety">Shizuku donne le pouvoir d’adb à chaque appli que tu y autorises&#160;: autorise seulement Termux, et arrête Shizuku quand tu as fini (Arrêter dans Shizuku, ou désactive le %1$s).</string>
+    <string name="shizuku_copied_line">Copié. Colle-le dans Termux et touche Entrée.</string>
+    <string name="shizuku_fix_intro">Dans Termux, une fois Shizuku en marche et rish configuré (Réglages › Avancé › Correctifs ADB)&#160;:</string>
+    <string name="shizuku_run">Lancer avec Shizuku par Termux</string>
+    <string name="shizuku_run_detail">Robot envoie exactement cette commande à Termux quand tu touches Lancer, puis vérifie de nouveau le correctif</string>
+    <string name="shizuku_run_button">Lancer</string>
+    <string name="shizuku_run_label">Lancer ce correctif avec Shizuku par Termux</string>
+    <string name="shizuku_run_unavailable">Configure d’abord Termux dans Réglages › Termux (pas la version de GitHub), et Robot pourra l’envoyer à Termux pour toi.</string>
+    <string name="shizuku_card_title">Lancer avec Shizuku par Termux&#8239;?</string>
+    <string name="shizuku_card_text">Robot envoie cette commande à Termux, qui la lance avec Shizuku&#160;:\n\n%1$s\n\nShizuku doit être en marche, avec Termux autorisé.</string>
+    <string name="shizuku_last">Dernier lancement</string>
+    <string name="shizuku_running">En cours dans Termux…</string>
+    <string name="shizuku_result_applied">Fait&#160;: Robot a vérifié, et le correctif est en place.</string>
+    <string name="shizuku_result_not_applied">Termux l’a lancé, mais le correctif n’est pas en place&#160;: vérifie que Shizuku est en marche et autorise Termux.</string>
+    <string name="shizuku_result_no_rish">Termux n’a pas encore rish&#160;: fais l’étape 3 (Réglages › Avancé › Correctifs ADB).</string>
+    <string name="shizuku_result_failed">rish n’a pas pu le lancer (code %1$d)&#160;: démarre Shizuku (étape 2), et autorise Termux dedans (étape 4).</string>
+    <string name="shizuku_result_termux">Termux n’a pas pu le lancer&#160;: vérifie Réglages › Termux.</string>
+    <string name="shizuku_result_locked">Pas envoyé&#160;: déverrouille d’abord ton téléphone.</string>
+    <string name="shizuku_result_termux_not_ready">Pas envoyé&#160;: Termux n’est pas configuré et approuvé (Réglages › Termux).</string>
+    <string name="shizuku_result_test_key">Pas envoyé&#160;: Robot n’envoie pas de correctifs ADB à la version de Termux de GitHub.</string>
+    <string name="shizuku_result_changed">Pas envoyé&#160;: Termux a changé depuis que tu lui as fait confiance (Réglages › Termux).</string>
+    <string name="shizuku_result_not_needed">Pas envoyé&#160;: la reconnaissance vocale d’une autre appli est choisie, et ce correctif la remplacerait.</string>
+    <string name="shizuku_need_assistant">Fais d’abord de Robot ton assistant numérique&#160;: Termux répond à l’assistant.</string>
+    <!-- Settings › Advanced › ADB fixes: the list and one fix's page (the fixes' own words are core SettingsStrings'). -->
+    <string name="adb_intro">Ce que seul un ordinateur peut changer pour Robot, chaque chose une seule fois avec adb.</string>
+    <string name="adb_status">État</string>
+    <string name="adb_why">Pourquoi</string>
+    <string name="adb_copied">Copié. Colle-le sur l’ordinateur.</string>
+    <!-- 1.2: the recognizer fix's page where another installed speech recognizer is set (it shows no commands then). -->
+    <string name="adb_recognizer_kept">La reconnaissance vocale d’une autre appli est choisie sur ce téléphone, ce qui devrait aussi garder Robot comme assistant après un redémarrage. Ce correctif la remplacerait pour toutes les applis, alors Robot ne le propose pas.</string>
+</resources>

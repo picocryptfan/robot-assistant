@@ -23,7 +23,8 @@ class ToolCallsTest {
     @Test fun everySpecHasAtMostThreeArgumentsAndValidJson() {
         assertEquals(ToolName.entries.toSet(), ToolSpecs.ALL.map { it.tool }.toSet())
         // Phase 2 raised the limit to three for draft_email and add_event only; everything else stays at two or fewer.
-        assertEquals(setOf(ToolName.DRAFT_EMAIL, ToolName.ADD_EVENT), ToolSpecs.ALL.filter { it.params.size == 3 }.map { it.tool }.toSet())
+        // 1.4: find_files takes three too (query, drawer, when: files-1.4-plan.md §5.1).
+        assertEquals(setOf(ToolName.DRAFT_EMAIL, ToolName.ADD_EVENT, ToolName.FIND_FILES), ToolSpecs.ALL.filter { it.params.size == 3 }.map { it.tool }.toSet())
         for (s in ToolSpecs.ALL) {
             val o = JSONObject(s.openApiJson())
             assertEquals(s.tool.id, o.getString("name"))

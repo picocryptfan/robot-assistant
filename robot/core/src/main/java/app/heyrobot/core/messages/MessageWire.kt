@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.messages
 
+import app.heyrobot.core.i18n.Lang
 import org.json.JSONArray
 import org.json.JSONObject
 
-// Pure (org.json). How the voice process asks the main process about your messages (design §B4): MessagesBridge, a
+// Pure (org.json). How the voice process asks the main process about your messages: MessagesBridge, a
 // bound service in the main process (not exported, Robot's signature permission), over a Messenger. The notification
 // listener, the RAM buffer and every PendingIntent stay in the main process; message text crosses Binder in RAM only,
 // as these JSON strings, and is never written anywhere. A reply names a conversation by its key and carries your words:
@@ -47,7 +48,7 @@ data class MessagesStatus(val on: Boolean = false, val access: Boolean = false, 
 
 /** A reply to send: to the conversation [key] (MessageThread.key), [text] as on the card, made when [newestSeen] was the newest message. */
 data class ReplyRequest(val key: String, val text: String, val newestSeen: Long?) {
-    override fun toString(): String = "ReplyRequest(chars=${text.length})"
+    override fun toString(): String = "ReplyRequest(chars=${text.length})" // l10n: not text (toString for logs and tests)
 }
 
 /** How a reply (or a mark) went, in the main process. */
@@ -77,7 +78,7 @@ data class ReplyAnswer(val outcome: ReplyOutcome, val thread: MessageThread? = n
 sealed class ReplyCheck {
     /** Fire [target]'s action with [text]. */
     data class Fire(val target: ReplyTarget, val text: String) : ReplyCheck() {
-        override fun toString(): String = "Fire(app=${target.app}, chars=${text.length})"
+        override fun toString(): String = "Fire(app=${target.app}, chars=${text.length})" // l10n: not text (toString for logs and tests)
     }
     data class Stop(val answer: ReplyAnswer) : ReplyCheck()
 }

@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.termux
 
+import app.heyrobot.core.i18n.Msg
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.TermuxStrings
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
@@ -13,28 +16,44 @@ import java.util.Locale
 // commands are Ask first or Off, and only the parsed read-only allowlist and your own scripts can skip the card.
 
 /** One of your scripts in ~/robot: run when named (Just do it), show its card first (the default), or never. */
-enum class ScriptLevel(val en: String, val fr: String) {
-    AUTO("Just do it", "Sans demander"),
-    ASK("Ask first", "Demander d'abord"),
-    OFF("Off", "Désactivé"),
+enum class ScriptLevel(val label: Msg) {
+    AUTO(TermuxStrings.levelAuto),
+    ASK(TermuxStrings.levelAsk),
+    OFF(TermuxStrings.levelOff),
+    ;
+
+    val text: Phrase get() = label()
+    val en: String get() = text.en()
 }
 
 /** Commands written in full (typed, spoken, Gemma's, a helper's): Ask first or Off. No "Just do it" exists. */
-enum class CommandLevel(val en: String, val fr: String) {
-    ASK("Ask first", "Demander d'abord"),
-    OFF("Off", "Désactivé"),
+enum class CommandLevel(val label: Msg) {
+    ASK(TermuxStrings.levelAsk),
+    OFF(TermuxStrings.levelOff),
+    ;
+
+    val text: Phrase get() = label()
+    val en: String get() = text.en()
 }
 
 /** "A spoken yes runs a command": only one without warnings (the default), or never (always a tap). It can only be stricter. */
-enum class SpokenYes(val en: String, val fr: String) {
-    WITHOUT_WARNINGS("Only commands without warnings", "Seulement les commandes sans avertissement"),
-    NEVER("Never (tap only)", "Jamais (toucher seulement)"),
+enum class SpokenYes(val label: Msg) {
+    WITHOUT_WARNINGS(TermuxStrings.spokenWithoutWarnings),
+    NEVER(TermuxStrings.spokenNever),
+    ;
+
+    val text: Phrase get() = label()
+    val en: String get() = text.en()
 }
 
 /** "Termux:API commands": allowed, always with a card (the default), or refused. */
-enum class ApiCommands(val en: String, val fr: String) {
-    WITH_CARD("Allowed, with a card", "Permises, avec une carte"),
-    NOT_ALLOWED("Not allowed", "Interdites"),
+enum class ApiCommands(val label: Msg) {
+    WITH_CARD(TermuxStrings.apiWithCard),
+    NOT_ALLOWED(TermuxStrings.apiNotAllowed),
+    ;
+
+    val text: Phrase get() = label()
+    val en: String get() = text.en()
 }
 
 data class TermuxSettings(
@@ -187,7 +206,7 @@ object TermuxScripts {
             name.all { (it.isLetterOrDigit() && it.code < 0x80) || it == '.' || it == '_' || it == '-' }
 
     fun path(name: String): String {
-        require(validName(name)) { "not a script name" }
+        require(validName(name)) { "not a script name" } // l10n: not text (a developer's error)
         return "$FOLDER/$name"
     }
 }

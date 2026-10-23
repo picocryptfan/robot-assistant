@@ -2,10 +2,12 @@
 package app.heyrobot.core
 
 import app.heyrobot.core.PanelContinuity.Open
+import app.heyrobot.core.i18n.Lang
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import app.heyrobot.core.memory.UNLOCK_TO_SAVE
 
 /**
  * 1.0 audit ipc-2 and physical-locked-conversation-carryover: the lock screen never shows an earlier conversation; and the
@@ -98,8 +100,8 @@ class PanelContinuityTest {
         assertTrue(asks(ApprovalGate.unlockLine(ToolName.SEND_TEXT)))
         assertTrue(asks(app.heyrobot.core.memory.MemoryAccess.UNLOCK_TO_SAVE))
         assertTrue(asks("Unlock first: routines are only changed with the phone unlocked."))
-        assertTrue(asks("Good morning. It's 7:02, sunny and 18 degrees. " + BriefComposer.unlockLine(BriefLang.EN)))
-        assertTrue(asks("Bon matin. " + BriefComposer.unlockLine(BriefLang.FR)))
+        assertTrue(asks("Good morning. It's 7:02, sunny and 18 degrees. " + BriefComposer.unlockLine(Lang.EN)))
+        assertTrue(asks("Bon matin. " + BriefComposer.unlockLine(Lang.FR)))
         assertTrue(asks("Déverrouille le téléphone, puis touche Envoyer."))
         // Anything else, the word inside a sentence included.
         assertFalse(asks("Your timer is set for 10 minutes.", ActionStatus.DONE))

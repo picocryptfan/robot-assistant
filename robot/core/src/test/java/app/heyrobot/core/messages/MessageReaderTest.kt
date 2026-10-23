@@ -3,6 +3,7 @@ package app.heyrobot.core.messages
 
 import app.heyrobot.core.LangId
 import app.heyrobot.core.VoiceChoice
+import app.heyrobot.core.i18n.Lang
 import app.heyrobot.core.messages.Snapshots.thread
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -44,8 +45,8 @@ class MessageReaderTest {
         assertEquals("Reply, or stop?", p.spoken.last().text)
         // Asked in French, Robot's own words are French (and read by the French voice).
         val fr = MessageReader.thread(mom, Lang.FR, more = true)
-        assertEquals(Spoken("Mom Martin, dans Cheogram, 2 messages :", true), fr.spoken.first())
-        assertEquals(Spoken("Répondre, suivant ou arrêter ?", true), fr.spoken.last())
+        assertEquals(Spoken("Mom Martin, dans Cheogram, 2 messages:", true), fr.spoken.first())
+        assertEquals(Spoken("Répondre, suivant ou arrêter?", true), fr.spoken.last())
         assertEquals(Spoken("Bring bread", false), fr.spoken[2])
         // Kokoro reads French in Siwis; Robot's own voice otherwise.
         assertEquals(VoiceChoice.SIWIS.speaker to "fr", MessageVoices.french(VoiceChoice.HEART))
@@ -60,7 +61,7 @@ class MessageReaderTest {
         assertTrue(p.shown.contains("- Hola, ¿nos vemos mañana en la playa?\n  Pierre wrote in Spanish. In English: Hi, shall we meet at the beach tomorrow?"))
         // Spoken: who and in what, then the translation; the Spanish words aren't read by an English voice.
         assertEquals(listOf("Pierre wrote in Spanish. In English:", "Hi, shall we meet at the beach tomorrow?"), p.spoken.drop(1).take(2).map { it.text })
-        assertEquals("Pierre a écrit dans une autre langue. En français :", MessageReader.wroteIn("Pierre", null, Lang.FR))
+        assertEquals("Pierre a écrit dans une autre langue. En français\u00A0:", MessageReader.wroteIn("Pierre", null, Lang.FR))
         // The model's answer: the language's name, then the translation.
         assertEquals(MessageTranslation("Hi, see you tomorrow?", "Spanish"), MessagePrompts.parseAny("Spanish\nHi, see you tomorrow?"))
         assertEquals(MessageTranslation("Hi, see you tomorrow?", null), MessagePrompts.parseAny("Hi, see you tomorrow?"))

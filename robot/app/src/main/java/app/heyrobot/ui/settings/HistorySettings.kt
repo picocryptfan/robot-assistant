@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.ui.settings
 
+import androidx.compose.ui.res.stringResource
+import app.heyrobot.R
+import app.heyrobot.core.i18n.UiStrings
+import app.heyrobot.ui.theme.str
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -24,21 +28,21 @@ import app.heyrobot.ui.pref.preferenceGroup
 @Composable
 fun HistorySettingsScreen(s: RobotSettings, update: (RobotSettings) -> Unit, a: AppActions, snackbar: SnackbarHostState, onBack: () -> Unit) {
     var confirm by rememberSaveable { mutableStateOf(false) }
-    PreferenceScreen("History", onBack, snackbar = snackbar) {
-        item(key = "main") { MainSwitchBar("Save conversations", s.saveHistory) { update(s.copy(saveHistory = it)) } }
+    val footer = stringResource(if (s.keepMedia) R.string.history_footer_media else R.string.history_footer_no_media)
+    PreferenceScreen(UiStrings.history().str(), onBack, snackbar = snackbar) {
+        item(key = "main") { MainSwitchBar(stringResource(R.string.history_save), s.saveHistory) { update(s.copy(saveHistory = it)) } }
         preferenceGroup(null, "rows") {
-            PreferenceItem("Screenshots and photos", if (s.keepMedia) "Kept with the conversations" else "Not kept", RIcons.Image,
+            PreferenceItem(stringResource(R.string.history_media),
+                stringResource(if (s.keepMedia) R.string.history_media_kept else R.string.history_media_not_kept), RIcons.Image,
                 enabled = s.saveHistory, onClick = { a.openPage(Page.Safety) })
-            PreferenceItem("Delete all conversations", "Everything in History", RIcons.Delete, onClick = { confirm = true })
+            PreferenceItem(stringResource(R.string.history_delete_all), stringResource(R.string.history_delete_all_detail), RIcons.Delete,
+                onClick = { confirm = true })
         }
-        preferenceFooter(
-            "Kept in Robot's private storage on this phone; a conversation about your screen only once you tap Keep. " +
-                (if (s.keepMedia) "Thumbnails and screen text are kept too (Safety & privacy)."
-                else "Photos and screen contents aren't saved (Safety & privacy)."),
-        )
+        preferenceFooter(footer)
     }
     if (confirm) {
-        ConfirmDialog("Delete all conversations?", "This can't be undone.", "Delete all", onDismiss = { confirm = false }) {
+        ConfirmDialog(stringResource(R.string.history_delete_title), stringResource(R.string.history_delete_text),
+            stringResource(R.string.history_delete_confirm), onDismiss = { confirm = false }) {
             confirm = false
             a.deleteAllConversations()
         }

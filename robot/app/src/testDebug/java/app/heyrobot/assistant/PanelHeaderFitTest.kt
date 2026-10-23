@@ -74,6 +74,32 @@ class PanelHeaderFitTest {
         rule.shot("panel_classic_locked_keep_font200")
     }
 
+    /** 1.2 (design Step 2): the self-test's line before the first question after an Android update, whole, in both languages. */
+    private fun checking(langs: app.heyrobot.core.i18n.Langs) {
+        val st = PanelState("c1", brain = BrainKeeper.State(BrainKeeper.Readiness.LOADING, checking = "GPU"))
+        show(st)
+        assertWhole("Robot")
+        assertWhole(statusLine(st, langs))
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
+    }
+
+    @Test fun theSelfTestLineFits() {
+        checking(app.heyrobot.core.i18n.Langs.EN)
+        rule.shot("panel_checking")
+    }
+
+    @Test @Config(fontScale = 2f)
+    fun theSelfTestLineFitsAtTwiceTheTextSize() {
+        checking(app.heyrobot.core.i18n.Langs.EN)
+        rule.shot("panel_checking_font200")
+    }
+
+    @Test @Config(qualifiers = "fr-rCA-w411dp-h891dp-xhdpi")
+    fun theSelfTestLineFitsInFrench() {
+        checking(app.heyrobot.core.i18n.Langs.of(app.heyrobot.core.i18n.Lang.FR))
+        rule.shot("panel_checking_fr")
+    }
+
     @Test fun keepStillKeeps() {
         val actions = RecordingActions()
         rule.setContent { RobotTheme(dark = false, look = LookSettings(wallpaperColors = false)) { AssistantPanel(PanelState("c1", turns = screenTurns, keep = false), actions) {} } }

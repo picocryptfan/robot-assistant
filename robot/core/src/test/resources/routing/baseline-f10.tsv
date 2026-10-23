@@ -1,0 +1,42 @@
+how much did I spend on gas in August	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, CALENDAR]	-
+how much did I spend on gas in September	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, CALENDAR]	-
+how much have I spent at Costco this month	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+how much did I spend on groceries last month	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+what did I spend on restaurants this year	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+how much did I spend at Canadian Tire in 2026	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+what bills are due this week	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, CALENDAR, FILES]	-
+which bills are due soon	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, FILES]	-
+what bills do I have to pay this month	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, FILES]	-
+what documents are expiring soon	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, FILES]	-
+when does my passport expire	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+what can I still return	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+what's still under warranty	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, FILES]	-
+what subscriptions do I have	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+show my subscriptions	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+combien j'ai dépensé en essence en août	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+combien j'ai dépensé en essence en septembre	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+combien ai-je dépensé chez Costco ce mois-ci	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+combien j'ai dépensé en épicerie le mois passé	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+quelles factures sont dues cette semaine	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, CALENDAR, FILES]	-
+quelles factures je dois payer ce mois-ci	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, FILES]	-
+quels documents expirent bientôt	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, FILES]	-
+quand expire mon passeport	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+qu'est-ce que je peux encore retourner	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+qu'est-ce qui est encore sous garantie	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, FILES]	-
+quels sont mes abonnements	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+how much does gas cost in Montreal	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+how much is a passport renewal	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+what's due on my calendar this week	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, CALENDAR]	-
+remind me to pay the hydro bill on Friday	-	-	-	-	-	RemindOn(title=Pay the hydro bill, whenText=on Friday)	-	-	-	-	-	-	-	[CORE, NOTES, CALENDAR, FILES]	-
+remind me in the morning to pay the hydro bill	-	-	-	-	-	Remind(text=pay the hydro bill, tomorrow=false)	-	-	-	-	-	-	-	[CORE, NOTES, CALENDAR, FILES]	-
+cancel my Netflix subscription	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+when does the pharmacy close	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+how much money do I have	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+what's expiring in my fridge	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+how much did the plumber charge	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, PHONE]	-
+my taxes are due soon	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+combien coûte l'essence à Montréal	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+rappelle-moi de payer la facture d'Hydro vendredi	-	-	-	-	-	RemindOn(title=Payer la facture d'Hydro, whenText=vendredi)	-	-	-	-	-	-	-	[CORE, NOTES, CALENDAR, FILES]	-
+annule mon abonnement Netflix	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+qu'est-ce qui expire dans mon frigo	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+combien coûte un passeport	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-

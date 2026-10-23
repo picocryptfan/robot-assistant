@@ -118,7 +118,7 @@ internal object AnthropicRequests {
      * is Robot's fixed-vocabulary response as JSON; `is_error` when the action failed or couldn't run.
      */
     fun results(ids: List<String>, results: List<Map<String, Any?>>): List<BetaContentBlockParam> = ids.mapIndexed { i, id ->
-        val r = results.getOrNull(i) ?: mapOf("status" to "not_done", "detail" to "Robot didn't run this call.")
+        val r = results.getOrNull(i) ?: mapOf("status" to "not_done", "detail" to "Robot didn't run this call.") // l10n: not text (tool result for the model)
         BetaContentBlockParam.ofToolResult(
             BetaToolResultBlockParam.builder().toolUseId(id).content(Json.toJson(r).toString()).isError(isError(r)).build(),
         )

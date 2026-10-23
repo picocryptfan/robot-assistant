@@ -1,18 +1,26 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.assistant.handsfree
 
-import app.heyrobot.core.messages.Lang
+import app.heyrobot.core.i18n.LockStrings
+import app.heyrobot.sys.Assistant
+import app.heyrobot.lock.PhoneLockNow
+import app.heyrobot.core.i18n.HandsFreeStrings
+import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.UiStrings
+import app.heyrobot.core.output.spoken
+import app.heyrobot.core.i18n.Lang
 import app.heyrobot.core.messages.MessageCommand
 import app.heyrobot.assistant.PanelMessages
 import app.heyrobot.core.output.Line
 import app.heyrobot.core.car.NavKind
 import app.heyrobot.core.car.PhoneLabel
 import app.heyrobot.sys.Phones
-import app.heyrobot.core.output.SpokenLang
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import app.heyrobot.assistant.RobotVoiceService
+import app.heyrobot.assistant.PanelController
 import app.heyrobot.assistant.VoiceHub
 import app.heyrobot.assistant.car.CallPlacer
 import app.heyrobot.assistant.car.CarModeController
@@ -53,7 +61,9 @@ import app.heyrobot.core.output.SpeechClass
 import app.heyrobot.core.output.SpeechSource
 import app.heyrobot.core.output.SpokenCard
 import app.heyrobot.core.output.SpokenChoice
+import app.heyrobot.core.output.Trust
 import app.heyrobot.core.output.Utterance
+import app.heyrobot.voice.TurnFocus
 import app.heyrobot.sys.Calendars
 import app.heyrobot.sys.CoarseLocation
 import app.heyrobot.sys.HandsFreeFiles
@@ -61,7 +71,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.time.ZonedDateTime
 
-// VOICE PROCESS (0.8). Headset and car mode in the panel (design §1.3, §1.4, §3.3, §4.3, §4.5), as routines are in
+// VOICE PROCESS (0.8). Headset and car mode in the panel, as routines are in
 // PanelRoutines: what the panel asks of them when it opens (a headset's button or car mode: a session routes the
 // microphone, then listens), their phrases before the model (HandsFreeRouter: car mode on and off, "repeat", "stop
 // listening"; in car mode navigate, call, what's next, music; anywhere "call Mom", the call tool's own words), each
@@ -88,7 +98,9 @@ object PanelHandsFree {
     }
 
     private val app get() = VoiceHub.app
-    private val lang get() = HandsFreeHub.lang
+    /** 1.1: the turn's languages while [handle] runs (PanelRoutines.Host.langs), else hands-free's own (HandsFreeHub.langs). */
+    @Volatile private var turn: Langs? = null
+    private val lang get() = (turn ?: HandsFreeHub.langs).say
     private val session: HeadsetSession? get() = HandsFreeHub.session
 
     /** What this reply said aloud (for "repeat"), the car's sentences so far and what waits for "Want more?". */
@@ -145,6 +157,9 @@ object PanelHandsFree {
     /** A headset or car session runs for the car: what the car may hear, and its short answers. */
     val inCar: Boolean get() = session?.kind == SessionKind.CAR
 
+    /** A question of the session's waits for its answer (the private question, "Want more?", a call's choice or read-back). */
+    val asking: Boolean get() = pendingPrivate != null || awaitingMore || callFlow != null
+
     /** "No" to an announcement: nothing more is said, and the session ends once this reply is over. */
     fun endQuietly() {
         endAfterReply = true
@@ -160,6 +175,8 @@ object PanelHandsFree {
         pendingPrivate?.let { VoiceLog.add(VoiceEvent.PRIVATE_ASKED, it.first, -1) }
         reset()
         HandsFreeMessages.sessionEnded()
+        // 1.1: the session's question is over: the music comes back unless the panel is still busy (PanelMediaPause).
+        PanelController.mediaPause.check()
     }
 
     private fun reset() {
@@ -205,12 +222,17 @@ object PanelHandsFree {
      * conversation holds something personal), and in the car at most two sentences, the rest after "Want more?".
      */
     fun allow(sentence: String, personal: () -> Boolean): Boolean {
-        val s = session ?: return true
+        val s = session ?: return true.also { TurnFocus.volume(OutputGuard.volume(Utterance(SpeechClass.PUBLIC, SpeechSource.ANSWER, sentence.length),
+            OutputContext(SessionKind.PHONE, null, Trust.NOT_PRIVATE, HandsFreeHub.phone()))) }
         val cls = if (personal()) SpeechClass.PERSONAL else SpeechClass.PUBLIC
         val ctx = OutputContext.of(s.kind, s.routed(), HandsFreeHub.memory, HandsFreeHub.phone(), s.device, s.commRoute, CarModeController.trusted)
         val guard = HandsFreeHub.headset.settings.guard(HandsFreeHub.headset.safety, HandsFreeHub.car.settings.readAloud)
         return when (val d = OutputGuard.decide(Utterance(cls, SpeechSource.ANSWER, sentence.length), ctx, guard)) {
-            is OutputDecision.Speak -> if (s.kind == SessionKind.CAR) car(sentence) else { spoken += sentence; true }
+            is OutputDecision.Speak -> {
+                // 1.1: a long answer pauses other sound, a short line ducks it (voice TurnFocus).
+                TurnFocus.volume(d.volume)
+                if (s.kind == SessionKind.CAR) car(sentence) else { spoken += sentence; true }
+            }
             is OutputDecision.Ask -> {
                 if (d.what == AskWhat.PRIVATE_DEVICE) { heldPrivate += sentence; askPrivate = true }
                 false
@@ -288,6 +310,8 @@ object PanelHandsFree {
     // ------------------------------------------------------------------ doing it
 
     suspend fun handle(replyId: String, cmd: Cmd, host: PanelRoutines.Host) {
+        // Nothing heard is passed here yet: the setting's language, else the menus', unless the panel gives its own turn's.
+        turn = host.langs(null, null)
         try {
             when (cmd) {
                 is Cmd.Voice -> voice(replyId, cmd.c, host)
@@ -297,9 +321,13 @@ object PanelHandsFree {
                 is Cmd.MessageAnswer -> HandsFreeMessages.answer(replyId, cmd.heard, host)
             }
         } finally {
+            turn = null
             host.finish(replyId)
         }
     }
+
+    /** 1.1: [p] as hands-free says it in the turn's language (French without its typography, core VoiceForm). */
+    private fun said(p: Phrase): String = spoken(p, turn ?: HandsFreeHub.langs)
 
     private fun reply(replyId: String, host: PanelRoutines.Host, text: String) {
         host.text(replyId, text)
@@ -307,20 +335,20 @@ object PanelHandsFree {
     }
 
     private suspend fun voice(replyId: String, c: HandsFreeCommand, host: PanelRoutines.Host) {
-        val fr = lang == SpokenLang.FR
+        val fr = lang == Lang.FR
         when (c) {
             HandsFreeCommand.CarModeOn -> when {
-                !HandsFreeHub.car.on -> reply(replyId, host, if (fr) "Le mode auto est désactivé dans Réglages › Mode auto." else "Car mode is off in Settings › Car mode.")
-                CarModeController.on -> reply(replyId, host, if (fr) "Le mode auto est déjà activé." else "Car mode is already on.")
+                !HandsFreeHub.car.on -> reply(replyId, host, said(HandsFreeStrings.carOffInSettings("page" to UiStrings.inSettings(UiStrings.carMode))))
+                CarModeController.on -> reply(replyId, host, said(HandsFreeStrings.carAlreadyOn()))
                 else -> {
-                    host.text(replyId, if (fr) "Mode auto…" else "Starting car mode…")
+                    host.text(replyId, said(HandsFreeStrings.startingCar()))
                     CarModeController.start()
                 }
             }
-            HandsFreeCommand.CarModeOff -> if (!CarModeController.on) reply(replyId, host, if (fr) "Le mode auto n'est pas activé." else "Car mode isn't on.")
+            HandsFreeCommand.CarModeOff -> if (!CarModeController.on) reply(replyId, host, said(HandsFreeStrings.carNotOn()))
                 else { host.text(replyId, CarModeController.END_TEXT.get(lang)); CarModeController.end() }
             HandsFreeCommand.Repeat -> { host.text(replyId, spoken.joinToString(" ").ifEmpty { "…" }); repeat() }
-            HandsFreeCommand.StopListening -> { endAfterReply = true; reply(replyId, host, if (fr) "D'accord." else "Okay.") }
+            HandsFreeCommand.StopListening -> { endAfterReply = true; reply(replyId, host, said(HandsFreeStrings.okay())) }
             is HandsFreeCommand.Navigate -> navigate(replyId, c, host)
             is HandsFreeCommand.Call -> call(replyId, c, host)
             HandsFreeCommand.WhatsNext -> whatsNext(replyId, host)
@@ -347,12 +375,23 @@ object PanelHandsFree {
         }
         val s = VoiceHub.settings
         val region = s.regionFor(Phones.deviceRegion(app))
+        // 1.1, Phone lock (§6): during a lock, only the People the locks let you call, and emergency numbers, whether or not
+        // the lock screen is up (car mode's trusted session calls from there too). The keyguard decides only [lockOn] below.
+        val phoneLock = PhoneLockNow.on(app)
+        val lockOn = phoneLock && !Assistant.keyguard(app)
+        val allowed = if (phoneLock) PhoneLockNow.callKeys(app) else null
         val candidates = withContext(Dispatchers.IO) { CallPlacer.candidates(app, c.who, s) }.let { all ->
             // "on her cell", "au bureau": the numbers of that kind first, when there are some.
             val label = c.label?.let { l -> PhoneLabel.entries.firstOrNull { it.en == l || it.name.lowercase() == l } }
             all.filter { label == null || it.label == label }.ifEmpty { all }
-        }
-        val phone = HandsFreeHub.phone()
+        }.filter { allowed == null || PhoneLockNow.callKey(it.number) in allowed || CallPlacer.isEmergency(app, it.number, region) }
+        // A number said aloud is called as said (core CallTarget.plan): during a lock, only one of those People's or an
+        // emergency number, which the plan sends to the dialer first.
+        val spoken = c.who.takeIf { w -> w.none { it.isLetter() } }?.let(CallTarget::dialable)?.takeIf { it.count(Char::isDigit) >= 2 }
+        if (allowed != null && (if (spoken != null) PhoneLockNow.callKey(spoken) !in allowed && !CallPlacer.isEmergency(app, spoken, region) else candidates.isEmpty()))
+            return reply(replyId, host, said(LockStrings.callClosed()))
+        // The screen is unlocked during a phone lock: the call's own rules, not the lock screen's.
+        val phone = HandsFreeHub.phone().let { if (lockOn) it.copy(locked = false) else it }
         // A direct call after the spoken yes is car mode's alone: a headset session's call opens the dialer.
         val rules = CallPlacer.rules(app).forSession(car = inCar)
         val plan = CallTarget.plan(c.who, candidates, rules, phone.locked, inCar && CarModeController.trusted, lang) { CallPlacer.isEmergency(app, it, region) }
@@ -413,13 +452,16 @@ object PanelHandsFree {
             }
             PlaceWord.HOME, PlaceWord.WORK -> {
                 val phone = HandsFreeHub.phone()
+                // 1.1, Phone lock: a route opens the maps app, open only when every active lock has Maps on.
+                val lockOn = PhoneLockNow.on(app) && !Assistant.keyguard(app)
+                if (lockOn && !PhoneLockNow.maps(app)) return reply(replyId, host, said(LockStrings.appClosed()))
                 val here = withContext(Dispatchers.IO) { CoarseLocation.find(app, 3_000L, Abort(4_000L)).fix?.let { it.lat to it.lon } }
                 val dest = if (c.place == PlaceWord.HOME) NavDestination.Home else NavDestination.Work
-                val plan = CarNavigate.plan(dest, HandsFreeFiles.store(app).carSettings(), here, phone.locked, CarModeController.trusted, lang)
+                val plan = CarNavigate.plan(dest, HandsFreeFiles.store(app).carSettings(), here, phone.locked && !lockOn, CarModeController.trusted, lang)
                 VoiceLog.add(VoiceEvent.CAR_NAV, plan.kind)
                 if (plan is NavPlan.Route) {
                     val opened = try { app.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(plan.uri)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); true } catch (_: Throwable) { false }
-                    if (!opened) return reply(replyId, host, if (lang == SpokenLang.FR) "Ton application de cartes n'est pas installée." else "Your maps app isn't installed.")
+                    if (!opened) return reply(replyId, host, said(HandsFreeStrings.noOrganicMaps()))
                     reply(replyId, host, plan.say)
                     host.leave()
                 } else {
@@ -436,7 +478,7 @@ object PanelHandsFree {
         val now = ZonedDateTime.now()
         val range = (WhenParser.range("today", now) as? Read.Ok)?.value ?: return reply(replyId, host, "…")
         val events = withContext(Dispatchers.IO) { if (Calendars.readGranted(app)) Calendars.events(app, range) else null }
-            ?: return reply(replyId, host, if (lang == SpokenLang.FR) "Permets à Robot de lire ton agenda dans l'app Robot." else "Allow Robot to read your calendar in the Robot app.")
+            ?: return reply(replyId, host, said(HandsFreeStrings.allowCalendar()))
         // Your calendar: personal, so OutputGuard holds it where a personal sentence may not play.
         // An event's title, as whoever made the event wrote it: content, and personal (core Quoted).
         val line = WhatsNext.line(events, now, lang)
@@ -469,19 +511,18 @@ object PanelHandsFree {
         pendingPrivate = null
         if (p.first > 0) HandsFreeHub.editDevices { it.answerPrivate(p.first, yes) }
         VoiceLog.add(VoiceEvent.PRIVATE_ASKED, p.first, if (yes) 1 else 0)
-        val fr = lang == SpokenLang.FR
         if (yes) {
-            host.text(replyId, if (fr) "D'accord : seulement toi l'entends." else "Okay: only you hear it.")
+            host.text(replyId, said(HandsFreeStrings.onlyYouHear()))
             p.second.forEach { VoiceHub.tts.speak(it) }
         } else {
-            reply(replyId, host, if (fr) "D'accord. Les réponses personnelles restent à l'écran." else "Okay. Personal answers stay on the screen.")
+            reply(replyId, host, said(HandsFreeStrings.stayOnScreen()))
         }
     }
 
     private fun more(replyId: String, yes: Boolean, host: PanelRoutines.Host) {
         val rest = more.toList()
         more.clear()
-        if (!yes) return reply(replyId, host, if (lang == SpokenLang.FR) "D'accord." else "Okay.")
+        if (!yes) return reply(replyId, host, said(HandsFreeStrings.okay()))
         host.text(replyId, rest.joinToString(" "))
         // Two more at a time, the rest after "Want more?" again.
         rest.forEachIndexed { i, s -> if (i < CarSpeech.MAX_SENTENCES) { spoken += s; VoiceHub.tts.speak(s) } else more += s }
@@ -489,5 +530,5 @@ object PanelHandsFree {
 
     /** The car screen's Call: "Who should I call?", then who you say. */
     const val ARG_CALL = "robot_handsfree_call"
-    private val CALL_WHO = Line("Who should I call?", "Qui veux-tu appeler?")
+    private val CALL_WHO = Line(HandsFreeStrings.whoToCall())
 }

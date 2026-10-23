@@ -32,10 +32,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import app.heyrobot.R
 import app.heyrobot.ui.theme.RobotTokens
 
 // Main and voice processes. The cards the panel's bubbles share with ui/common's own parts (a web answer, a reply, a
@@ -178,7 +180,7 @@ fun NoticeRow(
             Spacer(Modifier.width(12.dp))
             Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).padding(vertical = 8.dp))
             if (action != null) TextButton(onClick = onAction, modifier = Modifier.heightIn(min = RobotTokens.minTouch)) { Text(action) }
-            IconButton(onClick = onDismiss) { Icon(RIcons.Close, "Dismiss") }
+            IconButton(onClick = onDismiss) { Icon(RIcons.Close, stringResource(R.string.card_dismiss)) }
         }
     }
 }

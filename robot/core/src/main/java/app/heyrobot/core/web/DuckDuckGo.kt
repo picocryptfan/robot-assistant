@@ -20,7 +20,7 @@ object DuckDuckGoWire {
     const val MAX_RELATED = 3
 
     fun request(query: String, userAgent: String): SearchRequest = SearchRequest("GET",
-        "$SEARCH?q=${SearchWire.encode(query)}&format=json&no_html=1&skip_disambig=1&no_redirect=1&t=$APP",
+        "$SEARCH?q=${SearchWire.encode(query)}&format=json&no_html=1&skip_disambig=1&no_redirect=1&t=$APP", // l10n: not text (a request address)
         listOf("User-Agent" to userAgent, "Accept" to "application/json"))
 
     /** DuckDuckGo's own results page for [query]: where a computed answer is credited (the API's attribution link). */

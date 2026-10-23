@@ -22,6 +22,7 @@ import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.memory.HelperMemory
 import app.heyrobot.core.memory.MemoryEdits
 import app.heyrobot.core.memory.MemoryFile
+import app.heyrobot.core.memory.MemoryFiling
 import app.heyrobot.core.memory.MemoryItem
 import app.heyrobot.core.memory.MemoryKind
 import app.heyrobot.core.memory.MemoryLoad
@@ -39,6 +40,7 @@ import app.heyrobot.ui.testing.scrollToText
 import app.heyrobot.ui.testing.shot
 import app.heyrobot.ui.testing.show
 import app.heyrobot.ui.testing.touchTargetProblems
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -76,8 +78,9 @@ class MemorySettingsTest {
     private class TestStore(dir: File, now: () -> Long) : MemoryStore {
         val keys = SoftMemoryKeys()
         val vault = FileMemoryVault(dir, keys, now = now)
-        var settings = MemorySettings()
-        val events = ArrayList<String>()
+        @Volatile var settings = MemorySettings()
+        /** Written from the store's coroutines while the test waits on it, so a list that is safe across threads. */
+        val events = java.util.concurrent.CopyOnWriteArrayList<String>()
         override fun settings() = settings
         override fun saveSettings(s: MemorySettings) { settings = s; events += "settings" }
         override fun load() = vault.load()
@@ -95,9 +98,15 @@ class MemorySettingsTest {
         val changes = MutableSharedFlow<Long>(extraBufferCapacity = 4)
         override fun changes(): Flow<Long> = changes
         fun items(): List<MemoryItem> = (vault.load() as? MemoryLoad.Loaded)?.file?.items.orEmpty()
+        /** FX1: the drawers travel mode hides now (none until a test says). */
+        @Volatile var hidden: Set<String> = emptySet()
+        override fun hiddenDrawers(): (String) -> Boolean { val h = hidden; return { it in h } }
     }
 
-    private val store = TestStore(Files.createTempDirectory("memory-page").toFile()) { now }
+    private val dir: File = Files.createTempDirectory("memory-page").toFile()
+    private val store = TestStore(dir) { now }
+
+    @After fun removeTemp() { dir.deleteRecursively() }
 
     private fun item(id: String, text: String, kind: MemoryKind = MemoryKind.FACT, pinned: Boolean = false, secret: Boolean = false,
         uses: Int = 0, daysAgo: Int = 1, expires: Long? = null) =
@@ -190,7 +199,7 @@ class MemorySettingsTest {
         val leo = store.items().single { it.id == "m_fact00000002" }
         assertEquals("Léo has hockey on Tuesdays", leo.text)
         assertTrue(leo.pinned)
-        assertTrue("changed" in store.events)
+        rule.waitUntil(5_000) { "changed" in store.events }
         // Private: never pinned.
         rule.waitUntil(5_000) { runCatching { rule.scrollToText("Léo has hockey on Tuesdays") }.isSuccess }
         rule.onRow("Léo has hockey on Tuesdays").performClick()
@@ -204,7 +213,7 @@ class MemorySettingsTest {
         rule.onRow("My sister Julie's birthday is May 3").performClick()
         rule.inDialog("Delete").performClick()
         rule.waitUntil(5_000) { store.items().none { it.id == "m_fact00000001" } }
-        assertTrue(store.events.any { it == "log MEM_FORGET 1 4 0" })
+        rule.waitUntil(5_000) { store.events.any { it == "log MEM_FORGET 1 4 0" } }
     }
 
     @Test @Config(qualifiers = "w320dp-h640dp-mdpi")
@@ -250,8 +259,7 @@ class MemorySettingsTest {
         rule.onRow("Use memory on the lock screen").performClick()
         rule.waitUntil(5_000) { store.settings.onLockScreen }
         assertEquals(MemoryKeyAliases.LOCK_SCREEN, store.vault.alias())
-        assertTrue("rekey true" in store.events)
-        assertTrue(store.events.any { it == "log MEM_KEY 1 1 0" })
+        rule.waitUntil(5_000) { "rekey true" in store.events && store.events.any { it == "log MEM_KEY 1 1 0" } }
         // A key change that fails leaves the switch where it was.
         store.keys.busy = true
         rule.onRow("Use memory on the lock screen").performClick()
@@ -261,9 +269,11 @@ class MemorySettingsTest {
         rule.scrollToText("Share memory with helpers")
         rule.onRow("Share memory with helpers").performClick()
         rule.inDialog("With helpers I trust").performClick()
+        rule.waitUntil(5_000) { store.settings.helpers == HelperMemory.TRUSTED_HELPERS }
         assertEquals(HelperMemory.TRUSTED_HELPERS, store.settings.helpers)
         rule.scrollToText("Use memory")
         rule.onRow("Use memory").performClick()
+        rule.waitUntil(5_000) { !store.settings.on }
         assertFalse(store.settings.on)
         rule.scrollToText("Use memory in answers")
         rule.onRow("Use memory in answers").assertIsNotEnabled()
@@ -283,7 +293,7 @@ class MemorySettingsTest {
         rule.inDialog("Delete all").performClick()
         rule.waitUntil(5_000) { "say Memory deleted." in log }
         assertEquals(emptyList<MemoryItem>(), store.items())
-        assertTrue(store.events.containsAll(listOf("deleteAll", "changed", "log MEM_FORGET 6 6 0")))
+        rule.waitUntil(5_000) { store.events.containsAll(listOf("deleteAll", "changed", "log MEM_FORGET 6 6 0")) }
         rule.waitUntil(5_000) { runCatching { rule.scrollToText("Robot remembers nothing yet.", substring = true) }.isSuccess }
     }
 
@@ -295,7 +305,7 @@ class MemorySettingsTest {
         rule.onRow("Start over").performClick()
         rule.inDialog("Start over").performClick()
         rule.waitUntil(5_000) { "say Memory is empty now." in log }
-        assertTrue("startOver" in store.events)
+        rule.waitUntil(5_000) { "startOver" in store.events }
         rule.waitUntil(5_000) { runCatching { rule.onNodeWithText("Robot remembers nothing yet.", substring = true).assertExists() }.isSuccess }
     }
 
@@ -311,6 +321,85 @@ class MemorySettingsTest {
         assertTrue(MemoryEdits.sameText("Julie likes tulips", store.items().single().text))
     }
 
+    /** FX3: Export leaves out the filing rules naming a drawer travel mode hides now, as the list does; the rest goes. */
+    @Test fun exportLeavesOutRulesNamingAHiddenDrawer() {
+        seedRules()
+        val all = (store.vault.load() as app.heyrobot.core.memory.MemoryLoad.Loaded).file
+        val out = exported(all, { it == "Car" })
+        assertEquals(all.items.map { it.id } - "m_rule00000001", out.items.map { it.id })
+        assertEquals(all.items, exported(all, { false }).items)
+    }
+
+    private fun seedRules() {
+        store.vault.update {
+            MemoryFile(listOf(
+                item("m_fact00000001", "My sister Julie's birthday is May 3", uses = 4, daysAgo = 10),
+                item("m_rule00000001", "Esso receipts go in Car.", daysAgo = 2).copy(filing = MemoryFiling(kind = "RECEIPT", merchant = "Esso", drawer = "Car")),
+                item("m_rule00000002", "Hydro Québec bills get the tag business.", daysAgo = 1)
+                    .copy(source = MemorySource.SETTINGS, filing = MemoryFiling(kind = "BILL", merchant = "Hydro Québec", tags = listOf("business"), learned = true)),
+                item("m_rule00000003", "Costco receipts go in Taxes.", daysAgo = 1)
+                    .copy(imported = app.heyrobot.core.memory.MemoryImported.CONTENT, filing = MemoryFiling(kind = "RECEIPT", merchant = "Costco", drawer = "taxes")),
+            ))
+        }
+    }
+
+    /**
+     * 1.4 F8 (files-1.4-plan.md §4.5): a filing rule says so in the list; its dialog shows its words, whether Robot Files
+     * follows it, and only Delete (its words are a template: no edit, no pin, no private switch). Deleting it deletes the rule.
+     */
+    @Test @Config(qualifiers = "w320dp-h640dp-mdpi")
+    fun aFilingRule() {
+        seedRules()
+        open()
+        rule.scrollToText("Esso receipts go in Car.")
+        rule.onNodeWithText("Esso receipts go in Car.").assert(hasText("Filing rule · ", substring = true))
+        rule.onNodeWithText("My sister Julie's birthday is May 3").assert(hasText("Saved", substring = true))
+        rule.shot("memory_rules")
+        rule.onRow("Esso receipts go in Car.").performClick()
+        rule.inDialog("Robot Files follows it when it files. Delete it here and Robot stops.").assertExists()
+        rule.onNodeWithText("Pinned").assertDoesNotExist()
+        rule.onNodeWithText("Private").assertDoesNotExist()
+        assertEquals(0, rule.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().size)
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
+        rule.shot("memory_rule")
+        rule.inDialog("Delete").performClick()
+        rule.waitUntil(5_000) { store.items().none { it.id == "m_rule00000001" } }
+        // An imported rule: shown, not followed.
+        rule.scrollToText("Costco receipts go in Taxes.")
+        rule.onRow("Costco receipts go in Taxes.").performClick()
+        rule.inDialog("Robot doesn't follow it: it isn't from your own words.").assertExists()
+    }
+
+    /**
+     * FX1 (files-1.4-review.md finding 6): while travel mode hides the drawer "Car", the rule naming it isn't listed or
+     * counted (it stays in memory); the others are; shown again once it isn't hidden.
+     */
+    @Test fun aRuleNamingAHiddenDrawerIsOutOfSight() {
+        seedRules()
+        store.hidden = setOf("Car")
+        open()
+        rule.onNodeWithText("Robot remembers 3 things.", substring = true).assertExists()
+        rule.scrollToText("Costco receipts go in Taxes.")
+        rule.onNodeWithText("Esso receipts go in Car.").assertDoesNotExist()
+        rule.onNodeWithText("Hydro Québec bills get the tag business.").assertExists()
+        assertEquals(4, store.items().size)
+        store.hidden = emptySet()
+        store.changes.tryEmit(1)
+        rule.waitUntil(5_000) { runCatching { rule.onNodeWithText("Esso receipts go in Car.").assertExists() }.isSuccess }
+    }
+
+    @Config(qualifiers = "fr-rCA-w411dp-h891dp-xhdpi")
+    @Test fun aFilingRuleInFrench() {
+        seedRules()
+        rule.show { MemorySettingsScreen(store, log.actions, SnackbarHostState(), onBack = {}, now = { now }) }
+        rule.waitUntil(5_000) { runCatching { rule.onNodeWithText("Utiliser la mémoire").assertExists() }.isSuccess }
+        rule.scrollToText("Esso receipts go in Car.")
+        rule.onNodeWithText("Esso receipts go in Car.").assert(hasText("Règle de classement · ", substring = true))
+        rule.onRow("Esso receipts go in Car.").performClick()
+        rule.inDialog("Les Fichiers de Robot la suivent pour classer. Supprime-la ici et Robot arrête.").assertExists()
+        rule.shot("memory_rule_fr")
+    }
+
     @Test fun light() {
         seed()
         open()
@@ -324,6 +413,23 @@ class MemorySettingsTest {
         rule.scrollToText("My sister Julie's birthday is May 3")
         rule.onRow("My sister Julie's birthday is May 3").performClick()
         rule.shot("memory_item")
+    }
+
+    /** 1.1: French menus (values-fr-rCA/strings_memory.xml and core's MemoryStrings): the page in Québec French, your words as they are. */
+    @Config(qualifiers = "fr-rCA-w411dp-h891dp-xhdpi")
+    @Test fun inFrench() {
+        seed()
+        rule.show { MemorySettingsScreen(store, log.actions, SnackbarHostState(), onBack = {}, now = { now }) }
+        rule.waitUntil(5_000) { runCatching { rule.onNodeWithText("Robot retient 6 choses.", substring = true).assertExists() }.isSuccess }
+        rule.onNodeWithText("Utiliser la mémoire").assertExists()
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
+        rule.shot("memory_fr")
+        rule.scrollToText("Épinglées (2 sur 6)\u00A0: dans chaque réponse")
+        rule.onNodeWithText("Call me Sam").assert(hasText("Épinglé · enregistré le 11 septembre"))
+        rule.scrollToText("My sister Julie's birthday is May 3")
+        rule.onNodeWithText("My sister Julie's birthday is May 3").assert(hasText("Enregistré le 1er octobre · utilisé dans 4 réponses"))
+        rule.scrollToText("Utiliser la mémoire sur l’écran de verrouillage")
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
     }
 
     @Test fun dark() {

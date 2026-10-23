@@ -8,7 +8,7 @@ import java.util.Locale
 // :voice process turns AudioDeviceInfo, BluetoothClass, KeyguardManager, PowerManager, AudioManager.getMode and
 // NotificationManager.getCurrentInterruptionFilter into these snapshots; nothing here calls Android.
 //
-// Platform facts this model rests on (VERIFIED in AOSP android-17.0.0_r1 unless marked, design §0):
+// Platform facts this model rests on (VERIFIED in AOSP android-17.0.0_r1 unless marked):
 // - Without BLUETOOTH_CONNECT, a Bluetooth device's address comes as "XX:XX:XX:XX:EE:FF": only the last two bytes are
 //   real. The product name is not hidden (UNVERIFIED that it is the Bluetooth name on this phone: check H0.4).
 // - One physical headset shows as several devices: A2DP (music, no microphone) and SCO (call audio with its microphone),
@@ -150,7 +150,7 @@ data class SeenDevice(
         }
     }
 
-    override fun toString(): String = "SeenDevice(type=$type, class=$btClass, sink=$sink, tail=${tail != null}, full=${fullAddress != null})"
+    override fun toString(): String = "SeenDevice(type=$type, class=$btClass, sink=$sink, tail=${tail != null}, full=${fullAddress != null})" // l10n: not text (toString, for the logs)
 }
 
 /** Bluetooth addresses as Android gives them, with or without BLUETOOTH_CONNECT. */

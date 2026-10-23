@@ -152,7 +152,7 @@ internal object GitHubClient {
                 if (accept == GitHubHosts.ACCEPT_FILE) c.setRequestProperty("Accept-Encoding", "identity")
                 if (from > 0) c.setRequestProperty("Range", ByteRange.request(from))
                 // The access token: to api.github.com only (HTTPS, no other port or user), never to a download server.
-                if (token != null && GitHubHosts.mayAuthorize(url)) c.setRequestProperty("Authorization", "Bearer $token")
+                if (token != null && GitHubHosts.mayAuthorize(url)) c.setRequestProperty("Authorization", "Bearer $token") // l10n: not text (an HTTP header)
                 val code = c.responseCode
                 if (code in REDIRECTS) {
                     if (public) throw Failure(UpdateFail.REDIRECT_REFUSED, code)
@@ -176,7 +176,7 @@ internal object GitHubClient {
                     is SecurityException -> Failure(UpdateFail.NO_NETWORK_PERMISSION)
                     is SSLException -> Failure(UpdateFail.NO_INTERNET)
                     // A socket refused by the Network toggle fails with EACCES; anything else is the connection.
-                    is IOException -> Failure(if (e.message?.contains("EACCES") == true || e.message?.contains("Permission denied") == true)
+                    is IOException -> Failure(if (e.message?.contains("EACCES") == true || e.message?.contains("Permission denied") == true) // l10n: not text (the system's error message, matched)
                         UpdateFail.NO_NETWORK_PERMISSION else UpdateFail.NO_INTERNET)
                     else -> Failure(UpdateFail.SERVICE)
                 }

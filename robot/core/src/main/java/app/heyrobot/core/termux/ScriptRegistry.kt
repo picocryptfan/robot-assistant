@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.termux
 
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.TermuxStrings
 import java.text.Normalizer
 import java.util.Locale
 
@@ -28,7 +30,7 @@ object ScriptRegistry {
      * The fixed listing run (bash only, no other program): each executable regular file directly in ~/robot, its first
      * comment line that isn't the #! line, and a "# aliases: …" line, one tab-separated line each. Nothing is run.
      */
-    const val LIST_SCRIPT = "d=\"\$HOME/robot\"\n" +
+    const val LIST_SCRIPT = "d=\"\$HOME/robot\"\n" + // l10n: not text (shell for Termux)
         "[ -d \"\$d\" ] || { echo robot-no-folder; exit 0; }\n" +
         "for f in \"\$d\"/*; do\n" +
         "  [ -f \"\$f\" ] && [ -x \"\$f\" ] || continue\n" +
@@ -46,7 +48,10 @@ object ScriptRegistry {
         "echo robot-end"
 
     /** What the card shows before the first listing run (B5.1: "a card the first time"). */
-    const val LIST_SHOWN = "find ~/robot -maxdepth 1 -type f -perm -u+x  (and each script's first # comment line)"
+    val listShown: Phrase get() = TermuxStrings.listShown("command" to "find ~/robot -maxdepth 1 -type f -perm -u+x") // l10n: not text (a command)
+
+    /** [listShown] in English. */
+    val LIST_SHOWN: String get() = listShown.en()
 
     /** "Create it" for ~/robot. */
     const val MAKE_FOLDER = "mkdir -p ~/robot"

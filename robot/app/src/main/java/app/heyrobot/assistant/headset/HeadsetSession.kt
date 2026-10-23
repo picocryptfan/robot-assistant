@@ -40,7 +40,7 @@ import app.heyrobot.voice.Cues
 import app.heyrobot.voice.OutputPin
 import app.heyrobot.voice.SessionRoute
 
-// VOICE PROCESS (0.8). One headset or car session (design §3.3 "Flow", §3.6 HeadsetSession, §4.3): core's
+// VOICE PROCESS (0.8). One headset or car session: core's
 // HeadsetSessionMachine decides, this carries out its effects with Android's audio. The headset's call route
 // (setCommunicationDevice, MODE_IN_COMMUNICATION through call audio's owners: never during another app's call), the
 // capture with VOICE_COMMUNICATION pinned to the headset's microphone (Listener, between questions), Robot's voice pinned
@@ -186,7 +186,12 @@ class HeadsetSession(private val entry: EntryKind, private val locked: Boolean, 
     }
 
     private val routeTimeout = Runnable { on(SessionEvent.RouteTimeout) }
-    private val followUpExpired = Runnable { on(SessionEvent.FollowUpExpired) }
+    /** A question under way when the window closes (speech heard, still being written down) is let finish. */
+    private val followUpExpired: Runnable = object : Runnable {
+        override fun run() {
+            if (VoiceHub.stt.hearing) main.postDelayed(this, 250) else on(SessionEvent.FollowUpExpired)
+        }
+    }
 
     private fun clearCommunication() {
         SessionRoute.release(app, owner)

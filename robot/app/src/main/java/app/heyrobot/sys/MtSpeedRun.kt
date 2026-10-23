@@ -2,6 +2,7 @@
 package app.heyrobot.sys
 
 import android.content.Context
+import app.heyrobot.R
 import app.heyrobot.core.LangPair
 import app.heyrobot.core.MtError
 import app.heyrobot.core.MtException
@@ -22,7 +23,7 @@ import kotlinx.coroutines.withContext
 
 object MtSpeedRun {
     /** A line per direction after loading, not counted: the first decode after a load is slower. */
-    private val WARM_UP = mapOf("fr-en" to "Bonjour, comment ça va aujourd'hui?", "en-fr" to "Hello, how are you today?")
+    private val WARM_UP = mapOf("fr-en" to "Bonjour, comment ça va aujourd'hui?", "en-fr" to "Hello, how are you today?") // l10n: not text (sentences only the engine reads)
     /** The whole set's deadline per direction (23 lines at 60 ms are under 2 s; a slow phone still finishes). */
     private const val SET_DEADLINE_MS = 120_000L
 
@@ -38,15 +39,15 @@ object MtSpeedRun {
         val now = System.currentTimeMillis()
         val r = try {
             if (set.isEmpty()) throw MtException(MtError.BAD_REQUEST)
-            step("Loading the engine…")
+            step(ctx.getString(R.string.conv_mt_loading))
             val loaded = link.load(LangPair.FR_EN)
-            step("Warming up…")
+            step(ctx.getString(R.string.conv_mt_warming))
             for ((dir, line) in WARM_UP) link.translate(dir, listOf(line), SET_DEADLINE_MS, MtPriority.INTERACTIVE)
             val out = arrayOfNulls<String>(set.size)
             val ms = LongArray(set.size)
             for (dir in set.map { it.direction }.distinct()) {
                 val idx = set.indices.filter { set[it].direction == dir }
-                step("Translating ${idx.size} lines, $dir…")
+                step(ctx.getString(R.string.conv_mt_translating, idx.size, dir))
                 val t = link.translate(dir, idx.map { set[it].source }, SET_DEADLINE_MS, MtPriority.INTERACTIVE)
                 idx.forEachIndexed { k, i ->
                     out[i] = t.out.getOrNull(k)

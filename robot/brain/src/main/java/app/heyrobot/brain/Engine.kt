@@ -36,8 +36,11 @@ interface BrainEngine {
     fun unload(why: String)
     fun generate(key: BrainScheduler.Key, req: BrainMsg.Generate, image: ByteArray?, sink: Sink)
     fun toolResult(key: BrainScheduler.Key, req: BrainMsg.ToolResult, sink: Sink)
-    /** REQ_ONE_SHOT (0.5.0): one message in a conversation of its own, at its priority (core OneShotRules). */
-    fun oneShot(key: BrainScheduler.Key, req: BrainMsg.OneShot, sink: Sink)
+    /**
+     * REQ_ONE_SHOT (0.5.0): one message in a conversation of its own, at its priority (core OneShotRules). 1.4: [image], a
+     * FILE_READ's page as the panel's photos come (BrainWire.takeImage), checked by OneShotRules.imageCheck before any use.
+     */
+    fun oneShot(key: BrainScheduler.Key, req: BrainMsg.OneShot, image: ByteArray?, sink: Sink)
     fun cancel(key: BrainScheduler.Key)
     fun closeConv(convId: String)
     /** BrainService.onDestroy (main thread), before the work thread gets to [shutdown]. */
@@ -125,7 +128,7 @@ class Engines(private val ctx: Context, private val handler: Handler) : BrainEng
 
     override fun generate(key: BrainScheduler.Key, req: BrainMsg.Generate, image: ByteArray?, sink: BrainEngine.Sink) = active.generate(key, req, image, sink)
     override fun toolResult(key: BrainScheduler.Key, req: BrainMsg.ToolResult, sink: BrainEngine.Sink) = active.toolResult(key, req, sink)
-    override fun oneShot(key: BrainScheduler.Key, req: BrainMsg.OneShot, sink: BrainEngine.Sink) = active.oneShot(key, req, sink)
+    override fun oneShot(key: BrainScheduler.Key, req: BrainMsg.OneShot, image: ByteArray?, sink: BrainEngine.Sink) = active.oneShot(key, req, image, sink)
     override fun cancel(key: BrainScheduler.Key) = active.cancel(key)
     override fun closeConv(convId: String) = active.closeConv(convId)
 

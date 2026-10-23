@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.TurnStrings
 import org.json.JSONObject
-import java.util.Locale
+import app.heyrobot.core.i18n.Lang
 
 // Pure. A conversation session's settings as each face uses them, and its heartbeat file for crash recovery
 // (docs/conversation-mode.md 1.6): filesDir/transcripts/.session.json says a session is running, written atomically
@@ -35,8 +37,8 @@ object ConversationSettings {
     /** The open segment's words while people talk: as set, screen on only, and off once the phone is warm. */
     fun partials(s: RobotSettings, screenOn: Boolean, warm: Boolean): Boolean = s.convPartials && screenOn && !warm
 
-    /** The language of Robot's summaries: as set, else yours. */
-    fun summaryLang(s: RobotSettings, locale: Locale = Locale.getDefault()): String = s.convSummaryLang ?: LangLabel.yours(locale)
+    /** The language of Robot's summaries: as set, else yours (1.1: "Robot answers in" when it is fixed, else the menus' language [ui]). */
+    fun summaryLang(s: RobotSettings, ui: Lang): String = s.convSummaryLang ?: LangLabel.yours(ui, s.replyLang)
 }
 
 /** The running session's heartbeat (filesDir/transcripts/.session.json). Times are wall clock, ms. */
@@ -91,12 +93,14 @@ data class ConsentRecord(val at: Long) {
         const val FILE = "conv_consent.json"
 
         /** "Before you transcribe or translate a conversation …" (shown before the first session, and again when asked). */
-        const val TEXT = "Before you transcribe or translate a conversation, tell the people you're talking with. The laws on recording " +
-            "conversations differ by place, and some require everyone's agreement. Robot keeps the text on this phone only, unless you send it somewhere."
+        val text: Phrase get() = TurnStrings.consentText()
+        val TEXT: String get() = text.en()
         /** The checkbox. */
-        const val TICK = "I'll tell people"
+        val tick: Phrase get() = TurnStrings.consentTick()
+        val TICK: String get() = tick.en()
         /** The subtle line at each start, and on the notification. */
-        const val LINE = "Recording — let others know."
+        val line: Phrase get() = TurnStrings.consentLine()
+        val LINE: String get() = line.en()
 
         fun fromJson(text: String?): ConsentRecord? = try {
             JSONObject(text ?: return null).optLong("at", 0).takeIf { it > 0 }?.let(::ConsentRecord)

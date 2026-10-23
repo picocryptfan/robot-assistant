@@ -57,7 +57,7 @@ import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZonedDateTime
 
-// VOICE PROCESS (0.8). The trigger hub (design §1.1 TriggerHub, §2.1): in the :voice process, which runs all the time
+// VOICE PROCESS (0.8). The trigger hub: in the :voice process, which runs all the time
 // while Robot is the assistant, it listens only for what some enabled routine needs (TriggerNeeds, reconciled after
 // every change): GrapheneOS Clock's ALARM_ALERT and ALARM_DONE (a runtime receiver, exported because Clock sends them;
 // AlarmWatch tells a dismissal from a snooze and a missed alarm), the unlock (USER_PRESENT), charging starting or stopping,
@@ -137,7 +137,7 @@ object RoutineHub {
     private fun register(k: TriggerKind) {
         try {
             val r: Any? = when (k) {
-                // Clock's broadcasts come from another app, with no permission (GrapheneOS DeskClock, design §2.1): the only
+                // Clock's broadcasts come from another app, with no permission (GrapheneOS DeskClock): the only
                 // receiver Robot registers exported. AlarmWatch needs ALERT then DONE, and a routine runs at most once a day
                 // by default, so a fake DONE can only start your own routines under their gates.
                 TriggerKind.ALARM -> receiver(::onClock).also {

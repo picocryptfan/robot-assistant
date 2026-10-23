@@ -2,6 +2,10 @@
 package app.heyrobot.core.termux
 
 import app.heyrobot.core.LogCode
+import app.heyrobot.core.i18n.Lang
+import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.TermuxStrings
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 import java.util.Locale
@@ -9,8 +13,9 @@ import java.util.Locale
 // Pure. A Termux result made fit to show and to give Gemma:
 // ANSI escapes and control characters removed (newline and tab kept), invalid UTF-8 replaced, secrets masked, at most
 // 100 KB kept (the end, as Termux keeps it), 16 KB for the card (its first and last 8 KB) and 40 lines / 1,500 characters
-// for Gemma (the first 15 and last 25 lines), and the exit code in plain English and French. Termux's own error message
-// is never shown or logged (it can hold the command): it is only matched to known causes ([TermuxFailure]).
+// for Gemma (the first 15 and last 25 lines), and the exit code in plain English and French (core i18n TermuxStrings; what
+// Gemma reads is English). Termux's own error message is never shown or logged (it can hold the command): it is only
+// matched to known causes ([TermuxFailure]).
 
 /** The result bundle Termux sends back, as read by :app's receiver. */
 data class TermuxResult(
@@ -127,18 +132,23 @@ object TermuxOutput {
     fun capEnd(text: String, max: Int = MAX_CHARS): Pair<String, Boolean> =
         if (text.length <= max) text to false else text.substring(text.length - max) to true
 
-    /** The card's text: whole up to 16 KB, else the first and last 8 KB with what is left out said in between. */
-    fun forCard(text: String, fr: Boolean = false): String {
+    /** The card's text: whole up to 16 KB, else the first and last 8 KB with what is left out said in between ([l]: its languages). */
+    fun forCard(text: String, l: Langs = Langs.EN): String {
         if (text.length <= CARD_HEAD + CARD_TAIL) return text
         val gone = text.length - CARD_HEAD - CARD_TAIL
-        val note = if (fr) "\n… ${size(gone, fr)} non affichés …\n" else "\n… ${size(gone, fr)} not shown …\n"
-        return text.substring(0, CARD_HEAD) + note + text.substring(text.length - CARD_TAIL)
+        val note = TermuxStrings.notShown("size" to sizeText(gone)).render(l)
+        return listOf(text.substring(0, CARD_HEAD), note, text.substring(text.length - CARD_TAIL)).joinToString("\n")
     }
+
+    /** [forCard] in English ([fr]: in French). */
+    fun forCard(text: String, fr: Boolean): String = forCard(text, langs(fr))
 
     /**
      * What Gemma reads: at most [maxLines] lines (the first 3/8 and the last 5/8, 15 and 25 by default, "… 312 lines not
-     * shown …" between) and [maxChars] characters (the first 3/8 and the last 5/8 again).
+     * shown …" between) and [maxChars] characters (the first 3/8 and the last 5/8 again). 1.1: in English whatever the
+     * reply language (the model reads tool results in English); [fr] is kept for the callers that still pass it.
      */
+    @Suppress("UNUSED_PARAMETER")
     fun forModel(text: String, maxLines: Int = TermuxSettings.DEFAULT_LINES, maxChars: Int = TermuxSettings.DEFAULT_CHARS, fr: Boolean = false): String {
         var lines = text.split('\n')
         if (lines.size > 1 && lines.last().isEmpty()) lines = lines.dropLast(1)
@@ -146,92 +156,124 @@ object TermuxOutput {
             val head = maxLines * 3 / 8
             val tail = maxLines - head
             val gone = lines.size - head - tail
-            (lines.take(head) + (if (fr) "… $gone lignes non affichées …" else "… $gone lines not shown …") + lines.takeLast(tail)).joinToString("\n")
+            (lines.take(head) + "… $gone lines not shown …" + lines.takeLast(tail)).joinToString("\n") // l10n: not text (what the model reads)
         }
         if (out.length > maxChars) {
             val head = maxChars * 3 / 8
             val tail = maxChars - head
             val gone = out.length - head - tail
-            out = out.substring(0, head) + (if (fr) "\n… $gone caractères non affichés …\n" else "\n… $gone characters not shown …\n") + out.substring(out.length - tail)
+            out = out.substring(0, head) + "\n… $gone characters not shown …\n" + out.substring(out.length - tail) // l10n: not text (what the model reads)
         }
         return out
     }
 
     /**
      * [result]'s stdout and stderr (labelled when both have text), cleaned, masked ([mask]: "Hide secrets in output",
-     * [own]: Robot's own keys by value), capped. [truncated] also counts Termux's own cut (its original lengths).
+     * [own]: Robot's own keys by value), capped. [truncated] also counts Termux's own cut (its original lengths). 1.1: the
+     * card's labels ("[errors]", "[hidden: …]") in [l]'s language, the model's always in English.
      */
     fun prepare(result: TermuxResult, mask: Boolean = true, own: Collection<String> = emptyList(), maxLines: Int = TermuxSettings.DEFAULT_LINES,
-        maxChars: Int = TermuxSettings.DEFAULT_CHARS, fr: Boolean = false): TermuxOutputText {
+        maxChars: Int = TermuxSettings.DEFAULT_CHARS, l: Langs = Langs.EN): TermuxOutputText {
         val out = clean(result.stdout.orEmpty())
         val err = clean(result.stderr.orEmpty())
-        val both = when {
-            out.isNotBlank() && err.isNotBlank() -> out.trimEnd('\n') + "\n" + (if (fr) "[erreurs]" else "[errors]") + "\n" + err
+        fun both(l: Langs) = when {
+            out.isNotBlank() && err.isNotBlank() -> listOf(out.trimEnd('\n'), TermuxStrings.errorsLabel().render(l), err).joinToString("\n")
             err.isNotBlank() -> err
             else -> out
         }
         // Masked before the cap, so the cap can't cut a key in two and leave a part Robot no longer recognizes.
-        val found = if (mask) SecretMask.find(both, own).size else 0
-        val (masked, cut) = capEnd(if (mask && found > 0) SecretMask.mask(both, own, fr) else both)
+        val found = if (mask) SecretMask.find(both(Langs.EN), own).size else 0
+        fun masked(l: Langs) = capEnd(both(l).let { if (mask && found > 0) SecretMask.mask(it, own, l) else it })
+        val (model, cut) = masked(Langs.EN)
+        val card = if (l.say == Lang.EN && l.pseudo == null) model else masked(l).first
         val termuxCut = cutByTermux(result.stdoutOriginalLength, result.stdout) || cutByTermux(result.stderrOriginalLength, result.stderr)
-        return TermuxOutputText(forCard(masked, fr), forModel(masked, maxLines, maxChars, fr), masked.length, masked.count { it == '\n' } + if (masked.isEmpty()) 0 else 1,
+        return TermuxOutputText(forCard(card, l), forModel(model, maxLines, maxChars), model.length, model.count { it == '\n' } + if (model.isEmpty()) 0 else 1,
             cut || termuxCut, found)
     }
+
+    /** [prepare] with the card's labels in English ([fr]: in French). */
+    fun prepare(result: TermuxResult, mask: Boolean = true, own: Collection<String> = emptyList(), maxLines: Int = TermuxSettings.DEFAULT_LINES,
+        maxChars: Int = TermuxSettings.DEFAULT_CHARS, fr: Boolean): TermuxOutputText = prepare(result, mask, own, maxLines, maxChars, langs(fr))
 
     private fun cutByTermux(original: String?, kept: String?): Boolean {
         val n = original?.trim()?.toIntOrNull() ?: return false
         return n > (kept?.length ?: 0)
     }
 
-    /** "Exit 0 · 0.8 s" / "Code 0 · 0,8 s", the card's line after a run. */
-    fun exitLine(exit: Int, ms: Long, fr: Boolean = false): String = (if (fr) "Code $exit · " else "Exit $exit · ") + seconds(ms, fr)
+    /** "Exit 0 · 0.8 s" / « Code 0 · 0,8 s », the card's line after a run. */
+    fun exitLineText(exit: Int, ms: Long): Phrase = TermuxStrings.exitLine("code" to exit.toString(), "time" to secondsText(ms))
+
+    /** [exitLineText] in English ([fr]: in French). */
+    fun exitLine(exit: Int, ms: Long, fr: Boolean = false): String = exitLineText(exit, ms).render(langs(fr))
 
     /**
      * The result in a sentence: "Done in 0.8 s.", "Took longer than 60 s and was stopped.", "Stopped.", "Command not
      * found (exit 127).", "Finished with exit code 2 in 1.2 s."; null [exit]: Termux didn't answer in time.
      */
-    fun summary(exit: Int?, limitSeconds: Int, ms: Long, fr: Boolean = false): String = when {
-        exit == null -> if (fr) "Termux n'a pas répondu." else "Termux didn't answer."
-        exit == 0 -> if (fr) "Terminé en ${seconds(ms, fr)}." else "Done in ${seconds(ms, fr)}."
-        exit == 124 -> if (fr) "A pris plus de $limitSeconds s et a été arrêtée." else "Took longer than $limitSeconds s and was stopped."
-        exit == 137 || exit == 143 -> if (fr) "Arrêtée." else "Stopped."
-        exit == 126 -> if (fr) "Impossible de la lancer : pas exécutable ou refusée (code 126)." else "Couldn't run it: not executable or refused (exit 126)."
-        exit == 127 -> if (fr) "Commande introuvable (code 127)." else "Command not found (exit 127)."
-        exit in 129..192 -> if (fr) "Arrêtée par le signal ${exit - 128} (code $exit)." else "Ended by signal ${exit - 128} (exit $exit)."
-        else -> if (fr) "Terminée avec le code $exit en ${seconds(ms, fr)}." else "Finished with exit code $exit in ${seconds(ms, fr)}."
+    fun summaryText(exit: Int?, limitSeconds: Int, ms: Long): Phrase = when {
+        exit == null -> TermuxStrings.noAnswer()
+        exit == 0 -> TermuxStrings.doneIn("time" to secondsText(ms))
+        exit == 124 -> TermuxStrings.tookLonger("n" to limitSeconds.toString())
+        exit == 137 || exit == 143 -> TermuxStrings.stopped()
+        exit == 126 -> TermuxStrings.notExecutable()
+        exit == 127 -> TermuxStrings.notFound()
+        exit in 129..192 -> TermuxStrings.endedBySignal("signal" to (exit - 128).toString(), "code" to exit.toString())
+        else -> TermuxStrings.finished("code" to exit.toString(), "time" to secondsText(ms))
     }
 
+    /** [summaryText] in English ([fr]: in French). */
+    fun summary(exit: Int?, limitSeconds: Int, ms: Long, fr: Boolean = false): String = summaryText(exit, limitSeconds, ms).render(langs(fr))
+
     /** 0.8 s, 12 s, 2 min 5 s (French: 0,8 s). */
-    fun seconds(ms: Long, fr: Boolean = false): String {
+    fun secondsText(ms: Long): Phrase {
         val s = ms.coerceAtLeast(0) / 1000.0
         return when {
-            s < 10 -> String.format(if (fr) Locale.FRANCE else Locale.ROOT, "%.1f s", s)
-            s < 120 -> "${s.toLong()} s"
-            else -> "${s.toLong() / 60} min ${s.toLong() % 60} s"
+            s < 10 -> String.format(Locale.ROOT, "%.1f", s).let { TermuxStrings.secondsTenths("whole" to it.substringBefore('.'), "tenth" to it.substringAfter('.')) }
+            s < 120 -> Phrase.plain("${s.toLong()} s")
+            else -> Phrase.plain("${s.toLong() / 60} min ${s.toLong() % 60} s") // l10n: not text (a duration, the same in French)
         }
     }
 
-    private fun size(chars: Int, fr: Boolean): String =
-        if (chars < 1024) "$chars " + (if (fr) "caractères" else "characters") else String.format(if (fr) Locale.FRANCE else Locale.ROOT, "%.1f KB", chars / 1024.0)
+    /** [secondsText] in English ([fr]: in French). */
+    fun seconds(ms: Long, fr: Boolean = false): String = secondsText(ms).render(langs(fr))
+
+    /** "512 characters", "3.5 KB" / « 3,5 Ko » (a KB of 1,024 characters). */
+    fun sizeText(chars: Int): Phrase =
+        if (chars < 1024) TermuxStrings.sizeChars("n" to chars.toString())
+        else String.format(Locale.ROOT, "%.1f", chars / 1024.0).let { TermuxStrings.sizeKb("whole" to it.substringBefore('.'), "tenth" to it.substringAfter('.')) }
+
+    private fun langs(fr: Boolean) = Langs.of(if (fr) Lang.FR else Lang.EN)
 }
 
-/** Why Termux couldn't run a command (err ≠ -1, or no answer), in words; Termux's errmsg itself never surfaces. */
-enum class TermuxFailure(override val id: Int, override val title: String, val en: String, val fr: String) : LogCode {
-    EXTERNAL_APPS_OFF(1, "allow-external-apps off", "Termux doesn't allow other apps yet: add allow-external-apps=true in Settings › Termux's set-up.",
-        "Termux n'autorise pas encore les autres applications : ajoutez allow-external-apps=true (Réglages › Termux)."),
-    NOT_SET_UP(2, "not set up", "Termux isn't set up yet: open it once.", "Termux n'est pas encore installé : ouvrez-le une fois."),
-    NO_PERMISSION(3, "no permission", "Robot may not run commands in Termux yet: allow it in Settings › Termux.",
-        "Robot ne peut pas encore lancer de commandes dans Termux : autorisez-le dans Réglages › Termux."),
-    NO_ANSWER(4, "no answer", "Termux didn't answer: check that its battery use isn't restricted.",
-        "Termux n'a pas répondu : vérifiez que sa batterie n'est pas restreinte."),
-    NOT_TRUSTED(5, "signer changed", "Termux was reinstalled or replaced. Check where it came from, then set it up again in Settings › Termux.",
-        "Termux a été réinstallé ou remplacé. Vérifiez sa provenance, puis configurez-le à nouveau dans Réglages › Termux."),
-    INTERNAL(6, "internal error", "Termux couldn't run it.", "Termux n'a pas pu la lancer."),
+/**
+ * Why Termux couldn't run a command (err ≠ -1, or no answer), in words ([text]; [en] and [fr] its English and French);
+ * Termux's errmsg itself never surfaces. [title] is the voice log's.
+ */
+enum class TermuxFailure(override val id: Int, override val title: String) : LogCode {
+    EXTERNAL_APPS_OFF(1, "allow-external-apps off"),
+    NOT_SET_UP(2, "not set up"),
+    NO_PERMISSION(3, "no permission"),
+    NO_ANSWER(4, "no answer"),
+    NOT_TRUSTED(5, "signer changed"),
+    INTERNAL(6, "internal error"),
     /** 0.9: Android found no Termux to start (not installed, or a build without RunCommandService). */
-    NOT_INSTALLED(7, "not installed", "Termux isn't installed, or can't take commands from other apps: see Settings › Termux.",
-        "Termux n'est pas installé, ou n'accepte pas les commandes d'autres applications : voyez Réglages › Termux."),
+    NOT_INSTALLED(7, "not installed"),
     /** 0.9: Settings › Termux's set-up isn't finished (rule 1: nothing runs until every line is green). */
-    NOT_READY(8, "set-up not finished", "Finish setting up Termux in Settings › Termux first.", "Terminez d'abord la configuration de Termux dans Réglages › Termux.");
+    NOT_READY(8, "set-up not finished");
+
+    val text: Phrase get() = when (this) {
+        EXTERNAL_APPS_OFF -> TermuxStrings.failExternalApps("line" to "${TermuxSetup.EXTERNAL_APPS}=true", "path" to TermuxReason.SETTINGS) // l10n: not text (a property line)
+        NOT_SET_UP -> TermuxStrings.failNotSetUp()
+        NO_PERMISSION -> TermuxStrings.failNoPermission("path" to TermuxReason.SETTINGS)
+        NO_ANSWER -> TermuxStrings.failNoAnswer()
+        NOT_TRUSTED -> TermuxStrings.failNotTrusted("path" to TermuxReason.SETTINGS)
+        INTERNAL -> TermuxStrings.failInternal()
+        NOT_INSTALLED -> TermuxStrings.failNotInstalled("path" to TermuxReason.SETTINGS)
+        NOT_READY -> TermuxStrings.failNotReady("path" to TermuxReason.SETTINGS)
+    }
+
+    val en: String get() = text.en()
+    val fr: String get() = text.render(Langs.of(Lang.FR))
 
     fun text(fr: Boolean): String = if (fr) this.fr else en
 

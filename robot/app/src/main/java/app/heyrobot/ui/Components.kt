@@ -105,7 +105,7 @@ fun NavRow(icon: ImageVector, title: String, detail: String?, onClick: () -> Uni
 fun BackBar(title: String, onBack: () -> Unit, actions: @Composable () -> Unit = {}) {
     TopAppBar(
         title = { Text(title) },
-        navigationIcon = { IconButton(onClick = onBack) { Icon(RIcons.Back, "Back") } },
+        navigationIcon = { IconButton(onClick = onBack) { Icon(RIcons.Back, androidx.compose.ui.res.stringResource(app.heyrobot.R.string.home_back)) } },
         actions = { actions() },
     )
 }

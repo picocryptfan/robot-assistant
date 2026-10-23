@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.car
 
+import app.heyrobot.core.i18n.HandsFreeStrings
+import app.heyrobot.core.i18n.Msg
+import app.heyrobot.core.i18n.Phrase
 import app.heyrobot.core.headset.ListenWith
 import app.heyrobot.core.output.DeviceMemory
 import app.heyrobot.core.output.ReadAloud
@@ -17,36 +20,56 @@ import org.json.JSONObject
 // screen actions until I park" ("holdWhileDriving") are gone; a file that still has them loads, and they are ignored.
 
 /** "Use car mode without unlocking" (§4.6). */
-enum class CarLockUse(val title: String) {
+enum class CarLockUse(private val msg: Msg) {
     /** The default: after one unlock while your car is connected, car functions work locked until it disconnects (or 4 h). */
-    AFTER_ONE_UNLOCK("After one unlock in the car"),
-    ALWAYS("Always (not recommended)"),
-    NEVER("Never"),
+    AFTER_ONE_UNLOCK(HandsFreeStrings.lockAfterOne),
+    ALWAYS(HandsFreeStrings.lockAlways),
+    NEVER(HandsFreeStrings.never),
+    ;
+
+    /** 1.1: Settings' words without a language yet; [title] is their English. */
+    val text: Phrase get() = msg()
+    val title: String get() = text.en()
 }
 
 /** "Calls" (§4.4): the dialer, where you tap Call, or a direct call after a spoken yes (needs the Phone permission). */
-enum class CallSetting(val title: String) {
-    OPEN_DIALER("Open the dialer"),
-    CALL_AFTER_YES("Call directly after a spoken yes"),
+enum class CallSetting(private val msg: Msg) {
+    OPEN_DIALER(HandsFreeStrings.openDialer),
+    CALL_AFTER_YES(HandsFreeStrings.callAfterYes),
+    ;
+
+    /** 1.1: Settings' words without a language yet; [title] is their English. */
+    val text: Phrase get() = msg()
+    val title: String get() = text.en()
 }
 
 /** "Announce new messages" (0.7). */
-enum class CarAnnounce(val title: String) {
-    OFF("Off"),
-    SENDER_THEN_ASK("Sender only, then ask"),
-    READ_WHOLE("Read the whole message"),
+enum class CarAnnounce(private val msg: Msg) {
+    OFF(HandsFreeStrings.announceOff),
+    SENDER_THEN_ASK(HandsFreeStrings.senderThenAsk),
+    READ_WHOLE(HandsFreeStrings.readWhole),
+    ;
+
+    /** 1.1: Settings' words without a language yet; [title] is their English. */
+    val text: Phrase get() = msg()
+    val title: String get() = text.en()
 }
 
 /** "Announce from" (0.7). */
-enum class CarAnnounceFrom(val title: String) {
-    DND_ALLOWS("Whoever Do Not Disturb lets through"),
-    EVERYONE("Everyone"),
-    CHOSEN_PEOPLE("Only people you choose"),
+enum class CarAnnounceFrom(private val msg: Msg) {
+    DND_ALLOWS(HandsFreeStrings.fromDnd),
+    EVERYONE(HandsFreeStrings.everyone),
+    CHOSEN_PEOPLE(HandsFreeStrings.onlyChosen),
+    ;
+
+    /** 1.1: Settings' words without a language yet; [title] is their English. */
+    val text: Phrase get() = msg()
+    val title: String get() = text.en()
 }
 
 /** A saved place for "navigate home" and "take me to work": its label as you typed it and where it is. */
 data class SavedPlace(val label: String, val lat: Double, val lon: Double) {
-    override fun toString(): String = "SavedPlace(…)"
+    override fun toString(): String = "SavedPlace(…)" // l10n: not text (toString, for the logs)
 
     companion object {
         const val MAX_LABEL = 80

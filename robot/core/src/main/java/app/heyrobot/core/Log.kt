@@ -48,11 +48,32 @@ object RLog {
         try { Log.i(TAG, line) } catch (_: Throwable) {}
     }
 
-    /** A failure: the exception's class name only (messages can hold paths or text). */
+    /**
+     * A failure: the exception's class name, then its causes' (cause1=, cause2=, …), names only: messages can hold paths or
+     * text. 1.1: an ExceptionInInitializerError said nothing of the PatternSyntaxException under it.
+     */
     fun w(event: String, t: Throwable? = null, vararg fields: Pair<String, Any?>) {
-        val all = if (t == null) fields else arrayOf(*fields, "error" to Code(t.javaClass.simpleName))
+        val all = if (t == null) fields else arrayOf(*fields, *errorFields(t))
         val line = format(event, all)
         sink?.invoke(line)
         try { Log.w(TAG, line) } catch (_: Throwable) {}
     }
+
+    /** At most this many causes are named. */
+    const val MAX_CAUSES = 4
+
+    /** "error" to [t]'s class name, then "cause1", "cause2"… to its causes' (never a message), stopping at a loop. */
+    fun errorFields(t: Throwable): Array<Pair<String, Any?>> {
+        val out = arrayListOf<Pair<String, Any?>>("error" to Code(name(t)))
+        val seen = mutableSetOf(t)
+        var c = t.cause
+        while (c != null && out.size <= MAX_CAUSES && seen.add(c)) {
+            out += "cause${out.size}" to Code(name(c)) // l10n: not text (a log field)
+            c = c.cause
+        }
+        return out.toTypedArray()
+    }
+
+    /** The class's simple name; an anonymous class has none, so its name after the package. */
+    private fun name(t: Throwable): String = t.javaClass.simpleName.ifEmpty { t.javaClass.name.substringAfterLast('.') }
 }

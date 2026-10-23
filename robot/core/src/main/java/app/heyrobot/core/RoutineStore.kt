@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.Lang
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.nio.channels.FileChannel
 import java.nio.file.StandardOpenOption
 
-// Pure (java.io, org.json). Where routines live (design §2.8, 0.8): files/robot/ next to settings.json, one small file
+// Pure (java.io, org.json). Where routines live: files/robot/ next to settings.json, one small file
 // each, all written atomically under one lock both app processes take (the PeopleStore pattern), because two processes
 // write them: the main app's Settings › Routines and the :voice process (a routine saved or deleted by voice, Ready
 // cards, brief reminders, the run ledger). settings.json is left alone: the routine settings have their own file.
@@ -209,7 +210,7 @@ object RoutineSettingsCodec {
             briefItems = items,
             briefLock = if (b.has("lock")) BriefLock.of(RoutineCodec.str(b, "lock")) else d.briefLock,
             finishOnUnlock = RoutineCodec.bool(b, "finish_on_unlock") ?: d.finishOnUnlock,
-            briefLang = RoutineCodec.str(b, "lang")?.let { l -> BriefLang.entries.firstOrNull { it.id == l } },
+            briefLang = RoutineCodec.str(b, "lang")?.let { l -> Lang.entries.firstOrNull { it.id == l } },
             briefPrepare = RoutineCodec.bool(b, "prepare") ?: d.briefPrepare,
             clockSilenceMinutes = (o.opt("clock_silence_minutes") as? Number)?.toInt()?.takeIf { it in 1..60 } ?: d.clockSilenceMinutes,
             alarmWindow = window,

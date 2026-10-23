@@ -16,6 +16,7 @@ import app.heyrobot.core.TurnRole
 import app.heyrobot.ui.testing.PHONE
 import app.heyrobot.ui.theme.RobotTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -63,6 +64,17 @@ class PanelStatusTest {
             statusLine(base.copy(phase = Phase.ANSWERING, turns = listOf(UiTurn("r", TurnRole.ASSISTANT, "Hi", fromHelper = true, by = "Jarvis")))))
         // A card listened to for its yes or no.
         assertEquals("Say yes or no…", statusLine(base.copy(phase = Phase.CONFIRMING, cardHearing = Phase.LISTENING)))
+    }
+
+    /** 1.2 (design Step 2): the self-test before the first question on the GPU after an Android update, said in one line. */
+    @Test fun theSelfTestSaysSoWhileItRuns() {
+        val checking = loading.copy(checking = "GPU")
+        assertEquals("Checking this phone's GPU, about 30 s…", statusLine(base.copy(brain = checking)))
+        assertEquals("Checking this phone's GPU, about 30 s…", statusLine(base.copy(phase = Phase.THINKING, brain = checking)))
+        val fr = statusLine(base.copy(brain = loading.copy(checking = "TPU")), app.heyrobot.core.i18n.Langs.of(app.heyrobot.core.i18n.Lang.FR))
+        assertTrue(fr, fr.startsWith("Je vérifie le TPU de ce téléphone, environ 30") && fr.endsWith("s…"))
+        // Only while it loads: once ready, as before.
+        assertEquals("On this phone, private", statusLine(base.copy(brain = BrainKeeper.State(BrainKeeper.Readiness.READY, checking = "GPU"))))
     }
 
     @Test fun theStatusLineIsALiveRegionInEveryPhase() {

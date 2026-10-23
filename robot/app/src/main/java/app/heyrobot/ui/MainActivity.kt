@@ -26,6 +26,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -104,7 +105,6 @@ import app.heyrobot.ui.guide.PhoneGuideStores
 import app.heyrobot.ui.guide.SetupGuideScreen
 import app.heyrobot.sys.SetupGuideStore
 import app.heyrobot.core.guide.SetupGuide
-import app.heyrobot.ui.model.ModelScreen
 import app.heyrobot.ui.settings.AppRoutes
 import app.heyrobot.ui.settings.HandsFreeNoticeLine
 import app.heyrobot.ui.settings.SettingsNav
@@ -113,6 +113,13 @@ import app.heyrobot.ui.settings.SettingsRoutes
 import app.heyrobot.ui.settings.SetupScreen
 import app.heyrobot.ui.settings.rememberPageStack
 import app.heyrobot.ui.theme.RobotTheme
+import android.content.Context
+import app.heyrobot.R
+import app.heyrobot.core.i18n.AndroidPath
+import app.heyrobot.core.i18n.Msg
+import app.heyrobot.core.i18n.UiStrings
+import app.heyrobot.sys.AppLanguage
+import app.heyrobot.ui.theme.str
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -152,6 +159,15 @@ class MainActivity : ComponentActivity() {
         if (hasFocus) FeedbackClipboard.check(this)
     }
 
+    /**
+     * FX1 (files-1.4-review.md finding 9): hidden drawers shown with your PIN go out of sight again when Robot leaves the
+     * screen, as at screen-off and after 10 minutes (sys/TravelReveal); a rotation isn't leaving.
+     */
+    override fun onStop() {
+        super.onStop()
+        if (!isChangingConfigurations) app.heyrobot.sys.TravelReveal.end()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -186,7 +202,21 @@ class MainActivity : ComponentActivity() {
     } catch (_: Throwable) { false }
 }
 
-enum class Tab(val title: String) { HOME("Home"), NOTES("Notes"), HISTORY("History"), MODEL("Model"), SETTINGS("Settings") }
+/**
+ * The tabs; [label]: their names, core UiStrings', as replies name them (1.1). 1.4 (files-1.4-plan.md Q1, the user's
+ * default): Files takes the Model tab's place, and Model is a page of Settings (SettingsRoutes.MODEL), with nothing lost.
+ */
+enum class Tab(val label: Msg) {
+    HOME(UiStrings.home), NOTES(UiStrings.notes), HISTORY(UiStrings.history), FILES(UiStrings.files), SETTINGS(UiStrings.settings);
+
+    /** The name in English. */
+    val title: String get() = label().en()
+
+    companion object {
+        /** The open tab survives a recreation by its name; one this version doesn't have (1.3's Model) is Home. */
+        val Saver: Saver<Tab, String> = Saver(save = { it.name }, restore = { n -> entries.firstOrNull { it.name == n } ?: HOME })
+    }
+}
 
 sealed class Page {
     /** [people]: opened for a permission ("People, notes and calendar" first). */
@@ -228,23 +258,23 @@ sealed class Page {
                 when (p) {
                     null -> ""
                     is Setup -> if (p.people) "setup:1" else "setup:0"
-                    is Conversation -> "conv:${p.id}"
-                    is NoteEdit -> "note:${p.id.orEmpty()}"
+                    is Conversation -> "conv:${p.id}" // l10n: not text (saved route)
+                    is NoteEdit -> "note:${p.id.orEmpty()}" // l10n: not text (saved route)
                     WakePhrases -> "wake"
                     WakeTest -> "waketest"
                     VoiceLog -> "voicelog"
                     AdbFixes -> "adbfixes"
                     People -> "people"
-                    is PersonEdit -> "person:${p.id.orEmpty()}"
+                    is PersonEdit -> "person:${p.id.orEmpty()}" // l10n: not text (saved route)
                     Safety -> "safety"
                     Licences -> "licences"
-                    is Licence -> "licence:${p.id}|${p.file.orEmpty()}"
-                    is Settings -> "settings:${p.route}"
+                    is Licence -> "licence:${p.id}|${p.file.orEmpty()}" // l10n: not text (saved route)
+                    is Settings -> "settings:${p.route}" // l10n: not text (saved route)
                     Transcripts -> "transcripts"
-                    is Transcript -> "transcript:${p.id}:${p.line ?: -1}"
+                    is Transcript -> "transcript:${p.id}:${p.line ?: -1}" // l10n: not text (saved route)
                     ConversationSettings -> "convsettings"
                     Helpers -> "helpers"
-                    is Helper -> "helper:${p.id}"
+                    is Helper -> "helper:${p.id}" // l10n: not text (saved route)
                     AddHelper -> "addhelper"
                     Guide -> "guide"
                 }
@@ -289,6 +319,15 @@ data class Snapshot(
     val gpuFailure: GpuFailure? = null,
     /** 0.8: the beta TPU build's failure Robot remembers (Fast is the general build until you try the TPU again), or null. */
     val tpuFailure: app.heyrobot.core.TpuFailure? = null,
+    /**
+     * 1.2: what Robot measured on this phone, each panel reply's numbers (core SpeedLog), and this phone's Android build
+     * (Build.FINGERPRINT), which keys them: Settings › Model shows the medians for a model where it runs.
+     */
+    val speeds: List<Pair<app.heyrobot.core.SpeedKey, app.heyrobot.core.SpeedSample>> = emptyList(),
+    val build: String = "",
+    /** 1.2: the self-tests of the GPU (or a beta TPU build) run on this phone (core CheckLog), and whether one is awaited now. */
+    val checks: List<app.heyrobot.core.CheckRecord> = emptyList(),
+    val checking: Boolean = false,
     /** The last model problem you haven't dismissed, with a report to copy or share, or null. */
     val problem: ModelProblem? = null,
     /** 0.7: the last 10 model problems you haven't deleted, newest first (the Model tab's list). */
@@ -316,6 +355,8 @@ data class Snapshot(
     val mt: MtModelStore.Snap? = null,
     /** 0.5.0: a "me" voiceprint is saved (only that: it is encrypted, and read by the voice process only). */
     val voiceprint: Boolean = false,
+    /** 1.2: the phone's text-to-speech engine by its own name (sys PhoneVoice), or null when Android doesn't say. */
+    val systemVoice: String? = null,
 ) {
     fun voice(b: VoiceBundle): VoiceModelStore.Snap? = voice.firstOrNull { it.bundle == b }
 
@@ -333,6 +374,37 @@ data class Snapshot(
             // 0.4.7: a TPU build runs only where Robot has the TPU; 0.8: and only on the chip its stamp names.
             (own.backend != app.heyrobot.core.ModelBackend.TPU || own.report.runsOnTpuOf(phone)))
 
+    /**
+     * 1.2 (design Step 2): Fast is here, checked, and runs where its self-test is due (the GPU, or a beta TPU build) on this
+     * Android build, with no check run yet: the same rule (core GpuCheck.needed, the same key) as the voice process's.
+     */
+    fun checkDue(gpuOn: Boolean): Boolean {
+        val f = fast
+        if (model(f)?.status != ModelStatus.VERIFIED) return false
+        val backend = ModelCatalogue.backend(f, phone, gpuOn, gpuFailure?.model == f)
+        return app.heyrobot.core.GpuCheck.needed(checks, app.heyrobot.core.CheckKey.of(f, backend, f.sha256, build))
+    }
+
+    /**
+     * 1.2 (design Step 8): the weak-phone warning for this phone's Fast where it runs now ("Use the GPU" [gpuOn], a GPU that
+     * failed), from what this phone measured there (core SpeedLog, the same key as Settings › Model's) or Robot's estimate
+     * (core PhoneFit); [translate] ("Translate transcripts") and [helperReady] for what it offers to change.
+     */
+    fun fit(gpuOn: Boolean, translate: Boolean = false, helperReady: Boolean = false): app.heyrobot.core.PhoneFit {
+        val f = fast
+        return app.heyrobot.core.PhoneFit.of(phone, f, gpuOn, gpuFailure?.model == f,
+            { b -> app.heyrobot.core.SpeedLog.measured(speeds, app.heyrobot.core.SpeedKey.of(f, b, f.sha256, build)) }, translate, helperReady)
+    }
+
+    /**
+     * 1.2: the last self-test on this Android build of this phone's Fast, or of the beta TPU build it fell back from, or null.
+     */
+    val lastCheck: app.heyrobot.core.CheckRecord? get() {
+        val b = app.heyrobot.core.SpeedLog.cleanBuild(build) ?: return null
+        val models = setOf(fast, ModelCatalogue.fast(phone, false))
+        return checks.filter { it.key.build == b && it.key.engine == app.heyrobot.core.GpuCheck.ENGINE && it.key.model in models }.maxByOrNull { it.time }
+    }
+
     /** Speech recognition and the default voice are installed. */
     val voiceReady: Boolean get() = voice(VoiceBundle.STT)?.status == ModelStatus.VERIFIED && voice(VoiceBundle.KOKORO)?.status == ModelStatus.VERIFIED
 }
@@ -342,12 +414,14 @@ fun RobotAppUi(activity: MainActivity) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
-    var tab by rememberSaveable { mutableStateOf(Tab.HOME) }
+    var tab by rememberSaveable(stateSaver = Tab.Saver) { mutableStateOf(Tab.HOME) }
     // The open pages, the last one shown: Back goes up one page (ui/settings PageStack).
     val nav = rememberPageStack()
     var page by nav
     /** Opened from the "Robot Notes" icon and still on Notes: Back leaves the app, as from any app's first screen. */
     var fromNotesIcon by rememberSaveable { mutableStateOf(false) }
+    /** 1.4: the same for the "Robot Files" icon and the Files tab. */
+    var fromFilesIcon by rememberSaveable { mutableStateOf(false) }
     var settings by remember { mutableStateOf(SettingsStore.load(ctx)) }
     var snap by remember { mutableStateOf(Snapshot()) }
     var historyTick by remember { mutableIntStateOf(0) }
@@ -382,6 +456,9 @@ fun RobotAppUi(activity: MainActivity) {
     val resumed = lstate.isAtLeast(Lifecycle.State.RESUMED)
 
     fun say(msg: String) { scope.launch { snackbar.showSnackbar(msg) } }
+    /** 1.1: a message from strings_home.xml, in the menus' language; an Android screen in the phone's. */
+    fun tell(id: Int, vararg args: Any) = say(ctx.getString(id, *args))
+    fun android(p: AndroidPath): String = p.render(AppLanguage.langs(ctx).system)
 
     // 1.0: a download over 200 MB asks first whether to wait for Wi-Fi (core DownloadPolicy: Robot can't see the network).
     var bigDownload by remember { mutableStateOf<Pair<Long, (Boolean) -> Unit>?>(null) }
@@ -394,6 +471,18 @@ fun RobotAppUi(activity: MainActivity) {
     fun crashTold(e: AppExit) {
         crash = null
         scope.launch(Dispatchers.IO) { Problems.crashTold(ctx, e) }
+    }
+
+    // 1.2: the setup guide's wait for the GPU self-test (sys GpuCheckLink): it binds the voice process while the app is in
+    // front, and lets go when the app goes to the background (a check still running stops, and runs at the next load).
+    val gpuCheck = remember { app.heyrobot.sys.GpuCheckLink(ctx.applicationContext) }
+    DisposableEffect(lifecycle) {
+        val stop = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == Lifecycle.Event.ON_STOP) gpuCheck.stop() }
+        lifecycle.addObserver(stop)
+        onDispose {
+            lifecycle.removeObserver(stop)
+            gpuCheck.stop()
+        }
     }
 
     LaunchedEffect(resumed) {
@@ -410,6 +499,10 @@ fun RobotAppUi(activity: MainActivity) {
                     phone = phone,
                     gpuFailure = Problems.gpuFailure(ctx),
                     tpuFailure = tpuFailure,
+                    speeds = app.heyrobot.core.SpeedLog.decode(app.heyrobot.sys.SpeedFiles.read(ctx)),
+                    build = android.os.Build.FINGERPRINT.orEmpty(),
+                    checks = Problems.checks(ctx),
+                    checking = gpuCheck.bound,
                     problem = Problems.open(ctx),
                     problems = Problems.list(ctx),
                     progress = use.progress,
@@ -427,8 +520,11 @@ fun RobotAppUi(activity: MainActivity) {
                     nearestAnswer = NearestAnswers.load(ctx),
                     mt = MtModelStore.snapshot(ctx, MtBundle.FR_EN),
                     voiceprint = VoiceprintFiles.saved(ctx),
+                    systemVoice = app.heyrobot.sys.PhoneVoice.label(ctx),
                 )
             }
+            // 1.2: the guide's wait for the self-test ends with its record (or when no check is due any more, or it takes too long).
+            if (gpuCheck.bound && (!snap.checkDue(settings.modelGpu) || gpuCheck.overdue())) gpuCheck.stop()
             // The meVoiceprint setting is only a flag, kept in step with the file (made or deleted in the voice process).
             if (snap.voiceprint != settings.meVoiceprint) {
                 settings = settings.copy(meVoiceprint = snap.voiceprint)
@@ -443,7 +539,7 @@ fun RobotAppUi(activity: MainActivity) {
                         val ok = VoiceModelStore.install(app, v.bundle)
                         scope.launch {
                             voiceInstalling = null
-                            say(if (ok) "${v.bundle.title} is ready." else "${v.bundle.title} couldn't be installed. See Model › Voice models.")
+                            tell(if (ok) R.string.home_bundle_ready else R.string.home_bundle_failed, v.bundle.titleText.render(AppLanguage.langs(ctx)))
                         }
                     }, "robot-voice-install").start()
                 }
@@ -456,7 +552,7 @@ fun RobotAppUi(activity: MainActivity) {
                     val ok = MtModelStore.install(app, MtBundle.FR_EN)
                     scope.launch {
                         mtInstalling = false
-                        say(if (ok) "The fast translation engine is ready." else "The fast translation engine couldn't be installed. See Settings › Conversation.")
+                        tell(if (ok) R.string.home_mt_ready else R.string.home_mt_failed)
                     }
                 }, "robot-mt-install").start()
             }
@@ -468,7 +564,7 @@ fun RobotAppUi(activity: MainActivity) {
                         val ok = ModelStore.verify(ctx, u.model)
                         withContext(Dispatchers.Main) {
                             busy = null
-                            say(checkedText(u.model, ok))
+                            say(checkedText(ctx, u.model, ok))
                         }
                     }
                 }
@@ -487,8 +583,9 @@ fun RobotAppUi(activity: MainActivity) {
         }
     }
     // History follows the folder (0.7.0): the panel's saves while the app stays open behind it, a delete here, any page.
-    val historyChanges = remember { stampChanges({ ConversationStore.stamp(ctx) }) }
-    val history = rememberHistory(resumed, historyTick, historyChanges) { withContext(Dispatchers.IO) { ConversationStore.list(ctx) } }
+    // FX1: with travel mode's state in the stamp, and its placeholders in place of Robot Files' answers (TravelHistory).
+    val historyChanges = remember { stampChanges({ TravelHistory.stamp(ctx, ConversationStore.stamp(ctx)) }) }
+    val history = rememberHistory(resumed, historyTick, historyChanges) { withContext(Dispatchers.IO) { TravelHistory.shown(ctx, ConversationStore.list(ctx)) } }
     // The assistant adds (and undoes) notes from the panel, which opens over this window without pausing it: read the
     // folder again when the app comes back and whenever the window gets the focus back from the panel.
     LaunchedEffect(resumed, notesTick) {
@@ -508,6 +605,8 @@ fun RobotAppUi(activity: MainActivity) {
             if (t.tab != null) { tab = t.tab; page = null }
             if (t.page != null) page = t.page
             if (t.notesIcon) fromNotesIcon = true
+            if (t.filesIcon) fromFilesIcon = true
+            t.filesPack?.let(app.heyrobot.ui.files.FilesRequests::open)
         }
         activity.route.value = null
     }
@@ -523,15 +622,15 @@ fun RobotAppUi(activity: MainActivity) {
     // Contacts and calendar: asked for here only, when you tap Allow or turn a feature on (never at first launch).
     val peoplePermissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
         permissionTick++
-        if (result.values.any { !it }) say("Not allowed. If Android doesn't ask again: Settings › Apps › Robot › Permissions.")
+        if (result.values.any { !it }) tell(R.string.home_not_allowed, android(AndroidPath.APP_PERMISSIONS))
     }
     // Photos and videos (0.4.0): "Select photos" grants only READ_MEDIA_VISUAL_USER_SELECTED, which is allowed too.
     val mediaPermissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
         permissionTick++
         when {
             result[Manifest.permission.READ_MEDIA_IMAGES] == true || result[Manifest.permission.READ_MEDIA_VIDEO] == true -> {}
-            result[Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED] == true -> say("Robot can see the photos and videos you picked.")
-            else -> say("Not allowed. If Android doesn't ask again: Settings › Apps › Robot › Permissions.")
+            result[Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED] == true -> tell(R.string.home_media_picked)
+            else -> tell(R.string.home_not_allowed, android(AndroidPath.APP_PERMISSIONS))
         }
     }
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
@@ -546,8 +645,8 @@ fun RobotAppUi(activity: MainActivity) {
             val ok = err == null && ModelStore.verify(ctx.applicationContext, target)
             scope.launch {
                 busy = null
-                say(err ?: if (target == BrainModel.OWN) checkedText(target, ok)
-                    else if (ok) "“${target.title}” is ready." else "The copied file is damaged. Pick the right file or download it.")
+                say(err ?: if (target == BrainModel.OWN) checkedText(ctx, target, ok)
+                    else if (ok) ctx.getString(R.string.home_model_ready, target.titleText.render(AppLanguage.langs(ctx))) else ctx.getString(R.string.home_copy_damaged))
             }
         }, "robot-import").start()
     }
@@ -566,7 +665,7 @@ fun RobotAppUi(activity: MainActivity) {
                 try {
                     ctx.startActivity(Intent().setClassName(ctx.packageName, HelperWindow.CLASS).putExtra(HelperWindow.EXTRA_HELPER, id)
                         .putExtra(HelperWindow.EXTRA_MODE, mode))
-                } catch (_: Exception) { say("Couldn't open the connection window.") }
+                } catch (_: Exception) { tell(R.string.home_no_connection_window) }
             }
         }
     }
@@ -574,23 +673,23 @@ fun RobotAppUi(activity: MainActivity) {
     val actions = AppActions(
         talk = { id ->
             val f = snap.facts
-            if (f?.active != true) { page = Page.Setup(); say("Make Robot your digital assistant first.") }
-            else if (!activity.talk(id)) say("Couldn't open the assistant.")
+            if (f?.active != true) { page = Page.Setup(); tell(R.string.home_make_assistant_first) }
+            else if (!activity.talk(id)) tell(R.string.home_couldnt_open_assistant)
         },
         openSetup = { page = Page.Setup() },
         openGuide = ::openGuide,
         openTab = { tab = it; page = null },
         openConversation = { page = Page.Conversation(it) },
         askPermissions = { permissions.launch(arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS)) },
-        openAssistantSettings = { if (!Assistant.openSettings(ctx)) say("Open Settings > Apps > Default apps > Digital assistant app.") },
+        openAssistantSettings = { if (!Assistant.openSettings(ctx)) tell(R.string.home_open_assistant_settings) },
         // A model whose publisher asks for conditions (core ModelTerms) downloads or imports only once you ticked them.
         download = { m ->
-            if (ModelTerms.missing(settings, m) != null) say(ModelTerms.REFUSED)
+            if (ModelTerms.missing(settings, m) != null) say(ModelTerms.refusedText.render(AppLanguage.langs(ctx)))
             else askNetwork(m.bytes) { any -> ModelStore.startDownload(ctx, m, any)?.let(::say) }
         },
         cancelDownload = { m -> ModelStore.cancelDownload(ctx, m) },
         // Storage Access Framework: no storage permission; a .litertlm or .gguf has no type of its own, so any file.
-        import = { m -> if (ModelTerms.missing(settings, m) != null) say(ModelTerms.REFUSED) else { importTarget = m.id; importer.launch(arrayOf("*/*")) } },
+        import = { m -> if (ModelTerms.missing(settings, m) != null) say(ModelTerms.refusedText.render(AppLanguage.langs(ctx))) else { importTarget = m.id; importer.launch(arrayOf("*/*")) } },
         verify = { m ->
             if (busy == null) {
                 busy = "verify"
@@ -598,7 +697,7 @@ fun RobotAppUi(activity: MainActivity) {
                     val ok = ModelStore.verify(ctx, m)
                     withContext(Dispatchers.Main) {
                         busy = null
-                        say(if (m == BrainModel.OWN) checkedText(m, ok) else if (ok) "The file checks out." else "The file is damaged. Delete it and download again.")
+                        say(if (m == BrainModel.OWN) checkedText(ctx, m, ok) else ctx.getString(if (ok) R.string.home_file_ok else R.string.home_file_damaged))
                     }
                 }
             }
@@ -611,14 +710,14 @@ fun RobotAppUi(activity: MainActivity) {
                 val fast = snap.fast
                 val chosen = snap.resolve(settings.brainModelChoice) == m && m != fast
                 if (chosen) update(settings.copy(brainModel = fast.id))
-                say("“${m.title}” was deleted." + if (chosen) " Robot uses Fast again." else "")
+                tell(if (chosen) R.string.home_model_deleted_fast else R.string.home_model_deleted, m.titleText.render(AppLanguage.langs(ctx)))
             }
         },
         allowOwnTpu = { allow, sha256 ->
             scope.launch {
                 val ok = withContext(Dispatchers.IO) { ModelStore.allowOwnTpu(ctx, allow, sha256) }
-                say(if (!ok && allow) "Robot couldn't allow that: the file changed since its check. Check it again first."
-                    else if (!ok) "Robot couldn't change that." else if (allow) "Your model file may run on the TPU now." else "Your model file won't run on the TPU.")
+                tell(if (!ok && allow) R.string.home_tpu_file_changed
+                    else if (!ok) R.string.home_couldnt_change else if (allow) R.string.home_tpu_may else R.string.home_tpu_wont)
             }
         },
         // The panel's live conversation too, or its next save would write a deleted one back.
@@ -628,7 +727,7 @@ fun RobotAppUi(activity: MainActivity) {
         },
         deleteAllConversations = {
             ConversationStore.deleteAll(ctx); Cmd.send(ctx, Cmd.CONVERSATIONS_DELETED)
-            historyTick++; say("History deleted.")
+            historyTick++; tell(R.string.home_history_deleted)
         },
         removeSavedMedia = {
             scope.launch {
@@ -636,25 +735,25 @@ fun RobotAppUi(activity: MainActivity) {
                 // The panel's live conversation too, or its next save would write them back.
                 Cmd.send(ctx, Cmd.MEDIA_REMOVED)
                 historyTick++
-                say(if (n == 0) "No saved screenshots or photos." else "Removed from $n conversation${if (n == 1) "" else "s"}.")
+                say(if (n == 0) ctx.getString(R.string.home_no_saved_media) else ctx.resources.getQuantityString(R.plurals.home_media_removed, n, n))
             }
         },
         speakTest = { Cmd.send(ctx, Cmd.SPEAK_TEST) },
         say = ::say,
         voiceDownload = { b -> askNetwork(VoiceModelStore.bytesToFetch(ctx, b)) { any -> VoiceModelStore.startDownload(ctx, b, any)?.let(::say) } },
         voiceCancel = { b -> VoiceModelStore.cancelDownload(ctx, b) },
-        voiceDelete = { b -> VoiceModelStore.delete(ctx, b); say("${b.title} was deleted.") },
+        voiceDelete = { b -> VoiceModelStore.delete(ctx, b); tell(R.string.home_was_deleted, b.titleText.render(AppLanguage.langs(ctx))) },
         voiceBench = {
-            if (snap.facts?.active != true) say("Make Robot your digital assistant first: the test runs in the assistant.")
+            if (snap.facts?.active != true) tell(R.string.home_make_assistant_test)
             else Cmd.send(ctx, Cmd.VOICE_BENCH)
         },
-        voiceReset = { Cmd.send(ctx, Cmd.VOICE_RESET); say("Robot will try the voice models again.") },
+        voiceReset = { Cmd.send(ctx, Cmd.VOICE_RESET); tell(R.string.home_voice_retry) },
         askContacts = { peoplePermissions.launch(arrayOf(Manifest.permission.READ_CONTACTS)) },
         askCalendar = { peoplePermissions.launch(arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)) },
         openAppSettings = {
             try {
                 ctx.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", ctx.packageName, null)))
-            } catch (_: Exception) { say("Open Settings › Apps › Robot › Permissions.") }
+            } catch (_: Exception) { tell(R.string.home_open_path, android(AndroidPath.APP_PERMISSIONS)) }
         },
         openNote = { id -> page = Page.NoteEdit(id) },
         helperWindow = ::openHelperWindow,
@@ -670,12 +769,12 @@ fun RobotAppUi(activity: MainActivity) {
             }
         },
         deleteHelperKey = { id ->
-            val name = settings.helper(id)?.name ?: "helper's"
+            val name = settings.helper(id)?.name
             // Off the main thread (files and the Keystore); then the assistant drops its client at once.
             scope.launch(Dispatchers.IO) {
                 HelperKeyFiles.delete(ctx, id)
                 Cmd.send(ctx, Cmd.HELPER_KEY, Bundle().apply { putString(Cmd.EXTRA_ID, id) })
-                withContext(Dispatchers.Main) { say("The $name key was deleted.") }
+                withContext(Dispatchers.Main) { if (name != null) tell(R.string.home_key_deleted, name) else tell(R.string.home_helper_key_deleted) }
             }
         },
         removeHelper = { id ->
@@ -686,13 +785,13 @@ fun RobotAppUi(activity: MainActivity) {
                 scope.launch(Dispatchers.IO) {
                     HelperKeyFiles.removeAll(ctx, id)
                     Cmd.send(ctx, Cmd.HELPER_KEY, Bundle().apply { putString(Cmd.EXTRA_ID, id) })
-                    withContext(Dispatchers.Main) { say("${h.name} was removed.") }
+                    withContext(Dispatchers.Main) { tell(R.string.home_helper_removed, h.name) }
                 }
             }
         },
         openPage = { page = it },
         bargeTest = { run ->
-            if (snap.facts?.active != true) say("Make Robot your digital assistant first: the test runs in the assistant.")
+            if (snap.facts?.active != true) tell(R.string.home_make_assistant_test)
             else Cmd.send(ctx, Cmd.BARGE_TEST, Bundle().apply { putString(Cmd.EXTRA_RUN, run.name) })
         },
         askLocation = { peoplePermissions.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION)) },
@@ -700,11 +799,15 @@ fun RobotAppUi(activity: MainActivity) {
         askPermission = { p -> peoplePermissions.launch(arrayOf(p)) },
         askTermux = { peoplePermissions.launch(arrayOf(app.heyrobot.core.termux.TermuxIntents.PERMISSION_RUN_COMMAND)) },
         // 0.4.7: the GPU again after it failed (the voice process reads the file at the next load), and the problem report.
+        // 1.2: the setup guide's self-test of the GPU (or a beta TPU build), right after Fast's download is checked.
+        checkModel = {
+            if (gpuCheck.start()) snap = snap.copy(checking = true)
+        },
         tryGpuAgain = {
             scope.launch {
                 withContext(Dispatchers.IO) { Problems.forgetGpuFailure(ctx) }
                 update(settings)
-                say("Robot will try the GPU at the next question. If it fails again, Robot goes back to the CPU by itself.")
+                tell(R.string.home_try_gpu)
             }
         },
         // 0.8: the beta TPU build again after it failed (the voice process reads the file at the next load).
@@ -712,12 +815,12 @@ fun RobotAppUi(activity: MainActivity) {
             scope.launch {
                 withContext(Dispatchers.IO) { Problems.forgetTpuFailure(ctx) }
                 update(settings)
-                say("Robot will try the TPU at the next question. If it fails again, Robot goes back to the general build by itself.")
+                tell(R.string.home_try_tpu)
             }
         },
         reportText = { p -> Problems.report(ctx, p) },
-        copyReport = { text -> Problems.copy(ctx, text); say("The report is on the clipboard.") },
-        shareReport = { text -> try { Problems.share(ctx, text) } catch (_: Exception) { say("Couldn't open the share sheet.") } },
+        copyReport = { text -> Problems.copy(ctx, text); tell(R.string.home_report_copied) },
+        shareReport = { text -> try { Problems.share(ctx, text) } catch (_: Exception) { tell(R.string.home_no_share_sheet) } },
         dismissProblem = { p -> Problems.dismiss(ctx, p) },
         deleteProblem = { p -> Problems.delete(ctx, p) },
         askMedia = {
@@ -726,44 +829,44 @@ fun RobotAppUi(activity: MainActivity) {
         },
         transcribe = {
             // By name: the screen runs in the voice process, which starts the session.
-            try { ctx.startActivity(Transcripts.startIntent(ctx, ConvEntry.APP.name)) } catch (_: Exception) { say("Couldn't open the transcript screen.") }
+            try { ctx.startActivity(Transcripts.startIntent(ctx, ConvEntry.APP.name)) } catch (_: Exception) { tell(R.string.home_no_transcript_screen) }
         },
         interpret = {
             try { ctx.startActivity(Transcripts.startIntent(ctx, ConvEntry.APP.name, app.heyrobot.core.ConvMode.INTERPRET.name)) } catch (_: Exception) {
-                say("Couldn't open the interpreter.")
+                tell(R.string.home_no_interpreter)
             }
         },
         openTranscriptionCheck = {
-            try { ctx.startActivity(Transcripts.checkIntent(ctx)) } catch (_: Exception) { say("Couldn't open the Transcription check.") }
+            try { ctx.startActivity(Transcripts.checkIntent(ctx)) } catch (_: Exception) { tell(R.string.home_no_transcription_check) }
         },
         mtDownload = { MtModelStore.startDownload(ctx, MtBundle.FR_EN)?.let(::say) },
         mtCancel = { MtModelStore.cancelDownload(ctx, MtBundle.FR_EN) },
-        mtDelete = { MtModelStore.delete(ctx, MtBundle.FR_EN); say("The fast translation engine's files were deleted.") },
+        mtDelete = { MtModelStore.delete(ctx, MtBundle.FR_EN); tell(R.string.home_mt_deleted) },
         openVoiceprint = {
             // By name: the screen runs in the voice process, which alone holds the speaker model and the voiceprint's key.
             try {
                 ctx.startActivity(Intent().setClassName(ctx.packageName, "app.heyrobot.assistant.conversation.VoiceprintActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            } catch (_: Exception) { say("Couldn't open Your voice.") }
+            } catch (_: Exception) { tell(R.string.home_no_your_voice) }
         },
         deleteVoiceprint = {
             // Off the main thread (the file and the Keystore); a running session stops comparing with it at once.
             scope.launch(Dispatchers.IO) {
                 VoiceprintFiles.delete(ctx)
                 Cmd.send(ctx, Cmd.VOICEPRINT_DELETED)
-                withContext(Dispatchers.Main) { update(settings.copy(meVoiceprint = false)); say("Your voiceprint was deleted.") }
+                withContext(Dispatchers.Main) { update(settings.copy(meVoiceprint = false)); tell(R.string.home_voiceprint_deleted) }
             }
         },
         openUsageAccess = {
             val opened = SettingsIntents.of(ctx, SettingsPage.USAGE_ACCESS).any { i -> try { ctx.startActivity(i); true } catch (_: Exception) { false } }
-            if (!opened) say("Open Settings › Apps › Special app access › Usage access, then Robot.")
+            if (!opened) tell(R.string.home_open_usage_access, android(AndroidPath.USAGE_ACCESS))
         },
         runRoutine = { id ->
-            if (snap.facts?.active != true) { page = Page.Setup(); say("Make Robot your digital assistant first: routines run in the assistant.") }
-            else if (!activity.routine(RoutineIntents.ARG_ROUTINE, id)) say("Couldn't open the assistant.")
+            if (snap.facts?.active != true) { page = Page.Setup(); tell(R.string.home_make_assistant_routines) }
+            else if (!activity.routine(RoutineIntents.ARG_ROUTINE, id)) tell(R.string.home_couldnt_open_assistant)
         },
         openReady = { key ->
-            if (snap.facts?.active != true) { page = Page.Setup(); say("Make Robot your digital assistant first.") }
-            else if (!activity.routine(RoutineIntents.ARG_READY, key)) say("Couldn't open the assistant.")
+            if (snap.facts?.active != true) { page = Page.Setup(); tell(R.string.home_make_assistant_first) }
+            else if (!activity.routine(RoutineIntents.ARG_READY, key)) tell(R.string.home_couldnt_open_assistant)
         },
     )
 
@@ -781,15 +884,15 @@ fun RobotAppUi(activity: MainActivity) {
     bigDownload?.let { (bytes, start) ->
         AlertDialog(
             onDismissRequest = { bigDownload = null },
-            title = { Text(DownloadPolicy.title(bytes)) },
-            text = { Text(DownloadPolicy.text(bytes)) },
+            title = { Text(DownloadPolicy.titleText(bytes).str()) },
+            text = { Text(DownloadPolicy.textPhrase(bytes).str()) },
             confirmButton = {
                 Row {
-                    TextButton(onClick = { bigDownload = null; start(false) }) { Text(DownloadPolicy.WAIT) }
-                    TextButton(onClick = { bigDownload = null; start(true) }) { Text(DownloadPolicy.ANYWAY) }
+                    TextButton(onClick = { bigDownload = null; start(false) }) { Text(DownloadPolicy.waitText.str()) }
+                    TextButton(onClick = { bigDownload = null; start(true) }) { Text(DownloadPolicy.anywayText.str()) }
                 }
             },
-            dismissButton = { TextButton(onClick = { bigDownload = null }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { bigDownload = null }) { Text(androidx.compose.ui.res.stringResource(R.string.home_cancel)) } },
         )
     }
     crash?.let { e ->
@@ -801,13 +904,13 @@ fun RobotAppUi(activity: MainActivity) {
                 TextButton(onClick = {
                     crashTold(e)
                     page = Page.Settings(SettingsRoutes.feedback(FeedbackEntry.CRASH, FeedbackKind.BUG, e.facts.time))
-                }) { Text("Send feedback") }
+                }) { Text(androidx.compose.ui.res.stringResource(R.string.home_send_feedback)) }
             },
-            dismissButton = { TextButton(onClick = { crashTold(e) }) { Text("Not now") } },
+            dismissButton = { TextButton(onClick = { crashTold(e) }) { Text(androidx.compose.ui.res.stringResource(R.string.home_not_now)) } },
         )
     }
 
-    BackHandler(enabled = page != null || (tab != Tab.HOME && !(tab == Tab.NOTES && fromNotesIcon))) {
+    BackHandler(enabled = page != null || (tab != Tab.HOME && !(tab == Tab.NOTES && fromNotesIcon) && !(tab == Tab.FILES && fromFilesIcon))) {
         if (page != null) nav.back() else tab = Tab.HOME
     }
 
@@ -842,9 +945,9 @@ fun RobotAppUi(activity: MainActivity) {
                 NavigationBar {
                     for (t in Tab.entries) {
                         NavigationBarItem(
-                            selected = tab == t, onClick = { tab = t; fromNotesIcon = false },
-                            icon = { Icon(when (t) { Tab.HOME -> RIcons.Home; Tab.NOTES -> RIcons.Note; Tab.HISTORY -> RIcons.History; Tab.MODEL -> RIcons.Chip; Tab.SETTINGS -> RIcons.Settings }, null) },
-                            label = { Text(t.title) },
+                            selected = tab == t, onClick = { tab = t; fromNotesIcon = false; fromFilesIcon = false },
+                            icon = { Icon(when (t) { Tab.HOME -> RIcons.Home; Tab.NOTES -> RIcons.Note; Tab.HISTORY -> RIcons.History; Tab.FILES -> RIcons.Folder; Tab.SETTINGS -> RIcons.Settings }, null) },
+                            label = { Text(t.label().str()) },
                         )
                     }
                 }
@@ -865,7 +968,8 @@ fun RobotAppUi(activity: MainActivity) {
                     Tab.HOME -> HomeScreen(snap, history.take(3), actions, m, guide = guideState)
                     Tab.NOTES -> NotesScreen(notes, actions, m)
                     Tab.HISTORY -> HistoryScreen(history, actions, m)
-                    Tab.MODEL -> ModelScreen(settings, ::updateSettings, snap, busy, actions, m)
+                    // 1.4: Robot Files (ui/files), its index read off the main thread only once this tab shows.
+                    Tab.FILES -> app.heyrobot.ui.files.FilesRoute(actions, snackbar, m)
                     Tab.SETTINGS -> SettingsRoot(settings, snap, actions, m)
                 }
             }
@@ -873,11 +977,11 @@ fun RobotAppUi(activity: MainActivity) {
     }
 }
 
-/** What a finished check of [m] means, in a line. */
-private fun checkedText(m: BrainModel, ok: Boolean): String = when {
-    m != BrainModel.OWN -> if (ok) "“${m.title}” is ready." else "The file is damaged. Delete it and download again."
-    ok -> "Your model file is checked. See what Robot found in Model."
-    else -> "Robot can't use that file. Model says why."
+/** What a finished check of [m] means, in a line (the menus' language). */
+private fun checkedText(ctx: Context, m: BrainModel, ok: Boolean): String = when {
+    m != BrainModel.OWN -> if (ok) ctx.getString(R.string.home_model_ready, m.titleText.render(AppLanguage.langs(ctx))) else ctx.getString(R.string.home_file_damaged)
+    ok -> ctx.getString(R.string.home_own_checked)
+    else -> ctx.getString(R.string.home_own_unusable)
 }
 
 /** What the screens can ask for. */
@@ -944,6 +1048,8 @@ class AppActions(
     /** 0.8: the panel opens to run a routine (Run now), or with a Ready card (its key). */
     val runRoutine: (String) -> Unit = {},
     val openReady: (String) -> Unit = {},
+    /** 1.2: the setup guide asks for the self-test of the GPU (or a beta TPU build), when one is due. */
+    val checkModel: () -> Unit = {},
     /** 0.4.7: Settings › Model › "Try the GPU again" after it failed. */
     val tryGpuAgain: () -> Unit = {},
     /** 0.8: Settings › Model › "Try the TPU again" after the beta TPU build failed. */

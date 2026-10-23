@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.car
 
+import app.heyrobot.core.i18n.HandsFreeStrings
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.output.spoken
 import app.heyrobot.core.LogCode
 import app.heyrobot.core.headset.AnnounceCode
 import app.heyrobot.core.messages.VoiceReply
@@ -14,10 +17,10 @@ import app.heyrobot.core.output.SpokenAnswer
 import app.heyrobot.core.output.SpokenCard
 import app.heyrobot.core.output.SpokenCards
 import app.heyrobot.core.output.SpokenChoice
-import app.heyrobot.core.output.SpokenLang
+import app.heyrobot.core.i18n.Lang
 import app.heyrobot.core.output.SpokenStep
 
-// Pure. Messages in the car (0.7; design §4.2 story 4, §4.5 flow 3, §4.9 rules 1–3): "Message from Marie. Read it?"
+// Pure. Messages in the car (0.7): "Message from Marie. Read it?"
 // "Yes." … "Reply?" "Tell her I'm 10 minutes away." "Reply to Marie: I'm 10 minutes away. Send?" "Send." "Handed to
 // Cheogram." The reply goes to the conversation the notification belongs to (no name resolution, so a learned name
 // can't redirect it), through its own Reply action (output ReplyChannel), and what that action receives is exactly the
@@ -52,7 +55,7 @@ sealed class CarAnnouncement {
 
 /** The reply, as it was read back and as it will be sent: [text] is both. */
 data class ReplyDraft(val conversationKey: String, val to: String, val app: String, val text: String) {
-    override fun toString(): String = "ReplyDraft(app=$app, chars=${text.length})"
+    override fun toString(): String = "ReplyDraft(app=$app, chars=${text.length})" // l10n: not text (toString, for the logs)
 }
 
 sealed class ReplyStart {
@@ -82,10 +85,10 @@ object CarMessages {
     /** What confirms a reply besides yes (plain words). */
     val SEND_WORDS = listOf("send", "send it", "send that", "envoie", "envoie le", "envoie la", "envoyer")
 
-    val ASK_REPLY = Line("Reply?", "Tu veux répondre?")
-    val WHAT_REPLY = Line("What should the reply say?", "Qu'est-ce que je réponds?")
-    val NOT_SENT = Line("Okay, not sent.", "D'accord, pas envoyé.")
-    val ON_SCREEN = Line("Your reply is on the screen.", "Ta réponse est à l'écran.")
+    val ASK_REPLY = Line(HandsFreeStrings.askReply())
+    val WHAT_REPLY = Line(HandsFreeStrings.whatReply())
+    val NOT_SENT = Line(HandsFreeStrings.notSent())
+    val ON_SCREEN = Line(HandsFreeStrings.replyOnScreen())
 
     /**
      * Whether [n] is announced in the car, by Settings › Car mode: off; locked without a trusted session never (§4.6);
@@ -93,26 +96,27 @@ object CarMessages {
      * sender only and a question, or the whole message when "Read the whole message" and "Read message text aloud when
      * others may hear: always" both say so (the car is never private).
      */
-    fun announce(n: MessageNotice, s: CarSettings, locked: Boolean, trusted: Boolean, senderAllowed: Boolean, lang: SpokenLang): CarAnnouncement = when {
+    fun announce(n: MessageNotice, s: CarSettings, locked: Boolean, trusted: Boolean, senderAllowed: Boolean, lang: Lang): CarAnnouncement = when {
         s.announce == CarAnnounce.OFF -> CarAnnouncement.Skip(AnnounceCode.OFF)
         locked && !trusted -> CarAnnouncement.Skip(AnnounceCode.LOCKED)
         s.announceFrom == CarAnnounceFrom.DND_ALLOWS && !n.dndAllows -> CarAnnouncement.Skip(AnnounceCode.DND)
         s.announceFrom == CarAnnounceFrom.CHOSEN_PEOPLE && !senderAllowed -> CarAnnouncement.Skip(AnnounceCode.NOT_ALLOWED)
         n.hidden -> CarAnnouncement.Announce(from(n, lang))
         s.announce == CarAnnounce.READ_WHOLE && s.readAloud == ReadAloud.ALWAYS -> CarAnnouncement.ReadNow(says(n, lang))
-        else -> CarAnnouncement.Announce(from(n, lang) + if (lang == SpokenLang.FR) " Je te le lis?" else " Read it?")
+        else -> CarAnnouncement.Announce(spoken(Phrase.join(fromText(n), HandsFreeStrings.readIt()), lang))
     }
 
     /** The read-back as a spoken card: "send", "envoie" or a yes confirms it. */
-    fun card(d: ReplyDraft, lang: SpokenLang): SpokenCard = SpokenCard(readBack(d, lang).removeSuffix("?"), confirmWords = SEND_WORDS, personal = true, carFunction = true)
+    fun card(d: ReplyDraft, lang: Lang): SpokenCard = SpokenCard(readBack(d, lang).removeSuffix("?"), confirmWords = SEND_WORDS, personal = true, carFunction = true)
 
-    private fun from(n: MessageNotice, lang: SpokenLang): String = when (lang) {
-        SpokenLang.EN -> "Message from ${n.sender}" + (n.group?.let { " in $it" } ?: "") + "."
-        SpokenLang.FR -> "Message de ${n.sender}" + (n.group?.let { " dans $it" } ?: "") + "."
-    }
+    private fun from(n: MessageNotice, lang: Lang): String = spoken(fromText(n), lang)
+
+    /** 1.1: "Message from Marie.", "Message from Marie in Famille." without a language yet (headset mode's too). */
+    fun fromText(n: MessageNotice): Phrase =
+        n.group?.let { HandsFreeStrings.messageFromIn("name" to n.sender, "group" to it) } ?: HandsFreeStrings.messageFrom("name" to n.sender)
 
     /** "Marie says: I'm on my way." */
-    fun says(n: MessageNotice, lang: SpokenLang): String = if (lang == SpokenLang.FR) "${n.sender} dit : ${n.text.trim()}" else "${n.sender} says: ${n.text.trim()}"
+    fun says(n: MessageNotice, lang: Lang): String = spoken(HandsFreeStrings.says("name" to n.sender, "text" to n.text.trim()), lang)
 
     /** After reading: offer a reply only where one can be sent by voice. */
     fun offersReply(n: MessageNotice, s: CarSettings, safety: HandsFreeSafety): Boolean = n.replyable && !n.isGroup && s.voiceReplies && safety.replyAfterSpokenYes
@@ -126,7 +130,7 @@ object CarMessages {
      * [ReplyStart.OnScreen] with your words, where the screen's reply applies its own rules, as outside the car: locked,
      * that is 0.7's lock-screen rule ("Messages on the lock screen"); refused, 0.7's refusal.
      */
-    fun startReply(n: MessageNotice, dictated: String, s: CarSettings, safety: HandsFreeSafety, locked: Boolean, trusted: Boolean, lang: SpokenLang,
+    fun startReply(n: MessageNotice, dictated: String, s: CarSettings, safety: HandsFreeSafety, locked: Boolean, trusted: Boolean, lang: Lang,
         voice: VoiceReply): ReplyStart {
         val words = ReplyWords.body(dictated)
         if (!s.voiceReplies || !safety.replyAfterSpokenYes) return ReplyStart.OnScreen(ReplyEnd.VOICE_OFF, words)
@@ -146,17 +150,17 @@ object CarMessages {
     }
 
     /** "Reply to Marie: I'm 10 minutes away. Send?" (the words exactly as they will be sent). */
-    fun readBack(d: ReplyDraft, lang: SpokenLang): String {
+    fun readBack(d: ReplyDraft, lang: Lang): String {
         val body = d.text.trimEnd()
         val stop = if (body.last() in ".!?…") "" else "."
-        return if (lang == SpokenLang.FR) "Réponse à ${d.to} : $body$stop J'envoie?" else "Reply to ${d.to}: $body$stop Send?"
+        return spoken(HandsFreeStrings.replyReadBack("name" to d.to, "text" to body + stop), lang)
     }
 
     /**
      * The answer to the read-back: "send", "yes", "envoie" send exactly [draft]'s text; "no" sends nothing. Nothing usable
      * twice: [ReplyEnd.SILENCE], and the screen's reply card takes the words (MessageFlow).
      */
-    fun answer(draft: ReplyDraft, a: SpokenAnswer, tries: Int, rereads: Int, lang: SpokenLang): ReplyNext =
+    fun answer(draft: ReplyDraft, a: SpokenAnswer, tries: Int, rereads: Int, lang: Lang): ReplyNext =
         when (val step = SpokenChoice.next(a, tries, rereads, 0, lang)) {
             SpokenStep.Confirm -> ReplyNext.Send(draft.conversationKey, draft.text)
             SpokenStep.Decline -> ReplyNext.Done(NOT_SENT.get(lang), ReplyEnd.DECLINED)
@@ -170,13 +174,11 @@ object CarMessages {
      * What Robot says after the main process answered: "Handed to Cheogram." (never "delivered"). Not handed over: why, and
      * (but for the lock screen) that the screen's reply card has your words, as outside the car.
      */
-    fun result(r: ReplyResult, app: String, lang: SpokenLang): String = when (r) {
-        ReplyResult.HANDED_OVER -> if (lang == SpokenLang.FR) "Remis à $app." else "Handed to $app."
-        ReplyResult.NO_REPLY_ACTION, ReplyResult.GONE -> if (lang == SpokenLang.FR) "Je ne peux pas l'envoyer à la voix. Ta réponse est à l'écran."
-            else "I can't send that by voice. Your reply is on the screen."
+    fun result(r: ReplyResult, app: String, lang: Lang): String = when (r) {
+        ReplyResult.HANDED_OVER -> spoken(HandsFreeStrings.handedTo("appName" to app), lang)
+        ReplyResult.NO_REPLY_ACTION, ReplyResult.GONE -> spoken(HandsFreeStrings.cantSendByVoice(), lang)
         ReplyResult.LOCKED -> CarGate.UNLOCK_ONCE.get(lang)
-        ReplyResult.FAILED -> if (lang == SpokenLang.FR) "Ça n'a pas marché. Ta réponse est à l'écran." else "That didn't work. Your reply is on the screen."
-        ReplyResult.NEW_MESSAGES -> if (lang == SpokenLang.FR) "Un nouveau message vient d'arriver. Ta réponse est à l'écran."
-            else "A new message just came. Your reply is on the screen."
+        ReplyResult.FAILED -> spoken(HandsFreeStrings.didntWork(), lang)
+        ReplyResult.NEW_MESSAGES -> spoken(HandsFreeStrings.newMessageCame(), lang)
     }
 }

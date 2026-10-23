@@ -1,8 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.InfoStrings
+import app.heyrobot.core.i18n.Lang
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.ToolStrings
+import java.time.DayOfWeek
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.ZoneOffset
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
@@ -40,20 +47,21 @@ data class CalendarEvent(val begin: Long, val end: Long, val allDay: Boolean, va
 
 object Events {
     /** add_event for a time already gone ("today at 8" said at 9, "Friday this week" on a Saturday). */
-    const val PASSED = "that time has passed"
+    val PASSED: String get() = InfoStrings.timePassed().en()
 
     /**
      * The start and end add_event means: the end that was said, else the tool's duration_minutes, else
      * [defaultMinutes] (Settings); a whole day ends at the next midnight. A start already past (a day before today for
-     * a whole day) is refused rather than added silently.
+     * a whole day) is refused rather than added silently. 1.1: the words are read in [lang] first, then the other
+     * language (WhenParser.parse with a language).
      */
-    fun times(a: Action.AddEvent, now: ZonedDateTime, defaultMinutes: Int): Read<WhenSpan> =
-        when (val r = WhenParser.parse(a.whenText, now)) {
+    fun times(a: Action.AddEvent, now: ZonedDateTime, defaultMinutes: Int, lang: Lang = Lang.EN): Read<WhenSpan> =
+        when (val r = WhenParser.parse(a.whenText, now, lang)) {
             is Read.Unreadable -> r
             is Read.Ok -> {
                 val s = r.value
                 val passed = if (s.allDay) s.start.toLocalDate().isBefore(now.toLocalDate()) else s.start.isBefore(now.truncatedTo(ChronoUnit.MINUTES))
-                if (passed) Read.Unreadable(PASSED)
+                if (passed) Read.Unreadable(InfoStrings.timePassed())
                 else {
                     val end = s.end ?: if (s.allDay) s.start.toLocalDate().plusDays(1).atStartOfDay(s.start.zone)
                     else s.start.plusMinutes((a.minutes ?: defaultMinutes).toLong())
@@ -64,26 +72,75 @@ object Events {
 }
 
 object EventText {
-    private val DAY = DateTimeFormatter.ofPattern("EEE MMM d", Locale.US)
-    private val TIME = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
+    private val WEEKDAYS = listOf(InfoStrings.mon, InfoStrings.tue, InfoStrings.wed, InfoStrings.thu, InfoStrings.fri, InfoStrings.sat, InfoStrings.sun)
+    private val MONTHS = listOf(InfoStrings.jan, InfoStrings.feb, InfoStrings.mar, InfoStrings.apr, InfoStrings.may, InfoStrings.jun, InfoStrings.jul,
+        InfoStrings.aug, InfoStrings.sep, InfoStrings.oct, InfoStrings.nov, InfoStrings.dec)
+    private val HOURS = listOf(InfoStrings.hour0, InfoStrings.hour1, InfoStrings.hour2, InfoStrings.hour3, InfoStrings.hour4, InfoStrings.hour5,
+        InfoStrings.hour6, InfoStrings.hour7, InfoStrings.hour8, InfoStrings.hour9)
 
-    fun day(d: LocalDate, currentYear: Int): String = d.format(DAY) + if (d.year != currentYear) " ${d.year}" else ""
+    fun day(d: LocalDate, currentYear: Int): String = dayText(d, currentYear).en()
+
+    /** "Tue Oct 14", "Tue Oct 14 2027" (another year) / « mardi 14 octobre », « vendredi 1er octobre 2027 ». */
+    fun dayText(d: LocalDate, currentYear: Int): Phrase {
+        val weekday = WEEKDAYS[d.dayOfWeek.value - DayOfWeek.MONDAY.value]()
+        val month = monthText(d.monthValue)
+        val day = dayOfMonth(d)
+        return if (d.year != currentYear) InfoStrings.dayShortYear("weekday" to weekday, "month" to month, "day" to day, "year" to d.year.toString())
+        else InfoStrings.dayShort("weekday" to weekday, "month" to month, "day" to day)
+    }
+
+    /** A month's name: "Oct", « octobre ». */
+    fun monthText(month: Int): Phrase = MONTHS[month - 1]()
+
+    /** The day of the month: "1", « 1er ». */
+    fun dayOfMonth(d: LocalDate): Phrase = if (d.dayOfMonth == 1) InfoStrings.firstOfMonth() else Phrase.plain(d.dayOfMonth.toString())
+
+    /** A time of day: "07:30", "15:00" (a 24-hour clock, as 1.0 wrote it) / « 7 h 30 », « 15 h ». */
+    fun clock(hour: Int, minute: Int): Phrase {
+        val h: Any = if (hour in 0..9) HOURS[hour]() else hour.toString()
+        return if (minute == 0) InfoStrings.clockHour("h" to h) else InfoStrings.clock("h" to h, "m" to minute.toString().padStart(2, '0'))
+    }
+
+    private fun clock(t: ZonedDateTime): Phrase = clock(t.hour, t.minute)
 
     /** "Tue Oct 14, 15:00–16:00", "Tue Oct 14 (all day)", "Tue Oct 14, 23:00 – Wed Oct 15, 01:00". */
-    fun span(start: ZonedDateTime, end: ZonedDateTime, allDay: Boolean, currentYear: Int): String {
+    fun span(start: ZonedDateTime, end: ZonedDateTime, allDay: Boolean, currentYear: Int): String = spanText(start, end, allDay, currentYear).en()
+
+    /** [span] in words without a language yet. */
+    fun spanText(start: ZonedDateTime, end: ZonedDateTime, allDay: Boolean, currentYear: Int): Phrase {
+        val first = dayText(start.toLocalDate(), currentYear)
         if (allDay) {
             val last = end.toLocalDate().minusDays(1).let { if (it.isBefore(start.toLocalDate())) start.toLocalDate() else it }
-            return if (last == start.toLocalDate()) "${day(start.toLocalDate(), currentYear)} (all day)"
-            else "${day(start.toLocalDate(), currentYear)} – ${day(last, currentYear)} (all day)"
+            return if (last == start.toLocalDate()) InfoStrings.dayAllDayParen("day" to first)
+            else InfoStrings.daysAllDayParen("from" to first, "to" to dayText(last, currentYear))
         }
-        return if (start.toLocalDate() == end.toLocalDate()) "${day(start.toLocalDate(), currentYear)}, ${start.format(TIME)}–${end.format(TIME)}"
-        else "${day(start.toLocalDate(), currentYear)}, ${start.format(TIME)} – ${day(end.toLocalDate(), currentYear)}, ${end.format(TIME)}"
+        return if (start.toLocalDate() == end.toLocalDate()) InfoStrings.dayTimes("day" to first, "from" to clock(start), "to" to clock(end))
+        else InfoStrings.daysTimes("day" to first, "from" to clock(start), "day2" to dayText(end.toLocalDate(), currentYear), "to" to clock(end))
+    }
+
+    /**
+     * 1.1: Robot's own line after it added [title] as [plan] says, the card's words: the calendar, the title, when, and the
+     * alert when one was asked for ([alert]: it went in; otherwise the line says to add it in the calendar app).
+     */
+    fun added(title: String, plan: EventPlan, alert: Boolean): Phrase {
+        val span = spanText(plan.start, plan.end, plan.allDay, plan.currentYear)
+        val calendar = plan.calendarName.orEmpty()
+        val at = plan.alertAt
+        return when {
+            at == null -> ToolStrings.eventAdded("calendar" to calendar, "title" to title, "when" to span)
+            alert -> ToolStrings.eventAddedAlert("calendar" to calendar, "title" to title, "when" to span, "alert" to clock(at.hour, at.minute))
+            else -> ToolStrings.eventAddedNoAlert("calendar" to calendar, "title" to title, "when" to span)
+        }
     }
 
     /** "Sun Oct 11", or "Mon Oct 12 – Sun Oct 18" for a week. */
-    fun range(r: DayRange): String {
+    fun range(r: DayRange): String = rangeText(r).en()
+
+    /** [range] in words without a language yet. */
+    fun rangeText(r: DayRange): Phrase {
         val y = r.from.year
-        return if (r.days <= 1) day(r.from.toLocalDate(), y) else "${day(r.from.toLocalDate(), y)} – ${day(r.to.toLocalDate().minusDays(1), y)}"
+        return if (r.days <= 1) dayText(r.from.toLocalDate(), y)
+        else InfoStrings.dayRange("from" to dayText(r.from.toLocalDate(), y), "to" to dayText(r.to.toLocalDate().minusDays(1), y))
     }
 }
 
@@ -107,7 +164,10 @@ object CalendarFormat {
     }.sortedWith(compareBy<CalendarEvent> { if (it.allDay) 0 else 1 }.thenBy { it.begin })
 
     /** When an event is, for one day ("15:00–16:00", "all day") or with its day in a longer range ("Tue Oct 14 15:00–16:00"). */
-    fun whenText(e: CalendarEvent, range: DayRange): String {
+    fun whenText(e: CalendarEvent, range: DayRange): String = whenPhrase(e, range).en()
+
+    /** [whenText] in words without a language yet. */
+    fun whenPhrase(e: CalendarEvent, range: DayRange): Phrase {
         val zone = range.from.zone
         val y = range.from.year
         val oneDay = range.days <= 1
@@ -115,44 +175,110 @@ object CalendarFormat {
             val first = utcDate(e.begin)
             val last = utcDate(e.end).minusDays(1).let { if (it.isBefore(first)) first else it }
             return when {
-                first == last && oneDay -> "all day"
-                first == last -> "${EventText.day(first, y)} all day"
-                else -> "${EventText.day(first, y)} – ${EventText.day(last, y)} all day"
+                first == last && oneDay -> InfoStrings.allDay()
+                first == last -> InfoStrings.dayAllDay("day" to EventText.dayText(first, y))
+                else -> InfoStrings.daysAllDay("from" to EventText.dayText(first, y), "to" to EventText.dayText(last, y))
             }
         }
         val s = Instant.ofEpochMilli(e.begin).atZone(zone)
         val t = Instant.ofEpochMilli(e.end).atZone(zone)
         if (s.toLocalDate() == t.toLocalDate() || !t.isAfter(s)) {
-            val times = if (!t.isAfter(s)) s.format(TIME) else "${s.format(TIME)}–${t.format(TIME)}"
-            return if (oneDay && s.toLocalDate() == range.from.toLocalDate()) times else "${EventText.day(s.toLocalDate(), y)} $times"
+            val times = if (!t.isAfter(s)) EventText.clock(s.hour, s.minute)
+            else InfoStrings.times("from" to EventText.clock(s.hour, s.minute), "to" to EventText.clock(t.hour, t.minute))
+            return if (oneDay && s.toLocalDate() == range.from.toLocalDate()) times else Phrase.join(EventText.dayText(s.toLocalDate(), y), times)
         }
-        return "${EventText.day(s.toLocalDate(), y)} ${s.format(TIME)} – ${EventText.day(t.toLocalDate(), y)} ${t.format(TIME)}"
+        return Phrase.Join(listOf(EventText.dayText(s.toLocalDate(), y), EventText.clock(s.hour, s.minute), Phrase.plain("–"),
+            EventText.dayText(t.toLocalDate(), y), EventText.clock(t.hour, t.minute)))
     }
 
     /** read_calendar's answer for the model: up to [MAX_EVENTS] events with when, title (60 characters) and location (40). */
     fun results(events: List<CalendarEvent>, range: DayRange): List<Map<String, Any?>> = inRange(events, range).take(MAX_EVENTS).map { e ->
         buildMap {
             put("when", whenText(e, range))
-            put("title", NoteSearch.cut(e.title.ifBlank { "(no title)" }.replace(Regex("\\s+"), " "), TITLE))
+            put("title", title(e).en())
             e.location?.replace(Regex("\\s+"), " ")?.trim()?.takeIf { it.isNotEmpty() }?.let { put("location", NoteSearch.cut(it, LOCATION)) }
         }
     }
+
+    /** An event's title as shown (60 characters), or "(no title)". */
+    private fun title(e: CalendarEvent): Phrase = e.title.takeIf { it.isNotBlank() }?.let { Phrase.plain(NoteSearch.cut(it.replace(Regex("\\s+"), " "), TITLE)) }
+        ?: InfoStrings.noTitle()
 
     /** The card's lines (and what text-call mode reads out): one event per line. */
     fun lines(results: List<Map<String, Any?>>): String =
         results.joinToString("\n") { r -> "${r["when"]} · ${r["title"]}" + (r["location"]?.let { " ($it)" } ?: "") }
 
+    /**
+     * [lines] of [events] (as [results] picks them) in words without a language yet: the card's body, in the reply language;
+     * [spoken], as text-call mode reads them out (sentences, without the dots between when and what).
+     */
+    fun linesText(events: List<CalendarEvent>, range: DayRange, spoken: Boolean = false): Phrase = Phrase.Join(inRange(events, range).take(MAX_EVENTS).map { e ->
+        val place = e.location?.replace(Regex("\\s+"), " ")?.trim()?.takeIf { it.isNotEmpty() }?.let { NoteSearch.cut(it, LOCATION) }
+        val title = if (spoken) Phrase.plain(title(e).en().replace(" · ", " ")).takeIf { e.title.isNotBlank() } ?: title(e) else title(e)
+        when {
+            place == null && spoken -> Phrase.join(whenPhrase(e, range), title)
+            place == null -> InfoStrings.eventLine("when" to whenPhrase(e, range), "title" to title)
+            spoken -> InfoStrings.eventSpokenPlace("when" to whenPhrase(e, range), "title" to title, "place" to place.replace(" · ", " "))
+            else -> InfoStrings.eventLinePlace("when" to whenPhrase(e, range), "title" to title, "place" to place)
+        }
+    }, if (spoken) ". " else "\n")
+
     /** "3 events on Sun Oct 11.", "Showing 10 of 14 events from Mon Oct 12 – Sun Oct 18.", "Nothing on Sun Oct 11." */
-    fun detail(total: Int, range: DayRange): String {
-        val r = EventText.range(range)
-        val on = if (range.days <= 1) "on $r" else "from $r"
+    fun detail(total: Int, range: DayRange): String = detailText(total, range).en()
+
+    /** [detail] in words without a language yet. */
+    fun detailText(total: Int, range: DayRange): Phrase {
+        val y = range.from.year
+        if (range.days <= 1) {
+            val r = EventText.dayText(range.from.toLocalDate(), y)
+            return when {
+                total == 0 -> InfoStrings.nothingOn("when" to r)
+                total > MAX_EVENTS -> InfoStrings.showingOn("shown" to MAX_EVENTS.toString(), "total" to total.toString(), "when" to r)
+                else -> InfoStrings.eventsOn(total, "when" to r)
+            }
+        }
+        // A week: "from Mon Oct 12 – Sun Oct 18", « du lundi 12 octobre au dimanche 18 octobre ».
+        val from = EventText.dayText(range.from.toLocalDate(), y)
+        val to = EventText.dayText(range.to.toLocalDate().minusDays(1), y)
         return when {
-            total == 0 -> "Nothing $on."
-            total == 1 -> "1 event $on."
-            total > MAX_EVENTS -> "Showing $MAX_EVENTS of $total events $on."
-            else -> "$total events $on."
+            total == 0 -> InfoStrings.nothingFrom("from" to from, "to" to to)
+            total > MAX_EVENTS -> InfoStrings.showingFrom("shown" to MAX_EVENTS.toString(), "total" to total.toString(), "from" to from, "to" to to)
+            else -> InfoStrings.eventsFrom(total, "from" to from, "to" to to)
         }
     }
 
     private fun utcDate(ms: Long): LocalDate = Instant.ofEpochMilli(ms).atZone(ZoneOffset.UTC).toLocalDate()
+}
+
+/**
+ * 1.1, dated reminders (docs/pm/handoff-dated-reminders.md point 4): the alert of a reminder's event. Events another app
+ * inserts get none of the calendar app's defaults, so Robot writes the alert itself, as one CalendarContract.Reminders
+ * row. An all-day reminder rings at [ALL_DAY_AT] on its day; one at a time rings at that time.
+ */
+object EventAlert {
+    /** When an all-day reminder's alert rings on its day. */
+    val ALL_DAY_AT: LocalTime = LocalTime.of(9, 0)
+
+    /** CalendarContract.Reminders.METHOD_ALERT. */
+    const val METHOD_ALERT = 1
+
+    /** A Reminders row: [minutes] before the event's start (negative: after it), and its [method]. */
+    data class Row(val minutes: Int, val method: Int = METHOD_ALERT)
+
+    /** When the alert of a reminder on [span] rings: 9:00 on an all-day one's day, else its start; null when that has passed at [now]. */
+    fun at(span: WhenSpan, now: ZonedDateTime): ZonedDateTime? {
+        val at = if (span.allDay) span.start.toLocalDate().atTime(ALL_DAY_AT).atZone(span.start.zone) else span.start
+        return at.takeIf { it.isAfter(now) }
+    }
+
+    /**
+     * [plan]'s Reminders row, or null without an alert. A timed event's is minutes before its start (0: at the start). An
+     * all-day event's start is its day's midnight, which the provider reads in the phone's own zone for its alarms, so
+     * 9:00 that day is 540 minutes after it: -540.
+     */
+    fun row(plan: EventPlan): Row? {
+        val at = plan.alertAt ?: return null
+        return if (plan.allDay) Row(-(at.hour * 60 + at.minute))
+        else Row(Duration.between(at, plan.start).toMinutes().toInt())
+    }
 }

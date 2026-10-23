@@ -99,8 +99,8 @@ class WebSearchSettingsTest {
         rule.inDialog("Save").performClick()
         // The consent screen, once: the words, where they go, and that sites see the phone's IP address.
         rule.onNode(isDialog()).assertExists()
-        rule.inDialog(WebSetup.consent(SearchService.SEARXNG_HOME)).assertExists()
-        assertTrue(WebSetup.consent(SearchService.SEARXNG_HOME).contains("those sites see your IP address"))
+        rule.inDialog(WebSetup.consent(SearchService.SEARXNG_HOME, WebSettings())).assertExists()
+        assertTrue(WebSetup.consent(SearchService.SEARXNG_HOME, WebSettings()).contains("those sites see your IP address"))
         rule.inDialog("Turn on web search").performClick()
         val on = h.saved.last()
         assertTrue(on.on && on.ready && on.searxng == "192.168.1.20:8888" && on.ask == WebAsk.FIRST_TIME)
@@ -177,7 +177,7 @@ class WebSearchSettingsTest {
         rule.scrollToText("DuckDuckGo Instant Answers")
         rule.onNode(hasText("DuckDuckGo Instant Answers") and hasClickAction()).performClick()
         assertEquals(SearchService.DDG_INSTANT, h.saved.last().service)
-        rule.inDialog(WebSetup.consent(SearchService.DDG_INSTANT)).assertExists()
+        rule.inDialog(WebSetup.consent(SearchService.DDG_INSTANT, WebSettings())).assertExists()
         rule.inDialog("Turn on web search").performClick()
         assertTrue(h.saved.last().on && h.saved.last().ready)
         assertEquals(listOf(WebWindow.MODE_TEST), h.windows)
@@ -203,7 +203,7 @@ class WebSearchSettingsTest {
         rule.inDialog(PublicSearxng.host(PublicSearxng.LIST.first())).performClick()
         assertEquals(PublicSearxng.LIST.first(), h.saved.last().publicSearxng)
         assertEquals(SearchService.SEARXNG_PUBLIC, h.saved.last().service)
-        rule.inDialog(WebSetup.consent(SearchService.SEARXNG_PUBLIC)).assertExists()
+        rule.inDialog(WebSetup.consent(SearchService.SEARXNG_PUBLIC, WebSettings())).assertExists()
         rule.inDialog("Not now").performClick()
         assertTrue(!h.saved.last().on)
     }
@@ -228,5 +228,30 @@ class WebSearchSettingsTest {
     @Test fun dark() {
         open(searxng, tested, dark = true)
         rule.shot("web_search_dark")
+    }
+
+    /** 1.1: French menus (values-fr-rCA and core's WebStrings): the page, its choices and the consent screen in Québec French. */
+    @Config(qualifiers = "fr-rCA-w411dp-h891dp-xhdpi")
+    @Test fun inFrench() {
+        open(searxng, tested)
+        rule.onNodeWithText("Recherche web").assertExists()
+        rule.onRow("Utiliser la recherche web").assertIsEnabled()
+        rule.onRow("Demander avant de chercher").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Demander la première fois"))
+        rule.onNodeWithText("Ton propre SearXNG").assertExists()
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
+        rule.shot("web_search_fr")
+        rule.scrollToText("S’ouvre dans ton navigateur")
+        assertTrue(rule.onAllNodes(hasContentDescription("Confidentialité\u00A0: Élevé")).fetchSemanticsNodes().isNotEmpty())
+    }
+
+    @Config(qualifiers = "fr-rCA-w411dp-h891dp-xhdpi")
+    @Test fun consentInFrench() {
+        open()
+        rule.onRow("Configurer").performClick()
+        rule.inDialog("Réponses instantanées DuckDuckGo").performClick()
+        // Encyclopedia lookups are on by default: a who, what or where question goes to Wikipedia too, and the consent says so.
+        rule.inDialog("Quand tu le demandes, Robot envoie tes mots de recherche à DuckDuckGo. Une question qui commence par «\u00A0qui\u00A0», " +
+            "«\u00A0quel\u00A0», «\u00A0quelle\u00A0», «\u00A0qu’est-ce\u00A0» ou «\u00A0où\u00A0» va aussi à Wikipédia. Rien d’autre ne quitte le téléphone.").assertExists()
+        rule.inDialog("Pas maintenant").performClick()
     }
 }

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.assistant
 
+import app.heyrobot.core.i18n.LockStrings
+import app.heyrobot.lock.PhoneLockNow
 import android.content.Intent
 import android.graphics.Bitmap
 import android.os.Bundle
@@ -8,52 +10,43 @@ import android.os.PowerManager
 import android.os.SystemClock
 import android.service.voice.VoiceInteractionSession
 import app.heyrobot.assistant.car.CarModeController
-import app.heyrobot.assistant.conversation.ConversationService
 import app.heyrobot.assistant.conversation.ConversationSession
 import app.heyrobot.assistant.handsfree.PanelHandsFree
 import app.heyrobot.assistant.routines.PanelRoutines
+import app.heyrobot.assistant.skills.PanelSkills
 import app.heyrobot.assistant.routines.RoutineVoice
 import app.heyrobot.core.Abort
 import app.heyrobot.core.Action
+import app.heyrobot.core.AskWhy
 import app.heyrobot.core.ActionRecord
 import app.heyrobot.core.ActionStatus
-import app.heyrobot.core.AppHandOff
 import app.heyrobot.core.Approval
 import app.heyrobot.core.AskHelperTool
 import app.heyrobot.core.AskRoute
-import app.heyrobot.core.AskWhy
 import app.heyrobot.core.Attachment
 import app.heyrobot.core.BrainError
 import app.heyrobot.core.BrainFail
 import app.heyrobot.core.BrainMsg
 import app.heyrobot.core.BrainProtocol
 import app.heyrobot.core.Card
-import app.heyrobot.core.CardAnswer
 import app.heyrobot.core.ChatOnly
 import app.heyrobot.core.ChatOnlyTurn
 import app.heyrobot.core.ChatTurn
 import app.heyrobot.core.ClaudeAppAnswer
 import app.heyrobot.core.ClaudeAppLink
 import app.heyrobot.core.ClaudeWords
-import app.heyrobot.core.ClockEcho
-import app.heyrobot.core.ConsentRecord
 import app.heyrobot.core.ContextWindow
 import app.heyrobot.core.ControlRefusal
-import app.heyrobot.core.ConvEntry
-import app.heyrobot.core.ConvMode
-import app.heyrobot.core.ConvStop
 import app.heyrobot.core.ConversationCodec
-import app.heyrobot.core.ConversationCommand
-import app.heyrobot.core.ConversationLock
 import app.heyrobot.core.ConversationRouter
+import app.heyrobot.core.RoutineRouter
+import app.heyrobot.core.ClaudeSettings
+import app.heyrobot.core.HelperVoices
 import app.heyrobot.core.CostText
 import app.heyrobot.core.Cue
-import app.heyrobot.core.DoneCode
 import app.heyrobot.core.DoneReason
 import app.heyrobot.core.Escalation
-import app.heyrobot.core.EscalationDecision
 import app.heyrobot.core.EscalationGuard
-import app.heyrobot.core.EscalationPolicy
 import app.heyrobot.core.EscalationTrigger
 import app.heyrobot.core.Executed
 import app.heyrobot.core.FastPath
@@ -62,15 +55,9 @@ import app.heyrobot.core.Hedge
 import app.heyrobot.core.HelperBlock
 import app.heyrobot.core.HelperCommand
 import app.heyrobot.core.HelperContext
-import app.heyrobot.core.HelperFail
-import app.heyrobot.core.HelperFailure
 import app.heyrobot.core.HelperLeftOut
 import app.heyrobot.core.HelperName
-import app.heyrobot.core.HelperPayload
-import app.heyrobot.core.HelperPlan
 import app.heyrobot.core.HelperRouter
-import app.heyrobot.core.HelperVoices
-import app.heyrobot.core.LockScreen
 import app.heyrobot.core.ModelOutcome
 import app.heyrobot.core.Nearby
 import app.heyrobot.core.NearbyFail
@@ -78,7 +65,6 @@ import app.heyrobot.core.NoQuestion
 import app.heyrobot.core.NoReply
 import app.heyrobot.core.PanelContinuity
 import app.heyrobot.core.Personal
-import app.heyrobot.core.PreRouter
 import app.heyrobot.core.Prepared
 import app.heyrobot.core.Prompt
 import app.heyrobot.core.PromptRole
@@ -90,20 +76,14 @@ import app.heyrobot.core.ReplyVoice
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.RoutineCodec
 import app.heyrobot.core.RoutineStep
-import app.heyrobot.core.ScreenAccess
 import app.heyrobot.core.ScreenChip
-import app.heyrobot.core.ScreenData
 import app.heyrobot.core.ScreenText
 import app.heyrobot.core.SettingsPage
-import app.heyrobot.core.Shared
 import app.heyrobot.core.ShowSource
 import app.heyrobot.core.SpeakReplies
 import app.heyrobot.core.SpeechText
-import app.heyrobot.core.StallTimer
 import app.heyrobot.core.StoredConversation
 import app.heyrobot.core.TermuxCalls
-import app.heyrobot.core.TextCommand
-import app.heyrobot.core.TextRequest
 import app.heyrobot.core.Tip
 import app.heyrobot.core.Tips
 import app.heyrobot.core.TokenEstimate
@@ -127,67 +107,53 @@ import app.heyrobot.core.VoiceLog
 import app.heyrobot.core.VolumeKeyStop
 import app.heyrobot.core.WeatherAsk
 import app.heyrobot.core.WeatherFail
-import app.heyrobot.core.feedback.FeedbackCommand
 import app.heyrobot.core.feedback.FeedbackRouter
 import app.heyrobot.core.helpers.HelperConfig
-import app.heyrobot.core.helpers.HelperPrice
 import app.heyrobot.core.helpers.HelperSettings
 import app.heyrobot.core.helpers.HelperTrust
 import app.heyrobot.core.helpers.HelperWho
 import app.heyrobot.core.helpers.HelperWords
-import app.heyrobot.core.helpers.Pricing
-import app.heyrobot.core.memory.MemoryRoute
 import app.heyrobot.core.messages.ActionOrigin
-import app.heyrobot.core.messages.MessageQuarantine
 import app.heyrobot.core.toPromptTurns
-import app.heyrobot.core.web.AnswerCard
+import app.heyrobot.core.SpeechLang
+import app.heyrobot.core.i18n.AndroidPath
+import app.heyrobot.core.i18n.InfoStrings
+import app.heyrobot.core.i18n.Lang
+import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.i18n.PanelStrings
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.ReplyLang
+import app.heyrobot.core.i18n.UiLabel
+import app.heyrobot.core.i18n.UiStrings
+import app.heyrobot.core.messages.MessageVoices
+import app.heyrobot.sys.AppLanguage
+import app.heyrobot.voice.ConversationEngine
 import app.heyrobot.core.web.BrowserRouter
-import app.heyrobot.core.web.Citations
 import app.heyrobot.core.web.CurrentInfo
-import app.heyrobot.core.web.QueryContext
 import app.heyrobot.core.web.WebConsent
-import app.heyrobot.core.web.WebFail
 import app.heyrobot.core.web.WebOutcome
-import app.heyrobot.core.web.WebQueryContext
-import app.heyrobot.core.web.WebStatus
 import app.heyrobot.core.web.WikipediaWire
 import app.heyrobot.helpers.HelperSession
-import app.heyrobot.helpers.HelperTurn
-import app.heyrobot.helpers.HelperTurnListener
-import app.heyrobot.helpers.anthropic.AnthropicSession
-import app.heyrobot.helpers.web.WebSearch
-import app.heyrobot.helpers.web.WebStep
 import app.heyrobot.sys.AppPages
 import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.ConversationStore
-import app.heyrobot.sys.FeedbackFiles
 import app.heyrobot.sys.HandOffApps
 import app.heyrobot.sys.HandOffIntents
-import app.heyrobot.sys.HelperSpendStore
 import app.heyrobot.sys.NotesFiles
-import app.heyrobot.sys.PeopleFiles
-import app.heyrobot.sys.PhoneInfo
 import app.heyrobot.sys.Phones
 import app.heyrobot.sys.SettingsIntents
-import app.heyrobot.sys.Transcripts
 import app.heyrobot.sys.WebAnswers
 import app.heyrobot.sys.WebStore
-import app.heyrobot.ui.common.RobotFace
 import app.heyrobot.ui.common.keptPicture
 import app.heyrobot.voice.Cues
 import app.heyrobot.voice.SpeechToText
-import java.time.LocalDate
 import java.time.ZonedDateTime
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -198,234 +164,24 @@ import kotlinx.coroutines.withContext
 // conversation survives the panel hiding for the camera or a new session object. All state changes
 // happen on the main thread. Nothing here is logged except counts and outcomes.
 
-/**
- * TRANSCRIBING: the person stopped talking and the speech is being written down. CONFIRMING: a card waits for
- * "Do it" or "Cancel"; the turn is still under way (no new question until it ends; Stop declines the card).
- */
-enum class Phase { IDLE, LISTENING, TRANSCRIBING, THINKING, ANSWERING, CONFIRMING, SPEAKING }
-
-/**
- * The phase once a turn has ended ([speaking]: the voice is still reading the reply). Only a turn's own phases
- * give way: listening for the next question ("hey robot" during the answer) or anything else already shown stays.
- */
-fun Phase.afterTurn(speaking: Boolean): Phase = when (this) {
-    Phase.THINKING, Phase.ANSWERING, Phase.CONFIRMING -> if (speaking) Phase.SPEAKING else Phase.IDLE
-    else -> this
-}
-
-/**
- * "Stop" said, a tap on the conversation, a volume key or "Stop speaking" in this phase, with a turn under way
- * ([turnRunning]): true when it ends the turn as the Stop button does, not only the voice (0.4.6). While the model (or
- * a helper) is still writing the reply, stopping only the voice left the turn running: a long story went on being written
- * for up to a minute, the mic button did nothing and a new question got "Robot is still on the last question". A card
- * waiting for a yes or no stays: "stop" then only quiets Robot's "Say yes or no.".
- */
-fun Phase.stopEndsTurn(turnRunning: Boolean): Boolean = turnRunning && (this == Phase.THINKING || this == Phase.ANSWERING)
-
-/**
- * 1.0: which robot the panel's orb shows in this phase. Listening wins, a card's "yes" or "no" included
- * ([cardHearing]); then Robot's voice ([talking]: reading aloud, also while the reply is still being written or a card
- * is read out); then writing the reply; otherwise idle, a card waiting for a tap included.
- */
-fun Phase.face(cardHearing: Phase?, talking: Boolean): RobotFace =
-    if (cardHearing != null) RobotFace.LISTENING
-    else when (this) {
-        Phase.LISTENING, Phase.TRANSCRIBING -> RobotFace.LISTENING
-        Phase.SPEAKING -> RobotFace.SPEAKING
-        Phase.THINKING, Phase.ANSWERING -> if (talking) RobotFace.SPEAKING else RobotFace.TYPING
-        Phase.IDLE, Phase.CONFIRMING -> if (talking) RobotFace.SPEAKING else RobotFace.IDLE
-    }
-
-/**
- * [icon]: the real app's launcher icon on an open_app card. [body]: the full message, email or note, or what a read
- * tool found. [choices]: the people or numbers to tap while it waits. [confirm]: the button ("Open in Cheogram").
- * [undo]: a saved note's key for Undo. [content]: a read tool brought content into the conversation.
- */
-data class UiAction(
-    val id: String,
-    val tool: ToolName?,
-    val summary: String,
-    val status: ActionStatus,
-    val detail: String?,
-    val icon: Bitmap? = null,
-    val body: String? = null,
-    val choices: List<String> = emptyList(),
-    val confirm: String? = null,
-    val undo: String? = null,
-    val content: Boolean = false,
-    /** More people or numbers fitted than [choices] lists. */
-    val more: Int = 0,
-    /** The Cancel button's own words ("Start fresh"). */
-    val cancel: String? = null,
-    /** An app the card offers to open (Cheogram when no contact matched), by package. */
-    val handOff: String? = null,
-    /** The picture a share card would send. */
-    val picture: Bitmap? = null,
-    /** The tick box next to the choices that remembers the one tapped ("Always use this for “mom”"). */
-    val remember: String? = null,
-    /** While it waits, an "Allow contacts" button too. */
-    val allowContacts: Boolean = false,
-    /** Its button sends personal content to a helper: a spoken or typed yes doesn't, unless "Voice yes can send personal content". */
-    val personal: Boolean = false,
-    /** Only a tap answers it, for this reason (core Card.tapFor: a learned name, not sure who, online the first time); "no" still declines. */
-    val tapFor: AskWhy? = null,
-    /** 0.9: a Termux command or script's card (TermuxPanel); its line ([detail]) says why only a tap runs it. */
-    val termux: app.heyrobot.ui.common.TermuxCardView? = null,
-) {
-    /** What a spoken or typed answer needs to know about it (core CardAnswer). */
-    val waiting: CardAnswer.Waiting get() = CardAnswer.Waiting(choices.size, tapFor, personal, confirm, say = detail.takeIf { termux != null && tapFor != null })
-}
-
-/**
- * "Want me to check with Jarvis?" under a reply (docs/ask-claude.md "When Robot needs help"; any helper since 0.6.0, by
- * its [name]): a tap (or a yes, when nothing personal would go) asks the helper through its API ([api], listing what
- * goes: [sends], with the start of the screen's text in [preview]) or opens its [app] with [text]. Nothing happens
- * without it. [asWell]: it sits under Robot's own answer, given after the local model first handed the question over
- * ("Want Jarvis's take as well?").
- */
-data class Offer(val api: Boolean, val text: String, val sends: List<String>, val preview: String? = null, val asWell: Boolean = false,
-    val name: String = "Claude", val app: String = "Claude")
-
-data class UiTurn(
-    val id: String,
-    val role: TurnRole,
-    val text: String,
-    val attachment: Attachment = Attachment.NONE,
-    val thumb: Bitmap? = null,
-    val actions: List<UiAction> = emptyList(),
-    val streaming: Boolean = false,
-    val stopped: Boolean = false,
-    val error: Boolean = false,
-    /** A helper wrote it: its name as a label ([by]) and the tertiary accent. [readBack]: read off the Claude app's screen. */
-    val fromHelper: Boolean = false,
-    val readBack: Boolean = false,
-    /** "Claude searched the web" (in the helper's name) and these domains. */
-    val sources: List<String> = emptyList(),
-    /** "≈ 1¢" (only with "Show cost" on), or "cost unknown". */
-    val cost: String? = null,
-    val offer: Offer? = null,
-    /** 0.6.0: which helper wrote it (its id and its name at the time), and whether it is a server on your network. */
-    val helper: String? = null,
-    val by: String? = null,
-    val home: Boolean = false,
-    /** 0.7: the reply card under it (PanelMessages). */
-    val reply: app.heyrobot.ui.common.ReplyCardView? = null,
-    /** 0.9: a web answer's card (WebAnswerCard): shown, never saved (History keeps its saved line). */
-    val web: AnswerCard? = null,
-    /** 1.0: said while the phone was locked (core ChatTurn.locked): under "Said while the phone was locked". */
-    val locked: Boolean = false,
-)
-
-data class Draft(val kind: Attachment, val thumb: Bitmap?)
-
-/**
- * OPEN_ASSIST_SETTINGS: the Digital assistant app page, where "Use text from screen" and "Use screenshot" are.
- * OPEN_MODEL (0.4.3): Robot's Settings › Model, to choose a model that can do actions.
- */
-enum class NoticeAction { NONE, OPEN_APP, OPEN_ASSIST_SETTINGS, OPEN_MODEL }
-
-data class Notice(val text: String, val action: NoticeAction = NoticeAction.NONE)
-
-data class PanelState(
-    val convId: String,
-    val turns: List<UiTurn> = emptyList(),
-    val phase: Phase = Phase.IDLE,
-    val partial: String = "",
-    val notice: Notice? = null,
-    val draft: Draft? = null,
-    /** "Ask about this screen" (core ScreenAccess): hidden, or what a tap does. */
-    val screenChip: ScreenChip = ScreenChip.HIDDEN,
-    val locked: Boolean = false,
-    val speak: Boolean = false,
-    /** Saved to the history (a conversation that used the screen is saved only when the person keeps it). */
-    val keep: Boolean = true,
-    val sttAvailable: Boolean = false,
-    /** Why voice input is unavailable (the mic button's tooltip, e.g. "Download voice models"); null when it works. */
-    val micHint: String? = null,
-    /** Bumped to ask the panel to focus the text field and show the keyboard. */
-    val focusRequest: Int = 0,
-    /** Bumped on every show: the panel's own state (a drag offset, the attach row) starts fresh each time. */
-    val showId: Int = 0,
-    val brain: BrainKeeper.State = BrainKeeper.State(),
-    /** A helper's conversation ("go get …"): the following turns go to it ("Talking with Jarvis · Back to Robot"). Its id and name. */
-    val helperMode: String? = null,
-    val helperName: String? = null,
-    /** That helper is a server on your network (the chip says where questions go). */
-    val helperHome: Boolean = false,
-    /** "ChatGPT is thinking…", "Checking with ChatGPT…" or "Jarvis is loading its model…" until the helper's first words. */
-    val helperStatus: String? = null,
-    /** The corner swipe came from the Claude app: "Read Claude's answer". */
-    val claudeScreen: Boolean = false,
-    /** What works on the lock screen (Settings › Safety & privacy), for the panel's words. */
-    val lockedTools: Set<ToolName> = LockScreen.DEFAULT,
-    /** Listening for "yes" or "no" to the waiting card (LISTENING, then TRANSCRIBING); null: not. The phase stays CONFIRMING. */
-    val cardHearing: Phase? = null,
-    /** The empty panel's three tips (core Tips), a different three each time it opens. */
-    val tips: List<Tip> = emptyList(),
-    /** 1.0: Robot's voice is reading aloud right now (VoiceHub's TTS), whatever the phase: the header's robot speaks. */
-    val talking: Boolean = false,
-) {
-    /** The robot in the header. */
-    val face: RobotFace get() = phase.face(cardHearing, talking)
-
-    /** A helper's conversation is on. */
-    val inHelperMode: Boolean get() = helperMode != null
-
-    /** A turn is under way, a confirmation card included: no new question, no mic, no camera until it ends. */
-    val busy: Boolean get() = phase == Phase.THINKING || phase == Phase.ANSWERING || phase == Phase.CONFIRMING
-    /** The screen's text or a screenshot came with this panel. */
-    val screenAvailable: Boolean get() = screenChip == ScreenChip.READY
-}
-
-/** What the session offers the controller. */
-interface PanelHost {
-    fun hidePanel()
-    /** Starts another app's activity from the panel; false if it could not. */
-    fun launch(intent: Intent): Boolean
-    /** Starts Robot's capture activity as an assistant activity; false if it could not. */
-    fun startCapture(intent: Intent): Boolean
-    /**
-     * 1.0 (secrets-memory-private-items-not-secure): the panel shows something private from memory: its window is kept out
-     * of screenshots, recordings and casting ([on]) until the conversation changes.
-     */
-    fun secure(on: Boolean) {}
-}
-
 object PanelController {
     /** A panel reopened within this time continues the same conversation. */
     private const val CONTINUE_MS = 5 * 60_000L
-    /** A helper's conversation ends after this long without a turn. */
-    private const val HELPER_IDLE_MS = 10 * 60_000L
-    /** A helper that was removed from Settings while Robot still knew it. */
-    private const val GONE = "That helper isn't in Robot's settings any more."
-    /** "Ask the helper …" with no helper to ask (1.0.0). */
-    private const val NO_HELPER = "No helper is set up yet. Add one in Robot's settings, under Helpers."
-    private const val NONE_ON = "Every helper is off. Turn one on in Robot's settings, under Helpers."
-    /**
-     * Failures that mean the helper can't be reached right now (your server is off, no connection, it timed out): a
-     * question Robot sent by itself, before its own model ran, comes back to Robot instead.
-     */
-    private val FALLS_BACK = setOf(HelperFailure.NO_INTERNET, HelperFailure.UNREACHABLE, HelperFailure.TIMEOUT, HelperFailure.SERVER,
-        HelperFailure.OVERLOADED, HelperFailure.NO_ADDRESS, HelperFailure.NOT_LOCAL, HelperFailure.CERTIFICATE)
-
     private val scope = MainScope()
     /** The one turn that may run at a time, and its confirmation cards. */
     private val slot = TurnSlot(scope)
     private val _state = MutableStateFlow(PanelState(newId()))
     val state: StateFlow<PanelState> = _state
+    /** The turn surface: every write to a reply's text, cards and owner goes through it (PanelReplies). */
+    private val replies = PanelReplies(_state)
     @Volatile var shown = false; private set
 
     private var host: PanelHost? = null
     private val chat = mutableListOf<ChatTurn>()
-    private var screenText: String? = null
-    /** The text of every window the corner swipe described, in order (split screen gives several). */
-    private val assistPieces = ArrayList<String>()
-    private var screenshot: Bitmap? = null
     private var draftJpeg: ByteArray? = null
     private var lastActivity = 0L
     private var startedLocked = false
     private var keptByUser = false
-    private var ignoreAssist = false
     private var hidingFor: String? = null
     /** 0.8: what a headset's button or car mode asked of this show (PanelHandsFree), or null. */
     private var handsFree: PanelHandsFree.Show? = null
@@ -433,6 +189,15 @@ object PanelController {
     private var client: BrainClient? = null
     /** What of the streaming reply is read aloud (muted by "stop", silent once cancelled). */
     private val voice = ReplyVoice()
+    /** The model stream (PanelStream): the request under way, a refused control text, the languages and the voice stay here. */
+    private val stream = PanelStream(scope, replies, object : PanelStream.Port {
+        override var reqId: Int
+            get() = this@PanelController.reqId
+            set(v) { this@PanelController.reqId = v }
+        override val langs: Langs get() = turnLangs
+        override fun refused(f: ControlRefusal.Found) { controlRefused = f }
+        override fun speak(replyId: String, text: String) = voice.feed(replyId, text, _state.value.speak).forEach(::speakSentence)
+    })
     private val icons = HashMap<String, Bitmap?>()
     private var initialized = false
     /** The tool groups this conversation has used: only ever added to (ToolRouter), reset with the conversation. */
@@ -446,76 +211,235 @@ object PanelController {
     private var askingTextFor: String? = null
     /** That question was asked aloud: listen for the answer once Robot has said it. */
     private var listenAfterSpeech = false
-    /**
-     * "Answer cards by voice" (0.4.0): listen for the waiting card's yes or no once Robot has stopped talking. [cardListen]
-     * tells the callbacks of a listening that was stopped from the current one; [cardRetry] asks again once.
-     */
-    private var cardListenAfterSpeech = false
-    private var cardListen = 0
-    private var cardRetry = 0
-    /** askToShare said its own words about the card: no "Say yes or no." on top. */
-    private var cardPromptSaid = false
     /** Which three tips the next panel shows: counts panel opens, from a random start so a new process doesn't repeat itself. */
     private var tipRound = kotlin.random.Random.nextInt(0, 1_000)
 
-    // Helpers (docs/ask-claude.md; any helper since 0.6.0). A helper's conversation (API route), and when it last had a turn.
-    private var helperSession: HelperSession? = null
-    private var helperLast = 0L
-    private var helperIdle: Job? = null
+    /** A helper's conversation ("go get Jarvis", PanelHelperMode): its session, its join point and its 10 minutes. */
+    private val helperMode = PanelHelperMode(scope, _state) { slot.running }
     /** The screen's text when the corner swipe came from the Claude app (for "Read Claude's answer"); never stored. */
     private var claudePieces: List<String>? = null
     /** The question Robot last handed to the Claude app, to find Claude's answer after it. */
     private var lastToApp: String? = null
-    /** The offer waiting under a reply, by reply id, with exactly what a tap would send (at most one at a time). */
-    private val offers = HashMap<String, PendingOffer>()
     /**
      * The last photo (from the camera or the picker) and its thumbnail, kept for this panel session and conversation
      * only ("ask Jarvis about this photo"). Never a screenshot.
      */
     private var lastImage: ByteArray? = null
     private var lastThumb: Bitmap? = null
-    /** The app on screen when the corner swipe came from a single app (its screenshot's label), by package. */
-    private var screenPkg: String? = null
     /**
-     * For "Ask about this screen" (core ScreenAccess): how this panel was opened, its show flags, and what Android sent
-     * of the screen so far (null: nothing yet, false: it called with nothing). Cleared when the panel hides, not when
-     * it shows: on a reused session Android sends its "nothing" before the show. Logged once per panel (SCREEN_SHARED).
+     * "Ask about this screen" (PanelScreenShare): what Android sent of the screen to this panel, how the panel was
+     * opened, and the chip; send, PanelHelperTurn and PanelWebSearch's context read the screen's text, screenshot and app through it.
      */
-    private var shownFrom = ShowSource.APP
-    private var showFlags = 0
-    private var textCame: Boolean? = null
-    private var shotCame: Boolean? = null
-    /** "Use text from screen" and "Use screenshot", read at each show (null: Android wouldn't say). */
-    private var screenSettings: Pair<Boolean?, Boolean?> = null to null
-    private var screenWait: Job? = null
-    private var screenLogged = true
-    /** The notice a tap on the chip put up: taken down if the screen comes after all. */
-    private var screenNotice: Notice? = null
-    /** The day the "budget used up" sentence was said (once a day). */
-    private var budgetSaid: String? = null
+    private val screenShare = PanelScreenShare(scope, _state, { shown }, { shownAtE }, ::screenLangs) { Assistant.screenSharing(VoiceHub.app) }
     /**
-     * You said "not Jarvis" in this conversation (HelperRouter.declines): no ask_claude for the local model, no
-     * pre-router, no automatic escalation and no offers, until a new conversation or an explicit "ask Jarvis …" or "go
-     * get Jarvis". Shown nowhere and never saved.
+     * "Answer cards by voice" (0.4.0, PanelCardVoice): once a card waits, listen for its yes or no once Robot has stopped
+     * talking; the microphone, the voice, the settings and the card buttons stay here.
+     */
+    private val cardVoice = PanelCardVoice(_state, replies, screenShare, object : PanelCardVoice.Port {
+        override val main get() = VoiceHub.main
+        override val stt get() = VoiceHub.stt
+        override val settings get() = VoiceHub.settings
+        override val speaking get() = VoiceHub.tts.isSpeaking
+        override val shown get() = this@PanelController.shown
+        override val spokenTurn get() = this@PanelController.spokenTurn
+        override val turnLangs get() = this@PanelController.turnLangs
+        override fun screenLangs() = this@PanelController.screenLangs()
+        override val routineTapOnly get() = this@PanelController.routineTapOnly
+        override fun wakePaused(paused: Boolean) { VoiceHub.listener?.wakePaused = paused }
+        override fun notify(text: String) = this@PanelController.notify(text)
+        override fun speakRobot(text: String) = this@PanelController.speakRobot(text)
+        override fun said(p: Phrase) = p.said
+        override fun speak(text: String) = VoiceHub.tts.speak(text)
+        override fun cue(c: Cue) = this@PanelController.cue(c)
+        override fun confirm(actionId: String, yes: Boolean) = this@PanelController.confirm(actionId, yes)
+        override fun choose(actionId: String, index: Int) = this@PanelController.choose(actionId, index)
+    })
+    /**
+     * Web search (0.9, PanelWebSearch): "search the web for …", web_search's run, its steps, QueryCheck's context with what
+     * read tools returned, and the answer; the turn runner, the tools, the reply's end and the voice's guard stay here.
+     */
+    private val webSearch: PanelWebSearch = PanelWebSearch(_state, replies, screenShare, chat, voice, object : PanelWebSearch.Port {
+        override val ctx get() = VoiceHub.app
+        override val main get() = VoiceHub.main
+        override val settings get() = VoiceHub.settings
+        override val turnSaid get() = this@PanelController.turnSaid
+        override val turnLangs get() = this@PanelController.turnLangs
+        override fun search(abort: Abort, action: Action.WebSearch): Executed = executor(abort).run(action)
+        override suspend fun runDirect(replyId: String, call: RawToolCall, untrusted: Boolean): TurnResult = webDirectTurn(replyId, call, untrusted)
+        override fun said(p: Phrase) = p.said
+        override fun sayInto(replyId: String, text: Phrase) = this@PanelController.sayInto(replyId, text)
+        override fun finishReply(replyId: String, reason: DoneReason) = this@PanelController.finishReply(replyId, reason)
+        override fun failReply(replyId: String, message: String) = this@PanelController.failReply(replyId, message)
+        override suspend fun leaveForApp() = this@PanelController.leaveForApp()
+        override fun speakSentence(s: String) = this@PanelController.speakSentence(s)
+    })
+    /** 1.4, read_file's answer (PanelFileAnswer): a tool-free one-shot over one file's text, after the model's turn ended. */
+    private val fileAnswer = PanelFileAnswer(_state, replies, voice, object : PanelFileAnswer.Port {
+        override val ctx get() = VoiceHub.app
+        override val turnLangs get() = this@PanelController.turnLangs
+        override fun sayInto(replyId: String, text: Phrase) = this@PanelController.sayInto(replyId, text)
+        override fun finishReply(replyId: String, reason: DoneReason) = this@PanelController.finishReply(replyId, reason)
+        override fun failReply(replyId: String, message: String) = this@PanelController.failReply(replyId, message)
+        override fun speakSentence(s: String) = this@PanelController.speakSentence(s)
+        override fun noteRead(text: String) = webSearch.noteRead(Executed(ActionStatus.DONE, "", results = listOf(mapOf("answer" to text))))
+        override fun privateAnswer(replyId: String) {
+            // As memory's private items: shown only, the conversation closed after it, never a screenshot.
+            PanelFileAnswer.markPrivate(replyId)
+            closeConvAfterTurn = true
+            host?.secure(true)
+            if (_state.value.speak) notify(app.heyrobot.core.i18n.FilesStrings.notReadAloud())
+        }
+    })
+    /**
+     * The direct commands (conversation mode, feedback, free memory, memory, Termux scripts, texting; PanelConversationMode,
+     * PanelFeedback, PanelFreeMemory, PanelMemoryCommand, PanelTermuxScript, PanelTexting), a helper's turn
+     * (PanelHelperTurn), the offers (PanelOffers) and escalation (PanelEscalation): what they need of PanelController, in one port. The reply's end, the host, the confirmations, the
+     * voice, the microphone, the name a text waits on, the turn runners and the turns' view stay here (DirectCall,
+     * PanelActions and PanelView are private).
+     */
+    private val commands = object : PanelConversationMode.Port, PanelFeedback.Port, PanelFreeMemory.Port, PanelMemoryCommand.Port, PanelTermuxScript.Port,
+        PanelTexting.Port, PanelHelperTurn.Port, PanelOffers.Port, PanelEscalation.Port {
+        override val ctx get() = VoiceHub.app
+        override val settings get() = VoiceHub.settings
+        override val host get() = this@PanelController.host
+        override fun locked() = Assistant.locked(VoiceHub.app)
+        override val brain get() = BrainKeeper.state.value
+        override fun unlockFirst(p: Phrase) = this@PanelController.unlockFirst(p)
+        override val confirmations get() = slot.confirmations
+        override fun newId() = this@PanelController.newId()
+        override fun localReply(replyId: String, text: Phrase, spoken: Phrase) = this@PanelController.localReply(replyId, text, spoken)
+        override fun localReply(replyId: String, text: String, spoken: String) = this@PanelController.localReply(replyId, text, spoken)
+        override fun sayInto(replyId: String, text: Phrase) = this@PanelController.sayInto(replyId, text)
+        override fun sayInto(replyId: String, text: String) = this@PanelController.sayInto(replyId, text)
+        override suspend fun freeMemoryTurn(replyId: String) = this@PanelController.freeMemoryTurn(replyId)
+        override suspend fun memoryCardTurn(replyId: String, call: RawToolCall) = this@PanelController.memoryCardTurn(replyId, call)
+        override suspend fun textTurn(replyId: String, call: RawToolCall, untrusted: Boolean) = this@PanelController.textTurn(replyId, call, untrusted)
+        override val shown get() = this@PanelController.shown
+        override var askingTextFor: String?
+            get() = this@PanelController.askingTextFor
+            set(v) { this@PanelController.askingTextFor = v }
+        override var listenAfterSpeech: Boolean
+            get() = this@PanelController.listenAfterSpeech
+            set(v) { this@PanelController.listenAfterSpeech = v }
+        override fun said(p: Phrase) = p.said
+        override fun speakSentence(s: String) = this@PanelController.speakSentence(s)
+        override fun startListening() = this@PanelController.startListening()
+        override suspend fun termuxTurn(replyId: String, model: TurnModel, untrusted: Boolean) = this@PanelController.termuxTurn(replyId, model, untrusted)
+        override val turnLangs get() = this@PanelController.turnLangs
+        override fun finishReply(replyId: String, reason: DoneReason) = this@PanelController.finishReply(replyId, reason)
+        override fun failReply(replyId: String, message: String) = this@PanelController.failReply(replyId, message)
+        override suspend fun leaveForApp() = this@PanelController.leaveForApp()
+        override val buttonLangs get() = this@PanelController.buttonLangs
+        override fun screenLangs() = this@PanelController.screenLangs()
+        override fun phoneLockOn() = PhoneLockNow.on(VoiceHub.app)
+        override fun someoneElse() = PhoneLockNow.someoneElse(VoiceHub.app)
+        override fun networkAllowed() = HelperLink.networkAllowed(VoiceHub.app)
+        override fun keySaved(h: HelperConfig?) = this@PanelController.keySaved(h)
+        override fun session(s: RobotSettings, h: HelperConfig, conversation: Boolean) = HelperLink.session(VoiceHub.app, s, h, conversation)
+        override val userRegion get() = this@PanelController.userRegion
+        override val lastImage get() = this@PanelController.lastImage
+        override val lastThumb get() = this@PanelController.lastThumb
+        override fun handedToApp(text: String?) { lastToApp = text }
+        override fun notify(p: Phrase) = this@PanelController.notify(p)
+        override fun speakRobot(text: String) = this@PanelController.speakRobot(text)
+        override fun speakSentence(s: String, byHelper: Boolean, voice: String?) = this@PanelController.speakSentence(s, byHelper, voice)
+        override fun stopVoice(why: TtsStop) = VoiceHub.stopVoice(why)
+        override fun finishReply(replyId: String, reason: DoneReason, costMicros: Long) = this@PanelController.finishReply(replyId, reason, costMicros)
+        override fun failReply(replyId: String, message: String, noReply: Boolean) = this@PanelController.failReply(replyId, message, noReply = noReply)
+        override fun closeLiveConversation() = this@PanelController.closeLiveConversation()
+        override fun view(replyId: String): TurnView = PanelView(replyId)
+        override fun view(replyId: String, helper: String): TurnView = PanelView(replyId, helper)
+        override suspend fun helperRun(replyId: String, rounds: TurnModel, h: HelperConfig, s: RobotSettings, asked: Set<ToolName>, session: HelperSession) =
+            this@PanelController.helperRun(replyId, rounds, h, s, asked, session)
+        override suspend fun handOffRun(replyId: String, model: TurnModel) = this@PanelController.handOffRun(replyId, model)
+        override val running get() = slot.running
+        override fun notify(text: String) = this@PanelController.notify(text)
+        override fun execute(action: Action): Executed = executor().run(action)
+        override fun helperBubble(h: HelperConfig): String = helperTurn.bubble(h)
+        override fun startTurn(replyId: String, block: suspend () -> Unit) { this@PanelController.startTurn(replyId, block) }
+        override suspend fun escalate(replyId: String?, question: String, blocks: List<HelperBlock>, voiceAsked: Boolean, reuseBubble: Boolean, h: HelperConfig,
+            fallBack: Boolean): Boolean = helperTurn.escalate(replyId, question, blocks, voiceAsked, reuseBubble, h, fallBack)
+        override suspend fun budgetReached(s: RobotSettings, h: HelperConfig?) = HelperLink.budgetReached(VoiceHub.app, s, h)
+        override val helperDeclined get() = this@PanelController.helperDeclined
+        override fun personalNow(replyId: String?) = this@PanelController.personalNow(replyId)
+        override fun finishOrDrop(replyId: String) = this@PanelController.finishOrDrop(replyId)
+        override suspend fun webAnswer(replyId: String, question: String, history: List<ChatTurn>, found: WebOutcome) = webSearch.answer(replyId, question, history, found)
+        override fun offer(replyId: String, o: PanelOffers.Pending) = offers.show(replyId, o)
+    }
+    /** "Text mom I'm late", "text mom" (PanelTexting): send_text from your own words, without the model. */
+    private val texting = PanelTexting(_state, replies, commands)
+    /** "Remember that …", "forget that" (0.7, PanelMemoryCommand): memory's commands, Robot's own even in a helper's conversation. */
+    private val memoryCommand = PanelMemoryCommand(_state, replies, cardVoice, chat, commands)
+    /** "Run backup" (0.9, PanelTermuxScript): your own Termux script named in your own words, without the model. */
+    private val termuxScript = PanelTermuxScript(replies, stream, commands)
+    /** Conversation mode by voice (0.5.0, PanelConversationMode): start, switch, stop, pause, resume or summarize. */
+    private val conversationMode = PanelConversationMode(commands)
+    /** "Report a bug", "I have an idea" (0.7, PanelFeedback): Send feedback opens in the app; the panel sends nothing. */
+    private val feedback = PanelFeedback(commands)
+    /** "Free up memory" (0.7.0, PanelFreeMemory): Robot's own answer and free_memory's card; it never stops an app itself. */
+    private val freeMemory = PanelFreeMemory(commands)
+    /**
+     * A helper's turn (PanelHelperTurn): "ask Jarvis …", "go get Jarvis", Robot checking with a helper, the cards that ask
+     * before anything personal goes, and the hand-off to a helper's app; its TurnRunners stay here.
+     */
+    private val helperTurn: PanelHelperTurn = PanelHelperTurn(scope, _state, replies, voice, helperMode, screenShare, cardVoice, commands)
+    /** The offer under a reply (PanelOffers), with exactly what its tap or a yes sends, fixed when it was made. */
+    private val offers: PanelOffers = PanelOffers(scope, _state, commands)
+    /** 1.1: other apps' sound pauses while you ask; the panel says when its turn is over (voice TurnFocus). */
+    internal val mediaPause = PanelMediaPause(_state, PanelMediaPause.port { shown })
+    /** When Robot brings a helper in by itself (PanelEscalation): before its own model, after a hand-over or a hedge. */
+    private val escalation = PanelEscalation(_state, chat, commands)
+    /**
+     * 1.1: the languages of the turn under way (core i18n): what Robot says in its reply language
+     * ([Langs.say], decided once per question by ReplyLang), Robot's screens named in it and the cards' buttons in the menus'
+     * ([Langs.ui]), Android's screens in the phone's. The model is told English whatever they are.
+     */
+    @Volatile private var turnLangs: Langs = Langs.EN
+    /** The last turn's reply language, which a short line after it keeps ("OK", "5 minutes", a name: ReplyLang.KEEP_MS). */
+    private var lastReply: ReplyLang.Last? = null
+    /**
+     * You said "not Claude" in this conversation (HelperRouter.declines): no ask_claude for the local model, no
+     * pre-router, no automatic escalation and no offers, until a new conversation or an explicit "ask Claude …" or "go
+     * get Claude". Shown nowhere and never saved.
      */
     private var helperDeclined = false
-
-    /**
-     * What an offer's tap does, fixed when it was made: the API request's [payload], or the user's [question] for the
-     * helper's app. It never picks up a screen or a picture that arrived later.
-     */
-    private class PendingOffer(val api: Boolean, val question: String, val payload: HelperPayload?, val voiceAsked: Boolean, val asWell: Boolean = false,
-        val helper: String = HelperConfig.CLAUDE_ID)
 
     /** Your region for a helper's first message: the one set in Settings, else the phone's own (SIM, network, language). */
     private val userRegion get() = VoiceHub.settings.regionFor(Phones.deviceRegion(VoiceHub.app))
 
     private fun newId() = UUID.randomUUID().toString()
 
+    /** Robot's screens' languages now (the menus', the phone's): a notice, a button, a status line. */
+    private fun screenLangs(): Langs = AppLanguage.langs(VoiceHub.app)
+
+    /** A button's words: the menus' language, whatever the reply language. */
+    private val buttonLangs: Langs get() = turnLangs.let { Langs(it.ui, it.ui, it.system, pseudo = it.pseudo) }
+
+    /**
+     * 1.1: the reply language of a question ([q]; [router]: a router matched it in its French or English words), once per turn
+     * (core ReplyLang): the setting, else what LangId hears when it is sure, else the last turn's for a short line, else the
+     * menus'. Nothing heard (a routine's Run now): the setting, else the menus'.
+     */
+    private fun decideLangs(q: String?, router: Lang? = null): Langs {
+        val base = screenLangs()
+        val now = System.currentTimeMillis()
+        val setting = VoiceHub.settings.replyLang
+        val say = if (q == null) ReplyLang.unheard(base.ui, setting) else {
+            val guess = q.takeIf { it.isNotBlank() }?.let { try { ConversationEngine.langId(VoiceHub.app).detect(it) } catch (_: Throwable) { null } }
+            ReplyLang.decide(guess, router, lastReply, now, base.ui, setting)
+        }
+        if (q != null) lastReply = ReplyLang.Last(say, now)
+        return base.copy(say = say)
+    }
+
+    /** Before any question in this panel: the last turn's language for a while, else the menus' (a missed question's "Sorry"). */
+    private fun idleLangs(): Langs = screenLangs().let { b ->
+        b.copy(say = ReplyLang.decide(null, false, lastReply, System.currentTimeMillis(), b.ui, VoiceHub.settings.replyLang))
+    }
+
     /** Every helper's name, as the router hears it (on or off: an off one is recognised so Robot can say so). */
     private fun names(): List<HelperName> = HelperName.all(VoiceHub.settings)
 
-    private fun who(h: HelperConfig) = HelperWho.of(h)
     private fun words(h: HelperConfig) = HelperWords(HelperWho.of(h))
 
     /** Whether helper [h]'s key is saved (in memory after the first look). */
@@ -531,6 +455,7 @@ object PanelController {
     private fun init() {
         if (initialized) return
         initialized = true
+        mediaPause.start(scope)
         scope.launch {
             // A new fallback (Robot is using Fast instead of the model you chose) shows once as a notice, with Open Robot.
             var seenFallback = 0
@@ -545,11 +470,12 @@ object PanelController {
     /** From VoiceHub (which owns the voice's listener since 0.2.3): Robot's voice started or stopped. */
     fun onSpeakingChanged(speaking: Boolean) {
         // A sentence ends between two: listen only once Robot has really stopped talking.
-        if (!speaking && cardListenAfterSpeech) VoiceHub.main.postDelayed({ if (cardListenAfterSpeech && !VoiceHub.tts.isSpeaking) listenForCard() }, 350)
+        if (!speaking) cardVoice.speakingStopped()
         if (!speaking && listenAfterSpeech) {
             listenAfterSpeech = false
             // "What should the text to Mom say?" was said aloud: the answer comes by voice too.
-            if (shown && askingTextFor != null) VoiceHub.main.post { if (shown && askingTextFor != null && _state.value.phase == Phase.IDLE) startListening() }
+            if (shown && (askingTextFor != null || PanelSkills.waitsForWords))
+                VoiceHub.main.post { if (shown && (askingTextFor != null || PanelSkills.waitsForWords) && _state.value.phase == Phase.IDLE) startListening() }
         }
         // 0.7: after a conversation read aloud ("Reply, next, or stop?") or a reply card, one listen; and what Robot read
         // of a message counts as heard back for 15 s from now.
@@ -589,7 +515,10 @@ object PanelController {
         val s = VoiceHub.settings
         // The lock-screen rule first, with no exception (core PanelContinuity): a locked show never shows an earlier
         // conversation, not even the camera's return.
-        val stale = System.currentTimeMillis() - lastActivity > CONTINUE_MS
+        // FX1 (finding 3): with travel mode hiding drawers, a conversation holding Robot Files' answers is never continued.
+        val stale = System.currentTimeMillis() - lastActivity > CONTINUE_MS ||
+            PanelFiles.travelHides(VoiceHub.app, chat)
+        travelSeen = PanelFiles.hidingNow(VoiceHub.app)
         // 1.0: and the other way round, the lock screen's turns never steer your unlocked conversation, except quoted when
         // its last reply asked for this unlock.
         val open = PanelContinuity.open(locked, startedLocked, stale, chat.isEmpty(), convArg != null && ConversationStore.validId(convArg), back,
@@ -604,13 +533,9 @@ object PanelController {
         // Continued unlocked: never lock-screen safe again (physical-locked-conversation-carryover).
         startedLocked = PanelContinuity.stillLocked(startedLocked, locked)
         val returning = back && (open == PanelContinuity.Open.CONTINUE || open == PanelContinuity.Open.CONTINUE_QUOTED)
-        ignoreAssist = source == RobotVoiceService.SRC_APP || returning
+        screenShare.show(ignore = source == RobotVoiceService.SRC_APP || returning, returning = returning)
         if (!returning) {
-            screenText = null
-            screenshot = null
             claudePieces = null
-            assistPieces.clear()
-            screenPkg = null
             val speak = when (s.speakReplies) {
                 SpeakReplies.ALWAYS -> true
                 SpeakReplies.NEVER -> false
@@ -630,6 +555,9 @@ object PanelController {
         }
         BrainKeeper.prewarm(VoiceHub.app)
         HelperLink.warm(VoiceHub.app, s)
+        // 1.1: the reply language before the first question; the language table loads off the main thread (once per process).
+        if (!slot.running) turnLangs = idleLangs()
+        scope.launch(Dispatchers.IO) { try { ConversationEngine.langId(VoiceHub.app) } catch (t: Throwable) { RLog.w("langid_load", t) } }
         PanelMessages.onShow()
         // The voice models load on first use (VoiceHub's memory policy): speech recognition when the mic or the wake
         // word starts a question, the voice when a question is sent with spoken replies on. Nothing loads just for a show.
@@ -637,11 +565,13 @@ object PanelController {
         shownAtE = SystemClock.elapsedRealtime()
         val from = showSource(source, showFlags)
         VoiceLog.add(VoiceEvent.SESSION_SHOWN, from)
-        startScreen(from, showFlags)
+        screenShare.start(from, showFlags)
         // The question first: once it is attached, the capture mode can't switch under it ("Always echo cancellation").
         if (source == RobotVoiceService.SRC_WAKE && handsFree == null) startListening()
         // 0.8: opened by Settings' Run now or a Ready card's tap.
         PanelRoutines.onShow(args)?.let { (label, work) -> routineTurn(label, work) }
+        // 1.1: a skill's "Continue" notification tapped.
+        PanelSkills.onShow(args)?.let { (label, work) -> routineTurn(label) { id, _ -> work(id, skillHost) } }
         VoiceHub.updateCapture()
     }
 
@@ -668,7 +598,7 @@ object PanelController {
         if (st0.phase == Phase.LISTENING) VoiceLog.add(VoiceEvent.NO_QUESTION, NoQuestion.CLOSED)
         if (st0.busy && spokenTurn && hidingFor == null) VoiceLog.add(VoiceEvent.NO_REPLY, NoReply.STOPPED)
         VoiceLog.add(VoiceEvent.SESSION_HIDDEN, ((SystemClock.elapsedRealtime() - shownAtE) / 1000).toInt())
-        stopCardListening()
+        cardVoice.stop()
         VoiceHub.stt.cancel()
         VoiceHub.listener?.wakePaused = false
         listenAfterSpeech = false
@@ -679,23 +609,18 @@ object PanelController {
         // A turn never goes on behind a hidden panel: closing stops it, and a card nobody can tap any more is declined.
         if (hidingFor == null || slot.confirmations.waiting) stopGenerating(TtsStop.CLOSED)
         if (hidingFor == null) VoiceHub.stopVoice(TtsStop.CLOSED)
+        mediaPause.hidden()
         VoiceHub.updateCapture()
         // A helper's conversation ends when the panel closes (not when it hides for the camera or an app a helper opened).
         if (hidingFor == null) endHelperMode()
         // Screen content lives only while the panel is open, and so do offers.
-        screenWait?.cancel()
-        logScreen()
-        textCame = null
-        shotCame = null
-        screenText = null
-        screenshot = null
+        screenShare.hide()
         claudePieces = null
-        assistPieces.clear()
-        screenPkg = null
-        dropOffers()
+        offers.drop()
         if (!forCapture) {
             draftJpeg = null
             lastImage = null
+            PanelFiles.forget(VoiceHub.app)
             _state.update { it.copy(draft = null) }
         }
         _state.update { it.copy(phase = if (it.busy) it.phase else Phase.IDLE, partial = "", screenChip = ScreenChip.HIDDEN, claudeScreen = false) }
@@ -709,66 +634,23 @@ object PanelController {
      * your own swipe, never a background read of the app.
      */
     fun onAssistText(pieces: List<String>, pkg: String? = null, index: Int = 0, count: Int = 1) {
-        if (ignoreAssist || !shown) return
-        // One call per visible activity ([index] of [count]): the screen's text is all of them together.
-        if (index == 0) {
-            assistPieces.clear()
-            claudePieces = null
-            screenPkg = pkg.takeIf { count == 1 }
-        }
-        assistPieces += pieces
-        screenText = ScreenText.build(assistPieces)
+        // One call per visible activity ([index] of [count]): the screen's text is all of them together (PanelScreenShare).
+        if (!screenShare.onText(pieces, pkg, index, count)) return
+        if (index == 0) claudePieces = null
         // Only the Claude app's own window, and only when an answer can be found in it (a secure window gives no text).
         if (pkg == ClaudeAppLink.PACKAGE && ClaudeAppAnswer.extract(pieces, lastToApp) != null) claudePieces = pieces
-        textCame = screenText != null
         _state.update { it.copy(claudeScreen = claudePieces != null) }
-        refreshScreen()
+        screenShare.refresh()
     }
 
     /**
      * Android called without the screen's text: "Use text from screen" is off, or the screen is private. Noted even
      * before the panel shows (a reused session gets it ahead of the show), so the chip can say why at once.
      */
-    fun onAssistNone() {
-        if (textCame != true) textCame = false
-        if (shown) refreshScreen()
-    }
+    fun onAssistNone() = screenShare.onNoText()
 
     /** Null: Android called without a picture. As with [onAssistNone], a "no" counts before the show; a picture doesn't. */
-    fun onScreenshot(bmp: Bitmap?) {
-        if (bmp == null) {
-            if (shotCame != true) shotCame = false
-        } else {
-            if (ignoreAssist || !shown) return
-            screenshot = bmp
-            shotCame = true
-        }
-        if (shown) refreshScreen()
-    }
-
-    /** A new panel: nothing of the screen yet; the chip explains if it hasn't come in [ScreenAccess.WAIT_MS]. */
-    private fun startScreen(source: ShowSource, flags: Int) {
-        shownFrom = source
-        showFlags = flags
-        screenSettings = Assistant.screenSharing(VoiceHub.app)
-        screenLogged = ignoreAssist
-        screenWait?.cancel()
-        screenWait = scope.launch {
-            delay(ScreenAccess.WAIT_MS)
-            refreshScreen()
-            logScreen()
-        }
-        refreshScreen()
-    }
-
-    private fun refreshScreen() {
-        val chip = ScreenAccess.chip(shownFrom, _state.value.locked, textCame, shotCame, SystemClock.elapsedRealtime() - shownAtE, screenSettings.first)
-        _state.update { st ->
-            // The screen came after a tap said it hadn't ("still sending", "didn't share"): that notice no longer holds.
-            val stale = chip == ScreenChip.READY && st.notice != null && st.notice === screenNotice
-            st.copy(screenChip = chip, notice = if (stale) null else st.notice, tips = if (chip == ScreenChip.READY) Tips.withScreen(st.tips) else st.tips)
-        }
-    }
+    fun onScreenshot(bmp: Bitmap?) = screenShare.onShot(bmp)
 
     /** The next three tips for an empty panel: only what is on and can work now (core Tips). */
     private fun tips(s: RobotSettings, locked: Boolean): List<Tip> {
@@ -785,17 +667,6 @@ object PanelController {
         if (_state.value.draft?.kind == Attachment.SCREEN) send(question)
     }
 
-    /**
-     * Once per panel: its show flags and whether the screen's text and a screenshot came (codes only, never content).
-     * Written 2 s after the panel opened, or when it closes if that is sooner, so it says what a tap on the chip
-     * would have found by then; a screen that comes later changes the chip but isn't logged again.
-     */
-    private fun logScreen() {
-        if (screenLogged) return
-        screenLogged = true
-        VoiceLog.add(VoiceEvent.SCREEN_SHARED, showFlags, ScreenData.of(textCame).id, ScreenData.of(shotCame).id)
-    }
-
     // ------------------------------------------------------------------ conversation
 
     fun newConversation(locked: Boolean = _state.value.locked) {
@@ -808,10 +679,12 @@ object PanelController {
         // A photo from the last conversation never goes with this one.
         lastImage = null
         lastThumb = null
+        PanelFiles.forget(VoiceHub.app)
         chat.clear()
         MemoryPanel.newConversation()
+        PanelSkills.newConversation()
         host?.secure(false)
-        forgetReads(allKnown = true)
+        webSearch.forgetReads(allKnown = true)
         groups = setOf(ToolGroup.CORE)
         closeConvAfterTurn = false
         startedLocked = locked
@@ -833,10 +706,15 @@ object PanelController {
         lastThumb = null
         chat.clear()
         MemoryPanel.newConversation()
+        PanelSkills.newConversation()
         host?.secure(false)
         // What its earlier read tools returned isn't saved: any word not yours may be from it (QueryCheck).
-        forgetReads(allKnown = false)
-        chat += c.turns
+        webSearch.forgetReads(allKnown = false)
+        PanelFileTools.forget()
+        // FX1 (files-1.4-review.md finding 3): travel mode on, Robot Files' answers come back as History shows them, to the
+        // screen and the model alike; the stored ones are put back when the conversation is saved again (PanelFiles.saved).
+        val shown = PanelFiles.opened(VoiceHub.app, c, turnLangs)
+        chat += shown.turns
         // The groups its questions and actions used: continuing it describes the same tools.
         groups = ToolRouter.used(c.turns)
         closeConvAfterTurn = false
@@ -846,7 +724,7 @@ object PanelController {
         keptByUser = false
         lastActivity = System.currentTimeMillis()
         _state.update {
-            PanelState(c.id, turns = c.turns.map { t -> t.toUi() }, keep = true, sttAvailable = it.sttAvailable, micHint = it.micHint,
+            PanelState(c.id, turns = shown.turns.map { t -> t.toUi() }, keep = true, sttAvailable = it.sttAvailable, micHint = it.micHint,
                 showId = it.showId, brain = it.brain, lockedTools = it.lockedTools, tips = it.tips, talking = it.talking)
         }
     }
@@ -868,7 +746,7 @@ object PanelController {
         chat.clear()
         chat += quoted
         _state.update { st -> st.copy(turns = st.turns.map { it.copy(locked = true) }) }
-        dropOffers()
+        offers.drop()
         endHelperMode()
         closeLiveConversation()
         RLog.i("locked_turns_quoted", "turns" to quoted.size)
@@ -891,6 +769,23 @@ object PanelController {
         if (changed) persist()
     }
 
+    /** FX3: what travel mode hid when last looked at (PanelFiles.hidingNow), at a show or a Cmd.FILES. */
+    private var travelSeen: Set<String> = emptySet()
+
+    /**
+     * FX3 (Cmd.FILES): Robot Files or its settings changed. When travel mode starts hiding more (turned on, or another
+     * drawer hidden), a conversation here holding Robot Files' answer is put away at once, not only at the next show
+     * (onShow's own check): nothing a hidden drawer gave stays on screen. Only then: a file coming in while travel mode is
+     * on leaves the conversation you're in alone. Its turns were saved as each reply ended; History shows them as
+     * placeholders until travel mode is off.
+     */
+    fun filesChanged() {
+        val now = PanelFiles.hidingNow(VoiceHub.app)
+        val more = !travelSeen.containsAll(now)
+        travelSeen = now
+        if (more && PanelFiles.travelHides(VoiceHub.app, chat)) newConversation()
+    }
+
     /**
      * History deleted the conversation still held here ([id]), or every conversation (null): start a new one, so the next
      * save after a reply can't write the deleted one back.
@@ -910,7 +805,7 @@ object PanelController {
         val st = _state.value
         if (!st.keep || !VoiceHub.settings.saveHistory || chat.isEmpty()) return
         // 1.0: a conversation begun on the lock screen is saved with its turns marked, so History's Continue quotes them.
-        val c = StoredConversation(st.convId, chat.first().time, System.currentTimeMillis(), PanelContinuity.stored(chat.toList(), startedLocked))
+        val c = StoredConversation(st.convId, chat.first().time, System.currentTimeMillis(), PanelContinuity.stored(PanelFiles.saved(chat.toList()), startedLocked))
         scope.launch(Dispatchers.IO) { ConversationStore.save(VoiceHub.app, c) }
     }
 
@@ -924,7 +819,7 @@ object PanelController {
 
     /** "Open Robot" (to download the model): the app needs the phone unlocked. */
     fun openRobotApp() {
-        if (Assistant.locked(VoiceHub.app)) return notify("Unlock your phone, then open the Robot app.")
+        if (Assistant.locked(VoiceHub.app)) return notify(unlockFirst(PanelStrings.unlockOpenApp()))
         val h = host ?: return
         val i = Intent().setClassName(VoiceHub.app.packageName, "app.heyrobot.ui.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         leaveForRobot(h, i)
@@ -945,9 +840,15 @@ object PanelController {
 
     fun notify(text: String) = _state.update { it.copy(notice = Notice(text)) }
 
+    /** 1.1: during a phone lock (the screen unlocked), Robot's app is covered: say so rather than "unlock first". */
+    private fun unlockFirst(p: Phrase): Phrase = if (app.heyrobot.lock.PhoneLockNow.on(VoiceHub.app)) app.heyrobot.core.i18n.LockStrings.closedNow() else p
+
+    /** A notice in Robot's screens' language (the menus'). */
+    private fun notify(p: Phrase) = notify(p.render(screenLangs()))
+
     /** "Open Model" under a chat-only model's answer to an action: Settings › Model, where you choose (0.4.3). */
     fun openModelSettings() {
-        if (Assistant.locked(VoiceHub.app)) return notify("Unlock your phone, then open the Robot app › Model.")
+        if (Assistant.locked(VoiceHub.app)) return notify(unlockFirst(PanelStrings.unlockOpenPage("page" to UiStrings.inSettings(UiStrings.model))))
         val h = host ?: return
         leaveForRobot(h, HandOffApps.robotPage(VoiceHub.app, AppPages.MODEL))
     }
@@ -957,14 +858,14 @@ object PanelController {
      * Robot's Settings tab over the panel, as Open Robot does; on the lock screen it asks you to unlock first.
      */
     fun openSettings() {
-        if (Assistant.locked(VoiceHub.app)) return notify("Unlock your phone, then tap Settings again.")
+        if (Assistant.locked(VoiceHub.app)) return notify(unlockFirst(PanelStrings.unlockTapAgain("button" to UiLabel(UiStrings.settings))))
         val h = host ?: return
         leaveForRobot(h, HandOffApps.robotPage(VoiceHub.app, AppPages.SETTINGS))
     }
 
     /** "Allow" on a card that needs a permission: the main app's permission screen (it asks; the panel never does). */
     fun openPermissions() {
-        if (Assistant.locked(VoiceHub.app)) return notify("Unlock your phone, then open the Robot app.")
+        if (Assistant.locked(VoiceHub.app)) return notify(unlockFirst(PanelStrings.unlockOpenApp()))
         val h = host ?: return
         leaveForRobot(h, HandOffApps.robotPage(VoiceHub.app, AppPages.PERMISSIONS))
     }
@@ -972,27 +873,14 @@ object PanelController {
     // ------------------------------------------------------------------ attachments
 
     /** "Ask about this screen": the screen goes with the next question, or the panel says why it can't. */
-    fun attachScreen() {
-        when (_state.value.screenChip) {
-            ScreenChip.READY -> _state.update { it.copy(draft = Draft(Attachment.SCREEN, screenshot?.let { b -> Images.scaled(b, Images.THUMB_EDGE) })) }
-            ScreenChip.WAITING -> screenHint(ScreenAccess.WAITING_HINT)
-            ScreenChip.NOT_SHARED -> screenHint(ScreenAccess.notSharedHint(screenSettings.first, screenSettings.second))
-            ScreenChip.SWIPE_ONLY -> screenHint(ScreenAccess.swipeHint(screenSettings.first))
-            ScreenChip.HIDDEN -> {}
-        }
-    }
-
-    private fun screenHint(h: ScreenAccess.Hint) {
-        val n = Notice(h.text, if (h.openSettings) NoticeAction.OPEN_ASSIST_SETTINGS else NoticeAction.NONE)
-        screenNotice = n
-        _state.update { it.copy(notice = n) }
-    }
+    fun attachScreen() = screenShare.attach()
 
     /** "Open settings" under that notice: Settings › Apps › Default apps › Digital assistant app (voice input settings first). */
     fun openAssistSettings() {
-        if (Assistant.locked(VoiceHub.app)) return notify("Unlock your phone, then open Settings.")
+        if (Assistant.locked(VoiceHub.app)) return notify(unlockFirst(PanelStrings.unlockOpenSettings("settings" to AndroidPath.SETTINGS)))
         val h = host ?: return
-        val i = Assistant.settingsIntent(VoiceHub.app) ?: return notify("Settings didn't open. Go to Settings › Apps › Default apps › Digital assistant app.")
+        val i = Assistant.settingsIntent(VoiceHub.app)
+            ?: return notify(PanelStrings.settingsDidntOpenGoTo("settings" to AndroidPath.SETTINGS, "path" to AndroidPath.DIGITAL_ASSISTANT))
         // A pending "what should the text say?" ends here: the next question after Settings must not become that text.
         askingTextFor = null
         listenAfterSpeech = false
@@ -1006,7 +894,7 @@ object PanelController {
     }
 
     fun openCapture(mode: String) {
-        if (Assistant.locked(VoiceHub.app)) return notify("Unlock to use the camera or your photos.")
+        if (Assistant.locked(VoiceHub.app)) return notify(unlockFirst(PanelStrings.unlockForCamera()))
         // Not while a turn runs: it would go on hidden behind the camera.
         if (_state.value.busy || slot.running) return
         val h = host ?: return
@@ -1017,7 +905,7 @@ object PanelController {
         } else {
             // The panel stays, so the reason can be read.
             hidingFor = null
-            notify("Couldn't open the camera or the photo picker.")
+            notify(PanelStrings.cameraDidntOpen())
         }
     }
 
@@ -1026,19 +914,26 @@ object PanelController {
      * waited for it (and the saved conversation) says whether it was deleted.
      */
     fun mediaDeleteAnswered(deleted: Boolean) {
-        fun settle(tool: ToolName?, detail: String?) = tool == ToolName.FREE_STORAGE && detail == FreeUp.DELETE_WAITING
+        // 1.1: the card waits in its turn's language, and says what happened in it (core FreeUp.isDeleteWaiting).
+        fun settle(tool: ToolName?, detail: String?) = tool == ToolName.FREE_STORAGE && FreeUp.isDeleteWaiting(detail)
         val status = if (deleted) ActionStatus.DONE else ActionStatus.DECLINED
-        val detail = if (deleted) FreeUp.DELETED else FreeUp.KEPT
+        fun detail(waiting: String?) = sameLanguage(waiting, InfoStrings.deleteWaiting(), if (deleted) InfoStrings.deleted() else InfoStrings.notDeleted())
         _state.update { st ->
-            st.copy(turns = st.turns.map { t -> t.copy(actions = t.actions.map { if (settle(it.tool, it.detail)) it.copy(status = status, detail = detail) else it }) })
+            st.copy(turns = st.turns.map { t -> t.copy(actions = t.actions.map { if (settle(it.tool, it.detail)) it.copy(status = status, detail = detail(it.detail)) else it }) })
         }
-        chat.replaceAll { t -> t.copy(actions = t.actions.map { if (settle(it.tool, it.detail)) it.copy(status = status, detail = detail) else it }) }
+        chat.replaceAll { t -> t.copy(actions = t.actions.map { if (settle(it.tool, it.detail)) it.copy(status = status, detail = detail(it.detail)) else it }) }
         persist()
     }
 
-    /** From CaptureActivity (same process): the picture to send with the next question. */
-    fun onImagePicked(jpeg: ByteArray, thumb: Bitmap) {
+    /** [then] in the language [line] (a card's line, [was] in one of Robot's languages) is in; English when it is none of them. */
+    private fun sameLanguage(line: String?, was: Phrase, then: Phrase): String =
+        Lang.entries.firstOrNull { l -> was.render(turnLangs.copy(say = l)) == line || was.render(Langs.of(l)) == line }
+            ?.let { l -> then.render(turnLangs.copy(say = l)) } ?: then.en()
+
+    /** From CaptureActivity (same process): the picture to send with the next question; [original], its own bytes for "file this". */
+    fun onImagePicked(jpeg: ByteArray, thumb: Bitmap, original: ByteArray? = null, tooBig: Boolean = false) {
         draftJpeg = jpeg
+        PanelFiles.picked(original, tooBig)
         _state.update { it.copy(draft = Draft(Attachment.PHOTO, thumb), notice = null, focusRequest = it.focusRequest + 1) }
     }
 
@@ -1047,10 +942,9 @@ object PanelController {
     fun micPressed() {
         // A card waits: the mic answers it ("yes", "no"), with "Answer cards by voice" on (off: a tap or a typed answer).
         if (_state.value.phase == Phase.CONFIRMING) {
-            if (!VoiceHub.settings.voiceCards) return notify(CARD_TYPE_HINT)
+            if (!VoiceHub.settings.voiceCards) return notify(PanelStrings.cardTypeHint())
             VoiceHub.stopVoice(TtsStop.NEW_QUESTION)
-            cardRetry = 0
-            return listenForCard()
+            return cardVoice.micPressed()
         }
         if (_state.value.busy || slot.running) return
         VoiceHub.stopVoice(TtsStop.NEW_QUESTION)
@@ -1059,6 +953,9 @@ object PanelController {
     }
 
     fun micReleased() = VoiceHub.stt.stop()
+
+    /** The mic button is held past a tap (push-to-talk): only its release ends the question. */
+    fun micHeld() = VoiceHub.stt.holdOpen()
 
     fun onWakeWhileShown() {
         VoiceHub.stopVoice(TtsStop.WAKE)
@@ -1119,7 +1016,7 @@ object PanelController {
     /** A spoken question came back without words: say so, in the panel and aloud (or with a chime). */
     private fun missedQuestion(why: NoQuestion) {
         VoiceLog.add(VoiceEvent.NO_QUESTION, why)
-        notify(SORRY)
+        notify(PanelStrings.sorry().render(turnLangs))
         cue(Cue.SORRY)
     }
 
@@ -1127,7 +1024,7 @@ object PanelController {
     private fun cue(c: Cue) {
         if (c != Cue.CHIME && _state.value.speak) {
             VoiceLog.add(VoiceEvent.CUE, c)
-            VoiceHub.tts.speak(if (c == Cue.SORRY_NO_ANSWER) SORRY_NO_ANSWER else SORRY)
+            speakRobot((if (c == Cue.SORRY_NO_ANSWER) PanelStrings.sorryNoAnswer() else PanelStrings.sorry()).said)
         } else {
             VoiceLog.add(VoiceEvent.CUE, Cue.CHIME)
             Cues.missed()
@@ -1146,133 +1043,6 @@ object PanelController {
         _state.update { it.copy(phase = if (it.phase == Phase.LISTENING || it.phase == Phase.TRANSCRIBING) Phase.IDLE else it.phase, partial = "") }
     }
 
-    // ------------------------------------------------------------------ answering a card by voice (0.4.0)
-
-    /** The card waiting for an answer (the newest one still pending), or null. */
-    private fun pendingCard(): UiAction? = _state.value.turns.asReversed().firstNotNullOfOrNull { t -> t.actions.lastOrNull { it.status == ActionStatus.PENDING } }
-
-    /**
-     * A card now waits. With "Answer cards by voice" on, when replies are spoken or you are talking to Robot (a spoken
-     * question, a wake-word panel), Robot says how to answer and listens for "yes" or "no" once it has stopped talking.
-     */
-    private fun cardWaiting() {
-        val st = _state.value
-        val s = VoiceHub.settings
-        val said = cardPromptSaid
-        cardPromptSaid = false
-        cardRetry = 0
-        if (!s.voiceCards || !shown || !VoiceHub.stt.available || !(st.speak || spokenTurn || shownFrom == ShowSource.WAKE)) return
-        val card = pendingCard() ?: return
-        if (st.speak) {
-            // "Say yes or no.", or why it needs a tap (a learned name, not sure who, online the first time) and that "no" works.
-            if (!said) VoiceHub.tts.speak(CardAnswer.prompt(card.waiting))
-            cardListenAfterSpeech = true
-        } else {
-            listenForCard()
-        }
-    }
-
-    /** Listens for the waiting card's answer; the phase stays CONFIRMING (the turn is still waiting on the card). */
-    private fun listenForCard() {
-        cardListenAfterSpeech = false
-        val st = _state.value
-        if (st.phase != Phase.CONFIRMING || st.cardHearing != null || !shown || pendingCard() == null) return
-        if (!VoiceHub.stt.available) return notify(VoiceHub.stt.hint ?: "Voice input isn't available. Tap a button on the card.")
-        val token = ++cardListen
-        VoiceHub.listener?.wakePaused = true
-        _state.update { it.copy(cardHearing = Phase.LISTENING, partial = "", notice = null) }
-        val main = VoiceHub.main
-        VoiceHub.stt.start(object : SpeechToText.Listener {
-            fun mine() = token == cardListen
-            override fun onPartial(text: String) { main.post { if (mine()) _state.update { if (it.cardHearing == Phase.LISTENING) it.copy(partial = text) else it } } }
-            override fun onEndOfSpeech() {
-                main.post {
-                    if (!mine()) return@post
-                    VoiceHub.listener?.wakePaused = false
-                    _state.update { if (it.cardHearing != null) it.copy(cardHearing = Phase.TRANSCRIBING) else it }
-                }
-            }
-            override fun onFinal(text: String) {
-                main.post {
-                    if (!mine()) return@post
-                    endCardListening()
-                    heardForCard(text)
-                }
-            }
-            override fun onError(reason: SpeechToText.Reason, message: String) {
-                main.post {
-                    if (!mine()) return@post
-                    endCardListening()
-                    notify(if (reason == SpeechToText.Reason.NO_SPEECH) CARD_HINT else message)
-                }
-            }
-        })
-    }
-
-    private fun endCardListening() {
-        VoiceHub.listener?.wakePaused = false
-        _state.update { it.copy(cardHearing = null, partial = "") }
-    }
-
-    /** The card was answered or the turn stopped: no more listening for it. */
-    private fun stopCardListening() {
-        cardListenAfterSpeech = false
-        if (_state.value.cardHearing == null) return
-        cardListen++
-        VoiceHub.stt.cancel()
-        endCardListening()
-    }
-
-    /** What was said while the card waited: its answer, or (once) a reminder and another listen. */
-    private fun heardForCard(text: String) {
-        if (text.isNotBlank() && answerCard(text, spoken = true)) return
-        if (pendingCard() == null) return
-        if (cardRetry++ < 1) {
-            notify(CARD_HINT)
-            if (_state.value.speak) {
-                VoiceHub.tts.speak(pendingCard()?.waiting?.let(CardAnswer::prompt) ?: CardAnswer.PROMPT)
-                cardListenAfterSpeech = true
-            } else {
-                listenForCard()
-            }
-        } else {
-            notify(CARD_HINT)
-            cue(Cue.CHIME)
-        }
-    }
-
-    /**
-     * [text] answers the waiting card (core CardAnswer.reply, tested): "no" declines it; "yes" confirms it, except a card
-     * that needs a tap (a learned name, not sure who or which, online the first time), one with several choices, or one
-     * that sends personal content to a helper (unless "Voice yes can send personal content"): Robot says why. False: not a
-     * yes or no, no card waits, or it was [spoken] with "Answer cards by voice" off (a typed answer still works then).
-     */
-    private fun answerCard(text: String, spoken: Boolean): Boolean {
-        val card = pendingCard() ?: return false
-        val s = VoiceHub.settings
-        // 0.8: a routine from the screen's text, or deleting one: only a tap (a "no" still declines).
-        routineTapOnly?.takeIf { it.first == card.id }?.let { (_, words) ->
-            if (CardAnswer.of(text, s.wakePhrases.filter { it.enabled }.map { it.text }) == CardAnswer.Kind.YES) {
-                notify(words)
-                if (_state.value.speak) VoiceHub.tts.speak(words)
-                return true
-            }
-        }
-        val r = CardAnswer.reply(text, card.waiting, s.voiceCards, s.voiceYesPersonal, spoken, s.wakePhrases.filter { it.enabled }.map { it.text })
-            ?: return false
-        RLog.i("card_answer", "yes" to (r.does != CardAnswer.Does.DECLINE), "spoken" to spoken)
-        when (r.does) {
-            CardAnswer.Does.DECLINE -> confirm(card.id, false)
-            CardAnswer.Does.CONFIRM -> confirm(card.id, true)
-            CardAnswer.Does.CHOOSE_ONLY -> choose(card.id, 0)
-            CardAnswer.Does.TAP -> r.say?.let { words ->
-                notify(words)
-                if (_state.value.speak) VoiceHub.tts.speak(words)
-            }
-        }
-        return true
-    }
-
     // ------------------------------------------------------------------ asking
 
     /**
@@ -1288,17 +1058,17 @@ object PanelController {
         val q = text.trim()
         if (q.isEmpty() && st.draft == null) return false
         // A card waits: a typed or spoken "yes" or "no" answers it (Settings › Safety & privacy).
-        if (st.phase == Phase.CONFIRMING && st.draft == null && answerCard(q, fromVoice)) return true
+        if (st.phase == Phase.CONFIRMING && st.draft == null && cardVoice.answer(q, fromVoice)) return true
         // 0.7: a reply card waiting: "yes" (where allowed), "no", or "stop" in its 3 seconds.
         if (st.draft == null && PanelMessages.answerCard(q, fromVoice)) return true
         // 0.8: "next", "skip", "repeat" or "stop" while a routine or the brief speaks (or just paused for "hey robot").
         if (q.isNotEmpty() && st.draft == null && RoutineVoice.control(q)) return true
         if (st.busy || slot.running) {
             if (st.phase == Phase.CONFIRMING) {
-                notify(if (fromVoice && !VoiceHub.settings.voiceCards) CARD_TYPE_HINT else CARD_HINT)
+                notify(if (fromVoice && !VoiceHub.settings.voiceCards) PanelStrings.cardTypeHint() else PanelStrings.cardHint())
                 if (fromVoice) cue(Cue.CHIME)
             } else if (fromVoice) {
-                notify("Robot is still on the last question. Ask again when it's done.")
+                notify(PanelStrings.stillOnLastAskAgain())
                 VoiceLog.add(VoiceEvent.NO_REPLY, NoReply.BUSY)
                 cue(Cue.CHIME)
             }
@@ -1311,7 +1081,7 @@ object PanelController {
         turnMemContent = false
         val names = names()
         // An offer under the last reply waits for a tap or a short yes (a yes never sends anything personal).
-        if (st.draft == null && HelperRouter.isYes(q, names)) offers.keys.lastOrNull { k -> st.turns.lastOrNull { it.role == TurnRole.ASSISTANT }?.id == k }?.let {
+        if (st.draft == null && HelperRouter.isYes(q, names)) offers.waiting { k -> st.turns.lastOrNull { it.role == TurnRole.ASSISTANT }?.id == k }?.let {
             acceptOffer(it, tapped = false)
             return true
         }
@@ -1320,7 +1090,7 @@ object PanelController {
         turnSaid = q
         val textingFor = askingTextFor
         askingTextFor = null
-        expireHelperMode()
+        helperMode.expire()
         // Conversation mode's commands first (0.5.0, docs/conversation-mode.md 5.4): "transcribe this conversation",
         // and while one runs "stop transcribing", "pause", "resume". Never the model's to decide.
         // 0.7, your messages (PanelMessages, core MessagesRouter) before anything else: "read my messages", "reply …"; and a
@@ -1330,14 +1100,26 @@ object PanelController {
         // 0.7: "report a bug", "I have an idea", « signaler un bogue »: Send feedback opens in the app; the panel sends nothing.
         // After the messages router and its echo check (a message read aloud saying "report a bug: …" is the message's), before the model.
         val fbCmd = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null) FeedbackRouter.route(q) else null
+        // 1.1: Phone lock's phrases ("lock the phone until 7", "how long is left", "end the lock"), only from your own words.
+        val lockCmd = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && !_state.value.inHelperMode &&
+            !TurnRules.untrusted(chat)) PanelLock.route(q) else null
         // 0.8: routines' phrases next ("every weekday at 7, tell me the weather", "brief me", "remind me in the morning to …"),
         // outside a helper's conversation. A routine said in a conversation holding screen text needs a tap.
         val routineCmd = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && !_state.value.inHelperMode)
-            PanelRoutines.route(q, TurnRules.untrusted(chat)) else null
+            PanelRoutines.route(q, TurnRules.untrusted(chat), fresh = chat.none { it.role == TurnRole.USER }) else null
+        // 1.1: skills' phrases next (assistant/skills PanelSkills), under the routines' conditions.
+        val skillCmd = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && lockCmd == null && routineCmd == null &&
+            !_state.value.inHelperMode) PanelSkills.route(q) else null
+        // D8: what waited for your next words (the steps, a new name) is dropped once they went elsewhere.
+        if (skillCmd == null) PanelSkills.drop()
+        // 1.4: "file this", « classe ça » (PanelFiles, D15: after skills, before hands-free), with what the panel holds; F8: Robot
+        // Files' other words (core FilesRouter: a rule, move, find, Inbox, delete as a tap-only card).
+        val fileCmd = if (q.isNotEmpty() && msgCmd == null && convCmd == null && fbCmd == null && lockCmd == null && routineCmd == null && skillCmd == null &&
+            !_state.value.inHelperMode) PanelFiles.route(q) else null
         // 0.8: then headset and car mode's phrases, and "call …" (the call tool's own words).
-        val handsFreeCmd = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && routineCmd == null &&
-            !_state.value.inHelperMode) PanelHandsFree.route(q) else null
-        val routineOrHandsFree = routineCmd != null || handsFreeCmd != null
+        val handsFreeCmd = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && routineCmd == null && skillCmd == null &&
+            fileCmd == null && !_state.value.inHelperMode) PanelHandsFree.route(q) else null
+        val routineOrHandsFree = routineCmd != null || skillCmd != null || handsFreeCmd != null || fileCmd != null
         // 0.9: "search the web for …" next: web_search with exactly your words, without the model (WebRouter); outside a
         // helper's conversation and without an attachment. 1.0: or a search in your browser ("search DuckDuckGo for …").
         val webQuery = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && !routineOrHandsFree &&
@@ -1370,11 +1152,22 @@ object PanelController {
             helperDeclined = false
         }
         if (cmd != null) RLog.i("helper_command", "kind" to RLog.Code(cmd.javaClass.simpleName))
-        dropOffers()
+        // 1.1: this question's reply language, once (core ReplyLang): a router's own French or English match, else what LangId hears.
+        turnLangs = decideLangs(q, router = when {
+            convCmd != null -> ConversationRouter.lang(q, ConversationSession.running)
+            lockCmd != null -> lockCmd.lang
+            routineCmd != null -> RoutineRouter.lang(q, routineCmd)
+            skillCmd != null -> PanelSkills.lang(q, skillCmd)
+            memRoute != null -> MemoryPanel.lang(memRoute)
+            fileCmd != null -> fileCmd.lang
+            else -> freeAsk?.let { if (it) Lang.FR else Lang.EN }
+        })
+        offers.drop()
         val attachment = st.draft?.kind ?: Attachment.NONE
+        val fileWhat = fileCmd?.let { PanelFiles.what(attachment, screenShare.shot) }
         val image = when (attachment) {
             Attachment.PHOTO -> draftJpeg
-            Attachment.SCREEN -> screenshot?.let { Images.jpeg(it) }
+            Attachment.SCREEN -> screenShare.shot?.let { Images.jpeg(it) }
             Attachment.NONE -> null
         }
         // Only a photo: "ask Jarvis about this photo" must never pick up a screenshot.
@@ -1383,7 +1176,7 @@ object PanelController {
             lastThumb = st.draft?.thumb
         }
         val thumb = st.draft?.thumb
-        val sText = if (attachment == Attachment.SCREEN) screenText else null
+        val sText = if (attachment == Attachment.SCREEN) screenShare.text else null
         val history = chat.toList()
         val now = System.currentTimeMillis()
         // "Ask Jarvis about my screen" said without attaching it is still a screen question: the conversation is
@@ -1411,7 +1204,7 @@ object PanelController {
         val untrusted = TurnRules.untrusted(chat)
         // The helper this turn goes to: the one named, or the one whose conversation is on. 1.0.0: "ask the helper …" names
         // none (HelperName.ANY_ID): one that can take it now, the one you chose first (HelperSettings.askTarget); none, and
-        // helperTurn says what's missing.
+        // PanelHelperTurn.run says what's missing.
         val askedId = (cmd as? HelperCommand.Ask)?.helper ?: (cmd as? HelperCommand.Join)?.helper ?: _state.value.helperMode
         val turnHelper = if (!toHelper) null else if (askedId == HelperName.ANY_ID) askTarget() else VoiceHub.settings.helper(askedId)
         val api = turnHelper != null && turnHelper.on && HelperSettings.route(turnHelper, keySaved(turnHelper)) == AskRoute.API
@@ -1422,7 +1215,7 @@ object PanelController {
                         helper = turnHelper?.id, by = turnHelper?.name, home = turnHelper?.home == true),
                 phase = Phase.THINKING, draft = null, partial = "", notice = null, keep = keep,
                 locked = Assistant.locked(VoiceHub.app),
-                helperStatus = if (api) words(turnHelper!!).thinking else null,
+                helperStatus = if (api) words(turnHelper!!).thinkingText.render(screenLangs()) else null,
             )
         }
         draftJpeg = null
@@ -1434,28 +1227,41 @@ object PanelController {
         startTurn(replyId) {
             when {
                 msgCmd != null -> PanelMessages.run(replyId, msgCmd)
-                convCmd != null -> conversationCommand(replyId, convCmd)
-                fbCmd != null -> feedbackCommand(replyId, fbCmd)
+                convCmd != null -> conversationMode.run(replyId, convCmd)
+                fbCmd != null -> feedback.run(replyId, fbCmd)
+                lockCmd != null -> PanelLock.handle(replyId, lockCmd, routineHost, said = q)
                 routineCmd != null -> PanelRoutines.handle(replyId, routineCmd, routineHost, said = q)
+                skillCmd != null -> {
+                    PanelSkills.handle(replyId, skillCmd, skillHost, said = q)
+                    // D8: Robot asked for the steps or a name; asked by voice, the answer comes by voice too.
+                    if (fromVoice && PanelSkills.waitsForWords) { if (_state.value.speak) listenAfterSpeech = true else if (shown) startListening() }
+                }
+                fileCmd != null -> withContext(Dispatchers.IO) { PanelFiles.file(VoiceHub.app, fileCmd, fileWhat!!, turnLangs, spoken = fromVoice) }.let { r ->
+                    PanelFileAnswer.markFiles(replyId)
+                    localReply(replyId, r.text, r.spoken)
+                    // After the reply ends: finishReply settles a card still waiting as declined, so a delete card shown
+                    // before it would lose its buttons.
+                    r.cards.forEach { replies.upsertAction(replyId, it) }
+                }
                 handsFreeCmd != null -> PanelHandsFree.handle(replyId, handsFreeCmd, routineHost)
-                webQuery != null -> directWeb(replyId, webQuery, user.text, history, untrusted)
+                webQuery != null -> webSearch.direct(replyId, webQuery, user.text, history, untrusted)
                 // 0.9: "run backup", your own script named in your own words: termux_script without the model.
-                termux != null -> termuxScript(replyId, termux, untrusted)
-                memRoute != null -> memoryCommand(replyId, memRoute, fromVoice)
-                freeAsk != null -> freeMemoryCommand(replyId, freeAsk)
+                termux != null -> termuxScript.run(replyId, termux, untrusted)
+                memRoute != null -> memoryCommand.run(replyId, memRoute, fromVoice)
+                freeAsk != null -> freeMemory.run(replyId)
                 cmd == HelperCommand.Leave -> {
                     endHelperMode()
-                    localReply(replyId, ClaudeWords.LEFT)
+                    localReply(replyId, app.heyrobot.core.i18n.HelperStrings.backToRobot())
                 }
                 cmd == HelperCommand.ReadAnswer -> if (claudePieces != null) {
                     finishOrDrop(replyId)
                     readBack()
                 } else {
-                    localReply(replyId, ClaudeWords.SWIPE_TO_READ)
+                    localReply(replyId, app.heyrobot.core.i18n.HelperStrings.swipeToRead())
                 }
-                way == FastPath.Way.HELPER -> helperTurn(replyId, cmd, turnHelper, user.text, attachment, sText, image, thumb, history, fromVoice)
+                way == FastPath.Way.HELPER -> helperTurn.run(replyId, cmd, turnHelper, user.text, attachment, sText, image, thumb, history, fromVoice)
                 // A plain request to text someone (or the answer to "what should it say?") goes straight to send_text.
-                way == FastPath.Way.TEXT && directText(replyId, q, textingFor, fromVoice, untrusted) -> {}
+                way == FastPath.Way.TEXT && texting.direct(replyId, q, textingFor, fromVoice, untrusted) -> {}
                 else -> runTurn(replyId, user.text, attachment, sText, image, history, untrusted, guard, fromVoice)
             }
         }
@@ -1476,7 +1282,7 @@ object PanelController {
             throw e
         } catch (t: Throwable) {
             RLog.w("panel_turn", t)
-            _state.value.turns.filter { it.streaming }.forEach { failReply(it.id, "Something went wrong. Please try again.") }
+            _state.value.turns.filter { it.streaming }.forEach { failReply(it.id, PanelStrings.wentWrongTryAgain().render(turnLangs)) }
         } finally {
             withContext(NonCancellable) { unloadIfAsked(replyId) }
         }
@@ -1501,44 +1307,24 @@ object PanelController {
         val s = VoiceHub.settings
         val target = target(s)
         val keySaved = keySaved(target)
-        // Escalation trigger a: strong signals go to the helper before Gemma spends a prefill (Automatic only); with Ask
-        // first, Gemma answers and the offer follows its reply.
-        var offerAfter: EscalationTrigger? = null
-        // The offer is for current information: decided again after Gemma's answer, a helper that can't search still offers.
-        var offerNeedsSearch = false
-        // Not after "not Jarvis": that conversation stays with Robot. With the weather tool on, a weather question is
-        // Robot's to answer (0.4.0). Locked, the tool can't run: as before, the question may go to the helper when it is
-        // allowed on the lock screen. Current information goes by itself only to a helper that can search (0.6.0).
+        // For escalation trigger a (PanelEscalation.beforeModel): with the weather tool on, a weather question is Robot's to
+        // answer (0.4.0). Locked, the tool can't run: as before, the question may go to the helper when it is allowed on the
+        // lock screen. Current information goes by itself only to a helper that can search (0.6.0).
         val localWeather = s.approval(ToolName.WEATHER) != Approval.OFF && (!Assistant.locked(VoiceHub.app) || ToolName.WEATHER in s.lockedTools)
         // 0.9: with web search on (and "Robot searches first"), current information is Robot's to look up, as the weather.
         val web = withContext(Dispatchers.IO) { WebStore.load(VoiceHub.app) to WebAnswers.load(VoiceHub.app) }
         val webOn = WebConsent.on(web.first, web.second)
         val localWeb = webOn && web.first.currentInfo == CurrentInfo.ROBOT_FIRST && s.approval(ToolName.WEB_SEARCH) != Approval.OFF &&
             (!Assistant.locked(VoiceHub.app) || ToolName.WEB_SEARCH in s.lockedTools)
-        if (attachment == Attachment.NONE && !helperDeclined && target != null) PreRouter.signal(question, localWeather, localWeb)?.let { signal ->
-            RLog.i("helper_trigger", "kind" to EscalationTrigger.PRE_ROUTER, "signal" to signal)
-            when (decide(attachment, guardFree = !guard.used, needsSearch = signal == PreRouter.Signal.CURRENT_INFO)) {
-                EscalationDecision.AUTO -> {
-                    guard.take(fromHelper = false)
-                    val personal = personalNow(null)
-                    val blocks = HelperContext.escalation(question, history, ZonedDateTime.now(), userRegion, personal = personal,
-                        includePersonal = HelperTrust.conversation(s, target, personal, MemoryPanel.toTrusted()))
-                    // A helper that can't be reached (a server that's off, no connection): Robot answers itself instead.
-                    if (!escalateNow(replyId, question, blocks, voiceAsked, reuseBubble = true, h = target, fallBack = true)) return
-                    RLog.i("helper_fallback", "kind" to target.kind)
-                }
-                EscalationDecision.OFFER -> {
-                    offerAfter = EscalationTrigger.PRE_ROUTER
-                    offerNeedsSearch = signal == PreRouter.Signal.CURRENT_INFO
-                }
-                else -> {}
-            }
-        }
+        // 1.4: Robot Files' two reads only while its files can be read (on, unlocked, no phone lock: PanelFileTools.open).
+        val filesOpen = withContext(Dispatchers.IO) { PanelFileTools.open(VoiceHub.app) }
+        // Strong signals go to the helper before Gemma spends a prefill (Automatic only); null: the helper took the question.
+        val before = escalation.beforeModel(replyId, question, history, attachment, voiceAsked, guard, s, target, localWeather, localWeb) ?: return
         val c = BrainKeeper.ensureLoaded(VoiceHub.app)
         if (c == null) {
             val b = BrainKeeper.state.value
             VoiceLog.add(VoiceEvent.BRAIN_FAILED, if (b.readiness == BrainKeeper.Readiness.NO_MODEL) BrainFail.NO_MODEL else BrainFail.LOAD_FAILED)
-            return failReply(replyId, b.problem ?: "Robot's model isn't ready.", if (b.readiness == BrainKeeper.Readiness.NO_MODEL) NoticeAction.OPEN_APP else NoticeAction.NONE)
+            return failReply(replyId, b.problem ?: PanelStrings.modelNotReady().render(turnLangs), if (b.readiness == BrainKeeper.Readiness.NO_MODEL) NoticeAction.OPEN_APP else NoticeAction.NONE)
         }
         client = c
         val loaded = BrainKeeper.state.value
@@ -1548,8 +1334,9 @@ object PanelController {
         val chatOnly = loaded.chatOnly
         if (chatOnly) ChatOnly.actionAsked(question)?.let { asked ->
             RLog.i("chat_only_action", "tool" to RLog.Code(asked.id))
-            localReply(replyId, ChatOnly.REPLY, spoken = ChatOnly.SPOKEN)
-            _state.update { it.copy(notice = Notice(ChatOnly.NOTICE, NoticeAction.OPEN_MODEL)) }
+            localReply(replyId, ChatOnly.reply.render(turnLangs),
+                spoken = if (turnLangs.say == Lang.EN) ChatOnly.reply.render(turnLangs).replace(" › ", ", ") else ChatOnly.reply.render(turnLangs.voice))
+            _state.update { it.copy(notice = Notice(ChatOnly.notice.render(screenLangs()), NoticeAction.OPEN_MODEL)) }
             return
         }
         // The model loaded without its vision encoder: a screen question still has the screen's text.
@@ -1558,12 +1345,12 @@ object PanelController {
         val textOnly = loaded.textOnly
         if (image != null && !vision && attachment == Attachment.PHOTO) {
             return failReply(replyId, when {
-                textOnly -> TEXT_ONLY_PHOTO
-                loaded.fileVision -> BrainError.NO_VISION.text()
-                else -> NO_VISION_IN_FILE
+                textOnly -> PanelStrings.textOnlyPhoto("page" to UiStrings.inSettings(UiStrings.model)).render(turnLangs)
+                loaded.fileVision -> BrainError.NO_VISION.textPhrase().render(turnLangs)
+                else -> PanelStrings.noVisionInFile("page" to UiStrings.inSettings(UiStrings.model)).render(turnLangs)
             })
         }
-        if (textOnly && attachment == Attachment.SCREEN) notify(TEXT_ONLY_SCREEN)
+        if (textOnly && attachment == Attachment.SCREEN) notify(PanelStrings.textOnlyScreen())
         val img = if (vision) image else null
         val convId = _state.value.convId
         val now = ZonedDateTime.now()
@@ -1589,14 +1376,17 @@ object PanelController {
         val locked0 = Assistant.locked(VoiceHub.app)
         // 1.0 (injection-memory-recall-taint): every turn's items, a recall answer's too (core MemoryTaint).
         val given = app.heyrobot.core.memory.MemoryTaint.given(chat)
-        val mem = withContext(Dispatchers.IO) { MemoryPanel.forTurn(question, locked0, given, maxTokens) }
+        // 1.2 (design Step 3): on a slow path (the CPU), a reading budget for a rebuild and the compact prompt (core PrefillBudget).
+        val reading = withContext(Dispatchers.IO) { BrainKeeper.prefill(VoiceHub.app) }
+        val mem = withContext(Dispatchers.IO) { MemoryPanel.forTurn(question, locked0, given, maxTokens, reading.compact) }
         turnMemContent = mem.content
-        // 1.0.2: the pinned items too (they are in this turn's system prompt), so a reply that repeats one keeps the
-        // conversation personal for helpers (core PackedMemory.personal); their notes are never rendered again (MemoryPanel.forTurn).
-        if (mem.recall.ids.isNotEmpty()) chat.indexOfLast { it.role == TurnRole.USER }.takeIf { it >= 0 }?.let { i ->
-            chat[i] = chat[i].copy(memoryIds = mem.recall.ids)
+        // The question keeps the items retrieved for it (their notes come back in a rebuilt history). 1.1: the reply keeps
+        // every item this turn had, the pinned ones too (MemoryPanel.mark), so a reply that repeats one keeps the conversation
+        // personal for helpers (core PackedMemory.personal), and an item unpinned later never comes back as a note.
+        if (mem.packed.retrievedIds.isNotEmpty()) chat.indexOfLast { it.role == TurnRole.USER }.takeIf { it >= 0 }?.let { i ->
+            chat[i] = chat[i].copy(memoryIds = mem.packed.retrievedIds)
         }
-        MemoryPanel.mark(replyId, mem.packed.retrievedIds, secret = mem.recall.secret)
+        MemoryPanel.mark(replyId, mem.recall.ids, secret = mem.recall.secret)
         // A private item went in: the live conversation goes after this answer, so no later answer can repeat it (spoken, or
         // kept in History); rebuilt, it holds History's line instead, and naming the item again gives it again.
         if (mem.recall.secret) {
@@ -1605,11 +1395,15 @@ object PanelController {
         }
         if (mem.quiet) {
             voice.mute()
-            notify("Not read aloud: the answer holds something private from your memory.")
+            notify(PanelStrings.notReadAloud())
         }
+        // 1.1, Skills phase B: up to 3 of your skills described for your words (assistant/skills PanelSkills); never in a
+        // helper's conversation, on a locked phone or to a chat-only model.
+        val skillTools = if (chatOnly || locked0 || _state.value.inHelperMode) emptyList() else withContext(Dispatchers.IO) { PanelSkills.forModel(question) }
         // One run of the model on this question into the reply, with or without ask_claude (the second one, without it,
-        // is Robot's own answer after the model handed over: afterLocal).
-        suspend fun gemma(askHelper: Boolean): TurnResult {
+        // is Robot's own answer after the model handed over: PanelEscalation.afterLocal). [skills]: false after "Did you mean" answered no.
+        suspend fun gemma(askHelper: Boolean, skills: Boolean = true): TurnResult {
+            val specs = if (skills) skillTools.map { it.spec } else emptyList()
             // Only the groups this conversation needs, and nothing turned off in settings, is described to the model; to a
             // chat-only model nothing at all, with its compact prompt (Settings › "Direct answers" as you set it).
             val locked = Assistant.locked(VoiceHub.app)
@@ -1620,34 +1414,39 @@ object PanelController {
             val termuxLine = if (termuxTools.isEmpty()) null else withContext(Dispatchers.IO) { TermuxTool.promptLine(VoiceHub.app, termuxTools, locked) }
             fun toolsFor(g: Set<ToolGroup>): List<ToolName> =
                 if (chatOnly) emptyList() else ToolRouter.tools(g, s, askHelper, memory = mem.tools, web = webOn, termux = termuxTools,
-                    browser = BrowserRouter.named(question))
-            fun systemFor(tools: List<ToolName>): String = app.heyrobot.core.memory.MemoryPrompt.system(if (chatOnly) Prompt.chatSystem(now, direct = s.directAnswers)
+                    browser = BrowserRouter.named(question), files = filesOpen && !locked)
+            // 1.1: "Robot answers in" fixed to a language tells the model which (core ReplyLang.answerIn); the default adds nothing.
+            val answerIn = ReplyLang.answerIn(s.replyLang, turnLangs.say)
+            fun systemFor(tools: List<ToolName>, sk: Boolean = false): String = app.heyrobot.core.memory.MemoryPrompt.system(if (chatOnly) Prompt.chatSystem(now, direct = s.directAnswers, answerIn = answerIn)
             else Prompt.system(now, locked, askHelper, texting = ToolName.SEND_TEXT in tools,
                 weather = ToolName.WEATHER in tools, phone = ToolName.PHONE_STATUS in tools, direct = s.directAnswers, lockedTools = s.lockedTools,
                 helper = target?.name, helperSearches = target?.searching ?: true, helperHome = target?.home == true, driving = driving,
-                web = ToolName.WEB_SEARCH in tools, termux = termuxLine?.takeIf { tools.any { it.termux } }, browser = ToolName.BROWSER_SEARCH in tools),
+                web = ToolName.WEB_SEARCH in tools, termux = termuxLine?.takeIf { tools.any { it.termux } }, browser = ToolName.BROWSER_SEARCH in tools, skills = sk,
+                compact = reading.compact, answerIn = answerIn),
                 tools = ToolName.REMEMBER in tools, pinned = mem.packed.systemLine)
             // 0.9: with every group this conversation called for, the new turn may not fit: the groups this question doesn't call
             // for give way first, then the others, until it keeps its room (core ToolBudget).
-            val wanted = if (termuxTools.isEmpty()) groups - ToolGroup.TERMUX else groups
-            val described = if (chatOnly) wanted else ToolBudget.fit(wanted, ToolRouter.route(question), maxTokens) { g ->
-                toolsFor(g).let { Prompt.fixedTokens(systemFor(it), it) }
+            val sk = if (specs.isEmpty()) emptySet() else setOf(ToolGroup.SKILLS)
+            val wanted = (if (termuxTools.isEmpty()) groups - ToolGroup.TERMUX else groups) + sk
+            val described = if (chatOnly) wanted else ToolBudget.fit(wanted, ToolRouter.route(question) + sk, maxTokens) { g ->
+                toolsFor(g).let { Prompt.fixedTokens(systemFor(it, ToolGroup.SKILLS in g), it, if (ToolGroup.SKILLS in g) specs else emptyList(), reading.compact) }
             }
             if (described != wanted) RLog.i("tool_budget", "dropped" to (wanted - described).size, "kept" to described.size)
             val tools = toolsFor(described)
-            val system = systemFor(tools)
+            val skillSpecs = if (ToolGroup.SKILLS in described) specs else emptyList()
+            val system = systemFor(tools, skillSpecs.isNotEmpty())
             // The time only for a question that needs it, after the question: the model copied a leading time into its replies.
             val clock = if (Prompt.needsClock(question, groups)) Prompt.clock(now) else ""
             // The new turn always fits the model's context: cut (and say so) rather than overflow. Memory's notes go before it only
             // when the question still fits whole with them.
             val notes = mem.packed.notesBlock?.takeIf {
-                !Prompt.fitTurn(question, screen, attachment, img != null, Prompt.fixedTokens(system, tools) + mem.packed.notesTokens, clock, maxTokens).shortened
+                !Prompt.fitTurn(question, screen, attachment, img != null, Prompt.fixedTokens(system, tools, skillSpecs, reading.compact) + mem.packed.notesTokens, clock, maxTokens).shortened
             }
-            val fitted = Prompt.fitTurn(question, screen, attachment, img != null, Prompt.fixedTokens(system, tools) + (if (notes != null) mem.packed.notesTokens else 0),
+            val fitted = Prompt.fitTurn(question, screen, attachment, img != null, Prompt.fixedTokens(system, tools, skillSpecs, reading.compact) + (if (notes != null) mem.packed.notesTokens else 0),
                 clock, maxTokens).let { if (notes != null) it.copy(text = notes + it.text) else it }
             if (fitted.shortened && !cutSaid) {
                 cutSaid = true
-                notify(if (fitted.questionCut) "Your message was too long, so Robot read only its first part." else "The screen had a lot of text, so Robot read only the first part.")
+                notify(if (fitted.questionCut) PanelStrings.messageCut() else PanelStrings.screenCut())
             }
             val gen = BrainMsg.Generate(
                 convId = convId,
@@ -1659,29 +1458,44 @@ object PanelController {
                 tools = tools.map { it.id },
                 // Settings › Model › "Let the model think first" (0.4.5): :brain tells a model that can think whether it may.
                 think = s.modelThinks,
+                skills = skillSpecs,
+                compact = reading.compact,
+                readBudget = reading.tokens,
             )
             // About what the context has left for a tool's answer beside the reply (as :brain will fit the history): the
             // weather gives fewer days when it is short.
-            val fixedTokens = Prompt.fixedTokens(system, tools)
-            val budget = ContextWindow.historyBudget(fixedTokens, TokenEstimate.turn(PromptTurn(PromptRole.USER, fitted.text, img != null)), maxTokens)
+            val fixedTokens = Prompt.fixedTokens(system, tools, skillSpecs, reading.compact)
+            val budget = reading.history(fixedTokens, TokenEstimate.turn(PromptTurn(PromptRole.USER, fitted.text, img != null)), maxTokens)
             toolRoom = budget - ContextWindow.fit(gen.history, budget).sumOf(TokenEstimate::turn) - TOOL_CALL_TOKENS
             // Chat only: whatever the model emits, no call reaches the approval gate (core ChatOnlyTurn; :brain drops them too).
-            val model = BrainTurn(c, convId, replyId, gen, img).let { if (chatOnly) ChatOnlyTurn(it) else it }
+            val model = stream.turn(c, convId, replyId, gen, img).let { if (chatOnly) ChatOnlyTurn(it) else it }
             controlRefused = null
             // 0.7: notes kept from content (not your own words) make the turn content too (MemoryTurn.content).
-            return TurnRunner(model, PanelActions, PanelView(replyId), slot.confirmations, untrusted || mem.content,
-                asked = askedNow, messages = PanelMessages.taint(chat), newId = ::newId).run().also { leaveOutRefused(replyId, history) }
+            // 1.1, Skills phase B: a skill the model calls runs through PanelSkills (its card when the rule wants one, then each
+            // step through its own gate and card).
+            val actions = object : TurnActions by PanelActions {
+                override suspend fun runSkill(call: app.heyrobot.core.skills.SkillCall.Ok, untrusted: Boolean) =
+                    PanelSkills.runForModel(replyId, call, untrusted, question, loaded.model, skillHost)
+            }
+            return TurnRunner(model, actions, PanelView(replyId), slot.confirmations, untrusted || mem.content,
+                asked = askedNow, messages = PanelMessages.taint(chat), langs = turnLangs,
+                skills = PanelSkills.menu(if (skillSpecs.isEmpty()) emptyList() else skillTools), newId = ::newId,
+                // 1.1: set_alarm only for a time your words gave, on the day it rings (core AlarmWords).
+                heard = app.heyrobot.core.TurnWords.of(question, java.time.ZonedDateTime.now(), turnLangs.say)).run().also { leaveOutRefused(replyId, history) }
         }
         // ask_claude is a tool: a chat-only model gets none (the escalation triggers outside the model still apply).
-        val result = gemma(askHelper = leftOut == null && !chatOnly)
+        // "Did you mean" answered no (D18): the model answers again, without skills.
+        val result = gemma(askHelper = leftOut == null && !chatOnly).let { if (it.withoutSkills) gemma(askHelper = leftOut == null && !chatOnly, skills = false) else it }
         if (mem.packed.retrievedIds.isNotEmpty()) scope.launch(Dispatchers.IO) { MemoryPanel.used(mem.packed.retrievedIds) }
         result.failure?.let { return failReply(replyId, it) }
         // 0.9: Gemma called web_search and it ran: its turn ended there, and a one-shot answers from what was found.
-        result.web?.let { return webAnswer(replyId, question, history, it) }
+        result.web?.let { return webSearch.answer(replyId, question, history, it) }
+        // 1.4: Gemma called read_file and it found its file: the same, a one-shot answers from the file's text.
+        result.file?.let { return fileAnswer.answer(replyId, it) }
         // Escalation trigger b: Gemma called ask_claude. Its turn ended there; the helper answers (or is offered).
         if (result.escalate) {
             RLog.i("helper_trigger", "kind" to EscalationTrigger.LOCAL_TOOL)
-            return afterLocal(replyId, question, history, attachment, screen, image, voiceAsked, guard, EscalationTrigger.LOCAL_TOOL,
+            return escalation.afterLocal(replyId, question, history, attachment, screen, image, voiceAsked, guard, EscalationTrigger.LOCAL_TOOL,
                 ownAnswer = { gemma(askHelper = false) })
         }
         finishReply(replyId, result.reason ?: DoneReason.END)
@@ -1691,137 +1505,31 @@ object PanelController {
         val reply = chat.lastOrNull { it.id == replyId }
         if (result.reason == DoneReason.END && reply != null && reply.actions.isEmpty() && Hedge.detect(reply.text)) {
             RLog.i("helper_trigger", "kind" to EscalationTrigger.HEDGE)
-            return afterLocal(replyId, question, history, attachment, screen, image, voiceAsked, guard, EscalationTrigger.HEDGE,
+            return escalation.afterLocal(replyId, question, history, attachment, screen, image, voiceAsked, guard, EscalationTrigger.HEDGE,
                 needsSearch = Hedge.needsSearch(reply.text))
         }
-        offerAfter?.let { afterLocal(replyId, question, history, attachment, screen, image, voiceAsked, guard, it, offerOnly = true, needsSearch = offerNeedsSearch) }
-    }
-
-    /**
-     * The escalation policy for this question now ([attachment]: its screen or photo, which only a tap may send, unless
-     * "Send personal content to helpers automatically" is on).
-     */
-    private suspend fun decide(attachment: Attachment, guardFree: Boolean, needsSearch: Boolean = false): EscalationDecision {
-        val s = VoiceHub.settings
-        val app = VoiceHub.app
-        val target = target(s)
-        return EscalationPolicy.decide(s, target, keySaved(target), attachment != Attachment.NONE && !HelperTrust.attachments(s), Assistant.locked(app),
-            HelperLink.budgetReached(app, s, target), !guardFree, declined = helperDeclined, priceKnown = target?.price?.known ?: false, needsSearch = needsSearch)
+        before.offerAfter?.let { escalation.afterLocal(replyId, question, history, attachment, screen, image, voiceAsked, guard, it, offerOnly = true,
+            needsSearch = before.needsSearch) }
     }
 
     /** The personal content in the conversation now, the reply [replyId] included while it is still on screen only. */
     private fun personalNow(replyId: String?): Set<Personal> {
         val ui = replyId?.takeIf { id -> chat.none { it.id == id } }?.let { id -> _state.value.turns.firstOrNull { it.id == id } }
-        val reply = ui?.let { listOf(ChatTurn(it.id, TurnRole.ASSISTANT, it.text, 0, actions = records(it.actions))) }.orEmpty()
+        // A Files router answer is personal from its first spoken sentence, before finishReply adds it to the chat.
+        val reply = ui?.let { listOf(ChatTurn(it.id, TurnRole.ASSISTANT, it.text, 0, actions = records(it.actions), files = PanelFileAnswer.isFiles(it.id))) }.orEmpty()
         return HelperContext.personal(chat + reply)
     }
 
-    /**
-     * Robot's reply [replyId] is in (or Gemma handed over with ask_claude): bring the helper in now, offer it, or say why not.
-     * At most one escalation per turn ([guard]); [offerOnly]: the pre-router's offer, after Gemma's answer. [screen] and
-     * [image]: this question's screen text and picture, which only an offer's tap may send. [ownAnswer]: the model once
-     * more on the same question without ask_claude, for when it handed over without a word and the helper isn't asked right
-     * away (EscalationPolicy.ownAnswerFirst): its answer comes first and any offer goes under it. [needsSearch]: the
-     * question needs today's sources (the pre-router's current information, or a reply that said it has none): it goes by
-     * itself only to a helper that can search, as the pre-router decided (0.6.0).
-     */
-    private suspend fun afterLocal(replyId: String, question: String, history: List<ChatTurn>, attachment: Attachment, screen: String?, image: ByteArray?,
-        voiceAsked: Boolean, guard: EscalationGuard, trigger: EscalationTrigger, offerOnly: Boolean = false, ownAnswer: (suspend () -> TurnResult)? = null,
-        needsSearch: Boolean = false) {
-        // A turn that already escalated decides NONE here.
-        val decision = decide(attachment, guardFree = !guard.used, needsSearch = needsSearch)
-        guard.take(fromHelper = false)
-        val s = VoiceHub.settings
-        val app = VoiceHub.app
-        val target = target(s)
-        val keySaved = keySaved(target)
-        // Never only "I'd rather check that with Jarvis.": the model's own answer first, in the same reply (and turn).
-        var ranOwn = false
-        var ownFailure: String? = null
-        var asWell = false
-        if (ownAnswer != null && EscalationPolicy.ownAnswerFirst(decision, trigger == EscalationTrigger.LOCAL_TOOL, said = !saidNothing(replyId))) {
-            ranOwn = true
-            val r = ownAnswer()
-            ownFailure = r.failure
-            // Stopped meanwhile: the turn ends as stopped, with no offer.
-            currentCoroutineContext().ensureActive()
-            val answered = !saidNothing(replyId)
-            VoiceLog.add(VoiceEvent.OWN_ANSWER, if (answered) 1 else 0)
-            RLog.i("helper_own_answer", "answered" to answered, "decision" to decision, "failed" to (r.failure != null), "again" to r.escalate)
-            if (r.launchedApp) {
-                finishReply(replyId, DoneReason.END)
-                return leaveForApp()
-            }
-            if (r.reason == DoneReason.CANCELLED) return finishReply(replyId, DoneReason.CANCELLED)
-            if (answered) {
-                finishReply(replyId, r.reason ?: DoneReason.END)
-                asWell = true
-            }
-        }
-        // The budget is used up for today: Automatic asks first, and Robot says so once a day.
-        if (decision == EscalationDecision.OFFER && target != null && HelperSettings.apiReady(target, keySaved) &&
-            HelperSettings.escalation(s, target, keySaved) == Escalation.AUTO && HelperLink.budgetReached(app, s, target)) {
-            val day = LocalDate.now().toString()
-            if (budgetSaid != day) {
-                budgetSaid = day
-                notify(words(target).budget)
-                if (_state.value.speak) VoiceHub.tts.speak(words(target).budget)
-            }
-        }
-        // A personal conversation (this reply's read included): Robot sends only the question.
-        val personal = personalNow(replyId)
-        when (decision) {
-            EscalationDecision.AUTO -> if (offerOnly || target == null) finishOrDrop(replyId) else {
-                // A screen or photo question gets here only with personal content allowed to go by itself: it goes along.
-                val shared = if (attachment != Attachment.NONE && HelperTrust.attachments(s)) Shared(screenText = screen, image = image) else Shared()
-                val blocks = HelperContext.escalation(question, history, ZonedDateTime.now(), userRegion, shared, personal = personal,
-                    includePersonal = HelperTrust.conversation(s, target, personal, MemoryPanel.toTrusted()))
-                finishOrDrop(replyId)
-                escalateNow(null, question, blocks, voiceAsked, reuseBubble = false, h = target)
-            }
-            EscalationDecision.OFFER -> {
-                target!!
-                val api = HelperSettings.apiReady(target, keySaved)
-                // No API to ask and no app to open: nothing to offer.
-                if (!api && target.presetOf.app?.let { pkg -> withContext(Dispatchers.IO) { HandOffIntents.installed(app, pkg) } } != true) {
-                    if (saidNothing(replyId)) sayInto(replyId, "I'm not sure about that one.")
-                    if (ranOwn) finishReply(replyId, DoneReason.END) else finishOrDrop(replyId)
-                    return RLog.i("helper_escalation", "trigger" to trigger, "decision" to EscalationDecision.NONE)
-                }
-                if (chat.none { it.id == replyId }) {
-                    // Gemma said nothing before asking for a helper, not even when asked again: the offer stands on its own.
-                    if (_state.value.turns.firstOrNull { it.id == replyId }?.text.isNullOrBlank()) sayInto(replyId, if (api) words(target).rather else "${target.name} could help with that.")
-                    finishReply(replyId, DoneReason.END)
-                }
-                // What the tap sends is fixed now: this question's screen or picture, never one that arrives later.
-                val payload = if (!api) null else HelperContext.payload(question, history, ZonedDateTime.now(), userRegion, personal, attachment,
-                    Shared(screenText = screen, image = image), includePersonal = HelperTrust.conversation(s, target, personal, MemoryPanel.toTrusted()))
-                offer(replyId, PendingOffer(api, question, payload, voiceAsked, asWell, target.id))
-            }
-            EscalationDecision.NEEDS_UNLOCK -> {
-                if (chat.none { it.id == replyId }) {
-                    if (_state.value.turns.firstOrNull { it.id == replyId }?.text.isNullOrBlank()) sayInto(replyId, target?.let { words(it).unlockToCheck } ?: "Unlock your phone first.")
-                    finishReply(replyId, DoneReason.END)
-                }
-            }
-            // Asked again and still nothing: why, or "Robot had no answer", rather than no reply at all.
-            EscalationDecision.NONE -> when {
-                !ranOwn -> finishOrDrop(replyId)
-                ownFailure != null && saidNothing(replyId) -> failReply(replyId, ownFailure)
-                else -> finishReply(replyId, DoneReason.END)
-            }
-        }
-        RLog.i("helper_escalation", "trigger" to trigger, "decision" to decision)
-    }
-
-    /** Robot's reply [replyId] is still open and holds neither a word nor a card (Gemma handed straight over). */
-    private fun saidNothing(replyId: String): Boolean = chat.none { it.id == replyId } &&
-        _state.value.turns.firstOrNull { it.id == replyId }?.let { it.text.isBlank() && it.actions.isEmpty() } == true
-
     /** Robot's own words into its empty reply [replyId], spoken in Robot's voice when replies are spoken. */
     private fun sayInto(replyId: String, text: String) {
-        setText(replyId, text)
+        replies.setText(replyId, text)
         voice.feed(replyId, text, _state.value.speak).forEach { speakSentence(it) }
+    }
+
+    /** The same for a sentence of Robot's own, in the turn's reply language (1.1): shown, and said in its voice's form. */
+    private fun sayInto(replyId: String, text: Phrase) {
+        replies.setText(replyId, text.render(turnLangs))
+        voice.feed(replyId, text.said, _state.value.speak).forEach { speakSentence(it) }
     }
 
     /** Finishes Robot's reply [replyId]; an empty one with no card is dropped instead (Gemma handed straight over). */
@@ -1837,75 +1545,12 @@ object PanelController {
     }
 
     /**
-     * Shows "Want me to check with Jarvis?" under [replyId] (any helper, by its name), or "Want Jarvis's take as well?"
-     * under Robot's own answer (a helper's app: "Open the ChatGPT app with: «…»").
+     * The offer under [replyId] was accepted (PanelOffers): [tapped] on its Send button, or a yes, which sends only what
+     * HelperTrust lets a yes send.
      */
-    private fun offer(replyId: String, o: PendingOffer) {
-        dropOffers()
-        val h = VoiceHub.settings.helper(o.helper) ?: return
-        offers[replyId] = o
-        val text = if (o.api) o.question else AppHandOff.cap(o.question)
-        _state.update { st ->
-            st.copy(turns = st.turns.map { if (it.id == replyId) it.copy(offer = Offer(o.api, text, o.payload?.sends.orEmpty(), o.payload?.preview, o.asWell, h.name,
-                h.presetOf.defaultName)) else it })
-        }
-        // Said too, so you know a yes will do.
-        if (_state.value.speak) VoiceHub.tts.speak(if (!o.api) "Want me to open the ${h.presetOf.defaultName} app?" else if (o.asWell) words(h).offerAsWell else words(h).offer)
-    }
+    fun acceptOffer(replyId: String, tapped: Boolean = true) = offers.accept(replyId, tapped)
 
-    private fun dropOffers() {
-        if (offers.isEmpty()) return
-        offers.clear()
-        _state.update { st -> st.copy(turns = st.turns.map { if (it.offer != null) it.copy(offer = null) else it }) }
-    }
-
-    /**
-     * The offer under [replyId] was accepted: [tapped] on its Send button, or a yes. A yes sends only an offer with
-     * nothing personal in it (or, to a helper you trust, nothing from your screen or a photo); otherwise Robot says what
-     * needs the tap and waits for it.
-     */
-    fun acceptOffer(replyId: String, tapped: Boolean = true) {
-        if (_state.value.busy || slot.running) return
-        val o = offers[replyId] ?: return
-        val s = VoiceHub.settings
-        val h = s.helper(o.helper)
-        // The helper was turned off or removed since the offer was made.
-        if (h == null || !h.on) {
-            dropOffers()
-            return notify(h?.let { words(it).off } ?: GONE)
-        }
-        val personal = o.payload?.personal.orEmpty()
-        // "Voice yes can send personal content" (off by default): otherwise only the tap sends it.
-        if (!tapped && !HelperTrust.voiceYes(s, h, personal)) {
-            val say = words(h).tapToInclude(personal)
-            notify(say)
-            if (_state.value.speak) VoiceHub.tts.speak(say)
-            return
-        }
-        offers.remove(replyId)
-        _state.update { st -> st.copy(turns = st.turns.map { if (it.id == replyId) it.copy(offer = null) else it }) }
-        VoiceHub.stopVoice(TtsStop.NEW_QUESTION)
-        RLog.i("helper_offer", "accepted" to true, "api" to o.api, "tapped" to tapped, "kind" to h.kind)
-        if (!o.api) {
-            // The offer was the card: the helper's app opens now (never on the lock screen).
-            if (Assistant.locked(VoiceHub.app)) return notify("Unlock your phone to open the ${h.presetOf.defaultName} app.")
-            lastToApp = o.question
-            scope.launch {
-                val r = withContext(Dispatchers.IO) { executor().run(Action.AskHelper(o.question, helper = h.id)) }
-                if (r.launchedApp && r.status.succeeded) leaveForApp() else notify(r.detail)
-            }
-            return
-        }
-        val p = o.payload ?: return
-        val id = helperBubble(h)
-        startTurn(id) { escalateNow(id, p.question, p.blocks, _state.value.speak, reuseBubble = true, h = h) }
-    }
-
-    fun dismissOffer(replyId: String) {
-        offers.remove(replyId) ?: return
-        RLog.i("helper_offer", "accepted" to false)
-        _state.update { st -> st.copy(turns = st.turns.map { if (it.id == replyId) it.copy(offer = null) else it }) }
-    }
+    fun dismissOffer(replyId: String) = offers.dismiss(replyId)
 
     /**
      * Helper [id]'s key was saved or deleted (or the helper removed): without a key it needs, its conversation and its API
@@ -1914,7 +1559,7 @@ object PanelController {
     fun helperKeyChanged(id: String) {
         val h = VoiceHub.settings.helper(id)
         if (h != null && (!h.presetOf.keyRequired || keySaved(h))) return
-        if (offers.values.any { it.api && it.helper == id }) dropOffers()
+        offers.dropIf { it.api && it.helper == id }
         if (_state.value.helperMode == id) endHelperMode()
     }
 
@@ -1922,475 +1567,27 @@ object PanelController {
     fun settingsChanged() {
         val s = VoiceHub.settings
         fun gone(id: String) = s.helper(id)?.on != true
-        if (offers.values.any { gone(it.helper) }) dropOffers()
-        val mode = _state.value.helperMode ?: return
-        if (gone(mode)) return endHelperMode()
-        // Renamed meanwhile: the chip says the new name.
-        val name = s.helper(mode)?.name
-        if (name != null && name != _state.value.helperName) _state.update { it.copy(helperName = name) }
-    }
-
-    /** A new, empty reply bubble of [h]'s at the end of the conversation. */
-    private fun helperBubble(h: HelperConfig): String {
-        val id = newId()
-        _state.update {
-            it.copy(turns = it.turns + UiTurn(id, TurnRole.ASSISTANT, "", streaming = true, fromHelper = true, helper = h.id, by = h.name, home = h.home),
-                phase = Phase.THINKING, helperStatus = words(h).checking)
-        }
-        voice.start(id)
-        return id
-    }
-
-    /** Reply [replyId] is [h]'s (its label and accent), or Robot's again ([h] null). */
-    private fun markHelper(replyId: String, h: HelperConfig?) = _state.update { st ->
-        st.copy(turns = st.turns.map { if (it.id == replyId) it.copy(fromHelper = h != null, helper = h?.id, by = h?.name, home = h?.home == true) else it })
+        offers.dropIf { gone(it.helper) }
+        helperMode.settingsChanged(s)
     }
 
     /**
-     * Robot checks with helper [h] (automatically, or after your tap): "Checking with Jarvis…" in Robot's voice, then the
-     * answer in the helper's. [blocks]: exactly what goes (HelperContext.escalation, or an offer's frozen payload).
-     * [fallBack] (Automatic, before Robot's own model ran): a helper that can't be reached before it said anything gives
-     * the question back; then true is returned, the reply is Robot's again, and Robot answers itself.
+     * A helper's turn (PanelHelperTurn): [rounds] of helper [h]'s on reply [replyId], with [s] as the turn began; what a read
+     * finds goes to it only after "Share with …" unless HelperTrust says so, and it runs only the tools [session] offered.
      */
-    private suspend fun escalateNow(replyId: String?, question: String, blocks: List<HelperBlock>, voiceAsked: Boolean, reuseBubble: Boolean,
-        h: HelperConfig, fallBack: Boolean = false): Boolean {
-        val s = VoiceHub.settings
-        val app = VoiceHub.app
-        val w = words(h)
-        val id = if (reuseBubble && replyId != null) replyId.also { r ->
-            markHelper(r, h)
-            _state.update { it.copy(helperStatus = w.checking) }
-        } else helperBubble(h)
-        if (_state.value.speak) VoiceHub.tts.speak(w.checking.trimEnd('…') + ".")
-        if (Assistant.locked(app) && !h.locked) {
-            localReply(id, w.locked)
-            return false
-        }
-        if (!HelperLink.networkAllowed(app)) {
-            networkCard(id)
-            return false
-        }
-        // The key is decrypted and the client made off the main thread.
-        val session = when (val made = withContext(Dispatchers.IO) { HelperLink.session(app, s, h, conversation = false) }) {
-            is HelperLink.Made.Ok -> made.session
-            is HelperLink.Made.Not -> {
-                if (fallBack && made.failure in FALLS_BACK) return fellBack(id, h, made.failure)
-                noKey(id, h, made.failure)
-                return false
-            }
-        }
-        return try {
-            runHelper(id, h, session, blocks, HelperPlan.of(h.effort, voiceAsked, HelperRouter.deep(question)), ToolRouter.asked(question), fallBack)
-        } finally {
-            HelperLink.done(session)
-        }
-    }
+    private suspend fun helperRun(replyId: String, rounds: TurnModel, h: HelperConfig, s: RobotSettings, asked: Set<ToolName>, session: HelperSession): TurnResult =
+        TurnRunner(rounds, PanelActions, PanelView(replyId, h.name), slot.confirmations, untrusted = true, remote = true, asked = asked,
+            trusted = HelperTrust.reads(s, h), offered = session.offered, messages = PanelMessages.taint(chat), langs = turnLangs, newId = ::newId).run()
 
-    /** [h] couldn't be reached before it said anything: the reply is Robot's again (Robot answers), with a notice why. */
-    private fun fellBack(replyId: String, h: HelperConfig, failure: HelperFailure): Boolean {
-        markHelper(replyId, null)
-        _state.update { st -> st.copy(helperStatus = null, phase = Phase.THINKING, turns = st.turns.map { if (it.id == replyId) it.copy(text = "", actions = emptyList()) else it }) }
-        voice.start(replyId)
-        notify(failure.say(who(h)) + " Robot answered instead.")
-        RLog.i("helper_fallback", "kind" to h.kind, "failure" to failure)
-        return true
-    }
+    /** The app route's hand-off (PanelHelperTurn): [scripted]'s one ask_claude call, your question, as a turn on reply [replyId]. */
+    private suspend fun handOffRun(replyId: String, scripted: TurnModel): TurnResult =
+        TurnRunner(scripted, PanelActions, PanelView(replyId), slot.confirmations, untrusted = false, messages = PanelMessages.taint(chat),
+            langs = turnLangs, newId = ::newId).runHandOff()
 
-    /** The app's name for the Send card ("a screenshot of Signal"), or null when it isn't known or visible to Robot. */
-    private fun appLabel(pkg: String?): String? = pkg?.let {
-        try {
-            val pm = VoiceHub.app.packageManager
-            pm.getApplicationLabel(pm.getApplicationInfo(it, 0)).toString().trim().takeIf { l -> l.isNotEmpty() && l != it }
-        } catch (_: Exception) { null }
-    }
-
-    /**
-     * No session for [h]: no key (none saved; the saved one couldn't be read just now: it is kept, and the next question
-     * tries again; or it could never be read again: then it was removed, and Robot says so), a server whose port Test
-     * connection hasn't found, or an address Robot won't use.
-     */
-    private fun noKey(replyId: String, h: HelperConfig, failure: HelperFailure) {
-        val text = when {
-            failure == HelperFailure.NO_KEY && HelperLink.unavailable(h.id) -> words(h).keyUnavailable
-            failure == HelperFailure.NO_KEY && HelperLink.unreadable(h.id) -> words(h).keyUnreadable
-            else -> failure.say(who(h))
-        }
-        // 1.0.2: the voice log says why the helper wasn't asked ("key not sent over http"), not that the model failed.
-        VoiceLog.add(VoiceEvent.CLAUDE_FAILED, HelperFail.of(failure).id, h.kind.id)
-        failReply(replyId, text, noReply = false)
-    }
-
-    /** A question for helper [h] ("ask ChatGPT …", "go get Jarvis", or any question in a helper's conversation). */
-    private suspend fun helperTurn(replyId: String, cmd: HelperCommand?, h: HelperConfig?, said: String, attachment: Attachment, sText: String?, image: ByteArray?,
-        thumb: Bitmap?, history: List<ChatTurn>, voiceAsked: Boolean) {
-        val s = VoiceHub.settings
-        val app = VoiceHub.app
-        if (h == null) {
-            endHelperMode()
-            val any = (cmd as? HelperCommand.Ask)?.helper == HelperName.ANY_ID || (cmd as? HelperCommand.Join)?.helper == HelperName.ANY_ID
-            // "Ask the helper …" with helpers on but none ready: what the one you'd get still needs (a key, or its app).
-            val waiting = s.helper(s.helpDefault)?.takeIf { it.on } ?: s.helpers.firstOrNull { it.on }
-            return localReply(replyId, when {
-                !any -> GONE
-                s.helpers.isEmpty() -> NO_HELPER
-                waiting == null -> NONE_ON
-                else -> words(waiting).notReady
-            })
-        }
-        val w = words(h)
-        val keySaved = keySaved(h)
-        if (!h.on) return localReply(replyId, w.off)
-        val question = when (cmd) {
-            is HelperCommand.Ask -> cmd.question
-            is HelperCommand.Join -> cmd.question
-            else -> said
-        }
-        if (HelperSettings.route(h, keySaved) == AskRoute.APP) {
-            // Its app (the Claude app, ChatGPT, …): the question, or for "go get …" a short summary of the conversation so far.
-            return handOff(replyId, question ?: AppHandOff.summary(history).orEmpty(), h)
-        }
-        if (h.presetOf.keyRequired && !keySaved) return localReply(replyId, HelperFailure.NO_KEY.say(who(h)))
-        if (Assistant.locked(app) && !h.locked) {
-            endHelperMode()
-            return localReply(replyId, w.locked)
-        }
-        if (!HelperLink.networkAllowed(app)) return networkCard(replyId)
-        if (cmd is HelperCommand.Join) {
-            startHelperMode(h, joinedAt = history.size, misheard = cmd.misheard)
-            // Nothing goes to the helper until there is a question.
-            if (question == null) return localReply(replyId, w.joined)
-        }
-        val mode = _state.value.helperMode == h.id
-        val deep = (cmd as? HelperCommand.Ask)?.deep ?: HelperRouter.deep(said)
-        // The screen or a photo goes only after a tap on its card ("Send your screen's text to Jarvis?").
-        val extra = if (attachment != Attachment.NONE) attachment else (cmd as? HelperCommand.Ask)?.extra ?: Attachment.NONE
-        var shared = Shared()
-        if (extra != Attachment.NONE) {
-            val screen = if (extra == Attachment.SCREEN) sText ?: screenText else null
-            val photo = extra == Attachment.PHOTO
-            val img = if (photo) (if (attachment == Attachment.PHOTO) image else lastImage) else screenshot?.let { Images.jpeg(it) }
-            if (screen == null && img == null) {
-                return localReply(replyId, "Robot doesn't have your screen or a photo this time. Swipe up from the corner over what ${h.name} should see, or add a photo, then ask again.")
-            }
-            // The card says exactly what goes and shows the picture: the photo, or a screenshot of the app on screen.
-            val pic = if (photo) (if (attachment == Attachment.PHOTO) thumb else lastThumb) else screenshot?.let { Images.scaled(it, Images.THUMB_EDGE) }
-            val appName = if (!photo && img != null) withContext(Dispatchers.IO) { appLabel(screenPkg) } else null
-            val what = if (photo) "the photo" else listOfNotNull(screen?.let { "your screen's text" },
-                img?.let { "a screenshot" + (appName?.let { a -> " of $a" } ?: "") }).joinToString(" and ")
-            if (!askToShare(replyId, "Send $what to ${h.name}?", screen?.let { ToolCalls.safeTake(it, 600) }, "Send", picture = pic, name = h.name)) {
-                return localReply(replyId, w.nothingSent)
-            }
-            shared = Shared(screenText = screen, image = img)
-        }
-        // The key is decrypted and the client made off the main thread.
-        val made = if (mode) helperSession?.let { HelperLink.Made.Ok(it) }
-            ?: withContext(Dispatchers.IO) { HelperLink.session(app, s, h, conversation = true) }.also { if (it is HelperLink.Made.Ok) helperSession = it.session }
-            else withContext(Dispatchers.IO) { HelperLink.session(app, s, h, conversation = false) }
-        val session = when (made) {
-            is HelperLink.Made.Ok -> made.session
-            is HelperLink.Made.Not -> return noKey(replyId, h, made.failure)
-        }
-        val now = ZonedDateTime.now()
-        try {
-            val blocks = when {
-                !mode -> HelperContext.oneShot(question ?: said, now, userRegion, shared)
-                session.fresh -> {
-                    // The helper joins the conversation: a personal one only after "Include" ("Start fresh" sends none of it),
-                    // or by itself to a helper you trust that you called by its name (never with a screen or a photo in it).
-                    val before = history.take(helperJoinedAt.coerceIn(0, history.size))
-                    val personal = HelperContext.personal(before)
-                    // A conversation from a word that only sounded like the name asks too, personal or not.
-                    val include = HelperTrust.joinWithoutCard(h, personal, helperMisheard, MemoryPanel.toTrusted()) ||
-                        HelperContext.includeQuestion(before, helperMisheard)?.let { q ->
-                            askToShare(replyId, q, null, "Include", "Start fresh", detail = "Start fresh: ${h.name} sees only what you ask from now on.",
-                                personal = personal.isNotEmpty(), name = h.name)
-                        } ?: false
-                    HelperContext.join(before, question ?: said, now, userRegion, shared, include, helperMisheard)
-                }
-                else -> HelperContext.next(question ?: said, shared)
-            }
-            runHelper(replyId, h, session, blocks, HelperPlan.of(h.effort, voiceAsked, deep), ToolRouter.asked(said))
-        } finally {
-            if (!mode) HelperLink.done(session)
-        }
-        if (mode) touchHelperMode()
-    }
-
-    /**
-     * One turn of helper [h]'s into the reply [replyId]: streamed into the bubble and spoken in the helper's voice, its
-     * calls as cards (always), then the cost line, today's spend, and Robot's own conversation rebuilt with it.
-     * [fallBack]: see [escalateNow]; true when the question went back to Robot.
-     */
-    private suspend fun runHelper(replyId: String, h: HelperConfig, session: HelperSession, blocks: List<HelperBlock>, plan: HelperPlan, asked: Set<ToolName>,
-        fallBack: Boolean = false): Boolean {
-        val w = words(h)
-        val s = VoiceHub.settings
-        markHelper(replyId, h)
-        _state.update { st -> st.copy(helperStatus = st.helperStatus ?: w.thinking) }
-        val t0 = System.currentTimeMillis()
-        var first = -1L
-        // As for Robot's replies: each round's start is checked for a copied clock ("[Now 14:05]"), never shown or said.
-        var echo = ClockEcho()
-        fun stream(text: String) {
-            if (text.isEmpty()) return
-            appendText(replyId, text)
-            voice.feed(replyId, text, _state.value.speak).forEach { speakSentence(it, byHelper = true, voice = h.voice) }
-        }
-        val heard = object : HelperTurnListener {
-            override fun text(delta: String) {
-                if (first < 0) first = System.currentTimeMillis() - t0
-                stream(echo.feed(delta))
-            }
-
-            override fun declined() {
-                // Robot's own words, in Robot's voice and Robot's bubble, in place of what was shown.
-                voice.mute()
-                VoiceHub.stopVoice(TtsStop.OTHER)
-                setText(replyId, w.declined)
-                markHelper(replyId, null)
-                if (_state.value.speak) VoiceHub.tts.speak(w.declined)
-            }
-
-            override fun thinking() {
-                _state.update { st -> if (st.phase == Phase.THINKING) st.copy(helperStatus = w.thinking) else st }
-            }
-
-            override fun loading() {
-                // Your server is loading the model (nothing for a few seconds): said on screen, so the wait makes sense.
-                _state.update { st -> if (st.phase == Phase.THINKING) st.copy(helperStatus = w.loading) else st }
-            }
-
-            override fun spent(dollars: Double) {
-                // Into today's spend as soon as it is known, so a crash mid-answer loses none of it.
-                scope.launch(Dispatchers.IO) { HelperSpendStore.add(VoiceHub.app, h.id, dollars) }
-            }
-        }
-        val turn = HelperTurn(session, blocks, plan, heard) { it.say(who(h)) }
-        // One echo filter per round: the question's answer, then the text after each tool round.
-        val rounds = object : TurnModel {
-            override suspend fun ask(): ModelOutcome = turn.ask().also { stream(echo.flush()) }
-            override suspend fun answer(results: List<Pair<String, Map<String, Any?>>>): ModelOutcome {
-                echo = ClockEcho()
-                return turn.answer(results).also { stream(echo.flush()) }
-            }
-            override fun close() = turn.close()
-            override fun abandon(results: List<Pair<String, Map<String, Any?>>>) = turn.abandon(results)
-            override fun stopped(results: List<Pair<String, Map<String, Any?>>>) = turn.stopped(results)
-        }
-        val result = try {
-            TurnRunner(rounds, PanelActions, PanelView(replyId, h.name), slot.confirmations, untrusted = true, remote = true, asked = asked,
-                trusted = HelperTrust.reads(s, h), offered = session.offered, messages = PanelMessages.taint(chat), newId = ::newId).run()
-        } finally {
-            val r = session.lastReport
-            RLog.i("helper_turn", "kind" to h.kind, "model" to ((session as? AnthropicSession)?.model ?: RLog.Code("other")), "effort" to plan.effort,
-                "firstMs" to first, "ms" to (System.currentTimeMillis() - t0), "requests" to r.requests, "searches" to r.searches,
-                "searchErrors" to r.searchErrors, "cache_read_input_tokens" to r.usage.cacheRead)
-        }
-        _state.update { it.copy(helperStatus = null) }
-        val report = session.lastReport
-        result.failure?.let {
-            // A server that can't be reached, before it said or did anything: Robot answers itself (Automatic only).
-            val f = turn.failure
-            if (fallBack && f != null && f in FALLS_BACK && first < 0 && _state.value.turns.firstOrNull { t -> t.id == replyId }?.actions.isNullOrEmpty()) {
-                return fellBack(replyId, h, f)
-            }
-            // Robot's copy of the conversation can't make a valid request any more: the helper's conversation starts over.
-            if (f == HelperFailure.RESET) endHelperMode()
-            // Said aloud, in Robot's voice ("No internet", "Jarvis is busy, try again in a minute").
-            if (_state.value.speak) VoiceHub.tts.speak(it)
-            failReply(replyId, it)
-            return false
-        }
-        val cost = when {
-            !s.helperShowCost || report.requests == 0 -> null
-            !report.costKnown -> "cost unknown"
-            else -> Pricing.line(report.dollars, free = h.price is HelperPrice.Free)
-        }
-        _state.update { st ->
-            st.copy(turns = st.turns.map {
-                if (it.id == replyId) it.copy(sources = report.domains.takeIf { report.searches > 0 } ?: emptyList(), cost = cost) else it
-            })
-        }
-        // Cut off before it said anything (its thinking used the room): say so rather than leave an empty bubble.
-        if (result.reason == DoneReason.LENGTH && _state.value.turns.firstOrNull { it.id == replyId }?.let { it.text.isBlank() && it.actions.isEmpty() } == true) {
-            markHelper(replyId, null)
-            sayInto(replyId, w.cutEmpty)
-        }
-        finishReply(replyId, result.reason ?: DoneReason.END, costMicros = if (report.costKnown) Pricing.micros(report.dollars) else 0)
-        // The helper's answer joins Robot's own conversation: :brain rebuilds it from the history next time.
-        closeLiveConversation()
-        if (result.launchedApp) leaveForApp()
-        return false
-    }
-
-    /**
-     * "Send …to Jarvis?" with Send and Cancel (or Include and Start fresh): true only after the tap. Said too when replies
-     * are spoken, so you know a tap is needed. [name]: the helper's.
-     */
-    private suspend fun askToShare(replyId: String, summary: String, body: String?, confirm: String, cancel: String = "Cancel",
-        detail: String? = null, picture: Bitmap? = null, personal: Boolean = true, name: String = "Claude"): Boolean {
-        val id = newId()
-        val view = PanelView(replyId, name)
-        upsertAction(replyId, UiAction(id, ToolName.ASK_HELPER, summary, ActionStatus.PENDING, detail ?: "Nothing goes to $name until you tap $confirm.", body = body,
-            confirm = confirm, cancel = cancel, picture = picture, personal = personal))
-        if (_state.value.speak) {
-            val s = VoiceHub.settings
-            // A spoken yes sends personal content only with "Voice yes can send personal content" on; a no always works.
-            VoiceHub.tts.speak(when {
-                !s.voiceCards -> "$summary Tap $confirm or $cancel."
-                !personal || s.voiceYesPersonal -> "$summary Say yes or no."
-                else -> "$summary Tap $confirm, or say no."
-            })
-            cardPromptSaid = true
-        }
-        view.phase(TurnPhase.CONFIRMING)
-        val pick = try {
-            slot.confirmations.ask(id)
-        } catch (e: CancellationException) {
-            view.card(Card(id, ToolName.ASK_HELPER, summary, ActionStatus.DECLINED, null))
-            throw e
-        }
-        view.card(Card(id, ToolName.ASK_HELPER, summary, if (pick >= 0) ActionStatus.DONE else ActionStatus.DECLINED, if (pick >= 0) "Shared with $name." else "Not shared."))
-        view.phase(TurnPhase.THINKING)
-        return pick >= 0
-    }
-
-    /** GrapheneOS's Network toggle is off for Robot: a card that says so (no helper can be reached at all), said too. */
-    private fun networkCard(replyId: String) {
-        PanelView(replyId).card(Card(newId(), ToolName.ASK_HELPER, "Robot can't use the network", ActionStatus.FAILED, HelperFailure.NO_NETWORK_PERMISSION.text))
-        if (_state.value.speak) VoiceHub.tts.speak(HelperFailure.NO_NETWORK_PERMISSION.text)
-        _state.update { it.copy(helperStatus = null) }
-        markHelper(replyId, null)
-        finishReply(replyId, DoneReason.END)
-    }
-
-    /**
-     * The app route (any helper with an app, 1.0.0): the card "Open the ChatGPT app with: «…»", then [h]'s app opens with
-     * the question and the panel steps aside (the launchedApp path). Robot never hears the answer; with the Claude app you
-     * can read it back with the corner swipe.
-     */
-    private suspend fun handOff(replyId: String, text: String, h: HelperConfig) {
-        lastToApp = text.takeIf { it.isNotBlank() }
-        markHelper(replyId, null)
-        val scripted = object : TurnModel {
-            override suspend fun ask(): ModelOutcome = ModelOutcome.Calls(listOf(RawToolCall(ToolName.ASK_HELPER.id, mapOf("question" to text, "helper" to h.id))))
-            override suspend fun answer(results: List<Pair<String, Map<String, Any?>>>): ModelOutcome = ModelOutcome.Done(DoneReason.END)
-            override fun close() {}
-        }
-        val r = TurnRunner(scripted, PanelActions, PanelView(replyId), slot.confirmations, untrusted = false, messages = PanelMessages.taint(chat),
-            newId = ::newId).runHandOff()
-        finishReply(replyId, DoneReason.END)
-        if (r.launchedApp) leaveForApp()
-    }
-
-    /**
-     * Conversation mode by voice (0.5.0): start transcribing or the interpreter (the session starts from here, while the
-     * panel is on screen, then its screen opens and the panel goes), switch the running one between them, stop, pause or
-     * resume it, or summarize it (it stops, and the summary screen opens: unlocked only).
-     */
-    private suspend fun conversationCommand(replyId: String, c: ConversationCommand) {
-        val ctx = VoiceHub.app
-        when (c) {
-            is ConversationCommand.Start -> when {
-                ConversationSession.running -> {
-                    val now = ConversationSession.state.value.mode
-                    if (now != c.mode) ConversationSession.setMode(c.mode)
-                    localReply(replyId, when {
-                        now == c.mode && c.mode == ConvMode.INTERPRET -> "Robot is already translating."
-                        now == c.mode -> "Robot is already transcribing."
-                        c.mode == ConvMode.INTERPRET -> "Translating now: the interpreter is on the screen."
-                        else -> "Back to the transcript."
-                    })
-                    openConversation(ConversationEntry.OPEN, c.mode)
-                }
-                !ConversationLock.mayStart(Assistant.locked(ctx), VoiceHub.settings) ->
-                    localReply(replyId, "Unlock your phone to start (Settings › Conversation › Start from the lock screen is off).",
-                        spoken = "Unlock your phone to start: starting from the lock screen is off in Robot's conversation settings.")
-                else -> {
-                    // The first time, the transcript screen asks you to tell people first; after that it starts from here
-                    // (the panel is on screen), or from the transcript screen if Android won't let it start here.
-                    val consented = !ConsentRecord.needed(Transcripts.consent(ctx), VoiceHub.settings)
-                    val started = consented && ConversationService.start(ctx, ConvEntry.VOICE, mode = c.mode)
-                    val what = if (c.mode == ConvMode.INTERPRET) "Translating" else "Transcribing"
-                    localReply(replyId, when {
-                        started -> "$what. ${ConsentRecord.LINE}"
-                        consented -> "Opening the screen to start."
-                        else -> "First, a word about telling the people you're with: it's on the screen."
-                    })
-                    // On the lock screen the screen opens as a start, so it may show there (it doesn't start a second one).
-                    openConversation(if (started && !Assistant.locked(ctx)) ConversationEntry.OPEN else ConversationEntry.START, c.mode)
-                }
-            }
-            ConversationCommand.Stop -> {
-                ConversationSession.stop(ConvStop.VOICE)
-                localReply(replyId, "Stopped. The transcript is saved in Robot › Transcripts.", spoken = "Stopped. The transcript is saved in Robot's transcripts.")
-            }
-            ConversationCommand.Pause -> {
-                ConversationSession.userPause()
-                localReply(replyId, "Paused. Say “resume transcribing”, or tap Resume in the notification.")
-            }
-            ConversationCommand.Resume -> {
-                ConversationSession.userResume()
-                localReply(replyId, "Going on.")
-            }
-            ConversationCommand.Summarize -> {
-                // A summary needs the phone unlocked (docs/conversation-mode.md 1.7): the session stops, the screen opens.
-                val id = ConversationSession.state.value.id
-                ConversationSession.stop(ConvStop.VOICE)
-                if (Assistant.locked(ctx) || id == null) {
-                    localReply(replyId, "Stopped. Unlock your phone, then open the transcript in Robot › Transcripts to summarize it.",
-                        spoken = "Stopped. Unlock your phone, then open the transcript in Robot's transcripts to summarize it.")
-                } else {
-                    localReply(replyId, "Stopped. The summary screen is opening.")
-                    if (host?.launch(Transcripts.summaryIntent(ctx, id)) == true) leaveForApp()
-                }
-            }
-        }
-    }
-
-    /**
-     * 0.7, a memory command (core MemoryRouting), before the model and never a helper's: the vault changes, the card under
-     * the reply (Remembered or Forgotten with Undo, Open Memory), and Robot's own words, said back; several items that fit
-     * "forget …" make a pick card first. On the lock screen it only says to unlock, unless memory is allowed there.
-     */
-    private suspend fun memoryCommand(replyId: String, route: MemoryRoute, spoken: Boolean) {
-        // 0.7, memory and messages: your "remember that …" in a conversation that holds a message is never saved at once.
-        // It goes through the turn runner as one remember call of your own words: a card that shows exactly the words kept,
-        // answered only by a tap, kept as content (core MessageQuarantine.rememberAfterMessages); a code is refused there.
-        when (val after = MessageQuarantine.rememberAfterMessages(route, PanelMessages.taint(chat))) {
-            null -> {}
-            is MessageQuarantine.AfterMessages.Refused -> return localReply(replyId, after.text)
-            is MessageQuarantine.AfterMessages.Card -> {
-                setText(replyId, if (after.fr) MessageQuarantine.CHECK_AND_TAP_FR else MessageQuarantine.CHECK_AND_TAP)
-                val result = TurnRunner(DirectCall(after.call), PanelActions, PanelView(replyId), slot.confirmations, untrusted = true,
-                    asked = setOf(ToolName.REMEMBER), messages = PanelMessages.taint(chat), origin = ActionOrigin.USER_WORDS, newId = ::newId).run()
-                result.failure?.let { return failReply(replyId, it) }
-                return finishReply(replyId, result.reason ?: DoneReason.END)
-            }
-        }
-        var a = withContext(Dispatchers.IO) { MemoryPanel.command(route, Assistant.locked(VoiceHub.app), spoken) }
-        if (a.pick.isNotEmpty()) {
-            val id = newId()
-            upsertAction(replyId, UiAction(id, ToolName.FORGET, app.heyrobot.core.memory.MemoryReplies.CARD_WHICH, ActionStatus.PENDING, null,
-                choices = MemoryPanel.pickLabels(a.pick)))
-            sayInto(replyId, a.text)
-            _state.update { it.copy(phase = Phase.CONFIRMING) }
-            cardWaiting()
-            val pick = try {
-                slot.confirmations.ask(id)
-            } finally {
-                stopCardListening()
-                _state.value.turns.firstOrNull { it.id == replyId }?.actions?.firstOrNull { it.id == id }?.let { upsertAction(replyId, it.copy(status = ActionStatus.DECLINED)) }
-            }
-            _state.update { it.copy(phase = Phase.THINKING) }
-            val chosen = a.pick.getOrNull(if (pick >= app.heyrobot.core.Confirmations.REMEMBER) pick - app.heyrobot.core.Confirmations.REMEMBER else pick)
-            _state.update { st -> st.copy(turns = st.turns.map { t -> if (t.id != replyId) t else t.copy(text = "", actions = t.actions.filter { it.id != id }) }) }
-            a = withContext(Dispatchers.IO) { MemoryPanel.forgetPicked(chosen, a.fr) }
-        }
-        a.card?.let { upsertAction(replyId, it.copy(id = newId())) }
-        MemoryPanel.mark(replyId, a.ids)
-        localReply(replyId, a.text)
-    }
+    /** "Remember that …" after a message (PanelMemoryCommand): the quarantine's remember [call], your own words', on reply [replyId]. */
+    private suspend fun memoryCardTurn(replyId: String, call: RawToolCall): TurnResult =
+        TurnRunner(DirectCall(call), PanelActions, PanelView(replyId), slot.confirmations, untrusted = true,
+            asked = setOf(ToolName.REMEMBER), messages = PanelMessages.taint(chat), origin = ActionOrigin.USER_WORDS, langs = turnLangs, newId = ::newId).run()
 
     /** Settings › Memory changed something (Cmd.MEMORY_CHANGED): what the panel holds goes, and the live conversation starts again. */
     fun memoryChanged() {
@@ -2398,61 +1595,33 @@ object PanelController {
         if (slot.running) closeConvAfterTurn = true else closeLiveConversation()
     }
 
-    /**
-     * 0.7: a feedback phrase opens Settings › About › Send feedback in the app with its kind, and what you said after it
-     * starts your text (handed over in a file of Robot's own). The panel never sends anything: the page opens, you choose.
-     */
-    private suspend fun feedbackCommand(replyId: String, c: FeedbackCommand) {
-        val ctx = VoiceHub.app
-        val locked = Assistant.locked(ctx)
-        VoiceLog.add(VoiceEvent.FEEDBACK_ASKED, c.kind, if (c.text != null) 1 else 0, if (locked) 1 else 0)
-        if (locked) return localReply(replyId, "Unlock your phone, then say it again, or open Robot › Settings › About › Send feedback.",
-            spoken = "Unlock your phone, then say it again.")
-        withContext(Dispatchers.IO) { FeedbackFiles.prefill(ctx, c.kind, c.text) }
-        localReply(replyId, "Opening Send feedback. Nothing is sent until you choose an app.")
-        if (host?.launch(FeedbackFiles.openIntent(ctx, c.kind)) == true) leaveForApp()
-    }
-
-    /**
-     * 0.7.0, "free up memory" ([fr]: asked in French): what Android reports free, what unloading Robot's model gives, the
-     * apps used lately that are likely still in memory (Usage access), said; then free_memory's card to pick from, as the
-     * model's call would make it (ToolExecutor): unload the model, or open an app's info where you tap Force stop, or turn
-     * on Usage access. Robot never stops an app itself. On the lock screen only what is free, nothing about your apps.
-     */
-    private suspend fun freeMemoryCommand(replyId: String, fr: Boolean) {
-        val ctx = VoiceHub.app
-        val locked = Assistant.locked(ctx)
-        val brain = BrainKeeper.state.value
-        val loaded = brain.readiness == BrainKeeper.Readiness.READY || brain.readiness == BrainKeeper.Readiness.LOADING
-        val modelBytes = brain.model?.memoryBytes?.takeIf { it > 0 } ?: app.heyrobot.core.PhoneStatus.ROBOT_MODEL_BYTES
-        val (mem, recent) = withContext(Dispatchers.IO) { PhoneInfo.memory(ctx) to if (locked) emptyList() else PhoneInfo.recentInMemory(ctx) }
-        if (locked) return localReply(replyId, FreeUp.memoryNow(mem, fr) + " " + FreeUp.unlockToFree(fr))
-        sayInto(replyId, FreeUp.advice(mem, if (loaded) modelBytes else null, recent, System.currentTimeMillis(), fr))
-        val result = TurnRunner(DirectCall(RawToolCall(ToolName.FREE_MEMORY.id, emptyMap())), PanelActions, PanelView(replyId), slot.confirmations,
-            untrusted = TurnRules.untrusted(chat), asked = setOf(ToolName.FREE_MEMORY), messages = PanelMessages.taint(chat), newId = ::newId).run()
-        result.failure?.let { return failReply(replyId, it) }
-        finishReply(replyId, result.reason ?: DoneReason.END)
-    }
-
-    private enum class ConversationEntry { START, OPEN }
-
-    /** The transcript screen (voice process), then the panel goes so nothing more is said to it. */
-    private suspend fun openConversation(how: ConversationEntry, mode: ConvMode = ConvMode.TRANSCRIBE) {
-        val ctx = VoiceHub.app
-        val i = if (how == ConversationEntry.START) Transcripts.startIntent(ctx, ConvEntry.VOICE.name, mode.name) else Transcripts.openIntent(ctx)
-        if (host?.launch(i) == true) leaveForApp()
-    }
+    /** "Free up memory"'s card (PanelFreeMemory): free_memory as the panel's own call on reply [replyId]. */
+    private suspend fun freeMemoryTurn(replyId: String): TurnResult =
+        TurnRunner(DirectCall(RawToolCall(ToolName.FREE_MEMORY.id, emptyMap())), PanelActions, PanelView(replyId), slot.confirmations,
+            untrusted = TurnRules.untrusted(chat), asked = setOf(ToolName.FREE_MEMORY), messages = PanelMessages.taint(chat), langs = turnLangs, newId = ::newId).run()
 
     /**
      * Robot's own words as the reply (no model), in Robot's bubble and voice; [spoken] is the same as the voice says it,
      * when it differs (no "›").
      */
     private fun localReply(replyId: String, text: String, spoken: String = text) {
-        markHelper(replyId, null)
+        replies.markHelper(replyId, null)
         _state.update { it.copy(helperStatus = null) }
-        setText(replyId, text)
+        replies.setText(replyId, text)
         voice.feed(replyId, spoken, _state.value.speak).forEach { speakSentence(it) }
         finishReply(replyId, DoneReason.END)
+    }
+
+    /** The same in the turn's reply language (1.1): [text] shown, [spoken] (or [text]'s voice form) said. */
+    private fun localReply(replyId: String, text: Phrase, spoken: Phrase = text) = localReply(replyId, text.render(turnLangs), spoken.said)
+
+    /** What Robot says of [this] in the turn's reply language: its voice's form in French, the screen's in English (1.0's words). */
+    private val Phrase.said: String get() = if (turnLangs.say == Lang.EN) render(turnLangs) else render(turnLangs.voice)
+
+    /** Robot's own words aloud: its French voice when the turn's reply language is French (1.1), its own otherwise. */
+    private fun speakRobot(text: String) {
+        val fr = if (turnLangs.say == Lang.FR) MessageVoices.french(VoiceHub.settings.voiceChoice) else null
+        if (fr != null) VoiceHub.tts.speakOther(text, fr.first, fr.second) else VoiceHub.tts.speak(text)
     }
 
     // ------------------------------------------------------------------ messages (0.7, PanelMessages)
@@ -2472,9 +1641,9 @@ object PanelController {
 
     /** Ends [replyId] with [text] shown; PanelMessages speaks it in each piece's own voice. */
     internal fun messagesReply(replyId: String, text: String) {
-        markHelper(replyId, null)
+        replies.markHelper(replyId, null)
         _state.update { it.copy(helperStatus = null) }
-        setText(replyId, text)
+        replies.setText(replyId, text)
         finishReply(replyId, DoneReason.END)
     }
 
@@ -2522,48 +1691,8 @@ object PanelController {
 
     // ------------------------------------------------------------------ a helper's conversation ("go get Jarvis")
 
-    /** Where the helper's conversation started: what came before is what it joins. */
-    private var helperJoinedAt = 0
-    /** It came from a word that only sounded like the name: what came before goes only after a tap. */
-    private var helperMisheard = false
-
-    /** [h]'s conversation starts (another helper's ends: one at a time). */
-    private fun startHelperMode(h: HelperConfig, joinedAt: Int, misheard: Boolean = false) {
-        if (_state.value.helperMode != h.id) {
-            HelperLink.done(helperSession)
-            helperSession = null
-            helperJoinedAt = joinedAt
-            helperMisheard = misheard
-        }
-        _state.update { it.copy(helperMode = h.id, helperName = h.name, helperHome = h.home) }
-        touchHelperMode()
-        RLog.i("helper_mode", "on" to true, "kind" to h.kind)
-    }
-
-    /** A turn in the helper's conversation: the 10 minutes start again. */
-    private fun touchHelperMode() {
-        helperLast = System.currentTimeMillis()
-        helperIdle?.cancel()
-        helperIdle = scope.launch {
-            delay(HELPER_IDLE_MS)
-            if (!slot.running) endHelperMode()
-        }
-    }
-
-    private fun expireHelperMode() {
-        if (_state.value.helperMode != null && System.currentTimeMillis() - helperLast > HELPER_IDLE_MS) endHelperMode()
-    }
-
     /** "Back to Robot" on the chip, "thanks Jarvis", the panel closing, 10 minutes without a turn, or the lock screen. */
-    fun endHelperMode() {
-        helperIdle?.cancel()
-        helperIdle = null
-        if (helperSession == null && _state.value.helperMode == null) return
-        HelperLink.done(helperSession)
-        helperSession = null
-        _state.update { it.copy(helperMode = null, helperName = null, helperHome = false) }
-        RLog.i("helper_mode", "on" to false)
-    }
+    fun endHelperMode() = helperMode.end()
 
     // ------------------------------------------------------------------ reading Claude's answer off the Claude app
 
@@ -2579,11 +1708,11 @@ object PanelController {
 
     private fun readBack() {
         val st = _state.value
-        val pieces = claudePieces ?: return notify(ClaudeWords.SWIPE_TO_READ)
+        val pieces = claudePieces ?: return notify(app.heyrobot.core.i18n.HelperStrings.swipeToRead())
         val answer = ClaudeAppAnswer.extract(pieces, lastToApp)
         RLog.i("claude_read_back", "found" to (answer != null), "chars" to (answer?.length ?: 0))
         if (answer == null) {
-            notify("Robot couldn't find Claude's answer on this screen. You can ask about the screen instead.")
+            notify(PanelStrings.claudeAnswerNotFound())
             attachScreen()
             return
         }
@@ -2604,160 +1733,19 @@ object PanelController {
         closeLiveConversation()
     }
 
-    /**
-     * Texting without the model (core TextCommand): "text mom I'm late" becomes send_text, prepared, gated and carded as
-     * the model's call would be; "text mom" asks what it should say and takes the next question as the message
-     * ("cancel" drops it). False: not a text, the model answers.
-     */
-    private suspend fun directText(replyId: String, q: String, textingFor: String?, fromVoice: Boolean, untrusted: Boolean): Boolean {
-        val typed = !fromVoice
-        // The wake word is paused while Robot waits for the message, so a spoken "hey robot, …" comes back whole.
-        val wakes = VoiceHub.settings.wakePhrases.filter { it.enabled }.map { it.text }
-        val answer = if (fromVoice && textingFor != null) TextCommand.stripWake(q, wakes) else q
-        // Decided before any contact is read or anything asked: the lock first.
-        val locked = Assistant.locked(VoiceHub.app) && ToolName.SEND_TEXT !in VoiceHub.settings.lockedTools
-        val req: TextRequest = when (TextCommand.route(answer, textingFor, locked, typed, wakes)) {
-            TextCommand.Route.MODEL -> return false
-            // Said aloud as well: the question may have come by voice from across the room.
-            TextCommand.Route.UNLOCK -> {
-                localReply(replyId, "Unlock your phone to send a text.")
-                return true
-            }
-            TextCommand.Route.CANCEL -> {
-                val kind = TextCommand.cancelKind(answer, wakes) ?: TextCommand.Cancel.EXPLICIT
-                localReply(replyId, TextCommand.cancelReply(textingFor!!, answer, kind, wakes))
-                return true
-            }
-            // The message itself; the approval gate still checks the lock. Only the wake phrase: Robot asks again.
-            TextCommand.Route.ANSWER -> TextRequest(textingFor!!, answer.trim().ifEmpty { null })
-            TextCommand.Route.PARSE -> {
-                // People's names and what you call them, with the phone's contacts when Robot may read them. Not names learned
-                // from notifications: whoever sent the message chose those, so they never decide where the message starts.
-                val names = withContext(Dispatchers.IO) {
-                    PeopleFiles.book(VoiceHub.app).names.filter { !it.learned }.flatMap { listOf(it.name) + it.nicknames + it.aliases }
-                }
-                TextCommand.parse(answer, names, typed) ?: return false
-            }
-        }
-        val name = TextCommand.display(req.name)
-        if (req.message == null) {
-            val ask = TextCommand.askMessage(req.name)
-            setText(replyId, ask)
-            askingTextFor = req.name
-            if (_state.value.speak) {
-                speakSentence(ask)
-                listenAfterSpeech = fromVoice
-            }
-            finishReply(replyId, DoneReason.END)
-            // Asked by voice with replies silent: listen for the answer now.
-            if (fromVoice && !_state.value.speak && shown) startListening()
-            return true
-        }
-        RLog.i("text_direct", "typed" to typed)
-        // A short line for the conversation, so later questions know what happened (the card has the rest).
-        setText(replyId, "Texting $name.")
-        val call = RawToolCall(ToolName.SEND_TEXT.id, mapOf("to" to req.name, "message" to req.message))
+    /** Texting without the model (PanelTexting): send_text's [call], your own words', as a turn on reply [replyId]. */
+    private suspend fun textTurn(replyId: String, call: RawToolCall, untrusted: Boolean): TurnResult =
         // Your own words asked for this text (or answered "what should it say?").
-        val result = TurnRunner(DirectCall(call), PanelActions, PanelView(replyId), slot.confirmations, untrusted, asked = setOf(ToolName.SEND_TEXT),
-            messages = PanelMessages.taint(chat), newId = ::newId).run()
-        result.failure?.let { failReply(replyId, it); return true }
-        finishReply(replyId, result.reason ?: DoneReason.END)
-        if (result.launchedApp) leaveForApp()
-        return true
-    }
+        TurnRunner(DirectCall(call), PanelActions, PanelView(replyId), slot.confirmations, untrusted, asked = setOf(ToolName.SEND_TEXT),
+            messages = PanelMessages.taint(chat), langs = turnLangs, newId = ::newId).run()
 
     // ------------------------------------------------------------------ web search (0.9, core web; design Part A)
 
-    /**
-     * "Search the web for …": web_search with your words as they are, gated and carded as Gemma's call would be. 1.0: a
-     * search in your browser instead when your words name one, or while Robot's own web search is off (BrowserSearchTool).
-     */
-    private suspend fun directWeb(replyId: String, route: app.heyrobot.core.web.WebRoute, question: String, history: List<ChatTurn>, untrusted: Boolean) {
-        RLog.i("web_direct")
-        val call = withContext(Dispatchers.IO) { BrowserSearchTool.directCall(VoiceHub.app, route) } ?: RawToolCall(ToolName.WEB_SEARCH.id, mapOf("query" to route.query))
+    /** "Search the web for …" as a turn (PanelWebSearch.direct): your own words' call on reply [replyId]. */
+    private suspend fun webDirectTurn(replyId: String, call: RawToolCall, untrusted: Boolean): TurnResult =
         // 0.7's quarantine: after a message, even your own search is a card only a tap answers (core MessageQuarantine).
-        val result = TurnRunner(DirectCall(call), PanelActions, PanelView(replyId), slot.confirmations, untrusted, asked = setOfNotNull(ToolName.of(call.name)),
-            messages = PanelMessages.taint(chat), newId = ::newId).run()
-        result.failure?.let { return failReply(replyId, it) }
-        result.web?.let { return webAnswer(replyId, question, history, it) }
-        finishReply(replyId, result.reason ?: DoneReason.END)
-        if (result.launchedApp) leaveForApp()
-    }
-
-    /** web_search's run: on its own thread with one deadline (the request, then the pages); Stop disconnects it. */
-    private suspend fun webRun(action: Action.WebSearch): Executed {
-        val abort = Abort(WebSearch.DEADLINE_MS)
-        return try {
-            OnlineRun.run(abort, WebSearch.DEADLINE_MS) { a -> executor(a).run(action) } ?: WebOutcome.Failed(null, WebFail.TIMEOUT).let { o ->
-                VoiceLog.add(VoiceEvent.WEB_FAILED, WebFail.TIMEOUT.id)
-                Executed(ActionStatus.FAILED, o.text, web = o)
-            }
-        } finally {
-            _state.update { it.copy(helperStatus = null) }
-        }
-    }
-
-    /** What the search is doing ("Searching the web…", "Reading 3 pages…"): the panel's status, and said once each. */
-    private fun webStep(step: WebStep, lang: String) {
-        VoiceHub.main.post {
-            val shown = when (step) {
-                WebStep.Searching -> WebStatus.searching(lang)
-                is WebStep.Reading -> WebStatus.reading(step.pages, lang, step.done.takeIf { it > 0 })
-            }
-            _state.update { if (it.busy) it.copy(helperStatus = shown) else it }
-            val say = when (step) {
-                WebStep.Searching -> WebStatus.searching(lang)
-                is WebStep.Reading -> if (step.done == 0) WebStatus.reading(step.pages, lang) else null
-            }
-            val id = _state.value.turns.lastOrNull { it.streaming }?.id ?: return@post
-            if (say != null) voice.say(id, say, _state.value.speak)?.let(::speakSentence)
-        }
-    }
-
-    /**
-     * Where this conversation's words came from, for QueryCheck (core web WebQueryContext): your words, content Robot
-     * didn't write, and personal content (with what read tools' cards showed).
-     */
-    private fun webContext(): QueryContext {
-        val bodies = _state.value.turns.flatMap { t -> t.actions.filter { it.content && it.tool != ToolName.WEB_SEARCH }.mapNotNull { it.body } }
-        val screen = screenText?.takeIf { chat.any { it.attachment == Attachment.SCREEN } }
-        // 0.7's memory: what the model was given from it never goes to a search service (QueryCheck refuses it).
-        val memory = MemoryPanel.forWebCheck(chat.flatMap { it.memoryIds })
-        val reads = synchronized(readTexts) { readTexts.toList() }
-        return WebQueryContext.of(chat.toList(), turnSaid.orEmpty(), screen, bodies + reads, memory, fresh = readsAllKnown)
-    }
-
-    /** The search ran: the answer from what it found (WebReply), streamed and spoken without its [n] marks, then its card. */
-    private suspend fun webAnswer(replyId: String, question: String, history: List<ChatTurn>, outcome: WebOutcome) {
-        _state.update { it.copy(helperStatus = null) }
-        val found = when (outcome) {
-            is WebOutcome.Failed -> {
-                if (outcome.why == WebFail.STOPPED) return finishReply(replyId, DoneReason.CANCELLED)
-                sayInto(replyId, outcome.text)
-                return finishReply(replyId, DoneReason.END)
-            }
-            is WebOutcome.Found -> outcome
-        }
-        val r = WebReply.answer(VoiceHub.app, question, history, found, _state.value.speak, VoiceHub.settings.helperShowCost, onRestart = { setText(replyId, "") }) { delta ->
-            appendText(replyId, delta)
-            voice.feed(replyId, delta, _state.value.speak).forEach { speakSentence(Citations.forSpeech(it)) }
-        }
-        val a = when (r) {
-            is WebReply.Result.Answered -> r
-            WebReply.Result.Cancelled -> return finishReply(replyId, DoneReason.CANCELLED)
-            WebReply.Result.Failed -> return failReply(replyId, WebReply.NO_ANSWER)
-        }
-        // The last words, without their marks; the search's card becomes its saved line.
-        voice.finish(replyId, cancelled = !a.complete, speak = _state.value.speak)?.let { speakSentence(Citations.forSpeech(it)) }
-        _state.update { st ->
-            st.copy(turns = st.turns.map { t ->
-                if (t.id != replyId) t else t.copy(text = a.text, web = a.card, actions = t.actions.map { x ->
-                    if (x.tool == ToolName.WEB_SEARCH && x.status == ActionStatus.DONE) x.copy(summary = a.saved, detail = a.card.readLine, body = null, content = true) else x
-                })
-            })
-        }
-        finishReply(replyId, if (a.complete) DoneReason.END else DoneReason.LENGTH)
-    }
+        TurnRunner(DirectCall(call), PanelActions, PanelView(replyId), slot.confirmations, untrusted, asked = setOfNotNull(ToolName.of(call.name)),
+            messages = PanelMessages.taint(chat), langs = turnLangs, newId = ::newId).run()
 
     /**
      * A web answer's source tapped: it opens in the browser (only the card's own links, or Wikipedia's licence), as an app
@@ -2766,47 +1754,28 @@ object PanelController {
     fun openSource(replyId: String, url: String) {
         val card = _state.value.turns.firstOrNull { it.id == replyId }?.web ?: return
         if (url !in (card.cited + card.alsoFound).map { it.url } + WikipediaWire.LICENCE_URL) return
-        if (Assistant.locked(VoiceHub.app)) return notify("Unlock your phone, then open the page.")
+        if (Assistant.locked(VoiceHub.app)) return notify(unlockFirst(PanelStrings.unlockOpenWebPage()))
         val h = host ?: return
         VoiceHub.stopVoice(TtsStop.OTHER)
         val i = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         if (h.launch(i)) {
             hidingFor = "action"
             h.hidePanel()
-        } else notify("No browser opened the page.")
+        } else notify(PanelStrings.noBrowser())
     }
 
-    /**
-     * 0.9: your script named in your own words ("run backup"): termux_script prepared, gated and carded as Gemma's call
-     * would be, without the model; what it printed is said in a sentence (two short lines at most).
-     */
-    private suspend fun termuxScript(replyId: String, m: app.heyrobot.core.termux.ScriptMatch, untrusted: Boolean) {
-        setText(replyId, "Your script “${m.name}”.")
-        val call = RawToolCall(ToolName.TERMUX_SCRIPT.id, mapOf("name" to m.name, "args" to m.args))
-        val said = object : TurnModel {
-            override suspend fun ask(): ModelOutcome = ModelOutcome.Calls(listOf(call))
-            override suspend fun answer(results: List<Pair<String, Map<String, Any?>>>): ModelOutcome {
-                results.firstOrNull()?.second?.let(TermuxTool::spokenResult)?.let { streamText(replyId, it) }
-                return ModelOutcome.Done(DoneReason.END)
-            }
-            override fun close() {}
-        }
+    /** "Run backup" (PanelTermuxScript): [model]'s one termux_script call, your script named in your own words, as a turn on reply [replyId]. */
+    private suspend fun termuxTurn(replyId: String, model: TurnModel, untrusted: Boolean): TurnResult =
         // 0.7's quarantine: after a message, even your own script is a card only a tap answers (core MessageQuarantine).
-        val result = TurnRunner(said, PanelActions, PanelView(replyId), slot.confirmations, untrusted, asked = setOf(ToolName.TERMUX_SCRIPT),
-            messages = PanelMessages.taint(chat), newId = ::newId).run()
-        result.failure?.let { return failReply(replyId, it) }
-        finishReply(replyId, result.reason ?: DoneReason.END)
-        if (result.launchedApp) leaveForApp()
-    }
+        TurnRunner(model, PanelActions, PanelView(replyId), slot.confirmations, untrusted, asked = setOf(ToolName.TERMUX_SCRIPT),
+            messages = PanelMessages.taint(chat), langs = turnLangs, newId = ::newId).run()
 
     // 0.9, Termux cards (TermuxPanel): found by id, changed in place, drawn again when a run's state changes.
-    internal fun cardById(id: String): UiAction? = _state.value.turns.firstNotNullOfOrNull { t -> t.actions.firstOrNull { it.id == id } }
+    internal fun cardById(id: String): UiAction? = replies.cardById(id)
 
-    internal fun updateCard(id: String, change: (UiAction) -> UiAction) =
-        _state.update { st -> st.copy(turns = st.turns.map { t -> t.copy(actions = t.actions.map { if (it.id == id) change(it) else it }) }) }
+    internal fun updateCard(id: String, change: (UiAction) -> UiAction) = replies.updateCard(id, change)
 
-    internal fun termuxChanged(key: String) =
-        _state.update { st -> st.copy(turns = st.turns.map { t -> t.copy(actions = t.actions.map { if (it.termux?.key == key) TermuxPanel.redress(it) else it }) }) }
+    internal fun termuxChanged(key: String) = replies.updateCards({ it.termux?.key == key }, TermuxPanel::redress)
 
     /** A turn whose one action is already known: no model asked, nothing to answer after the action. */
     private class DirectCall(private val call: RawToolCall) : TurnModel {
@@ -2824,49 +1793,30 @@ object PanelController {
     fun openHandOff(actionId: String) {
         val a = _state.value.turns.flatMap { it.actions }.firstOrNull { it.id == actionId } ?: return
         val pkg = a.handOff ?: return
+        // 1.4: a Robot Files card's Move: the card asks which drawer, and your next words answer (PanelFiles).
+        if (PanelFiles.isMove(pkg)) {
+            val turn = _state.value.turns.first { t -> t.actions.any { it.id == actionId } }
+            PanelFiles.startMove(pkg)?.let { ask -> replies.upsertAction(turn.id, a.copy(detail = ask.render(turnLangs), handOff = null)) }
+            if (shown && _state.value.speak && _state.value.phase == Phase.IDLE) startListening()
+            return
+        }
+        // 1.4 F10: a reminder card's Add to calendar: add_event's own card, in a turn of its own.
+        if (PanelFiles.isCalendar(pkg)) return filesCalendar(pkg)
         val page = SettingsPage.isPage(pkg)
-        if (Assistant.locked(VoiceHub.app)) return notify(if (page) "Unlock your phone, then open Settings." else "Unlock your phone, then open your messaging app.")
+        // 1.4 F8: Show in Files (a find, Inbox, several matches): the Files tab.
+        if (PanelFiles.isOpen(pkg) && Assistant.locked(VoiceHub.app)) return notify(app.heyrobot.core.i18n.FilesStrings.locked())
+        if (Assistant.locked(VoiceHub.app)) return notify(unlockFirst(if (page) PanelStrings.unlockOpenSettings("settings" to AndroidPath.SETTINGS) else PanelStrings.unlockOpenCheogram()))
         val h = host ?: return
-        val tries = if (page) SettingsIntents.of(VoiceHub.app, pkg)
+        val tries = if (PanelFiles.isOpen(pkg)) listOf(PanelFiles.openIntent(VoiceHub.app, pkg)) else if (page) SettingsIntents.of(VoiceHub.app, pkg)
         else listOfNotNull(VoiceHub.app.packageManager.getLaunchIntentForPackage(pkg)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        if (tries.isEmpty()) return notify(if (page) "Settings didn't open." else "Your messaging app isn't installed.")
+        if (tries.isEmpty()) return notify(if (page) PanelStrings.settingsDidntOpen("settings" to AndroidPath.SETTINGS) else PanelStrings.cheogramNotInstalled())
         stopGenerating(TtsStop.OTHER)
         if (tries.any { h.launch(it) }) {
             hidingFor = "action"
             h.hidePanel()
         } else if (page) {
-            notify("Settings didn't open.")
+            notify(PanelStrings.settingsDidntOpen("settings" to AndroidPath.SETTINGS))
         }
-    }
-
-    /** The model side of a turn: :brain through [BrainClient]. Nothing is sent once the turn was stopped. */
-    private class BrainTurn(
-        private val c: BrainClient, private val convId: String, private val replyId: String,
-        private val gen: BrainMsg.Generate, private val img: ByteArray?,
-    ) : TurnModel {
-        private var round = 0
-
-        override suspend fun ask(): ModelOutcome {
-            currentCoroutineContext().ensureActive()
-            VoiceLog.add(VoiceEvent.BRAIN_SENT, 0, if (img != null || gen.hasImage) 1 else 0)
-            return collect(c, c.request(BrainProtocol.REQ_GENERATE, gen, img), replyId)
-        }
-
-        override suspend fun answer(results: List<Pair<String, Map<String, Any?>>>): ModelOutcome {
-            currentCoroutineContext().ensureActive()
-            VoiceLog.add(VoiceEvent.BRAIN_SENT, ++round, 0)
-            return collect(c, c.request(BrainProtocol.REQ_TOOL_RESULT, BrainMsg.ToolResult(convId, results)), replyId)
-        }
-
-        override fun close() = c.post(BrainProtocol.REQ_CLOSE_CONV, BrainMsg.CloseConv(convId))
-
-        /**
-         * Stopped while its cards waited (Stop, the panel closed): no results will come, but :brain's conversation would
-         * go on waiting for them, and that wait keeps conversation mode's translations and summaries off the model for
-         * up to 90 s (BrainScheduler.TOOL_HOLD_MS). It goes now; the next question rebuilds it from the history, as it
-         * would have anyway.
-         */
-        override fun stopped(results: List<Pair<String, Map<String, Any?>>>) = close()
     }
 
     /**
@@ -2875,6 +1825,7 @@ object PanelController {
      */
     private object PanelActions : TurnActions {
         override val locked: Boolean get() = Assistant.locked(VoiceHub.app)
+        override val phoneLock: Boolean get() = app.heyrobot.lock.PhoneLockNow.on(VoiceHub.app)
         override val settings: RobotSettings get() = VoiceHub.settings
         override suspend fun prepare(action: Action): Prepared = withContext(Dispatchers.IO) { MemoryPanel.prepare(action, locked) ?: executor().prepare(action) }
         // 1.0 (injection-termux-policy-unwired): a Termux call is prepared by TermuxTool (TermuxPolicy, the lock, the signer, the
@@ -2883,7 +1834,7 @@ object PanelController {
             TermuxTool.prepareTurn(VoiceHub.app, action, untrusted, remote, turnSaid) { prepare(it) }
         // 1.0 (injection-querycheck-notes-personal): what a read tool returned to the model (a note's text, not just its title)
         // is kept for QueryCheck's personal words while this conversation lives.
-        override suspend fun run(action: Action): Executed = runAction(action).also(::noteRead)
+        override suspend fun run(action: Action): Executed = runAction(action).also(webSearch::noteRead)
 
         private suspend fun runAction(action: Action): Executed {
             // 0.7: remember and forget (core memory/); what the conversation holds decides where a remembered item came from.
@@ -2891,11 +1842,11 @@ object PanelController {
                 // (The last: a message is in the conversation, so only your own "remember that …" got here, after its tap.)
                 MemoryPanel.run(action, spokenTurn, app.heyrobot.core.memory.MemoryTaint.fromContent(TurnRules.untrusted(chat),
                     _state.value.turns.lastOrNull()?.actions?.any { it.content } == true, turnMemContent), PanelMessages.taint(chat).active)
-            } ?: Executed(ActionStatus.FAILED, "Something went wrong.")
+            } ?: Executed(ActionStatus.FAILED, PanelStrings.wentWrong())
             // 0.9: a Termux run waits for its result (Stop ends its process tree), off the main thread.
             if (action.tool.termux) return withContext(Dispatchers.IO) { TermuxTool.run(VoiceHub.app, action) { i -> host?.launch(i) ?: false } }
             if (!action.online) return withContext(Dispatchers.IO) { executor().run(action) }
-            if (action is Action.WebSearch) return webRun(action)
+            if (action is Action.WebSearch) return webSearch.run(action)
             val weather = action.tool == ToolName.WEATHER
             val deadline = if (weather) WeatherAsk.DEADLINE_MS else Nearby.DEADLINE_MS
             val abort = Abort(deadline)
@@ -2904,7 +1855,7 @@ object PanelController {
                     Executed(ActionStatus.FAILED, WeatherFail.TIMEOUT.text).also { VoiceLog.add(VoiceEvent.WEATHER_FAILED, WeatherFail.TIMEOUT) }
                 } else if (!abort.claim()) {
                     // The lookup got to open Organic Maps just as its time ran out: that one stays, nothing opens twice.
-                    Executed(ActionStatus.DONE, "Opened Organic Maps.", launchedApp = true)
+                    Executed(ActionStatus.DONE, PanelStrings.openedOrganicMaps(), launchedApp = true)
                 } else {
                     // The nearest place took too long to find: Organic Maps' search instead, as with it turned off.
                     RLog.i("maps_nearest", "found" to false, "why" to NearbyFail.TIMEOUT)
@@ -2919,24 +1870,7 @@ object PanelController {
         }
     }
 
-    /** Everything read tools returned to the model in this conversation (QueryCheck), and whether that is all of it. */
-    private val readTexts = ArrayList<String>()
-    @Volatile private var readsAllKnown = true
-
-    private fun noteRead(r: Executed) {
-        if (r.results.isNullOrEmpty() || r.web != null) return
-        synchronized(readTexts) {
-            readTexts += app.heyrobot.core.web.readTexts(r.results)
-            r.body?.let { readTexts += it }
-        }
-    }
-
-    private fun forgetReads(allKnown: Boolean) {
-        synchronized(readTexts) { readTexts.clear() }
-        readsAllKnown = allKnown
-    }
-
-    private fun executor(abort: Abort = Abort()) = ToolExecutor(VoiceHub.app, VoiceHub.settings, abort, toolRoom, turnSaid, ::webContext, ::webStep) { i -> host?.launch(i) ?: false }
+    private fun executor(abort: Abort = Abort()) = ToolExecutor(VoiceHub.app, VoiceHub.settings, abort, toolRoom, turnSaid, webSearch::context, webSearch::step, turnLangs.say) { i -> host?.launch(i) ?: false }
 
     /** What you typed or said this turn (never screen text): "the nearest" in your own words counts for the maps tools. */
     @Volatile private var turnSaid: String? = null
@@ -2950,124 +1884,41 @@ object PanelController {
     /** The model's tool call itself, about. */
     private const val TOOL_CALL_TOKENS = 40
 
-    /** Your own GGUF file reads text only (Robot's llama.cpp has no vision part). */
-    private const val TEXT_ONLY_PHOTO = "This model can't see photos: it reads text only. Choose Fast or Smarter in the Robot app › Model to ask about a photo."
-    private const val TEXT_ONLY_SCREEN = "This model can't see the screen: it reads only the screen's text."
-
-    /** A photo question to a model whose file has no vision encoder (your own file, as its check found). */
-    private const val NO_VISION_IN_FILE = "This model can't look at photos: its file has no vision part. Settings › Model says which ones can."
-
-    /** What the turn shows: the reply bubble [replyId], its cards and the panel's phase. */
-    /** [helper]: the helper whose turn it is, by name, for "Share with Claude" (Claude: the name used before 0.6.0). */
+    /**
+     * What the turn shows: the reply bubble [replyId], its cards and the panel's phase. [helper]: the helper whose turn it
+     * is, by name, for "Share with Claude" (Claude: the name used before 0.6.0).
+     */
     private class PanelView(private val replyId: String, private val helper: String = "Claude") : TurnView {
         override fun phase(p: TurnPhase) {
             if (!current(replyId)) return
             _state.update { it.copy(phase = if (p == TurnPhase.CONFIRMING) Phase.CONFIRMING else Phase.THINKING) }
-            if (p == TurnPhase.CONFIRMING) cardWaiting() else stopCardListening()
+            if (p == TurnPhase.CONFIRMING) cardVoice.waiting() else cardVoice.stop()
         }
 
         override fun card(c: Card) {
             val icon = (c.action as? Action.OpenApp)?.key?.let { key -> icons.getOrPut(key) { executor().appIcon(key) } }
             // What a read tool finds goes to the helper only after this tap: the button says so.
-            val confirm = c.confirm ?: if (c.remote && c.tool?.reads == true) "Share with $helper" else c.action?.confirmLabel
-            upsertAction(replyId, TermuxPanel.dress(UiAction(c.id, c.tool, c.summary, c.status, c.detail, icon, c.body, c.choices.map { it.label }, confirm, c.undo,
+            val confirm = c.confirm ?: if (c.remote && c.tool?.reads == true) PanelStrings.shareWith("name" to helper).render(buttonLangs)
+                else c.action?.confirmText?.render(buttonLangs)
+            replies.upsertAction(replyId, TermuxPanel.dress(UiAction(c.id, c.tool, c.summary, c.status, c.detail, icon, c.body, c.choices.map { it.label }, confirm, c.undo,
                 c.content, c.more, c.cancel, c.handOff, remember = c.remember, allowContacts = c.allowContacts,
                 // What it finds goes to the helper: a read, or an online lookup around where you are (the nearest place).
-                personal = c.remote && (c.tool?.reads == true || c.action?.online == true), tapFor = c.tapFor), c))
+                personal = c.remote && (c.tool?.reads == true || c.action?.online == true), tapFor = c.tapFor, chips = c.chips), c))
+            // 1.1: what this conversation did, for "save that as a skill" (D12).
+            PanelSkills.seen(c)
         }
 
-        override val text: String get() = _state.value.turns.firstOrNull { it.id == replyId }?.text.orEmpty()
-        override fun replaceText(text: String) = setText(replyId, text)
+        override val text: String get() = replies.text(replyId).orEmpty()
+        override fun replaceText(text: String) = replies.setText(replyId, text)
         override fun paragraphBreak() = paragraphBreak(replyId)
         override fun say(sentence: String) {
             voice.say(replyId, sentence, _state.value.speak)?.let(::speakSentence)
         }
     }
 
-    private suspend fun collect(c: BrainClient, req: Pair<Int, Flow<BrainMsg>>, replyId: String): ModelOutcome {
-        reqId = req.first
-        var calls: List<RawToolCall>? = null
-        var out: ModelOutcome = ModelOutcome.Failed("The model didn't answer.")
-        // Each model round (the reply, then its text after a tool round) is checked for a copy of the clock at its start.
-        val echo = ClockEcho()
-        val t0 = SystemClock.elapsedRealtime()
-        var first = -1L
-        var chars = 0
-        var timedOut = false
-        // A model that stops answering (a hung engine) must not leave "Thinking…" for ever: no event from :brain for
-        // EVENT_GAP_MS, before the first one or between any two, ends the request here (it is cancelled there too).
-        val stall = StallTimer(EVENT_GAP_MS, SystemClock.elapsedRealtime())
-        val watchdog: Job = scope.launch {
-            while (true) {
-                delay(WATCHDOG_TICK_MS)
-                if (stall.stalled(SystemClock.elapsedRealtime())) {
-                    timedOut = true
-                    c.post(BrainProtocol.REQ_CANCEL, BrainMsg.Cancel(req.first))
-                    c.abandon(req.first)
-                    break
-                }
-            }
-        }
-        try {
-            req.second.collect { m ->
-                stall.event(SystemClock.elapsedRealtime())
-                when (m) {
-                    is BrainMsg.Chunk -> if (m.text.isNotEmpty()) {
-                        if (first < 0) {
-                            first = SystemClock.elapsedRealtime() - t0
-                            VoiceLog.add(VoiceEvent.BRAIN_FIRST, first.toInt())
-                        }
-                        chars += m.text.length
-                        streamText(replyId, echo.feed(m.text))
-                    }
-                    is BrainMsg.ToolCallsMsg -> calls = m.calls
-                    is BrainMsg.Done -> {
-                        out = calls?.takeIf { m.reason == DoneReason.TOOL_CALLS }?.let { ModelOutcome.Calls(it) }
-                            ?: ModelOutcome.Done(m.reason, m.textCalls)
-                        VoiceLog.add(VoiceEvent.BRAIN_DONE, (SystemClock.elapsedRealtime() - t0).toInt(), DoneCode.of(m.reason).id, chars)
-                    }
-                    is BrainMsg.Error -> {
-                        // 1.0.2: a control token's text llama.cpp refused: what held it, for the turn to leave out (gemma()).
-                        val refused = if (m.code == BrainError.ENGINE) ControlRefusal.parse(m.detail) else null
-                        if (refused != null) controlRefused = refused
-                        out = ModelOutcome.Failed(refused?.let(ControlRefusal::text) ?: m.code.text())
-                        VoiceLog.add(VoiceEvent.BRAIN_FAILED, if (timedOut) BrainFail.TIMEOUT else BrainFail.of(m.code))
-                    }
-                    else -> {}
-                }
-            }
-            // A reply shorter than the hold-back window.
-            streamText(replyId, echo.flush())
-        } finally {
-            watchdog.cancel()
-            reqId = 0
-        }
-        if (timedOut) out = ModelOutcome.Failed("Robot's model didn't answer in time. Please try again.")
-        return out
-    }
-
-    /** Streamed reply text: into the bubble, and the sentences it completes to the voice. */
-    private fun streamText(replyId: String, text: String) {
-        if (text.isEmpty()) return
-        appendText(replyId, text)
-        voice.feed(replyId, text, _state.value.speak).forEach(::speakSentence)
-    }
-
-    private fun appendText(replyId: String, text: String) = _state.update { st ->
-        if (st.turns.none { it.id == replyId }) st
-        else st.copy(phase = Phase.ANSWERING, helperStatus = null, turns = st.turns.map { if (it.id == replyId) it.copy(text = it.text + text) else it })
-    }
-
     /** The model's text after a tool round starts a new paragraph (and a new sentence for speech). */
     private fun paragraphBreak(replyId: String) {
-        val t = _state.value.turns.firstOrNull { it.id == replyId }?.text ?: return
-        if (t.isBlank() || t.endsWith("\n\n")) return
-        setText(replyId, t.trimEnd() + "\n\n")
-        voice.feed(replyId, "\n", _state.value.speak).forEach(::speakSentence)
-    }
-
-    private fun setText(replyId: String, text: String) = _state.update { st ->
-        st.copy(turns = st.turns.map { if (it.id == replyId) it.copy(text = text) else it })
+        if (replies.paragraphBreak(replyId)) voice.feed(replyId, "\n", _state.value.speak).forEach(::speakSentence)
     }
 
     /**
@@ -3084,7 +1935,7 @@ object PanelController {
         // The helper's voice per sentence: Kokoro's French voice for a French one, its own otherwise (Claude's when the
         // helper has none, as before 0.6.0).
         if (byHelper) HelperVoices.forSentence(VoiceHub.settings.voiceChoice, voice ?: VoiceHub.settings.claude?.voice, clean).let { (sid, lang) -> VoiceHub.tts.speakOther(clean, sid, lang) }
-        else VoiceHub.tts.speak(clean)
+        else speakRobot(clean)
     }
 
     private suspend fun leaveForApp() {
@@ -3095,7 +1946,69 @@ object PanelController {
 
     /** The person tapped "Do it" (true) or "Cancel" on a confirmation card. */
     fun confirm(actionId: String, yes: Boolean) {
+        // 1.4 F8: a Robot Files delete card's Delete or Keep (PanelFiles). Tap-only (AskWhy.DELETE): a spoken yes never comes here.
+        if (PanelFiles.isDelete(actionId)) return filesDeleteTapped(actionId, yes)
+        // 1.4 F10: a reminder card's Add to my brief or Not now (PanelFiles): a brief reminder only, never the calendar.
+        if (PanelFiles.isRemind(actionId)) return filesRemindTapped(actionId, yes)
         slot.confirmations.answer(actionId, yes)
+    }
+
+    private fun filesRemindTapped(actionId: String, yes: Boolean) {
+        val turn = _state.value.turns.firstOrNull { t -> t.actions.any { it.id == actionId } } ?: return
+        scope.launch {
+            val (status, line) = withContext(Dispatchers.IO) { PanelFiles.remindTapped(VoiceHub.app, actionId, yes, turnLangs) }
+            _state.value.turns.firstOrNull { it.id == turn.id }?.actions?.firstOrNull { it.id == actionId }?.let { replies.upsertAction(turn.id, it.copy(status = status, detail = line)) }
+        }
+    }
+
+    /**
+     * 1.4 F10: a reminder card's Add to calendar. A turn of its own runs add_event as the panel's call with AskWhy.FROM_CONTENT:
+     * its card always shows, whatever Settings › Actions and Safety cards say, and only a tap adds the event (a file's words
+     * chose its title and date, files-1.4-plan.md D11). Nothing here writes the calendar.
+     */
+    private fun filesCalendar(handOff: String) {
+        if (Assistant.locked(VoiceHub.app) || app.heyrobot.lock.PhoneLockNow.on(VoiceHub.app)) return notify(app.heyrobot.core.i18n.FilesStrings.locked())
+        routineTurn(app.heyrobot.core.i18n.FilesStrings.addToCalendar().render(turnLangs)) { replyId, _ ->
+            // FX3: its card names the file's title and date: Robot Files' answer, for travel mode's placeholder (ChatTurn.files).
+            PanelFileAnswer.markFiles(replyId)
+            val ask = withContext(Dispatchers.IO) { PanelFiles.event(VoiceHub.app, handOff, turnLangs) }
+            if (ask == null) {
+                localReply(replyId, app.heyrobot.core.i18n.FilesStrings.datePassed().render(turnLangs))
+                return@routineTurn
+            }
+            replies.setText(replyId, app.heyrobot.core.i18n.FilesStrings.calendarCard().render(turnLangs))
+            // 1.1: with an alert (a dated reminder's, EventAlert); FromAFile's FROM_CONTENT keeps it tap only.
+            val raw = RawToolCall(ToolName.ADD_EVENT.id, mapOf("title" to ask.title, "when" to ask.day, "alert" to true))
+            val r = TurnRunner(DirectCall(raw), FromAFile, PanelView(replyId), slot.confirmations, untrusted = true, asked = setOf(ToolName.ADD_EVENT),
+                messages = PanelMessages.taint(chat), langs = turnLangs, newId = ::newId).run()
+            r.failure?.let { replies.appendText(replyId, it) }
+            finishReply(replyId, DoneReason.END)
+        }
+    }
+
+    /** The panel's actions for a call a file's date made (F10's Add to calendar): every card says it came from content and takes a tap. */
+    private object FromAFile : TurnActions by PanelActions {
+        override suspend fun prepare(action: Action, untrusted: Boolean, remote: Boolean): Prepared =
+            when (val p = PanelActions.prepare(action, untrusted, remote)) {
+                is Prepared.Ready -> p.copy(why = p.why + AskWhy.FROM_CONTENT)
+                else -> p
+            }
+    }
+
+    private fun filesDeleteTapped(actionId: String, yes: Boolean) {
+        val turn = _state.value.turns.firstOrNull { t -> t.actions.any { it.id == actionId } } ?: return
+        val langs = turnLangs
+        // FX2 (K1): Delete gives the card Undo for 10 seconds; when the delete goes through, the card's Undo goes.
+        fun ended(ok: Boolean) = scope.launch {
+            _state.value.turns.firstOrNull { it.id == turn.id }?.actions?.firstOrNull { it.id == actionId }?.takeIf { it.undo != null }?.let {
+                replies.upsertAction(turn.id, it.copy(undo = null, status = if (ok) ActionStatus.DONE else ActionStatus.FAILED,
+                    detail = (if (ok) app.heyrobot.core.i18n.FilesStrings.deleted() else app.heyrobot.core.i18n.FilesStrings.notDeleted()).render(langs)))
+            }
+        }
+        scope.launch {
+            val t = withContext(Dispatchers.IO) { PanelFiles.deleteTapped(VoiceHub.app, actionId, yes, langs, ended = { ok -> ended(ok) }) }
+            _state.value.turns.firstOrNull { it.id == turn.id }?.actions?.firstOrNull { it.id == actionId }?.let { replies.upsertAction(turn.id, it.copy(status = t.status, detail = t.line, undo = t.undo)) }
+        }
     }
 
     /** The person tapped one of the people or numbers a card listed; [remember]: with "Always use this for …" ticked. */
@@ -3109,15 +2022,24 @@ object PanelController {
         val turn = st.turns.firstOrNull { t -> t.actions.any { it.id == actionId } } ?: return
         val a = turn.actions.first { it.id == actionId }
         val key = a.undo ?: return
+        // 1.4: a Robot Files card's Undo (PanelFiles): back in Inbox, or a move put back; the card says which.
+        if (PanelFiles.isUndo(key)) {
+            replies.upsertAction(turn.id, a.copy(status = ActionStatus.UNDONE, detail = null, undo = null, handOff = null))
+            scope.launch {
+                val line = withContext(Dispatchers.IO) { PanelFiles.undo(VoiceHub.app, key, turnLangs) }
+                _state.value.turns.firstOrNull { it.id == turn.id }?.actions?.firstOrNull { it.id == actionId }?.let { replies.upsertAction(turn.id, it.copy(detail = line)) }
+            }
+            return
+        }
         if (MemoryPanel.isUndo(key)) {
             // 0.7: a memory card's Undo (an item saved, or items forgotten); the card says what it did.
-            upsertAction(turn.id, a.copy(status = ActionStatus.UNDONE, detail = null, undo = null))
+            replies.upsertAction(turn.id, a.copy(status = ActionStatus.UNDONE, detail = null, undo = null))
             scope.launch {
-                val line = withContext(Dispatchers.IO) { MemoryPanel.undo(key) }
-                _state.value.turns.firstOrNull { it.id == turn.id }?.actions?.firstOrNull { it.id == actionId }?.let { upsertAction(turn.id, it.copy(detail = line)) }
+                val line = withContext(Dispatchers.IO) { MemoryPanel.undo(key, turnLangs) }
+                _state.value.turns.firstOrNull { it.id == turn.id }?.actions?.firstOrNull { it.id == actionId }?.let { replies.upsertAction(turn.id, it.copy(detail = line)) }
             }
         } else {
-            upsertAction(turn.id, a.copy(status = ActionStatus.UNDONE, detail = "Removed from Robot Notes.", undo = null))
+            replies.upsertAction(turn.id, a.copy(status = ActionStatus.UNDONE, detail = PanelStrings.removedFromNotes().render(turnLangs), undo = null))
             scope.launch(Dispatchers.IO) { NotesFiles.store(VoiceHub.app).delete(key) }
         }
         // The live conversation still believes the note was saved: it is rebuilt from the history ("undone") next time.
@@ -3136,21 +2058,14 @@ object PanelController {
         client?.post(BrainProtocol.REQ_CLOSE_CONV, BrainMsg.CloseConv(_state.value.convId))
     }
 
-    private fun upsertAction(replyId: String, a: UiAction) = _state.update { st ->
-        st.copy(turns = st.turns.map { t ->
-            if (t.id != replyId) t
-            else if (t.actions.any { it.id == a.id }) t.copy(actions = t.actions.map { if (it.id == a.id) a else it })
-            else t.copy(actions = t.actions + a)
-        })
-    }
-
     // ------------------------------------------------------------------ ending a reply
 
     /** Stop button: stops the reply (or the model load) and its voice; a waiting card is declined. */
     fun stopGenerating(why: TtsStop = TtsStop.BUTTON) {
-        stopCardListening()
+        cardVoice.stop()
         msgListenAfterSpeech = false
         PanelMessages.stop()
+        PanelSkills.drop()
         val id = reqId
         if (id != 0) client?.post(BrainProtocol.REQ_CANCEL, BrainMsg.Cancel(id))
         // The voice stops now: nothing already queued, and not the cut-off last sentence (finishReply drops it).
@@ -3219,11 +2134,11 @@ object PanelController {
             ?.let { speakSentence(it, byHelper, VoiceHub.settings.helper(ui?.helper)?.voice) }
         val stopped = reason == DoneReason.CANCELLED || reason == DoneReason.LENGTH || reason == DoneReason.GARBAGE
         var text = ui?.text?.trim().orEmpty()
-        if (reason == DoneReason.GARBAGE) text = (text.take(200) + "\n\n(The answer went wrong, so Robot stopped it.)").trim()
+        if (reason == DoneReason.GARBAGE) text = listOf(text.take(200), PanelStrings.answerWentWrong().render(turnLangs)).joinToString("\n\n").trim()
         val actions = settled(ui?.actions.orEmpty())
         // The model finished without a word or an action: say so rather than leave an empty bubble.
         if (text.isEmpty() && actions.isEmpty() && !stopped) {
-            text = "Robot had no answer. Try asking another way."
+            text = PanelStrings.noAnswer().render(turnLangs)
             VoiceLog.add(VoiceEvent.NO_REPLY, NoReply.EMPTY)
             if (spokenTurn) cue(Cue.SORRY_NO_ANSWER)
         }
@@ -3231,10 +2146,11 @@ object PanelController {
         // record (its item ids, a line for a private answer) keeps that placeholder (MemoryPanel.forHistory copies the turn).
         val kept = PanelMessages.kept(replyId) ?: if (chat.any { it.messages }) app.heyrobot.core.messages.MessageReading.ANSWER_NOT_KEPT else null
         val quoted = synchronized(quotedReplies) { quotedReplies.remove(replyId) }
-        chat += MemoryPanel.forHistory(ChatTurn(replyId, TurnRole.ASSISTANT, text, System.currentTimeMillis(),
-            actions = records(actions) + if (quoted) listOf(Quoted.record()) else emptyList(), stopped = stopped,
+        // 1.4: an answer from a private file is kept as a placeholder (PanelFileAnswer), here and in History.
+        chat += PanelFileAnswer.forHistory(MemoryPanel.forHistory(ChatTurn(replyId, TurnRole.ASSISTANT, text, System.currentTimeMillis(),
+            actions = records(actions) + if (quoted) listOf(Quoted.record(turnLangs)) else emptyList(), stopped = stopped,
             fromHelper = byHelper, sources = ui?.sources.orEmpty(), costMicros = costMicros,
-            helper = ui?.helper.takeIf { byHelper }, by = ui?.by.takeIf { byHelper }, home = byHelper && ui?.home == true, messages = kept != null, kept = kept))
+            helper = ui?.helper.takeIf { byHelper }, by = ui?.by.takeIf { byHelper }, home = byHelper && ui?.home == true, messages = kept != null, kept = kept)), turnLangs)
         _state.update { st ->
             st.copy(
                 // Only the turn's phases end here: "hey robot" during the answer is already listening.
@@ -3257,14 +2173,16 @@ object PanelController {
         BrainKeeper.release("free_memory").join()
         scope.launch {
             val after = ModelUnload.settled(VoiceHub.app, before)
-            val line = FreeUp.freedLine(before, after)
+            // 1.1: the card's line in its own language (a French card says « Environ 2 Go libérés », core FreeUp.isUnloading).
+            val freed = FreeUp.freedText(before, after)
+            fun line(was: String?) = sameLanguage(was, InfoStrings.unloading(), freed)
             _state.update { st ->
                 st.copy(turns = st.turns.map { t ->
-                    if (t.id != replyId) t else t.copy(actions = t.actions.map { if (it.tool == ToolName.FREE_MEMORY && it.detail == FreeUp.UNLOADING) it.copy(detail = line) else it })
+                    if (t.id != replyId) t else t.copy(actions = t.actions.map { if (it.tool == ToolName.FREE_MEMORY && FreeUp.isUnloading(it.detail)) it.copy(detail = line(it.detail)) else it })
                 })
             }
             chat.replaceAll { t ->
-                if (t.id != replyId) t else t.copy(actions = t.actions.map { if (it.tool == ToolName.FREE_MEMORY && it.detail == FreeUp.UNLOADING) it.copy(detail = line) else it })
+                if (t.id != replyId) t else t.copy(actions = t.actions.map { if (it.tool == ToolName.FREE_MEMORY && FreeUp.isUnloading(it.detail)) it.copy(detail = line(it.detail)) else it })
             }
             persist()
         }
@@ -3304,20 +2222,23 @@ object PanelController {
     private val routineHost = object : PanelRoutines.Host {
         override val speak: Boolean get() = _state.value.speak
         override val locked: Boolean get() = Assistant.locked(VoiceHub.app)
-        override fun text(replyId: String, text: String) = setText(replyId, text)
+        /** 1.1: the turn's languages, decided once with the routine router's match (or the setting, for Run now). */
+        override fun langs(said: String?, router: Lang?): Langs = turnLangs
+        override fun text(replyId: String, text: String) = replies.setText(replyId, text)
         override fun append(replyId: String, text: String) {
             paragraphBreak(replyId)
-            appendText(replyId, text)
+            replies.appendText(replyId, text)
         }
         override fun say(sentence: String, personal: Boolean) { if (_state.value.speak) speakSentence(sentence, personal = personal) }
-        override suspend fun ask(replyId: String, card: Card, tapOnly: String?): Boolean {
+        override suspend fun ask(replyId: String, card: Card, tapOnly: String?): Boolean = pick(replyId, card, tapOnly) >= 0
+        override suspend fun pick(replyId: String, card: Card, tapOnly: String?): Int {
             val view = PanelView(replyId)
             routineTapOnly = tapOnly?.let { card.id to it }
             view.card(card)
             view.phase(TurnPhase.CONFIRMING)
             val pick = try { slot.confirmations.ask(card.id) } finally { routineTapOnly = null }
             view.phase(TurnPhase.THINKING)
-            return pick >= 0
+            return pick
         }
         override fun show(replyId: String, card: Card) = PanelView(replyId).card(card)
         override suspend fun tool(replyId: String, step: RoutineStep.Tool): Executed? {
@@ -3328,13 +2249,26 @@ object PanelController {
             }
             val raw = RawToolCall(step.action.tool.id, RoutineCodec.args(step.action))
             val r = TurnRunner(DirectCall(raw), actions, PanelView(replyId), slot.confirmations, false, asked = setOf(step.action.tool),
-                messages = PanelMessages.taint(chat), newId = ::newId).run()
-            r.failure?.let { appendText(replyId, it) }
+                messages = PanelMessages.taint(chat), langs = turnLangs, newId = ::newId).run()
+            r.failure?.let { replies.appendText(replyId, it) }
             return ran
         }
         override fun finish(replyId: String) = finishReply(replyId, DoneReason.END)
         override fun quoted(replyId: String) { synchronized(quotedReplies) { quotedReplies += replyId } }
         override suspend fun leave() = leaveForApp()
+        override fun launch(intent: android.content.Intent): Boolean =
+            intent.resolveActivity(VoiceHub.app.packageManager) != null && (host?.launch(intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) ?: false)
+    }
+
+    /**
+     * 1.1: what a skill turn does in the panel (assistant/skills PanelSkills): a routine turn's bubble, voice and cards, and the
+     * steps' ports, a typed command's, with this conversation's real content and messages (D5; no memory goes with a skill).
+     */
+    private val skillHost = object : PanelSkills.Host, PanelRoutines.Host by routineHost {
+        override fun ports(replyId: String) = PanelSkills.SkillPorts(PanelActions, PanelView(replyId), slot.confirmations, PanelMessages.taint(chat), turnLangs, ::newId)
+        override val untrusted: Boolean get() = TurnRules.untrusted(chat)
+        override val phoneLock: Boolean get() = app.heyrobot.lock.PhoneLockNow.on(VoiceHub.app)
+        override val messages get() = PanelMessages.taint(chat)
     }
 
     /** Replies that read out your calendar or reminders as they are (core Quoted): their saved turn carries its content record. */
@@ -3342,8 +2276,10 @@ object PanelController {
 
     /** Settings' Run now or a Ready card's tap: a turn of its own, as if you had asked. */
     private fun routineTurn(label: String, work: suspend (String, PanelRoutines.Host) -> Unit) {
-        if (_state.value.busy || slot.running) return notify("Robot is still on the last question.")
+        if (_state.value.busy || slot.running) return notify(PanelStrings.stillOnLast())
         VoiceHub.stopVoice(TtsStop.NEW_QUESTION)
+        // 1.1: nothing was heard: the setting's language, else the menus'.
+        turnLangs = decideLangs(null)
         startedLocked = PanelContinuity.stillLocked(startedLocked, Assistant.locked(VoiceHub.app))
         val user = ChatTurn(newId(), TurnRole.USER, label, System.currentTimeMillis())
         chat += user
@@ -3356,12 +2292,4 @@ object PanelController {
         voice.start(replyId)
         startTurn(replyId) { work(replyId, routineHost) }
     }
-
-    /** Nothing from the model this long, before its first word or between two: it is given up (a first word takes about 0.3 s). */
-    private const val EVENT_GAP_MS = 60_000L
-    private const val WATCHDOG_TICK_MS = 5_000L
-    private const val SORRY = "Sorry, I didn't catch that."
-    private const val CARD_HINT = "A card is waiting: say yes or no, or tap a button on it."
-    private const val CARD_TYPE_HINT = "A card is waiting: tap a button on it, or type yes or no."
-    private const val SORRY_NO_ANSWER = "Sorry, I couldn't answer that."
 }

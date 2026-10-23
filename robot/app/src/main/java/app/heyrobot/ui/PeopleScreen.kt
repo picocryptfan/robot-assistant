@@ -71,7 +71,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import app.heyrobot.R
 import app.heyrobot.core.Addresses
+import app.heyrobot.core.i18n.AndroidPath
+import app.heyrobot.core.i18n.UiStrings
+import app.heyrobot.ui.theme.str
 import app.heyrobot.core.CheogramLinks
 import app.heyrobot.core.ContactPhone
 import app.heyrobot.core.HelperContext
@@ -172,14 +178,14 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: Assis
             val bytes = withContext(Dispatchers.IO) {
                 try { ctx.contentResolver.openInputStream(uri)?.use { readAtMost(it, MAX_VCF_BYTES) } } catch (t: Exception) { RLog.w("people_import", t); null }
             }
-            if (bytes == null) return@launch a.say("That file couldn't be read, or it is over 8 MB.")
+            if (bytes == null) return@launch a.say(ctx.getString(R.string.people_unreadable_file))
             val p = withContext(Dispatchers.Default) {
                 val f = VCard.parse(VCard.decode(bytes))
                 val incoming = f.entries.map { VCard.person(it, PeopleStore.newId(), now()) }
                 val before = store.list()
                 Preview(f, incoming, before, PeopleEdit.merge(before, incoming, now()))
             }
-            if (p.file.entries.isEmpty()) a.say("No one in that file has a number, an email or an XMPP address.") else preview = p
+            if (p.file.entries.isEmpty()) a.say(ctx.getString(R.string.people_nothing_to_reach)) else preview = p
         }
     }
     val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/vcard")) { uri: Uri? ->
@@ -192,7 +198,7 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: Assis
                     list.size
                 } catch (t: Exception) { RLog.w("people_export", t); -1 }
             }
-            a.say(if (n < 0) "The file couldn't be written." else "Exported ${plural(n, "person", "people")}.")
+            a.say(if (n < 0) ctx.getString(R.string.people_export_failed) else ctx.resources.getQuantityString(R.plurals.people_exported, n, n))
         }
     }
     val cheogram = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
@@ -200,29 +206,29 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: Assis
         val (picked, readable) = if (ok) CheogramIntents.read(r.data) else null to true
         val pick = when (CheogramLinks.outcome(ok, readable, picked)) {
             PickOutcome.PICKED -> picked
-            PickOutcome.UNREADABLE -> null.also { a.say("Cheogram's answer couldn't be read.") }
-            PickOutcome.NO_ADDRESS, PickOutcome.NO_LIST -> null.also { a.say("Cheogram didn't say who was picked, or Robot can't use that address.") }
-            PickOutcome.CANCELLED -> null.also { a.say("Nobody was picked in Cheogram.") }
+            PickOutcome.UNREADABLE -> null.also { a.say(ctx.getString(R.string.people_cheogram_unreadable)) }
+            PickOutcome.NO_ADDRESS, PickOutcome.NO_LIST -> null.also { a.say(ctx.getString(R.string.people_cheogram_no_address)) }
+            PickOutcome.CANCELLED -> null.also { a.say(ctx.getString(R.string.people_cheogram_nobody)) }
         } ?: return@rememberLauncherForActivityResult
         scope.launch {
             var id: String? = null
             withContext(Dispatchers.IO) { store.update { l -> PeopleEdit.rememberPick(l, null, pick, now()).let { (list, p) -> id = p.id; list } } }
             tick++
-            id?.let(onOpen) ?: a.say("Robot couldn't save them.")
+            id?.let(onOpen) ?: a.say(ctx.getString(R.string.people_not_saved))
         }
     }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
         if (r.resultCode != android.app.Activity.RESULT_OK) return@rememberLauncherForActivityResult
         // Android 17's picker may hand back its session URI as ClipData only.
         val uri = r.data?.data ?: r.data?.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri
-            ?: return@rememberLauncherForActivityResult a.say("The contact picker didn't return a contact.")
+            ?: return@rememberLauncherForActivityResult a.say(ctx.getString(R.string.people_picker_nothing))
         scope.launch {
             val p = withContext(Dispatchers.IO) { try { PhoneContacts.read(ctx, uri, now()) } catch (t: Exception) { RLog.w("people_pick", t); null } }
-                ?: return@launch a.say("Robot couldn't read that contact.")
+                ?: return@launch a.say(ctx.getString(R.string.people_contact_unreadable))
             var id: String? = null
             withContext(Dispatchers.IO) { store.update { l -> PeopleEdit.merge(l, listOf(p), now()).also { id = it.landed.firstOrNull() }.people } }
             tick++
-            id?.let(onOpen) ?: a.say("That contact has no number or email to add.")
+            id?.let(onOpen) ?: a.say(ctx.getString(R.string.people_contact_empty))
         }
     }
 
@@ -238,21 +244,30 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: Assis
     var menu by remember { mutableStateOf(false) }
     val learned = people.filter { !it.confirmed }
     val granted = facts?.notificationAccess == true
-    PreferenceScreen("People", onBack, snackbar = snackbar, actions = {
+    // The page's words its list builder can't look up itself (it isn't composable).
+    val noOpener = stringResource(R.string.people_no_opener)
+    val noSaver = stringResource(R.string.people_no_saver)
+    val remembering = stringResource(R.string.people_remembering)
+    val learnTitle = stringResource(R.string.people_learn)
+    val learnedTitle = stringResource(R.string.people_learned, learned.size)
+    val noOne = stringResource(R.string.people_no_one)
+    val yours = stringResource(R.string.people_yours, people.size)
+    val footer = stringResource(R.string.people_footer)
+    PreferenceScreen(UiStrings.people().str(), onBack, snackbar = snackbar, actions = {
         // Import, export and Delete all: the overflow, as in Android's Contacts.
         Box {
-            IconButton(onClick = { menu = true }) { Icon(RIcons.MoreVert, "More options") }
+            IconButton(onClick = { menu = true }) { Icon(RIcons.MoreVert, stringResource(R.string.people_more)) }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                DropdownMenuItem(text = { Text("Import contacts file (.vcf)") }, leadingIcon = { Icon(RIcons.Folder, null) }, onClick = {
+                DropdownMenuItem(text = { Text(stringResource(R.string.people_import_vcf)) }, leadingIcon = { Icon(RIcons.Folder, null) }, onClick = {
                     menu = false
-                    launch({ importer.launch(arrayOf("text/vcard", "text/x-vcard", "text/directory", "*/*")) }, "No app on this phone opens files.")
+                    launch({ importer.launch(arrayOf("text/vcard", "text/x-vcard", "text/directory", "*/*")) }, noOpener)
                 })
-                DropdownMenuItem(text = { Text("Export (.vcf)") }, leadingIcon = { Icon(RIcons.Download, null) }, onClick = {
+                DropdownMenuItem(text = { Text(stringResource(R.string.people_export_vcf)) }, leadingIcon = { Icon(RIcons.Download, null) }, onClick = {
                     menu = false
-                    launch({ exporter.launch("Robot People.vcf") }, "No app on this phone saves files.")
+                    launch({ exporter.launch("Robot People.vcf") }, noSaver) // l10n: not text (a file name)
                 })
                 if (people.isNotEmpty()) {
-                    DropdownMenuItem(text = { Text("Delete all People") }, leadingIcon = { Icon(RIcons.Delete, null) }, onClick = {
+                    DropdownMenuItem(text = { Text(stringResource(R.string.people_delete_all)) }, leadingIcon = { Icon(RIcons.Delete, null) }, onClick = {
                         menu = false
                         confirmDeleteAll = true
                     })
@@ -261,8 +276,7 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: Assis
         }
     }) {
         item(key = "intro") {
-            IntroPreference("People Robot knows besides your contacts: who to text or email, and what you call them. Kept on this phone " +
-                "only, never sent to a helper, and not in Android's backups.")
+            IntroPreference(stringResource(R.string.people_intro))
         }
         if (damaged) item(key = "damaged") {
             Surface(color = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer,
@@ -271,104 +285,104 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: Assis
                     Icon(RIcons.Error, null)
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("Robot can't read its People file", style = MaterialTheme.typography.titleSmall)
-                        Text("It may be damaged. Robot changes nothing in it, and knows no one here, until you start over. Starting over keeps " +
-                            "the old file aside (people.json.bad, in Robot's files) and begins an empty list; import your last export to get everyone back.",
-                            style = MaterialTheme.typography.bodyMedium)
+                        Text(stringResource(R.string.people_damaged), style = MaterialTheme.typography.titleSmall)
+                        Text(stringResource(R.string.people_damaged_detail), style = MaterialTheme.typography.bodyMedium)
                     }
-                    TextButton(onClick = { confirmReset = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Start over") }
+                    TextButton(onClick = { confirmReset = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.people_start_over)) }
                 }
             }
         }
         preferenceGroup(null, "add") {
-            PreferenceItem("Add person", "Type a name, numbers, emails and XMPP addresses", RIcons.Add, onClick = { onOpen(null) })
-            PreferenceItem("Add from phone contacts", "One contact, no permission needed", RIcons.Person, onClick = {
+            PreferenceItem(stringResource(R.string.people_add), stringResource(R.string.people_add_detail), RIcons.Add, onClick = { onOpen(null) })
+            PreferenceItem(stringResource(R.string.people_add_contact), stringResource(R.string.people_add_contact_detail), RIcons.Person, onClick = {
                 try { picker.launch(PhoneContacts.picker()) } catch (_: ActivityNotFoundException) { askLegacy = true }
             })
             val pkg = HandOffApps.cheogram(ctx)
             if (pkg != null && remember(pkg) { CheogramIntents.canPick(ctx, pkg) }) {
-                PreferenceItem("Add from Cheogram", "Pick someone in Cheogram's list", RIcons.Message, onClick = {
-                    launch({ cheogram.launch(CheogramIntents.pick(pkg)) }, "Cheogram's list didn't open.")
+                val didntOpen = stringResource(R.string.people_cheogram_didnt_open)
+                PreferenceItem(stringResource(R.string.people_add_cheogram), stringResource(R.string.people_add_cheogram_detail), RIcons.Message, onClick = {
+                    launch({ cheogram.launch(CheogramIntents.pick(pkg)) }, didntOpen)
                 })
             }
         }
-        preferenceGroup("Remembering", "remember") {
-            SwitchPreference("Remember who you pick", "When you pick in a list, or on a card (“Always use this for mom”)", s.rememberPicks) {
+        preferenceGroup(remembering, "remember") {
+            SwitchPreference(stringResource(R.string.people_remember_picks), stringResource(R.string.people_remember_picks_detail), s.rememberPicks) {
                 update(s.copy(rememberPicks = it))
             }
         }
-        preferenceGroup("Learn names from notifications", "learn") {
-            SwitchPreference("Learn names from message notifications", "Who messages you, never the message. Works with Cheogram only for now", s.learnFromCheogram) { on ->
+        preferenceGroup(learnTitle, "learn") {
+            SwitchPreference(stringResource(R.string.people_learn_names), stringResource(R.string.people_learn_names_detail), s.learnFromCheogram) { on ->
                 update(s.copy(learnFromCheogram = on))
                 // Turned on: the Cheogram installed now is the one trusted (its signer is kept at its first notification).
                 if (on) { scope.launch(Dispatchers.IO) { PeopleFiles.forgetCheogramSigner(ctx) }; NotificationAccess.rebind(ctx) }
             }
             when {
-                s.learnFromCheogram && !granted -> StatusPreference("Notification access", "Needed: three steps", Mark.TODO,
+                s.learnFromCheogram && !granted -> StatusPreference(stringResource(R.string.people_access_title), stringResource(R.string.people_access_needed), Mark.TODO,
                     onClick = { a.openPage(Page.Settings(SettingsRoutes.NOTIFICATION_ACCESS)) })
-                s.learnFromCheogram -> StatusPreference("Notification access allowed", "Senders of one-to-one chats only", Mark.OK)
-                granted -> StatusPreference("Notification access is still allowed", "Robot ignores notifications while this is off", Mark.TODO,
-                    action = { TextButton(onClick = { openFirst(ctx, NotificationAccess.settings(ctx), a) }) { Text("Open") } })
+                s.learnFromCheogram -> StatusPreference(stringResource(R.string.people_access_allowed), stringResource(R.string.people_access_cheogram_only), Mark.OK)
+                granted -> StatusPreference(stringResource(R.string.people_access_still), stringResource(R.string.people_access_still_detail), Mark.TODO,
+                    action = { TextButton(onClick = { openFirst(ctx, NotificationAccess.settings(ctx), a) }) { Text(stringResource(R.string.people_open)) } })
             }
             // 0.4.6: what Robot reads, where it is kept, and how to take it back, before and after turning it on.
             PreferenceBlock { CheogramPrivacy(canTakeBack = granted && s.learnFromCheogram) { openFirst(ctx, NotificationAccess.settings(ctx), a) } }
         }
         if (learned.isNotEmpty()) {
-            preferenceGroup("Learned from notifications (${learned.size})", "learned") {
+            preferenceGroup(learnedTitle, "learned") {
                 for (p in learned.take(MAX_LEARNED_SHOWN)) {
-                    TwoTargetPreference(p.name, People.summary(p).ifEmpty { null }, onClick = { onOpen(p.id) }, onClickLabel = "Open") {
+                    val keepNamed = stringResource(R.string.people_keep_named, p.name)
+                    val removeNamed = stringResource(R.string.people_remove_named, p.name)
+                    TwoTargetPreference(p.name, People.summary(p).ifEmpty { null }, onClick = { onOpen(p.id) }, onClickLabel = stringResource(R.string.people_open)) {
                         TextButton(onClick = { scope.launch {
                             withContext(Dispatchers.IO) { store.update { PeopleEdit.confirm(it, p.id, now()) } }
                             tick++
-                        } }, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Keep ${p.name}" }) { Text("Keep") }
+                        } }, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = keepNamed }) { Text(stringResource(R.string.people_keep)) }
                         // Their address isn't learned again, so the next message doesn't bring them back.
                         TextButton(onClick = { scope.launch {
                             withContext(Dispatchers.IO) { store.remove(p.id, ignore = true) }
                             tick++
-                        } }, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Remove ${p.name}" }) { Text("Remove") }
+                        } }, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = removeNamed }) { Text(stringResource(R.string.people_remove)) }
                     }
                 }
                 if (learned.size > MAX_LEARNED_SHOWN) {
-                    PreferenceBlock { Text("…and ${learned.size - MAX_LEARNED_SHOWN} more in the list below.", style = MaterialTheme.typography.bodyMedium,
+                    val more = learned.size - MAX_LEARNED_SHOWN
+                    PreferenceBlock { Text(pluralStringResource(R.plurals.people_learned_more, more, more), style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 }
             }
         }
         if (people.isEmpty()) {
-            item(key = "none") { PreferenceCategory("No one yet") }
+            item(key = "none") { PreferenceCategory(noOne) }
         } else {
             item(key = "search") {
                 OutlinedTextField(
                     value = query, onValueChange = { query = it }, singleLine = true,
-                    placeholder = { Text("Search people") }, leadingIcon = { Icon(RIcons.Search, null) },
-                    trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(RIcons.Close, "Clear search") } },
+                    placeholder = { Text(stringResource(R.string.people_search)) }, leadingIcon = { Icon(RIcons.Search, null) },
+                    trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(RIcons.Close, stringResource(R.string.people_clear_search)) } },
                     shape = RoundedCornerShape(50), modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
                 )
             }
-            if (shown.isEmpty()) item(key = "nomatch") { IntroPreference("No one matches.") }
-            preferenceItems("Your people (${people.size})", "people", shown, { it.id }) { p -> PersonRow(p) { onOpen(p.id) } }
+            if (shown.isEmpty()) item(key = "nomatch") { IntroPreference(stringResource(R.string.people_no_match)) }
+            preferenceItems(yours, "people", shown, { it.id }) { p -> PersonRow(p) { onOpen(p.id) } }
         }
-        preferenceFooter(
-            "Import contacts file (.vcf), in the menu: in your email provider's contacts page, select all and export as " +
-                "vCard (.vcf). Robot keeps names, nicknames, numbers, emails and XMPP addresses only. Export (.vcf) makes a backup, and a " +
-                "file any contacts app can import.\n\nAdd from Cheogram: its list says “Create shortcut”; nothing goes on " +
-                "your home screen.",
-        )
+        preferenceFooter(footer)
     }
     preview?.let { pv ->
         val file = pv.file
         val merged = pv.merged
         AlertDialog(
             onDismissRequest = { preview = null },
-            title = { Text("Import ${plural(file.entries.size, "person", "people")}?") },
+            title = { Text(pluralStringResource(R.plurals.people_import_title, file.entries.size, file.entries.size)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("In the file: ${plural(file.phones, "number", "numbers")}, ${plural(file.emails, "email", "emails")}, " +
-                        "${plural(file.xmpp, "XMPP address", "XMPP addresses")}." +
-                        (if (file.skipped > 0) " ${plural(file.skipped, "card has", "cards have")} nothing to reach them by and stay out." else ""))
-                    Text("${plural(merged.added, "new person", "new people")}; ${plural(merged.updated, "person", "people")} already here " +
-                        "(the same number, email or XMPP address) get what's new.")
-                    Text("Robot keeps names, nicknames, numbers, emails and XMPP addresses only: no postal addresses, birthdays, notes or photos.",
+                    Text(listOfNotNull(
+                        stringResource(R.string.people_in_file, pluralStringResource(R.plurals.people_count_numbers, file.phones, file.phones),
+                            pluralStringResource(R.plurals.people_count_emails, file.emails, file.emails),
+                            pluralStringResource(R.plurals.people_count_xmpp, file.xmpp, file.xmpp)),
+                        if (file.skipped > 0) pluralStringResource(R.plurals.people_skipped, file.skipped, file.skipped) else null,
+                    ).joinToString(" "))
+                    Text(stringResource(R.string.people_merge, pluralStringResource(R.plurals.people_count_new, merged.added, merged.added),
+                        pluralStringResource(R.plurals.people_count_updated, merged.updated, merged.updated)))
+                    Text(stringResource(R.string.people_keeps_only),
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             },
@@ -383,69 +397,70 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: Assis
                         } != null
                         tick++
                         val d = done
-                        a.say(if (!ok || d == null) "The import couldn't be saved." else "Imported: ${d.added} new, ${d.updated} updated.")
+                        a.say(if (!ok || d == null) ctx.getString(R.string.people_import_failed) else ctx.getString(R.string.people_imported, d.added, d.updated))
                     }
-                }) { Text("Import") }
+                }) { Text(stringResource(R.string.people_import)) }
             },
-            dismissButton = { TextButton(onClick = { preview = null }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { preview = null }) { Text(stringResource(R.string.people_cancel)) } },
         )
     }
     if (askLegacy) {
         AlertDialog(
             onDismissRequest = { askLegacy = false },
-            title = { Text("Add from phone contacts") },
-            text = { Text("Pick a number or an email address; Robot adds it with the contact's name.") },
+            title = { Text(stringResource(R.string.people_add_contact)) },
+            text = { Text(stringResource(R.string.people_legacy_text)) },
             confirmButton = {
-                TextButton(onClick = { askLegacy = false; launch({ picker.launch(PhoneContacts.legacy(email = false)) }, "No contacts app on this phone.") }) { Text("A number") }
+                TextButton(onClick = { askLegacy = false; launch({ picker.launch(PhoneContacts.legacy(email = false)) }, ctx.getString(R.string.people_no_contacts_app)) }) {
+                    Text(stringResource(R.string.people_a_number))
+                }
             },
             dismissButton = {
-                TextButton(onClick = { askLegacy = false; launch({ picker.launch(PhoneContacts.legacy(email = true)) }, "No contacts app on this phone.") }) { Text("An email") }
+                TextButton(onClick = { askLegacy = false; launch({ picker.launch(PhoneContacts.legacy(email = true)) }, ctx.getString(R.string.people_no_contacts_app)) }) {
+                    Text(stringResource(R.string.people_an_email))
+                }
             },
         )
     }
     if (confirmReset) {
         AlertDialog(
             onDismissRequest = { confirmReset = false },
-            title = { Text("Start over?") },
-            text = { Text("Robot keeps the file it can't read aside, as people.json.bad, and starts an empty People list.") },
+            title = { Text(stringResource(R.string.people_start_over_title)) },
+            text = { Text(stringResource(R.string.people_start_over_text)) },
             confirmButton = {
                 TextButton(onClick = {
                     confirmReset = false
                     scope.launch {
                         val ok = withContext(Dispatchers.IO) { store.reset() }
                         tick++
-                        a.say(if (ok) "People is empty now." else "Robot couldn't set the file aside.")
+                        a.say(ctx.getString(if (ok) R.string.people_empty_now else R.string.people_not_set_aside))
                     }
-                }) { Text("Start over") }
+                }) { Text(stringResource(R.string.people_start_over)) }
             },
-            dismissButton = { TextButton(onClick = { confirmReset = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { confirmReset = false }) { Text(stringResource(R.string.people_cancel)) } },
         )
     }
     if (confirmDeleteAll) {
         AlertDialog(
             onDismissRequest = { confirmDeleteAll = false },
-            title = { Text("Delete all People?") },
-            text = { Text("Robot forgets everyone here and what you call them, and may learn anyone you removed again. The phone's contacts " +
-                "aren't touched. This can't be undone.") },
+            title = { Text(stringResource(R.string.people_delete_all_title)) },
+            text = { Text(stringResource(R.string.people_delete_all_text)) },
             confirmButton = {
                 TextButton(onClick = {
                     confirmDeleteAll = false
                     scope.launch {
                         val ok = withContext(Dispatchers.IO) { store.deleteAll() }
                         tick++
-                        a.say(if (ok) "People deleted." else "People couldn't be deleted.")
+                        a.say(ctx.getString(if (ok) R.string.people_all_deleted else R.string.people_not_deleted))
                     }
-                }) { Text("Delete all") }
+                }) { Text(stringResource(R.string.people_delete_all_button)) }
             },
-            dismissButton = { TextButton(onClick = { confirmDeleteAll = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { confirmDeleteAll = false }) { Text(stringResource(R.string.people_cancel)) } },
         )
     }
 }
 
 /** A contacts file read for import: its cards as people, the list they were merged into, and the result. */
 private class Preview(val file: VCardFile, val incoming: List<Person>, val before: List<Person>, val merged: PeopleEdit.Merged)
-
-internal fun plural(n: Int, one: String, many: String): String = if (n == 1) "1 $one" else "$n $many"
 
 /** Learned people listed with Keep and Remove at most; the rest are in the list. */
 private const val MAX_LEARNED_SHOWN = 20
@@ -464,7 +479,9 @@ internal fun openFirst(ctx: android.content.Context, intents: List<android.conte
     for (i in intents) {
         try { ctx.startActivity(i); return } catch (_: Exception) {}
     }
-    a.say("Open Settings › Notifications › Device & app notifications, or Settings › Apps › Special app access › Notification access.")
+    // Android's own pages, in the phone's language (core AndroidPath).
+    val system = app.heyrobot.sys.AppLanguage.langs(ctx).system
+    a.say(ctx.getString(R.string.people_open_access, AndroidPath.NOTIFICATION_ACCESS.render(system), AndroidPath.SPECIAL_NOTIFICATION_ACCESS.render(system)))
 }
 
 /**
@@ -473,15 +490,16 @@ internal fun openFirst(ctx: android.content.Context, intents: List<android.conte
  */
 @Composable
 fun NotificationAccessScreen(facts: AssistantFacts?, onBack: () -> Unit) {
-    PreferenceScreen("Notification access", onBack) {
+    val footer = stringResource(R.string.people_access_footer)
+    PreferenceScreen(stringResource(R.string.people_access_title), onBack) {
         if (facts?.notificationAccess == true) {
-            preferenceGroup(null, "done") { StatusPreference("Notification access allowed", "What People and Messages turn on, nothing else", Mark.OK) }
+            preferenceGroup(null, "done") {
+                StatusPreference(stringResource(R.string.people_access_allowed), stringResource(R.string.people_access_allowed_detail), Mark.OK)
+            }
         }
         preferenceGroup(null, "steps") { PreferenceBlock { NotificationAccessSteps() } }
         // 0.7: Settings › Messages opens this page too.
-        preferenceFooter("To learn names, Robot looks at the notifications of one messaging app only, and of those only the sender of a one-to-one chat. " +
-            "With Settings › Messages on, it also reads the messages of the apps you turn on there, in memory only. Settings › People and " +
-            "Settings › Messages say what Robot reads, where it is kept, and how to take it back.")
+        preferenceFooter(footer)
     }
 }
 
@@ -498,18 +516,14 @@ internal fun NotificationAccessSteps() {
     fun access() { for (i in NotificationAccess.settings(ctx)) { try { ctx.startActivity(i); return } catch (_: Exception) {} } }
     fun appInfo() { try { ctx.startActivity(NotificationAccess.appInfo(ctx)) } catch (_: Exception) {} }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Allow notification access", style = MaterialTheme.typography.titleSmall)
-        Text("Android calls notification access a restricted setting for apps installed from a file instead of an app store, as Robot " +
-            "is: harmful apps installed that way have used it to read people's messages and login codes. So it takes three steps.",
-            style = MaterialTheme.typography.bodyMedium, color = muted)
-        Text("1. Tap Notification access and turn on Robot's access (in a list, tap Robot first). If Android says “Restricted " +
-            "setting”, tap OK.", style = MaterialTheme.typography.bodyMedium)
-        FilledTonalButton(onClick = ::access, modifier = Modifier.heightIn(min = 48.dp)) { Text("Notification access") }
-        Text("2. Tap App info, then ⋮ (top right) › Allow restricted settings, and confirm; Android may ask for your PIN or " +
-            "fingerprint. No such item? Android isn't blocking Robot: skip this step.", style = MaterialTheme.typography.bodyMedium)
-        OutlinedButton(onClick = ::appInfo, modifier = Modifier.heightIn(min = 48.dp)) { Text("App info") }
-        Text("3. Tap Notification access again, turn on Robot's access and tap Allow.", style = MaterialTheme.typography.bodyMedium)
-        FilledTonalButton(onClick = ::access, modifier = Modifier.heightIn(min = 48.dp)) { Text("Notification access again") }
+        Text(stringResource(R.string.people_steps_title), style = MaterialTheme.typography.titleSmall)
+        Text(stringResource(R.string.people_steps_why), style = MaterialTheme.typography.bodyMedium, color = muted)
+        Text(stringResource(R.string.people_step_1), style = MaterialTheme.typography.bodyMedium)
+        FilledTonalButton(onClick = ::access, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.people_access_title)) }
+        Text(stringResource(R.string.people_step_2), style = MaterialTheme.typography.bodyMedium)
+        OutlinedButton(onClick = ::appInfo, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.people_app_info)) }
+        Text(stringResource(R.string.people_step_3), style = MaterialTheme.typography.bodyMedium)
+        FilledTonalButton(onClick = ::access, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.people_access_again)) }
     }
 }
 
@@ -525,31 +539,22 @@ internal fun NotificationAccessSteps() {
 internal fun CheogramPrivacy(canTakeBack: Boolean, openAccess: () -> Unit) {
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text("What Robot reads, and where it goes", style = MaterialTheme.typography.titleSmall)
-        Text("Notification access lets an app see every app's notifications. Robot asks Android for conversations only, drops all " +
-            "but that one app's at once, and learns nothing from them while this switch is off. Settings › Messages, if you turn it on, " +
-            "uses the same access to read the apps you choose there, in memory only.", style = MaterialTheme.typography.bodyMedium, color = muted)
-        Text("From a message in a one-to-one chat, Robot keeps only the sender's name and address and which of your accounts " +
-            "got it. It never looks at, keeps or logs what the message says, and group chats teach it nothing. It checks the app's " +
-            "signature too, so an app pretending to be it teaches nothing.", style = MaterialTheme.typography.bodyMedium, color = muted)
-        Text("Names stay on this phone, in Robot's private storage, left out of Android's backups. Robot never sends them anywhere by " +
-            "itself: not to a helper, not to any other online AI model. Robot's own model, on the phone, sees a name only when " +
-            "it looks someone up for you. Only if you choose to share with a helper a conversation in which Robot " +
-            "looked someone up (Include, a helper you trust with personal content, or Safety & privacy › Send personal content to " +
-            "helpers automatically) can what Robot said about them go with it.",
-            style = MaterialTheme.typography.bodyMedium, color = muted)
-        Text("To take it back: turn this switch off, and Robot stops learning at once. Then turn Robot off in Notification access. " +
-            "Names already learned stay until you tap Remove on them, or Delete all People.", style = MaterialTheme.typography.bodyMedium, color = muted)
+        Text(stringResource(R.string.people_privacy_title), style = MaterialTheme.typography.titleSmall)
+        Text(stringResource(R.string.people_privacy_1), style = MaterialTheme.typography.bodyMedium, color = muted)
+        Text(stringResource(R.string.people_privacy_2), style = MaterialTheme.typography.bodyMedium, color = muted)
+        Text(stringResource(R.string.people_privacy_3), style = MaterialTheme.typography.bodyMedium, color = muted)
+        Text(stringResource(R.string.people_privacy_4), style = MaterialTheme.typography.bodyMedium, color = muted)
         // While the switch is off and access is still allowed, the row above already has the button.
-        if (canTakeBack) TextButton(onClick = openAccess, modifier = Modifier.heightIn(min = 48.dp)) { Text("Notification access") }
+        if (canTakeBack) TextButton(onClick = openAccess, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.people_access_title)) }
     }
 }
 
 /** One person in the list: a letter avatar (decoration, hidden from TalkBack), the name, what you call them and how to reach them. */
 @Composable
 private fun PersonRow(p: Person, onClick: () -> Unit) {
-    val also = (p.aliases + p.nicknames).takeIf { it.isNotEmpty() }?.let { "Also called " + it.joinToString(", ") }
-    val line = listOfNotNull(also, People.summary(p).takeIf { it.isNotEmpty() }, if (!p.confirmed) "seen in a notification" else null).joinToString(" · ")
+    val also = (p.aliases + p.nicknames).takeIf { it.isNotEmpty() }?.let { stringResource(R.string.people_also_called, it.joinToString(", ")) }
+    val line = listOfNotNull(also, People.summary(p).takeIf { it.isNotEmpty() }, if (!p.confirmed) stringResource(R.string.people_seen_in_cheogram) else null)
+        .joinToString(" · ")
     PreferenceItem(p.name, line.ifEmpty { null }, onClick = onClick, leading = {
         Box(Modifier.size(40.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondaryContainer).clearAndSetSemantics {},
             contentAlignment = Alignment.Center) {
@@ -676,7 +681,7 @@ fun PersonScreen(id: String?, a: AppActions, snackbar: SnackbarHostState, onBack
 
     fun save(then: () -> Unit = {}) {
         if (saving) return
-        if (!valid) { showErrors = true; a.say("Check what's marked in red."); return }
+        if (!valid) { showErrors = true; a.say(ctx.getString(R.string.people_check_red)); return }
         val now = System.currentTimeMillis()
         val b = base
         // Only what was typed here is applied, to the person as stored now: a choice remembered meanwhile is kept.
@@ -691,8 +696,8 @@ fun PersonScreen(id: String?, a: AppActions, snackbar: SnackbarHostState, onBack
             } != null
             saving = false
             val p = result
-            if (deleted) { gone = true; return@launch a.say("They were deleted meanwhile: Robot didn't bring them back.") }
-            if (!ok || p == null) return@launch a.say("Robot couldn't save them.")
+            if (deleted) { gone = true; return@launch a.say(ctx.getString(R.string.people_deleted_meanwhile)) }
+            if (!ok || p == null) return@launch a.say(ctx.getString(R.string.people_not_saved))
             original = p
             base = p
             pid = p.id
@@ -715,9 +720,9 @@ fun PersonScreen(id: String?, a: AppActions, snackbar: SnackbarHostState, onBack
     BackHandler { leave() }
     Scaffold(
         topBar = {
-            BackBar(if (pid == null) "New person" else "Person", ::leave) {
-                TextButton(onClick = { save() }, enabled = loaded && !gone && !saving && (dirty || original?.confirmed == false)) { Text("Save") }
-                if (original != null) IconButton(onClick = { confirmDelete = true }) { Icon(RIcons.Delete, "Delete") }
+            BackBar(stringResource(if (pid == null) R.string.people_new_person else R.string.people_person), ::leave) {
+                TextButton(onClick = { save() }, enabled = loaded && !gone && !saving && (dirty || original?.confirmed == false)) { Text(stringResource(R.string.people_save)) }
+                if (original != null) IconButton(onClick = { confirmDelete = true }) { Icon(RIcons.Delete, stringResource(R.string.people_delete)) }
             }
         },
         snackbarHost = { SnackbarHost(snackbar) },
@@ -727,39 +732,41 @@ fun PersonScreen(id: String?, a: AppActions, snackbar: SnackbarHostState, onBack
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             if (gone) {
-                Text("This person was deleted.", color = MaterialTheme.colorScheme.error)
+                Text(stringResource(R.string.people_person_deleted), color = MaterialTheme.colorScheme.error)
                 return@Column
             }
             val o = original
             if (o != null && !o.confirmed) {
                 Surface(color = MaterialTheme.colorScheme.surfaceContainerHighest, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("Seen in a notification", style = MaterialTheme.typography.titleSmall)
-                        Text("Whoever sent the message chose this name. Until you keep or edit them, Robot always shows a card first, and never offers them in place of someone you know.",
-                            style = MaterialTheme.typography.bodyMedium)
+                        Text(stringResource(R.string.people_seen_banner), style = MaterialTheme.typography.titleSmall)
+                        Text(stringResource(R.string.people_seen_banner_detail), style = MaterialTheme.typography.bodyMedium)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            FilledTonalButton(onClick = { save { a.say("Kept.") } }) { Text("Keep") }
-                            OutlinedButton(onClick = { confirmDelete = true }) { Text("Remove") }
+                            FilledTonalButton(onClick = { save { a.say(ctx.getString(R.string.people_kept)) } }) { Text(stringResource(R.string.people_keep)) }
+                            OutlinedButton(onClick = { confirmDelete = true }) { Text(stringResource(R.string.people_remove)) }
                         }
                     }
                 }
             }
             OutlinedTextField(
-                value = draft.name, onValueChange = { draft = draft.copy(name = it) }, singleLine = true, label = { Text("Name") }, enabled = loaded,
-                isError = showErrors && !nameOk, supportingText = if (showErrors && !nameOk) { { Text("A name is needed.") } } else null,
+                value = draft.name, onValueChange = { draft = draft.copy(name = it) }, singleLine = true, label = { Text(stringResource(R.string.people_name)) },
+                enabled = loaded, isError = showErrors && !nameOk,
+                supportingText = if (showErrors && !nameOk) { { Text(stringResource(R.string.people_name_needed)) } } else null,
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words), modifier = Modifier.fillMaxWidth(),
             )
             OutlinedTextField(
-                value = draft.aliases, onValueChange = { draft = draft.copy(aliases = it) }, singleLine = true, label = { Text("Also called") }, enabled = loaded,
-                supportingText = { Text("What you call them, separated by commas: mom, maman. Said exactly, it means this person.") },
+                value = draft.aliases, onValueChange = { draft = draft.copy(aliases = it) }, singleLine = true,
+                label = { Text(stringResource(R.string.people_also_called_field)) }, enabled = loaded,
+                supportingText = { Text(stringResource(R.string.people_also_called_help)) },
                 modifier = Modifier.fillMaxWidth(),
             )
             OutlinedTextField(
-                value = draft.nicknames, onValueChange = { draft = draft.copy(nicknames = it) }, singleLine = true, label = { Text("Nicknames") }, enabled = loaded,
-                supportingText = { Text("Other names they go by, as in a contacts file. They match like any name, not ahead of others.") },
+                value = draft.nicknames, onValueChange = { draft = draft.copy(nicknames = it) }, singleLine = true,
+                label = { Text(stringResource(R.string.people_nicknames)) }, enabled = loaded,
+                supportingText = { Text(stringResource(R.string.people_nicknames_help)) },
                 modifier = Modifier.fillMaxWidth(),
             )
-            Text("Numbers", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.people_numbers), style = MaterialTheme.typography.titleSmall)
             draft.phones.forEachIndexed { i, (kind, n) ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     OutlinedTextField(
@@ -769,67 +776,73 @@ fun PersonScreen(id: String?, a: AppActions, snackbar: SnackbarHostState, onBack
                     )
                     Spacer(Modifier.width(6.dp))
                     AssistChip(onClick = { draft = draft.copy(phones = draft.phones.mapIndexed { j, x -> if (j == i) nextKind(x.first) to x.second else x }) },
-                        label = { Text(People.label(kind)) }, modifier = Modifier.heightIn(min = 48.dp))
-                    IconButton(onClick = { draft = draft.copy(phones = draft.phones.filterIndexed { j, _ -> j != i }) }) { Icon(RIcons.Close, "Remove the number") }
+                        label = { Text(People.labelText(kind).str()) }, modifier = Modifier.heightIn(min = 48.dp))
+                    IconButton(onClick = { draft = draft.copy(phones = draft.phones.filterIndexed { j, _ -> j != i }) }) {
+                        Icon(RIcons.Close, stringResource(R.string.people_remove_number))
+                    }
                 }
             }
-            TextButton(onClick = { draft = draft.copy(phones = draft.phones + (PhoneKind.MOBILE to "")) }, enabled = loaded) { Text("Add a number") }
-            Text("Emails", style = MaterialTheme.typography.titleSmall)
+            TextButton(onClick = { draft = draft.copy(phones = draft.phones + (PhoneKind.MOBILE to "")) }, enabled = loaded) { Text(stringResource(R.string.people_add_number)) }
+            Text(stringResource(R.string.people_emails), style = MaterialTheme.typography.titleSmall)
             draft.emails.forEachIndexed { i, e ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     OutlinedTextField(
                         value = e, onValueChange = { v -> draft = draft.copy(emails = draft.emails.mapIndexed { j, x -> if (j == i) v else x }) },
-                        singleLine = true, enabled = loaded, isError = showErrors && !emailOk[i], placeholder = { Text("name@example.org") },
+                        singleLine = true, enabled = loaded, isError = showErrors && !emailOk[i], placeholder = { Text("name@example.org") }, // l10n: not text (an example address)
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email), modifier = Modifier.weight(1f),
                     )
-                    IconButton(onClick = { draft = draft.copy(emails = draft.emails.filterIndexed { j, _ -> j != i }) }) { Icon(RIcons.Close, "Remove the email") }
+                    IconButton(onClick = { draft = draft.copy(emails = draft.emails.filterIndexed { j, _ -> j != i }) }) {
+                        Icon(RIcons.Close, stringResource(R.string.people_remove_email))
+                    }
                 }
             }
-            TextButton(onClick = { draft = draft.copy(emails = draft.emails + "") }, enabled = loaded) { Text("Add an email") }
-            Text("XMPP", style = MaterialTheme.typography.titleSmall)
+            TextButton(onClick = { draft = draft.copy(emails = draft.emails + "") }, enabled = loaded) { Text(stringResource(R.string.people_add_email)) }
+            Text("XMPP", style = MaterialTheme.typography.titleSmall) // l10n: not text (an acronym, the same in French)
             draft.xmpp.forEachIndexed { i, (jid, acct) ->
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         OutlinedTextField(
                             value = jid, onValueChange = { v -> draft = draft.copy(xmpp = draft.xmpp.mapIndexed { j, x -> if (j == i) v to x.second else x }) },
-                            singleLine = true, enabled = loaded, isError = showErrors && !jidOk[i], label = { Text("Address") },
+                            singleLine = true, enabled = loaded, isError = showErrors && !jidOk[i], label = { Text(stringResource(R.string.people_address)) },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email), modifier = Modifier.weight(1f),
                         )
-                        IconButton(onClick = { draft = draft.copy(xmpp = draft.xmpp.filterIndexed { j, _ -> j != i }) }) { Icon(RIcons.Close, "Remove the address") }
+                        IconButton(onClick = { draft = draft.copy(xmpp = draft.xmpp.filterIndexed { j, _ -> j != i }) }) {
+                            Icon(RIcons.Close, stringResource(R.string.people_remove_address))
+                        }
                     }
                     OutlinedTextField(
                         value = acct, onValueChange = { v -> draft = draft.copy(xmpp = draft.xmpp.mapIndexed { j, x -> if (j == i) x.first to v else x }) },
-                        singleLine = true, enabled = loaded, isError = showErrors && !accountOk[i], label = { Text("Your Cheogram account (optional)") },
-                        supportingText = { Text("Filled in when you pick them in Cheogram: Robot then opens their chat in that account directly.") },
+                        singleLine = true, enabled = loaded, isError = showErrors && !accountOk[i], label = { Text(stringResource(R.string.people_account)) },
+                        supportingText = { Text(stringResource(R.string.people_account_help)) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email), modifier = Modifier.fillMaxWidth().padding(end = 48.dp),
                     )
                 }
             }
-            TextButton(onClick = { draft = draft.copy(xmpp = draft.xmpp + ("" to "")) }, enabled = loaded) { Text("Add an XMPP address") }
+            TextButton(onClick = { draft = draft.copy(xmpp = draft.xmpp + ("" to "")) }, enabled = loaded) { Text(stringResource(R.string.people_add_xmpp)) }
             if (o != null) {
                 o.preferredText?.let { pref ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Texts always go to $pref", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                        TextButton(onClick = { forget(email = false) }) { Text("Forget") }
+                        Text(stringResource(R.string.people_texts_go_to, pref), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { forget(email = false) }) { Text(stringResource(R.string.people_forget)) }
                     }
                 }
                 o.preferredEmail?.let { pref ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Emails always go to $pref", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                        TextButton(onClick = { forget(email = true) }) { Text("Forget") }
+                        Text(stringResource(R.string.people_emails_go_to, pref), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { forget(email = true) }) { Text(stringResource(R.string.people_forget)) }
                     }
                 }
                 // 0.7: Settings › Messages on: replies to them without a card (3-second stop).
                 app.heyrobot.ui.settings.NoCardSwitch(o)
                 app.heyrobot.ui.settings.AnnounceSwitch(o)
-                Text("${o.source.title} · changed ${DateUtils.getRelativeTimeSpanString(o.updatedAt)}", style = MaterialTheme.typography.labelMedium,
+                Text(stringResource(R.string.people_source_changed, o.source.titleText.str(), DateUtils.getRelativeTimeSpanString(o.updatedAt)),
+                    style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                 OutlinedButton(onClick = {
-                    if (dirty) return@OutlinedButton a.say("Save first.")
-                    try { ctx.startActivity(PhoneContacts.insert(o)) } catch (_: ActivityNotFoundException) { a.say("No contacts app on this phone takes new contacts.") }
-                }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Save to phone's contacts") }
-                Text("Opens your Contacts app with everything filled in: choose the account and save there. Your messaging and email apps and the " +
-                    "dialer then know the name too. Robot itself never writes to your contacts.",
+                    if (dirty) return@OutlinedButton a.say(ctx.getString(R.string.people_save_first))
+                    try { ctx.startActivity(PhoneContacts.insert(o)) } catch (_: ActivityNotFoundException) { a.say(ctx.getString(R.string.people_no_contacts_insert)) }
+                }, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.people_save_to_contacts)) }
+                Text(stringResource(R.string.people_save_to_contacts_detail),
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 12.dp))
             }
         }
@@ -837,8 +850,8 @@ fun PersonScreen(id: String?, a: AppActions, snackbar: SnackbarHostState, onBack
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
-            title = { Text("Delete ${original?.name ?: "this person"}?") },
-            text = { Text("Robot forgets them and what you call them. The phone's contacts aren't touched.") },
+            title = { Text(stringResource(R.string.people_delete_title, original?.name ?: stringResource(R.string.people_this_person))) },
+            text = { Text(stringResource(R.string.people_delete_text)) },
             confirmButton = {
                 TextButton(onClick = {
                     confirmDelete = false
@@ -846,20 +859,20 @@ fun PersonScreen(id: String?, a: AppActions, snackbar: SnackbarHostState, onBack
                     scope.launch {
                         // Someone learned from a notification isn't learned again.
                         val ok = withContext(Dispatchers.IO) { store.remove(o.id, ignore = !o.confirmed) }
-                        a.say(if (ok) "Deleted." else "Robot couldn't delete them.")
+                        a.say(ctx.getString(if (ok) R.string.people_deleted else R.string.people_not_deleted_one))
                         if (ok) onBack()
                     }
-                }) { Text("Delete") }
+                }) { Text(stringResource(R.string.people_delete)) }
             },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(stringResource(R.string.people_cancel)) } },
         )
     }
     if (confirmLeave) {
         AlertDialog(
             onDismissRequest = { confirmLeave = false },
-            title = { Text("Save your changes?") },
-            confirmButton = { TextButton(onClick = { confirmLeave = false; save(onBack) }) { Text("Save") } },
-            dismissButton = { TextButton(onClick = { confirmLeave = false; onBack() }) { Text("Discard") } },
+            title = { Text(stringResource(R.string.people_save_changes)) },
+            confirmButton = { TextButton(onClick = { confirmLeave = false; save(onBack) }) { Text(stringResource(R.string.people_save)) } },
+            dismissButton = { TextButton(onClick = { confirmLeave = false; onBack() }) { Text(stringResource(R.string.people_discard)) } },
         )
     }
 }

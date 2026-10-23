@@ -5,13 +5,27 @@ import org.json.JSONObject
 import java.time.Instant
 import java.time.ZoneId
 
-// Pure. "When I turn off my alarm" (design §2.4 `AlarmWatch`): GrapheneOS Clock (com.android.deskclock) broadcasts
+// Pure. "When I turn off my alarm": GrapheneOS Clock (com.android.deskclock) broadcasts
 // ALARM_ALERT when an alarm starts ringing and ALARM_DONE when it stops for any reason (dismissed, snoozed, silenced
 // after its auto-silence time), with no permission. A runtime receiver in :voice will hear them (they are implicit and
 // not exempt, so a manifest receiver would not); 2 s after DONE it reads AlarmManager.getNextAlarmClock(), and this
 // state machine decides from what was observed: a snoozed instance stays Clock's "next alarm" within the hour, a missed
 // alarm rang for its whole auto-silence time, anything else was dismissed. The state survives a :voice restart
 // (state.json, [AlarmWatch.encode]).
+
+/**
+ * 1.2 (every-android-phone design, Step 6): only GrapheneOS Clock's broadcasts are known, so on a phone without it
+ * ([clock] false: another maker's Clock, whose broadcasts are UNVERIFIED and not guessed) a start after an alarm never
+ * comes. Where you pick one, Robot says so plainly instead of failing silently.
+ */
+object ClockNeed {
+    /** [trigger] waits for an alarm that this phone's Clock won't announce. */
+    fun unmet(trigger: RoutineTrigger, clock: Boolean): Boolean = !clock && trigger is RoutineTrigger.AlarmDismissed
+
+    /** One of [routines] that is on, or the brief while it is on ([settings]), waits for such an alarm. */
+    fun unmet(routines: List<Routine>, settings: RoutineSettings, clock: Boolean): Boolean =
+        (routines + BriefRoutine.of(settings)).any { it.enabled && unmet(it.trigger, clock) }
+}
 
 /** How an alarm ended, for the routines and the voice log (141 ALARM_END, a). */
 enum class AlarmEnd(override val id: Int, override val title: String) : LogCode {

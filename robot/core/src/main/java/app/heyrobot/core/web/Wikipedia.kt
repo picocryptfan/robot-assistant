@@ -2,6 +2,8 @@
 package app.heyrobot.core.web
 
 import app.heyrobot.core.UriText
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.WebStrings
 import java.util.Locale
 
 // Pure (org.json). Encyclopedia lookups (design A2.2): search through MediaWiki's core REST API
@@ -131,5 +133,8 @@ object WikipediaWire {
     }
 
     /** The card's credit, the reuse page's own form: "From Wikipedia's article “X”, CC BY-SA 4.0" (links: the article and [LICENCE_URL]). */
-    fun credit(title: String): String = "From Wikipedia's article “$title”, $LICENCE"
+    fun creditText(title: String): Phrase = WebStrings.creditWikipedia("title" to title, "licence" to LICENCE)
+
+    /** [creditText] in English. */
+    fun credit(title: String): String = creditText(title).en()
 }

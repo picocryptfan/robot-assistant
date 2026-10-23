@@ -73,7 +73,7 @@ class FeedbackScreenTest {
     private val utc = ZoneId.of("UTC")
     private val t = 1_760_000_000_000L
     private val facts = FeedbackFacts("0.7.0 (70) · release build", "Pixel 9a · Tensor G4 · Android 16 (BP2A.250805.005) · GrapheneOS",
-        "Fast · Gemma 4 E2B · GPU", "stock", "en-CA")
+        "Fast · Gemma 4 E2B · GPU", "stock", "en-CA", "Build.SOC_MANUFACTURER “Google” · Build.SOC_MODEL “Tensor G4”")
     private val blocks = listOf(
         FeedbackDiagnostics.problem("Robot problem report\nFast stopped on the GPU, so Robot switched to the CPU."),
         FeedbackDiagnostics.voiceLog(List(3) { VoiceLogEntry(t - it * 1_000L, VoiceEvent.WAKE, 2, -1, WakeAction.OPENED.id) }, utc),
@@ -149,6 +149,8 @@ class FeedbackScreenTest {
         val whole = FeedbackReport.compose(FeedbackDraft(FeedbackKind.BUG, "", ticked = setOf(Diagnostic.PROBLEM, Diagnostic.VOICE_LOG)), "RFB-ABCD2345",
             facts, blocks).text
         rule.onNode(hasText(whole) and hasAnyAncestor(isDialog())).assertExists()
+        // 1.2: the chip's own line, under the phone's.
+        assertTrue(whole, whole.contains("\nChip: Build.SOC_MANUFACTURER “Google” · Build.SOC_MODEL “Tensor G4”\n"))
         rule.inDialog("Close").performClick()
         scrollTo("Share")
         rule.onNodeWithText("Share").performClick()

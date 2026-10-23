@@ -3,6 +3,8 @@ package app.heyrobot.assistant
 
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
+import android.os.LocaleList
 import app.heyrobot.core.Action
 import app.heyrobot.core.ActionStatus
 import app.heyrobot.core.AdbCheck
@@ -22,6 +24,8 @@ import app.heyrobot.core.TermuxScriptAction
 import app.heyrobot.core.ToolName
 import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.TermuxStrings
 import app.heyrobot.core.termux.CommandAnalyzer
 import app.heyrobot.core.termux.CommandLevel
 import app.heyrobot.core.termux.CommandSource
@@ -49,6 +53,7 @@ import app.heyrobot.core.termux.TermuxSetupStatus
 import app.heyrobot.core.termux.TermuxStatus
 import app.heyrobot.core.termux.TermuxTap
 import app.heyrobot.core.termux.TermuxVerdict
+import app.heyrobot.sys.AppLanguage
 import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.RecognizerKeeper
 import app.heyrobot.sys.TermuxFacts
@@ -59,6 +64,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.Locale
 import java.util.UUID
 
 // VOICE PROCESS. The Termux agent's tools (0.9): which ones Gemma is told
@@ -71,6 +77,8 @@ import java.util.UUID
 // chose "Run anyway") are checked before each call is prepared and again before it runs; Robot's own keys by exact value
 // (TermuxSecrets) are passed to TermuxPolicy; and Settings › Advanced › ADB fixes' "Run with Shizuku through Termux"
 // runs here: only a fixed AdbFixes command, by its id, after a tap there.
+// 1.1: what a call says is core TermuxStrings' phrases (Prepared's and Executed's): the card says it in the reply
+// language and Gemma reads its English; the card draws its own lines in the screen's language (TermuxPanel, TermuxCard).
 
 object TermuxTool {
     @Volatile private var held: TermuxRunner? = null
@@ -89,6 +97,9 @@ object TermuxTool {
      * locked: rule 5).
      */
     fun tools(ctx: Context, locked: Boolean): Set<ToolName> {
+        // 1.1, Phone lock: Termux is closed during a lock, whatever Termux's lock-screen scripts say (a command or an adb fix
+        // could turn the lock off, and that setting needs no code).
+        if (app.heyrobot.lock.PhoneLockNow.on(ctx)) return emptySet()
         val s = TermuxStore.load(ctx)
         if (!s.enabled || s.trustedSigner == null) return emptySet()
         val scripts = scripts(ctx, s, locked)
@@ -126,16 +137,17 @@ object TermuxTool {
      * content Robot didn't write; [remote]: a helper asked; [said]: your own words this turn (never screen text).
      */
     fun prepare(ctx: Context, action: Action, untrusted: Boolean, remote: Boolean, said: String?): Prepared {
+        if (app.heyrobot.lock.PhoneLockNow.on(ctx)) return Prepared.Refused(ActionStatus.NEEDS_UNLOCK, app.heyrobot.core.i18n.LockStrings.closedNow())
         val f = facts
         val s = f.settings(ctx)
-        if (!s.enabled) return Prepared.Refused(ActionStatus.DISABLED, TermuxReason.OFF.en)
+        if (!s.enabled) return Prepared.Refused(ActionStatus.DISABLED, TermuxReason.OFF.text)
         val check = f.check(ctx, s)
         // 1.0: the update lock, another signer, the public test key: the call's card says what changed and what to do.
         check.lock?.let { return lockRefusal(ctx, check, it) }
         val granted = f.granted(ctx)
-        if (!granted) return Prepared.Refused(ActionStatus.NEEDS_PERMISSION, TermuxFailure.NO_PERMISSION.en)
+        if (!granted) return Prepared.Refused(ActionStatus.NEEDS_PERMISSION, TermuxFailure.NO_PERMISSION.text)
         val status = f.status(ctx)
-        if (!TermuxSetup.ready(check, granted, status, s.trustedSigner)) return Prepared.Refused(ActionStatus.FAILED, TermuxFailure.NOT_READY.en)
+        if (!TermuxSetup.ready(check, granted, status, s.trustedSigner)) return Prepared.Refused(ActionStatus.FAILED, TermuxFailure.NOT_READY.text)
         val locked = f.locked(ctx)
         val key = UUID.randomUUID().toString()
         // 1.0: Robot's own keys by exact value (helpers' and web search's; the updater's token by its shape): never logged or shown.
@@ -156,12 +168,13 @@ object TermuxTool {
                     known = scripts.map { it.name }.toSet())
                 if (TermuxReason.NOT_A_SCRIPT in d.reasons && d.verdict == TermuxVerdict.REFUSE) {
                     val yours = scripts.filter { s.script(it.name) != ScriptLevel.OFF }.joinToString(", ") { it.name }
-                    return Prepared.Refused(ActionStatus.NOT_FOUND, TermuxReason.NOT_A_SCRIPT.en + if (yours.isEmpty()) " You have none yet." else " Yours: $yours.")
+                    val why = if (yours.isEmpty()) TermuxStrings.reasonNotAScriptNone() else TermuxStrings.reasonNotAScriptYours("list" to yours)
+                    return Prepared.Refused(ActionStatus.NOT_FOUND, why)
                 }
                 refused(d) ?: ready(action.copy(source = source, key = key, lockScreen = action.name in s.lockScreenScripts,
                     card = TermuxCards.script(action.name, ShellLexer.argv(action.args).orEmpty(), d, s.limitSeconds)), d)
             }
-            else -> Prepared.Refused(ActionStatus.INVALID, "Not a Termux call.")
+            else -> Prepared.Refused(ActionStatus.INVALID, TermuxStrings.notTermux())
         }
     }
 
@@ -203,11 +216,21 @@ object TermuxTool {
     private fun lockRefusal(ctx: Context, check: app.heyrobot.core.termux.TermuxCheck, lock: TermuxLock): Prepared.Refused {
         VoiceLog.add(VoiceEvent.TERMUX_LOCKED, lock)
         RLog.i("termux_refused", "why" to lock)
-        return Prepared.Refused(ActionStatus.FAILED, lockText(ctx, check, lock))
+        return Prepared.Refused(ActionStatus.FAILED, lockText(english(ctx), check, lock), lockCard(ctx, check, lock))
     }
 
-    /** What the next Termux card says while [lock] holds (sys TermuxWords: Settings › Termux says the same). */
+    /** What the next Termux card says while [lock] holds (sys TermuxWords: Settings › Termux says the same), in [ctx]'s language. */
     private fun lockText(ctx: Context, check: app.heyrobot.core.termux.TermuxCheck, lock: TermuxLock): String = TermuxWords.lock(ctx, check, lock, card = true)
+
+    /**
+     * 1.1: the card's words for [lock] are the app's resources, so the card shows them in the menus' language while the
+     * model reads the English ([english]).
+     */
+    private fun lockCard(ctx: Context, check: app.heyrobot.core.termux.TermuxCheck, lock: TermuxLock): Phrase = Phrase.plain(lockText(ctx, check, lock))
+
+    /** [ctx] with the default (English) resources. */
+    private fun english(ctx: Context): Context =
+        ctx.createConfigurationContext(Configuration(ctx.resources.configuration).apply { setLocales(LocaleList(Locale.US)) })
 
     /** The phone's own; a test's end-to-end run swaps in its own (nothing else sets it). */
     @Volatile internal var facts: Facts = PhoneFacts
@@ -223,13 +246,14 @@ object TermuxTool {
             else -> ActionStatus.FAILED
         }
         RLog.i("termux_refused", "why" to r)
-        return Prepared.Refused(status, d.say() ?: r.en)
+        return Prepared.Refused(status, d.sayText() ?: r.text)
     }
 
     private fun ready(a: Action, d: TermuxDecision): Prepared.Ready = when (d.verdict) {
         TermuxVerdict.RUN -> Prepared.Ready(a)
         TermuxVerdict.CARD -> Prepared.Ready(a, why = setOf(AskWhy.TERMUX))
-        else -> Prepared.Ready(a, why = setOf(AskWhy.TERMUX, if (d.tap == TermuxTap.FROM_CONTENT) AskWhy.FROM_CONTENT else AskWhy.COMMAND), note = d.say())
+        else -> Prepared.Ready(a, why = setOf(AskWhy.TERMUX, if (d.tap == TermuxTap.FROM_CONTENT) AskWhy.FROM_CONTENT else AskWhy.COMMAND), note = d.say(),
+            noteText = d.sayText())
     }
 
     // ------------------------------------------------------------------ the card's live state
@@ -269,13 +293,17 @@ object TermuxTool {
      * Open in Termux.
      */
     suspend fun run(ctx: Context, action: Action, launch: (Intent) -> Boolean): Executed {
+        if (app.heyrobot.lock.PhoneLockNow.on(ctx)) return Executed(ActionStatus.NEEDS_UNLOCK, app.heyrobot.core.i18n.LockStrings.closedNow())
         val s = TermuxStore.load(ctx)
-        val key = keyOf(action) ?: return Executed(ActionStatus.FAILED, "Something went wrong.")
-        val card = cardOf(action) ?: return Executed(ActionStatus.FAILED, "Something went wrong.")
+        val key = keyOf(action) ?: return Executed(ActionStatus.FAILED, TermuxStrings.wentWrong())
+        val card = cardOf(action) ?: return Executed(ActionStatus.FAILED, TermuxStrings.wentWrong())
         val check = TermuxFacts.check(ctx, s)
         // 1.0: checked again as it runs (the card may have waited): an update installed meanwhile pauses it.
-        check.lock?.let { VoiceLog.add(VoiceEvent.TERMUX_LOCKED, it); return Executed(ActionStatus.FAILED, lockText(ctx, check, it)) }
-        if (!check.usable || s.trustedSigner == null) return Executed(ActionStatus.FAILED, TermuxFailure.NOT_TRUSTED.en)
+        check.lock?.let {
+            VoiceLog.add(VoiceEvent.TERMUX_LOCKED, it)
+            return Executed(ActionStatus.FAILED, lockText(english(ctx), check, it), text = lockCard(ctx, check, it))
+        }
+        if (!check.usable || s.trustedSigner == null) return Executed(ActionStatus.FAILED, TermuxFailure.NOT_TRUSTED.text)
         val own = facts.ownSecrets(ctx)
         val edit = live(key)?.edit
         val limit = TermuxSettings.limit(edit?.limitSeconds ?: card.limitSeconds)
@@ -287,16 +315,16 @@ object TermuxTool {
                 if (command != action.command) {
                     // Edited on the card: yours now, read again; what is refused stays refused (a fork bomb, Robot's own key).
                     val d = TermuxPolicy.command(CommandAnalyzer.analyze(command), CommandSource.TYPED, s, Assistant.locked(ctx), untrustedConversation = false, own)
-                    if (d.verdict == TermuxVerdict.REFUSE) return Executed(ActionStatus.FAILED, d.say() ?: TermuxReason.EMPTY.en)
+                    if (d.verdict == TermuxVerdict.REFUSE) return Executed(ActionStatus.FAILED, d.sayText() ?: TermuxReason.EMPTY.text)
                 }
                 if (edit?.terminal == true) return openInTermux(ctx, runner, id, command, launch)
                 TermuxRun.command(id, command, limit, if (card.noCard) TermuxRunKind.ALLOWLISTED else TermuxRunKind.CARDED, profile = s.loadProfile)
             }
             is TermuxScriptAction -> {
-                val argv = ShellLexer.argv(action.args) ?: return Executed(ActionStatus.INVALID, TermuxReason.BAD_ARGUMENTS.en)
+                val argv = ShellLexer.argv(action.args) ?: return Executed(ActionStatus.INVALID, TermuxReason.BAD_ARGUMENTS.text)
                 TermuxRun.script(id, action.name, argv, limit)
             }
-            else -> return Executed(ActionStatus.FAILED, "Something went wrong.")
+            else -> return Executed(ActionStatus.FAILED, TermuxStrings.wentWrong())
         }
         setLive(key) { it.copy(running = true) }
         val reply = try {
@@ -306,15 +334,19 @@ object TermuxTool {
         }
         val outcome = when (reply) {
             is TermuxReply.Answered -> TermuxOutcome(reply.result.exitCode, reply.ms,
-                TermuxOutput.prepare(reply.result, mask = s.hideSecrets, own = own, maxLines = s.outputLines, maxChars = s.outputChars), limitSeconds = limit)
+                // The card's labels ("[errors]", "[hidden: …]") in the menus' language; what Gemma reads stays English.
+                TermuxOutput.prepare(reply.result, mask = s.hideSecrets, own = own, maxLines = s.outputLines, maxChars = s.outputChars, l = AppLanguage.langs(ctx)),
+                limitSeconds = limit)
             is TermuxReply.Failed -> TermuxOutcome(null, reply.ms, failure = reply.failure, limitSeconds = limit)
         }
         setLive(key) { it.copy(outcome = outcome) }
-        val said = TermuxCards.said(outcome)
-        if (outcome.failure != null || outcome.exit == null) return Executed(ActionStatus.FAILED, said)
+        val saidText = TermuxCards.saidText(outcome)
+        val said = saidText.en()
+        if (outcome.failure != null || outcome.exit == null) return Executed(ActionStatus.FAILED, saidText)
+        // The card says it in the reply language; what text-call mode reads out with the output stays English (spoken).
         return Executed(if (outcome.exit == 0) ActionStatus.DONE else ActionStatus.FAILED, said,
             // What it printed is content Robot didn't write (rule 3: later commands show their card), and personal.
-            results = TermuxCards.forModel(outcome), spoken = spoken(said, outcome))
+            results = TermuxCards.forModel(outcome), spoken = spoken(said, outcome), text = saidText)
     }
 
     /** What Robot says without Gemma (a script you named): the result, and the output only when it is one or two short lines. */
@@ -334,10 +366,10 @@ object TermuxTool {
 
     /** "Open in Termux": a new terminal session runs it (only its exit code comes back), then Termux opens over the panel. */
     private fun openInTermux(ctx: Context, runner: TermuxRunner, id: Int, command: String, launch: (Intent) -> Boolean): Executed {
-        runner.fire(TermuxRun.terminal(id, command))?.let { return Executed(ActionStatus.FAILED, it.en) }
+        runner.fire(TermuxRun.terminal(id, command))?.let { return Executed(ActionStatus.FAILED, it.text) }
         val open = ctx.packageManager.getLaunchIntentForPackage(TermuxIntents.PACKAGE)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val opened = open != null && try { launch(open) } catch (_: Exception) { false }
-        return Executed(ActionStatus.DONE, if (opened) "Opened in Termux." else "Sent to a new Termux session: open Termux to see it.", launchedApp = opened)
+        return Executed(ActionStatus.DONE, if (opened) TermuxStrings.openedInTermux() else TermuxStrings.sentToSession(), launchedApp = opened)
     }
 
     // ------------------------------------------------------------------ Settings › Termux's set-up runs
@@ -420,16 +452,19 @@ object TermuxTool {
     /**
      * 1.0, "Run with Shizuku through Termux" (Settings › Advanced › ADB fixes, after a tap on its card there): exactly fix
      * [fixId]'s AdbFixes command as `rish -c '…'`, only to a set-up, trusted Termux that isn't the test-key build, never
-     * while the phone is locked; then the fix is checked again (Robot repairs its recognizer setting itself once it may).
+     * while the phone is locked, and (1.2) never the recognizer fix while another installed recognizer is set, which it would
+     * replace; then the fix is checked again (Robot repairs its recognizer setting itself once it may).
      * The result, as codes, goes to termux_status.json for the page.
      */
     private suspend fun shizuku(ctx: Context, st: TermuxSetupStatus, fixId: String?): TermuxSetupStatus {
+        // 1.1: no adb fix during a phone lock (one could turn the lock's access off).
+        if (app.heyrobot.lock.PhoneLockNow.on(ctx)) return st
         val s = TermuxStore.load(ctx)
         val check = TermuxFacts.check(ctx, s)
         val now = System.currentTimeMillis()
         val n = ShizukuPath.number(fixId)
         val ready = TermuxSetup.ready(check, TermuxFacts.granted(ctx), st, s.trustedSigner)
-        ShizukuRun.refusal(fixId, check, ready, Assistant.locked(ctx))?.let { why ->
+        ShizukuRun.refusal(fixId, check, ready, Assistant.locked(ctx), RecognizerKeeper.kept(ctx))?.let { why ->
             VoiceLog.add(VoiceEvent.TERMUX_ADB_FIX, n, ShizukuOutcome.REFUSED.id, why.id)
             return if (fixId == null || n == 0) st else st.copy(shizuku = ShizukuResult(fixId, now, ShizukuOutcome.REFUSED, refusal = why))
         }

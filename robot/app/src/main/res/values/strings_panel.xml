@@ -1,0 +1,91 @@
+<!-- The panel: its buttons, hints, chips and empty states (the l10n work package WP2): ids start with panel_, and
+     the French is in values-fr-rCA/strings_panel.xml. 1.1 split strings.xml into one file per area, ids and texts
+     unchanged. What Robot says in a turn, and the words pure functions give the panel (its status line, the field's hint,
+     the main button's jobs), are in core's PanelStrings. -->
+<resources>
+    <!-- The panel (1.0): the turns of a conversation begun on the lock screen, continued unlocked -->
+    <string name="panel_said_locked">Said while the phone was locked</string>
+
+    <!-- The standard look's parts (assistant/PanelParts.kt, PanelUi.kt). -->
+    <string name="panel_close">Close</string>
+    <string name="panel_keep">Keep</string>
+    <string name="panel_speak_replies">Speak replies</string>
+    <string name="panel_new_conversation">New conversation</string>
+    <string name="panel_settings">Settings</string>
+    <string name="panel_model_not_ready">The model isn\'t ready.</string>
+    <string name="panel_open_robot">Open Robot</string>
+    <string name="panel_photo">Photo</string>
+    <string name="panel_remove_screen">Remove screen</string>
+    <string name="panel_remove_photo">Remove photo</string>
+    <string name="panel_read_claude_answer">Read Claude\'s answer</string>
+    <string name="panel_add_photo">Add a photo</string>
+    <string name="panel_cancel">Cancel</string>
+    <string name="panel_stop_speaking">Stop speaking</string>
+
+    <!-- The Classic look (ui/classic/ClassicPanel.kt), 0.6.0's words. -->
+    <string name="panel_talking_with_back">Talking with %1$s · Back to Robot</string>
+    <string name="panel_dismiss">Dismiss</string>
+    <string name="panel_ask_me_anything">Ask me anything.</string>
+    <string name="panel_can_see_screen">I can also look at what\'s on your screen.</string>
+    <string name="panel_type_photo_or_say">Type, take a photo, or say “hey robot” next time.</string>
+    <string name="panel_done">Done</string>
+    <string name="panel_your_screen">Your screen</string>
+    <string name="panel_goes_with_next">Goes with your next question</string>
+    <string name="panel_listening_state">Listening</string>
+    <string name="panel_unlock_for_your_photos">Unlock to use the camera or your photos.</string>
+    <string name="panel_camera">Camera</string>
+    <string name="panel_photos">Photos</string>
+    <string name="panel_yes_or_no">Yes or no…</string>
+    <string name="panel_ask_about_it">Ask about it…</string>
+    <string name="panel_ask_robot">Ask Robot…</string>
+    <string name="panel_stop">Stop</string>
+    <string name="panel_send">Send</string>
+    <string name="panel_talk_to_robot_why">Talk to Robot. %1$s</string>
+    <string name="panel_talk_to_robot">Talk to Robot</string>
+    <string name="panel_talk">Talk</string>
+    <string name="panel_screen">Screen</string>
+    <string name="panel_show_less">Show less</string>
+    <string name="panel_show_all">Show all</string>
+    <string name="panel_claude_from_app">Claude, from the Claude app</string>
+    <string name="panel_stopped">Stopped</string>
+    <string name="panel_open_app_with">Open the %1$s app with: «%2$s»</string>
+    <string name="panel_want_take_as_well">Want %1$s\'s take as well?</string>
+    <string name="panel_want_check_with">Want me to check with %1$s?</string>
+    <string name="panel_sends">Sends: %1$s.</string>
+    <string name="panel_no_thanks">No thanks</string>
+    <string name="panel_open_app">Open the app</string>
+
+    <!-- Picking who to text in Cheogram (assistant/CheogramPick.kt). -->
+    <string name="panel_cheogram_not_installed">Cheogram isn\'t installed</string>
+    <string name="panel_cheogram_list_didnt_open">Cheogram\'s contact list didn\'t open</string>
+    <string name="panel_cheogram_nobody">Nobody was picked</string>
+    <string name="panel_cheogram_unreadable">Cheogram\'s answer couldn\'t be read</string>
+    <string name="panel_cheogram_no_who">Cheogram didn\'t say who was picked</string>
+    <string name="panel_cheogram_bad_address">Robot can\'t open a chat with that address</string>
+    <string name="panel_cheogram_didnt_open">Cheogram didn\'t open.</string>
+    <string name="panel_cheogram_remember_name">Remember %1$s?</string>
+    <string name="panel_cheogram_remember_as">Remember as %1$s?</string>
+    <string name="panel_cheogram_calls_them">Cheogram calls them %1$s.</string>
+    <string name="panel_cheogram_keeps">Robot keeps this in People, on your phone only, so next time it opens their chat directly.</string>
+    <string name="panel_cheogram_remember">Remember</string>
+    <string name="panel_not_now">Not now</string>
+    <string name="panel_cheogram_share_instead">Choose who to text in Cheogram\'s share screen instead? The message goes with it, and nothing is sent until you press Send.</string>
+    <string name="panel_cheogram_choose">Choose in Cheogram</string>
+
+    <!-- A search service's key and its test (assistant/WebSearchActivity.kt). -->
+    <string name="panel_web_key_title">%1$s: API key</string>
+    <string name="panel_web_key_where">%1$s Robot encrypts the key on this phone and only the assistant reads it.</string>
+    <string name="panel_web_api_key">API key</string>
+    <string name="panel_web_key_not_saved">The key couldn\'t be saved on this phone.</string>
+    <string name="panel_web_save">Save</string>
+    <string name="panel_web_testing">Testing %1$s…</string>
+    <string name="panel_web_test_sends">Robot sends the word “test” once and reads what comes back.</string>
+    <string name="panel_web_works">%1$s works</string>
+    <string name="panel_web_didnt_work">%1$s didn\'t work</string>
+    <string name="panel_web_change_key">Change key</string>
+    <string name="panel_web_test_again">Test again</string>
+    <string name="panel_web_key_unreadable">The key couldn\'t be read just now. Try again in a moment.</string>
+
+    <!-- Robot's app opening the panel (assistant/PanelLaunchActivity.kt). -->
+    <string name="panel_couldnt_open_assistant">Couldn\'t open the assistant.</string>
+</resources>

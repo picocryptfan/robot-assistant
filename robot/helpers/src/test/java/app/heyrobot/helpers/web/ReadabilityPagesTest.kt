@@ -10,7 +10,7 @@ import org.junit.Test
 import java.io.File
 
 /**
- * Design A14 "Readability (vendored)": a subset of Mozilla's test pages, Robot's copy of Readability4J on jsoup 1.15.1
+ * Design A14 "Readability (vendored)": a subset of Mozilla's test pages, Robot's copy of Readability4J on jsoup 1.23.2
  * giving the same article text as the 1.0.8 library on jsoup 1.11.2 (its expected.html), within whitespace. (Of the 19
  * pages tried, 16 matched; these ten are kept small.)
  */
