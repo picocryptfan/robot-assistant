@@ -7,8 +7,10 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import app.heyrobot.BuildConfig
 import app.heyrobot.core.Abort
+import app.heyrobot.core.AppId
 import app.heyrobot.core.RLog
 import app.heyrobot.core.hex
+import app.heyrobot.core.online.NetCause
 import app.heyrobot.core.update.ArchiveCheck
 import app.heyrobot.core.update.CheckOutcome
 import app.heyrobot.core.update.FoundRelease
@@ -60,9 +62,9 @@ object Updater {
     // ---- What you ask for on the Updates page: each on its own thread, one at a time.
 
     /** "Check now": its result is the page's last-check line (a failure included), so nothing more to say. */
-    fun checkNow(ctx: Context) = launch(Work.Checking) { a -> check(ctx, a, null); null }
+    fun checkNow(ctx: Context) = launch(Work.Checking) { a -> check(ctx, a, null, NetCause.TAP); null }
 
-    fun downloadNow(ctx: Context) = launch(Work.Downloading(0, 0)) { a -> download(ctx, a, null)?.let { UpdateText.failText(it) } }
+    fun downloadNow(ctx: Context) = launch(Work.Downloading(0, 0)) { a -> download(ctx, a, null, NetCause.TAP)?.let { UpdateText.failText(it) } }
 
     fun installNow(ctx: Context) = launch(Work.Verifying) { install(ctx)?.let(Phrase::plain) }
 
@@ -103,9 +105,9 @@ object Updater {
         if (!UpdateDecision.autoCheckRuns(s) || !running.compareAndSet(false, true)) return
         abort = a
         try {
-            if (check(ctx, a, network) != null) return
+            if (check(ctx, a, network, NetCause.SWITCH) != null) return
             val st = UpdateStore.state(ctx)
-            val found = UpdateDecision.offered(st, UpdateStore.repo(ctx), installed()) ?: return
+            val found = UpdateDecision.offered(st, UpdateStore.repo(ctx), installed(), UpdateStore.settings(ctx).testBuilds) ?: return
             val v = found.parsedVersion ?: return
             val plan = UpdateDecision.afterAutoCheck(s, v, ready(ctx, st) != null, st.notified, st.firstSeen, System.currentTimeMillis(),
                 refused = st.refusedApk == found.apk.id)
@@ -126,10 +128,10 @@ object Updater {
         abort = a
         work.value = Work.Downloading(0, 0)
         try {
-            val fail = download(ctx, a, network)
+            val fail = download(ctx, a, network, NetCause.SWITCH)
             if (UpdateDecision.downloadAgain(fail)) return true
             val st = UpdateStore.state(ctx)
-            val found = UpdateDecision.offered(st, UpdateStore.repo(ctx), installed()) ?: return false
+            val found = UpdateDecision.offered(st, UpdateStore.repo(ctx), installed(), UpdateStore.settings(ctx).testBuilds) ?: return false
             val v = found.parsedVersion ?: return false
             if (fail == null) {
                 UpdateDecision.afterAutoDownload(s, v, st.notified)?.let { notify(ctx, found, it) }
@@ -158,14 +160,18 @@ object Updater {
 
     // ---- The steps.
 
-    /** Asks GitHub, picks the release to offer and records what it found. The failure, or null. Blocking. */
-    internal fun check(ctx: Context, a: Abort, network: Network?): UpdateFail? {
+    /**
+     * Asks GitHub, picks the release to offer and records what it found. The failure, or null. Blocking. [cause]: Check
+     * now's tap or the daily check's switch, for What went online.
+     */
+    internal fun check(ctx: Context, a: Abort, network: Network?, cause: NetCause): UpdateFail? {
+        if (!AppId.updatesAllowed(BuildConfig.APPLICATION_ID)) return UpdateFail.NO_REPOSITORY
         val s = UpdateStore.settings(ctx)
         val now = System.currentTimeMillis()
         val repo = UpdateStore.repo(ctx)
         try {
             if (repo == null) throw GitHubClient.Failure(UpdateFail.NO_REPOSITORY)
-            val list = GitHubReleases.parseList(GitHubClient.releases(ctx, repo, a, network)) ?: throw GitHubClient.Failure(UpdateFail.BAD_ANSWER)
+            val list = GitHubReleases.parseList(GitHubClient.releases(ctx, repo, a, network, cause)) ?: throw GitHubClient.Failure(UpdateFail.BAD_ANSWER)
             // A release whose APK failed Android's checks before is passed over, so it can't hide an older one that works.
             val pick = UpdatePick.candidate(list, installed(), s.testBuilds, UpdateStore.state(ctx).barred.toSet())
             val found = pick?.let { FoundRelease.of(repo, it.release, it.files) }
@@ -203,7 +209,7 @@ object Updater {
     /** The checked download of the offered release, if it is there and still the one offered. */
     private fun ready(ctx: Context, st: UpdateState): VerifiedDownload? {
         val d = st.downloaded ?: return null
-        if (!UpdateDecision.keepDownload(d, UpdateDecision.offered(st, UpdateStore.repo(ctx), installed()), installed())) return null
+        if (!UpdateDecision.keepDownload(d, UpdateDecision.offered(st, UpdateStore.repo(ctx), installed(), UpdateStore.settings(ctx).testBuilds), installed())) return null
         val f = File(UpdateStore.downloads(ctx), d.file)
         return d.takeIf { f.isFile && f.length() == d.size }
     }
@@ -215,10 +221,11 @@ object Updater {
      * Downloads the offered release, checks it against SHA256SUMS and then as Android reads it, and keeps it as the checked
      * download. The failure, or null (also when there is nothing to download). Blocking.
      */
-    internal fun download(ctx: Context, a: Abort, network: Network?): UpdateFail? {
+    internal fun download(ctx: Context, a: Abort, network: Network?, cause: NetCause): UpdateFail? {
+        if (!AppId.updatesAllowed(BuildConfig.APPLICATION_ID)) return UpdateFail.NO_REPOSITORY
         val repo = UpdateStore.repo(ctx) ?: return UpdateFail.NO_REPOSITORY
         val st = UpdateStore.state(ctx)
-        val found = UpdateDecision.offered(st, repo, installed()) ?: return null
+        val found = UpdateDecision.offered(st, repo, installed(), UpdateStore.settings(ctx).testBuilds) ?: return null
         val v = found.parsedVersion ?: return null
         if (ready(ctx, st) != null) return null
         tidy(ctx, st)
@@ -237,16 +244,16 @@ object Updater {
         }
         try {
             // SHA256SUMS first: without its line for this APK nothing is downloaded at all.
-            val sums = Sha256Sums.parse(GitHubClient.sums(ctx, repo, found.sums, a, network)) ?: return refuse(UpdateFail.SUMS_BAD)
+            val sums = Sha256Sums.parse(GitHubClient.sums(ctx, repo, found.sums, a, network, cause)) ?: return refuse(UpdateFail.SUMS_BAD)
             val expected = sums.of(found.apk.name) ?: return refuse(UpdateFail.SUMS_NO_LINE)
             work.value = Work.Downloading(have, found.apk.size)
             try {
-                GitHubClient.download(ctx, repo, found.apk, part, a, network) { work.value = Work.Downloading(it, found.apk.size) }
+                GitHubClient.download(ctx, repo, found.apk, part, a, network, cause) { work.value = Work.Downloading(it, found.apk.size) }
             } catch (f: GitHubClient.Failure) {
                 // The server wouldn't continue where the file stopped: once more from the start.
                 if (f.why != UpdateFail.SIZE_MISMATCH || have == 0L) throw f
                 part.delete()
-                GitHubClient.download(ctx, repo, found.apk, part, a, network) { work.value = Work.Downloading(it, found.apk.size) }
+                GitHubClient.download(ctx, repo, found.apk, part, a, network, cause) { work.value = Work.Downloading(it, found.apk.size) }
             }
             work.value = Work.Verifying
             if (sha256(part) != expected) return refuse(UpdateFail.CHECKSUM_MISMATCH)
@@ -270,11 +277,12 @@ object Updater {
      */
     internal fun install(ctx: Context): String? {
         val langs = AppLanguage.langs(ctx)
+        if (!AppId.updatesAllowed(BuildConfig.APPLICATION_ID)) return UpdateFail.NO_REPOSITORY.name
         if (!UpdateInstaller.allowed(ctx)) return UpdateStrings.allowFirst().render(langs)
         // 1.1: an update ends :lock, so it waits for the phone lock to end (docs/plans/phone-lock-design.md §12).
         if (app.heyrobot.lock.PhoneLockNow.on(ctx)) return app.heyrobot.core.i18n.LockStrings.updateWaits().render(langs)
         val st = UpdateStore.state(ctx)
-        val found = UpdateDecision.offered(st, UpdateStore.repo(ctx), installed()) ?: return UpdateStrings.upToDate().render(langs)
+        val found = UpdateDecision.offered(st, UpdateStore.repo(ctx), installed(), UpdateStore.settings(ctx).testBuilds) ?: return UpdateStrings.upToDate().render(langs)
         val d = ready(ctx, st) ?: return UpdateStrings.downloadFirst().render(langs)
         val file = File(UpdateStore.downloads(ctx), d.file)
         work.value = Work.Verifying
@@ -310,6 +318,20 @@ object Updater {
         UpdateStore.saveSettings(ctx, s)
         if (old.autoCheck != s.autoCheck || old.wifiDownload != s.wifiDownload) UpdateJobs.ensure(ctx, s)
         if (old.repo != s.repo) Thread({ tidy(ctx, UpdateStore.state(ctx)) }, "robot-update-tidy").start()
+        if (old.testBuilds && !s.testBuilds) Thread({ dropTestBuild(ctx) }, "robot-update-tidy").start()
+    }
+
+    /** Include test builds went off: a test build already found is no longer offered, downloaded or announced. The next check finds what is. */
+    private fun dropTestBuild(ctx: Context) {
+        if (UpdateStore.state(ctx).found?.testBuild != true) return
+        UpdateJobs.cancelDownload(ctx)
+        UpdateNotices.cancel(ctx)
+        UpdateStore.update(ctx) { st ->
+            if (st.found?.testBuild != true) st
+            else st.copy(found = null, firstSeen = 0, downloaded = null, notified = null,
+                outcome = if (st.outcome == CheckOutcome.AVAILABLE || st.outcome == CheckOutcome.SKIPPED) CheckOutcome.UP_TO_DATE else st.outcome)
+        }
+        tidy(ctx, UpdateStore.state(ctx))
     }
 
     /** "Skip this version": not offered or announced again; its download goes. A newer one is offered as usual. */
@@ -369,7 +391,7 @@ object Updater {
 
     /** Keeps only the checked download and the partial file of the release offered now; anything else in the folder goes. */
     private fun tidy(ctx: Context, st: UpdateState) {
-        val found = UpdateDecision.offered(st, UpdateStore.repo(ctx), installed())
+        val found = UpdateDecision.offered(st, UpdateStore.repo(ctx), installed(), UpdateStore.settings(ctx).testBuilds)
         val keep = buildSet {
             st.downloaded?.takeIf { UpdateDecision.keepDownload(it, found, installed()) }?.let { add(it.file) }
             if (found != null && !UpdateDecision.skipped(UpdateStore.settings(ctx), found.parsedVersion!!)) add(UpdateFilesNames.part(found.version, found.apk.id))

@@ -2,8 +2,6 @@
 package app.heyrobot.assistant.backup
 
 import android.content.BroadcastReceiver
-import android.content.ClipData
-import android.content.ClipDescription
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
@@ -12,7 +10,6 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.os.PersistableBundle
 import android.text.format.Formatter
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -26,7 +23,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.AlertDialog
+import app.heyrobot.ui.common.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -65,6 +62,7 @@ import app.heyrobot.core.backup.PassphraseMaker
 import app.heyrobot.core.i18n.Arg
 import app.heyrobot.core.i18n.BackupStrings
 import app.heyrobot.sys.Assistant
+import app.heyrobot.sys.BackupClipboard
 import app.heyrobot.sys.BackupFiles
 import app.heyrobot.sys.BackupWindow
 import app.heyrobot.sys.SettingsStore
@@ -94,7 +92,8 @@ class BackupActivity : ComponentActivity() {
     private var job: BackupJob? = null
     /** Restore from a backup's session (RestoreFlow): closed with the window unless a restore is being written. */
     internal var restore: RestoreSession? = null
-    @Volatile internal var restoring = false
+    // R11: true from the start when a window made again (dark theme, language) finds a restore running.
+    @Volatile internal var restoring = RestoreSession.running
     private val main = Handler(Looper.getMainLooper())
 
     /** The phone locking (the screen going off) ends the window and any backup in progress. */
@@ -142,6 +141,7 @@ class BackupActivity : ComponentActivity() {
         var progress by remember { mutableStateOf<BackupJob.Progress?>(null) }
         var done by remember { mutableStateOf<BackupJob.Outcome.Done?>(null) }
         var tooBig by remember { mutableStateOf(0L) }
+        var refused by remember { mutableStateOf<BackupCategory?>(null) }
         val scope = lifecycleScope
         LaunchedEffect(Unit) { survey = withContext(Dispatchers.IO) { BackupSources.survey(ctx, SettingsStore.load(ctx)) } }
         DisposableEffect(step) {
@@ -160,11 +160,11 @@ class BackupActivity : ComponentActivity() {
             val pass = passphrase
             scope.launch {
                 val outcome = withContext(Dispatchers.IO) { j.run(uri, pass) { p -> main.post { progress = p } } }
-                clearClipboard(pass)
+                BackupClipboard.ended(applicationContext, pass)
                 job = null
                 when (outcome) {
                     is BackupJob.Outcome.Done -> { done = outcome; passphrase = ""; step = Step.DONE }
-                    is BackupJob.Outcome.Failed -> { failure = outcome.code; tooBig = j.tooBig; step = Step.FAILED }
+                    is BackupJob.Outcome.Failed -> { failure = outcome.code; tooBig = j.tooBig; refused = j.refused; step = Step.FAILED }
                     BackupJob.Outcome.Cancelled -> { failure = BackupCode.CANCELLED; step = Step.FAILED }
                 }
             }
@@ -178,15 +178,18 @@ class BackupActivity : ComponentActivity() {
             }
             Step.WORKING -> Working(progress) { job?.cancelled = true }
             Step.DONE -> Done(done)
-            Step.FAILED -> Failed(failure, tooBig, onAgain = { failure = null; step = Step.CHOOSE })
+            Step.FAILED -> Failed(failure, tooBig, refused, onAgain = { failure = null; step = Step.CHOOSE })
         }
     }
 
     @Composable
-    private fun failureText(code: BackupCode?, tooBig: Long): String = when (code) {
+    private fun failureText(code: BackupCode?, tooBig: Long, refused: BackupCategory?): String = when (code) {
+        BackupCode.CHECK_REFUSED -> refused?.let { BackupWords.readBackRefused(it).str() } ?: BackupStrings.readBackFailed().str()
+        BackupCode.OVER_CAP -> refused?.let { BackupWords.overCap(it).str() } ?: stringResource(R.string.backup_failed)
         BackupCode.LOCKED -> BackupStrings.locked().str()
         BackupCode.MEMORY_UNREADABLE -> BackupStrings.memoryUnreadable().str()
         BackupCode.FILES_UNREADABLE -> BackupStrings.filesUnreadable().str()
+        BackupCode.LISTS_UNREADABLE -> BackupStrings.listsUnreadable().str()
         BackupCode.TOO_BIG -> BackupWords.tooBigToSave(tooBig).str()
         BackupCode.WRITE_FAILED -> BackupStrings.cantWrite().str()
         BackupCode.CHECK_FAILED -> BackupStrings.readBackFailed().str()
@@ -216,13 +219,14 @@ class BackupActivity : ComponentActivity() {
             Buttons(stringResource(R.string.backup_next), enabled = survey != null && included.isNotEmpty() && !over, onCancel = { finish() }, onGo = onNext)
         }) {
             preferenceGroup(whatTitle, "what") {
-                for (c in BackupCategory.entries) {
+                // C10: one row per category, Connection keys inside Keys and private codes' (one tick covers both).
+                for (c in BackupCategory.ROWS) {
                     val sum = survey?.get(c)
                     val unreadable = sum != null && sum.count < 0
                     val empty = sum == null || sum.empty
                     val on = c in chosen && !empty && !unreadable
                     SwitchPreference(BackupWords.category(c)().str(), summary(ctx, c, sum), on, enabled = !empty && !unreadable) { now ->
-                        if (now && c in BackupCategory.SENSITIVE) ask = c else onChosen(if (now) chosen + c else chosen - c)
+                        if (now && c in BackupCategory.SENSITIVE) ask = c else onChosen(if (now) chosen + BackupCategory.covers(c) else chosen - BackupCategory.covers(c))
                     }
                     if (c == BackupCategory.HISTORY && on) SwitchPreference(stringResource(R.string.backup_pictures), null, pictures, onCheckedChange = onPictures)
                     if (c == BackupCategory.TRANSCRIPTS && on && (sum?.extra ?: 0) > 0) {
@@ -247,8 +251,12 @@ class BackupActivity : ComponentActivity() {
                 onDismissRequest = { ask = null },
                 properties = SecureDialog,
                 title = { Text(stringResource(if (keys) R.string.backup_keys_title else R.string.backup_vp_title)) },
-                text = { Text(stringResource(if (keys) R.string.backup_keys_text else R.string.backup_vp_text)) },
-                confirmButton = { TextButton(onClick = { onChosen(chosen + c); ask = null }) { Text(stringResource(if (keys) R.string.backup_keys_yes else R.string.backup_vp_yes)) } },
+                text = {
+                    val connKeys = keys && (survey?.get(BackupCategory.CONN_KEYS)?.count ?: 0) > 0
+                    Text(stringResource(if (keys) R.string.backup_keys_text else R.string.backup_vp_text) +
+                        (if (connKeys) "\n\n" + stringResource(R.string.conn_backup_keys_note) else ""))
+                },
+                confirmButton = { TextButton(onClick = { onChosen(chosen + BackupCategory.covers(c)); ask = null }) { Text(stringResource(if (keys) R.string.backup_keys_yes else R.string.backup_vp_yes)) } },
                 dismissButton = { TextButton(onClick = { ask = null }) { Text(stringResource(if (keys) R.string.backup_keys_no else R.string.backup_vp_no)) } },
             )
         }
@@ -260,13 +268,19 @@ class BackupActivity : ComponentActivity() {
         if (s == null) return null
         if (s.count < 0) return stringResource(when (c) {
             BackupCategory.FILES -> R.string.backup_files_cant
+            BackupCategory.LISTS -> R.string.backup_lists_cant
             // FX3: travel mode keeps History out while it holds Robot Files' answers (BackupSources.historyHidden).
             BackupCategory.HISTORY -> R.string.backup_history_travel
+            // C10: connections.json damaged, or a newer Robot's.
+            BackupCategory.CONNECTIONS -> R.string.conn_backup_cant
+            BackupCategory.LINKS -> if (s.extra == BackupSources.LINKS_OFF) R.string.backup_links_off else R.string.backup_links_cant
             else -> R.string.backup_memory_cant
         })
         if (s.empty) return stringResource(R.string.backup_empty)
         val what = when (c) {
             BackupCategory.SETTINGS -> stringResource(R.string.backup_sum_settings)
+            BackupCategory.EVERYDAY -> stringResource(R.string.backup_sum_everyday)
+            BackupCategory.LINKS -> pluralStringResource(R.plurals.backup_sum_links, s.count, s.count)
             BackupCategory.PEOPLE -> pluralStringResource(R.plurals.backup_n_people, s.count, s.count)
             BackupCategory.MEMORY -> pluralStringResource(R.plurals.backup_n_items, s.count, s.count).let { items ->
                 if (s.extra > 0) stringResource(R.string.backup_two, items, pluralStringResource(R.plurals.backup_n_private, s.extra, s.extra)) else items
@@ -289,6 +303,10 @@ class BackupActivity : ComponentActivity() {
             }
             BackupCategory.VOICEPRINT -> stringResource(R.string.backup_sum_voiceprint)
             BackupCategory.FILES -> pluralStringResource(R.plurals.backup_n_files, s.count, s.count)
+            BackupCategory.LISTS -> pluralStringResource(R.plurals.backup_n_lists, s.count, s.count)
+            BackupCategory.CONNECTIONS -> pluralStringResource(R.plurals.conn_backup_n, s.count, s.count)
+            // Shown in Keys and private codes' row, never on its own.
+            BackupCategory.CONN_KEYS -> s.names.joinToString(", ")
         }
         return if (s.bytes > 0 && c != BackupCategory.KEYS && c != BackupCategory.VOICEPRINT) stringResource(R.string.backup_line, what, size(ctx, s.bytes)) else what
     }
@@ -370,17 +388,13 @@ class BackupActivity : ComponentActivity() {
             modifier = Modifier.fillMaxWidth().semantics { contentType = type })
     }
 
-    /** Copy, marked sensitive; cleared after a minute if the clipboard still holds it (KeystoreSecret.clearClipboard's way). */
-    private fun copy(p: String) {
-        val cm = getSystemService(ClipboardManager::class.java) ?: return
-        val clip = ClipData.newPlainText(getString(R.string.backup_pass_title), p)
-        clip.description.extras = PersistableBundle().apply { putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true) }
-        cm.setPrimaryClip(clip)
-        val app = applicationContext
-        main.postDelayed({ clearClipboard(app, p) }, CLIP_MS)
-    }
+    /** Copy, marked sensitive; cleared after a minute if the clipboard still holds it, whatever happens to this screen (F48). */
+    private fun copy(p: String) = BackupClipboard.copy(this, getString(R.string.backup_pass_title), p)
 
-    private fun clearClipboard(p: String) = clearClipboard(applicationContext, p)
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) BackupClipboard.check(this)
+    }
 
     // ------------------------------------------------------------------------------------------------- working, done
 
@@ -420,19 +434,22 @@ class BackupActivity : ComponentActivity() {
                     Text(stringResource(R.string.backup_done_keep), style = MaterialTheme.typography.bodyMedium)
                     for (name in d?.unreadableKeys.orEmpty()) Text(BackupStrings.keyUnreadable("helper" to Arg.Plain(name)).str(),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    if (d?.linksLeftOut == true) Text(stringResource(R.string.backup_links_left_out), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    d?.filesLeftOut?.takeIf { it > 0 }?.let { n -> Text(pluralStringResource(R.plurals.backup_files_left_out, n, n), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+                    if (d?.codesLeftOut == true) Text(stringResource(R.string.backup_codes_left_out), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }
             }
         }
     }
 
     @Composable
-    private fun Failed(code: BackupCode?, tooBig: Long, onAgain: () -> Unit) {
+    private fun Failed(code: BackupCode?, tooBig: Long, refused: BackupCategory?, onAgain: () -> Unit) {
         val locked = Assistant.locked(LocalContext.current)
         PreferenceScreen(stringResource(R.string.backup_title), onBack = { finish() }, bottomBar = {
             Buttons(stringResource(R.string.backup_try_again), enabled = !locked, onCancel = { finish() }, onGo = onAgain)
         }) {
             item(key = "failed") {
-                Text(failureText(code, tooBig), Modifier.fillMaxWidth().padding(24.dp), style = MaterialTheme.typography.bodyLarge)
+                Text(failureText(code, tooBig, refused), Modifier.fillMaxWidth().padding(24.dp), style = MaterialTheme.typography.bodyLarge)
             }
         }
     }
@@ -449,7 +466,6 @@ class BackupActivity : ComponentActivity() {
         /** The EFF long word list (THIRD_PARTY.md), an app asset. */
         const val WORDS = "eff_large_wordlist.txt"
         const val MIME = "application/octet-stream"
-        const val CLIP_MS = 60_000L
 
         /** Clears the clipboard if it still holds exactly [p]. */
         fun clearClipboard(ctx: Context, p: String) {

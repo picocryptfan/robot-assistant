@@ -43,6 +43,10 @@ object PanelStrings : Strings("panel", area = "panel") {
         "Une carte attend : dis oui ou non, ou touche un de ses boutons.")
     val cardTypeHint = s("card_type_hint", "A card is waiting: tap a button on it, or type yes or no.",
         "Une carte attend : touche un de ses boutons, ou écris oui ou non.")
+    val cutAtCap = s("cut_at_cap", "You spoke past the 30-second limit, so Robot stopped there. Your words are in the text box. Check them, then send.",
+        "Tu as dépassé la limite de 30 secondes, alors Robot s'est arrêté là. Tes mots sont dans la zone de texte. Vérifie-les, puis envoie.")
+    val cutAtCapNoBox = s("cut_at_cap_no_box", "You spoke past the 30-second limit, so Robot didn't act on it. Say it again, shorter.",
+        "Tu as dépassé la limite de 30 secondes, alors Robot n'a rien fait. Redis-le plus court.")
     val textOnlyPhoto = s("text_only_photo", "This model can't see photos: it reads text only. Choose Fast or Smarter in the Robot app › {page} to ask about a photo.",
         "Ce modèle ne voit pas les photos : il lit seulement du texte. Choisis Rapide ou Plus futé dans l'appli Robot › {page} pour poser une question sur une photo.")
     val textOnlyScreen = s("text_only_screen", "This model can't see the screen: it reads only the screen's text.",
@@ -222,10 +226,15 @@ object PanelStrings : Strings("panel", area = "panel") {
     val insteadCpu = s("instead_cpu", "the CPU", "le CPU")
     val insteadGeneral = s("instead_general", "the general build of Fast", "la version générale de Rapide")
 
+    val historyNotSaved = s("history_not_saved", "This chat wasn't saved to History: the phone's storage may be full.",
+        "Cette conversation n'a pas été enregistrée dans l'historique : le stockage du téléphone est peut-être plein.")
+
     // VoiceHub: the wake word's state (Settings › Voice shows it, in the menus' language), and the voice's test.
     val notAssistant = s("not_assistant", "Robot isn't the active assistant right now.", "Robot n'est pas l'assistant actif en ce moment.")
     val wakeWordOff = s("wake_word_off", "The wake word is off in settings.", "Le mot d'éveil est désactivé dans les réglages.")
     val needsMic = s("needs_mic", "Robot needs the microphone permission.", "Robot a besoin de l'autorisation du micro.")
+    val batterySaver = s("battery_saver", "Paused while Battery Saver is on. The corner swipe still opens Robot.",
+        "En pause pendant que l'économiseur de batterie est activé. Le balayage depuis un coin du bas ouvre toujours Robot.")
     val onlyCharging = s("only_charging", "Listening only while charging.", "Écoute seulement pendant la recharge.")
     val micBusy = s("mic_busy", "The microphone couldn't be opened (another app may be using it).",
         "Le micro n'a pas pu être ouvert (une autre appli l'utilise peut-être).")
@@ -244,4 +253,18 @@ object PanelStrings : Strings("panel", area = "panel") {
     // CaptureActivity: a photo that didn't come.
     val noPicture = s("no_picture", "No picture came back.", "Aucune photo n'est revenue.")
     val unreadablePicture = s("unreadable_picture", "Couldn't read that picture.", "Impossible de lire cette photo.")
+
+    // chat-files (files ChatFiles, app assistant/PanelAttach): a file attached to a question.
+    val unlockForFile = s("unlock_for_file", "Unlock to attach a file.", "Déverrouille pour joindre un fichier.")
+    val fileKinds = s("file_kinds", "I can read pictures, PDFs and text files, not this kind of file.",
+        "Je peux lire les images, les PDF et les fichiers texte, pas ce genre de fichier.")
+    val fileRuns = s("file_runs", "I don't open files that could install or run something.",
+        "Je n'ouvre pas les fichiers qui pourraient installer ou lancer quelque chose.")
+    val fileTooBig = s("file_too_big", "That file is too big for me to read.", "Ce fichier est trop gros pour que je le lise.")
+    val fileUnreadable = s("file_unreadable", "I couldn't read that file.", "Je n'ai pas pu lire ce fichier.")
+    val fileFirstPart = s("file_first_part", "I read only the first part of {name}.", "J'ai lu seulement le début de {name}.")
+    val fileFirstPage = s("file_first_page", "I'll read only the first page of {name}.", "Je vais lire seulement la première page de {name}.")
+    val filePickerDidntOpen = s("file_picker_didnt_open", "Your files didn't open.", "Tes fichiers ne se sont pas ouverts.")
+    /** The chip's Save to Robot Files button says this for you (files FileThis hears it). */
+    val fileThisWords = s("file_this_words", "File this", "Classe ça")
 }

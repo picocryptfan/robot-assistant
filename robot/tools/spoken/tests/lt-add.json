@@ -1,0 +1,17 @@
+{
+  "format": 1,
+  "id": "lt-add",
+  "title": "Adding to a list by voice after the wake word, said back, no note made",
+  "safety": "robot-data",
+  "testBench": ["lt-add"],
+  "setup": [{"set": "speakReplies", "value": "VOICE"}],
+  "steps": [
+    {"do": "open", "how": "wake"},
+    {"do": "say", "text": "Add bananas to the shopping list.", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 30, "contains": "Added bananas"},
+    {"do": "check", "what": "heard", "contains": "bananas"},
+    {"do": "check", "what": "router", "equals": "ListsRouter"},
+    {"do": "check", "what": "tool", "equals": "add_note", "absent": true},
+    {"do": "end"}
+  ]
+}

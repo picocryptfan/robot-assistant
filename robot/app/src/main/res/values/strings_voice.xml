@@ -33,14 +33,14 @@
     <string name="voice_show_words">Show words while you speak</string>
     <string name="voice_more_battery">Uses more battery</string>
     <string name="voice_wait">Wait before answering</string>
-    <string name="voice_wait_summary">%1$s · how long Robot waits after you stop talking. Choose Long if it cuts you off.</string>
+    <string name="voice_wait_summary">%1$s · how long Robot waits after you stop talking. Choose Very long if it cuts you off.</string>
     <string name="voice_wait_short">Short</string>
     <string name="voice_wait_normal">Normal</string>
     <string name="voice_wait_long">Long</string>
     <string name="voice_wait_very_long">Very long</string>
     <string name="voice_wait_short_detail">0.6 s of silence</string>
-    <string name="voice_wait_normal_detail">The default. 1 s of silence</string>
-    <string name="voice_wait_long_detail">1.6 s of silence</string>
+    <string name="voice_wait_normal_detail">1 s of silence</string>
+    <string name="voice_wait_long_detail">The default. 1.6 s of silence</string>
     <string name="voice_wait_very_long_detail">2.5 s of silence</string>
     <string name="voice_group_talks">While Robot talks</string>
     <string name="voice_hear_you">Hear you while Robot talks</string>
@@ -128,4 +128,7 @@
 
     <!-- A voice model's download (Android's download notification). -->
     <string name="voice_download_title">Robot: %1$s</string>
+    <string name="voice_saver_channel">Wake word paused</string>
+    <string name="voice_saver_paused">Wake word paused by Battery Saver</string>
+    <string name="voice_saver_paused_detail">Robot isn\'t listening for its wake phrase while Battery Saver is on. It comes back when Battery Saver goes off. The corner swipe still opens Robot.</string>
 </resources>

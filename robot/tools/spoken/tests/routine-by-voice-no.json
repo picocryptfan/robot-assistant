@@ -1,0 +1,23 @@
+{
+  "format": 1,
+  "id": "routine-by-voice-no",
+  "title": "Making a routine by voice: its card, and a no saves nothing",
+  "safety": "stops-at-card",
+  "testBench": ["v80-rt-by-voice"],
+  "setup": [{"set": "speakReplies", "value": "VOICE"}, {"set": "voiceCards", "value": true}],
+  "steps": [
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "Every day at 8, say take your pills.", "voice": "heart"},
+    {"do": "wait_card", "kind": "other", "seconds": 90},
+    {"do": "check", "what": "router", "equals": "RoutineRouter"},
+    {"do": "wait_listening", "seconds": 30},
+    {"do": "say", "text": "No thanks.", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 30},
+    {"do": "end"},
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "List my routines.", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 30},
+    {"do": "check", "what": "reply", "contains": "take your pills", "absent": true},
+    {"do": "end"}
+  ]
+}

@@ -12,9 +12,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
+import app.heyrobot.ui.common.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -32,6 +31,8 @@ import androidx.compose.ui.res.stringResource
 import app.heyrobot.R
 import app.heyrobot.core.i18n.Fmt
 import app.heyrobot.core.i18n.UiStrings
+import app.heyrobot.sys.NetLog
+import app.heyrobot.ui.common.DropdownMenu
 import app.heyrobot.ui.theme.LocalLangs
 import app.heyrobot.ui.theme.str
 import androidx.compose.runtime.LaunchedEffect
@@ -162,6 +163,7 @@ private fun Diagnostic.what(): String = stringResource(when (this) {
     Diagnostic.VOICE_LOG -> R.string.feedback_what_voice_log
     Diagnostic.SETTINGS -> R.string.feedback_what_settings
     Diagnostic.UPDATER -> R.string.feedback_what_updater
+    Diagnostic.ONLINE -> R.string.everyday_feedback_what_online
 })
 
 /** The page. Your draft lives in its saved state; [prefill] (the panel's words) starts your text once, when it is empty. */
@@ -446,6 +448,8 @@ private fun load(app: android.content.Context, args: FeedbackArgs, snap: Snapsho
         FeedbackDiagnostics.voiceLog(inputs.voiceLog),
         FeedbackDiagnostics.settings(s, inputs.look, inputs.updates, inputs.memory, inputs.messages),
         if (args.entry == FeedbackEntry.UPDATER || FeedbackDiagnostics.updaterFailed(inputs.updateState)) FeedbackDiagnostics.updater(inputs.updateState) else null,
+        // The everyday set (§5.8): What went online's last 7 days, offered as a box you tick, never ticked for you.
+        NetLog.lastWeek(app).let { (rows, on) -> FeedbackDiagnostics.online(rows, on) },
     )
     val prefs = FeedbackFiles.prefs(app)
     return FeedbackUi(

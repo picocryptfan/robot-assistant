@@ -102,8 +102,9 @@ class FeedbackReportTest {
         assertTrue(c.text.contains("• Settings summary (switches and levels only):\n"))
         assertTrue(c.text.contains("• Updater (codes only):\nlastCheck=2026-10-03 04:00 · outcome=FAILED · error=NOT_FOUND · http=404\n"))
         assertTrue(c.text.endsWith("---\nForward this whole message to the developer's assistant as it is.\n"))
-        // Each diagnostic's part is in the message exactly as its preview shows it, in order.
-        val order = Diagnostic.entries.map { c.text.indexOf(c.blocks.getValue(it)) }
+        // Each diagnostic's part is in the message exactly as its preview shows it, in order. (The everyday set, deliberately:
+        // What went online's tick has no part here; whatWentOnlineIsNeverTickedForYou has it.)
+        val order = (Diagnostic.entries - Diagnostic.ONLINE).map { c.text.indexOf(c.blocks.getValue(it)) }
         assertTrue(order.toString(), order.all { it > 0 } && order == order.sorted())
         assertEquals(emptySet<Diagnostic>(), c.cut)
         assertFalse(c.textCut)
@@ -125,10 +126,12 @@ class FeedbackReportTest {
 
     @Test fun whatEachKindTicks() {
         assertEquals(setOf(Diagnostic.PROBLEM, Diagnostic.VOICE_LOG, Diagnostic.SETTINGS), Diagnostic.defaults(FeedbackKind.BUG, FeedbackEntry.ABOUT))
-        assertEquals(Diagnostic.entries.toSet(), Diagnostic.defaults(FeedbackKind.BUG, FeedbackEntry.UPDATER))
+        // The everyday set, deliberately: every tick but What went online's, which is never ticked for you (§5.8).
+        assertEquals(Diagnostic.entries.toSet() - Diagnostic.ONLINE, Diagnostic.defaults(FeedbackKind.BUG, FeedbackEntry.UPDATER))
         assertEquals(emptySet<Diagnostic>(), Diagnostic.defaults(FeedbackKind.IDEA, FeedbackEntry.VOICE))
         assertEquals(emptySet<Diagnostic>(), Diagnostic.defaults(FeedbackKind.OTHER, FeedbackEntry.ABOUT))
-        assertEquals(15, Diagnostic.bits(Diagnostic.entries.toSet()))
+        assertEquals(31, Diagnostic.bits(Diagnostic.entries.toSet()))
+        assertEquals(16, Diagnostic.ONLINE.bit)
         assertEquals(setOf(Diagnostic.VOICE_LOG, Diagnostic.SETTINGS), Diagnostic.of(6))
         assertEquals("the voice log, the settings summary", Diagnostic.words(6))
         assertEquals("no diagnostics", Diagnostic.words(0))
@@ -168,9 +171,32 @@ class FeedbackReportTest {
         assertFalse(FeedbackRef.valid("RFB-abcd2345") || FeedbackRef.valid("RFB-ABCD2341") || FeedbackRef.valid(null))
     }
 
+    /**
+     * The everyday set (everyday-set-plan.md §5.8): "What went online (7 days)" is never ticked for you, its part names only
+     * servers Robot itself uses, and it is the first part cut when the message is too long.
+     */
+    @Test fun whatWentOnlineIsNeverTickedForYou() {
+        for (k in FeedbackKind.entries) for (e in FeedbackEntry.entries) assertFalse(Diagnostic.ONLINE in Diagnostic.defaults(k, e))
+        val rows = List(400) { i ->
+            app.heyrobot.core.online.NetEntry(t + i, "voice", if (i % 2 == 0) app.heyrobot.core.online.NetPurpose.WEB_PAGE else app.heyrobot.core.online.NetPurpose.WEATHER,
+                if (i % 2 == 0) "page$i.example.org" else "api.open-meteo.com", app.heyrobot.core.online.NetCause.ASKED, 10, 100, app.heyrobot.core.online.NetResult.DONE)
+        }
+        val online = FeedbackDiagnostics.online(rows, recording = true)
+        assertTrue(online.lines.joinToString("\n"), online.lines.any { it.startsWith("api.open-meteo.com · weather · asked · 200 · ") })
+        assertFalse(online.lines.any { it.contains("example.org") })
+        assertEquals(listOf("(nothing recorded)"), FeedbackDiagnostics.online(emptyList(), recording = false).lines)
+        val c = FeedbackReport.compose(FeedbackDraft(FeedbackKind.BUG, "w".repeat(8_000), ticked = Diagnostic.entries.toSet()), ref, facts, blocks + online)
+        assertTrue(c.text.contains("• What went online, last 7 days, record on"))
+        val big = FeedbackDiagnostics.online(rows.map { it.copy(purpose = app.heyrobot.core.online.NetPurpose.WEATHER, host = "h${it.time}.open-meteo.com") }, true)
+        val cut = FeedbackReport.compose(FeedbackDraft(FeedbackKind.BUG, "w".repeat(8_000), ticked = Diagnostic.entries.toSet()), ref, facts, blocks + big)
+        assertTrue(Diagnostic.ONLINE in cut.cut)
+        assertTrue(cut.text.contains("Robot problem report\nFast stopped on the GPU"))
+    }
+
     /** Under 12,000 characters: the voice log's oldest events go first, then the problem report's end; never your words. */
     @Test fun theMessageKeepsToItsLengthCuttingTheVoiceLogFirst() {
-        val all = Diagnostic.entries.toSet()
+        // The everyday set, deliberately: What went online's tick has no part in these blocks (it would go first).
+        val all = Diagnostic.entries.toSet() - Diagnostic.ONLINE
         val long = FeedbackReport.compose(FeedbackDraft(FeedbackKind.BUG, "x", ticked = all), ref, facts,
             blocks.map { if (it.diagnostic == Diagnostic.PROBLEM) FeedbackDiagnostics.problem((1..200).joinToString("\n") { "report line $it " + "-".repeat(50) }) else it })
         assertTrue(long.text.length.toString(), long.text.length <= FeedbackReport.MAX_CHARS)

@@ -1,0 +1,456 @@
+[
+{
+"entity_id": "cover.kitchen_window",
+"state": "closed",
+"attributes": {
+"is_closed": true,
+"friendly_name": "Kitchen Window",
+"supported_features": 11
+},
+"last_changed": "2026-10-31T15:21:53.172568+00:00",
+"last_reported": "2026-10-31T15:21:53.172568+00:00",
+"last_updated": "2026-10-31T15:21:53.172568+00:00",
+"context": {
+"id": "01M698V3RMKNVY7CVP68MEEB0P",
+"parent_id": null,
+"user_id": null
+}
+},
+{
+"entity_id": "cover.hall_window",
+"state": "open",
+"attributes": {
+"is_closed": false,
+"current_position": 10,
+"friendly_name": "Hall Window",
+"supported_features": 15
+},
+"last_changed": "2026-10-31T15:21:53.173325+00:00",
+"last_reported": "2026-10-31T15:21:53.173325+00:00",
+"last_updated": "2026-10-31T15:21:53.173325+00:00",
+"context": {
+"id": "01M698V3RNDNPASMN9P00JKH8S",
+"parent_id": null,
+"user_id": null
+}
+},
+{
+"entity_id": "cover.living_room_window",
+"state": "open",
+"attributes": {
+"supported_speeds": [
+"slow",
+"default"
+],
+"is_closed": false,
+"current_position": 70,
+"current_tilt_position": 50,
+"friendly_name": "Living Room Window",
+"supported_features": 511
+},
+"last_changed": "2026-10-31T15:21:53.173983+00:00",
+"last_reported": "2026-10-31T15:21:53.173983+00:00",
+"last_updated": "2026-10-31T15:21:53.173983+00:00",
+"context": {
+"id": "01M698V3RNRQ9DQ8X4A9ZZ9Q0W",
+"parent_id": null,
+"user_id": null
+}
+},
+{
+"entity_id": "cover.garage_door",
+"state": "closed",
+"attributes": {
+"is_closed": true,
+"device_class": "garage",
+"friendly_name": "Garage Door",
+"supported_features": 3
+},
+"last_changed": "2026-10-31T15:21:53.174462+00:00",
+"last_reported": "2026-10-31T15:21:53.174462+00:00",
+"last_updated": "2026-10-31T15:21:53.174462+00:00",
+"context": {
+"id": "01M698V3RPKRDFD4N7W298EP7P",
+"parent_id": null,
+"user_id": null
+}
+},
+{
+"entity_id": "cover.pergola_roof",
+"state": "closed",
+"attributes": {
+"is_closed": true,
+"current_tilt_position": 60,
+"friendly_name": "Pergola Roof",
+"supported_features": 240
+},
+"last_changed": "2026-10-31T15:21:53.174898+00:00",
+"last_reported": "2026-10-31T15:21:53.174898+00:00",
+"last_updated": "2026-10-31T15:21:53.174898+00:00",
+"context": {
+"id": "01M698V3RPAKMXAJYS4Z1NCRJY",
+"parent_id": null,
+"user_id": null
+}
+},
+{
+"entity_id": "light.bed_light",
+"state": "off",
+"attributes": {
+"min_color_temp_kelvin": 2000,
+"max_color_temp_kelvin": 6535,
+"effect_list": [
+"rainbow",
+"off"
+],
+"supported_color_modes": [
+"color_temp",
+"hs"
+],
+"effect": null,
+"color_mode": null,
+"brightness": null,
+"color_temp_kelvin": null,
+"hs_color": null,
+"rgb_color": null,
+"xy_color": null,
+"friendly_name": "Bed Light",
+"supported_features": 4
+},
+"last_changed": "2026-10-31T15:21:53.183194+00:00",
+"last_reported": "2026-10-31T15:21:53.183194+00:00",
+"last_updated": "2026-10-31T15:21:53.183194+00:00",
+"context": {
+"id": "01M698V3RZ02RPE108YE87N1Q5",
+"parent_id": null,
+"user_id": null
+}
+},
+{
+"entity_id": "light.ceiling_lights",
+"state": "on",
+"attributes": {
+"min_color_temp_kelvin": 2000,
+"max_color_temp_kelvin": 6535,
+"supported_color_modes": [
+"color_temp",
+"hs"
+],
+"color_mode": "color_temp",
+"brightness": 180,
+"color_temp_kelvin": 2631,
+"hs_color": [
+28.55,
+67.974
+],
+"rgb_color": [
+255,
+164,
+82
+],
+"xy_color": [
+0.532,
+0.388
+],
+"friendly_name": "Ceiling Lights",
+"supported_features": 0
+},
+"last_changed": "2026-10-31T15:21:53.183894+00:00",
+"last_reported": "2026-10-31T15:21:53.183894+00:00",
+"last_updated": "2026-10-31T15:21:53.183894+00:00",
+"context": {
+"id": "01M698V3RZ46WA7WWGWYGTYFTX",
+"parent_id": null,
+"user_id": null
+}
+},
+{
+"entity_id": "light.kitchen_lights",
+"state": "on",
+"attributes": {
+"min_color_temp_kelvin": 2000,
+"max_color_temp_kelvin": 6535,
+"supported_color_modes": [
+"color_temp",
+"hs"
+],
+"color_mode": "hs",
+"brightness": 180,
+"color_temp_kelvin": null,
+"hs_color": [
+345,
+75
+],
+"rgb_color": [
+255,
+64,
+112
+],
+"xy_color": [
+0.588,
+0.274
+],
+"friendly_name": "Kitchen Lights",
+"supported_features": 0
+},
+"last_changed": "2026-10-31T15:21:53.184509+00:00",
+"last_reported": "2026-10-31T15:21:53.184509+00:00",
+"last_updated": "2026-10-31T15:21:53.184509+00:00",
+"context": {
+"id": "01M698V3S0W16YQHYW19A4TTQC",
+"parent_id": null,
+"user_id": null
+}
+},
+{
+"entity_id": "light.office_rgbw_lights",
+"state": "on",
+"attributes": {
+"supported_color_modes": [
+"rgbw"
+],
+"color_mode": "rgbw",
+"brightness": 180,
+"hs_color": [
+0.0,
+49.804
+],
+"rgb_color": [
+255,
+128,
+128
+],
+"xy_color": [
+0.524,
+0.313
+],
+"rgbw_color": [
+255,
+0,
+0,
+255
+],
+"friendly_name": "Office RGBW Lights",
+"supported_features": 0
+},
+"last_changed": "2026-10-31T15:21:53.185100+00:00",
+"last_reported": "2026-10-31T15:21:53.185100+00:00",
+"last_updated": "2026-10-31T15:21:53.185100+00:00",
+"context": {
+"id": "01M698V3S11VWW17FF3P0XWQ4T",
+"parent_id": null,
+"user_id": null
+}
+},
+{
+"entity_id": "light.living_room_rgbww_lights",
+"state": "on",
+"attributes": {
+"supported_color_modes": [
+"rgbww"
+],
+"color_mode": "rgbww",
+"brightness": 180,
+"hs_color": [
+0.923,
+50.98
+],
+"rgb_color": [
+255,
+127,
+125
+],
+"xy_color": [
+0.528,
+0.315
+],
+"rgbww_color": [
+255,
+0,
+0,
+255,
+0
+],
+"friendly_name": "Living Room RGBWW Lights",
+"supported_features": 0
+},
+"last_changed": "2026-10-31T15:21:53.185705+00:00",
+"last_reported": "2026-10-31T15:21:53.185705+00:00",
+"last_updated": "2026-10-31T15:21:53.185705+00:00",
+"context": {
+"id": "01M698V3S1WGN42S502RTQ7RRR",
+"parent_id": null,
+"user_id": null
+}
+},
+{
+"entity_id": "light.entrance_color_white_lights",
+"state": "on",
+"attributes": {
+"supported_color_modes": [
+"hs",
+"white"
+],
+"color_mode": "hs",
+"brightness": 180,
+"hs_color": [
+345,
+75
+],
+"rgb_color": [
+255,
+64,
+112
+],
+"xy_color": [
+0.588,
+0.274
+],
+"friendly_name": "Entrance Color + White Lights",
+"supported_features": 0
+},
+"last_changed": "2026-10-31T15:21:53.186308+00:00",
+"last_reported": "2026-10-31T15:21:53.186308+00:00",
+"last_updated": "2026-10-31T15:21:53.186308+00:00",
+"context": {
+"id": "01M698V3S2DCYCNWHXYWBRF0TH",
+"parent_id": null,
+"user_id": null
+}
+},
+{
+"entity_id": "lock.front_door",
+"state": "locked",
+"attributes": {
+"friendly_name": "Front Door",
+"supported_features": 0
+},
+"last_changed": "2026-10-31T15:21:53.187087+00:00",
+"last_reported": "2026-10-31T15:21:53.187087+00:00",
+"last_updated": "2026-10-31T15:21:53.187087+00:00",
+"context": {
+"id": "01M698V3S3J58GGRESHSJNQS5D",
+"parent_id": null,
+"user_id": null
+}
+},
+{
+"entity_id": "lock.kitchen_door",
+"state": "unlocked",
+"attributes": {
+"friendly_name": "Kitchen Door",
+"supported_features": 0
+},
+"last_changed": "2026-10-31T15:21:53.188140+00:00",
+"last_reported": "2026-10-31T15:21:53.188140+00:00",
+"last_updated": "2026-10-31T15:21:53.188140+00:00",
+"context": {
+"id": "01M698V3S45MYG5BHRVE58VC6D",
+"parent_id": null,
+"user_id": null
+}
+},
+{
+"entity_id": "lock.poorly_installed_door",
+"state": "unlocked",
+"attributes": {
+"friendly_name": "Poorly Installed Door",
+"supported_features": 0
+},
+"last_changed": "2026-10-31T15:21:53.188374+00:00",
+"last_reported": "2026-10-31T15:21:53.188374+00:00",
+"last_updated": "2026-10-31T15:21:53.188374+00:00",
+"context": {
+"id": "01M698V3S46H0Q0BRZYVC30VZ3",
+"parent_id": null,
+"user_id": null
+}
+},
+{
+"entity_id": "lock.openable_lock",
+"state": "locked",
+"attributes": {
+"friendly_name": "Openable Lock",
+"supported_features": 1
+},
+"last_changed": "2026-10-31T15:21:53.189167+00:00",
+"last_reported": "2026-10-31T15:21:53.189167+00:00",
+"last_updated": "2026-10-31T15:21:53.189167+00:00",
+"context": {
+"id": "01M698V3S54M9QJTPFMSTJN088",
+"parent_id": null,
+"user_id": null
+}
+},
+{
+"entity_id": "switch.decorative_lights",
+"state": "on",
+"attributes": {
+"assumed_state": true,
+"friendly_name": "Decorative Lights"
+},
+"last_changed": "2026-10-31T15:21:53.209241+00:00",
+"last_reported": "2026-10-31T15:21:53.209241+00:00",
+"last_updated": "2026-10-31T15:21:53.209241+00:00",
+"context": {
+"id": "01M698V3SSKTXYPGM2K85T8M3R",
+"parent_id": null,
+"user_id": null
+}
+},
+{
+"entity_id": "switch.ac",
+"state": "off",
+"attributes": {
+"device_class": "outlet",
+"friendly_name": "AC"
+},
+"last_changed": "2026-10-31T15:21:53.209702+00:00",
+"last_reported": "2026-10-31T15:21:53.209702+00:00",
+"last_updated": "2026-10-31T15:21:53.209702+00:00",
+"context": {
+"id": "01M698V3SSGQC39P38RVRAERJ7",
+"parent_id": null,
+"user_id": null
+}
+},
+{
+"entity_id": "sensor.backup_backup_manager_state",
+"state": "idle",
+"attributes": {
+"options": [
+"idle",
+"create_backup",
+"blocked",
+"receive_backup",
+"restore_backup"
+],
+"device_class": "enum",
+"friendly_name": "Backup Backup Manager state"
+},
+"last_changed": "2026-10-31T15:21:53.678062+00:00",
+"last_reported": "2026-10-31T15:21:53.678062+00:00",
+"last_updated": "2026-10-31T15:21:53.678062+00:00",
+"context": {
+"id": "01M698V48ETAPC4G73QC73ECKZ",
+"parent_id": null,
+"user_id": null
+}
+},
+{
+"entity_id": "sensor.backup_next_scheduled_automatic_backup",
+"state": "unknown",
+"attributes": {
+"device_class": "timestamp",
+"friendly_name": "Backup Next scheduled automatic backup"
+},
+"last_changed": "2026-10-31T15:21:50.619145+00:00",
+"last_reported": "2026-10-31T15:21:53.678127+00:00",
+"last_updated": "2026-10-31T15:21:50.619145+00:00",
+"context": {
+"id": "01M698V18V75D28GCCW42EDDV9",
+"parent_id": null,
+"user_id": null
+}
+}
+]

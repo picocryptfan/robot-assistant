@@ -95,6 +95,8 @@ object FilePack {
         for (e in pack.files) {
             fun f(k: String) = e.fields[k]?.value
             val check = f("check") == "total" // l10n: not text (a field's code)
+            val sign = if (FileViews.refund(e)) "-" else "" // F42: money back, taxes with it. l10n: not text (a number's sign)
+            fun signed(v: String?) = number(v).let { if (it.isEmpty()) it else sign + it }
             val name = copied[e.id]
             val notes = listOfNotNull(if (check) words.checkTotal else null, if (name == null) words.notCopied else null)
             row(b, listOf(
@@ -102,9 +104,9 @@ object FilePack {
                 text(words.kind(e.kind)),
                 (FileViews.dateField(e, "date") ?: FileViews.dateField(e, "due") ?: FileViews.day(e, zone)).toString(),
                 text(f("merchant").orEmpty()),
-                if (check) "" else number(f("total")),
+                if (check) "" else signed(f("total")),
                 text(f("currency").orEmpty()),
-            ) + TAXES.map { number(f("tax_$it")) } + listOf( // l10n: not text (a field's code)
+            ) + TAXES.map { signed(f("tax_$it")) } + listOf( // l10n: not text (a field's code)
                 text(f("slip").orEmpty()),
                 if (e.kind == FileKind.TAX_SLIP) f("year")?.toIntOrNull()?.toString().orEmpty() else "",
                 text(e.drawer?.let(words.drawer).orEmpty()),

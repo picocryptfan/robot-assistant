@@ -3,6 +3,15 @@
 // Google's Maven serves only the groups Robot takes from it (AndroidX, the Android Gradle plugin and its tools, lint and
 // test platform, LiteRT), and those groups come from nowhere else; Maven Central serves everything else.
 // pluginManagement can't share a variable with the rest of this file, so both lists say the same.
+// 1.5, Robot to Robot (robot-to-robot-r0.md): a third repository, for org.signal alone. libsignal 0.105.2 is published only
+// in Signal's own repository (Maven Central stops at 0.86.5), so its files, checked against Signal's .sha256 files, sit in
+// third_party/maven-local/ (git-ignored; tools/fetch_libsignal.sh, robot/README.md "Getting libsignal"), a file repository
+// Gradle reads offline. exclusiveContent keeps org.signal there and nowhere else, and nothing else there.
+// 1.5, Robot to Robot's carriers (job L3): a fourth, third_party/maven-link/ (git-ignored; tools/fetch_link_deps.sh,
+// robot/README.md "Getting Tor and the push connector"), for exactly three modules taken from Maven Central's files once,
+// each pinned in third_party/link-carriers.sha256: Tor's build for Android (its arm64 executable only), the UnifiedPush
+// connector and Tink 1.23.0 (by version: an older Tink in the build's own tooling still comes from Central).
+// Tink's POM wasn't kept, so a file there may stand without one (artifact()): Gradle then takes no dependency from it.
 pluginManagement {
     repositories {
         exclusiveContent {
@@ -12,6 +21,24 @@ pluginManagement {
                 includeGroupByRegex 'com\\.android(\\..+)?'
                 includeGroupByRegex 'com\\.google\\.ai\\.edge\\..+'
                 includeGroup 'com.google.testing.platform'
+            }
+        }
+        exclusiveContent {
+            forRepository { maven { name = 'libsignalLocal'; url = uri("${settingsDir}/third_party/maven-local") } }
+            filter { includeGroup 'org.signal' }
+        }
+        exclusiveContent {
+            forRepository {
+                maven {
+                    name = 'linkLocal'
+                    url = uri("${settingsDir}/third_party/maven-link")
+                    metadataSources { gradleMetadata(); mavenPom(); artifact() }
+                }
+            }
+            filter {
+                includeModule 'org.briarproject', 'tor-android'
+                includeModule 'org.unifiedpush.android', 'connector'
+                includeVersion 'com.google.crypto.tink', 'tink', '1.23.0'
             }
         }
         mavenCentral()
@@ -29,8 +56,26 @@ dependencyResolutionManagement {
                 includeGroup 'com.google.testing.platform'
             }
         }
+        exclusiveContent {
+            forRepository { maven { name = 'libsignalLocal'; url = uri("${settingsDir}/third_party/maven-local") } }
+            filter { includeGroup 'org.signal' }
+        }
+        exclusiveContent {
+            forRepository {
+                maven {
+                    name = 'linkLocal'
+                    url = uri("${settingsDir}/third_party/maven-link")
+                    metadataSources { gradleMetadata(); mavenPom(); artifact() }
+                }
+            }
+            filter {
+                includeModule 'org.briarproject', 'tor-android'
+                includeModule 'org.unifiedpush.android', 'connector'
+                includeVersion 'com.google.crypto.tink', 'tink', '1.23.0'
+            }
+        }
         mavenCentral()
     }
 }
 rootProject.name = 'robot'
-include ':core', ':brain', ':voice', ':helpers', ':mt', ':app'
+include ':core', ':brain', ':voice', ':helpers', ':mt', ':link', ':app'

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.assistant
 
+import app.heyrobot.assistant.car.CarModeController
 import android.app.assist.AssistStructure
 import android.content.Context
 import android.content.Intent
@@ -22,6 +23,7 @@ import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import app.heyrobot.core.RLog
+import app.heyrobot.sys.AppLanguage
 import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.LookStore
 import app.heyrobot.ui.theme.RobotTheme
@@ -76,7 +78,22 @@ class RobotSession(ctx: Context) : VoiceInteractionSession(ctx), LifecycleOwner,
             w.decorView.setViewTreeLifecycleOwner(this)
             w.decorView.setViewTreeSavedStateRegistryOwner(this)
         }
-        return ComposeView(context).apply {
+        return panelView()
+    }
+
+    /** The menus' languages [panelView] was built in (AppLanguage.menusKey). */
+    private var builtFor: String? = null
+    private var view: ComposeView? = null
+
+    /**
+     * The panel's view, its buttons in the menus' language whatever :voice's configuration says (l10n §7.2). Built once per
+     * session, and a session outlives its hides (onHide never finishes it): lp-check phase 2 found the panel still French
+     * 30 minutes after Menus went back to English, from the cover and from Home. [followMenus] builds it again.
+     */
+    internal fun panelView(): ComposeView {
+        view?.disposeComposition()
+        builtFor = AppLanguage.menusKey(context)
+        return ComposeView(AppLanguage.localized(context)).apply {
             setViewTreeLifecycleOwner(this@RobotSession)
             setViewTreeSavedStateRegistryOwner(this@RobotSession)
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnLifecycleDestroyed(registry))
@@ -85,26 +102,50 @@ class RobotSession(ctx: Context) : VoiceInteractionSession(ctx), LifecycleOwner,
                     AssistantPanel(onClose = { hide() })
                 }
             }
+        }.also { view = it }
+    }
+
+    /** Whether the menus' language changed since [panelView] was built (Settings › Language › Menus, or Android's page). */
+    internal fun menusChanged(): Boolean = view != null && AppLanguage.menusKey(context) != builtFor
+
+    /** At each show: the panel in the menus' language as they are now, without a restart. */
+    private fun followMenus() {
+        if (!menusChanged()) return
+        try {
+            setContentView(panelView())
+        } catch (t: Exception) {
+            RLog.w("panel_menus", t)
         }
+    }
+
+    /** Car mode: with the car screen up, Talk, the car's button and "hey robot" open no window; the screen shows the lines. UNVERIFIED on the phone. */
+    override fun onPrepareShow(args: Bundle?, showFlags: Int) {
+        super.onPrepareShow(args, showFlags)
+        setUiEnabled(!CarModeController.prepareShow(ShowGate.source(args, showFlags)))
     }
 
     override fun onShow(args: Bundle?, showFlags: Int) {
         super.onShow(args, showFlags)
+        followMenus()
         // Settings › Display, as the main app last saved it (a small file): each panel opens in the current colours.
         LookStore.reload(context)
         registry.currentState = Lifecycle.State.RESUMED
         PanelController.attach(this)
+        CarModeController.windowOpener = { setUiEnabled(true) }
         // 1.0 (ipc-1, ipc-2): only what Robot itself asked for counts; another app's showAssist opens the plain panel.
         PanelController.onShow(ShowGate.args(context, args, showFlags), Assistant.locked(context), showFlags)
+        CarModeController.quietShown()
     }
 
     override fun onHide() {
         PanelController.onHide()
+        CarModeController.sessionHidden()
         if (registry.currentState.isAtLeast(Lifecycle.State.CREATED)) registry.currentState = Lifecycle.State.CREATED
         super.onHide()
     }
 
     override fun onDestroy() {
+        CarModeController.windowOpener = null
         PanelController.detach(this)
         registry.currentState = Lifecycle.State.DESTROYED
         super.onDestroy()
@@ -178,6 +219,7 @@ class RobotSession(ctx: Context) : VoiceInteractionSession(ctx), LifecycleOwner,
     }
 
     override fun secure(on: Boolean) {
+        CarModeController.secure(on)
         window?.window?.let { w ->
             if (on) w.addFlags(WindowManager.LayoutParams.FLAG_SECURE) else w.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
         }

@@ -198,6 +198,25 @@ class MemoryPanelTest {
      * lock screen" on (which still lets it be read there): your "remember that …", the model's remember and forget, a
      * card answered after the phone locked, Undo, and the use counter.
      */
+    @Test fun aChoiceOfWhoAnswers_keptOnlyUnlocked_readOnlyAsMemoryAllows_neverInAnAnswer() {
+        val c = app.heyrobot.core.memory.MemoryChoice("CODE", false)
+        MemoryPanel.lockedNow = { true }
+        assertEquals(MemoryPanel.ChoiceSaved.UNLOCK, MemoryPanel.keepChoice(c, "Ask your helper for code questions.", true))
+        assertEquals(MemoryPanel.ChoiceSaved.UNLOCK, MemoryPanel.dropChoice("CODE"))
+        MemoryPanel.lockedNow = { false }
+        assertEquals(MemoryPanel.ChoiceSaved.SAVED, MemoryPanel.keepChoice(c, "Ask your helper for code questions.", true))
+        assertEquals(c, MemoryPanel.choiceFor("CODE"))
+        assertEquals(null, MemoryPanel.choiceFor("MATH"))
+        // Locked, without "Use memory on the lock screen": nothing follows it.
+        MemoryPanel.lockedNow = { true }
+        assertEquals(null, MemoryPanel.choiceFor("CODE"))
+        MemoryPanel.lockedNow = { false }
+        assertEquals(emptyList<String>(), MemoryPanel.forWebCheck(items().map { it.id }))
+        assertEquals(MemoryPanel.ChoiceSaved.SAVED, MemoryPanel.dropChoice("CODE"))
+        assertEquals(MemoryPanel.ChoiceSaved.NONE, MemoryPanel.dropChoice("CODE"))
+        assertEquals(null, MemoryPanel.choiceFor("CODE"))
+    }
+
     @Test fun noMemoryWritesOnTheLockScreen() {
         settings = settings.copy(onLockScreen = true)
         say("Remember that Julie likes tulips")

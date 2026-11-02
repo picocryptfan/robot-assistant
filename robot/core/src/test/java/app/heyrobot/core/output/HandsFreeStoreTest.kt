@@ -109,4 +109,26 @@ class HandsFreeStoreTest {
         assertFalse(HandsFreeNotice.shows(hadSettings = false, seen = false))
         assertTrue(HandsFreeNotice.TEXT.contains("Nothing runs until you turn it on"))
     }
+
+    /** F66: a file that is there but can't be read now is not "no file": the edit fails and the file stays. */
+    @Test fun aReadErrorStopsTheEditAndTheFileStays() {
+        val d = dir()
+        var broken = false
+        val s = HandsFreeStore(d) { f -> if (broken) throw java.io.IOException("EIO") else f.readBytes() }
+        s.editHeadset { it.copy(noticeSeen = true) }
+        s.editCar { it.copy(on = true) }
+        s.editPlaces { it.copy(home = SavedPlace.of("12 Main St", 45.5, -73.6)) }
+        s.editDevices { it.remember(buds, DeviceRole.HEADSET, 10)!!.first }
+        val before = d.listFiles()!!.filter { it.name.endsWith(".json") }.associate { it.name to it.readText() }
+        assertEquals(4, before.size)
+        broken = true
+        assertNull(s.editHeadset { it.copy(noticeSeen = false) })
+        assertNull(s.editCar { it.copy(on = false) })
+        assertNull(s.editPlaces { it.copy(home = null) })
+        assertNull(s.editDevices { it.remember(car, DeviceRole.CAR, 20)!!.first })
+        assertEquals(before, d.listFiles()!!.filter { it.name.endsWith(".json") }.associate { it.name to it.readText() })
+        assertFalse(d.listFiles()!!.any { it.name.endsWith(".bad") })
+        broken = false
+        assertTrue(s.headset().noticeSeen)
+    }
 }

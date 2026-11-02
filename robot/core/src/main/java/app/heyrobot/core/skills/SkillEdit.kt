@@ -64,22 +64,35 @@ object SkillEdit {
         return s.copy(steps = steps, params = s.params.filter { it.name in named })
     }
 
-    /** Question [name] removed: its value is fixed at its default in every step that asked it. */
+    /**
+     * Question [name] removed: its value is fixed at its default in every step that asked it, inside words too. A question
+     * a step's condition tests stays (unchanged skill): the condition would have nothing left to test.
+     */
     fun removeQuestion(s: Skill, name: String): Skill {
         val p = s.param(name) ?: return s
+        if (s.steps.any { it.cond?.value == SkillRef(name) }) return s
         val steps = s.steps.map { st ->
             if (name !in st.templates) st else {
                 val args = st.args.toMutableMap()
-                for ((k, v) in st.args) if (SkillTemplate.name(v) == name) {
-                    if (p.type == ParamType.TIME) {
+                for ((k, v) in st.args) if (SkillTemplate.name(v) == name && k !in st.kind.textArgs) {
+                    if (p.type == ParamType.TIME && st.kind == StepKind.SET_ALARM) {
                         val (h, m) = p.default.split(':').map { it.toLong() }
                         args[k] = h
                         args["minute"] = m
                     } else {
                         args[k] = SkillTemplate.value(p.type, p.default)
                     }
+                } else if (SkillTemplate.refs(v).any { it == SkillRef(name) }) {
+                    // Inside words (connections plan §5.1): the default as words, the other templates kept.
+                    val words = SkillTemplate.text(SkillTemplate.typed(p.type, p.default))
+                    args[k] = SkillTemplate.parts(v as String)!!.joinToString("") { part ->
+                        when (part) {
+                            is SkillTemplate.Part.Words -> part.text
+                            is SkillTemplate.Part.Ref -> if (part.ref == SkillRef(name)) words else SkillTemplate.of(part.ref)
+                        }
+                    }
                 }
-                SkillStep.of(st.kind, args)
+                st.copy(args = SkillStep.of(st.kind, args).args)
             }
         }
         return s.copy(params = s.params.filter { it.name != name }, steps = steps)
@@ -94,7 +107,7 @@ object SkillEdit {
         val t = typed.trim()
         val v = when (type) {
             ParamType.DURATION -> t.toLongOrNull()?.let { (it * 60).toString() }
-            ParamType.TIME -> Regex("^(\\d{1,2})[:h.](\\d{2})$").matchEntire(t)?.let { m -> "%02d:%s".format(m.groupValues[1].toInt(), m.groupValues[2]) } // l10n: not text (a value in the skills file)
+            ParamType.TIME -> Regex("^(\\d{1,2})[:h.](\\d{2})$").matchEntire(t)?.let { m -> "%02d:%s".format(Locale.ROOT, m.groupValues[1].toInt(), m.groupValues[2]) } // l10n: not text (a value in the skills file)
             else -> t
         } ?: return null
         return v.takeIf { SkillCheck.validDefault(type, it) && !SkillCheck.secret(it) }

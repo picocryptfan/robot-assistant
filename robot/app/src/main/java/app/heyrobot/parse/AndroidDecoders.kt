@@ -175,6 +175,9 @@ internal class AndroidDecoders : Decoders {
 
         override fun jpeg(quality: Int, max: Int): ByteArray? {
             val flat = if (bmp.hasAlpha()) onWhite() else bmp
+            // F17: an Ultra HDR photo's gain map would go along as XMP, a multi-picture segment and a second JPEG after the
+            // first's end (Bitmap.compress, Android 14 on). No page or copy wants it, and FileParseWire refuses such a copy.
+            if (Build.VERSION.SDK_INT >= 34 && flat.hasGainmap()) flat.gainmap = null
             try {
                 return capped(max) { flat.compress(Bitmap.CompressFormat.JPEG, quality, it) }
             } finally {

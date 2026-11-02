@@ -7,6 +7,7 @@ import android.os.Looper
 import android.os.SystemClock
 import app.heyrobot.core.EngineState
 import app.heyrobot.core.Heard
+import app.heyrobot.core.OpenWords
 import app.heyrobot.core.RLog
 import app.heyrobot.core.SttBench
 import app.heyrobot.core.SttEnd
@@ -40,7 +41,9 @@ import java.util.concurrent.atomic.AtomicInteger
 //    the question, or the button: held, only its release ends it;
 //  - while the person speaks, the whole buffer is decoded again about every 0.7 s for live partial text;
 //  - one decode at a time, on the "robot-stt" thread; the model loads on first use (a question starting, never just
-//    the panel opening) and is freed after 5 minutes unused (IdlePolicy), or on the rare memory-pressure signal.
+//    the panel opening) and is freed after 5 minutes unused (IdlePolicy), or on the rare memory-pressure signal;
+//  - the everyday set (E5): another app's mic button listens the same way (startForApp) on the same capture, with no audio
+//    focus and no audio from before it asked; Robot's own listening ends it, and Robot's stop and cancel never touch it.
 
 /** Parakeet v3 int8 in sherpa-onnx's OfflineRecognizer (nemo_transducer). Not thread-safe: one decode at a time. */
 internal class Recognizer private constructor(private val r: OfflineRecognizer) {
@@ -128,12 +131,29 @@ class SherpaSpeechToText internal constructor(
     @Volatile private var session: Session? = null
     @Volatile private var livePartials = true
     @Volatile private var pauseMs = Endpointer.DEFAULT_PAUSE_MS
+    @Volatile private var tuning = SpeechTuning()
+    private var vadThreshold = 0f
     /** Conversation sessions and the Transcription check holding the model loaded (the idle unload waits for them). */
     private val holds = AtomicInteger()
 
-    private inner class Session(val id: Int, val listener: SpeechToText.Listener, val source: AudioFrames, val own: Listener?, window: Long) {
+    /** [app]: another app's request (startForApp), null for Robot's own question. */
+    private inner class Session(val id: Int, val listener: SpeechToText.Listener, val source: AudioFrames, val own: Listener?, val window: Long,
+        val app: AppListen? = null, shortAnswer: Boolean = false) {
         val buffer = SampleBuffer(MAX_SAMPLES)
-        val endpointer = Endpointer(Endpointer.Config(silenceSamples = window))
+        /** Words so far as they come: always for Robot's own (if "Show words as you speak"), for an app only if it asked. */
+        val wordsSoFar: Boolean = app?.partials ?: true
+        // Another app is told the end as it comes (onEndOfSpeech), and that can't be taken back.
+        val endpointer = Endpointer(Endpointer.Config(silenceSamples = window,
+            openSamples = if (shortAnswer) window else maxOf(window, Endpointer.windowFor(OpenWords.PAUSE_MS)),
+            listensOn = app == null))
+        /** The end came on silence: the words are being written down while the microphone still listens. */
+        @Volatile var writing = false
+        /** Bumped when speech comes back: a write-down under way is dropped. */
+        @Volatile var turn = 0
+        /** The pause whose words were checked for an open word, with live words off. */
+        var checkedPause = -1L
+        /** The loudest frame, for the car's microphone log (audio thread). */
+        var peakDb = -120f
         val scheduler = PartialScheduler()
         @Volatile var preRoll: FloatArray? = null
         @Volatile var ended = false
@@ -143,6 +163,8 @@ class SherpaSpeechToText internal constructor(
         @Volatile var partialJob: Future<*>? = null
         var partials = 0
         var lastPartial = ""
+        /** Audio behind [lastPartial], in samples. */
+        var lastPartialSamples = 0
         @Volatile var endedAt = 0L
         val sink: (FloatArray) -> Unit = { x -> onAudio(this, x) }
     }
@@ -161,16 +183,17 @@ class SherpaSpeechToText internal constructor(
         else -> null
     }
 
-    override fun configure(livePartials: Boolean, pauseMs: Int) {
+    override fun configure(livePartials: Boolean, pauseMs: Int, tuning: SpeechTuning) {
         this.livePartials = livePartials
         this.pauseMs = pauseMs
+        this.tuning = tuning
     }
 
     override fun holdOpen() {
-        session?.let { if (!it.ended) it.endpointer.held = true }
+        session?.let { if (it.app == null && !it.ended) it.endpointer.held = true }
     }
 
-    override val hearing: Boolean get() = session?.let { !it.cancelled && it.endpointer.heardSpeech } ?: false
+    override val hearing: Boolean get() = session?.let { it.app == null && !it.cancelled && it.endpointer.heardSpeech } ?: false
 
     override fun prewarm() {
         slot.refresh()
@@ -181,10 +204,17 @@ class SherpaSpeechToText internal constructor(
 
     /** The end-of-question VAD (asset model, 0.6 MB): made once and kept for the process. */
     private fun endVad(): Vad? = synchronized(vadLock) {
+        // A new threshold (car mode) takes effect between questions.
+        val wanted = tuning.speechThreshold
+        if (vad != null && vadThreshold != wanted && session == null) {
+            vad?.release()
+            vad = null
+        }
         vad ?: try {
+            vadThreshold = wanted
             Vad(ctx.assets, VadModelConfig(
                 sileroVadModelConfig = SileroVadModelConfig(
-                    model = "vad/silero_vad.onnx", threshold = 0.5f,
+                    model = "vad/silero_vad.onnx", threshold = wanted,
                     // The flag drops after 0.25 s of silence; Endpointer counts on to the pause you chose.
                     minSilenceDuration = Endpointer.VAD_MIN_SILENCE_S, minSpeechDuration = Endpointer.VAD_MIN_SPEECH_S, windowSize = Listener.FRAME,
                     // The default 5 s would cut a longer question into pieces.
@@ -206,16 +236,65 @@ class SherpaSpeechToText internal constructor(
     })
 
     override fun start(listener: SpeechToText.Listener, shortAnswer: Boolean) {
-        cancel()
+        // Robot's own listening wins: another app's request ends here, and its listener is told (onTakenOver).
+        takeOver()
+        val (src, own) = open(listener) ?: return
+        if (src.silenced == true) {
+            own?.stop()
+            VoiceLog.add(VoiceEvent.STT_END, SttEnd.MIC_BUSY)
+            return listener.onError(SpeechToText.Reason.MIC, shown(VoiceStrings.sttMicBusy()))
+        }
+        // 1.1: other apps' sound pauses from here until the panel ends the turn (TurnFocus), before the first frame is read.
+        TurnFocus.listen(ctx)
+        val window = if (shortAnswer) Endpointer.cardWindow(pauseMs) else Endpointer.windowFor(pauseMs)
+        val s = Session(ids.incrementAndGet(), listener, src, own, window, shortAnswer = shortAnswer)
+        session = s
+        // If the microphone is closed under the question ("listen only while charging" and the charger is pulled,
+        // another app takes it), the question ends with what was said; the watchdog catches a capture that stalls.
+        val pre = src.attach(s.sink, PreRoll.SINCE_WAKE_MS, PreRoll.OTHERWISE_MS) { cut(s, "mic_stopped") }
+        begin(s, pre)
+    }
+
+    /**
+     * The everyday set (E5): another app's request, on the capture Robot's questions use (the wake word's, or one of its
+     * own opened just for this when the wake word is off: never a second one beside it). Null while Robot listens or writes
+     * down a question of its own: it is never ended or kept waiting for an app.
+     */
+    override fun startForApp(listener: SpeechToText.Listener, app: AppListen): Int? {
+        if (session != null) return null
+        val id = ids.incrementAndGet()
+        val (src, own) = open(listener) ?: return id
+        if (src.silenced == true) {
+            own?.stop()
+            VoiceLog.add(VoiceEvent.STT_END, SttEnd.MIC_BUSY)
+            listener.onError(SpeechToText.Reason.MIC, shown(VoiceStrings.sttMicBusy()))
+            return id
+        }
+        // No TurnFocus here (D13): the app that asked handles its own audio focus, so nothing else's sound pauses for it.
+        val s = Session(id, listener, src, own, Endpointer.windowFor(app.pauseMs), app)
+        session = s
+        // Only what is said from now on: no audio from before the app asked, not even after a wake word.
+        val pre = src.attach(s.sink, sinceWakeMs = 0, otherwiseMs = 0) { cut(s, "mic_stopped") }
+        begin(s, pre)
+        return id
+    }
+
+    /**
+     * What a question needs before it listens: the model, the end-of-question VAD, and the capture (the wake word's, or one
+     * opened just for this when the wake word is off). Null if one is missing: [listener] has been told why.
+     */
+    private fun open(listener: SpeechToText.Listener): Pair<AudioFrames, Listener?>? {
         slot.refresh()
         val st = slot.state
         if (!st.usable) {
             VoiceLog.add(VoiceEvent.STT_END, SttEnd.UNAVAILABLE)
-            return PlaceholderSpeechToText(unavailableMessage(st)).start(listener)
+            PlaceholderSpeechToText(unavailableMessage(st)).start(listener)
+            return null
         }
         val v = endVad() ?: run {
             VoiceLog.add(VoiceEvent.STT_END, SttEnd.ERROR)
-            return listener.onError(SpeechToText.Reason.ERROR, shown(VoiceStrings.sttCouldntStart()))
+            listener.onError(SpeechToText.Reason.ERROR, shown(VoiceStrings.sttCouldntStart()))
+            return null
         }
         synchronized(vadLock) { v.reset() }
         var own: Listener? = null
@@ -225,31 +304,25 @@ class SherpaSpeechToText internal constructor(
             if (!l.start()) {
                 l.stop()
                 VoiceLog.add(VoiceEvent.STT_END, SttEnd.MIC_BUSY)
-                return listener.onError(SpeechToText.Reason.MIC, shown(VoiceStrings.sttNoMic()))
+                listener.onError(SpeechToText.Reason.MIC, shown(VoiceStrings.sttNoMic()))
+                return null
             }
             own = l
             l
         }
-        if (src.silenced == true) {
-            own?.stop()
-            VoiceLog.add(VoiceEvent.STT_END, SttEnd.MIC_BUSY)
-            return listener.onError(SpeechToText.Reason.MIC, shown(VoiceStrings.sttMicBusy()))
-        }
-        // 1.1: other apps' sound pauses from here until the panel ends the turn (TurnFocus), before the first frame is read.
-        TurnFocus.listen(ctx)
-        val window = if (shortAnswer) Endpointer.CARD_WINDOW_SAMPLES else Endpointer.windowFor(pauseMs)
-        val s = Session(ids.incrementAndGet(), listener, src, own, window)
-        session = s
-        // If the microphone is closed under the question ("listen only while charging" and the charger is pulled,
-        // another app takes it), the question ends with what was said; the watchdog catches a capture that stalls.
-        val pre = src.attach(s.sink, PreRoll.SINCE_WAKE_MS, PreRoll.OTHERWISE_MS) { cut(s, "mic_stopped") }
+        return src to own
+    }
+
+    /** [s] listens from here, with [pre] (the audio just before it) first. */
+    private fun begin(s: Session, pre: FloatArray) {
         s.preRoll = pre
         main.postDelayed({ cut(s, "watchdog") }, s.endpointer.watchdogMs)
-        listener.onListening()
+        s.listener.onListening()
         // Loads while the person speaks (nothing to do once loaded).
         worker.execute { load() }
-        RLog.i("stt_start", "ownMic" to (own != null), "pauseMs" to window * 1000 / Listener.SAMPLE_RATE, "preRollMs" to pre.size * 1000L / Listener.SAMPLE_RATE, "loaded" to (slot.value != null))
-        VoiceLog.add(VoiceEvent.STT_START, pre.size * 1000 / Listener.SAMPLE_RATE, if (slot.value != null) 1 else 0, if (own != null) 1 else 0)
+        RLog.i("stt_start", "ownMic" to (s.own != null), "pauseMs" to s.window * 1000 / Listener.SAMPLE_RATE,
+            "preRollMs" to pre.size * 1000L / Listener.SAMPLE_RATE, "loaded" to (slot.value != null), "forApp" to (s.app != null))
+        VoiceLog.add(VoiceEvent.STT_START, pre.size * 1000 / Listener.SAMPLE_RATE, if (slot.value != null) 1 else 0, if (s.own != null) 1 else 0)
     }
 
     /** From the audio thread. */
@@ -279,25 +352,43 @@ class SherpaSpeechToText internal constructor(
             }
             var ss = 0.0
             for (f in frame) ss += f * f
-            s.listener.onLevel(Listener.db(ss / n).toFloat())
+            val db = Listener.db(ss / n).toFloat()
+            if (db > s.peakDb) s.peakDb = db
+            s.listener.onLevel(db)
             when (s.endpointer.onFrame(speech, n)) {
                 Endpointer.Event.SPEECH -> {
                     VoiceLog.add(VoiceEvent.VAD_START, ms(s.endpointer.speechStart))
-                    if (livePartials) maybePartial(s)
+                    s.listener.onSpeechStart()
+                    if (livePartials && s.wordsSoFar) maybePartial(s)
                 }
                 Endpointer.Event.END -> {
                     VoiceLog.add(VoiceEvent.VAD_END, ms(s.endpointer.samples - s.endpointer.speechStart))
-                    finish(s, "silence")
+                    if (s.endpointer.listeningOn) writeDown(s) else finish(s, "silence")
                 }
+                Endpointer.Event.RESUMED -> resume(s)
                 Endpointer.Event.MAX_LENGTH -> {
                     // A voice detector that never ends (a television, a fan) stops at the 30 s cap.
                     VoiceLog.add(VoiceEvent.VAD_END, ms(s.endpointer.samples - maxOf(0L, s.endpointer.speechStart)))
+                    if (!s.cancelled) s.listener.onCapReached()
                     finish(s, "max")
                 }
                 Endpointer.Event.NO_SPEECH -> noSpeech(s)
-                else -> if (livePartials) maybePartial(s)
+                else -> when {
+                    s.writing -> {}
+                    livePartials && s.wordsSoFar -> maybePartial(s)
+                    else -> checkOpenWord(s)
+                }
             }
         }
+    }
+
+    /** No words shown: one quiet decode in each pause, so the open-word rule still knows how the sentence stops. */
+    private fun checkOpenWord(s: Session) {
+        if (!s.endpointer.waitsForOpenWords) return
+        val at = s.endpointer.pauseStart
+        if (at < 0 || at == s.checkedPause) return
+        s.checkedPause = at
+        s.partialJob = worker.submit { partial(s) }
     }
 
     private fun maybePartial(s: Session) {
@@ -315,15 +406,18 @@ class SherpaSpeechToText internal constructor(
 
     /** Worker thread. */
     private fun partial(s: Session) {
-        if (s.ended) return
+        if (s.ended || s.writing) return
         s.partialRunning = true
         try {
             val r = load() ?: return
-            if (s.ended) return
-            val text = r.decode(s.buffer.snapshot())
+            if (s.ended || s.writing) return
+            val audio = s.buffer.snapshot()
+            val text = r.decode(audio)
             s.partials++
-            if (!s.ended && text.isNotEmpty() && text != s.lastPartial) {
+            s.endpointer.openEnded = OpenWords.endsOpen(text)
+            if (!s.ended && !s.writing && livePartials && s.wordsSoFar && text.isNotEmpty() && text != s.lastPartial) {
                 s.lastPartial = text
+                s.lastPartialSamples = audio.size
                 s.listener.onPartial(text)
             }
         } catch (t: Throwable) {
@@ -335,10 +429,13 @@ class SherpaSpeechToText internal constructor(
 
     /** End of capture (silence, the cap, the button): stop listening and decode everything once. */
     private fun finish(s: Session, reason: String) {
-        synchronized(s) {
+        val writing = synchronized(s) {
             if (s.ended) return
             s.ended = true
+            s.writing
         }
+        // The button or a closed capture during a write-down: nothing more is heard, and the words already on their way stand.
+        if (writing) return detach(s)
         s.endedAt = SystemClock.elapsedRealtime()
         detach(s)
         // A partial still waiting is dropped; one already running finishes (native decode can't be stopped)
@@ -346,6 +443,36 @@ class SherpaSpeechToText internal constructor(
         s.partialJob?.cancel(false)
         if (!s.cancelled) s.listener.onEndOfSpeech()
         worker.execute { final(s, reason) }
+    }
+
+    /**
+     * End on silence: as [finish], but the capture stays on while the words are written down. If speech comes back before
+     * they're out ([resume]) nothing is delivered and the question goes on, with all its audio. A finished sentence
+     * answers as fast as ever: the decode starts at the same moment, and only speech coming back holds its result.
+     */
+    private fun writeDown(s: Session) {
+        val turn = synchronized(s) {
+            if (s.ended) return
+            s.writing = true
+            s.turn
+        }
+        s.endedAt = SystemClock.elapsedRealtime()
+        s.partialJob?.cancel(false)
+        if (!s.cancelled) s.listener.onEndOfSpeech()
+        worker.execute { final(s, "silence", turn) }
+    }
+
+    /** Speech came back during the write-down (audio thread). */
+    private fun resume(s: Session) {
+        synchronized(s) {
+            if (s.ended || !s.writing) return
+            s.writing = false
+            s.turn++
+        }
+        s.endpointer.openEnded = false
+        RLog.i("stt_resumed", "afterMs" to SystemClock.elapsedRealtime() - s.endedAt)
+        VoiceLog.add(VoiceEvent.VAD_START, ms(s.endpointer.samples))
+        if (!s.cancelled) s.listener.onSpeechBack()
     }
 
     private fun noSpeech(s: Session, why: String = "no_speech") {
@@ -383,9 +510,9 @@ class SherpaSpeechToText internal constructor(
     }
 
     /** Worker thread. */
-    private fun final(s: Session, reason: String) {
+    private fun final(s: Session, reason: String, turn: Int = s.turn) {
         try {
-            if (s.cancelled) return
+            if (s.cancelled || s.turn != turn) return
             val r = load()
             if (r == null) {
                 VoiceLog.add(VoiceEvent.STT_END, SttEnd.UNAVAILABLE)
@@ -393,33 +520,63 @@ class SherpaSpeechToText internal constructor(
                 return
             }
             val audio = s.buffer.snapshot()
+            if (tuning.logMic) VoiceLog.add(VoiceEvent.CAR_MIC, 1, (s.source as? Listener)?.routedInput?.type ?: -1, s.peakDb.toInt())
             val t0 = SystemClock.elapsedRealtime()
-            val text = if (audio.size < MIN_SAMPLES) "" else r.decode(audio)
+            val decoded = if (audio.size < MIN_SAMPLES) "" else r.decode(audio)
             val now = SystemClock.elapsedRealtime()
-            // Numbers only: how long, how fast, how it ended; never the words.
-            RLog.i("stt_final", "end" to RLog.Code(reason), "audioMs" to audio.size * 1000L / Listener.SAMPLE_RATE,
-                "decodeMs" to now - t0, "waitMs" to now - s.endedAt, "partials" to s.partials, "heard" to s.endpointer.heardSpeech,
-                "empty" to text.isEmpty())
             val audioMs = audio.size * 1000 / Listener.SAMPLE_RATE
-            if (text.isEmpty()) VoiceLog.add(VoiceEvent.STT_EMPTY, audioMs, if (s.endpointer.heardSpeech) 1 else 0)
-            else VoiceLog.add(VoiceEvent.STT_DONE, text.length, audioMs, (now - t0).toInt())
+            val shownMs = s.lastPartialSamples * 1000 / Listener.SAMPLE_RATE
+            // Numbers only: how long, how fast, how it ended, and the lengths behind the last pass and the words shown
+            // (1.1: they're how a last pass shorter than the live text gets found); never the words.
+            RLog.i("stt_final", "end" to RLog.Code(reason), "audioMs" to audioMs, "decodeMs" to now - t0, "waitMs" to now - s.endedAt,
+                "partials" to s.partials, "heard" to s.endpointer.heardSpeech, "chars" to decoded.length,
+                "shownChars" to s.lastPartial.length, "shownAudioMs" to shownMs, "empty" to decoded.isEmpty())
+            val text = FinalWords.pick(decoded, s.lastPartial, s.endpointer.heardSpeech, audioMs, shownMs, (now - t0).toInt())
+            // Speech came back while this ran: the question goes on, and these words are written down again with the rest.
+            val closing = synchronized(s) {
+                if (s.turn != turn) return
+                val open = s.writing && !s.ended
+                s.ended = true
+                s.writing = false
+                open
+            }
+            if (closing) detach(s)
             if (!s.cancelled) s.listener.onFinal(text)
         } catch (t: Throwable) {
             RLog.w("stt_decode", t)
             VoiceLog.add(VoiceEvent.STT_END, SttEnd.ERROR)
             if (!s.cancelled) s.listener.onError(SpeechToText.Reason.ERROR, shown(VoiceStrings.sttDecodeFailed()))
         } finally {
-            if (session === s) session = null
+            if (s.turn == turn) {
+                // An error or a missing model during a write-down: nobody is waiting for more audio.
+                val open = synchronized(s) { (s.writing && !s.ended).also { if (it) { s.ended = true; s.writing = false } } }
+                if (open) detach(s)
+                if (session === s) session = null
+            }
         }
     }
 
+    /** Robot's own question only: another app's request stops through [stopForApp]. */
     override fun stop() {
-        session?.let { finish(it, "release") }
+        session?.takeIf { it.app == null }?.let { finish(it, "release") }
     }
 
+    /** Robot's own question only: another app's request ends through [cancelForApp], or when Robot's own listening starts. */
     override fun cancel() {
-        val s = session ?: return
-        session = null
+        session?.takeIf { it.app == null }?.let(::cancelSession)
+    }
+
+    override fun stopForApp(handle: Int) {
+        session?.takeIf { it.app != null && it.id == handle }?.let { finish(it, "release") }
+    }
+
+    override fun cancelForApp(handle: Int) {
+        session?.takeIf { it.app != null && it.id == handle }?.let(::cancelSession)
+    }
+
+    /** [s] ends without a result: no callback (its owner asked, or [takeOver] told it). */
+    private fun cancelSession(s: Session) {
+        if (session === s) session = null
         s.cancelled = true
         synchronized(s) {
             if (s.ended) return
@@ -430,8 +587,15 @@ class SherpaSpeechToText internal constructor(
         s.partialJob?.cancel(false)
     }
 
+    /** Whatever listens now ends; another app's request (even one being written down) is told it was taken over. */
+    private fun takeOver() {
+        val s = session ?: return
+        if (s.app != null && !s.cancelled) try { s.listener.onTakenOver() } catch (t: Throwable) { RLog.w("stt_taken", t) }
+        cancelSession(s)
+    }
+
     override fun release() {
-        cancel()
+        takeOver()
         unload()
     }
 

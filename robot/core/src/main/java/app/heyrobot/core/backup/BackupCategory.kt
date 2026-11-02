@@ -80,7 +80,51 @@ enum class BackupCategory(
      * follow this order, and a 1.1 to 1.3 Robot skips "files" by name (each entry under BackupCaps.UNKNOWN_ENTRY). Restored
      * after People and Memory, which a file's links and your filing rules point at; sealed again under this phone's key.
      */
-    FILES("files", true, RestoreProcess.VOICE, FilesBackup.MAX_ENTRIES);
+    FILES("files", true, RestoreProcess.VOICE, FilesBackup.MAX_ENTRIES),
+    /**
+     * Skills connections (docs/plans/skills-connections-plan.md D7, §5.7; C10): connections.json as saved (addresses,
+     * operations, switches, first-use answers, hand-offs' pins; never a key). Its own category, not inside Skills: a 1.1 to
+     * 1.4 Robot refuses a whole known category at an entry name it doesn't know, and skips "connections" by name (its one
+     * entry far under BackupCaps.UNKNOWN_ENTRY). Restored after Skills, whose steps name its ids. From a backup that isn't
+     * yours, each arrives untrusted (RestoreSafety.connection: no first-use answers, no spoken yes, "Test it again", a
+     * hand-off to pick again). Ordinal 13, right after Files: the voice log's category bits follow this order.
+     */
+    CONNECTIONS("connections", true, RestoreProcess.VOICE, 1),
+    /**
+     * Skills connections (D7, C10): each connection's secrets in their plain form ("conn/<id>", core ConnSecretsCodec's,
+     * read by :voice's BackupSecrets straight into the backup's encryption). Off until you tick Keys and private codes,
+     * whose row covers it ([coveredBy]); a Strong passphrase and "This backup is my own", as helper keys ([SENSITIVE]).
+     * Restored only to a connection here of the same id and address it was saved for, where none is saved, with a fresh
+     * Keystore key. Ordinal 14.
+     */
+    CONN_KEYS("conn_keys", false, RestoreProcess.VOICE, app.heyrobot.core.connect.ConnCheck.MAX_CONNECTIONS),
+    /**
+     * 1.4, Robot Lists (docs/plans/lists-plan.md §6, LS7): the lists in plain JSON ("lists.json", lists v1, the journal's
+     * adds merged in first, tombstones included, inside the backup's own encryption, never sealed with the old phone's key)
+     * and Settings › Lists ("lists_settings.json", not one of Settings' 8 files). Ordinal 15, after Connection keys: the voice log's
+     * category bits follow this order, and a 1.1 to 1.3 Robot skips "lists" by name (each entry under
+     * BackupCaps.UNKNOWN_ENTRY). Sealed again under this phone's key on restore; someone else's lists stay apart
+     * (RestoreTaint.list).
+     */
+    LISTS("lists", true, RestoreProcess.VOICE, 2),
+    /**
+     * The everyday set (docs/plans/everyday-set-plan.md §2.4, D21): everyday_settings.json only ([EVERYDAY_FILE]), never one
+     * of Settings' 8 files (a ninth would make an older reader refuse that whole category). Your music app's pin is left
+     * out (BackupExport.everyday: trust is never in a backup), and the record of what went online is never in one (D11: it
+     * describes this phone). Appended after the chain's last category: the voice log's category bits follow this order, and
+     * a Robot without it skips "everyday" by name. Staged by :voice and written by the main app (RestoreApply), which
+     * merges it over its own file (RestoreSafety.everydayFile).
+     */
+    EVERYDAY("everyday", true, RestoreProcess.MAIN, 1),
+    /**
+     * Robot to Robot (robot-to-robot-plan.md §2.7, D14; L12): pairings without keys, permissions and block list, what passed
+     * between Robots ("links.json", core LinkBackupCodec, from :link) and Settings › Robot to Robot ("link_settings.json").
+     * Appended after the chain's last category: the voice log's category bits follow this order, and a Robot without it skips
+     * "links" by name. Restored only from a backup that is yours ([ONLY_YOURS], RestoreTaint.links), never as trust: levels
+     * drop to Ask me first and "Answer while locked" comes back off (RestoreSafety.link, linkLevels). Staged by :voice; the
+     * main app merges the settings and leaves links.json for :link (RestoreApply).
+     */
+    LINKS("links", true, RestoreProcess.MAIN, 2);
 
     /** Whether [name] is one of this category's entry names. */
     fun validName(name: String): Boolean = rule(name) != null
@@ -90,6 +134,17 @@ enum class BackupCategory(
 
     /** The newest schema of [name] this Robot reads (0: a file without one), or null when it isn't a name of this category. */
     fun schema(name: String): Int? = rule(name)?.schema
+
+    /**
+     * The schema an entry records for [name] holding [data]: [schema]'s, except skills.json, which records its own "v"
+     * (connections plan D6): a v1 file this Robot wrote stays readable by a 1.1 Robot's restore, and a v2 file is skipped
+     * there as newer. A skills.json without a readable "v" records [schema]'s (its restore refuses it anyway).
+     */
+    fun schemaOf(name: String, data: ByteArray): Int? {
+        val known = schema(name) ?: return null
+        if (this != SKILLS || name != SkillStore.SKILLS) return known
+        return SkillCodec.versionOf(String(data, Charsets.UTF_8))?.takeIf { it in 1..known } ?: known
+    }
 
     /** Whether [name] holds JSON that StrictJson must accept before its store's codec reads it. */
     fun json(name: String): Boolean = name.endsWith(".json")
@@ -109,12 +164,26 @@ enum class BackupCategory(
             TRANSCRIPTS -> transcript(name)
             KEYS -> key(name)
             VOICEPRINT -> if (name == VOICEPRINT_FILE) NameRule(BackupCaps.VOICEPRINT, 0) else null
+            EVERYDAY -> if (name == EVERYDAY_FILE) NameRule(BackupCaps.SMALL_FILE, app.heyrobot.core.everyday.EverydaySettingsCodec.VERSION) else null
             FILES -> when {
                 name == FilesBackup.INDEX -> NameRule(app.heyrobot.core.files.FileLimits.MAX_INDEX, app.heyrobot.core.files.FileIndexCodec.VERSION)
                 name == FilesBackup.SETTINGS -> NameRule(BackupCaps.SMALL_FILE, app.heyrobot.core.files.FilesSettingsCodec.VERSION)
                 FilesBackup.blobId(name) != null -> NameRule(app.heyrobot.core.files.FileLimits.MAX_FILE, 0)
                 else -> null
             }
+            LISTS -> when (name) {
+                LISTS_FILE -> NameRule(app.heyrobot.core.lists.ListsLimits.MAX_FILE.toLong(), app.heyrobot.core.lists.ListsCodec.VERSION)
+                LISTS_SETTINGS -> NameRule(BackupCaps.SMALL_FILE, app.heyrobot.core.lists.ListsSettingsCodec.VERSION)
+                else -> null
+            }
+            LINKS -> when (name) {
+                LINKS_FILE -> NameRule(app.heyrobot.core.link.LinkBackupCodec.MAX_BYTES.toLong(), app.heyrobot.core.link.LinkBackupCodec.VERSION)
+                LINK_SETTINGS -> NameRule(BackupCaps.SMALL_FILE, app.heyrobot.core.link.LinkSettingsCodec.VERSION)
+                else -> null
+            }
+            CONNECTIONS -> if (name == CONNECTIONS_FILE) NameRule(app.heyrobot.core.connect.ConnectionCodec.MAX_BYTES.toLong(),
+                app.heyrobot.core.connect.ConnectionCodec.VERSION) else null
+            CONN_KEYS -> connOf(name)?.let { NameRule(app.heyrobot.core.connect.ConnSecretsCodec.MAX_BYTES.toLong(), app.heyrobot.core.connect.ConnSecretsCodec.VERSION) }
         }
     }
 
@@ -154,9 +223,48 @@ enum class BackupCategory(
          * whose name (me.voiceprint) no entry may have (RestoreTrustTest).
          */
         const val VOICEPRINT_FILE = "voiceprint.rvp"
+        /** 1.4, Lists: the lists' plain JSON (lists v1, at most 2 MiB) and Settings › Lists. */
+        const val LISTS_FILE = "lists.json"
+        const val LISTS_SETTINGS = app.heyrobot.core.lists.ListsSettingsCodec.FILE
+        /** The everyday set's one entry: files/robot/everyday_settings.json. */
+        const val EVERYDAY_FILE = app.heyrobot.core.everyday.EverydaySettingsCodec.FILE
+        /** Robot to Robot: what :link hands over (no key is ever in it) and Settings › Robot to Robot. */
+        const val LINKS_FILE = app.heyrobot.core.link.LinkBackupCodec.FILE
+        const val LINK_SETTINGS = app.heyrobot.core.link.LinkSettingsCodec.FILE
+        /** Connections' one entry: files/robot/connections.json (never skills_state.json's counts, never Test's facts). */
+        const val CONNECTIONS_FILE = app.heyrobot.core.connect.ConnStore.FILE
+        /** Connection keys' entries: "conn/<id>", one per connection with a key. */
+        const val CONN_KEY = "conn/"
 
         /** Categories that need a Strong passphrase and "This backup is my own" on restore, and are off until you tick them. */
-        val SENSITIVE: Set<BackupCategory> get() = setOf(KEYS, VOICEPRINT)
+        val SENSITIVE: Set<BackupCategory> get() = setOf(KEYS, VOICEPRINT, CONN_KEYS)
+
+        /**
+         * What someone else's backup never restores: the sensitive categories, and pairings (D14), which take no tick of
+         * their own and a passphrase of any strength: they hold no key.
+         */
+        val ONLY_YOURS: Set<BackupCategory> get() = SENSITIVE + LINKS
+
+        /** The categories whose entries are keys, saved as they are read and deleted again when a restore is cut short. */
+        val KEY_CATEGORIES: Set<BackupCategory> get() = setOf(KEYS, CONN_KEYS)
+
+        /**
+         * D7: the row on Back up now's list and the restore preview that a category is shown in: Connection keys in Keys and
+         * private codes', so one tick covers both; every other category in its own.
+         */
+        fun coveredBy(c: BackupCategory): BackupCategory = if (c == CONN_KEYS) KEYS else c
+
+        /** The rows the lists show, in order: every category but those another row covers. */
+        val ROWS: List<BackupCategory> get() = entries.filter { coveredBy(it) == it }
+
+        /** What a row's tick covers: [row] and the categories shown in it. */
+        fun covers(row: BackupCategory): Set<BackupCategory> = entries.filterTo(LinkedHashSet()) { coveredBy(it) == row }
+
+        /** A connection key's entry name → its connection id ("conn/c-ha0001" → "c-ha0001"), or null. */
+        fun connOf(name: String): String? =
+            name.takeIf { it.startsWith(CONN_KEY) }?.removePrefix(CONN_KEY)?.takeIf { app.heyrobot.core.skills.SkillStep.validConnId(it) }
+
+        fun connKey(id: String): String = CONN_KEY + id
 
         /**
          * The updater's settings file. A restore stages the backup's copy as it is ([UPDATES_STAGED], with [MINE_STAGED]

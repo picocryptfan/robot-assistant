@@ -6,18 +6,19 @@ WHAT IT DOES
 • Timers and alarms, also from the lock screen, and your calendar
 • Drafts texts and emails in the apps you choose; you press Send
 • Opens your maps app with a search or route ready
-• Keeps notes and finds them again
+• Keeps notes and finds them
 • Answers questions about what's on your screen, or a photo, once the phone is unlocked
 • Answers everyday questions with Gemma, Google's open model, running on the phone
 • The weather from Open-Meteo, only when you ask
-• Checks battery, storage and memory, and helps free space
+• Checks battery, storage and memory; helps free space
 • Conversation mode: transcripts with speaker names, live French and English translation, summaries
 • Your own wake words, voice speed, and a People list for the names you use
 • Skills: teach it a short routine by voice, then say its name
+• Lists by voice, files in a question, car screen, Robot to Robot
 • Phone lock: covers other apps for times you set, by voice or in Settings. Off until you set it up
 • Robot Files: receipts, bills and documents filed on the phone, each one encrypted. Ask what you spent or what's due
 • An encrypted backup in one file you keep, your files included; Robot never uploads it
-• Checks GitHub for its own updates once a day; you install them yourself, unless you turn on "Install updates without asking" (off by default)
+• Checks GitHub for updates once a day; you install them yourself, unless you turn on "Install updates without asking" (off)
 
 LANGUAGES
 Understands and speaks English and Québec French. Reads other languages and answers in English or French.

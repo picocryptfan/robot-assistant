@@ -31,7 +31,10 @@ import app.heyrobot.core.termux.CommandLevel
 import app.heyrobot.core.termux.CommandSource
 import app.heyrobot.core.termux.ScriptLevel
 import app.heyrobot.core.termux.ScriptMatch
+import app.heyrobot.core.connect.CheckOutcome
+import app.heyrobot.core.i18n.ConnStrings
 import app.heyrobot.core.termux.ScriptRegistry
+import app.heyrobot.core.termux.ScriptStep
 import app.heyrobot.core.termux.ShellLexer
 import app.heyrobot.core.termux.TermuxCardInfo
 import app.heyrobot.core.termux.TermuxCards
@@ -160,7 +163,7 @@ object TermuxTool {
                 refused(d) ?: ready(action.copy(source = source, key = key,
                     card = TermuxCards.command(analysis, d, action.why, s.limitSeconds, written = source == CommandSource.MODEL || source == CommandSource.HELPER)), d)
             }
-            is TermuxScriptAction -> {
+            is TermuxScriptAction -> action.step?.let { typed(action, it, status, s, locked, untrusted, remote, own, key) } ?: run {
                 val scripts = status.scripts
                 val source = if (remote) CommandSource.HELPER else action.source
                 val named = said?.let { ScriptRegistry.match(it, scripts, typed = true) }?.let { it.name == action.name && it.args.isBlank() } == true
@@ -176,6 +179,31 @@ object TermuxTool {
             }
             else -> Prepared.Refused(ActionStatus.INVALID, TermuxStrings.notTermux())
         }
+    }
+
+    /**
+     * C8: a skill's typed step (plan §3.6, D18): its values as an argument list in the order your script's `# param:` lines
+     * give (ScriptStep.argv: each value checked for its type and limits, one line, nothing read on the phone or from
+     * outside), then TermuxPolicy.typed decides as for your own script. The card shows the script and each argument, and
+     * says Robot can't see what the script does.
+     */
+    private fun typed(action: TermuxScriptAction, call: app.heyrobot.core.ScriptStepCall, status: TermuxSetupStatus, s: TermuxSettings, locked: Boolean,
+        untrusted: Boolean, remote: Boolean, own: Collection<String>, key: String): Prepared {
+        val decl = status.scripts.firstOrNull { it.name == action.name }?.decl
+        val values = decl?.let { ScriptStep.argv(it, call.args) }
+        val ok = values as? ScriptStep.Argv.Ok
+        val known = status.scripts.filter { it.decl.ok }.map { it.name }.toSet()
+        val d = TermuxPolicy.typed(action.name, ok?.argv.orEmpty(), ok?.modelWords == true, remote, s, locked, untrusted, own, known)
+        refused(d)?.let { return it }
+        if (values is ScriptStep.Argv.Refused) {
+            RLog.i("termux_refused", "why" to values.why)
+            return Prepared.Refused(ActionStatus.INVALID, ScriptStep.refusal(values.why, action.name))
+        }
+        val argv = ok?.argv ?: return Prepared.Refused(ActionStatus.NOT_FOUND, TermuxReason.NOT_A_SCRIPT.text)
+        val ready = ready(action.copy(source = CommandSource.SPOKEN, key = key, lockScreen = false, argv = argv,
+            card = TermuxCards.script(action.name, argv, d, s.limitSeconds)), d)
+        // The card says Robot can't see what the script does (plan §3.6), unless a tap's own words are there.
+        return if (ready.noteText != null) ready else ready.copy(note = ConnStrings.scriptUnseen().en(), noteText = ConnStrings.scriptUnseen())
     }
 
     /**
@@ -320,7 +348,11 @@ object TermuxTool {
                 if (edit?.terminal == true) return openInTermux(ctx, runner, id, command, launch)
                 TermuxRun.command(id, command, limit, if (card.noCard) TermuxRunKind.ALLOWLISTED else TermuxRunKind.CARDED, profile = s.loadProfile)
             }
-            is TermuxScriptAction -> {
+            // C8: a typed step's argument list as prepared, element by element (never ShellLexer, never a shell).
+            is TermuxScriptAction -> if (action.step != null) {
+                val argv = action.argv ?: return Executed(ActionStatus.INVALID, TermuxReason.BAD_ARGUMENTS.text)
+                TermuxRun.script(id, action.name, argv, limit)
+            } else {
                 val argv = ShellLexer.argv(action.args) ?: return Executed(ActionStatus.INVALID, TermuxReason.BAD_ARGUMENTS.text)
                 TermuxRun.script(id, action.name, argv, limit)
             }
@@ -342,11 +374,14 @@ object TermuxTool {
         setLive(key) { it.copy(outcome = outcome) }
         val saidText = TermuxCards.saidText(outcome)
         val said = saidText.en()
-        if (outcome.failure != null || outcome.exit == null) return Executed(ActionStatus.FAILED, saidText)
+        // C8: a typed step's `exit` and `out` for the rest of its skill, and its check (exit 0, its expression on the output).
+        val ran = (action as? TermuxScriptAction)?.step?.let { ScriptStep.ran(action.name, outcome.exit.takeIf { outcome.failure == null }, outcome.output?.model, it.check) }
+        if (outcome.failure != null || outcome.exit == null) return Executed(ActionStatus.FAILED, saidText).copy(conn = ran)
+        if (ran?.check == CheckOutcome.FAILED) return Executed(ActionStatus.FAILED, saidText, results = TermuxCards.forModel(outcome)).copy(conn = ran)
         // The card says it in the reply language; what text-call mode reads out with the output stays English (spoken).
         return Executed(if (outcome.exit == 0) ActionStatus.DONE else ActionStatus.FAILED, said,
             // What it printed is content Robot didn't write (rule 3: later commands show their card), and personal.
-            results = TermuxCards.forModel(outcome), spoken = spoken(said, outcome), text = saidText)
+            results = TermuxCards.forModel(outcome), spoken = spoken(said, outcome), text = saidText).copy(conn = ran)
     }
 
     /** What Robot says without Gemma (a script you named): the result, and the output only when it is one or two short lines. */

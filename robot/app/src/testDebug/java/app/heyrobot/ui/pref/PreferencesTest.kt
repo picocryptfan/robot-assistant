@@ -26,7 +26,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performScrollToKey
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.isHeading
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText

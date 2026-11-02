@@ -25,8 +25,14 @@ data class TurnUi(
     val attachment: Attachment = Attachment.NONE,
     /** A kept photo or screenshot. */
     val thumb: Bitmap? = null,
+    /** chat-files: the attached file's name. */
+    val fileName: String? = null,
+    /** chat-files: the panel still holds that file's bytes, so Save to Robot Files has something to file. */
+    val canSaveFile: Boolean = false,
     /** The screen's text kept with the question ("Keep screenshots and photos in history"). */
     val screenText: String? = null,
+    /** E7: the question carried what another app shared: its tag says "Shared". */
+    val shared: Boolean = false,
     val actions: List<ActionView> = emptyList(),
     val streaming: Boolean = false,
     /** 1.0: TalkBack reads the answer once it is complete (the panel while replies aren't spoken; [answerSemantics]). */
@@ -45,6 +51,8 @@ data class TurnUi(
     val reply: ReplyCardView? = null,
     /** 0.9: a web answer's card (sources, what was sent, credits), in the panel only. */
     val web: AnswerCard? = null,
+    /** 1.4 Lists: a list read or checked, with tick boxes (ListCard), in the panel only. */
+    val list: ListCardView? = null,
 ) {
     /** The cards to draw: a web answer's own card stands in for its search's action card. */
     val cards: List<ActionView> get() = if (web == null) actions else actions.filter { it.tool != ToolName.WEB_SEARCH || it.status != ActionStatus.DONE }
@@ -62,6 +70,10 @@ class TurnActions(
     val reply: ((String, ReplyOp) -> Unit)? = null,
     /** A web answer's source (or a licence) tapped: the reply's id and the URL, to open in the browser. */
     val openSource: (String, String) -> Unit = { _, _ -> },
+    /** 1.4 Lists: a list card's tick, Undo or Open, by the reply's id; null (History): no buttons. */
+    val list: ((String, ListCardOp) -> Unit)? = null,
+    /** chat-files: a file chip's Save to Robot Files, in the screen's languages; null (History): no button. */
+    val saveFile: ((app.heyrobot.core.i18n.Langs) -> Unit)? = null,
 ) {
     companion object {
         val None = TurnActions()

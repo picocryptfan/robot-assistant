@@ -55,6 +55,35 @@ class BackupContainerTest {
         assertNull(r.next())
     }
 
+    /**
+     * LS12 (LT12 step 7 on the Pixel 8): each category's name in words goes in the manifest, so a Robot that doesn't know a
+     * category can name the part it leaves out. 1.1.0 and 1.1.1 read only "entries" and "bytes" of each category (this
+     * reader's code, unchanged since v1.1.1 but for the names), so the file opens there as before. A name that isn't plain
+     * words is dropped, never the manifest; and the names go rather than let the manifest pass 4 KiB.
+     */
+    @Test fun theManifestNamesEachCategoryInWords() {
+        val names = mapOf("lists" to mapOf("en" to "Lists", "fr" to "Listes"))
+        val m = BackupManifest("1.1.2", 7, 9, linkedMapOf("lists" to CategoryCount(2, 900)), keys = false, names = names)
+        assertEquals("{\"robot\":\"1.1.2\",\"code\":7,\"made\":9,\"format\":1,\"categories\":{\"lists\":{\"entries\":2,\"bytes\":900,\"name\":{\"en\":\"Lists\",\"fr\":\"Listes\"}}},\"keys\":false}", m.toJson())
+        val read = (read(RawRecords().manifest(m.toJson()).end().bytes())[0] as BackupRecord.Manifest).manifest
+        assertEquals(m, read)
+        assertEquals("Listes", read.name("lists", app.heyrobot.core.i18n.Lang.FR))
+        assertEquals(null, read.name("notes", app.heyrobot.core.i18n.Lang.EN))
+        // What the file chose is untrusted: a name that isn't plain words, or a key that isn't a language, is dropped.
+        val odd = """{"robot":"1.5.0","code":7,"made":9,"format":1,"categories":{"links":{"entries":1,"bytes":2,"name":{"en":"Links<script>","fr":"Liens","xx-y":"Z"}},"notes":{"entries":1,"bytes":2,"name":"Notes"}},"keys":false}"""
+        val oddRead = (read(RawRecords().manifest(odd).end().bytes())[0] as BackupRecord.Manifest).manifest
+        assertEquals(mapOf("links" to mapOf("fr" to "Liens")), oddRead.names)
+        assertEquals("Liens", oddRead.name("links", app.heyrobot.core.i18n.Lang.FR))
+        assertEquals(null, oddRead.name("links", app.heyrobot.core.i18n.Lang.EN))
+        // A manifest without names (1.1's) reads as before.
+        assertEquals(emptyMap<String, Map<String, String>>(), BackupKit.manifest(BackupCategory.NOTES).let { (read(RawRecords().manifest(it.toJson()).end().bytes())[0] as BackupRecord.Manifest).manifest.names })
+        // 32 categories with the longest names would pass 4 KiB: the names go, the manifest stays.
+        val many = (1..32).associate { "category-number-$it".padEnd(32, 'x') to CategoryCount(1, 1) }
+        val big = BackupManifest("1.1.2", 7, 9, many, keys = false, names = many.keys.associateWith { mapOf("en" to "a".repeat(40), "fr" to "b".repeat(40)) })
+        assertTrue(big.toJson().toByteArray().size <= BackupCaps.META)
+        assertFalse(big.toJson().contains("\"name\""))
+    }
+
     @Test fun theManifestIsWrittenInAFixedOrder() {
         val m = BackupManifest("1.1.0", 7, 9, linkedMapOf("notes" to CategoryCount(1, 2)), keys = true)
         assertEquals("{\"robot\":\"1.1.0\",\"code\":7,\"made\":9,\"format\":1,\"categories\":{\"notes\":{\"entries\":1,\"bytes\":2}},\"keys\":true}", m.toJson())

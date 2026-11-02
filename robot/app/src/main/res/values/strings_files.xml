@@ -132,7 +132,7 @@
     <string name="files_field_tax">Tax (%s)</string>
     <string name="files_read_by_robot">Read by Robot</string>
     <string name="files_set_by_you">Set by you</string>
-    <string name="files_field_hint_amount">An amount, like 84.12</string>
+    <string name="files_field_hint_amount">An amount, like 84.12. For a refund, -84.12.</string>
     <string name="files_field_hint_date">A date, like 2026-08-14</string>
     <string name="files_field_invalid">Robot couldn\'t read that. Check it and try again.</string>
     <string name="files_add_detail">Add a detail</string>

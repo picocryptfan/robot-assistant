@@ -1,0 +1,26 @@
+{
+  "format": 1,
+  "id": "mem-what-saves",
+  "title": "What saves and what doesn't: a film, a question, a to-do",
+  "safety": "robot-data",
+  "testBench": ["v70-mem-what-saves"],
+  "needs": {"model": true},
+  "setup": [{"set": "speakReplies", "value": "VOICE"}],
+  "steps": [
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "Remember the movie where Tom Hanks is stranded on an island?", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 120},
+    {"do": "check", "what": "tool", "equals": "remember", "absent": true},
+    {"do": "end"},
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "Do you remember my sister's birthday?", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 120},
+    {"do": "check", "what": "tool", "equals": "remember", "absent": true},
+    {"do": "end"},
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "Remember to water the plants.", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 120},
+    {"do": "check", "what": "tool", "equals": "add_note"},
+    {"do": "end"}
+  ]
+}

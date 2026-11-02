@@ -1,0 +1,18 @@
+{
+  "format": 1,
+  "id": "weather-refused",
+  "title": "The weather somewhere that doesn't exist, and for a day gone by",
+  "safety": "read",
+  "testBench": ["v102-weather-day", "v40-weather"],
+  "needs": {"model": true},
+  "setup": [{"set": "speakReplies", "value": "VOICE"}],
+  "steps": [
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "Weather in Springfield, Atlantis.", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 120},
+    {"do": "check", "what": "tool", "equals": "weather"},
+    {"do": "say", "text": "What was the weather yesterday?", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 120},
+    {"do": "end"}
+  ]
+}

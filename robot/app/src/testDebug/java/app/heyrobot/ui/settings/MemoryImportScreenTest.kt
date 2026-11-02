@@ -21,7 +21,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.core.app.ActivityOptionsCompat
@@ -331,7 +331,7 @@ class MemoryImportScreenTest {
             rule.onRow("Import").performClick()
             rule.waitForIdle()
             rule.waitUntil(5_000) { "say $said" in log }
-            rule.onNodeWithText("Import memories").assertDoesNotExist()
+            rule.waitUntil(5_000) { runCatching { rule.onNodeWithText("Import memories").assertDoesNotExist() }.isSuccess }
             log.clear()
         }
         assertEquals(emptyList<MemoryItem>(), store.items())

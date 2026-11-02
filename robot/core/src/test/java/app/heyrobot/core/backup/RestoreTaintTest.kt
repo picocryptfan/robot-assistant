@@ -30,6 +30,13 @@ import org.junit.Test
  * routines and new helpers arrive off, devices ask again, keys and codes are skipped. Marked yours: as saved.
  */
 class RestoreTaintTest {
+    /** L12, D14: pairings, permissions and what passed between Robots come only from a backup that is yours. */
+    @Test fun someoneElsesBackupNeverRestoresPairings() {
+        val f = BackupFixtures.linksFile()
+        assertNull(RestoreTaint.links(f, mine = false))
+        assertTrue(RestoreTaint.links(f, mine = true) === f)
+    }
+
     @Test fun memoriesAreContentUnlessYours() {
         val items = listOf(MemoryItem("m_aaaaaa", "I like tea", createdAt = 1), MemoryItem("m_bbbbbb", "From a message", source = MemorySource.CONTENT, createdAt = 1))
         val notMine = MemoryRestore.replace(MemoryFile(), items, emptyList(), mine = false, people = { it }).file.items
@@ -90,9 +97,9 @@ class RestoreTaintTest {
         val r = BackupKit.routines()[0]
         assertFalse(RestoreTaint.routine(r, mine = false).enabled)
         assertTrue(RestoreTaint.routine(r, mine = true).enabled)
-        val h = HelperConfig.of(Presets.OTHER, "x", "af_heart", "X", "https://x.example").copy(enabled = true, trust = true, locked = true)
+        val h = HelperConfig.of(Presets.OTHER, "x", "af_heart", "X", "https://x.example").copy(enabled = true, trust = true, locked = true, search = true, actions = true)
         val off = RestoreTaint.newHelper(h, mine = false)
-        assertEquals(listOf(false, false, false), listOf(off.on, off.trust, off.locked))
+        assertEquals(listOf(false, false, false, false, false), listOf(off.on, off.trust, off.locked, off.search, off.actions))
         assertEquals(h, RestoreTaint.newHelper(h, mine = true))
         val headset = RememberedDevice(1, DeviceRole.HEADSET, DeviceFamily.WIRED, "Buds", private = true)
         assertNull(RestoreTaint.device(headset, mine = false).private)
@@ -195,6 +202,22 @@ class RestoreTaintTest {
     }
 
     private object NoPorts : app.heyrobot.core.files.FilingPorts by unused()
+
+    /** 1.4, Robot Lists (lists-plan.md §6): someone else's list arrives apart, marked, with no role; yours as saved. */
+    @Test fun someoneElsesListArrivesApart() {
+        val roleName: (app.heyrobot.core.lists.ListRole) -> String = { "Shopping" }
+        val l = BackupKit.lists().lists[0]
+        assertEquals(l, RestoreTaint.list(l, mine = true, roleName = roleName))
+        val t = RestoreTaint.list(l, mine = false, roleName = roleName)
+        assertEquals(l.id, t.id)
+        assertEquals(app.heyrobot.core.lists.ListFrom.BACKUP, t.from)
+        assertEquals(null, t.role)
+        assertEquals("Shopping", t.name)
+        assertEquals(l.items.map { it.id }, t.items.map { it.id })
+        assertTrue(t.items.all { it.by == app.heyrobot.core.lists.ItemBy.BACKUP && it.hist.all { h -> h.by == app.heyrobot.core.lists.ItemBy.BACKUP } })
+        // Their words and ticks as they were; only who it came from changes.
+        assertEquals(l.items.map { it.text to it.done }, t.items.map { it.text to it.done })
+    }
 }
 
 private fun unused(): app.heyrobot.core.files.FilingPorts = java.lang.reflect.Proxy.newProxyInstance(

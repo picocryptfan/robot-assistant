@@ -12,13 +12,20 @@ import app.heyrobot.core.backup.BackupCategory
 import app.heyrobot.core.helpers.HelperKeyFormat
 import app.heyrobot.core.web.WebKeyFormat
 import app.heyrobot.core.web.SearchService
+import app.heyrobot.assistant.connect.ConnKeyBackup
+import app.heyrobot.assistant.connect.ConnKeys
+import app.heyrobot.core.connect.Connection
+import app.heyrobot.core.connect.SecretPart
+import app.heyrobot.sys.ConnFiles
+import app.heyrobot.sys.ConnKeyFiles
 import app.heyrobot.sys.HelperKeyFiles
 import app.heyrobot.sys.VoiceprintFiles
 import app.heyrobot.sys.WebKeyFiles
 
 // :VOICE PROCESS ONLY (docs/plans/backup-1.1-design.md §6.2). The only backup code that reads a key or the voiceprint
 // (ProcessIsolationTest): each goes from its Keystore file straight into the backup's encryption, as one entry, and the
-// copy here is zeroed once written. Never logged, never in an intent, never on disk in the clear.
+// copy here is zeroed once written. Never logged, never in an intent, never on disk in the clear. C10: connections' keys
+// too (Connection keys, shown in Keys and private codes' row), through ConnKeys.backup and ConnKeys.restore.
 
 internal object BackupSecrets {
     /** One secret's entry: [name] in [category] (Keys and private codes, or the voiceprint), [bytes] zeroed by [close]. */
@@ -34,6 +41,29 @@ internal object BackupSecrets {
     fun keyNames(ctx: Context, s: RobotSettings): List<String> =
         s.helpers.filter { BackupCategory.KEYS.validName(BackupCategory.HELPER_KEY + it.id) && HelperKeyFiles.saved(ctx, it.id) }.map { it.name } +
             SearchService.entries.filter { it.keyId != null && WebKeyFiles.saved(ctx, it) }.map { it.label }
+
+    /** C10: your connections that have a key saved now (none decrypted), in connections.json's order. */
+    fun connectionsWithKeys(ctx: Context): List<Connection> =
+        ConnFiles.store(ctx).connections().filter { it.secrets.isNotEmpty() && ConnKeyFiles.saved(ctx, it.id) }
+
+    /**
+     * C10: every connection's key, read now ("conn/<id>", Connection keys). One the Keystore can't read just now is left
+     * out and named by your name for the connection.
+     */
+    fun connectionKeys(ctx: Context): Keys {
+        val out = ArrayList<Secret>()
+        val unreadable = ArrayList<String>()
+        for (c in connectionsWithKeys(ctx)) {
+            val name = BackupCategory.connKey(c.id)
+            if (!BackupCategory.CONN_KEYS.validName(name)) continue
+            when (val r = ConnKeys.backup(ctx, c.id)) {
+                is ConnKeyBackup.Plain -> out += Secret(BackupCategory.CONN_KEYS, name, r.bytes)
+                ConnKeyBackup.Unavailable -> unreadable += c.name
+                ConnKeyBackup.None -> {}
+            }
+        }
+        return Keys(out, unreadable)
+    }
 
     /** Every helper's and search service's key, read now. A key that can't be read just now is left out and named. */
     fun keys(ctx: Context, s: RobotSettings): Keys {
@@ -87,10 +117,21 @@ internal object BackupSecrets {
         return WebKeys.save(ctx, svc, key, WebKeyFormat.mask(key))
     }
 
+    /** C10: whether connection [id] has a key saved here (the file only: nothing is decrypted). */
+    fun hasConnectionKey(ctx: Context, id: String): Boolean = ConnKeyFiles.saved(ctx, id)
+
+    /**
+     * C10: a connection key of a backup ([bytes], its plain form, zeroed by the caller) saved for connection [id] with a fresh
+     * Keystore key, only with exactly [parts] and only where none is saved. False when nothing was saved.
+     */
+    fun saveConnectionKey(ctx: Context, id: String, bytes: ByteArray, parts: Set<SecretPart>): Boolean = ConnKeys.restore(ctx, id, bytes, parts)
+
     /** A cut run's keys deleted again (RestoreJournal.recover): only those this run saved, by their entry names. */
     fun deleteKeys(ctx: Context, names: List<String>) {
         for (n in names) {
-            if (n.startsWith(BackupCategory.HELPER_KEY)) HelperKeyFiles.delete(ctx, n.removePrefix(BackupCategory.HELPER_KEY))
+            val conn = BackupCategory.connOf(n)
+            if (conn != null) ConnKeyFiles.delete(ctx, conn)
+            else if (n.startsWith(BackupCategory.HELPER_KEY)) HelperKeyFiles.delete(ctx, n.removePrefix(BackupCategory.HELPER_KEY))
             else service(n)?.let { WebKeyFiles.delete(ctx, it) }
         }
     }

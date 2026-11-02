@@ -45,7 +45,7 @@ object SkillFills {
                 values[p.name] = heard[p.name] ?: p.default
                 continue
             }
-            val v = read(p.type, raw) ?: return SkillFill.Refused(p, SkillStrings.fillRefused("ask" to p.askEn))
+            val v = read(p, raw) ?: return SkillFill.Refused(p, SkillStrings.fillRefused("ask" to p.askEn))
             values[p.name] = v
             sources[p.name] = if (yours(p.type, raw, v, said, people)) FillSource.YOURS else FillSource.MODEL
         }
@@ -59,9 +59,29 @@ object SkillFills {
         val v = when (type) {
             ParamType.DURATION -> duration(t)?.toString()
             ParamType.TIME -> time(t)
-            ParamType.TEXT, ParamType.PERSON, ParamType.APP, ParamType.PLACE -> t
+            ParamType.TEXT, ParamType.PERSON, ParamType.APP, ParamType.PLACE, ParamType.CHOICE -> t
+            ParamType.INTEGER -> t.toLongOrNull()?.toString()
+            ParamType.NUMBER -> t.replace(',', '.').toDoubleOrNull()?.takeIf { it.isFinite() }?.let(SkillNumbers::text)
+            ParamType.YES_NO -> when (SkillKey.of(t)) {
+                "yes", "true", "oui", "vrai" -> "true" // l10n: not text (words a model's call may give, both languages)
+                "no", "false", "non", "faux" -> "false" // l10n: not text (words a model's call may give, both languages)
+                else -> null
+            }
         } ?: return null
         return v.takeIf { SkillCheck.validDefault(type, it) && !SkillCheck.secret(it) }
+    }
+
+    /**
+     * [raw] as a value [p] may take (connections plan D11): a choice only one of its values, or one of their labels in
+     * either language (never anything else, never guessed); a number within its limits. Null when it can't be.
+     */
+    fun read(p: SkillParam, raw: String): String? {
+        if (p.type == ParamType.CHOICE) {
+            val k = SkillKey.of(raw)
+            val o = p.options.firstOrNull { it.value == raw.trim() } ?: p.options.firstOrNull { o -> (listOf(o.en, o.fr) + o.more.values).any { SkillKey.of(it) == k } }
+            return o?.value
+        }
+        return read(p.type, raw)?.takeIf { SkillCheck.validValue(p, it) }
     }
 
     /** "8 minutes", "1 hour and 30 minutes", « 8 minutes », or a bare number of minutes ("8"): seconds, within a timer's limit. */

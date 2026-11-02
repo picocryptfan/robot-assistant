@@ -58,12 +58,20 @@ object ApprovalGate {
             // Just do it, or an allowlisted read).
             tool.termux -> if (asks(why, settings)) GateDecision.CONFIRM else GateDecision.RUN
             level == Approval.OFF -> GateDecision.DISABLED
+            // The everyday set (E2, §4.4): calculate reads nothing of yours and changes nothing, so it runs locked or unlocked,
+            // during a phone lock, with content or a message in the conversation; no card can make a sum safer.
+            free(tool) -> GateDecision.RUN
             // 0.7: nothing is saved to or removed from memory on the lock screen, whatever "Works on the lock screen" says
             // ("Use memory on the lock screen" lets it be read there, never changed).
             locked && memoryWrite(tool) -> GateDecision.NEEDS_UNLOCK
             // 1.4: Robot Files' reads never run on a locked phone or during a phone lock, whatever "Works on the lock screen"
             // holds (a restored settings file can't add them: its key needs the phone unlocked anyway, files-1.4-plan.md §5.3).
             locked && files(tool) -> GateDecision.NEEDS_UNLOCK
+            // 1.4, Robot Lists (§5): the model never changes your lists on a locked phone; locked adds come from your words only.
+            locked && lists(tool) -> GateDecision.NEEDS_UNLOCK
+            // Skills connections (C4, D8): a connection's or a hand-off's step never runs on a locked phone or during a phone
+            // lock, whatever "Works on the lock screen" holds. Then the usual rules; the step's own reasons only add cards.
+            locked && connection(tool) -> GateDecision.NEEDS_UNLOCK
             locked && tool !in settings.lockedTools -> GateDecision.NEEDS_UNLOCK
             tool == ToolName.ASK_HELPER -> GateDecision.CONFIRM
             // 0.7: a memory the model proposes without your asking, or in a conversation with content, is a card, never silent.
@@ -82,17 +90,37 @@ object ApprovalGate {
         }
     }
 
+    /**
+     * What acts on the phone and just happens by default: when your words this turn didn't ask for it ([ToolRouter.asked]),
+     * only the model's guess did, it shows its card whatever Settings › Actions says (TurnRunner). A word missed there only
+     * shows a card. Not here: what already decides its own card from your words (remember, add_to_list, browser_search,
+     * skills' connections), an alarm (AlarmWords: only for a time you said), the reads, and what asks first anyway.
+     */
+    val ASKS_WHEN_UNSAID: Set<ToolName> = setOf(ToolName.OPEN_APP, ToolName.SET_TIMER, ToolName.FLASHLIGHT,
+        ToolName.MAPS_SEARCH, ToolName.MAPS_NAVIGATE, ToolName.ADD_NOTE)
+
     /** remember and forget change memory: never on the lock screen. */
     fun memoryWrite(tool: ToolName): Boolean = tool == ToolName.REMEMBER || tool == ToolName.FORGET
+
+    /** The everyday set (E2): calculate passes the gate locked or unlocked ([decide]); it works out a sum and nothing else. */
+    fun free(tool: ToolName): Boolean = tool == ToolName.CALCULATE
 
     /** 1.4: find_files and read_file read Robot Files: never on the lock screen either. */
     fun files(tool: ToolName): Boolean = tool.group == ToolGroup.FILES
 
+    /** 1.4: add_to_list changes Robot Lists: never on the lock screen either, whatever a restored "Works on the lock screen" says. */
+    fun lists(tool: ToolName): Boolean = tool.group == ToolGroup.LISTS
+
+    /** Skills connections (C4): a step that reaches a connection or hands off to an app: never on the lock screen (D8). */
+    fun connection(tool: ToolName): Boolean = tool.group == ToolGroup.CONNECTIONS
+
     /** [tool] can't run with the phone [locked] under [settings] (checked again after a card, the phone may have locked). */
-    fun lockedOut(tool: ToolName, locked: Boolean, settings: RobotSettings): Boolean = locked && (memoryWrite(tool) || files(tool) || tool !in settings.lockedTools)
+    fun lockedOut(tool: ToolName, locked: Boolean, settings: RobotSettings): Boolean =
+        locked && !free(tool) && (memoryWrite(tool) || files(tool) || lists(tool) || connection(tool) || tool !in settings.lockedTools)
 
     /** The same for an action that decides for itself what works locked (0.9: a Termux script you allowed there, never a command). */
-    fun lockedOut(a: Action, locked: Boolean, settings: RobotSettings): Boolean = locked && (memoryWrite(a.tool) || files(a.tool) || !a.worksLocked(settings.lockedTools))
+    fun lockedOut(a: Action, locked: Boolean, settings: RobotSettings): Boolean =
+        locked && !free(a.tool) && (memoryWrite(a.tool) || files(a.tool) || lists(a.tool) || connection(a.tool) || !a.worksLocked(settings.lockedTools))
 
     /** What an action refused for the lock says: memory's own line for remember and forget. */
     fun unlockLine(tool: ToolName): String = unlockText(tool).en()
@@ -102,13 +130,17 @@ object ApprovalGate {
         ToolName.REMEMBER -> app.heyrobot.core.memory.MemoryAccess.unlockToSave()
         ToolName.FORGET -> app.heyrobot.core.memory.MemoryAccess.unlockToChange()
         ToolName.FIND_FILES, ToolName.READ_FILE -> app.heyrobot.core.i18n.FilesStrings.locked()
+        ToolName.ADD_TO_LIST -> app.heyrobot.core.i18n.ListsStrings.unlockToChange()
+        ToolName.ASK_ROBOT -> app.heyrobot.core.i18n.LinkStrings.unlockAny()
         else -> TurnStrings.unlockThenAsk()
     }
 
     /** One of [why] needs a card with these settings. */
     fun asks(why: Set<AskWhy>, s: RobotSettings): Boolean =
         AskWhy.PICK in why || AskWhy.ONLINE in why || AskWhy.MESSAGE in why || AskWhy.SEARCH in why || AskWhy.SEARCH_PERSONAL in why || (AskWhy.WHO in why && s.whoCards) || (AskWhy.LEARNED in why && s.learnedCards) || (AskWhy.DELETE in why && s.deleteCards) ||
-            AskWhy.TERMUX in why || AskWhy.COMMAND in why || AskWhy.FROM_CONTENT in why || AskWhy.REMINDER in why
+            AskWhy.TERMUX in why || AskWhy.COMMAND in why || AskWhy.FROM_CONTENT in why || AskWhy.REMINDER in why || AskWhy.LIST_SUGGESTED in why ||
+            // Skills connections (C4): each always shows its card (the first-use card above all: never a silent first choice).
+            AskWhy.CONNECTION in why || AskWhy.CONNECTION_FIRST in why || AskWhy.CONNECTION_TAP in why
 
     /**
      * Content in the conversation makes this action ask first, under [mode] ([asked]: the person asked for it this turn;
@@ -152,7 +184,7 @@ enum class ActionStatus(private val msg: Msg) {
     SKIPPED(TurnStrings.statusSkipped),
     /** Robot needs a permission (contacts, calendar) the person grants in the main app. */
     NEEDS_PERMISSION(TurnStrings.statusNeedsPermission),
-    /** No contact (or note) matches what was asked. */
+    /** No contact, note or app matches what was asked: nothing was tried. */
     NOT_FOUND(TurnStrings.statusNotFound),
     /** The app it hands over to isn't installed ("Install Cheogram", "No email app"). */
     NO_APP(TurnStrings.statusNoApp),

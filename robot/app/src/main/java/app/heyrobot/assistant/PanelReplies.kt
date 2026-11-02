@@ -44,6 +44,16 @@ internal class PanelReplies(private val state: MutableStateFlow<PanelState>) {
         })
     }
 
+    /** 1.4 Lists (LS5): reply [replyId]'s list card. */
+    /** Card [id] goes from reply [replyId], as if it was never shown. */
+    fun removeAction(replyId: String, id: String) = state.update { st ->
+        st.copy(turns = st.turns.map { if (it.id == replyId) it.copy(actions = it.actions.filterNot { a -> a.id == id }) else it })
+    }
+
+    fun setList(replyId: String, v: app.heyrobot.ui.common.ListCardView?) = state.update { st ->
+        st.copy(turns = st.turns.map { if (it.id == replyId) it.copy(list = v) else it })
+    }
+
     /** Reply [replyId] is [h]'s (its label and accent), or Robot's again ([h] null). */
     fun markHelper(replyId: String, h: HelperConfig?) = state.update { st ->
         st.copy(turns = st.turns.map { if (it.id == replyId) it.copy(fromHelper = h != null, helper = h?.id, by = h?.name, home = h?.home == true) else it })

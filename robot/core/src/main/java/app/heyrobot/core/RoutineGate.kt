@@ -115,6 +115,8 @@ data class RoutineSettings(
     val briefPrepare: Boolean = true,
     /** `clockSilenceMinutes`: Clock's auto-silence (not readable from Clock), for telling a missed alarm. */
     val clockSilenceMinutes: Int = 10,
+    /** week-fixes: the Clock app chosen in Settings (a package name); null: the phone's default (core AlarmClocks). */
+    val clockApp: String? = null,
     /** `alarmWindow`: the default hours of a "when I turn off my alarm" trigger. */
     val alarmWindow: TimeWindow = TimeWindow.ALARM,
     /** `briefTrigger`: when the built-in brief runs once you turn it on (BriefRoutine); its alarm hours are [alarmWindow]. */
@@ -146,6 +148,14 @@ object RoutineGate {
         ToolName.WEB_SEARCH, ToolName.TERMUX_SCRIPT, ToolName.TERMUX_COMMAND, ToolName.BROWSER_SEARCH -> StepClass.NEVER
         // 1.4: a routine never searches or reads Robot Files (it may run on the lock screen, where files never show).
         ToolName.FIND_FILES, ToolName.READ_FILE -> StepClass.NEVER
+        // 1.4: a routine never adds to your lists through the model's tool (a routine may run on the lock screen).
+        ToolName.ADD_TO_LIST -> StepClass.NEVER
+        // Skills connections (C4, D9): a routine never reaches a connection or hands off to an app until 1.3's routines as skills.
+        ToolName.CONNECTION, ToolName.HAND_OFF -> StepClass.NEVER
+        // The everyday set: a routine has no sum to work out (its words are fixed); "calculate" is the model's, in a turn.
+        ToolName.CALCULATE -> StepClass.NEVER
+        // 1.5: a routine never asks another Robot (nobody is there to check its card).
+        ToolName.ASK_ROBOT -> StepClass.NEVER
     }
 
     /** The steps the editor offers ("Do"): everything but [StepClass.NEVER]. */
@@ -258,7 +268,8 @@ object BriefPrivacy {
     fun plan(all: List<BriefItem>, locked: Boolean, level: BriefLock): BriefPlan {
         // 1.4: Robot Files' part is never said on a locked phone, whatever the level (files-1.4-plan.md §5.3), nor held for the
         // unlock here: its key needs the phone unlocked, so the routine reads it again then (RoutineRunner).
-        val items = if (locked) all.filter { it != BriefItem.FILES } else all
+        // 1.5 L6: nor Robot to Robot's (its view needs the phone unlocked, §4.4).
+        val items = if (locked) all.filter { it != BriefItem.FILES && it != BriefItem.LINK } else all
         return planOf(items, locked, level)
     }
 

@@ -10,7 +10,7 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -69,7 +69,7 @@ class PeopleScreenTest {
         val host = SettingsHost(start)
         rule.showSettings(host) { s, u -> PeopleScreen(s, u, null, log.actions, SnackbarHostState(), onOpen = { opened += it }, onBack = {}) }
         // The list is read off the main thread; the learned group, below the switches, shows once it is.
-        rule.waitUntil(5_000) { runCatching { rule.scrollToText("Learned from notifications (1)") }.isSuccess }
+        rule.waitUntil(5_000) { runCatching { rule.scrollToText("Not confirmed yet (1)") }.isSuccess }
         return host
     }
 
@@ -134,7 +134,7 @@ class PeopleScreenTest {
     @Test fun inFrench() {
         val host = SettingsHost(RobotSettings())
         rule.showSettings(host) { s, u -> PeopleScreen(s, u, null, log.actions, SnackbarHostState(), onOpen = { opened += it }, onBack = {}) }
-        rule.waitUntil(5_000) { runCatching { rule.scrollToText("Appris des notifications (1)") }.isSuccess }
+        rule.waitUntil(5_000) { runCatching { rule.scrollToText("Pas encore confirmés (1)") }.isSuccess }
         rule.scrollToText("Ajouter une personne")
         rule.onNodeWithText("Ajouter depuis les contacts du téléphone").assertExists()
         assertEquals(emptyList<String>(), rule.touchTargetProblems())

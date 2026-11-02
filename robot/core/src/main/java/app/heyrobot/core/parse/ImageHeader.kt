@@ -54,6 +54,86 @@ object ImageHeader {
         return null
     }
 
+    /** What a stripped copy may hold besides its image (F17): a colour profile's worth, not a place to hide a file. */
+    private const val MAX_COPY_EXTRAS = 64 * 1024
+
+    private val JPEG_EXTRAS = mapOf(0xE0 to listOf("JFIF\u0000", "JFXX\u0000"), 0xE2 to listOf("ICC_PROFILE\u0000"), 0xEE to listOf("Adobe"))  // l10n: not text (JPEG segment names)
+
+    /**
+     * F17: whether a JPEG :files says it stripped has only what an encoder writes: its tables, frame and scans, a JFIF, colour
+     * profile or Adobe segment up to [MAX_COPY_EXTRAS] in all, and nothing after its end. So no Exif or XMP (APP1), no
+     * Photoshop block (APP13), no comment, no other application segment. Read whole, with bounds checked at every step.
+     */
+    fun jpegClean(b: ByteArray): Boolean {
+        val n = b.size
+        if (n < 4 || b[0] != 0xFF.toByte() || b[1] != 0xD8.toByte()) return false
+        var i = 2
+        var extras = 0
+        while (true) {
+            if (i >= n || b[i] != 0xFF.toByte()) return false
+            while (i < n && b[i] == 0xFF.toByte()) i++
+            if (i >= n) return false
+            val m = b[i].toInt() and 0xFF
+            i++
+            if (m == 0xD9) return i == n
+            val tables = m == 0xDB || m == 0xC4 || m == 0xDD || m == 0xDC || m == 0xDA || (m in 0xC0..0xCF && m != 0xC8)
+            val names = JPEG_EXTRAS[m]
+            if (!tables && names == null) return false
+            if (i + 2 > n) return false
+            val len = ((b[i].toInt() and 0xFF) shl 8) or (b[i + 1].toInt() and 0xFF)
+            if (len < 2 || i + len > n) return false
+            if (names != null) {
+                extras += len
+                if (extras > MAX_COPY_EXTRAS || names.none { startsWith(b, i + 2, i + len, it) }) return false
+            }
+            i += len
+            if (m == 0xDA) i = afterScan(b, i)
+        }
+    }
+
+    /** Where the entropy-coded data from [from] ends: the next marker that isn't a stuffed byte or a restart, or the file's end. */
+    private fun afterScan(b: ByteArray, from: Int): Int {
+        var i = from
+        while (i + 1 < b.size) {
+            if (b[i] == 0xFF.toByte()) {
+                val x = b[i + 1].toInt() and 0xFF
+                if (x != 0 && x !in 0xD0..0xD7 && x != 0xFF) return i
+                if (x != 0xFF) i++
+            }
+            i++
+        }
+        return b.size
+    }
+
+    private fun startsWith(b: ByteArray, at: Int, end: Int, s: String): Boolean =
+        at + s.length <= end && s.indices.all { b[at + it] == s[it].code.toByte() }
+
+    private val PNG_IMAGE = setOf("IHDR", "PLTE", "IDAT", "IEND")  // l10n: not text (PNG chunk names)
+    private val PNG_EXTRAS = setOf("tRNS", "sRGB", "gAMA", "cHRM", "iCCP", "sBIT", "bKGD", "pHYs", "cICP")  // l10n: not text (PNG chunk names)
+
+    /**
+     * F17: the same for a PNG: only the chunks an encoder writes, those beyond the image up to [MAX_COPY_EXTRAS] in all, and
+     * nothing after IEND. So no tEXt, zTXt, iTXt or eXIf, and no chunk of its own.
+     */
+    fun pngClean(b: ByteArray): Boolean {
+        val bb = ByteBuffer.wrap(b)
+        var i = 8L
+        var extras = 0L
+        while (i + 12 <= b.size) {
+            val at = i.toInt()
+            val len = u32(bb, at)
+            val type = String(b, at + 4, 4, Charsets.ISO_8859_1)
+            if (i + 12 + len > b.size) return false
+            if (type !in PNG_IMAGE) {
+                extras += len
+                if (type !in PNG_EXTRAS || extras > MAX_COPY_EXTRAS) return false
+            }
+            i += 12 + len
+            if (type == "IEND") return i == b.size.toLong()
+        }
+        return false
+    }
+
     /** IHDR, the first chunk: 13 bytes of data, width and height each 1 to 2^31 - 1. */
     fun png(b: ByteBuffer): Dim? {
         if (b.limit() < 24) return null

@@ -1,0 +1,193 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- Settings › Lists in Québec French (tu): the ids of values/strings_lists.xml, each value written with the glossary
+     (robot/l10n/glossary.tsv: « liste », « élément », « cocher », « Épicerie », « À faire », « chiffré », « écran de
+     verrouillage ») and the OQLF's spaces (tools/fr_typo.py, FrenchTypographyTest). -->
+<resources>
+    <string name="lists_title">Listes</string>
+    <string name="lists_use">Utiliser les listes</string>
+    <string name="lists_intro">Des listes que tu tiens à la voix, comme «&#160;ajoute du lait d’avoine à la liste d’épicerie&#160;».</string>
+    <string name="lists_opening">Ouverture de tes listes…</string>
+    <string name="lists_storage">Stockage</string>
+    <string name="lists_none_yet">Aucune liste pour l’instant</string>
+    <plurals name="lists_usage">
+        <item quantity="one">%1$d liste · %2$s</item>
+        <item quantity="many">%1$d de listes · %2$s</item>
+        <item quantity="other">%1$d listes · %2$s</item>
+    </plurals>
+    <plurals name="lists_items">
+        <item quantity="one">%d élément</item>
+        <item quantity="many">%d d’éléments</item>
+        <item quantity="other">%d éléments</item>
+    </plurals>
+    <string name="lists_when_locked">Quand le téléphone est verrouillé</string>
+    <string name="lists_add_locked">Ajouter aux listes quand le téléphone est verrouillé</string>
+    <string name="lists_add_locked_detail">Les éléments que tu ajoutes quand le téléphone est verrouillé attendent, chiffrés, que tu le déverrouilles</string>
+    <string name="lists_lock_screen">Entendre et cocher sur l’écran de verrouillage</string>
+    <string name="lists_lock_screen_detail">Quiconque peut parler à ton téléphone verrouillé peut entendre tes listes et cocher des éléments</string>
+    <string name="lists_yours">Tes listes</string>
+    <string name="lists_delete_all">Supprimer toutes les listes</string>
+    <string name="lists_delete_all_detail">Chaque liste et chaque élément</string>
+    <string name="lists_delete_all_title">Supprimer toutes les listes&#8239;?</string>
+    <string name="lists_delete_all_text">Chaque liste et chaque élément disparaissent, avec ce qui a été ajouté quand le téléphone était verrouillé. C’est irréversible.</string>
+    <string name="lists_all_deleted">Listes supprimées.</string>
+    <string name="lists_not_deleted">Robot n’a pas pu supprimer tes listes. Réessaie.</string>
+    <string name="lists_locked">Déverrouille ton téléphone pour changer tes listes.</string>
+    <string name="lists_not_now">Robot n’a pas pu ouvrir tes listes pour l’instant. Réessaie dans un instant.</string>
+    <string name="lists_key_gone">La clé des listes de Robot n’existe plus&#160;: tes listes ne peuvent donc pas être lues.</string>
+    <string name="lists_unreadable">Robot n’a pas pu lire tes listes. Le fichier est endommagé.</string>
+    <string name="lists_too_new">Tes listes viennent d’une version plus récente de Robot&#160;: celle-ci ne peut donc ni les lire ni les changer. Mets Robot à jour, ou recommence.</string>
+    <string name="lists_restore">Restaurer à partir d’une sauvegarde</string>
+    <string name="lists_restore_detail">Dans %s</string>
+    <string name="lists_start_over">Recommencer</string>
+    <string name="lists_start_over_detail">Le fichier est mis de côté sous le nom lists.enc.bad</string>
+    <string name="lists_start_over_title">Recommencer&#8239;?</string>
+    <string name="lists_start_over_text">Robot met de côté les listes qu’il ne peut pas lire, sous le nom lists.enc.bad, et recommence avec Épicerie et À faire.</string>
+    <string name="lists_started_over">Tes listes recommencent avec Épicerie et À faire.</string>
+    <string name="lists_not_started_over">Rien n’a changé. Réessaie.</string>
+    <string name="lists_try_again">Réessayer</string>
+    <string name="lists_key_failed">Robot n’a pas pu changer la clé de tes listes. Rien n’a changé.</string>
+    <string name="lists_waiting">Des éléments ajoutés quand le téléphone était verrouillé attendent de la place sur une liste pleine. Efface ses éléments cochés, puis réessaie.</string>
+    <string name="lists_not_saved">Robot n’a pas pu enregistrer ce changement. Rien n’a changé.</string>
+    <string name="lists_footer">Tes listes sont chiffrées sur ce téléphone et ne sont jamais envoyées nulle part, sauf une liste que tu partages en texte. L’historique garde ce que tu dis à Robot, comme pour tout ce que tu demandes, mais pas ce que Robot te lit d’une liste.</string>
+    <!-- LS5 : l’écran des listes dans l’onglet Notes, la page d’une liste, Faire une liste avec cette note, la carte du panneau. -->
+    <string name="lists_subtitle">Tenues à la voix, chiffrées sur ce téléphone</string>
+    <string name="lists_empty">Aucune liste pour l’instant. Dis «&#160;ajoute du lait d’avoine à la liste d’épicerie&#160;», ou touche Nouvelle liste.</string>
+    <string name="lists_new">Nouvelle liste</string>
+    <plurals name="lists_left">
+        <item quantity="one">%d élément restant</item>
+        <item quantity="many">%d d’éléments restants</item>
+        <item quantity="other">%d éléments restants</item>
+    </plurals>
+    <string name="lists_from_backup">D’une sauvegarde qui n’est pas la tienne</string>
+    <string name="lists_unlock_to_see">Déverrouille ton téléphone pour voir tes listes.</string>
+    <string name="lists_settings_button">Réglages des listes</string>
+    <string name="lists_add_hint">Ajouter un élément</string>
+    <string name="lists_add">Ajouter</string>
+    <string name="lists_done_count">Fait (%d)</string>
+    <string name="lists_clear_done">Effacer ce qui est coché</string>
+    <plurals name="lists_cleared">
+        <item quantity="one">%d élément coché effacé.</item>
+        <item quantity="many">%d d’éléments cochés effacés.</item>
+        <item quantity="other">%d éléments cochés effacés.</item>
+    </plurals>
+    <string name="lists_undo">Annuler</string>
+    <string name="lists_item_deleted">Supprimé&#160;: %s.</string>
+    <string name="lists_nothing_yet">Rien sur cette liste pour l’instant. Tape un élément plus haut, ou dis «&#160;ajoute des œufs à la liste&#160;».</string>
+    <string name="lists_all_ticked">Tout est coché.</string>
+    <string name="lists_mark_locked">Ajouté quand le téléphone était verrouillé</string>
+    <string name="lists_mark_content">D’un écran ou d’un message</string>
+    <string name="lists_mark_backup">De la sauvegarde de quelqu’un d’autre</string>
+    <string name="lists_mark_changed_locked">Changé quand le téléphone était verrouillé</string>
+    <string name="lists_item_options">Options pour %s</string>
+    <string name="lists_edit">Modifier</string>
+    <string name="lists_move_top">Mettre en haut</string>
+    <string name="lists_move_to">Déplacer vers une autre liste</string>
+    <string name="lists_delete">Supprimer</string>
+    <string name="lists_details">Détails</string>
+    <string name="lists_edit_title">Modifier l’élément</string>
+    <string name="lists_item_field">Élément</string>
+    <string name="lists_qty_field">Quantité</string>
+    <string name="lists_save">Enregistrer</string>
+    <string name="lists_cancel">Annuler</string>
+    <string name="lists_close">Fermer</string>
+    <string name="lists_move_title">Déplacer %s vers</string>
+    <string name="lists_no_other">Tu n’as pas d’autre liste. Fais-en une avec Nouvelle liste.</string>
+    <string name="lists_moved">Déplacé vers la liste %2$s&#160;: %1$s.</string>
+    <string name="lists_already_item">Déjà sur cette liste&#160;: %s.</string>
+    <string name="lists_op_add">Ajouté</string>
+    <string name="lists_op_edit">Modifié</string>
+    <string name="lists_op_tick">Coché</string>
+    <string name="lists_op_untick">Remis</string>
+    <string name="lists_op_move">Déplacé ici</string>
+    <string name="lists_op_remove">Supprimé</string>
+    <string name="lists_op_restore">Rétabli</string>
+    <string name="lists_how_voice">à la voix</string>
+    <string name="lists_how_typed">dans l’appli</string>
+    <string name="lists_how_card">sur une carte</string>
+    <string name="lists_how_widget">sur le widget</string>
+    <string name="lists_how_model">par Robot</string>
+    <string name="lists_how_note">depuis une note</string>
+    <string name="lists_how_restore">depuis une sauvegarde</string>
+    <string name="lists_by_locked">quand le téléphone était verrouillé</string>
+    <string name="lists_by_content">depuis un écran ou un message</string>
+    <string name="lists_by_backup">depuis la sauvegarde de quelqu’un d’autre</string>
+    <string name="lists_by_peer">par quelqu’un d’autre</string>
+    <string name="lists_hist_how">%1$s %2$s</string>
+    <string name="lists_hist_by">%1$s, %2$s</string>
+    <string name="lists_hist_when">%1$s · %2$s</string>
+    <string name="lists_more">Plus d’options</string>
+    <string name="lists_rename">Renommer</string>
+    <string name="lists_share">Partager en texte</string>
+    <string name="lists_delete_list">Supprimer la liste</string>
+    <string name="lists_rename_title">Renommer %s</string>
+    <string name="lists_name_field">Nom</string>
+    <plurals name="lists_delete_list_text">
+        <item quantity="one">Supprimer la liste %1$s et son élément (%2$d)&#8239;?</item>
+        <item quantity="many">Supprimer la liste %1$s et ses %2$d d’éléments&#8239;?</item>
+        <item quantity="other">Supprimer la liste %1$s et ses %2$d éléments&#8239;?</item>
+    </plurals>
+    <string name="lists_delete_list_empty">Supprimer la liste %s&#8239;?</string>
+    <string name="lists_list_deleted">Liste %s supprimée.</string>
+    <string name="lists_share_title">Partager la liste</string>
+    <string name="lists_share_failed">Aucune appli de ce téléphone ne peut partager la liste.</string>
+    <string name="lists_from_note">Faire une liste avec cette note</string>
+    <plurals name="lists_made_from_note">
+        <item quantity="one">Liste %1$s faite avec %2$d élément.</item>
+        <item quantity="many">Liste %1$s faite avec %2$d d’éléments.</item>
+        <item quantity="other">Liste %1$s faite avec %2$d éléments.</item>
+    </plurals>
+    <plurals name="lists_skipped">
+        <item quantity="one">%d ligne laissée de côté&#160;: elle ne peut pas être un élément.</item>
+        <item quantity="many">%d de lignes laissées de côté&#160;: elles ne peuvent pas être des éléments.</item>
+        <item quantity="other">%d lignes laissées de côté&#160;: elles ne peuvent pas être des éléments.</item>
+    </plurals>
+    <string name="lists_two_lines">%1$s %2$s</string>
+    <string name="lists_note_no_items">Cette note n’a aucune ligne qui puisse être un élément.</string>
+    <string name="lists_open">Ouvrir</string>
+    <string name="lists_changed">Cette liste a changé entre-temps. Réessaie.</string>
+    <string name="lists_gone">Cette liste n’est plus là.</string>
+    <string name="lists_card_open">Ouvrir la liste %s</string>
+    <string name="lists_card_tick">Cocher %s</string>
+    <string name="lists_card_untick">Remettre %s</string>
+    <!-- LS6 : le widget de l’écran d’accueil, « Liste Robot », et la fenêtre qui choisit sa liste. -->
+    <string name="lists_widget_label">Liste Robot</string>
+    <string name="lists_widget_description">Une de tes listes sur l’écran d’accueil, pour cocher des éléments</string>
+    <string name="lists_widget_unlock">Déverrouille pour voir cette liste.</string>
+    <string name="lists_widget_robot_locked">Robot est bloqué.</string>
+    <string name="lists_widget_off">Les listes sont désactivées dans Robot.</string>
+    <string name="lists_widget_pick">Touche pour choisir une liste.</string>
+    <string name="lists_widget_pick_again">Les données de Robot ont été effacées, et une sauvegarde ne garde pas la liste d’un widget. Touche pour la choisir de nouveau.</string>
+    <string name="lists_widget_empty">Rien sur cette liste pour l’instant.</string>
+    <plurals name="lists_widget_done">
+        <item quantity="one">%d coché</item>
+        <item quantity="many">%d de cochés</item>
+        <item quantity="other">%d cochés</item>
+    </plurals>
+    <plurals name="lists_widget_more">
+        <item quantity="one">et %d autre</item>
+        <item quantity="many">et %d d’autres</item>
+        <item quantity="other">et %d autres</item>
+    </plurals>
+    <string name="lists_widget_pick_title">Choisis une liste pour le widget</string>
+    <string name="lists_widget_footer">Un widget montre sa liste à ton appli d’écran d’accueil.</string>
+    <!-- 1.5: lists shared between Robots. -->
+    <string name="lists_from_peer">Du Robot d’une autre personne</string>
+    <string name="lists_share_robot">Partager avec un Robot</string>
+    <string name="lists_share_how">Cette personne doit d’abord accepter. Ensuite, ce que l’un ou l’autre change ici s’affiche sur les deux téléphones.</string>
+    <string name="lists_share_none">Aucun Robot jumelé ne peut encore partager de listes. Tu peux l’autoriser dans les réglages de ce Robot.</string>
+    <string name="lists_share_sent">Envoyée à %1$s, qui doit d’abord accepter.</string>
+    <string name="lists_share_not_sent">Impossible d’envoyer la liste à %1$s. Réessaie plus tard.</string>
+    <string name="lists_shared_with">Partagée avec %1$s</string>
+    <string name="lists_share_waiting">En attente de l’accord de %1$s</string>
+    <string name="lists_share_someone">un autre Robot</string>
+    <string name="lists_share_stop">Arrêter le partage</string>
+    <string name="lists_share_stop_title">Arrêter de partager cette liste&#8239;?</string>
+    <string name="lists_share_stop_text">Chacun garde sa copie. Les changements ne passeront plus d’un téléphone à l’autre.</string>
+    <string name="lists_how_link">depuis un autre Robot</string>
+    <string name="lists_taken_title">Enlevé ou changé par quelqu’un d’autre</string>
+    <string name="lists_taken_was">Était : %1$s</string>
+    <string name="lists_put_back">Remettre</string>
+    <string name="lists_peer_full">Des changements de %1$s n’ont pas tenu : cette liste est pleine ici, alors ta copie et la sienne ne sont plus pareilles. Quand il y aura de la place, il faudra les refaire de son côté.</string>
+    <string name="lists_peer_full_dismiss">Fermer</string>
+</resources>

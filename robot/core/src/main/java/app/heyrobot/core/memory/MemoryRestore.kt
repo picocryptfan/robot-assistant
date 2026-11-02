@@ -55,11 +55,14 @@ object MemoryRestore {
     /**
      * Replace what's here: the backup's items with their ids (and its codes, when [mine]), at memory's caps (2,000 items,
      * 6 pinned, a private item never pinned); content unless [mine], as Import marks it. This phone's suggestions stay.
+     * F39: a backup's Memory never holds private codes (they travel with Keys), so unless this restore brings your own,
+     * this phone's private items stay, first in line at the cap: Replace can't bring them back.
      */
     fun replace(have: MemoryFile, items: List<MemoryItem>, codes: List<MemoryItem>, mine: Boolean, people: (String) -> String?): MemoryRestored {
-        val seen = HashSet<String>()
+        val kept = if (!keepsPrivate(mine, codes)) emptyList() else have.items.filter { it.secret }.take(MemoryLimits.MAX_ITEMS)
+        val seen = kept.mapTo(HashSet()) { it.id }
         var pins = 0
-        val out = ArrayList<MemoryItem>()
+        val out = ArrayList<MemoryItem>(kept)
         val all = items.map { it to false } + (if (mine) codes.map { it to true } else emptyList())
         for ((item, code) in all) {
             if (out.size >= MemoryLimits.MAX_ITEMS || !MemoryIds.valid(item.id) || !seen.add(item.id)) continue
@@ -74,8 +77,12 @@ object MemoryRestore {
             )
         }
         val file = have.copy(items = out)
-        return MemoryRestored(file, out.associate { it.id to it.id }, out.size, all.size - out.size)
+        val restored = out.size - kept.size
+        return MemoryRestored(file, out.associate { it.id to it.id }, restored, all.size - restored)
     }
+
+    /** Whether a Replace bringing [codes] keeps this phone's private items: yes unless your own codes come back with it. */
+    fun keepsPrivate(mine: Boolean, codes: List<MemoryItem>): Boolean = !mine || codes.isEmpty()
 
     private fun about(item: MemoryItem, people: (String) -> String?): List<String> = item.about.mapNotNull(people).distinct()
 

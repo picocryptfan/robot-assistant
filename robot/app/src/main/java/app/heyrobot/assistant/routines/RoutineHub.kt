@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.assistant.routines
 
+import app.heyrobot.core.AlarmClocks
+import app.heyrobot.core.AlarmSoundEdge
 import app.heyrobot.core.SkipWhy
 import android.app.AlarmManager
 import android.content.BroadcastReceiver
@@ -9,7 +11,9 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
+import android.media.AudioAttributes
 import android.media.AudioManager
+import android.media.AudioPlaybackConfiguration
 import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
@@ -113,6 +117,11 @@ object RoutineHub {
         val store = RoutineFiles.store(app)
         routines = store.all()
         rs = store.settings()
+        // week-fixes: another Clock is chosen, or the one in use has gone: listen again, for that one (reconcile).
+        if (TriggerKind.ALARM in registered && AlarmClocks.watched(RoutineFacts.currentClock(app, rs.clockApp)) != watchedClock) {
+            unregister(TriggerKind.ALARM)
+            seenAlarms = emptyList()
+        }
         // The ledger and the last runs forget routines that are gone.
         store.editState { it.keep(routines.map { r -> r.id }.toSet()) }
         reconcile()
@@ -140,13 +149,16 @@ object RoutineHub {
                 // Clock's broadcasts come from another app, with no permission (GrapheneOS DeskClock): the only
                 // receiver Robot registers exported. AlarmWatch needs ALERT then DONE, and a routine runs at most once a day
                 // by default, so a fake DONE can only start your own routines under their gates.
-                TriggerKind.ALARM -> receiver(::onClock).also {
+                TriggerKind.ALARM -> run {
+                    watchedClock = AlarmClocks.watched(RoutineFacts.currentClock(app, rs.clockApp))
                     // Clock's next alarm, read now and whenever it changes (a system broadcast), vouches for its ALERT (AlarmCheck).
                     seeNextAlarm()
                     nextAlarmChanged = receiver { seeNextAlarm() }.also { r ->
                         app.registerReceiver(r, IntentFilter(AlarmManager.ACTION_NEXT_ALARM_CLOCK_CHANGED), null, worker, Context.RECEIVER_NOT_EXPORTED)
                     }
-                    app.registerReceiver(it, IntentFilter().apply { addAction(ALARM_ALERT); addAction(ALARM_DONE) }, null, worker, Context.RECEIVER_EXPORTED)
+                    if (AlarmClocks.tells(watchedClock)) receiver(::onClock).also {
+                        app.registerReceiver(it, IntentFilter().apply { addAction(ALARM_ALERT); addAction(ALARM_DONE) }, null, worker, Context.RECEIVER_EXPORTED)
+                    } else alarmSoundWatch()
                 }
                 // SystemUI sends the unlock, not the system: a non-exported receiver never gets it (ProtectedBroadcasts).
                 TriggerKind.UNLOCK -> receiver { onUnlock() }.also {
@@ -174,11 +186,13 @@ object RoutineHub {
         if (k == TriggerKind.ALARM) {
             nextAlarmChanged?.let { n -> try { app.unregisterReceiver(n) } catch (_: Throwable) {} }
             nextAlarmChanged = null
+            soundOn = false
         }
         try {
             when (r) {
                 is BroadcastReceiver -> app.unregisterReceiver(r)
                 is AudioDeviceCallback -> app.getSystemService(AudioManager::class.java).unregisterAudioDeviceCallback(r)
+                is AudioManager.AudioPlaybackCallback -> app.getSystemService(AudioManager::class.java).unregisterAudioPlaybackCallback(r)
             }
         } catch (_: Throwable) {}
         RLog.i("routine_listen", "kind" to k, "on" to false)
@@ -205,35 +219,65 @@ object RoutineHub {
     private fun onClock(i: Intent) {
         val now = System.currentTimeMillis()
         when (i.action) {
-            ALARM_ALERT -> {
-                val signal = AlarmSignal.Alert(now)
-                // Any app can send it: only Clock's own alarm, seen due now before it came, counts; anything else is ignored
-                // (never a routine, never the weather, never the once-a-day run).
-                if (!AlarmCheck.admits(seenAlarms, signal)) {
-                    // 1.0 (ipc-4): once a minute with a count, so a flood of fake ones can't push the real events out of the log.
-                    unverified.admit(now)?.let { n ->
-                        VoiceLog.add(VoiceEvent.ROUTINE_SKIPPED, SkipWhy.NOT_CLOCKS_ALARM, TriggerKind.ALARM, n)
-                        RLog.i("alarm_unverified", "count" to n)
-                    }
-                    return
-                }
-                step(signal)
-            }
-            // Clock publishes the snoozed instance as the next alarm first: read it 2 s later (AlarmWatch.READ_DELAY_MS).
-            // A DONE counts only after a counted ALERT (AlarmWatch): with nothing ringing it is dropped here, unlogged and with
-            // nothing scheduled (1.0, ipc-4), and one read waits at a time.
-            ALARM_DONE -> {
-                if (donePending || !AlarmWatch.awaitsDone(RoutineFiles.store(app).state().alarm, now, rs.clockSilenceMinutes)) return
-                donePending = true
-                worker.postDelayed({
-                    donePending = false
-                    val next = nextAlarm()
-                    seenAlarms = AlarmCheck.remember(seenAlarms, next, System.currentTimeMillis())
-                    step(AlarmSignal.Done(now, next))
-                }, AlarmWatch.READ_DELAY_MS)
-            }
+            ALARM_ALERT -> alarmRang(now)
+            ALARM_DONE -> alarmEnded(now)
         }
     }
+
+    private fun alarmRang(now: Long) {
+        val signal = AlarmSignal.Alert(now)
+        // Any app can send it: only Clock's own alarm, seen due now before it came, counts; anything else is ignored
+        // (never a routine, never the weather, never the once-a-day run).
+        if (!AlarmCheck.admits(seenAlarms, signal)) {
+            // 1.0 (ipc-4): once a minute with a count, so a flood of fake ones can't push the real events out of the log.
+            unverified.admit(now)?.let { n ->
+                VoiceLog.add(VoiceEvent.ROUTINE_SKIPPED, SkipWhy.NOT_CLOCKS_ALARM, TriggerKind.ALARM, n)
+                RLog.i("alarm_unverified", "count" to n)
+            }
+            return
+        }
+        step(signal)
+    }
+
+    // Clock publishes the snoozed instance as the next alarm first: read it 2 s later (AlarmWatch.READ_DELAY_MS).
+    // A DONE counts only after a counted ALERT (AlarmWatch): with nothing ringing it is dropped here, unlogged and with
+    // nothing scheduled (1.0, ipc-4), and one read waits at a time.
+    private fun alarmEnded(now: Long) {
+        if (donePending || !AlarmWatch.awaitsDone(RoutineFiles.store(app).state().alarm, now, rs.clockSilenceMinutes)) return
+        donePending = true
+        worker.postDelayed({
+            donePending = false
+            // The sound came back (a gap in its ringing): it hasn't ended. Always false on GrapheneOS Clock's path.
+            if (soundOn) return@postDelayed
+            val next = nextAlarm()
+            seenAlarms = AlarmCheck.remember(seenAlarms, next, System.currentTimeMillis())
+            step(AlarmSignal.Done(now, next))
+        }, AlarmWatch.READ_DELAY_MS)
+    }
+
+    /**
+     * week-fixes: a Clock that doesn't tell other apps when an alarm ends: the alarm's sound starting and stopping stands in
+     * for ALERT and DONE, and the same checks decide. Only the kind of sound is read, no microphone and no app's name; a timer
+     * or another app's alarm has no alarm of this Clock's due, so it's ignored. An alarm that only vibrates isn't seen.
+     */
+    private fun alarmSoundWatch(): AudioManager.AudioPlaybackCallback {
+        val am = app.getSystemService(AudioManager::class.java)
+        fun ringing(configs: List<AudioPlaybackConfiguration>?) = configs.orEmpty().any { it.audioAttributes.usage == AudioAttributes.USAGE_ALARM }
+        soundOn = ringing(am.activePlaybackConfigurations)
+        val edge = AlarmSoundEdge(soundOn)
+        return object : AudioManager.AudioPlaybackCallback() {
+            override fun onPlaybackConfigChanged(configs: MutableList<AudioPlaybackConfiguration>?) {
+                val started = edge.see(ringing(configs)) ?: return
+                soundOn = started
+                val now = System.currentTimeMillis()
+                if (!started) alarmEnded(now) else if (!donePending) alarmRang(now)
+            }
+        }.also { am.registerAudioPlaybackCallback(it, worker) }
+    }
+
+    /** The Clock whose alarms count (GrapheneOS Clock's, unless another is in use), and its alarm's sound is on (worker thread only). */
+    private var watchedClock = RoutineFacts.CLOCK
+    private var soundOn = false
 
     /** Unverified ALERTs, logged once a minute with their count. */
     private val unverified = LogThrottle()
@@ -241,7 +285,7 @@ object RoutineHub {
     private var donePending = false
 
     private fun nextAlarm(): NextAlarm? = try {
-        app.getSystemService(AlarmManager::class.java).nextAlarmClock?.let { NextAlarm(it.triggerTime, it.showIntent?.creatorPackage == RoutineFacts.CLOCK) }
+        app.getSystemService(AlarmManager::class.java).nextAlarmClock?.let { NextAlarm(it.triggerTime, it.showIntent?.creatorPackage == watchedClock) }
     } catch (_: Throwable) { null }
 
     private fun step(signal: AlarmSignal) {

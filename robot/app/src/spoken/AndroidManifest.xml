@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The spoken tests' test build only (tools/spoken/README.md, "The protocol"). Both need DUMP from whoever calls them: the adb
+     shell holds it and ordinary apps can't. Both run in :voice, beside Listener and PanelController. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <receiver
+            android:name="app.heyrobot.spoken.SpokenReceiver"
+            android:process=":voice"
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
+        <activity
+            android:name="app.heyrobot.spoken.SpokenRecorderActivity"
+            android:process=":voice"
+            android:exported="true"
+            android:permission="android.permission.DUMP"
+            android:label="@string/spoken_recorder_title"
+            android:taskAffinity="${applicationId}.spokenrecorder" />
+    </application>
+</manifest>

@@ -111,6 +111,44 @@ class FileFieldsTest {
         assertFalse(v.totalCheck)
     }
 
+    @Test fun aTotalWrittenAsMoneyTakenOffIsARefund() {
+        val written = listOf("Total -45.00", "TOTAL: -$45.00", "Total $-45.00", "Total 45.00-", "Total (45.00)", "Total (45,00 $)", "Total \u221245.00")
+        // The file's own words: a refund, and nothing to check.
+        for (line in written) check(line).let { assertEquals(line, 4500L, it.total); assertTrue(line, it.refund); assertFalse(line, it.totalCheck) }
+        // A picture's words are the model's copy: a misread dash mustn't take money off, so you check it first.
+        for (line in written) check(line, own = false).let { assertEquals(line, 4500L, it.total); assertTrue(line, it.refund); assertTrue(line, it.totalCheck) }
+        // Only the model says so, and the text's line doesn't: not a refund, and you check it.
+        check("Total 45.00", """{"kind":"receipt","total":"-45.00"}""").let { assertFalse(it.refund); assertTrue(it.totalCheck) }
+    }
+
+    @Test fun aLineThatIsOnlyARefundsLabelIsARefund() {
+        for (line in listOf("Refund 45.00", "REFUND TOTAL: $45.00", "Total refund 45.00", "Amount refunded: 45.00", "Remboursement 45,00 $", "Montant remboursé : 45,00 $", "Total remboursé 45,00"))
+            check(line).let { assertEquals(line, 4500L, it.total); assertTrue(line, it.refund) }
+    }
+
+    @Test fun aRefundIsNeverGuessedFromAMerchantOrAPolicy() {
+        val total = "Total 45.00"
+        for (other in listOf("Refund Depot", "REFUND DEPOT 12.00", "Credit Union", "Return-It", "Remboursement Express", "Refunds within 30 days", "No refund without a receipt",
+            "Refund policy: 45.00 fee", "Échange ou remboursement avant le 2026-12-01", "Credit 45.00"))
+            check("$other\n$total").let { assertEquals(other, 4500L, it.total); assertFalse(other, it.refund); assertFalse(other, it.totalCheck) }
+        // Savings printed with a minus aren't the total, and a partial refund on a sale doesn't make the sale one.
+        check("Total savings -5.00\nTotal 40.00").let { assertEquals(4000L, it.total); assertFalse(it.refund) }
+        check("Refund 5.00\nTotal 40.00").let { assertEquals(4000L, it.total); assertFalse(it.refund) }
+        // Two totals, one taken off: Robot doesn't pick.
+        check("Total 45.00\nTotal -20.00").let { assertFalse(it.refund); assertTrue(it.totalCheck) }
+        // The same amount as a refund's and as a plain total: you say which.
+        check("Refund 45.00\nTotal 45.00").let { assertFalse(it.refund); assertTrue(it.totalCheck) }
+        // The field goes to the entry and back.
+        assertTrue(Filer.valuesOf(Filer.fields(check("Total -45.00"))).refund)
+        assertFalse(Filer.valuesOf(Filer.fields(check("Total 45.00"))).refund)
+    }
+
+    @Test fun aPlainTotalIsNoRefund() {
+        // A separator, a range or a plain total: no refund.
+        for (line in listOf("Total 45.00", "Total: 45.00", "Total - 45.00", "Total-45.00", "Total $45.00"))
+            check(line).let { assertEquals(line, 4500L, it.total); assertFalse(line, it.totalCheck) }
+    }
+
     @Test fun theCashTenderedTrapNeverBecomesTheTotal() {
         // The model gave the cash tendered (F0a: 4 of 5 wrong totals), then the change, then the subtotal.
         for (wrong in listOf("100.00", "13.49", "75.24")) {

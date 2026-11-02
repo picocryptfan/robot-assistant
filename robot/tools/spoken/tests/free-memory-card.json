@@ -1,0 +1,17 @@
+{
+  "format": 1,
+  "id": "free-memory-card",
+  "title": "\"Free up memory\" shows its card, and a no stops nothing",
+  "safety": "robot-data",
+  "testBench": ["v40-free-memory"],
+  "setup": [{"set": "speakReplies", "value": "VOICE"}, {"set": "voiceCards", "value": true}],
+  "steps": [
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "Free up memory.", "voice": "heart"},
+    {"do": "wait_card", "kind": "free_memory", "seconds": 90},
+    {"do": "wait_listening", "seconds": 30},
+    {"do": "say", "text": "No thanks.", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 30},
+    {"do": "end"}
+  ]
+}

@@ -33,13 +33,15 @@ class ModelLogicTest {
     }
 
     @Test fun downloadNeedsTheFileAndAGigabyteToSpare() {
-        val need = full + BrainModel.HEADROOM
-        assertEquals(need, ModelFiles.needBytes(fast))
+        assertEquals(full + BrainModel.HEADROOM, ModelFiles.needBytes(fast))
+        // 1.1 (F18): and the room for its check to copy it into Robot's own storage.
+        val need = ModelFiles.downloadNeedBytes(fast)
+        assertEquals(2 * full + ModelMove.MARGIN, need)
         assertNull(ModelLogic.refuseDownload(fast, ModelStatus.MISSING, need, 0))
         assertNull(ModelLogic.refuseDownload(fast, ModelStatus.BAD, need - full, full))
         val why = ModelLogic.refuseDownload(fast, ModelStatus.MISSING, need - 1, 0)!!
         assertTrue(why, why.startsWith("Not enough free space"))
-        assertTrue(why.contains("4.11 GB"))
+        assertTrue(why, why.contains("6.73 GB"))
         // Unknown free space does not block.
         assertNull(ModelLogic.refuseDownload(fast, ModelStatus.MISSING, -1, 0))
     }
@@ -50,10 +52,10 @@ class ModelLogicTest {
             val need = m.bytes + m.cacheBytes + BrainModel.HEADROOM
             assertEquals(need, ModelFiles.needBytes(m))
             assertTrue(m.cacheBytes in 2_500_000_000L..3_000_000_000L)
-            assertNull(ModelLogic.refuseDownload(m, ModelStatus.MISSING, need, 0))
-            // The file alone would fit, the file and its cache don't.
+            assertNull(ModelLogic.refuseDownload(m, ModelStatus.MISSING, ModelFiles.downloadNeedBytes(m), 0))
+            // The file alone would fit; 1.1 (F18): its copy into Robot's own storage asks for more than its cache does.
             val why = ModelLogic.refuseDownload(m, ModelStatus.MISSING, m.bytes + BrainModel.HEADROOM + 1, 0)!!
-            assertTrue(why, why.contains("Gemma 4 E4B") && why.contains("needs 7.26 GB") && why.contains("about 2.60 GB for the cache"))
+            assertTrue(why, why.contains("Gemma 4 E4B") && why.contains("needs 7.82 GB") && why.contains("the 3.66 GB file twice"))
         }
         // Your own file: the cache estimated from its size (the measured E4B ratio).
         assertEquals(2_744_647_680L, ModelFiles.cacheEstimate(3_659_530_240L))
@@ -65,12 +67,12 @@ class ModelLogicTest {
 
     /** 0.1.2 review, minor 4: voice models still downloading take space Gemma's check must not count as free. */
     @Test fun voiceDownloadsUnderWayCountAgainstGemmasSpace() {
-        val need = full + BrainModel.HEADROOM
+        val need = ModelFiles.downloadNeedBytes(fast)
         assertNull(ModelLogic.refuseDownload(fast, ModelStatus.MISSING, need, 0, pendingBytes = 0))
         val why = ModelLogic.refuseDownload(fast, ModelStatus.MISSING, need, 0, pendingBytes = 1_000_000_000L)!!
-        assertTrue(why, why.endsWith("needs 4.11 GB (the file plus 1 GB to spare) and only 3.11 GB will be left once the downloads under way finish."))
+        assertTrue(why, why.endsWith("needs 6.73 GB (the 3.11 GB file twice while it moves into Robot's own storage, and 0.50 GB to spare) and only 5.73 GB will be left once the downloads under way finish."))
         assertNull(ModelLogic.refuseDownload(fast, ModelStatus.MISSING, need + 1_000_000_000L, 0, pendingBytes = 1_000_000_000L))
-        assertTrue(ModelLogic.refuseImport(fast, ModelStatus.MISSING, full, need, 0, pendingBytes = 1) != null)
+        assertTrue(ModelLogic.refuseImport(fast, ModelStatus.MISSING, full, ModelFiles.needBytes(fast), 0, pendingBytes = 1) != null)
     }
 
     @Test fun downloadIsRefusedWhileBusyOrPresent() {

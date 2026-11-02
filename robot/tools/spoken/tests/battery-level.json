@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "id": "battery-level",
+  "title": "The battery level, asked by voice",
+  "safety": "read",
+  "testBench": ["v40-phone-status"],
+  "needs": {"model": true},
+  "setup": [{"set": "speakReplies", "value": "VOICE"}],
+  "steps": [
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "What's the battery level?", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 120, "regex": "\\d+ ?%|\\d+ percent"},
+    {"do": "check", "what": "tool", "equals": "phone_status"},
+    {"do": "end"}
+  ]
+}

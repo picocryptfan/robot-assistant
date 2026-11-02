@@ -14,8 +14,11 @@
     <string name="panel_photo">Photo</string>
     <string name="panel_remove_screen">Retirer l’écran</string>
     <string name="panel_remove_photo">Retirer la photo</string>
+    <string name="panel_file">Fichier</string>
+    <string name="panel_remove_file">Retirer le fichier</string>
+    <string name="panel_save_to_files">Enregistrer dans les Fichiers de Robot</string>
     <string name="panel_read_claude_answer">Lire la réponse de Claude</string>
-    <string name="panel_add_photo">Ajouter une photo</string>
+    <string name="panel_add_photo_or_file">Ajouter une photo ou un fichier</string>
     <string name="panel_cancel">Annuler</string>
     <string name="panel_stop_speaking">Arrêter de parler</string>
 
@@ -28,7 +31,7 @@
     <string name="panel_your_screen">Ton écran</string>
     <string name="panel_goes_with_next">Part avec ta prochaine question</string>
     <string name="panel_listening_state">À l’écoute</string>
-    <string name="panel_unlock_for_your_photos">Déverrouille pour utiliser l’appareil photo ou tes photos.</string>
+    <string name="panel_unlock_for_your_photos">Déverrouille pour utiliser l’appareil photo, tes photos ou tes fichiers.</string>
     <string name="panel_camera">Appareil photo</string>
     <string name="panel_photos">Photos</string>
     <string name="panel_yes_or_no">Oui ou non…</string>
@@ -49,6 +52,7 @@
     <string name="panel_want_check_with">Veux-tu que je vérifie avec %1$s&#8239;?</string>
     <string name="panel_sends">Envoie&#160;: %1$s.</string>
     <string name="panel_no_thanks">Non merci</string>
+    <string name="panel_remember">Retenir</string>
     <string name="panel_open_app">Ouvrir l’appli</string>
 
     <string name="panel_cheogram_not_installed">Cheogram n’est pas installé</string>

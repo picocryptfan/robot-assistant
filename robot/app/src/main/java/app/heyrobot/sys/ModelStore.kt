@@ -29,6 +29,7 @@ import app.heyrobot.core.i18n.ModelStrings
 import app.heyrobot.core.i18n.Phrase
 import app.heyrobot.core.i18n.PhraseWire
 import app.heyrobot.core.i18n.VoiceStrings
+import app.heyrobot.core.online.NetPurpose
 import app.heyrobot.core.RLog
 import app.heyrobot.core.readOrNull
 import app.heyrobot.core.writeAtomic
@@ -47,7 +48,8 @@ import java.io.FileOutputStream
 // 1.0.1 (core ModelMove): models live in internal storage (filesDir/models), which only Robot can write. DownloadManager
 // can only write to the external files folder, so a finished download is copied in by its check, hashed as it is written;
 // your own file is imported straight in; a 1.0 model still outside moves in once ([moveIn]) when there's room, and until
-// then :brain hashes it in full before each load. The outside copy goes only once the inside one is complete and checked.
+// then it doesn't load (1.1: [plan], NEEDS_MOVE), a GGUF file excepted: :brain hashes the descriptor llama.cpp gets. The
+// outside copy goes only once the inside one is complete and checked.
 
 object ModelStore {
     private const val PREFS = "robot_model"
@@ -59,7 +61,7 @@ object ModelStore {
     /** Where 1.0 kept them, and where DownloadManager still writes (it can't write to internal storage); null without one. */
     private fun outsideDir(ctx: Context): File? = ctx.getExternalFilesDir(null)
     private fun dirs(ctx: Context): List<File> = listOfNotNull(dir(ctx), outsideDir(ctx)).distinctBy { it.absolutePath }
-    /** [f] isn't in internal storage: not trusted without its hash (core ModelMove). */
+    /** [f] isn't in internal storage: LiteRT-LM never gets it (core ModelMove). */
     fun outside(ctx: Context, f: File): Boolean = ModelMove.hashBeforeLoad(f, ctx.filesDir)
     /** [m]'s file: the one inside when there is one, else 1.0's (or a finished download) outside, else where it will go. */
     fun file(ctx: Context, m: BrainModel): File = if (m == BrainModel.OWN) ownFile(ctx) else candidates(ctx, m.file).firstOrNull { it.isFile } ?: File(dir(ctx), m.file)
@@ -147,11 +149,14 @@ object ModelStore {
             val b = r?.backend
             // Its context is the file's own when shorter than 4,096 (0.4.3, chat only), a GGUF file's too; :brain checks the
             // header again. A GGUF file never sees photos.
-            return if (a == ModelAvailability.READY && r != null && b != null && fp != null) {
+            return if (a == ModelAvailability.READY && r != null && r.format != ModelFormat.GGUF && outside(ctx, f)) {
+                ModelAvailability.NEEDS_MOVE to null
+            } else if (a == ModelAvailability.READY && r != null && b != null && fp != null) {
                 a to LoadPlan(m, f.absolutePath, b, r.contextTokens, fp, r.vision, r.format)
             } else a to null
         }
         val path = verifiedPath(ctx, m) ?: return (if (f.isFile && f.length() == m.bytes) ModelAvailability.NOT_CHECKED else ModelAvailability.NOT_DOWNLOADED) to null
+        if (outside(ctx, File(path))) return ModelAvailability.NEEDS_MOVE to null
         return ModelAvailability.READY to LoadPlan(m, path, m.backend, m.contextTokens, fingerprint(File(path)))
     }
 
@@ -210,6 +215,8 @@ object ModelStore {
         val cacheBytes: Long = 0,
         /** 1.0.1: a copy of it is still outside internal storage (1.0's place, or a finished download): [moveIn] tidies it. */
         val outside: Boolean = false,
+        /** 1.1: above 0, its checked copy is outside with no room to move in: the free space that takes, and it can't load until then. */
+        val moveNeed: Long = 0,
     )
 
     /** [m]'s card; settles a finished download. */
@@ -235,7 +242,16 @@ object ModelStore {
             fileBytes = if (f.isFile) f.length() else 0,
             cacheBytes = if (m.backend == ModelBackend.CPU) cacheBytes(ctx, m) else 0,
             outside = outsideDir(ctx) != null && allFiles(ctx, m).any { it.isFile && outside(ctx, it) },
+            moveNeed = moveNeed(ctx, m),
         )
+    }
+
+    /** The free space [m] needs to move in, when its checked copy is outside and there isn't that much now; else 0. */
+    private fun moveNeed(ctx: Context, m: BrainModel): Long {
+        if (moving == m) return 0
+        val checked = verifiedPath(ctx, m)?.let(::File)?.takeIf { outside(ctx, it) } ?: return 0
+        val free = ModelMove.freeForMove(freeBytes(ctx), File(dir(ctx), checked.name))
+        return if (ModelMove.room(checked.length(), free, pendingAll(ctx))) 0 else ModelMove.spaceToMove(checked.length())
     }
 
     fun freeBytes(ctx: Context): Long = try { StatFs(dir(ctx).apply { mkdirs() }.path).availableBytes } catch (_: Exception) { -1 }
@@ -282,6 +298,8 @@ object ModelStore {
             .setAllowedOverMetered(anyNetwork)
         return try {
             val id = ctx.getSystemService(DownloadManager::class.java).enqueue(req)
+            // What went online: handed to Android's download service; its end is recorded once it has ended.
+            NetLog.downloadStarted(ctx, id, NetPurpose.MODEL_DOWNLOAD, url, m.bytes)
             prefs(ctx).edit().putLong(key(m, "download_id"), id).remove(key(m, "last_failure")).apply()
             RLog.i("model_download", "op" to RLog.Code("start"), "model" to RLog.Code(m.id))
             null
@@ -319,6 +337,7 @@ object ModelStore {
 
     /** Plain-language download line plus percent (-1 unknown), or null when there is no download to report. Settles a finished one. */
     fun downloadProgress(ctx: Context, m: BrainModel): Pair<String, Int>? {
+        NetLog.settleDownloads(ctx)
         val k = key(m, "download_id")
         val id = prefs(ctx).getLong(k, -1).takeIf { it >= 0 } ?: return null
         val q = query(ctx, id)
@@ -344,6 +363,7 @@ object ModelStore {
     fun cancelDownload(ctx: Context, m: BrainModel) {
         val k = key(m, "download_id")
         val id = prefs(ctx).getLong(k, -1).takeIf { it >= 0 } ?: return
+        NetLog.downloadsStopped(ctx, listOf(id))
         try { ctx.getSystemService(DownloadManager::class.java).remove(id) } catch (_: Exception) {}
         prefs(ctx).edit().remove(k).apply()
     }
@@ -462,7 +482,7 @@ object ModelStore {
      * SHA-256 of the whole file (blocking, 10 to 30 s); writes the verified or the bad mark. Your own file: its SHA-256
      * and size, then the content check, kept in its record (true when Robot can run it here). 1.0.1: a file outside
      * internal storage (a finished download) is copied in as it is hashed when there's room, and the outside copy goes
-     * once the inside one is checked; without room it is checked where it is (then :brain hashes it before each load).
+     * once the inside one is checked; without room it is checked where it is, and waits there for room ([moveNeed]).
      */
     fun verify(ctx: Context, m: BrainModel): Boolean {
         val src = file(ctx, m)
@@ -479,7 +499,7 @@ object ModelStore {
                 }
                 RLog.i("model_move", "op" to RLog.Code("verify"), "model" to RLog.Code(m.id), "result" to RLog.Code(r.javaClass.simpleName.lowercase()))
                 when (r) {
-                    is ModelMove.Result.Moved -> { f = r.file; sha = r.sha256 }
+                    is ModelMove.Result.Moved -> { f = r.file; sha = r.sha256; clearStaleCache(ctx, m) }
                     // The download isn't the model: marked bad below, from its own hash.
                     is ModelMove.Result.Mismatch -> sha = r.sha256
                     else -> {}
@@ -570,6 +590,7 @@ object ModelStore {
             RLog.i("model_move", "op" to RLog.Code("move"), "model" to RLog.Code(m.id), "result" to RLog.Code(r.javaClass.simpleName.lowercase()))
             when (r) {
                 is ModelMove.Result.Moved -> {
+                    clearStaleCache(ctx, m)
                     val fp = fingerprint(r.file)
                     if (m == BrainModel.OWN) own(ctx)?.let { writeAtomic(ownRecord(ctx), it.copy(fingerprint = fp).toJson().toString()) }
                     else writeAtomic(verifiedMark(ctx, m), "$expected|$fp")
@@ -588,6 +609,15 @@ object ModelStore {
             moving = null
             moveStop = false
         }
+    }
+
+    /**
+     * [m]'s cache was written for the copy that just moved: LiteRT-LM won't read it for the new one, and the first-load space
+     * check would take it for the cache still to write (core ModelFiles.cachedBytes). Before the mark names the new copy, so
+     * no load is under way; never with [m] in memory.
+     */
+    private fun clearStaleCache(ctx: Context, m: BrainModel) {
+        if (loadedNow(ctx) != m) cacheDir(ctx, m).deleteRecursively()
     }
 
     /**

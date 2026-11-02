@@ -1,0 +1,24 @@
+{
+  "format": 1,
+  "id": "su2-units",
+  "title": "Units and dates, all by code",
+  "safety": "read",
+  "testBench": ["SU2"],
+  "setup": [{"set": "speakReplies", "value": "VOICE"}],
+  "steps": [
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "350 degrees Fahrenheit in Celsius.", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 30, "contains": "177"},
+    {"do": "check", "what": "router", "equals": "SumsRouter"},
+    {"do": "say", "text": "How many cups in a litre?", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 30, "contains": "250"},
+    {"do": "check", "what": "router", "equals": "SumsRouter"},
+    {"do": "say", "text": "How many days until November 20?", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 30, "regex": "(?i)days?:|november"},
+    {"do": "check", "what": "router", "equals": "SumsRouter"},
+    {"do": "say", "text": "What's 5 divided by 0?", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 30, "contains": "divide by zero"},
+    {"do": "check", "what": "router", "equals": "SumsRouter"},
+    {"do": "end"}
+  ]
+}

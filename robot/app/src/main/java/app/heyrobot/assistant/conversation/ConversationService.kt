@@ -57,6 +57,7 @@ class ConversationService : Service() {
                     Cmd.ACTION -> when (i.getStringExtra("op")) {
                         Cmd.TRANSCRIPTS_DELETED -> ConversationSession.transcriptsDeleted(c, i.getStringExtra(Cmd.EXTRA_ID))
                         Cmd.VOICEPRINT_DELETED -> ConversationSession.voiceprintDeleted()
+                        Cmd.PHONE_LOCK -> ConversationSession.phoneLockCheck()
                     }
                 }
             }
@@ -305,6 +306,26 @@ object ConversationNotices {
                 .build())
         } catch (_: Throwable) {}
     }
+
+    /**
+     * 1.1.2, FA8g (phone-lock-design §5.2): a phone lock refused a start ([stopped] false), or stopped the session that
+     * ran when it began. One line, no words of the conversation, kept in the shade for after the lock.
+     */
+    fun phoneLock(ctx: Context, stopped: Boolean) {
+        try {
+            channels(ctx)
+            ctx.getSystemService(NotificationManager::class.java).notify(RESUME_ID + 2, Notification.Builder(ctx, CHANNEL_RESUME)
+                .setSmallIcon(R.drawable.ic_robot)
+                .setContentTitle(ctx.getString(if (stopped) R.string.conv_transcription_stopped else R.string.conv_not_started))
+                .setContentText(ctx.getString(if (stopped) R.string.conv_phone_lock_stopped else R.string.conv_phone_lock_closed))
+                .setVisibility(Notification.VISIBILITY_PRIVATE)
+                .setAutoCancel(true)
+                .build())
+        } catch (t: Throwable) { RLog.w("conv_lock_notice", t) }
+    }
+
+    /** A conversation screen's line while the phone is locked: Phone lock's own during a phone lock, else [otherwise]. */
+    fun lockedLine(ctx: Context, otherwise: Int): Int = if (app.heyrobot.lock.PhoneLockNow.on(ctx)) R.string.conv_phone_lock_closed else otherwise
 
     /** The title the transcript screen and the library show. */
     fun title(meta: app.heyrobot.core.TranscriptMeta): String = TranscriptTitles.shown(meta)

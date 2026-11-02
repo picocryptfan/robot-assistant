@@ -14,7 +14,9 @@ import java.security.MessageDigest
 // SHA-256 check on their size and modification time alone. From 1.0.1 a model lives in the app's internal storage
 // (filesDir/models), which only Robot can write: a finished download, your own imported file and a 1.0 model are copied
 // in, hashed as they are written, and the outside copy is deleted only once the inside one is complete and checked. A
-// model still outside (no room to move it yet, or the copy failed) is hashed in full before each load instead.
+// model still outside (no room to move it yet, or the copy failed) doesn't load until it has moved (1.1, the audit's F18):
+// LiteRT-LM opens the file by its path, so a hash before the load can't say what it then parses. A GGUF file is the
+// exception: llama.cpp gets the very descriptor that was hashed, in full before each load.
 
 object ModelMove {
     /** Room kept free besides the file while it is copied in (half the models' headroom). */
@@ -29,13 +31,19 @@ object ModelMove {
     /** There is room to copy [bytes] in: [free] (below 0: unknown, so no) minus what downloads under way still write ([pending]). */
     fun room(bytes: Long, free: Long, pending: Long = 0): Boolean = free >= 0 && free - pending.coerceAtLeast(0) >= bytes + MARGIN
 
-    /** A model at [path] is hashed in full before each load unless it is inside [inside] (the app's internal storage). */
+    /** The free space a move of a file of [bytes] asks for ([room] without downloads under way). */
+    fun spaceToMove(bytes: Long): Long = bytes + MARGIN
+
+    /** A model at [path] isn't inside [inside] (the app's internal storage): LiteRT-LM never gets it; llama.cpp only after a hash. */
     fun hashBeforeLoad(path: File, inside: File): Boolean = try {
         !path.canonicalPath.startsWith(inside.canonicalPath + File.separator)
     } catch (_: Exception) { true }
 
     /** The copy in progress for [dst]: a leftover one (a copy that stopped with the app) is deleted before the next. */
     fun part(dst: File): File = File(dst.parentFile, dst.name + ".part")
+
+    /** The free space a move of [dst] has: [free] (below 0: unknown) plus the leftover [copyIn] deletes first, so a copy cut short never blocks the next. */
+    fun freeForMove(free: Long, dst: File): Long = if (free < 0) free else free + part(dst).length()
 
     sealed class Result {
         /** [file] is complete and its SHA-256 is [sha256] (the expected one). The source is untouched. */

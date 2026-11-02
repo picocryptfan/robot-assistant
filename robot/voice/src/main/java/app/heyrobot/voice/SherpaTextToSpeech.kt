@@ -13,6 +13,11 @@ import app.heyrobot.core.SpeechText
 import app.heyrobot.core.TtsBench
 import app.heyrobot.core.VoiceBundle
 import app.heyrobot.core.VoiceChoice
+import app.heyrobot.core.VoiceEvent
+import app.heyrobot.core.VoiceLog
+import app.heyrobot.core.tts.LoadBucket
+import app.heyrobot.core.tts.TtsText
+import app.heyrobot.core.tts.VoiceForAppProcess
 import com.k2fsa.sherpa.onnx.GenerationConfig
 import com.k2fsa.sherpa.onnx.OfflineTts
 import com.k2fsa.sherpa.onnx.OfflineTtsConfig
@@ -21,7 +26,11 @@ import com.k2fsa.sherpa.onnx.OfflineTtsKokoroModelConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsModelConfig
 import java.io.File
 import java.util.concurrent.Callable
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.Executors
+import java.util.concurrent.Future
+import java.util.concurrent.FutureTask
 
 // VOICE PROCESS ONLY, :voice module only (sherpa-onnx). Replies read aloud by Kokoro v1.0 fp32 (af_heart, or
 // ff_siwis for French replies) or Kitten nano 0.8 fp32 (docs/voice-plan.md 4.8-4.9). Pieces of text are queued as
@@ -30,6 +39,13 @@ import java.util.concurrent.Executors
 // streaming AudioTrack (assistant usage, speech content; or voice-communication usage with "Call audio", CallAudio)
 // while the previous piece plays. stop() pauses and flushes the track at once and drops the queue; isSpeaking stays
 // true until the last sample has played.
+//
+// The everyday set, E6 (docs/plans/everyday-set-plan.md §6.3, D17): Robot's voices for other apps share this engine and its
+// worker in :voice (an isolated process can't open the voices or espeak-ng's data by name; app tts/RobotTtsService says
+// more). Another app's piece runs on the worker as soon as the piece Robot is making now is done, before Robot's next one
+// (submitForApp): the app waits for at most one of Robot's sentences, and Robot for at most one of the app's. It never
+// touches Robot's track, focus, call audio or speaking state, and Android plays its audio. Every text, Robot's and the
+// app's, enters sherpa through generate(), which starts with core TtsText.native (our audit's F9).
 
 class SherpaTextToSpeech internal constructor(
     private val ctx: Context,
@@ -64,7 +80,22 @@ class SherpaTextToSpeech internal constructor(
     private var track: AudioTrack? = null
     /** Frames written since the last flush. */
     private var written = 0L
+
+    /** When (elapsedRealtime) the head should reach [written]: see [EchoGuard.headInGap]. */
+    private var drainedAt = 0L
     private val echo = EchoGuard(SAMPLE_RATE)
+
+    /** E6: another app's pieces waiting for [worker], each run before Robot's next queued piece ([runAppWork]). */
+    private val appWork = ConcurrentLinkedQueue<FutureTask<AppPiece>>()
+    /** E6: when each voice last spoke for another app (elapsedRealtime): Robot's own run doesn't free it meanwhile. */
+    private val appUsedAt = ConcurrentHashMap<VoiceBundle, Long>()
+    /** E6: other apps' requests being spoken now (OtherAppsVoice): memory pressure doesn't free their voice mid-request. */
+    internal val appRequests = java.util.concurrent.atomic.AtomicInteger(0)
+    /**
+     * E6: where Robot's voice played for another app, in ms of elapsedRealtime (Android plays it, so its place is the time
+     * it was handed over plus its length), so a wake phrase it says isn't taken for you ([appWakeSafe]). Keeps no text.
+     */
+    private val appEcho = EchoGuard(1_000)
 
     @Volatile private var rate = 1.0f
     @Volatile private var choice = VoiceChoice.DEFAULT
@@ -173,6 +204,8 @@ class SherpaTextToSpeech internal constructor(
         var lastHead = -1L
         var stuckSince = 0L
         while (true) {
+            // E6: another app's piece goes before Robot's next one.
+            runAppWork()
             val item = synchronized(stateLock) { queue.removeFirstOrNull() }
             if (item != null) {
                 if (item.gen == gen) synth(item)
@@ -230,19 +263,21 @@ class SherpaTextToSpeech internal constructor(
             fallBack(item, c, s?.state?.name ?: "none")
             return
         }
-        // Only the chosen voice stays loaded.
-        (if (c.bundle == VoiceBundle.KOKORO) kitten else kokoro).release()
+        // Only the chosen voice stays loaded (E6: and one another app spoke with in the last 5 minutes).
+        val unchosen = if (c.bundle == VoiceBundle.KOKORO) VoiceBundle.KITTEN else VoiceBundle.KOKORO
+        if (!appUsedLately(unchosen)) slot(unchosen)?.release()
         // No audio track: the phone's voice says it instead of dropping the piece.
         val t = ensureTrack(tts.sampleRate()) ?: return fallBack(item, c, "track")
         val t0 = SystemClock.elapsedRealtime()
         val start = synchronized(trackLock) { written }
         // Clock times as espeak must get them in this piece's language: the model's « 12:30 », Robot's English "7:02".
         val text = PieceText.of(item.text, item.speaker, item.lang, c.lang)
-        echo.open(start, text)
+        echo.open(start, text, sounding = false)
         var frames = 0L
         val ok = generate(tts, text, generation(c, item.speaker, item.lang)) { samples ->
             if (frames == 0L) synchronized(stateLock) {
                 if (firstAudioMs < 0 && item.gen == gen) firstAudioMs = SystemClock.elapsedRealtime() - runStart
+                if (item.gen == gen) echo.sounding()
             }
             frames += samples.size
             write(t, samples, item.gen)
@@ -279,10 +314,13 @@ class SherpaTextToSpeech internal constructor(
      * False if sherpa or the sink failed (logged, numbers only).
      */
     private fun generate(tts: OfflineTts, text: String, config: GenerationConfig, sink: TtsSink): Boolean {
+        // E6: the one filter in front of the library, for every text whoever wrote it (core TtsText.native; our audit's F9).
+        val safe = TtsText.native(text)
+        if (safe.isEmpty()) return true
         val cb = TtsCallback(sink)
         val ok = try {
             // The last step before espeak-ng: no control character, whatever came before (core SpeechText.forEngine).
-            tts.generateWithConfigAndCallback(SpeechText.forEngine(text), config, cb)
+            tts.generateWithConfigAndCallback(SpeechText.forEngine(safe), config, cb)
             true
         } catch (e: Throwable) {
             RLog.w("tts_generate", e)
@@ -308,7 +346,10 @@ class SherpaTextToSpeech internal constructor(
                 if (gen != itemGen) return false
                 if (t.playState != AudioTrack.PLAYSTATE_PLAYING) t.play()
                 val w = t.write(samples, off, samples.size - off, AudioTrack.WRITE_NON_BLOCKING)
-                if (w > 0) written += w
+                if (w > 0) {
+                    written += w
+                    drainedAt = SystemClock.elapsedRealtime() + (written - headLocked()) * 1000 / SAMPLE_RATE
+                }
                 w
             }
             if (n < 0) return false
@@ -395,11 +436,13 @@ class SherpaTextToSpeech internal constructor(
      */
     private fun headAt(heardAt: Long): Long {
         val ago = (SystemClock.elapsedRealtime() - heardAt).coerceAtLeast(0L)
-        return (headLocked() - ago * SAMPLE_RATE / 1000).coerceAtLeast(0L)
+        val head = headLocked()
+        return EchoGuard.headInGap((head - ago * SAMPLE_RATE / 1000).coerceAtLeast(0L), head, written, drainedAt, heardAt, SAMPLE_RATE)
     }
 
     override fun setWakeWords(words: List<String>) {
         echo.wakeWords = EchoGuard.wakeRegex(words)
+        appEcho.wakeWords = echo.wakeWords
     }
 
     override fun setPlayback(p: Playback) {
@@ -429,7 +472,7 @@ class SherpaTextToSpeech internal constructor(
     }
 
     override fun trim(): Boolean {
-        if (isSpeaking || (kokoro.value == null && kitten.value == null)) return false
+        if (isSpeaking || appRequests.get() > 0 || (kokoro.value == null && kitten.value == null)) return false
         unload()
         return true
     }
@@ -487,6 +530,57 @@ class SherpaTextToSpeech internal constructor(
         TtsBench(c, loadMs, firstChunkMs, sentenceFirst, audioMs, genMs)
     }).get()
 
+    // ------------------------------------------------------------------ another app's text (E6)
+
+    /**
+     * Another app's [piece] (already core TtsText.forApp's) in [voice] at [speed], made on [worker] once the piece Robot is
+     * making now is done and before Robot's next one: its samples, whole. [stopped]: the app stopped it (checked between
+     * sherpa's sentences). Never Robot's track, focus or speaking state.
+     */
+    internal fun submitForApp(voice: VoiceChoice, speed: Float, piece: String, stopped: () -> Boolean): Future<AppPiece> {
+        val task = FutureTask { synthForApp(voice, speed, piece, stopped) }
+        appWork.add(task)
+        // Robot's run, if one is going, takes it between its pieces; else this does.
+        worker.execute(::runAppWork)
+        return task
+    }
+
+    /** Worker: every waiting piece of another app's, in order. */
+    private fun runAppWork() {
+        while (true) (appWork.poll() ?: return).run()
+    }
+
+    private fun appUsedLately(b: VoiceBundle): Boolean = appUsedAt[b]?.let { SystemClock.elapsedRealtime() - it < IdlePolicy.IDLE_MS } == true
+
+    /** Worker. */
+    private fun synthForApp(voice: VoiceChoice, speed: Float, piece: String, stopped: () -> Boolean): AppPiece {
+        if (stopped()) return AppPiece.Stopped
+        val b = voice.bundle ?: return AppPiece.Missing
+        val s = slot(b) ?: return AppPiece.Missing
+        if (!usable(voice)) return AppPiece.Missing
+        val loaded = s.value != null
+        val t0 = SystemClock.elapsedRealtime()
+        val tts = s.get { create(b, it) } ?: return AppPiece.Missing
+        if (!loaded) VoiceLog.add(VoiceEvent.VOICE_FOR_APP_LOAD, VoiceForAppProcess.VOICE, LoadBucket.of(SystemClock.elapsedRealtime() - t0))
+        appUsedAt[b] = SystemClock.elapsedRealtime()
+        val out = AppSamples()
+        // Clock times as espeak must get them in the voice's language, as for Robot's own pieces.
+        val text = PieceText.of(piece, null, null, voice.lang)
+        val config = GenerationConfig(sid = voice.speaker, speed = speed, extra = voice.lang?.let { mapOf("lang" to it) })
+        val ok = generate(tts, text, config) { x -> !stopped() && out.add(x) }
+        return when {
+            stopped() -> AppPiece.Stopped
+            out.size > 0 || ok -> AppPiece.Audio(out.toArray(), tts.sampleRate())
+            else -> AppPiece.Failed
+        }
+    }
+
+    /** E6: Robot's voice is about to play another app's [text] from [startMs] to [endMs] (elapsedRealtime). */
+    internal fun appPlayed(text: String, startMs: Long, endMs: Long) = appEcho.onPiece(startMs, endMs, text)
+
+    /** E6: a wake phrase heard at [heardAt] can't be Robot's voice reading another app's text (VoiceHub.onWake). */
+    internal fun appWakeSafe(heardAt: Long): Boolean = !appEcho.mayBeWakeEcho(heardAt)
+
     companion object {
         /** Kokoro and Kitten both produce 24 kHz. */
         const val SAMPLE_RATE = 24_000
@@ -502,11 +596,18 @@ class SherpaTextToSpeech internal constructor(
  * voice (AndroidTextToSpeech, made only when needed) when the model is missing, broken or failed, or when the
  * person picked it. The engine is chosen when a speaking run starts, so a reply never switches voices midway
  * unless the model fails to load.
+ *
+ * E6 (everyday-set-plan.md §6.3, D16): the phone's voice is another engine than Robot, always (OtherEngines.pick, which
+ * notes the default before Robot in [stateDir]). With none on the phone, "System voice" is Heart (Settings › Voice says
+ * why), and a voice whose model is missing has no stand-in: Robot stays quiet and logs it, never speaking through itself.
  */
-class VoiceOutput internal constructor(private val ctx: Context, private val sherpa: SherpaTextToSpeech) : TextToSpeech {
+class VoiceOutput internal constructor(private val ctx: Context, private val sherpa: SherpaTextToSpeech, private val stateDir: File? = null) : TextToSpeech {
     private val main = Handler(Looper.getMainLooper())
     private var system: AndroidTextToSpeech? = null
     @Volatile private var active: TextToSpeech? = null
+    /** The last sentence given to a voice sounds like "stop"; when the voice last went quiet (elapsedRealtime). */
+    @Volatile private var lastStopLike = false
+    @Volatile private var quietSince = 0L
     @Volatile private var choice = VoiceChoice.DEFAULT
     @Volatile private var rate = 1.0f
     @Volatile private var playback = Playback.ASSISTANT
@@ -519,15 +620,18 @@ class VoiceOutput internal constructor(private val ctx: Context, private val she
         sherpa.setListener { changed() }
         sherpa.onUnavailable = { pieces ->
             main.post {
-                val s = systemTts()
+                // Never back into Robot: with no other engine the pieces go unsaid.
+                val s = OtherEngines.pick(ctx, stateDir)?.let(::systemTts)
                 active = s
-                replay(pieces, s)
+                if (s != null) replay(pieces, s) else RLog.i("tts_none", "why" to RLog.Code("fallback"))
                 changed()
             }
         }
     }
 
-    private fun systemTts(): AndroidTextToSpeech = system ?: AndroidTextToSpeech(ctx).also {
+    /** The phone's voice on [engine] (never Robot's own: OtherEngines.pick), made again when the engine changed. */
+    private fun systemTts(engine: String): AndroidTextToSpeech = system?.takeIf { it.engine == engine } ?: AndroidTextToSpeech(ctx, engine).also {
+        system?.release()
         it.configure(rate, "")
         it.setPlayback(playback)
         it.setWakeWords(wakeWords)
@@ -540,21 +644,37 @@ class VoiceOutput internal constructor(private val ctx: Context, private val she
         val now = isSpeaking
         if (now == reported) return
         reported = now
-        if (!now) active = null
+        if (!now) {
+            active = null
+            quietSince = SystemClock.elapsedRealtime()
+        }
         listener?.onSpeakingChanged(now)
     }
 
-    private fun pick(): TextToSpeech = if (choice != VoiceChoice.SYSTEM && sherpa.usable(choice)) sherpa else systemTts()
+    /** The engine for a new speaking run; null when there is none (no voice downloaded and no other engine). */
+    private fun pick(): TextToSpeech? {
+        if (choice != VoiceChoice.SYSTEM && sherpa.usable(choice)) return sherpa
+        OtherEngines.pick(ctx, stateDir)?.let { return systemTts(it) }
+        // E6 (D16): Robot is the phone's only engine. "System voice" is Heart; a missing voice has no stand-in.
+        if (choice == VoiceChoice.SYSTEM && sherpa.usable(VoiceChoice.HEART)) {
+            sherpa.configure(rate, VoiceChoice.HEART.id)
+            return sherpa
+        }
+        RLog.i("tts_none", "voice" to RLog.Code(choice.id))
+        return null
+    }
 
     override fun speak(sentence: String) {
         if (sentence.isBlank()) return
-        val t = active ?: pick().also { active = it }
+        val t = active ?: pick()?.also { active = it } ?: return
+        lastStopLike = EchoGuard.soundsLikeStop(sentence)
         t.speak(sentence)
     }
 
     override fun speakOther(sentence: String, speaker: Int?, lang: String?) {
         if (sentence.isBlank()) return
-        val t = active ?: pick().also { active = it }
+        val t = active ?: pick()?.also { active = it } ?: return
+        lastStopLike = EchoGuard.soundsLikeStop(sentence)
         t.speakOther(sentence, speaker, lang)
     }
 
@@ -588,7 +708,8 @@ class VoiceOutput internal constructor(private val ctx: Context, private val she
 
     override fun trim(): Boolean = !isSpeaking && sherpa.trim()
 
-    override fun stopWordSafe(heardAt: Long): Boolean = active?.stopWordSafe(heardAt) ?: false
+    /** Between her sentences nothing plays, so nothing is guarded but the echo of a last sentence that said a word like "stop". */
+    override fun stopWordSafe(heardAt: Long): Boolean = active?.stopWordSafe(heardAt) ?: !EchoGuard.ownVoiceTail(lastStopLike, quietSince, heardAt)
 
     override fun wakeWordSafe(heardAt: Long): Boolean = active?.wakeWordSafe(heardAt) ?: true
 

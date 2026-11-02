@@ -5,6 +5,9 @@ import android.content.Context
 import app.heyrobot.core.RLog
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.backup.BackupCategory
+import app.heyrobot.core.backup.CantFinish
+import app.heyrobot.core.backup.JournalState
+import app.heyrobot.core.backup.Recovered
 import app.heyrobot.core.backup.RestoreProcess
 import app.heyrobot.core.backup.RestoreSafety
 import app.heyrobot.core.update.UpdateSettings
@@ -29,9 +32,17 @@ object RestoreApply {
         try {
             val j = RestoreFiles.journal(ctx)
             if (j.read().isEmpty()) return
-            j.recover(RestoreProcess.MAIN, { c, staging -> finish(ctx, c, staging) }, {})
+            // R3: what this process refused (CantFinish) reaches the result, which :voice wrote before it knew.
+            RestoreFiles.progress(ctx).applied(j.recover(RestoreProcess.MAIN, { c, staging -> finish(ctx, c, staging) }, {}))
         } catch (t: Throwable) {
             RLog.w("restore_apply", t)
+            // A storage error leaves a category COMMIT, retried at the next start: until then its line doesn't say restored.
+            try {
+                val waiting = RestoreFiles.journal(ctx).read().values.filter { it.process == RestoreProcess.MAIN && it.state == JournalState.COMMIT }
+                RestoreFiles.progress(ctx).applied(waiting.map { Recovered(it.category, it.state) })
+            } catch (t2: Throwable) {
+                RLog.w("restore_apply", t2)
+            }
         }
     }
 
@@ -67,9 +78,25 @@ object RestoreApply {
                 }
             }
             BackupCategory.PHONE_LOCK -> {
-                val f = (LockCodec.decode(readOrNull(File(staging, LockStore.LOCKS)) ?: return) as? LockFileRead.Ok)?.file ?: return
+                val f = (LockCodec.decode(readOrNull(File(staging, LockStore.LOCKS))) as? LockFileRead.Ok)?.file ?: throw CantFinish(LockStore.LOCKS)
                 // Through Phone lock's own writer, which tells :lock to read it again (Cmd.LOCKS, LockSignals.locksChanged).
-                LockStore.editLocks(ctx) { f }
+                // Null: this phone's file can't be read or is newer (never written over), or the write failed.
+                LockStore.editLocks(ctx) { f } ?: throw CantFinish(LockStore.LOCKS)
+            }
+            // The everyday set: merged over this phone's file as it is now (record of what went online kept on unless the
+            // backup is yours; your music app's pin always this phone's), through its store, which tells :voice.
+            BackupCategory.EVERYDAY -> if (!EverydaySettingsStore.restore(ctx, readOrNull(File(staging, BackupCategory.EVERYDAY_FILE)) ?: throw CantFinish(BackupCategory.EVERYDAY_FILE),
+                File(staging, BackupCategory.MINE_STAGED).isFile)) throw CantFinish(BackupCategory.EVERYDAY_FILE)
+            // L12, D14: only from a backup marked yours (the planner and RestoreTaint stopped any other; this is the last gate).
+            // Settings merged through their store; links.json left for :link, which reads it when it next opens.
+            BackupCategory.LINKS -> {
+                if (!File(staging, BackupCategory.MINE_STAGED).isFile) return
+                readOrNull(File(staging, BackupCategory.LINK_SETTINGS))?.let { if (!app.heyrobot.sys.LinkSettingsStore.restore(ctx, it)) throw CantFinish(BackupCategory.LINK_SETTINGS) }
+                // R8: over pairings an earlier restore left waiting, not in place of them.
+                readOrNull(File(staging, BackupCategory.LINKS_FILE))?.let { next ->
+                    val waiting = File(ctx.filesDir, app.heyrobot.core.link.LinkBackupCodec.PENDING)
+                    writeAtomic(waiting, app.heyrobot.core.link.LinkBackupCodec.pendingOver(readOrNull(waiting), next))
+                }
             }
             else -> {}
         }
@@ -77,6 +104,6 @@ object RestoreApply {
 
     /** Settings › Back up and restore closed the last restore's result. */
     fun dismiss(ctx: Context) {
-        RestoreFiles.resultFile(ctx).delete()
+        RestoreFiles.progress(ctx).dismiss()
     }
 }

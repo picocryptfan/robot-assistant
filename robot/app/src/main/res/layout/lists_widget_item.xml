@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- 1.4 Lists' widget: one open item, its tick box and words (and quantity). A tick goes to ListsTickReceiver with the
+     item's id only (the template's fill-in, RemoteViews.EXTRA_CHECKED added by the system). -->
+<CheckBox xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/lists_widget_item"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:minHeight="48dp"
+    android:buttonTint="@color/lists_widget_accent"
+    android:ellipsize="end"
+    android:maxLines="2"
+    android:paddingStart="8dp"
+    android:textColor="@color/lists_widget_ink"
+    android:textSize="16sp" />

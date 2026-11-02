@@ -225,7 +225,8 @@ class BrainProtocolTest {
      * kind may, and every one-shot without a picture is the same JSON as before 1.4.
      */
     @Test fun fileOneShotsCrossAndOnlyAFileReadCarriesAPicture() {
-        assertEquals(listOf("TRANSLATE", "SUMMARY_MAP", "SUMMARY_REDUCE", "WEB_ANSWER", "FILE_READ", "FILE_ANSWER"), OneShotKind.entries.map { it.name })
+        // LS4, deliberately: LIST_SPLIT appended (lists-plan.md §8.3), the others unchanged and in their order.
+        assertEquals(listOf("TRANSLATE", "SUMMARY_MAP", "SUMMARY_REDUCE", "WEB_ANSWER", "FILE_READ", "FILE_ANSWER", "LIST_SPLIT"), OneShotKind.entries.map { it.name })
         val keys = setOf("kind", "priority", "system", "text", "maxChunks")
         val translate = BrainMsg.OneShot(OneShotKind.TRANSLATE, Priority.INTERPRETER, Prompt.TRANSLATE_FR_EN, "Salut", 120)
         assertEquals(keys, translate.toJson().keys().asSequence().toSet())
@@ -248,6 +249,14 @@ class BrainProtocolTest {
             assertEquals(v, false, (BrainMsg.decode(BrainProtocol.REQ_ONE_SHOT, """{"kind":"FILE_READ","priority":"SUMMARY","system":"s","text":"t","hasImage":$v}""") as BrainMsg.OneShot).hasImage)
         // NO_VISION is the refusal a FILE_READ's caller gets from a model that can't see.
         assertEquals(BrainMsg.Error(BrainError.NO_VISION, "text only"), roundTrip(BrainProtocol.EV_ERROR, BrainMsg.Error(BrainError.NO_VISION, "text only")))
+    }
+    /** 1.4 Lists (LS4, lists-plan.md §8.3): LIST_SPLIT is a one-shot like the others, at the panel's priority, with no picture. */
+    @Test fun aListSplitCrossesAsAnyOneShot() {
+        val split = app.heyrobot.core.lists.ListSplit.request("eggs oat milk bread")
+        assertEquals(setOf("kind", "priority", "system", "text", "maxChunks"), split.toJson().keys().asSequence().toSet())
+        assertEquals("LIST_SPLIT", split.toJson().getString("kind"))
+        assertEquals(split, roundTrip(BrainProtocol.REQ_ONE_SHOT, split))
+        assertNull(BrainMsg.decode(BrainProtocol.REQ_ONE_SHOT, """{"kind":"LIST_SPLIT","priority":"PANEL","system":"s","text":"t","hasImage":true}"""))
     }
 }
 

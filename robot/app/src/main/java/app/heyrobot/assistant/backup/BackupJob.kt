@@ -2,6 +2,8 @@
 package app.heyrobot.assistant.backup
 
 import android.content.Context
+import app.heyrobot.sys.ListsFiles
+import app.heyrobot.sys.ListsVault
 import android.net.Uri
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
@@ -17,6 +19,7 @@ import app.heyrobot.core.backup.BackupFormat
 import app.heyrobot.core.backup.BackupHeader
 import app.heyrobot.core.backup.BackupKdf
 import app.heyrobot.core.backup.BackupManifest
+import app.heyrobot.core.backup.BackupReadBack
 import app.heyrobot.core.backup.BackupWriter
 import app.heyrobot.core.backup.CategoryCount
 import app.heyrobot.core.backup.KdfParams
@@ -45,13 +48,17 @@ internal class BackupJob(private val ctx: Context, private val chosen: Set<Backu
                          private val videos: Boolean = true,
                          /** 1.4: what Back up now offers next time (your ticks, a category left out because it couldn't be opened included). */
                          private val remember: Set<BackupCategory> = chosen,
+                         /** 1.4: Robot Lists in this process (a test's own vault with software keys). */
+                         private val lists: () -> ListsVault = { ListsFiles.vault(ctx) },
                          private val files: () -> FilesVault = { RobotFiles.vault(ctx) }) {
     /** Where the work is: [category] being written (null: starting), [done] of [entries], or [checking] the saved file. */
     data class Progress(val category: BackupCategory?, val done: Int, val entries: Int, val checking: Boolean = false)
 
     sealed class Outcome {
         /** Saved and checked: [bytes] long, [categories] in it; [unreadableKeys]: helpers whose key couldn't be read now. */
-        class Done(val bytes: Long, val categories: Set<BackupCategory>, val unreadableKeys: List<String>) : Outcome()
+        class Done(val bytes: Long, val categories: Set<BackupCategory>, val unreadableKeys: List<String>, val linksLeftOut: Boolean = false,
+                   /** R4: files of Robot Files that couldn't be read, and private codes left out because Memory couldn't be. */
+                   val filesLeftOut: Int = 0, val codesLeftOut: Boolean = false) : Outcome()
         class Failed(val code: BackupCode) : Outcome()
         data object Cancelled : Outcome()
     }
@@ -60,23 +67,40 @@ internal class BackupJob(private val ctx: Context, private val chosen: Set<Backu
 
     /** 1.4: when the job ended with [BackupCode.TOO_BIG], about how big the backup would have been. */
     @Volatile var tooBig = 0L
+    /** F20: the category a Failed outcome's OVER_CAP or CHECK_REFUSED names. */
+    @Volatile var refused: BackupCategory? = null
 
     private class Stop : Exception()
 
+    /** F24: until the first write, a document that isn't known to be new and empty: a refusal or a cancel leaves it as it was. */
+    private var keep = false
+
     fun run(uri: Uri, passphrase: CharSequence, progress: (Progress) -> Unit): Outcome {
         val cr = ctx.contentResolver
+        keep = knownSize(uri) != 0L
         if (Assistant.locked(ctx)) return failed(BackupCode.LOCKED, null)
+        // F4: the window recreated behind the file picker forgets the passphrase: never a file sealed with none.
+        if (passphrase.isEmpty()) return failed(BackupCode.FAILED, uri)
         val settings = SettingsStore.load(ctx)
         progress(Progress(null, 0, 0))
         val gathered = try {
-            BackupSources.gather(ctx, settings, chosen, recordings, pictures, videos, files)
+            BackupSources.gather(ctx, settings, chosen, recordings, pictures, videos, lists = lists, files = files)
         } catch (_: BackupSources.MemoryUnreadable) {
             return failed(BackupCode.MEMORY_UNREADABLE, uri)
         } catch (_: BackupSources.FilesUnreadable) {
             return failed(BackupCode.FILES_UNREADABLE, uri)
+        } catch (_: BackupSources.ListsUnreadable) {
+            return failed(BackupCode.LISTS_UNREADABLE, uri)
         } catch (t: Throwable) {
             RLog.w("backup_gather", t)
             return failed(BackupCode.FAILED, uri)
+        }
+        // F20: more of a category than a restore takes (Transcripts' 5,000): refused here, whole, as a Replace with part of it
+        // would delete the rest on your phone. You choose to leave it out.
+        BackupReadBack.overCap(gathered.sources.map { it.category to it.name })?.let { c ->
+            gathered.secrets.forEach { it.close() }
+            refused = c
+            return failed(BackupCode.OVER_CAP, uri)
         }
         // 1.4: over the 32 GiB a backup holds (Robot Files' videos, transcripts' recordings): refused before anything is written.
         val planned = gathered.sources.sumOf { it.estimate } + gathered.secrets.sumOf { it.bytes.size.toLong() }
@@ -97,13 +121,15 @@ internal class BackupJob(private val ctx: Context, private val chosen: Set<Backu
                     c.id to CategoryCount(gathered.sources.count { it.category == c }.toLong() + gathered.secrets.count { it.category == c },
                         gathered.sources.filter { it.category == c }.sumOf { it.estimate })
                 }
+                // LS12: each category's name in words too, so a Robot that doesn't know one can say which part it leaves out.
                 val manifest = BackupManifest(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE.toLong(), System.currentTimeMillis(), counts,
-                    keys = BackupCategory.KEYS in categories)
+                    keys = categories.any { it in BackupCategory.KEY_CATEGORIES }, names = categories.associate { it.id to app.heyrobot.core.backup.BackupWords.names(it) })
                 val total = gathered.sources.size + gathered.secrets.size
                 var written = 0
                 val wrote = HashSet<BackupCategory>()
                 try {
                     val out = cr.openOutputStream(uri, "wt") ?: return@job failed(BackupCode.WRITE_FAILED, uri)
+                    keep = false
                     BackupWriter(BufferedOutputStream(out, BackupFormat.CHUNK), header, key).use { w ->
                         val c = BackupContainerWriter(w)
                         c.manifest(manifest)
@@ -141,19 +167,26 @@ internal class BackupJob(private val ctx: Context, private val chosen: Set<Backu
                 }
                 // Read the whole saved file back: every chunk, every record, the end's counts.
                 progress(Progress(null, written, total, checking = true))
-                val ok = try {
-                    RestoreReader.verify({ cr.openInputStream(uri) ?: throw java.io.FileNotFoundException() }, header, key).entries == written.toLong()
+                val check = try {
+                    BackupReadBack.check(RestoreReader.verify({ cr.openInputStream(uri) ?: throw java.io.FileNotFoundException() }, header, key), written.toLong())
                 } catch (t: Throwable) {
                     RLog.w("backup_check", t)
-                    false
+                    BackupReadBack.Result.Mismatch
                 }
-                if (!ok) return@job failed(BackupCode.CHECK_FAILED, uri)
+                when (check) {
+                    BackupReadBack.Result.Ok -> {}
+                    BackupReadBack.Result.Mismatch -> return@job failed(BackupCode.CHECK_FAILED, uri)
+                    is BackupReadBack.Result.Refused -> {
+                        refused = check.category
+                        return@job failed(BackupCode.CHECK_REFUSED, uri)
+                    }
+                }
                 val bytes = size(uri)
                 val now = System.currentTimeMillis()
                 BackupFiles.saveState(ctx, BackupFiles.state(ctx).after(now, wrote, bytes, checked = true)
                     .copy(chosen = remember, recordings = recordings, pictures = pictures, videos = videos))
                 log(BackupCode.DONE_CHECKED, wrote, bytes)
-                Outcome.Done(bytes, wrote, gathered.unreadableKeys)
+                Outcome.Done(bytes, wrote, gathered.unreadableKeys, gathered.linksLeftOut, gathered.filesLeftOut(), gathered.codesLeftOut)
             }
         } finally {
             gathered.secrets.forEach { it.close() }
@@ -177,6 +210,7 @@ internal class BackupJob(private val ctx: Context, private val chosen: Set<Backu
 
     /** The partial or unchecked file goes: the provider deletes it, or at least it is emptied. */
     private fun delete(uri: Uri) {
+        if (keep) return
         try {
             if (DocumentsContract.deleteDocument(ctx.contentResolver, uri)) return
         } catch (t: Throwable) {
@@ -185,9 +219,11 @@ internal class BackupJob(private val ctx: Context, private val chosen: Set<Backu
         try { ctx.contentResolver.openOutputStream(uri, "wt")?.close() } catch (_: Throwable) {}
     }
 
-    private fun size(uri: Uri): Long = try {
-        ctx.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { c -> if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else 0L } ?: 0L
-    } catch (_: Throwable) { 0L }
+    private fun size(uri: Uri): Long = knownSize(uri) ?: 0L
+
+    private fun knownSize(uri: Uri): Long? = try {
+        ctx.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { c -> if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else null }
+    } catch (_: Throwable) { null }
 
     /** A stream that stops the job between two reads once Cancel is tapped (a recording may be a gigabyte). */
     private inner class Stoppable(input: InputStream) : FilterInputStream(input) {

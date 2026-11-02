@@ -124,6 +124,12 @@ private fun Panel(st: PanelState, actions: PanelActions, onClose: () -> Unit) {
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
 
+    LaunchedEffect(st.fillInput) {
+        st.fillInput?.let {
+            input = (input.trim() + " " + it).trim()
+            actions.fillTaken()
+        }
+    }
     LaunchedEffect(st.focusRequest) {
         if (st.focusRequest > 0) {
             try { focus.requestFocus() } catch (_: Exception) {}
@@ -335,17 +341,18 @@ private fun ColumnScope.PanelNotices(st: PanelState, actions: PanelActions) {
 
 /** A panel turn as both looks draw it (ui/common TurnUi); its buttons and footer in [l] (1.1: the menus' language). */
 internal fun UiTurn.toTurnUi(l: Langs = Langs.EN) = TurnUi(
-    id = id, user = role == TurnRole.USER, text = text, attachment = attachment, thumb = thumb,
+    id = id, user = role == TurnRole.USER, text = text, attachment = attachment, thumb = thumb, fileName = fileName, shared = shared,
     actions = actions.map {
         ActionView(it.id, it.tool, it.summary, it.status, it.detail, it.icon, it.body, it.choices, it.confirm, it.undo != null, it.more,
-            cancel = it.cancel, openApp = it.handOff?.let { h -> (PanelFiles.label(h) ?: SettingsPage.labelText(h) ?: PanelStrings.openCheogram()).render(l) }, picture = it.picture, remember = it.remember,
-            allowContacts = it.allowContacts, termux = it.termux, chips = it.chips, files = it.files)
+            cancel = it.cancel, openApp = it.handOff?.let { h -> (PanelFiles.label(h) ?: PanelLists.label(h) ?: SettingsPage.labelText(h) ?: PanelStrings.openCheogram()).render(l) }, picture = it.picture, remember = it.remember,
+            allowContacts = it.allowContacts, termux = it.termux, chips = it.chips, files = it.files, lists = it.lists)
     },
     streaming = streaming, stopped = stopped, error = error, helper = fromHelper, readBack = readBack, by = by, home = home,
     footer = if (role == TurnRole.USER) emptyList() else replyFooterText(sources, cost, by).map { it.render(l) },
-    offer = offer?.let { OfferView(it.api, it.text, it.sends, it.preview, it.asWell, it.name, it.app) },
+    offer = offer?.let { OfferView(it.api, it.text, it.sends, it.preview, it.asWell, it.name, it.app, it.keep, it.note) },
     reply = reply,
     web = web,
+    list = list,
 )
 
 @Composable
@@ -363,11 +370,14 @@ private fun Messages(st: PanelState, actions: PanelActions, modifier: Modifier) 
             dismissOffer = actions::dismissOffer,
             reply = actions::reply,
             openSource = actions::openSource,
+            list = actions::listCard,
+            saveFile = { l -> actions.send(PanelStrings.fileThisWords().render(l)) },
         )
     }
     val reversed = remember(st.turns) { st.turns.asReversed() }
     // 1.0: what was said while the phone was locked, set apart (ui/common LockedTurns).
     val saidLocked = remember(st.turns) { st.turns.map { it.locked } }
+    val savable by PanelFiles.savable.collectAsState()
     val list = rememberLazyListState()
     // Follow the newest message. A LazyColumn keeps the item on screen in place when one is added below it, so a
     // new message would land out of sight; jump to it unless the person has scrolled up to read.
@@ -401,7 +411,7 @@ private fun Messages(st: PanelState, actions: PanelActions, modifier: Modifier) 
         itemsIndexed(reversed, key = { _, t -> t.id }) { i, t ->
             // 1.0: with replies not spoken, TalkBack reads each answer once it is complete (ui/common answerSemantics).
             val l = LocalLangs.current
-            val turn = remember(t, st.speak, l) { t.toTurnUi(l).copy(announce = !st.speak) }
+            val turn = remember(t, st.speak, l, savable) { t.toTurnUi(l).copy(announce = !st.speak, canSaveFile = t.id == savable) }
             val divider = lockedDividerAbove(saidLocked, reversed.size - 1 - i)
             WithLockedDivider(divider) { TurnView(turn, turnActions) }
         }
@@ -426,11 +436,15 @@ private fun ColumnScope.PanelInputArea(
     focus: FocusRequester,
     actions: PanelActions,
 ) {
-    ClassicContextRow(st.draft?.kind, st.draft?.thumb, readClaude = st.claudeScreen && !st.busy, onRemove = actions::removeDraft,
+    // E7: what another app shared, with its buttons (assistant/ask AskChip); else the screen or photo as before.
+    val shared = st.draft?.shared
+    if (shared != null) app.heyrobot.assistant.ask.AskChip(shared, st.busy, onRemove = actions::removeDraft, onAsk = actions::askShared)
+    else ClassicContextRow(st.draft?.kind, st.draft?.thumb, name = st.draft?.name, readClaude = st.claudeScreen && !st.busy, onRemove = actions::removeDraft,
         onReadClaude = actions::readClaudeAnswer)
     AnimatedVisibility(attachOpen && st.draft == null && !st.busy) {
         ClassicAttachRow(st.locked, onDone = { onAttachOpen(false) },
-            onCamera = { actions.openCapture(CaptureActivity.MODE_CAMERA) }, onPhotos = { actions.openCapture(CaptureActivity.MODE_PHOTOS) })
+            onCamera = { actions.openCapture(CaptureActivity.MODE_CAMERA) }, onPhotos = { actions.openCapture(CaptureActivity.MODE_PHOTOS) },
+            onFile = { actions.openCapture(CaptureActivity.MODE_FILE) })
     }
     val state = ClassicInputState(
         busy = st.busy, confirming = st.phase == Phase.CONFIRMING, speaking = st.phase == Phase.SPEAKING,

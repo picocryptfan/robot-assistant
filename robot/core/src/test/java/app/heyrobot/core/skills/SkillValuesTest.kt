@@ -17,6 +17,8 @@ class SkillValuesTest {
                 ParamType.TEXT -> SkillStep.of(StepKind.SEND_TEXT, mapOf("to" to "Sam", "message" to "{{${p.name}}}"))
                 ParamType.APP -> SkillStep.of(StepKind.OPEN_APP, mapOf("name" to "{{${p.name}}}"))
                 ParamType.PLACE -> SkillStep.of(StepKind.MAPS_SEARCH, mapOf("query" to "{{${p.name}}}"))
+                // Connections plan's types: the router doesn't read them from your words (the model fills them).
+                else -> error("not a 1.1 question type")
             }
         }
         return Skill("s-value1", 1, "Thing", listOf("thing"), listOf("truc"), params.toList(), steps, SkillLevel.ASK_FIRST,

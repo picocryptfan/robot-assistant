@@ -201,4 +201,13 @@ class ConversationCaptureTest {
         assertEquals(-120f, SegmentCutter.level(0.0))
         assertEquals(-20f, SegmentCutter.level(0.01), 0.001f)
     }
+
+    @Test fun yourPauseAndTheHeatCloseTheMicrophoneOtherPausesKeepIt() {
+        assertTrue(ConversationRules.closesMic(listOf(ConvPause.USER)))
+        assertTrue(ConversationRules.closesMic(listOf(ConvPause.THERMAL)))
+        assertTrue(ConversationRules.closesMic(listOf(ConvPause.PANEL, ConvPause.USER)))
+        assertFalse(ConversationRules.closesMic(listOf(ConvPause.PANEL)))
+        assertFalse(ConversationRules.closesMic(listOf(ConvPause.CALL, ConvPause.MIC_TAKEN)))
+        assertFalse(ConversationRules.closesMic(emptyList()))
+    }
 }

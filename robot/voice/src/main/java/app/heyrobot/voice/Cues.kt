@@ -22,7 +22,12 @@ object Cues {
      */
     fun listening(call: Boolean) = tone(ToneGenerator.TONE_PROP_BEEP, 150, if (call) AudioManager.STREAM_VOICE_CALL else AudioManager.STREAM_MUSIC)
 
+    /** The everyday set's music (everyday-set-plan.md §3.3): a short, quiet tick for "♪ Paused" and "♪ Next song", never words. */
+    fun music() = tone(ToneGenerator.TONE_PROP_ACK, 120)
+
     private fun tone(type: Int, ms: Int, stream: Int = AudioManager.STREAM_MUSIC) {
+        // The music's note (TurnFocus): a cue of Robot's own on the music stream isn't someone's music playing.
+        if (stream == AudioManager.STREAM_MUSIC) TurnFocus.cueStarts(ms)
         try {
             val t = ToneGenerator(stream, 70)
             t.startTone(type, ms)

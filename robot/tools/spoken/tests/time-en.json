@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "id": "time-en",
+  "title": "The time, asked by voice in English, answered without the model",
+  "safety": "read",
+  "testBench": ["v11-voice-times"],
+  "setup": [{"set": "speakReplies", "value": "VOICE"}],
+  "steps": [
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "What time is it?", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 30},
+    {"do": "check", "what": "heard", "contains": "what time is it"},
+    {"do": "check", "what": "reply", "regex": "\\d"},
+    {"do": "end"}
+  ]
+}

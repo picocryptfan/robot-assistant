@@ -150,6 +150,37 @@ object MemoryPanel {
         return l
     }
 
+    /** What became of a choice of who answers. */
+    enum class ChoiceSaved { SAVED, NONE, OFF, UNLOCK, FULL, FAILED }
+
+    /** Your choice for [kind] that Robot may follow now: with Memory on, and on a locked phone only with "Use memory on the lock screen". Background thread. */
+    fun choiceFor(kind: String): app.heyrobot.core.memory.MemoryChoice? {
+        val s = settings()
+        if (!s.on || (lockedNow() && !s.onLockScreen)) return null
+        val f = (load() as? MemoryLoad.Loaded)?.file ?: return null
+        return app.heyrobot.core.memory.MemoryChoices.find(f.items, kind, clock())
+    }
+
+    /** Keeps [c] as a memory item in the words [text], replacing your earlier choice for its kind. Only your own words or tap reach here. Background thread. */
+    fun keepChoice(c: app.heyrobot.core.memory.MemoryChoice, text: String, spoken: Boolean): ChoiceSaved {
+        if (!settings().on) return ChoiceSaved.OFF
+        if (!app.heyrobot.core.memory.MemoryAccess.writes(lockedNow())) return ChoiceSaved.UNLOCK
+        val now = clock()
+        val item = MemoryItem(app.heyrobot.core.memory.MemoryIds.newId(now), text, source = if (spoken) MemorySource.SAID else MemorySource.TYPED, createdAt = now, updatedAt = now, choice = c)
+        var full = false
+        val l = update { f -> app.heyrobot.core.memory.MemoryChoices.put(f, item) ?: f.also { full = true } }
+        return if (l !is MemoryLoad.Loaded) ChoiceSaved.FAILED else if (full) ChoiceSaved.FULL else ChoiceSaved.SAVED
+    }
+
+    /** Forgets your choice for [kind]. Background thread. */
+    fun dropChoice(kind: String): ChoiceSaved {
+        if (!settings().on) return ChoiceSaved.OFF
+        if (!app.heyrobot.core.memory.MemoryAccess.writes(lockedNow())) return ChoiceSaved.UNLOCK
+        var gone = 0
+        val l = update { f -> app.heyrobot.core.memory.MemoryChoices.drop(f, kind, clock()).let { (g, out) -> gone = out.size; g } }
+        return if (l !is MemoryLoad.Loaded) ChoiceSaved.FAILED else if (gone == 0) ChoiceSaved.NONE else ChoiceSaved.SAVED
+    }
+
     /** The panel hid, Settings › Memory changed, or a new conversation: what was decrypted goes. */
     @Synchronized
     fun drop() {
@@ -410,7 +441,7 @@ object MemoryPanel {
         val f = (load() as? MemoryLoad.Loaded)?.file ?: return emptyList()
         val ids = given.toSet()
         // 1.4: never a filing rule (MemoryEdits.forQuestions).
-        return f.items.filter { (it.id in ids || it.pinned) && it.filing == null }.map { it.text }
+        return f.items.filter { (it.id in ids || it.pinned) && it.filing == null && it.choice == null }.map { it.text }
     }
 
     /** One more answer used [ids] (a counter and a time, no text): background thread, after the answer. Not counted on a locked phone (nothing is written there). */

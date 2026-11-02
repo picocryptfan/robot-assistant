@@ -58,6 +58,9 @@ object PhraseWire {
         is Arg.Sub -> JSONObject().put("t", "sub").put("v", toJson(a.p))
         is Arg.Ui -> JSONObject().put("t", "ui").put("v", a.label.id).put("en", a.label.render(Lang.EN))
         is Arg.Android -> JSONObject().put("t", "android").put("v", a.path.name)
+        // The everyday set's sums: the exact decimal as text (never through a Double), and dollars in cents.
+        is Arg.Dec -> JSONObject().put("t", "dec").put("v", a.x.toString()).put("d", a.decimals)
+        is Arg.Dollars -> JSONObject().put("t", "dollars").put("v", a.cents)
     }
 
     private fun arg(o: JSONObject?, known: (String) -> Msg?): Arg? {
@@ -79,6 +82,8 @@ object PhraseWire {
                     if (parts.all { it != null }) Arg.Ui(UiLabel(parts.filterNotNull())) else Arg.Plain(o.optString("en"))
                 }
                 "android" -> AndroidPath.entries.firstOrNull { it.name == o.optString("v") }?.let { Arg.Android(it) }
+                "dec" -> o.getString("v").takeIf { it.length <= 64 }?.let { Arg.Dec(java.math.BigDecimal(it), o.optInt("d", 6).coerceIn(0, 6)) }
+                "dollars" -> Arg.Dollars(o.getLong("v"))
                 else -> null
             }
         } catch (_: Exception) {

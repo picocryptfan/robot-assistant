@@ -5,8 +5,9 @@ import android.content.Intent
 import app.heyrobot.Flat
 import app.heyrobot.Source
 import app.heyrobot.assertHas
-import app.heyrobot.assertInOrder
 import app.heyrobot.assistant.car.CallPlacer
+import app.heyrobot.core.ActionStatus
+import app.heyrobot.core.i18n.ToolStrings
 import app.heyrobot.core.car.CallRules
 import app.heyrobot.core.car.CallSetting
 import app.heyrobot.core.car.CallWay
@@ -72,21 +73,25 @@ class CallPlacerTest {
         assertEquals(1, Regex("override val appCalls").findAll(pc).count())
     }
 
-    @Test fun duringALockAnEmergencyNumberOpensTheEmergencyDialer() {
+    @Test fun duringALockARefusedCallNamesWhatIsMissing() {
+        // fb11: a number outside the lock's People ends the same way however it's asked: said first, instead of "ask again".
+        for (permission in listOf(true, false)) for (ask in listOf(true, false))
+            assertEquals(ToolStrings.callLockNotAllowed(), CallPlacer.lockRefusal(numberAllowed = false, phonePermission = permission, askFirst = ask).text)
+        val perm = CallPlacer.lockRefusal(numberAllowed = true, phonePermission = false, askFirst = true)
+        assertEquals(ActionStatus.NEEDS_PERMISSION, perm.status)
+        assertEquals(ToolStrings.callLockPermission(), perm.text)
+        assertEquals(ToolStrings.callLockJustDoIt(), CallPlacer.lockRefusal(numberAllowed = true, phonePermission = true, askFirst = false).text)
+        assertEquals(ToolStrings.callLockCovered(), CallPlacer.lockRefusal(numberAllowed = true, phonePermission = true, askFirst = true).text)
+    }
+
+    /** What runs is in CallPlacerLockTest; this is where the action may be named. */
+    @Test fun theEmergencyDialerIsNamedOnlyWhereItIsOpened() {
         val root = File(System.getProperty("robot.rootDir"), "app/src/main/java/app/heyrobot")
         fun flat(p: String) = Flat(Source.strip(File(root, p).readText(), keepStrings = true))
-        // 1.1, Phone lock §6: a lock covers the ordinary dialer but never the phone's own emergency dialer, so during a lock
-        // an emergency number goes there first, and to the ordinary dialer only when it can't open, saying so.
-        assertInOrder(flat("assistant/car/CallPlacer.kt").body("fun run("),
-            "val locked = a.emergency && PhoneLockNow.on(ctx)",
-            "val sos = (locked || a.emergency && Assistant.keyguard(ctx)) && LockSignals.emergencyDialer(ctx, Uri.fromParts(\"tel\", CallTarget.dialable(number), null))",
-            "val ok = sos || try { launch(intentFor(number, way, a.emergency)",
-            "locked && !sos -> ToolStrings.dialerCovered()",
-            "a.emergency -> ToolStrings.dialerWithNumber()")
         // The cover's Emergency call opens the same one, a system app's only, never another app's. The action is named only where it
-        // is opened (LockSignals, every process) and where the gate learns which app it is (LockEngine, :lock).
+        // is opened (LockSignals, every process); the gate (LockEngine, :lock) asks LockSignals which app it is, so the two can't differ.
         assertHas(flat("lock/LockCoverActivity.kt").body("private fun emergency("), "LockSignals.emergencyDialer(this)")
         val users = root.walkTopDown().filter { it.isFile && it.extension == "kt" && it.readText().contains("EMERGENCY_DIAL") }.map { it.name }.sorted().toList()
-        assertEquals(listOf("LockEngine.kt", "LockSignals.kt"), users)
+        assertEquals(listOf("LockSignals.kt"), users)
     }
 }

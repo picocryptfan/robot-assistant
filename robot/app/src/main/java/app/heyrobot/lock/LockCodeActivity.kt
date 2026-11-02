@@ -29,6 +29,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -45,7 +46,11 @@ import app.heyrobot.sys.AppPages
 import app.heyrobot.ui.common.RIcons
 import app.heyrobot.ui.theme.RobotTheme
 import app.heyrobot.ui.theme.str
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.ZonedDateTime
 
@@ -55,6 +60,7 @@ import java.time.ZonedDateTime
 // lock (for its result: an edit session, a code set or removed). The waits after wrong tries live in state.json, and in
 // this process too ([CodePad.Floor]) for tries state.json couldn't take. Nothing the pad asks of the engine or the
 // Keystore can end :lock: a failure leaves the code, the key and the locks as they were and says so on the pad.
+// state.json, code.json and the Keystore are read off the main thread (Dispatchers.IO): the keys stay off until they're in.
 
 class LockCodeActivity : ComponentActivity() {
     private lateinit var vault: LockCodeVault
@@ -76,21 +82,14 @@ class LockCodeActivity : ComponentActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         vault = LockCodeVault(applicationContext)
         pad = CodePad(vault, engine, FLOOR)
-        // state.codeSet follows code.json first, so a set or remove whose state write failed is put right here.
-        pad.reconcile()
-        val session = LockStore.readState(this).editOpen(System.currentTimeMillis())
-        when (purpose) {
-            !in PURPOSES -> return finish()
-            // Removing the code, or setting one over it, only inside an edit session (the code was just typed).
-            LockSignals.PURPOSE_REMOVE -> {
-                if ((!vault.isSet() || session) && pad.remove()) setResult(Activity.RESULT_OK)
-                return finish()
+        if (purpose !in PURPOSES) return finish()
+        lifecycleScope.launch {
+            when (withContext(Dispatchers.IO) { pad.open(purpose, System.currentTimeMillis()) }) {
+                CodePad.Open.SHOW -> setContent { RobotTheme { Pad() } }
+                CodePad.Open.DONE -> { setResult(Activity.RESULT_OK); finish() }
+                CodePad.Open.CLOSE -> finish()
             }
-            LockSignals.PURPOSE_SET -> if (vault.isSet() && !session) return finish()
-            // No code: nothing to check (Settings asks for one before With the code or Someone else).
-            else -> if (!vault.isSet()) return finish()
         }
-        setContent { RobotTheme { Pad() } }
     }
 
     /**
@@ -141,35 +140,52 @@ class LockCodeActivity : ComponentActivity() {
         val failed = stringResource(R.string.lock_code_failed)
         val notNow = stringResource(R.string.lock_code_not_now)
         val notSaved = stringResource(R.string.lock_code_not_saved)
-        // Read again after each try and when a wait ends, so the keys come back on by themselves.
+        // Read again after each try and when a wait ends, so the keys come back on by themselves. Off the main thread: until
+        // the tries are in, and while a code is checked or saved, the keys are off.
         var stamp by remember { mutableStateOf(0) }
-        val tries = remember(stamp, message) { pad.tries() }
-        val now = System.currentTimeMillis()
-        val waitUntil = LockCodeRules.nextTry(tries, now).takeIf { !setting && it > now }
+        var tries by remember { mutableStateOf<CodeTries?>(null) }
+        var working by remember { mutableStateOf(false) }
+        val scope = rememberCoroutineScope()
+        LaunchedEffect(stamp, message) { tries = withContext(Dispatchers.IO) { pad.tries() } }
+        val c = LockEngine.clocks(applicationContext)
+        val now = c.nowMs
+        val waitUntil = tries?.let { t -> LockCodeRules.nextTry(t, now, c.elapsed, c.boot).takeIf { !setting && it > now } }
         LaunchedEffect(waitUntil) { if (waitUntil != null) { delay((waitUntil - System.currentTimeMillis()).coerceAtLeast(0) + 250); stamp++ } }
 
         fun submit() {
             val code = typed
             typed = ""
+            if (working) return
             if (!LockCodeRules.valid(code)) { message = short; return }
             if (setting) {
                 val f = first
                 when {
                     f == null -> { first = code; message = null }
                     f != code -> { first = null; message = mismatch }
-                    pad.set(code) -> { setResult(Activity.RESULT_OK); finish() }
-                    else -> { first = null; message = failed }
+                    else -> {
+                        working = true
+                        scope.launch {
+                            val saved = withContext(Dispatchers.IO) { pad.set(code) }
+                            working = false
+                            if (saved) { setResult(Activity.RESULT_OK); finish() } else { first = null; message = failed }
+                        }
+                    }
                 }
                 return
             }
-            when (pad.check(code, System.currentTimeMillis())) {
-                CodePad.Done.RIGHT -> done()
-                CodePad.Done.WRONG -> { message = wrongText; stamp++ }
-                CodePad.Done.WAIT -> stamp++
-                CodePad.Done.NOT_NOW -> { message = notNow; stamp++ }
-                CodePad.Done.NOT_SAVED -> { message = notSaved; stamp++ }
-                CodePad.Done.LOST -> lost = true
-                CodePad.Done.NO_CODE -> finish()
+            working = true
+            scope.launch {
+                val result = withContext(Dispatchers.IO) { LockEngine.clocks(applicationContext).let { c -> pad.check(code, c.nowMs, c.elapsed, c.boot) } }
+                working = false
+                when (result) {
+                    CodePad.Done.RIGHT -> done()
+                    CodePad.Done.WRONG -> { message = wrongText; stamp++ }
+                    CodePad.Done.WAIT -> stamp++
+                    CodePad.Done.NOT_NOW -> { message = notNow; stamp++ }
+                    CodePad.Done.NOT_SAVED -> { message = notSaved; stamp++ }
+                    CodePad.Done.LOST -> lost = true
+                    CodePad.Done.NO_CODE -> finish()
+                }
             }
         }
 
@@ -194,7 +210,7 @@ class LockCodeActivity : ComponentActivity() {
                         color = MaterialTheme.colorScheme.error)
                     message != null -> Text(message!!, color = MaterialTheme.colorScheme.error)
                 }
-                val enabled = waitUntil == null
+                val enabled = tries != null && waitUntil == null && !working
                 for (row in listOf(listOf(1, 2, 3), listOf(4, 5, 6), listOf(7, 8, 9))) {
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         for (d in row) Key(d.toString(), enabled && typed.length < LockCodeRules.MAX_DIGITS) { typed += d.toString() }
@@ -252,6 +268,28 @@ internal class CodePad(private val vault: LockCodeVault, private val engine: Eng
         @Volatile var tries: CodeTries = LockCodeRules.RIGHT
     }
 
+    /** What the pad does when it opens: show the keys, or finish with a result (a code removed) or without one. */
+    enum class Open { SHOW, DONE, CLOSE }
+
+    /**
+     * Opened for [purpose] at [now]; reads state.json, code.json and may write both, so never on the main thread.
+     * state.codeSet follows code.json first, so a set or remove whose state write failed is put right here. Removing the
+     * code, or setting one over it, only inside an edit session (the code was just typed); with no code there's nothing to
+     * check (Settings asks for one before With the code or Someone else). A read that fails closes the pad.
+     */
+    fun open(purpose: String, now: Long): Open = try {
+        reconcile()
+        val session = try { engine.state().editOpen(now) } catch (t: Throwable) { RLog.w("lock_pad_state", t); false }
+        when (purpose) {
+            LockSignals.PURPOSE_REMOVE -> if ((!vault.isSet() || session) && remove()) Open.DONE else Open.CLOSE
+            LockSignals.PURPOSE_SET -> if (vault.isSet() && !session) Open.CLOSE else Open.SHOW
+            else -> if (vault.isSet()) Open.SHOW else Open.CLOSE
+        }
+    } catch (t: Throwable) {
+        RLog.w("lock_pad_open", t)
+        Open.CLOSE
+    }
+
     enum class Done {
         /** Right, and what it was for is saved. */
         RIGHT,
@@ -284,10 +322,10 @@ internal class CodePad(private val vault: LockCodeVault, private val engine: Eng
         }
     }
 
-    /** A typed code at [now], checked for what the pad was opened for. */
-    fun check(typed: String, now: Long): Done {
+    /** A typed code at these clocks, checked for what the pad was opened for. */
+    fun check(typed: String, now: Long, elapsed: Long, boot: Int?): Done {
         val before = tries()
-        if (!LockCodeRules.mayTry(before, now)) return Done.WAIT
+        if (!LockCodeRules.mayTry(before, now, elapsed, boot)) return Done.WAIT
         return when (vault.check(typed)) {
             LockCodeVault.Check.Right -> {
                 floor.tries = LockCodeRules.RIGHT
@@ -301,7 +339,7 @@ internal class CodePad(private val vault: LockCodeVault, private val engine: Eng
                 }
             }
             LockCodeVault.Check.Wrong -> {
-                floor.tries = LockCodeRules.wrong(before, now)
+                floor.tries = LockCodeRules.wrong(before, now, elapsed, boot)
                 try { engine.tried(right = false) } catch (t: Throwable) { RLog.w("lock_pad_tried", t) }
                 Done.WRONG
             }

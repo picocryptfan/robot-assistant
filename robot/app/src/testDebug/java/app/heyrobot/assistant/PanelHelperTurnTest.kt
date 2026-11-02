@@ -44,7 +44,9 @@ import app.heyrobot.helpers.HelperTurnListener
 import app.heyrobot.helpers.HelperTurnReport
 import app.heyrobot.voice.SpeechToText
 import java.time.ZonedDateTime
+import app.heyrobot.core.helpers.HelperChoice
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -169,7 +171,7 @@ class PanelHelperTurnTest {
     private val helperTurn = PanelHelperTurn(scope, state, replies, voice, helperMode, screen, cardVoice, object : PanelHelperTurn.Port {
         override val ctx get() = this@PanelHelperTurnTest.ctx
         override val settings get() = this@PanelHelperTurnTest.settings
-        override val turnLangs = Langs.EN
+        override val turnLangs get() = this@PanelHelperTurnTest.turn
         override val buttonLangs = Langs.EN
         override fun screenLangs() = Langs.EN
         override val confirmations get() = this@PanelHelperTurnTest.confirmations
@@ -261,6 +263,56 @@ class PanelHelperTurnTest {
         confirmations.answer(card.id, yes)
         job.join()
         card
+    }
+
+    /** F98: a phone lock started while a share card was up: the tap sends nothing, and the turn says the lock closed it. */
+    @Test fun aLockThatStartedWhileTheCardWasUpSendsNothing() = runBlocking {
+        val job = launch {
+            helperTurn.run("r1", HelperCommand.Ask("what is this", extra = Attachment.SCREEN, helper = server.id), server, "ask my server about my screen",
+                Attachment.NONE, "Your balance is 4471 dollars.", null, null, emptyList(), voiceAsked = false)
+        }
+        withTimeout(5_000) { while (!confirmations.waiting) delay(5) }
+        val card = replies.pendingCard()!!
+        locked = true
+        lockOn = true
+        confirmations.answer(card.id, true)
+        job.join()
+        assertTrue(sessions.isEmpty())
+        assertTrue(session.asked.isEmpty())
+        assertTrue(calls.last(), calls.last().contains(LockStrings.closedNow().render(Langs.EN)))
+    }
+
+    private var turn = Langs.EN
+
+    /** rc4: a French question, menus in English: the card's buttons are in the question's language, as its words are. */
+    @Test fun theChoiceCardsButtonsFollowTheQuestionsLanguage() = runBlocking {
+        turn = Langs(app.heyrobot.core.i18n.Lang.FR, app.heyrobot.core.i18n.Lang.EN, app.heyrobot.core.i18n.Lang.EN)
+        val got = async { helperTurn.askChoice("r1", server) }
+        withTimeout(5_000) { while (!confirmations.waiting) delay(5) }
+        val card = replies.pendingCard()!!
+        assertTrue(card.summary, card.summary.startsWith("C’est beaucoup pour moi"))
+        assertEquals("Demander à My server", card.confirm)
+        assertEquals("Essayer ici", card.cancel)
+        confirmations.answer(card.id, false)
+        assertEquals(HelperChoice.Picked.HERE, got.await())
+    }
+
+    /** The real card, on the reply before anything else writes to it; a question typed or spoken, replies read aloud or not. */
+    @Test fun theChoiceCard_waitsOnTheReply_saysItsALot_andOffersBoth() = runBlocking {
+        for (speak in listOf(false, true)) for ((yes, picked) in listOf(true to HelperChoice.Picked.HELPER, false to HelperChoice.Picked.HERE)) {
+            state.update { it.copy(speak = speak) }
+            val got = async { helperTurn.askChoice("r1", server) }
+            withTimeout(5_000) { while (!confirmations.waiting) delay(5) }
+            val card = replies.pendingCard()!!
+            assertEquals("That's a lot for me to do well on my own. Try it here, or ask My server?", card.summary)
+            assertEquals("Ask My server", card.confirm)
+            assertEquals("Try it here", card.cancel)
+            assertEquals(ActionStatus.PENDING, state.value.turns.first { it.id == "r1" }.actions.single().status)
+            assertTrue(session.asked.isEmpty())
+            confirmations.answer(card.id, yes)
+            assertEquals(picked, got.await())
+            assertNull(replies.pendingCard())
+        }
     }
 
     @Test fun aQuestionOutsideAHelpersConversationGoesAloneEvenAfterAPersonalOne() {

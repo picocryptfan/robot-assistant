@@ -14,7 +14,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.AlertDialog
+import app.heyrobot.ui.common.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -80,6 +80,7 @@ import app.heyrobot.ui.theme.RobotTokens
 import app.heyrobot.update.UpdateInstaller
 import app.heyrobot.update.UpdateStore
 import app.heyrobot.update.UpdateToken
+import app.heyrobot.update.UpdateJobs
 import app.heyrobot.update.Updater
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -117,6 +118,8 @@ data class UpdatesUi(
     val tokenUnreadable: Boolean = false,
     /** 0.7: the last check, a download's file or an install went wrong: "Report this" (Send feedback with the updater's codes). */
     val failed: Boolean = false,
+    /** F10: Android wouldn't schedule the daily check or a Wi-Fi download. */
+    val scheduleFailed: Boolean = false,
 )
 
 /** What the page's taps do. */
@@ -178,6 +181,7 @@ fun UpdatesScreen(ui: UpdatesUi, a: UpdatesActions, onBack: () -> Unit) {
             }
         }
         preferenceGroup(automatic, "auto") {
+            if (ui.scheduleFailed) StatusPreference(stringResource(R.string.update_schedule_failed), stringResource(R.string.update_schedule_failed_detail), Mark.WARN)
             SwitchPreference(stringResource(R.string.update_auto_check),
                 stringResource(if (s.autoCheck) R.string.update_auto_check_on else R.string.update_auto_check_off), s.autoCheck) {
                 a.change(s.copy(autoCheck = it))
@@ -354,11 +358,12 @@ internal fun UpdatesRoute(snackbar: SnackbarHostState, onBack: () -> Unit, onRep
                 repo = UpdateStore.repo(app), defaultRepo = UpdateStore.defaultRepo(app), ready = Updater.isReady(app),
                 canInstall = UpdateInstaller.allowed(app), otherOwner = UpdateInstaller.otherUpdateOwner(app),
                 token = UpdateToken.masked(app), tokenUnreadable = UpdateToken.unreadable(app), loaded = true,
+                scheduleFailed = !UpdateJobs.ensure(app, settings) || UpdateJobs.downloadRefused,
             )
         }
     }
     val installed = Updater.installed()
-    val offer = UpdateDecision.offered(state, facts.repo, installed).takeIf { facts.loaded }
+    val offer = UpdateDecision.offered(state, facts.repo, installed, settings.testBuilds).takeIf { facts.loaded }
     val ui = UpdatesUi(
         installed = installed.text,
         settings = settings,
@@ -372,6 +377,7 @@ internal fun UpdatesRoute(snackbar: SnackbarHostState, onBack: () -> Unit, onRep
         message = message?.render(langs),
         canInstall = facts.canInstall,
         otherOwner = facts.otherOwner,
+        scheduleFailed = facts.scheduleFailed,
         token = facts.token,
         tokenUnreadable = facts.tokenUnreadable,
         failed = FeedbackDiagnostics.updaterFailed(state),
@@ -419,6 +425,7 @@ internal fun UpdatesRoute(snackbar: SnackbarHostState, onBack: () -> Unit, onRep
 
 /** What the page reads from files and Android, off the main thread. */
 private data class RouteFacts(
+    val scheduleFailed: Boolean = false,
     val repo: GitHubRepo? = null,
     val defaultRepo: GitHubRepo? = null,
     val ready: Boolean = false,
@@ -452,7 +459,7 @@ internal fun UpdatesEntry(a: AppActions) {
         summary = withContext(Dispatchers.IO) {
             val s = UpdateStore.settings(app)
             val st = UpdateStore.state(app)
-            updatesSummary(s, UpdateDecision.offered(st, UpdateStore.repo(app), Updater.installed()), st.lastCheck, System.currentTimeMillis(), lang)
+            updatesSummary(s, UpdateDecision.offered(st, UpdateStore.repo(app), Updater.installed(), UpdateStore.settings(app).testBuilds), st.lastCheck, System.currentTimeMillis(), lang)
         }
     }
     PreferenceItem(UiStrings.updates().str(), summary.ifEmpty { null }, onClick = { a.openPage(Page.Settings(SettingsRoutes.UPDATES)) })

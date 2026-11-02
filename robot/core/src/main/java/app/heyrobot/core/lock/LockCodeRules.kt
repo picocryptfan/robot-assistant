@@ -6,8 +6,9 @@ import java.security.MessageDigest
 // Pure. The lock code: 4 to 12 digits (6 suggested), stored only as an HMAC-SHA256 of a fixed label, a
 // salt and the digits, under a non-exportable Keystore key (app LockCodeVault, in :lock). The key protects it: a short
 // code has too few bits for a slow hash to help once the file is copied, and the key never leaves the phone's security
-// chip. After [FREE_TRIES] wrong tries the waits double from 30 s up to an hour; the next try's time is wall-clock, so a
-// restart doesn't reset it, and moving the clock back can't strand the pad for longer than the longest wait.
+// chip. After [FREE_TRIES] wrong tries the waits double from 30 s up to an hour; the next try's time is kept on the wall clock,
+// so a restart doesn't reset it, and on the elapsed-time clock, so moving the wall clock forward doesn't skip it. Moving the
+// clock back can't strand the pad for longer than the wait itself.
 
 /** A keyed MAC: the Keystore's HMAC-SHA256 on the phone, a plain one in the JVM tests. */
 fun interface LockMac {
@@ -42,18 +43,24 @@ object LockCodeRules {
     fun waitAfter(fails: Int): Long = if (fails < FREE_TRIES) 0 else WAITS_MS[minOf(fails - FREE_TRIES, WAITS_MS.size - 1)]
 
     /**
-     * When the next try is allowed (wall-clock ms; at or before [now]: now). A next try further away than the wait itself
-     * means the clock was moved back: it counts from now.
+     * When the next try is allowed (wall-clock ms; at or before [now]: now): both clocks must have passed. A next try further
+     * away than the wait itself means the clock was moved back: it counts from now. The elapsed-time clock counts only within
+     * the boot that kept it ([elapsed] and [boot] are now's).
      */
-    fun nextTry(t: CodeTries, now: Long): Long {
+    fun nextTry(t: CodeTries, now: Long, elapsed: Long, boot: Int?): Long {
         val wait = waitAfter(t.fails)
-        return if (t.nextTry > now + wait) now + wait else maxOf(t.nextTry, now)
+        val wall = if (t.nextTry > now + wait) now + wait else maxOf(t.nextTry, now)
+        val left = if (t.nextElapsed != null && t.boot != null && t.boot == boot) (t.nextElapsed - elapsed).coerceIn(0, wait) else 0
+        return maxOf(wall, now + left)
     }
 
-    fun mayTry(t: CodeTries, now: Long): Boolean = nextTry(t, now) <= now
+    fun mayTry(t: CodeTries, now: Long, elapsed: Long, boot: Int?): Boolean = nextTry(t, now, elapsed, boot) <= now
 
-    /** A wrong try at [now]. */
-    fun wrong(t: CodeTries, now: Long): CodeTries = CodeTries(t.fails + 1, now + waitAfter(t.fails + 1))
+    /** A wrong try at these clocks. */
+    fun wrong(t: CodeTries, now: Long, elapsed: Long, boot: Int?): CodeTries {
+        val wait = waitAfter(t.fails + 1)
+        return CodeTries(t.fails + 1, now + wait, elapsed + wait, boot)
+    }
 
     /** A right try: the count starts over. */
     val RIGHT = CodeTries()

@@ -31,10 +31,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
+import app.heyrobot.ui.common.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.minimumInteractiveComponentSize
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
@@ -65,6 +64,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
 import app.heyrobot.R
+import app.heyrobot.lock.PhoneLockNow
 import app.heyrobot.core.ConsentRecord
 import app.heyrobot.core.ConvEntry
 import app.heyrobot.core.ConvMode
@@ -90,6 +90,7 @@ import app.heyrobot.ui.SpeakerChip
 import app.heyrobot.ui.SpeakerEdit
 import app.heyrobot.ui.SpeakerEditDialog
 import app.heyrobot.ui.SpeakerView
+import app.heyrobot.ui.common.DropdownMenu
 import app.heyrobot.ui.common.RIcons
 import app.heyrobot.ui.common.TickRow
 import app.heyrobot.ui.theme.RobotTheme
@@ -139,7 +140,11 @@ class ConversationActivity : ComponentActivity() {
             app.heyrobot.sys.ProtectedBroadcasts.register(this, lockWatch,
                 app.heyrobot.sys.ProtectedBroadcasts.filter(Intent.ACTION_USER_PRESENT, Intent.ACTION_SCREEN_ON, Intent.ACTION_SCREEN_OFF))
         } catch (_: Throwable) {}
-        handle(intent, first = savedInstanceState == null)
+        if (!handle(intent, first = savedInstanceState == null)) {
+            // Opened only to start, during a phone lock: nothing is left behind the cover.
+            finish()
+            return
+        }
         setContent { RobotTheme { Screen() } }
     }
 
@@ -183,7 +188,13 @@ class ConversationActivity : ComponentActivity() {
         setShowWhenLocked(if (runs) ui.lockedStart else overLockGrant)
     }
 
-    private fun handle(i: Intent?, first: Boolean) {
+    /**
+     * Opens the screen as [i] asks, starting a session when it asks for one. False when that start was refused because a
+     * phone lock is on (1.1.2, FA8g, phone-lock-design §5.2): the tile, a shortcut, Home, Transcripts and the Resume after
+     * a crash all come here, and none of them opens the microphone during a lock. The refusal is a notification, which
+     * stays for after the lock.
+     */
+    private fun handle(i: Intent?, first: Boolean): Boolean {
         val locked = locked()
         lockedNow.value = locked
         val s = SettingsStore.load(this)
@@ -192,18 +203,26 @@ class ConversationActivity : ComponentActivity() {
         // starts (or resumes) a recording by itself.
         val fromRecents = i != null && (i.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0
         val wantsStart = !fromRecents && (i?.action == Transcripts.ACTION_START || i?.action == Transcripts.ACTION_RESUME)
+        val phoneLock = wantsStart && PhoneLockNow.on(this)
         // Over the lock screen only for a session started there (or starting there now, when that is allowed).
-        val overLock = (ui.active && ui.lockedStart) || (wantsStart && locked && ConversationLock.mayStart(true, s))
+        val overLock = (ui.active && ui.lockedStart) || (wantsStart && locked && ConversationLock.mayStart(true, s, phoneLock))
         overLockGrant = overLock
         setShowWhenLocked(overLock)
+        if (phoneLock) {
+            if (!first || ui.active) return true
+            pending.value = null
+            ConversationNotices.phoneLock(this, stopped = false)
+            return false
+        }
         // 1.1: only the lock screen can be dismissed (during a phone lock the screen is already unlocked).
         if (locked && !overLock && Assistant.keyguard(this)) getSystemService(KeyguardManager::class.java).requestDismissKeyguard(this, null)
-        if (!first || !wantsStart || ui.active) return
+        if (!first || !wantsStart || ui.active) return true
         val entry = enumOr(i.getStringExtra(Transcripts.EXTRA_ENTRY), ConvEntry.APP)
         val resume = if (i.action == Transcripts.ACTION_RESUME) i.getStringExtra(Transcripts.EXTRA_ID) else null
         val mode = enumOr(i.getStringExtra(Transcripts.EXTRA_MODE), ConvMode.TRANSCRIBE)
         if (ConsentRecord.needed(Transcripts.consent(this), s)) pending.value = Pending(entry, resume, mode)
         else begin(entry, resume, mode)
+        return true
     }
 
     /** Your changes to speakers go through the running session (its writer is the transcript's only one meanwhile). */
@@ -235,6 +254,8 @@ class ConversationActivity : ComponentActivity() {
 
     private fun begin(entry: ConvEntry, resume: String?, mode: ConvMode = ConvMode.TRANSCRIBE) {
         pending.value = null
+        // The consent card's Start, tapped once a phone lock began: still nothing starts.
+        if (PhoneLockNow.on(this)) return ConversationNotices.phoneLock(this, stopped = false)
         if (!ConversationService.start(this, entry, resume, mode)) ConversationNotices.couldNotStart(this)
     }
 

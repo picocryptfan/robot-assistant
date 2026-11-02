@@ -64,11 +64,10 @@ object CarSpeech {
 object CarScreen {
     const val MAX_STATUS = 40
 
-    enum class Button { TALK, MESSAGES, CALL, NAVIGATE_HOME, END }
+    /** The row that is always there: Talk, the one you choose (CarLayout), your kept apps and Settings. You end car mode from Settings, by voice or on its notice. */
+    enum class Button { TALK, FOURTH, APPS, SETTINGS }
 
-    /** The screen's buttons: Messages only once 0.7 is there, Navigate home only with a saved home. */
-    fun buttons(messages: Boolean, home: Boolean): List<Button> = listOfNotNull(Button.TALK, Button.MESSAGES.takeIf { messages }, Button.CALL,
-        Button.NAVIGATE_HOME.takeIf { home }, Button.END)
+    val BUTTONS: List<Button> = Button.entries
 
     /** One status line of at most [MAX_STATUS] characters ("Listening…", "Calling Mom"). */
     fun status(text: String): String {

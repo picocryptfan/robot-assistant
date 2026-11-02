@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Robot to Robot's carriers (robot-to-robot-r0.md §4, §5; job L3): Tor, and the UnifiedPush connector with the part of
+# Google's Tink its push encryption needs; All three come from Maven Central; Robot builds offline from a
+# local copy of these files in third_party/maven-link/ (git-ignored; tools/fetch_link_deps.sh fills it, robot/README.md
+# "Getting Tor and the push connector"), and every one is pinned here and in gradle/verification-metadata.xml
+# (LinkCarrierPinsTest checks they agree).
+#
+#   tor-android 0.4.9.14 (Briar's build of Tor, BSD-3-Clause; OpenSSL 3.5.9 Apache-2.0 and zlib 1.3.2 inside): only its arm64
+#     executable is used, never the jar on a classpath. The jar's line equals Maven Central's .sha256 for it.
+#   (jtorctl 0.5, which R0 also fetched, isn't used: Robot speaks Tor's control protocol itself, TorControl.kt.)
+#   connector 3.3.5 (UnifiedPush, Apache-2.0): registration, the receiver's decryption (RFC 8291) and, in its copy of Tink's
+#     fixed_webpush, the sending side's encryption. Central publishes no .sha256 for it; its SHA-1,
+#     c61a755bf12656bc6443d7fb5ce527e444d89277, matched Central's .sha1 when R0 downloaded it (21 Oct 2026).
+#   tink 1.23.0 (Google, Apache-2.0): the connector reaches 11 of its classes (subtle EllipticCurves, EngineFactory, Hkdf,
+#     Random, Bytes and their helpers, none of which needs protobuf), so protobuf-java is left out on purpose. Only the jar
+#     (R0 kept no POM): the line equals Central's .sha256 for it.
+#
+# Paths are relative to third_party/maven-link/, so `sha256sum -c` runs there on the lines that start with a hash and "org/"
+# or "com/".
+3c282777bdcd3b55dcc8c8d5294af753dd8ed32b832f12e82128eed6f481d2ed  org/briarproject/tor-android/0.4.9.14/tor-android-0.4.9.14.jar
+30eadd50240fecc903a7d3844891d1f8d3da2162fec8f76a831b64f13f5b2960  org/briarproject/tor-android/0.4.9.14/tor-android-0.4.9.14.pom
+fa017cdfabbdc9af021e1f8c8eff2c8098e701d7a2c599937dce0b4ecf1e929b  org/unifiedpush/android/connector/3.3.5/connector-3.3.5.aar
+bd5c29ee71cda841acf1ac867d4e5dc2817d6831ce2cc21b3d528d4e5aa903d7  org/unifiedpush/android/connector/3.3.5/connector-3.3.5.pom
+9e56698a7d30802cb6f45adaec4171a19dd3827a1d022eeb567282315456e37b  org/unifiedpush/android/connector/3.3.5/connector-3.3.5.module
+5bcdc8798ce106f5145acb4a0e993c5e5861337b1e75ca88ceb6ab9da10fa512  com/google/crypto/tink/tink/1.23.0/tink-1.23.0.jar
+#
+# The one native file the APK gains: the jar's arm64-v8a/libtor.so (8,842,120 bytes, already stripped, a position-independent
+# executable for /system/bin/linker64, "tor 0.4.9.14"). :link's torBinary task copies it out of the pinned jar at build time
+# and refuses any other bytes; tools/verify_apk.sh checks the APK's copy. Never the jar's other three ABIs.
+fee641c956e85c40552b6005a6f88deb157d84e217307214a846ba0640ec44c3  lib/arm64-v8a/libtor.so
+#
+# And lyrebird's executable, which isn't from Maven: tools/build_lyrebird.sh builds it from source (lyrebird 0.9.0, commit
+# 89d54872b176, with third_party/patches/lyrebird-0.9.0-deps.patch; Go 1.27.3, NDK r27b; 17,694,016 bytes, stripped, a
+# position-independent executable for /system/bin/linker64, 16 KB-aligned) and gets these same bytes on any machine.
+# :link's lyrebirdBinary task reads it from third_party/lyrebird/; Tor starts it, only for a bridge line that names its
+# transport. Never the other three ABIs.
+de94bedd76f43dc495a1e53dd3fc7d886495ac43d48d7864aba08ae4ad416845  lib/arm64-v8a/liblyrebird.so

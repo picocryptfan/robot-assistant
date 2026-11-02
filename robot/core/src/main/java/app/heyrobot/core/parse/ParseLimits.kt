@@ -72,6 +72,13 @@ object ParseLimits {
     /** PDF's largest page side, in points (200 inches). */
     const val MAX_PDF_POINTS = 14_400
 
+    /**
+     * 1.5 L4: a QR code's photo decoded at most 2,048 px (a pairing code a third of the frame across keeps 10 px a module),
+     * and its text at most 1 KiB (the plan's cap; a code Robot writes holds at most 271 bytes, QrReader.MAX_TEXT).
+     */
+    val QR_SOURCE = Box(2_048, 2_048)
+    const val QR_TEXT = 1_024
+
     /** No output edge is ever thinner than this (an absurd page's aspect is clamped, never rendered 0 px wide). */
     const val MIN_EDGE = 16
 
@@ -131,5 +138,7 @@ object ParseLimits {
         ParseOp.STRIP -> MAX_COPY
         ParseOp.STRAIGHTEN -> MAX_SCAN_JPEG
         ParseOp.SCAN_PDF -> MAX_PDF
+        // The text travels in the reply's frame; the region is never written, but every request has one.
+        ParseOp.QR -> QR_TEXT
     }
 }

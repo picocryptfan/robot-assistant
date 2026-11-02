@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "id": "su1-tip",
+  "title": "A tip, all by code",
+  "safety": "read",
+  "testBench": ["SU1"],
+  "setup": [{"set": "speakReplies", "value": "VOICE"}],
+  "steps": [
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "What's an 18% tip on $64.50?", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 30, "contains": "11.61"},
+    {"do": "check", "what": "reply", "contains": "76.11"},
+    {"do": "check", "what": "router", "equals": "SumsRouter"},
+    {"do": "end"}
+  ]
+}

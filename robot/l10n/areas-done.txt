@@ -23,3 +23,7 @@ guide
 lock
 skills
 files
+lists
+everyday
+connections
+link

@@ -1,0 +1,21 @@
+{
+  "format": 1,
+  "id": "wo-misfires",
+  "title": "Questions about going online that aren't about Robot's record",
+  "safety": "read",
+  "testBench": ["WO4"],
+  "needs": {"model": true},
+  "setup": [{"set": "speakReplies", "value": "VOICE"}],
+  "steps": [
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "How do I get online?", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 120},
+    {"do": "check", "what": "router", "equals": "OnlineRouter", "absent": true},
+    {"do": "end"},
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "Is the internet down?", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 120},
+    {"do": "check", "what": "router", "equals": "OnlineRouter", "absent": true},
+    {"do": "end"}
+  ]
+}

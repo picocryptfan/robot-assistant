@@ -1,0 +1,18 @@
+{
+  "format": 1,
+  "id": "brief-fr",
+  "title": "The brief asked in French; suivant and répète",
+  "safety": "read",
+  "testBench": ["v80-br-now"],
+  "setup": [{"set": "speakReplies", "value": "VOICE"}],
+  "steps": [
+    {"do": "open", "how": "wake"},
+    {"do": "say", "text": "Mon résumé du matin.", "voice": "siwis"},
+    {"do": "wait_reply", "seconds": 60},
+    {"do": "check", "what": "router", "equals": "RoutineRouter"},
+    {"do": "say", "text": "Répète.", "voice": "siwis"},
+    {"do": "pause", "seconds": 4},
+    {"do": "say", "text": "Arrête.", "voice": "siwis"},
+    {"do": "end"}
+  ]
+}

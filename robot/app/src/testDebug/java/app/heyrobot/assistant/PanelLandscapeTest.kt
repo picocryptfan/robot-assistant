@@ -4,13 +4,14 @@ package app.heyrobot.assistant
 import android.view.View
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.hasSetTextAction
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performTextInput
 import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import app.heyrobot.core.LookSettings
+import app.heyrobot.ui.testing.setShotContent
 import app.heyrobot.ui.testing.shot
 import app.heyrobot.ui.testing.touchTargetProblems
 import app.heyrobot.ui.theme.RobotTheme
@@ -39,7 +40,7 @@ class PanelLandscapeTest {
     private val keyboardDp = 220
 
     private fun show(st: PanelState) {
-        rule.setContent {
+        rule.setShotContent {
             view = LocalView.current
             RobotTheme(dark = false, look = LookSettings(wallpaperColors = false)) { AssistantPanel(st, RecordingActions()) {} }
         }

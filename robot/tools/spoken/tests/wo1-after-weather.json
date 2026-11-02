@@ -1,0 +1,21 @@
+{
+  "format": 1,
+  "id": "wo1-after-weather",
+  "title": "The weather, then what went online says so",
+  "safety": "read",
+  "testBench": ["WO1"],
+  "needs": {"model": true},
+  "setup": [{"set": "speakReplies", "value": "VOICE"}],
+  "steps": [
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "Weather in Paris.", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 120},
+    {"do": "check", "what": "tool", "equals": "weather"},
+    {"do": "end"},
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "Did you go online?", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 30, "contains": "weather"},
+    {"do": "check", "what": "router", "equals": "OnlineRouter"},
+    {"do": "end"}
+  ]
+}

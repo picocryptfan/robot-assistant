@@ -1,0 +1,18 @@
+{
+  "format": 1,
+  "id": "lt-several",
+  "title": "Several items in one sentence, with and without pauses",
+  "safety": "robot-data",
+  "testBench": ["lt-several"],
+  "setup": [{"set": "speakReplies", "value": "VOICE"}],
+  "steps": [
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "Add apples, cheese and crackers to the shopping list.", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 30, "regex": "(?i)apples"},
+    {"do": "check", "what": "router", "equals": "ListsRouter"},
+    {"do": "say", "text": "Add rice oat milk bread to the shopping list.", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 30, "regex": "(?i)(added|already).*rice"},
+    {"do": "check", "what": "router", "equals": "ListsRouter"},
+    {"do": "end"}
+  ]
+}

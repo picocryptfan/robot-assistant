@@ -19,10 +19,12 @@ class LicencesTest {
     private val assets = File(root, "app/src/main/assets")
     /** Where :brain's aarNotices task puts the licence files it copies out of the LiteRT AARs (Gradle runs it first). */
     private val brainAssets = File(root, "brain/build/generated/assets/aarNotices")
+    /** 1.5: where :link's libsignalJni task puts libsignal's acknowledgments, taken out of its AAR (Gradle runs it first). */
+    private val linkAssets = File(root, "link/build/generated/libsignal/assets")
     private val book by lazy { LicenceBook.parse(File(assets, LicenceBook.FILE).readText()) }
     private val thirdParty by lazy { File(root, "THIRD_PARTY.md").readText() }
 
-    private fun asset(path: String): File? = listOf(File(assets, path), File(brainAssets, path)).firstOrNull { it.isFile }
+    private fun asset(path: String): File? = listOf(File(assets, path), File(brainAssets, path), File(linkAssets, path)).firstOrNull { it.isFile }
 
     @Test fun theListReadsWithoutProblems() {
         assertEquals(emptyList<String>(), book.problems())
@@ -50,6 +52,9 @@ class LicencesTest {
         }
         // LiteRT-LM's large notice file, copied from the AAR at build time, and every file in assets/licenses is on the list.
         assertTrue(asset("licenses/notices/litertlm-android-THIRD_PARTY_NOTICE.txt")!!.length() > 1_000_000)
+        // 1.5: libsignal's AGPL is the standard text, and its acknowledgments (379,124 bytes in 0.105.2's AAR) come from the AAR.
+        assertTrue(File(assets, "licenses/AGPL-3.0.txt").readText().startsWith("                    GNU AFFERO GENERAL PUBLIC LICENSE\n                       Version 3, 19 November 2007"))
+        assertEquals(379_124L, asset("licenses/notices/libsignal-acknowledgments.md")!!.length())
         val shipped = File(assets, "licenses").walkTopDown().filter { it.isFile && it.name != "components.json" }
             .map { "licenses/" + it.relativeTo(File(assets, "licenses")).path }.toSet()
         assertEquals(emptySet<String>(), shipped - book.files())
@@ -98,6 +103,9 @@ class LicencesTest {
         // The LiteRT and Anthropic artifacts are where they should be.
         assertEquals("litert-lm", book.forArtifact("com.google.ai.edge.litertlm", "litertlm-android")?.id)
         assertEquals("anthropic-sdk-java", book.forArtifact("com.anthropic", "anthropic-java-core")?.id)
+        // 1.5: libsignal's client jar is packed (its classes; its desktop libraries never are, verify_apk.sh).
+        assertTrue(packed.any { it == listOf("org.signal", "libsignal-client", "0.105.2") })
+        assertEquals("libsignal", book.forArtifact("org.signal", "libsignal-client")?.id)
     }
 
     /** The icons in Icons.kt are Material Symbols at the commit tools/symbols.py pins, and the list names that commit. */

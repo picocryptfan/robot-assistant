@@ -13,7 +13,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -199,29 +199,47 @@ class RoutinesSettingsTest {
 
     @Test fun anAlarmStartWithoutClockSaysSoOnItsPage() {
         rule.show { RoutineEditScreen(wakeUp, false, data().copy(facts = noClock), actions(), SnackbarHostState(), onBack = {}, now = now) }
-        rule.onNodeWithText("Needs the GrapheneOS Clock app, which isn't on this phone: turning off an alarm won't start anything. Support for " +
-            "other clock apps is planned.").assertExists()
+        rule.onNodeWithText("Needs a Clock app, and there's none on this phone: turning off an alarm won't start anything.").assertExists()
         assertEquals(emptyList<String>(), rule.touchTargetProblems())
         rule.shot("routine_edit_no_clock")
+    }
+
+    // week-fixes: a Clock that doesn't tell when an alarm ends says so plainly, with a set time to start at instead.
+    @Test fun aClockThatDoesntTellSaysSoAndOffersASetTime() {
+        val google = RoutineFacts.ClockApp("com.google.android.deskclock", "Clock")
+        val graphene = RoutineFacts.ClockApp("com.android.deskclock", "GrapheneOS Clock")
+        val facts = allFacts.copy(clockApps = listOf(google, graphene), phoneClock = google.pkg)
+        rule.show { RoutineEditScreen(wakeUp, false, data().copy(facts = facts), actions(), SnackbarHostState(), onBack = {}, now = now) }
+        rule.onNodeWithText("Clock app").assertExists()
+        rule.onNodeWithText("Clock doesn't tell other apps when an alarm ends").assertExists()
+        rule.onNodeWithText("Start at a set time instead").assertExists()
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
+    }
+
+    @Test fun grapheneOsClockByDefaultSaysNothingMore() {
+        val graphene = RoutineFacts.ClockApp("com.android.deskclock", "GrapheneOS Clock")
+        rule.show { RoutineEditScreen(wakeUp, false, data().copy(facts = allFacts.copy(clockApps = listOf(graphene), phoneClock = graphene.pkg)), actions(), SnackbarHostState(), onBack = {}, now = now) }
+        rule.onNodeWithText("Clock app").assertExists()
+        rule.onNodeWithText("doesn't tell other apps", substring = true).assertDoesNotExist()
     }
 
     @Test fun withClockOrAnotherStartNothingMoreShows() {
         var r by mutableStateOf(wakeUp)
         var d by mutableStateOf(data())
         rule.show { RoutineEditScreen(r, false, d, actions(), SnackbarHostState(), onBack = {}, now = now) }
-        rule.onNodeWithText("Needs the GrapheneOS Clock app", substring = true).assertDoesNotExist()
+        rule.onNodeWithText("Needs a Clock app", substring = true).assertDoesNotExist()
         d = data().copy(facts = noClock)
         r = leaving
-        rule.onNodeWithText("Needs the GrapheneOS Clock app", substring = true).assertDoesNotExist()
+        rule.onNodeWithText("Needs a Clock app", substring = true).assertDoesNotExist()
         // Facts not read yet: nothing either.
         d = data().copy(facts = null)
         r = wakeUp
-        rule.onNodeWithText("Needs the GrapheneOS Clock app", substring = true).assertDoesNotExist()
+        rule.onNodeWithText("Needs a Clock app", substring = true).assertDoesNotExist()
     }
 
     @Test fun theBriefsPageWithoutClockSaysSo() {
         rule.show { BriefSettingsScreen(data(RoutineSettings(briefEnabled = true, briefOnline = true)).copy(facts = noClock), RoutineActions(), SnackbarHostState(), onBack = {}) }
-        rule.onNodeWithText("Needs the GrapheneOS Clock app", substring = true).assertExists()
+        rule.onNodeWithText("Needs a Clock app", substring = true).assertExists()
         assertEquals(emptyList<String>(), rule.touchTargetProblems())
         rule.shot("routines_brief_no_clock")
     }
@@ -229,15 +247,14 @@ class RoutinesSettingsTest {
     @Test @Config(qualifiers = "fr-rCA-w411dp-h891dp-xhdpi")
     fun anAlarmStartWithoutClockInFrench() {
         rule.show { RoutineEditScreen(wakeUp, false, data().copy(facts = noClock), actions(), SnackbarHostState(), onBack = {}, now = now) }
-        rule.onNodeWithText("Demande l\u2019appli Horloge de GrapheneOS, qui n\u2019est pas sur ce téléphone\u00a0: arrêter une alarme ne lancera donc " +
-            "rien. La prise en charge d\u2019autres applis d\u2019horloge est prévue.").assertExists()
+        rule.onNodeWithText("Demande une appli d\u2019horloge, et ce téléphone n\u2019en a pas\u00a0: arrêter une alarme ne lancera donc rien.").assertExists()
         rule.shot("routine_edit_no_clock_fr")
     }
 
     @Test @Config(qualifiers = "fr-rCA-w411dp-h891dp-xhdpi")
     fun theBriefsPageWithoutClockInFrench() {
         rule.show { BriefSettingsScreen(data(RoutineSettings(briefEnabled = true, briefOnline = true)).copy(facts = noClock), RoutineActions(), SnackbarHostState(), onBack = {}) }
-        rule.onNodeWithText("Demande l\u2019appli Horloge de GrapheneOS", substring = true).assertExists()
+        rule.onNodeWithText("Demande une appli d\u2019horloge", substring = true).assertExists()
         rule.shot("routines_brief_no_clock_fr")
     }
 

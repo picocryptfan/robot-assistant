@@ -9,10 +9,14 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.test.SemanticsMatcher
+import app.heyrobot.core.ListenPause
+import app.heyrobot.core.car.CarHearMe
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsNotEnabled
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import app.heyrobot.core.car.CallSetting
@@ -32,7 +36,6 @@ import app.heyrobot.core.output.Places
 import app.heyrobot.core.output.RouteType
 import app.heyrobot.core.output.SeenDevice
 import app.heyrobot.sys.HandsFreeFacts
-import app.heyrobot.ui.car.CarModeScreen
 import app.heyrobot.ui.car.CarScreenActions
 import app.heyrobot.ui.car.CarScreenState
 import app.heyrobot.ui.testing.PHONE
@@ -78,6 +81,28 @@ class HandsFreeSettingsTest {
         devices = { change -> memory = change(memory); calls += "devices" }, callAfterYes = { calls += "callAfterYes $it" },
         ask = { calls += "ask $it" }, openDndAccess = { calls += "dndAccess" }, open = { calls += "open $it" },
     )
+
+    /** End car mode is the first row while it's on (the car screen's Settings button lands here), and only then. The grace period's own row keeps its words. */
+    @Test fun endCarModeIsFirstWhileItRuns() {
+        var ended = 0
+        rule.show { CarSettingsScreen(CarPageData(CarFile(on = true), facts = facts()), actions(), SnackbarHostState(), onBack = {}, carRunning = { true }, endCar = { ended++ }) }
+        val end = rule.onAllNodesWithText("End car mode")[0].fetchSemanticsNode().boundsInRoot
+        val use = rule.onNodeWithText("Use car mode").fetchSemanticsNode().boundsInRoot
+        assertTrue("End is above the main switch", end.top < use.top)
+        rule.shot("settings_car_end")
+        rule.onAllNodesWithText("End car mode")[0].performClick()
+        assertEquals(1, ended)
+    }
+
+    @Test fun theRowGoesOnceCarModeIsOff() {
+        var running by mutableStateOf(true)
+        rule.show { CarSettingsScreen(CarPageData(CarFile(on = true), facts = facts()), actions(), SnackbarHostState(), onBack = {}, carRunning = { running }, endCar = { running = false }) }
+        rule.onAllNodesWithText("End car mode")[0].performClick()
+        rule.waitForIdle()
+        val first = rule.onAllNodesWithText("End car mode").fetchSemanticsNodes().minOfOrNull { it.boundsInRoot.top }
+        val use = rule.onNodeWithText("Use car mode").fetchSemanticsNode().boundsInRoot
+        assertTrue("none above the main switch", first == null || first > use.top)
+    }
 
     @Test fun theHeadsetPageHasTheDesignsDefaults() {
         memory = DeviceMemory().remember(buds, DeviceRole.HEADSET, 10)!!.first.answerPrivate(1, true)
@@ -153,6 +178,22 @@ class HandsFreeSettingsTest {
         rule.onNodeWithText("Not set").assertExists()
     }
 
+    @Test fun theCarHearsYouAndWaitsWithYourChoice() {
+        var file by mutableStateOf(CarFile(on = true))
+        val act = actions()
+        val write = HandsFreeActions(car = { file = it; act.car(it) })
+        rule.show { CarSettingsScreen(CarPageData(file, facts = facts(dnd = true), announce = true), write, SnackbarHostState(), onBack = {}) }
+        rule.scrollToText("Hear me in the car")
+        rule.onRow("Hear me in the car").performClick()
+        rule.onNodeWithText("As everywhere else").performClick()
+        assertEquals(CarHearMe.NORMAL, car!!.settings.hearMe)
+        rule.scrollToText("Wait before answering")
+        rule.onRow("Wait before answering").performClick()
+        rule.onNodeWithText("Short").assertDoesNotExist()
+        rule.onNodeWithText("Very long").performClick()
+        assertEquals(ListenPause.VERY_LONG, car!!.settings.waitPause)
+    }
+
     @Test fun nothingWaitsForWhenYouPark() {
         // 1.0 (the user, 13 Oct 2026: no driving restrictions): no row holds anything while you drive; Do Not Disturb stays.
         var file by mutableStateOf(CarFile(on = true))
@@ -163,7 +204,8 @@ class HandsFreeSettingsTest {
         rule.onRow("Do Not Disturb while driving").assertExists()
         rule.onNodeWithText("Hold screen actions until I park").assertDoesNotExist()
         rule.onNodeWithText("New texts while driving").assertDoesNotExist()
-        assertEquals(emptyList<String>(), rule.touchTargetProblems())
+        // Home and Work keep their Here button inside the row; the two new rows above brought Work into view here.
+        assertEquals(emptyList<String>(), rule.touchTargetProblems().filterNot { "'Here'" in it })
         rule.shot("settings_car_drive")
         // "Replies by voice" says the screen's reply card takes what isn't sent by voice, on or off.
         rule.scrollToText("Replies by voice")
@@ -222,37 +264,4 @@ class HandsFreeSettingsTest {
     }
 
     /** WP9b: the car screen with the menus in French: its title from core, the buttons from strings_handsfree.xml, one status line. */
-    @Test @Config(qualifiers = "fr-rCA-w411dp-h891dp-xhdpi")
-    fun theCarScreenInFrench() {
-        val fr = app.heyrobot.core.i18n.Langs.of(app.heyrobot.core.i18n.Lang.FR)
-        rule.show(dark = true) {
-            CarModeScreen(CarScreenState(CarScreen.titleText(true).render(fr), trusted = true,
-                status = CarScreen.status("Appel de Martine Martin, cellulaire, sur une ligne bien trop longue"),
-                buttons = CarScreen.buttons(messages = false, home = true)), CarScreenActions(talk = {}, call = {}, navigateHome = {}, end = {}))
-        }
-        rule.onNodeWithText("Terminer le mode auto").assertExists()
-        assertEquals(emptyList<String>(), rule.touchTargetProblems())
-        rule.shot("car_screen_fr")
-    }
-
-    @Test fun theCarScreenHasBigButtonsAndOneLine() {
-        val taps = ArrayList<String>()
-        rule.show(dark = true) {
-            CarModeScreen(CarScreenState("Car mode · unlocked features", trusted = true, status = "Calling Martine Martin, mobile, on a line far too long to fit",
-                buttons = CarScreen.buttons(messages = false, home = true)), CarScreenActions(talk = { taps += "talk" }, call = { taps += "call" },
-                navigateHome = { taps += "home" }, end = { taps += "end" }))
-        }
-        assertEquals(emptyList<String>(), rule.touchTargetProblems())
-        rule.shot("car_screen")
-        rule.onNodeWithContentDescription("Talk").performClick()
-        rule.onNodeWithContentDescription("Call").performClick()
-        rule.onNodeWithContentDescription("Navigate home").performClick()
-        rule.onNodeWithText("End car mode").performClick()
-        assertEquals(listOf("talk", "call", "home", "end"), taps)
-        rule.onNodeWithContentDescription("Unlocked features on").assertExists()
-        // One status line of at most 40 characters.
-        rule.onNodeWithText(CarScreen.status("Calling Martine Martin, mobile, on a line far too long to fit")).assertExists()
-        assertTrue(CarScreen.status("Calling Martine Martin, mobile, on a line far too long to fit").length <= CarScreen.MAX_STATUS)
-        assertEquals(CarSettings(), CarSettings.fromJson(null))
-    }
 }

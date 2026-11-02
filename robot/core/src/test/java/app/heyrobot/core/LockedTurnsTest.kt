@@ -43,8 +43,8 @@ class LockedTurnsTest {
         val transcript = HelperContext.transcript(said + yours)!!
         assertTrue(transcript, transcript.startsWith("Said while the phone was locked: text Mom"))
         assertTrue(transcript, transcript.endsWith("User: what's on my calendar today?"))
-        // Nothing personal by itself: what a helper gets of it is decided as before.
-        assertEquals(emptySet<Personal>(), HelperContext.personal(said))
+        // Its only personal content is the action's own words (F2): a hard question next goes alone.
+        assertEquals(setOf(Personal.ACTED), HelperContext.personal(said))
     }
 
     @Test fun aSearchWithTheirWordsIsNeverYours() {

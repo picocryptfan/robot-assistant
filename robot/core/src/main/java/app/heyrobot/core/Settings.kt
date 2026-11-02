@@ -103,9 +103,10 @@ data class RobotSettings(
     val livePartials: Boolean = true,
     /**
      * Settings › Voice › "Wait before answering" (1.1): the pause a question may hold before Robot answers. Still schema
-     * 13, as replyLang: absent from older files, which read as the default; written only when set.
+     * 13, as replyLang. A new install starts on [ListenPause.LONG]. Always written: up to 1.1.2 a file without it meant
+     * Normal, so a file without it stays Normal, never moved to the new default.
      */
-    val listenPause: ListenPause = ListenPause.NORMAL,
+    val listenPause: ListenPause = ListenPause.LONG,
     /**
      * Settings › "Direct answers" (0.4.0, on): the local model helps with whatever you ask without refusing or adding
      * warnings, and still says when something isn't possible ([Prompt.DIRECT]). Off: the model's own judgment.
@@ -400,7 +401,7 @@ data class RobotSettings(
         put("modelGpu", modelGpu)
         if (replyLang != ReplyLangChoice.SPOKEN) put("replyLang", replyLang.id)
         if (menusNoticeSeen) put("menusNoticeSeen", true)
-        if (listenPause != ListenPause.NORMAL) put("listenPause", listenPause.id)
+        put("listenPause", listenPause.id)
     }
 
     companion object {
@@ -476,6 +477,15 @@ data class RobotSettings(
             // 1.4, Robot Files (F9): reads, not levels you set (Settings › Files governs them, as Memory does remember).
             ToolName.FIND_FILES to Approval.AUTO,
             ToolName.READ_FILE to Approval.AUTO,
+            // 1.4, Robot Lists (LS4): not a level you set (Settings › Lists governs it; its card comes from your words, D6).
+            ToolName.ADD_TO_LIST to Approval.AUTO,
+            // Skills connections (C4, plan §5.4): not levels you set: the skill's level and each step's prepared reasons decide.
+            ToolName.CONNECTION to Approval.AUTO,
+            ToolName.HAND_OFF to Approval.AUTO,
+            // The everyday set (E2): not a level you set; it reads and changes nothing (ApprovalGate.free).
+            ToolName.CALCULATE to Approval.AUTO,
+            // 1.5, Robot to Robot (L7): ask_robot asks first (§4.3); each person's levels govern their side.
+            ToolName.ASK_ROBOT to Approval.ASK,
         )
 
         /** The actions whose default became "Just do it" in schema 4. */
@@ -585,7 +595,8 @@ data class RobotSettings(
                 // 1.1, no new schema: absent (any older file) or unknown means the defaults.
                 replyLang = ReplyLangChoice.of(o.optString("replyLang")),
                 menusNoticeSeen = o.optBoolean("menusNoticeSeen", false),
-                listenPause = ListenPause.of(o.optString("listenPause")),
+                // Absent: a file from 1.1.2 or before, where that meant Normal. Unknown: the default.
+                listenPause = if (o.has("listenPause")) ListenPause.of(o.optString("listenPause")) else ListenPause.NORMAL,
             )
         }
 

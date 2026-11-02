@@ -161,16 +161,24 @@ object HelperContext {
         val blocks = escalation(question, history, now, region, shared, personal, includePersonal)
         val earlier = (personal.isEmpty() || includePersonal) && transcript(recent(history)) != null
         val screen = shared.screenText?.let(ScreenText::sanitize)?.takeIf { it.isNotBlank() }
+        // The everyday set (E7): what another app shared rides the screen's or the photo's place, and is named as what it is.
+        val fromApp = Personal.SHARED in personal && (screen != null || shared.image != null)
         val sends = buildList {
             // The context line goes first (HelperPrompt.context): today's date, and your country when Robot knows it.
             add(if (HelperPrompt.country(region).isNotBlank()) HelperStrings.sendsQuestion() else HelperStrings.sendsQuestionDate())
             if (earlier) add(HelperStrings.sendsEarlier())
-            if (screen != null) add(HelperStrings.sendsScreen())
-            if (shared.image != null) add(if (attachment == Attachment.PHOTO) HelperStrings.sendsPhoto() else HelperStrings.sendsScreenshot())
+            if (fromApp) add(HelperStrings.sendsShared())
+            else {
+                if (screen != null) add(HelperStrings.sendsScreen())
+                if (shared.image != null) add(if (attachment == Attachment.PHOTO) HelperStrings.sendsPhoto() else HelperStrings.sendsScreenshot())
+            }
         }
         val sharing = buildSet {
-            if (screen != null || (shared.image != null && attachment != Attachment.PHOTO)) add(Personal.SCREEN)
-            if (shared.image != null && attachment == Attachment.PHOTO) add(Personal.PHOTO)
+            if (fromApp) add(Personal.SHARED)
+            else {
+                if (screen != null || (shared.image != null && attachment != Attachment.PHOTO)) add(Personal.SCREEN)
+                if (shared.image != null && attachment == Attachment.PHOTO) add(Personal.PHOTO)
+            }
         }
         return HelperPayload(question, blocks, sends, sharing, screen?.let { ToolCalls.safeTake(it, 600) })
     }
@@ -199,6 +207,7 @@ object HelperContext {
             TurnRole.USER -> (if (t.locked) "Said while the phone was locked: " else "User: ") + oneLine(t.text) + when (t.attachment) { // l10n: not text (helper request)
                 Attachment.PHOTO -> " [about a photo]"
                 Attachment.SCREEN -> " [about their screen]"
+                Attachment.FILE -> " [about a file]"
                 Attachment.NONE -> ""
             }
             TurnRole.ASSISTANT -> t.author + ": " + oneLine(t.text)
@@ -215,8 +224,10 @@ object HelperContext {
     fun personal(turns: List<ChatTurn>, attachment: Attachment = Attachment.NONE): Set<Personal> = buildSet {
         Personal.of(attachment)?.let(::add)
         for (t in turns) {
-            Personal.of(t.attachment)?.let(::add)
-            for (a in t.actions) if (a.content) Personal.of(a.tool)?.let(::add)
+            // E7: what another app shared rides SCREEN or PHOTO, and is named as what it is.
+            if (t.shared) add(Personal.SHARED) else Personal.of(t.attachment)?.let(::add)
+            for (a in t.actions) if (a.content || a.located) (if (a.located) Personal.LOCATION else Personal.of(a.tool))?.let(::add)
+                else if (a.tool in Personal.ACTED_TOOLS) add(Personal.ACTED)
             if (t.readBack) add(Personal.CLAUDE_APP)
             if (t.memoryIds.isNotEmpty()) add(Personal.MEMORY)
             // 1.0.2: something the model's remember card saved (the router's "remember that …" marks its reply with the id).

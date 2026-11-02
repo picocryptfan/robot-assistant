@@ -237,17 +237,18 @@ object FileSniff {
 
     /**
      * What a file whose first bytes said [type] really is, or null when nothing more: a ZIP when [tail] (its last bytes, at
-     * most [TAIL]) ends in a ZIP's end record, for an image or a PDF; HTML or SVG when a text's [markup] holds theirs.
+     * most [TAIL]) ends in a ZIP's end record, for an image or a PDF; HTML or SVG when a text's [markup] holds theirs. F49:
+     * and for UNKNOWN, either one: a single byte that isn't UTF-8 in the first 4 KiB is all it takes to be UNKNOWN.
      */
     fun hidden(type: FileType, tail: ByteArray, markup: FileType?): FileType? = when {
-        type.group in LOOKS_PAST && zipEnd(tail) -> FileType.ZIP
-        type == FileType.TEXT && markup != null -> markup
+        (type.group in LOOKS_PAST || type == FileType.UNKNOWN) && zipEnd(tail) -> FileType.ZIP
+        (type == FileType.TEXT || type == FileType.UNKNOWN) && markup != null -> markup
         else -> null
     }
 
     /** [hidden] for a whole file in memory ([b], from its position to its limit, as :files reads it). */
     fun hiddenIn(b: java.nio.ByteBuffer, type: FileType): FileType? {
-        if (type.group !in LOOKS_PAST && type != FileType.TEXT) return null
+        if (type.group !in LOOKS_PAST && type != FileType.TEXT && type != FileType.UNKNOWN) return null
         val w = Watch()
         val d = b.duplicate()
         val chunk = ByteArray(64 * 1024)
@@ -317,7 +318,7 @@ object FileSniff {
         }
 
         /** [FileSniff.hidden] for what streamed by, first sniffed as [type]. */
-        fun hidden(type: FileType): FileType? = FileSniff.hidden(type, if (type.group in LOOKS_PAST) tail() else ByteArray(0), markup)
+        fun hidden(type: FileType): FileType? = FileSniff.hidden(type, if (type.group in LOOKS_PAST || type == FileType.UNKNOWN) tail() else ByteArray(0), markup)
 
         /** FX3: what it kept of the file (its last bytes, a few characters of text) zeroed, once it is done with. */
         fun clear() {

@@ -66,4 +66,17 @@ class ExifDateTest {
         assertNull(ExifDate.iso(-1))
         assertNull(ExifDate.iso(99999999))
     }
+
+    /** F31: a machine value, whatever digits the phone's language writes. */
+    @Test fun isoIsTheSameUnderALanguageWithItsOwnDigits() {
+        val was = java.util.Locale.getDefault()
+        try {
+            for (tag in listOf("fa-IR", "ar-EG", "hi-IN-u-nu-deva")) {
+                java.util.Locale.setDefault(java.util.Locale.forLanguageTag(tag))
+                assertEquals(tag, "2026-08-14", ExifDate.iso(20260814))
+            }
+        } finally {
+            java.util.Locale.setDefault(was)
+        }
+    }
 }

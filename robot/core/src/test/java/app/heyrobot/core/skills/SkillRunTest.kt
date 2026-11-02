@@ -10,6 +10,7 @@ import app.heyrobot.core.Executed
 import app.heyrobot.core.Prepared
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.ToolName
+import app.heyrobot.core.TermuxScriptAction
 import app.heyrobot.core.TurnActions
 import app.heyrobot.core.TurnPhase
 import app.heyrobot.core.TurnView
@@ -184,5 +185,47 @@ class SkillRunTest {
         val out = run(s, Phone(auto), View()).run()
         assertEquals(listOf("sleep well"), said)
         assertEquals("Good night: 1 of 1 done.", out.line.render(Langs.EN))
+    }
+
+    /**
+     * Skills connections C1: a step whose condition (on a question) doesn't hold is skipped and counts as done; C8: every
+     * step kind now runs through the ports, a typed script too.
+     */
+    @Test fun aConditionSkipsItsStepAndEveryKindGoesThroughThePorts() = runBlocking {
+        val lock = SkillFixtures.lockUp
+        val s = home.copy(params = home.params + lock, steps = listOf(
+            home.steps[0].copy(cond = SkillIf(SkillRef("lock"), IfTest.Yes(true))),
+            home.steps[1],
+            SkillStep.of(StepKind.SAY, mapOf("text" to "Told {{who}}.")),
+        ))
+        assertTrue(SkillCheck.valid(s))
+        val phone = Phone(auto)
+        val out = run(s, phone, View()).run()
+        assertEquals(listOf("prepare maps_navigate", "run maps_navigate"), phone.log)
+        assertEquals(3, out.done)
+        assertEquals(listOf("Told Sam."), said)
+        val yes = Phone(auto)
+        run(s, yes, View(), values = mapOf("lock" to "true")).run()
+        assertEquals(listOf("prepare send_text", "run send_text", "prepare maps_navigate", "run maps_navigate"), yes.log)
+        // C8: a typed script, the last kind that couldn't run, goes through the ports as its typed carrier (the panel's
+        // TermuxTool decides: TypedScriptStepTest), never a model's string of arguments.
+        val script = SkillStep.of(StepKind.TERMUX_SCRIPT, mapOf("script" to "backup"))
+        val typed = Phone(auto)
+        // As the panel's TermuxTool prepares it: a key and a card (TurnRunner never runs a Termux call without them).
+        typed.prepare = { a -> Prepared.Ready((a as? TermuxScriptAction)?.copy(key = "k", card = app.heyrobot.core.termux.TermuxCardInfo(command = "~/robot/backup")) ?: a) }
+        var carried: TermuxScriptAction? = null
+        typed.result = { a -> carried = a as? TermuxScriptAction ?: carried; Executed(ActionStatus.DONE, "Done.") }
+        val went = run(home.copy(steps = listOf(home.steps[1], script)), typed, View()).run()
+        assertEquals(listOf("prepare maps_navigate", "run maps_navigate", "prepare termux_script", "run termux_script"), typed.log)
+        assertEquals(2, went.done)
+        assertEquals("backup", carried?.step?.script)
+        assertEquals("", carried?.args)
+        // C4: a connection's step goes through the ports' prepare and run like any step (the panel's ConnRunner decides:
+        // SkillsWithConnectionsTest), its condition read from your values.
+        val night = SkillFixtures.goodNight()
+        val conn = Phone(auto)
+        val ran = run(night, conn, View()).run()
+        assertEquals(listOf("prepare connection", "run connection"), conn.log)
+        assertEquals(3, ran.done)
     }
 }

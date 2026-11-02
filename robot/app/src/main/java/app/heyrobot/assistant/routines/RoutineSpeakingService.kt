@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.assistant.routines
 
+import android.app.KeyguardManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.IBinder
+import android.os.PowerManager
 import app.heyrobot.R
 import app.heyrobot.assistant.VoiceHub
 import app.heyrobot.assistant.car.CarModeController
@@ -25,27 +28,41 @@ import app.heyrobot.core.SpeechWay
 import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
 import app.heyrobot.core.i18n.Langs
+import app.heyrobot.lock.PhoneLockNow
 import app.heyrobot.sys.AppPages
+import app.heyrobot.sys.LockShade
+import app.heyrobot.sys.ProtectedBroadcasts
 import app.heyrobot.sys.RoutineIntents
 
 // VOICE PROCESS (0.8). The routine's voice when nobody opened Robot: a mediaPlayback foreground service, not
 // exported, in :voice where the voice is, alive only while a run speaks. Android 17 lets audio play in the background only
 // from a visible activity or a foreground service that isn't short; it needs FOREGROUND_SERVICE_MEDIA_PLAYBACK (a normal
 // permission, no prompt). Its notification is how you see and stop it: "Robot is reading your morning brief" with Next
-// and Stop, and on the lock screen only "Robot is speaking". If Android refuses to start it from the background, the run
+// and Stop, and while the phone is locked only "Robot is speaking" (with the same buttons). If Android refuses to start it from the background, the run
 // waits on a "Morning brief ready · Play" notification instead, and your tap starts it. Never sticky, never at boot.
 
 class RoutineSpeakingService : Service() {
     private var foreground = false
+
+    /** The screen went off, came on, or you unlocked: the notification's title follows ([RoutineNotices.speaking]). */
+    private val lockWatch = object : BroadcastReceiver() {
+        override fun onReceive(c: Context, i: Intent) = refreshForLock()
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
         instance = this
+        try {
+            ProtectedBroadcasts.register(this, lockWatch, ProtectedBroadcasts.filter(Intent.ACTION_USER_PRESENT, Intent.ACTION_SCREEN_ON, Intent.ACTION_SCREEN_OFF))
+        } catch (t: Throwable) {
+            RLog.w("routine_lock_watch", t)
+        }
     }
 
     override fun onDestroy() {
+        try { unregisterReceiver(lockWatch) } catch (_: Throwable) {}
         if (instance === this) instance = null
         super.onDestroy()
     }
@@ -92,6 +109,11 @@ class RoutineSpeakingService : Service() {
         false
     }
 
+    /** While a routine speaks, its notification again, named or not as the lock now says. */
+    internal fun refreshForLock(r: Routine? = RoutineVoice.now?.routine) {
+        if (foreground && r != null) RoutineNotices.speakingAgain(this, r)
+    }
+
     /** The run is over: out of the foreground, notification gone, service stopped (car mode on: its notification again). */
     fun done() {
         if (carHolds() && goForeground()) return
@@ -110,7 +132,7 @@ class RoutineSpeakingService : Service() {
         const val ACTION_STOP = "app.heyrobot.routines.STOP"
         /** 0.8, car mode: in the foreground for the drive, and its notification's End. */
         const val ACTION_CAR = "app.heyrobot.car.START"
-        const val ACTION_CAR_END = "app.heyrobot.car.END"
+        const val ACTION_CAR_END = app.heyrobot.core.car.CarNotice.ACTION_END
 
         /** Car mode is starting or on: the service stays for it. */
         private fun carHolds(): Boolean = CarModeController.state.phase != CarPhase.OFF
@@ -153,16 +175,17 @@ class RoutineSpeakingService : Service() {
  * Robot isn't the assistant. 1.0 audit (secrets-lockscreen-notification-content): VISIBILITY_PRIVATE hides nothing under
  * Android's default "Show sensitive content when locked", so the ones that hold a routine's steps, the brief's words or
  * a routine's name are VISIBILITY_SECRET: never on the secure lock screen (their redacted public version is kept for
- * wherever Android uses it). Only the speaking one shows there, with Next, Repeat and Stop, as its public version.
+ * wherever Android uses it). Only the speaking one shows there, because SECRET would hide its Next, Repeat and Stop; so
+ * while the phone is locked its own title is the public one, and it names the routine again after the unlock.
  */
 object RoutineNotices {
     const val SPEAKING_ID = 8_410
-    private const val READY_ID = 8_411
-    private const val SUMMARY_ID = 8_412
-    private const val PLAY_ID = 8_413
-    private const val CONTINUE_ID = 8_414
+    private const val READY_ID = LockShade.READY
+    private const val SUMMARY_ID = LockShade.SUMMARY
+    private const val PLAY_ID = LockShade.PLAY
+    private const val CONTINUE_ID = LockShade.CONTINUE
     private const val NOT_ASSISTANT_ID = 8_415
-    private const val SILENT_ID = 8_416
+    private const val SILENT_ID = LockShade.SILENT
     private const val CHANNEL_SPEAKING = "routine_speaking"
     private const val CHANNEL = "routines"
 
@@ -194,6 +217,8 @@ object RoutineNotices {
     private fun nm(ctx: Context) = ctx.getSystemService(NotificationManager::class.java)
 
     private fun notify(ctx: Context, id: Int, n: Notification) {
+        // review-lock 10: a routine's words aren't left in the shade during a lock for someone else.
+        if (id != SPEAKING_ID && id != NOT_ASSISTANT_ID && PhoneLockNow.someoneElse(ctx)) return
         try { nm(ctx).notify(id, n) } catch (t: Throwable) { RLog.w("routine_notify", t) }
     }
 
@@ -205,11 +230,19 @@ object RoutineNotices {
 
     private fun publicSpeaking(l: Langs): String = app.heyrobot.core.i18n.RoutineStrings.speaking().render(l)
 
-    /** The service's notification while a run speaks. */
+    /** The phone is in your hands and unlocked; any doubt is locked. */
+    private fun unlocked(ctx: Context): Boolean = try {
+        !ctx.getSystemService(KeyguardManager::class.java).isKeyguardLocked && ctx.getSystemService(PowerManager::class.java).isInteractive
+    } catch (t: Throwable) {
+        RLog.w("routine_keyguard", t)
+        false
+    }
+
+    /** The service's notification while a run speaks: the routine's name only while unlocked, the buttons always. */
     fun speaking(ctx: Context, r: Routine?): Notification {
         channels(ctx)
         val l = langs(ctx)
-        val title = r?.let { RoutineTexts.speakingText(it).render(l) } ?: publicSpeaking(l)
+        val title = r?.takeIf { unlocked(ctx) }?.let { RoutineTexts.speakingText(it).render(l) } ?: publicSpeaking(l)
         return Notification.Builder(ctx, CHANNEL_SPEAKING)
             .setSmallIcon(R.drawable.ic_robot)
             .setContentTitle(title)
@@ -227,6 +260,8 @@ object RoutineNotices {
     }
 
     /** "Robot has 2 things ready for you": the cards' words only unlocked; a tap opens the panel with them. */
+    fun speakingAgain(ctx: Context, r: Routine) = notify(ctx, SPEAKING_ID, speaking(ctx, r))
+
     fun ready(ctx: Context, cards: List<ReadyCard>) {
         if (cards.isEmpty()) return cancel(ctx, READY_ID)
         channels(ctx)

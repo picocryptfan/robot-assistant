@@ -91,6 +91,19 @@
   "LicenseRef-duckduckgo-api": {
    "name": "DuckDuckGo Instant Answer API terms",
    "url": "https://duckduckgo.com/api"
+  },
+  "AGPL-3.0-only": {
+   "name": "GNU Affero General Public License v3.0 only",
+   "text": "licenses/AGPL-3.0.txt",
+   "url": "https://www.gnu.org/licenses/agpl-3.0.html"
+  },
+  "Zlib": {
+   "name": "zlib License",
+   "url": "https://zlib.net/zlib_license.html"
+  },
+  "GPL-3.0-or-later AND BSD-2-Clause AND BSD-3-Clause": {
+   "name": "GNU General Public License v3.0 or later, with BSD 2-Clause and BSD 3-Clause parts",
+   "url": "https://opensource.org/license/bsd-2-clause"
   }
  },
  "components": [
@@ -107,12 +120,12 @@
   {
    "id": "espeak-ng",
    "name": "espeak-ng",
-   "version": "csukuangfj/espeak-ng at ed530aa1",
+   "version": "csukuangfj/espeak-ng at ed530aa1, with Robot's patch",
    "licence": "GPL-3.0-or-later",
    "copyright": "Copyright (C) 2005 to 2013 Jonathan Duddington; Copyright (C) 2013-2017 Reece H. Dunn",
    "url": "https://github.com/espeak-ng/espeak-ng",
    "where": "app",
-   "note": "Turns text into phonemes for the Kokoro and Kitten voices: linked into sherpa-onnx's library, with 17 of its English and French data files. Its complete source, and that of the rest of sherpa-onnx's library, is in each release's third-party source bundle (above)."
+   "note": "Turns text into phonemes for the Kokoro and Kitten voices: linked into sherpa-onnx's library, with 17 of its English and French data files. Robot changes it to add bounds on what text can write (the patch is in third_party/patches, dated 31 Oct 2026). Its complete source, and that of the rest of sherpa-onnx's library, is in each release's third-party source bundle (above)."
   },
   {
    "id": "piper-phonemize",
@@ -326,6 +339,17 @@
    "note": "0.9 Termux agent: about a dozen constant strings copied into core termux TermuxIntents.kt and TermuxIdentity.kt (package, service and permission names, RUN_COMMAND's extras and result keys, folders, known signers' digests). No Termux code is linked; Termux is a separate app you install."
   },
   {
+   "id": "nayuki-qr",
+   "name": "QR Code generator library's design (Project Nayuki)",
+   "version": "design only, no code copied",
+   "licence": "MIT",
+   "copyright": "Copyright (c) Project Nayuki",
+   "url": "https://www.nayuki.io/page/qr-code-generator-library",
+   "where": "app",
+   "text": "licenses/MIT-nayuki-qr.txt",
+   "note": "1.0 Support page: core QrCode.kt is Robot's own code, written from memory of this library's design (no code copied), credited under its MIT licence."
+  },
+  {
    "id": "okio",
    "name": "Okio",
    "version": "3.6.0",
@@ -507,6 +531,138 @@
     "EFF's long word list"
    ],
    "note": "1.1 backups: the passphrase Robot offers is six words picked at random from this list of 7,776 (about 77 bits). “EFF's Long Wordlist” by the Electronic Frontier Foundation, eff.org/dice, licensed under the Creative Commons Attribution 3.0 United States licence (creativecommons.org/licenses/by/3.0/us/). Unchanged: Robot reads the file as published (sha256 addd35536511597a02fa0a9ff1e5284677b8883b83e986e43f15a3db996b903e)."
+  },
+  {
+   "id": "libsignal",
+   "name": "libsignal",
+   "version": "0.105.2",
+   "licence": "AGPL-3.0-only",
+   "copyright": "Copyright 2020-2026 Signal Messenger, LLC",
+   "url": "https://github.com/signalapp/libsignal",
+   "where": "app",
+   "text": "licenses/AGPL-3.0.txt",
+   "notices": [
+    {
+     "title": "Acknowledgments (the licences of the code libsignal's library is built from)",
+     "file": "licenses/notices/libsignal-acknowledgments.md"
+    }
+   ],
+   "maven": [
+    "org.signal:*"
+   ],
+   "note": "Robot to Robot (1.5): the Signal protocol's sessions, which encrypt everything between your Robot and another person's, end to end. Its Java classes and its Android library for arm64, stripped of debug symbols; nothing else of it ships. GPL-3.0 section 13 lets Robot's GPL-3.0 code be combined with this AGPL-3.0 library. Its source: github.com/signalapp/libsignal at tag v0.105.2."
+  },
+  {
+   "id": "tor",
+   "name": "Tor",
+   "version": "0.4.9.14 (Briar's tor-android build)",
+   "licence": "BSD-3-Clause",
+   "copyright": "Copyright (c) 2001-2004, Roger Dingledine; Copyright (c) 2004-2006, Roger Dingledine, Nick Mathewson; Copyright (c) 2007-2019, The Tor Project, Inc.",
+   "url": "https://www.torproject.org/",
+   "where": "app",
+   "text": "licenses/BSD-3-Clause-tor.txt",
+   "match": [
+    "Tor 0.4.9.14"
+   ],
+   "note": "Robot to Robot (1.5): Tor itself, the executable libtor.so for arm64 from Briar's tor-android 0.4.9.14 (Maven Central, its SHA-256 pinned), run by the :link process as its own child with Robot's own settings, for your Robot's onion service and streams to other Robots'. Its licence file lists the licences of the code Tor includes. Statically linked into it: OpenSSL, libevent and zlib (their own entries). Its source: tor-android's sources jar on Maven Central, and gitlab.torproject.org/tpo/core/tor at tor-0.4.9.14.",
+   "maven": [
+    "org.briarproject:tor-android"
+   ]
+  },
+  {
+   "id": "openssl",
+   "name": "OpenSSL (in Tor)",
+   "version": "3.5.9",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright (c) 1998-2026 The OpenSSL Project Authors; Copyright (c) 1995-1998 Eric A. Young, Tim J. Hudson",
+   "url": "https://www.openssl.org/",
+   "where": "app",
+   "note": "Linked into Tor's executable (libtor.so) by Briar's tor-android build; Robot itself uses the phone's own TLS."
+  },
+  {
+   "id": "libevent",
+   "name": "libevent (in Tor)",
+   "version": "2.1.13-stable",
+   "licence": "BSD-3-Clause",
+   "copyright": "Copyright (c) 2000-2007 Niels Provos; Copyright (c) 2007-2012 Niels Provos and Nick Mathewson",
+   "url": "https://libevent.org/",
+   "where": "app",
+   "text": "licenses/BSD-3-Clause-libevent.txt",
+   "note": "Linked into Tor's executable (libtor.so) by Briar's tor-android build."
+  },
+  {
+   "id": "zlib",
+   "name": "zlib (in Tor)",
+   "version": "1.3.2",
+   "licence": "Zlib",
+   "copyright": "Copyright (C) 1995-2026 Jean-loup Gailly and Mark Adler",
+   "url": "https://zlib.net/",
+   "where": "app",
+   "text": "licenses/Zlib-zlib.txt",
+   "note": "Linked into Tor's executable (libtor.so) by Briar's tor-android build."
+  },
+  {
+   "id": "onionwrapper",
+   "name": "onionwrapper (Tor's start-up, adapted)",
+   "version": "0.1.7",
+   "licence": "GPL-3.0-only",
+   "copyright": "Copyright Briar Project",
+   "url": "https://code.briarproject.org/briar/onionwrapper",
+   "where": "app",
+   "match": [
+    "onionwrapper"
+   ],
+   "note": "Robot to Robot (1.5): how the :link process starts Tor (its arguments, waiting for its control socket and cookie, taking ownership) is adapted from Briar's onionwrapper 0.1.7 (link/r2r/TorRuntime.kt); none of onionwrapper's own code or library ships, and Robot's own Tor controller replaces it. GPL-3.0, as Robot."
+  },
+  {
+   "id": "lyrebird",
+   "name": "lyrebird (Tor's bridges)",
+   "version": "0.9.0 (built from source)",
+   "licence": "GPL-3.0-or-later AND BSD-2-Clause AND BSD-3-Clause",
+   "copyright": "Copyright (c) 2023, The Tor Project; Copyright (c) 2014-2023, Yawning Angel; Copyright (c) 2012 The Go Authors",
+   "url": "https://gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/lyrebird",
+   "where": "app",
+   "text": "licenses/BSD-2-Clause-lyrebird.txt",
+   "notices": [
+    {
+     "title": "The licences of the Go modules lyrebird is built with",
+     "file": "licenses/notices/lyrebird-modules.txt"
+    },
+    {
+     "title": "GPL-3.0, for x25519ell2.go and meeklite's transport.go",
+     "file": "licenses/GPL-3.0.txt"
+    }
+   ],
+   "match": [
+    "lyrebird 0.9.0"
+   ],
+   "note": "Robot to Robot (1.5): Tor's bridges (Snowflake, obfs4, meek and WebTunnel), the executable liblyrebird.so for arm64, built from lyrebird's source by tools/build_lyrebird.sh (its SHA-256 pinned); as a whole it's under GPL-3.0-or-later, since x25519ell2.go and meeklite's transport.go carry that licence, which Tor starts only while a bridge you chose in Settings › Robot to Robot › Tor bridges is in use. Its licence text is lyrebird's LICENSE at commit a74149c066d0, word for word; its repository also holds the GPL-3.0's text (the same as Robot's) without naming files under it. Statically linked into it: Snowflake 2.10.1, WebTunnel 0.0.2, Pion's WebRTC, the AWS SDK for Go v2 and the other Go modules whose licences its notices give. Its source: gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/lyrebird at a74149c066d0, and each module at the version listed."
+  },
+  {
+   "id": "unifiedpush-connector",
+   "name": "UnifiedPush connector",
+   "version": "3.3.5",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright S1m and the UnifiedPush contributors",
+   "url": "https://unifiedpush.org/developers/android/",
+   "where": "app",
+   "maven": [
+    "org.unifiedpush.android:*"
+   ],
+   "note": "Robot to Robot (1.5): how your push distributor app wakes your Robot (the :link process): registering one push address per paired person, and decrypting each push (RFC 8291). Its copy of Google Tink's web push code also encrypts what Robot posts to another Robot's push address. Its source: codeberg.org/UnifiedPush/android-connector at 3.3.5."
+  },
+  {
+   "id": "tink",
+   "name": "Tink",
+   "version": "1.23.0",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright 2017 Google Inc.",
+   "url": "https://github.com/tink-crypto/tink-java",
+   "where": "app",
+   "maven": [
+    "com.google.crypto.tink:*"
+   ],
+   "note": "Robot to Robot (1.5): the elliptic-curve, HKDF and random-number helpers the push connector's web push encryption uses. The whole jar ships (Robot doesn't shrink code); nothing else of Tink is used, and its protobuf dependency isn't taken."
   },
   {
    "id": "litert-lm",

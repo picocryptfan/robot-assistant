@@ -253,6 +253,29 @@ enum class VoiceEvent(val id: Int) {
      * fill's tier (0 none, 1 Simple, 2 Careful, 3 Risky), c = 0. Never the skill's name, its tool's name or a value.
      */
     SKILL_WARN(252),
+    // 253 stays reserved for Run with's SKILL_FALLBACK and 256 to 259 for 1.3 (MCP, plans, drafts, sharing): connections
+    // plan D21.
+    /** Skills connections (C4): a step's check. a = [app.heyrobot.core.connect.SkillCheckCode], b = the step (from 1), c = 0. */
+    SKILL_CHECK(254),
+    /**
+     * Skills connections (C4): one call to a connection. a = its kind (core connect ConnLog.kind), b = how it ended (0 answered
+     * 2xx; else the HTTP status's hundreds plus ConnFailure's code), c = its time's bucket × 10 + its size's (ConnLog). Never a
+     * host, a path, a value or a reply.
+     */
+    CONN_CALL(255),
+    /**
+     * Skills connections (C7, D21): a hand-off to an app you picked. a = its action (core connect HandOffStep.logAction), b =
+     * 0 when the app opened, else ConnFailure's code, c = 1 when the intent named the app's one matching activity. Never the
+     * app, its package, an address or a value.
+     */
+    HAND_OFF(263),
+    /** Skills connections (C4, D16): a limit reached. a = [app.heyrobot.core.connect.SkillLimitCode], b = the limit. */
+    SKILL_LIMIT(264),
+    /**
+     * Skills connections (C5, D21): a connection's set-up. a = its kind (ConnLog.kind), b = [app.heyrobot.core.connect.ConnSetupCode],
+     * c = 0 when it worked, else ConnFailure's code (99: the answer wasn't the server's). Never a host, a key, an entity or a name.
+     */
+    CONN_SETUP(262),
     /** A skill taught, saved, changed or deleted: a = [app.heyrobot.core.skills.SkillEditCode], b = its steps, c = its questions. */
     SKILL_EDIT(260),
     /**
@@ -287,6 +310,105 @@ enum class VoiceEvent(val id: Int) {
      * [app.heyrobot.core.files.FileOutCode], b = 1 a stripped copy, c = 1 a file that could run something.
      */
     FILE_OUT(279),
+    // 1.4, Robot Lists (lists-plan.md §8.4, D14): 280 to 289. Codes and counts only, never a list's name or an item's words.
+    /** An add: a = [app.heyrobot.core.lists.ListAddCode], b = items in it, c = 1 said while the phone was locked, 2 the model's add_to_list (LS4). */
+    LIST_ADD(280),
+    /** A list read, an item checked, your lists named: a = [app.heyrobot.core.lists.ListReadCode], b = open items read, or lists. */
+    LIST_READ(281),
+    /** A tick or a put back by your words: a = [app.heyrobot.core.lists.ListTickCode], b = items. */
+    LIST_TICK(282),
+    /** A clear, an empty, an Undo: a = [app.heyrobot.core.lists.ListEditCode], b = items. */
+    LIST_EDIT(283),
+    /** A list made by your words: a = [app.heyrobot.core.lists.ListMakeCode]. */
+    LIST_MAKE(284),
+    /** What the lock rules answered (§5): a = [app.heyrobot.core.lists.ListLockedCode]. */
+    LIST_LOCKED(285),
+    /** Reserved: the journal's merge at unlock. */
+    LIST_MERGE(286),
+    /** Reserved: robot_lists_v1's and robot_lists_lock_v1's states. */
+    LIST_KEY(287),
+    /** Reserved: the home-screen widget (LS6). */
+    LIST_WIDGET(288),
+    /** LS4: the model's split of a run of your words: a = core lists ListSplitCode, b = items. */
+    LIST_SPLIT(289),
+    // 1.5, Robot to Robot (robot-to-robot-plan.md D13; job L7): 300 to 319. Codes and counts only, never a name, a pairing, a
+    // request's words or a time (core link LinkLogCodes).
+    /** Requests came in, said by :voice: a = [app.heyrobot.core.link.LinkInCode], b = how many. */
+    LINK_IN(300),
+    /** A request you sent: a = [app.heyrobot.core.link.LinkOutCode]. */
+    LINK_OUT(301),
+    /** Your answer to a card: a = [app.heyrobot.core.link.LinkCardCode], b = the request's type code. */
+    LINK_CARD(302),
+    /** Robot answered on its own (announced): b = how many. */
+    LINK_AUTO(303),
+    /** Your Undo of something Robot did on its own: a = 1 undone, 0 not. */
+    LINK_UNDO(304),
+    /** A pairing's news: a = [app.heyrobot.core.link.LinkPairCode]. */
+    LINK_PAIR(305),
+    /** A pairing's mode: a = [app.heyrobot.core.link.LinkModeCode]. */
+    LINK_MODE(306),
+    /** Reserved: files between Robots (L8). */
+    LINK_FILE(307),
+    /** Reserved: money (L9, after the full test). */
+    LINK_MONEY(308),
+    /** A limit: a = [app.heyrobot.core.link.LinkLimitCode]. */
+    LINK_LIMIT(309),
+    /** Refused while locked: a = [app.heyrobot.core.link.LinkLockedCode]. */
+    LINK_LOCKED(310),
+    /** Your words tightened a person's levels ("stop answering Sam on your own"): a = 1 done (0 not), b = capabilities. */
+    LINK_LEVEL(311),
+    // The everyday set (docs/plans/everyday-set-plan.md §2.5, D22): 320 to 339, and 340 to 349 kept for the spoken tests.
+    // Codes and counts only: never a song, an artist, a sum's numbers, a server's name, another app's package, text spoken
+    // or heard for another app, or anything you shared. E0 reserves 320 to 334 in the plan's order; each job gives its
+    // own their codes and words (E1 320 to 323, E2 324 and 325, E3 326 and 327, E5 328 and 329, E6 330 and 331, E7 332 to
+    // 334). 335 to 339 stay free for the set's fixes.
+    /** A media key sent (E1): a = [app.heyrobot.core.output.MusicAction]'s ordinal + 1, b = 1 if something was playing as you started asking, c = 1 in car mode. */
+    MUSIC_KEY(320),
+    /**
+     * Play by name (E1): a = the door (1 your music app's media service, 2 its play-from-search screen), b =
+     * [app.heyrobot.core.music.MusicPlayCode], c = [app.heyrobot.core.music.PlayFocus]'s ordinal + 1.
+     */
+    MUSIC_PLAY(321),
+    /** Your music app (E1): a = [app.heyrobot.core.music.MusicAppCode], b = how many music apps were found, c = 1 from Settings. */
+    MUSIC_APP(322),
+    /** "What's playing" (E1): a = [app.heyrobot.core.music.MusicNowCode]. */
+    MUSIC_NOW(323),
+    /** E2: a sum worked out by code from your words. a = [app.heyrobot.core.sums.SumKind], b = [app.heyrobot.core.sums.SumResult]. */
+    SUMS(324),
+    /** E2: the model's calculate tool, worked out by code. a = [app.heyrobot.core.sums.SumResult]. */
+    CALC_TOOL(325),
+    /** E3: Settings › Safety & privacy › What went online opened. a = 1 while its record is on. */
+    ONLINE_PAGE(326),
+    /** E3: "what went online" asked by voice (the answer is never logged). a = 1 if the phone was locked. */
+    ONLINE_ASKED(327),
+    /**
+     * E5: another app's mic button through Robot's recognizer: a = [app.heyrobot.core.everyday.ListenForAppCode], b = how long
+     * it listened, in tenths of a second (0 when refused). Never the words or the app.
+     */
+    LISTEN_FOR_APP(328),
+    /** E5: the listening sheet another app opened (RECOGNIZE_SPEECH): a = [app.heyrobot.core.everyday.ListenSheetCode]. */
+    LISTEN_SHEET(329),
+    /**
+     * E6: Robot's voice for another app. a = [app.heyrobot.core.tts.VoiceForAppResult], b = [app.heyrobot.core.tts.CharsBucket],
+     * c = how many requests ended that way since the last such line (one a minute at most, core VoiceForAppPace).
+     */
+    VOICE_FOR_APP(330),
+    /** E6: that voice loaded for another app. a = [app.heyrobot.core.tts.VoiceForAppProcess], b = [app.heyrobot.core.tts.LoadBucket]. */
+    VOICE_FOR_APP_LOAD(331),
+    /**
+     * E7: Ask Robot was handed something and opened the panel with it. a = its kind (core ask SharedKind: text, image,
+     * audio), b = core ask AskShown. Never the content, its size or the app it came from.
+     */
+    ASK_SHARED(332),
+    /** E7: a shared voice message turned into text. a = core ask AskShare.secondsBucket, b = core ask AskHeard. */
+    ASK_TRANSCRIBE(333),
+    /** E7: Ask Robot took nothing. a = core ask AskRefusal, b = its kind (SharedKind; 0 before it was known). */
+    ASK_REFUSED(334),
+    /**
+     * 1.1: the last pass over a question found no words though speech was heard, so the words shown while you spoke were
+     * used: a = their characters (never the words), b = audio ms of the last pass, c = audio ms behind the words shown.
+     */
+    STT_USED_SHOWN(350),
     // Conversation mode (0.5.0, docs/conversation-mode.md 8): 100 to 119. Counts and codes only, never a word said.
     /** A conversation session started: a = [ConvMode], b = [ConvEntry], c = 1 if the phone was locked. */
     CONV_START(100),
@@ -442,6 +564,8 @@ enum class VoiceEvent(val id: Int) {
     CAR_MUSIC(217),
     /** A headset or car session ended: a = headset [EndWhy], b = seconds it lasted, c = output [SessionKind]. */
     HEADSET_END(218),
+    /** The microphone in the car, numbers only: a = 0 the wake phrase, 1 a question, b = Android's input type (-1 unknown), c = its peak level in dB. */
+    CAR_MIC(219),
     /** 0.7, Settings › About › Send feedback opened: a = [FeedbackEntry] (where from), b = [FeedbackKind]. */
     FEEDBACK_OPENED(220),
     /**
@@ -591,7 +715,7 @@ enum class ListenWhy(override val id: Int, override val title: String) : LogCode
     READY(1, "assistant ready"), SETTINGS(2, "settings changed"), POWER(3, "charger plugged or unplugged"), RETRY(4, "retry"),
     NOT_CHARGING(5, "not charging"), MIC_BUSY(6, "microphone busy"), NO_PERMISSION(7, "no microphone permission"), SHUTDOWN(8, "assistant stopped"),
     OFF(9, "wake word off"), DEAD(10, "the microphone stopped"), STALLED(11, "no audio for a while"), NOT_ASSISTANT(12, "not the running assistant"),
-    CRASHES(13, "off after repeated crashes"), MODEL(14, "wake-word model failed"), RESTART(15, "restarted"),
+    CRASHES(13, "off after repeated crashes"), MODEL(14, "wake-word model failed"), RESTART(15, "restarted"), BATTERY_SAVER(16, "Battery Saver is on"),
 }
 
 enum class MicKind(override val id: Int, override val title: String) : LogCode {
@@ -613,6 +737,8 @@ enum class ShowSource(override val id: Int, override val title: String) : LogCod
     HEADSET(7, "headset button"),
     /** 1.0 (ipc-1): another app's showAssist, opened as the plain panel (its arguments dropped). */
     OTHER_APP(8, "another app"),
+    /** The everyday set (everyday-set-plan.md §7, E7): Ask Robot, opened with what another app shared (text, a photo, a voice message). */
+    SHARE(9, "shared from another app"),
 }
 
 enum class BrainFail(override val id: Int, override val title: String) : LogCode {
@@ -719,6 +845,10 @@ enum class ConvEntry(override val id: Int, override val title: String) : LogCode
 enum class ConvStop(override val id: Int, override val title: String) : LogCode {
     USER(1, "you stopped it"), TILE(2, "the tile"), NOTIFICATION(3, "the notification"), DISK(4, "storage nearly full"),
     THERMAL(5, "the phone was too hot"), ERROR(6, "an error"), VOICE(7, "by voice"),
+    /** 1.1.2, FA8g: a phone lock started while it ran (phone-lock-design §5.2). */
+    PHONE_LOCK(8, "a phone lock started"),
+    /** week-fixes: nothing heard for [ConversationRules.FORGOTTEN_MS]. */
+    FORGOTTEN(9, "nothing heard for a long time"),
 }
 
 /** Why a conversation session paused. */
@@ -793,9 +923,14 @@ enum class AnthropicErrorKind(override val id: Int, override val title: String) 
 /** One event: when (wall clock, ms), what, and up to three small numbers. */
 data class VoiceLogEntry(val time: Long, val event: VoiceEvent, val a: Int = 0, val b: Int = 0, val c: Int = 0)
 
-/** The newest [capacity] events, oldest dropped first. Thread-safe. */
+/**
+ * The newest [capacity] events, oldest dropped first; a failure ([VoiceLog.KEPT_EVENTS]) falling off the end stays a while
+ * longer, at most [VoiceLog.KEPT_EACH] of one event and [VoiceLog.KEPT] in all, so a report made later in the day still has
+ * it. Numbers only, as every event. Thread-safe.
+ */
 class VoiceLogRing(val capacity: Int = VoiceLog.CAPACITY) {
     private val items = ArrayDeque<VoiceLogEntry>()
+    private val kept = ArrayDeque<VoiceLogEntry>()
 
     @Synchronized
     fun add(time: Long, event: VoiceEvent, a: Int = 0, b: Int = 0, c: Int = 0) = push(VoiceLogEntry(time, event, a, b, c))
@@ -803,7 +938,14 @@ class VoiceLogRing(val capacity: Int = VoiceLog.CAPACITY) {
     @Synchronized
     internal fun push(e: VoiceLogEntry) {
         items.addLast(e)
-        while (items.size > capacity) items.removeFirst()
+        while (items.size > capacity) keep(items.removeFirst())
+    }
+
+    private fun keep(e: VoiceLogEntry) {
+        if (e.event !in VoiceLog.KEPT_EVENTS) return
+        kept.addLast(e)
+        if (kept.count { it.event == e.event } > VoiceLog.KEPT_EACH) kept.remove(kept.first { it.event == e.event })
+        while (kept.size > VoiceLog.KEPT) kept.removeFirst()
     }
 
     @Synchronized
@@ -813,15 +955,16 @@ class VoiceLogRing(val capacity: Int = VoiceLog.CAPACITY) {
     @Synchronized
     fun replace(list: List<VoiceLogEntry>) {
         items.clear()
+        kept.clear()
         addAll(list)
     }
 
     /** Oldest first. */
     @Synchronized
-    fun snapshot(): List<VoiceLogEntry> = items.toList()
+    fun snapshot(): List<VoiceLogEntry> = kept + items
 
     @Synchronized
-    fun size(): Int = items.size
+    fun size(): Int = kept.size + items.size
 }
 
 /** voice_log.txt: a header line, then "time event a b c" per event, oldest first; numbers only. */
@@ -834,7 +977,7 @@ object VoiceLogCodec {
     }
 
     /** Oldest first; a damaged line or an event this version doesn't know is skipped, never fatal. */
-    fun decode(text: String?, capacity: Int = VoiceLog.CAPACITY): List<VoiceLogEntry> {
+    fun decode(text: String?, capacity: Int = VoiceLog.CAPACITY + VoiceLog.KEPT): List<VoiceLogEntry> {
         if (text == null) return emptyList()
         val lines = text.lineSequence().toList()
         if (lines.firstOrNull()?.trim() != HEADER) return emptyList()
@@ -857,6 +1000,14 @@ object VoiceLogCodec {
  */
 object VoiceLog {
     const val CAPACITY = 300
+    /** Failures kept past [CAPACITY] ([VoiceLogRing]): in all, and of one event (a microphone refused every minute can't push out the rest). */
+    const val KEPT = 100
+    const val KEPT_EACH = 20
+    /** What a report made hours later must still show: something failed, in numbers. */
+    val KEPT_EVENTS: Set<VoiceEvent> = setOf(VoiceEvent.LISTEN_FAILED, VoiceEvent.SHOW_FAILED, VoiceEvent.BRAIN_FAILED, VoiceEvent.BRAIN_DIED,
+        VoiceEvent.NO_REPLY, VoiceEvent.CLAUDE_FAILED, VoiceEvent.WEATHER_FAILED, VoiceEvent.WEB_FAILED, VoiceEvent.TERMUX_FAILED,
+        VoiceEvent.CONV_SAVE_FAIL, VoiceEvent.MODEL_LOAD_FAILED, VoiceEvent.MODEL_FALLBACK, VoiceEvent.GPU_FALLBACK, VoiceEvent.TPU_FALLBACK,
+        VoiceEvent.HEADSET_ROUTE_FAILED, VoiceEvent.ROUTINE_MISSED)
     /** Writes are batched: the file follows the memory within this. */
     const val FLUSH_MS = 400L
 
@@ -961,6 +1112,12 @@ object VoiceLogText {
 
     private fun count(n: Int, what: String): String = "$n $what" + if (n == 1) "" else "s"
 
+    /** ASK_TRANSCRIBE's bucket of seconds (core ask AskShare.secondsBucket), by its number. */
+    private val ASK_SECONDS = listOf("?", "up to 10 s", "up to 30 s", "up to a minute", "up to 2 minutes", "up to 3 minutes", "over 3 minutes (cut)")
+
+    /** An everyday set event that has no words yet (E0 reserved it): its name and numbers only. */
+    private fun everyday(what: String, e: VoiceLogEntry): String = what + ": " + e.event.name.lowercase(Locale.ROOT) + " ${e.a} · ${e.b} · ${e.c}"
+
     /**
      * One event in words. [phrase] names a wake phrase by id for display only (the log itself keeps the number);
      * null shows the number alone.
@@ -994,6 +1151,8 @@ object VoiceLogText {
                 (if (c == 1) " · own microphone" else "")
             VoiceEvent.STT_DONE -> "Question written down: $a characters from " + secs(b) + " of audio in $c ms"
             VoiceEvent.STT_EMPTY -> "No words found in " + secs(a) + " of audio" + (if (b == 1) " (speech was heard)" else "")
+            VoiceEvent.STT_USED_SHOWN -> "Used the words shown: the last pass found none in " + secs(b) + " of audio · $a characters from " +
+                secs(c)
             VoiceEvent.STT_END -> "Listening for the question ended: " + code(SttEnd.entries, a)
             VoiceEvent.SESSION_SHOWN -> "Panel opened (" + code(ShowSource.entries, a) + ")"
             VoiceEvent.SESSION_HIDDEN -> "Panel closed after $a s"
@@ -1063,6 +1222,17 @@ object VoiceLogText {
             VoiceEvent.SKILL_RUN -> "Skill: " + code(app.heyrobot.core.skills.SkillRunCode.entries, a) + " · $b of " + count(c, "step") + " done"
             VoiceEvent.SKILL_STEP -> "Skill step: " + code(StepCode.entries, a) + (if (b == 1) " · done" else " · didn't happen") + (if (c == 1) " · an app opened" else "")
             VoiceEvent.SKILL_WARN -> "Skill call: " + code(app.heyrobot.core.skills.SkillWarnCode.entries, a) + (if (b > 0) " · tier $b" else "")
+            VoiceEvent.SKILL_CHECK -> "Skill step $b's check: " + code(app.heyrobot.core.connect.SkillCheckCode.entries, a)
+            VoiceEvent.CONN_CALL -> "Connection call: " + (app.heyrobot.core.connect.ConnKind.entries.getOrNull(a - 1)?.id ?: "kind $a") + " · " +
+                (if (b == 0) "answered" else (if (b >= 100) "HTTP ${b / 100}xx · " else "") + (app.heyrobot.core.connect.ConnFailure.of(b % 100)?.name?.lowercase(Locale.ROOT)
+                    ?.replace('_', ' ') ?: "code ${b % 100}")) + " · time bucket ${c / 10} · size bucket ${c % 10}"
+            VoiceEvent.HAND_OFF -> "App hand-off: " + (app.heyrobot.core.connect.HandOffAction.entries.getOrNull(a - 1)?.name ?: "action $a") + " · " +
+                (if (b == 0) "opened" else app.heyrobot.core.connect.ConnFailure.of(b)?.name?.lowercase(Locale.ROOT)?.replace('_', ' ') ?: "code $b") +
+                (if (c == 1) " · its one matching activity" else "")
+            VoiceEvent.SKILL_LIMIT -> "Limit reached: " + code(app.heyrobot.core.connect.SkillLimitCode.entries, a) + " ($b)"
+            VoiceEvent.CONN_SETUP -> "Connection set-up: " + (app.heyrobot.core.connect.ConnKind.entries.getOrNull(a - 1)?.id ?: "kind $a") + " · " +
+                code(app.heyrobot.core.connect.ConnSetupCode.entries, b) + " · " + (if (c == 0) "worked" else if (c == app.heyrobot.core.connect.ConnSetupCode.UNEXPECTED) "not the server's answer"
+                    else app.heyrobot.core.connect.ConnFailure.of(c)?.name?.lowercase(Locale.ROOT)?.replace('_', ' ') ?: "code $c")
             VoiceEvent.FILE_IN -> "Robot Files: " + count(b, "file") + " " + code(app.heyrobot.core.files.FileInCode.entries, a) + (if (c > 0) " · $c dangerous" else "")
             VoiceEvent.FILE_READ -> "Robot Files, the model's reading: " + code(app.heyrobot.core.files.FileReadCode.entries, a) + (if (b == 1) " · a picture" else " · text") + " · " + secs(c * 1000)
             VoiceEvent.FILE_FILED -> "Robot Files, filing: " + code(app.heyrobot.core.files.FileFiledCode.entries, a) +
@@ -1077,6 +1247,47 @@ object VoiceLogText {
             VoiceEvent.FILE_RULE -> "Robot Files: " + code(app.heyrobot.core.files.FileRuleCode.entries, a) + (if (b == 1) " · from your taps" else " · from your words")
             VoiceEvent.FILE_FIND -> "Robot Files: " + code(app.heyrobot.core.files.FileFindCode.entries, a) + " · " + count(b, "file")
             VoiceEvent.FILE_KEY -> "Robot Files: " + e.event.name.lowercase(Locale.ROOT) + " $a · $b · $c"
+            VoiceEvent.LIST_ADD -> "Lists, an add: " + code(app.heyrobot.core.lists.ListAddCode.entries, a) + " · " + count(b, "item") + (if (c == 1) " · while locked" else if (c == 2) " · the model's" else "")
+            VoiceEvent.LIST_READ -> "Lists: " + code(app.heyrobot.core.lists.ListReadCode.entries, a) + " · $b"
+            VoiceEvent.LIST_TICK -> "Lists: " + code(app.heyrobot.core.lists.ListTickCode.entries, a) + " · " + count(b, "item")
+            VoiceEvent.LIST_EDIT -> "Lists: " + code(app.heyrobot.core.lists.ListEditCode.entries, a) + " · " + count(b, "item")
+            VoiceEvent.LIST_MAKE -> "Lists: a list " + code(app.heyrobot.core.lists.ListMakeCode.entries, a)
+            VoiceEvent.LIST_LOCKED -> "Lists, locked: " + code(app.heyrobot.core.lists.ListLockedCode.entries, a)
+            VoiceEvent.LIST_SPLIT -> "Lists, the model's split: " + code(app.heyrobot.core.lists.ListSplitCode.entries, a) + " · " + count(b, "item")
+            VoiceEvent.LIST_MERGE, VoiceEvent.LIST_KEY, VoiceEvent.LIST_WIDGET -> "Lists: " + e.event.name.lowercase(Locale.ROOT) + " $a · $b · $c"
+            VoiceEvent.LINK_IN -> "Robot to Robot: $b " + code(app.heyrobot.core.link.LinkInCode.entries, a)
+            VoiceEvent.LINK_OUT -> "Robot to Robot, sent: " + code(app.heyrobot.core.link.LinkOutCode.entries, a)
+            VoiceEvent.LINK_CARD -> "Robot to Robot, a card: " + code(app.heyrobot.core.link.LinkCardCode.entries, a) + " · type $b"
+            VoiceEvent.LINK_AUTO -> "Robot to Robot: handled on its own · $b"
+            VoiceEvent.LINK_UNDO -> "Robot to Robot: " + (if (a == 1) "undone" else "couldn't undo")
+            VoiceEvent.LINK_PAIR -> "Robot to Robot: " + code(app.heyrobot.core.link.LinkPairCode.entries, a)
+            VoiceEvent.LINK_MODE -> "Robot to Robot: " + code(app.heyrobot.core.link.LinkModeCode.entries, a)
+            VoiceEvent.LINK_FILE, VoiceEvent.LINK_MONEY -> "Robot to Robot: " + e.event.name.lowercase(Locale.ROOT) + " $a · $b · $c"
+            VoiceEvent.LINK_LIMIT -> "Robot to Robot: " + code(app.heyrobot.core.link.LinkLimitCode.entries, a)
+            VoiceEvent.LINK_LOCKED -> "Robot to Robot, locked: " + code(app.heyrobot.core.link.LinkLockedCode.entries, a)
+            VoiceEvent.LINK_LEVEL -> "Robot to Robot: " + (if (a == 1) "answers on its own turned off by your words" else "levels not changed") + " · " + count(b, "capability").replace("capabilitys", "capabilities")
+            // The everyday set's reserved events (E0): their numbers until each job gives them words.
+            VoiceEvent.MUSIC_KEY -> "Music: " + (listOf("play", "pause", "next", "previous").getOrNull(a - 1) ?: "#$a") + (if (b == 1) " · something was playing" else "") +
+                (if (c == 1) " · car mode" else "")
+            VoiceEvent.MUSIC_PLAY -> "Music by name: " + (if (a == 2) "the play-from-search screen" else "the music app's media service") + " · " +
+                code(app.heyrobot.core.music.MusicPlayCode.entries, b)
+            VoiceEvent.MUSIC_APP -> "Your music app: " + code(app.heyrobot.core.music.MusicAppCode.entries, a) + " · " + count(b, "app") + " found" +
+                (if (c == 1) " · in Settings" else "")
+            VoiceEvent.MUSIC_NOW -> "What's playing: " + code(app.heyrobot.core.music.MusicNowCode.entries, a)
+            VoiceEvent.SUMS -> "Sums: " + code(app.heyrobot.core.sums.SumKind.entries, a) + " · " + code(app.heyrobot.core.sums.SumResult.entries, b)
+            VoiceEvent.CALC_TOOL -> "Sums, the model's calculate: " + code(app.heyrobot.core.sums.SumResult.entries, a)
+            VoiceEvent.ONLINE_PAGE -> "What went online: the page opened" + (if (a == 1) "" else " · record off")
+            VoiceEvent.ONLINE_ASKED -> "What went online: asked by voice" + (if (a == 1) " · locked" else "")
+            VoiceEvent.LISTEN_FOR_APP -> "Listening for another app: " + code(app.heyrobot.core.everyday.ListenForAppCode.entries, a) + (if (b > 0) " · " + secs(b * 100) else "")
+            VoiceEvent.LISTEN_SHEET -> "Listening sheet for another app: " + code(app.heyrobot.core.everyday.ListenSheetCode.entries, a)
+            VoiceEvent.VOICE_FOR_APP -> "Robot's voice for another app: " + code(app.heyrobot.core.tts.VoiceForAppResult.entries, a) + " · " +
+                code(app.heyrobot.core.tts.CharsBucket.entries, b) + (if (c > 1) " · $c requests" else "")
+            VoiceEvent.VOICE_FOR_APP_LOAD -> "Robot's voice for another app loaded in " + code(app.heyrobot.core.tts.VoiceForAppProcess.entries, a) + " · " +
+                code(app.heyrobot.core.tts.LoadBucket.entries, b)
+            VoiceEvent.ASK_SHARED -> "Ask Robot: " + code(app.heyrobot.core.ask.SharedKind.entries, a) + " · " + code(app.heyrobot.core.ask.AskShown.entries, b)
+            VoiceEvent.ASK_TRANSCRIBE -> "Ask Robot: a voice message " + ASK_SECONDS.getOrElse(a) { "?" } + " · " + code(app.heyrobot.core.ask.AskHeard.entries, b)
+            VoiceEvent.ASK_REFUSED -> "Ask Robot took nothing: " + code(app.heyrobot.core.ask.AskRefusal.entries, a) +
+                (if (b > 0) " · " + code(app.heyrobot.core.ask.SharedKind.entries, b) else "")
             VoiceEvent.SKILL_PICK -> "Skills and the model: " + code(app.heyrobot.core.skills.SkillPickCode.entries, a) + " · $b" + (if (c == 1) " · named" else "")
             VoiceEvent.SKILL_EDIT -> "Skill " + code(app.heyrobot.core.skills.SkillEditCode.entries, a) + ": " + count(b, "step") + ", " + count(c, "question")
             VoiceEvent.RESTORE -> "Restore: " + (if (a == 1) "done" else "partly") + " · " + cats(b) + (if (c != 0) " · not " + cats(c) else "")
@@ -1166,6 +1377,7 @@ object VoiceLogText {
             VoiceEvent.SPOKEN_CARD -> "Card by voice: " + code(CardVoiceCode.entries, a) + (if (b > 0) " · " + count(b, "answer") + " · " + code(AnswerCode.entries, c) else "")
             VoiceEvent.CAR_MODE -> "Car mode " + (if (a == 1) "on: " else "off: ") + code(CarWhy.entries, b)
             VoiceEvent.CAR_TRUSTED -> "Car mode's unlocked features " + (if (a == 1) "on: " else "off: ") + code(TrustEnd.entries, b)
+            VoiceEvent.CAR_MIC -> "Microphone in the car: " + (if (a == 1) "question" else "wake phrase") + " · input type $b · peak $c dB"
             VoiceEvent.CAR_CALL -> "Call: " + code(CallWay.entries, a) + if (b == 1) " · emergency number" else ""
             VoiceEvent.CAR_REPLY -> (if (a == 1) "Reply handed to the app" else "Reply not sent: " + code(ReplyEnd.entries, b))
             VoiceEvent.CAR_DND -> "Driving Do Not Disturb " + (if (a == 1) "set" else "cleared") + if (b == 1) "" else " (Android didn't take it)"

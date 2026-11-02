@@ -191,6 +191,27 @@ class FileSniffTest {
         assertEquals(null, FileSniff.hidden(FileType.MP4, ByteArray(10) + zipEnd(), null))
     }
 
+    /**
+     * F49: one byte that isn't UTF-8 in the first 4 KiB makes the sniff say UNKNOWN. A ZIP's end record in the tail, or
+     * markup anywhere, still makes the file what it is: for the whole file in memory and as it streams by.
+     */
+    @Test fun aByteThatIsntUtf8DoesntHideWhatAFileIs() {
+        val bad = "caf".toByteArray() + byteArrayOf(0xE9.toByte()) + " menu\n".toByteArray()
+        fun both(f: ByteArray, want: FileType?) {
+            assertEquals(FileType.UNKNOWN, FileSniff.sniff(f.copyOf(minOf(f.size, FileSniff.PREFIX)), f.size.toLong()))
+            assertEquals(want, FileSniff.hiddenIn(java.nio.ByteBuffer.wrap(f), FileType.UNKNOWN))
+            val w = FileSniff.Watch()
+            f.toList().chunked(1000).forEach { c -> w.feed(c.toByteArray(), 0, c.size) }
+            assertEquals(want, w.hidden(FileType.UNKNOWN))
+        }
+        both(bad + "<html><script>x()</script></html>".toByteArray(), FileType.HTML)
+        both(bad + "<SVG onload='x()'/>".toByteArray(), FileType.SVG)
+        both(bad + ByteArray(6_000) { 'a'.code.toByte() } + "<!DOCTYPE html>".toByteArray(), FileType.HTML)
+        both(bad + ByteArray(300) + zipEnd(12), FileType.ZIP)
+        // Nothing of the kind: it stays unknown, as a text with the same byte does.
+        both(bad + "just a list\n".repeat(50).toByteArray(), null)
+    }
+
     /** FX2 (finding 14): markup past a text's first 4 KiB makes it HTML or SVG, as in its first 4 KiB; case aside, across chunks. */
     @Test fun markupDeepInATextRuns() {
         val plain = "Groceries: milk, eggs, bread.\n".repeat(400).toByteArray()

@@ -38,10 +38,8 @@ class ClockNeedTest {
     }
 
     @Test fun theVoiceCardsNoteNamesTheClockInBothLanguages() {
-        assertEquals("This phone doesn't have the GrapheneOS Clock app, so turning off an alarm won't start this routine. Support for other clock " +
-            "apps is planned.", RoutineStrings.clockMissing().en())
+        assertEquals("This phone doesn't have a Clock app, so turning off an alarm won't start this routine.", RoutineStrings.clockMissing().en())
         // FrTypo's apostrophes and no-break space.
-        assertEquals("Ce téléphone n\u2019a pas l\u2019appli Horloge de GrapheneOS\u00a0: arrêter une alarme ne lancera donc pas cette routine. La " +
-            "prise en charge d\u2019autres applis d\u2019horloge est prévue.", RoutineStrings.clockMissing().render(Langs.of(Lang.FR)))
+        assertEquals("Ce téléphone n\u2019a pas d\u2019appli d\u2019horloge\u00a0: arrêter une alarme ne lancera donc pas cette routine.", RoutineStrings.clockMissing().render(Langs.of(Lang.FR)))
     }
 }

@@ -12,7 +12,7 @@ import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -393,7 +393,8 @@ class MemorySettingsTest {
         seedRules()
         rule.show { MemorySettingsScreen(store, log.actions, SnackbarHostState(), onBack = {}, now = { now }) }
         rule.waitUntil(5_000) { runCatching { rule.onNodeWithText("Utiliser la mémoire").assertExists() }.isSuccess }
-        rule.scrollToText("Esso receipts go in Car.")
+        // The rules come from the file a moment after the page's first rows.
+        rule.waitUntil(5_000) { runCatching { rule.scrollToText("Esso receipts go in Car.") }.isSuccess }
         rule.onNodeWithText("Esso receipts go in Car.").assert(hasText("Règle de classement · ", substring = true))
         rule.onRow("Esso receipts go in Car.").performClick()
         rule.inDialog("Les Fichiers de Robot la suivent pour classer. Supprime-la ici et Robot arrête.").assertExists()

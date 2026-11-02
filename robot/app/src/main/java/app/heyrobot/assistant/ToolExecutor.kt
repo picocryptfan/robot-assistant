@@ -99,6 +99,7 @@ import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.Calendars
 import app.heyrobot.sys.CheogramIntents
 import app.heyrobot.sys.CoarseLocation
+import app.heyrobot.sys.MapsApps
 import app.heyrobot.sys.NearestAnswers
 import app.heyrobot.sys.NominatimClient
 import app.heyrobot.sys.OpenMeteoClient
@@ -166,7 +167,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         when (action) {
             is Action.OpenApp -> {
                 val m = AppMatcher.match(action.name, launcherApps())
-                if (m == null) Prepared.Refused(ActionStatus.FAILED, ToolStrings.noAppCalled("name" to action.name))
+                if (m == null) Prepared.Refused(ActionStatus.NOT_FOUND, ToolStrings.noAppCalled("name" to action.name))
                 // 1.1, Phone lock (§6): only the apps the active locks leave open.
                 else if (PhoneLockNow.on(ctx) && m.app.key.substringBefore('/') !in PhoneLockNow.apps(ctx))
                     Prepared.Refused(ActionStatus.NEEDS_UNLOCK, LockStrings.appClosed())
@@ -195,6 +196,8 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
             is app.heyrobot.core.BrowserSearchAction -> BrowserSearchTool.prepare(ctx, action, said, webContext())
             // 1.4, Robot Files (F9): refused while its files can't be read (a phone lock, a locked phone, Robot Files off).
             is Action.FindFiles, is Action.ReadFile -> PanelFileTools.prepare(action, app.heyrobot.sys.FilesIntake.gate(ctx))
+            // 1.5, Robot to Robot (L7): who among those paired, and exactly what goes, read by code before the card.
+            is Action.AskRobot -> PanelLinkAsk.prepare(ctx, action, lang, settings.eventMinutes)
             else -> Prepared.Ready(action)
         }
     } catch (t: Throwable) {
@@ -246,6 +249,14 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
                 // 1.4, Robot Files (F9): reads of the sealed index behind its lock gate; read_file ends the turn (PanelFileAnswer).
                 is Action.FindFiles -> PanelFileTools.find(action, { app.heyrobot.sys.FilesIntake.gate(ctx) }, { app.heyrobot.sys.RobotFiles.shown(ctx) })
                 is Action.ReadFile -> PanelFileTools.read(action, { app.heyrobot.sys.FilesIntake.gate(ctx) }, { app.heyrobot.sys.RobotFiles.shown(ctx) })
+                // 1.4 Lists (LS4): the panel's own (PanelLists.runModel, after its prepare), never here: a routine never adds to a list.
+                is Action.AddToList -> Executed(ActionStatus.FAILED, ToolStrings.somethingWrong())
+                // Skills connections (C4): a connection's step runs through ConnRunner (PanelController, Stop cancels it), never here.
+                is app.heyrobot.core.ConnStepAction, is app.heyrobot.core.HandOffStepAction -> Executed(ActionStatus.FAILED, ToolStrings.somethingWrong())
+                // The everyday set (E2): code's sum is the reply, and the model's turn ends with it (core TurnRunner, Executed.calc).
+                is Action.Calculate -> app.heyrobot.assistant.sums.PanelSums.calculate(action)
+                // 1.5, Robot to Robot (L7): to :link, which queues it for their Robot (refused while locked).
+                is Action.AskRobot -> PanelLinkAsk.run(ctx, action, lang)
             }
         } catch (t: Throwable) {
             RLog.w("tool_run", t, "tool" to action.tool)
@@ -273,7 +284,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
             .putExtra(AlarmClock.EXTRA_LENGTH, seconds.toInt())
             .putExtra(AlarmClock.EXTRA_SKIP_UI, true)
             .putExtra(AlarmClock.EXTRA_MESSAGE, "Robot")
-        return if (start(i)) Executed(ActionStatus.DONE, ToolStrings.timerSet("duration" to app.heyrobot.core.i18n.Arg.Seconds(seconds)))
+        return if (start(app.heyrobot.sys.RoutineFacts.toChosenClock(ctx, i))) Executed(ActionStatus.DONE, ToolStrings.timerSet("duration" to app.heyrobot.core.i18n.Arg.Seconds(seconds)))
         else Executed(ActionStatus.FAILED, ToolStrings.noClockTimers())
     }
 
@@ -283,7 +294,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
             .putExtra(AlarmClock.EXTRA_MINUTES, minute)
             .putExtra(AlarmClock.EXTRA_SKIP_UI, true)
             .putExtra(AlarmClock.EXTRA_MESSAGE, "Robot")
-        return if (start(i)) Executed(ActionStatus.DONE, ToolStrings.alarmSet("time" to app.heyrobot.core.EventText.clock(hour, minute)))
+        return if (start(app.heyrobot.sys.RoutineFacts.toChosenClock(ctx, i))) Executed(ActionStatus.DONE, ToolStrings.alarmSet("time" to app.heyrobot.core.EventText.clock(hour, minute)))
         else Executed(ActionStatus.FAILED, ToolStrings.noClockAlarms())
     }
 
@@ -299,7 +310,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         // Prepared actions carry the activity the card showed; anything else is resolved strictly (no loose match).
         val entry = a.key?.let { AppEntry(a.name, it) }
             ?: AppMatcher.match(a.name, launcherApps())?.takeIf { !it.loose }?.app
-            ?: return Executed(ActionStatus.FAILED, ToolStrings.noAppCalled("name" to a.name))
+            ?: return Executed(ActionStatus.NOT_FOUND, ToolStrings.noAppCalled("name" to a.name))
         val (pkg, cls) = entry.key.split('/', limit = 2)
         val i = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setClassName(pkg, cls)
             .addFlags(Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
@@ -307,16 +318,20 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         else Executed(ActionStatus.FAILED, ToolStrings.didntOpen("appName" to entry.label))
     }
 
-    /** Organic Maps' search for [query]; [navigate]: the card says to tap Route for directions. */
-    private fun maps(query: String, navigate: Boolean): Executed {
-        val q = Uri.encode(query)
-        for (uri in listOf("om://search?query=$q", "geo:0,0?q=$q")) {
-            if (start(Intent(Intent.ACTION_VIEW, Uri.parse(uri)))) {
-                return Executed(ActionStatus.DONE, if (navigate) ToolStrings.mapsOpenedRoute() else ToolStrings.mapsOpened(), launchedApp = true)
-            }
-        }
-        return Executed(ActionStatus.FAILED, ToolStrings.noOrganicMaps())
+    /** Your maps app's search for [query] (sys MapsApps); [navigate]: the card says to tap Route for directions. */
+    private fun maps(query: String, navigate: Boolean): Executed = when (val o = MapsApps.open(ctx, MapsApps.search(ctx, query), launch = launch)) {
+        MapsApps.Opened.Done -> Executed(ActionStatus.DONE, if (navigate) ToolStrings.mapsOpenedRoute() else ToolStrings.mapsOpened(), launchedApp = true)
+        is MapsApps.Opened.Repick -> Executed(ActionStatus.FAILED, MapsApps.replacedText())
+        MapsApps.Opened.None -> Executed(ActionStatus.FAILED, ToolStrings.noOrganicMaps())
     }
+
+    /** A route in your maps app (sys MapsApps); null when it opened (car mode remembers it for "Back to directions"). */
+    private fun route(from: Pair<Double, Double>?, to: Pair<Double, Double>, toName: String): Executed? =
+        when (MapsApps.open(ctx, MapsApps.route(ctx, from, ctx.getString(R.string.card_your_position), to, toName), launch = launch)) {
+            MapsApps.Opened.Done -> { app.heyrobot.assistant.car.CarModeController.routeOpened(); null }
+            is MapsApps.Opened.Repick -> Executed(ActionStatus.FAILED, MapsApps.replacedText())
+            MapsApps.Opened.None -> Executed(ActionStatus.FAILED, ToolStrings.noOrganicMaps())
+        }
 
     /**
      * 1.1 (Skills, D4): "the route home" is the route to your Home or Work saved in Settings › Car mode, as car mode opens
@@ -337,9 +352,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         val s = HandsFreeFiles.store(ctx).carSettings()
         val p = (if (home) s.home else s.work) ?: return Executed(ActionStatus.NOT_FOUND, CarNavigate.noPlaceText(home))
         val here = if (CoarseLocation.granted(ctx)) CoarseLocation.find(ctx, ROUTE_FIX_MS, abort).fix else null
-        val uri = here?.let { OrganicMapsRoute.uri(it.lat, it.lon, ctx.getString(R.string.card_your_position), p.lat, p.lon, p.label) }
-            ?: OrganicMapsRoute.geo(p.lat, p.lon, p.label)
-        if (!start(Intent(Intent.ACTION_VIEW, Uri.parse(uri)))) return Executed(ActionStatus.FAILED, ToolStrings.noOrganicMaps())
+        route(here?.let { it.lat to it.lon }, p.lat to p.lon, p.label)?.let { return it }
         return Executed(ActionStatus.DONE, HandsFreeStrings.routeReady(), launchedApp = true)
     }
 
@@ -386,9 +399,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         val f = r as NearbyLookup.Found
         val place = f.place
         if (abort.cancelled || !abort.claim()) return Executed(ActionStatus.DECLINED, TurnStrings.stopped())
-        val opened = start(Intent(Intent.ACTION_VIEW, Uri.parse(OrganicMapsRoute.uri(f.lat, f.lon, ctx.getString(R.string.card_your_position), place.lat, place.lon, place.name))))
-            || start(Intent(Intent.ACTION_VIEW, Uri.parse(OrganicMapsRoute.geo(place.lat, place.lon, place.name))))
-        if (!opened) return Executed(ActionStatus.FAILED, ToolStrings.noOrganicMaps())
+        route(f.lat to f.lon, place.lat to place.lon, place.name)?.let { return it }
         val far = Nearby.distanceText(f.metres, WeatherUnits.of(region))
         RLog.i("maps_nearest", "found" to true, "places" to f.places, "requests" to requests, "ms" to ms)
         val sent = ToolStrings.sentNear("server" to server.sentTo, "what" to what, "lat" to Nearby.coord(f.lat), "lon" to Nearby.coord(f.lon))
@@ -428,7 +439,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
     private fun canPick(pkg: String?): Boolean = pkg != null && CheogramIntents.canPick(ctx, pkg)
 
     /** A choice's kind on the card ("Mobile"), and where a learned name came from; null: neither. */
-    private fun kind(r: Reach): Phrase? = listOfNotNull(r.label?.let { app.heyrobot.core.People.labelText(it) }, if (r.learned) InfoStrings.seenInCheogram() else null)
+    private fun kind(r: Reach): Phrase? = listOfNotNull(r.label?.let { app.heyrobot.core.People.labelText(it) }, if (r.fromRobot) InfoStrings.fromRobotCard() else if (r.learned) InfoStrings.seenInCheogram() else null)
         .takeIf { it.isNotEmpty() }?.let { Phrase.Join(it, " · ") }
 
     /**
@@ -477,7 +488,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
             return Recipients.notFound(a, why.en(), why, via, pick = canPick(cheogram), allowContacts = !granted)
         }
         val matches = all.take(Recipients.MAX_PEOPLE)
-        val options = Recipients.forText(book.cards(matches) { Contacts.cards(ctx, it) }, xmppOk = via == TextVia.CHEOGRAM).mapNotNull { r ->
+        val options = Recipients.forText(book.cards(matches) { Contacts.cards(ctx, it) }, xmppOk = via == TextVia.CHEOGRAM, gateway = settings.smsGateway).mapNotNull { r ->
             val t = if (r.xmpp) TextTarget(r.name, r.address, r.address, appName, via, from = r)
             else Phones.e164(r.address, region)?.let { numberTarget(r.name, it, via, appName, r) }
             t?.let {
@@ -769,7 +780,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
                 home != null -> home
                 else -> return null
             }
-            val f = OpenMeteoClient.forecast(ctx, place, 1, units, abort)
+            val f = OpenMeteoClient.forecast(ctx, place, 1, units, abort, app.heyrobot.core.online.NetCause.ROUTINE)
             val today = f.days.firstOrNull { it.date == now.withZoneSameInstant(f.zone ?: now.zone).toLocalDate() } ?: f.days.firstOrNull()
             VoiceLog.add(VoiceEvent.WEATHER, if (fix != null) WeatherSource.FIX else WeatherSource.HOME, 0, 0)
             app.heyrobot.core.BriefWeather(f.now, today, units, place = if (fix == null) home?.name else null)
@@ -813,7 +824,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
      */
     private fun prepareFreeMemory(a: Action.FreeMemory): Prepared {
         val name = a.app ?: return prepareUnload(a)
-        val m = AppMatcher.match(name, launcherApps()) ?: return Prepared.Refused(ActionStatus.FAILED, ToolStrings.noAppCalled("name" to name))
+        val m = AppMatcher.match(name, launcherApps()) ?: return Prepared.Refused(ActionStatus.NOT_FOUND, ToolStrings.noAppCalled("name" to name))
         val pkg = m.app.key.substringBefore('/')
         if (pkg == ctx.packageName) return Prepared.Refused(ActionStatus.FAILED, ToolStrings.cantStopItself())
         return Prepared.Ready(Action.FreeMemory(m.app.label, pkg), why = unsure(m.loose))

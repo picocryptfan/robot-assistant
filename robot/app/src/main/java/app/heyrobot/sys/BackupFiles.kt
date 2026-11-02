@@ -7,6 +7,7 @@ import app.heyrobot.core.RLog
 import app.heyrobot.core.backup.BackupPrefs
 import app.heyrobot.core.backup.BackupState
 import app.heyrobot.core.backup.RestoreJournal
+import app.heyrobot.core.backup.RestoreProgress
 import app.heyrobot.core.backup.RestoreResult
 import app.heyrobot.core.readOrNull
 import app.heyrobot.core.writeAtomic
@@ -41,7 +42,13 @@ object RestoreFiles {
     fun incoming(ctx: Context): File = File(dir(ctx), "incoming")
     fun journal(ctx: Context): RestoreJournal = RestoreJournal(dir(ctx))
     fun resultFile(ctx: Context): File = File(dir(ctx), RestoreResult.FILE)
-    fun result(ctx: Context): RestoreResult? = RestoreResult.fromJson(readOrNull(resultFile(ctx)))
+    fun progress(ctx: Context): RestoreProgress = RestoreProgress(dir(ctx))
+    /** R1: the last restore's result, or one that stopped part way; nothing while :voice is writing one now. */
+    fun result(ctx: Context): RestoreResult? = progress(ctx).read { pid ->
+        pid != 0 && try {
+            ctx.getSystemService(android.app.ActivityManager::class.java)?.runningAppProcesses?.any { it.pid == pid && it.processName.endsWith(":voice") } == true // l10n: not text (a process name)
+        } catch (_: Throwable) { false }
+    }
 }
 
 object BackupFiles {

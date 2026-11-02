@@ -4,6 +4,10 @@ package app.heyrobot.assistant.routines
 import android.content.Context
 import android.content.Intent
 import android.os.SystemClock
+import app.heyrobot.lock.PhoneLockNow
+import app.heyrobot.core.lock.SomeoneElseLock
+import app.heyrobot.core.RoutineLock
+import app.heyrobot.core.LockScreen
 import app.heyrobot.assistant.ToolExecutor
 import app.heyrobot.core.Abort
 import app.heyrobot.core.Action
@@ -133,9 +137,11 @@ object BriefSource {
         } catch (t: Throwable) { RLog.w("brief_lock", t); null }
         // 1.4 F10: Robot Files' part, read only while the phone is unlocked (its key needs it) and Settings › Files says so.
         val files = if (withWeather) files(ctx, now) else null
-        val all = items.filter { it != BriefItem.FILES } + listOfNotNull(BriefItem.FILES.takeIf { files != null })
+        // 1.5 L6: Robot to Robot's part, as Files': read only while the phone is unlocked, when its "Show in morning brief" says so.
+        val link = if (withWeather) link(ctx, now) else null
+        val all = items.filter { it != BriefItem.FILES && it != BriefItem.LINK } + listOfNotNull(BriefItem.FILES.takeIf { files != null }, BriefItem.LINK.takeIf { link != null })
         return BriefInput(now, lang(rs, langs), all, weather, if (withWeather) missing ?: (if (weather == null) BriefWeatherMissing.UNAVAILABLE else null) else missing,
-            events, reminders, if (BriefItem.MESSAGES in items && withWeather) unread.unread() else null, phoneOpens = opens, files = files)
+            events, reminders, if (BriefItem.MESSAGES in items && withWeather) unread.unread() else null, phoneOpens = opens, files = files, link = link)
     }
 
     /**
@@ -156,6 +162,29 @@ object BriefSource {
         else app.heyrobot.sys.RobotFiles.shown(ctx)?.let { app.heyrobot.core.files.FileBrief.of(it, now.toLocalDate(), now.zone) }?.takeIf { !it.empty }
     } catch (t: Throwable) {
         RLog.w("brief_files", t)
+        null
+    }
+
+    /**
+     * 1.5 L6: Robot to Robot's part now (core LinkBrief: requests waiting, what Robot handled on its own in the last day), or
+     * null: Robot to Robot off, its "Show in morning brief" off, the phone locked or a phone lock on, or nothing to say.
+     */
+    fun link(ctx: Context, now: ZonedDateTime): app.heyrobot.core.LinkBrief? = try {
+        val s = app.heyrobot.sys.LinkSettingsStore.current(ctx)
+        if (!s.on || !s.brief || Assistant.locked(ctx)) null else {
+            val client = app.heyrobot.sys.LinkClient(ctx)
+            try {
+                client.desk()?.let { d ->
+                    val since = now.toEpochSecond() - 86_400
+                    app.heyrobot.core.LinkBrief(d.cards.size + d.more.values.sum(),
+                        d.lines.count { it.entry.way == app.heyrobot.core.link.DeskWay.IN && it.entry.state == app.heyrobot.core.link.DeskState.HANDLED && it.entry.done >= since })
+                }?.takeIf { !it.empty }
+            } finally {
+                client.close()
+            }
+        }
+    } catch (t: Throwable) {
+        RLog.w("brief_link", t)
         null
     }
 
@@ -205,21 +234,24 @@ object RoutineRunner {
         val started = SystemClock.elapsedRealtime()
         BriefSource.alarmAt = if (kind == TriggerKind.ALARM) key?.removePrefix("a:")?.toLongOrNull() else null
         val store = RoutineFiles.store(ctx)
-        val s = SettingsStore.load(ctx)
-        val rs = store.settings()
-        // 1.1: the lock screen only. Routines are unchanged during a phone lock: the screen is unlocked then,
+        // F6: during someone else's lock, the lock screen's rules: nothing personal is said, and what would wait for the unlock
+        // is dropped, since that unlock would be theirs. During your own lock, routines are unchanged: the screen is unlocked,
         // so a step held for the unlock would wait for an unlock that doesn't come; an app a step opens is covered anyway.
-        val locked = Assistant.keyguard(ctx)
+        val someoneElse = PhoneLockNow.someoneElse(ctx)
+        val s = SettingsStore.load(ctx).let { if (someoneElse) it.copy(lockedTools = it.lockedTools intersect LockScreen.DEFAULT) else it }
+        val rs = SomeoneElseLock.routines(store.settings(), someoneElse)
+        val locked = Assistant.keyguard(ctx) || someoneElse
         val langs = BriefSource.langs(ctx, s)
         val briefLang = BriefSource.lang(rs, langs)
-        val routine = r.copy(steps = steps)
+        val routine = r.copy(steps = steps, lock = if (someoneElse) RoutineLock.FOLLOW else r.lock)
         val plan = RoutinePlan.plan(routine, RunOrigin.UNATTENDED, locked, s, rs)
         val speaks = r.output != RoutineOutput.SILENT
         val silent = StringBuilder()
         val session = if (speaks) RoutineVoice.open(r, RoutineVoice.Surface.SERVICE, rs.briefLock == BriefLock.EVERYTHING, locked) { end ->
             RoutineHub.spoken(ctx, r, kind, end)
         }.also { it.resumed = resumed } else null
-        fun say(parts: List<SpokenPart>) {
+        fun say(all: List<SpokenPart>) {
+            val parts = SomeoneElseLock.spoken(all, someoneElse)
             if (parts.isEmpty()) return
             if (session != null) RoutineVoice.add(session, parts)
             else parts.forEach { silent.append(it.shownText).append(' ') }
@@ -237,12 +269,12 @@ object RoutineRunner {
             when (p.go) {
                 StepGo.NEVER, StepGo.DISABLED -> {}
                 StepGo.READY, StepGo.CONFIRM -> { ready(ctx, r, p.step); ready++ }
-                StepGo.WAIT_UNLOCK -> waiting += p.step
+                StepGo.WAIT_UNLOCK -> if (!someoneElse) waiting += p.step
                 StepGo.SKIP_OFFLINE, StepGo.SKIP_NO_CONSENT -> RoutinePlan.skipText(p.go, p.step)?.let { say(listOf(part(it, langs, false, p.step.code))) }
                 StepGo.RUN, StepGo.RUN_PUBLIC -> when (val step = p.step) {
                     RoutineStep.Brief -> {
                         val (spoken, held) = brief(ctx, s, rs, routine, locked, ::say, langs = langs)
-                        heldParts += held
+                        if (!someoneElse) heldParts += held
                         VoiceLog.add(VoiceEvent.BRIEF_SPOKEN, spoken.sumOf { it.lines.size }, held.sumOf { it.lines.size }, spoken.sumOf { it.chars })
                     }
                     is RoutineStep.Say -> say(listOf(part(step.text, true, StepCode.SAY)))

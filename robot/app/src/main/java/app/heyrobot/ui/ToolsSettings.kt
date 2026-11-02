@@ -12,7 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.AlertDialog
+import app.heyrobot.ui.common.AlertDialog
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField
@@ -96,7 +96,7 @@ internal fun HomeDialog(s: RobotSettings, update: (RobotSettings) -> Unit, a: Ap
         problem = null
         scope.launch {
             val r: Any? = withContext(Dispatchers.IO) {
-                try { OpenMeteoClient.geocode(ctx, asked, Abort(WeatherAsk.DEADLINE_MS)) } catch (e: OpenMeteoClient.Failure) { e } catch (_: Exception) { null }
+                try { OpenMeteoClient.geocode(ctx, asked, Abort(WeatherAsk.DEADLINE_MS), app.heyrobot.core.online.NetCause.TAP) } catch (e: OpenMeteoClient.Failure) { e } catch (_: Exception) { null }
             }
             busy = false
             when (r) {

@@ -1,0 +1,15 @@
+{
+  "format": 1,
+  "id": "files-spent-fr",
+  "title": "What was spent, asked in Québec French, reaches Files",
+  "safety": "read",
+  "testBench": ["fl-french"],
+  "setup": [{"set": "speakReplies", "value": "VOICE"}],
+  "steps": [
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "Combien j'ai dépensé en essence en septembre ?", "voice": "siwis"},
+    {"do": "wait_reply", "seconds": 60},
+    {"do": "check", "what": "router", "equals": "FilesRouter"},
+    {"do": "end"}
+  ]
+}

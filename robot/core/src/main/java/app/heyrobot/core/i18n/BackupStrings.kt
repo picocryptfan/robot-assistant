@@ -21,6 +21,12 @@ object BackupStrings : Strings("backup", area = "backup") {
     val keys = s("cat_keys", en = "Keys and private codes", fr = "Clés et codes privés")
     /** 1.4, Robot Files (F11): your files, in the backup's own encryption. */
     val files = s("cat_files", en = "Files", fr = "Fichiers")
+    /** 1.4, Robot Lists (LS7): your lists and Settings › Lists, in the backup's own encryption. */
+    val lists = s("cat_lists", en = "Lists", fr = "Listes")
+    /** Robot to Robot (L12): pairings without keys, permissions, what passed between Robots. */
+    val links = s("cat_links", en = "Robot to Robot", fr = "Robot à Robot")
+    /** The everyday set (everyday-set-plan.md §2.4): everyday_settings.json, music and what other apps may use. */
+    val everyday = s("cat_everyday", en = "Music and other apps", fr = "Musique et autres applis")
 
     // Opening a file (§9.4).
     val locked = s("locked", en = "Unlock your phone to back up or restore.", fr = "Déverrouille ton téléphone pour sauvegarder ou restaurer.")
@@ -38,10 +44,15 @@ object BackupStrings : Strings("backup", area = "backup") {
     // Saving one.
     val cantWrite = s("cant_write", en = "Robot couldn't save the backup there. Try another place, like Downloads or a USB drive.", fr = "Robot n’a pas pu enregistrer la sauvegarde à cet endroit. Essaie un autre endroit, comme Téléchargements ou une clé USB.")
     val readBackFailed = s("read_back_failed", en = "The saved file doesn't read back correctly, so Robot deleted it. Try another place.", fr = "Le fichier enregistré ne se relit pas correctement : Robot l’a supprimé. Essaie un autre endroit.")
+    val readBackRefused = s("read_back_refused", en = "A restore would leave out {category} from the saved file, so Robot deleted it. Back up again without {category}.", fr = "Une restauration laisserait de côté la partie {category} du fichier enregistré : Robot l’a supprimé. Sauvegarde de nouveau sans cette partie.")
+    val overCap = s("over_cap", en = "{category} holds more than a backup can bring back. Back up without {category}, or delete some first.", fr = "La partie {category} contient plus qu’une sauvegarde peut ramener. Sauvegarde sans cette partie, ou supprimes-en d’abord.")
     val memoryUnreadable = s("memory_unreadable", en = "Robot couldn't open its memory just now. Back up without Memory, or unlock and try again.", fr = "Robot n’a pas pu ouvrir sa mémoire pour l’instant. Sauvegarde sans la Mémoire, ou déverrouille et réessaie.")
     /** 1.4: Files was chosen and its list can't be opened now (locked, its key gone, damaged). */
     val filesUnreadable = s("files_unreadable", en = "Robot couldn't open your files just now. Back up without Files, or unlock and try again.",
         fr = "Robot n’a pas pu ouvrir tes fichiers pour l’instant. Sauvegarde sans les Fichiers, ou déverrouille et réessaie.")
+    /** 1.4, Lists: Lists was chosen and the lists can't be opened now (locked, their key gone, damaged). */
+    val listsUnreadable = s("lists_unreadable", en = "Robot couldn't open your lists just now. Back up without Lists, or unlock and try again.",
+        fr = "Robot n’a pas pu ouvrir tes listes pour l’instant. Sauvegarde sans les Listes, ou déverrouille et réessaie.")
     /** 1.4: refused before anything is written, with the size (BackupCaps.MAX_TOTAL). */
     val tooBigToSave = s("too_big_to_save", en = "This backup would be about {size}, more than the {max} a backup can hold. Leave out videos, recordings or another part.",
         fr = "Cette sauvegarde ferait environ {size}, plus que les {max} qu’une sauvegarde peut contenir. Laisse de côté les vidéos, les enregistrements ou une autre partie.")
@@ -53,6 +64,7 @@ object BackupStrings : Strings("backup", area = "backup") {
     val categoryRefused = s("category_refused", en = "{category} in this backup is damaged, so Robot leaves it out.", fr = "Dans cette sauvegarde, la partie {category} est endommagée : Robot la laisse de côté.")
     val categoryTooBig = s("category_too_big", en = "{category} in this backup is larger than Robot can restore, so Robot leaves it out.", fr = "Dans cette sauvegarde, la partie {category} est trop grosse pour que Robot la restaure : Robot la laisse de côté.")
     val categoryFailed = s("category_failed", en = "{category}: not restored, and nothing of it changed. Try again.", fr = "{category} : rien n’a été restauré, et rien n’a changé. Réessaie.")
+    val transcriptsRecording = s("transcripts_recording", en = "A transcription started during the restore, so Robot left your transcripts as they are. Restore them again once it ends.", fr = "Une transcription a commencé pendant la restauration : Robot a laissé tes transcriptions telles quelles. Restaure-les de nouveau quand elle sera finie.")
     val historyOff = s("history_off", en = "History is off on this phone: turn it on to restore your conversations.", fr = "L’historique est désactivé sur ce téléphone : active-le pour restaurer tes conversations.")
     val memoryOff = s("memory_off", en = "Memory is off on this phone: turn it on to restore what Robot remembers.", fr = "La Mémoire est désactivée sur ce téléphone : active-la pour restaurer ce dont Robot se souvient.")
     val needsLockCode = s("needs_lock_code", en = "This phone has a lock code: enter it to restore Phone lock.",
@@ -62,6 +74,9 @@ object BackupStrings : Strings("backup", area = "backup") {
     /** 1.4: this phone's list of files can't be read (damaged, a newer Robot's), and a restore never writes over it. */
     val filesUnreadableHere = s("files_unreadable_here", en = "Robot can't read the list of files on this phone, so it leaves Files out. {page} can start over; then restore again.",
         fr = "Robot ne peut pas lire la liste des fichiers de ce téléphone : il laisse les Fichiers de côté. {page} permet de recommencer; restaure ensuite de nouveau.")
+    /** F46: Keys, some of which couldn't be saved on this phone. */
+    val keysMissed = plural("keys_missed", "n", Plural("restored, except {n} key that couldn't be saved. Enter it again in Settings.", "restored, except {n} keys that couldn't be saved. Enter them again in Settings."),
+        Plural("restaurées, sauf {n} clé qui n’a pas pu être enregistrée. Saisis-la de nouveau dans les Réglages.", "restaurées, sauf {n} clés qui n’ont pas pu être enregistrées. Saisis-les de nouveau dans les Réglages.", "restaurées, sauf {n} de clés qui n’ont pas pu être enregistrées. Saisis-les de nouveau dans les Réglages."))
     /** 1.4: Files with Replace on: how many of this phone's files go (the preview, before your tap). */
     val filesDeleted = plural("files_deleted", "n", Plural("{n} file here will be deleted.", "{n} files here will be deleted."),
         Plural("{n} fichier ici sera supprimé.", "{n} fichiers ici seront supprimés.", "{n} de fichiers ici seront supprimés."))
@@ -74,6 +89,15 @@ object BackupStrings : Strings("backup", area = "backup") {
         Plural("La clé des fichiers de Robot n’existe plus, alors {n} fichier ici ne peut pas être lu : il sera supprimé.",
             "La clé des fichiers de Robot n’existe plus, alors {n} fichiers ici ne peuvent pas être lus : ils seront supprimés.",
             "La clé des fichiers de Robot n’existe plus, alors {n} de fichiers ici ne peuvent pas être lus : ils seront supprimés."))
+    /** 1.4, Lists: this phone's lists can't be read (damaged, a newer Robot's), and a restore never writes over them. */
+    val listsUnreadableHere = s("lists_unreadable_here", en = "Robot can't read the lists on this phone, so it leaves Lists out. {page} can start over; then restore again.",
+        fr = "Robot ne peut pas lire les listes de ce téléphone : il laisse les Listes de côté. {page} permet de recommencer; restaure ensuite de nouveau.")
+    /** 1.4, Lists with Replace on: how many of this phone's lists go (the preview, before your tap). */
+    val listsReplaced = plural("lists_replaced", "n", Plural("{n} list here will be replaced.", "{n} lists here will be replaced."),
+        Plural("{n} liste ici sera remplacée.", "{n} listes ici seront remplacées.", "{n} de listes ici seront remplacées."))
+    /** 1.4, Lists when their key is gone: the lists here can't be read, so a restore keeps them aside and brings the backup's. */
+    val listsKeyGone = s("lists_key_gone", en = "Robot's lists key is gone, so the lists here can't be read. Robot keeps them aside and brings back the backup's.",
+        fr = "La clé des listes de Robot n’existe plus, alors les listes ici ne peuvent pas être lues. Robot les met de côté et ramène celles de la sauvegarde.")
     val notYours = s("not_yours", en = "Keys, private codes and your voiceprint come back only from a backup marked as your own.", fr = "Les clés, les codes privés et l’empreinte vocale reviennent seulement d’une sauvegarde marquée comme la tienne.")
 
     // The monthly reminder: a notification, nothing personal in it.

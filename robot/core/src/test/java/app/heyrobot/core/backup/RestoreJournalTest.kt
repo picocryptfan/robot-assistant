@@ -48,6 +48,67 @@ class RestoreJournalTest {
         journal.done(c)
     }
 
+    @Test fun aRepeatedMoveKeepsTheRestoredCopyOfWhatWasOnBothSides() {
+        // F44: t1 is on this phone and in the backup. The first move gets t1 in place and is cut before t2; the repeat
+        // must not delete t1 again: its staged copy has gone, so that copy would be lost.
+        val root = tmp.newFolder()
+        val liveDir = File(root, "live").apply { mkdirs() }
+        File(liveDir, "t1").mkdirs()
+        File(liveDir, "t1/old").writeText("this phone's")
+        // A file can't be renamed over a folder holding something: the cut.
+        File(liveDir, "t2/x").apply { parentFile!!.mkdirs(); writeText("blocks") }
+        val st = File(root, "staged").apply { mkdirs() }
+        File(st, "t1").mkdirs()
+        File(st, "t1/new").writeText("restored")
+        File(st, "t2").writeText("restored")
+        StagedFiles.stageDelete(st, listOf("t1"))
+        try {
+            StagedFiles.moveIn(st, liveDir)
+            error("the move should have been cut")
+        } catch (_: java.io.IOException) {}
+        assertEquals("restored", File(liveDir, "t1/new").readText())
+        File(liveDir, "t2").deleteRecursively()
+        StagedFiles.moveIn(st, liveDir)
+        assertEquals("restored", File(liveDir, "t1/new").readText())
+        assertFalse(File(liveDir, "t1/old").exists())
+        assertEquals("restored", File(liveDir, "t2").readText())
+    }
+
+    @Test fun aStagedCopyIsOnStorageBeforeItsRename() {
+        // F47: at the sync, the whole file is in its temporary name and the real one isn't there yet.
+        val to = File(tmp.newFolder(), "t1/lines.jsonl")
+        var synced = 0
+        StagedFiles.copy("restored".byteInputStream(), to) { fd ->
+            synced++
+            assertFalse(to.exists())
+            assertEquals("restored", File(to.parentFile, to.name + ".tmp").readText())
+            fd.sync()
+        }
+        assertEquals(1, synced)
+        assertEquals("restored", to.readText())
+        assertFalse(File(to.parentFile, to.name + ".tmp").exists())
+    }
+
+    @Test fun theMoveInSyncsFoldersInOrder() {
+        // F44, F47: deletions first and on storage, the delete list's own removal too, each folder moved, the live folder last.
+        val root = tmp.newFolder()
+        val liveDir = File(root, "live").apply { mkdirs() }
+        File(liveDir, "t1").mkdirs()
+        val st = File(root, "staged").apply { mkdirs() }
+        File(st, "t1").mkdirs()
+        File(st, "t1/meta.json").writeText("restored")
+        StagedFiles.stageDelete(st, listOf("t1"))
+        val calls = ArrayList<String>()
+        StagedFiles.moveIn(st, liveDir) { d ->
+            calls += "${d.name}:" + when (d) {
+                liveDir -> if (File(liveDir, "t1").exists()) "with t1" else "without t1"
+                st -> if (File(st, StagedFiles.DELETE).exists()) "list there" else "list gone"
+                else -> "before its move"
+            }
+        }
+        assertEquals(listOf("live:without t1", "staged:list gone", "t1:before its move", "live:with t1"), calls)
+    }
+
     private val before = mapOf("a.json" to "old a", "b.json" to "old b", "c.json" to "old c")
     private val after = mapOf("a.json" to "new a", "d.json" to "new d")
 

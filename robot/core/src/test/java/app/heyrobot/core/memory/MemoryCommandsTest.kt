@@ -228,4 +228,19 @@ class MemoryCommandsTest {
         assertFalse(c.toString().contains("texts"))
         assertFalse(MemoryCommand.Forget("Julie's birthday", "en").toString().contains("Julie"))
     }
+
+    /** The spoken run: a question with its question mark dropped is never something to keep; "remember that …" still is. */
+    @Test fun aQuestionWithoutItsMarkIsNotKept() {
+        for (t in listOf("Remember the movie where Tom Hanks is stranded on an island?", "Remember the movie where Tom Hanks is stranded on an island",
+            "remember when we went to Halifax", "do you remember my sister's birthday", "remember that time we got lost", "Hey Robot, remember the movie with the volleyball",
+            "Tu te souviens du film où Tom Hanks est sur une île", "Souviens-toi du film où Tom Hanks est sur une île")) {
+            assertTrue(t, MemoryCommands.recallShaped(t))
+            assertFalse(t, MemoryCommands.parse(t) is MemoryCommand.Remember)
+        }
+        for (t in listOf("remember that my door code is 1234", "remember my locker is number 12", "Remember, call me Sam", "souviens-toi que ma soeur s'appelle Julie",
+            "Remember the wifi password is hunter", "Remember my sister's birthday is May 3")) {
+            assertFalse(t, MemoryCommands.recallShaped(t))
+        }
+        assertTrue(MemoryCommands.parse("remember that my door code is 1234") is MemoryCommand.Remember)
+    }
 }

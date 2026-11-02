@@ -91,8 +91,6 @@ class RestoreSafetyTest {
             Case(SaferField.HELP, st { it.copy(help = Escalation.OFF) }, st { it.copy(help = null) }, { it.help }, settings),
             Case(SaferField.HELPER_BUDGET, s, st { it.copy(helperBudgetCents = 10_000) }, { it.helperBudgetCents }, settings),
             Case(SaferField.NEAREST_ONLINE, s, st { it.copy(nearestOnline = NearestOnline.ALWAYS) }, { it.nearestOnline }, settings),
-            Case(SaferField.NEAREST_SERVER, s, st { it.copy(nearestServer = "https://nominatim.example") }, { it.nearestServer }, settings),
-            Case(SaferField.SMS_GATEWAY, s, st { it.copy(smsGateway = "evil.example") }, { it.smsGateway }, settings),
             Case(SaferField.CONV_START_LOCKED, st { it.copy(convStartLocked = false) }, s, { it.convStartLocked }, settings),
         )
         cases.forEach { check(it) }
@@ -155,9 +153,9 @@ class RestoreSafetyTest {
             assertEquals(other, router, r.value.helper("h1"))
             assertTrue(other, SaferField.HELPERS in r.kept)
         }
-        // The same maker: another of its models is taken, with the file's other fields.
+        // The same maker: another of its models is taken, and what you call it stays (F129).
         val same = routed("Anthropic/claude-opus-4.1").value.helper("h1")!!
-        assertEquals(listOf("Anthropic/claude-opus-4.1", "Router", true), listOf(same.model, same.name, same.trust))
+        assertEquals(listOf("Anthropic/claude-opus-4.1", router.name, true), listOf(same.model, same.name, same.trust))
         // A catalog's ids that carry a maker count too (Groq serves both, yet the maker changes): this phone's, whole.
         val groq = HelperConfig.of(Presets.GROQ, "h2", "af_heart")
         val qwen = RestoreSafety.settings(s.copy(helpers = listOf(groq)), s.copy(helpers = listOf(groq.copy(model = "qwen/qwen3.8-27b", name = "Qwen"))), false)
@@ -281,8 +279,6 @@ class RestoreSafetyTest {
             Case(SaferField.WEB_ASK, w.copy(ask = WebAsk.ALWAYS), w, { it.ask }, gw),
             Case(SaferField.WEB_HELPERS, w.copy(helpersMayUse = false), w, { it.helpersMayUse }, gw),
             Case(SaferField.WEB_LOCK_SCREEN, w, w.copy(lockScreen = true), { it.lockScreen }, gw),
-            Case(SaferField.WEB_SEARXNG, w, w.copy(searxng = "https://searx.example"), { it.searxng }, gw),
-            Case(SaferField.WEB_PUBLIC_SEARXNG, w, w.copy(publicSearxng = "https://public.example"), { it.publicSearxng }, gw),
             Case(SaferField.WEB_DAILY, w, w.copy(dailySearches = 5_000), { it.dailySearches }, gw),
         ).forEach { check(it) }
         val u = UpdateSettings()
@@ -341,6 +337,55 @@ class RestoreSafetyTest {
         ).forEach { check(it) }
     }
 
+    /**
+     * C10, Skills connections (plan §5.7): against this phone's connection reaching the same place, a first-use answer it
+     * didn't give, a spoken yes, more requests a minute, a Test it didn't pass, another home-or-internet fact and a signer it
+     * didn't pin keep this phone's value unless the backup is yours.
+     */
+    @Test fun connectionsAreKeptSafer() {
+        val ha = app.heyrobot.core.connect.ConnFixtures.homeAssistant()
+        val hand = app.heyrobot.core.connect.ConnFixtures.signal()
+        val g: (app.heyrobot.core.connect.Connection, app.heyrobot.core.connect.Connection, Boolean) -> Guarded<app.heyrobot.core.connect.Connection> =
+            { p, f, m -> RestoreSafety.connection(p, f, m) }
+        listOf(
+            Case(SaferField.CONN_ANSWERS, ha.copy(answers = emptyMap()), ha, { it.answers }, g),
+            Case(SaferField.CONN_SPOKEN_YES, ha.copy(spokenYes = false), ha.copy(spokenYes = true), { it.spokenYes }, g),
+            Case(SaferField.CONN_PER_MINUTE, ha.copy(perMinute = 10), ha.copy(perMinute = 60), { it.perMinute }, g),
+            Case(SaferField.CONN_TESTED, ha.copy(tested = null), ha, { it.tested }, g),
+            Case(SaferField.CONN_WHERE, ha.copy(where = null), ha, { it.where }, g),
+            Case(SaferField.HAND_OFF_SIGNER, hand.copy(handOff = hand.handOff!!.copy(signer = null)), hand, { it.handOff!!.signer }, g),
+        ).forEach { check(it) }
+    }
+
+    /**
+     * C12's L2: a connection this phone has, restored from a backup that isn't yours, keeps its own operations and name
+     * (the same ids could do something else: "porch" could unlock a door); from yours, or new to this phone, as the file has them.
+     */
+    @Test fun someoneElsesBackupKeepsYourOperations() {
+        val mine = app.heyrobot.core.connect.ConnFixtures.homeAssistant()
+        val porch = app.heyrobot.core.connect.ConnFixtures.lightOff.copy(title = "Turn on the porch light",
+            spec = app.heyrobot.core.connect.OpSpec.HaCall("lock", "unlock"), params = mapOf("entity" to app.heyrobot.core.connect.ConnFixtures.entity("lock.front_door")))
+        val theirs = mine.copy(name = "Their Home Assistant", ops = listOf(porch))
+        val g = RestoreSafety.connection(mine, theirs, mine = false)
+        assertEquals(mine.ops, g.value.ops)
+        assertEquals(mine.name, g.value.name)
+        val yours = RestoreSafety.connection(mine, theirs, mine = true)
+        assertEquals(theirs.ops, yours.value.ops)
+        assertEquals(theirs.name, yours.value.name)
+        // New to this phone: theirs, untrusted (RestoreTaint).
+        assertEquals(theirs.ops, RestoreSafety.connection(null, theirs, mine = false).value.ops)
+        // Counted in "Kept safer" once, for both; nothing kept when nothing differs, or from yours.
+        assertTrue(SaferField.CONN_OPS in g.kept)
+        assertEquals(1, g.kept.count { it == SaferField.CONN_OPS })
+        assertTrue(SaferField.CONN_OPS !in RestoreSafety.connection(mine, mine, mine = false).kept)
+        assertTrue(yours.kept.isEmpty())
+        // Through a restore's Replace: this phone's operations, under its own name.
+        val r = RestoreMerge.connections(listOf(mine), listOf(theirs), RestoreMode.REPLACE, mine = false, keyIds = setOf(mine.id))
+        assertEquals(listOf(mine.ops), r.connections.map { it.ops })
+        assertEquals(listOf(mine.name), r.connections.map { it.name })
+        assertTrue(SaferField.CONN_OPS in r.kept)
+    }
+
     /** 1.4, Settings › Files (files-1.4-plan.md §2.8): a looser filing level, reminders on their own, location stripping off. */
     @Test fun filesSettingsAreKeptSafer() {
         val f = app.heyrobot.core.files.FilesSettings()
@@ -379,6 +424,151 @@ class RestoreSafetyTest {
     }
 
     /**
+     * 1.4, Settings › Lists (lists-plan.md §6, LS7): "Add to lists while locked" and "Hear and tick on the lock screen" turned
+     * off here stay off unless the backup is yours; Lists on or off comes back as the file has it.
+     */
+    @Test fun listsSettingsAreKeptSafer() {
+        val l = app.heyrobot.core.lists.ListsSettings()
+        val gl: (app.heyrobot.core.lists.ListsSettings, app.heyrobot.core.lists.ListsSettings, Boolean) -> Guarded<app.heyrobot.core.lists.ListsSettings> =
+            RestoreSafety::listsSettings
+        listOf(
+            Case(SaferField.LISTS_ADD_LOCKED, l.copy(addLocked = false), l, { it.addLocked }, gl),
+            Case(SaferField.LISTS_LOCK_SCREEN, l, l.copy(lockScreen = true), { it.lockScreen }, gl),
+        ).forEach { check(it) }
+        // Lists itself, either way, as the file has it; the stricter side comes back with nothing kept.
+        assertEquals(Guarded(l.copy(on = false), emptyList()), RestoreSafety.listsSettings(l, l.copy(on = false), mine = false))
+        assertEquals(Guarded(l, emptyList()), RestoreSafety.listsSettings(l.copy(on = false), l, mine = false))
+        val strict = l.copy(addLocked = false)
+        assertEquals(Guarded(strict, emptyList()), RestoreSafety.listsSettings(l.copy(lockScreen = true), strict, mine = false))
+    }
+
+    /**
+     * 1.4, lists_settings.json at a restore: merged over this phone's file as it is, the unknown keys from your own backup
+     * only; when the vault couldn't follow the lock switches, both stay at this phone's; a newer Robot's file is never
+     * written over.
+     */
+    @Test fun listsSettingsFileFollowsTheKeys() {
+        val c = app.heyrobot.core.lists.ListsSettingsCodec
+        val l = app.heyrobot.core.lists.ListsSettings()
+        val here = c.encode(l.copy(addLocked = false), mapOf("mine" to 1))
+        val file = c.decode(c.encode(l.copy(on = false, lockScreen = true), mapOf("theirs" to 2))) as app.heyrobot.core.lists.ListsSettingsFile.Ok
+        fun read(t: String?) = c.decode(t) as app.heyrobot.core.lists.ListsSettingsFile.Ok
+        // Someone else's: the lock switches stay off here, Lists off as theirs says, this phone's unknown keys.
+        val theirs = read(RestoreSafety.listsSettingsFile(here, file, mine = false, keys = l.copy(addLocked = false)))
+        assertEquals(l.copy(on = false, addLocked = false), theirs.read)
+        assertEquals(mapOf<String, Any?>("mine" to 1), theirs.extra)
+        // Yours, followed: as saved, with its unknown keys.
+        val yours = read(RestoreSafety.listsSettingsFile(here, file, mine = true, keys = l.copy(on = false, lockScreen = true)))
+        assertEquals(l.copy(on = false, lockScreen = true), yours.read)
+        assertEquals(mapOf<String, Any?>("theirs" to 2), yours.extra)
+        // Yours, but the vault couldn't follow: the lock switches stay this phone's; Lists still as saved.
+        assertEquals(l.copy(on = false, addLocked = false), read(RestoreSafety.listsSettingsFile(here, file, mine = true, keys = null)).read)
+        // No file here: the defaults are this phone's; a newer Robot's file: nothing written.
+        assertEquals(l.copy(on = false, lockScreen = true), read(RestoreSafety.listsSettingsFile(null, file, mine = true, keys = l.copy(on = false, lockScreen = true))).read)
+        assertEquals(null, RestoreSafety.listsSettingsFile("{\"v\":2}", file, mine = true, keys = l))
+        // A damaged file here reads both lock switches off, so someone else's can't turn them on.
+        assertEquals(l.copy(on = false, addLocked = false), read(RestoreSafety.listsSettingsFile("{", file, mine = false, keys = l.copy(on = false, addLocked = false))).read)
+    }
+
+    /** L12, D14: "Answer while locked" comes back off even from your own backup; on and the calendars stay this phone's. */
+    @Test fun linkSettingsRestoreAnswerWhileLockedOff() {
+        // SaferField.LINK_WHILE_LOCKED, unlike check()'s fields, isn't lifted by the backup being yours.
+        val phone = app.heyrobot.core.link.LinkSettings(on = false, whileLocked = true, busyCalendars = setOf(1L))
+        val file = app.heyrobot.core.link.LinkSettings(on = true, name = "Jo", whileLocked = true, busyCalendars = setOf(9L), brief = false)
+        val g = RestoreSafety.link(phone, file)
+        assertFalse(g.value.whileLocked)
+        assertEquals(listOf(SaferField.LINK_WHILE_LOCKED), g.kept)
+        assertFalse(g.value.on)
+        assertEquals(setOf(1L), g.value.busyCalendars)
+        assertEquals("Jo", g.value.name)
+        assertFalse(g.value.brief)
+        assertEquals(emptyList<SaferField>(), RestoreSafety.link(phone, file.copy(whileLocked = false)).kept)
+        // On a phone where it is on, a restore still turns it off: it is a trust you give on this phone.
+        assertFalse(RestoreSafety.link(phone.copy(on = true, whileLocked = true), file).value.whileLocked)
+        assertTrue(RestoreSafety.link(phone.copy(on = true), file).value.on)
+        // At the finish: this phone's file as it is then, the keys only a later Robot knows kept, a later file here untouched.
+        val staged = app.heyrobot.core.link.LinkSettingsCodec.encode(file, mapOf("later" to 1))
+        val done = app.heyrobot.core.link.LinkSettingsCodec.decode(RestoreSafety.linkFile(null, staged)) as app.heyrobot.core.link.LinkSettingsFile.Ok
+        assertFalse(done.read.whileLocked)
+        assertFalse(done.read.on)
+        assertEquals(1, done.extra["later"])
+        org.junit.Assert.assertNull(RestoreSafety.linkFile("{\"v\":99}", staged))
+        org.junit.Assert.assertNull(RestoreSafety.linkFile(null, "not json"))
+    }
+
+    /** L12, D14: nothing answers on its own after a restore; a capability you had turned off stays off. */
+    @Test fun restoredLevelsDropToAskMeFirst() {
+        val l = RestoreSafety.linkLevels(mapOf(
+            app.heyrobot.core.link.LinkCapability.FREE_BUSY to app.heyrobot.core.link.LinkLevel.AUTO,
+            app.heyrobot.core.link.LinkCapability.EVENTS to app.heyrobot.core.link.LinkLevel.ASK,
+            app.heyrobot.core.link.LinkCapability.PAYMENTS to app.heyrobot.core.link.LinkLevel.OFF))
+        assertEquals(app.heyrobot.core.link.LinkLevel.ASK, l[app.heyrobot.core.link.LinkCapability.FREE_BUSY])
+        assertEquals(app.heyrobot.core.link.LinkLevel.ASK, l[app.heyrobot.core.link.LinkCapability.EVENTS])
+        assertEquals(app.heyrobot.core.link.LinkLevel.OFF, l[app.heyrobot.core.link.LinkCapability.PAYMENTS])
+        for (lvl in app.heyrobot.core.link.LinkLevel.entries) for (cap in app.heyrobot.core.link.LinkCapability.entries)
+            assertTrue(RestoreSafety.linkLevels(mapOf(cap to lvl)).getValue(cap) != app.heyrobot.core.link.LinkLevel.AUTO)
+        // And every result is one :link's own codec takes (money and contact cards never allow Answer on its own).
+        val full = app.heyrobot.core.link.LinkCapability.entries.associateWith { c -> app.heyrobot.core.link.LinkPolicy.levels(c).last() }
+        assertTrue(app.heyrobot.core.link.LinkLevels.decode(app.heyrobot.core.link.LinkLevels.encode(RestoreSafety.linkLevels(full))) != null)
+    }
+
+    /**
+     * The everyday set (everyday-set-plan.md §2.4): "Keep a record of what went online" stays on unless the backup is yours;
+     * the other switches come back as saved; your music app is always this phone's (trust, never restored, never backed up).
+     */
+    @Test fun aDamagedEverydayFileGoesInNoBackup() {
+        // Not JSON, or JSON that's no object: nothing can take a pin out of it, so none of it is written.
+        for (damaged in listOf("not json \"musicApp\":{\"pkg\":\"x\"}", "[\"musicApp\"]", "")) assertEquals(damaged, null, BackupExport.everyday(damaged))
+    }
+
+    @Test fun everydaySettingsAreKeptSafer() {
+        val e = app.heyrobot.core.everyday.EverydaySettings()
+        val ge: (app.heyrobot.core.everyday.EverydaySettings, app.heyrobot.core.everyday.EverydaySettings, Boolean) -> Guarded<app.heyrobot.core.everyday.EverydaySettings> =
+            RestoreSafety::everyday
+        listOf(
+            Case(SaferField.EVERYDAY_ONLINE, e, e.copy(online = false), { it.online }, ge),
+            Case(SaferField.EVERYDAY_LISTEN, e.copy(listen = false), e, { it.listen }, ge),
+            Case(SaferField.EVERYDAY_VOICES, e.copy(voices = false), e, { it.voices }, ge),
+            Case(SaferField.EVERYDAY_ASK, e.copy(askRobot = false), e, { it.askRobot }, ge),
+            Case(SaferField.EVERYDAY_ONLINE_DAYS, e, e.copy(onlineDays = 7), { it.onlineDays }, ge),
+        ).forEach { check(it) }
+        // Closing a door or asking for less hiding comes through; music is as the file has it, either way.
+        val off = e.copy(music = false, listen = false, voices = false, askRobot = false)
+        assertEquals(Guarded(off, emptyList()), RestoreSafety.everyday(e, off, mine = false))
+        assertEquals(Guarded(e.copy(onlineDays = 90), emptyList()), RestoreSafety.everyday(e, e.copy(onlineDays = 90), mine = false))
+        assertTrue(RestoreSafety.everyday(off, off.copy(music = true), mine = false).let { it.value.music && it.kept.isEmpty() })
+        // A stranger's backup against a phone with every door closed and a short record: nothing opens, all of it counted.
+        val shut = off.copy(onlineDays = 7)
+        val back = RestoreSafety.everyday(shut.copy(onlineDays = 30), e.copy(onlineDays = 7), mine = false)
+        assertEquals(setOf(SaferField.EVERYDAY_LISTEN, SaferField.EVERYDAY_VOICES, SaferField.EVERYDAY_ASK, SaferField.EVERYDAY_ONLINE_DAYS), back.kept.toSet())
+        assertEquals(shut.copy(music = true, onlineDays = 30), back.value)
+        // Your own backup comes back as saved.
+        assertEquals(Guarded(e, emptyList()), RestoreSafety.everyday(shut, e, mine = true))
+        val here = app.heyrobot.core.everyday.MusicApp("org.example.here", "a".repeat(64), "Here")
+        val there = app.heyrobot.core.everyday.MusicApp("org.example.there", "b".repeat(64), "There")
+        for (mine in listOf(false, true)) {
+            assertEquals(here, RestoreSafety.everyday(e.copy(musicApp = here), e.copy(musicApp = there), mine).value.musicApp)
+            assertEquals(null, RestoreSafety.everyday(e, e.copy(musicApp = there), mine).value.musicApp)
+        }
+        // Back up now leaves the pin out; the other keys go as they are.
+        val withPin = app.heyrobot.core.everyday.EverydaySettingsCodec.encode(e.copy(musicApp = here, music = false), mapOf("later" to 1))
+        val carried = app.heyrobot.core.everyday.EverydaySettingsCodec.decode(BackupExport.everyday(withPin)) as app.heyrobot.core.everyday.EverydaySettingsFile.Ok
+        assertEquals(e.copy(music = false), carried.read)
+        assertEquals(mapOf("later" to 1), carried.extra)
+        assertTrue(!BackupExport.everyday("{\"v\":9,\"musicApp\":{}}")!!.contains("musicApp"))
+        // At the finish: over this phone's file as it is then; a newer Robot's file here is never written over; keys this
+        // Robot doesn't know come from your own backup only.
+        assertEquals(null, RestoreSafety.everydayFile("{\"v\":2}", withPin, mine = true))
+        assertEquals(null, RestoreSafety.everydayFile(null, "{broken", mine = true))
+        val phone = app.heyrobot.core.everyday.EverydaySettingsCodec.encode(e.copy(musicApp = here), mapOf("mine" to 2))
+        val theirs = app.heyrobot.core.everyday.EverydaySettingsCodec.decode(RestoreSafety.everydayFile(phone, withPin, mine = false)) as app.heyrobot.core.everyday.EverydaySettingsFile.Ok
+        assertEquals(mapOf("mine" to 2), theirs.extra)
+        assertEquals(here, theirs.read.musicApp)
+        val yours = app.heyrobot.core.everyday.EverydaySettingsCodec.decode(RestoreSafety.everydayFile(phone, withPin, mine = true)) as app.heyrobot.core.everyday.EverydaySettingsFile.Ok
+        assertEquals(mapOf("later" to 1), yours.extra)
+    }
+
+    /**
      * F12, travel mode (§2.8, "fewer hidden drawers"): neither someone else's backup nor an older one of yours shows what
      * this phone hides. "This backup is my own" doesn't change that: it is a tick, not the phone's PIN.
      */
@@ -406,8 +596,11 @@ class RestoreSafetyTest {
 
     /** Every guarded field of the [SaferField] list has a case above. */
     @Test fun everySaferFieldIsCovered() {
-        val src = java.io.File("src/test/java/app/heyrobot/core/backup/RestoreSafetyTest.kt").readText()
-        for (f in SaferField.entries.filter { it != SaferField.HELPERS }) assertTrue(f.name, src.contains("SaferField.${f.name},"))
+        val src = java.io.File("src/test/java/app/heyrobot/core/backup/RestoreSafetyTest.kt").readText() +
+            java.io.File("src/test/java/app/heyrobot/core/backup/RestoreHostileFieldsTest.kt").readText()
+        for (f in SaferField.entries.filter { it != SaferField.HELPERS && it != SaferField.CONN_OPS }) assertTrue(f.name, src.contains("SaferField.${f.name},"))
         assertTrue(src.contains("SaferField.HELPERS in g.kept"))
+        // C12's L2: operations have no looser side, only another one: someoneElsesBackupKeepsYourOperations.
+        assertTrue(src.contains("SaferField.CONN_OPS in g.kept"))
     }
 }

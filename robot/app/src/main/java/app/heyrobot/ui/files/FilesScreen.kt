@@ -30,10 +30,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
+import app.heyrobot.ui.common.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -84,6 +83,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import app.heyrobot.R
+import app.heyrobot.core.RLog
 import app.heyrobot.core.files.DrawerRow
 import app.heyrobot.core.files.Drawers
 import app.heyrobot.core.files.FieldBy
@@ -113,6 +113,8 @@ import app.heyrobot.core.memory.MemoryFiling
 import app.heyrobot.core.i18n.Arg
 import app.heyrobot.core.i18n.FilesStrings
 import app.heyrobot.core.i18n.Fmt
+import app.heyrobot.core.files.FilePeer
+import app.heyrobot.core.i18n.LinkStrings
 import app.heyrobot.core.i18n.UiStrings
 import app.heyrobot.core.parse.FileGroup
 import app.heyrobot.core.parse.FileType
@@ -125,6 +127,7 @@ import app.heyrobot.sys.OutCopy
 import app.heyrobot.sys.OutFailure
 import app.heyrobot.ui.AppActions
 import app.heyrobot.ui.Page
+import app.heyrobot.ui.common.DropdownMenu
 import app.heyrobot.ui.common.RIcons
 import app.heyrobot.ui.common.SecureDialog
 import app.heyrobot.ui.common.SecureWindow
@@ -240,6 +243,7 @@ fun FilesScreen(
     }
     // Copies handed to another app: the questions before one goes.
     var askStrip by remember { mutableStateOf<Pair<FileEntry, Boolean>?>(null) }
+    var askStripRobot by remember { mutableStateOf<Pair<FileEntry, Pair<String, app.heyrobot.core.i18n.Phrase>>?>(null) }
     var askOpen by remember { mutableStateOf<FileEntry?>(null) }
 
     fun say(text: String) = a.say(text)
@@ -313,14 +317,22 @@ fun FilesScreen(
     /** One change of the index ([f] null: nothing to change), the gate checked first; [done] gets whether it applied. */
     fun change(f: (FileIndex) -> FileIndex?, done: (Boolean) -> Unit = {}) {
         scope.launch {
+            var failed = false
             val r = withContext(Dispatchers.IO) {
                 if (port.locked()) return@withContext null
                 var applied = false
-                val l = port.update { idx -> f(idx)?.also { applied = true } ?: idx }
+                // F21: a write that fails (a full disk, an entry that can't fit) says "not now"; it never takes the app down.
+                val l = try {
+                    port.update { idx -> f(idx)?.also { applied = true } ?: idx }
+                } catch (t: Exception) {
+                    RLog.w("files_change", t)
+                    failed = true
+                    return@withContext null
+                }
                 if (l.current == null) null else l to applied
             }
             if (r == null) {
-                say(ctx.getString(R.string.files_locked))
+                say(ctx.getString(if (failed) R.string.files_not_now else R.string.files_locked))
                 tick++
                 return@launch
             }
@@ -419,6 +431,40 @@ fun FilesScreen(
                     // Its key was already destroyed (Robot went to the background, or the phone locked): nothing to bring back.
                     say(FilesStrings.notUndone().render(langsOf(ctx)))
                 }
+            }
+        }
+    }
+
+    /** L11: [e] into a shared folder. A file that would need its original to go is not added: a folder has no one to ask. */
+    fun toFolder(e: FileEntry, f: app.heyrobot.core.link.FolderRec) {
+        scope.launch {
+            val sent = withContext(Dispatchers.IO) { port.addToFolder(e, f.pairing, f.fold, false) }
+            val l = langsOf(ctx)
+            say(when (sent) {
+                app.heyrobot.core.files.PeerSent.OFFERED -> LinkStrings.folderAdded("folder" to f.name).render(l)
+                app.heyrobot.core.files.PeerSent.ASK_FIRST -> LinkStrings.folderNeedsStrip().render(l)
+                app.heyrobot.core.files.PeerSent.LOCKED -> ctx.getString(R.string.files_locked)
+                app.heyrobot.core.files.PeerSent.TOO_BIG -> LinkStrings.fileTooBig().render(l)
+                app.heyrobot.core.files.PeerSent.NO_COPY, app.heyrobot.core.files.PeerSent.FAILED -> LinkStrings.folderAddFailed().render(l)
+            })
+        }
+    }
+
+    /** L8: [e] offered to the Robot in [to] (the pairing and whose it is); the words of what came back. */
+    fun toRobot(e: FileEntry, to: Pair<String, app.heyrobot.core.i18n.Phrase>, allowOriginal: Boolean) {
+        scope.launch {
+            val ask = FilesRequests.robotAsk.value?.first?.takeIf { it.pairing == to.first }
+            val sent = withContext(Dispatchers.IO) { port.sendToRobot(e, to.first, allowOriginal, ask) }
+            val l = langsOf(ctx)
+            when (sent) {
+                app.heyrobot.core.files.PeerSent.ASK_FIRST -> askStripRobot = e to to
+                app.heyrobot.core.files.PeerSent.OFFERED -> {
+                    if (ask != null) FilesRequests.robotAsk.value = null
+                    say(LinkStrings.fileOffered("name" to to.second).render(l))
+                }
+                app.heyrobot.core.files.PeerSent.LOCKED -> say(ctx.getString(R.string.files_locked))
+                app.heyrobot.core.files.PeerSent.TOO_BIG -> say(LinkStrings.fileTooBig().render(l))
+                app.heyrobot.core.files.PeerSent.NO_COPY, app.heyrobot.core.files.PeerSent.FAILED -> say(LinkStrings.fileOfferFailed().render(l))
             }
         }
     }
@@ -529,7 +575,7 @@ fun FilesScreen(
                 val e = idx.entry(view.id)?.takeIf { it.id !in hidden }
                 if (e == null) LaunchedEffect(view) { back() }
                 else FilePage(e, idx, port, modifier, onBack = ::back, onChange = { f, d -> change(f, d) }, onMove = ::move, rules = rules, onTagged = ::tagged,
-                    onShare = { handOut(e, open = false, allowOriginal = false) }, onOpenWith = { askOpen = e }, onDelete = ::delete, a = a, clock = now,
+                    onToRobot = { to -> toRobot(e, to, allowOriginal = false) }, onToFolder = { f -> toFolder(e, f) }, onShare = { handOut(e, open = false, allowOriginal = false) }, onOpenWith = { askOpen = e }, onDelete = ::delete, a = a, clock = now,
                     onCalendar = { d ->
                         // F10: the calendar app's own editor, prefilled: you save the event there (Robot writes nothing to the calendar).
                         val langs = langsOf(ctx)
@@ -547,6 +593,13 @@ fun FilesScreen(
             confirm = stringResource(R.string.files_open), onDismiss = { askOpen = null }) {
             askOpen = null
             handOut(e, open = true, allowOriginal = false)
+        }
+    }
+    askStripRobot?.let { (e, pick) ->
+        SecureAlert(stringResource(R.string.files_cant_strip_title), stringResource(R.string.files_cant_strip_text),
+            confirm = stringResource(R.string.files_send_anyway), onDismiss = { askStripRobot = null }) {
+            askStripRobot = null
+            toRobot(e, pick, allowOriginal = true)
         }
     }
     askStrip?.let { (e, open) ->
@@ -597,6 +650,7 @@ private fun HomePage(
     val found = remember(idx, hidden, query) { if (query.isBlank()) null else FileViews.search(idx, query, hidden) }
     var moving by remember { mutableStateOf<FileEntry?>(null) }
     var newDrawer by remember { mutableStateOf(false) }
+    val robotAskHome by FilesRequests.robotAsk.collectAsState()
     val needYou = pluralStringResource(R.plurals.files_need_you, home.needYou.size, home.needYou.size)
     val beingRead = stringResource(R.string.files_being_read)
     val recentTitle = stringResource(R.string.files_recent)
@@ -624,6 +678,15 @@ private fun HomePage(
             }
             if (home.empty) item(key = "empty") { IntroPreference(stringResource(R.string.files_empty)) }
             if (home.inbox > 0) {
+                // L8: a Robot asked for a file, and you said you'd send one (Requests).
+                robotAskHome?.let { (_, who) ->
+                    item(key = "robot-ask") {
+                        Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                            IntroPreference(LinkStrings.pickForRobot("name" to who).str())
+                            OutlinedButton(onClick = { FilesRequests.robotAsk.value = null }) { Text(UiStrings.cancel().str()) }
+                        }
+                    }
+                }
                 if (home.needYou.isNotEmpty()) preferenceGroup("$inboxTitle · $needYou", "inbox") { // l10n: not text (two labels joined)
                     if (home.fileThem.size >= 2 || (home.fileThem.isNotEmpty() && home.fileThem.size == home.needYou.size)) PreferenceBlock {
                         Text(FilesStrings.newFiles(home.fileThem.size, "kinds" to Arg.Sub(FilesStrings.kinds(home.fileThem.map { it.kind }))).str(),
@@ -780,7 +843,7 @@ private fun kindIcon(e: FileEntry) = when (e.kind) {
 @Composable
 internal fun filedSummary(e: FileEntry): String? {
     val lang = LocalLangs.current.ui
-    val total = e.fields["total"]?.value?.let(app.heyrobot.core.files.FileFields::amountOf)?.let { Fmt.money(it, e.fields["currency"]?.value, lang) }
+    val total = FileViews.signedTotal(e)?.let { Fmt.money(it, e.fields["currency"]?.value, lang) }
     val date = FileViews.dateField(e, "date")?.let { Fmt.date(it, lang) }
     val parts = listOfNotNull(total, date)
     return if (parts.isNotEmpty()) parts.joinToString(" · ") else e.drawer?.let { FilesStrings.drawer(it).str() } ?: FilesStrings.inbox().str() // l10n: not text (a separator)
@@ -883,7 +946,7 @@ private fun DrawerPage(
 private fun FilePage(
     e: FileEntry, idx: FileIndex, port: FilesPort, modifier: Modifier, onBack: () -> Unit,
     onChange: ((FileIndex) -> FileIndex?, (Boolean) -> Unit) -> Unit, onMove: (FileEntry, String) -> Unit,
-    onShare: () -> Unit, onOpenWith: () -> Unit, onDelete: (FileEntry) -> Unit, a: AppActions,
+    onToRobot: (Pair<String, app.heyrobot.core.i18n.Phrase>) -> Unit = {}, onToFolder: (app.heyrobot.core.link.FolderRec) -> Unit = {}, onShare: () -> Unit, onOpenWith: () -> Unit, onDelete: (FileEntry) -> Unit, a: AppActions,
     rules: List<FilingRule> = emptyList(), onTagged: (FileEntry, String) -> Unit = { _, _ -> },
     onCalendar: (app.heyrobot.core.files.FileDate) -> Unit = {},
     clock: () -> Long = System::currentTimeMillis,
@@ -910,6 +973,13 @@ private fun FilePage(
     val dates = remember(e, today) { app.heyrobot.core.files.FileDates.of(e).filter { !it.date.isBefore(today) } }
     val remindersOn by produceState(true) { value = withContext(Dispatchers.IO) { port.settings().reminders != app.heyrobot.core.files.FileReminders.OFF } }
     val people by produceState(emptyList<Pair<String, String>>(), e.people) { value = withContext(Dispatchers.IO) { port.people() } }
+    val robots by produceState(emptyList<Pair<String, app.heyrobot.core.i18n.Phrase>>(), e.id) { value = withContext(Dispatchers.IO) { port.robots() } }
+    val robotAsk by FilesRequests.robotAsk.collectAsState()
+    var pickRobot by remember { mutableStateOf(false) }
+    val folders by produceState(emptyList<app.heyrobot.core.link.FolderRec>(), e.id) { value = withContext(Dispatchers.IO) { port.folders().filter { it.state == app.heyrobot.core.link.FolderState.JOINED } } }
+    var pickFolder by remember { mutableStateOf(false) }
+    val peerRobot = FilePeer.peerOf(e)?.let { from -> robots.firstOrNull { it.first == from }?.second }
+    val peerName = peerRobot ?: LinkStrings.someone()
     PreferenceScreen(e.name.ifBlank { FilesStrings.noName().str() }, onBack, modifier = modifier) {
         item(key = "pages") { Pages(e, port) }
         if (checkTotal) item(key = "check") {
@@ -927,9 +997,16 @@ private fun FilePage(
         }
         preferenceGroup(detailsTitle, "fields") {
             for ((k, f) in e.fields) {
-                if (k == "check" || k == app.heyrobot.core.files.FileRemind.FIELD) continue // l10n: not text (a field's code)
+                if (k == "check" || k == FileViews.REFUND || k == app.heyrobot.core.files.FileRemind.FIELD) continue // l10n: not text (a field's code)
+                if (FilePeer.isPeerField(k)) continue // L8: another Robot's word, shown below as that.
                 PreferenceItem(fieldLabel(k), fieldValue(k, f.value, e, lang) + " · " + stringResource(if (f.by == FieldBy.YOU) R.string.files_set_by_you else R.string.files_read_by_robot), // l10n: not text (a separator)
                     onClick = if (k in FileViews.EDITABLE) ({ editing = k }) else null)
+            }
+            // L8 (§3.6 step 5): what another Robot said, where Robot didn't read the same.
+            for (say in FilePeer.says(e)) if (say.reads == null || say.differs) {
+                val said = peerValue(say.key, say.said, e, lang)
+                PreferenceItem(fieldLabel(say.key), (if (say.differs) LinkStrings.robotSaysReads("name" to peerName, "said" to said, "reads" to fieldValue(say.key, say.reads!!, e, lang))
+                    else LinkStrings.robotSays("name" to peerName, "said" to said)).str())
             }
             if (FileViews.EDITABLE.any { it !in e.fields }) PreferenceItem(stringResource(R.string.files_add_detail), null, RIcons.Add, onClick = { adding = true })
             // F10: a tax file's keeping time (§7.4).
@@ -981,8 +1058,15 @@ private fun FilePage(
                 }
             }
         }
-        preferenceGroup(fromTitle, "from") { Provenance(e) }
+        preferenceGroup(fromTitle, "from") { Provenance(e, peerRobot) }
         preferenceGroup(null, "actions") {
+            // L8: to a Robot you're paired with (a request's Robot alone while you pick the file it asked for).
+            if (robots.isNotEmpty()) {
+                val only = robotAsk?.let { (ask, who) -> ask.pairing to who }
+                PreferenceItem((if (only != null) LinkStrings.sendToNamed("name" to only.second) else LinkStrings.sendToRobot()).str(), null, RIcons.Share,
+                    onClick = { if (only != null) onToRobot(only) else pickRobot = true })
+            }
+            if (folders.isNotEmpty() && robotAsk == null && e.kind != FileKind.DANGEROUS) PreferenceItem(LinkStrings.addToFolder().str(), null, RIcons.Folder, onClick = { pickFolder = true })
             PreferenceItem(stringResource(R.string.files_share), null, RIcons.Share, onClick = onShare)
             PreferenceItem(stringResource(R.string.files_open_with), null, RIcons.Folder, onClick = onOpenWith)
             PreferenceItem(stringResource(R.string.files_delete), null, RIcons.Delete, onClick = { deleting = true })
@@ -998,7 +1082,7 @@ private fun FilePage(
         val amount = k == "total"
         val date = k in FileViews.DATE_FIELDS
         val invalid = stringResource(R.string.files_field_invalid)
-        EditDialog(fieldLabel(k), e.fields[k]?.value.orEmpty(), fieldLabel(k),
+        EditDialog(fieldLabel(k), if (amount) FileViews.totalToEdit(e) else e.fields[k]?.value.orEmpty(), fieldLabel(k),
             when { amount -> stringResource(R.string.files_field_hint_amount); date -> stringResource(R.string.files_field_hint_date); else -> "" },
             validate = { v -> if (v.isBlank() || FileViews.cleanField(k, v) != null) null else invalid },
             keyboard = KeyboardOptions(keyboardType = if (amount) KeyboardType.Decimal else KeyboardType.Text),
@@ -1009,6 +1093,14 @@ private fun FilePage(
                 else FileViews.setField(i, e.id, k, v)
             }) {}
         }
+    }
+    if (pickRobot) PickDialog(LinkStrings.sendToWhom("file" to e.name).str(), robots, { it.second.str() }, onDismiss = { pickRobot = false }) { to ->
+        pickRobot = false
+        onToRobot(to)
+    }
+    if (pickFolder) PickDialog(LinkStrings.addToFolder().str(), folders, { it.name }, onDismiss = { pickFolder = false }) { f ->
+        pickFolder = false
+        onToFolder(f)
     }
     if (adding) PickDialog(stringResource(R.string.files_add_detail), FileViews.EDITABLE.filter { it !in e.fields }, { fieldLabel(it) },
         onDismiss = { adding = false }) { k -> adding = false; editing = k }
@@ -1086,7 +1178,7 @@ private fun RemovableChip(label: String, onRemove: () -> Unit) {
 
 /** Where a file came from (§4.4): its source, when, its size and sniffed type, SHA-256, whether you opened it, who filed it. */
 @Composable
-private fun Provenance(e: FileEntry) {
+private fun Provenance(e: FileEntry, robotName: app.heyrobot.core.i18n.Phrase? = null) {
     val ctx = LocalContext.current
     val lang = LocalLangs.current.ui
     val p = e.from
@@ -1102,7 +1194,8 @@ private fun Provenance(e: FileEntry) {
         FileSource.TRANSCRIPT -> stringResource(R.string.files_from_transcript)
         FileSource.BACKUP -> stringResource(R.string.files_from_backup)
         FileSource.RECOVERED -> stringResource(R.string.files_from_recovered)
-        FileSource.ROBOT, FileSource.UNKNOWN -> stringResource(R.string.files_from_unknown)
+        FileSource.ROBOT -> (robotName?.let { LinkStrings.fromRobot("name" to it) } ?: LinkStrings.fromARobot()).str()
+        FileSource.UNKNOWN -> stringResource(R.string.files_from_unknown)
     }
     fun day(t: Long) = Fmt.date(Instant.ofEpochMilli(t).atZone(ZoneId.systemDefault()).toLocalDate(), lang)
     PreferenceItem(stringResource(R.string.files_source), source)
@@ -1157,8 +1250,15 @@ private fun fieldLabel(k: String): String = when {
 }
 
 /** A field's value as the page shows it: amounts and dates in the menus' language, the rest as it is. */
+/** L8: what another Robot said, in its own currency. */
+private fun peerValue(k: String, v: String, e: FileEntry, lang: app.heyrobot.core.i18n.Lang): String = when {
+    k == "total" -> app.heyrobot.core.files.FileFields.amountOf(v)?.let { Fmt.money(it, e.fields[FilePeer.PREFIX + "currency"]?.value, lang) } ?: v // l10n: not text (a field's code)
+    k in FileViews.DATE_FIELDS -> runCatching { java.time.LocalDate.parse(v) }.getOrNull()?.let { Fmt.date(it, lang) } ?: v
+    else -> v
+}
+
 private fun fieldValue(k: String, v: String, e: FileEntry, lang: app.heyrobot.core.i18n.Lang): String = when {
-    k == "total" || k.startsWith("tax_") -> app.heyrobot.core.files.FileFields.amountOf(v)?.let { Fmt.money(it, e.fields["currency"]?.value, lang) } ?: v
+    k == "total" || k.startsWith("tax_") -> app.heyrobot.core.files.FileFields.amountOf(v)?.let { Fmt.money(if (FileViews.refund(e)) -it else it, e.fields["currency"]?.value, lang) } ?: v
     k in FileViews.DATE_FIELDS -> FileViews.dateField(e, k)?.let { Fmt.date(it, lang) } ?: v
     else -> v
 }

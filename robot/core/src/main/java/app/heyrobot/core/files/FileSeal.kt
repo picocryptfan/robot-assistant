@@ -2,6 +2,13 @@
 package app.heyrobot.core.files
 
 import app.heyrobot.core.LogCode
+import app.heyrobot.core.seal.Envelope
+import app.heyrobot.core.seal.EnvelopeException
+import app.heyrobot.core.seal.EnvelopeHeader
+import app.heyrobot.core.seal.SealKind
+import app.heyrobot.core.seal.EnvelopeProblem
+import app.heyrobot.core.seal.KindPurpose
+import app.heyrobot.core.seal.PublicWrap
 import app.heyrobot.core.seal.SealException
 import app.heyrobot.core.seal.SealProblem
 import app.heyrobot.core.seal.SealReader
@@ -27,8 +34,8 @@ import java.security.SecureRandom
 //   0       8      magic          ASCII "ROBOTFIL"
 //   8       2      format         1 (a newer one: NEWER, never read or written over)
 //   10      1      purpose        1 file, 2 thumbnail, 3 index (anything else: DAMAGED)
-//   11      1      wrap type      1 = robot_files_v1 in the Keystore. 2 is reserved for 1.5 (a file that arrives while the
-//                                 phone is locked needs a public-key wrap): NEWER. Anything else: DAMAGED
+//   11      1      wrap type      1 = robot_files_v1 in the Keystore. 2 is format 2's (below), never format 1's: NEWER, as
+//                                 in 1.4. Anything else: DAMAGED
 //   12      16     id             the file's id (the index: a fresh one each write); must be the id its path names
 //   28      2      wrapped size   60
 //   30      60     wrapped key    the Keystore's IV (12), the stream key's ciphertext (32), the tag (16)
@@ -40,6 +47,16 @@ import java.security.SecureRandom
 // (AES-256-GCM STREAM, 64 KiB chunks) and wrap type (robot_files_v1's AES-256-GCM); the plaintext's size isn't here and
 // can't be (the header is written before the first chunk, and is that chunk's additional data): it is the index's.
 // Nothing here decodes a file: these are bytes in and bytes out.
+//
+// Format 2 (1.5, Robot to Robot: robot-to-robot-plan.md §3.6, job L2): a file that arrived from another Robot while the
+// phone was locked, when robot_files_v1 can't be used. :link seals it with a fresh key wrapped by robot_inbox_v1's public
+// key (wrap type 2, RSA-OAEP, which needs no unlock), purpose 4 (ARRIVED), in a 420-byte header (core/seal/Envelope.kt:
+// magic, format 2, purpose 4, wrap type 2, the id, wrapped size 384, the RSA block, chunk size 65,536, reserved), the whole
+// header every chunk's additional data. At the first unlock Files' intake opens it ([arrivedReader]: one Keystore RSA
+// decryption) and seals it again as format 1 under robot_files_v1, so what Robot Files keeps is format 1 only. Format 1's
+// reader above is 1.4's, unchanged: it refuses format 2 (and wrap type 2) as NEWER, so a 1.4 Robot never misreads one, and
+// a format 2 stream can never be read as a stored file. Format 2 is read only through [arrivedReader], never stored in
+// blobs/.
 
 /** What a sealed stream holds, and its cap. Codes are stable: never renumber one. */
 enum class SealPurpose(val code: Int, val maxBytes: Long) {
@@ -124,7 +141,7 @@ object FileSeal {
     const val HEADER_SIZE = 96
     /** robot_files_v1 in the Keystore. */
     const val WRAP_KEYSTORE = 1
-    /** Reserved for 1.5 (a public-key wrap for files that arrive while the phone is locked): refused as NEWER. */
+    /** Format 2's wrap type (robot_inbox_v1's public key): format 1's reader refuses it as NEWER, as 1.4's did. */
     const val WRAP_PUBLIC = 2
     /** The Keystore's GCM IV. */
     const val IV = 12
@@ -236,6 +253,73 @@ object FileSeal {
     /** The whole plaintext of [input]'s sealed stream, or nothing: over [max] bytes is TOO_BIG, and a failure part way zeroes what was read. */
     fun readAll(input: InputStream, purpose: SealPurpose, id: FileId?, keys: FileKeys, max: Long = purpose.maxBytes): ByteArray =
         reader(input, purpose, id, keys).use { it.readAll(max) }
+
+    // Format 2: a file that arrived while the phone was locked (1.5, above). -----------------------------------------------
+
+    /** Format 2: the only one wrapped by robot_inbox_v1. */
+    const val FORMAT_ARRIVED = Envelope.FORMAT_PUBLIC
+    /** Format 2's one purpose: a file that arrived from another Robot. */
+    const val ARRIVED = 4
+    const val ARRIVED_HEADER_SIZE = 420
+
+    /** Format 2 as core/seal's envelope reads it: Robot Files' magic, purpose [ARRIVED] alone, at most a file's cap. */
+    val ARRIVED_KIND = SealKind("ROBOTFIL", keyName = null, purposes = listOf(KindPurpose(ARRIVED, FORMAT_ARRIVED, FileLimits.MAX_FILE))) // l10n: not text (the file's magic bytes)
+    private val arrived = ARRIVED_KIND.purposes.single()
+
+    /** The bytes a format 2 stream of [plain] bytes takes. */
+    fun arrivedSize(plain: Long): Long = Envelope.sealedSize(FORMAT_ARRIVED, plain)
+
+    /**
+     * A format 2 header in [bytes], checked field by field: format 1 (or anything not an arrival) is DAMAGED here, a newer
+     * format or wrap type NEWER. Throws [FileException].
+     */
+    fun parseArrived(bytes: ByteArray): EnvelopeHeader = envelope { Envelope.parse(ARRIVED_KIND, bytes) }
+
+    /**
+     * A new format 2 stream on [out] for file [id]: a fresh key from [random] wrapped by robot_inbox_v1's public key
+     * ([inbox], no unlock needed), the header, then what the caller writes; close it to seal the last chunk. Over 200 MiB
+     * throws TOO_BIG before any byte past it is sealed. Problems throw [FileException].
+     */
+    fun arrivedWriter(out: OutputStream, id: FileId, inbox: PublicWrap, random: SecureRandom): OutputStream {
+        val w = envelope { Envelope.writer(out, ARRIVED_KIND, arrived, id.bytes(), public = inbox, random = random) }
+        return object : OutputStream() {
+            override fun write(b: Int) = envelope { w.write(b) }
+            override fun write(b: ByteArray, off: Int, len: Int) = envelope { w.write(b, off, len) }
+            override fun flush() {}
+            override fun close() = envelope { w.close() }
+        }
+    }
+
+    /**
+     * Opens the format 2 stream on [input] (its id must be [id] when given), robot_inbox_v1 unwrapping its key: the phone
+     * must be unlocked (LOCKED otherwise, never gone). Reading it releases only chunks whose tags check; it is whole only
+     * when a read returns -1. Problems throw [FileException]. Closing it closes [input]. Files' intake hands it to the
+     * store as any other input (FilesVault.stage), which seals it again as format 1.
+     */
+    fun arrivedReader(input: InputStream, id: FileId?, inbox: PublicWrap): InputStream {
+        val r = envelope { Envelope.reader(input, ARRIVED_KIND, arrived, id?.bytes(), public = inbox) }
+        return object : InputStream() {
+            override fun read(): Int = envelope { r.read() }
+            override fun read(b: ByteArray, off: Int, len: Int): Int = envelope { r.read(b, off, len) }
+            override fun available(): Int = r.available()
+            override fun close() = r.close()
+        }
+    }
+
+    /** An envelope call with its problems as [FileException]s, in Robot Files' own codes. */
+    private inline fun <T> envelope(block: () -> T): T = try {
+        block()
+    } catch (x: EnvelopeException) {
+        throw FileException(
+            when (x.problem) {
+                EnvelopeProblem.DAMAGED -> FileProblem.DAMAGED
+                EnvelopeProblem.NEWER -> FileProblem.NEWER
+                EnvelopeProblem.LOCKED -> FileProblem.LOCKED
+                EnvelopeProblem.GONE -> FileProblem.KEY_GONE
+                EnvelopeProblem.TOO_BIG -> FileProblem.TOO_BIG
+            },
+        )
+    }
 
     /** A FileKeys call with its problems as [FileException]s: anything but its own exception is "not now". */
     internal inline fun <T> keyed(block: () -> T): T = try {

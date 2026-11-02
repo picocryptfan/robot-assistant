@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.assistant
 
+import app.heyrobot.core.ActionStatus
 import app.heyrobot.core.DoneReason
 import app.heyrobot.core.Person
 import app.heyrobot.core.RawToolCall
@@ -11,6 +12,7 @@ import app.heyrobot.core.TurnResult
 import app.heyrobot.core.TurnRole
 import app.heyrobot.core.WakePhrase
 import app.heyrobot.core.WakeSensitivity
+import app.heyrobot.core.i18n.Lang
 import app.heyrobot.core.i18n.Langs
 import app.heyrobot.core.i18n.PanelStrings
 import app.heyrobot.core.i18n.Phrase
@@ -48,6 +50,8 @@ class PanelTextingTest {
     private var locked = false
     private var shown = true
     private var turn = TurnResult(DoneReason.END)
+    /** The send_text card's status when the turn ends, as the panel's view would have set it (null: no card). */
+    private var card: ActionStatus? = null
     /** What was sent to the turn, the reply's text then, and whether it was untrusted. */
     private val sent = mutableListOf<RawToolCall>()
     private var textAtTurn: String? = null
@@ -56,12 +60,13 @@ class PanelTextingTest {
      * What the port was asked, in order: "reply <text> | <spoken>", "asking <name>", "listenAfter <b>", "speak <s>",
      * "listen", "finish <id> <reason>", "fail <id> <text>", "leave".
      */
+    private var langs = Langs.EN
     private val calls = java.util.concurrent.CopyOnWriteArrayList<String>() // written from coroutines while the test waits on it
 
     private val texting = PanelTexting(state, replies, object : PanelTexting.Port {
         override val ctx get() = this@PanelTextingTest.ctx
         override val settings get() = this@PanelTextingTest.settings
-        override val turnLangs = Langs.EN
+        override val turnLangs get() = this@PanelTextingTest.langs
         override fun locked() = locked
         override val shown get() = this@PanelTextingTest.shown
         override var askingTextFor: String?
@@ -78,6 +83,7 @@ class PanelTextingTest {
             sent += call
             textAtTurn = replies.text(replyId)
             untrustedSeen = untrusted
+            card?.let { c -> state.update { st -> st.copy(turns = st.turns.map { if (it.id == replyId) it.copy(actions = listOf(UiAction("a1", ToolName.SEND_TEXT, "Text Mom", c, null))) else it }) } }
             return turn
         }
         override fun finishReply(replyId: String, reason: DoneReason) { calls += "finish $replyId $reason" }
@@ -125,6 +131,25 @@ class PanelTextingTest {
         assertTrue(run("text mom I'm running late"))
         assertEquals(false, untrustedSeen)
         assertEquals(listOf("fail r1 No number for Mom."), calls)
+    }
+
+    /** LS12: "Texting Sam." stayed above a card you cancelled. A declined card takes the line away; a sent one keeps it. */
+    @Test fun aDeclinedCardLeavesNoTextingLine() {
+        card = ActionStatus.DECLINED
+        assertTrue(run("text mom I'm running late"))
+        assertEquals(PanelStrings.texting("name" to "Mom").render(Langs.EN), textAtTurn)
+        assertEquals("", replies.text("r1"))
+        card = ActionStatus.DONE
+        assertTrue(run("text mom I'm running late"))
+        assertEquals(PanelStrings.texting("name" to "Mom").render(Langs.EN), replies.text("r1"))
+    }
+
+    /** lp-check phase 2: with French menus, "Texting Sam." stayed English while the card waited. */
+    @Test fun theTextingLineFollowsFrenchMenus() {
+        langs = Langs(say = Lang.EN, ui = Lang.FR, system = Lang.EN)
+        card = ActionStatus.DONE
+        assertTrue(run("text mom I'm running late"))
+        assertEquals("Texto à Mom.", textAtTurn)
     }
 
     @Test fun namesLearnedFromNotificationsNeverDecideWhereTheMessageStarts() {

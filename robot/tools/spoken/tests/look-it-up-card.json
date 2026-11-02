@@ -1,0 +1,21 @@
+{
+  "format": 1,
+  "id": "look-it-up-card",
+  "title": "\"Look it up on Google\": the model's words stop at a card, and a no opens nothing",
+  "safety": "stops-at-card",
+  "testBench": ["v100-se-model-words"],
+  "needs": {"model": true},
+  "setup": [{"set": "speakReplies", "value": "VOICE"}, {"set": "voiceCards", "value": true}],
+  "steps": [
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "What's the tallest mountain in Canada?", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 120},
+    {"do": "say", "text": "Look it up on Google.", "voice": "heart"},
+    {"do": "wait_card", "kind": "browser_search", "seconds": 120},
+    {"do": "wait_listening", "seconds": 30},
+    {"do": "say", "text": "No thanks.", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 30},
+    {"do": "check", "what": "card", "equals": "browser_search", "absent": true},
+    {"do": "end"}
+  ]
+}

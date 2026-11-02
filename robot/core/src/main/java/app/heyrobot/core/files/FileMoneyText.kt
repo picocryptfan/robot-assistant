@@ -48,7 +48,13 @@ object FileMoneyText {
             whenText != null -> FilesStrings.spentNoWhat("amount" to amount, "when" to whenText, "count" to count)
             else -> FilesStrings.spentAll("amount" to amount, "count" to count)
         }
-        return if (check == null) main else Phrase.join(main, check)
+        val refunds = when {
+            r.refunds == 0 -> null
+            r.byCurrency.values.any { it < 0 } -> FilesStrings.spentRefundsBack(r.refunds.toLong())
+            else -> FilesStrings.spentRefunds(r.refunds.toLong())
+        }
+        val rest = listOfNotNull(refunds, check)
+        return if (rest.isEmpty()) main else Phrase.join(main, *rest.toTypedArray())
     }
 
     /** "$312.40 and 45.00 USD": one amount per currency, largest first. */
@@ -154,9 +160,9 @@ object FileMoneyText {
     /** "Hydro-Québec, due October 17, 2026: $142.00": said, never a private file's name (its kind instead: "an ID, expires …"). */
     fun named(d: FileDate): Phrase = FilesStrings.namedDate("name" to (who(d.entry) ?: FilesStrings.kind(d.entry.kind)), "date" to dateLine(d))
 
-    /** A file's total and currency when it doesn't need checking. */
+    /** A file's total and currency when it doesn't need checking and isn't money back (never said as due, F42). */
     fun amountOf(e: FileEntry): Pair<Long, String?>? {
-        if (e.fields["check"]?.value == "total") return null // l10n: not text (a field's code)
+        if (e.fields["check"]?.value == "total" || FileViews.refund(e)) return null // l10n: not text (a field's code)
         val c = e.fields["total"]?.value?.let(FileFields::amountOf) ?: return null
         return c to e.fields["currency"]?.value
     }

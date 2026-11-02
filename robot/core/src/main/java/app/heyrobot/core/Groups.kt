@@ -36,6 +36,29 @@ enum class ToolGroup {
      * runs in reverse, so it is the first of them to give way after memory's tools.
      */
     FILES,
+    /**
+     * Skills connections (C4): a skill's steps that reach your connections and apps (ToolName.CONNECTION, HAND_OFF). Never
+     * described to a model, so never a group a conversation uses (ToolRouter.used) or one that gives way (ToolBudget).
+     */
+    CONNECTIONS,
+    /**
+     * 1.4, Robot Lists (lists-plan.md §8.2, D6; job LS4): add_to_list, described only while Lists is on and the phone
+     * unlocked, with no phone lock, for words about your lists. While Lists is on, "list" and « liste » are its words, not
+     * NOTES' ([route]'s lists). Appended last: the first of "the rest" to give way (ToolBudget.OPTIONAL runs it in reverse).
+     */
+    LISTS,
+    /**
+     * The everyday set's sums (everyday-set-plan.md §4.4, D8): calculate, described only when a question has number words
+     * beside an operator ("3 times 45", "18%", « 12 fois 7 », "convert"), never with a dose's words. Appended last: the first of
+     * "the rest" to give way (ToolBudget), and it costs about one line.
+     */
+    SUMS,
+    /**
+     * 1.5, Robot to Robot (robot-to-robot-plan.md §4.3; job L7): ask_robot, described only while Robot to Robot is on with
+     * someone paired and the phone unlocked, for words naming someone's Robot ("Sam's robot", « le robot de Sam »). Your own
+     * words to another Robot go through LinkRouter first, without the model.
+     */
+    LINK,
 }
 
 object ToolRouter {
@@ -83,6 +106,16 @@ object ToolRouter {
     private val FILES = setOf("receipt", "bill", "invoice", "statement", "document", "lease", "warranty", "contract", "slip", "tax slip",
         "my files", "my file", "robot files", "recu", "facture", "bail", "garantie", "contrat", "feuillet", "mes fichiers", "mon fichier",
         "fichiers de robot")
+    /**
+     * 1.4, Robot Lists (§8.2): your lists by their nouns and the default lists' words. NOTES keeps "list" and « liste » while
+     * Lists is off ([route]'s lists), so those phrases reach add_note as before.
+     */
+    private val LISTS = setOf("list", "liste", "checklist", "groceries", "grocery", "to do", "todo", "epicerie", "a faire", "courses")
+    /** NOTES' words for a list, which LISTS takes while Lists is on. */
+    private val LIST_NOUNS = setOf("list", "liste")
+    /** 1.5 L7: someone's Robot named, as said: "Sam's robot", "James' robot", « le robot de Sam », « le robot d'Ève ». */
+    private val ROBOT_NAMED = Regex("""\b\p{L}+(?:'s|s') robots?\b|\brobots? (?:de |d')\p{L}""")
+    private val NOT_ROBOT_NAMED = Regex("""\b(?:it's|that's|what's|there's|here's|he's|she's|who's|let's) robot\b""")
     private val ELISION = Regex("""\b([dljnsmtc]|qu)['’](?=\p{L})""")
 
     /** "Stop YouTube", "close Chrome", "arrête YouTube": a verb that may stop an app, then (not) one of these (0.4.0). */
@@ -104,8 +137,11 @@ object ToolRouter {
      */
     private val WHEN = Regex("""\d\s?[ap]\.?m\b|\d:\d\d|\b\d{1,2}h\d{0,2}\b|\b\d{1,2} h(?: ?\d{2})?\b|\b\d{1,2}(?:st|nd|rd|th)\b|\b(?:march|may) \d{1,2}\b|\b\d{1,2} (?:of )?(?:march|may)\b""")
 
-    /** The groups this question needs: always CORE, plus each group one of its words appears in. */
-    fun route(question: String): Set<ToolGroup> {
+    /**
+     * The groups this question needs: always CORE, plus each group one of its words appears in. 1.4: [lists], Lists is on
+     * (Settings › Lists): your lists' words route to LISTS, and "list" and « liste » no longer to NOTES.
+     */
+    fun route(question: String, lists: Boolean = false): Set<ToolGroup> {
         val words = words(question)
         val padded = " " + words.joinToString(" ") + " "
         val plain = Normalizer.normalize(question, Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "").lowercase(Locale.ROOT)
@@ -119,7 +155,7 @@ object ToolRouter {
         return buildSet {
             add(ToolGroup.CORE)
             if (has(PEOPLE) || LET_KNOW.containsMatchIn(padded)) add(ToolGroup.PEOPLE)
-            if (has(NOTES)) add(ToolGroup.NOTES)
+            if (has(if (lists) NOTES - LIST_NOUNS else NOTES)) add(ToolGroup.NOTES)
             if (has(CALENDAR) || WHEN.containsMatchIn(plain)) add(ToolGroup.CALENDAR)
             if (has(WEATHER)) add(ToolGroup.WEATHER)
             if (has(PHONE) || stopsAnApp(words)) add(ToolGroup.PHONE)
@@ -128,7 +164,45 @@ object ToolRouter {
             if (app.heyrobot.core.web.WebRouter.wants(question)) add(ToolGroup.WEB)
             if (app.heyrobot.core.termux.TermuxRouter.calls(question)) add(ToolGroup.TERMUX)
             if (has(FILES)) add(ToolGroup.FILES)
+            if (lists && has(LISTS)) add(ToolGroup.LISTS)
+            if (sums(question)) add(ToolGroup.SUMS)
+            if (ROBOT_NAMED.containsMatchIn(plain.replace('’', '\'')) && !NOT_ROBOT_NAMED.containsMatchIn(plain)) add(ToolGroup.LINK)
         }
+    }
+
+    /** A number word, as speech-to-text may write one, for [sums]. */
+    private const val NUMBER_WORD = "(?:\\d+(?:[.,]\\d+)?|\\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|" +
+        "fifty|hundred|thousand|un|une|deux|trois|quatre|cinq|six|sept|huit|neuf|dix|onze|douze|quinze|vingt|trente|quarante|cinquante|cent|mille)\\b)"
+
+    /**
+     * Digits or number words beside an operator ("3 times 45", "350 / 7", "18 %", « 12 fois 7 », « 18 pour cent »). A minus or
+     * a slash only between spaces: "2026-10-14", "514-555-0101" and "10/11" are a date and a number, not sums.
+     */
+    private val SUM_SIGNS = Regex(
+        "$NUMBER_WORD(?:\\s*[+*×÷^x%]\\s*|\\s+[-/]\\s+|\\s+(?:times|fois|divided by|divise par|multiplied by|multiplie par|plus|minus|moins)\\s+)\\$?$NUMBER_WORD|" +
+            "$NUMBER_WORD\\s*(?:%|percent\\b|pour ?cent\\b)")
+
+    /** Words that ask for a sum by themselves. */
+    private val SUM_WORDS = setOf("calculate", "calcule", "calculer", "convert", "convertis", "convertir", "percent", "percentage", "pourcentage", "square root",
+        "racine carree", "power of", "puissance", "split", "tip", "pourboire")
+
+    /**
+     * Never with a dose's words (§4.6): a medicine, a pill, milligrams, micrograms, IU, cc, a dose. Sums leave dose questions to the
+     * model as before, and calculate isn't even described for them.
+     */
+    private val DOSE = setOf("mg", "mcg", "milligram", "milligrams", "milligramme", "milligrammes", "microgram", "micrograms", "ug", "iu", "cc", "dose",
+        "doses", "dosage", "posologie", "pill", "pills", "tablet", "tablets", "capsule", "capsules", "comprime", "comprimes", "pilule", "pilules", "medicine",
+        "medication", "medicament", "medicaments", "ibuprofen", "ibuprofene", "acetaminophen", "acetaminophene", "tylenol", "advil", "motrin", "aspirin",
+        "aspirine", "insulin", "insuline", "syrup", "sirop", "amoxicillin", "amoxicilline", "drops", "gouttes")
+
+    /** 1.6, the everyday set: this question may need calculate ([ToolGroup.SUMS]). */
+    fun sums(question: String): Boolean {
+        val words = words(question)
+        if (words.any { it in DOSE || it.endsWith("mg") && it.dropLast(2).all(Char::isDigit) }) return false
+        val plain = Normalizer.normalize(question, Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "").lowercase(Locale.ROOT)
+        val padded = " " + words.joinToString(" ") + " "
+        val hasDigit = plain.any(Char::isDigit)
+        return SUM_SIGNS.containsMatchIn(plain) || SUM_WORDS.any { k -> (if (' ' in k) padded.contains(" $k ") else k in words) && (hasDigit || k !in setOf("split", "tip", "pourboire")) }
     }
 
     /**
@@ -136,9 +210,13 @@ object ToolRouter {
      * every route, so it can't say which of them the person asked for.
      */
     private val TIMER = setOf("timer", "countdown", "minuteur", "minuterie", "chrono", "chronometre")
+    /** "Remind me in 20 minutes …": a timer is what the model may rightly set. */
+    private val REMIND_IN = setOf("remind", "rappelle")
     private val ALARM = setOf("alarm", "wake me", "wake up", "alarme", "reveil", "reveille", "reveiller")
     private val LIGHT = setOf("flashlight", "torch", "light", "lamp", "lampe", "lumiere", "flash")
     private val OPEN = setOf("open", "launch", "start", "ouvre", "ouvrir", "lance", "lancer", "demarre")
+    private val OPEN_LEAD = setOf("please", "you", "to", "and", "then", "just", "now", "robot", "hey", "ok", "okay", "lets",
+        "tu", "vous", "svp", "plait", "et", "puis", "alors", "pour", "peux", "veux")
     private val MAP = setOf("map", "maps", "directions", "direction", "navigate", "navigation", "route", "take me", "get to", "how do i get",
         "where is", "wheres", "find", "nearest", "closest", "near me", "nearby", "carte", "itineraire", "aller a", "emmene", "trouve",
         "plus proche", "pres de", "ou est")
@@ -184,7 +262,7 @@ object ToolRouter {
      * online. A word missed here only shows a card; a word too many skips one, so the lists ask rather than guess.
      * Robot's own ask_claude never counts (it always shows its card).
      */
-    fun asked(question: String): Set<ToolName> {
+    fun asked(question: String, lists: Boolean = false): Set<ToolName> {
         val words = words(question)
         val padded = " " + words.joinToString(" ") + " "
         fun has(keys: Set<String>) = keys.any { k -> if (' ' in k) padded.contains(" $k ") else words.any { inflects(it, k) } }
@@ -196,12 +274,12 @@ object ToolRouter {
                     !(k == "tell" && i + 1 < words.size && words[i + 1] in NOT_TOLD)
             }
         }
-        val groups = route(question)
+        val groups = route(question, lists)
         return buildSet {
-            if (has(TIMER)) add(ToolName.SET_TIMER)
+            if (has(TIMER) || has(REMIND_IN)) add(ToolName.SET_TIMER)
             if (has(ALARM)) add(ToolName.SET_ALARM)
             if (has(LIGHT)) add(ToolName.FLASHLIGHT)
-            if (has(OPEN)) add(ToolName.OPEN_APP)
+            if (asksOpen(words)) add(ToolName.OPEN_APP)
             if (has(MAP)) { add(ToolName.MAPS_SEARCH); add(ToolName.MAPS_NAVIGATE) }
             if (asks(TEXT_ASK) || LET_KNOW.containsMatchIn(padded)) add(ToolName.SEND_TEXT)
             if (asks(EMAIL_ASK)) add(ToolName.DRAFT_EMAIL)
@@ -210,9 +288,19 @@ object ToolRouter {
             if (asks(FREE_ASK) && ToolGroup.PHONE in groups) { add(ToolName.FREE_MEMORY); add(ToolName.FREE_STORAGE) }
             if (ToolGroup.MEMORY in groups && has(REMEMBER_ASK)) add(ToolName.REMEMBER)
             if (ToolGroup.MEMORY in groups && has(FORGET_ASK)) add(ToolName.FORGET)
+            // 1.4: "add oat milk to my list" (the gate's own check of your words decides the card: lists-plan.md D6).
+            if (asks(ADD) && ToolGroup.LISTS in groups) add(ToolName.ADD_TO_LIST)
             for (t in ToolName.entries) if (t.reads && t.group != ToolGroup.CORE && t.group in groups) add(t)
             remove(ToolName.ASK_HELPER)
         }
+    }
+
+    /**
+     * L16: "open the camera", "please open Maps", "can you open Maps"; not "what time does the store open" or "when does the
+     * game start tonight". The word itself with something after it, first or right after a word that only leads up to it.
+     */
+    private fun asksOpen(words: List<String>): Boolean = words.indices.any { i ->
+        words[i] in OPEN && i + 1 < words.size && (i == 0 || words[i - 1] in OPEN_LEAD)
     }
 
     /**
@@ -235,11 +323,12 @@ object ToolRouter {
     }
 
     /** The groups a saved conversation already used: its questions' words and the tools its answers ran. */
-    fun used(turns: List<ChatTurn>): Set<ToolGroup> = buildSet {
+    fun used(turns: List<ChatTurn>, lists: Boolean = false): Set<ToolGroup> = buildSet {
         add(ToolGroup.CORE)
         for (t in turns) {
-            if (t.role == TurnRole.USER) addAll(route(t.text))
-            t.actions.forEach { add(it.tool.group) }
+            if (t.role == TurnRole.USER) addAll(route(t.text, lists))
+            // (A skill's connection step is never the model's: its group isn't one a conversation describes.)
+            t.actions.forEach { if (it.tool.group != ToolGroup.CONNECTIONS) add(it.tool.group) }
         }
     }
 
@@ -249,13 +338,15 @@ object ToolRouter {
      * HelperSettings.localTool). remember and forget only with [memory] (0.7: Settings › Memory's main switch); web_search only
      * with [web] (0.9: Settings › Web search on and set up); a Termux tool only when in [termux] (0.9: Settings › Termux on,
      * set up, and that tool on); browser_search only with [browser] (1.0: the question names a search engine or the browser).
-     * 1.4: find_files and read_file only with [files] (Robot Files on, the phone unlocked, no phone lock).
+     * 1.4: find_files and read_file only with [files] (Robot Files on, the phone unlocked, no phone lock); add_to_list only with
+     * [lists] (Lists on, the phone unlocked, no phone lock). 1.5: ask_robot only with [link] (Robot to Robot on, someone paired,
+     * the phone unlocked).
      */
     fun tools(groups: Set<ToolGroup>, settings: RobotSettings, askHelper: Boolean = false, memory: Boolean = false, web: Boolean = false,
-        termux: Set<ToolName> = emptySet(), browser: Boolean = false, files: Boolean = false): List<ToolName> = ToolName.entries.filter { t ->
+        termux: Set<ToolName> = emptySet(), browser: Boolean = false, files: Boolean = false, lists: Boolean = false, link: Boolean = false): List<ToolName> = ToolName.entries.filter { t ->
         t.group in groups && t.forModel && settings.approval(t) != Approval.OFF && !(t == ToolName.SEND_TEXT && settings.textApp == TextApp.OFF) &&
             (t != ToolName.ASK_HELPER || askHelper) && (t.group != ToolGroup.MEMORY || memory) && (t != ToolName.WEB_SEARCH || web) && (!t.termux || t in termux) &&
-            (t != ToolName.BROWSER_SEARCH || browser) && (t.group != ToolGroup.FILES || files)
+            (t != ToolName.BROWSER_SEARCH || browser) && (t.group != ToolGroup.FILES || files) && (t.group != ToolGroup.LISTS || lists) && (t.group != ToolGroup.LINK || link)
     }
 
     /** "core.people" for the logs (a fixed identifier, never the question). */

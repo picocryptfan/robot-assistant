@@ -276,6 +276,13 @@ object FilesStrings : Strings("files", area = "files") {
     val spentCheck = plural("spent_check", "n", Plural("{n} total needs checking, so it's left out.", "{n} totals need checking, so they're left out."),
         Plural("{n} total doit être vérifié, alors il est laissé de côté.", "{n} totaux doivent être vérifiés, alors ils sont laissés de côté.",
             "{n} de totaux doivent être vérifiés, alors ils sont laissés de côté."))
+    val spentRefunds = plural("spent_refunds", "n", Plural("That's after {n} refund.", "That's after {n} refunds."),
+        Plural("C'est après {n} remboursement.", "C'est après {n} remboursements.", "C'est après {n} de remboursements."))
+    val spentRefundsBack = plural("spent_refunds_back", "n", Plural("That's after {n} refund, so below zero means more back than spent.",
+        "That's after {n} refunds, so below zero means more back than spent."),
+        Plural("C'est après {n} remboursement : sous zéro, on t'a remis plus que tu as dépensé.",
+            "C'est après {n} remboursements : sous zéro, on t'a remis plus que tu as dépensé.",
+            "C'est après {n} de remboursements : sous zéro, on t'a remis plus que tu as dépensé."))
     val countBoth = plural("count_both", "n", Plural("{n} receipt or bill", "{n} receipts and bills"), Plural("{n} reçu ou facture", "{n} reçus et factures",
         "{n} de reçus et factures"))
     val money = s("money", "{m}", "{m}")

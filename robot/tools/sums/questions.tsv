@@ -1,0 +1,55 @@
+# E2's desk run (everyday-set-plan.md §4.8): 50 sums of §4.2's kinds, 30 English and 20 Québec French, asked on Friday
+# 23 October 2026 in Halifax. Columns: id, language, kind, how "right" is judged, the expected answers (any one of them
+# counts; computed by desk_sums.py with Python's Decimal, never by Robot's code), the question as speech to text writes it.
+# Judging: money to the cent (or more precise, within half a cent); temperature to the degree; kitchen measures to 0.05; other units within 0.5%; exact numbers
+# exactly, or to the decimals given with at least 2 for a result that doesn't end; a weekday or a date by its words.
+e01	en	arith	exact	17*23	what's 17 times 23
+e02	en	arith	exact	1234/8	what's 1,234 divided by 8
+e03	en	arith	exact	3.7+12.85-4.2	what's 3.7 plus 12.85 minus 4.2
+e04	en	arith	exact	2**16	what's 2 to the power of 16
+e05	en	arith	exact	sqrt(50)	what's the square root of 50
+e06	en	percent	money	64.50*0.18	what's 18% of 64.50
+e07	en	percent	exact	27*100/120	what percent is 27 of 120
+e08	en	tip	money	64.50*0.18	what's an 18% tip on $64.50
+e09	en	tip	money	87.40*0.15	what's a 15% tip on $87.40
+e10	en	tax	money	80*1.13	what's $80 with 13% HST
+e11	en	percent	money	79.99*0.85	what's 15% off $79.99
+e12	en	split	money	120/3	$120 split three ways
+e13	en	split	money	100/4	split $100 4 ways
+e14	en	unit	temp	(350-32)*5/9	350 °F in Celsius
+e15	en	unit	unit	5*1.609344	5 miles in kilometres
+e16	en	unit	kitchen	4|1/0.2365882365	how many cups in a litre
+e17	en	unit	unit	60*1.609344	60 mph in km/h
+e18	en	unit	exact	2.5*16	how many ounces in 2.5 pounds
+e19	en	unit	exact	7.5*60	how many minutes in 7.5 hours
+e20	en	unit	unit	100/1.609344	100 km/h in mph
+e21	en	date	exact	63	how many days until December 25
+e22	en	date	words	friday	what day of the week is Christmas
+e23	en	date	words	december 4	what's the date in 6 weeks
+e24	en	date	exact	10	how many weeks until January 1
+e25	en	arith	exact	45/0.75	what's 45 divided by 0.75
+e26	en	model	money	3*45*1.13	I have 3 kids and the trip is $45 each plus 13% HST, how much is that?
+e27	en	model	money	186.40*1.18/4	We spent $186.40 on dinner and want to add an 18% tip and split it four ways, how much does each of us pay?
+e28	en	model	unit	420*8.5/100	If I drive 420 km and my car uses 8.5 litres per 100 km, how many litres do I use?
+e29	en	model	money	1250*0.70*1.15	A $1,250 couch is 30% off, then I add 15% tax. What do I pay?
+e30	en	model	exact	3450*0.12+275	What's 12 percent of 3,450, plus 275?
+f01	fr	arith	exact	23*19	combien font 23 fois 19
+f02	fr	arith	exact	1000/16	c'est combien 1 000 divisé par 16
+f03	fr	percent	money	64.50*0.18	combien font 18 % de 64,50
+f04	fr	arith	exact	7.5+12.25	combien font 7,5 plus 12,25
+f05	fr	arith	exact	3**5	c'est combien 3 à la puissance 5
+f06	fr	tip	money	92.80*0.15	un pourboire de 15 % sur 92,80 $
+f07	fr	tax	money	80*1.15	80 $ avec 15 % de taxes
+f08	fr	unit	temp	(350-32)*5/9	350 degrés Fahrenheit en Celsius
+f09	fr	unit	unit	5*1.609344	5 milles en kilomètres
+f10	fr	unit	unit	10/0.45359237	convertis 10 kilos en livres
+f11	fr	date	exact	28	combien de jours avant le 20 novembre
+f12	fr	date	words	vendredi	quel jour de la semaine tombe Noël
+f13	fr	percent	exact	360*0.25	combien font 25 % de 360
+f14	fr	arith	exact	450/7	c'est combien 450 divisé par 7
+f15	fr	split	money	120/3	120 $ divisé en 3
+f16	fr	model	money	4*37.50*1.14975	J'ai 4 billets à 37,50 $ plus 14,975 % de taxes, ça fait combien?
+f17	fr	model	money	213.75*1.15/5	On est 5 à partager une facture de 213,75 $ avec 15 % de pourboire, combien chacun?
+f18	fr	model	unit	300*7.2/100	Si je fais 300 km avec une consommation de 7,2 litres aux 100 km, combien de litres j'utilise?
+f19	fr	model	money	2400*0.15-120	Combien font 15 % de 2 400 $ moins 120 $?
+f20	fr	model	money	240*0.65	Un manteau à 240 $ est en rabais de 35 %, combien je paie?

@@ -405,7 +405,7 @@ class PeopleStoreTest {
         assertEquals(listOf("XMPP · seen in a notification · spoof@example.org"), p.choices.map { it.label })
         assertEquals(Recipients.LEARNED_NOTE, p.note)
         assertEquals("Always use this for “mom”", p.remember)
-        assertEquals("Text **Mom** (spoof@example.org) in Cheogram · name seen in a notification", (p.action as Action.SendText).describe())
+        assertEquals("Text **Mom** (spoof@example.org) in Cheogram · name not confirmed", (p.action as Action.SendText).describe())
         assertNull((p.action as Action.SendText).target!!.account)
         // Keep (or an edit, or the ticked box) confirms them: from then on they count like anyone else.
         val c = PeopleEdit.confirm(listOf(spoof), "s", 40)
@@ -414,6 +414,43 @@ class PeopleStoreTest {
         assertTrue(ContactMatcher.sure(AddressBook(emptyList(), c).best("mom"), 1))
         val ticked = PeopleEdit.rememberChoice(listOf(spoof), "mom", reach, email = false, lookupKey = null, now = 42)
         assertTrue(ticked.single().confirmed)
+    }
+
+    /** F6's rule in People too: a JID is its number only at the SMS gateway; on any other server it is only itself. */
+    @Test fun aNumberOnAnotherServerIsOnlyItself() {
+        val mom = Person("m", "Mom", phones = listOf(ContactPhone("+1 514-555-0101", PhoneKind.MOBILE, "Mobile")))
+        fun at(server: String) = Person("i", "Mom", xmpp = listOf(XmppAddress("+15145550101@$server")))
+        // The same name and the "same number" on a stranger's server: someone else, kept apart.
+        val apart = PeopleEdit.merge(listOf(mom), listOf(at("xmpp.example")), 1)
+        assertEquals(1, apart.added)
+        assertEquals(mom, apart.people.first())
+        // At the gateway it is that number.
+        assertEquals(0, PeopleEdit.merge(listOf(mom), listOf(at("cheogram.com")), 1).added)
+        assertFalse(Preferred.same("+15145550101@xmpp.example", "5145550101"))
+        assertFalse(Preferred.same("+15145550101@cheogram.com.example", "5145550101"))
+        assertTrue(Preferred.same("+15145550101@cheogram.com", "5145550101"))
+        assertTrue(Preferred.same("+15145550101@xmpp.example", "+15145550101@XMPP.example"))
+        // Another gateway in Settings: its addresses are numbers, and cheogram.com's are then plain JIDs.
+        assertEquals(0, PeopleEdit.merge(listOf(mom), listOf(at("sms.example.org")), 1, "sms.example.org").added)
+        assertEquals(1, PeopleEdit.merge(listOf(mom), listOf(at("cheogram.com")), 1, "sms.example.org").added)
+        assertTrue(Preferred.same("+15145550101@sms.example.org", "5145550101", "sms.example.org"))
+        assertFalse(Preferred.same("+15145550101@cheogram.com", "5145550101", "sms.example.org"))
+        // "Always use her number" never lands on the same digits at another server.
+        val card = ContactCard("s:1", "Mom", phones = mom.phones, xmpp = listOf(XmppAddress("+15145550101@xmpp.example")), preferredText = "5145550101")
+        assertEquals(listOf("+1 514-555-0101"), Recipients.forText(listOf(card), xmppOk = true).map { it.address })
+    }
+
+    /** An edit keeps a remembered choice by Settings' gateway, the same rule Recipients offers places by. */
+    @Test fun anEditKeepsAChoiceByTheGatewayInSettings() {
+        val gw = "sms.example.org"
+        fun mom(pref: String) = Person("m", "Mom", phones = listOf(ContactPhone("+1 514-555-0101", PhoneKind.MOBILE, "Mobile")),
+            xmpp = listOf(XmppAddress(pref)), preferredText = pref, updatedAt = 1)
+        // The choice is her number at your gateway; taking that row out leaves the number, the same place.
+        val atYours = mom("+15145550101@$gw")
+        assertEquals("+15145550101@$gw", PeopleEdit.applyEdit(listOf(atYours), atYours, atYours.copy(xmpp = emptyList()), 2, gw)!!.second.preferredText)
+        // At another server the same digits are someone else's address, so the choice goes with its row.
+        val atOther = mom("+15145550101@cheogram.com")
+        assertNull(PeopleEdit.applyEdit(listOf(atOther), atOther, atOther.copy(xmpp = emptyList()), 2, gw)!!.second.preferredText)
     }
 
     @Test fun aRememberedChoiceIsTheOnlyPlaceOfferedWhileItExists() {
@@ -547,5 +584,14 @@ class PeopleStoreTest {
         assertNull(forgot.preferredText)
         assertEquals("bob@example.org", forgot.preferredEmail)
         assertSame(withChoice, PeopleEdit.forgetChoice(withChoice, mom.id, email = true, now = 9))
+    }
+
+    @Test fun aCardsPersonIsNotDroppedToMakeRoomForLearnedNames() {
+        val card = Person("card", "Jo", phones = listOf(ContactPhone("+15145550101", PhoneKind.OTHER, "Other")), source = PersonSource.LINK_CARD, confirmed = false, updatedAt = 1)
+        var l = listOf(card)
+        var ids = 0
+        for (i in 1..(People.MAX_LEARNED + 5)) l = PeopleEdit.learn(l, "Sender $i", "s$i@example.org", "me@example.org", 100L + i, { "n${ids++}" })
+        assertTrue(l.any { it.id == "card" })
+        assertEquals(People.MAX_LEARNED, l.count { it.source == PersonSource.NOTIFICATION })
     }
 }

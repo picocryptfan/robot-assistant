@@ -37,6 +37,8 @@ internal class PanelConversationMode(private val port: Port) {
         fun locked(): Boolean
         /** [p], or Phone lock's own sentence while Phone lock is on. */
         fun unlockFirst(p: Phrase): Phrase
+        /** A phone lock is on now (PhoneLockNow), read at each call: conversation mode doesn't start or resume (FA8g). */
+        fun phoneLockOn(): Boolean = app.heyrobot.lock.PhoneLockNow.on(ctx)
         /** Robot's own words as the reply, in its bubble and voice ([spoken]: as the voice says it), and the reply ends. */
         fun localReply(replyId: String, text: Phrase, spoken: Phrase)
         /** The turn opened an app: the panel goes. */
@@ -58,6 +60,13 @@ internal class PanelConversationMode(private val port: Port) {
         val ctx = port.ctx
         when (c) {
             is ConversationCommand.Start -> when {
+                // 1.1.2, FA8g: never during a phone lock, whatever "Start from the lock screen" says (phone-lock-design §5.2).
+                port.phoneLockOn() ->
+                    localReply(replyId, unlockFirst(PanelStrings.unlockToStart("page" to UiStrings.inSettings(UiStrings.conversation))), unlockFirst(PanelStrings.unlockToStartSpoken()))
+                // F110: switching a running session needs what starting one needs: on the lock screen whoever holds the phone
+                // can't change what it's doing unless you allowed starting there.
+                ConversationSession.running && ConversationSession.state.value.mode != c.mode && !ConversationLock.mayStart(port.locked(), port.settings) ->
+                    localReply(replyId, unlockFirst(PanelStrings.unlockToStart("page" to UiStrings.inSettings(UiStrings.conversation))), unlockFirst(PanelStrings.unlockToStartSpoken()))
                 ConversationSession.running -> {
                     val now = ConversationSession.state.value.mode
                     if (now != c.mode) ConversationSession.setMode(c.mode)
@@ -95,7 +104,7 @@ internal class PanelConversationMode(private val port: Port) {
                 localReply(replyId, PanelStrings.paused("button" to UiLabel(UiStrings.resume)))
             }
             // Resuming needs what starting needs (ConversationSession checks it again).
-            ConversationCommand.Resume -> if (!ConversationLock.mayStart(port.locked(), port.settings)) {
+            ConversationCommand.Resume -> if (!ConversationLock.mayStart(port.locked(), port.settings, port.phoneLockOn())) {
                 localReply(replyId, unlockFirst(PanelStrings.unlockToStart("page" to UiStrings.inSettings(UiStrings.conversation))), unlockFirst(PanelStrings.unlockToStartSpoken()))
             } else {
                 ConversationSession.userResume()

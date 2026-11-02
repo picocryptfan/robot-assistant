@@ -11,6 +11,10 @@ import app.heyrobot.core.OpenMeteo
 import app.heyrobot.core.WeatherFail
 import app.heyrobot.core.WeatherPlace
 import app.heyrobot.core.WeatherUnits
+import app.heyrobot.core.online.NetCause
+import app.heyrobot.core.online.NetPurpose
+import app.heyrobot.core.online.NetRecord
+import app.heyrobot.core.online.NetResult
 import java.io.IOException
 import java.io.InputStream
 import java.net.ConnectException
@@ -49,22 +53,28 @@ object OpenMeteoClient {
      * The place [name] means ("Paris, Texas" and "Paris Texas" pick the one in Texas; a town not where it was said to be is
      * refused). Up to three requests. Blocking.
      */
-    fun geocode(ctx: Context, name: String, abort: Abort = Abort()): WeatherPlace =
-        when (val a = OpenMeteo.resolve(name) { s -> OpenMeteo.places(get(ctx, OpenMeteo.geocodeUrl(s), abort)) ?: throw Failure(WeatherFail.SERVICE) }) {
+    fun geocode(ctx: Context, name: String, abort: Abort = Abort(), cause: NetCause = NetCause.ASKED): WeatherPlace =
+        when (val a = OpenMeteo.resolve(name) { s ->
+            OpenMeteo.places(get(ctx, OpenMeteo.geocodeUrl(s), abort, NetPurpose.WEATHER_PLACE, cause)) ?: throw Failure(WeatherFail.SERVICE)
+        }) {
             is GeoAnswer.Found -> a.place.place()
             is GeoAnswer.NotThere -> throw Failure(WeatherFail.NO_PLACE, detail = a.detail, detailPhrase = a.why)
             GeoAnswer.None -> throw Failure(WeatherFail.NO_PLACE)
         }
 
     /** [days] days of forecast for [place] in [units]. Blocking. */
-    fun forecast(ctx: Context, place: WeatherPlace, days: Int, units: WeatherUnits, abort: Abort = Abort()): Forecast =
-        OpenMeteo.forecast(get(ctx, OpenMeteo.forecastUrl(place.lat, place.lon, days, units), abort)) ?: throw Failure(WeatherFail.SERVICE)
+    fun forecast(ctx: Context, place: WeatherPlace, days: Int, units: WeatherUnits, abort: Abort = Abort(), cause: NetCause = NetCause.ASKED): Forecast =
+        OpenMeteo.forecast(get(ctx, OpenMeteo.forecastUrl(place.lat, place.lon, days, units), abort, NetPurpose.WEATHER, cause)) ?: throw Failure(WeatherFail.SERVICE)
 
     /** Stop, or the deadline: why the lookup ended without an answer. */
     private fun ended(abort: Abort) = Failure(if (abort.cancelled && !abort.expired) WeatherFail.STOPPED else WeatherFail.TIMEOUT)
 
-    /** The body of a 200 answer; anything else throws [Failure]. Blocking: never on the main thread. */
-    private fun get(ctx: Context, url: String, abort: Abort): String {
+    /**
+     * The body of a 200 answer; anything else throws [Failure]. Blocking: never on the main thread. What went online
+     * (everyday-set-plan.md §5.3): each request that left is recorded here, its host, [purpose], [cause] and the reply's
+     * bytes (a GET sends no body), and how it ended; one refused by the Network switch never left, so it isn't.
+     */
+    private fun get(ctx: Context, url: String, abort: Abort, purpose: NetPurpose, cause: NetCause): String {
         // GrapheneOS's Network toggle is the INTERNET permission at run time.
         if (!Assistant.granted(ctx, Manifest.permission.INTERNET)) throw Failure(WeatherFail.NO_NETWORK_PERMISSION)
         if (abort.cancelled || abort.remainingMs() < MIN_MS) throw ended(abort)
@@ -73,6 +83,8 @@ object OpenMeteoClient {
         val c = u.openConnection() as HttpURLConnection
         // Stop (or the deadline) disconnects: a blocked connect or read then fails at once.
         val forget = abort.onCancel { c.disconnect() }
+        val got = longArrayOf(0)
+        var outcome: NetResult? = NetResult.FAILED
         try {
             val timeout = minOf(TIMEOUT_MS.toLong(), abort.remainingMs()).toInt()
             c.connectTimeout = timeout
@@ -82,7 +94,8 @@ object OpenMeteoClient {
             c.setRequestProperty("User-Agent", "Robot")
             c.setRequestProperty("Accept", "application/json")
             val code = c.responseCode
-            val body = (if (code in 200..299) c.inputStream else c.errorStream)?.use(::read)
+            val body = (if (code in 200..299) c.inputStream else c.errorStream)?.use { read(it, got) }
+            outcome = if (code == 200) NetResult.DONE else NetResult.FAILED
             return when {
                 code == 200 && body != null -> body
                 // Open-Meteo's free tier has daily and per-minute limits.
@@ -92,27 +105,36 @@ object OpenMeteoClient {
         } catch (f: Failure) {
             throw f
         } catch (e: Exception) {
-            if (abort.cancelled || abort.expired) throw ended(abort)
-            throw when (e) {
+            if (abort.cancelled || abort.expired) {
+                outcome = NetResult.STOPPED
+                throw ended(abort)
+            }
+            val f = when (e) {
                 is UnknownHostException, is ConnectException, is NoRouteToHostException, is SocketTimeoutException -> Failure(WeatherFail.NO_INTERNET)
                 is SecurityException -> Failure(WeatherFail.NO_NETWORK_PERMISSION)
                 // A socket refused by the Network toggle fails with EACCES; anything else is the connection.
                 is IOException -> Failure(if (e.message?.contains("EACCES") == true || e.message?.contains("Permission denied") == true) WeatherFail.NO_NETWORK_PERMISSION else WeatherFail.NO_INTERNET) // l10n: not text (the system's error message, matched)
                 else -> e
             }
+            // The Network switch refused the socket: nothing went online.
+            if ((f as? Failure)?.why == WeatherFail.NO_NETWORK_PERMISSION) outcome = null
+            throw f
         } finally {
             forget()
             c.disconnect()
+            outcome?.let { NetRecord.record(purpose, u.host, cause, 0, got[0], it) }
         }
     }
 
-    private fun read(s: InputStream): String {
+    /** The body as text, its bytes counted into [got][0] as they arrive. */
+    private fun read(s: InputStream, got: LongArray): String {
         val out = java.io.ByteArrayOutputStream()
         val buf = ByteArray(8192)
         while (true) {
             val n = s.read(buf)
             if (n < 0) break
             out.write(buf, 0, n)
+            got[0] += n
             if (out.size() > MAX_BYTES) throw Failure(WeatherFail.SERVICE)
         }
         return out.toString(Charsets.UTF_8.name())

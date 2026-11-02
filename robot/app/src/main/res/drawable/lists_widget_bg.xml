@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- 1.4 Lists' home-screen widget: its card, rounded as the home-screen app rounds widgets. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/lists_widget_bg" />
+    <corners android:radius="@android:dimen/system_app_widget_background_radius" />
+</shape>

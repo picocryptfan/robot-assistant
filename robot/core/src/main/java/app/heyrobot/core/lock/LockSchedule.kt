@@ -106,9 +106,10 @@ object LockSchedule {
     /**
      * The state as it is at [c]: Time of day locks whose window is open (and not skipped) are on, with their window's end;
      * actives that are over, whose lock was deleted or turned off, or that started more than [CAP] ago are off; with
-     * Phone lock off or locks.json unreadable ([file] null), every lock is off. A carried-over lock keeps its wait.
+     * Phone lock off ([file] null), every lock is off. A carried-over lock keeps its wait. [hold]: locks.json can't be read
+     * ([file] null), which says nothing about what is on: every active lock stays until its own end, and none starts.
      */
-    fun refresh(file: LockFile?, state: LockState, c: Clocks): Refreshed {
+    fun refresh(file: LockFile?, state: LockState, c: Clocks, hold: Boolean = false): Refreshed {
         val kept = mutableListOf<ActiveLock>()
         val ended = mutableListOf<ActiveLock>()
         val started = mutableListOf<ActiveLock>()
@@ -119,7 +120,7 @@ object LockSchedule {
         for (a in state.active) {
             val lock = if (a.voice) null else file?.lock(a.lock)
             val stillOn = when {
-                file == null -> false
+                file == null -> hold && !over(a, c)
                 a.voice -> !over(a, c)
                 lock == null || !lock.on -> false
                 scheduled(lock.rule) -> a.lock in due
@@ -138,6 +139,12 @@ object LockSchedule {
         val skip = state.skip.filterValues { !it.isBefore(today.minusDays(2)) }
         return Refreshed(state.copy(active = kept, skip = skip), started, ended)
     }
+
+    /**
+     * End early while locks are held with locks.json unreadable ([refresh]'s hold), when who they are for and their rule are
+     * unknown: with a code set, the code; with none, the lock can't be for someone else, so a wait. Never no way out.
+     */
+    fun heldSettings(state: LockState): LockSettings = LockSettings(endEarly = if (state.codeSet) EndEarly.CODE else EndEarly.WAIT)
 
     /**
      * A lock started by voice (phase B's LockRouter sends its end): null when Phone lock is off, a lock for someone else is
@@ -243,6 +250,16 @@ object LockSchedule {
         }
         if (state.edit > 0) times += Instant.ofEpochMilli(state.edit).atZone(c.now.zone)
         return times.filter { it.isAfter(c.now) }.minByOrNull { it.toInstant() }
+    }
+
+    /**
+     * [after] with the app that opens places settled (F24): looked up once, as the first lock comes on, and kept until the last
+     * one ends, so whatever someone under the lock makes the geo: default later stays covered. None found: Maps stays closed.
+     */
+    fun mapsKept(before: LockState, after: LockState, resolve: () -> String?): LockState = when {
+        after.active.isEmpty() -> if (after.mapsApp == null) after else after.copy(mapsApp = null)
+        before.active.isEmpty() -> after.copy(mapsApp = resolve())
+        else -> after
     }
 
     /**
@@ -361,6 +378,16 @@ object LockSchedule {
 
     /** The time still needed in its app by [a] ([r]'s minutes less its count), never below zero. */
     fun appLeftMs(a: ActiveLock, r: LockRule.App): Long = (r.minutes * 60_000L - a.usedMs).coerceAtLeast(0)
+
+    /**
+     * §8.1's minute tick: while One app first's app is [front] with the screen on and unlocked, the time until its count
+     * reaches its next whole minute, or the time it still needs when that's sooner, so the notice, the cover and Settings
+     * show the count as it passes. Null when nothing is counted: screen off or locked, or none of its apps in front.
+     */
+    fun appTickMs(file: LockFile?, state: LockState, front: String?, screenOn: Boolean, unlocked: Boolean): Long? {
+        if (!screenOn || !unlocked || front == null) return null
+        return appLocks(file, state).filter { (_, r) -> r.app == front }.minOfOrNull { (a, r) -> minOf(60_000L - a.usedMs % 60_000L, appLeftMs(a, r)) }
+    }
 
     /** Daily limit locks that are on and haven't come on today. */
     fun limitsArmed(file: LockFile?, state: LockState, now: ZonedDateTime): List<Pair<PhoneLock, LockRule.App>> = file?.locks.orEmpty().mapNotNull { l ->

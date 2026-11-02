@@ -1,0 +1,18 @@
+{
+  "format": 1,
+  "id": "wo4-summary",
+  "title": "What went online, asked unlocked, in English and French",
+  "safety": "read",
+  "testBench": ["WO4"],
+  "setup": [{"set": "speakReplies", "value": "VOICE"}],
+  "steps": [
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "What went online today?", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 30, "regex": "(?i)robot (went|hasn't gone) online|isn't keeping"},
+    {"do": "check", "what": "router", "equals": "OnlineRouter"},
+    {"do": "say", "text": "Qu'est-ce qui est allé en ligne aujourd'hui ?", "voice": "siwis"},
+    {"do": "wait_reply", "seconds": 30, "regex": "(?i)en ligne"},
+    {"do": "check", "what": "router", "equals": "OnlineRouter"},
+    {"do": "end"}
+  ]
+}

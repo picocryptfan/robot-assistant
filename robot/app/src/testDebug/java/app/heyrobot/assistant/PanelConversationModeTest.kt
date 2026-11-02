@@ -143,6 +143,25 @@ class PanelConversationModeTest {
         assertNull(shadowOf(ctx).nextStartedService)
     }
 
+    /** F110: reply and launches only; the session's mode is read back after, as ConversationSession.setMode would change it. */
+    @Test fun onTheLockScreenARunningSessionKeepsItsModeUnlessStartingThereIsOn() = runBlocking {
+        session.value = ConversationSession.Ui(status = ConversationSession.Status.RUNNING, mode = ConvMode.TRANSCRIBE)
+        locked = true
+        settings = RobotSettings(convStartLocked = false)
+        mode.run("r1", ConversationCommand.Start(ConvMode.INTERPRET))
+        assertEquals(1, calls.size)
+        assertTrue(calls[0], calls[0].startsWith("reply [lock] ") && calls[0].contains(" | [lock] "))
+        assertTrue(launched.isEmpty())
+        // The same mode changes nothing, so it still answers; with starting there on, the switch goes through.
+        calls.clear()
+        mode.run("r1", ConversationCommand.Start(ConvMode.TRANSCRIBE))
+        assertTrue(calls[0], calls[0].contains(PanelStrings.alreadyTranscribing().render(Langs.EN)))
+        calls.clear()
+        settings = RobotSettings(convStartLocked = true)
+        mode.run("r1", ConversationCommand.Start(ConvMode.INTERPRET))
+        assertTrue(calls[0], calls[0].contains(PanelStrings.translatingNow().render(Langs.EN)))
+    }
+
     @Test fun afterYouToldPeopleItStartsHereAndItsScreenOpens() = runBlocking {
         Transcripts.saveConsent(ctx, at = 5_000L)
         mode.run("r1", ConversationCommand.Start(ConvMode.INTERPRET))

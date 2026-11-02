@@ -40,10 +40,17 @@ The design documents linked under `docs/` in this file (and `docs/plans/`) are p
 
 Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `THIRD_PARTY.md`.
 
+## What's new in 1.2
+
+Robot 1.2.0 is everything built since 1.1.1, from `release/1.2`: Lists, files in a question, the rebuilt car screen with
+music and maps, Skills connections, Robot to Robot, and the fixes from the reviews and phone runs. Settings stay at schema
+13. The full phone pass isn't finished; 1.2.1 follows with its fixes. CHANGELOG.md has the list, the sections below the
+details, and the release notes what is still open.
+
 ## What's new in 1.1
 
 Robot 1.1.0 is everything built since 1.0.1, in one release, from `release/1.1`: Robot Files, the groundwork for other
-Android phones (planned as 1.2), Québec French, the fixes made on `release/1.0` after 1.0.1 (never released on their
+Android phones (more is planned), Québec French, the fixes made on `release/1.0` after 1.0.1 (never released on their
 own), a few new settings, three more features (Phone lock, Back up and restore, Skills) and the web search fix. Settings
 stay at schema 13: each new feature keeps its own file in `files/robot/`. This list says what changed; the feature
 sections below have the details and the phone checks. Skills that connect to other services, shared lists and Robot to
@@ -98,7 +105,7 @@ Robot are being built on their own branches and are not in 1.1.
   - Your own GGUF model: after a message is refused for holding one of the model's control texts, the conversation goes
     on without that part. A conversation reopened from History refuses once more before it recovers.
 - **Wait before answering** (Settings › Voice). How long Robot waits after you stop talking before it takes your question
-  as finished: Short (0.6 s of silence), Normal (1 s, the default), Long (1.6 s) or Very long (2.5 s). It replaces the
+  as finished: Short (0.6 s of silence), Normal (1 s), Long (1.6 s, where a new install starts) or Very long (2.5 s). It replaces the
   fixed 0.5 s. Hold the mic button and Robot keeps listening until you let go, whatever the pause. The headset's and
   car mode's follow-up window waits for a question that is under way.
 - **Reminders on a date.** Ask Robot to remind you on a date and it adds it to your calendar with an alert. It no
@@ -174,12 +181,13 @@ Robot are being built on their own branches and are not in 1.1.
   - *Calls during a lock.* A lock's People row (Calls to People you choose) shows the Phone permission and asks for it
     through the main app. With it, during a lock with the screen unlocked, the call tool's card for one of those People
     places the call from its Call (`ACTION_CALL`), because the lock covers the dialer but not the call screen. That needs
-    the call tool on Ask first, the default; on Just do it the dialer opens, covered. Car mode's spoken calls keep to the
+    the call tool on Ask first, the default; on Just do it, or with no Phone permission, Robot opens nothing and says what's missing. Car mode's spoken calls keep to the
     lock's list during any lock, the lock screen included, and a number said aloud is called only when it is one of
     those People's or an emergency number. An emergency number still only opens a dialer: during a lock, the phone's
     own emergency dialer (`com.android.phone.EmergencyDialer.DIAL`, a system app's only, named outright) with the
     number filled in, which the lock never covers, and you tap Call there. The cover's Emergency call button opens the
-    same one. A headset session's call to one of the lock's People opens the ordinary dialer, which the lock covers.
+    same one. A session's spoken call that would open the dialer (a headset session's always, car mode's without its direct
+    call) goes to the call card instead, since the lock covers the dialer: Robot says "It's on the screen.", and you tap Call.
   - *Storage full.* When `state.json` can't be written, `:lock` keeps the state it worked out, so locks still start and
     end, writes it again at every refresh (at least once a minute while windows change) and shows "Phone lock couldn't save its state" until a
     write works. Until then Robot's other processes, and `:lock` after a restart, see only the last saved state.
@@ -248,6 +256,32 @@ Robot are being built on their own branches and are not in 1.1.
   first message, up to 5 result pages (3 by default), GitHub receiving a feedback issue's text when its page opens (Send
   feedback's note says so too), and the Phone permission for a phone lock's call card. Android's own backup and device-to-device transfer are still off.
 
+### 1.1.1, and what 1.2.0 took from the planned 1.1.2
+
+A point release from `release/1.1`, and two fixes first made for a 1.1.2 that never shipped alone; CHANGELOG.md and each release's notes say what you see and what was checked on a
+phone.
+
+- **1.1.1.** An emergency number asked of Robot during a phone lock, or on Android's lock screen, opens the phone's own
+  emergency dialer with the number filled in. Phone lock's edit session ends when Robot's app or the code pad is left
+  (Home, Recents, the power button, another app; never a rotation) and at screen-off, and `:lock`'s gate looks again at
+  the window in front when the session or car mode your car started ends, and at the unlock. Nothing is put over the
+  lock screen.
+- **1.2.0, Phone lock.** Android doesn't always send a window event when Robot's own app comes back to the front (back
+  from the code pad, on a Pixel 8), so during a lock Robot's app tells `:lock` itself: `LockSignals.ACTION_FRONT`, an
+  explicit broadcast to its non-exported receiver, carrying when it came to the front (uptime, never later than now).
+  It's sent when `MainActivity` resumes, when the last Phone lock page closes with it in front, and when the edit
+  session's 5 minutes run out with it in front. The gate takes it like a window event, only while it watches windows;
+  an event at the same moment or later wins. If Robot's app can't read `locks.json` or `state.json`, it sends the word
+  anyway. `LockGate.ROBOT_COVERED` adds the Robot Files alias (`FilesLauncher`) and the backup window (`BackupActivity`,
+  `:voice`), each checked against the merged manifest by `ProcessIsolationTest`. The cover reads the engine's snapshot
+  and the time as Compose state, so a cover that stays up redraws as they change; its minute tick runs only while it's
+  resumed.
+- **1.2.0, the voice engine.** `SpeechText.forEngine` and `sayable` cut every run of more than 40 UTF-16 units without a
+  space: espeak-ng keeps a word in 160-byte buffers and copies a whole one with no bound (CVE-2023-49992), and the
+  `ed530aa1` fork in sherpa-onnx 1.13.8 lacks upstream's fix (`58f1e0b6`). Control characters were already removed.
+  `SpeechTest` and `EngineTextTest` run espeak-ng's five crash inputs (CVE-2023-49990 to 49994) through both voices'
+  paths. Since 1.2.0 the library itself carries Robot's patch with that fix (THIRD_PARTY.md).
+
 ## The fixes from my security review after 1.0 (1.0.1)
 
 After 1.0.0 shipped I reviewed Robot's security again. It was my own review, not an outside audit. Each fix comes with
@@ -258,8 +292,8 @@ tests.
   saved key is kept.
 - **The model file**: models live in internal storage (`filesDir`), which only Robot can write. A download or an import is
   hashed as it's copied in. A 1.0 model in `Android/data` moves in once, when Robot is opened and there's room for a
-  second copy (the model's size plus 0.5 GB, app `ModelStore.moveIn`, core `ModelMove`); until then the whole file is
-  hashed before each load.
+  second copy (the model's size plus 0.5 GB, app `ModelStore.moveIn`, core `ModelMove`); until then it doesn't load
+  (since 1.1; a GGUF file does, the whole file hashed before each load).
 - **Content choosing details**: with content in the conversation (a web page, a helper's reply, the screen, a photo),
   every action that writes or opens something shows its card, even when your own words named it (core `Approval`).
 - **The headset entry**: `HeadsetEntryActivity` opens only for the system, Bluetooth or Robot itself; a referrer an app
@@ -624,6 +658,123 @@ the summary, Home's and About's rows, and four goldens: What Robot can do (light
    Next stay reachable (on two lines).
 8. **Again.** Settings › About › Setup guide after Done: *done when* it opens at Welcome with every choice as you left it.
 
+## Skills connections (1.2)
+
+Built on `feature/conn-*` (C1 to C13, from the Robot Files chain) and merged into `release/1.1` after its
+phone run. Design and build plan in `docs/plans/skills-design.md` §8 and `docs/plans/skills-connections-plan.md`
+(private). A skill's step can now reach your own server, hand a step to an app you pick, or run one of your Termux
+scripts with typed values, so one sentence does what took several apps. Nothing here goes online until you set up a
+connection and a skill you run uses it.
+
+### What it adds
+
+- Five kinds of connection, set up once in Settings › Skills › Connections: **Home Assistant** (call a service, read a
+  state, run a script, over its REST API), **ntfy** (send a notification to a topic), **Webhook** (one request you
+  declare), **Routing server** (OSRM, Valhalla or GraphHopper that you run, for a `travel_time` step) and **App
+  hand-off** (open an app you picked, its signer pinned, with the words you set). Plus typed **Termux scripts**
+  (`# param:` lines) as steps.
+- Settings › Skills gains a Connections row and **Add a skill** (a name, then its first step). A skill's page gains
+  **Add a step** (Your connections, Travel time, App hand-offs, Your Termux scripts, Say something), a page per step
+  (each value a constant, a question, words with a value inside, or an earlier step's value; **Only if…**; **If it
+  doesn't work**: Stop, or Go on after a read), and computed lines: Effects, Risk (Simple, Careful, Risky), Needs a model,
+  and **Test** (a dry run: nothing sent, keys as their last 4 characters). Connection steps are added in Settings only;
+  by voice you run, list, ask about and delete skills, as in 1.1.
+- `skills.json` stays version 1 until a skill uses something new, then becomes 2 (plan D6): a 1.1 Robot leaves a v2 file
+  alone ("Your skills are from a newer Robot") and a 1.1 restore skips Skills as newer.
+
+### Where the calls happen
+
+| Layer | Process | What |
+|---|---|---|
+| `core/connect/` | any (pure) | The model, `connections.json` v1 (`ConnectionCodec`, `ConnStore` under the skills lock), D1 and D2 (`ConnRules`), request building (`HttpOp`, `ConnOps`), replies (`ConnReply`), presets, effects, consent, limits, failures, `ConnStep`, `HandOffStep`, `TravelStep` |
+| `helpers`, `app.heyrobot.helpers.connect.ConnHttp` | `:voice` | The one client: a fresh OkHttp client and pool per call |
+| `app/assistant/connect/` | `:voice` | `ConnRunner`, `HandOffRunner`, `ConnKeys`, `ConnectionWindow` (keys, Test, Home Assistant's picker, a secret webhook address) |
+| Settings screens | main | `connections.json` only; never a key and never a request (Test opens the window in `:voice` by class name) |
+
+Every step runs as a typed call through `TurnRunner` on two internal tools, `CONNECTION` and `HAND_OFF` (never in
+Settings › Actions, never described to a model), or `TERMUX_SCRIPT` with a typed argument list. Robot's model is told a
+skill's name, a line from its step kinds ("changes something at home", "checks the travel time") and its questions,
+never a host, a path, an entity, a topic, a script's name or an operation's title.
+
+### The client (`ConnHttp`)
+
+- **D1, home or internet.** Every lookup and the socket actually connected are classed as home (loopback, private,
+  link-local, Tailscale's 100.64/10, unique-local IPv6) or internet. Addresses of neither kind (NAT64's `64:ff9b::/96`
+  among them) are dropped from a lookup; it is refused only when none is left (C12-fix M3), so an IPv4-only https server
+  works on IPv6-only mobile data. A lookup with both kinds keeps the home ones (`ConnRules.lookupHomeWins`). **http** is
+  home only, on every call ("…now points outside your network. Test it again"); **https** may be either kind and may
+  change between calls (split DNS), since TLS's name check stops a rebinding.
+- **D2, secrets.** Any secret (a token, a header you marked, Basic's password, an ntfy topic, a webhook address that
+  holds a secret) makes the connection https only: refused when typed, before a client is built, and when the secrets
+  go in (`ConnWire`). 1.0.1's sentence: "Robot won't send your … key over plain http: use an https address."
+- No redirects, retries, cookies, cache or proxy; cleartext only for http, modern TLS only for https, Android's system
+  certificates only (D3: a self-signed certificate fails Test; Q2's pinning is not built). Connect 5 s home or 15 s
+  internet, the whole call 10 s; replies read as bytes up to 256 KiB (an unread 2xx is a success whatever its size,
+  C12-fix L4). `User-Agent: Robot`. Keys are added last, from `ConnKeys`, so no preview, card or log holds one. Stop
+  cancels at once, and a write that may have gone out is never sent again by itself.
+- Travel time's location goes over http only to a typed loopback or 100.64/10 address (`ConnRules.locationOverHttp`).
+- D22: every call and Test checks GrapheneOS's Network toggle first. CN4's "off your home network" reads only whether the
+  phone is on Wi-Fi, Ethernet or a VPN (`ConnNetwork`, `ACCESS_NETWORK_STATE`, which 1.1.0 already declares); an http
+  home connection on any other network isn't tried. An http address on someone else's Wi-Fi can't be told apart from
+  yours: the guide steers every connection to https or Tailscale.
+
+### Keys
+
+Each connection's secret parts are one `KeystoreSecret` file, `connections/<id>/key.bin` with `key.json` (masks only),
+under its own Keystore key `robot_conn_<id>`, read only in `:voice` just before a request. `ConnectionWindow` takes them:
+`FLAG_SECURE`, out of autofill, the clipboard cleared, closed at screen lock and covered during a phone lock. Remove
+connection and a changed address delete the key first; the window saves a key only for the connection it showed, under
+the store's lock (C12-fix L1). `TermuxSecrets` refuses a command holding any part. `connectionsStayBehindTheirChecks`
+pins where keys and `ConnHttp` may be named.
+
+### The gate
+
+- Never on a locked phone (the gate refuses before and after the card), never from a routine (`RoutineGate`: `NEVER`),
+  never from a helper, a reply or the model alone: only a skill's typed call makes a step.
+- Each step keeps its own card. Tap only: a first use of a host (D13: **Allow for this connection**, **Just this time**,
+  **No**), anything that locks, unlocks or opens (Home Assistant's `lock`, `alarm_control_panel`, `siren`, `camera`,
+  `valve`, and covers that are garage, gate, door or unclassed), deletes or can spend money, code Robot can't see
+  (`script`, `automation`, `scene`, `group`, `shell_command`, `python_script`, `hassio`, `rest_command`, `pyscript`,
+  C12-fix M2), a value Robot's model wrote or read from an answer, and a hand-off whose app changed. A spoken yes may
+  answer a step only when every effect is a change at home, a read or opening an app (`ConnStep.SPOKEN_YES`) and the
+  connection's switch is on (it is by default); a notification, a webhook's write and a share take a tap. `entity_id: all` only for one domain outside
+  security, code and messages.
+- What its card showed, or nothing: the run builds the request again and sends it only if it matches the card's request
+  and effects (C12-fix L3); otherwise "This step changed after its card showed, so Robot didn't run it. Ask again." (C13;
+  the same for a hand-off whose app or intent changed).
+- Limits: a skill 12 runs an hour (1 to 60, `limits.per_hour`); a connection 30 requests a minute (5 to 60 in its
+  page) and 500 a day. Counts and times only, in `skills_state.json`.
+- Replies are content: they taint later steps, only declared outputs are kept (typed; free text cut to 1,500
+  characters and cleaned), and free text from a reply never reaches a condition, a Termux argument or a send without a
+  tap. Home Assistant's changes are read back once after 2 s when the answer didn't list them; a failed check stops the
+  skill ("Step 1 didn't do what it should: the downstairs light didn't turn off.").
+- Webhook bodies (C12-fix M1): a text body only as `text/plain` or `application/x-www-form-urlencoded` (a form's values
+  percent-encoded), a JSON body only as `application/json` or `…+json`; anything else is refused under Headers.
+- Voice log: codes only (254 `SKILL_CHECK`, 255 `CONN_CALL`, 262 `CONN_SETUP`, 263 `HAND_OFF`, 264 `SKILL_LIMIT`);
+  `ConnFailure` codes 1 to 38.
+
+### Backups
+
+Two categories right after Files: **Connections** (`connections.json`, on) and **Connection keys** (off, shown inside
+Keys and private codes, a Strong passphrase and "This backup is my own"). A key restores only to a connection of the
+same id and address, under a fresh Keystore key. From someone else's backup a connection arrives untested, without
+first-use answers, the spoken yes off, at most 30 a minute, a hand-off to pick again, and a connection you already have
+keeps its own operations and name (C12-fix L2). Stray key folders go at every restore. A connections.json Robot can't
+read offers **Start over** (kept aside as `connections.json.bad`, its keys deleted); a newer one is left alone. A 1.1
+reader skips both categories by name.
+
+### Not built
+
+§6.1's "What skills need" rows (each connection's row already shows its last Test; "Local network" waits for target
+SDK 37, plan D23); pinning a self-signed certificate (Q2); MCP and routines that use connections (1.3); a way to mark a
+Home Assistant operation as locking or opening something (the webhook form has the marks; a switch or button that
+drives a door counts as a change at home, so wrap it as a cover or lock in Home Assistant).
+
+### On the phone (Skills connections)
+
+None of these has run yet: C14 runs them on the Pixel 8, from the Test Bench's CN1 to CN15 (`docs/ops/test-bench/`,
+The adb steps in `claude/cn-*.json`, the steps that need you in `YOUR-TESTS.md`).
+
 ## Robot Files (1.1)
 
 Robot's private filing cabinet (design and build plan in `docs/plans/files-design.md` and `files-1.4-plan.md`, private;
@@ -644,6 +795,9 @@ Files) and Settings › Files. Every Files screen is `FLAG_SECURE`, and checks t
   `ScanProvider`; you drag the four corners; `:files` straightens each page and makes one PDF (at most 20 pages).
 - "File this" (« classe ça ») in the panel files what the panel holds, a photo you showed or the screen you asked about,
   with its full bytes. Save to Robot Files on a transcript.
+- File, beside Camera and Photos in the panel: attach a PDF, a picture or a text file to a question. It's read on the
+  phone (`:files`) and kept only for that conversation, unless you file it ("file this", or Save to Robot Files on its
+  chip). History keeps its name, never its contents; a long file is read from its start and the reply says so.
 - Every file gets its provenance (where it came from, the app when Android confirms it, the time, SHA-256, size and the
   type sniffed from its bytes). A file with the same SHA-256 as one you have asks first. Adding needs twice the file's
   size plus 1 GiB free, checked again every 8 MiB; at most 200 MiB a file and 5,000 files.
@@ -753,10 +907,202 @@ None of these has run yet. The Test Bench gets Files tests (FL) with the phone r
    `adb shell run-as ai.robot_app ls -R cache/files_out`.
 7. Back up with files, reset the phone, restore: every file opens, hidden drawers stay hidden.
 
+## Lists (1.2)
+
+Shopping and to-do lists you keep by voice, even with the phone locked in your pocket (build plan in
+`docs/plans/lists-plan.md`, private; built as jobs LS1 to LS11 on `feature/lists-*`). Robot's own code
+hears the usual phrases and answers them, in English and Québec French; the model is asked only to split a run of words
+with no commas, and for the `add_to_list` tool. Lists are sealed on the phone the way memory is. Nothing about them goes
+online.
+
+Where it lives: the Notes tab, whose top has two buttons, **Lists** and **Notes** (Lists first; with Lists off, Notes
+alone); a list's page; a card in the panel after a read or a check; Settings › Lists; and a home-screen widget, Robot
+list. Every Lists screen is `SecureWindow()`, and so are its dialogs and menus.
+
+### By voice
+
+- `ListsRouter` (core, pure) sits after Files and before hands-free, so routines, skills and Files come first ("remind
+  me to add eggs to the list" stays a reminder; a skill called "Grocery list" still answers "shopping list"). It claims a
+  phrase only when it names a list: "list" or « liste », a default list's names (Shopping: shopping list, grocery list,
+  groceries; « liste d'épicerie », « liste de commissions »; To-do: to-do list, things to do; « liste de choses à
+  faire », « liste à faire »), or one of your lists' names after "to", "on", "off" (« à », « sur », « de »). A bare follow-up
+  ("take eggs off", "put bread back", "undo that") is taken only for an item on the list in focus, or on exactly one list.
+  A check that names no list ("is milk on my list") looks at every list, whichever is in focus, and "what lists do I
+  have" ends the focus (LS13, after LT3 on the Pixel 8 heard "No, Pharmacy doesn't have milk." with Milk on Shopping).
+- Commands: add, read, check one item, tick (said "take off", "cross off", "remove"; voice never deletes an item), put
+  back, make a list, clear the ticked items, empty (a card only a tap confirms), "what lists do I have", and "undo that"
+  right after a list change (forgotten after any other turn, LS10's L1; a card's Undo still works).
+- Never Lists': "take a note", "remember to …", "list my notes" ("list" as a verb), "make a list of things to do in
+  Montréal" (the model's answer), playlists and « liste de lecture » (unless you have a list called Lecture), « liste des
+  gagnants » (« liste des X » names a list only for a default list's word or one of your lists), "put me on the guest
+  list" (pronouns aren't items), calendars, contacts, alarms, and anything that sends a list to a person. The routing
+  corpus (`routing/corpus-lists.txt` and the committed baseline) proves every other router's output unchanged.
+- Replies are built by code from `ListsStrings`: "Added oat milk to Shopping." with Undo; "Already on Shopping: eggs.";
+  "Shopping has 5 things: …" (12 read aloud, then "and 4 more"); "Yes, Shopping has eggs."; "Ticked off eggs."; "Oat milk
+  or milk?" when two items match. A word said alone names an item only as its main word (LS12, `ListsMatch.part`): the
+  last in English ("milk" finds Oat milk, never Milk thistle or Milk chocolate), the first in French (« lait » finds
+  « lait d'avoine », never « café au lait »); two words or more, any item holding them in a row. A yes on several lists
+  names what it found on each ("Yes: milk (3 L) on Shopping and oat milk on Pharmacy."). Several items in one sentence are split by code on commas and short "and"s, known pairs
+  kept (salt and pepper). A run of three or more words with no separator goes to the model already loaded in a tool-free
+  one-shot (`LIST_SPLIT`, frozen in `prompts/lists.txt`) for at most 3 s; its answer is kept only when every item is a
+  run of your own words, in order. Desk run (LS4, GGUF Gemma 4 E2B on the PC's CPU): 94 of 120 multi-item phrases split
+  right, no word ever added or changed.
+- Quantities: a number and an optional unit at the start ("2 litres of oat milk" is Oat milk, 2 L), in both languages.
+  Adding an item already open with a new quantity changes it ("Changed the quantity on Shopping: …"); a ticked one is
+  put back. A locked add never changes a quantity (below).
+- Secrets: an item `SecretDetector` flags (a PIN, a card number, a password) isn't added: "That looks like a code or a
+  card number. Robot keeps those in Memory, not on a list." The question is kept in the panel and History as the private
+  placeholder, never as said (LS10's M2).
+
+### The model and History
+
+- One tool, `add_to_list` (items, list), internal, so Settings › Lists governs it and the lock screen never offers it;
+  described only while Lists is on, the phone unlocked and no phone lock. It adds without a card only when every item is
+  a run of your words this turn, the conversation holds no content and the list exists; otherwise a card (`AskWhy.
+  LIST_SUGGESTED`) a tap answers, under every Safety cards setting. The model gets counts, never items. Never a helper's
+  tool.
+- No tool reads a list and items are never in the system prompt. Every answer from your lists (a read, a check, "what
+  lists do I have", "which", a tick or put back of stored items) is a content record replayed inside `ListQuote.FRAME`, so
+  later actions by the model in that conversation ask first, and `Personal.LISTS` makes a helper get only your question
+  unless you tap Include. History keeps "Robot read Shopping: 5 items" for a read and "Robot answered from your lists" for
+  the others, never the items (LS10's M1). Your own words and add replies are kept as said.
+
+### Sealed storage
+
+`files/lists/` (credential-encrypted storage, never in Android's backup):
+
+| File | What it is |
+|---|---|
+| `lists.enc` | The lists (lists v1, strict JSON, at most 2 MiB), sealed whole with AES-256-GCM by `robot_lists_v1`: frame `RLST`, version, the key's alias, IV, ciphertext, tag; additional data `robot-lists-v1|<file name>` |
+| `locked.enc` | The journal (`RLSJ`), sealed by `robot_lists_lock_v1`: your lists' ids and folded names, refreshed at every write, and the adds said while locked |
+| `lists.lock` | Both app processes take it for every read and change |
+| `lists.enc.bad`, `locked.enc.bad` | Kept aside by Start over, or a journal that couldn't be read; Robot never deletes them by itself (Delete all lists does) |
+
+Settings › Lists is `files/robot/lists_settings.json` (settings.json stays at schema 13). Both keys are AES-256-GCM in
+the Keystore's TEE, randomized, never exported, no StrongBox and no user authentication, made through memory's key class
+with Lists' own aliases: `robot_lists_v1` with `setUnlockedDeviceRequired(true)`; `robot_lists_lock_v1` without it,
+which exists only while "Add to lists while locked" or "Hear and tick on the lock screen" is on, and also seals the lists
+while the second is on. Only Lists' aliases are ever asked for. A key is made only for a new file on an unlocked phone; a
+key Android invalidated is replaced only when nothing is sealed under it. A switch re-keys all or nothing: both files
+sealed first, the journal deleted (switch off), `lists.enc` and the journal written, keys deleted last, and never a key a
+kept-aside file still names (LS10's L5, L7). A failed tag is damaged data; any other Keystore error is "not now", never
+"gone". Nothing is written over a file Robot couldn't read (locked, key gone, damaged, a newer Robot's). Both processes
+keep the opened lists in RAM and drop them at every screen-off.
+
+Each item has a random 128-bit id, who added it (`by`: you, locked, content, backup) and how, a change counter, the last
+8 changes and, once removed, a tombstone kept 30 days. Unknown keys are kept on every write, and `shared`, `origin` and
+`peer` are reserved for Robot to Robot, so 1.5 can share lists without changing the file.
+
+### While the phone is locked
+
+| What | Unlocked | Locked | Locked, "Hear and tick on the lock screen" on | Phone lock for someone else |
+|---|---|---|---|---|
+| Add by voice | Yes | Into the journal, while "Add to lists while locked" is on (the default) | Into the list | No: "Robot can't change your lists right now." |
+| Hear a list, check an item | Yes | "Unlock your phone to hear your lists." | Yes | No |
+| Tick, put back | Yes | No | Yes | No |
+| Clear, empty, make, rename, delete | Yes | No | No | No |
+| The model's `add_to_list` | As above | Never | Never | Never |
+
+The journal is merged into `lists.enc` by item id at every open and after each unlock in `:voice`; merging twice
+changes nothing, and a merged journal is always emptied (L6). A locked add never changes a quantity: an item already
+open stays as it was, a ticked one comes back with its own quantity and the mark "Changed while the phone was locked"
+(M3), and a new one is marked "Added while the phone was locked". The journal is never read to answer anything, holds
+at most 50 adds, and a list it doesn't know gets "You don't have a list called camping. Unlock your phone to make one."
+`SomeoneElseLock.lists` reads both switches as off during a phone lock for someone else.
+
+### Screens and the widget
+
+- The lists screen: each list with "3 items left" and its first three items, New list, and the locked, key-gone and
+  empty states. A list's page: an add field read by the spoken rules, tick boxes, Done (n) collapsed, Clear done and
+  Delete with a 10-second Undo, Edit, Move to top, Move to another list, each item's details and history, Rename, Share
+  as text (the share sheet, open items only), Delete list behind its dialog. Marks: "Added while the phone was locked",
+  "From a screen or a message", "From someone else's backup", and "From a backup that isn't yours" on such a list.
+  A note's page has Make a list from this note. Both screens read the lists again when they come back into view and
+  when their window has the focus back, so an add made in the panel over them is counted (LS13).
+- The panel's card (`UiTurn.list`, never saved) after a read or a check, with tick boxes and Undo, never while locked.
+  Its title is in the reply's language and its Open button in the menus', as an add's card is (LS13).
+- The widget, Robot list (`RemoteViews` with `RemoteCollectionItems`, API 31+, no library): one list per widget, picked
+  in `ListsWidgetSetup` when you place it, up to 50 open items then "and n more", and "n done". It only ticks. Items go at
+  every screen-off and with the phone locked ("Unlock to see this list", without the list's name) and come back at
+  screen-on unlocked and at unlock, unless "Hear and tick on the lock screen" is on; "Robot is locked" and no ticks
+  during a phone lock; nothing for a lock-screen host. Someone else's list from a backup carries "From a backup that
+  isn't yours" on the widget and in its picker (LS11a's N2). `widgets.json` holds ids only, isn't in a backup (a widget's
+  id is the home-screen app's on this phone), and is made when a picker first opens: a widget the system lists while it
+  isn't there says "Robot's data was cleared, and a backup doesn't keep a widget's list. Tap to pick it again." (LS12).
+- The components: `ListsWidgetProvider` (main, exported as a provider must be, the `APPWIDGET_UPDATE` filter alone) reads
+  nothing from its intent and redraws the widgets the system lists; any burst of broadcasts is one prune and one redraw
+  through the coalesced `ListsWidgets.changed` (N1). `ListsTickReceiver` (not exported, no filter) takes only a tick or
+  untick of an item on that widget's own list, through the vault's `lockedEdit` (how: widget). `ListsWidgetSetup`
+  (exported, `APPWIDGET_CONFIGURE` alone, `FLAG_SECURE`, out of Recents, its own task `ai.robot_app.widget`, under Phone
+  lock's cover) closes for an id that isn't one of Robot's widgets. During a phone lock it shows no list and says "Robot
+  is locked.", as the widget does. LS13 (LT8 step 4): its touch filter made it accessibility data-sensitive, and Android
+  14 sends such a window's events only to accessibility tools, which Phone lock's service isn't, so it stayed uncovered.
+  `Window.filterObscuredTouches()` (ui/common/Secure.kt, also the Files share target's) keeps the filter and marks the
+  window not sensitive and its content sensitive, and every covered window but `MainActivity` tells `:lock` it is in
+  front as it resumes (`LockFrontWatch`, with its class; a class the gate doesn't cover counts as `MainActivity`). Every PendingIntent is explicit with an identity of its own; only the tick template is
+  mutable. `theWidgetOnlyTicks`, the manifest pins and `tools/verify_apk.sh` check all of it.
+
+### Backup
+
+`BackupCategory.LISTS` after Files (on by default): `lists.json` (lists v1 in plain JSON inside the backup's own
+encryption, the journal merged first, tombstones included) and `lists_settings.json`. A restore in `:voice` seals the
+lists again under this phone's key through `ListsVault.restore`: Add merges by item id (`ListsMerge`: the higher change
+counter wins, then the later change, then this phone's), Replace replaces. Someone else's lists arrive apart, marked
+"From a backup that isn't yours", with no role (your Shopping still takes your adds), every item by backup, without
+unknown keys and without any item `SecretDetector` flags (L4). Their looser lock switches are kept safer
+(`RestoreSafety`: both GUARDED), and the preview counts them under "Kept safer", again whenever it comes back into view
+(LS12). A newer `lists.json` is skipped; a 1.1.1 or older reader skips the category by name (the committed fixture
+`backup-v1-lists.robotbackup`). Since LS12 the manifest names each category in words, by language (`"name":{"en":
+"Lists","fr":"Listes"}`, dropped before it passes 4 KiB), and a preview names a part it doesn't know by that word ("Links
+needs Robot 1.5.0 or later: …"); a 1.1.1 or older reader ignores the key and still says "Part of this backup needs a
+newer Robot".
+
+### Tests
+
+Core: `ListsCodecTest`, `ListsEnvelopeTest`, `ListsJournalTest`, `ListsEditsTest`, `ListsMergeTest`, `ItemTextTest`,
+`ListsRouterTest`, `ListsRoutingCorpusTest`, `ListSplitTest`, `ListsToolTest`, `ListsWidgetRulesTest`, `ListsSettingsTest`
+and the backup tests; the `zq9marker` checks in four of them (a list's name or item never reaches RLog or the voice log).
+App: `ListsExamplesTest`, `ListsScreenTest`, `ListsWidgetTest`, `PanelListsTest`, `PanelListsSendTest` (typed turns through `PanelController.send`
+to History as saved), `ListsVaultTest`, and `ProcessIsolationTest`'s `listsStayOnThePhone` and `theWidgetOnlyTicks`.
+
+### On the phone (Lists)
+
+The phone run is LS11b on the Pixel 8. The steps are the Test Bench's Lists tests, LT1 to LT16
+(`docs/ops/test-bench/claude/lt-*.json` for what runs over adb, `yours/lt-*.json` for the steps that need a person),
+with LS7's, LS8's and LS10's phone steps folded in. Not yet checked on a phone: whether the recognizer writes commas in
+a spoken list, the split's speed there, how soon a widget's items come back at unlock, what a home-screen app keeps of
+a widget, and both Lists keys after the screen lock is removed.
+
+## Words kept and the helper offer (1.2)
+
+Two reports from the phone (29 Oct 2026, job words-hedge on `feature/words-hedge`):
+
+- Words shown, then lost. While you speak, the whole question is decoded about every 0.7 s for the live text; when you
+  stop, it's decoded once more and only that text was used. When that last pass came back empty, the panel said "Sorry,
+  I didn't catch that." over words you had just watched appear. Now, when the last pass finds nothing but speech was
+  heard, the last live text is the question (`FinalWords`, in `SherpaSpeechToText`, so other apps' mic buttons get it
+  too), and the voice log has its own line: "Used the words shown: the last pass found none in N s of audio · N
+  characters from N s" (`STT_USED_SHOWN`, numbers only). Robot's log line `stt_final` now also has the live text's
+  length and audio length, to find why a last pass comes back empty or short (not yet known: long questions are the
+  guess).
+- No offer after a hedge. "I don't have specific, up-to-the-minute legal documents for tire chain regulations…" matched
+  none of `Hedge`'s phrases. Now "I don't have" with up to six words before what's missing (documents, records,
+  figures, regulations, sources, details, information…), "not … up to the minute", and a reply that leads with "check
+  the official website" or "for the most accurate information" (or says little else) count, in English and Québec
+  French. "For the latest information…" at the end of an answer no longer counts by itself.
+
+Tests: voice `FinalWordsTest`; core `HedgeDeskTest`, a desk set of 40 hedges (the tire-chain reply first, the only one
+captured from the phone) and 40 good answers that name a website or a ministry: 40 of 40 hedges found and 0 of 40
+answers flagged (before: 22 and 1).
+
+### On the phone (words kept, helper offer)
+
+Test Bench rows `wh-spoken-words` and `wh-helper-offer` (`docs/ops/test-bench/claude/`), not yet run.
+
 ## Other Android phones (1.1)
 
-The groundwork for phones that aren't Pixels (design in `docs/plans/every-android-phone-1.2-design.md`, private; built
-as "1.2", jobs 1 to 6). Nothing here has run on a phone that isn't a Pixel. Pixels come first: GrapheneOS runs on them,
+The groundwork for phones that aren't Pixels (design in `docs/plans/every-android-phone-1.2-design.md`, private, a file
+name from an old plan; jobs 1 to 6). More is planned, with no version number yet. Nothing here has run on a phone that isn't a Pixel. Pixels come first: GrapheneOS runs on them,
 and the point is to keep Google off the phone.
 
 - Chips (`Socs.of`): `SOC_MANUFACTURER` and `SOC_MODEL` name Qualcomm SM8450 to SM8850 (Snapdragon), Samsung `s5e`
@@ -783,12 +1129,13 @@ and the point is to keep Google off the phone.
 - Stock Android and One UI, without a phone: the system voice named from the default text-to-speech engine; the
   recognizer fix reads "Not needed" where another installed recognizer is set (Settings › Advanced › ADB fixes, and
   refused in `:voice` too); on a phone without GrapheneOS Clock, routines that start after an alarm say so before the
-  yes; Phone lock's never-open list moved to `LockGate` and is enforced whatever a lock or a backup allows, with app
+  yes, and the Clock app setting (below, "When I turn off my alarm") picks which Clock Robot goes by, unproven on Google
+  Clock; Phone lock's never-open list moved to `LockGate` and is enforced whatever a lock or a backup allows, with app
   stores, file managers, the phone's care and wellbeing apps and Smart Switch added.
 
 ### On the phone (other Android phones)
 
-The Test Bench holds these as build "1.2": v12-chip-pixel10, v12-chip-fields-pixel8, v12-chip-fields-s25,
+The Test Bench holds these under an old build name, "1.2", which isn't this release: v12-chip-pixel10, v12-chip-fields-pixel8, v12-chip-fields-s25,
 v12-chip-fields-exynos-budget, v12-speeds-measure, v12-speeds-os-update, v12-speeds-private, v12-gpu-selftest-run,
 v12-gpu-selftest-note, v12-gpu-selftest-home, v12-gpu-try-again, v12-gpu-os-update, v12-gpu-none-pixel10,
 v12-prompt-compact-gpu-off, v12-prompt-tools-still-work, v12-warning-cpu, v12-warning-4gb, v12-warning-6gb,
@@ -2106,9 +2453,13 @@ it.
 cd robot
 echo "sdk.dir=/path/to/android-sdk" > local.properties
 tools/fetch_third_party.sh --install          # sherpa-onnx libs, wake-word and VAD models (and its bpe.model), espeak-ng subset, SHA-256 checked
+tools/build_sherpa.sh                         # libsherpa-onnx-jni.so with Robot's bounds in espeak-ng (about 15 minutes); verify_apk.sh wants this build
+tools/fetch_libsignal.sh                      # 1.5: libsignal 0.105.2 into third_party/maven-local, SHA-256 checked (below)
+tools/fetch_link_deps.sh                      # 1.5: Tor, the UnifiedPush connector and Tink into third_party/maven-link, SHA-256 checked (below)
+tools/build_lyrebird.sh                       # 1.5: liblyrebird.so from source into third_party/lyrebird, pinned (Go and the NDK; Go is downloaded if missing)
 tools/build_llama.sh                          # optional (0.4.5): llama.cpp b11200 from its checked source, for GGUF files
 tools/build_robotmt.sh                        # 0.5.0: librobotmt.so, the fast translation engine (NDK 27.1.12297006, CMake 3.22.1; a 0.6.0 release needs it)
-./gradlew :core:testReleaseUnitTest :voice:testReleaseUnitTest :helpers:testReleaseUnitTest :app:testReleaseUnitTest
+./gradlew :core:testReleaseUnitTest :voice:testReleaseUnitTest :helpers:testReleaseUnitTest :link:testReleaseUnitTest :app:testReleaseUnitTest
 ./gradlew :app:testDebugUnitTest               # also the Compose UI tests and screenshots (Robolectric, offline)
 ./gradlew :app:assembleRelease -Probot.keystore=/path/outside/repo/robot-release.p12 \
                                -Probot.keystorePassFile=/path/outside/repo/robot-release.pass
@@ -2120,6 +2471,57 @@ tools/repro_check.sh                           # 1.0: builds the unsigned APK tw
 the committed tree in another folder (the git-ignored native libraries and models hard-linked in), and compares the two
 byte for byte, listing the entries that differ; `--signed Robot-x.y.z.apk` also runs `apksigcopier compare` against a
 published APK, as F-Droid checks. It needs a clean tree (commit first) and two release builds' time.
+
+### Getting libsignal (1.5)
+
+Robot to Robot's sessions run on libsignal 0.105.2, which Signal publishes only in its own Maven repository, so a fresh
+checkout gets it once, outside Gradle: `tools/fetch_libsignal.sh` downloads the six files from
+`https://build-artifacts.signal.org/libraries/maven/org/signal/` (the AAR and the client jar with their POMs and module
+files, about 375 MB), or `tools/fetch_libsignal.sh --from <folder>` copies them from a folder that holds them (found by
+name). Either way every file is checked against `third_party/libsignal-0.105.2.sha256`, and the AAR and the jar against
+Signal's own `.sha256` files too, before anything lands in `third_party/maven-local/` (git-ignored). Gradle reads only
+that folder for `org.signal` (`settings.gradle`), offline, and `gradle/verification-metadata.xml` pins the same hashes:
+
+| File | SHA-256 |
+|---|---|
+| `libsignal-android-0.105.2.aar` | `37447ab37d7861a0bcc177302b364709cd49f395e17274ef2c521ed727908ac8` |
+| `libsignal-android-0.105.2.pom` | `f886133edfabb5222545d83be38800469a176c4120be12154905b45a2413ce5f` |
+| `libsignal-android-0.105.2.module` | `f5239f200a0dee70d47b9725dc350028d660c50cb22ed5533b4e49c5458ebbca` |
+| `libsignal-client-0.105.2.jar` | `4d1801ef6f63c3f2656ff987bd13486f4c26caa53b62ec358b936649097e9a1b` |
+| `libsignal-client-0.105.2.pom` | `a181dac9660dd04d81bdf88f90e7a81b501e49d8eeb49cb76fef4909eda3e4fd` |
+| `libsignal-client-0.105.2.module` | `8ab5404aebe9244b9ec0be75c40f7ba728092629d10ab1152c9bcc72b2046b48` |
+
+The build strips the AAR's arm64 `libsignal_jni.so` with NDK 27.1.12297006's `llvm-strip` (`:link`'s `libsignalJni`
+task; the NDK must be installed) and stops unless the result is the pinned
+`9e20c7dddfc35b7a354031a1f497d7ee008835e864de1496473af0f9f83a4a6c`. The `:link` tests run on the client jar's desktop
+library for Linux x86_64, from `java.library.path`.
+
+### Getting Tor and the push connector (1.5)
+
+Robot to Robot's carriers need four more libraries, all from Maven Central: Briar's Tor build (`tor-android` 0.4.9.14:
+only its arm64 executable, `libtor.so`, goes in the APK), the UnifiedPush connector 3.3.5, Google's Tink 1.23.0 (11 of its
+classes do the connector's push encryption). A fresh checkout gets them once, outside Gradle: `tools/fetch_link_deps.sh`
+downloads the six files from `https://repo1.maven.org/maven2/`, or `tools/fetch_link_deps.sh --from <folder>` copies
+them from a folder that holds them (found by name). Every file is checked against `third_party/link-carriers.sha256` (the
+two jars against Central's own `.sha256` too, and the executable inside Tor's jar) before anything
+lands in `third_party/maven-link/` (git-ignored). Gradle reads only that folder for those three modules (`settings.gradle`),
+offline, and `gradle/verification-metadata.xml` pins the same hashes:
+
+| File | SHA-256 |
+|---|---|
+| `tor-android-0.4.9.14.jar` | `3c282777bdcd3b55dcc8c8d5294af753dd8ed32b832f12e82128eed6f481d2ed` |
+| `tor-android-0.4.9.14.pom` | `30eadd50240fecc903a7d3844891d1f8d3da2162fec8f76a831b64f13f5b2960` |
+| `connector-3.3.5.aar` | `fa017cdfabbdc9af021e1f8c8eff2c8098e701d7a2c599937dce0b4ecf1e929b` |
+| `connector-3.3.5.pom` | `bd5c29ee71cda841acf1ac867d4e5dc2817d6831ce2cc21b3d528d4e5aa903d7` |
+| `connector-3.3.5.module` | `9e56698a7d30802cb6f45adaec4171a19dd3827a1d022eeb567282315456e37b` |
+| `tink-1.23.0.jar` | `5bcdc8798ce106f5145acb4a0e993c5e5861337b1e75ca88ceb6ab9da10fa512` |
+
+`:link`'s `torBinary` task takes `arm64-v8a/libtor.so` out of Tor's jar at build time and stops unless it is the pinned
+`fee641c956e85c40552b6005a6f88deb157d84e217307214a846ba0640ec44c3`; Lyrebird, Tor's bridges, is built from source: `tools/build_lyrebird.sh`
+(about 4 minutes, 300 MB of downloads the first time: Go 1.27.3, its checksum checked, and the Go modules; needs the NDK) makes
+`third_party/lyrebird/liblyrebird.so` (git-ignored), and `lyrebirdBinary` stops unless it is the pinned
+`de94bedd76f43dc495a1e53dd3fc7d886495ac43d48d7864aba08ae4ad416845`. Same bytes on any machine; `ROBOT_GO` names a Go already unpacked. The JVM tests need none of Tor: the two-Robot harness
+runs on fake Tor and push networks (with real RFC 8291), and Tor's real start-up is checked on the phone.
 
 `tools/build_llama.sh` needs the Android NDK (27.1.12297006; `ANDROID_NDK_HOME`), CMake 3.22+ and Ninja; it takes about two
 minutes on four cores and needs about 0.8 GB for the sources and the build (`--clean` removes the build afterwards). Gradle
@@ -2143,11 +2545,11 @@ source:
    ```
    tools/make_source_bundle.sh              # version from app/build.gradle; or --version 1.0.0
    tools/make_source_bundle.sh --list       # what it takes, from the pins (no network)
-   # -> build/source-bundle/robot-<version>-third-party-sources.tar.gz and its .sha256 (about 360 MB)
+   # -> build/source-bundle/robot-<version>-third-party-sources.tar.gz and its .sha256 (about 535 MB)
    ```
 
    It takes sherpa-onnx at the commit of v1.13.8 (`11afbd00`, checked by its commit id), reads from that source the
-   archives sherpa-onnx's Android build compiles into `libsherpa-onnx-jni.so` (espeak-ng at `ed530aa1`, piper-phonemize,
+   archives sherpa-onnx's Android build compiles into `libsherpa-onnx-jni.so` (espeak-ng at `ed530aa1`, which Robot's patch changes, piper-phonemize,
    kaldi-native-fbank, kaldi-decoder, kaldifst, OpenFst, simple-sentencepiece, JSON for Modern C++, hclust-cpp, Eigen)
    and downloads each from its pinned link (or sherpa-onnx's Hugging Face mirror), checking the SHA-256 sherpa-onnx pins;
    one it can't download it takes from git at the pinned commit instead, checks the commit id, and says so in the
@@ -6593,7 +6995,7 @@ First run on the phone: Model › Voice models › Download "Speech recognition"
 themselves once downloaded, with Robot open), optionally "Fast voice". Then Settings › Voice › "Test voice speed".
 
 Tools: `tools/fetch_voice_models.sh <dir>` (the same files and hashes as the app), `tools/make_test_clip.py`
-(regenerates the benchmark clip), `tools/voice_bench.py` (desktop benchmark), `tools/make_keywords.py`
+(regenerates the benchmark clip), `tools/voice_bench.py` (desktop benchmark), `tools/spoken/` (spoken tests that run themselves, on a separate test build; see its README), `tools/make_keywords.py`
 (`keywords.txt` and `stop.txt`).
 
 Keep sherpa-onnx inside `:voice` (the isolation test enforces it) and list new models in `THIRD_PARTY.md`
@@ -6693,6 +7095,17 @@ trigger runs a routine once (the ledger in `state.json`), and "At most once a da
 seconds after: a dismissal runs the routine (alarms between 4:00 and 12:00 by default), a snooze doesn't (the later
 dismissal does), an alarm that rang until Clock silenced it runs nothing until your first unlock that day. While it
 rings, Robot loads its voice and fetches the weather ("Get ready while the alarm rings", kept 15 minutes).
+
+**Clock app** (under the alarm options on the brief's page and a routine's page) lists the phone's default Clock first, then the
+Clocks installed; with none chosen and several installed it is GrapheneOS Clock, then the first by name. GrapheneOS Clock
+(`com.android.deskclock`) keeps the broadcast path above. For any other Clock Robot assumes no broadcast: it goes by the
+alarm's sound starting and stopping (`AudioManager` playback callback, `USAGE_ALARM`; no permission, no microphone, no app
+name), and counts it only if that Clock's own next alarm is due now (`AlarmCheck`, `creatorPackage`); a timer or another
+app's alarm is ignored, and an alarm that only vibrates isn't seen. Such a Clock says so on the page, with "Start at a set
+time instead". Robot's alarm, timer and show requests go to the chosen Clock when it takes them. A chosen Clock that is
+uninstalled, or restored from another phone, becomes the phone's default. Only GrapheneOS Clock is proven: whether Google
+Clock sends its own package, plays as `USAGE_ALARM` and publishes a snooze before its sound stops is unverified until a phone
+run (if it fails the first two, the routine never starts; on the third, a snooze could start it early).
 
 ### Defaults
 
@@ -6977,7 +7390,8 @@ one asking. Design: `../docs/plans/routines-headset-car-design.md` §1 and §4; 
   for one of the People that lock allows places the call from its Call, with the Phone permission and the call tool on
   Ask first (see Phone lock in [What's new in 1.1](#whats-new-in-11)). Outside car mode, "call Mom" is the call tool's card (never described to the model, which can't call it); in a
   headset session on headphones you confirmed private, unlocked, the choices and the read-back are spoken instead and
-  the yes opens the dialer with the number, where you tap Call (anywhere else in a headset session, the card). A name
+  the yes opens the dialer with the number, where you tap Call (anywhere else in a headset session, and during a phone
+  lock, the card). A name
   learned from a notification, more than three numbers, or no usable answer twice: the call tool's own card shows on
   the screen ("Check who it is on the screen.", "Several people match. Pick one on the screen.", "It's on the screen."),
   as when you type "call Mom" (1.0; it was kept for when you park).
@@ -6986,6 +7400,27 @@ one asking. Design: `../docs/plans/routines-headset-car-design.md` §1 and §4; 
   itself), the nearest place's 0.4.0 flow, or a search you pick from in the maps app.
 - **What's next** (your calendar), **music** (play, pause, next, previous: a media key to the current player), "repeat",
   "stop listening", "end car mode".
+- **The car screen's layout** (1.2; `core/car/CarLayout.kt`, `ui/car/CarModeScreen.kt`,
+  `ui/settings/CarLayoutSettings.kt`; design: `../docs/plans/car-layout-design.md`): half for the large panel (Map, Media
+  player or Messages), a quarter for the information panel (Media buttons, Directions or Latest message), a quarter fixed:
+  Talk, the fourth button, Apps and Settings. You pick them in Settings › Car mode › Car screen; `car.json` keeps the choices
+  and never a message. The fourth button is your music app by default, or Maps, Navigate home or any app with a launcher
+  icon, pinned by its signer and closed by the same locks as the maps button. Map uses split screen: one tap on the panel
+  opens your maps app beside this window, and in split screen this window holds the other two areas. It never opens by
+  itself. Message panels ask `MessagesBridge` while they're on screen only, show, and can't send. The Directions panel is a
+  plain line and a button: Robot's notification listener never receives navigation notifications
+  (`disabled_filter_types="ongoing"`), so turn-by-turn text isn't read.
+- **Music and maps on the car screen** (1.2; `core/car/CarMedia.kt`, `assistant/car/CarSessions.kt`, `sys/MapsApps.kt`):
+  while the car screen is up, the music tile names the app that's playing and its song, from Android's media sessions, which
+  need notification access. They're shown there only, never logged, saved or sent; a phone lock's closed apps stay off it.
+  Without that access, or with no session, it shows the song your music app (Settings › Actions › Music) is playing, asked of
+  that app alone, as "what's playing" does, with no prompt. Previous, Play or Pause and Next are media keys, which Android sends to the app that played last. With nothing
+  to show it names your music app, whose Play starts it, else "Play something in your music app". The maps button
+  opens your maps app beside the car screen, and reads "Back to directions" once Robot opened a route this drive. Pick
+  your maps app in Settings › Actions › Maps: Automatic is Organic Maps when it's installed, else your phone's app for
+  map links; a picked app opens every route Robot opens (Google Maps through its navigation link, others through a
+  geo: link, without your position). A picked app now signed by someone else opens nothing until you pick it again. In
+  split screen, below 520 dp, the music tile and Talk come first and the four buttons share one row.
 - **No driving restrictions** (1.0, the user's decision of 13 Oct 2026: "I do not want any driving related
   restrictions. Period."). In the car every request behaves as it would outside the car with the phone in the same lock
   state; the trusted session still loosens car functions on the lock screen. 0.8 to 0.9 held some things for when you

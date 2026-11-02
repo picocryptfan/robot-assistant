@@ -57,4 +57,22 @@ class FilesTest {
     @Test fun hexIsLowerCase() {
         assertEquals("00ff10", hex(byteArrayOf(0, -1, 16)))
     }
+
+
+    // F51: for a read-modify-write, "can't read it now" is never "it isn't there".
+    @Test fun readTextForUpdateSaysAbsentOnlyWhenTheFileIsAbsent() {
+        val f = java.io.File.createTempFile("update", ".txt")
+        try {
+            f.writeText("kept")
+            assertEquals("kept", readTextForUpdate(f))
+            try {
+                readTextForUpdate(f) { throw java.io.IOException("EIO") }
+                org.junit.Assert.fail("a failed read has to throw")
+            } catch (_: java.io.IOException) {}
+            f.delete()
+            assertEquals(null, readTextForUpdate(f))
+        } finally {
+            f.delete()
+        }
+    }
 }

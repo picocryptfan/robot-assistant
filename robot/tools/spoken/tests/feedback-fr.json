@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "id": "feedback-fr",
+  "title": "« Signaler un bogue » with its words, accents kept",
+  "safety": "read",
+  "testBench": ["v70-fb-voice"],
+  "setup": [{"set": "speakReplies", "value": "VOICE"}],
+  "steps": [
+    {"do": "open", "how": "wake"},
+    {"do": "say", "text": "Signaler un bogue : la réponse était trop lente.", "voice": "siwis"},
+    {"do": "wait_reply", "seconds": 30},
+    {"do": "check", "what": "heard", "contains": "réponse"},
+    {"do": "check", "what": "router", "equals": "FeedbackRouter"},
+    {"do": "end"}
+  ]
+}

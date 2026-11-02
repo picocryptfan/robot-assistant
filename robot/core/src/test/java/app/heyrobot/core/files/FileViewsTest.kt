@@ -39,6 +39,31 @@ class FileViewsTest {
 
     private fun inbox(name: String, filing: Filing?, kind: FileKind = FileKind.UNKNOWN) = file(name, kind, FileState.INBOX, null, filing = filing)
 
+    @Test fun aTotalYouTypeSaysWhetherItsARefund() {
+        val a = file("a").copy(kind = FileKind.RECEIPT)
+        val idx = FileIndex(listOf(a))
+        for (typed in listOf("-45.00", "-45", "\u221245.00", "(45.00)", "45.00-")) {
+            val e = FileViews.setField(idx, a.id, "total", typed)!!.entry(a.id)!!
+            assertEquals(typed, "45.00", e.fields["total"]?.value)
+            assertTrue(typed, FileViews.refund(e))
+            assertEquals(typed, -4500L, FileViews.signedTotal(e))
+            assertEquals(typed, "-45.00", FileViews.totalToEdit(e))
+        }
+        // The check box shows the sign, so taking it off says it isn't a refund; another amount with its sign stays one.
+        val back = FileViews.setField(idx, a.id, "total", "-45.00")!!
+        val plain = FileViews.setField(back, a.id, "total", "45.00")!!.entry(a.id)!!
+        assertFalse(FileViews.refund(plain)); assertEquals("45.00", FileViews.totalToEdit(plain)); assertEquals(4500L, FileViews.signedTotal(plain))
+        assertNull(FileViews.setField(back, a.id, "total", "")!!.entry(a.id)!!.fields[FileViews.REFUND])
+        assertNull(FileViews.setField(idx, a.id, "total", "10.00-20.00"))
+        // Another field doesn't touch it, and only a receipt or a bill can be one.
+        assertTrue(FileViews.refund(FileViews.setField(back, a.id, "merchant", "Esso")!!.entry(a.id)!!))
+        assertFalse(FileViews.refund(back.entry(a.id)!!.copy(kind = FileKind.DOCUMENT)))
+        // A drawer's totals: taken off.
+        val sale = file("s").copy(kind = FileKind.RECEIPT, fields = mapOf("total" to FileField("100.00", FieldBy.READ), "currency" to FileField("CAD", FieldBy.READ)))
+        val money = back.entry(a.id)!!.let { it.copy(fields = it.fields + ("currency" to FileField("CAD", FieldBy.READ))) }
+        assertEquals(5500L to 2, FileViews.totals(listOf(sale, money)).byCurrency["CAD"])
+    }
+
     @Test fun homeSplitsInboxAndListsRecentAndDrawers() {
         val ask = inbox("a", Filing(FilingStep.ASK, FilingWhy.KIND, choices = listOf(FileKind.RECEIPT, FileKind.BILL)))
         val them = inbox("b", Filing(FilingStep.ASK, FilingWhy.FILE_THEM), FileKind.RECEIPT)
@@ -225,5 +250,29 @@ class FileViewsTest {
         assertEquals("scan.pdf", FileOut.name("scan.PDF", FileType.PDF))
         assertEquals(124, FileOut.name("x".repeat(300), FileType.PDF).length)
         assertNotNull(FileOut.typeOf(photo))
+    }
+
+    /** F53: a file system holds 255 bytes a name, so a long name in a 3-byte script is cut by bytes, on a character, with room for its extension. */
+    @Test fun aLongNameIsCutByItsBytesOnACharacter() {
+        fun bytes(n: String) = n.toByteArray(Charsets.UTF_8).size
+        for ((long, type) in listOf(
+            "\u6f22".repeat(200) to FileType.PDF,
+            ("a" + "\u6f22".repeat(200)) to FileType.PDF,
+            ("ab" + "\u6f22".repeat(200)) to FileType.WEBP,
+            "\uD83D\uDE00".repeat(100) to FileType.TIFF,
+            ("\u00e9".repeat(150)) to FileType.HEIC,
+            ("\u6f22".repeat(200)) to FileType.UNKNOWN,
+        )) {
+            val n = FileOut.name(long, type)
+            assertTrue(n, bytes(n) <= 245)
+            assertTrue(n, bytes(n) > 200 || type == FileType.TIFF)
+            // Cut on a character: it survives UTF-8 whole.
+            assertEquals(n, String(n.toByteArray(Charsets.UTF_8), Charsets.UTF_8))
+            assertTrue(n, n.none { it == '\uFFFD' })
+        }
+        assertEquals("\u6f22".repeat(80) + ".pdf", FileOut.name("\u6f22".repeat(200) + ".pdf", FileType.PDF))
+        // A short name isn't touched, and a Latin one still stops at 120 characters.
+        assertEquals("\u6f22\u5b57.pdf", FileOut.name("\u6f22\u5b57.pdf", FileType.PDF))
+        assertEquals("a".repeat(120) + ".pdf", FileOut.name("a".repeat(300), FileType.PDF))
     }
 }

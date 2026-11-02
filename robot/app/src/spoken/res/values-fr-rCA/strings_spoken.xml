@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="spoken_recorder_title">Enregistre ta voix</string>
+    <string name="spoken_recorder_count">%1$d sur %2$d</string>
+    <string name="spoken_recorder_done">C\'est tout. Merci.</string>
+    <string name="spoken_recorder_record">Enregistrer</string>
+    <string name="spoken_recorder_keep">Garder</string>
+    <string name="spoken_recorder_again">Recommencer</string>
+    <string name="spoken_recorder_skip">Passer</string>
+</resources>

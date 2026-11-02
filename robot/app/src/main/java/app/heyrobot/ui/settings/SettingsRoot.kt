@@ -44,16 +44,17 @@ import app.heyrobot.ui.theme.str
 
 /**
  * The Settings tab. [look] is Settings › Display's (LookStore), [memory] Settings › Memory's (0.7); a test passes its own.
- * [routines], [headset], [car] and [files]: their rows' state (null: read from their files, in the menus' language).
+ * [routines], [headset], [car], [files] and [lists]: their rows' state (null: read from their files, in the menus' language).
  */
 @Composable
 fun SettingsRoot(s: RobotSettings, snap: Snapshot, a: AppActions, modifier: Modifier = Modifier, look: LookSettings = LookStore.current(LocalContext.current),
     memory: MemorySettings = MemorySettingsStore.current(LocalContext.current), routines: String? = null,
     headset: String? = null, car: String? = null,
-    web: WebSettings = WebStore.current(LocalContext.current), files: String? = null) {
+    web: WebSettings = WebStore.current(LocalContext.current), files: String? = null, lists: String? = null) {
     fun go(route: String) = a.openPage(Page.Settings(route))
     // 0.9: Settings › Termux's own file (termux.json), read once per showing.
     val ctx = LocalContext.current
+    val linkOn = androidx.compose.runtime.remember { app.heyrobot.sys.LinkSettingsStore.current(ctx).on }
     val termux = androidx.compose.runtime.remember { termuxSummaryText(app.heyrobot.sys.TermuxStore.load(ctx), app.heyrobot.sys.TermuxStore.status(ctx).scripts.size) }
     val langs = LocalLangs.current
     val weather = s.weatherHome?.let { stringResource(R.string.settings_root_weather_home, it.name) } ?: stringResource(R.string.settings_root_weather_none)
@@ -101,6 +102,10 @@ fun SettingsRoot(s: RobotSettings, snap: Snapshot, a: AppActions, modifier: Modi
             PreferenceItem(UiStrings.memory().str(), memorySummaryText(memory).str(), RIcons.BookmarkAdded, onClick = { go(SettingsRoutes.MEMORY) })
             // 1.4: Robot Files (files/files, files_settings.json: sys/FilesVault.kt), not settings.json; counted without the key.
             PreferenceItem(UiStrings.files().str(), files ?: filesSummary(), RIcons.Folder, onClick = { go(SettingsRoutes.FILES) })
+            // 1.4 Lists: files/lists and lists_settings.json (sys/ListsVault.kt), not settings.json; counted only while unlocked.
+            PreferenceItem(stringResource(R.string.lists_title), lists ?: listsSummary(), RIcons.Checklist, onClick = { go(SettingsRoutes.LISTS) })
+            // 1.5: link_settings.json (sys/LinkSettingsStore), not settings.json; :link isn't asked here.
+            PreferenceItem(stringResource(R.string.link_title), stringResource(if (linkOn) R.string.link_on else R.string.link_off), RIcons.Share, onClick = { go(SettingsRoutes.LINK) })
             PreferenceItem(UiStrings.history().str(), history, RIcons.History, onClick = { go(SettingsRoutes.HISTORY) })
             PreferenceItem(UiStrings.display().str(), displaySummaryText(look).str(), RIcons.Palette, onClick = { go(SettingsRoutes.DISPLAY) })
         }

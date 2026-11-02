@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "id": "su5-model",
+  "title": "A sum in a story: the model calls calculate, and code does the sum",
+  "safety": "read",
+  "testBench": ["SU5"],
+  "needs": {"model": true},
+  "setup": [{"set": "speakReplies", "value": "VOICE"}],
+  "steps": [
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "I have 3 kids, the trip is $45 each plus 13% HST, how much is that?", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 150, "contains": "152.55"},
+    {"do": "check", "what": "router", "equals": "model"},
+    {"do": "end"}
+  ]
+}

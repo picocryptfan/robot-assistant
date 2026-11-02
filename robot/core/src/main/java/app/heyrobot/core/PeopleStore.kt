@@ -29,6 +29,8 @@ enum class PersonSource(private val msg: app.heyrobot.core.i18n.Msg) {
     /** Seen in a Cheogram message notification ("Learn names from Cheogram notifications"). */
     NOTIFICATION(InfoStrings.sourceNotification),
     SHARE(InfoStrings.sourceShare),
+    /** A contact card another Robot sent, added with your tap, not confirmed until you say so. */
+    LINK_CARD(InfoStrings.sourceLinkCard),
     /** "Always use this for …" on a card, for one of the phone's contacts ([Person.systemLookupKey]). */
     REMEMBERED(InfoStrings.sourceRemembered);
 
@@ -372,7 +374,7 @@ object PeopleEdit {
      * remembered, an account a notification refreshed, a number an import added) is kept. Someone deleted meanwhile
      * stays deleted (null). Saving confirms them. Returns the list and the person as saved.
      */
-    fun applyEdit(list: List<Person>, base: Person?, edited: Person, now: Long): Pair<List<Person>, Person>? {
+    fun applyEdit(list: List<Person>, base: Person?, edited: Person, now: Long, gateway: String = PhoneNumbers.DEFAULT_GATEWAY): Pair<List<Person>, Person>? {
         val cur = list.firstOrNull { it.id == edited.id }
         if (cur == null) {
             if (base != null) return null
@@ -390,7 +392,7 @@ object PeopleEdit {
             nicknames = rows(b.nicknames, edited.nicknames, cur.nicknames) { ContactMatcher.words(it).joinToString(" ") },
             phones = phones, emails = emails, xmpp = xmpp,
             // A remembered choice whose place is gone is forgotten.
-            preferredText = cur.preferredText?.takeIf { pref -> phones.any { Preferred.same(it.number, pref) } || xmpp.any { Preferred.same(it.jid, pref) } },
+            preferredText = cur.preferredText?.takeIf { pref -> phones.any { Preferred.same(it.number, pref, gateway) } || xmpp.any { Preferred.same(it.jid, pref, gateway) } },
             preferredEmail = cur.preferredEmail?.takeIf { pref -> emails.any { it.equals(pref, ignoreCase = true) } },
             confirmed = true, updatedAt = now,
         )
@@ -504,7 +506,8 @@ object PeopleEdit {
         }
         val added = list + People.clean(Person(newId(), n, xmpp = listOf(XmppAddress(jid, acct)), source = PersonSource.NOTIFICATION, confirmed = false,
             updatedAt = now))
-        val learned = added.filter { !it.confirmed }
+        // Only notification names: a person added from a Robot's card with your tap is never dropped to make room (F146).
+        val learned = added.filter { !it.confirmed && it.source == PersonSource.NOTIFICATION }
         if (learned.size <= People.MAX_LEARNED) return added
         val drop = learned.sortedBy { it.updatedAt }.take(learned.size - People.MAX_LEARNED).map { it.id }.toSet()
         return added.filter { it.id !in drop }
@@ -516,18 +519,14 @@ object PeopleEdit {
      */
     data class Merged(val people: List<Person>, val added: Int, val updated: Int, val skipped: Int, val landed: List<String?> = emptyList())
 
-    /** A number's address at the SMS gateway ("+15145550101@cheogram.com"): its local part. */
-    private val GATEWAY_LOCAL = Regex("""^\+\d{7,15}$""")
-
     /** Keys two entries share when they are the same person: a number (last 10 digits), an email or an XMPP address. */
-    private fun keys(p: Person): Set<String> = buildSet {
+    private fun keys(p: Person, gateway: String): Set<String> = buildSet {
         p.phones.forEach { PhoneNumbers.digits(it.number).takeIf { d -> d.length >= 7 }?.let { d -> add("n:" + d.takeLast(10)) } }
         p.emails.forEach { add("e:" + it.trim().lowercase(Locale.ROOT)) }
         p.xmpp.forEach { x ->
             add("x:" + x.jid.trim().lowercase(Locale.ROOT))
-            // A number's address at the SMS gateway is that number.
-            val local = x.jid.substringBeforeLast('@')
-            if (GATEWAY_LOCAL.matches(local)) add("n:" + PhoneNumbers.digits(local).takeLast(10))
+            // A number's address at the SMS gateway is that number; on any other server, only itself (F6).
+            PhoneNumbers.atGateway(x.jid, gateway)?.let { add("n:" + it.takeLast(10)) }
         }
     }
 
@@ -544,11 +543,11 @@ object PeopleEdit {
      * becomes a nickname); anyone else is added. Entries with nothing to reach them by are skipped. Indexed by those
      * keys, so a file of thousands merges in one pass.
      */
-    fun merge(list: List<Person>, incoming: List<Person>, now: Long): Merged {
+    fun merge(list: List<Person>, incoming: List<Person>, now: Long, gateway: String = PhoneNumbers.DEFAULT_GATEWAY): Merged {
         val out = ArrayList(list)
         val index = HashMap<String, MutableList<Int>>()
         fun indexAt(i: Int) {
-            for (k in keys(out[i])) index.getOrPut(k) { ArrayList(1) }.let { if (i !in it) it += i }
+            for (k in keys(out[i], gateway)) index.getOrPut(k) { ArrayList(1) }.let { if (i !in it) it += i }
         }
         out.indices.forEach(::indexAt)
         var added = 0
@@ -558,8 +557,8 @@ object PeopleEdit {
         for (raw in incoming) {
             val inc = People.clean(raw)
             if (!inc.reachable || inc.name.isEmpty()) { skipped++; landed += null; continue }
-            val k = keys(inc)
-            val at = k.flatMap { index[it].orEmpty() }.distinct().firstOrNull { i -> sameNames(out[i], inc) || keys(out[i]).containsAll(k) }
+            val k = keys(inc, gateway)
+            val at = k.flatMap { index[it].orEmpty() }.distinct().firstOrNull { i -> sameNames(out[i], inc) || keys(out[i], gateway).containsAll(k) }
             if (at == null) {
                 if (out.size >= People.MAX_PEOPLE) { skipped++; landed += null; continue }
                 out += inc.copy(updatedAt = now)
@@ -638,6 +637,6 @@ class AddressBook(system: List<ContactName>, val people: List<Person>) {
 
     companion object {
         fun card(p: Person): ContactCard = ContactCard(ContactIds.people(p.id), p.name, p.phones, p.emails, p.xmpp, p.preferredText, p.preferredEmail,
-            learned = !p.confirmed)
+            learned = !p.confirmed, fromRobot = p.source == PersonSource.LINK_CARD)
     }
 }

@@ -4,6 +4,8 @@ package app.heyrobot.core
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
+import app.heyrobot.core.i18n.Lang
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
@@ -57,6 +59,8 @@ class TurnTest {
         override fun replaceText(text: String) { this.text = text }
         override fun paragraphBreak() {}
         override fun say(sentence: String) { said += sentence }
+        var held = false
+        override fun holdClaims(on: Boolean) { held = on }
         fun statuses() = cards.values.map { it.status }
     }
 
@@ -238,6 +242,46 @@ class TurnTest {
         conf.answer(id, false)
         turn.await()
         assertTrue(actions.ran.isEmpty())
+    }
+
+    private val justOpen = RobotSettings().let { it.copy(approvals = it.approvals + (ToolName.OPEN_APP to Approval.AUTO)) }
+    private fun heardRunner(said: String, model: TurnModel, actions: FakeActions, view: FakeView, conf: Confirmations) =
+        TurnRunner(model, actions, view, conf, false, asked = ToolRouter.asked(said), newId = { "a${++ids}" },
+            heard = TurnWords.of(said, java.time.ZonedDateTime.now(), app.heyrobot.core.i18n.Lang.EN))
+
+    @Test fun anActionYourWordsDidNotAskForWaitsForYourYes() = runBlocking {
+        for ((c, ran) in listOf(call("open_app", "name" to "Settings") to Action.OpenApp("Settings"), call("flashlight", "on" to true) to null,
+            call("add_note", "text" to "x") to null, timer to null)) {
+            val actions = FakeActions(justOpen)
+            val view = FakeView()
+            val conf = Confirmations()
+            val turn = async { heardRunner("How tall is the CN Tower?", FakeModel(ModelOutcome.Calls(listOf(c))), actions, view, conf).run() }
+            val id = withTimeout(5_000) { view.pending.receive() }
+            assertTrue(c.name, actions.ran.isEmpty())
+            assertEquals(c.name, ActionStatus.PENDING, view.cards[id]!!.status)
+            conf.answer(id, true)
+            turn.await()
+            assertEquals(c.name, 1, actions.ran.size)
+            if (ran != null) assertEquals(ran, actions.ran.single())
+        }
+    }
+
+    @Test fun anAppYouNamedStillJustOpens() = runBlocking {
+        val actions = FakeActions(justOpen)
+        val view = FakeView()
+        heardRunner("Open Signal", FakeModel(ModelOutcome.Calls(listOf(call("open_app", "name" to "Signal")))), actions, view, Confirmations()).run()
+        assertEquals(listOf<Action>(Action.OpenApp("Signal")), actions.ran)
+        assertEquals(listOf(ActionStatus.DONE), view.statuses())
+    }
+
+    @Test fun anAppThatCannotBeFoundRunsNothingAndAsksNothing() = runBlocking {
+        val actions = FakeActions(justOpen)
+        actions.prepare = { Prepared.Refused(ActionStatus.NOT_FOUND, "No app called “Home” is installed.") }
+        val view = FakeView()
+        heardRunner("Open Home", FakeModel(ModelOutcome.Calls(listOf(call("open_app", "name" to "Home")))), actions, view, Confirmations()).run()
+        assertTrue(actions.ran.isEmpty())
+        assertEquals(listOf(ActionStatus.NOT_FOUND), view.statuses())
+        assertEquals("No app called “Home” is installed.", view.cards.values.single().detail)
     }
 
     @Test fun anAppThatIsNotInstalledShowsNoCard() = runBlocking {
@@ -957,6 +1001,99 @@ class TurnTest {
         assertEquals(ActionOutcome.FOR_MODEL, told["outcome"])
         assertEquals(ActionOutcome.CANCELLED, view.text)
         assertEquals(listOf(ActionOutcome.CANCELLED), view.said)
+    }
+
+    /** 1 Nov, the spoken run: "Pause." with nothing playing: the model called set_timer with nothing to set, and said it had paused. */
+    @Test fun aCallNobodyAskedForThatDidntRunIsNeverClaimed() = runBlocking {
+        for (reply in listOf("I've paused whatever you were doing.", "Okay, paused.", "I paused it for you.", "J'ai mis ça en pause.")) {
+            val view = FakeView()
+            val model = Claiming(ModelOutcome.Calls(listOf(call("set_timer"))), view, reply)
+            val actions = FakeActions()
+            TurnRunner(model, actions, view, Confirmations(), untrusted = false) { "e${++ids}" }.run()
+            assertTrue(actions.ran.isEmpty())
+            assertEquals(listOf(ActionStatus.INVALID), view.statuses())
+            assertEquals(reply, ActionOutcome.NOT_DONE, view.text)
+            assertEquals(reply, listOf(ActionOutcome.NOT_DONE), view.said)
+            assertTrue(reply, view.held)
+        }
+    }
+
+    /** "Ask for help.": open_app on an app that isn't there. */
+    @Test fun anAppNotFoundIsNeverClaimedOpened() = runBlocking {
+        val view = FakeView()
+        val model = Claiming(ModelOutcome.Calls(listOf(call("open_app", "name" to "help"))), view, "I've brought up help for you.")
+        val actions = FakeActions().apply { prepare = { Prepared.Refused(ActionStatus.NOT_FOUND, "No app called help.") } }
+        TurnRunner(model, actions, view, Confirmations(), untrusted = false) { "e${++ids}" }.run()
+        assertTrue(actions.ran.isEmpty())
+        assertEquals("No app called help.", view.text)
+    }
+
+    /** What the model says that claims nothing stays: its question, its "I can't". */
+    @Test fun aFollowUpThatClaimsNothingStays() = runBlocking {
+        for (reply in listOf("How long should the timer be?", "I can't pause anything here.", "I need to know how long.", "I have a timer, if you want one.")) {
+            val view = FakeView()
+            val model = Claiming(ModelOutcome.Calls(listOf(call("set_timer"))), view, reply)
+            TurnRunner(model, FakeActions(), view, Confirmations(), untrusted = false) { "e${++ids}" }.run()
+            assertEquals(reply, view.text)
+        }
+    }
+
+    /** A read that worked backs its reply: "I checked" stays, though a card beside it didn't run. */
+    @Test fun aReadThatRanKeepsItsReply() = runBlocking {
+        val view = FakeView()
+        val model = Claiming(ModelOutcome.Calls(listOf(call("set_timer"), call("phone_status"))), view, "I checked: the battery is at 50%.")
+        TurnRunner(model, FakeActions(), view, Confirmations(), untrusted = false) { "e${++ids}" }.run()
+        assertEquals("I checked: the battery is at 50%.", view.text)
+    }
+
+    /** You asked for the action, the model called nothing and says it's done. */
+    @Test fun anActionAskedForAndNeverCalledIsNeverClaimed() = runBlocking {
+        val view = FakeView("I've set a timer for five minutes.")
+        val model = Claiming(ModelOutcome.Done(DoneReason.END), view, "")
+        TurnRunner(model, FakeActions(), view, Confirmations(), untrusted = false, asked = setOf(ToolName.SET_TIMER)) { "e${++ids}" }.run()
+        assertEquals(ActionOutcome.NOT_DONE, view.text)
+        // Not asked this turn (it may be telling what an earlier one did): as it was.
+        val past = FakeView("I've set a timer for five minutes.")
+        TurnRunner(Claiming(ModelOutcome.Done(DoneReason.END), past, ""), FakeActions(), past, Confirmations(), untrusted = false) { "e${++ids}" }.run()
+        assertEquals("I've set a timer for five minutes.", past.text)
+    }
+
+    /** Finding 10: a card you declined that your words hadn't asked for, and a model with nothing to add: the reply still says so. */
+    @Test fun aDeclinedCardSaysSoWhenTheModelSaysNothing() = runBlocking {
+        val view = FakeView("Sure.")
+        val confirmations = Confirmations()
+        val model = Claiming(ModelOutcome.Calls(listOf(call("draft_email", "to" to "Bob", "subject" to "Lunch", "body" to "Lunch?"))), view, "")
+        val tap = launch { confirmations.answer(view.pending.receive(), false) }
+        TurnRunner(model, FakeActions(), view, confirmations, untrusted = false) { "e${++ids}" }.run()
+        tap.join()
+        assertEquals(listOf(ActionStatus.DECLINED), view.statuses())
+        assertTrue(view.text, view.text.endsWith(ActionOutcome.CANCELLED))
+    }
+
+    /** Finding 5: the model tried to keep a question: no card, nothing kept, and it may still answer. */
+    @Test fun aQuestionIsNeverKept() = runBlocking {
+        val heard = TurnWords.of("Remember the movie where Tom Hanks is stranded on an island", java.time.ZonedDateTime.now(), Lang.EN)
+        val view = FakeView()
+        val model = Claiming(ModelOutcome.Calls(listOf(call("remember", "text" to "The movie where Tom Hanks is stranded on an island"))), view, "That's Cast Away.")
+        val actions = FakeActions()
+        TurnRunner(model, actions, view, Confirmations(), untrusted = false, asked = setOf(ToolName.REMEMBER), heard = heard) { "e${++ids}" }.run()
+        assertTrue(actions.ran.isEmpty())
+        assertTrue(view.cards.isEmpty())
+        assertEquals("That's Cast Away.", view.text)
+    }
+
+    /** Finding 4, on the turn: the reply as it stands after the model's last word names no tool. */
+    @Test fun aReplyNamesNoTool() = runBlocking {
+        val view = FakeView("You can free up storage using the `free_storage` tool.")
+        TurnRunner(Claiming(ModelOutcome.Done(DoneReason.END), view, ""), FakeActions(), view, Confirmations(), untrusted = false) { "e${++ids}" }.run()
+        assertEquals("You can free up storage.", view.text)
+    }
+
+    /** Finding 4, on a card: a call that couldn't run is titled in plain words, never by its id. */
+    @Test fun aCardNamesNoToolId() = runBlocking {
+        val view = FakeView()
+        TurnRunner(Claiming(ModelOutcome.Calls(listOf(call("set_timer"), call("no_such_tool"))), view, ""), FakeActions(), view, Confirmations(), untrusted = false) { "e${++ids}" }.run()
+        assertTrue(view.cards.values.joinToString { it.summary }, view.cards.values.none { "_" in it.summary })
     }
 
     /** "email Bob about lunch" with no Bob in the contacts: on 1.0.1, "I drafted an email to Bob…" under a card saying Not found. */

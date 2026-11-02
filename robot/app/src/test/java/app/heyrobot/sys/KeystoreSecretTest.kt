@@ -151,4 +151,12 @@ class KeystoreSecretTest {
         assertTrue(store.contains("const val ALIAS = \"robot_github_token\"") && store.contains("KeystoreSecret(ALIAS, \"github_token\", \"update_token\")"))
         assertTrue(listOf("claude", "groq", "github_token", "token").none { HelperKeyFiles.alias(it) == "robot_github_token" })
     }
+
+    /** F65: the secret goes through the fsynced writer; a plain rename can lose a key saved just before a power cut. */
+    @Test fun aSavedSecretIsFsyncedBeforeItsRename() {
+        val src = java.io.File("src/main/java/app/heyrobot/sys/KeystoreSecret.kt").readText()
+        val save = src.substringAfter("fun save(").substringBefore("fun read(")
+        assertTrue(save, save.contains("writeAtomicBytes(secret(ctx), "))
+        org.junit.Assert.assertFalse(save, save.contains("renameTo"))
+    }
 }

@@ -113,7 +113,7 @@
     <string name="people_access_still">Notification access is still allowed</string>
     <string name="people_access_still_detail">Robot ignores notifications while this is off</string>
     <string name="people_open">Open</string>
-    <string name="people_learned">Learned from notifications (%1$d)</string>
+    <string name="people_learned">Not confirmed yet (%1$d)</string>
     <string name="people_keep">Keep</string>
     <string name="people_keep_named">Keep %1$s</string>
     <string name="people_remove">Remove</string>
@@ -180,8 +180,9 @@
     <string name="people_open_access">Open %1$s, or %2$s.</string>
     <!-- Settings › People › Notification access, and what learning from Cheogram reads. -->
     <string name="people_access_title">Notification access</string>
-    <string name="people_access_allowed_detail">What People and Messages turn on, nothing else</string>
+    <string name="people_access_allowed_detail">What People, Messages and car mode\'s music tile use, nothing else</string>
     <string name="people_access_footer">To learn names, Robot looks at the notifications of one messaging app only, and of those only the sender of a one-to-one chat. With Settings › Messages on, it also reads the messages of the apps you turn on there, in memory only. Settings › People and Settings › Messages say what Robot reads, where it is kept, and how to take it back.</string>
+    <string name="people_access_car_tile">Car mode\'s music tile also uses this access, to show what any app is playing: the app, the title and the artist, on the car screen only. They are never logged, saved or sent.</string>
     <string name="people_steps_title">Allow notification access</string>
     <string name="people_steps_why">Android calls notification access a restricted setting for apps installed from a file instead of an app store, as Robot is: harmful apps installed that way have used it to read people\'s messages and login codes. So it takes three steps.</string>
     <string name="people_step_1">1. Tap Notification access and turn on Robot\'s access (in a list, tap Robot first). If Android says “Restricted setting”, tap OK.</string>

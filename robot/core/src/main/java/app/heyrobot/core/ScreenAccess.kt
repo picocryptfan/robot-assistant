@@ -86,6 +86,9 @@ object ScreenAccess {
     val WAITING_HINT = Hint(TurnStrings.screenWaiting(), false)
 
     /** A tap on the chip in a wake-word panel. [textOn] false: that setting must be turned on as well. */
+    /** You asked in words where no chip shows: on a locked phone, or in a panel not opened by the swipe. */
+    fun hiddenHint(locked: Boolean, textOn: Boolean?): Hint = if (locked) Hint(TurnStrings.screenUnlock(), false) else swipeHint(textOn)
+
     fun swipeHint(textOn: Boolean?): Hint =
         if (textOn == false) Hint(TurnStrings.screenSwipeTextOff("swipe" to TurnStrings.screenSwipe(), "where" to WHERE), true) else Hint(TurnStrings.screenSwipe(), false)
 

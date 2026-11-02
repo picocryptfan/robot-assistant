@@ -6,7 +6,8 @@
   "core",
   "brain",
   "helpers",
-  "mt"
+  "mt",
+  "link"
  ],
  "exclude": [
   "^voice/src/main/java/com/k2fsa/sherpa/onnx/",
@@ -387,7 +388,7 @@
   ],
   [
    "cards",
-   "^core/src/main/java/app/heyrobot/core/(Tools|Approval|Turn|Safety|ScreenAccess|Tips|ChatOnly|Conversation|ConversationState|Weather|Nearby|Calendar|PhoneStatus|FreeUp|Maps\\w*|People|PeopleStore|Texting|VCard|HandOff|Cheogram|BrowserActions|Quoted|When|Groups|Notes|Secrets)\\.kt$"
+   "^core/src/main/java/app/heyrobot/core/(Tools|Approval|Turn|Safety|ScreenAccess|ScreenQuestion|Tips|ChatOnly|Conversation|ConversationState|Weather|Nearby|Calendar|PhoneStatus|FreeUp|Maps\\w*|People|PeopleStore|Texting|VCard|HandOff|Cheogram|BrowserActions|Quoted|When|Groups|Notes|Secrets)\\.kt$"
   ],
   [
    "cards",
@@ -420,6 +421,10 @@
   [
    "helpers",
    "^app/src/main/java/app/heyrobot/sys/HelperFiles\\.kt$"
+  ],
+  [
+   "connections",
+   "^helpers/src/main/java/app/heyrobot/helpers/connect/"
   ],
   [
    "helpers",
@@ -490,12 +495,32 @@
    "^core/src/main/java/app/heyrobot/core/skills/"
   ],
   [
+   "connections",
+   "^core/src/main/java/app/heyrobot/core/connect/"
+  ],
+  [
+   "connections",
+   "^app/src/main/java/app/heyrobot/assistant/connect/"
+  ],
+  [
+   "connections",
+   "^app/src/main/java/app/heyrobot/sys/(Connections|HandOffPicks)\\.kt$"
+  ],
+  [
+   "connections",
+   "^core/src/main/java/app/heyrobot/core/ConnActions\\.kt$"
+  ],
+  [
    "skills",
    "^app/src/main/java/app/heyrobot/assistant/skills/"
   ],
   [
    "skills",
    "^app/src/main/java/app/heyrobot/ui/settings/SkillsSettings\\.kt$"
+  ],
+  [
+   "connections",
+   "^app/src/main/java/app/heyrobot/ui/settings/(ConnectionsSettings|SkillSteps)\\.kt$"
   ],
   [
    "handsfree",
@@ -651,7 +676,7 @@
   ],
   [
    "files",
-   "^app/src/main/java/app/heyrobot/sys/(FilesIntake|ScanProvider|FilesOut)\\.kt$"
+   "^app/src/main/java/app/heyrobot/sys/(FilesIntake|ScanProvider|FilesOut|FilesToRobot)\\.kt$"
   ],
   [
    "files",
@@ -676,6 +701,90 @@
   [
    "files",
    "^core/src/main/java/app/heyrobot/core/parse/"
+  ],
+  [
+   "lists",
+   "^core/src/main/java/app/heyrobot/core/lists/"
+  ],
+  [
+   "lists",
+   "^app/src/main/java/app/heyrobot/sys/ListsVault\\.kt$"
+  ],
+  [
+   "lists",
+   "^app/src/main/java/app/heyrobot/ui/settings/ListsSettings\\.kt$"
+  ],
+  [
+   "everyday",
+   "^core/src/main/java/app/heyrobot/core/(everyday|music|sums|online)/"
+  ],
+  [
+   "everyday",
+   "^app/src/main/java/app/heyrobot/assistant/(music|sums|online)/"
+  ],
+  [
+   "everyday",
+   "^app/src/main/java/app/heyrobot/assistant/(RobotRecognitionService\\.kt$|listen/)"
+  ],
+  [
+   "everyday",
+   "^app/src/main/java/app/heyrobot/sys/EverydaySettingsStore\\.kt$"
+  ],
+  [
+   "everyday",
+   "^app/src/main/java/app/heyrobot/ui/settings/EverydaySettings\\.kt$"
+  ],
+  [
+   "everyday",
+   "^app/src/main/java/app/heyrobot/sys/NetLog\\.kt$"
+  ],
+  [
+   "everyday",
+   "^app/src/main/java/app/heyrobot/ui/settings/OnlineScreen\\.kt$"
+  ],
+  [
+   "everyday",
+   "^core/src/main/java/app/heyrobot/core/tts/"
+  ],
+  [
+   "everyday",
+   "^app/src/main/java/app/heyrobot/(tts|ui/tts)/"
+  ],
+  [
+   "everyday",
+   "^app/src/main/java/app/heyrobot/sys/VoicesForApps\\.kt$"
+  ],
+  [
+   "everyday",
+   "^core/src/main/java/app/heyrobot/core/ask/"
+  ],
+  [
+   "everyday",
+   "^app/src/main/java/app/heyrobot/assistant/ask/"
+  ],
+  [
+   "everyday",
+   "^app/src/main/java/app/heyrobot/sys/AskRobotDoor\\.kt$"
+  ],
+  [
+   "link",
+   "^core/src/main/java/app/heyrobot/core/link/"
+  ],
+  [
+   "link",
+   "^app/src/main/java/app/heyrobot/(link|linkparse)/"
+  ],
+  [
+   "link",
+   "^app/src/main/java/app/heyrobot/ui/link/"
+  ],
+  [
+   "link",
+   "^app/src/main/java/app/heyrobot/sys/(LinkClient|LinkSettingsStore)\\.kt$"
+  ],
+  [
+   "link",
+   "^link/"
   ],
   [
    "settings",
@@ -741,7 +850,11 @@
   "backup",
   "lock",
   "skills",
-  "files"
+  "files",
+  "connections",
+  "lists",
+  "everyday",
+  "link"
  ],
  "resource_prefixes": {
   "language": [
@@ -830,6 +943,18 @@
   ],
   "files": [
    "files_"
+  ],
+  "lists": [
+   "lists_"
+  ],
+  "everyday": [
+   "everyday_"
+  ],
+  "connections": [
+   "conn_"
+  ],
+  "link": [
+   "link_"
   ]
  }
 }

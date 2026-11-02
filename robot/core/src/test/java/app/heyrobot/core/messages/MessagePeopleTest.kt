@@ -141,6 +141,7 @@ class MessagePeopleTest {
         assertNull(MessagePeople.personOf(cheogram, people, gw))
         assertEquals("Mom Martin", MessagePeople.named(cheogram, people, gw).name)
         assertFalse(MessagePeople.withoutCard(cheogram, people, setOf(mom.id), gw))
+        assertFalse(AnnounceSenders.chosen(cheogram, people, setOf(mom.id), gw))
         // A setting that isn't a domain name counts as cheogram.com (core PhoneNumbers.gateway).
         assertTrue(MessagePeople.matchesKey(mom, "+15145550101@cheogram.com", "not a domain"))
         val toMom = "+1 514-555-0101"

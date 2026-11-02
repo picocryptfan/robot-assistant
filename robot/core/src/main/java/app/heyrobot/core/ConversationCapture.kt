@@ -20,6 +20,10 @@ object ConversationRules {
     const val MIN_FREE_BYTES = 200L * 1024 * 1024
     /** "Still transcribing — 4 h" (no cap on the length). */
     const val LONG_NOTICE_MS = 4 * 3_600_000L
+    /** A session with no new line for this long was forgotten: it ends and is saved, so it can't hold the phone awake until the battery goes. */
+    const val FORGOTTEN_MS = 30 * 60_000L
+    /** The session's wake lock runs out after this unless the running session renews it: a stuck session lets go by itself. */
+    const val WAKE_HOLD_MS = 10 * 60_000L
     /** The live screen keeps the newest lines only; the file has them all. */
     const val LIVE_LINES = 500
     /** The open segment's words are decoded again this often while the screen is on (and the queue is empty). */
@@ -30,6 +34,12 @@ object ConversationRules {
     const val SPEAKER = "S1"
     /** A stopped session waits this long for the segments still being decoded, so every line heard is saved. */
     const val DRAIN_MS = 30_000L
+
+    /**
+     * These pauses close the microphone. The others keep it: a call or another app (its return is how the session knows to
+     * go on), and the panel (its question takes this capture).
+     */
+    fun closesMic(pauses: Collection<ConvPause>): Boolean = ConvPause.USER in pauses || ConvPause.THERMAL in pauses
 
     /** Why the microphone went quiet: a call when the phone is in a call's audio mode, else another app took it. */
     fun silencedBy(inCall: Boolean): ConvPause = if (inCall) ConvPause.CALL else ConvPause.MIC_TAKEN
@@ -47,6 +57,9 @@ object ConversationRules {
 
     /** Stop for lack of space. */
     fun diskFull(freeBytes: Long): Boolean = freeBytes in 0 until MIN_FREE_BYTES
+
+    /** Nothing new since [lastHeard] (elapsed ms), paused or not: [FORGOTTEN_MS] of it ends the session. */
+    fun forgotten(lastHeard: Long, now: Long): Boolean = now - lastHeard >= FORGOTTEN_MS
 }
 
 /**

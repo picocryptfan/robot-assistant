@@ -120,20 +120,20 @@ class SkillModelTest {
     // ------------------------------------------------------------------ SkillRisk
 
     @Test fun pointsAndTiers() {
-        assertEquals(SkillTier.SIMPLE, SkillRisk.tier(home, emptySet()))
+        assertEquals(SkillTier.SIMPLE, SkillRisk.tier(home, emptySet(), SkillLinks.NONE))
         // SK13: a text the model filled (+2) to someone (+3): Careful.
-        assertEquals(5, SkillRisk.points(team, setOf("message")))
-        assertEquals(SkillTier.CAREFUL, SkillRisk.tier(team, setOf("message")))
+        assertEquals(5, SkillRisk.points(team, setOf("message"), SkillLinks.NONE))
+        assertEquals(SkillTier.CAREFUL, SkillRisk.tier(team, setOf("message"), SkillLinks.NONE))
         // Heading home with who filled: +1, and a text step +3.
-        assertEquals(4, SkillRisk.points(home, setOf("who")))
+        assertEquals(4, SkillRisk.points(home, setOf("who"), SkillLinks.NONE))
         // Pasta's length (+1) and its text step (+3).
-        assertEquals(SkillTier.CAREFUL, SkillRisk.tier(pasta, setOf("length")))
+        assertEquals(SkillTier.CAREFUL, SkillRisk.tier(pasta, setOf("length"), SkillLinks.NONE))
         val timer = SkillFixtures.simple("s-timer1", "Tea").copy(params = listOf(SkillParam("t", ParamType.DURATION, "60", "How long?", "Combien?")),
             steps = listOf(SkillStep.of(StepKind.SET_TIMER, mapOf("seconds" to "{{t}}"))))
-        assertEquals(SkillTier.SIMPLE, SkillRisk.tier(timer, setOf("t")))
+        assertEquals(SkillTier.SIMPLE, SkillRisk.tier(timer, setOf("t"), SkillLinks.NONE))
         // Two texts the model wrote to someone it named: Risky.
         val late = SkillLibrary.skills.getValue("late")
-        assertEquals(SkillTier.RISKY, SkillRisk.tier(late, setOf("who", "message")))
+        assertEquals(SkillTier.RISKY, SkillRisk.tier(late, setOf("who", "message"), SkillLinks.NONE))
     }
 
     @Test fun theRule() {

@@ -37,6 +37,7 @@ import app.heyrobot.core.LoadPlan
 import app.heyrobot.core.PrefillBudget
 import app.heyrobot.core.SpeedLog
 import app.heyrobot.core.Speeds
+import app.heyrobot.core.MemoryReclaim
 import app.heyrobot.core.ModelAvailability
 import app.heyrobot.core.ModelBackend
 import app.heyrobot.core.ModelCatalogue
@@ -373,9 +374,6 @@ object BrainKeeper {
 
     private fun failedBefore(p: LoadPlan?): FallbackWhy? = p?.let { failed[it.model.id]?.takeIf { f -> f.first == it.fingerprint }?.second }
 
-    /** What counts as the GPU failing a load (0.4.7). */
-    private val GPU_FAILURES = setOf(LoadFailure.ENGINE, LoadFailure.TIMEOUT, LoadFailure.PROCESS, LoadFailure.NOT_ALLOWED)
-
     /** 0.8: the beta TPU build (a Tensor G6's) didn't load here: Fast is the general build until you try the TPU again. */
     private fun tpuFailed(ctx: Context): Boolean = Problems.tpuFailure(ctx) != null
 
@@ -399,13 +397,16 @@ object BrainKeeper {
     /**
      * [p] where it runs now (core ModelCatalogue.backend): the general E2B on the GPU when Robot offers it here, "Use the
      * GPU" is on and the GPU hasn't failed; else the plan's own backend. A GPU load that another voice process started and
-     * never saw answered (the phone or Robot restarted in the middle of it) counts as a GPU failure first.
+     * never saw answered (the phone or Robot restarted in the middle of it) counts as a GPU failure first, unless an update or
+     * a stop ended it (Problems.staleTryNotTheGpu).
      */
     private fun placed(ctx: Context, p: LoadPlan?): LoadPlan? {
         if (p == null || p.model == BrainModel.OWN) return p
         Problems.staleGpuTry(ctx)?.let { t ->
             Problems.gpuTrying(ctx, null)
-            if (Problems.gpuFailure(ctx) == null) {
+            if (Problems.staleTryNotTheGpu(ctx, t)) {
+                RLog.i("brain_gpu_try_ended", "stale" to true)
+            } else if (Problems.gpuFailure(ctx) == null) {
                 Problems.gpuFailed(ctx, GpuFailure(t.model, t.time, ProblemStage.LOADING, null))
                 VoiceLog.add(VoiceEvent.GPU_FALLBACK, ModelCode.of(t.model), ProblemStage.LOADING)
                 RLog.i("brain_gpu_failed", "stage" to ProblemStage.LOADING, "stale" to true)
@@ -443,6 +444,20 @@ object BrainKeeper {
             "failure" to (failure?.let { RLog.Code(it.name) }), "process" to RLog.Code(process.name), "low" to low)
         return p
     }
+
+    /** :brain died just now: Android says it reclaimed the memory. Its record can come a moment after the death; none means no. */
+    private suspend fun reclaimedByAndroid(ctx: Context, model: BrainModel?, since: Long): Boolean {
+        // No model: a load cut short, whose :brain hasn't said its pid yet (the file is an earlier one's): the newest record since it began.
+        val pid = model?.let { m -> BrainLoaded.decode(readOrNull(java.io.File(Paths.dir(ctx), ModelFiles.LOADED)))?.takeIf { it.model == m }?.pid } ?: 0
+        repeat(4) { i ->
+            if (i > 0) delay(500)
+            MemoryReclaim.reclaimed(Problems.brainExits(ctx), pid, since)?.let { return it.also { yes -> if (yes) RLog.i("brain_reclaimed") } }
+        }
+        return false
+    }
+
+    /** When the last load Android's memory reclaim cut short was forgiven (this process's memory). */
+    private var loadReclaimedAt = 0L
 
     /** :brain stopped three times in the last hour: no more loads for now. */
     private fun lockedOut(): Boolean = synchronized(deaths) {
@@ -528,6 +543,7 @@ object BrainKeeper {
         val gpu = plan.backend == ModelBackend.GPU
         if (gpu) Problems.gpuTrying(ctx, GpuTrying(m, System.currentTimeMillis(), android.os.Process.myPid()))
         val started = SystemClock.elapsedRealtime()
+        val startedAt = System.currentTimeMillis()
         loadUnderWay = true
         val r = try {
             c.call(BrainProtocol.REQ_LOAD, BrainMsg.Load(plan.path, m, plan.backend, plan.contextTokens, plan.format), 300_000) as? BrainMsg.Loaded
@@ -554,10 +570,18 @@ object BrainKeeper {
         val failure = r?.failure ?: if (r == null) (if (c.isConnected) LoadFailure.TIMEOUT else LoadFailure.PROCESS) else LoadFailure.ENGINE
         holding = null
         VoiceLog.add(VoiceEvent.MODEL_LOAD_FAILED, ModelCode.of(m), failure)
+        // The file isn't the plan's any more (a move into Robot's storage finished just now): the new plan loads, once per change.
+        if (failure == LoadFailure.FILE_CHANGED) {
+            val again = placed(ctx, planOf(ctx, m).second)
+            if (again != null && (again.path != plan.path || again.fingerprint != plan.fingerprint)) return loadInto(ctx, c, again, load, detail)
+        }
+        // week-fixes: Android reclaimed :brain's memory during the load: not the device's failure the first time in an hour.
+        val forgiven = failure == LoadFailure.PROCESS && (gpu || plan.backend == ModelBackend.TPU) && reclaimedByAndroid(ctx, null, startedAt) &&
+            MemoryReclaim.forgivesLoad(loadReclaimedAt, System.currentTimeMillis()).also { loadReclaimedAt = System.currentTimeMillis() }
         // 0.4.7: the GPU didn't load it (an error, a refusal, no answer, or its process stopped): the CPU from now on,
         // remembered across restarts until you try the GPU again, said once, with a report to copy or share. (No room
         // for a cache, a missing file or the last model still stopping aren't the GPU's doing: they go on as before.)
-        if (gpu && failure in GPU_FAILURES) {
+        if (gpu && ModelChoice.deviceFailure(failure) && !forgiven) {
             Problems.gpuFailed(ctx, GpuFailure(m, System.currentTimeMillis(), ProblemStage.LOADING, failure))
             VoiceLog.add(VoiceEvent.GPU_FALLBACK, ModelCode.of(m), ProblemStage.LOADING, failure.id)
             RLog.i("brain_gpu_failed", "stage" to ProblemStage.LOADING, "failure" to RLog.Code(failure.name))
@@ -581,7 +605,7 @@ object BrainKeeper {
         // 0.8: the beta TPU build (a Tensor G6's) didn't load on the TPU (an error, a refusal, no answer, or its process
         // stopped): Fast is the general build from now on, remembered across restarts until you try the TPU again, said once,
         // with a report; the general build loads now when it is on the phone.
-        if (m.beta && plan.backend == ModelBackend.TPU && failure in GPU_FAILURES) {
+        if (m.beta && plan.backend == ModelBackend.TPU && ModelChoice.deviceFailure(failure) && !forgiven) {
             Problems.tpuFailed(ctx, TpuFailure(m, System.currentTimeMillis(), failure))
             VoiceLog.add(VoiceEvent.TPU_FALLBACK, ModelCode.of(m), failure)
             RLog.i("brain_tpu_failed", "failure" to RLog.Code(failure.name))
@@ -597,7 +621,7 @@ object BrainKeeper {
             }
             return toGeneral(ctx, c, detail)
         }
-        if (m != fast && ModelChoice.remember(failure)) failed[m.id] = plan.fingerprint to FallbackWhy.FAILED_EARLIER
+        if (m != fast && !forgiven && ModelChoice.remember(failure)) failed[m.id] = plan.fingerprint to FallbackWhy.FAILED_EARLIER
         val (fastState, fastPlanFound) = planOf(ctx, fast)
         val fastPlan = placed(ctx, fastPlanFound)
         // 1.1 (WP7): :brain's words come without a language (Loaded.errorText), said here in the menus'.
@@ -970,7 +994,8 @@ object BrainKeeper {
 
     private fun onDeath(stage: ProblemStage?) {
         // 1.2: a death during the self-test is the check's failure, never one of the three an hour (selfTest writes it).
-        if (!checkUnderWay) synchronized(deaths) { deaths.addLast(System.currentTimeMillis()) }
+        // week-fixes: one between answers is most likely Android reclaiming memory, and nothing was wrong (core MemoryReclaim).
+        if (!checkUnderWay && MemoryReclaim.countsTowardLockout(stage, loadUnderWay)) synchronized(deaths) { deaths.addLast(System.currentTimeMillis()) }
         modelStopped(stage, ModelProcess.BRAIN)
     }
 
@@ -1001,8 +1026,9 @@ object BrainKeeper {
         // 0.4.7: a death while it answered (reading the prompt or writing: a question, or 0.6.0 a one-shot) is a crash worth
         // a report; one between answers is most likely Android reclaiming memory, and is left as before. :brain's on the GPU:
         // the CPU from now on. (llama.cpp's process runs only a GGUF file: a late word of it under another model is no note.)
-        if (p != null && ctx != null && !duringLoad && stage != null && (process == ModelProcess.BRAIN || p.format == ModelFormat.GGUF)) scope.launch {
-            if (p.backend == ModelBackend.GPU && process == ModelProcess.BRAIN) {
+        // week-fixes: unless Android's own record says it reclaimed the memory: Fast stays on the GPU and recovers by itself.
+        if (p != null && ctx != null && !duringLoad && stage != null && (process == ModelProcess.BRAIN || p.format == ModelFormat.GGUF)) scope.launch { mutex.withLock {
+            if (p.backend == ModelBackend.GPU && process == ModelProcess.BRAIN && !reclaimedByAndroid(ctx, p.model, System.currentTimeMillis() - MemoryReclaim.RECORD_MS)) {
                 Problems.gpuFailed(ctx, GpuFailure(p.model, System.currentTimeMillis(), stage, null))
                 VoiceLog.add(VoiceEvent.GPU_FALLBACK, ModelCode.of(p.model), stage)
                 RLog.i("brain_gpu_failed", "stage" to stage)
@@ -1010,7 +1036,7 @@ object BrainKeeper {
             } else {
                 noteProblem(ctx, p, stage, null, if (p.model != fast) fast else null, null, process)
             }
-        }
+        } }
         _state.value = State(Readiness.UNKNOWN)
     }
 

@@ -1,0 +1,17 @@
+{
+  "format": 1,
+  "id": "time-fr",
+  "title": "The time, asked by voice in French, with a fan running",
+  "safety": "read",
+  "testBench": ["v11-voice-times"],
+  "setup": [{"set": "speakReplies", "value": "VOICE"}],
+  "steps": [
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "Quelle heure est-il ?", "voice": "siwis", "noise": "fan", "snr": 20},
+    {"do": "wait_reply", "seconds": 30},
+    {"do": "check", "what": "heard", "contains": "quelle heure"},
+    {"do": "check", "what": "reply", "regex": "\\d+ h"},
+    {"do": "check", "what": "reply", "contains": "virgule", "absent": true},
+    {"do": "end"}
+  ]
+}

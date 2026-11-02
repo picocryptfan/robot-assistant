@@ -56,7 +56,10 @@ enum class TermuxReason {
 
     ASK_FIRST, FROM_CONTENT, WARNINGS, UNREADABLE, TAP_SETTING,
 
-    READ_ONLY, YOUR_SCRIPT;
+    READ_ONLY, YOUR_SCRIPT,
+
+    /** C8: a skill's typed step whose value Robot's model wrote (free words): only a tap runs it. */
+    MODEL_WORDS;
 
     val text: Phrase get() = when (this) {
         OFF -> TermuxStrings.reasonOff("path" to SETTINGS)
@@ -80,6 +83,8 @@ enum class TermuxReason {
         TAP_SETTING -> TermuxStrings.reasonTapSetting("path" to SETTINGS)
         READ_ONLY -> TermuxStrings.reasonReadOnly()
         YOUR_SCRIPT -> TermuxStrings.reasonYourScript("level" to ScriptLevel.AUTO.text)
+        // Skills connections' area (English until C11's French).
+        MODEL_WORDS -> app.heyrobot.core.i18n.ConnStrings.scriptModelWords("run" to RUN)
     }
 
     val en: String get() = text.en()
@@ -133,6 +138,7 @@ data class TermuxDecision(val verdict: TermuxVerdict, val reasons: List<TermuxRe
 
     private fun tapWords(): Phrase {
         if (TermuxReason.FROM_CONTENT in reasons) return TermuxReason.FROM_CONTENT.text
+        if (TermuxReason.MODEL_WORDS in reasons) return TermuxReason.MODEL_WORDS.text
         val w = warnings.firstOrNull { it != CommandWarning.UNREADABLE }
         if (w?.what != null) return TermuxStrings.commandWarns("what" to w.what(), "run" to TermuxReason.RUN)
         if (CommandWarning.UNREADABLE in warnings) return TermuxReason.UNREADABLE.text
@@ -205,6 +211,42 @@ object TermuxPolicy {
         }
         val reasons = ArrayList<TermuxReason>()
         if (fromContent) reasons += TermuxReason.FROM_CONTENT
+        if (warnings.isNotEmpty()) reasons += TermuxReason.WARNINGS
+        if (settings.spokenYes == SpokenYes.NEVER) reasons += TermuxReason.TAP_SETTING
+        if (reasons.isEmpty()) return TermuxDecision(TermuxVerdict.CARD, listOf(TermuxReason.ASK_FIRST), warnings)
+        return TermuxDecision(TermuxVerdict.TAP_ONLY, reasons, warnings)
+    }
+
+    /**
+     * C8: one of your typed scripts as a skill's step (plan §3.6, D18): [argv] its values, one element each, in the order
+     * its `# param:` lines give, never split again or read by a shell. [modelWords]: a value holds words Robot's model
+     * wrote (a tap, always: C4's rule). [known]: your scripts whose declarations Robot could read. Never on the lock screen,
+     * whatever Settings › Termux › Works on the lock screen holds (a skill never runs locked either). Your script's level
+     * decides the rest, as for your own script: Just do it runs it at once when nothing else asks; content in the
+     * conversation, a warning, a model's words or "Never (tap only)" take a tap.
+     */
+    fun typed(name: String, argv: List<String>, modelWords: Boolean, remote: Boolean, settings: TermuxSettings, locked: Boolean,
+        untrustedConversation: Boolean, ownSecrets: Collection<String> = emptyList(), known: Set<String>): TermuxDecision {
+        fun refuse(r: TermuxReason) = TermuxDecision(TermuxVerdict.REFUSE, listOf(r))
+        if (!settings.enabled) return refuse(TermuxReason.OFF)
+        if (!TermuxScripts.validName(name) || name !in known) return refuse(TermuxReason.NOT_A_SCRIPT)
+        if (settings.script(name) == ScriptLevel.OFF) return refuse(TermuxReason.SCRIPT_OFF)
+        // Only a skill's own run makes a typed call; a helper's conversation never has one.
+        if (remote) return refuse(TermuxReason.HELPERS_OFF)
+        if (locked) return refuse(TermuxReason.LOCKED)
+        if (argv.size > ScriptParams.MAX_PARAMS || argv.any { a -> a.any { it == '\u0000' || it == '\n' || it == '\r' } }) return refuse(TermuxReason.BAD_ARGUMENTS)
+        if (argv.any { SecretMask.hasOwn(it, ownSecrets) }) return refuse(TermuxReason.OWN_SECRET)
+        if (argv.any { SecretMask.hasRobotKey(it) }) return refuse(TermuxReason.KEY_SHAPE)
+        val warnings = LinkedHashSet<CommandWarning>()
+        if (argv.any { CommandAnalyzer.hidden(it) }) warnings += CommandWarning.HIDDEN_CHARACTERS
+        if (argv.any { SecretMask.find(it).isNotEmpty() }) warnings += CommandWarning.SECRET
+        val level = settings.script(name)
+        if (!untrustedConversation && !modelWords && level == ScriptLevel.AUTO && warnings.isEmpty()) {
+            return TermuxDecision(TermuxVerdict.RUN, listOf(TermuxReason.YOUR_SCRIPT), warnings)
+        }
+        val reasons = ArrayList<TermuxReason>()
+        if (untrustedConversation) reasons += TermuxReason.FROM_CONTENT
+        if (modelWords) reasons += TermuxReason.MODEL_WORDS
         if (warnings.isNotEmpty()) reasons += TermuxReason.WARNINGS
         if (settings.spokenYes == SpokenYes.NEVER) reasons += TermuxReason.TAP_SETTING
         if (reasons.isEmpty()) return TermuxDecision(TermuxVerdict.CARD, listOf(TermuxReason.ASK_FIRST), warnings)

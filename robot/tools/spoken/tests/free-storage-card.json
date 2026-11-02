@@ -1,0 +1,24 @@
+{
+  "format": 1,
+  "id": "free-storage-card",
+  "title": "\"How do I free up storage?\" stops at its card",
+  "safety": "stops-at-card",
+  "testBench": ["v40-phone-status"],
+  "needs": {"model": true},
+  "setup": [{"set": "speakReplies", "value": "VOICE"}, {"set": "voiceCards", "value": true}],
+  "steps": [
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "How do I free up storage?", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 120},
+    {"do": "check", "what": "tool", "equals": "phone_status"},
+    {"do": "end"},
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "Free up storage.", "voice": "heart"},
+    {"do": "wait_card", "kind": "free_storage", "seconds": 120},
+    {"do": "wait_listening", "seconds": 30},
+    {"do": "say", "text": "No thanks.", "voice": "heart"},
+    {"do": "pause", "seconds": 4},
+    {"do": "check", "what": "showing", "equals": "free_storage", "absent": true},
+    {"do": "end"}
+  ]
+}

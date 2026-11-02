@@ -70,7 +70,7 @@
     <string name="lock_cant_stop_3">In safe mode, or outside a lock: uninstalling Robot, or clearing its storage, removes every lock and the code.</string>
     <string name="lock_cant_stop_4">Outside a lock: turning off Robot\'s accessibility access or force stopping Robot turns Phone lock off. What happened notes it, and the next lock says it couldn\'t start.</string>
     <string name="lock_cant_stop_5">A computer with USB debugging can do anything. On a child\'s phone, turn Developer options off.</string>
-    <string name="lock_cant_stop_6">The notification shade stays usable during a lock, with its replies and quick settings, because covering it would also cover the lock screen. A picture-in-picture video started before a lock may stay on top.</string>
+    <string name="lock_cant_stop_6">The notification shade stays usable during a lock, with its replies and quick settings, because covering it would also cover the lock screen. A picture-in-picture video started before a lock may stay on top. During a call, the usual phone apps keep to their call screen; any other phone app stays fully open.</string>
     <string name="lock_cant_stop_7">Phone lock locks only the user Robot runs in, not another user or a private space.</string>
     <string name="lock_cant_stop_8">Changing the date or time outside a lock moves Time of day locks with the clock.</string>
 

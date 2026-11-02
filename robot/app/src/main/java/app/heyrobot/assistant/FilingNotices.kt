@@ -116,6 +116,8 @@ object FilingNotices {
      * what Robot filed back in Inbox; File them files what waited at Ask me first, as Robot would have. Never while locked.
      */
     fun act(ctx: Context, op: String, token: String?) {
+        // F99: first, so the notice and its token last until the phone is open.
+        if (app.heyrobot.sys.RobotFiles.locked(ctx)) return
         val h = synchronized(held) { token?.let { held.remove(it) } } ?: return
         if (h.until < System.currentTimeMillis()) return
         val l = AppLanguage.langs(ctx)

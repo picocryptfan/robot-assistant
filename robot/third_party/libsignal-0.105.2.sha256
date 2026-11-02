@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# libsignal 0.105.2 (Signal Messenger, AGPL-3.0-only), the library Robot to Robot's sessions run on (robot-to-robot-r0.md).
+# Signal publishes 0.105.2 only in its own Maven repository, https://build-artifacts.signal.org/libraries/maven/, never on
+# Maven Central (which stops at 0.86.5). Robot builds offline from a local copy of these files in third_party/maven-local/
+# (git-ignored; tools/fetch_libsignal.sh fills it, robot/README.md "Getting libsignal"), and every one is pinned here.
+#
+# The AAR's and the jar's lines equal Signal's own .sha256 files for them and the hashes inside their .module files; the
+# POM and module files have no .sha256 of their own in the copy R0 made on 21 Oct 2026, so theirs are the files' as R0
+# downloaded them. gradle/verification-metadata.xml pins the same six (LibsignalPinsTest checks they agree), so Gradle
+# refuses any other bytes; tools/fetch_libsignal.sh refuses them before they reach the repository.
+#
+# Paths are relative to third_party/maven-local/, so `sha256sum -c` runs there on the lines that start with a hash and "org/".
+37447ab37d7861a0bcc177302b364709cd49f395e17274ef2c521ed727908ac8  org/signal/libsignal-android/0.105.2/libsignal-android-0.105.2.aar
+f886133edfabb5222545d83be38800469a176c4120be12154905b45a2413ce5f  org/signal/libsignal-android/0.105.2/libsignal-android-0.105.2.pom
+f5239f200a0dee70d47b9725dc350028d660c50cb22ed5533b4e49c5458ebbca  org/signal/libsignal-android/0.105.2/libsignal-android-0.105.2.module
+4d1801ef6f63c3f2656ff987bd13486f4c26caa53b62ec358b936649097e9a1b  org/signal/libsignal-client/0.105.2/libsignal-client-0.105.2.jar
+a181dac9660dd04d81bdf88f90e7a81b501e49d8eeb49cb76fef4909eda3e4fd  org/signal/libsignal-client/0.105.2/libsignal-client-0.105.2.pom
+8ab5404aebe9244b9ec0be75c40f7ba728092629d10ab1152c9bcc72b2046b48  org/signal/libsignal-client/0.105.2/libsignal-client-0.105.2.module
+#
+# The one native library the APK ships: the AAR's jni/arm64-v8a/libsignal_jni.so (123,449,888 bytes, with debug info)
+# after `llvm-strip --strip-unneeded` from NDK 27.1.12297006, 9,390,016 bytes. :link's libsignalJni task makes it at
+# build time and refuses any other result; tools/verify_apk.sh checks the APK's copy. Never the AAR's
+# libsignal_jni_testing.so, its other ABIs, or the client jar's desktop libraries (.so, .dylib, .dll).
+9e20c7dddfc35b7a354031a1f497d7ee008835e864de1496473af0f9f83a4a6c  lib/arm64-v8a/libsignal_jni.so

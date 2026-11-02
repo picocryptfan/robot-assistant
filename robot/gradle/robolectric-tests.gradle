@@ -1,0 +1,19 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Unit tests for :brain and :mt, whose code lives on Android's Binder, Parcel, Service and Context: they run on the JVM with
+// Robolectric, the same version and Android runtime as the app's debug tests (app/build.gradle), offline from Gradle's cache.
+// Nothing here reaches an APK, and no model or native library is needed: a real engine's library simply isn't there.
+configurations { robolectricRuntime }
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.17'
+    robolectricRuntime('org.robolectric:android-all-instrumented:15-robolectric-13954326-i7') { transitive = false }
+}
+// :mt has no dependency that lifts this one past what Robolectric's own tree asks for, and the verified cache has the jar of 2.50.0, as :app and :brain use.
+configurations.matching { it.name.contains('UnitTest') }.configureEach {
+    resolutionStrategy.force 'com.google.errorprone:error_prone_annotations:2.50.0'
+}
+tasks.withType(Test).configureEach { t ->
+    t.inputs.files(configurations.robolectricRuntime)
+    t.systemProperty 'robolectric.offline', 'true'
+    t.doFirst { t.systemProperty 'robolectric.dependency.dir', configurations.robolectricRuntime.singleFile.parentFile.absolutePath }
+}

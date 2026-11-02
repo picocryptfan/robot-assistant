@@ -1,0 +1,50 @@
+{
+  "format": 1,
+  "id": "lock-by-voice-no",
+  "title": "\"Lock the phone for 10 minutes\" with Phone lock not set up is refused by LockRouter, with no card: the test build has no lock to set",
+  "safety": "stops-at-card",
+  "testBench": [
+    "v11-lock-voice"
+  ],
+  "setup": [
+    {
+      "set": "speakReplies",
+      "value": "VOICE"
+    },
+    {
+      "set": "voiceCards",
+      "value": true
+    }
+  ],
+  "steps": [
+    {
+      "do": "open",
+      "how": "button"
+    },
+    {
+      "do": "say",
+      "text": "Lock the phone for 10 minutes.",
+      "voice": "heart"
+    },
+    {
+      "do": "wait_reply",
+      "seconds": 30,
+      "contains": "Set up Phone lock first"
+    },
+    {
+      "do": "check",
+      "what": "router",
+      "equals": "LockRouter"
+    },
+    {
+      "do": "check",
+      "what": "card",
+      "equals": "other",
+      "absent": true
+    },
+    {
+      "do": "end"
+    }
+  ],
+  "refusedWithNoCard": true
+}

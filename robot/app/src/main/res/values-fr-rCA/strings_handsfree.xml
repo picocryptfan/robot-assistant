@@ -3,17 +3,49 @@
      FrenchTypographyTest). -->
 <resources>
     <!-- The car screen and car mode's notification (ui/car, assistant/car). -->
-    <string name="car_say_hey">Dis «&#160;hey robot&#160;»</string>
     <string name="car_channel">Mode auto</string>
     <string name="car_channel_detail">Affichée pendant que le mode auto est activé, et quand ton auto s’est connectée.</string>
-    <string name="car_notification_text">Dis «&#160;hey robot&#160;» ou presse le bouton vocal de ton auto.</string>
     <string name="car_end">Terminer</string>
     <string name="car_unlocked_on">Fonctions déverrouillées activées</string>
     <string name="car_end_mode">Terminer le mode auto</string>
     <string name="car_talk">Parler</string>
     <string name="car_messages">Messages</string>
-    <string name="car_call">Appeler</string>
     <string name="car_navigate_home">Aller au domicile</string>
+    <string name="car_maps">Cartes</string>
+    <string name="car_directions">Retour à l’itinéraire</string>
+    <string name="car_music_open">Ouvrir %1$s</string>
+    <string name="car_music_play">Lecture</string>
+    <string name="car_music_pause">Pause</string>
+    <string name="car_music_next">Suivant</string>
+    <string name="car_music_previous">Précédent</string>
+    <string name="car_settings">Réglages</string>
+    <string name="car_map_open">Ouvrir la carte à côté de Robot</string>
+    <string name="car_map_hint">Fais glisser la barre entre les deux pour redimensionner</string>
+    <string name="car_directions_fallback">Ton appli de cartes affiche l’itinéraire</string>
+    <string name="car_messages_none">Aucun nouveau message</string>
+    <string name="car_messages_off">Les messages sont désactivés</string>
+    <string name="car_messages_open">Ouvrir Réglages › Messages</string>
+    <string name="car_messages_locked">Déverrouille pour voir tes messages</string>
+    <string name="car_message_locked">Déverrouille pour le lire</string>
+    <string name="car_message_no_text">Ouvre l’appli pour le lire</string>
+    <string name="car_messages_reply_hint">Pour répondre, touche Parler et dis «&#160;réponds à&#160;» et le nom</string>
+    <string name="car_fourth_music">Appli de musique</string>
+    <string name="car_fourth_music_short">Musique</string>
+    <string name="car_fourth_gone">Impossible d’ouvrir %1$s. Choisis-la de nouveau dans Réglages › Mode auto</string>
+    <string name="car_screen_group">Écran de l’auto</string>
+    <string name="car_large_title">Grand panneau</string>
+    <string name="car_info_title">Panneau d’information</string>
+    <string name="car_fourth_title">Quatrième bouton</string>
+    <string name="car_panel_map">Carte</string>
+    <string name="car_panel_map_detail">Ton appli de cartes à côté de l’écran de l’auto, en écran partagé. Une touche l’ouvre</string>
+    <string name="car_panel_media">Lecteur multimédia</string>
+    <string name="car_panel_media_buttons">Boutons multimédias</string>
+    <string name="car_panel_messages">Messages</string>
+    <string name="car_panel_messages_detail">Affichés sur l’écran de l’auto seulement, comme Réglages › Messages le permet. Pour répondre, touche Parler</string>
+    <string name="car_panel_directions">Itinéraire</string>
+    <string name="car_panel_directions_detail">Un bouton vers ton appli de cartes. Robot ne peut pas encore lire l’itinéraire détaillé</string>
+    <string name="car_panel_latest">Dernier message</string>
+    <string name="car_fourth_replaced">%1$s, remplacée par une appli signée par quelqu’un d’autre. Choisis-la de nouveau.</string>
 
     <!-- Settings › Headset (ui/settings/HandsFreeSettings.kt). -->
     <string name="headset_button">Le bouton des écouteurs ouvre Robot</string>
@@ -104,6 +136,10 @@
     <string name="car_speak_call">Parler par l’auto comme un appel</string>
     <string name="car_speak_call_on">Les autos baissent la radio pour ça</string>
     <string name="car_speak_call_off">Désactivé&#160;: par le multimédia de l’auto, seulement si elle joue le Bluetooth</string>
+    <string name="car_hear_me">M’entendre dans l’auto</string>
+    <string name="car_hear_more">Plus</string>
+    <string name="car_hear_more_detail">Par défaut. «&#160;Hey robot&#160;» et tes questions captent une voix plus douce malgré le bruit de la route</string>
+    <string name="car_hear_normal_detail">Comme partout ailleurs</string>
     <string name="car_wake_listen">Après «&#160;hey robot&#160;» dans l’auto, écouter avec</string>
     <string name="car_phone_mic">Micro du téléphone</string>
     <string name="car_car_mic">Le micro de l’auto</string>
@@ -147,4 +183,17 @@
     <string name="car_add_footer">Robot liste les appareils audio Bluetooth connectés maintenant. Ton auto est retenue par son nom et la fin de son adresse (toute l’adresse avec Appareils à proximité), sur ce téléphone seulement. Une auto n’est jamais traitée comme des écouteurs privés.</string>
     <string name="car_add_confirm_text">Le mode auto démarrera quand elle se connectera.</string>
     <string name="car_add_yes">Oui, c’est mon auto</string>
+    <string name="car_listening">À l’écoute…</string>
+    <string name="car_yes">Oui</string>
+    <string name="car_cancel">Annuler</string>
+    <string name="car_map">Carte</string>
+    <string name="car_close">Fermer</string>
+    <string name="car_apps">Applis</string>
+    <string name="car_art">Pochette de l’album</string>
+    <string name="car_music_choose">Choisis ton appli de musique</string>
+    <string name="car_music_or_podcasts">Musique ou balados ?</string>
+    <string name="car_apps_none">Aucune appli gardée pour l’auto pour l’instant.</string>
+    <string name="car_apps_add">Ajouter des applis</string>
+    <string name="car_apps_title">Applis pour l’auto</string>
+    <string name="car_apps_summary_none">Aucune pour l’instant. Garde-en jusqu’à %1$d, puis touche Applis sur l’écran de l’auto pour en ouvrir une à côté de Robot.</string>
 </resources>

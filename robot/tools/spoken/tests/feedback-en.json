@@ -1,0 +1,15 @@
+{
+  "format": 1,
+  "id": "feedback-en",
+  "title": "\"Report a bug\" opens Send feedback in the test build, which sends nothing by itself",
+  "safety": "read",
+  "testBench": ["v70-fb-voice"],
+  "setup": [{"set": "speakReplies", "value": "VOICE"}],
+  "steps": [
+    {"do": "open", "how": "wake"},
+    {"do": "say", "text": "Report a bug.", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 30, "contains": "Nothing is sent"},
+    {"do": "check", "what": "router", "equals": "FeedbackRouter"},
+    {"do": "end"}
+  ]
+}

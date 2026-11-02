@@ -1,0 +1,19 @@
+{
+  "format": 1,
+  "id": "event-card-en",
+  "title": "A new event, said with a pause, stops at its card",
+  "safety": "stops-at-card",
+  "testBench": ["v11-update-from-101"],
+  "needs": {"model": true},
+  "setup": [{"set": "speakReplies", "value": "VOICE"}, {"set": "voiceCards", "value": true}],
+  "steps": [
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "Put a dentist appointment on my calendar tomorrow at 3.", "voice": "heart"},
+    {"do": "wait_card", "kind": "add_event", "seconds": 120},
+    {"do": "check", "what": "heard", "regex": "(?i)dentist.*tomorrow"},
+    {"do": "wait_listening", "seconds": 30},
+    {"do": "say", "text": "No thanks.", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 30},
+    {"do": "end"}
+  ]
+}

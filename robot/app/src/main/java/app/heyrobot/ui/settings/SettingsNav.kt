@@ -52,6 +52,8 @@ object SettingsRoutes {
     const val MEMORY = "memory"
     /** 1.4: Settings › Files (Robot Files' own files: sys/FilesVault.kt). */
     const val FILES = "files"
+    /** 1.4 Lists: Settings › Lists (sys/ListsVault.kt), beside Settings › Files. */
+    const val LISTS = "lists"
     /** 1.4: Settings › Files › Scan a document (F5; the Files screen's Scan button from F7). */
     const val FILES_SCAN = "files/scan"
     const val ADVANCED = "advanced"
@@ -85,6 +87,10 @@ object SettingsRoutes {
     const val PHONE_LOCK = "phone-lock"
     /** 1.1: Settings › Back up and restore (backup.json and backup_state.json, not settings.json). */
     const val BACKUP = "backup"
+    /** The everyday set: Settings › Safety & privacy › What went online (sys/NetLog's record; everyday_settings.json's switch). */
+    const val ONLINE = "online"
+    /** 1.5: Settings › Robot to Robot and its pages (ui/link LinkRoutes; link_settings.json, not settings.json). */
+    const val LINK = "link"
 }
 
 /** The page for [route]; an unknown one (from a newer version's saved state) goes back to Settings. */
@@ -101,7 +107,7 @@ fun SettingsNav(
     busy: String? = null,
 ) {
     // Settings › Model (1.4: a page of Settings, no longer a tab) and its pages.
-    if (route == SettingsRoutes.MODEL) return app.heyrobot.ui.model.ModelScreen(s, update, snap, busy, a, onBack = onBack, snackbar = snackbar)
+    if (route == SettingsRoutes.MODEL) return app.heyrobot.ui.model.ModelScreen(s, update, snap, a, onBack = onBack, snackbar = snackbar)
     if (route.startsWith("model/") && ModelRoute(route, s, update, snap, busy, a, snackbar, onBack)) return
     // 0.8: Settings › Routines and its pages.
     if (route == SettingsRoutes.ROUTINES || route.startsWith(SettingsRoutes.ROUTINES + "/")) return RoutinesRoute(route, s, snap, a, snackbar, onBack)
@@ -111,6 +117,8 @@ fun SettingsNav(
     if (route == SettingsRoutes.PHONE_LOCK || route.startsWith(SettingsRoutes.PHONE_LOCK + "/")) return PhoneLockRoute(route, a, snackbar, onBack)
     // 0.8: Settings › Headset, Settings › Car mode and Add your car.
     if (route == SettingsRoutes.HEADSET || route == SettingsRoutes.CAR || route.startsWith(SettingsRoutes.CAR + "/")) return HandsFreeRoute(route, a, snackbar, onBack)
+    // 1.5: Settings › Robot to Robot, pairing, and each pairing's pages.
+    if (route == SettingsRoutes.LINK || route.startsWith(SettingsRoutes.LINK + "/")) return app.heyrobot.ui.link.LinkRoute(route, a, snackbar, onBack)
     when (route) {
         SettingsRoutes.DISPLAY -> {
             val ctx = LocalContext.current
@@ -125,6 +133,7 @@ fun SettingsNav(
         SettingsRoutes.HISTORY -> HistorySettingsScreen(s, update, a, snackbar, onBack)
         SettingsRoutes.MEMORY -> MemorySettingsRoute(a, snackbar, onBack)
         SettingsRoutes.FILES -> FilesSettingsRoute(a, snackbar, onBack)
+        SettingsRoutes.LISTS -> ListsSettingsRoute(a, snackbar, onBack)
         SettingsRoutes.FILES_SCAN -> app.heyrobot.ui.files.ScanRoute(snackbar, onBack)
         SettingsRoutes.ADVANCED -> AdvancedSettingsScreen(a, onBack)
         SettingsRoutes.ABOUT -> AboutSettingsScreen(a, onBack)
@@ -139,6 +148,7 @@ fun SettingsNav(
         }
         SettingsRoutes.TERMUX -> TermuxRoute(a, snackbar, onBack, snap.facts?.active)
         SettingsRoutes.LANGUAGE -> LanguageSettingsScreen(s, update, snackbar, onBack)
+        SettingsRoutes.ONLINE -> OnlineScreen(a, snackbar, onBack)
         else -> when {
             route.startsWith("adb/") -> AdbFixScreen(route.removePrefix("adb/"), snackbar, onBack)
             route.startsWith(SettingsRoutes.FEEDBACK) -> FeedbackRoute(route, snap, snackbar, onBack)
@@ -159,8 +169,12 @@ fun parentOf(p: Page): Page? = when (p) {
         // Send feedback: About when it was opened there, else the tabs (Settings › Model's problems, the panel).
         p.route.startsWith(SettingsRoutes.FEEDBACK) -> if (FeedbackArgs.of(p.route).entry == FeedbackEntry.ABOUT) Page.Settings(SettingsRoutes.ABOUT) else null
         p.route.startsWith("adb/") -> Page.AdbFixes
+        // What went online sits under Settings › Safety & privacy.
+        p.route == SettingsRoutes.ONLINE -> Page.Safety
         // 1.4: scanning, opened from the Files tab's Scan button: Back goes to the tab.
         p.route == SettingsRoutes.FILES_SCAN -> null
+        // 1.5: a pairing's Robot link sits under Settings › Robot to Robot (its own pages under it).
+        p.route.startsWith(SettingsRoutes.LINK + "/p/") && p.route.count { it == '/' } == 2 -> Page.Settings(SettingsRoutes.LINK)
         // A model's page (and a voice bundle's, "model/voice/…") sits under Settings › Model.
         p.route.startsWith(SettingsRoutes.MODEL + "/") -> Page.Settings(SettingsRoutes.MODEL)
         '/' in p.route -> Page.Settings(p.route.substringBeforeLast('/'))
@@ -249,12 +263,15 @@ object AppRoutes {
         // Settings › Memory from a memory card's "Open Memory" (0.7).
         // 1.4 F12: a tax pack's or an expense report's page in Files (the panel's card).
         i.getStringExtra(AppPages.EXTRA)?.let(AppPages::filesPack) != null -> i.getStringExtra(AppPages.EXTRA)
+        // 1.4 Lists (LS5): a list's page, from a list card's "Open Shopping" (an id only).
+        i.getStringExtra(AppPages.EXTRA)?.let(AppPages::listPage) != null -> i.getStringExtra(AppPages.EXTRA)
         // 0.7: Send feedback from a feedback phrase in the panel, with its kind only (the words come in a file of Robot's own).
         i.getStringExtra(AppPages.EXTRA) == AppPages.FEEDBACK ->
             AppPages.FEEDBACK + (FeedbackKind.of(i.getStringExtra(AppPages.EXTRA_FEEDBACK_KIND))?.let { ":" + it.name.lowercase() } ?: "")
         else -> i.getStringExtra(AppPages.EXTRA)?.takeIf { it == AppPages.NOTES || it == AppPages.PERMISSIONS || it == AppPages.CONVERSATION_SETTINGS ||
-            it == AppPages.MODEL || it == AppPages.HELPERS || it == AppPages.ROUTINES || it == AppPages.UPDATES ||
-            it == AppPages.MEMORY || it == AppPages.SETTINGS || it == AppPages.PHONE_LOCK || it == AppPages.BACKUP || it == AppPages.FILES }
+            it == AppPages.MODEL || it == AppPages.HELPERS || it == AppPages.ROUTINES || it == AppPages.CAR_SETTINGS || it == AppPages.MESSAGES_SETTINGS || it == AppPages.UPDATES ||
+            it == AppPages.MEMORY || it == AppPages.SETTINGS || it == AppPages.PHONE_LOCK || it == AppPages.BACKUP || it == AppPages.FILES ||
+            it == AppPages.VOICE || it == AppPages.SETUP || it == AppPages.LINK_REQUESTS }
     }
 
     /**
@@ -263,11 +280,14 @@ object AppRoutes {
      */
     data class Target(val tab: Tab? = null, val page: Page? = null, val notesIcon: Boolean = false, val filesIcon: Boolean = false,
         /** 1.4 F12: a pack's page to open in the Files tab (AppPages.filesPack). */
-        val filesPack: String? = null)
+        val filesPack: String? = null,
+        /** 1.4 Lists (LS5): the Notes tab shows its Lists section. */
+        val lists: Boolean = false)
 
     fun target(r: String): Target? = when {
         r == AppPages.NOTES -> Target(tab = Tab.NOTES, notesIcon = true)
         r == AppPages.PERMISSIONS -> Target(page = Page.Setup(people = true))
+        r == AppPages.SETUP -> Target(page = Page.Setup())
         r == AppPages.TRANSCRIPTS -> Target(page = Page.Transcripts)
         r.startsWith(AppPages.TRANSCRIPTS + ":") -> r.split(':').let { p -> Target(page = Page.Transcript(p[1], p.getOrNull(2)?.toIntOrNull())) }
         r == AppPages.CONVERSATION_SETTINGS -> Target(page = Page.ConversationSettings)
@@ -275,15 +295,22 @@ object AppRoutes {
         // 1.4: Settings › Model, over the Settings tab (Back goes there).
         r == AppPages.MODEL -> Target(tab = Tab.SETTINGS, page = Page.Settings(SettingsRoutes.MODEL))
         r == AppPages.ROUTINES -> Target(page = Page.Settings(SettingsRoutes.ROUTINES))
+        r == AppPages.CAR_SETTINGS -> Target(page = Page.Settings(SettingsRoutes.CAR))
+        r == AppPages.MESSAGES_SETTINGS -> Target(page = Page.Settings(SettingsRoutes.MESSAGES))
         r == AppPages.UPDATES -> Target(page = Page.Settings(SettingsRoutes.UPDATES))
         r == AppPages.SETTINGS -> Target(tab = Tab.SETTINGS)
         r == AppPages.MEMORY -> Target(page = Page.Settings(SettingsRoutes.MEMORY))
         r == AppPages.PHONE_LOCK -> Target(page = Page.Settings(SettingsRoutes.PHONE_LOCK))
         r == AppPages.BACKUP -> Target(page = Page.Settings(SettingsRoutes.BACKUP))
+        // Everyday set, E6: from Android's text-to-speech settings (Robot's engine's settings, its voice download).
+        r == AppPages.VOICE -> Target(tab = Tab.SETTINGS, page = Page.Settings(SettingsRoutes.VOICE))
+        // 1.5 L6: Requests, from a Robot to Robot notification or the panel's Open Requests.
+        r == AppPages.LINK_REQUESTS -> Target(page = Page.Settings(app.heyrobot.ui.link.LinkRoutes.REQUESTS))
         // 1.4: the Files tab (a filing notification's tap opens your Inbox there), and from the "Robot Files" icon.
         r == AppPages.FILES -> Target(tab = Tab.FILES)
         r == AppPages.FILES_ICON -> Target(tab = Tab.FILES, filesIcon = true)
         AppPages.filesPack(r) != null -> Target(tab = Tab.FILES, filesPack = r)
+        AppPages.listPage(r) != null -> Target(tab = Tab.NOTES, page = Page.ListPage(AppPages.listPage(r)!!), lists = true)
         r == AppPages.FEEDBACK || r.startsWith(AppPages.FEEDBACK + ":") ->
             Target(page = Page.Settings(SettingsRoutes.feedback(FeedbackEntry.VOICE, FeedbackKind.of(r.substringAfter(':', "")))))
         else -> null

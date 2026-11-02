@@ -35,14 +35,20 @@ import kotlin.math.roundToInt
  * Settings › Files' "Show in morning brief" adds it, and it is said only while the phone is unlocked ([BriefPrivacy]).
  */
 enum class BriefItem(val id: String) {
-    GREETING("greeting"), WEATHER("weather"), CALENDAR("calendar"), REMINDERS("reminders"), MESSAGES("messages"), CLOSING("closing"), FILES("files");
+    GREETING("greeting"), WEATHER("weather"), CALENDAR("calendar"), REMINDERS("reminders"), MESSAGES("messages"), CLOSING("closing"), FILES("files"),
+    /**
+     * 1.5 L6, Robot to Robot (robot-to-robot-plan.md §4.2): what Robot handled on its own since yesterday and how many requests
+     * from other Robots wait. Appended (an id an older Robot reads as none). Settings › Robot to Robot's "Show in morning
+     * brief" adds it, and it is said only while the phone is unlocked ([BriefPrivacy]), as Files' part is.
+     */
+    LINK("link");
 
     companion object {
-        /** Settings › Routines' parts, all on by default (Files' part is Settings › Files'). */
-        val DEFAULTS: List<BriefItem> = entries.filter { it != FILES }
+        /** Settings › Routines' parts, all on by default (Files' part is Settings › Files', Robot to Robot's its own). */
+        val DEFAULTS: List<BriefItem> = entries.filter { it != FILES && it != LINK }
 
-        /** The order they are said in: Files' part after your reminders, before the messages and the closing. */
-        val ORDER: List<BriefItem> = listOf(GREETING, WEATHER, CALENDAR, REMINDERS, FILES, MESSAGES, CLOSING)
+        /** The order they are said in: Files' part after your reminders, then Robot to Robot's, before the messages and the closing. */
+        val ORDER: List<BriefItem> = listOf(GREETING, WEATHER, CALENDAR, REMINDERS, FILES, LINK, MESSAGES, CLOSING)
 
         fun of(id: String?): BriefItem? = entries.firstOrNull { it.id == id }
     }
@@ -87,7 +93,14 @@ data class BriefInput(
     val phoneOpens: java.time.LocalTime? = null,
     /** 1.4, Robot Files' part (core files FileBrief), read only while the phone is unlocked; null: nothing about files. */
     val files: app.heyrobot.core.files.FilesBrief? = null,
+    /** 1.5 L6, Robot to Robot's part, read only while the phone is unlocked; null: nothing about it. */
+    val link: LinkBrief? = null,
 )
+
+/** 1.5 L6: Robot to Robot's part of the brief: requests waiting for you, and what Robot handled on its own since yesterday. Counts only. */
+data class LinkBrief(val waiting: Int, val handled: Int) {
+    val empty: Boolean get() = waiting <= 0 && handled <= 0
+}
 
 /** One sentence (one chunk for the voice). [personal]: it says something from your calendar, notes, messages or the town. */
 data class BriefLine(val item: BriefItem?, val text: String, val personal: Boolean, val shown: String = text)
@@ -160,6 +173,12 @@ object BriefComposer {
             // 1.4: shown without a merchant (the screen, a notification, History), said with one unless the file is private.
             BriefItem.FILES -> input.files?.let { f -> app.heyrobot.core.files.FileMoneyText.brief(f, input.now.toLocalDate())
                 .map { BriefLine(item, said(it.said, lang), true, shown(it.shown, lang)) } } ?: emptyList()
+            // 1.5 L6: counts only, but personal (who asks you things is yours): never said while locked (BriefPrivacy).
+            BriefItem.LINK -> input.link?.takeIf { !it.empty }?.let { l ->
+                listOfNotNull(
+                    l.waiting.takeIf { it > 0 }?.let { line(item, app.heyrobot.core.i18n.LinkStrings.briefWaiting(it), lang, true) },
+                    l.handled.takeIf { it > 0 }?.let { line(item, app.heyrobot.core.i18n.LinkStrings.briefHandled(it), lang, true) })
+            } ?: emptyList()
             BriefItem.CLOSING -> listOf(line(item, closingText(input.now), lang, false))
         }
     }
@@ -412,6 +431,7 @@ data class BriefReminder(val text: String, val day: LocalDate, val readAt: Long?
  */
 object BriefReminders {
     const val MAX = 20
+    const val FROM_OTHERS_ROOM = 15
     const val MAX_TEXT = 100
     const val VERSION = 1
 
@@ -429,6 +449,13 @@ object BriefReminders {
         val same = list.filterNot { it.readAt == null && it.text.equals(t, ignoreCase = true) }
         return (same + BriefReminder(t, day)).takeLast(MAX)
     }
+
+    /**
+     * L16: one from another Robot: only while there's room. Past [FROM_OTHERS_ROOM] the list stays as it is, so nobody else's
+     * reminders can ever push out your own.
+     */
+    fun addFromOthers(list: List<BriefReminder>, text: String, day: LocalDate): List<BriefReminder> =
+        if (list.size >= FROM_OTHERS_ROOM) list else add(list, text, day)
 
     /** What the brief of [today] reads: reminders for today or before that weren't read before today. */
     fun due(list: List<BriefReminder>, today: LocalDate, zone: ZoneId): List<BriefReminder> =

@@ -43,6 +43,14 @@ object FilesForHelper {
     fun secret(e: FileEntry): Boolean =
         SecretDetector.isSecret(e.name) || e.fields.values.any { SecretDetector.isSecret(it.value) } || SecretDetector.isSecret(e.text)
 
+    /**
+     * F50: a file attached in the panel has no entry in Robot Files, so this looks at what's held: a secret in its [name] or
+     * [text], or enough of a medical file's or an ID's words (at least [FileRules.SETTLE], even when another kind's are as many: private first).
+     */
+    fun attachedPrivate(name: String, text: String): Boolean =
+        SecretDetector.isSecret(name) || SecretDetector.isSecret(text) ||
+            FileRules.scores(name + "\n" + text).any { (kind, score) -> kind in NEVER && score >= FileRules.SETTLE }
+
     /** Private: never to a helper, never said aloud or kept in History from read_file. */
     fun private(e: FileEntry): Boolean = !allowed(e)
 
@@ -135,6 +143,7 @@ object FileTools {
             if (private) put("private", true)
             else for (f in FIELDS) e.fields[f]?.value?.let { v -> value(v)?.let { put(f, it) } }
             if (!private && e.fields["check"]?.value == "total") put("total_unchecked", true) // l10n: not text (a field's code)
+            if (!private && FileViews.refund(e)) put("total_is_refund", true) // l10n: not text (a key the model reads)
         }
     }
 

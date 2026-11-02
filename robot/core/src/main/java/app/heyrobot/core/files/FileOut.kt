@@ -33,6 +33,9 @@ object FileOut {
     /** A copy's file name, at most this many characters before its extension. */
     private const val MAX_BASE = 120
 
+    /** And at most this many UTF-8 bytes (F53): a file system holds 255 a name, and 120 characters of a 3-byte script are 360. */
+    private const val MAX_BASE_BYTES = 240
+
     /** The type Robot sniffed for [e] (its provenance's), or null when it has none. */
     fun typeOf(e: FileEntry): FileType? = e.from.type?.let { t -> FileType.entries.firstOrNull { it.mime == t } }
 
@@ -85,7 +88,7 @@ object FileOut {
 
     /**
      * The copy's file name: [name] (Robot's, or yours) with characters no file name may hold made "_", cut to 120
-     * characters, and the type's extension in place of any it had ("receipt.PDF" → "receipt.pdf", "IMG_1.HEIC" stripped →
+     * characters and 240 UTF-8 bytes on a character's boundary, and the type's extension in place of any it had ("receipt.PDF" → "receipt.pdf", "IMG_1.HEIC" stripped →
      * "IMG_1.jpg"). A type Robot doesn't name keeps the name as it is. Never empty, never a dot file.
      */
     fun name(name: String, type: FileType): String {
@@ -97,9 +100,23 @@ object FileOut {
             if (dot > 0 && base.substring(dot + 1).lowercase() in KNOWN) base = base.substring(0, dot)
         }
         base = base.trim('.', ' ')
-        if (base.length > MAX_BASE) base = base.substring(0, if (Character.isHighSurrogate(base[MAX_BASE - 1])) MAX_BASE - 1 else MAX_BASE)
+        base = cut(base)
         base = base.trim('.', ' ')
         if (base.isEmpty()) base = "file" // l10n: not text (a file name when the file has none)
         return if (ext != null) "$base.$ext" else base
+    }
+
+    /** [s]'s start that fits [MAX_BASE] and [MAX_BASE_BYTES], whole characters only. */
+    private fun cut(s: String): String {
+        var end = 0
+        var bytes = 0
+        while (end < s.length) {
+            val c = s.codePointAt(end)
+            val chars = Character.charCount(c)
+            bytes += if (c < 0x80) 1 else if (c < 0x800) 2 else if (c < 0x10000) 3 else 4
+            if (end + chars > MAX_BASE || bytes > MAX_BASE_BYTES) break
+            end += chars
+        }
+        return s.substring(0, end)
     }
 }

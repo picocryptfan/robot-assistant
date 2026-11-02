@@ -21,6 +21,16 @@ class ShareRulesTest {
     private val own = setOf("ai.robot_app.exports", "ai.robot_app.capture", "ai.robot_app.scan")
     private fun check(scheme: String?, authority: String?) = ShareRules.check(SharedRef(scheme, authority)) { it in own }
 
+    /** F50: Android finds the provider by the decoded authority, so that is what's checked, and one written in escapes isn't taken. */
+    @Test fun anAuthorityInEscapesIsCheckedAsAndroidReadsIt() {
+        fun escaped(decoded: String, encoded: String) = ShareRules.check(SharedRef("content", decoded, encoded)) { it in own }
+        val mine = own.first()
+        assertEquals(ShareRefusal.OWN, escaped(mine, mine.replace(".", "%2E")))
+        assertEquals(ShareRefusal.OTHER_USER, escaped("10@media", "10%40media"))
+        assertEquals(ShareRefusal.NO_PROVIDER, escaped("org.example.mail", "org%2Eexample.mail"))
+        assertEquals(null, escaped("org.example.mail", "org.example.mail"))
+    }
+
     @Test fun onlyAnotherAppsContentProvider() {
         assertNull(check("content", "com.android.providers.downloads.documents"))
         assertNull(check("CONTENT", "org.example.mail.files"))

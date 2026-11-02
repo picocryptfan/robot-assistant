@@ -48,9 +48,9 @@
     <string name="routine_allow">Allow</string>
     <string name="routine_clock">Clock\'s alarms</string>
     <string name="routine_clock_ok">GrapheneOS Clock is installed: Robot hears when you turn off an alarm</string>
-    <string name="routine_clock_no">GrapheneOS Clock isn\'t installed: “When I turn off my alarm” can\'t start a routine</string>
+    <string name="routine_clock_no">No Clock app on this phone: “When I turn off my alarm” can\'t start a routine</string>
     <!-- 1.2: where a start after an alarm is picked (a routine's page, the brief's, the guide) on a phone without GrapheneOS Clock. -->
-    <string name="routine_alarm_needs_clock">Needs the GrapheneOS Clock app, which isn\'t on this phone: turning off an alarm won\'t start anything. Support for other clock apps is planned.</string>
+    <string name="routine_alarm_needs_clock">Needs a Clock app, and there\'s none on this phone: turning off an alarm won\'t start anything.</string>
     <string name="routine_calendar">Calendar</string>
     <string name="routine_calendar_ok">Allowed: the brief reads today\'s events</string>
     <string name="routine_calendar_no">Not allowed: the brief can\'t read your day</string>
@@ -157,4 +157,10 @@
     <string name="routine_add_button">Add</string>
     <string name="routine_time_hint">On a 24-hour clock, as 07:30.</string>
     <string name="routine_time_problem">A time such as 07:30.</string>
+    <string name="routine_clock_app">Clock app</string>
+    <string name="routine_clock_default">Phone\'s default: %1$s</string>
+    <string name="routine_clock_sound">%1$s is your Clock: Robot goes by when the alarm\'s sound stops</string>
+    <string name="routine_clock_doesnt_tell">%1$s doesn\'t tell other apps when an alarm ends</string>
+    <string name="routine_clock_sound_detail">Robot goes by when the alarm\'s sound stops, without using the microphone, so an alarm that only vibrates won\'t start anything.</string>
+    <string name="routine_clock_use_time">Start at a set time instead</string>
 </resources>

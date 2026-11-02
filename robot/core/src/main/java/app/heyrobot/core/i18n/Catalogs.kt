@@ -33,6 +33,14 @@ object Catalogs {
         SkillStrings,
         // 1.4: Robot Files.
         FilesStrings,
+        // 1.4: Lists.
+        ListsStrings,
+        // The everyday set: music, sums, What went online, Ask Robot.
+        EverydayStrings,
+        // Skills connections.
+        ConnStrings,
+        // 1.5: Robot to Robot.
+        LinkStrings,
     )
 
     private val byId: Map<String, Msg> by lazy { all.flatMap { it.all }.associateBy { it.id } }

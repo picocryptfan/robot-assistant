@@ -31,9 +31,10 @@ class RestoreTrustTest {
         for (mine in listOf(false, true)) {
             val m = RestoreSafety.messages(MessagesFile(), pinned, mine).value
             assertTrue(m.pins.isEmpty() && m.firstUse.isEmpty())
-            // Off, with your apps still ticked: turning it on pins the apps installed now (MessagesFile.withApp).
+            // Off, with your apps still ticked: turning it on pins the apps installed now (MessagesFile.withApp). F130: from
+            // a backup not yours, only those ticked here.
             assertFalse(m.settings.on)
-            assertEquals(setOf(MessageApp.CHEOGRAM, MessageApp.SIGNAL), m.settings.allowlist.apps)
+            assertEquals(if (mine) setOf(MessageApp.CHEOGRAM, MessageApp.SIGNAL) else emptySet(), m.settings.allowlist.apps)
             // As staged for the main app.
             val staged = RestoreMerge.settings(SettingsNow(), mapOf(MessagesFile.FILE to pinned.toJson()), mine, people = { it }).files[MessagesFile.FILE]!!
             assertFalse(staged.contains("AAAA"))
@@ -88,6 +89,10 @@ class RestoreTrustTest {
         // And the categories' rules list every trust rule's field as never restored.
         val trust = RestoreSafety.RULES.flatMap { (cls, r) -> r.filterValues { it == FieldRule.TRUST }.keys.map { cls.simpleName + "." + it } }.toSet()
         assertEquals(setOf("MessagesFile.pins", "MessagesFile.firstUse", "MessageSettings.on", "TermuxSettings.enabled", "TermuxSettings.trustedSigner",
-            "TermuxSettings.trustedVersionCode", "TermuxSettings.trustedUpdatedAt", "TermuxSettings.trustedVersion", "TermuxSettings.testKeyRisk"), trust)
+            "TermuxSettings.trustedVersionCode", "TermuxSettings.trustedUpdatedAt", "TermuxSettings.trustedVersion", "TermuxSettings.testKeyRisk",
+            // The everyday set, deliberately: your music app's package and signer pin (never backed up, never restored).
+            "CarSettings.layout", "EverydaySettings.musicApp", "EverydaySettings.podcastApp", "EverydaySettings.mapsApp",
+            // L12, deliberately: Robot to Robot is turned on here (its keys are made here); calendars are this phone's ids.
+            "LinkSettings.on", "LinkSettings.busyCalendars"), trust)
     }
 }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.ui.testing
 
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -81,8 +82,19 @@ fun ComposeContentTestRule.showSettings(host: SettingsHost, dark: Boolean = fals
 
 /** Scrolls the page's list until the node with [text] (exactly one of its texts, or part of one) is on screen. */
 fun ComposeContentTestRule.scrollToText(text: String, substring: Boolean = false) {
-    onNode(hasScrollToNodeAction()).performScrollToNode(hasText(text, substring = substring))
+    val list = onNode(hasScrollToNodeAction())
+    val target = hasText(text, substring = substring)
+    list.performScrollToNode(target)
     waitForIdle()
+    // A lazy list composes the row after the last one showing before placing it: it's found at (0, 0), so no scroll happens
+    // and a click lands on nothing. Bring it on screen, then look again.
+    if (onAllNodes(target).fetchSemanticsNodes().any { it.boundsInRoot.isEmpty }) {
+        val half = list.fetchSemanticsNode().boundsInRoot.height / 2
+        list.performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.ScrollBy) { it(0f, half) }
+        waitForIdle()
+        list.performScrollToNode(target)
+        waitForIdle()
+    }
 }
 
 /** What the app knows about the phone, everything allowed and set up unless a test says otherwise. */

@@ -289,6 +289,7 @@ enum class HelperLeftOut(override val id: Int, override val title: String) : Log
     DECLINED(3, "you turned the helper down in this conversation"),
     SCREEN(4, "a question about the screen: Robot answers it first"),
     PHOTO(5, "a question about a photo: Robot answers it first"),
+    FILE(6, "a question about a file you attached: Robot answers it first"),
 }
 
 /**
@@ -309,6 +310,7 @@ object AskHelperTool {
         declined -> HelperLeftOut.DECLINED
         attachment == Attachment.SCREEN -> HelperLeftOut.SCREEN
         attachment == Attachment.PHOTO -> HelperLeftOut.PHOTO
+        attachment == Attachment.FILE -> HelperLeftOut.FILE
         else -> null
     }
 
@@ -322,6 +324,7 @@ object AskHelperTool {
         declined -> HelperLeftOut.DECLINED
         attachment == Attachment.SCREEN -> HelperLeftOut.SCREEN
         attachment == Attachment.PHOTO -> HelperLeftOut.PHOTO
+        attachment == Attachment.FILE -> HelperLeftOut.FILE
         else -> null
     }
 
@@ -379,15 +382,41 @@ enum class Personal(val msg: Msg) {
      * or a spoken yes (core helpers HelperTrust). Medical files and IDs never reach one at all (core files FilesForHelper).
      */
     FILES(HelperStrings.personalFiles),
+    /**
+     * 1.4, Robot Lists (lists-plan.md §8.4): a list Robot read out (core lists ListQuote). Like files, it reaches a helper only
+     * through a card a tap answers: never by "Send personal content to helpers automatically", trust or a spoken yes.
+     */
+    LISTS(HelperStrings.personalLists),
+    /**
+     * Skills connections (C4, plan D15): what a connection answered a skill's step (your Home Assistant's states, a webhook's
+     * reply). Text other integrations or servers wrote: content, and personal for helpers.
+     */
+    HOME(app.heyrobot.core.i18n.ConnStrings.personalHome),
+    /**
+     * The everyday set's Ask Robot (everyday-set-plan.md §7.3, E7): what another app handed Robot (its text, a voice
+     * message's words, a photo; ChatTurn.shared). Like Robot Files' answers, it reaches a helper only through a card a tap
+     * answers: never by "Send personal content to helpers automatically", trust or a spoken yes (core helpers HelperTrust).
+     */
+    SHARED(HelperStrings.personalShared),
+    /**
+     * Your own words for an action: a text, an email, a call, a note, an event, a list item, a question for another Robot
+     * ([ACTED_TOOLS]). The card holds no findings, but the line you said does: a name and what you wanted them told. Only
+     * the question goes to a helper by itself from such a conversation, as for anything else personal here.
+     */
+    ACTED(HelperStrings.personalActed),
     ;
 
     /** What [this] is, in English ("your calendar"); [msg] the words without a language yet (1.1). */
     val label: String get() = msg().en()
 
     companion object {
+        /** The actions whose asking carries someone's name or your words. A timer's, a flashlight's or an app's doesn't. */
+        val ACTED_TOOLS = setOf(ToolName.SEND_TEXT, ToolName.DRAFT_EMAIL, ToolName.CALL, ToolName.ADD_NOTE, ToolName.ADD_EVENT, ToolName.ADD_TO_LIST, ToolName.ASK_ROBOT)
+
         fun of(a: Attachment): Personal? = when (a) {
             Attachment.SCREEN -> SCREEN
             Attachment.PHOTO -> PHOTO
+            Attachment.FILE -> FILES
             Attachment.NONE -> null
         }
 
@@ -402,6 +431,8 @@ enum class Personal(val msg: Msg) {
             ToolName.PHONE_STATUS, ToolName.FREE_MEMORY, ToolName.FREE_STORAGE -> PHONE
             ToolName.TERMUX_SCRIPT, ToolName.TERMUX_COMMAND -> TERMUX
             ToolName.FIND_FILES, ToolName.READ_FILE -> FILES
+            ToolName.ADD_TO_LIST -> LISTS
+            ToolName.CONNECTION -> HOME
             else -> READ
         }
 
@@ -458,7 +489,9 @@ object EscalationPolicy {
      * The same for any helper (0.6.0): [target] is the helper Robot would check with ([HelperSettings.target]; null: none),
      * [keySaved] its key. Automatic also needs [priceKnown] (a reply whose cost Robot can't tell is never asked for by
      * itself) and, for current information, a helper that can search the web ([needsSearch] and [HelperConfig.searching]):
-     * otherwise Robot offers. A helper with neither an API Robot can use nor an app to open: nothing.
+     * otherwise Robot offers. A helper with neither an API Robot can use nor an app to open: nothing. [remembered]: you chose
+     * this helper for this kind of question (MemoryChoice), which counts as Automatic for it and for nothing else: Off,
+     * the lock, a screen or photo, the budget and an unknown price all refuse as they do for Automatic.
      */
     fun decide(
         s: RobotSettings,
@@ -472,6 +505,7 @@ object EscalationPolicy {
         declined: Boolean = false,
         priceKnown: Boolean = target?.price?.known ?: false,
         needsSearch: Boolean = false,
+        remembered: Boolean = false,
     ): EscalationDecision {
         if (fromHelper || alreadyEscalated || declined || target == null || !target.on) return EscalationDecision.NONE
         val mode = HelperSettings.escalation(s, target, keySaved)
@@ -480,7 +514,7 @@ object EscalationPolicy {
         if (!api && target.presetOf.app == null) return EscalationDecision.NONE
         // The app needs the phone unlocked, always; the API only when the helper isn't allowed on the lock screen.
         if (locked && (!api || !target.locked)) return EscalationDecision.NEEDS_UNLOCK
-        val auto = api && mode == Escalation.AUTO && !personal && !budgetReached && priceKnown && (!needsSearch || target.searching)
+        val auto = api && (mode == Escalation.AUTO || remembered) && !personal && !budgetReached && priceKnown && (!needsSearch || target.searching)
         return if (auto) EscalationDecision.AUTO else EscalationDecision.OFFER
     }
 

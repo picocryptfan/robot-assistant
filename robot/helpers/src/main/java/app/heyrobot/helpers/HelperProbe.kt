@@ -11,7 +11,10 @@ import app.heyrobot.core.ToolSpecs
 import app.heyrobot.core.helpers.HelperConfig
 import app.heyrobot.core.helpers.wire.Extra
 import app.heyrobot.core.helpers.wire.WireErrors
+import app.heyrobot.core.online.NetCause
+import app.heyrobot.core.online.NetPurpose
 import app.heyrobot.helpers.http.HelperHttp
+import app.heyrobot.helpers.http.NetCount
 import app.heyrobot.helpers.http.textUpTo
 import app.heyrobot.helpers.openai.OpenAiSession
 import okhttp3.Dns
@@ -84,7 +87,8 @@ object HelperProbe {
                 config.home -> HelperHttp.HOME_CONNECT_MS
                 else -> HelperHttp.CLOUD_CONNECT_MS
             }
-            val http = HelperHttp.create(c, key, config.home, dns, connect)
+            // What went online: Test connection's requests are a tap's, not a question's.
+            val http = HelperHttp.create(c, key, config.home, dns, connect, NetCount(NetPurpose.HELPER_TEST, NetCause.TAP))
                 ?: return ProbeResult(failure = HelperHttp.refusal(c, key, config.home) ?: HelperFailure.NOT_LOCAL)
             try {
                 val f = models(http)

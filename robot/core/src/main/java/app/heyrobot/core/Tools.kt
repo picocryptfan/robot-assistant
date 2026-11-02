@@ -89,7 +89,35 @@ enum class ToolName(val id: String, private val titleMsg: Msg, val group: ToolGr
      * Nothing a file says can move, delete or send one: those are your words and taps only (FilesRouter, the Files screens).
      */
     FIND_FILES("find_files", ToolStrings.titleFindFiles, ToolGroup.FILES, reads = true, internal = true),
-    READ_FILE("read_file", ToolStrings.titleReadFile, ToolGroup.FILES, reads = true, internal = true);
+    READ_FILE("read_file", ToolStrings.titleReadFile, ToolGroup.FILES, reads = true, internal = true),
+    /**
+     * 1.4, Robot Lists (lists-plan.md §8.2, D6; job LS4): the one list tool. Robot's own (Settings › Lists governs it, never
+     * Settings › Actions or the lock screen's list); never on a locked phone (ApprovalGate). Code does the rest: the list,
+     * quantities, duplicates, secrets refused, and a card unless every item is your own words in a conversation with no content.
+     */
+    ADD_TO_LIST("add_to_list", app.heyrobot.core.i18n.ListsStrings.titleAddToList, ToolGroup.LISTS, internal = true),
+    /**
+     * Skills connections (skills-connections-plan.md D5, C4): a skill's step that reaches one of your connections (Home
+     * Assistant, ntfy, a webhook, your routing server), and a hand-off to an app you picked (C7). Robot's own, never a level
+     * you set (the skill's level and the step's prepared reasons decide), never described to a model, never read from a
+     * reply's text (ToolCalls.parseText), never on the lock screen (ApprovalGate.connection). Only a skill's run makes one,
+     * with its typed call (ConnCalls), so no model, helper or text call can.
+     */
+    CONNECTION("connection", app.heyrobot.core.i18n.ConnStrings.toolConnection, ToolGroup.CONNECTIONS, internal = true, online = true, forModel = false),
+    HAND_OFF("hand_off", app.heyrobot.core.i18n.ConnStrings.toolHandOff, ToolGroup.CONNECTIONS, internal = true, forModel = false),
+    /**
+     * The everyday set's sums (everyday-set-plan.md §4.4, D8): code works out the model's expression (core sums Calculate) and
+     * replies, and the model's turn ends there, so it never copies a number. It reads and changes nothing: the gate lets it
+     * run locked or unlocked (ApprovalGate), and it never brings content into the conversation.
+     */
+    CALCULATE("calculate", app.heyrobot.core.i18n.EverydayStrings.calculateTitle, ToolGroup.SUMS, internal = true),
+    /**
+     * 1.5, Robot to Robot (robot-to-robot-plan.md §4.3; job L7): ask a paired person's Robot when they're free, or propose or
+     * cancel a plan. Robot's own (internal: Settings › Robot to Robot and each person's levels govern it, never Settings ›
+     * Actions or the lock screen), Ask first, needs the phone unlocked; described only while Robot to Robot is on with someone
+     * paired, for words naming someone's Robot. Its card shows exactly what goes; what comes back is content.
+     */
+    ASK_ROBOT("ask_robot", ToolStrings.titleAskRobot, ToolGroup.LINK, internal = true);
 
     /** Its title in words without a language yet (1.1: Settings shows it with `str()`, a card's line says it in the reply language). */
     val titleText: Phrase get() = titleMsg()
@@ -240,6 +268,25 @@ object ToolSpecs {
             ToolParam("file", "string", "A number find_files gave", true),
             ToolParam("question", "string", "The question", true),
         )),
+        // 1.4, Robot Lists (LS4, §8.2): two parameters, as short as add_note's (every token is paid on every rebuild).
+        ToolSpec(ToolName.ADD_TO_LIST, "Add items to one of the person's lists.", listOf(
+            ToolParam("items", "string", "The items, comma-separated, e.g. oat milk, eggs", true, "Comma-separated"),
+            ToolParam("list", "string", "The list's name, or omit for shopping", false),
+        )),
+        // The everyday set (E2, §4.4): one line and three short parameters; code replies, so the model writes no number itself.
+        // "The whole sum, in one expression": the desk run's model otherwise sent only a first step (1250*0.30 of "30% off, then
+        // 15% tax"), and the turn ends with code's reply to it.
+        ToolSpec(ToolName.CALCULATE, "Work out a whole sum in one expression; Robot says the answer.", listOf(
+            ToolParam("expression", "string", "The whole sum, e.g. 3*45*1.13 or 1250*0.7*1.15", true, "The whole sum, like 3*45*1.13"),
+            ToolParam("from", "string", "Unit to convert from, or omit", false),
+            ToolParam("to", "string", "Unit to convert to, or omit", false),
+        )),
+        // 1.5, Robot to Robot (L7): three parameters (ToolSpec.MAX_PARAMS); the app reads the details by code (core LinkAsk).
+        ToolSpec(ToolName.ASK_ROBOT, "Ask a paired person's Robot when they're free, or propose or cancel a plan with them.", listOf(
+            ToolParam("person", "string", "Whose Robot, e.g. Sam", true, "Whose Robot"),
+            ToolParam("request", "string", "free_busy, plan or cancel_plan", true),
+            ToolParam("details", "string", "When, e.g. Friday evening; for a plan its title and up to 3 times", true, "When, and a plan's title"),
+        )),
     ) + BrowserCalls.SPEC + TermuxCalls.SPECS
 
     fun of(tool: ToolName): ToolSpec = ALL.first { it.tool == tool }
@@ -280,6 +327,10 @@ sealed class Action {
     open val stoppable: Boolean get() = false
     /** It may run on the lock screen ([lockedTools]: Settings › Safety & privacy › "Works on the lock screen"). */
     open fun worksLocked(lockedTools: Set<ToolName>): Boolean = tool in lockedTools
+    /** Skills connections (C4, D14): any card it shows is answered by a tap, for this reason, whatever made it show; null: as its reasons say. */
+    open val tapOnly: AskWhy? get() = null
+    /** Skills connections (C4): its card's line when Stop ended it while it ran (a request that may have gone out says so); null: "Stopped." */
+    open val stoppedText: Phrase? get() = null
 
     /** A card whose words are this package's: [describe] and [confirmLabel] are [summary]'s and [confirmText]'s English. */
     sealed class Worded : Action() {
@@ -582,6 +633,51 @@ sealed class Action {
         override fun toString(): String = "ReadFile(chars=${question.length})" // l10n: not text (log only)
     }
 
+    /**
+     * add_to_list (1.4 Lists, LS4, lists-plan.md §8.2, D6): [items] as the model wrote them ("oat milk, eggs") and the [list]
+     * it named (null: Shopping). The panel reads them by code (core lists ItemText) into [news] and names the list it goes to
+     * ([listName]; [made]: a list this add makes; [content]: the conversation held content, so the items are stored as
+     * content's) before any card. The card's summary names the list only, never an item (History keeps it); its body lists
+     * the items. Its words never reach a log ([toString]).
+     */
+    data class AddToList(val items: String, val list: String? = null, val news: List<app.heyrobot.core.lists.NewItem> = emptyList(),
+        val listName: Phrase? = null, val made: Boolean = false, val content: Boolean = false) : Worded() {
+        override val tool get() = ToolName.ADD_TO_LIST
+        override fun summary(): Phrase = app.heyrobot.core.i18n.ListsStrings.let { l ->
+            val name = listName ?: l.shopping()
+            if (made) l.addToNew("list" to name) else l.addTo("list" to name)
+        }
+        override fun bodyText(): Phrase? = news.takeIf { it.isNotEmpty() }?.let { n ->
+            Phrase.Join(n.map { x -> x.qty?.let { q -> app.heyrobot.core.i18n.ListsStrings.itemQty("thing" to app.heyrobot.core.lists.ItemText.shown(x.text), "qty" to q) }
+                ?: Phrase.plain(app.heyrobot.core.lists.ItemText.shown(x.text)) }, "\n")
+        }
+        override fun body(): String? = bodyText()?.en()
+        override val confirmText get() = app.heyrobot.core.i18n.ListsStrings.addButton()
+        override fun toString(): String = "AddToList(chars=${items.length}, list=${list != null}, items=${news.size})" // l10n: not text (log only)
+    }
+
+    /**
+     * calculate (the everyday set, E2): the model's expression and units ([ask]), worked out by code (core sums Calculate).
+     * Its numbers never reach a log ([toString]).
+     */
+    data class Calculate(val ask: app.heyrobot.core.sums.CalcAsk) : Worded() {
+        override val tool get() = ToolName.CALCULATE
+        override fun summary() = app.heyrobot.core.i18n.EverydayStrings.calculated()
+        override fun toString(): String = "Calculate($ask)" // l10n: not text (log only)
+    }
+
+    /**
+     * ask_robot (1.5, L7): whose Robot ([person], as said), what to ask ([request]: core LinkAskKind's words) and its
+     * [details] (read by code, core LinkAsk). [ready]: what the app resolved before the card (the pairing, your name for them,
+     * exactly what goes). Its words never reach a log ([toString]).
+     */
+    data class AskRobot(val person: String, val request: String, val details: String, val ready: app.heyrobot.core.link.LinkReady? = null) : Worded() {
+        override val tool get() = ToolName.ASK_ROBOT
+        override fun summary() = ready?.summary ?: app.heyrobot.core.i18n.LinkStrings.askRobot("name" to person)
+        override val confirmText: Phrase? get() = UiStrings.send()
+        override fun toString(): String = "AskRobot(ready=${ready?.kind})" // l10n: not text (log only)
+    }
+
     /** [day] in the person's words until the app reads it into a [range]. */
     data class ReadCalendar(val day: String, val range: DayRange? = null) : Worded() {
         override val tool get() = ToolName.READ_CALENDAR
@@ -692,6 +788,8 @@ object Durations {
 object ToolCalls {
     private const val MAX_TEXT = 200
     private const val MAX_NAME = 120
+    /** ask_robot's details: a window or a plan's title and times. */
+    private const val MAX_DETAILS = 300
     private const val MAX_TITLE = 80
     /** A text message: long enough for anything said aloud; the card shows all of it before anything opens. */
     const val MAX_MESSAGE = 2_000
@@ -820,6 +918,8 @@ object ToolCalls {
             ToolName.FREE_STORAGE -> ParsedCall.Ok(Action.FreeStorage(StorageWay.of(textArg(a, MAX_NAME, "what", "way", "kind", "target", "how"))))
             // 0.9: a command's spaces and quotes are kept as written (TermuxActions.kt).
             ToolName.TERMUX_SCRIPT, ToolName.TERMUX_COMMAND -> TermuxCalls.parse(tool, a)
+            // Skills connections (C4): only a skill's run makes these, with its typed call (ConnActions.kt).
+            ToolName.CONNECTION, ToolName.HAND_OFF -> ConnCalls.parse(tool, a)
             ToolName.BROWSER_SEARCH -> BrowserCalls.parse(a) { m, max, names -> textArg(m, max, *names) }
             // 1.4, Robot Files (F9): the words as written; FileSearch reads them, and the app resolves a file only in its index.
             ToolName.FIND_FILES -> {
@@ -830,6 +930,26 @@ object ToolCalls {
                 val file = textArg(a, MAX_NAME, "file", "number", "which", "id", "name") ?: return required("file")
                 val question = textArg(a, app.heyrobot.core.files.FilePrompt.QUESTION_CHARS, "question", "q", "ask", "query", "text") ?: return required("question")
                 ParsedCall.Ok(Action.ReadFile(file, question))
+            }
+            // 1.4, Robot Lists (LS4): the items as written (a list of strings joined, as a small model may write one), and the
+            // list's name when given; the panel reads them by code (ItemText), never as they are.
+            ToolName.ADD_TO_LIST -> {
+                val items = (a["items"] as? List<*>)?.mapNotNull { text(it, MAX_TEXT) }?.joinToString(", ")?.takeIf { it.isNotEmpty() }?.let { safeTake(it, MAX_MESSAGE) }
+                    ?: textArg(a, MAX_MESSAGE, "items", "item", "things", "what", "text") ?: return required("items")
+                ParsedCall.Ok(Action.AddToList(items, textArg(a, MAX_NAME, "list", "list_name", "name")))
+            }
+            // The everyday set (E2): the expression as written, at most a sentence; code reads it (core sums Calculate) and a
+            // sum it can't read gets code's own line, never the model's guess.
+            ToolName.CALCULATE -> {
+                val e = textArg(a, app.heyrobot.core.sums.Calculate.MAX_CHARS, "expression", "expr", "sum", "calculation", "formula", "query", "q")
+                    ?: return required("expression")
+                ParsedCall.Ok(Action.Calculate(app.heyrobot.core.sums.CalcAsk(e, textArg(a, 40, "from", "from_unit", "unit"), textArg(a, 40, "to", "to_unit"))))
+            }
+            // 1.5, Robot to Robot (L7): the words as written; the app resolves the person among those paired and reads the details.
+            ToolName.ASK_ROBOT -> {
+                val person = textArg(a, MAX_NAME, "person", "who", "name", "to", "robot", "contact") ?: return required("person")
+                val request = textArg(a, MAX_NAME, "request", "kind", "type", "what", "action") ?: return required("request")
+                ParsedCall.Ok(Action.AskRobot(person, request, longArg(a, MAX_DETAILS, "details", "detail", "when", "time", "times", "plan", "text").orEmpty()))
             }
             // No day said: today (the person asked "what's on my calendar").
             ToolName.READ_CALENDAR -> {
@@ -953,7 +1073,9 @@ object ToolCalls {
     fun parseText(text: String): List<TextCall> {
         val out = mutableListOf<TextCall>()
         // 1.1, Skills phase B: a skill's tool too (core skills SkillSpecs); TurnRunner refuses one that wasn't described.
-        val names = ToolName.entries.joinToString("|") { it.id } + "|" + SKILL_NAME
+        // Skills connections (C4): never a connection's or a hand-off's: only a skill's run makes those, and "connection (…)" is
+        // everyday English that would keep a sentence from being said.
+        val names = ToolName.entries.filter { it.group != ToolGroup.CONNECTIONS }.joinToString("|") { it.id } + "|" + SKILL_NAME
         // The body runs to the first '}' outside <escape>...<escape>, so a message may contain a brace.
         Regex("""(?:<start_function_call>\s*)?call:($names)\s*\{((?:<escape>.*?<escape>|[^}])*)\}(?:\s*<end_function_call>)?""", RegexOption.DOT_MATCHES_ALL).findAll(text).forEach { m ->
             out += TextCall(RawToolCall(m.groupValues[1], gemmaArgs(m.groupValues[2])), m.range)
@@ -964,7 +1086,8 @@ object ToolCalls {
             }
         }
         if (out.isEmpty()) {
-            Regex("""\b($names)\s*\(([^()]*)\)""").findAll(text).forEach { m ->
+            // A quoted value may hold parentheses (calculate's "(3*45)*1.13").
+            Regex("""\b($names)\s*\(((?:"(?:[^"\\]|\\.)*"|'[^']*'|[^()"'])*)\)""").findAll(text).forEach { m ->
                 out += TextCall(RawToolCall(m.groupValues[1], pythonArgs(m.groupValues[2])), m.range)
             }
         }
@@ -989,11 +1112,14 @@ object ToolCalls {
         return s.replace(Regex("```[a-zA-Z_]*\\s*```"), "").replace("<start_function_call>", "").replace("<end_function_call>", "").trim()
     }
 
+    /** ASCII keys, not \\w: on the phone (ICU) \\w is Unicode, and a French word before a colon would cut a bare value at its comma. */
+    internal const val GEMMA_ARGS = """([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(<escape>(.*?)<escape>|"((?:[^"\\]|\\.)*)"|'([^']*)'|(?:(?!,\s*[A-Za-z_][A-Za-z0-9_]*\s*:).)*)""" // l10n: not text (a pattern)
+
     private fun gemmaArgs(body: String): Map<String, Any?> {
         val m = linkedMapOf<String, Any?>()
         // key:value pairs; values may be wrapped in <escape>...<escape> or quotes and may contain commas then. A bare
         // value runs to the next ", key:" (not the first comma), so "message:I'm late, sorry" keeps all of it.
-        val re = Regex("""(\w+)\s*:\s*(<escape>(.*?)<escape>|"((?:[^"\\]|\\.)*)"|'([^']*)'|(?:(?!,\s*\w+\s*:).)*)""", RegexOption.DOT_MATCHES_ALL)
+        val re = Regex(GEMMA_ARGS, RegexOption.DOT_MATCHES_ALL)
         re.findAll(body).forEach { r ->
             val whole = r.groupValues[2]
             m[r.groupValues[1]] = when {

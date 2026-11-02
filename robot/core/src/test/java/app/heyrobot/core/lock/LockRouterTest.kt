@@ -65,6 +65,10 @@ class LockRouterTest {
         assertNull(route("end the lock", lockOn = false))
         assertNull(route("unlock the phone", lockOn = false))
         assertNull(route("how long is left", phoneLock = false, lockOn = false))
+        // The spoken run: with Phone lock off, a question naming the phone is still this router's (it says none is on).
+        assertTrue(route("À quelle heure mon téléphone débarre ?", phoneLock = false, lockOn = false) is LockCommand.Ask)
+        assertTrue(route("À quelle heure mon téléphone débarre?") is LockCommand.Ask)
+        assertTrue(route("when does my phone unlock", phoneLock = false, lockOn = false) is LockCommand.Ask)
         // "How long is left" alone may be a timer's: Phone lock's only while a lock is on; "when does my phone open" always.
         assertNull(route("how long is left", lockOn = false))
         assertNull(route("combien de temps il reste", lockOn = false))

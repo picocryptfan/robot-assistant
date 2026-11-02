@@ -13,6 +13,7 @@ import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.StoredConversation
 import app.heyrobot.core.VoiceFiles
 import app.heyrobot.core.readOrNull
+import app.heyrobot.core.SaveWatch
 import app.heyrobot.core.writeAtomic
 import java.io.File
 import java.util.concurrent.ExecutorService
@@ -67,9 +68,15 @@ object SettingsStore {
     fun afterSaves(block: () -> Unit) = writer.execute(block)
 
     private fun write(ctx: Context, s: RobotSettings) {
-        try { writeAtomic(file(ctx), s.toJson().toString(1)) } catch (t: Throwable) { RLog.w("settings_save", t) }
+        val ok = try { writeAtomic(file(ctx), s.toJson().toString(1)); true } catch (t: Throwable) { RLog.w("settings_save", t); false }
+        if (saves.tell(ok)) saveFailed.trySend(Unit)
         Cmd.send(ctx, Cmd.SETTINGS)
     }
+
+    private val saves = SaveWatch()
+
+    /** A save failed (storage full, most likely): MainActivity says so, once; the old settings stay on disk. Held until it is read. */
+    val saveFailed = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.CONFLATED)
 }
 
 /**
@@ -101,11 +108,11 @@ object ConversationStore {
 
     /**
      * [VOICE] The panel saves after each reply: pictures and screen text only as "Keep screenshots and photos in history"
-     * kept them (ChatTurn.picture and screenText).
+     * kept them (ChatTurn.picture and screenText). False: not saved (storage full, most likely), and the panel says so.
      */
-    fun save(ctx: Context, c: StoredConversation) {
-        val f = file(ctx, c.id) ?: return
-        try { writeAtomic(f, ConversationCodec.toJson(c)) } catch (t: Throwable) { RLog.w("history_save", t) }
+    fun save(ctx: Context, c: StoredConversation): Boolean {
+        val f = file(ctx, c.id) ?: return false
+        return try { writeAtomic(f, ConversationCodec.toJson(c)); true } catch (t: Throwable) { RLog.w("history_save", t); false }
     }
 
     fun delete(ctx: Context, id: String) { file(ctx, id)?.delete() }
@@ -182,9 +189,26 @@ object Cmd {
      * it holds in RAM and reads the settings again (sys/FilesVault.kt).
      */
     const val FILES = "files"
+    /**
+     * 1.4 Lists: Settings › Lists changed the lists or lists_settings.json (Delete all lists, Start over, a switch): :voice
+     * drops the lists it holds in RAM and reads the settings again (sys/ListsVault.kt).
+     */
+    const val LISTS = "lists"
     /** 1.4 F6: a filing notification's Undo, and its "File them" (extra [EXTRA_KEY]: the notification's token, never a file's id). */
     const val FILES_UNDO = "files_undo"
     const val FILES_FILE = "files_file"
+    /**
+     * The everyday set (docs/plans/everyday-set-plan.md §2.4): everyday_settings.json changed in the main app (Settings, a
+     * restore's finish): :voice reads it again (sys EverydaySettingsStore).
+     */
+    const val EVERYDAY = "everyday"
+    /**
+     * 1.5 L6: :link's desk changed (a card waits, Robot handled something, a pairing changed): :voice asks LinkService for
+     * the notices (DESK_NOTICES). Sent by :link with no extra: nothing of a request or a pairing travels in it.
+     */
+    const val LINK_DESK = "link_desk"
+    /** 1.5 L6: a Robot to Robot card notification's Yes or Decline (extra [EXTRA_KEY]: the notification's token, never a card's id). */
+    const val LINK_ANSWER = "link_answer"
     /** "Barge-in test" (extra [EXTRA_RUN], a core BargeRun's name): results come back in Paths.bargeTest. */
     const val BARGE_TEST = "barge_test"
     const val EXTRA_RUN = "run"
@@ -214,6 +238,11 @@ object Cmd {
      * ADB fix's id (Settings › Advanced › ADB fixes): that fix's fixed command through Shizuku's rish.
      */
     const val TERMUX = "termux"
+    /**
+     * 1.1.2, FA8g: from :lock, a phone lock started. A conversation session that runs stops at once, keeping what it has
+     * (phone-lock-design §5.2); its own tick checks each second too, should this be missed.
+     */
+    const val PHONE_LOCK = "phone_lock"
 
     fun send(ctx: Context, op: String, extras: Bundle = Bundle()) {
         try {

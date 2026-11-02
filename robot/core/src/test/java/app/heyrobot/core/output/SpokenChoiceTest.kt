@@ -153,8 +153,10 @@ class SpokenChoiceTest {
         assertEquals(CardVoice.Defer(look, CardVoiceCode.WHO_UNSURE), SpokenCards.plan(text.copy(tool = null), car, en))
         assertEquals(CardVoice.Defer(look, CardVoiceCode.WHO_UNSURE), SpokenCards.plan(text.copy(tool = null), headset, en))
         // Cards that must be seen stay tap-only: a learned name, the first time online, deleting, personal content to a helper.
+        // (C4: a connection's first-use card and a step a tap answers, too.)
         for (c in listOf(timer.copy(waiting = CardAnswer.Waiting(tapFor = AskWhy.LEARNED)), timer.copy(waiting = CardAnswer.Waiting(tapFor = AskWhy.ONLINE)),
-                timer.copy(deletes = true), timer.copy(waiting = CardAnswer.Waiting(personal = true)))) {
+                timer.copy(deletes = true), timer.copy(waiting = CardAnswer.Waiting(personal = true)), timer.copy(waiting = CardAnswer.Waiting(tapFor = AskWhy.CONNECTION_FIRST)),
+                timer.copy(waiting = CardAnswer.Waiting(tapFor = AskWhy.CONNECTION_TAP)))) {
             assertEquals(CardVoiceCode.MUST_SEE, (SpokenCards.plan(c, headset, en) as CardVoice.Defer).why)
             assertEquals(SpokenCards.plan(c, headset, en), SpokenCards.plan(c, car, en))
         }

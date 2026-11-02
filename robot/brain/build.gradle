@@ -20,6 +20,8 @@ dependencies {
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0'
 }
 
+apply from: rootProject.file('gradle/robolectric-tests.gradle')
+
 // The licence and notice files LiteRT-LM and the NPU runtime ship inside their AARs (their LICENSE and the 2.2 MB
 // THIRD_PARTY_NOTICE.txt; Apache-2.0 section 4) never reach the APK by themselves. This copies them, from the very AARs
 // this module links, into its assets under licenses/notices/ ("<artifact>-LICENSE.txt", "<artifact>-THIRD_PARTY_NOTICE.txt"),

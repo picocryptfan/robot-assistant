@@ -20,7 +20,7 @@ import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.StateRestorationTester
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -45,6 +45,7 @@ import app.heyrobot.ui.testing.ActionLog
 import app.heyrobot.ui.testing.PHONE
 import app.heyrobot.ui.testing.inDialog
 import app.heyrobot.ui.testing.onRow
+import app.heyrobot.ui.testing.setShotContent
 import app.heyrobot.ui.testing.shot
 import app.heyrobot.ui.testing.show
 import app.heyrobot.ui.testing.touchTargetProblems
@@ -201,7 +202,7 @@ class FeedbackScreenTest {
     @Test @Config(qualifiers = "w320dp-h640dp-mdpi")
     fun theNumberToTextIsInTheMenu() {
         var u by mutableStateOf(ui)
-        rule.setContent { RobotTheme(dark = false, look = LookSettings(wallpaperColors = false)) {
+        rule.setShotContent { RobotTheme(dark = false, look = LookSettings(wallpaperColors = false)) {
             FeedbackScreen(about, u, FeedbackActions(saveNumber = { n -> taps += "number $n"; u = u.copy(sendTo = n) }), onBack = {})
         } }
         rule.onNodeWithContentDescription("More options").performClick()

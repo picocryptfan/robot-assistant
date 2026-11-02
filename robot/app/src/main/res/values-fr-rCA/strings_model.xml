@@ -104,6 +104,7 @@
     <string name="model_on_this_phone">Sur ce téléphone, sur le %1$s. %2$s</string>
     <string name="model_on_the_measured">Sur le %1$s. %2$s</string>
     <string name="model_memory_title">La mémoire de ce téléphone</string>
+    <string name="model_move_title">En attente de place</string>
     <string name="model_group_details">Détails</string>
     <string name="model_download_size_title">Taille du téléchargement</string>
     <string name="model_size_gpu_cache">%1$s, plus un cache que son premier chargement écrit&#160;: environ %2$s sur le GPU, jusqu’à %3$s sur le CPU</string>

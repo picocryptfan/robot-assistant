@@ -23,8 +23,8 @@ android {
         // From 1.0 (a new app ID, so no earlier codes to follow): major*1000000 + minor*10000 + patch*100, plus the release
         // candidate's number (rc1 = 1) or 99 for the release itself. 1.0.0-rc1 = 1000001, 1.0.0 = 1000099, 1.0.1 = 1000199.
         // tools/bump_version.sh sets both, and makes the fastlane changelog; nothing else repeats them.
-        versionCode 1010199
-        versionName '1.1.1'
+        versionCode 1020099
+        versionName '1.2.0'
         ndk { abiFilters 'arm64-v8a' }
     }
     signingConfigs {
@@ -55,6 +55,14 @@ android {
         // 1.1 (l10n design §8.4): the en-XA and ar-XB pseudo-locales, in debug builds only, to find text the resources don't
         // hold and to try right to left (Developer options › Locales on the phone).
         debug { pseudoLocalesEnabled = true }
+        // The spoken tests' own build: installs beside your Robot, signed with the debug key, and its code
+        // (src/spoken) feeds clips to the listener. It never ships: tools/verify_apk.sh and SpokenBuildTest check a release has none of it.
+        spoken {
+            initWith debug
+            applicationIdSuffix '.spoken'
+            matchingFallbacks = ['debug']
+            pseudoLocalesEnabled = false
+        }
     }
     // No dependency-info block in the APK's signing block (id 0x504b4453, encrypted with Google's key, readable by Google
     // Play alone) and none in a bundle: IzzyOnDroid and F-Droid ask for it removed (tools/verify_apk.sh checks it).
@@ -63,6 +71,11 @@ android {
         includeInBundle = false
     }
     buildFeatures { compose = true; buildConfig = true }
+    // src/spoken/logic: the test build's code with no resources of its own, so the debug unit tests can run it (src/testDebug/.../spoken).
+    sourceSets {
+        spoken { java.srcDirs += 'src/spoken/logic' }
+        testDebug { java.srcDirs += 'src/spoken/logic' }
+    }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
     // 1.1: Android's per-app language. AGP writes the locale config from the resources' languages (en-US,
     // res/resources.properties, and values-fr-rCA) and the manifest's android:localeConfig; no hand-written locales file.
@@ -82,6 +95,10 @@ android {
             useLegacyPackaging = true
             excludes.add('**/libLiteRtCompilerPlugin_google_tensor.so')
             pickFirsts.add('**/libLiteRtDispatch_GoogleTensor.so')
+            // 1.5: libsignal_jni.so arrives stripped and pinned (:link's libsignalJni); AGP never strips it again.
+            keepDebugSymbols.add('**/libsignal_jni.so')
+            // 1.5 L3: libtor.so, Tor's executable, arrives stripped and pinned (:link's torBinary); AGP never touches it.
+            keepDebugSymbols.add('**/libtor.so')
         }
         // META-INF/AL2.0 and LGPL2.1 used to be excluded here, copied from an early template: older kotlinx-coroutines
         // jars each carried a copy, and duplicates fail the packaging. No jar Robot uses today has them (coroutines 1.11.0
@@ -89,6 +106,10 @@ android {
         // Licences has the full texts and notices anyway (assets/licenses/, and :brain's AAR notices).
         resources {
             excludes += ['META-INF/*.kotlin_module']
+            // 1.5, Robot to Robot (robot-to-robot-r0.md §2.6): libsignal-client's jar carries libsignal's desktop libraries
+            // (648 MB: Linux, macOS and Windows, each also as a testing build) at its root, as Java resources. None ships:
+            // the APK's one libsignal library is lib/arm64-v8a/libsignal_jni.so, stripped (verify_apk.sh checks both).
+            excludes += ['libsignal_jni*.so', 'libsignal_jni*.dylib', 'signal_jni*.dll', '**/*.dylib', '**/*.dll']
             pickFirsts += ['META-INF/AL2.0', 'META-INF/LGPL2.1']
         }
     }
@@ -133,15 +154,21 @@ def releaseRuntimeArtifacts = tasks.register('releaseRuntimeArtifacts') {
 }
 
 // The isolation test also reads the merged manifest of the variant under test; LicencesTest the libraries above and the
-// licence files :brain copies out of its AARs.
-tasks.matching { it.name == 'testDebugUnitTest' }.configureEach { dependsOn 'processDebugMainManifest', releaseRuntimeArtifacts, ':brain:aarNotices' }
-tasks.matching { it.name == 'testReleaseUnitTest' }.configureEach { dependsOn 'processReleaseMainManifest', releaseRuntimeArtifacts, ':brain:aarNotices' }
+// licence files :brain copies out of its AARs (1.5: and the acknowledgments :link takes out of libsignal's).
+// SpokenBuildTest reads the test build's merged manifest too, and the debug tests compile the test build, so it can't rot unseen.
+tasks.matching { it.name == 'testDebugUnitTest' }.configureEach { dependsOn 'processDebugMainManifest', 'processSpokenMainManifest', 'compileSpokenKotlin', releaseRuntimeArtifacts, ':brain:aarNotices', ':link:libsignalJni' }
+tasks.matching { it.name == 'testReleaseUnitTest' }.configureEach { dependsOn 'processReleaseMainManifest', 'processSpokenMainManifest', releaseRuntimeArtifacts, ':brain:aarNotices', ':link:libsignalJni' }
 
 // 1.1: Material 3 stays at 1.3.2 while the Compose BOM moves on, in every configuration (the app, its tests). 1.4 restyles
 // every outlined button (grey label and lighter outline instead of Robot's blue) and resizes text fields and top bars at
 // large text: a change of look to decide on its own, not part of a dependency update.
 configurations.configureEach {
     resolutionStrategy.force 'androidx.compose.material3:material3:1.3.2', 'androidx.compose.material3:material3-android:1.3.2'
+}
+// 1.5: the app's unit tests never load libsignal (its tests are :link's, on the desktop library link/build.gradle sets up).
+// Kept off their classpath, a stray use fails at once instead of unpacking the jar's 248 MB testing library into /tmp.
+configurations.configureEach { c ->
+    if (c.name.endsWith('UnitTestRuntimeClasspath')) c.exclude(group: 'org.signal', module: 'libsignal-client')
 }
 
 dependencies {
@@ -152,6 +179,8 @@ dependencies {
     implementation project(':mt')
     // Ask Claude: the Anthropic SDK, used only by the assistant package (the :voice process).
     implementation project(':helpers')
+    // 1.5, Robot to Robot: libsignal and (from L3) the carriers, used only by the link package (the :link process).
+    implementation project(':link')
 
     implementation platform('androidx.compose:compose-bom:2026.06.01')
     implementation 'androidx.compose.ui:ui'

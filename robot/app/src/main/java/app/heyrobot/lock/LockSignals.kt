@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.SystemClock
 import app.heyrobot.core.RLog
 
 // All processes. How the main process (Settings › Phone lock) and :voice reach :lock: explicit intents to its receiver and
@@ -16,6 +17,7 @@ object LockSignals {
     /** :lock's manifest receiver: the exact alarm, boot, time and zone changes, an update, and these actions. */
     const val RECEIVER = "app.heyrobot.lock.LockAlarmReceiver"
     const val COVER = "app.heyrobot.lock.LockCoverActivity"
+    const val LIST_WIDGET = "app.heyrobot.ui.lists.ListsWidgetProvider"
     const val CODE = "app.heyrobot.lock.LockCodeActivity"
 
     /** The emergency dialer's action, exported by the phone app with no permission. */
@@ -26,9 +28,23 @@ object LockSignals {
     const val ACTION_LOCKS = "app.heyrobot.lock.LOCKS"
     /** You left Settings › Phone lock: the edit session ends. */
     const val ACTION_EDIT_END = "app.heyrobot.lock.EDIT_END"
+    /**
+     * Robot's own app ([MAIN]) is in front during a lock, since [EXTRA_AT]: it came to the front, or the edit session's 5
+     * minutes ran out with it in front. Android doesn't always send a window event for it (back from the code pad, on a
+     * Pixel 8), so :lock's gate looks at it from this too.
+     */
+    const val ACTION_FRONT = "app.heyrobot.lock.FRONT"
+    /** With [ACTION_FRONT], and with [ACTION_EDIT_END] when Robot's app was in front as the session ended: since when (SystemClock.uptimeMillis). */
+    const val EXTRA_AT = "at"
+    /** LS13: with [ACTION_FRONT], the covered window in front (its class); none: Robot's app ([MAIN]). */
+    const val EXTRA_WINDOW = "window"
+    /** Robot's own app: Home and Settings (an event names an activity-alias's window by this class too). */
+    const val MAIN = "app.heyrobot.ui.MainActivity"
     /** Phase B (LockRouter's card): a lock by voice until [EXTRA_END] (wall-clock ms). */
     const val ACTION_START_VOICE = "app.heyrobot.lock.START_VOICE"
     const val EXTRA_END = "end"
+    /** review-lock 9: Robot opened the emergency dialer during a lock: :lock keeps that in state.json. */
+    const val ACTION_EMERGENCY_OPENED = "app.heyrobot.lock.EMERGENCY_OPENED"
     /** Phase B (§9.3): Robot's car mode started ([EXTRA_ON]) or ended, and whether your remembered car started it ([EXTRA_BY_CAR]). */
     const val ACTION_CAR = "app.heyrobot.lock.CAR"
     const val EXTRA_ON = "on"
@@ -55,9 +71,12 @@ object LockSignals {
      */
     const val PURPOSE_RESTORE = "restore"
 
-    private fun send(ctx: Context, action: String) {
+    private fun send(ctx: Context, action: String, at: Long? = null, window: String? = null) {
         try {
-            ctx.sendBroadcast(Intent(action).setClassName(ctx.packageName, RECEIVER))
+            ctx.sendBroadcast(Intent(action).setClassName(ctx.packageName, RECEIVER).apply {
+                at?.let { putExtra(EXTRA_AT, it) }
+                window?.let { putExtra(EXTRA_WINDOW, it) }
+            })
         } catch (t: Throwable) {
             RLog.w("lock_signal", t)
         }
@@ -74,6 +93,9 @@ object LockSignals {
         }
     }
 
+    /** [VOICE] An emergency number asked of Robot during a lock opened the emergency dialer. */
+    fun emergencyOpened(ctx: Context) = send(ctx, ACTION_EMERGENCY_OPENED)
+
     /** [VOICE] LockRouter's card, after you tapped Lock: a lock by voice until [end] (wall-clock ms). */
     fun startVoice(ctx: Context, end: Long) {
         try {
@@ -82,7 +104,14 @@ object LockSignals {
             RLog.w("lock_signal", t)
         }
     }
-    fun editEnded(ctx: Context) = send(ctx, ACTION_EDIT_END)
+    /** You left Settings › Phone lock. [inFront]: Robot's app is still in front, so the gate looks at it as the session ends. */
+    fun editEnded(ctx: Context, inFront: Boolean = false) = send(ctx, ACTION_EDIT_END, if (inFront) SystemClock.uptimeMillis() else null)
+
+    /**
+     * [MAIN, VOICE] Robot's app, or the covered [window] (LS13, LockFrontWatch), is in front since [at]
+     * (SystemClock.uptimeMillis), during a lock.
+     */
+    fun front(ctx: Context, at: Long, window: String? = null) = send(ctx, ACTION_FRONT, at, window)
 
     /** The code pad for [purpose] ([lock]: the lock a skip is for). */
     fun code(ctx: Context, purpose: String, lock: String? = null): Intent =

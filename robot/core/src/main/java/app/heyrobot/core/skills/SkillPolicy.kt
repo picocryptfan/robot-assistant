@@ -10,8 +10,9 @@ import app.heyrobot.core.i18n.UiStrings
 
 // Pure. Whether a skill may run, and with what card (plan §7.3, D6). The skill's card only ever adds to the steps' own:
 // each step still goes through the approval gate with its own card (SkillRun), so no level here is weaker than a step.
-// Off never runs; nothing runs on a locked phone (a phone lock says it closes it); Ask first shows the skill's card, which
-// only a tap answers when the skill came from content or a message is in the conversation; Just do it shows none.
+// Off never runs; nothing runs on a locked phone (a phone lock says it closes it); a skill needing attention (a step's
+// connection, app or script is gone, connections plan §5.2) doesn't run; Ask first shows the skill's card, which only a
+// tap answers when the skill came from content or a message is in the conversation; Just do it shows none.
 
 sealed class SkillGo {
     /** Not run: what Robot says. */
@@ -29,12 +30,17 @@ object SkillPolicy {
      * [locked]: Assistant.locked (a phone lock counts); [phoneLock]: a phone lock is on. [messages]: a message someone
      * sent is in the conversation (MessageTaint.active).
      */
-    fun decide(s: Skill, locked: Boolean, phoneLock: Boolean, messages: Boolean): SkillGo = when {
+    fun decide(s: Skill, locked: Boolean, phoneLock: Boolean, messages: Boolean, links: SkillLinks = SkillLinks.NONE): SkillGo = when {
         s.level == SkillLevel.OFF -> SkillGo.Refused(SkillStrings.isOff("name" to s.name, "page" to UiStrings.inSettings(UiStrings.skills)))
         locked -> SkillGo.Refused(if (phoneLock) LockStrings.closedNow() else TurnStrings.unlockThenAsk())
+        // Connections plan §5.2: a step whose connection, app or script is gone (or not built yet, C1) keeps the whole skill from running.
+        SkillCheck.attention(s, links).isNotEmpty() -> SkillGo.Refused(needsAttention(s))
         s.level == SkillLevel.ASK_FIRST || s.provenance.fromContent -> SkillGo.Card(tapOnly = s.provenance.fromContent || messages)
         else -> SkillGo.Run
     }
+
+    /** "“Good night” needs attention. Check its steps in Settings › Skills." */
+    fun needsAttention(s: Skill): Phrase = SkillStrings.needsAttention("name" to s.name, "page" to UiStrings.inSettings(UiStrings.skills))
 
     /**
      * What a step's gate is told (D5): the conversation's content ([untrusted]), and that you asked for the step only when

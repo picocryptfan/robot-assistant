@@ -1,0 +1,200 @@
+{"lang": "en", "run": "eggs oat milk bread", "raw": "[\"eggs\", \"oat milk\", \"bread\"]", "ms": 3120, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "apples bananas peanut butter", "raw": "[\"apples\", \"bananas\", \"peanut butter\"]", "ms": 4612, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "coffee filters sugar cream", "raw": "[\"coffee filters\", \"sugar\", \"cream\"]", "ms": 4722, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "toilet paper dish soap paper towels", "raw": "[\"toilet paper\", \"dish soap\", \"paper towels\"]", "ms": 4783, "prompt_tokens": 122, "limit": false}
+{"lang": "en", "run": "chicken thighs rice broccoli", "raw": "[\"chicken thighs\", \"rice\", \"broccoli\"]", "ms": 5187, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "milk bread butter", "raw": "[\"milk\", \"bread\", \"butter\"]", "ms": 7012, "prompt_tokens": 119, "limit": false}
+{"lang": "en", "run": "tomatoes onions garlic", "raw": "[\"tomatoes\", \"onions\", \"garlic\"]", "ms": 6480, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "orange juice cereal yogurt", "raw": "[\"orange juice\", \"cereal\", \"yogurt\"]", "ms": 6033, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "ground beef taco shells cheddar cheese", "raw": "[\"ground beef\", \"taco shells\", \"cheddar cheese\"]", "ms": 6341, "prompt_tokens": 122, "limit": false}
+{"lang": "en", "run": "lettuce cucumbers cherry tomatoes", "raw": "[\"lettuce\", \"cucumbers\", \"cherry tomatoes\"]", "ms": 6653, "prompt_tokens": 122, "limit": false}
+{"lang": "en", "run": "dog food cat litter", "raw": "[\"dog food\", \"cat litter\"]", "ms": 5746, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "shampoo conditioner toothpaste", "raw": "[\"shampoo\", \"conditioner\", \"toothpaste\"]", "ms": 5736, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "batteries light bulbs tape", "raw": "[\"batteries\", \"light bulbs\", \"tape\"]", "ms": 6336, "prompt_tokens": 121, "limit": false}
+{"lang": "en", "run": "pasta tomato sauce parmesan", "raw": "[\"pasta\", \"tomato sauce\", \"parmesan\"]", "ms": 8052, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "maple syrup pancake mix blueberries", "raw": "[\"maple syrup\", \"pancake mix\", \"blueberries\"]", "ms": 7173, "prompt_tokens": 122, "limit": false}
+{"lang": "en", "run": "salmon lemons dill", "raw": "[\"salmon\", \"lemons\", \"dill\"]", "ms": 6526, "prompt_tokens": 119, "limit": false}
+{"lang": "en", "run": "almond milk granola strawberries", "raw": "[\"almond milk\", \"granola\", \"strawberries\"]", "ms": 6413, "prompt_tokens": 121, "limit": false}
+{"lang": "en", "run": "hot dogs buns mustard ketchup", "raw": "[\"hot dogs buns\", \"mustard\", \"ketchup\"]", "ms": 6652, "prompt_tokens": 121, "limit": false}
+{"lang": "en", "run": "sunscreen bug spray water bottles", "raw": "[\"sunscreen\", \"bug spray\", \"water bottles\"]", "ms": 6230, "prompt_tokens": 122, "limit": false}
+{"lang": "en", "run": "flour baking soda vanilla extract", "raw": "[\"flour\", \"baking soda\", \"vanilla extract\"]", "ms": 11538, "prompt_tokens": 122, "limit": false}
+{"lang": "en", "run": "eggs bacon hash browns", "raw": "[\"eggs\", \"bacon\", \"hash browns\"]", "ms": 9130, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "green peppers mushrooms mozzarella", "raw": "[\"green peppers\", \"mushrooms\", \"mozzarella\"]", "ms": 9111, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "diapers wipes baby formula", "raw": "[\"diapers\", \"wipes\", \"baby formula\"]", "ms": 7496, "prompt_tokens": 121, "limit": false}
+{"lang": "en", "run": "tea honey lemons", "raw": "[\"tea\", \"honey\", \"lemons\"]", "ms": 10117, "prompt_tokens": 119, "limit": false}
+{"lang": "en", "run": "avocados limes cilantro tortilla chips", "raw": "[\"avocados\", \"limes\", \"cilantro\", \"tortilla chips\"]", "ms": 7181, "prompt_tokens": 123, "limit": false}
+{"lang": "en", "run": "frozen peas ice cream", "raw": "[\"frozen peas\", \"ice cream\"]", "ms": 5548, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "paper plates napkins plastic forks", "raw": "[\"paper plates\", \"napkins\", \"plastic forks\"]", "ms": 6371, "prompt_tokens": 121, "limit": false}
+{"lang": "en", "run": "garbage bags dish soap sponges", "raw": "[\"garbage bags\", \"dish soap\", \"sponges\"]", "ms": 6647, "prompt_tokens": 121, "limit": false}
+{"lang": "en", "run": "carrots celery potatoes", "raw": "[\"carrots\", \"celery\", \"potatoes\"]", "ms": 3226, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "brown sugar oats raisins", "raw": "[\"brown sugar\", \"oats\", \"raisins\"]", "ms": 3731, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "2 litres of milk eggs bread", "raw": "[\n\"2 litres of milk\",\n\"eggs\",\n\"bread\"\n]", "ms": 5363, "prompt_tokens": 122, "limit": false}
+{"lang": "en", "run": "a dozen eggs butter jam", "raw": "[\"a dozen eggs\", \"butter\", \"jam\"]", "ms": 5772, "prompt_tokens": 121, "limit": false}
+{"lang": "en", "run": "three avocados two lemons cilantro", "raw": "[\"three avocados\", \"two lemons\", \"cilantro\"]", "ms": 4892, "prompt_tokens": 121, "limit": false}
+{"lang": "en", "run": "sour cream salsa ground turkey", "raw": "[\"sour cream\", \"salsa\", \"ground turkey\"]", "ms": 4810, "prompt_tokens": 121, "limit": false}
+{"lang": "en", "run": "kleenex cough drops ginger ale", "raw": "[\"kleenex\", \"cough drops\", \"ginger ale\"]", "ms": 4854, "prompt_tokens": 123, "limit": false}
+{"lang": "en", "run": "hamburger buns lettuce pickles", "raw": "[\"hamburger buns\", \"lettuce\", \"pickles\"]", "ms": 4853, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "vitamin d fish oil", "raw": "[\"vitamin d fish oil\"]", "ms": 4305, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "charcoal lighter fluid marshmallows", "raw": "[\"charcoal lighter fluid\", \"marshmallows\"]", "ms": 4993, "prompt_tokens": 121, "limit": false}
+{"lang": "en", "run": "olive oil balsamic vinegar arugula", "raw": "[\"olive oil\", \"balsamic vinegar\", \"arugula\"]", "ms": 4965, "prompt_tokens": 121, "limit": false}
+{"lang": "en", "run": "bagels cream cheese smoked salmon", "raw": "[\"bagels\", \"cream cheese\", \"smoked salmon\"]", "ms": 5035, "prompt_tokens": 122, "limit": false}
+{"lang": "en", "run": "call the bank pick up dry cleaning", "raw": "[\"call the bank\", \"pick up dry cleaning\"]", "ms": 5064, "prompt_tokens": 123, "limit": false}
+{"lang": "en", "run": "book dentist renew passport", "raw": "[\"book dentist\", \"renew passport\"]", "ms": 4308, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "pay hydro bill email sam", "raw": "[\"pay hydro bill email sam\"]", "ms": 4312, "prompt_tokens": 121, "limit": false}
+{"lang": "en", "run": "water the plants take out the recycling", "raw": "[\"water the plants\", \"take out the recycling\"]", "ms": 4682, "prompt_tokens": 123, "limit": false}
+{"lang": "en", "run": "buy stamps mail the package", "raw": "[\"buy stamps\", \"mail the package\"]", "ms": 4766, "prompt_tokens": 121, "limit": false}
+{"lang": "en", "run": "tent sleeping bags flashlight", "raw": "[\"tent\", \"sleeping bags\", \"flashlight\"]", "ms": 4351, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "passport phone charger adapter", "raw": "[\"passport\", \"phone\", \"charger\", \"adapter\"]", "ms": 4560, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "socks underwear toothbrush", "raw": "[\"socks\", \"underwear\", \"toothbrush\"]", "ms": 4407, "prompt_tokens": 119, "limit": false}
+{"lang": "en", "run": "swimsuit sandals sunglasses", "raw": "[\"swimsuit sandals\", \"sunglasses\"]", "ms": 4325, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "laptop notebook pens", "raw": "[\"laptop\", \"notebook\", \"pens\"]", "ms": 4409, "prompt_tokens": 119, "limit": false}
+{"lang": "en", "run": "coke chips salsa", "raw": "[\"coke chips\", \"salsa\"]", "ms": 4530, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "wine cheese crackers grapes", "raw": "[\"wine\", \"cheese\", \"crackers\", \"grapes\"]", "ms": 4713, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "kale spinach blueberries", "raw": "[\"kale\", \"spinach\", \"blueberries\"]", "ms": 4437, "prompt_tokens": 119, "limit": false}
+{"lang": "en", "run": "chicken broth noodles celery", "raw": "[\"chicken broth\", \"noodles\", \"celery\"]", "ms": 4456, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "rice vinegar soy sauce sesame oil", "raw": "[\"rice vinegar\", \"soy sauce\", \"sesame oil\"]", "ms": 4706, "prompt_tokens": 122, "limit": false}
+{"lang": "en", "run": "bread milk butter jam and eggs", "raw": "[\"bread\", \"milk\", \"butter\", \"jam\", \"eggs\"]", "ms": 7597, "prompt_tokens": 122, "limit": false}
+{"lang": "en", "run": "some apples some pears some plums some grapes", "raw": "[\"some apples\", \"some pears\", \"some plums\", \"some grapes\"]", "ms": 6639, "prompt_tokens": 124, "limit": false}
+{"lang": "en", "run": "tuna mayo celery", "raw": "[\"tuna mayo celery\"]", "ms": 5081, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "gum mints lip balm", "raw": "[\"gum mints\", \"lip balm\"]", "ms": 4462, "prompt_tokens": 121, "limit": false}
+{"lang": "en", "run": "printer paper ink cartridges stapler", "raw": "[\"printer paper\", \"ink cartridges\", \"stapler\"]", "ms": 4741, "prompt_tokens": 122, "limit": false}
+{"lang": "en", "run": "peanut butter cookies", "raw": "[\"peanut butter cookies\"]", "ms": 4224, "prompt_tokens": 119, "limit": false}
+{"lang": "en", "run": "call the bank", "raw": "[\"call the bank\"]", "ms": 4003, "prompt_tokens": 119, "limit": false}
+{"lang": "en", "run": "pick up dry cleaning", "raw": "[\"pick up dry cleaning\"]", "ms": 4033, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "chocolate chip cookies", "raw": "[\"chocolate chip cookies\"]", "ms": 3990, "prompt_tokens": 119, "limit": false}
+{"lang": "en", "run": "extra virgin olive oil", "raw": "[\"extra virgin olive oil\"]", "ms": 4162, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "sea salt potato chips", "raw": "[\"sea salt potato chips\"]", "ms": 5898, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "cream of mushroom soup", "raw": "[\"cream of mushroom soup\"]", "ms": 7005, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "book a dentist appointment", "raw": "[\"book a dentist appointment\"]", "ms": 3964, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "renew my driver's license", "raw": "[\"renew my driver's license\"]", "ms": 4740, "prompt_tokens": 122, "limit": false}
+{"lang": "en", "run": "buy a birthday present for mom", "raw": "[\"buy a birthday present for mom\"]", "ms": 5261, "prompt_tokens": 122, "limit": false}
+{"lang": "en", "run": "gluten free bread", "raw": "[\"gluten free bread\"]", "ms": 2604, "prompt_tokens": 119, "limit": false}
+{"lang": "en", "run": "sweet potato fries", "raw": "[\"sweet potato fries\"]", "ms": 3516, "prompt_tokens": 119, "limit": false}
+{"lang": "en", "run": "red wine vinegar", "raw": "[\"red wine vinegar\"]", "ms": 4326, "prompt_tokens": 119, "limit": false}
+{"lang": "en", "run": "low fat greek yogurt", "raw": "[\"low fat greek yogurt\"]", "ms": 4385, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "ice cream sandwiches", "raw": "[\"ice cream sandwiches\"]", "ms": 4111, "prompt_tokens": 119, "limit": false}
+{"lang": "en", "run": "fix the kitchen tap", "raw": "[\"fix the kitchen tap\"]", "ms": 4227, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "call mom about sunday", "raw": "[\"call mom about sunday\"]", "ms": 4080, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "cancel the gym membership", "raw": "[\"cancel the gym membership\"]", "ms": 4115, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "green tea bags", "raw": "[\"green tea bags\"]", "ms": 4133, "prompt_tokens": 119, "limit": false}
+{"lang": "en", "run": "whole wheat pasta", "raw": "[\"whole wheat pasta\"]", "ms": 4011, "prompt_tokens": 119, "limit": false}
+{"lang": "en", "run": "paper towel rolls", "raw": "[\"paper towel rolls\"]", "ms": 4638, "prompt_tokens": 119, "limit": false}
+{"lang": "en", "run": "frozen pizza dough", "raw": "[\"frozen pizza dough\"]", "ms": 3959, "prompt_tokens": 119, "limit": false}
+{"lang": "en", "run": "bag of baby carrots", "raw": "[\"bag of baby carrots\"]", "ms": 4074, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "chicken noodle soup", "raw": "[\"chicken noodle soup\"]", "ms": 3906, "prompt_tokens": 119, "limit": false}
+{"lang": "en", "run": "vanilla almond milk", "raw": "[\"vanilla almond milk\"]", "ms": 4124, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "bottle of hot sauce", "raw": "[\"bottle of hot sauce\"]", "ms": 4008, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "schedule the oil change", "raw": "[\"schedule the oil change\"]", "ms": 3978, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "take the car to the garage", "raw": "[\"take the car to the garage\"]", "ms": 4272, "prompt_tokens": 122, "limit": false}
+{"lang": "en", "run": "return library books", "raw": "[\"library books\"]", "ms": 3917, "prompt_tokens": 119, "limit": false}
+{"lang": "en", "run": "clean out the fridge", "raw": "[\"clean out the fridge\"]", "ms": 6044, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "sharp cheddar cheese", "raw": "[\"sharp cheddar cheese\"]", "ms": 3711, "prompt_tokens": 119, "limit": false}
+{"lang": "en", "run": "black bean burgers", "raw": "[\"black bean burgers\"]", "ms": 2624, "prompt_tokens": 119, "limit": false}
+{"lang": "en", "run": "pick up the prescription", "raw": "[\"pick up the prescription\"]", "ms": 3370, "prompt_tokens": 120, "limit": false}
+{"lang": "en", "run": "reply to the school email", "raw": "[\"reply to the school email\"]", "ms": 4395, "prompt_tokens": 121, "limit": false}
+{"lang": "en", "run": "dark chocolate almonds", "raw": "[\"dark chocolate almonds\"]", "ms": 4283, "prompt_tokens": 119, "limit": false}
+{"lang": "en", "run": "toilet bowl cleaner", "raw": "[\"toilet bowl cleaner\"]", "ms": 4327, "prompt_tokens": 119, "limit": false}
+{"lang": "en", "run": "apple cider vinegar", "raw": "[\"apple cider vinegar\"]", "ms": 3994, "prompt_tokens": 119, "limit": false}
+{"lang": "en", "run": "large tub of vanilla ice cream", "raw": "[\"large tub of vanilla ice cream\"]", "ms": 6402, "prompt_tokens": 122, "limit": false}
+{"lang": "en", "run": "new running shoes", "raw": "[\"new running shoes\"]", "ms": 5069, "prompt_tokens": 119, "limit": false}
+{"lang": "en", "run": "plan the birthday party", "raw": "[\"plan the birthday party\"]", "ms": 4085, "prompt_tokens": 120, "limit": false}
+{"lang": "fr", "run": "des œufs du lait d'avoine du pain", "raw": "[\"des œufs\", \"du lait d'avoine\", \"du pain\"]", "ms": 6823, "prompt_tokens": 126, "limit": false}
+{"lang": "fr", "run": "pommes bananes beurre d'arachide", "raw": "[\"pommes\", \"bananes\", \"beurre d'arachide\"]", "ms": 5554, "prompt_tokens": 125, "limit": false}
+{"lang": "fr", "run": "café sucre crème", "raw": "[\"café sucre crème\"]", "ms": 5046, "prompt_tokens": 120, "limit": false}
+{"lang": "fr", "run": "papier de toilette savon à vaisselle essuie-tout", "raw": "[\"papier de toilette\", \"savon à vaisselle\", \"essuie-tout\"]", "ms": 5381, "prompt_tokens": 127, "limit": false}
+{"lang": "fr", "run": "poulet riz brocoli", "raw": "[\"poulet riz brocoli\"]", "ms": 4384, "prompt_tokens": 121, "limit": false}
+{"lang": "fr", "run": "lait pain beurre", "raw": "[\"lait\", \"pain\", \"beurre\"]", "ms": 4473, "prompt_tokens": 120, "limit": false}
+{"lang": "fr", "run": "tomates oignons ail", "raw": "[\"tomates\", \"oignons\", \"ail\"]", "ms": 4570, "prompt_tokens": 121, "limit": false}
+{"lang": "fr", "run": "jus d'orange céréales yogourt", "raw": "[\"jus d'orange\", \"céréales\", \"yogourt\"]", "ms": 4990, "prompt_tokens": 124, "limit": false}
+{"lang": "fr", "run": "bœuf haché coquilles à tacos fromage cheddar", "raw": "[\"bœuf haché\", \"coquilles à tacos\", \"fromage cheddar\"]", "ms": 8881, "prompt_tokens": 127, "limit": false}
+{"lang": "fr", "run": "laitue concombres tomates cerises", "raw": "[\"laitue\", \"concombres\", \"tomates\", \"cerises\"]", "ms": 8807, "prompt_tokens": 125, "limit": false}
+{"lang": "fr", "run": "nourriture pour chien litière à chat", "raw": "[\"nourriture pour chien\", \"litière à chat\"]", "ms": 6937, "prompt_tokens": 125, "limit": false}
+{"lang": "fr", "run": "shampoing revitalisant dentifrice", "raw": "[\"shampoing\", \"revitalisant\", \"dentifrice\"]", "ms": 5354, "prompt_tokens": 124, "limit": false}
+{"lang": "fr", "run": "piles ampoules ruban adhésif", "raw": "[\"piles\", \"ampoules\", \"ruban adhésif\"]", "ms": 5238, "prompt_tokens": 125, "limit": false}
+{"lang": "fr", "run": "pâtes sauce tomate parmesan", "raw": "[\"pâtes sauce tomate parmesan\"]", "ms": 4355, "prompt_tokens": 122, "limit": false}
+{"lang": "fr", "run": "sirop d'érable mélange à crêpes bleuets", "raw": "[\"sirop d'érable\", \"mélange à crêpes bleuets\"]", "ms": 8123, "prompt_tokens": 128, "limit": false}
+{"lang": "fr", "run": "saumon citrons aneth", "raw": "[\"saumon\", \"citrons\", \"aneth\"]", "ms": 6012, "prompt_tokens": 122, "limit": false}
+{"lang": "fr", "run": "lait d'amande granola fraises", "raw": "[\"lait d'amande granola fraises\"]", "ms": 5544, "prompt_tokens": 125, "limit": false}
+{"lang": "fr", "run": "saucisses pains à hot-dog moutarde ketchup", "raw": "[\"saucisses\", \"pains à hot-dog\", \"moutarde\", \"ketchup\"]", "ms": 10919, "prompt_tokens": 127, "limit": false}
+{"lang": "fr", "run": "crème solaire chasse-moustiques bouteilles d'eau", "raw": "[\"crème solaire\", \"chasse-moustiques\", \"bouteilles d'eau\"]", "ms": 5572, "prompt_tokens": 129, "limit": false}
+{"lang": "fr", "run": "farine bicarbonate de soude extrait de vanille", "raw": "[\"farine\", \"bicarbonate de soude\", \"extrait de vanille\"]", "ms": 6881, "prompt_tokens": 125, "limit": false}
+{"lang": "fr", "run": "œufs bacon patates rissolées", "raw": "[\"œufs\", \"bacon\", \"patates rissolées\"]", "ms": 5513, "prompt_tokens": 124, "limit": false}
+{"lang": "fr", "run": "poivrons verts champignons mozzarella", "raw": "[\"poivrons verts\", \"champignons\", \"mozzarella\"]", "ms": 5091, "prompt_tokens": 122, "limit": false}
+{"lang": "fr", "run": "couches lingettes lait maternisé", "raw": "[\"couches\", \"lingettes\", \"lait maternisé\"]", "ms": 7255, "prompt_tokens": 124, "limit": false}
+{"lang": "fr", "run": "thé miel citrons", "raw": "[\"thé miel citrons\"]", "ms": 5323, "prompt_tokens": 121, "limit": false}
+{"lang": "fr", "run": "avocats limes coriandre croustilles de maïs", "raw": "[\"avocats\", \"limes\", \"coriandre\", \"croustilles de maïs\"]", "ms": 17266, "prompt_tokens": 128, "limit": false}
+{"lang": "fr", "run": "petits pois surgelés crème glacée", "raw": "[\"petits pois surgelés\", \"crème glacée\"]", "ms": 3227, "prompt_tokens": 124, "limit": false}
+{"lang": "fr", "run": "assiettes en carton serviettes fourchettes en plastique", "raw": "[\n\"assiettes en carton\",\n\"serviettes\",\n\"fourchettes en plastique\"\n]", "ms": 7482, "prompt_tokens": 127, "limit": false}
+{"lang": "fr", "run": "sacs à ordures savon à vaisselle éponges", "raw": "[\"sacs à ordures\", \"savon à vaisselle\", \"éponges\"]", "ms": 5642, "prompt_tokens": 128, "limit": false}
+{"lang": "fr", "run": "carottes céleri patates", "raw": "[\"carottes\", \"céleri\", \"patates\"]", "ms": 4859, "prompt_tokens": 122, "limit": false}
+{"lang": "fr", "run": "cassonade gruau raisins secs", "raw": "[\"cassonade gruau raisins secs\"]", "ms": 4520, "prompt_tokens": 123, "limit": false}
+{"lang": "fr", "run": "deux litres de lait des œufs du pain", "raw": "[\"deux litres de lait\", \"des œufs\", \"du pain\"]", "ms": 6568, "prompt_tokens": 124, "limit": false}
+{"lang": "fr", "run": "une douzaine d'œufs beurre confiture", "raw": "[\"une douzaine d'œufs\", \"beurre\", \"confiture\"]", "ms": 5744, "prompt_tokens": 127, "limit": false}
+{"lang": "fr", "run": "trois avocats deux citrons coriandre", "raw": "[\"trois avocats\", \"deux citrons\", \"coriandre\"]", "ms": 7200, "prompt_tokens": 125, "limit": false}
+{"lang": "fr", "run": "crème sure salsa dinde hachée", "raw": "[\"crème sure salsa dinde hachée\"]", "ms": 7025, "prompt_tokens": 125, "limit": false}
+{"lang": "fr", "run": "mouchoirs pastilles pour la toux soda gingembre", "raw": "[\"mouchoirs pastilles pour la toux soda gingembre\"]", "ms": 6571, "prompt_tokens": 129, "limit": false}
+{"lang": "fr", "run": "pains à hamburger laitue cornichons", "raw": "[\"pains à hamburger\", \"laitue\", \"cornichons\"]", "ms": 7976, "prompt_tokens": 125, "limit": false}
+{"lang": "fr", "run": "vitamine d huile de poisson", "raw": "[\"vitamine d huile de poisson\"]", "ms": 5605, "prompt_tokens": 122, "limit": false}
+{"lang": "fr", "run": "charbon allume-feu guimauves", "raw": "[\"charbon allume-feu guimauves\"]", "ms": 5999, "prompt_tokens": 126, "limit": false}
+{"lang": "fr", "run": "huile d'olive vinaigre balsamique roquette", "raw": "[\"huile d'olive\", \"vinaigre balsamique\", \"roquette\"]", "ms": 6717, "prompt_tokens": 126, "limit": false}
+{"lang": "fr", "run": "bagels fromage à la crème saumon fumé", "raw": "[\"bagels\", \"fromage à la crème\", \"saumon fumé\"]", "ms": 8102, "prompt_tokens": 126, "limit": false}
+{"lang": "fr", "run": "appeler la banque aller chercher le nettoyage à sec", "raw": "[\n\"appeler la banque\",\n\"aller chercher le nettoyage à sec\"\n]", "ms": 7231, "prompt_tokens": 126, "limit": false}
+{"lang": "fr", "run": "prendre rendez-vous chez le dentiste renouveler mon passeport", "raw": "[\"prendre rendez-vous chez le dentiste\", \"renouveler mon passeport\"]", "ms": 6939, "prompt_tokens": 129, "limit": false}
+{"lang": "fr", "run": "payer la facture d'hydro écrire à sam", "raw": "[\"payer la facture d'hydro\", \"écrire à sam\"]", "ms": 6366, "prompt_tokens": 125, "limit": false}
+{"lang": "fr", "run": "arroser les plantes sortir le recyclage", "raw": "[\n\"arroser les plantes\",\n\"sortir le recyclage\"\n]", "ms": 6771, "prompt_tokens": 124, "limit": false}
+{"lang": "fr", "run": "acheter des timbres poster le colis", "raw": "[\"acheter des timbres\", \"poster le colis\"]", "ms": 5938, "prompt_tokens": 123, "limit": false}
+{"lang": "fr", "run": "tente sacs de couchage lampe de poche", "raw": "[\"sacs de couchage\", \"lampe de poche\"]", "ms": 6218, "prompt_tokens": 125, "limit": false}
+{"lang": "fr", "run": "passeport chargeur de téléphone adaptateur", "raw": "[\"passeport\", \"chargeur de téléphone\", \"adaptateur\"]", "ms": 6324, "prompt_tokens": 124, "limit": false}
+{"lang": "fr", "run": "bas sous-vêtements brosse à dents", "raw": "[\"bas sous-vêtements\", \"brosse à dents\"]", "ms": 6452, "prompt_tokens": 126, "limit": false}
+{"lang": "fr", "run": "maillot de bain sandales lunettes de soleil", "raw": "[\"maillot de bain\", \"sandales\", \"lunettes de soleil\"]", "ms": 7796, "prompt_tokens": 126, "limit": false}
+{"lang": "fr", "run": "ordinateur cahier crayons", "raw": "[\"ordinateur\", \"cahier\", \"crayons\"]", "ms": 7337, "prompt_tokens": 121, "limit": false}
+{"lang": "fr", "run": "liqueur chips salsa", "raw": "[\"liqueur chips\", \"salsa\"]", "ms": 5804, "prompt_tokens": 120, "limit": false}
+{"lang": "fr", "run": "vin fromage craquelins raisins", "raw": "[\"vin\", \"fromage\", \"craquelins\", \"raisins\"]", "ms": 6150, "prompt_tokens": 122, "limit": false}
+{"lang": "fr", "run": "chou kale épinards bleuets", "raw": "[\"chou kale\", \"épinards\", \"bleuets\"]", "ms": 5029, "prompt_tokens": 124, "limit": false}
+{"lang": "fr", "run": "bouillon de poulet nouilles céleri", "raw": "[\"bouillon de poulet\", \"nouilles\", \"céleri\"]", "ms": 6518, "prompt_tokens": 125, "limit": false}
+{"lang": "fr", "run": "vinaigre de riz sauce soya huile de sésame", "raw": "[\"vinaigre de riz\", \"sauce soya\", \"huile de sésame\"]", "ms": 6607, "prompt_tokens": 128, "limit": false}
+{"lang": "fr", "run": "pain lait beurre confiture et œufs", "raw": "[\"pain\", \"lait\", \"beurre\", \"confiture\", \"œufs\"]", "ms": 7245, "prompt_tokens": 123, "limit": false}
+{"lang": "fr", "run": "des pommes des poires des prunes", "raw": "[\"des pommes\", \"des poires\", \"des prunes\"]", "ms": 8460, "prompt_tokens": 124, "limit": false}
+{"lang": "fr", "run": "thon mayonnaise céleri", "raw": "[\"thon mayonnaise céleri\"]", "ms": 7764, "prompt_tokens": 120, "limit": false}
+{"lang": "fr", "run": "gomme menthes baume à lèvres", "raw": "[\"gomme menthes baume à lèvres\"]", "ms": 6957, "prompt_tokens": 124, "limit": false}
+{"lang": "fr", "run": "papier d'imprimante cartouches d'encre agrafeuse", "raw": "[\"papier d'imprimante\", \"cartouches d'encre\", \"agrafeuse\"]", "ms": 7297, "prompt_tokens": 133, "limit": false}
+{"lang": "fr", "run": "biscuits au beurre d'arachide", "raw": "[\"biscuits au beurre d'arachide\"]", "ms": 6305, "prompt_tokens": 124, "limit": false}
+{"lang": "fr", "run": "appeler la banque", "raw": "[\"appeler la banque\"]", "ms": 6555, "prompt_tokens": 120, "limit": false}
+{"lang": "fr", "run": "aller chercher le nettoyage à sec", "raw": "[\"aller chercher le nettoyage à sec\"]", "ms": 6298, "prompt_tokens": 122, "limit": false}
+{"lang": "fr", "run": "biscuits aux brisures de chocolat", "raw": "[\"biscuits aux brisures de chocolat\"]", "ms": 7654, "prompt_tokens": 124, "limit": false}
+{"lang": "fr", "run": "huile d'olive extra vierge", "raw": "[\"huile d'olive extra vierge\"]", "ms": 7422, "prompt_tokens": 123, "limit": false}
+{"lang": "fr", "run": "croustilles saveur ketchup", "raw": "[\"croustilles saveur ketchup\"]", "ms": 2979, "prompt_tokens": 123, "limit": false}
+{"lang": "fr", "run": "crème de champignons", "raw": "[\"crème de champignons\"]", "ms": 5835, "prompt_tokens": 120, "limit": false}
+{"lang": "fr", "run": "prendre rendez-vous chez le dentiste", "raw": "[\"prendre rendez-vous chez le dentiste\"]", "ms": 4829, "prompt_tokens": 124, "limit": false}
+{"lang": "fr", "run": "renouveler mon permis de conduire", "raw": "[\"renouveler mon permis de conduire\"]", "ms": 4578, "prompt_tokens": 124, "limit": false}
+{"lang": "fr", "run": "acheter un cadeau pour maman", "raw": "[\"acheter un cadeau pour maman\"]", "ms": 4371, "prompt_tokens": 122, "limit": false}
+{"lang": "fr", "run": "pain sans gluten", "raw": "[\"pain sans gluten\"]", "ms": 4339, "prompt_tokens": 119, "limit": false}
+{"lang": "fr", "run": "frites de patates douces", "raw": "[\"frites de patates douces\"]", "ms": 4455, "prompt_tokens": 123, "limit": false}
+{"lang": "fr", "run": "vinaigre de vin rouge", "raw": "[\"vinaigre de vin rouge\"]", "ms": 5687, "prompt_tokens": 122, "limit": false}
+{"lang": "fr", "run": "yogourt grec sans gras", "raw": "[\"yogourt grec sans gras\"]", "ms": 4345, "prompt_tokens": 121, "limit": false}
+{"lang": "fr", "run": "sandwichs à la crème glacée", "raw": "[\"sandwichs à la crème glacée\"]", "ms": 4414, "prompt_tokens": 123, "limit": false}
+{"lang": "fr", "run": "réparer le robinet de la cuisine", "raw": "[\"réparer le robinet de la cuisine\"]", "ms": 4769, "prompt_tokens": 125, "limit": false}
+{"lang": "fr", "run": "appeler maman pour dimanche", "raw": "[\"appeler maman pour dimanche\"]", "ms": 4524, "prompt_tokens": 122, "limit": false}
+{"lang": "fr", "run": "annuler l'abonnement au gym", "raw": "[\"annuler l'abonnement au gym\"]", "ms": 4480, "prompt_tokens": 124, "limit": false}
+{"lang": "fr", "run": "sachets de thé vert", "raw": "[\"sachets de thé vert\"]", "ms": 4298, "prompt_tokens": 122, "limit": false}
+{"lang": "fr", "run": "pâtes de blé entier", "raw": "[\"pâtes de blé entier\"]", "ms": 5814, "prompt_tokens": 123, "limit": false}
+{"lang": "fr", "run": "gros rouleaux d'essuie-tout", "raw": "[\"gros rouleaux d'essuie-tout\"]", "ms": 5084, "prompt_tokens": 127, "limit": false}
+{"lang": "fr", "run": "pâte à pizza congelée", "raw": "[\"pâte à pizza congelée\"]", "ms": 4283, "prompt_tokens": 122, "limit": false}
+{"lang": "fr", "run": "sac de petites carottes", "raw": "[\"sac de petites carottes\"]", "ms": 4182, "prompt_tokens": 121, "limit": false}
+{"lang": "fr", "run": "soupe aux pois", "raw": "[\"soupe aux pois\"]", "ms": 4434, "prompt_tokens": 120, "limit": false}
+{"lang": "fr", "run": "lait d'amande à la vanille", "raw": "[\"lait d'amande à la vanille\"]", "ms": 5962, "prompt_tokens": 126, "limit": false}
+{"lang": "fr", "run": "faire changer l'huile", "raw": "[\"faire changer l'huile\"]", "ms": 6497, "prompt_tokens": 121, "limit": false}
+{"lang": "fr", "run": "amener l'auto au garage", "raw": "[\"amener l'auto au garage\"]", "ms": 5416, "prompt_tokens": 123, "limit": false}
+{"lang": "fr", "run": "rapporter les livres à la bibliothèque", "raw": "[\n\"les livres à la bibliothèque\"\n]", "ms": 5463, "prompt_tokens": 123, "limit": false}
+{"lang": "fr", "run": "vider le frigo", "raw": "[\"vider le frigo\"]", "ms": 5016, "prompt_tokens": 120, "limit": false}
+{"lang": "fr", "run": "fromage cheddar fort", "raw": "[\"fromage cheddar fort\"]", "ms": 4946, "prompt_tokens": 120, "limit": false}
+{"lang": "fr", "run": "galettes de haricots noirs", "raw": "[\"galettes de haricots noirs\"]", "ms": 6463, "prompt_tokens": 122, "limit": false}
+{"lang": "fr", "run": "aller chercher la prescription", "raw": "[\"aller chercher la prescription\"]", "ms": 5119, "prompt_tokens": 120, "limit": false}
+{"lang": "fr", "run": "répondre au courriel de l'école", "raw": "[\"répondre au courriel de l'école\"]", "ms": 5645, "prompt_tokens": 126, "limit": false}
+{"lang": "fr", "run": "amandes au chocolat noir", "raw": "[\"amandes au chocolat noir\"]", "ms": 5162, "prompt_tokens": 121, "limit": false}
+{"lang": "fr", "run": "nettoyant pour la toilette", "raw": "[\"nettoyant pour la toilette\"]", "ms": 5179, "prompt_tokens": 122, "limit": false}
+{"lang": "fr", "run": "vinaigre de cidre de pomme", "raw": "[\"vinaigre de cidre de pomme\"]", "ms": 4626, "prompt_tokens": 125, "limit": false}
+{"lang": "fr", "run": "crème glacée à la vanille", "raw": "[\"crème glacée à la vanille\"]", "ms": 5998, "prompt_tokens": 124, "limit": false}
+{"lang": "fr", "run": "nouveaux souliers de course", "raw": "[\"nouveaux souliers de course\"]", "ms": 4572, "prompt_tokens": 123, "limit": false}
+{"lang": "fr", "run": "organiser la fête d'anniversaire", "raw": "[\"organiser la fête d'anniversaire\"]", "ms": 4796, "prompt_tokens": 124, "limit": false}
+{"lang": "fr", "run": "pâte de tomates", "raw": "[\"pâte de tomates\"]", "ms": 4205, "prompt_tokens": 120, "limit": false}

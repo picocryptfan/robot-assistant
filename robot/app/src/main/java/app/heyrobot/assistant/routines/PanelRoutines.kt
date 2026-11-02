@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.assistant.routines
 
+import app.heyrobot.lock.PhoneLockNow
+import app.heyrobot.core.lock.SomeoneElseLock
 import app.heyrobot.core.RLog
 import app.heyrobot.core.ToolName
 import app.heyrobot.core.TriggerKind
@@ -178,9 +180,11 @@ object PanelRoutines {
      */
     private suspend fun brief(replyId: String, host: Host, origin: RunOrigin, langs: Langs, routine: Routine? = null, append: Boolean = false): Boolean {
         val s = VoiceHub.settings
-        val rs = store().settings()
+        // F6: during someone else's lock, "Time and weather" at most, and what would wait for the unlock doesn't.
+        val someoneElse = PhoneLockNow.someoneElse(app)
+        val rs = SomeoneElseLock.routines(store().settings(), someoneElse)
         val r = routine ?: BriefRoutine.of(rs)
-        val locked = host.locked
+        val locked = host.locked || someoneElse
         // Calendar titles and reminders, as written by whoever wrote them: content, and personal.
         host.quoted(replyId)
         val session = if (host.speak) RoutineVoice.open(r, RoutineVoice.Surface.PANEL, rs.briefLock == BriefLock.EVERYTHING, locked) { end ->
@@ -202,7 +206,7 @@ object PanelRoutines {
         if (append) host.append(replyId, said) else host.text(replyId, said)
         // Shown but not spoken: the reminders count as read now.
         if (session == null && spoken.any { it.item == BriefItem.REMINDERS }) withContext(Dispatchers.IO) { BriefSource.remindersSaid(app) }
-        if (held.isNotEmpty()) RoutineHub.waitForUnlock(RoutineRunner.Waiting(r, TriggerKind.ASKED, emptyList(), held, ZonedDateTime.now()))
+        if (held.isNotEmpty() && !someoneElse) RoutineHub.waitForUnlock(RoutineRunner.Waiting(r, TriggerKind.ASKED, emptyList(), held, ZonedDateTime.now()))
         VoiceLog.add(VoiceEvent.BRIEF_SPOKEN, spoken.sumOf { it.lines.size }, held.sumOf { it.lines.size }, spoken.sumOf { it.chars })
         return true
     }
@@ -309,10 +313,13 @@ object PanelRoutines {
      */
     suspend fun runAsked(replyId: String, r: Routine, host: Host, origin: RunOrigin, l: Langs = host.langs(null, null)) {
         val s = VoiceHub.settings
-        val rs = store().settings()
+        // F6: during someone else's lock the routine's own words and your reminders wait, as in the brief and the runner.
+        val someoneElse = PhoneLockNow.someoneElse(app)
+        val rs = SomeoneElseLock.routines(store().settings(), someoneElse)
+        val locked = host.locked || someoneElse
         host.text(replyId, RoutineStrings.runningNow("name" to RoutineTexts.name(r)).shown(l))
         for (step in r.steps) {
-            val go = RoutineGate.decide(step, origin, host.locked, r, s, rs)
+            val go = RoutineGate.decide(step, origin, locked, r, s, rs)
             VoiceLog.add(VoiceEvent.ROUTINE_STEP, step.code, go)
             when (go) {
                 StepGo.NEVER -> host.append(replyId, RoutineStrings.cantDo("step" to step.summary()).shown(l))
@@ -421,7 +428,7 @@ object PanelRoutines {
             return true
         }
         val show = android.content.Intent(if (cmd.timer) android.provider.AlarmClock.ACTION_SHOW_TIMERS else android.provider.AlarmClock.ACTION_SHOW_ALARMS)
-        if (!host.launch(show)) {
+        if (!host.launch(RoutineFacts.toChosenClock(app, show))) {
             host.show(replyId, Card(id, ToolName.OPEN_APP, title, ActionStatus.NO_APP,
                 (if (cmd.timer) ToolStrings.noClockTimers() else ToolStrings.noClockAlarms()).shown(l)))
             return false
@@ -465,10 +472,13 @@ object PanelRoutines {
             return
         }
         host.text(replyId, RoutineStrings.readyCountSentence(cards.size).shown(l))
+        // F6: as runAsked below decides, or a step it won't run would use up its card.
+        val someoneElse = PhoneLockNow.someoneElse(app)
+        val rs = SomeoneElseLock.routines(store().settings(), someoneElse)
         for (c in cards) {
             // Locked (the notification's tap needs no unlock): a step that needs the unlock keeps its card for after it.
             val routine = store().get(c.routineId)
-            if (routine != null && ReadyCards.keptOnTap(c, RoutineGate.decide(c.step, RunOrigin.READY_TAP, host.locked, routine, VoiceHub.settings, store().settings()))) {
+            if (routine != null && ReadyCards.keptOnTap(c, RoutineGate.decide(c.step, RunOrigin.READY_TAP, host.locked || someoneElse, routine, VoiceHub.settings, rs))) {
                 host.append(replyId, RoutineStrings.unlockForStays("step" to c.step.summary()).shown(l))
                 continue
             }

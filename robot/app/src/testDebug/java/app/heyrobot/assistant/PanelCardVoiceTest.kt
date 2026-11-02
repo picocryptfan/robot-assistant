@@ -110,6 +110,54 @@ class PanelCardVoiceTest {
 
     private val hint = PanelStrings.cardHint().render(Langs.EN)
 
+    private val names = app.heyrobot.core.HelperName.all(RobotSettings(helpers = listOf(app.heyrobot.core.helpers.HelperConfig.claude())))
+    private var silent = 0
+
+    @Test fun theChoiceCard_oneWordAnswersIt_aYesDoesnt() {
+        wait(listOf(card("c")))
+        voice.choiceWaits("c", names, "claude") { silent++ }
+        assertFalse(voice.answer("yes", spoken = true))
+        assertFalse(voice.answer("what's the weather", spoken = true))
+        assertTrue(voice.answer("the helper", spoken = true))
+        assertTrue(voice.answer("ask Claude", spoken = true))
+        assertTrue(voice.answer("here", spoken = true))
+        assertTrue(voice.answer("Robot", spoken = true))
+        assertEquals(listOf("confirm c true", "confirm c true", "confirm c false", "confirm c false"), answers)
+        voice.choiceDone()
+        assertTrue("only that card", voice.answer("yes", spoken = true))
+    }
+
+    @Test fun theChoiceCard_silenceOrWordsItCantUse_RobotTries() {
+        wait(listOf(card("c")))
+        voice.choiceWaits("c", names, "claude") { silent++ }
+        voice.waiting()
+        stt.last.onError(SpeechToText.Reason.NO_SPEECH, "nothing heard")
+        idle()
+        // Silence isn't an answer: the card keeps its whole wait, as for a typed question (PanelHelperTurn.askChoice's timer ends it).
+        assertEquals(0, silent)
+        assertEquals("listens once more", Phase.LISTENING, state.value.cardHearing)
+        stt.last.onError(SpeechToText.Reason.NO_SPEECH, "nothing heard")
+        idle()
+        assertEquals(0, silent)
+        assertNull("then it waits for a tap", state.value.cardHearing)
+        assertEquals(emptyList<String>(), notices)
+        voice.micPressed()
+        stt.last.onFinal("hmm")
+        idle()
+        assertEquals("heard once more", 0, silent)
+        stt.last.onFinal("hmm again")
+        idle()
+        assertEquals(1, silent)
+    }
+
+    @Test fun theChoiceCard_spokenAnswersFollowAnswerCardsByVoice() {
+        settings = RobotSettings(voiceCards = false)
+        wait(listOf(card("c")))
+        voice.choiceWaits("c", names, "claude") { silent++ }
+        assertFalse(voice.answer("the helper", spoken = true))
+        assertTrue("typed still works", voice.answer("the helper", spoken = false))
+    }
+
     @Test fun aSpokenYesConfirmsTheNewestWaitingCardAndOnlyIt() {
         wait(listOf(card("old")), listOf(card("new"), card("done", ActionStatus.DONE)))
         voice.waiting()

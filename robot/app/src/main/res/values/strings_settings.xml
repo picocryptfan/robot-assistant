@@ -259,4 +259,5 @@
     <!-- Names the app gives when Android or a file has none (sys/Calendars.kt, sys/KeystoreSecret.kt). -->
     <string name="settings_calendar_unnamed">Calendar</string>
     <string name="settings_key_saved">Saved</string>
+    <string name="settings_save_failed">Your settings couldn\'t be saved: the phone\'s storage may be full. The last saved settings come back after a restart.</string>
 </resources>

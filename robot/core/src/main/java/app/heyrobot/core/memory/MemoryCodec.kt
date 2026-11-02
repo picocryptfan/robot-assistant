@@ -42,6 +42,7 @@ object MemoryCodec {
             i.usedAt?.let { put("used", it) }
             i.imported?.let { put("imported", it.name) }
             i.filing?.let { put("filing", MemoryFilingCodec.toJson(it)) }
+            i.choice?.let { put("choice", MemoryChoiceCodec.toJson(it)) }
         })
     }).put("suggestions", JSONArray().apply {
         for (s in f.suggestions) put(JSONObject().put("id", s.id).put("text", s.text).put("kind", s.kind.name).put("created", s.createdAt))
@@ -88,12 +89,14 @@ object MemoryCodec {
         val secret = o.optBoolean("secret", false)
         // 1.4: a filing rule (MemoryFiling); a damaged one leaves the item a plain fact. A rule is a fact, never pinned.
         val filing = MemoryFilingCodec.read(o.optJSONObject("filing"))
+        // A choice of who answers (MemoryChoice), the same way; a filing rule stays a rule.
+        val choice = if (filing != null) null else MemoryChoiceCodec.read(o.optJSONObject("choice"))
         return MemoryItem(
             id = id,
             text = text,
-            kind = if (filing != null) MemoryKind.FACT else enumOr(o.optString("kind"), MemoryKind.FACT),
+            kind = if (filing != null || choice != null) MemoryKind.FACT else enumOr(o.optString("kind"), MemoryKind.FACT),
             secret = secret,
-            pinned = o.optBoolean("pinned", false) && !secret && filing == null,
+            pinned = o.optBoolean("pinned", false) && !secret && filing == null && choice == null,
             source = enumOr(o.optString("source"), MemorySource.CONTENT),
             sourceLabel = o.optString("sourceLabel").takeIf { it.isNotBlank() },
             language = o.optString("lang").takeIf { it.isNotBlank() },
@@ -105,6 +108,7 @@ object MemoryCodec {
             usedAt = if (o.has("used")) o.optLong("used") else null,
             imported = if (o.has("imported")) enumOr(o.optString("imported"), MemoryImported.CONTENT) else null,
             filing = filing,
+            choice = choice,
         )
     }
 

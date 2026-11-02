@@ -66,6 +66,8 @@ data class FileFieldValues(
     val returnBy: LocalDate? = null,
     /** F10: when its warranty ends, from a line that says so ("Warranty until", « Garantie jusqu'au »). */
     val warranty: LocalDate? = null,
+    /** F42: [total] is money back, not money spent: its own line says so (FileFields.check). Kept in the entry's field "refund". */
+    val refund: Boolean = false,
 ) {
     /** Never a value in a log line. */
     override fun toString(): String = "FileFieldValues(total=${total != null}, check=$totalCheck/$dateCheck, traps=$traps, rejected=$rejected)" // l10n: not text (counts for a log)
@@ -93,6 +95,25 @@ object FileFields {
             "(?:[ \\u00A0\\u202F]?(\\$|€|£|CAD|USD|EUR|GBP)(?![\\p{L}]))?" + // l10n: not text (a parser's pattern)
             "(?:[ \\u00A0\\u202F]*(%))?", // l10n: not text (a parser's pattern)
     )
+
+    private const val MARK = "(?:US\\$|USD|CAN\\$|CA\\$|C\\$|CAD|\\$|€|£)" // l10n: not text (a parser's pattern)
+    private const val MONEY = "(?:\\d{1,3}(?:[,. \\u00A0\\u202F]\\d{3})+|\\d{1,9})[.,]\\d{2}(?!\\d)" // l10n: not text (a parser's pattern)
+
+    /**
+     * F42: an amount written as money taken off: "-45.00", "-$45.00", "$-45.00", "45.00-", "(45.00)". A dash with a space after it
+     * ("Total - 45.00") is a separator and two amounts joined by one ("10.00-20.00") are a range: neither is a refund.
+     */
+    private val TAKEN_OFF = Regex(
+        "(?<![\\p{L}\\d.,])(?:$MARK[ \\u00A0\\u202F]?)?[-−–](?:$MARK[ \\u00A0\\u202F]?)?$MONEY(?![ \\u00A0\\u202F]*%)|" + // l10n: not text (a parser's pattern)
+            "$MONEY(?:[ \\u00A0\\u202F]?$MARK)?[-−–](?![\\p{L}\\d])|" + // l10n: not text (a parser's pattern)
+            "\\((?:$MARK[ \\u00A0\\u202F]?)?$MONEY(?:[ \\u00A0\\u202F]?$MARK)?\\)", // l10n: not text (a parser's pattern)
+    )
+
+    /** The minus signs an amount can start with. */
+    internal val MINUS = charArrayOf('-', '−', '–')
+
+    /** [s], an amount, is written as money taken off ("-45", "-45.00", "45.00-", "(45.00)"). */
+    fun takenOff(s: String): Boolean = s.trim().let { t -> t.firstOrNull() in MINUS.asIterable() || TAKEN_OFF.containsMatchIn(t) }
 
     /** Every amount in [line] (line number [n]): "84.12", "84,12 $", "$1,234.56", « 1 234,56 $ »; never a date's or a phone's digits. */
     fun amounts(line: String, n: Int = 0): List<Amount> = AMOUNT.findAll(line).mapNotNull { m ->
@@ -240,7 +261,17 @@ object FileFields {
             PAYMENT.containsMatchIn(words) || CARD.containsMatchIn(words) -> LineKind.PAYMENT
             else -> LineKind.OTHER
         }
+        val refundLabel: Boolean get() = words.replace(NOT_LABEL, " ").trim().replace(Regex(" +"), " ") in REFUND_LABELS // l10n: not text (a separator)
     }
+
+    /**
+     * F42: the whole of a line's words when it says this amount is a refund. Whole, so a merchant ("Refund Depot"), a policy
+     * ("No refund without a receipt") or a card ("Credit 45.00") never reads as one.
+     */
+    private val REFUND_LABELS = setOf("refund", "refunded", "refund total", "total refund", "total refunded", "refund amount", "amount refunded", // l10n: not text (words Robot reads)
+        "remboursement", "rembourse", "remboursement total", "total remboursement", "total rembourse", "montant rembourse", "montant remboursement", // l10n: not text (words Robot reads)
+        "montant du remboursement") // l10n: not text (words Robot reads)
+    private val NOT_LABEL = Regex("\\b(?:us|usd|can|cad|eur|gbp)\\b|[^\\p{L}]+") // l10n: not text (a parser's pattern)
 
     private val AMOUNT_LIKE = Regex("[\\d.,$€£%]+") // l10n: not text (a parser's pattern)
 
@@ -373,6 +404,10 @@ object FileFields {
         if (known == null && modelMerchant != null && merchant == null) rejected++
         val title = reading?.title?.let(::cleanName)?.let { tt -> if (inText(tt, t)) tt else { rejected++; null } }
 
+        // F42: lines that are only a refund's label, as the file wrote them ("Refund total: 45.00": lines() cuts before "total").
+        val refundLines = t.split('\n').map { Line(it, fold(it), amounts(it)) }.filter { it.refundLabel }
+        fun saysRefund(l: Line) = l.raw.isNotBlank() && refundLines.any { l.raw.trim() in it.raw }
+
         // The total.
         val totals = ls.filter { it.kind == LineKind.TOTAL }.flatMap { l -> l.amounts.filter { !it.rate } }
         val distinct = totals.map { it.cents }.distinct()
@@ -416,7 +451,8 @@ object FileFields {
                 else -> { rejected++; totalCheck = true; null }
             }
             sum != null -> sum.takeIf { s -> s in anywhere }
-            else -> null
+            // F42: no total line, but a line that's only a refund's label: its one amount is what the slip is for.
+            else -> refundLines.flatMap { l -> l.amounts.filter { !it.rate }.map { it.cents } }.distinct().singleOrNull()
         }
         // A picture's words are the model's own copy, and a copy made from the same picture repeats its mistakes (F0a: 4 of
         // the 5 wrong totals passed "the total appears in the text"). So from a picture a total is kept only when it isn't
@@ -426,6 +462,16 @@ object FileFields {
             val onTender = ls.any { l -> l.kind == LineKind.TENDER && l.amounts.any { same(it.cents, total) } }
             if (onTender || (sum != null && !same(sum, total))) totalCheck = true
         }
+
+        // F42: a refund or a credit comes off spending, so it takes the total's own lines saying so: each line that holds the
+        // total is written as money taken off or labelled as nothing but a refund, and they're the only total. From a picture
+        // that's the model's copy, where a stray dash would take money off, so you check it. Anything less sure is no refund:
+        // a line taken off that isn't the total, the model's word alone, or the same amount as a refund's and a plain total.
+        val holding = if (total == null || distinct.size > 1) emptyList() else ls.filter { l -> (l.kind == LineKind.TOTAL || saysRefund(l)) && l.amounts.any { !it.rate && it.cents == total } }
+        val refund = holding.isNotEmpty() && holding.all { saysRefund(it) || TAKEN_OFF.containsMatchIn(it.raw) }
+        if (refund) { if (!ownText) totalCheck = true }
+        else if (total != null && (holding.any(::saysRefund) || ls.any { it.kind == LineKind.TOTAL && TAKEN_OFF.containsMatchIn(it.raw) } ||
+                reading?.total?.readBy { it }?.let(TAKEN_OFF::containsMatchIn) == true)) totalCheck = true
 
         // The currency: the total's own marker, else the text's.
         val totalMarker = total?.let { c -> ls.flatMap { it.amounts }.firstOrNull { it.cents == c }?.marker }
@@ -493,7 +539,7 @@ object FileFields {
 
         val category = known?.category
         return FileFieldValues(merchant, title, date, total?.takeIf { it > 0 }, currency, taxes, due, period, account, card, expiry, slip, year, category,
-            totalCheck, dateCheck, traps, rejected, returnBy = returnBy, warranty = warranty)
+            totalCheck, dateCheck, traps, rejected, returnBy = returnBy, warranty = warranty, refund = refund && total != null && total > 0)
     }
 
     private fun same(a: Long, b: Long): Boolean = kotlin.math.abs(a - b) <= SAME_CENTS

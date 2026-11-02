@@ -1,0 +1,1476 @@
+[
+{
+"domain": "homeassistant",
+"services": {
+"save_persistent_states": {
+"fields": {}
+},
+"turn_off": {
+"fields": {},
+"target": {}
+},
+"turn_on": {
+"fields": {},
+"target": {}
+},
+"toggle": {
+"fields": {},
+"target": {}
+},
+"stop": {
+"fields": {}
+},
+"restart": {
+"fields": {}
+},
+"check_config": {
+"fields": {}
+},
+"update_entity": {
+"fields": {
+"entity_id": {
+"required": true,
+"selector": {
+"entity": {
+"multiple": true,
+"reorder": false
+}
+}
+}
+}
+},
+"reload_core_config": {
+"fields": {}
+},
+"set_location": {
+"fields": {
+"latitude": {
+"required": true,
+"example": 32.87336,
+"selector": {
+"number": {
+"mode": "box",
+"min": -90.0,
+"max": 90.0,
+"step": "any"
+}
+}
+},
+"longitude": {
+"required": true,
+"example": 117.22743,
+"selector": {
+"number": {
+"mode": "box",
+"min": -180.0,
+"max": 180.0,
+"step": "any"
+}
+}
+},
+"elevation": {
+"required": false,
+"example": 120,
+"selector": {
+"number": {
+"mode": "box",
+"step": "any"
+}
+}
+}
+}
+},
+"reload_custom_templates": {
+"fields": {}
+},
+"reload_config_entry": {
+"fields": {
+"entry_id": {
+"required": true,
+"selector": {
+"config_entry": {}
+}
+}
+}
+},
+"reload_all": {
+"fields": {}
+}
+}
+},
+{
+"domain": "lock",
+"services": {
+"unlock": {
+"fields": {
+"code": {
+"example": 1234,
+"selector": {
+"text": {
+"multiline": false,
+"multiple": false
+}
+}
+}
+},
+"target": {
+"entity": [
+{
+"domain": [
+"lock"
+]
+}
+]
+}
+},
+"lock": {
+"fields": {
+"code": {
+"example": 1234,
+"selector": {
+"text": {
+"multiline": false,
+"multiple": false
+}
+}
+}
+},
+"target": {
+"entity": [
+{
+"domain": [
+"lock"
+]
+}
+]
+}
+},
+"open": {
+"fields": {
+"code": {
+"example": 1234,
+"selector": {
+"text": {
+"multiline": false,
+"multiple": false
+}
+}
+}
+},
+"target": {
+"entity": [
+{
+"domain": [
+"lock"
+],
+"supported_features": [
+1
+]
+}
+]
+}
+}
+}
+},
+{
+"domain": "light",
+"services": {
+"turn_on": {
+"fields": {
+"transition": {
+"filter": {
+"supported_features": [
+32
+]
+},
+"selector": {
+"number": {
+"min": 0.0,
+"max": 300.0,
+"unit_of_measurement": "seconds",
+"step": 1.0,
+"mode": "slider"
+}
+}
+},
+"rgb_color": {
+"filter": {
+"attribute": {
+"supported_color_modes": [
+"hs",
+"xy",
+"rgb",
+"rgbw",
+"rgbww"
+]
+}
+},
+"example": "[255, 100, 100]",
+"selector": {
+"color_rgb": {}
+}
+},
+"color_temp_kelvin": {
+"filter": {
+"attribute": {
+"supported_color_modes": [
+"color_temp",
+"hs",
+"xy",
+"rgb",
+"rgbw",
+"rgbww"
+]
+}
+},
+"selector": {
+"color_temp": {
+"unit": "kelvin",
+"min": 2000,
+"max": 6500
+}
+}
+},
+"brightness_pct": {
+"filter": {
+"attribute": {
+"supported_color_modes": [
+"brightness",
+"color_temp",
+"hs",
+"xy",
+"rgb",
+"rgbw",
+"rgbww"
+]
+}
+},
+"selector": {
+"number": {
+"min": 0.0,
+"max": 100.0,
+"unit_of_measurement": "%",
+"step": 1.0,
+"mode": "slider"
+}
+}
+},
+"brightness_step_pct": {
+"filter": {
+"attribute": {
+"supported_color_modes": [
+"brightness",
+"color_temp",
+"hs",
+"xy",
+"rgb",
+"rgbw",
+"rgbww"
+]
+}
+},
+"selector": {
+"number": {
+"min": -100.0,
+"max": 100.0,
+"unit_of_measurement": "%",
+"step": 1.0,
+"mode": "slider"
+}
+}
+},
+"effect": {
+"filter": {
+"supported_features": [
+4
+]
+},
+"selector": {
+"state": {
+"attribute": "effect",
+"multiple": false
+}
+}
+},
+"additional_fields": {
+"collapsed": true,
+"fields": {
+"rgbw_color": {
+"filter": {
+"attribute": {
+"supported_color_modes": [
+"hs",
+"xy",
+"rgb",
+"rgbw",
+"rgbww"
+]
+}
+},
+"example": "[255, 100, 100, 50]",
+"selector": {
+"object": {
+"multiple": false
+}
+}
+},
+"rgbww_color": {
+"filter": {
+"attribute": {
+"supported_color_modes": [
+"hs",
+"xy",
+"rgb",
+"rgbw",
+"rgbww"
+]
+}
+},
+"example": "[255, 100, 100, 50, 70]",
+"selector": {
+"object": {
+"multiple": false
+}
+}
+},
+"color_name": {
+"filter": {
+"attribute": {
+"supported_color_modes": [
+"hs",
+"xy",
+"rgb",
+"rgbw",
+"rgbww"
+]
+}
+},
+"selector": {
+"select": {
+"translation_key": "color_name",
+"options": [
+"homeassistant",
+"aliceblue",
+"antiquewhite",
+"aqua",
+"aquamarine",
+"azure",
+"beige",
+"bisque",
+"blanchedalmond",
+"blue",
+"blueviolet",
+"brown",
+"burlywood",
+"cadetblue",
+"chartreuse",
+"chocolate",
+"coral",
+"cornflowerblue",
+"cornsilk",
+"crimson",
+"cyan",
+"darkblue",
+"darkcyan",
+"darkgoldenrod",
+"darkgray",
+"darkgreen",
+"darkgrey",
+"darkkhaki",
+"darkmagenta",
+"darkolivegreen",
+"darkorange",
+"darkorchid",
+"darkred",
+"darksalmon",
+"darkseagreen",
+"darkslateblue",
+"darkslategray",
+"darkslategrey",
+"darkturquoise",
+"darkviolet",
+"deeppink",
+"deepskyblue",
+"dimgray",
+"dimgrey",
+"dodgerblue",
+"firebrick",
+"floralwhite",
+"forestgreen",
+"fuchsia",
+"gainsboro",
+"ghostwhite",
+"gold",
+"goldenrod",
+"gray",
+"green",
+"greenyellow",
+"grey",
+"honeydew",
+"hotpink",
+"indianred",
+"indigo",
+"ivory",
+"khaki",
+"lavender",
+"lavenderblush",
+"lawngreen",
+"lemonchiffon",
+"lightblue",
+"lightcoral",
+"lightcyan",
+"lightgoldenrodyellow",
+"lightgray",
+"lightgreen",
+"lightgrey",
+"lightpink",
+"lightsalmon",
+"lightseagreen",
+"lightskyblue",
+"lightslategray",
+"lightslategrey",
+"lightsteelblue",
+"lightyellow",
+"lime",
+"limegreen",
+"linen",
+"magenta",
+"maroon",
+"mediumaquamarine",
+"mediumblue",
+"mediumorchid",
+"mediumpurple",
+"mediumseagreen",
+"mediumslateblue",
+"mediumspringgreen",
+"mediumturquoise",
+"mediumvioletred",
+"midnightblue",
+"mintcream",
+"mistyrose",
+"moccasin",
+"navajowhite",
+"navy",
+"navyblue",
+"oldlace",
+"olive",
+"olivedrab",
+"orange",
+"orangered",
+"orchid",
+"palegoldenrod",
+"palegreen",
+"paleturquoise",
+"palevioletred",
+"papayawhip",
+"peachpuff",
+"peru",
+"pink",
+"plum",
+"powderblue",
+"purple",
+"red",
+"rosybrown",
+"royalblue",
+"saddlebrown",
+"salmon",
+"sandybrown",
+"seagreen",
+"seashell",
+"sienna",
+"silver",
+"skyblue",
+"slateblue",
+"slategray",
+"slategrey",
+"snow",
+"springgreen",
+"steelblue",
+"tan",
+"teal",
+"thistle",
+"tomato",
+"turquoise",
+"violet",
+"wheat",
+"white",
+"whitesmoke",
+"yellow",
+"yellowgreen"
+],
+"multiple": false,
+"custom_value": false,
+"sort": false
+}
+}
+},
+"hs_color": {
+"filter": {
+"attribute": {
+"supported_color_modes": [
+"hs",
+"xy",
+"rgb",
+"rgbw",
+"rgbww"
+]
+}
+},
+"example": "[300, 70]",
+"selector": {
+"object": {
+"multiple": false
+}
+}
+},
+"xy_color": {
+"filter": {
+"attribute": {
+"supported_color_modes": [
+"hs",
+"xy",
+"rgb",
+"rgbw",
+"rgbww"
+]
+}
+},
+"example": "[0.52, 0.43]",
+"selector": {
+"object": {
+"multiple": false
+}
+}
+},
+"brightness": {
+"filter": {
+"attribute": {
+"supported_color_modes": [
+"brightness",
+"color_temp",
+"hs",
+"xy",
+"rgb",
+"rgbw",
+"rgbww"
+]
+}
+},
+"selector": {
+"number": {
+"min": 0.0,
+"max": 255.0,
+"step": 1.0,
+"mode": "slider"
+}
+}
+},
+"brightness_step": {
+"filter": {
+"attribute": {
+"supported_color_modes": [
+"brightness",
+"color_temp",
+"hs",
+"xy",
+"rgb",
+"rgbw",
+"rgbww"
+]
+}
+},
+"selector": {
+"number": {
+"min": -225.0,
+"max": 255.0,
+"step": 1.0,
+"mode": "slider"
+}
+}
+},
+"white": {
+"filter": {
+"attribute": {
+"supported_color_modes": [
+"white"
+]
+}
+},
+"selector": {
+"constant": {
+"value": true,
+"label": "Enabled"
+}
+}
+},
+"profile": {
+"example": "relax",
+"selector": {
+"text": {
+"multiline": false,
+"multiple": false
+}
+}
+},
+"flash": {
+"filter": {
+"supported_features": [
+8
+]
+},
+"selector": {
+"select": {
+"translation_key": "flash",
+"options": [
+"long",
+"short"
+],
+"multiple": false,
+"custom_value": false,
+"sort": false
+}
+}
+}
+}
+}
+},
+"target": {
+"entity": [
+{
+"domain": [
+"light"
+]
+}
+]
+}
+},
+"turn_off": {
+"fields": {
+"transition": {
+"filter": {
+"supported_features": [
+32
+]
+},
+"selector": {
+"number": {
+"min": 0.0,
+"max": 300.0,
+"unit_of_measurement": "seconds",
+"step": 1.0,
+"mode": "slider"
+}
+}
+},
+"additional_fields": {
+"collapsed": true,
+"fields": {
+"flash": {
+"filter": {
+"supported_features": [
+8
+]
+},
+"selector": {
+"select": {
+"translation_key": "flash",
+"options": [
+"long",
+"short"
+],
+"multiple": false,
+"custom_value": false,
+"sort": false
+}
+}
+}
+}
+}
+},
+"target": {
+"entity": [
+{
+"domain": [
+"light"
+]
+}
+]
+}
+},
+"toggle": {
+"fields": {
+"transition": {
+"filter": {
+"supported_features": [
+32
+]
+},
+"selector": {
+"number": {
+"min": 0.0,
+"max": 300.0,
+"unit_of_measurement": "seconds",
+"step": 1.0,
+"mode": "slider"
+}
+}
+},
+"rgb_color": {
+"filter": {
+"attribute": {
+"supported_color_modes": [
+"hs",
+"xy",
+"rgb",
+"rgbw",
+"rgbww"
+]
+}
+},
+"example": "[255, 100, 100]",
+"selector": {
+"color_rgb": {}
+}
+},
+"color_temp_kelvin": {
+"filter": {
+"attribute": {
+"supported_color_modes": [
+"color_temp",
+"hs",
+"xy",
+"rgb",
+"rgbw",
+"rgbww"
+]
+}
+},
+"selector": {
+"color_temp": {
+"unit": "kelvin",
+"min": 2000,
+"max": 6500
+}
+}
+},
+"brightness_pct": {
+"filter": {
+"attribute": {
+"supported_color_modes": [
+"brightness",
+"color_temp",
+"hs",
+"xy",
+"rgb",
+"rgbw",
+"rgbww"
+]
+}
+},
+"selector": {
+"number": {
+"min": 0.0,
+"max": 100.0,
+"unit_of_measurement": "%",
+"step": 1.0,
+"mode": "slider"
+}
+}
+},
+"effect": {
+"filter": {
+"supported_features": [
+4
+]
+},
+"selector": {
+"state": {
+"attribute": "effect",
+"multiple": false
+}
+}
+},
+"additional_fields": {
+"collapsed": true,
+"fields": {
+"rgbw_color": {
+"filter": {
+"attribute": {
+"supported_color_modes": [
+"hs",
+"xy",
+"rgb",
+"rgbw",
+"rgbww"
+]
+}
+},
+"example": "[255, 100, 100, 50]",
+"selector": {
+"object": {
+"multiple": false
+}
+}
+},
+"rgbww_color": {
+"filter": {
+"attribute": {
+"supported_color_modes": [
+"hs",
+"xy",
+"rgb",
+"rgbw",
+"rgbww"
+]
+}
+},
+"example": "[255, 100, 100, 50, 70]",
+"selector": {
+"object": {
+"multiple": false
+}
+}
+},
+"color_name": {
+"filter": {
+"attribute": {
+"supported_color_modes": [
+"hs",
+"xy",
+"rgb",
+"rgbw",
+"rgbww"
+]
+}
+},
+"selector": {
+"select": {
+"translation_key": "color_name",
+"options": [
+"homeassistant",
+"aliceblue",
+"antiquewhite",
+"aqua",
+"aquamarine",
+"azure",
+"beige",
+"bisque",
+"blanchedalmond",
+"blue",
+"blueviolet",
+"brown",
+"burlywood",
+"cadetblue",
+"chartreuse",
+"chocolate",
+"coral",
+"cornflowerblue",
+"cornsilk",
+"crimson",
+"cyan",
+"darkblue",
+"darkcyan",
+"darkgoldenrod",
+"darkgray",
+"darkgreen",
+"darkgrey",
+"darkkhaki",
+"darkmagenta",
+"darkolivegreen",
+"darkorange",
+"darkorchid",
+"darkred",
+"darksalmon",
+"darkseagreen",
+"darkslateblue",
+"darkslategray",
+"darkslategrey",
+"darkturquoise",
+"darkviolet",
+"deeppink",
+"deepskyblue",
+"dimgray",
+"dimgrey",
+"dodgerblue",
+"firebrick",
+"floralwhite",
+"forestgreen",
+"fuchsia",
+"gainsboro",
+"ghostwhite",
+"gold",
+"goldenrod",
+"gray",
+"green",
+"greenyellow",
+"grey",
+"honeydew",
+"hotpink",
+"indianred",
+"indigo",
+"ivory",
+"khaki",
+"lavender",
+"lavenderblush",
+"lawngreen",
+"lemonchiffon",
+"lightblue",
+"lightcoral",
+"lightcyan",
+"lightgoldenrodyellow",
+"lightgray",
+"lightgreen",
+"lightgrey",
+"lightpink",
+"lightsalmon",
+"lightseagreen",
+"lightskyblue",
+"lightslategray",
+"lightslategrey",
+"lightsteelblue",
+"lightyellow",
+"lime",
+"limegreen",
+"linen",
+"magenta",
+"maroon",
+"mediumaquamarine",
+"mediumblue",
+"mediumorchid",
+"mediumpurple",
+"mediumseagreen",
+"mediumslateblue",
+"mediumspringgreen",
+"mediumturquoise",
+"mediumvioletred",
+"midnightblue",
+"mintcream",
+"mistyrose",
+"moccasin",
+"navajowhite",
+"navy",
+"navyblue",
+"oldlace",
+"olive",
+"olivedrab",
+"orange",
+"orangered",
+"orchid",
+"palegoldenrod",
+"palegreen",
+"paleturquoise",
+"palevioletred",
+"papayawhip",
+"peachpuff",
+"peru",
+"pink",
+"plum",
+"powderblue",
+"purple",
+"red",
+"rosybrown",
+"royalblue",
+"saddlebrown",
+"salmon",
+"sandybrown",
+"seagreen",
+"seashell",
+"sienna",
+"silver",
+"skyblue",
+"slateblue",
+"slategray",
+"slategrey",
+"snow",
+"springgreen",
+"steelblue",
+"tan",
+"teal",
+"thistle",
+"tomato",
+"turquoise",
+"violet",
+"wheat",
+"white",
+"whitesmoke",
+"yellow",
+"yellowgreen"
+],
+"multiple": false,
+"custom_value": false,
+"sort": false
+}
+}
+},
+"hs_color": {
+"filter": {
+"attribute": {
+"supported_color_modes": [
+"hs",
+"xy",
+"rgb",
+"rgbw",
+"rgbww"
+]
+}
+},
+"example": "[300, 70]",
+"selector": {
+"object": {
+"multiple": false
+}
+}
+},
+"xy_color": {
+"filter": {
+"attribute": {
+"supported_color_modes": [
+"hs",
+"xy",
+"rgb",
+"rgbw",
+"rgbww"
+]
+}
+},
+"example": "[0.52, 0.43]",
+"selector": {
+"object": {
+"multiple": false
+}
+}
+},
+"brightness": {
+"filter": {
+"attribute": {
+"supported_color_modes": [
+"brightness",
+"color_temp",
+"hs",
+"xy",
+"rgb",
+"rgbw",
+"rgbww"
+]
+}
+},
+"selector": {
+"number": {
+"min": 0.0,
+"max": 255.0,
+"step": 1.0,
+"mode": "slider"
+}
+}
+},
+"white": {
+"filter": {
+"attribute": {
+"supported_color_modes": [
+"white"
+]
+}
+},
+"selector": {
+"constant": {
+"value": true,
+"label": "Enabled"
+}
+}
+},
+"profile": {
+"example": "relax",
+"selector": {
+"text": {
+"multiline": false,
+"multiple": false
+}
+}
+},
+"flash": {
+"filter": {
+"supported_features": [
+8
+]
+},
+"selector": {
+"select": {
+"translation_key": "flash",
+"options": [
+"long",
+"short"
+],
+"multiple": false,
+"custom_value": false,
+"sort": false
+}
+}
+}
+}
+}
+},
+"target": {
+"entity": [
+{
+"domain": [
+"light"
+]
+}
+]
+}
+}
+}
+},
+{
+"domain": "cover",
+"services": {
+"open_cover": {
+"fields": {
+"speed": {
+"example": "fast",
+"filter": {
+"supported_features": [
+256
+]
+},
+"selector": {
+"state": {
+"attribute": "speed",
+"multiple": false
+}
+}
+}
+},
+"target": {
+"entity": [
+{
+"domain": [
+"cover"
+],
+"supported_features": [
+1
+]
+}
+]
+}
+},
+"close_cover": {
+"fields": {
+"speed": {
+"example": "fast",
+"filter": {
+"supported_features": [
+256
+]
+},
+"selector": {
+"state": {
+"attribute": "speed",
+"multiple": false
+}
+}
+}
+},
+"target": {
+"entity": [
+{
+"domain": [
+"cover"
+],
+"supported_features": [
+2
+]
+}
+]
+}
+},
+"set_cover_position": {
+"fields": {
+"position": {
+"required": true,
+"selector": {
+"number": {
+"min": 0.0,
+"max": 100.0,
+"unit_of_measurement": "%",
+"step": 1.0,
+"mode": "slider"
+}
+}
+},
+"speed": {
+"filter": {
+"supported_features": [
+256
+]
+},
+"example": "fast",
+"selector": {
+"state": {
+"attribute": "speed",
+"multiple": false
+}
+}
+}
+},
+"target": {
+"entity": [
+{
+"domain": [
+"cover"
+],
+"supported_features": [
+4
+]
+}
+]
+}
+},
+"stop_cover": {
+"fields": {},
+"target": {
+"entity": [
+{
+"domain": [
+"cover"
+],
+"supported_features": [
+8
+]
+}
+]
+}
+},
+"toggle": {
+"fields": {},
+"target": {
+"entity": [
+{
+"domain": [
+"cover"
+],
+"supported_features": [
+3
+]
+}
+]
+}
+},
+"open_cover_tilt": {
+"fields": {},
+"target": {
+"entity": [
+{
+"domain": [
+"cover"
+],
+"supported_features": [
+16
+]
+}
+]
+}
+},
+"close_cover_tilt": {
+"fields": {},
+"target": {
+"entity": [
+{
+"domain": [
+"cover"
+],
+"supported_features": [
+32
+]
+}
+]
+}
+},
+"stop_cover_tilt": {
+"fields": {},
+"target": {
+"entity": [
+{
+"domain": [
+"cover"
+],
+"supported_features": [
+64
+]
+}
+]
+}
+},
+"set_cover_tilt_position": {
+"fields": {
+"tilt_position": {
+"required": true,
+"selector": {
+"number": {
+"min": 0.0,
+"max": 100.0,
+"unit_of_measurement": "%",
+"step": 1.0,
+"mode": "slider"
+}
+}
+}
+},
+"target": {
+"entity": [
+{
+"domain": [
+"cover"
+],
+"supported_features": [
+128
+]
+}
+]
+}
+},
+"toggle_cover_tilt": {
+"fields": {},
+"target": {
+"entity": [
+{
+"domain": [
+"cover"
+],
+"supported_features": [
+48
+]
+}
+]
+}
+}
+}
+},
+{
+"domain": "switch",
+"services": {
+"turn_off": {
+"fields": {},
+"target": {
+"entity": [
+{
+"domain": [
+"switch"
+]
+}
+]
+}
+},
+"turn_on": {
+"fields": {},
+"target": {
+"entity": [
+{
+"domain": [
+"switch"
+]
+}
+]
+}
+},
+"toggle": {
+"fields": {},
+"target": {
+"entity": [
+{
+"domain": [
+"switch"
+]
+}
+]
+}
+}
+}
+},
+{
+"domain": "script",
+"services": {
+"reload": {
+"fields": {}
+},
+"turn_on": {
+"fields": {},
+"target": {
+"entity": [
+{
+"domain": [
+"script"
+]
+}
+]
+}
+},
+"turn_off": {
+"fields": {},
+"target": {
+"entity": [
+{
+"domain": [
+"script"
+]
+}
+]
+}
+},
+"toggle": {
+"fields": {},
+"target": {
+"entity": [
+{
+"domain": [
+"script"
+]
+}
+]
+}
+}
+}
+},
+{
+"domain": "weather",
+"services": {
+"get_forecasts": {
+"fields": {
+"type": {
+"required": true,
+"selector": {
+"select": {
+"options": [
+"daily",
+"hourly",
+"twice_daily"
+],
+"translation_key": "forecast_type",
+"multiple": false,
+"custom_value": false,
+"sort": false
+}
+}
+}
+},
+"target": {
+"entity": [
+{
+"domain": [
+"weather"
+],
+"supported_features": [
+1,
+2,
+4
+]
+}
+]
+},
+"response": {
+"optional": false
+}
+}
+}
+}
+]

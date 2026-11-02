@@ -66,6 +66,8 @@ class AnthropicClient private constructor(internal val sdk: SdkClient) : AutoClo
                 // Never the SDK's own logging: requests carry the key and the user's words.
                 .logLevel(LogLevel.OFF)
                 .timeout(TIMEOUT)
+                // What went online: each request's host, its bytes and how it ended (AnthropicNetCount), never its words.
+                .addInterceptor(AnthropicNetCount())
                 .build(),
         )
 

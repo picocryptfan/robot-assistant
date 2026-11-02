@@ -32,6 +32,8 @@ import app.heyrobot.ui.pref.PreferenceScreen
 import app.heyrobot.ui.pref.SwitchPreference
 import app.heyrobot.ui.pref.preferenceFooter
 import app.heyrobot.ui.pref.preferenceGroup
+import app.heyrobot.ui.settings.everydaySafetyRows
+import app.heyrobot.ui.settings.rememberEveryday
 
 // MAIN PROCESS. Settings › Safety & privacy (0.4.0): every rule about when Robot asks first, what works on the lock
 // screen, what helpers (Claude, or any other since 0.6.0) may get without a tap, how direct the local model is, and what
@@ -49,6 +51,8 @@ fun SafetyScreen(s: RobotSettings, update: (RobotSettings) -> Unit, a: AppAction
     val historyTitle = UiStrings.history().str()
     val footer = stringResource(R.string.safety_footer)
     val cardDetails = SafetyCards.entries.associateWith { (if (it == SafetyCards.UNASKED) SettingsStrings.theDefault("detail" to it.detailText) else it.detailText).str() }
+    // The everyday set's row (settings/EverydaySettings.kt): What went online, its own page (E3).
+    val everyday = rememberEveryday()
     PreferenceScreen(UiStrings.safety().str(), onBack, snackbar = snackbar) {
         item(key = "intro") {
             IntroPreference(stringResource(R.string.safety_intro))
@@ -103,6 +107,7 @@ fun SafetyScreen(s: RobotSettings, update: (RobotSettings) -> Unit, a: AppAction
             PreferenceItem(stringResource(R.string.safety_remove_media), stringResource(R.string.safety_remove_media_detail), RIcons.Delete,
                 onClick = { confirmRemove = true })
         }
+        everydaySafetyRows(everyday) { a.openPage(Page.Settings(app.heyrobot.ui.settings.SettingsRoutes.ONLINE)) }
         preferenceFooter(footer)
     }
     if (confirmRemove) {

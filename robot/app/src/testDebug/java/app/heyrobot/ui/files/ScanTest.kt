@@ -3,7 +3,7 @@ package app.heyrobot.ui.files
 
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.ui.test.assertIsNotEnabled
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import app.heyrobot.core.files.FileIntake
@@ -268,7 +268,7 @@ class ScanTest {
         rule.shot("files_scan")
         m.photo(byteArrayOf(1))
         rule.waitUntil(5_000) { m.ui is ScanUi.Corners }
-        rule.onNodeWithText("Drag the four corners to the corners of the page.").assertExists()
+        rule.waitUntil(5_000) { runCatching { rule.onNodeWithText("Drag the four corners to the corners of the page.").assertExists() }.isSuccess }
         rule.shot("files_scan_corners")
         m.move(0, 0.9f, 0.9f)
         m.move(2, 0.1f, 0.1f)
@@ -277,7 +277,7 @@ class ScanTest {
         m.move(2, 0.9f, 0.9f)
         rule.onNodeWithText("Use this page").performClick()
         rule.waitUntil(5_000) { m.ui is ScanUi.Ready }
-        rule.onNodeWithText("1 page ready").assertExists()
+        rule.waitUntil(5_000) { runCatching { rule.onNodeWithText("1 page ready").assertExists() }.isSuccess }
         rule.onNodeWithText("Add a page").assertExists()
         assertEquals(emptyList<String>(), rule.touchTargetProblems())
         rule.shot("files_scan_pages")
@@ -300,10 +300,10 @@ class ScanTest {
         rule.shot("files_scan_fr")
         m.photo(byteArrayOf(1))
         rule.waitUntil(5_000) { m.ui is ScanUi.Corners }
-        rule.onNodeWithText("Fais glisser les quatre coins aux coins de la page.").assertExists()
+        rule.waitUntil(5_000) { runCatching { rule.onNodeWithText("Fais glisser les quatre coins aux coins de la page.").assertExists() }.isSuccess }
         rule.onNodeWithText("Garder cette page").performClick()
         rule.waitUntil(5_000) { m.ui is ScanUi.Ready }
-        rule.onNodeWithText("1 page prête").assertExists()
+        rule.waitUntil(5_000) { runCatching { rule.onNodeWithText("1 page prête").assertExists() }.isSuccess }
         assertEquals(emptyList<String>(), rule.touchTargetProblems())
         rule.shot("files_scan_pages_fr")
     }

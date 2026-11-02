@@ -9,7 +9,20 @@ package app.heyrobot.core
  * check and the User-Agents read this, and the app's ProcessIsolationTest holds it to the build's applicationId.
  */
 object AppId {
-    const val PACKAGE = "ai.robot_app"
+    /** The released app's ID. The updater compares with this one only; another build's ID never gets updates (see [updatesAllowed]). */
+    const val RELEASE = "ai.robot_app"
+
+    /**
+     * This build's ID: [RELEASE] but in a test build that installs beside your Robot with its own suffix. RobotApp binds it from
+     * BuildConfig before anything else runs; before that, or in a JVM test, it's [RELEASE].
+     */
+    @Volatile var PACKAGE: String = RELEASE
+        private set
+
+    fun bind(applicationId: String) { PACKAGE = applicationId }
+
+    /** Only the released app's ID checks for, fetches or installs updates: a test build must never offer your release over itself. */
+    fun updatesAllowed(applicationId: String): Boolean = applicationId == RELEASE
 
     /**
      * 1.0: "Robot/<version>", the one way every User-Agent of Robot's names it and its version: the downloads and the

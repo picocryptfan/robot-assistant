@@ -80,6 +80,12 @@ object KwsThresholds {
      * taken out, so a slightly lower threshold catches a "stop" said over her (EchoGuard still applies).
      */
     val STOP_AEC = Preset(0.20f, 1.5f)
+    /**
+     * "Stop" while a spoken reply is being written and her voice hasn't started: there's no voice of hers to mistake for
+     * yours, and this is when the slow first sentence leaves you waiting. Measured on the synthetic "Stop." clips at eight
+     * alignments: 4 of 8 at 0.25, 7 of 8 here, no false hit in 127 s of her voices.
+     */
+    val STOP_QUIET = Preset(0.15f, 1.5f)
 
     fun wake(s: WakeSensitivity): Preset = when (s) {
         WakeSensitivity.LOW -> LOW
@@ -91,6 +97,9 @@ object KwsThresholds {
 
     /** "Stop" while Robot speaks, moved by Settings › Voice › "Interrupt sensitivity" (Medium: [stop] as it was). */
     fun stop(echoCancelled: Boolean, interrupt: InterruptSensitivity): Preset = shift(stop(echoCancelled), interrupt)
+
+    /** [STOP_QUIET], moved by the same setting. */
+    fun stopQuiet(interrupt: InterruptSensitivity): Preset = shift(STOP_QUIET, interrupt)
 
     /** A wake phrase heard over Robot's voice: its own preset ([wake]) moved by the interrupt sensitivity (Medium: the same). */
     fun talkWake(s: WakeSensitivity, interrupt: InterruptSensitivity): Preset = shift(wake(s), interrupt)

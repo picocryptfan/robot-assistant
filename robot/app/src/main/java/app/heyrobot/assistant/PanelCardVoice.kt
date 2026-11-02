@@ -74,6 +74,24 @@ internal class PanelCardVoice(
     /** PanelHelperTurn's askToShare said its own words about the card: no "Say yes or no." on top. */
     private var promptSaid = false
 
+    /** "Try it here or ask" waits: its card's id, the names heard as "the helper", and what silence does. */
+    private var choiceCard: String? = null
+    private var choiceNames: List<app.heyrobot.core.HelperName> = emptyList()
+    private var choiceHelper: String? = null
+    private var choiceSilent: () -> Unit = {}
+
+    fun choiceWaits(id: String, names: List<app.heyrobot.core.HelperName>, helper: String, silent: () -> Unit) {
+        choiceCard = id
+        choiceNames = names
+        choiceHelper = helper
+        choiceSilent = silent
+    }
+
+    fun choiceDone() {
+        choiceCard = null
+        choiceSilent = {}
+    }
+
     /** PanelHelperTurn's askToShare said its own words about the card that is about to wait. */
     fun saidPrompt() {
         promptSaid = true
@@ -123,6 +141,8 @@ internal class PanelCardVoice(
         val main = port.main
         port.stt.start(object : SpeechToText.Listener {
             fun mine() = token == listening
+            @Volatile private var cut = false
+            override fun onCapReached() { cut = true }
             override fun onPartial(text: String) { main.post { if (mine()) state.update { if (it.cardHearing == Phase.LISTENING) it.copy(partial = text) else it } } }
             override fun onEndOfSpeech() {
                 main.post {
@@ -131,17 +151,27 @@ internal class PanelCardVoice(
                     state.update { if (it.cardHearing != null) it.copy(cardHearing = Phase.TRANSCRIBING) else it }
                 }
             }
+            override fun onSpeechBack() {
+                main.post {
+                    if (!mine()) return@post
+                    port.wakePaused(true)
+                    state.update { if (it.cardHearing != null) it.copy(cardHearing = Phase.LISTENING) else it }
+                }
+            }
             override fun onFinal(text: String) {
                 main.post {
                     if (!mine()) return@post
                     endListening()
-                    heard(text)
+                    // Cut off at the cap, it's no answer: the card waits.
+                    if (cut) port.notify(PanelStrings.cardHint().render(port.screenLangs())) else heard(text)
                 }
             }
             override fun onError(reason: SpeechToText.Reason, message: String) {
                 main.post {
                     if (!mine()) return@post
                     endListening()
+                    // Silence isn't an answer: once more, then the card waits for a tap until its time is up, as for a typed question.
+                    if (reason == SpeechToText.Reason.NO_SPEECH && choiceCard != null) return@post run { if (retry++ < 1) listen() }
                     port.notify(if (reason == SpeechToText.Reason.NO_SPEECH) PanelStrings.cardHint().render(port.screenLangs()) else message)
                 }
             }
@@ -169,6 +199,8 @@ internal class PanelCardVoice(
     private fun heard(text: String) {
         if (text.isNotBlank() && answer(text, spoken = true)) return
         if (replies.pendingCard() == null) return
+        // "Try it here or ask" takes no yes or no: heard again once, then Robot tries.
+        if (choiceCard != null) return if (retry++ < 1) listen() else choiceSilent()
         if (retry++ < 1) {
             notify(PanelStrings.cardHint())
             if (state.value.speak) {
@@ -192,6 +224,12 @@ internal class PanelCardVoice(
     fun answer(text: String, spoken: Boolean): Boolean {
         val card = replies.pendingCard() ?: return false
         val s = port.settings
+        if (card.id == choiceCard) {
+            if (spoken && !s.voiceCards) return false
+            val picked = app.heyrobot.core.helpers.HelperChoice.answer(text, choiceNames, choiceHelper) ?: return false
+            port.confirm(card.id, picked == app.heyrobot.core.helpers.HelperChoice.Picked.HELPER)
+            return true
+        }
         // 0.8: a routine from the screen's text, or deleting one: only a tap (a "no" still declines).
         port.routineTapOnly?.takeIf { it.first == card.id }?.let { (_, words) ->
             if (CardAnswer.of(text, s.wakePhrases.filter { it.enabled }.map { it.text }) == CardAnswer.Kind.YES) {

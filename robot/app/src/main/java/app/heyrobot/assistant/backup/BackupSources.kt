@@ -38,13 +38,21 @@ import app.heyrobot.core.files.FileIndexCodec
 import app.heyrobot.core.files.FileProblem
 import app.heyrobot.core.files.FileSealReader
 import app.heyrobot.core.files.IndexLoad
+import app.heyrobot.core.connect.ConnFile
+import app.heyrobot.sys.ConnFiles
 import app.heyrobot.sys.FilesSettingsStore
+import app.heyrobot.sys.ListsFiles
+import app.heyrobot.sys.ListsSettingsStore
+import app.heyrobot.sys.ListsVault
+import app.heyrobot.core.lists.ListsFile
+import app.heyrobot.core.lists.ListsLoad
 import app.heyrobot.sys.FilesVault
 import app.heyrobot.sys.RobotFiles
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
 import java.security.MessageDigest
+import app.heyrobot.sys.EverydaySettingsStore
 
 // :VOICE PROCESS (docs/plans/backup-1.1-design.md §6.1). Reads every store a backup carries, by category, into entries:
 // only reads, never a write. 1.4: Robot Files through this process's vault (its lock gate), each file's bytes streamed. The main app's settings files are read as :voice already reads settings.json, messages.json
@@ -105,6 +113,7 @@ internal object BackupSources {
         File(f, TranscriptFiles.META).isFile }.orEmpty().sortedBy { it.name }
     private fun peopleFile(ctx: Context) = File(PeopleFiles.dir(ctx), BackupCategory.PEOPLE_FILE)
     private fun lockFile(ctx: Context) = File(LockStore.dir(ctx), LockStore.LOCKS)
+    private fun connectionsFile(ctx: Context) = File(dir(ctx), BackupCategory.CONNECTIONS_FILE)
 
     /** Memory as it is now: the file, or null when it can't be opened (locked, its key gone, damaged); empty when none. */
     fun memory(ctx: Context): MemoryFile? = try {
@@ -118,8 +127,25 @@ internal object BackupSources {
         null
     }
 
+    /**
+     * 1.4, Lists as they are now, through this process's vault (its gate): the lists with the journal's adds merged in (the
+     * first-use lists never made here), an empty file when there are none, or null when they can't be opened now (locked,
+     * their key gone, damaged, a newer Robot's).
+     */
+    fun lists(vault: ListsVault): ListsFile? = try {
+        when (val l = vault.load(firstUse = false)) {
+            is ListsLoad.Loaded -> l.value
+            ListsLoad.Empty -> ListsFile()
+            else -> null
+        }
+    } catch (t: Throwable) {
+        RLog.w("backup_lists", t)
+        null
+    }
+
     /** What each category holds now (background thread). Memory's line is null-count when it can't be opened now. */
-    fun survey(ctx: Context, s: RobotSettings, files: () -> FilesVault = { RobotFiles.vault(ctx) }): Map<BackupCategory, Summary> {
+    fun survey(ctx: Context, s: RobotSettings, lists: () -> ListsVault = { ListsFiles.vault(ctx) },
+               files: () -> FilesVault = { RobotFiles.vault(ctx) }): Map<BackupCategory, Summary> {
         val out = LinkedHashMap<BackupCategory, Summary>()
         val settings = settingsFiles(ctx)
         out[BackupCategory.SETTINGS] = Summary(settings.size, settings.sumOf { it.length() })
@@ -154,10 +180,30 @@ internal object BackupSources {
         out[BackupCategory.TRANSCRIPTS] = Summary(tr.size, tr.sumOf { d -> d.listFiles().orEmpty().filter { it.isFile && it.name != TranscriptFiles.AUDIO }.sumOf { it.length() } },
             extra = audio.size, extraBytes = audio.sumOf { it.length() })
         val keys = BackupSecrets.keyNames(ctx, s)
-        out[BackupCategory.KEYS] = Summary(keys.size + (split?.codes?.items?.size ?: 0), 0, extra = split?.codes?.items?.size ?: 0, names = keys)
+        // C10: your connections' keys are shown in this row too ("Home Assistant, ntfy"), and go in with its tick.
+        val connKeys = BackupSecrets.connectionsWithKeys(ctx).map { it.name }
+        out[BackupCategory.KEYS] = Summary(keys.size + connKeys.size + (split?.codes?.items?.size ?: 0), 0, extra = split?.codes?.items?.size ?: 0,
+            names = keys + connKeys)
         out[BackupCategory.VOICEPRINT] = Summary(if (BackupSecrets.hasVoiceprint(ctx)) 1 else 0, if (BackupSecrets.hasVoiceprint(ctx)) 1024 else 0)
         // F12: travel mode on, Robot Files stays out of Back up now (a backup would carry the hidden drawers' files).
         out[BackupCategory.FILES] = if (app.heyrobot.core.files.TravelMode.active(FilesSettingsStore.current(ctx))) Summary(-1, 0) else filesSummary(files())
+        // 1.4, Lists: how many lists (null-count when they can't be opened now).
+        out[BackupCategory.LISTS] = lists(lists())?.let { f -> Summary(f.lists.size, if (f.lists.isEmpty()) 0 else BackupExport.lists(f).size.toLong()) } ?: Summary(-1, 0)
+        // The everyday set: everyday_settings.json, once you changed one of its switches.
+        val everyday = EverydaySettingsStore.file(ctx)
+        out[BackupCategory.EVERYDAY] = Summary(if (everyday.isFile) 1 else 0, if (everyday.isFile) everyday.length() else 0)
+        // L12: how many pairings would go (F132: off, :link holds them closed and they stay out; on but locked or out of reach: can't be read now).
+        out[BackupCategory.LINKS] = if (!linksOn(ctx)) Summary(-1, 0, extra = LINKS_OFF) else linkBackup(ctx)?.let { b ->
+            val n = (app.heyrobot.core.link.LinkBackupCodec.decode(b.toString(Charsets.UTF_8)) as? app.heyrobot.core.link.LinkBackupRead.Ok)?.file?.pairings?.size
+            if (n == null) Summary(-1, 0) else Summary(n, if (n == 0) 0 else b.size.toLong())
+        } ?: Summary(-1, 0)
+        // C10: connections.json (null-count when it can't be read: damaged, or a newer Robot's, it stays out), and their keys.
+        val conn = connectionsFile(ctx)
+        out[BackupCategory.CONNECTIONS] = when (val f = ConnFiles.store(ctx).file()) {
+            is ConnFile.Ok -> Summary(f.connections.size, if (conn.isFile) conn.length() else 0)
+            else -> Summary(-1, 0)
+        }
+        out[BackupCategory.CONN_KEYS] = Summary(connKeys.size, 0, names = connKeys)
         return out
     }
 
@@ -184,7 +230,9 @@ internal object BackupSources {
         chosen.filterTo(LinkedHashSet()) { c -> (survey?.get(c)?.count ?: 0) >= 0 }
 
     /** What [gather] found: the entries in restore order, and the helpers whose key couldn't be read just now (by name). */
-    class Gathered(val sources: List<Source>, val secrets: List<BackupSecrets.Secret>, val unreadableKeys: List<String>)
+    class Gathered(val sources: List<Source>, val secrets: List<BackupSecrets.Secret>, val unreadableKeys: List<String>, val linksLeftOut: Boolean = false,
+                   /** R4: asked once the entries are written: how many of Robot Files' files couldn't be read. */
+                   val filesLeftOut: () -> Int = { 0 }, val codesLeftOut: Boolean = false)
 
     /** Memory couldn't be opened now while Memory was chosen ("Back up without Memory, or unlock and try again"). */
     class MemoryUnreadable : Exception()
@@ -192,21 +240,25 @@ internal object BackupSources {
     /** 1.4: Robot Files' list couldn't be opened now while Files was chosen ("Back up without Files, or unlock and try again"). */
     class FilesUnreadable : Exception()
 
+    /** 1.4: the lists couldn't be opened now while Lists was chosen ("Back up without Lists, or unlock and try again"). */
+    class ListsUnreadable : Exception()
+
     /**
      * 1.4, Robot Files (files-1.4-plan.md §2.8, core FilesBackup): each carried file's plain bytes, streamed through this
      * phone's seal as they are written (never the sealed form, never robot_files_v1), then index.json, made after them from
      * the files that went in whole, then files_settings.json. A file deleted since the list was read is left out; one that
-     * fails part way goes in as zeros and isn't named, so the backup still completes and a restore skips it.
+     * fails part way goes in as zeros and isn't named, so the backup still completes and a restore skips it. R4: returns how to
+     * ask how many went that way, once they're written; index.json notes the same count, for the restore.
      */
-    private fun filesEntries(ctx: Context, vault: FilesVault, videos: Boolean, out: MutableList<Source>) {
+    private fun filesEntries(ctx: Context, vault: FilesVault, videos: Boolean, out: MutableList<Source>): () -> Int {
         val c = BackupCategory.FILES
         if (app.heyrobot.core.files.TravelMode.active(FilesSettingsStore.current(ctx))) throw FilesUnreadable()
         val index = when (val l = vault.load()) {
             is IndexLoad.Loaded -> l.index
-            IndexLoad.Empty -> return
+            IndexLoad.Empty -> return { 0 }
             else -> throw FilesUnreadable()
         }
-        if (index.entries.isEmpty()) return
+        if (index.entries.isEmpty()) return { 0 }
         val whole = LinkedHashMap<FileId, FilesBackup.Streamed>()
         for (e in index.entries) if (FilesBackup.carried(e, videos)) {
             out += Source.stream(c, FilesBackup.blobName(e.id), e.from.size) {
@@ -220,8 +272,22 @@ internal object BackupSources {
                 r?.let { e.from.size to Blob(it, e.from.size) { s -> synchronized(whole) { whole[e.id] = s } } }
             }
         }
-        out += Source.bytes(c, FilesBackup.INDEX) { FileIndexCodec.encode(FilesBackup.exported(index, synchronized(whole) { LinkedHashMap(whole) })) }
+        val carried = index.entries.count { FilesBackup.carried(it, videos) }
+        val left = { carried - synchronized(whole) { whole.size } }
+        out += Source.bytes(c, FilesBackup.INDEX) { FileIndexCodec.encode(FilesBackup.exported(index, synchronized(whole) { LinkedHashMap(whole) }, left())) }
         smallFile(c, FilesSettingsStore.file(ctx), FilesBackup.SETTINGS, out)
+        return left
+    }
+
+    /** F132: Robot to Robot's row in a survey, in [Summary.extra]: can't be read because it's off. */
+    const val LINKS_OFF = 1
+
+    private fun linksOn(ctx: Context): Boolean = app.heyrobot.sys.LinkSettingsStore.current(ctx).on
+
+    /** L12: from :link, over Binder; null when it won't say (locked, or out of reach). Off the main thread, as all of this is. */
+    private fun linkBackup(ctx: Context): ByteArray? {
+        val client = app.heyrobot.sys.LinkClient(ctx)
+        return try { client.backupExport() } finally { client.close() }
     }
 
     private fun smallFile(c: BackupCategory, f: File, name: String, out: MutableList<Source>) {
@@ -283,15 +349,18 @@ internal object BackupSources {
      * the voiceprint are read here, from BackupSecrets, and must be closed by the caller once written. Background thread.
      */
     fun gather(ctx: Context, s: RobotSettings, chosen: Set<BackupCategory>, recordings: Boolean, pictures: Boolean, videos: Boolean = true,
-               files: () -> FilesVault = { RobotFiles.vault(ctx) }): Gathered {
+               lists: () -> ListsVault = { ListsFiles.vault(ctx) }, files: () -> FilesVault = { RobotFiles.vault(ctx) }): Gathered {
         val out = ArrayList<Source>()
         val secrets = ArrayList<BackupSecrets.Secret>()
-        var unreadable: List<String> = emptyList()
+        val unreadable = ArrayList<String>()
+        var linksLeftOut = false
+        var filesLeft: () -> Int = { 0 }
+        var codesLeftOut = false
         var codes: MemoryFile? = null
-        fun small(c: BackupCategory, f: File, name: String = f.name, change: ((String) -> String)? = null) {
+        fun small(c: BackupCategory, f: File, name: String = f.name, change: ((String) -> String?)? = null) {
             if (!f.isFile) return
             out += Source.bytes(c, name, f.length()) {
-                if (!f.isFile) null else if (change == null) f.readBytes() else change(f.readText(Charsets.UTF_8)).toByteArray(Charsets.UTF_8)
+                if (!f.isFile) null else if (change == null) f.readBytes() else change(f.readText(Charsets.UTF_8))?.toByteArray(Charsets.UTF_8)
             }
         }
         for (c in BackupCategory.entries.filter { it in chosen }) when (c) {
@@ -333,17 +402,48 @@ internal object BackupSources {
             BackupCategory.KEYS -> {
                 val k = BackupSecrets.keys(ctx, s)
                 secrets += k.secrets
-                unreadable = k.unreadable
+                unreadable += k.unreadable
                 // Memory's codes: those of the memory just read, or read now when Memory itself isn't chosen.
                 val cs = codes ?: memory(ctx)?.let { BackupExport.memory(it).codes }
+                if (cs == null) codesLeftOut = true
                 if (cs != null && cs.items.isNotEmpty()) {
                     val json = MemoryCodec.toJson(cs).toByteArray(Charsets.UTF_8)
                     out += Source.bytes(c, BackupCategory.MEMORY_CODES, json.size.toLong()) { json }
                 }
             }
             BackupCategory.VOICEPRINT -> BackupSecrets.voiceprint(ctx)?.let { secrets += it }
-            BackupCategory.FILES -> filesEntries(ctx, files(), videos, out)
+            BackupCategory.FILES -> filesLeft = filesEntries(ctx, files(), videos, out)
+            // 1.4, Lists: lists.json (the journal merged, never the sealed file), then Settings › Lists. No lists file yet: none.
+            BackupCategory.LISTS -> {
+                val f = lists(lists()) ?: throw ListsUnreadable()
+                if (f.lists.isNotEmpty()) {
+                    val json = BackupExport.lists(f)
+                    out += Source.bytes(c, BackupCategory.LISTS_FILE, json.size.toLong()) { json }
+                }
+                small(c, ListsSettingsStore.file(ctx), BackupCategory.LISTS_SETTINGS)
+            }
+            // Your music app's pin stays on this phone (trust is never in a backup).
+            BackupCategory.EVERYDAY -> small(c, EverydaySettingsStore.file(ctx), BackupCategory.EVERYDAY_FILE, BackupExport::everyday)
+            // L12: what :link hands over (never a key: core LinkBackupCodec), then Settings › Robot to Robot. Off, none of the first.
+            // U1: on, but :link wouldn't say (the export refused or timed out): the whole category stays out and Done says so.
+            BackupCategory.LINKS -> {
+                val on = linksOn(ctx)
+                val pairings = if (on) linkBackup(ctx) else null
+                if (on && pairings == null) linksLeftOut = true
+                else {
+                    pairings?.let { b -> out += Source.bytes(c, BackupCategory.LINKS_FILE, b.size.toLong()) { b } }
+                    small(c, app.heyrobot.sys.LinkSettingsStore.file(ctx), BackupCategory.LINK_SETTINGS)
+                }
+            }
+            // C10: connections.json as saved (no key is ever in it), only while it reads whole; a restore decides what comes back.
+            BackupCategory.CONNECTIONS -> if (ConnFiles.store(ctx).file() is ConnFile.Ok) small(c, connectionsFile(ctx), BackupCategory.CONNECTIONS_FILE)
+            // C10: each connection's key, decrypted here, in :voice, straight into the backup's encryption (BackupSecrets).
+            BackupCategory.CONN_KEYS -> {
+                val k = BackupSecrets.connectionKeys(ctx)
+                secrets += k.secrets
+                unreadable += k.unreadable
+            }
         }
-        return Gathered(out, secrets, unreadable)
+        return Gathered(out, secrets, unreadable, linksLeftOut, filesLeft, codesLeftOut)
     }
 }

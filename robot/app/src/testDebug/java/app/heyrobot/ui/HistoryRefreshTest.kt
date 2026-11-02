@@ -3,7 +3,7 @@ package app.heyrobot.ui
 
 import android.content.Context
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.test.core.app.ApplicationProvider
 import app.heyrobot.core.ChatTurn

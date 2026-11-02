@@ -28,12 +28,19 @@ object SkillContinue {
     const val TTL_MS = 10 * 60_000L
     private const val CHANNEL = "skills"
     /** Notification ids and their PendingIntents' request codes: away from Ready cards' (8 411 to 8 675). */
-    private const val BASE_ID = 8_700
-    private const val SLOTS = 32
+    private const val BASE_ID = app.heyrobot.sys.LockShade.SKILL_BASE
+    private const val SLOTS = app.heyrobot.sys.LockShade.SKILL_SLOTS
 
-    /** What waits: the rest of skill [skillId] (at [rev]) from step [from], with this run's values, named and taint. */
+    /**
+     * What waits: the rest of skill [skillId] (at [rev]) from step [from], with this run's values, named and taint, where
+     * each value came from ([sources]) and what earlier steps brought back ([outputs], C4): kept in this process's memory only.
+     */
     data class Waiting(val skillId: String, val rev: Int, val values: Map<String, String>, val named: Boolean, val from: Int, val done: Int,
-        val untrusted: Boolean, val expires: Long = 0L, val notification: Int = 0)
+        val untrusted: Boolean, val expires: Long = 0L, val notification: Int = 0,
+        val sources: Map<String, app.heyrobot.core.skills.ValueSource> = emptyMap(),
+        val outputs: Map<String, Map<String, app.heyrobot.core.skills.SkillValue>> = emptyMap()) {
+        override fun toString(): String = "Waiting($from, $done)" // l10n: not text (toString, for the logs)
+    }
 
     private val waiting = HashMap<String, Waiting>()
     private var slot = 0
@@ -87,10 +94,13 @@ object SkillContinue {
                 .setOnlyAlertOnce(true)
                 .setTimeoutAfter(TTL_MS)
                 .setCategory(Notification.CATEGORY_REMINDER)
-                .setVisibility(Notification.VISIBILITY_PRIVATE)
+                // The skill's name and its next step with this run's values: never on the secure lock screen (PRIVATE shows them
+                // under Android's default setting).
+                .setVisibility(Notification.VISIBILITY_SECRET)
                 .setPublicVersion(public)
                 .build()
-            ctx.getSystemService(NotificationManager::class.java).notify(id, n)
+            // review-lock 10: not in the shade during a lock for someone else; its tap is refused anyway (SkillContinueReceiver).
+            if (!app.heyrobot.lock.PhoneLockNow.someoneElse(ctx)) ctx.getSystemService(NotificationManager::class.java).notify(id, n)
         } catch (t: Throwable) {
             RLog.w("skill_notify", t)
         }

@@ -74,7 +74,10 @@ fun BackupSettingsScreen(onBack: () -> Unit) {
         }
         result?.let { r ->
             preferenceGroup(resultTitle, "restored") {
+                if (r.cut) PreferenceItem(stringResource(R.string.backup_restore_stopped))
                 for ((c, o) in r.outcomes) PreferenceItem(outcomeLine(c, o, r.madeBy))
+                if (r.filesLeftOut > 0) PreferenceItem(pluralStringResource(R.plurals.backup_restore_files_left_out, r.filesLeftOut, r.filesLeftOut))
+                if (r.outcomes[BackupCategory.LINKS] == CategoryOutcome.Done) PreferenceItem(stringResource(R.string.backup_restore_result_links))
                 if (!r.mine && r.outcomes.isNotEmpty()) PreferenceItem(stringResource(R.string.backup_restore_result_others))
                 if (!r.mine && r.keptSafer > 0) PreferenceItem(pluralStringResource(R.plurals.backup_restore_kept, r.keptSafer, r.keptSafer))
                 PreferenceItem(stringResource(R.string.backup_restore_again))
@@ -95,6 +98,10 @@ private fun outcomeLine(c: BackupCategory, o: CategoryOutcome, madeBy: String): 
         CategoryOutcome.AfterUnlock -> stringResource(R.string.backup_restore_result_unlock)
         CategoryOutcome.WaitsForRoom -> stringResource(R.string.backup_restore_result_room)
         CategoryOutcome.EarlierWaits -> stringResource(R.string.backup_restore_result_earlier)
+        is CategoryOutcome.KeysMissed -> app.heyrobot.core.i18n.BackupStrings.keysMissed(o.missed.toLong()).str()
+        is CategoryOutcome.KeysNoPlace -> pluralStringResource(R.plurals.backup_restore_result_keys_no_place, o.count, o.count)
+        CategoryOutcome.Cut -> stringResource(R.string.backup_restore_result_cut)
+        CategoryOutcome.Refused -> stringResource(R.string.backup_restore_result_refused)
         is CategoryOutcome.Skipped -> BackupWords.skip(CategoryPlan(c, RestoreMode.FRESH, o.why, 0), madeBy)?.str() ?: return BackupWords.category(c)().str()
     }
     return stringResource(R.string.backup_restore_result_line, BackupWords.category(c)().str(), what)

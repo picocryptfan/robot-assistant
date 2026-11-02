@@ -47,8 +47,8 @@
     <string name="routine_allow">Autoriser</string>
     <string name="routine_clock">Alarmes de l’Horloge</string>
     <string name="routine_clock_ok">L’Horloge de GrapheneOS est installée&#160;: Robot entend quand tu éteins une alarme</string>
-    <string name="routine_clock_no">L’Horloge de GrapheneOS n’est pas installée&#160;: «&#160;Quand j’éteins mon alarme&#160;» ne peut pas lancer de routine</string>
-    <string name="routine_alarm_needs_clock">Demande l’appli Horloge de GrapheneOS, qui n’est pas sur ce téléphone&#160;: arrêter une alarme ne lancera donc rien. La prise en charge d’autres applis d’horloge est prévue.</string>
+    <string name="routine_clock_no">Aucune appli d’horloge sur ce téléphone&#160;: «&#160;Quand j’éteins mon alarme&#160;» ne peut pas lancer de routine</string>
+    <string name="routine_alarm_needs_clock">Demande une appli d’horloge, et ce téléphone n’en a pas&#160;: arrêter une alarme ne lancera donc rien.</string>
     <string name="routine_calendar">Agenda</string>
     <string name="routine_calendar_ok">Autorisé&#160;: le résumé lit les événements d’aujourd’hui</string>
     <string name="routine_calendar_no">Pas autorisé&#160;: le résumé ne peut pas lire ta journée</string>
@@ -154,4 +154,10 @@
     <string name="routine_add_button">Ajouter</string>
     <string name="routine_time_hint">Sur 24 heures, comme 7&#160;h&#160;30.</string>
     <string name="routine_time_problem">Une heure comme 7&#160;h&#160;30.</string>
+    <string name="routine_clock_app">Appli d’horloge</string>
+    <string name="routine_clock_default">Celle du téléphone&#160;: %1$s</string>
+    <string name="routine_clock_sound">%1$s est ton horloge&#160;: Robot se fie à l’arrêt de la sonnerie de l’alarme</string>
+    <string name="routine_clock_doesnt_tell">%1$s n’indique pas aux autres applis quand une alarme se termine</string>
+    <string name="routine_clock_sound_detail">Robot se fie à l’arrêt de la sonnerie, sans utiliser le micro. Une alarme qui ne fait que vibrer ne lancera donc rien.</string>
+    <string name="routine_clock_use_time">Commencer plutôt à une heure fixe</string>
 </resources>

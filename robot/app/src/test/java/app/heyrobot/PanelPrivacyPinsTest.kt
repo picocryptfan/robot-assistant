@@ -20,6 +20,25 @@ class PanelPrivacyPinsTest {
         return Flat(Source.strip(f.readText(), keepStrings = false))
     }
 
+    @Test fun theScreenQuestionGoesWithTheScreenAndNoTools() {
+        val panel = flat("assistant/PanelController.kt")
+        assertInOrder(panel.body("fun send(text: String, fromVoice: Boolean = false)"), "ScreenQuestion.asks(q)", "screenShare.attachAsked()", "return send(text, fromVoice)",
+            "val attachment = st.draft?.kind")
+        assertEquals(true, panel.has("val chatOnly = loaded.chatOnly || app.heyrobot.core.ScreenQuestion.answerOnly(question, attachment)"))
+    }
+
+    /** fb14: speech cut at the 30 s cap in a car turn with no window: no "text box", and nothing kept for the next window or the lock screen. */
+    /** fb14: held words don't wait for the next window, which may be on the lock screen (onHide needs the voice engines; what's held and promised: PanelCutWordsTest). */
+    @Test fun closingThePanelTakesHeldWordsWithIt() {
+        assertInOrder(flat("assistant/PanelController.kt").body("fun onHide("), "_state.update { it.copy(fillInput = null) }")
+    }
+
+    @Test fun anAttachedPrivateFileIsShownOnlyAndKeptAsAPlaceholder() {
+        // F50: marked before the model starts, and no sentence of it goes to the voice.
+        val a = flat("assistant/PanelAttach.kt").body("suspend fun answer(replyId: String, question: String, file: Held)")
+        assertInOrder(a, "FilesForHelper.attachedPrivate(file.name, text)", "val speak = state.value.speak && !private", "if (private) port.privateAnswer(replyId)", "port.ask(req.request)")
+    }
+
     @Test fun aRoutinesOwnLinesAreQuotedAndAnOffRoutineWaitsForATap() {
         val panel = flat("assistant/routines/PanelRoutines.kt")
         // The Say step's sentence and the reminders, as written: the reply carries the content record before either is shown.

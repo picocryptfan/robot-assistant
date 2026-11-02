@@ -16,6 +16,7 @@ import app.heyrobot.core.output.Line
 import app.heyrobot.core.car.NavKind
 import app.heyrobot.core.car.PhoneLabel
 import app.heyrobot.sys.Phones
+import app.heyrobot.sys.EverydaySettingsStore
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -24,6 +25,7 @@ import app.heyrobot.assistant.PanelController
 import app.heyrobot.assistant.VoiceHub
 import app.heyrobot.assistant.car.CallPlacer
 import app.heyrobot.assistant.car.CarModeController
+import app.heyrobot.sys.MapsApps
 import app.heyrobot.assistant.headset.HeadsetSession
 import app.heyrobot.assistant.routines.PanelRoutines
 import app.heyrobot.core.Action
@@ -154,6 +156,13 @@ object PanelHandsFree {
 
     fun takeIntro(): String? = intro.also { intro = null } ?: session?.let(HandsFreeMessages::intro)
 
+    /**
+     * Hands-free takes whatever you say next as its answer (a spoken call's choice or yes, an announced message's question,
+     * the car screen's "Who should I call?"): the panel's other routers leave your words to it (PanelController.send, hfWaits). The
+     * private question and "Want more?" let other words go on, so they don't count.
+     */
+    val waitsForAnswer: Boolean get() = callFlow != null || HandsFreeMessages.waiting || callPrefix
+
     /** A headset or car session runs for the car: what the car may hear, and its short answers. */
     val inCar: Boolean get() = session?.kind == SessionKind.CAR
 
@@ -164,6 +173,9 @@ object PanelHandsFree {
     fun endQuietly() {
         endAfterReply = true
     }
+
+    /** A session is at work (the car screen's Talk closes its panel only when there's none). */
+    val active: Boolean get() = session != null
 
     /** The panel closed: the session ends and lets go of the headset. */
     fun onHide() {
@@ -177,6 +189,7 @@ object PanelHandsFree {
         HandsFreeMessages.sessionEnded()
         // 1.1: the session's question is over: the music comes back unless the panel is still busy (PanelMediaPause).
         PanelController.mediaPause.check()
+        CarModeController.turnEnded()
     }
 
     private fun reset() {
@@ -184,9 +197,9 @@ object PanelHandsFree {
         unlockSaid = false; endAfterReply = false; callFlow = null; intro = null; callPrefix = false
     }
 
-    /** The panel heard the question ([empty]: nothing came). */
-    fun heard(empty: Boolean) {
-        session?.heard(empty)
+    /** The panel heard the question ([empty]: nothing came; [cut]: speech that ran into the cap, never acted on). */
+    fun heard(empty: Boolean, cut: Boolean = false) {
+        session?.heard(empty, cut)
     }
 
     /** The session waits for the end of the reply: true when something more was said first ("Want more?", the private question). */
@@ -294,7 +307,10 @@ object PanelHandsFree {
             more.clear()
         }
         val car = CarModeController.on
-        val c = HandsFreeRouter.route(q, car, wake)
+        // The everyday set: car mode's music phrases are MusicRouter's while Music by voice is on (PanelMusic, earlier in the
+        // panel); with it off they keep 0.8's handling here (everyday-set-plan.md §3.6).
+        val carMusic = car && !EverydaySettingsStore.current(app).music
+        val c = HandsFreeRouter.route(q, car, wake, carMusic)
         when {
             c == HandsFreeCommand.Repeat || c == HandsFreeCommand.StopListening -> if (session != null) Cmd.Voice(c) else null
             c != null -> Cmd.Voice(c)
@@ -340,6 +356,7 @@ object PanelHandsFree {
             HandsFreeCommand.CarModeOn -> when {
                 !HandsFreeHub.car.on -> reply(replyId, host, said(HandsFreeStrings.carOffInSettings("page" to UiStrings.inSettings(UiStrings.carMode))))
                 CarModeController.on -> reply(replyId, host, said(HandsFreeStrings.carAlreadyOn()))
+                Assistant.keyguard(app) -> reply(replyId, host, CarGate.UNLOCK_ONCE.get(lang))
                 else -> {
                     host.text(replyId, said(HandsFreeStrings.startingCar()))
                     CarModeController.start()
@@ -395,7 +412,7 @@ object PanelHandsFree {
         val phone = HandsFreeHub.phone().let { if (lockOn) it.copy(locked = false) else it }
         // A direct call after the spoken yes is car mode's alone: a headset session's call opens the dialer.
         val rules = CallPlacer.rules(app).forSession(car = inCar)
-        val plan = CallTarget.plan(c.who, candidates, rules, phone.locked, inCar && CarModeController.trusted, lang) { CallPlacer.isEmergency(app, it, region) }
+        val plan = CallTarget.duringLock(CallTarget.plan(c.who, candidates, rules, phone.locked, inCar && CarModeController.trusted, lang) { CallPlacer.isEmergency(app, it, region) }, lockOn, lang)
         callAsked = c.who
         val (st, fx) = CallFlow.start(plan, c.who, lang)
         callFlow = st.takeUnless { it.done }
@@ -455,14 +472,19 @@ object PanelHandsFree {
                 val phone = HandsFreeHub.phone()
                 // 1.1, Phone lock: a route opens the maps app, open only when every active lock has Maps on.
                 val lockOn = PhoneLockNow.on(app) && !Assistant.keyguard(app)
-                if (lockOn && !PhoneLockNow.maps(app)) return reply(replyId, host, said(LockStrings.appClosed()))
+                if (lockOn && !PhoneLockNow.mapsInCar(app)) return reply(replyId, host, said(LockStrings.appClosed()))
                 val here = withContext(Dispatchers.IO) { CoarseLocation.find(app, 3_000L, Abort(4_000L)).fix?.let { it.lat to it.lon } }
                 val dest = if (c.place == PlaceWord.HOME) NavDestination.Home else NavDestination.Work
-                val plan = CarNavigate.plan(dest, HandsFreeFiles.store(app).carSettings(), here, phone.locked && !lockOn, CarModeController.trusted, lang)
+                val car = HandsFreeFiles.store(app).carSettings()
+                val plan = CarNavigate.plan(dest, car, here, phone.locked && !lockOn, CarModeController.trusted, lang)
                 VoiceLog.add(VoiceEvent.CAR_NAV, plan.kind)
-                if (plan is NavPlan.Route) {
-                    val opened = try { app.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(plan.uri)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); true } catch (_: Throwable) { false }
-                    if (!opened) return reply(replyId, host, said(HandsFreeStrings.noOrganicMaps()))
+                val to = if (dest == NavDestination.Home) car.home else car.work
+                if (plan is NavPlan.Route && to != null) {
+                    // Your maps app (Settings › Actions › Maps): its own route link, else the place.
+                    val opened = withContext(Dispatchers.IO) { MapsApps.open(app, MapsApps.route(app, here, CarNavigate.HERE.get(lang), to.lat to to.lon, to.label)) }
+                    if (opened is MapsApps.Opened.Repick) return reply(replyId, host, said(MapsApps.replacedText()))
+                    if (opened != MapsApps.Opened.Done) return reply(replyId, host, said(HandsFreeStrings.noOrganicMaps()))
+                    CarModeController.routeOpened()
                     reply(replyId, host, plan.say)
                     host.leave()
                 } else {

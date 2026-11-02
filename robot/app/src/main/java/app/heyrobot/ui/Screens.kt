@@ -23,7 +23,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
+import app.heyrobot.ui.common.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilledTonalButton
@@ -299,7 +299,7 @@ fun ConversationScreen(c: StoredConversation?, a: AppActions, snackbar: Snackbar
                 // A picture and screen text kept with it ("Keep screenshots and photos in history"); usually neither.
                 val pic = remember(t.id, t.picture) { if (user) keptPicture(t.picture) else null }
                 // The panel's chat bubbles. No buttons on the cards here.
-                TurnView(TurnUi(t.id, user, t.text, attachment = if (user) t.attachment else Attachment.NONE, thumb = pic, screenText = t.screenText,
+                TurnView(TurnUi(t.id, user, t.text, attachment = if (user) t.attachment else Attachment.NONE, thumb = pic, screenText = t.screenText, fileName = t.fileName, shared = user && t.shared,
                     actions = t.actions.mapIndexed { i, x -> ActionView("$i", x.tool, x.summary, x.status, x.detail) },
                     stopped = t.stopped, error = t.error, helper = t.fromHelper, readBack = t.readBack, by = t.by, home = t.home,
                     footer = if (user) emptyList() else replyFooterText(t.sources, t.costMicros.takeIf { showCost && it > 0 }?.let { CostText.line(it / 1e6) }, t.by).map { it.render(langs) }),

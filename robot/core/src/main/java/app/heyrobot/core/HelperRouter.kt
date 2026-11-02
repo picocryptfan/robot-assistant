@@ -576,7 +576,7 @@ object HelperRouter {
     }
 
     private val YES = setOf("yes", "yeah", "yep", "yup", "sure", "please", "ok", "okay", "go", "ahead", "do", "it", "check", "oui",
-        "daccord", "vas", "y", "please", "absolutely", "definitely", "go ahead", "with", "claude", "ask", "him")
+        "daccord", "vas", "y", "please", "absolutely", "definitely", "go ahead", "with", "ask", "him")
 
     /** A short yes to an offer ("yes", "sure, go ahead", "oui"), never a question of its own ([names]: "yes, check with Jarvis"). */
     fun isYes(text: String, names: List<HelperName> = CLAUDE): Boolean {
@@ -714,7 +714,9 @@ object PreRouter {
     )
     private val CREATIVE = Regex("""\b(story|stories|poem|poems|joke|jokes|song|limerick|haiku|rhyme|riddle|fairy tale)\b""")
     private val SIGNALS: List<Pair<Signal, Regex>> = listOf(
-        Signal.REASONING to Regex("""\bexplain (why|how)\b|\bcompare\b|\bstep by step\b|\bpros and cons\b|\bplan (a|my|an|the)\b|\bhelp me (plan|decide)\b|\bshould i\b.*\bor\b"""),
+        Signal.REASONING to Regex("""\bexplain (why|how)\b|\bcompare\b|\bstep by step\b|\bpros and cons\b|\bplan (a|my|an|the)\b|\bhelp me (plan|decide)\b|\bshould i\b.*\bor\b""" +
+            // rc4: the same in French, without accents (HelperRouter.plain): "explique pourquoi", "étape par étape", "devrais-je … ou …".
+            """|\bexplique(z)?( moi| nous)? (pourquoi|comment)\b|\bcomparer?\b|\betape par etape\b|\bpas a pas\b|\bavantages et (les )?inconvenients\b|\baide(z)? moi a (planifier|decider)\b|\b(devrais je|est ce que je devrais)\b.*\bou\b"""),
         Signal.WRITING to Regex("""^(please )?(write me|draft)\b|\bwrite me\b|\bwrite (a|an) (poem|story|essay|letter|speech|cover letter)\b"""),
         Signal.CODE to Regex("""\bcode\b|\bpython\b|\bjavascript\b|\bkotlin\b|\bregex\b|\bsql\b"""),
         Signal.MATH to Regex("""\bcalculate\b|\bsolve\b|\bintegral\b|\bderivative\b|\bequation\b|\bpercent(age)? of\b"""),
@@ -736,6 +738,9 @@ object PreRouter {
             """\bquest ce qui se passe (a|au|aux|en|dans|avec)\b""",
         ).joinToString("|")),
     )
+
+    /** [plainText] (lowercase, plain letters and spaces) holds a local action's word: Robot's, never a helper's by itself. */
+    fun local(plainText: String): Boolean = LOCAL.containsMatchIn(plainText)
 
     /** The words that make a question current information only because of the weather (0.4.0; "météo", 0.4.6). */
     private val WEATHER_WORDS = Regex("""\b(weather|forecast|meteo)\b""")
@@ -765,9 +770,10 @@ object PreRouter {
  * Gemma gave up (escalation trigger c): "I don't know", "I'm not sure", "I can't browse", "as an AI", a refusal ("I
  * can't help with that", "I'm unable to provide…", "je ne peux pas faire ça"), or nothing at all. Only near the start or
  * in a short reply, so a long answer that says "I'm not sure you meant X, but…" in passing is not a hedge. A reply that
- * says its facts may be out of date ("I don't have access to real-time information", "my knowledge cutoff", "for the
- * latest information, check…", "je n'ai pas accès à Internet") counts wherever it says so (0.4.6): a helper with web
- * search can answer that from today's sources.
+ * says its facts may be out of date ("I don't have access to real-time information", "my knowledge cutoff", "I don't
+ * have up-to-the-minute…", "je n'ai pas accès à Internet") counts wherever it says so (0.4.6): a helper with web search
+ * can answer that from today's sources. 1.1: "I don't have specific … documents" and "check the official website for the
+ * most accurate information" (only when the reply leads with it or says little else) are hedges too (HedgeDeskTest).
  */
 object Hedge {
     /** Words that say Robot's model can't or won't answer: only near the start or in a short reply. */
@@ -779,6 +785,8 @@ object Hedge {
         """\bi (dont|do not) have (the )?(ability|capability|means|capacity|tools|any way|a way) to\b""",
         """\bi (dont|do not) have (any |enough |specific |reliable |current |up to date |recent |real time |live )?(access|internet|web|online|information|data|details|knowledge|info)\b""",
         """\b(no|without) (internet|web|online|real time) access\b""", """\b(beyond|outside( of)?) my (capabilities|abilities|knowledge|scope)\b""",
+        // 1.1: "I don't have specific, up-to-the-minute legal documents for…": up to six words before what's missing.
+        """\bi (dont|do not)( currently| really| actually)? have( [a-z]+){0,6} (documents?|records?|figures|numbers|statistics|stats|regulations|rules|laws|sources|details|specifics|information|info|data|access|knowledge|updates|schedules?|timetables?)\b""",
         // French, without accents or apostrophes (HelperRouter.plain): "je ne sais pas", "je sais pas", "je ne suis pas sûr",
         // "je ne peux pas", "je peux pas" (Québec), "je ne suis pas en mesure", "chu pas capable", "je n'ai pas accès",
         // "j'ai pas accès", "en tant qu'IA".
@@ -786,6 +794,8 @@ object Hedge {
         """\bje (ne )?(peux|peut|pourrai|pourrais|pourrait) pas\b""", """\bje (ne )?suis pas (capable|en mesure)\b""", """\bchu pas capable\b""",
         """\bje suis incapable\b""", """\b(je nai|jai) pas (acces|access|la capacite|la possibilite|les moyens|dinformations?|de donnees|linformation|internet)\b""",
         """\b(pas|aucun|sans) (dacces|acces) (a|aux|au)\b""", """\ben tant (quia|quintelligence|que (ia|modele|assistant|intelligence))\b""",
+        // 1.1: "je n'ai pas de données récentes sur…", "je n'ai malheureusement pas d'informations précises", "je ne dispose pas de…".
+        """\b(je nai|jai|je ne dispose|je dispose)( [a-z]+){0,2} pas( [a-z]+){0,6} d?(documents?|donnees|informations?|renseignements?|details|chiffres|statistiques|reglements?|reglementations?|sources?|acces|horaires?)\b""",
     ).joinToString("|"))
 
     /** Words that say the answer may be out of date: anywhere in the reply. */
@@ -794,12 +804,26 @@ object Hedge {
         """\b(dont|do not|cant|cannot|can not|unable to|not able to)\b[a-z ]{0,20}\b(browse|search|access) the (internet|web)\b""",
         """\b(knowledge|training) (cutoff|cut off)\b""", """\bas of my (last|latest|most recent) (knowledge )?(update|training)\b""",
         """\bmy (knowledge|training data|training|information)\b[a-z ]{0,20}\b(goes up to|go up to|extends to|is limited to|only goes|ends in|stops in|out of date|outdated|not up to date)\b""",
-        """\bfor the (latest|most recent|most up to date|current|up to date) (information|news|updates|details|info)\b""",
+        """\b(dont|do not|cant|cannot|can not|unable to|not able to|no|without)\b[a-z ]{0,30}\bup to the minute\b""",
         """\b(reliable|reputable|trusted) news (source|sources|outlet|outlets|site|sites|website|websites)\b""",
         // French: "pas accès aux informations en temps réel", "mes connaissances s'arrêtent en 2024", "pour les dernières nouvelles".
         """\b(pas|aucun|sans|ne peux|peux pas)\b[a-z ]{0,40}\b(informations?|donnees|nouvelles|actualites|mises a jour) en temps reel\b""", """\bmes connaissances (sarretent|se limitent|datent|ne sont pas a jour|ne vont)\b""",
-        """\bdate limite de mes connaissances\b""", """\bpour (les|des) (dernieres|plus recentes) (informations|nouvelles)\b""",
+        """\bdate limite de mes connaissances\b""",
         """\b(je nai|jai) pas acces (a|aux|au) (internet|linternet|web|nouvelles|actualites|informations)\b""",
+    ).joinToString("|"))
+
+    /**
+     * 1.1: words that send you elsewhere for the answer ("check the official website for the most accurate and current
+     * information", « consulte le site officiel pour les informations les plus à jour »). Only when the reply leads with
+     * them ([POINTER_LEAD]) or says little else ([POINTER_SHORT]): an answer that adds them at the end is still an answer.
+     */
+    private val POINTER = Regex(listOf(
+        """\bfor (the )?(most )?(latest|recent|up to date|current|accurate|reliable|precise|authoritative)( and (most )?(latest|recent|up to date|current|accurate|reliable|precise))? (information|news|updates|details|info|guidance|rules|regulations|data|figures)\b""",
+        """\b(check|checking|consult|consulting|visit|visiting|see|refer to|contact|contacting|look at|go to)( with)? (the|an|a|your)( [a-z]+){0,6} (official|government|provincial|federal|municipal)( [a-z]+){0,4} (website|web site|site|page|webpage|portal|sources?|office|department|ministry)\b""",
+        // French: « pour les informations les plus à jour », « consulte le site officiel du ministère ».
+        """\bpour (obtenir |avoir )?(les|des) (dernieres|plus recentes) (informations|renseignements|nouvelles|details|donnees)\b""",
+        """\bpour (obtenir |avoir )?(les|des) (informations|renseignements|nouvelles|details|donnees)( les)? plus (a jour|recentes|precises|exactes|fiables|actuelles)\b""",
+        """\b(consulte|consultez|consulter|verifie|verifiez|verifier|visite|visitez|visiter|va sur|allez sur|refere toi a|referez vous a)( le| les| la)? (site|sites|page|pages)( web| internet)? (officiel|officiels|officielle|du gouvernement|gouvernemental|du ministere)\b""",
     ).joinToString("|"))
 
     /** Words in a hedge about going online or about today's events ([needsSearch]): "the internet", "current events". */
@@ -815,10 +839,16 @@ object Hedge {
         val t = words(reply)
         if (t.isEmpty()) return true
         if (STALE.containsMatchIn(t)) return true
-        val short = t.split(' ').size <= 60
-        val m = PHRASES.find(t) ?: return false
-        return short || m.range.first < 120
+        val n = t.split(' ').size
+        PHRASES.find(t)?.let { if (n <= 60 || it.range.first < 120) return true }
+        val p = POINTER.find(t) ?: return false
+        return n <= POINTER_SHORT || p.range.first < POINTER_LEAD
     }
+
+    /** A pointer starting within this many characters of the reply leads it (about its first seven words). */
+    private const val POINTER_LEAD = 40
+    /** A reply of this many words or fewer that sends you elsewhere has no room for an answer of its own. */
+    private const val POINTER_SHORT = 25
 
     /**
      * A reply [detect] found to hedge says the answer needs today's sources: its facts may be out of date, it can't go

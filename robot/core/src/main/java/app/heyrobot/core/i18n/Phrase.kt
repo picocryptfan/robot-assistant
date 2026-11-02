@@ -37,6 +37,8 @@ sealed interface Phrase {
         private fun category(lang: Lang): PluralCategory = when (val a = args[msg.count]) {
             is Arg.Count -> Plural.category(lang, a.n)
             is Arg.Num -> Plural.category(lang, a.x, a.decimals)
+            // The everyday set's sums: as written ("1.5 cups" is other in English, « 1,5 tasse » one in French).
+            is Arg.Dec -> Fmt.exactShown(a.x, a.decimals).let { s -> Plural.category(lang, s.toDouble(), s.scale().coerceAtLeast(0)) }
             else -> PluralCategory.OTHER
         }
     }
@@ -116,6 +118,22 @@ sealed interface Arg {
     /** 1.4, Robot Files: an amount a file holds, [cents] in [currency] (a code, or null): "$84.12", « 84,12 $ », "45.00 USD" (Fmt.money). */
     data class Money(val cents: Long, val currency: String?) : Arg {
         override fun render(l: Langs): String = Fmt.money(cents, currency, l.say, l.medium)
+    }
+
+    /**
+     * The everyday set's sums (core sums): an exact decimal shown with at most [decimals] digits after the point, trailing
+     * zeros dropped: "1,234.5" / « 1 234,5 »; aloud "minus 5" / « moins 5 » (Fmt.exact). Never through a Double.
+     */
+    data class Dec(val x: java.math.BigDecimal, val decimals: Int) : Arg {
+        override fun render(l: Langs): String = Fmt.exact(x, decimals, l.say, l.medium)
+    }
+
+    /**
+     * The everyday set's sums: an amount in dollars, [cents]: "$64.50" / « 64,50 $ »; aloud "64 dollars 50" (Fmt.dollars) /
+     * « 64 dollars et 50 » (Fmt.money's French voice).
+     */
+    data class Dollars(val cents: Long) : Arg {
+        override fun render(l: Langs): String = Fmt.dollars(cents, l.say, l.medium)
     }
 
     /** 1.4, Robot Files: a file's date with its year, "August 14, 2026" / « 14 août 2026 » (Fmt.date). */

@@ -6,6 +6,7 @@ import app.heyrobot.core.AlarmWatchState
 import app.heyrobot.core.SeenAlarm
 import app.heyrobot.core.StrictJson
 import app.heyrobot.core.TimeWindow
+import java.util.Locale
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.DayOfWeek
@@ -154,13 +155,16 @@ object LockCodec {
         .put("skip", JSONObject().apply { for ((k, d) in s.skip) put(k, d.toString()) })
         .put("edit", s.edit)
         .put("codeSet", s.codeSet)
-        .put("code", JSONObject().put("fails", s.code.fails).put("nextTry", s.code.nextTry))
+        .put("code", JSONObject().put("fails", s.code.fails).put("nextTry", s.code.nextTry)
+            .put("nextElapsed", s.code.nextElapsed ?: JSONObject.NULL).put("boot", s.code.boot ?: JSONObject.NULL))
         .put("alarm", JSONObject().put("phase", s.alarm.phase.name.lowercase()).put("ringing", s.alarm.ringingSince).put("first", s.alarm.firstAlert)
             .put("snoozed", s.alarm.snoozedAt)
             .put("seen", JSONArray().apply { for (a in s.seen) put(JSONObject().put("t", a.triggerAt).put("clock", a.fromClock).put("at", a.seenAt)) })
             .put("missed", s.missed?.let { JSONObject().put("at", it.alarmAt).put("done", it.doneAt) } ?: JSONObject.NULL))
         .put("last", JSONObject().put("alive", s.last.alive).put("shutdown", s.last.shutdown))
         .put("car", s.car)
+        .put("mapsApp", s.mapsApp ?: JSONObject.NULL)
+        .apply { if (s.emergencyUntil != 0L) put("emergencyUntil", s.emergencyUntil); if (s.dialerUntil != 0L) put("dialerUntil", s.dialerUntil) }
         .put("record", JSONArray().apply {
             for (r in s.record) put(JSONObject().put("t", r.t).put("e", r.e.id).apply {
                 r.lock?.let { put("lock", it) }
@@ -176,7 +180,7 @@ object LockCodec {
             val o = Obj(root)
             if (o.int("v") != STATE_VERSION) return null
             // Phase B added "car"; a state written before it has none.
-            o.only("v", "active", "skip", "edit", "codeSet", "code", "alarm", "last", "record", "car")
+            o.only("v", "active", "skip", "edit", "codeSet", "code", "alarm", "last", "record", "car", "mapsApp", "emergencyUntil", "dialerUntil")
             val active = o.list("active").map { x ->
                 val a = Obj(x as? Map<*, *> ?: bad())
                 a.only("lock", "start", "end", "endElapsed", "boot", "usedMs", "early")
@@ -192,7 +196,7 @@ object LockCodec {
                 id to date(v as? String ?: bad())
             }
             val c = Obj(o.map("code"))
-            c.only("fails", "nextTry")
+            c.only("fails", "nextTry", "nextElapsed", "boot") // A state written before 1.1.1 has only the first two.
             val al = Obj(o.map("alarm"))
             // Phase B added "seen" and "missed"; a state written before them has neither.
             al.only("phase", "ringing", "first", "snoozed", "seen", "missed")
@@ -215,9 +219,12 @@ object LockCodec {
                 val e = RecordEvent.of(r.str("e")) ?: return@mapNotNull null
                 RecordLine(r.long("t"), e, r.opt("lock")?.let { it as? String ?: bad() }, r.opt("n")?.let { (it as? Long ?: bad()).toInt() })
             }
-            LockState(active, skip, o.long("edit"), o.bool("codeSet"), CodeTries(c.int("fails"), c.long("nextTry")),
+            LockState(active, skip, o.long("edit"), o.bool("codeSet"), CodeTries(c.int("fails"), c.long("nextTry"), if (c.has("nextElapsed")) c.longOrNull("nextElapsed") else null, if (c.has("boot")) c.longOrNull("boot")?.toInt() else null),
                 AlarmWatchState(phase, al.long("ringing"), al.long("first"), al.long("snoozed")), seen = seen, missed = missed, last = LastSeen(last.long("alive"), last.long("shutdown")), record = record,
-                car = if (o.has("car")) o.long("car") else 0)
+                car = if (o.has("car")) o.long("car") else 0,
+                mapsApp = if (o.has("mapsApp")) o.strOrNull("mapsApp")?.also { if (!LockLimits.validPackage(it)) bad() } else null,
+                emergencyUntil = if (o.has("emergencyUntil")) o.long("emergencyUntil") else 0,
+                dialerUntil = if (o.has("dialerUntil")) o.long("dialerUntil") else 0)
         } catch (_: Bad) {
             null
         }
@@ -228,7 +235,7 @@ object LockCodec {
     private val DAY_IDS = listOf("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN") // l10n: not text (file keys)
 
     /** "22:00": hours and minutes, as the file and the editor write them. */
-    fun hm(t: LocalTime): String = "%02d:%02d".format(t.hour, t.minute)
+    fun hm(t: LocalTime): String = "%02d:%02d".format(Locale.ROOT, t.hour, t.minute)
 
     private fun days(d: Set<DayOfWeek>): JSONArray = JSONArray().apply { for (x in d.sortedBy { it.value }) put(DAY_IDS[x.value - 1]) }
 

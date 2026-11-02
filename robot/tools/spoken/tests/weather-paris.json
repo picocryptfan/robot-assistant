@@ -1,0 +1,19 @@
+{
+  "format": 1,
+  "id": "weather-paris",
+  "title": "The weather for a named place, then with a day",
+  "safety": "read",
+  "testBench": ["v102-weather-day", "v12-prompt-tools-still-work"],
+  "needs": {"model": true},
+  "setup": [{"set": "speakReplies", "value": "VOICE"}],
+  "steps": [
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "Weather in Paris.", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 120, "contains": "Paris"},
+    {"do": "check", "what": "tool", "equals": "weather"},
+    {"do": "say", "text": "Weather in Paris tomorrow.", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 120, "contains": "Paris"},
+    {"do": "check", "what": "tool", "equals": "weather"},
+    {"do": "end"}
+  ]
+}

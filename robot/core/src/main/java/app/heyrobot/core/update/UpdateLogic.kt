@@ -97,11 +97,14 @@ object UpdateDecision {
         return d.version == found.version && d.apkId == found.apk.id && d.size == found.apk.size && v > installed
     }
 
-    /** The release [state] offers for [repo] above [installed], or null (another repository's, or installed meanwhile). */
-    fun offered(state: UpdateState, repo: GitHubRepo?, installed: RobotVersion): FoundRelease? {
+    /**
+     * The release [state] offers for [repo] above [installed], or null (another repository's, installed meanwhile, or a test
+     * build while [testBuilds] is off).
+     */
+    fun offered(state: UpdateState, repo: GitHubRepo?, installed: RobotVersion, testBuilds: Boolean): FoundRelease? {
         val f = state.found ?: return null
         val v = f.parsedVersion ?: return null
-        return f.takeIf { repo != null && it.repo == repo.slug && v > installed }
+        return f.takeIf { repo != null && it.repo == repo.slug && v > installed && (testBuilds || !it.testBuild) }
     }
 
     /**
@@ -152,7 +155,7 @@ object ArchiveCheck {
      * it won't be installed.") and bars it; 0.9 can't be changed, so README's "Moving from 0.9 to 1.0" and the release
      * notes, which 0.9 shows before it downloads, say to install 1.0 beside it.
      */
-    const val PACKAGE = AppId.PACKAGE
+    const val PACKAGE = AppId.RELEASE
 
     /**
      * The downloaded APK ([apk], null when Android couldn't read it) against the installed Robot: the same package, the

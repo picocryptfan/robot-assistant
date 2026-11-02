@@ -27,6 +27,34 @@ object SystemVoice {
         return ranked.firstOrNull()?.takeIf { it.system }
     }
 
+    /**
+     * The everyday set, E6 (everyday-set-plan.md §6.3, D16): the engine Robot's own "System voice" speaks with, never Robot
+     * itself ([own], Robot's package), now that Robot can be the phone's engine: the default ([setting]) when it is another
+     * installed engine; else the one that was the default before Robot ([before], kept by [toRemember]) while it is
+     * installed; else the highest-ranked other engine (system engines first, then the higher priority, as [default] ranks
+     * them, any engine here). Null when Robot is the only engine: the System voice is then Heart (voice VoiceOutput).
+     */
+    fun forRobot(setting: String?, engines: List<TtsEngine>, own: String, before: String?): TtsEngine? {
+        val others = engines.filter { it.pkg != own }
+        setting?.trim()?.takeIf { it.isNotEmpty() }?.let { s -> others.firstOrNull { it.pkg == s }?.let { return it } }
+        before?.trim()?.takeIf { it.isNotEmpty() }?.let { b -> others.firstOrNull { it.pkg == b }?.let { return it } }
+        return others.sortedWith(compareByDescending<TtsEngine> { it.system }.thenByDescending { it.priority }.thenBy { it.pkg }).firstOrNull()
+    }
+
+    /** [forRobot]'s engine's label, or null when there is none or it has no name. */
+    fun labelForRobot(setting: String?, engines: List<TtsEngine>, own: String, before: String?): String? =
+        forRobot(setting, engines, own, before)?.label?.trim()?.takeIf { it.isNotEmpty() }
+
+    /**
+     * What to keep as the default before Robot ([BEFORE_FILE]): the default ([setting]) when it names another installed
+     * engine; null when it is Robot, unset or not installed (what was kept stays).
+     */
+    fun toRemember(setting: String?, engines: List<TtsEngine>, own: String): String? =
+        setting?.trim()?.takeIf { s -> s.isNotEmpty() && s != own && engines.any { it.pkg == s } }
+
+    /** filesDir/robot/'s note of the default engine before Robot (a package name), never in settings.json or a backup. */
+    const val BEFORE_FILE = "tts_engine_before.txt"
+
     /** The default engine's label, or null when there is none or it has no name. */
     fun label(setting: String?, engines: List<TtsEngine>): String? = default(setting, engines)?.label?.trim()?.takeIf { it.isNotEmpty() }
 

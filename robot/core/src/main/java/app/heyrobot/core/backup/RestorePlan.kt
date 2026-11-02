@@ -6,6 +6,7 @@ import app.heyrobot.core.BriefRoutine
 import app.heyrobot.core.LookSettings
 import app.heyrobot.core.PeopleEdit
 import app.heyrobot.core.PeopleStore
+import app.heyrobot.core.PhoneNumbers
 import app.heyrobot.core.People
 import app.heyrobot.core.Person
 import app.heyrobot.core.RobotSettings
@@ -42,6 +43,8 @@ enum class RestoreMode { FRESH, ADD, REPLACE }
 
 /** Why a category won't be restored (each said in words on the preview and the result). */
 enum class PlanSkip {
+    /** F45: a transcription started since the file was copied in: Transcripts' Replace waits, so it can't delete it. */
+    RECORDING,
     NOT_IN_BACKUP,
     NOT_CHOSEN,
     /** A file in it needs a newer Robot (SkipWhy.NEWER), or the category itself is unknown here. */
@@ -69,7 +72,24 @@ enum class PlanSkip {
      * files) until you turn it off with your PIN.
      */
     FILES_TRAVEL,
+    /**
+     * 1.4, Lists: Robot can't read the lists on this phone (damaged, or a newer Robot's), which a restore never writes over:
+     * Settings › Lists' Start over first (lists-plan.md §4.5).
+     */
+    LISTS_UNREADABLE,
+    /**
+     * C10: Robot can't read the connections on this phone (connections.json damaged, or a newer Robot's), which a restore
+     * never writes over: Connections and Connection keys are left out.
+     */
+    CONNECTIONS_UNREADABLE,
 }
+
+/**
+ * 1.4, Lists: whether this phone's lists can take a restore. [KEY_GONE]: their key is gone, so they can never be read again:
+ * Lists restores only as Replace, and the file here is kept aside (lists.enc.bad, as Start over keeps it), never deleted.
+ * [UNREADABLE]: damaged or a newer Robot's: left out until Start over.
+ */
+enum class ListsHere { OK, KEY_GONE, UNREADABLE }
 
 /**
  * 1.4: whether this phone's Robot Files can take a restore. [KEY_GONE]: robot_files_v1 is gone, so the files here can never
@@ -85,7 +105,11 @@ data class PhoneHas(val counts: Map<BackupCategory, Int>, val historyOn: Boolean
     /** 1.1: a Phone lock code is set on this phone (state.json's codeSet). */
     val lockCode: Boolean = false,
     /** 1.4: whether this phone's Robot Files can take a restore ([FilesHere]); its count is the files here either way. */
-    val files: FilesHere = FilesHere.OK) {
+    val files: FilesHere = FilesHere.OK,
+    /** 1.4, Lists: whether this phone's lists can take a restore ([ListsHere]); its count is the lists here (1 when unreadable). */
+    val lists: ListsHere = ListsHere.OK,
+    /** C10: this phone's connections.json can take a restore (false: damaged or a newer Robot's, never written over). */
+    val connections: Boolean = true) {
     fun empty(c: BackupCategory): Boolean = (counts[c] ?: 0) == 0
 }
 
@@ -123,18 +147,23 @@ object RestorePlanner {
      */
     fun plan(backup: VerifiedBackup, phone: PhoneHas, choices: Map<BackupCategory, CategoryChoice>, mine: Boolean): RestorePlan {
         val settingsToo = backup.has(BackupCategory.SETTINGS) && choices[BackupCategory.SETTINGS]?.restore == true
-        val historyOn = if (settingsToo && "settings.json" in backup.settings) RobotSettings.fromJson(backup.settings["settings.json"]).saveHistory else phone.historyOn
-        val memoryOn = if (settingsToo && MemorySettings.FILE in backup.settings) MemorySettings.fromJson(backup.settings[MemorySettings.FILE]).on else phone.memoryOn
+        val historyOn = if (settingsToo && "settings.json" in backup.settings) RobotSettings.fromJson(backup.settings["settings.json"]).saveHistory && (mine || phone.historyOn) else phone.historyOn
+        val memoryOn = if (settingsToo && MemorySettings.FILE in backup.settings) MemorySettings.fromJson(backup.settings[MemorySettings.FILE]).on && (mine || phone.memoryOn) else phone.memoryOn
         val lines = BackupCategory.entries.map { c ->
             val choice = choices[c] ?: CategoryChoice(restore = false)
             val inBackup = backup.found[c]?.entries ?: 0
             val mode = when {
-                c == BackupCategory.KEYS -> RestoreMode.ADD
+                c == BackupCategory.KEYS || c == BackupCategory.CONN_KEYS -> RestoreMode.ADD
                 c == BackupCategory.VOICEPRINT -> RestoreMode.FRESH
                 phone.empty(c) -> RestoreMode.FRESH
-                c == BackupCategory.SETTINGS || choice.replace -> RestoreMode.REPLACE
+                // A pairing here is never replaced by one from a file (LinkBackupStore.restore).
+                c == BackupCategory.LINKS -> RestoreMode.ADD
+                // The everyday set's one settings file is merged field by field over this phone's, as Settings' are.
+                c == BackupCategory.SETTINGS || c == BackupCategory.EVERYDAY || choice.replace -> RestoreMode.REPLACE
                 // Files whose key is gone can't take anything added to them: Replace is the only way.
                 c == BackupCategory.FILES && phone.files == FilesHere.KEY_GONE -> RestoreMode.REPLACE
+                // Lists whose key is gone: the same; the file here is kept aside.
+                c == BackupCategory.LISTS && phone.lists == ListsHere.KEY_GONE -> RestoreMode.REPLACE
                 else -> RestoreMode.ADD
             }
             val refused = backup.skipped.firstOrNull { it.category == c }?.why
@@ -144,13 +173,15 @@ object RestorePlanner {
                 refused == SkipWhy.TOO_BIG -> PlanSkip.TOO_BIG
                 !backup.has(c) -> PlanSkip.NOT_IN_BACKUP
                 !choice.restore -> PlanSkip.NOT_CHOSEN
-                c in BackupCategory.SENSITIVE && !mine -> PlanSkip.NOT_YOURS
+                c in BackupCategory.ONLY_YOURS && !mine -> PlanSkip.NOT_YOURS
                 c == BackupCategory.VOICEPRINT && !phone.empty(c) -> PlanSkip.VOICEPRINT_HERE
                 c == BackupCategory.HISTORY && !historyOn -> PlanSkip.HISTORY_OFF
                 c == BackupCategory.MEMORY && !memoryOn -> PlanSkip.MEMORY_OFF
                 c == BackupCategory.PHONE_LOCK && phone.lockCode && !choice.codeOk -> PlanSkip.NEEDS_CODE
                 c == BackupCategory.FILES && phone.files == FilesHere.UNREADABLE -> PlanSkip.FILES_UNREADABLE
                 c == BackupCategory.FILES && phone.files == FilesHere.TRAVEL -> PlanSkip.FILES_TRAVEL
+                c == BackupCategory.LISTS && phone.lists == ListsHere.UNREADABLE -> PlanSkip.LISTS_UNREADABLE
+                (c == BackupCategory.CONNECTIONS || c == BackupCategory.CONN_KEYS) && !phone.connections -> PlanSkip.CONNECTIONS_UNREADABLE
                 else -> null
             }
             CategoryPlan(c, mode, skip, inBackup)
@@ -235,9 +266,27 @@ class HandsFreeRestored(
 }
 
 /** Why a key of the file isn't saved here. */
-enum class KeySkip { NOT_YOURS, NO_SUCH_HELPER, ALREADY_HERE }
+enum class KeySkip { NOT_YOURS, NO_SUCH_HELPER, ALREADY_HERE,
+    /** C10: no connection of that id here after the restore, or none in the backup to say what the key was for. */
+    NO_SUCH_CONNECTION,
+    /** C10: the connection here of that id reaches another address than the one the key was saved for. */
+    OTHER_ADDRESS,
+    /** C10: the key holds other parts than the connection here needs (a token where it takes a topic too). */
+    OTHER_PARTS }
 
-data class KeysPlan(val save: List<String>, val skipped: Map<String, KeySkip>)
+/**
+ * C10, Skills connections after a restore: the list to write, how many came from the file, the connections whose key on
+ * this phone must go first (Replace: gone, or now reaching another address), and the guarded fields kept safer.
+ */
+class ConnectionsRestored(val connections: List<app.heyrobot.core.connect.Connection>, val added: Int, val dropKeys: Set<String>,
+                          val kept: List<SaferField>) {
+    override fun toString(): String = "ConnectionsRestored(connections=${connections.size}, added=$added, dropKeys=${dropKeys.size})"  // l10n: not text (toString for logs and tests)
+}
+
+data class KeysPlan(val save: List<String>, val skipped: Map<String, KeySkip>) {
+    /** R2: the keys that didn't come because nothing here goes with them; one already here is kept on purpose. */
+    val noPlace: Int get() = skipped.values.count { it != KeySkip.ALREADY_HERE }
+}
 
 object RestoreMerge {
     /**
@@ -288,7 +337,8 @@ object RestoreMerge {
      * follows it there (Mom's number with an email she never had doesn't make that email Mom's). An id of the file that
      * someone here already has, without being the same person, gets a new one.
      */
-    fun people(have: List<Person>, file: List<Person>, mode: RestoreMode, mine: Boolean, now: Long, newId: () -> String = PeopleStore::newId): PeopleRestored {
+    fun people(have: List<Person>, file: List<Person>, mode: RestoreMode, mine: Boolean, now: Long, gateway: String = PhoneNumbers.DEFAULT_GATEWAY,
+        newId: () -> String = PeopleStore::newId): PeopleRestored {
         val incoming = file.map { RestoreTaint.person(it, mine) }
         if (settled(mode, have.isEmpty()) != RestoreMode.ADD) {
             val list = incoming.filter { PeopleStore.validId(it.id) }.distinctBy { it.id }.map(People::clean).take(People.MAX_PEOPLE)
@@ -296,7 +346,7 @@ object RestoreMerge {
         }
         val ids = have.mapTo(HashSet()) { it.id }
         val renamed = incoming.map { p -> if (p.id in ids) p.copy(id = generateSequence(newId).first { it !in ids }) else p }
-        val merged = PeopleEdit.merge(have, renamed, now)
+        val merged = PeopleEdit.merge(have, renamed, now, gateway)
         val before = have.associateBy { it.id }
         // Merging confirms the person it lands on; from a file that isn't yours, they stay as they were (and someone
         // nothing else changed for stays exactly as they were, so a second restore changes nothing).
@@ -314,7 +364,7 @@ object RestoreMerge {
             val at = merged.landed.getOrNull(i) ?: return@forEachIndexed
             val you = before[at]?.takeIf { !mine && it.confirmed }
             if (you == null) { landed[p.id] = at; return@forEachIndexed }
-            val alone = PeopleEdit.merge(listOf(you), listOf(renamed[i]), now)
+            val alone = PeopleEdit.merge(listOf(you), listOf(renamed[i]), now, gateway)
             if (alone.added == 0 && alone.updated == 0) { landed[p.id] = you.id; return@forEachIndexed }
             apart += i
             if (alone.added == 0) match[i] = you.id
@@ -324,7 +374,7 @@ object RestoreMerge {
             // Merged only with those you haven't confirmed (the file's own, or learned here), and unconfirmed.
             val others = people.filter { !it.confirmed }
             val was = others.associateBy { it.id }
-            val m = PeopleEdit.merge(others, apart.map { renamed[it] }, now)
+            val m = PeopleEdit.merge(others, apart.map { renamed[it] }, now, gateway)
             val changed = m.people.filter { it.id in was }.associate { it.id to kept(it.copy(confirmed = false), was[it.id]) }
             val joining = m.people.filter { it.id !in was }.map { it.copy(confirmed = false) }
             people = people.map { changed[it.id] ?: it } + joining.take((People.MAX_PEOPLE - people.size).coerceAtLeast(0))
@@ -338,17 +388,25 @@ object RestoreMerge {
     /**
      * Notes or History by id, with when each was last changed: Add writes the ones this phone hasn't and
      * those whose copy in the file is newer; Replace writes every one of the file and deletes this phone's others; a
-     * phone with none simply takes them all (FRESH is Add: one written since the preview stays).
+     * phone with none simply takes them all (FRESH is Add: one written since the preview stays). R14: [replaceYours] false
+     * (Notes, from someone else's backup: they carry no mark), Add never writes over what this phone has, newer or not.
      */
-    fun byUpdated(have: Map<String, Long>, file: Map<String, Long>, mode: RestoreMode): FilesPlan = when (mode) {
+    fun byUpdated(have: Map<String, Long>, file: Map<String, Long>, mode: RestoreMode, replaceYours: Boolean = true): FilesPlan = when (mode) {
         RestoreMode.ADD, RestoreMode.FRESH -> {
-            val write = file.filter { (id, t) -> have[id]?.let { t > it } ?: true }.keys
+            val write = file.filter { (id, t) -> have[id]?.let { replaceYours && t > it } ?: true }.keys
             FilesPlan(write, emptySet(), have.size - have.keys.count { it in write })
         }
         RestoreMode.REPLACE -> FilesPlan(file.keys, have.keys - file.keys, 0)
     }
 
     /** Transcripts by id: Add (and FRESH) leaves one already here alone; Replace deletes this phone's and writes the file's. */
+    /**
+     * F45: whether Transcripts wait: a Replace deletes every folder here, and [heartbeat] (.session.json), [freshMs] old or
+     * less at [now], says one is being recorded into. Add and a first restore delete nothing, so they carry on.
+     */
+    fun transcriptsWait(mode: RestoreMode, heartbeat: String?, now: Long, freshMs: Long): Boolean =
+        mode == RestoreMode.REPLACE && app.heyrobot.core.SessionHeartbeat.fromJson(heartbeat)?.let { now - it.beatAt < freshMs } == true
+
     fun transcripts(have: Set<String>, file: Set<String>, mode: RestoreMode): FilesPlan = when (mode) {
         RestoreMode.ADD, RestoreMode.FRESH -> FilesPlan(file - have, emptySet(), have.size)
         RestoreMode.REPLACE -> FilesPlan(file, have, 0)
@@ -363,7 +421,7 @@ object RestoreMerge {
      * from someone else's, this phone's stay as they are.
      */
     fun routines(have: List<Routine>, haveSettings: RoutineSettings, haveReminders: List<BriefReminder>, file: List<Routine>,
-                 fileSettings: RoutineSettings?, fileReminders: List<BriefReminder>, mode: RestoreMode, mine: Boolean,
+                 fileSettings: RoutineSettings?, fileReminders: List<BriefReminder>?, mode: RestoreMode, mine: Boolean,
                  devices: (String) -> String?, newId: () -> String = { UUID.randomUUID().toString() }, langs: Langs = Langs.EN): RoutinesRestored {
         val off = LinkedHashMap<String, RoutineOff>()
         fun prepared(r: Routine): Routine {
@@ -375,13 +433,14 @@ object RestoreMerge {
         }
         val incoming = file.filter { it.id != BriefRoutine.ID && RoutineCheck.validId(it.id) }
         val settings = fileSettings?.let { RestoreSafety.routineSettings(haveSettings, it, mine) }
-        val theirs = if (mine) fileReminders else emptyList()
+        val theirs = if (mine) fileReminders.orEmpty() else emptyList()
         val reminders = (haveReminders + theirs.filter { f -> haveReminders.none { it.text.equals(f.text, ignoreCase = true) && it.day == f.day } })
             .takeLast(app.heyrobot.core.BriefReminders.MAX)
         val applied = settled(mode, have.isEmpty())
         if (applied != RestoreMode.ADD) {
             val list = incoming.distinctBy { it.id }.take(RoutineCheck.MAX_ROUTINES).map(::prepared)
-            val brief = if (applied == RestoreMode.REPLACE && mine) fileReminders.takeLast(app.heyrobot.core.BriefReminders.MAX) else reminders
+            // R9: a backup with no reminders file says nothing about them: this phone's stay, as with every other absent file.
+            val brief = if (applied == RestoreMode.REPLACE && mine && fileReminders != null) fileReminders.takeLast(app.heyrobot.core.BriefReminders.MAX) else reminders
             return RoutinesRestored(list, settings?.value ?: haveSettings, brief, off, list.size, settings?.kept.orEmpty())
         }
         val out = ArrayList(have)
@@ -474,15 +533,17 @@ object RestoreMerge {
                 var next = haveDevices.nextNumber
                 val taken = HashSet<Int>()
                 val list = m.devices.map { d ->
-                    val n = haveDevices.devices.firstOrNull { it.number !in taken && sameDevice(it, d) }?.number ?: next++
+                    val same = haveDevices.devices.firstOrNull { it.number !in taken && sameDevice(it, d) }
+                    val n = same?.number ?: next++
                     taken += n
-                    RestoreTaint.device(d, mine).copy(number = n).also { landed[d.id] = it.id }
+                    RestoreTaint.device(d, mine, same).copy(number = n).also { landed[d.id] = it.id }
                 }
                 DeviceMemory(list, maxOf(next, m.nextNumber))
             } ?: haveDevices
             val headset = fileHeadset?.let { RestoreSafety.headset(haveHeadset, it, mine) }?.also { kept += it.kept }?.value ?: haveHeadset
             val car = fileCar?.let { RestoreSafety.car(haveCar, it, mine) }?.also { kept += it.kept }?.value ?: haveCar
-            return HandsFreeRestored(devices, landed, headset, car, filePlaces ?: havePlaces, devices.devices.size, kept)
+            val places = filePlaces?.let { RestoreSafety.places(havePlaces, it, mine, add = false) }?.also { kept += it.kept }?.value ?: havePlaces
+            return HandsFreeRestored(devices, landed, headset, car, places, devices.devices.size, kept)
         }
         val out = ArrayList(haveDevices.devices)
         var next = haveDevices.nextNumber
@@ -497,7 +558,7 @@ object RestoreMerge {
             landed[d.id] = n.id
             added++
         }
-        val places = Places(havePlaces.home ?: filePlaces?.home, havePlaces.work ?: filePlaces?.work)
+        val places = filePlaces?.let { RestoreSafety.places(havePlaces, it, mine, add = true) }?.also { kept += it.kept }?.value ?: havePlaces
         return HandsFreeRestored(DeviceMemory(out, next), landed, haveHeadset, haveCar, places, added, kept)
     }
 
@@ -513,6 +574,93 @@ object RestoreMerge {
      */
     fun files(have: app.heyrobot.core.files.FileIndex, file: app.heyrobot.core.files.FileIndex, mode: RestoreMode, mine: Boolean, now: Long,
               people: (String) -> String?): FilesRestored = FilesMerge.plan(have, file, mode, mine, now, people)
+
+    /**
+     * 1.4, Robot Lists (lists-plan.md §6, LS7): the backup's [file] on this phone's lists [have], in [mode], by
+     * ListsMerge.add. Add: a list of yours here and in the file merged by item id (the higher rev wins; equal, the later
+     * upd; equal, this phone's), a list only in the file added. Replace: this phone's lists go first, the file's are taken
+     * as Add takes them onto none. Unless [mine], the file's lists arrive apart from yours (RestoreTaint.list): marked from
+     * a backup, no role, every item by "backup", never merged into yours. [roleName]: a role's name in the app's language
+     * (someone else's Shopping arrives as a list called that). Over 2 MiB: TooBig, nothing changes.
+     */
+    fun lists(have: app.heyrobot.core.lists.ListsFile, file: app.heyrobot.core.lists.ListsFile, mode: RestoreMode, mine: Boolean,
+              ids: () -> app.heyrobot.core.lists.ListsId, roleName: (app.heyrobot.core.lists.ListRole) -> String): app.heyrobot.core.lists.ListsMergeResult =
+        app.heyrobot.core.lists.ListsMerge.add(if (mode == RestoreMode.REPLACE) app.heyrobot.core.lists.ListsFile() else have, file, mine, ids, roleName)
+
+    /**
+     * C10, Skills connections (plan §5.7, D7). Add: each connection of the file whose id this phone hasn't is added (at most
+     * 20); one whose id is here stays exactly as it is, with its key, so a second restore adds nothing and no address of
+     * the file reaches a key of yours (FRESH is Add once one was added since the preview opened). Replace (and a phone with
+     * none): the file's connections, ids kept, and this phone's
+     * key goes for every connection that goes or now reaches another address ([sameOrigin]); from a backup that isn't
+     * yours, every key here goes. Ids are never changed, so the skills' steps still name theirs. Each connection the file
+     * brings passes [RestoreSafety.connection]: from a backup that isn't yours it arrives untrusted (no first-use answers,
+     * no spoken yes, "Test it again", a hand-off to pick again, at most 30 requests a minute).
+     *
+     * C12's L1: [keyIds] are the connections with a key folder on this phone (ConnKeyFiles.ids). One without a connection
+     * here (a stray: a connection connections.json dropped on read, say) goes too, in every mode and from any backup,
+     * before the connections arrive, so it never becomes the key of a connection the file brings under the same id. A
+     * stray is usable by nothing, as Start over already treats it.
+     */
+    fun connections(have: List<app.heyrobot.core.connect.Connection>, file: List<app.heyrobot.core.connect.Connection>, mode: RestoreMode,
+                    mine: Boolean, keyIds: Set<String>): ConnectionsRestored {
+        val max = app.heyrobot.core.connect.ConnCheck.MAX_CONNECTIONS
+        val strays = keyIds - have.mapTo(HashSet()) { it.id }
+        val kept = LinkedHashSet<SaferField>()
+        fun prepared(f: app.heyrobot.core.connect.Connection, here: app.heyrobot.core.connect.Connection?) =
+            RestoreSafety.connection(here, f, mine).also { kept += it.kept }.value
+        if (settled(mode, have.isEmpty()) != RestoreMode.ADD) {
+            val byId = have.associateBy { it.id }
+            val list = file.distinctBy { it.id }.take(max).map { f -> prepared(f, byId[f.id]?.takeIf { sameOrigin(it, f) }) }
+            val keep = if (mine) list.filter { l -> byId[l.id]?.let { sameOrigin(it, l) } == true }.map { it.id }.toSet() else emptySet()
+            return ConnectionsRestored(list, list.size, have.map { it.id }.toSet() - keep + strays, kept.toList())
+        }
+        val out = ArrayList(have)
+        var added = 0
+        for (f in file) {
+            if (out.size >= max) break
+            if (out.any { it.id == f.id }) continue
+            out += prepared(f, null)
+            added++
+        }
+        return ConnectionsRestored(out, added, strays, kept.toList())
+    }
+
+    /**
+     * C10: [a] and [b] reach the same place the same way: kind, address (a secret address's origin), whether the address is
+     * the key, how the key goes, the routing server's kind, a hand-off's app. A key saved for one is a key for the other.
+     */
+    fun sameOrigin(a: app.heyrobot.core.connect.Connection, b: app.heyrobot.core.connect.Connection): Boolean =
+        a.kind == b.kind && a.address == b.address && a.secretAddress == b.secretAddress && a.auth == b.auth && a.routing == b.routing &&
+            a.handOff?.pkg == b.handOff?.pkg
+
+    /**
+     * C10, Connection keys (D7): only from a backup marked yours; only for a connection [here] (after the Connections
+     * category, or as this phone has them) with the same id and [sameOrigin] as the backup's connection the key was saved
+     * for ([file]: the backup's connections, null when it has none), so a key never goes to an address it wasn't saved
+     * for; only with exactly the parts that connection needs ([keys]: each key's parts by connection id); and only where
+     * this phone has none ([hasKey], by id): a key you entered here is never replaced. [KeysPlan.save] holds entry names.
+     */
+    fun connectionKeys(keys: Map<String, Set<app.heyrobot.core.connect.SecretPart>>, file: List<app.heyrobot.core.connect.Connection>?,
+                       here: List<app.heyrobot.core.connect.Connection>, hasKey: (String) -> Boolean, mine: Boolean): KeysPlan {
+        val save = ArrayList<String>()
+        val skipped = LinkedHashMap<String, KeySkip>()
+        for ((id, parts) in keys) {
+            val name = BackupCategory.connKey(id)
+            val was = file?.firstOrNull { it.id == id }
+            val now = here.firstOrNull { it.id == id }
+            val why = when {
+                !mine -> KeySkip.NOT_YOURS
+                was == null || now == null -> KeySkip.NO_SUCH_CONNECTION
+                !sameOrigin(was, now) -> KeySkip.OTHER_ADDRESS
+                parts != now.secrets -> KeySkip.OTHER_PARTS
+                hasKey(id) -> KeySkip.ALREADY_HERE
+                else -> null
+            }
+            if (why == null) save += name else skipped[name] = why
+        }
+        return KeysPlan(save, skipped)
+    }
 
     /**
      * Keys: only from a backup marked yours, only for a helper that exists after the Settings category

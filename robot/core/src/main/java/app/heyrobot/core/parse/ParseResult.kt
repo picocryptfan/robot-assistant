@@ -67,7 +67,7 @@ object ParseResults {
     fun reads(op: ParseOp): Set<FileGroup> = when (op) {
         ParseOp.READ -> setOf(FileGroup.IMAGE, FileGroup.PDF, FileGroup.TEXT)
         ParseOp.PIXELS -> setOf(FileGroup.IMAGE, FileGroup.PDF)
-        ParseOp.STRIP, ParseOp.STRAIGHTEN, ParseOp.SCAN_PDF -> setOf(FileGroup.IMAGE)
+        ParseOp.STRIP, ParseOp.STRAIGHTEN, ParseOp.SCAN_PDF, ParseOp.QR -> setOf(FileGroup.IMAGE)
     }
 
     /**

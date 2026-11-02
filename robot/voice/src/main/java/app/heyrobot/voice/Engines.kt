@@ -145,7 +145,7 @@ object VoiceEngines {
     private lateinit var speakerSlot: ModelSlot<Embedder>
     private var stt: SherpaSpeechToText? = null
     @Volatile private var speakers: SpeakerEmbedder? = null
-    private var tts: SherpaTextToSpeech? = null
+    @Volatile private var tts: SherpaTextToSpeech? = null
     @Volatile private var benchRunning = false
 
     /** Once per process, before the engines: [stateDir] holds the crash guards and the status files (filesDir/robot). */
@@ -206,9 +206,19 @@ object VoiceEngines {
     fun trimSpeakers(): Boolean = speakers?.trim() ?: false
 
     fun textToSpeech(ctx: Context): TextToSpeech {
-        val s = SherpaTextToSpeech(ctx.applicationContext, kokoroSlot, kittenSlot).also { tts = it }
-        return VoiceOutput(ctx.applicationContext, s)
+        val s = SherpaTextToSpeech(ctx.applicationContext, kokoroSlot, kittenSlot).also { tts = it; otherApps = OtherAppsVoice(it) }
+        return VoiceOutput(ctx.applicationContext, s, env.stateDir)
     }
+
+    /**
+     * The everyday set, E6: Robot's voices for other apps (app tts/RobotTtsService), on the same engine and worker as Robot's
+     * own voice. Null until VoiceHub made that engine.
+     */
+    @Volatile var otherApps: OtherAppsVoice? = null
+        private set
+
+    /** E6: a wake phrase heard at [heardAt] can't be Robot's voice reading for another app (VoiceHub.onWake). */
+    fun otherAppsWakeSafe(heardAt: Long): Boolean = tts?.appWakeSafe(heardAt) ?: true
 
     /** The main app installed or deleted voice models: re-check them; free an engine whose files are gone. */
     fun modelsChanged() {

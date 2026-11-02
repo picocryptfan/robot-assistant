@@ -1,0 +1,190 @@
+# The recorder's phrases, read aloud once: language|words. Ids follow the order, so add at the end of a language.
+en|hey robot
+en|hey robot what time is it
+en|hey robot what's the weather today
+en|hey robot set a timer for five minutes
+en|hey robot set a timer for ten minutes
+en|hey robot set an alarm for seven in the morning
+en|hey robot turn on the flashlight
+en|hey robot turn off the flashlight
+en|hey robot open the camera
+en|hey robot open maps
+en|hey robot how much battery do I have
+en|hey robot how much free memory is there
+en|hey robot play some music
+en|hey robot play my workout playlist
+en|hey robot pause the music
+en|hey robot what's on my calendar today
+en|hey robot add milk to the shopping list
+en|hey robot add eggs and bread to the shopping list
+en|hey robot take eggs off the shopping list
+en|hey robot read my shopping list
+en|hey robot make a note to call the dentist
+en|hey robot find my notes about the trip
+en|hey robot remember that my locker is number twelve
+en|hey robot what do you remember about my locker
+en|hey robot what's twelve times eight
+en|hey robot what's fifteen percent of sixty
+en|hey robot how many kilometres in ten miles
+en|hey robot tell me a joke
+en|hey robot start my morning routine
+en|hey robot start a conversation
+en|hey robot send a text to Sam
+en|hey robot call Sam
+en|hey robot find the nearest coffee shop
+en|hey robot navigate to the library
+en|hey robot search the web for bread recipes
+en|hey robot translate good morning into French
+en|what time is it
+en|what's the weather tomorrow
+en|what day is it today
+en|how long until my timer ends
+en|cancel the timer
+en|set a timer for thirty seconds
+en|set a timer for one hour
+en|set an alarm for six thirty
+en|turn on the flashlight
+en|open the calculator
+en|play something relaxing
+en|skip this song
+en|stop the music
+en|what song is this
+en|add coffee to the shopping list
+en|add a note that the car needs oil
+en|what's on my list
+en|read my notes
+en|how much is twenty plus seventeen
+en|what's the square root of eighty one
+en|how many days until Christmas
+en|who wrote the hobbit
+en|how far away is the moon
+en|why is the sky blue
+en|what's the capital of Canada
+en|how do you boil an egg
+en|give me a short summary of that
+en|say that again
+en|tell me more
+en|what did I just ask you
+en|next
+en|skip
+en|repeat
+en|go back
+en|yes
+en|yes please
+en|yeah
+en|sure
+en|okay
+en|go ahead
+en|do it
+en|confirm
+en|no
+en|no thanks
+en|no thank you
+en|not now
+en|cancel
+en|never mind
+en|stop
+en|stop talking
+en|that's enough
+en|wait
+en|hold on
+en|thank you
+en|thanks robot
+en|good morning
+en|good night
+en|how are you today
+en|what can you do
+en|what's your name
+en|speak more slowly
+en|speak faster
+en|talk to me in French
+en|talk to me in English
+en|start transcribing
+en|stop transcribing
+en|save this conversation
+en|start a new conversation
+en|end the conversation
+en|remind me about the meeting in my brief
+en|what's in my brief
+en|read me the news I saved
+en|take a picture
+en|open my files
+en|find the file about taxes
+en|delete that note
+en|forget what I told you about the locker
+en|is it going to rain this afternoon
+en|do I need a jacket today
+en|what's the temperature outside
+en|when does the sun set
+en|how's the traffic to work
+en|remind me what I said about the trip
+en|what was the last thing on my list
+en|turn the volume up
+en|turn the volume down
+en|I need a timer for the pasta
+en|can you read that back to me
+en|that's not what I meant
+en|let me try that again
+en|one two three four five six seven eight nine ten
+en|the quick brown fox jumps over the lazy dog
+fr|hey robot
+fr|hey robot quelle heure est-il
+fr|hey robot quel temps fait-il aujourd'hui
+fr|hey robot mets une minuterie de cinq minutes
+fr|hey robot mets une alarme à sept heures
+fr|hey robot allume la lampe de poche
+fr|hey robot éteins la lampe de poche
+fr|hey robot ouvre l'appareil photo
+fr|hey robot joue de la musique
+fr|hey robot arrête la musique
+fr|hey robot ajoute du lait à la liste d'épicerie
+fr|hey robot lis ma liste d'épicerie
+fr|hey robot prends une note pour appeler le dentiste
+fr|hey robot qu'est-ce qu'il y a à mon calendrier
+fr|hey robot combien font douze fois huit
+fr|hey robot raconte-moi une blague
+fr|quelle heure est-il
+fr|quel temps fera-t-il demain
+fr|on est quel jour aujourd'hui
+fr|annule la minuterie
+fr|mets une minuterie de trente secondes
+fr|mets une alarme à six heures et demie
+fr|joue quelque chose de relaxant
+fr|passe à la prochaine chanson
+fr|ajoute du café à la liste
+fr|lis mes notes
+fr|combien font vingt plus dix-sept
+fr|quelle est la capitale du Canada
+fr|pourquoi le ciel est bleu
+fr|comment on fait cuire un œuf
+fr|répète s'il te plaît
+fr|dis-m'en plus
+fr|suivant
+fr|passe
+fr|recommence
+fr|oui
+fr|oui s'il te plaît
+fr|ouais
+fr|d'accord
+fr|vas-y
+fr|confirme
+fr|non
+fr|non merci
+fr|pas maintenant
+fr|annule
+fr|laisse faire
+fr|arrête
+fr|arrête de parler
+fr|attends
+fr|merci
+fr|merci robot
+fr|bonjour
+fr|bonne nuit
+fr|comment ça va
+fr|qu'est-ce que tu peux faire
+fr|parle plus lentement
+fr|parle-moi en anglais
+fr|parle-moi en français
+fr|est-ce qu'il va pleuvoir cet après-midi
+fr|quelle température fait-il dehors
+fr|un deux trois quatre cinq six sept huit neuf dix

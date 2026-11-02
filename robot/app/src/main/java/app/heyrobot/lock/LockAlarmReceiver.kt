@@ -33,7 +33,8 @@ object LockAlarms {
 
 /**
  * The exact alarm, the system's BOOT_COMPLETED, TIME_SET, TIMEZONE_CHANGED and MY_PACKAGE_REPLACED, and Robot's own
- * explicit intents (LockSignals): not exported, so no other app can send it anything. Each one refreshes the engine.
+ * explicit intents (LockSignals): not exported, so no other app can send it anything. Each one refreshes the engine,
+ * except Robot's app saying it is in front, which the service's gate looks at.
  */
 class LockAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -42,10 +43,19 @@ class LockAlarmReceiver : BroadcastReceiver() {
         Thread({
             try {
                 when (intent.action) {
-                    LockSignals.ACTION_EDIT_END -> LockEngine.endEdit(app)
+                    LockSignals.ACTION_EDIT_END -> {
+                        LockEngine.endEdit(app)
+                        // Robot's app was still in front as the session ended: the gate looks at it, the session now over.
+                        if (intent.hasExtra(LockSignals.EXTRA_AT)) LockAccessibilityService.instance?.robotInFront(intent.getLongExtra(LockSignals.EXTRA_AT, 0))
+                    }
+                    // Robot's app is in front during a lock (it came to the front, or the session ran out with it there), or
+                    // LS13, another covered window came to the front.
+                    LockSignals.ACTION_FRONT -> LockAccessibilityService.instance?.robotInFront(intent.getLongExtra(LockSignals.EXTRA_AT, 0),
+                        intent.getStringExtra(LockSignals.EXTRA_WINDOW))
                     // Phase B: LockRouter's card ("Lock the phone until 7"), after you tapped Lock. The engine starts it in
                     // its refresh's one edit: recorded, the cover shown at once, and kept even when state.json can't be written.
                     LockSignals.ACTION_START_VOICE -> LockEngine.refresh(app, voiceEnd = intent.getLongExtra(LockSignals.EXTRA_END, 0).takeIf { it > 0 })
+                    LockSignals.ACTION_EMERGENCY_OPENED -> LockEngine.emergencyOpened(app, dialer = false)
                     // Phase B: Robot's car mode started or ended (:voice's CarModeController).
                     LockSignals.ACTION_CAR -> LockEngine.car(app, intent.getBooleanExtra(LockSignals.EXTRA_ON, false), intent.getBooleanExtra(LockSignals.EXTRA_BY_CAR, false))
                     else -> LockEngine.refresh(app)

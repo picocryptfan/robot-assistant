@@ -1,0 +1,21 @@
+{
+  "format": 1,
+  "id": "mem-remember",
+  "title": "Remembering and recalling, in English and French",
+  "safety": "robot-data",
+  "testBench": ["v70-mem-remember"],
+  "needs": {"model": true},
+  "setup": [{"set": "speakReplies", "value": "VOICE"}],
+  "steps": [
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "Remember that Julie loves tulips.", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 30, "contains": "Got it"},
+    {"do": "say", "text": "What flowers does Julie love?", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 120, "contains": "tulip"},
+    {"do": "end"},
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "Souviens-toi que Julie aime les tulipes.", "voice": "siwis"},
+    {"do": "wait_reply", "seconds": 30, "contains": "noté"},
+    {"do": "end"}
+  ]
+}

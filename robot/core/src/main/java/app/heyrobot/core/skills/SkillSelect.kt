@@ -47,12 +47,38 @@ object SkillSelect {
 
     private const val BACKGROUND = "~" // l10n: not text (the background documents' id prefix: never a skill id, which starts with "s-")
 
-    /** A skill's document: its name 3 times, its other names twice, its steps' kinds by their titles in English and French. */
-    fun document(s: Skill): String = buildList {
+    /**
+     * A skill's document: its name 3 times, its other names twice, its steps' kinds by their titles in English and French,
+     * and (connections plan §5.3, C4) a linked step's fixed words ("lights", "notification", "travel time"), never a host,
+     * an entity, a topic or your operation's title.
+     */
+    fun document(s: Skill, links: SkillLinks = SkillLinks.NONE): String = buildList {
         repeat(3) { add(s.name) }
         (s.namesEn + s.namesFr).forEach { n -> repeat(2) { add(n) } }
         for (step in s.steps) step.kind.tool?.let { t -> for (l in Lang.entries) add(t.titleText.render(Langs.of(l))) }
+        for (step in s.steps) addAll(linkedWords(step, links))
     }.joinToString(" . ")
+
+    /** A linked step's fixed words, English and French: by its kind, and for Home Assistant by the service's domain. */
+    fun linkedWords(step: SkillStep, links: SkillLinks): List<String> = when (step.kind) {
+        StepKind.CONN -> {
+            val op = if (step.conn != null && step.op != null) links.op(step.conn, step.op) else null
+            if (op == null) emptyList() else when (op.kind) {
+                "home_assistant" -> listOf("home", "maison") + op.ha?.domain?.let { DOMAIN_WORDS[it] }.orEmpty() // l10n: not text (search words)
+                "ntfy" -> listOf("notification", "notify", "avertis") // l10n: not text (search words)
+                else -> emptyList()
+            }
+        }
+        StepKind.TRAVEL_TIME -> listOf("travel time", "temps de trajet") // l10n: not text (search words)
+        else -> emptyList()
+    }
+
+    /** Home Assistant's domains as you'd say them (C4, plan §5.3): fixed words only. */
+    private val DOMAIN_WORDS: Map<String, List<String>> = mapOf( // l10n: not text (search words)
+        "light" to listOf("lights", "lumières"), "switch" to listOf("switch", "interrupteur"), "lock" to listOf("lock", "door", "serrure", "porte"), // l10n: not text (search words)
+        "cover" to listOf("blinds", "garage", "stores"), "climate" to listOf("heating", "thermostat", "chauffage"), "fan" to listOf("fan", "ventilateur"), // l10n: not text (search words)
+        "media_player" to listOf("music", "tv", "musique"), "scene" to listOf("scene", "scène"), "vacuum" to listOf("vacuum", "aspirateur"), // l10n: not text (search words)
+        "alarm_control_panel" to listOf("alarm", "alarme")) // l10n: not text (search words)
 
     /** Robot's tools, each its description and its titles in English and French: the same background for every library. */
     private val background: List<Pair<String, String>> by lazy {
@@ -68,10 +94,13 @@ object SkillSelect {
         t.isNotEmpty() && words.containsAll(t)
     }
 
-    /** An index over [skills] (Off ones left out), rebuilt when they change. */
-    class Index(skills: List<Skill>) {
-        private val byId = skills.filter { it.level != SkillLevel.OFF }.associateBy { it.id }
-        private val bm25 = Bm25Index.build(byId.values.map { it.id to document(it) } + background)
+    /**
+     * An index over [skills] (Off ones left out, and those needing attention with [links]: a step's connection, app or
+     * script is gone, connections plan §5.2), rebuilt when they change.
+     */
+    class Index(skills: List<Skill>, private val links: SkillLinks = SkillLinks.NONE) {
+        private val byId = skills.filter { it.level != SkillLevel.OFF && SkillCheck.attention(it, links).isEmpty() }.associateBy { it.id }
+        private val bm25 = Bm25Index.build(byId.values.map { it.id to document(it, links) } + background)
 
         /** A word only one document holds weighs ln(1 + (N - 0.5) / 1.5): scaled to its weight among [REFERENCE] skills. */
         private val scale = unique(REFERENCE + background.size) / unique(byId.size + background.size)
@@ -94,7 +123,7 @@ object SkillSelect {
             val hits = scores(query).filter { it.second >= MIN_SCORE }
             val best = hits.firstOrNull()?.second ?: 0.0
             val found = hits.filter { it.second >= best * WITHIN }.map { it.first }
-            val forced = named?.takeIf { it.level != SkillLevel.OFF }
+            val forced = named?.takeIf { it.level != SkillLevel.OFF && SkillCheck.attention(it, links).isEmpty() }
             return (listOfNotNull(forced) + found).distinctBy { it.id }.take(MAX)
         }
     }

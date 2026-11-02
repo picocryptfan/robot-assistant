@@ -10,6 +10,20 @@ import java.io.FileOutputStream
 /** Writes through a temporary file, fsyncs it and renames it over [f]. */
 fun writeAtomic(f: File, text: String) = writeAtomicBytes(f, text.toByteArray(Charsets.UTF_8))
 
+/** A run of failed saves (storage full) is told once: at the first failure, and again only after one has worked. */
+class SaveWatch {
+    private var told = false
+
+    /** [ok] is how this save went; true means tell the person now. */
+    @Synchronized
+    fun tell(ok: Boolean): Boolean {
+        if (ok) { told = false; return false }
+        if (told) return false
+        told = true
+        return true
+    }
+}
+
 /** [writeAtomic] for bytes (the encrypted voiceprint): a crash leaves the old file or the new one, never half of one. */
 fun writeAtomicBytes(f: File, bytes: ByteArray) {
     f.parentFile?.mkdirs()
@@ -47,6 +61,19 @@ fun <T> withFileLock(lock: File, block: () -> T): T {
         }
     }
 }
+
+/**
+ * For a read-modify-write: [f]'s bytes, or null when it isn't there (also when deleted just now). Throws when it is there
+ * but can't be read now, so the write that would replace it never happens.
+ */
+fun readForUpdate(f: File, read: (File) -> ByteArray = File::readBytes): ByteArray? = try {
+    if (f.isFile) read(f) else null
+} catch (e: java.io.FileNotFoundException) {
+    if (f.exists()) throw e else null
+}
+
+/** [readForUpdate] as text: null only when [f] isn't there. */
+fun readTextForUpdate(f: File, read: (File) -> ByteArray = File::readBytes): String? = readForUpdate(f, read)?.toString(Charsets.UTF_8)
 
 fun readOrNull(f: File): String? = try { if (f.isFile) f.readText(Charsets.UTF_8) else null } catch (_: Exception) { null }
 

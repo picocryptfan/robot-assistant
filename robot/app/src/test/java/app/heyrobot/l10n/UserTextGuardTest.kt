@@ -112,6 +112,26 @@ class UserTextGuardTest {
             assertTrue(f, rules.area(f) != "files")
     }
 
+    /**
+     * C11: every Skills connections source is in the "connections" area, so a new word there is connections' to translate:
+     * core connect/, the app's assistant/connect/, the HTTP client in helpers' connect/ (before helpers' own catch-all, as
+     * the first pattern that matches wins), and the files beside other areas' code by name.
+     */
+    @Test fun connectionsSourcesAreInTheConnectionsArea() {
+        val read = TextScan.sources(root, rules).map { it.first }
+        val conn = read.filter { f ->
+            f.startsWith("core/src/main/java/app/heyrobot/core/connect/") || f.startsWith("app/src/main/java/app/heyrobot/assistant/connect/") ||
+                f.startsWith("helpers/src/main/java/app/heyrobot/helpers/connect/") ||
+                f in setOf("app/src/main/java/app/heyrobot/sys/Connections.kt", "app/src/main/java/app/heyrobot/sys/HandOffPicks.kt",
+                    "core/src/main/java/app/heyrobot/core/ConnActions.kt", "app/src/main/java/app/heyrobot/ui/settings/ConnectionsSettings.kt",
+                    "app/src/main/java/app/heyrobot/ui/settings/SkillSteps.kt")
+        }
+        assertTrue("${conn.size} files", conn.size >= 40)
+        assertTrue("helpers/src/main/java/app/heyrobot/helpers/connect/ConnHttp.kt" in conn)
+        assertEquals(emptyList<String>(), conn.filter { rules.area(it) != "connections" }.map { "$it: ${rules.area(it)}" })
+        assertEquals("helpers", rules.area("helpers/src/main/java/app/heyrobot/helpers/HelperSession.kt"))
+    }
+
     private fun writeReport(guarded: List<TextScan.Row>) {
         val out = File(root, "app/build/l10n").apply { mkdirs() }
         out.listFiles { f -> f.name.startsWith("baseline-") }?.forEach { it.delete() }

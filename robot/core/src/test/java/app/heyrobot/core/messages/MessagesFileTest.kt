@@ -51,4 +51,20 @@ class MessagesFileTest {
         assertTrue(odd.noCard.isEmpty())
         assertEquals(mapOf("p2" to Lang.EN), odd.replyLang)
     }
+
+    /** F66: a file that is there but can't be read now is not "no file": the change fails and the file stays. */
+    @Test fun aReadErrorStopsTheChangeAndTheFileStays() {
+        val dir = java.nio.file.Files.createTempDirectory("messages").toFile()
+        try {
+            val file = java.io.File(dir, "messages.json")
+            MessagesFile.update(file) { it.copy(noCard = setOf("p1")) }
+            val before = file.readText()
+            org.junit.Assert.assertThrows(java.io.IOException::class.java) {
+                MessagesFile.update(file, { throw java.io.IOException("EIO") }) { it.copy(noCard = setOf("p2")) }
+            }
+            assertEquals(before, file.readText())
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
 }

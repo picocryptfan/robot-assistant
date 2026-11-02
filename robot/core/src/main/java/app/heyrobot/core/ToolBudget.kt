@@ -15,9 +15,13 @@ object ToolBudget {
 
     /**
      * The groups that may give way, first to last: Termux, web search, your skills (1.1), memory's tools, then the rest but
-     * the core tools.
+     * the core tools, and last the everyday set's sums: calculate costs about one line, and without it the model would do a
+     * sum in its head (everyday-set-plan.md §4.4).
      */
-    val OPTIONAL: List<ToolGroup> = listOf(ToolGroup.TERMUX, ToolGroup.WEB, ToolGroup.SKILLS, ToolGroup.MEMORY).let { big -> big + (ToolGroup.entries - ToolGroup.CORE - big.toSet()).reversed() }
+    val OPTIONAL: List<ToolGroup> = listOf(ToolGroup.TERMUX, ToolGroup.WEB, ToolGroup.SKILLS, ToolGroup.MEMORY).let { big ->
+        // Skills connections (C4): CONNECTIONS describes nothing, so it never gives way.
+        big + (ToolGroup.entries - ToolGroup.CORE - ToolGroup.CONNECTIONS - ToolGroup.SUMS - big.toSet()).reversed() + ToolGroup.SUMS
+    }
 
     /**
      * The groups to describe this turn: [groups] (the conversation's) less the optional ones that would leave the new turn

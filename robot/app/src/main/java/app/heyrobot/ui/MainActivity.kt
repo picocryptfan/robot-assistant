@@ -16,7 +16,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.AlertDialog
+import app.heyrobot.ui.common.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -74,6 +74,7 @@ import app.heyrobot.core.AppCrash
 import app.heyrobot.core.AppExit
 import app.heyrobot.core.DownloadPolicy
 import app.heyrobot.core.readOrNull
+import app.heyrobot.sys.BackupClipboard
 import app.heyrobot.sys.AppPages
 import app.heyrobot.sys.ShowNonces
 import app.heyrobot.sys.Assistant
@@ -101,6 +102,7 @@ import app.heyrobot.sys.VoiceModelStore
 import app.heyrobot.sys.MtModelStore
 import app.heyrobot.core.MtBundle
 import app.heyrobot.ui.common.RIcons
+import app.heyrobot.ui.common.filterObscuredTouches
 import app.heyrobot.ui.guide.PhoneGuideStores
 import app.heyrobot.ui.guide.SetupGuideScreen
 import app.heyrobot.sys.SetupGuideStore
@@ -140,6 +142,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         if (savedInstanceState == null) route.value = routeOf(intent)
+        // F115: a tap on Yes, Allow or Delete here must be yours: none goes through while another app's window covers this one.
+        window.filterObscuredTouches()
         setContent { RobotTheme { RobotAppUi(this) } }
         // The speech recognizer setting that keeps Robot the assistant at the next restart (only with the adb grant).
         val app = applicationContext
@@ -156,7 +160,21 @@ class MainActivity : ComponentActivity() {
     /** 0.7: Send feedback's Copy is cleared 60 s on if unchanged; the clipboard can be read only while Robot has the focus. */
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) FeedbackClipboard.check(this)
+        if (hasFocus) {
+            FeedbackClipboard.check(this)
+            BackupClipboard.check(this)
+        }
+    }
+
+    /** Phone lock: during a lock, :lock's gate is told Robot's app is in front (ui/settings PhoneLockPages). */
+    override fun onResume() {
+        super.onResume()
+        app.heyrobot.ui.settings.PhoneLockPages.resumed(this)
+    }
+
+    override fun onPause() {
+        app.heyrobot.ui.settings.PhoneLockPages.paused()
+        super.onPause()
     }
 
     /**
@@ -227,6 +245,8 @@ sealed class Page {
     data class Conversation(val id: String) : Page()
     /** [id] null: a new note (until its first save gives it one). */
     data class NoteEdit(val id: String?) : Page()
+    /** 1.4 Lists (LS5): a list's page, by the list's id. */
+    data class ListPage(val id: String) : Page()
     /** Settings › Voice (0.2.3). */
     data object WakePhrases : Page()
     data object WakeTest : Page()
@@ -263,6 +283,7 @@ sealed class Page {
                     is Setup -> if (p.people) "setup:1" else "setup:0"
                     is Conversation -> "conv:${p.id}" // l10n: not text (saved route)
                     is NoteEdit -> "note:${p.id.orEmpty()}" // l10n: not text (saved route)
+                    is ListPage -> "list:${p.id}" // l10n: not text (saved route)
                     WakePhrases -> "wake"
                     WakeTest -> "waketest"
                     VoiceLog -> "voicelog"
@@ -287,6 +308,7 @@ sealed class Page {
                     v.startsWith("setup:") -> Setup(v == "setup:1")
                     v.startsWith("conv:") -> Conversation(v.removePrefix("conv:"))
                     v.startsWith("note:") -> NoteEdit(v.removePrefix("note:").ifEmpty { null })
+                    v.startsWith("list:") -> ListPage(v.removePrefix("list:"))
                     v == "wake" -> WakePhrases
                     v == "waketest" -> WakeTest
                     v == "voicelog" -> VoiceLog
@@ -423,6 +445,8 @@ fun RobotAppUi(activity: MainActivity) {
     var page by nav
     /** Opened from the "Robot Notes" icon and still on Notes: Back leaves the app, as from any app's first screen. */
     var fromNotesIcon by rememberSaveable { mutableStateOf(false) }
+    // 1.4 Lists (Q1): the Notes tab's section, Lists first; the Robot Notes icon opens Notes.
+    var notesSection by rememberSaveable { mutableStateOf(app.heyrobot.ui.lists.NotesSection.LISTS) }
     /** 1.4: the same for the "Robot Files" icon and the Files tab. */
     var fromFilesIcon by rememberSaveable { mutableStateOf(false) }
     var settings by remember { mutableStateOf(SettingsStore.load(ctx)) }
@@ -459,6 +483,7 @@ fun RobotAppUi(activity: MainActivity) {
     val resumed = lstate.isAtLeast(Lifecycle.State.RESUMED)
 
     fun say(msg: String) { scope.launch { snackbar.showSnackbar(msg) } }
+    LaunchedEffect(Unit) { for (x in SettingsStore.saveFailed) say(ctx.getString(R.string.settings_save_failed)) }
     /** 1.1: a message from strings_home.xml, in the menus' language; an Android screen in the phone's. */
     fun tell(id: Int, vararg args: Any) = say(ctx.getString(id, *args))
     fun android(p: AndroidPath): String = p.render(AppLanguage.langs(ctx).system)
@@ -573,8 +598,9 @@ fun RobotAppUi(activity: MainActivity) {
                 }
             }
             // 1.0.1: a checked model still outside internal storage (1.0's place) moves in once, hashed as it is copied,
-            // when there's room (ModelStore.moveIn); tried once each time the app opens.
-            if (busy == null) snap.models.firstOrNull { it.status == ModelStatus.VERIFIED && it.outside && it.model !in moveTried }?.let { o ->
+            // when there's room (ModelStore.moveIn); tried once each time the app opens, and as soon as there's room for it
+            // (it can't load until then).
+            if (busy == null) snap.models.firstOrNull { it.status == ModelStatus.VERIFIED && it.outside && it.moveNeed == 0L && it.model !in moveTried }?.let { o ->
                 moveTried += o.model
                 busy = "move"
                 scope.launch(Dispatchers.IO) {
@@ -607,7 +633,8 @@ fun RobotAppUi(activity: MainActivity) {
         route?.let(AppRoutes::target)?.let { t ->
             if (t.tab != null) { tab = t.tab; page = null }
             if (t.page != null) page = t.page
-            if (t.notesIcon) fromNotesIcon = true
+            if (t.notesIcon) { fromNotesIcon = true; notesSection = app.heyrobot.ui.lists.NotesSection.NOTES }
+            if (t.lists) notesSection = app.heyrobot.ui.lists.NotesSection.LISTS
             if (t.filesIcon) fromFilesIcon = true
             t.filesPack?.let(app.heyrobot.ui.files.FilesRequests::open)
         }
@@ -924,12 +951,13 @@ fun RobotAppUi(activity: MainActivity) {
         // A new note keeps the id its first save gave it; a save as the editor closes (Back, a route) never reopens it.
         is Page.NoteEdit -> NoteScreen(p.id, notesTick, actions, snackbar,
             onCreated = { id -> if (page == Page.NoteEdit(null)) nav.replace(Page.NoteEdit(id)) }, onBack = { nav.back(); notesTick++ })
+        is Page.ListPage -> app.heyrobot.ui.lists.ListRoute(p.id, actions, snackbar, onBack = nav::back)
         Page.WakePhrases -> WakePhrasesScreen(settings, ::updateSettings, actions, snackbar, onBack = nav::back)
         Page.WakeTest -> WakeTestScreen(settings, snap, onBack = nav::back)
         Page.VoiceLog -> VoiceLogScreen(settings, snackbar, onBack = nav::back, onReport = { page = Page.Settings(SettingsRoutes.feedback(FeedbackEntry.VOICE_LOG)) })
         Page.AdbFixes -> AdbFixesScreen(actions, snackbar, onBack = nav::back)
         Page.People -> PeopleScreen(settings, ::updateSettings, snap.facts, actions, snackbar, onOpen = { page = Page.PersonEdit(it) }, onBack = nav::back)
-        is Page.PersonEdit -> PersonScreen(p.id, actions, snackbar, onBack = nav::back)
+        is Page.PersonEdit -> PersonScreen(p.id, settings.smsGateway, actions, snackbar, onBack = nav::back)
         Page.Safety -> SafetyScreen(settings, ::updateSettings, actions, snackbar, onBack = nav::back)
         Page.Licences -> LicencesScreen(onOpen = { page = it }, onBack = nav::back)
         // Back from a notice goes to its part's licence, from a licence to the list.
@@ -969,7 +997,8 @@ fun RobotAppUi(activity: MainActivity) {
                 val m = Modifier.weight(1f)
                 when (tab) {
                     Tab.HOME -> HomeScreen(snap, history.take(3), actions, m, guide = guideState)
-                    Tab.NOTES -> NotesScreen(notes, actions, m)
+                    Tab.NOTES -> app.heyrobot.ui.lists.NotesTab(notesSection, { notesSection = it }, actions, snackbar, m,
+                        port = { app.heyrobot.ui.lists.PhoneListsPort(ctx) }) { mod -> NotesScreen(notes, actions, mod) }
                     Tab.HISTORY -> HistoryScreen(history, actions, m)
                     // 1.4: Robot Files (ui/files), its index read off the main thread only once this tab shows.
                     Tab.FILES -> app.heyrobot.ui.files.FilesRoute(actions, snackbar, m)

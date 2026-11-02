@@ -1,0 +1,21 @@
+{
+  "format": 1,
+  "id": "su4-misfires-fr",
+  "title": "What Sums must leave alone, in French",
+  "safety": "robot-data",
+  "testBench": ["SU4"],
+  "needs": {"model": true},
+  "setup": [{"set": "speakReplies", "value": "VOICE"}],
+  "steps": [
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "Combien d'Advil pour un enfant de 30 kg ?", "voice": "siwis"},
+    {"do": "wait_reply", "seconds": 120},
+    {"do": "check", "what": "router", "equals": "model"},
+    {"do": "end"},
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "Ajoute 2 litres de lait à la liste d'épicerie.", "voice": "siwis"},
+    {"do": "wait_reply", "seconds": 30},
+    {"do": "check", "what": "router", "equals": "ListsRouter"},
+    {"do": "end"}
+  ]
+}

@@ -38,6 +38,7 @@ import app.heyrobot.core.files.Resealed
 import app.heyrobot.core.files.Staged
 import app.heyrobot.core.files.TravelMode
 import app.heyrobot.core.readOrNull
+import app.heyrobot.core.readTextForUpdate
 import app.heyrobot.core.withFileLock
 import app.heyrobot.core.writeAtomic
 import java.io.File
@@ -354,7 +355,8 @@ object RobotFiles {
                             // F12: hidden drawers shown with your PIN go out of sight again.
                             TravelReveal.end()
                             // F7: a copy handed to another app goes at screen-off, its grant revoked.
-                            if (main) FilesOut.revokeAll(app)
+                            // F55: a main process Android froze doesn't hear this: :voice deletes them too.
+                            if (main) FilesOut.revokeAll(app) else worker.execute { FilesOut.clear(app) }
                             // FX2 (K1): a delete waiting for its Undo goes through now (its Undo can't be tapped from here).
                             FileDeletes.here.commitAll()
                         }
@@ -496,8 +498,8 @@ object FilesSettingsStore {
         val app = ctx.applicationContext
         val f = file(app)
         val ok = withFileLock(lock(app)) {
-            val text = next(readOrNull(f)) ?: return@withFileLock false
             try {
+                val text = next(readTextForUpdate(f)) ?: return@withFileLock false
                 writeAtomic(f, text)
                 true
             } catch (t: Exception) {
@@ -517,8 +519,8 @@ object FilesSettingsStore {
      */
     fun restore(ctx: Context, staged: String?, mine: Boolean): Boolean = withFileLock(lock(ctx)) {
         val f = file(ctx)
-        val text = RestoreSafety.filesSettingsFile(readOrNull(f), staged, mine) ?: return@withFileLock false
         try {
+            val text = RestoreSafety.filesSettingsFile(readTextForUpdate(f), staged, mine) ?: return@withFileLock false
             writeAtomic(f, text)
             true
         } catch (t: Exception) {

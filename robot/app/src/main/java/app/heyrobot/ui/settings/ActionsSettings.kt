@@ -80,6 +80,8 @@ fun ActionsSettingsScreen(s: RobotSettings, snap: Snapshot, update: (RobotSettin
         stringResource(R.string.actions_footer_nearest, server.labelText.str()) + (if (maps) "" else " " + stringResource(R.string.actions_footer_maps_off)) + " " +
         (if (server.isDefault) stringResource(R.string.actions_footer_default_server, Nearby.HOST)
         else stringResource(R.string.actions_footer_own_server, server.name))
+    // The everyday set's rows (EverydaySettings.kt): music and Ask Robot, each shown once its job turns it on.
+    val everyday = rememberEveryday()
     PreferenceScreen(UiStrings.actions().str(), onBack, snackbar = snackbar) {
         item(key = "intro") { IntroPreference(stringResource(R.string.actions_intro)) }
         for ((key, _, groups) in GROUPS) {
@@ -108,6 +110,7 @@ fun ActionsSettingsScreen(s: RobotSettings, snap: Snapshot, update: (RobotSettin
                 }
             }
         }
+        everydayActionRows(everyday)
         preferenceFooter(footer)
     }
 }

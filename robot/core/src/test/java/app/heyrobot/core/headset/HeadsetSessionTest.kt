@@ -227,6 +227,9 @@ class HeadsetSessionTest {
         assertEquals(SessionEffect.End(EndWhy.BY_YOU), HeadsetSessionMachine.on(busy, SessionEvent.Button(ButtonAction.CANCEL), s).second.last())
         // Nothing heard: ends.
         assertEquals(SessionEffect.End(EndWhy.NOTHING_HEARD), HeadsetSessionMachine.on(listening, SessionEvent.Heard(true), s).second.last())
+        // Speech cut at the cap: heard, never acted on, and logged as that.
+        assertEquals(SessionEffect.End(EndWhy.CUT_AT_CAP), HeadsetSessionMachine.on(listening, SessionEvent.Heard(false, cut = true), s).second.last())
+        assertEquals(SessionEffect.End(EndWhy.CUT_AT_CAP), HeadsetSessionMachine.on(listening.copy(phase = SessionPhase.FOLLOW_UP), SessionEvent.Heard(false, cut = true), s).second.last())
     }
 
     @Test fun wiredStartsListeningAtOnce() {

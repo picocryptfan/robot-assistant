@@ -261,7 +261,39 @@ object BackupKit {
             FilesBackup.INDEX to FileIndexCodec.encode(filesIndex()),
             FilesBackup.SETTINGS to text(FilesSettingsCodec.encode(FilesSettings(bills = FileLevel.ASK, reminders = FileReminders.OFF))),
         ),
+        // 1.4, Robot Lists (LS7): the lists' plain JSON, then Settings › Lists with both lock switches on.
+        BackupCategory.LISTS to linkedMapOf(
+            BackupCategory.LISTS_FILE to BackupExport.lists(lists()),
+            BackupCategory.LISTS_SETTINGS to text(app.heyrobot.core.lists.ListsSettingsCodec.encode(listsSettings())),
+        ),
     )
+
+    // 1.4, Robot Lists' content (demo data only): Shopping with an open item, a ticked one and a tombstone; your Packing list.
+    const val LIST_SHOPPING = "5a000000000000000000000000000001"
+    const val LIST_PACKING = "5a000000000000000000000000000002"
+    const val ITEM_MILK = "5b000000000000000000000000000001"
+    const val ITEM_EGGS = "5b000000000000000000000000000002"
+    const val ITEM_GONE = "5b000000000000000000000000000003"
+    const val ITEM_SUNSCREEN = "5b000000000000000000000000000004"
+
+    private fun listItem(id: String, text: String, pos: Long, qty: String? = null, done: Boolean = false, gone: Long? = null, rev: Long = 1,
+                         by: app.heyrobot.core.lists.ItemBy = app.heyrobot.core.lists.ItemBy.YOU) =
+        app.heyrobot.core.lists.ListItem(app.heyrobot.core.lists.ListsId.of(id)!!, text, qty, done, pos, T0, T0 + rev, by,
+            app.heyrobot.core.lists.ItemHow.VOICE, rev, gone,
+            listOf(app.heyrobot.core.lists.ListChange(app.heyrobot.core.lists.ItemOp.ADD, T0, by, app.heyrobot.core.lists.ItemHow.VOICE)))
+
+    fun lists(): app.heyrobot.core.lists.ListsFile = app.heyrobot.core.lists.ListsFile(listOf(
+        app.heyrobot.core.lists.ListsList(app.heyrobot.core.lists.ListsId.of(LIST_SHOPPING)!!, app.heyrobot.core.lists.ListRole.SHOPPING, made = T0, items = listOf(
+            listItem(ITEM_MILK, "oat milk $MARK", 1_000, qty = "2 L"),
+            listItem(ITEM_EGGS, "eggs", 2_000, done = true, rev = 2),
+            listItem(ITEM_GONE, "bread", 3_000, gone = T0 + 3, rev = 3, by = app.heyrobot.core.lists.ItemBy.LOCKED),
+        )),
+        app.heyrobot.core.lists.ListsList(app.heyrobot.core.lists.ListsId.of(LIST_PACKING)!!, name = "Packing", made = T0 + 10, items = listOf(
+            listItem(ITEM_SUNSCREEN, "sunscreen", 1_000),
+        )),
+    ))
+
+    fun listsSettings() = app.heyrobot.core.lists.ListsSettings(addLocked = true, lockScreen = true)
 
     // 1.4, Robot Files' content (demo data only).
     const val FILE_RECEIPT = "0f1e2d3c4b5a69788796a5b4c3d2e1f0"

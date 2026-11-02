@@ -1,0 +1,20 @@
+{
+  "format": 1,
+  "id": "su3-french",
+  "title": "Sums in French, with French number forms",
+  "safety": "read",
+  "testBench": ["SU3"],
+  "setup": [{"set": "speakReplies", "value": "VOICE"}],
+  "steps": [
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "Combien font 18 % de 64,50 $ ?", "voice": "siwis"},
+    {"do": "wait_reply", "seconds": 30, "contains": "11,61"},
+    {"do": "check", "what": "router", "equals": "SumsRouter"},
+    {"do": "open", "how": "wake"},
+    {"do": "wait_listening", "seconds": 30},
+    {"do": "say", "text": "350 degrés Fahrenheit en Celsius.", "voice": "siwis"},
+    {"do": "wait_reply", "seconds": 30, "contains": "177"},
+    {"do": "check", "what": "router", "equals": "SumsRouter"},
+    {"do": "end"}
+  ]
+}

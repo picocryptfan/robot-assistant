@@ -35,11 +35,29 @@ data class TermuxCommandAction(val command: String, val why: String? = null, val
 }
 
 /**
+ * C8: a typed script as its skill's run calls it (plan §3.6, D18): your script [script], each declared parameter's value
+ * ([args], with where each came from), the skill's [skill] name, the step's number [step] (from 1) and its own [check] (a
+ * regular expression on the cleaned output). Only a skill's run makes one (SkillRun, under ConnCalls.KEY): no model,
+ * helper, text call or reply can, whatever it writes.
+ */
+class ScriptStepCall(val script: String, val args: Map<String, StepArg>, val skill: String, val step: Int,
+    val check: app.heyrobot.core.skills.StepCheck.Matches? = null) {
+    override fun equals(other: Any?): Boolean = other is ScriptStepCall && script == other.script && args == other.args && skill == other.skill &&
+        step == other.step && check == other.check
+    override fun hashCode(): Int = listOf(script, args, skill, step, check).hashCode()
+    override fun toString(): String = "ScriptStepCall($step)" // l10n: not text (toString, for the logs)
+}
+
+/**
  * termux_script: your script [name] in ~/robot with [args] as written (split by ShellLexer.argv when it runs).
  * [lockScreen]: you added it to Settings › Termux › Works on the lock screen.
+ * C8: [step] set, a skill's typed step: [args] stays empty and [argv] (filled when :voice prepares it) goes to Termux as
+ * it is, one element per value, never through ShellLexer or a shell; never on the lock screen.
  */
 data class TermuxScriptAction(val name: String, val args: String = "", val source: CommandSource = CommandSource.MODEL, val key: String = "",
-    val card: TermuxCardInfo? = null, val lockScreen: Boolean = false) : Action() {
+    val card: TermuxCardInfo? = null, val lockScreen: Boolean = false, val step: ScriptStepCall? = null, val argv: List<String>? = null) : Action() {
+    /** A skill's typed step (C8). */
+    val typed: Boolean get() = step != null
     override val tool get() = ToolName.TERMUX_SCRIPT
     /** The card's summary: "Run your script “backup”" ([describe]: its English). */
     val describeText: Phrase get() = TermuxStrings.runScript("name" to name)
@@ -48,7 +66,7 @@ data class TermuxScriptAction(val name: String, val args: String = "", val sourc
     override val confirmText: Phrase get() = UiStrings.run()
     override val confirmLabel: String get() = confirmText.en()
     override val stoppable get() = true
-    override fun worksLocked(lockedTools: Set<ToolName>) = lockScreen
+    override fun worksLocked(lockedTools: Set<ToolName>) = lockScreen && step == null
 }
 
 object TermuxCalls {
@@ -83,6 +101,12 @@ object TermuxCalls {
         fun str(vararg names: String): String? = names.firstOrNull { a.containsKey(it) }?.let { (a[it] as? String) ?: (a[it] as? Number)?.toString() }
         return when (tool) {
             ToolName.TERMUX_SCRIPT -> {
+                // C8: a skill's typed step, only as the carrier its run made (never a model's or a reply's "step").
+                if (a.containsKey(ConnCalls.KEY)) {
+                    val call = a[ConnCalls.KEY] as? ScriptStepCall
+                    if (a.keys != setOf(ConnCalls.KEY) || call == null || !TermuxScripts.validName(call.script)) return bad("name is required") // l10n: not text (the model reads it)
+                    return ParsedCall.Ok(TermuxScriptAction(call.script, source = CommandSource.SPOKEN, step = call))
+                }
                 val name = str("name", "script")?.trim()?.removePrefix("~/robot/")?.trim() ?: return bad("name is required") // l10n: not text (the model reads it)
                 if (!TermuxScripts.validName(name)) return bad("name must be one of the user's script names") // l10n: not text (the model reads it)
                 val args = (a["args"] ?: a["arguments"])?.let { v -> (v as? String) ?: (v as? List<*>)?.joinToString(" ") { "'" + it.toString().replace("'", "'\\''") + "'" } }

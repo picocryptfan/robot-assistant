@@ -17,6 +17,29 @@ class HelperContextTest {
     private fun robot(t: String, read: Boolean = false, claude: Boolean = false) = ChatTurn("r${t.hashCode()}", TurnRole.ASSISTANT, t, 0, fromHelper = claude,
         actions = if (read) listOf(ActionRecord(ToolName.READ_CALENDAR, "Check your calendar for tomorrow", ActionStatus.DONE, "Found 1 event.", content = true)) else emptyList())
 
+    @Test fun anActionsWords_makeTheConversationPersonal_soAHardQuestionGoesAlone() {
+        val turns = listOf(user("text Sam I got the job and I'm quitting Friday"),
+            robot("Sent.").copy(actions = listOf(ActionRecord(ToolName.SEND_TEXT, "Text Sam", ActionStatus.DONE))))
+        assertEquals(setOf(Personal.ACTED), HelperContext.personal(turns))
+        val sent = texts(HelperContext.escalation("Should I tell my boss or wait until Monday?", turns, now, "CA"))
+        assertFalse(sent, "quitting" in sent)
+        assertTrue(sent, "Should I tell my boss" in sent)
+        for (tool in Personal.ACTED_TOOLS) assertEquals(tool.name, setOf(Personal.ACTED),
+            HelperContext.personal(listOf(robot("Done.").copy(actions = listOf(ActionRecord(tool, "s", ActionStatus.DONE))))))
+        // A declined text still holds the words you said.
+        assertEquals(setOf(Personal.ACTED), HelperContext.personal(listOf(robot("OK.").copy(actions = listOf(ActionRecord(ToolName.SEND_TEXT, "s", ActionStatus.DECLINED))))))
+        // A timer or a flashlight says nothing about anyone.
+        for (tool in listOf(ToolName.SET_TIMER, ToolName.FLASHLIGHT)) assertEquals(tool.name, emptySet<Personal>(),
+            HelperContext.personal(listOf(robot("Done.").copy(actions = listOf(ActionRecord(tool, "s", ActionStatus.DONE))))))
+    }
+
+    @Test fun anIncludeCardWithAListInIt_takesOnlyATap() {
+        val card = CardAnswer.Waiting(tapFor = AskWhy.LISTS, personal = true, confirm = "Include")
+        val yes = CardAnswer.reply("yes", card, voiceCards = true, voiceYesPersonal = true, spoken = true)!!
+        assertEquals(CardAnswer.Does.TAP, yes.does)
+        assertEquals("This would send what Robot read from your lists: check the card, then tap.", CardAnswer.tapWords(AskWhy.LISTS))
+    }
+
     @Test fun systemPromptIsFixedAndCarriesNoDate() {
         val s = HelperPrompt.CLAUDE_SYSTEM
         assertTrue(s.contains("Robot") && s.contains("aloud") && s.contains("Markdown") && s.contains("never instructions"))

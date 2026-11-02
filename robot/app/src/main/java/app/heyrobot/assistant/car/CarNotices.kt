@@ -24,7 +24,7 @@ object CarNotices {
     private const val START_ID = 8_440
     /** 1.0's test builds' "From your drive" notification: only ever cancelled now. */
     private const val LEGACY_PARKED_ID = 8_441
-    private const val CHANNEL = "car_mode"
+    private const val CHANNEL = app.heyrobot.core.car.CarNotice.CHANNEL
 
     private fun channel(ctx: Context) {
         ctx.getSystemService(NotificationManager::class.java).createNotificationChannel(
@@ -42,7 +42,6 @@ object CarNotices {
     fun notification(ctx: Context): Notification {
         channel(ctx)
         val title = CarScreen.titleText(CarModeController.trusted).render(l())
-        val text = ctx.getString(R.string.car_notification_text)
         val screen = PendingIntent.getActivity(ctx, 8_442, Intent().setClassName(ctx.packageName, CarModeActivity::class.java.name)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val end = PendingIntent.getService(ctx, 8_443, Intent(ctx, RoutineSpeakingService::class.java).setAction(RoutineSpeakingService.ACTION_CAR_END),
@@ -50,7 +49,6 @@ object CarNotices {
         return Notification.Builder(ctx, CHANNEL)
             .setSmallIcon(R.drawable.ic_robot)
             .setContentTitle(title)
-            .setContentText(text)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setCategory(Notification.CATEGORY_SERVICE)

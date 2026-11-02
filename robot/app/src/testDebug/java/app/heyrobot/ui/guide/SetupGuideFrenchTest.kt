@@ -9,7 +9,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.isHeading
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
@@ -237,7 +237,7 @@ class SetupGuideFrenchTest {
     /** 1.2: the brief "after your alarm" without GrapheneOS Clock (Step 6), in French. */
     @Test fun theBriefWithoutClockInFrench() {
         guide(Stores(GuideStep.ROUTINES), snap = fresh.copy(facts = fresh.facts!!.copy(clockInstalled = false)))
-        rule.onNodeWithText("Demande l\u2019appli Horloge de GrapheneOS", substring = true).assertExists()
+        rule.onNodeWithText("Demande une appli d\u2019horloge", substring = true).assertExists()
         rule.shot("guide_routines_no_clock_fr")
     }
 

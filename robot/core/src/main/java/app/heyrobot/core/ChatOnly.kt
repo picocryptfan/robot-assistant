@@ -36,8 +36,9 @@ object ChatOnly {
      * purpose: anything else goes to the model, which is told it can't act, so a question about an open wound, light
      * sensitivity or cold weather and asthma is answered, never turned away. A command that ends with a question mark
      * counts only when asked politely ("can you set a timer?"): "Note that I'm diabetic: can I eat this?" is a question.
+     * 1.4: [lists], Lists is on (Settings › Lists): "add … to my … list" and « ajoute … liste » ask for add_to_list, not add_note.
      */
-    fun actionAsked(question: String): ToolName? {
+    fun actionAsked(question: String, lists: Boolean = false): ToolName? {
         val raw = question.trim()
         val social = strip(words(raw), SOCIAL)
         val request = strip(social.words, REQUEST)
@@ -47,7 +48,7 @@ object ChatOnly {
         // Questions only the phone's tools (or the internet) can answer: whatever the punctuation.
         for ((tool, rx) in QUESTIONS) if (rx.containsMatchIn(a) || rx.containsMatchIn(b)) return tool
         if (raw.endsWith("?") && !polite) return null
-        for ((tool, rx) in COMMANDS) if (rx.containsMatchIn(b)) return tool
+        for ((tool, rx) in COMMANDS) if (rx.containsMatchIn(b)) return if (tool == ToolName.ADD_NOTE && lists && LIST_ADD.any { it.containsMatchIn(b) }) ToolName.ADD_TO_LIST else tool
         return null
     }
 
@@ -113,6 +114,9 @@ object ChatOnly {
     /** After "forecast for" or "temperature in": a person or a body, never a place ("the forecast for recovery"). */
     private const val NOT_PLACE = "(?!(?:a|an|the|my|your|his|her|their|recovery|healing|survival|cancer|patients?|people|someone|children|" +
         "kids|adults|babies|infants|pregnancy|fever)\\b)"
+
+    /** 1.4: the two add_note rows' list halves ("add … to my … list", « ajoute … liste »): add_to_list's while Lists is on. */
+    private val LIST_ADD = listOf("""^(add|put)\b.*\b(to|on|in|onto) (my|the) (\S+ )?list\b""", """^(ajoute|mets)\b.*\bliste\b""").map(::Regex)
 
     /** Requests worded as an action from their first word (after the fillers). */
     private val COMMANDS: List<Pair<ToolName, Regex>> = listOf(

@@ -75,7 +75,7 @@ data class BackupState(
 
     /** After a backup saved at [at] with [categories], [bytes] long, [checked] or not. */
     fun after(at: Long, categories: Set<BackupCategory>, bytes: Long, checked: Boolean): BackupState =
-        copy(lastAt = at, lastCategories = categories, lastBytes = bytes, lastKeys = BackupCategory.KEYS in categories, lastChecked = checked)
+        copy(lastAt = at, lastCategories = categories, lastBytes = bytes, lastKeys = categories.any { it in BackupCategory.KEY_CATEGORIES }, lastChecked = checked)
 
     companion object {
         const val FILE = "backup_state.json"
@@ -86,8 +86,8 @@ data class BackupState(
             val d = BackupState()
             fun cats(k: String): Set<BackupCategory>? = (o.opt(k) as? JSONArray)?.let { a -> (0 until a.length()).mapNotNull { BackupCategory.of(a.opt(it) as? String) }.toSet() }
             // A category Back up now didn't offer when your choices were saved (1.1's file has no "offered": it offered all
-            // but Files) starts at its default, rather than as one you left out.
-            val offered = cats("offered") ?: (BackupCategory.entries.toSet() - BackupCategory.FILES)
+            // but Files, Lists, Everyday, and C10's Connections and Connection keys) starts at its default, rather than as one you left out.
+            val offered = cats("offered") ?: (BackupCategory.entries.toSet() - BackupCategory.LINKS - BackupCategory.FILES - BackupCategory.LISTS - BackupCategory.EVERYDAY - BackupCategory.CONNECTIONS - BackupCategory.CONN_KEYS)
             val chosen = cats("chosen")?.let { saved -> saved + BackupCategory.entries.filter { it.defaultOn && it !in offered } } ?: d.chosen
             return BackupState(
                 lastAt = (o.opt("lastAt") as? Number)?.toLong()?.takeIf { it > 0 },

@@ -3,6 +3,7 @@ package app.heyrobot.core.messages
 
 import app.heyrobot.core.AppUnread
 import app.heyrobot.core.Person
+import app.heyrobot.core.PhoneNumbers
 import app.heyrobot.core.UnreadCount
 import org.json.JSONArray
 import org.json.JSONObject
@@ -72,10 +73,10 @@ object AnnounceSenders {
      * [chosen] (People › a person › "Announce messages from …"), by the same rules as the name Robot reads (core
      * MessagePeople.personFor: their address, or their name where the app gives none).
      */
-    fun chosen(t: MessageThread, people: List<Person>, chosen: Set<String>): Boolean {
+    fun chosen(t: MessageThread, people: List<Person>, chosen: Set<String>, gateway: String = PhoneNumbers.DEFAULT_GATEWAY): Boolean {
         if (chosen.isEmpty()) return false
         val m = t.incoming.lastOrNull { !it.historic } ?: return false
-        return MessagePeople.personFor(m.senderKey, m.senderName, people)?.id?.let { it in chosen } == true
+        return MessagePeople.personFor(m.senderKey, m.senderName, people, gateway)?.id?.let { it in chosen } == true
     }
 }
 

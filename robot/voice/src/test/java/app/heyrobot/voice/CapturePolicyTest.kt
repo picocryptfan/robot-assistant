@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.voice
 
+import app.heyrobot.core.KwsThresholds
 import app.heyrobot.core.BargeIn
 import app.heyrobot.core.BargeTestLogic
 import app.heyrobot.voice.CapturePolicy.Capture.COMMUNICATION
@@ -250,5 +251,27 @@ class CapturePolicyTest {
         assertNull(g.onSpeech(800, 2_000))
         assertNull(g.onSpeech(3000, 5_000))
         assertEquals(3000 to 3, g.onSpeech(500, 12_000))
+    }
+
+    @Test fun stopIsListenedForWhileASpokenReplyIsBeingWritten() {
+        val i = KeywordInputs()
+        assertEquals(false, i.talking)
+        i.replyComing = true
+        assertEquals(true, i.talking)
+        i.replyComing = false
+        i.speaking = true
+        assertEquals(true, i.talking)
+    }
+
+    @Test fun stopIsHeardMoreReadilyBeforeHerVoiceStarts() {
+        val k = KeywordInputs()
+        assertEquals(null, k.stopPreset(communication = false, echoCancelled = false))
+        k.replyComing = true
+        assertEquals(KwsThresholds.STOP_QUIET, k.stopPreset(communication = false, echoCancelled = false))
+        // The gap between two sentences: still call mode, so the same line as while she speaks.
+        assertEquals(KwsThresholds.STOP_AEC, k.stopPreset(communication = true, echoCancelled = true))
+        k.speaking = true
+        assertEquals(KwsThresholds.STOP, k.stopPreset(communication = false, echoCancelled = false))
+        assertEquals(KwsThresholds.STOP_AEC, k.stopPreset(communication = true, echoCancelled = true))
     }
 }

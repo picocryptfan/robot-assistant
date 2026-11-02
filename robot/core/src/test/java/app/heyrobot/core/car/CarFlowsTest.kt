@@ -257,8 +257,6 @@ class DrivingTest {
         val st = CarScreen.status("Calling Martine Martin, mobile, and a very long tail that goes on")
         assertTrue(st.length <= CarScreen.MAX_STATUS)
         assertTrue(st.endsWith("…"))
-        assertEquals(listOf(CarScreen.Button.TALK, CarScreen.Button.CALL, CarScreen.Button.END), CarScreen.buttons(messages = false, home = false))
-        assertEquals(5, CarScreen.buttons(messages = true, home = true).size)
     }
 
     @Test fun navigation() {

@@ -42,6 +42,9 @@ fun Phase.afterTurn(speaking: Boolean): Phase = when (this) {
  */
 fun Phase.stopEndsTurn(turnRunning: Boolean): Boolean = turnRunning && (this == Phase.THINKING || this == Phase.ANSWERING)
 
+/** "Stop" said now would end a reply that is to be spoken but isn't sounding yet: before her first sentence, or between two. */
+fun Phase.spokenReplyComing(speak: Boolean): Boolean = speak && (this == Phase.THINKING || this == Phase.ANSWERING)
+
 /**
  * 1.0: which robot the panel's orb shows in this phase. Listening wins, a card's "yes" or "no" included
  * ([cardHearing]); then Robot's voice ([talking]: reading aloud, also while the reply is still being written or a card
@@ -95,6 +98,10 @@ data class UiAction(
     val chips: List<String> = emptyList(),
     /** 1.4: a Robot Files card (the folder's symbol; no tool, so History keeps none of it). */
     val files: Boolean = false,
+    /** 1.4 Lists (LS12): a list card, with the checklist's symbol (no tool either, so it drew the warning sign). */
+    val lists: Boolean = false,
+    /** C6: where you are went to your routing server (core Card.located). */
+    val located: Boolean = false,
 ) {
     /** What a spoken or typed answer needs to know about it (core CardAnswer). */
     val waiting: CardAnswer.Waiting get() = CardAnswer.Waiting(choices.size, tapFor, personal, confirm, say = detail.takeIf { termux != null && tapFor != null })
@@ -108,7 +115,7 @@ data class UiAction(
  * ("Want Jarvis's take as well?").
  */
 data class Offer(val api: Boolean, val text: String, val sends: List<String>, val preview: String? = null, val asWell: Boolean = false,
-    val name: String = "Claude", val app: String = "Claude")
+    val name: String = "Claude", val app: String = "Claude", val keep: String? = null, val note: String? = null)
 
 data class UiTurn(
     val id: String,
@@ -117,7 +124,11 @@ data class UiTurn(
     val attachment: Attachment = Attachment.NONE,
     val thumb: Bitmap? = null,
     val actions: List<UiAction> = emptyList(),
+    /** chat-files: the attached file's name (never its contents). */
+    val fileName: String? = null,
     val streaming: Boolean = false,
+    /** E7: the question carried what another app shared ("Shared", never "Screen"). */
+    val shared: Boolean = false,
     val stopped: Boolean = false,
     val error: Boolean = false,
     /** A helper wrote it: its name as a label ([by]) and the tertiary accent. [readBack]: read off the Claude app's screen. */
@@ -138,9 +149,12 @@ data class UiTurn(
     val web: AnswerCard? = null,
     /** 1.0: said while the phone was locked (core ChatTurn.locked): under "Said while the phone was locked". */
     val locked: Boolean = false,
+    /** 1.4 Lists (LS5): a list read or checked, with tick boxes (ListCard): shown, never saved (History keeps the read's placeholder). */
+    val list: app.heyrobot.ui.common.ListCardView? = null,
 )
 
-data class Draft(val kind: Attachment, val thumb: Bitmap?)
+/** [shared]: the everyday set's Ask Robot (E7), what another app shared riding [kind] (SCREEN for text, PHOTO for a photo). */
+data class Draft(val kind: Attachment, val thumb: Bitmap?, val name: String? = null, val shared: app.heyrobot.assistant.ask.SharedItem? = null)
 
 /**
  * OPEN_ASSIST_SETTINGS: the Digital assistant app page, where "Use text from screen" and "Use screenshot" are.
@@ -166,6 +180,8 @@ data class PanelState(
     val sttAvailable: Boolean = false,
     /** Why voice input is unavailable (the mic button's tooltip, e.g. "Download voice models"); null when it works. */
     val micHint: String? = null,
+    /** Words for the text box instead of a send (speech cut at the cap); the panel takes them once. */
+    val fillInput: String? = null,
     /** Bumped to ask the panel to focus the text field and show the keyboard. */
     val focusRequest: Int = 0,
     /** Bumped on every show: the panel's own state (a drag offset, the attach row) starts fresh each time. */

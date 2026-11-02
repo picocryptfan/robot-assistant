@@ -9,9 +9,10 @@ import java.time.ZonedDateTime
 // Pure. 1.4, Robot Files' money and dates (files-1.4-plan.md §7, D9, D11; job F10). Everything here is code over the
 // fields Robot's own parsers kept (FileFields) or you set: no model reads, adds or decides any of it.
 //
-//   Spending       "how much did I spend on gas in August": the sum of filed receipts' totals, in whole cents (Long, never
-//                  a Double), one total per currency (no exchange rates, §7.3); a receipt whose total needs checking is left
-//                  out and counted, and so is one held in Inbox for its total.
+//   Spending       "how much did I spend on gas in August": the sum of filed receipts' totals (bills' too when the words say
+//                  bills or the spending is on utilities), in whole cents (Long, never a Double), one total per currency (no
+//                  exchange rates, §7.3). A refund's total comes off its own currency, so a sum can go below zero (F42); a
+//                  file whose total needs checking is left out and counted, and so is one held in Inbox for its total.
 //   Dates          A bill's due date, a receipt's last day to return, a warranty's end, an ID's or a document's expiry: from
 //                  the fields "due", "return_by", "warranty" and "expiry" only, never from a file's text or the model.
 //   Reminders      "Add to my brief": a reminder kept in the file's own entry (the field "remind", sealed with the index),
@@ -27,8 +28,8 @@ data class SpendQuery(val category: String? = null, val merchant: String? = null
     override fun toString(): String = "SpendQuery($category, ${merchant != null}, ${from != null}, $bills)" // l10n: not text (never your words in a log)
 }
 
-/** A spending answer, by code: [byCurrency] cents (null: files that named no currency), the [files] added, the [check] left out. */
-data class Spending(val byCurrency: Map<String?, Long>, val files: Int, val check: Int, val kinds: Set<FileKind>)
+/** A spending answer, by code: [byCurrency] cents (null: files that named no currency), the [files] added, the [check] left out, the [refunds] among [files] (taken off, F42). */
+data class Spending(val byCurrency: Map<String?, Long>, val files: Int, val check: Int, val kinds: Set<FileKind>, val refunds: Int = 0)
 
 object FileSpending {
     /** The kinds a question adds up: receipts; bills too when the words say bills or the spending is on utilities (billed). */
@@ -47,8 +48,11 @@ object FileSpending {
         if (e.kind !in kinds(q) || e.damaged) return false
         if (q.category != null && FileSearch.category(e) != q.category) return false
         if (q.merchant != null) {
-            val m = e.fields["merchant"]?.value?.let(::key) ?: return false
-            if (q.merchant.split(' ').filter { it.isNotBlank() }.any { !m.contains(key(it)) }) return false
+            val m = e.fields["merchant"]?.value?.let(::starts) ?: return false
+            // fb16: or the words said run together start the name ("best buy" and BESTBUY #123), so a total doesn't come out low with no sign.
+            val joined = key(q.merchant)
+            val everyWord = q.merchant.split(' ').filter { it.isNotBlank() }.all { w -> key(w).let { k -> m.any { it.startsWith(k) } } }
+            if (!everyWord && !(joined.isNotEmpty() && m.any { it.startsWith(joined) })) return false
         }
         if (q.from != null || q.to != null) {
             val d = FileViews.day(e, zone)
@@ -59,24 +63,27 @@ object FileSpending {
 
     /**
      * The sum [q] asks for in [idx]: filed files only; a total that needs checking (or none) is left out and counted, as is a
-     * file held in Inbox for its total. Whole cents, exact (Math.addExact: an overflow throws rather than wraps).
+     * file held in Inbox for its total. A refund's total comes off its own currency (F42), so a sum can go below zero. Whole
+     * cents, exact (Math.addExact: an overflow throws rather than wraps).
      */
     fun sum(idx: FileIndex, q: SpendQuery, hidden: Set<FileId> = emptySet(), zone: ZoneId = ZoneId.systemDefault()): Spending {
         val sums = LinkedHashMap<String?, Long>()
         var files = 0
         var check = 0
+        var refunds = 0
         for (e in idx.entries) {
             if (e.id in hidden || !matches(e, q, zone)) continue
             val heldForTotal = e.state != FileState.FILED && e.filing?.step == FilingStep.ASK && e.filing.why == FilingWhy.TOTAL
             if (e.state != FileState.FILED) { if (heldForTotal) check++; continue }
-            val cents = e.fields["total"]?.value?.takeIf { e.fields["check"]?.value != "total" }?.let(FileFields::amountOf) // l10n: not text (a field's code)
+            val cents = FileViews.signedTotal(e)?.takeIf { e.fields["check"]?.value != "total" } // l10n: not text (a field's code)
             if (cents == null) { check++; continue }
+            if (cents < 0) refunds++
             val cur = e.fields["currency"]?.value
             sums[cur] = Math.addExact(sums[cur] ?: 0L, cents)
             files++
         }
         val sorted = sums.entries.sortedByDescending { it.value }.associate { it.key to it.value }
-        return Spending(sorted, files, check, kinds(q))
+        return Spending(sorted, files, check, kinds(q), refunds)
     }
 
     // Reading the words after "how much did I spend" / « combien j'ai dépensé ».
@@ -125,6 +132,13 @@ object FileSpending {
     }
 
     private fun key(s: String): String = FileFields.fold(s).filter(Char::isLetterOrDigit)
+
+    /** F86: where a merchant's name may match: the whole name run together ("walmart", "Wal-Mart") and each word, with and without what follows an apostrophe ("Tim Horton's", « L'Épicerie »): "Gap" isn't in Singapore. */
+    private fun starts(name: String): List<String> {
+        val f = FileFields.fold(name)
+        val words = f.split(Regex("[^\\p{L}\\d]+")) + f.split(Regex("[^\\p{L}\\d'’]+")).map(::key) // l10n: not text (a parser's pattern)
+        return (words + key(name)).filter { it.isNotEmpty() }
+    }
 }
 
 // ---------------------------------------------------------------------------------------------- dates and reminders
@@ -301,10 +315,10 @@ object FileSubscriptions {
     /**
      * Subscriptions in your bills: filed bills grouped by merchant (folded), each counted once per month (its own date, else
      * its due date, else when it came in); [MIN_MONTHS] or more months in a row ending in the last [RECENT_MONTHS] months.
-     * Listed only: Robot never cancels, pays or contacts anyone about one.
+     * Listed only: Robot never cancels, pays or contacts anyone about one. A bill that's a credit isn't a charge (F42).
      */
     fun find(idx: FileIndex, today: LocalDate, hidden: Set<FileId> = emptySet(), zone: ZoneId = ZoneId.systemDefault()): List<Subscription> {
-        val bills = idx.entries.filter { it.kind == FileKind.BILL && it.state == FileState.FILED && !it.damaged && it.id !in hidden }
+        val bills = idx.entries.filter { it.kind == FileKind.BILL && it.state == FileState.FILED && !it.damaged && it.id !in hidden && !FileViews.refund(it) }
         val now = YearMonth.from(today)
         val out = ArrayList<Subscription>()
         for ((_, group) in bills.groupBy { b -> b.fields["merchant"]?.value?.let { FileFields.fold(it).filter(Char::isLetterOrDigit) }.orEmpty() }) {
@@ -409,6 +423,7 @@ object FileCleanup {
         val date = FileViews.dateField(e, "date") ?: return null
         val total = e.fields["total"]?.value?.let(FileFields::amountOf) ?: return null
         val cur = e.fields["currency"]?.value ?: "-"
-        return "${e.kind}|$merchant|$date|$total|$cur"
+        // F42: a refund isn't the near-copy of the sale it undoes, same day and same amount.
+        return "${e.kind}|$merchant|$date|$total|$cur|${FileViews.refund(e)}"
     }
 }

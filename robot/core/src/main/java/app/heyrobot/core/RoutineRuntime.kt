@@ -515,7 +515,7 @@ object RoutineTexts {
     fun speakingText(r: Routine): Phrase =
         if (r.id == BriefRoutine.ID || r.steps == listOf(RoutineStep.Brief)) RoutineStrings.readingBrief() else RoutineStrings.running("name" to r.name)
 
-    /** On the lock screen (the notification's public version): nothing about which routine. */
+    /** While the phone is locked (the notification's title then, and its public version): nothing about which routine. */
     val SPEAKING_PUBLIC: String get() = RoutineStrings.speaking().en()
 
     /** Android didn't let Robot speak by itself: a tap does. */

@@ -16,6 +16,8 @@
     <string name="update_auto_check">Vérifier les mises à jour automatiquement</string>
     <string name="update_auto_check_on">Une fois par jour, en arrière-plan</string>
     <string name="update_auto_check_off">Seulement quand tu touches Vérifier maintenant</string>
+    <string name="update_schedule_failed">Les mises à jour automatiques ne peuvent pas se faire</string>
+    <string name="update_schedule_failed_detail">Android refuse de les planifier sur ce téléphone. Vérifier maintenant fonctionne quand même.</string>
     <string name="update_wifi">Télécharger les mises à jour par Wi-Fi</string>
     <string name="update_wifi_detail">Télécharge et vérifie une mise à jour par Wi-Fi, puis te dit qu’elle est prête à installer</string>
     <string name="update_test_builds">Inclure les versions de test</string>

@@ -246,9 +246,8 @@ object RoutineStrings : Strings("routine", area = "routines") {
     val heresRoutine = s("heres_routine", "Here's the routine. {footer}", "Voici la routine. {footer}")
     /** 1.2: a routine made by voice to start after an alarm, on a phone without GrapheneOS Clock (core ClockNeed). */
     val clockMissing = s("clock_missing",
-        "This phone doesn't have the GrapheneOS Clock app, so turning off an alarm won't start this routine. Support for other clock apps is planned.",
-        "Ce téléphone n'a pas l'appli Horloge de GrapheneOS : arrêter une alarme ne lancera donc pas cette routine. La prise en charge " +
-            "d'autres applis d'horloge est prévue.")
+        "This phone doesn't have a Clock app, so turning off an alarm won't start this routine.",
+        "Ce téléphone n'a pas d'appli d'horloge : arrêter une alarme ne lancera donc pas cette routine.")
     val heresTapSave = s("heres_tap_save", "Here's the routine. Tap {save} to keep it.", "Voici la routine. Touche {save} pour la garder.")
     val heresSayYes = s("heres_say_yes", "Here's the routine. Say yes to save it.", "Voici la routine. Dis oui pour l'enregistrer.")
     val notSaved = s("not_saved", "Not saved.", "Pas enregistrée.")

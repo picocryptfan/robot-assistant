@@ -4,20 +4,24 @@ package app.heyrobot.lock
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.os.SystemClock
 import android.provider.Settings
 import android.view.accessibility.AccessibilityManager
+import app.heyrobot.core.car.CarOpen
 import app.heyrobot.core.RLog
+import app.heyrobot.core.lock.Clocks
 import app.heyrobot.core.lock.LockCodec
 import app.heyrobot.core.lock.LockFile
 import app.heyrobot.core.lock.LockFileRead
-import app.heyrobot.core.lock.LockFor
-import app.heyrobot.core.lock.LockSchedule
 import app.heyrobot.core.lock.LockState
+import app.heyrobot.core.lock.LockStateFile
+import app.heyrobot.core.lock.LockView
 import app.heyrobot.core.readOrNull
 import app.heyrobot.core.withFileLock
 import app.heyrobot.core.writeAtomic
 import app.heyrobot.sys.Paths
 import java.io.File
+import java.time.ZonedDateTime
 
 // All three app processes. Phone lock's files live in files/robot/lock/, written atomically under
 // lock.lock, which every process takes:
@@ -35,6 +39,13 @@ object LockStore {
     private fun lockFile(ctx: Context) = File(dir(ctx), "lock.lock")
     private fun locksFile(ctx: Context) = File(dir(ctx), LOCKS)
     private fun stateFile(ctx: Context) = File(dir(ctx), STATE)
+    @Volatile private var states: LockStateFile? = null
+    private fun states(ctx: Context): LockStateFile {
+        val file = stateFile(ctx)
+        return states?.takeIf { it.file == file } ?: synchronized(this) {
+            states?.takeIf { it.file == file } ?: LockStateFile(file) { LockMaps.app(ctx.applicationContext) }.also { states = it }
+        }
+    }
 
     fun <T> locked(ctx: Context, block: () -> T): T = withFileLock(lockFile(ctx), block)
 
@@ -44,6 +55,12 @@ object LockStore {
         if (!f.exists()) return LockFileRead.Ok(LockFile())
         return LockCodec.decode(readOrNull(f))
     }
+
+    /**
+     * Phone lock is on, or locks.json can't be read here (damaged, too new, an I/O error): a lock may be on whatever this
+     * process sees, so a covered window tells :lock it is in front (§5.2). False only for a file read as off (LS13 low 1).
+     */
+    fun mayLock(ctx: Context): Boolean = try { read(ctx).let { it !is LockFileRead.Ok || it.file.settings.on } } catch (_: Throwable) { true }
 
     /** The locks that may come on now (none while Phone lock is off or its file can't be read). */
     fun usable(ctx: Context): LockFile? = read(ctx).ok?.takeIf { it.settings.on }
@@ -78,46 +95,36 @@ object LockStore {
         LockSignals.locksChanged(ctx)
     }
 
-    /**
-     * [LOCK] A state :lock worked out but couldn't write to state.json (storage full). It is newer than the file, so :lock
-     * reads and edits from it, and every edit writes it again until a write works. Only :lock writes state.json, so it
-     * stays null in the other processes.
-     */
-    @Volatile private var unsaved: LockState? = null
-
     /** [LOCK] The state worked out here isn't in state.json yet. */
-    val unsavedState: Boolean get() = unsaved != null
+    val unsavedState: Boolean get() = states?.unsavedState == true
 
-    /** state.json, read by any process (an unreadable one is an empty state); in :lock, a state it couldn't write yet. */
-    fun readState(ctx: Context): LockState = readStateOrNull(ctx) ?: LockState()
+    /**
+     * state.json, read by any process; in :lock, the newest state it knows when the file can't be read or take a write. One
+     * nobody can read has no locks in it, but says a code is set (the code pad puts that right), so nothing gets easier.
+     */
+    fun readState(ctx: Context): LockState = states(ctx).state()
 
     /** [readState], but null when state.json is there and can't be read. */
-    fun readStateOrNull(ctx: Context): LockState? =
-        unsaved ?: stateFile(ctx).let { f -> if (!f.exists()) LockState() else LockCodec.decodeState(readOrNull(f)) }
+    fun readStateOrNull(ctx: Context): LockState? = states(ctx).stateOrNull()
+
+    /** Settings.Global.BOOT_COUNT: tells this boot's elapsed-time ends from an older boot's. A process lives within one boot. */
+    @Volatile private var bootCount: Int? = null
+    private fun boot(ctx: Context): Int? = bootCount ?: try { Settings.Global.getInt(ctx.contentResolver, Settings.Global.BOOT_COUNT).also { bootCount = it } } catch (_: Throwable) { null }
+
+    /** The wall clock in the phone's zone, the elapsed-time clock, the boot count. */
+    fun clocks(ctx: Context) = Clocks(ZonedDateTime.now(), SystemClock.elapsedRealtime(), boot(ctx))
 
     /** When state.json last changed (0: never), for the other processes' caches. */
     fun stateStamp(ctx: Context): Long = stateFile(ctx).lastModified()
     fun locksStamp(ctx: Context): Long = locksFile(ctx).lastModified()
 
     /**
-     * [LOCK] The one writer of state.json: reads, changes and writes it under the lock. When only the write fails (storage
-     * full), the new state is still returned and kept as [unsaved], so locks still start, end and come back in :lock; the
-     * next edit (every refresh is one) writes it again.
+     * [LOCK] The one writer of state.json: reads, changes and writes it under the lock (core LockStateFile). When only the
+     * write fails (storage full), the new state is still returned and kept, so locks still start, end and come back in
+     * :lock; the next edit (every refresh is one) writes it again. Throws when state.json can't be read and :lock knows no
+     * state: it never writes one built on nothing.
      */
-    fun editState(ctx: Context, change: (LockState) -> LockState): LockState = locked(ctx) {
-        val now = readState(ctx)
-        val next = change(now)
-        if (next != now || unsaved != null) {
-            try {
-                writeAtomic(stateFile(ctx), LockCodec.encodeState(next))
-                unsaved = null
-            } catch (e: java.io.IOException) {
-                RLog.w("lock_state_write", e)
-                unsaved = next
-            }
-        }
-        next
-    }
+    fun editState(ctx: Context, change: (LockState) -> LockState): LockState = locked(ctx) { states(ctx).edit(change) }
 }
 
 /** Robot's accessibility service, as Android's settings name it ("ai.robot_app/app.heyrobot.lock.LockAccessibilityService"). */
@@ -140,12 +147,14 @@ object LockAccess {
     fun settings(): Intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 }
 
-/** Phase B: the app that opens places (geo:) on this phone, which a lock with Maps on leaves open. Seen through the geo: <queries> entry. */
+/**
+ * Phase B: the app that opens places on this phone, which a lock with Maps on leaves open: your maps app (Settings ›
+ * Actions › Maps, sys MapsApps), Automatic's Organic Maps or the default app for geo: links; none when your pick was
+ * replaced by an app signed by someone else (fail closed). Asked once, as a lock starts (LockState.mapsApp): the default
+ * may be someone else's choice by the time it is needed.
+ */
 object LockMaps {
-    fun app(ctx: Context): String? = try {
-        ctx.packageManager.resolveActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("geo:0,0")), android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
-            ?.activityInfo?.packageName?.takeIf { it != "android" && app.heyrobot.core.lock.LockLimits.validPackage(it) }
-    } catch (_: Throwable) { null }
+    fun app(ctx: Context): String? = try { app.heyrobot.sys.MapsApps.app(ctx) } catch (_: Throwable) { null }
 }
 
 /**
@@ -154,40 +163,45 @@ object LockMaps {
  */
 object PhoneLockNow {
     /**
-     * What the two files said: each active lock's start and wall-clock end, and who the locks are for; phase B: what the
-     * active locks leave open (their apps, the People you may call, Maps).
+     * What the two files said (core LockView), and when they last changed. Kept only when both could be read: a read that
+     * failed is answered "on" for that call (LockView.Unknown) and asked again on the next (F22).
      */
-    private class Seen(val stateStamp: Long, val locksStamp: Long, val active: List<Pair<Long, Long>>, val someoneElse: Boolean,
-        val apps: Set<String> = emptySet(), val people: Set<String> = emptySet(), val maps: Boolean = false, val file: LockFile? = null,
-        val state: LockState = LockState())
+    private class Seen(val stateStamp: Long, val locksStamp: Long, val view: LockView)
 
     @Volatile private var seen: Seen? = null
 
-    private fun current(ctx: Context): Seen {
+    /** The state.json whose damage :lock was last asked to look at (it heals it at its next refresh). */
+    @Volatile private var healAsked = -1L
+
+    private fun current(ctx: Context): LockView {
         val ss = LockStore.stateStamp(ctx)
         val ls = LockStore.locksStamp(ctx)
-        seen?.let { if (it.stateStamp == ss && it.locksStamp == ls) return it }
-        val s = try {
-            val st = LockStore.readState(ctx)
-            val f = LockStore.usable(ctx)
-            // A lock in state.json counts only while Phone lock is on: turning it off ends every lock, before :lock writes.
-            val on = if (f == null) LockState() else st
-            Seen(ss, ls, on.active.map { it.start to it.end }, f?.settings?.forWho == LockFor.SOMEONE_ELSE,
-                LockSchedule.allowedPackages(f, on, LockMaps.app(ctx)), LockSchedule.allowedPeople(f, on), LockSchedule.mapsAllowed(f, on), f, on)
+        seen?.let { if (it.stateStamp == ss && it.locksStamp == ls) return it.view }
+        val v = try {
+            LockView.of(LockStore.readStateOrNull(ctx), LockStore.read(ctx), ss)
         } catch (t: Throwable) {
             RLog.w("lock_now", t)
-            Seen(ss, ls, emptyList(), someoneElse = false)
+            LockView.unknown(ss)
         }
-        seen = s
-        return s
+        if (v.exact) seen = Seen(ss, ls, v)
+        else {
+            seen = null
+            if (v.state == null && healAsked != ss) {
+                healAsked = ss
+                try { LockSignals.locksChanged(ctx) } catch (t: Throwable) { RLog.w("lock_now_heal", t) }
+            }
+        }
+        return v
     }
 
     /**
      * A phone lock is on now: one is in state.json and its end hasn't passed (should :lock not be running to take it off,
-     * a lock still ends on time here, and none outlasts the 24-hour cap).
+     * a lock still ends on time here, and none outlasts the 24-hour cap). When state.json can't be read: on (LockView).
      */
-    fun on(ctx: Context, now: Long = System.currentTimeMillis()): Boolean =
-        current(ctx).active.any { (start, end) -> now < end && now < start + LockSchedule.CAP.toMillis() }
+    fun on(ctx: Context): Boolean = current(ctx).on(clocks(ctx))
+
+    /** The clocks as :lock reads them, for anything that asks how long a lock has left. */
+    fun clocks(ctx: Context): Clocks = LockStore.clocks(ctx)
 
     /** A phone lock for someone else is on now (the panel then keeps to LockScreen.DEFAULT, §6). */
     fun someoneElse(ctx: Context): Boolean = on(ctx) && current(ctx).someoneElse
@@ -214,6 +228,12 @@ object PhoneLockNow {
     /** Every active lock has Maps on. */
     fun maps(ctx: Context): Boolean = on(ctx) && current(ctx).maps
 
+    /** Your maps app stays open: every lock has Maps on, or your car's car mode is on, when the cover leaves it open anyway (LockEngine.facts). */
+    /** Car mode your car started during your own lock, as :lock's gate reads it: it covers nothing then. */
+    fun carOwn(ctx: Context): Boolean = on(ctx) && current(ctx).carOwn(System.currentTimeMillis())
+
+    fun mapsInCar(ctx: Context): Boolean = on(ctx) && current(ctx).let { CarOpen.lockMaps(it.maps, it.state?.carOn(System.currentTimeMillis()) == true) }
+
     /** locks.json and state.json as last read (for "how long is left" and the brief), or null while Phone lock is off. */
-    fun files(ctx: Context): Pair<LockFile, LockState>? = current(ctx).let { s -> s.file?.let { it to s.state } }
+    fun files(ctx: Context): Pair<LockFile, LockState>? = current(ctx).let { s -> s.file?.let { f -> s.state?.let { f to it } } }
 }

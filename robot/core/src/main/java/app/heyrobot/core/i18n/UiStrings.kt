@@ -67,6 +67,10 @@ object UiStrings : Strings("ui", area = "language") {
     val backup = s("backup", "Back up and restore", "Sauvegarde et restauration")
     /** 1.4: Settings › Files (docs/plans/files-1.4-plan.md §6.6). */
     val files = s("files", "Files", "Fichiers")
+    /** 1.4: Settings › Lists (docs/plans/lists-plan.md §7.5; LS8). */
+    val lists = s("lists", "Lists", "Listes")
+    /** 1.5 L13: Settings › Robot to Robot, so a path in French can name it. */
+    val robotToRobot = s("robot_to_robot", "Robot to Robot", "Robot à Robot")
 
     // Pages and rows under them that sentences name.
     val updates = s("updates", "Updates", "Mises à jour")

@@ -17,8 +17,11 @@
     <string name="panel_photo">Photo</string>
     <string name="panel_remove_screen">Remove screen</string>
     <string name="panel_remove_photo">Remove photo</string>
+    <string name="panel_file">File</string>
+    <string name="panel_remove_file">Remove file</string>
+    <string name="panel_save_to_files">Save to Robot Files</string>
     <string name="panel_read_claude_answer">Read Claude\'s answer</string>
-    <string name="panel_add_photo">Add a photo</string>
+    <string name="panel_add_photo_or_file">Add a photo or a file</string>
     <string name="panel_cancel">Cancel</string>
     <string name="panel_stop_speaking">Stop speaking</string>
 
@@ -32,7 +35,7 @@
     <string name="panel_your_screen">Your screen</string>
     <string name="panel_goes_with_next">Goes with your next question</string>
     <string name="panel_listening_state">Listening</string>
-    <string name="panel_unlock_for_your_photos">Unlock to use the camera or your photos.</string>
+    <string name="panel_unlock_for_your_photos">Unlock to use the camera, your photos or your files.</string>
     <string name="panel_camera">Camera</string>
     <string name="panel_photos">Photos</string>
     <string name="panel_yes_or_no">Yes or no…</string>
@@ -53,6 +56,7 @@
     <string name="panel_want_check_with">Want me to check with %1$s?</string>
     <string name="panel_sends">Sends: %1$s.</string>
     <string name="panel_no_thanks">No thanks</string>
+    <string name="panel_remember">Remember</string>
     <string name="panel_open_app">Open the app</string>
 
     <!-- Picking who to text in Cheogram (assistant/CheogramPick.kt). -->

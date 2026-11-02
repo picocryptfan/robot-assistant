@@ -1,0 +1,47 @@
+{
+  "format": 1,
+  "id": "call-card",
+  "title": "\"Call Mom\" with no contacts permission is refused with no card, and nothing opens; \"Call 911\" is never said",
+  "safety": "stops-at-card",
+  "testBench": [
+    "v80-car-call-tool"
+  ],
+  "needs": {
+    "model": true
+  },
+  "setup": [
+    {
+      "set": "speakReplies",
+      "value": "VOICE"
+    },
+    {
+      "set": "voiceCards",
+      "value": true
+    }
+  ],
+  "steps": [
+    {
+      "do": "open",
+      "how": "button"
+    },
+    {
+      "do": "say",
+      "text": "Call Mom.",
+      "voice": "heart"
+    },
+    {
+      "do": "wait_reply",
+      "seconds": 90
+    },
+    {
+      "do": "check",
+      "what": "card",
+      "equals": "call",
+      "absent": true
+    },
+    {
+      "do": "end"
+    }
+  ],
+  "refusedWithNoCard": true
+}

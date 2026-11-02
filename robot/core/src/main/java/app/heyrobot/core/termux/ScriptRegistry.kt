@@ -11,8 +11,15 @@ import java.util.Locale
 // your own words name ("run backup", "run my backup script", "lance mon script de sauvegarde"), so a script named in your
 // words runs as termux_script without the model. Anything else ("run to the store") stays with Gemma.
 
-/** One of your scripts: its file name in ~/robot, its first "#" comment line, and the other names a "# aliases:" line gives it. */
-data class TermuxScriptInfo(val name: String, val comment: String? = null, val aliases: List<String> = emptyList())
+/**
+ * One of your scripts: its file name in ~/robot, its first "#" comment line, and the other names a "# aliases:" line gives it.
+ * C8: its `# param:` and `# effect:` lines as the listing run returned them ([paramLines], [effectLines]); [decl] reads them.
+ */
+data class TermuxScriptInfo(val name: String, val comment: String? = null, val aliases: List<String> = emptyList(),
+    val paramLines: List<String> = emptyList(), val effectLines: List<String> = emptyList()) {
+    /** What it declares for skills (ScriptParams): its parameters in order and its effects, or BROKEN. */
+    val decl: ScriptDecl get() = ScriptParams.parse(paramLines, effectLines)
+}
 
 /** What the listing run found: the scripts, or that ~/robot doesn't exist yet. */
 data class ScriptListing(val scripts: List<TermuxScriptInfo>, val folderMissing: Boolean = false, val complete: Boolean = true)
@@ -29,6 +36,7 @@ object ScriptRegistry {
     /**
      * The fixed listing run (bash only, no other program): each executable regular file directly in ~/robot, its first
      * comment line that isn't the #! line, and a "# aliases: …" line, one tab-separated line each. Nothing is run.
+     * C8: before each script's line, its `# param:` and `# effect:` lines ("robot-param", "robot-effect", its name, the line).
      */
     const val LIST_SCRIPT = "d=\"\$HOME/robot\"\n" + // l10n: not text (shell for Termux)
         "[ -d \"\$d\" ] || { echo robot-no-folder; exit 0; }\n" +
@@ -40,7 +48,11 @@ object ScriptRegistry {
         "    case \"\$l\" in\n" +
         "      '#!'*) ;;\n" +
         "      '#'*) l=\"\${l#\\#}\"; l=\"\${l# }\"\n" +
-        "        case \"\$l\" in [Aa]lias*:*) [ -z \"\$a\" ] && a=\"\${l#*:}\";; *) [ -z \"\$c\" ] && c=\"\$l\";; esac;;\n" +
+        "        case \"\$l\" in [Aa]lias*:*) [ -z \"\$a\" ] && a=\"\${l#*:}\";;\n" +
+        // C8: a typed script's `# param:` and `# effect:` lines, each on a line of its own (tabs as spaces, 200 characters at most).
+        "          [Pp]aram:*|[Ee]ffect*:*) x=\"\${l//\$'\\t'/ }\"; case \"\$l\" in [Pp]*) t=param;; *) t=effect;; esac\n" +
+        "            printf 'robot-%s\\t%s\\t%s\\n' \"\$t\" \"\${f##*/}\" \"\${x:0:200}\";;\n" +
+        "          *) [ -z \"\$c\" ] && c=\"\$l\";; esac;;\n" +
         "    esac\n" +
         "  done < \"\$f\" 2>/dev/null\n" +
         "  printf 'robot-script\\t%s\\t%s\\t%s\\n' \"\${f##*/}\" \"\${c//\$'\\t'/ }\" \"\${a//\$'\\t'/ }\"\n" +
@@ -59,6 +71,22 @@ object ScriptRegistry {
     /** The listing run's output read back; names Robot can't use safely are left out. */
     fun parse(output: String): ScriptListing {
         if (output.lineSequence().any { it.trim() == "robot-no-folder" }) return ScriptListing(emptyList(), folderMissing = true)
+        // C8: each script's `# param:` and `# effect:` lines, by file name, as many as ScriptParams reads (one more is seen and refused).
+        val params = HashMap<String, MutableList<String>>()
+        val effects = HashMap<String, MutableList<String>>()
+        for (line in output.lineSequence()) {
+            val into = when {
+                line.startsWith("robot-param\t") -> params
+                line.startsWith("robot-effect\t") -> effects
+                else -> continue
+            }
+            val p = line.split('\t', limit = 3)
+            val name = p.getOrNull(1)?.trim().orEmpty()
+            val decl = p.getOrNull(2)?.let(::tidy)?.take(ScriptParams.MAX_LINE) ?: continue
+            if (!TermuxScripts.validName(name)) continue
+            val l = into.getOrPut(name) { ArrayList() }
+            if (l.size < ScriptParams.MAX_LINES) l += decl
+        }
         val out = ArrayList<TermuxScriptInfo>()
         for (line in output.lineSequence()) {
             if (!line.startsWith("robot-script\t")) continue
@@ -67,7 +95,7 @@ object ScriptRegistry {
             if (!TermuxScripts.validName(name) || out.any { it.name == name }) continue
             val comment = p.getOrNull(2)?.let(::tidy)?.takeIf { it.isNotEmpty() }?.take(MAX_COMMENT)
             val aliases = p.getOrNull(3)?.split(',', ';')?.map(::tidy)?.filter { it.length in 2..40 }?.distinct()?.take(MAX_ALIASES).orEmpty()
-            out += TermuxScriptInfo(name, comment, aliases)
+            out += TermuxScriptInfo(name, comment, aliases, params[name].orEmpty(), effects[name].orEmpty())
             if (out.size >= MAX_SCRIPTS) break
         }
         return ScriptListing(out.sortedBy { it.name.lowercase(Locale.ROOT) }, complete = output.lineSequence().any { it.trim() == "robot-end" })

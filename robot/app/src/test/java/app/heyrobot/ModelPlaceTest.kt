@@ -37,12 +37,53 @@ class ModelPlaceTest {
         assertTrue(move.substringAfter("is ModelMove.Result.Mismatch ->").contains("verifiedMark(ctx, m).delete()"))
     }
 
-    @Test fun aFileStillOutsideIsHashedBeforeEachLoad() {
-        for (e in listOf("GemmaEngine", "LlamaEngine")) {
-            val load = code("brain/src/main/java/app/heyrobot/brain/$e.kt")
-            assertTrue(e, load.contains("if (ModelMove.hashBeforeLoad(f, ctx.filesDir)) {"))
-            assertTrue(e, load.contains("if (want == null || got != want) return failed(req, LoadFailure.NOT_ALLOWED, LoadCheck.changedText)"))
-        }
-        assertTrue(code("brain/src/main/java/app/heyrobot/brain/LlamaEngine.kt").contains("ModelMove.sha256(channel)"))
+    /** F57: a move finishing under a load isn't recorded as the GPU or the TPU failing, and the new plan loads. */
+    @Test fun aChangedFileIsNeverTheDevicesFailure() {
+        val link = code("app/src/main/java/app/heyrobot/assistant/BrainLink.kt")
+        assertTrue(link.contains("if (gpu && ModelChoice.deviceFailure(failure) && !forgiven) {"))
+        assertTrue(link.contains("if (m.beta && plan.backend == ModelBackend.TPU && ModelChoice.deviceFailure(failure) && !forgiven) {"))
+        val load = fn(link, "loadInto")
+        assertTrue(load.indexOf("if (failure == LoadFailure.FILE_CHANGED) {") in 0 until load.indexOf("if (gpu && ModelChoice.deviceFailure(failure) && !forgiven) {"))
+        val engine = code("brain/src/main/java/app/heyrobot/brain/GemmaEngine.kt")
+        assertTrue(engine.indexOf("return failed(req, LoadFailure.FILE_CHANGED, LoadCheck.changedText)") in 0 until engine.indexOf("LoadCheck.refuseText("))
+    }
+
+    /** F18, F56: LiteRT-LM opens a file by its path, so one outside internal storage never reaches it, and with it no cache beside it. */
+    @Test fun liteRtLmNeverGetsAFileOutside() {
+        val engine = code("brain/src/main/java/app/heyrobot/brain/GemmaEngine.kt")
+        val refused = engine.indexOf("if (ModelMove.hashBeforeLoad(f, ctx.filesDir)) return failed(req, LoadFailure.FILE_CHANGED, LoadCheck.outsideText(req.model))")
+        assertTrue(refused in 0 until engine.indexOf("Engine(config("))
+        assertTrue(!engine.contains("ModelMove.sha256("))
+        val plan = fn(code("app/src/main/java/app/heyrobot/sys/ModelStore.kt"), "plan")
+        assertTrue(plan, plan.contains("if (outside(ctx, File(path))) return ModelAvailability.NEEDS_MOVE to null"))
+        assertTrue(plan, plan.contains("r.format != ModelFormat.GGUF && outside(ctx, f)"))
+    }
+
+    /** F58: a move leaves no cache for the space check to take for the new copy's, and clears it before the mark names that copy. */
+    @Test fun aMoveClearsTheCacheOfTheCopyItLeft() {
+        val store = code("app/src/main/java/app/heyrobot/sys/ModelStore.kt")
+        val moved = fn(store, "moveIn").substringAfter("is ModelMove.Result.Moved ->")
+        assertTrue(moved, moved.indexOf("clearStaleCache(ctx, m)") in 0 until moved.indexOf("writeAtomic(verifiedMark(ctx, m)"))
+        assertTrue(fn(store, "verify").contains("is ModelMove.Result.Moved -> { f = r.file; sha = r.sha256; clearStaleCache(ctx, m) }"))
+        val engine = code("brain/src/main/java/app/heyrobot/brain/GemmaEngine.kt")
+        assertTrue(engine.contains("ModelFiles.cachedBytes(req.backend, cacheDir.walkTopDown()"))
+    }
+
+    /** It can't load until it moves, so the app doesn't wait for its next opening once there's room. */
+    @Test fun aModelWaitingForRoomMovesOnceThereIs() {
+        val main = code("app/src/main/java/app/heyrobot/ui/MainActivity.kt")
+        assertTrue(main.contains("it.outside && it.moveNeed == 0L && it.model !in moveTried"))
+    }
+
+    /** llama.cpp gets the very descriptor that was hashed. */
+    @Test fun aGgufFileStillOutsideIsHashedThroughItsDescriptor() {
+        val load = code("brain/src/main/java/app/heyrobot/brain/LlamaEngine.kt")
+        assertTrue(load.contains("if (ModelMove.hashBeforeLoad(f, ctx.filesDir)) {"))
+        assertTrue(load.contains("ModelMove.sha256(channel)"))
+    }
+
+    // F52: a copy cut short holds space the next move frees first, so it counts as free.
+    @Test fun aLeftoverPartDoesNotHoldAMoveBack() {
+        assertTrue(fn(store, "moveNeed").contains("ModelMove.freeForMove(freeBytes(ctx), File(dir(ctx), checked.name))"))
     }
 }

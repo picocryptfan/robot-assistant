@@ -5,15 +5,38 @@ import app.heyrobot.core.lock.GateDecision.ALLOW
 import app.heyrobot.core.lock.GateDecision.COVER
 import app.heyrobot.core.lock.GateDecision.IGNORE
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** Every rule of the lock gate, in its order. */
 class LockGateTest {
+    // review-lock 7: the call's window came before the audio mode said so.
+    @Test fun aCallStartingUncoversTheDialerAndNothingElse() {
+        val dialer = "com.example.dialer"
+        val waiting = f.copy(dialer = dialer, inCall = false, allowed = emptySet(), dialerActivities = emptySet())
+        val call = waiting.copy(inCall = true)
+        assertEquals(COVER, LockGate.decide(dialer, "x.InCallActivity", waiting))
+        assertFalse(LockGate.callUncovers(dialer, "x.InCallActivity", waiting))
+        assertTrue(LockGate.callUncovers(dialer, "x.InCallActivity", call))
+        assertFalse(LockGate.callUncovers("com.example.other", "x.Main", call))
+        assertFalse(LockGate.callUncovers(null, null, call))
+    }
+
     private val f = GateFacts(
         active = true, ownPackage = "ai.robot_app", keyboard = "app.grapheneos.keyboard", emergencyDialer = "com.android.phone",
         dialer = "com.android.dialer", clocks = setOf("com.android.deskclock"), allowed = setOf("org.example.reader"),
     )
     private fun d(pkg: String?, cls: String? = null, facts: GateFacts = f) = LockGate.decide(pkg, cls, facts)
+
+    /** fb11: a restarted :lock has lost dialerOpen: only the emergency dialer itself in front holds the cover back; nothing known doesn't. */
+    @Test fun onlyTheEmergencyDialerInFrontHoldsARestartedCoverBack() {
+        val facts = f.copy(emergencyDialer = "sys.emergency", dialer = "sys.dialer")
+        assertEquals(true, LockGate.emergencyInFront("sys.emergency", facts))
+        assertEquals(false, LockGate.emergencyInFront("sys.dialer", facts))
+        assertEquals(false, LockGate.emergencyInFront(null, facts))
+        assertEquals(false, LockGate.emergencyInFront(null, facts.copy(emergencyDialer = null)))
+    }
 
     @Test fun noLockIgnoresEverything() {
         assertEquals(IGNORE, d("org.example.browser", facts = f.copy(active = false)))
@@ -28,10 +51,41 @@ class LockGateTest {
     @Test fun robotsOwnWindows() {
         assertEquals(COVER, d("ai.robot_app", "app.heyrobot.ui.MainActivity"))
         assertEquals(COVER, d("ai.robot_app", "app.heyrobot.ui.NotesLauncher"))
+        assertEquals(COVER, d("ai.robot_app", "app.heyrobot.ui.FilesLauncher"))
+        // The backup window (:voice) is Robot's too.
+        assertEquals(COVER, d("ai.robot_app", "app.heyrobot.assistant.backup.BackupActivity"))
+        // 1.4 Lists: the window that picks a widget's list shows your lists' names; the home-screen app can open it.
+        assertEquals(COVER, d("ai.robot_app", "app.heyrobot.ui.lists.ListsWidgetSetup"))
+        // 1.1.2 (FA8f): the two windows where a key is pasted (:voice).
+        assertEquals(COVER, d("ai.robot_app", "app.heyrobot.assistant.HelperConnectionActivity"))
+        assertEquals(COVER, d("ai.robot_app", "app.heyrobot.assistant.WebSearchActivity"))
+        // Conversation mode's four windows (:voice).
+        assertEquals(COVER, d("ai.robot_app", "app.heyrobot.assistant.conversation.ConversationActivity"))
+        assertEquals(COVER, d("ai.robot_app", "app.heyrobot.assistant.conversation.TranscriptionCheckActivity"))
+        assertEquals(COVER, d("ai.robot_app", "app.heyrobot.assistant.conversation.SummaryActivity"))
+        assertEquals(COVER, d("ai.robot_app", "app.heyrobot.assistant.conversation.VoiceprintActivity"))
+        // The Cheogram pick, the media delete confirmation (:voice) and the share target.
+        assertEquals(COVER, d("ai.robot_app", "app.heyrobot.assistant.CheogramPickActivity"))
+        assertEquals(COVER, d("ai.robot_app", "app.heyrobot.assistant.MediaDeleteActivity"))
+        assertEquals(COVER, d("ai.robot_app", "app.heyrobot.ui.files.FilesShareActivity"))
+        // Skills connections: a connection's window (:voice) pastes keys and runs Test; Settings opens it.
+        assertEquals(COVER, d("ai.robot_app", "app.heyrobot.assistant.connect.ConnectionWindow"))
         for (c in listOf("app.heyrobot.lock.LockCoverActivity", "app.heyrobot.lock.LockCodeActivity", "app.heyrobot.assistant.PanelLaunchActivity",
             "app.heyrobot.assistant.car.CarModeActivity", "android.widget.FrameLayout")) assertEquals(c, ALLOW, d("ai.robot_app", c))
+        // FA8f: each exempt window (ProcessIsolationTest checks the manifest against both lists) stays open.
+        for (c in LockGate.ROBOT_EXEMPT.keys) assertEquals(c, ALLOW, d("ai.robot_app", c))
         // An edit session (the code, then Change locks) opens Settings for 5 minutes.
-        assertEquals(ALLOW, d("ai.robot_app", "app.heyrobot.ui.MainActivity", f.copy(editSession = true)))
+        for (c in LockGate.ROBOT_COVERED) assertEquals(c, ALLOW, d("ai.robot_app", c, f.copy(editSession = true)))
+    }
+
+    /** LS13: Robot's own word that one of its windows is in front names a covered window, else counts as Robot's app: it only covers. */
+    @Test fun robotsWordThatAWindowIsInFrontOnlyCovers() {
+        assertEquals(true, LockGate.ROBOT_APP in LockGate.ROBOT_COVERED)
+        for (c in LockGate.ROBOT_COVERED) assertEquals(c, LockGate.saidInFront(c))
+        for (c in LockGate.ROBOT_EXEMPT.keys + listOf("org.example.game.Main", "android.widget.FrameLayout", "")) assertEquals(c, LockGate.ROBOT_APP, LockGate.saidInFront(c))
+        assertEquals(LockGate.ROBOT_APP, LockGate.saidInFront(null))
+        for (c in LockGate.ROBOT_COVERED + LockGate.ROBOT_EXEMPT.keys + listOf(null, "org.example.game.Main"))
+            assertEquals("$c", COVER, d("ai.robot_app", LockGate.saidInFront(c)))
     }
 
     @Test fun emergencyDialerOnlyWhenItIsASystemApp() {
@@ -44,6 +98,44 @@ class LockGateTest {
         assertEquals(COVER, d("com.android.dialer"))
         assertEquals(ALLOW, d("com.android.dialer", facts = f.copy(inCall = true)))
         assertEquals(ALLOW, d("com.android.dialer", facts = f.copy(dialerOpen = true)))
+    }
+
+    @Test fun duringACallAKnownDialerKeepsToItsCallScreen() {
+        val inCall = "com.android.incallui.InCallActivity"
+        val main = "com.android.dialer.main.impl.MainActivity"
+        val call = f.copy(inCall = true, dialer = "com.google.android.dialer", dialerActivities = setOf(inCall, main))
+        assertEquals(ALLOW, d("com.google.android.dialer", inCall, facts = call))
+        assertEquals(COVER, d("com.google.android.dialer", main, facts = call))
+        // A dialog isn't one of its activities; the call goes on under it.
+        assertEquals(ALLOW, d("com.google.android.dialer", "android.app.AlertDialog", facts = call))
+        // The activities couldn't be read: as a dialer it doesn't know, open.
+        assertEquals(ALLOW, d("com.google.android.dialer", main, facts = call.copy(dialerActivities = emptySet())))
+        // Another dialer's call screen isn't known: never covered during a call.
+        assertEquals(ALLOW, d("org.example.dialer", "org.example.Screen", facts = call.copy(dialer = "org.example.dialer", dialerActivities = setOf("org.example.Screen"))))
+        // No call: covered; the Emergency call fallback: open whole.
+        assertEquals(COVER, d("com.google.android.dialer", inCall, facts = call.copy(inCall = false)))
+        assertEquals(ALLOW, d("com.google.android.dialer", main, facts = call.copy(inCall = false, dialerOpen = true)))
+    }
+
+    @Test fun theKeyboardsOwnScreensAreCovered() {
+        val kb = f.copy(keyboard = "org.example.keys", keyboardActivities = setOf("org.example.keys.SettingsActivity"))
+        assertEquals(COVER, d("org.example.keys", "org.example.keys.SettingsActivity", facts = kb))
+        assertEquals(GateDecision.IGNORE, d("org.example.keys", "android.inputmethodservice.SoftInputWindow", facts = kb))
+        assertEquals(ALLOW, d("org.example.keys", "org.example.keys.SettingsActivity", facts = kb.copy(allowed = setOf("org.example.keys"))))
+    }
+
+    @Test fun aRingingClockHoldsTheCoverOnlyWithItsClockInFront() {
+        val c = f.copy(clocks = setOf("com.android.deskclock"))
+        assertEquals(true, LockGate.ringingInFront(true, "com.android.deskclock", c))
+        assertEquals(true, LockGate.ringingInFront(true, null, c))
+        assertEquals(false, LockGate.ringingInFront(true, "org.example.app", c))
+        assertEquals(false, LockGate.ringingInFront(false, "com.android.deskclock", c))
+    }
+
+    @Test fun whatUsageAccessSaysIsInFront() {
+        val e = listOf(UsageEvent(1, 1, "a", "a.A"), UsageEvent(3, 1, "b", "b.B"), UsageEvent(4, 2, "b", "b.B"), UsageEvent(2, 1, "c", "c.C"))
+        assertEquals("b" to "b.B", ScreenTime.front(e))
+        assertEquals(null, ScreenTime.front(listOf(UsageEvent(4, 2, "b", "b.B"))))
     }
 
     @Test fun clockAndAThirdPartyAlarmApp() {

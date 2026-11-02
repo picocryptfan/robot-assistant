@@ -13,6 +13,15 @@ import java.time.ZoneOffset
 import java.time.ZonedDateTime
 
 class BriefTest {
+    /** L16, finding 26. */
+    @Test fun someoneElsesReminderNeverPushesOutYours() {
+        val day = LocalDate.of(2026, 11, 1)
+        val mine = (1..BriefReminders.MAX).fold(emptyList<BriefReminder>()) { l, i -> BriefReminders.add(l, "mine $i", day) }
+        assertEquals(mine, BriefReminders.addFromOthers(mine, "From Sam: hi", day))
+        val some = mine.take(BriefReminders.FROM_OTHERS_ROOM - 1)
+        assertEquals(some + BriefReminder("From Sam: hi", day), BriefReminders.addFromOthers(some, "From Sam: hi", day))
+    }
+
     /** 1.1: a French line as the screen shows it (core FrTypo's spaces and apostrophe), and as the voice says it. */
     private fun fr(s: String) = app.heyrobot.core.i18n.FrTypo.fix(s)
     private fun said(s: String) = app.heyrobot.core.i18n.VoiceForm.clean(fr(s), Lang.FR)

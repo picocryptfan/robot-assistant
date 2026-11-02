@@ -47,6 +47,32 @@ class FileMoneyTest {
             text = text, named = named, tags = tags, damaged = damaged, filing = filing)
     }
 
+    @Test fun aMerchantMatchesWholeWordsOrTheirStart() {
+        fun hit(name: String, q: String) = FileSpending.matches(receipt(name, "2026-08-01", "10.00"), SpendQuery(merchant = q), zone)
+        assertFalse(hit("Singapore Airlines", "Gap"))
+        assertTrue(hit("Gap Canada", "gap"))
+        assertTrue(hit("Tim Hortons", "tim hortons"))
+        assertTrue(hit("Tim Hortons", "hort"))
+        assertFalse(hit("Tim Hortons", "ortons"))
+        assertTrue(hit("Tim Horton's", "hortons"))
+        assertTrue(hit("Wal-Mart", "walmart"))
+        assertTrue(hit("McDonald's", "mcdonalds"))
+        assertTrue(hit("L'Épicerie", "epicerie"))
+    }
+
+    /** fb16: the words you say apart, the receipt prints run together: these matched before whole words came in, and a miss makes a total low with no sign. */
+    @Test fun aMerchantPrintedRunTogetherStillMatches() {
+        fun hit(name: String, q: String) = FileSpending.matches(receipt(name, "2026-08-01", "10.00"), SpendQuery(merchant = q), ZoneOffset.UTC)
+        assertTrue(hit("BESTBUY #123", "best buy"))
+        assertTrue(hit("Walmart", "wal mart"))
+        assertTrue(hit("TIMHORTONS", "tim hortons"))
+        assertTrue(hit("McDonald's", "mc donalds"))
+        // Still the start of the name, in order: not any two words, and no middle of a word.
+        assertFalse(hit("BESTBUY #123", "buy best"))
+        assertFalse(hit("Singapore Airlines", "gap air"))
+        assertFalse(hit("BESTBUY #123", "st buy"))
+    }
+
     private fun receipt(merchant: String, date: String, total: String, currency: String? = "CAD", vararg more: Pair<String, String>) =
         file(FileKind.RECEIPT, buildMap { put("merchant", merchant); put("date", date); put("total", total); currency?.let { put("currency", it) }; putAll(more) })
 
@@ -54,6 +80,49 @@ class FileMoneyTest {
         file(FileKind.BILL, buildMap { put("merchant", merchant); put("date", date); put("total", total); put("currency", "CAD"); due?.let { put("due", it) }; putAll(more) })
 
     // ------------------------------------------------------------------ spending
+
+    @Test fun aRefundComesOffItsCurrencysSpending() {
+        val sale = receipt("Esso", "2026-09-03", "100.00")
+        val back = receipt("Esso", "2026-09-05", "30.00", "CAD", "refund" to "yes")
+        val us = receipt("Shell", "2026-09-06", "45.00", "USD", "refund" to "yes")
+        val held = receipt("Esso", "2026-09-07", "9.00", "CAD", "refund" to "yes", "check" to "total")
+        val q = SpendQuery(category = "fuel")
+        val r = FileSpending.sum(FileIndex(listOf(sale, back, us, held)), q, zone = zone)
+        assertEquals(7000L, r.byCurrency["CAD"])
+        assertEquals(-4500L, r.byCurrency["USD"])
+        assertEquals(3, r.files)
+        assertEquals(1, r.check)
+        assertEquals(2, r.refunds)
+        val en = FileMoneyText.spending(q, r, today).render(Langs.of(Lang.EN))
+        assertTrue(en, en.contains("after 2 refunds"))
+        assertTrue(en, en.contains("-45.00"))
+        val fr = FileMoneyText.spending(q, r, today).render(Langs.of(Lang.FR))
+        assertTrue(fr, fr.contains("2\u00A0remboursements") || fr.contains("2 remboursements"))
+        // A word in the merchant's name does nothing: only the field does.
+        val depot = FileSpending.sum(FileIndex(listOf(receipt("Refund Depot", "2026-09-03", "10.00"))), SpendQuery(merchant = "refund depot"), zone = zone)
+        assertEquals(1000L, depot.byCurrency["CAD"]); assertEquals(0, depot.refunds)
+        // More back than spent: the amount is below zero, and the answer says why.
+        val back2 = FileSpending.sum(FileIndex(listOf(back)), q, zone = zone)
+        assertTrue(FileMoneyText.spending(q, back2, today).render(Langs.of(Lang.EN)).contains("more back"))
+        // No refund: the answer is as it was.
+        assertFalse(FileMoneyText.spending(q, FileSpending.sum(FileIndex(listOf(sale)), q, zone = zone), today).render(Langs.of(Lang.EN)).contains("refund"))
+    }
+
+    @Test fun aRefundIsntACharge() {
+        // A bill's credit: not said as due, not a month of a subscription, not the near-copy of the sale it undoes.
+        val credit = bill("Videotron", "2026-09-01", "20.00", "2026-10-01", "refund" to "yes", "currency" to "CAD")
+        assertNull(FileMoneyText.amountOf(credit))
+        assertEquals(true, FileTools.results(listOf(credit), zone)[0]["total_is_refund"])
+        assertNull(FileTools.results(listOf(bill("Rogers", "2026-09-01", "50.00")), zone)[0]["total_is_refund"])
+        val months = listOf("2026-06-01", "2026-07-01", "2026-08-01").map { bill("Rogers", it, "50.00") }
+        assertEquals(1, FileSubscriptions.find(FileIndex(months), LocalDate.of(2026, 9, 2), zone = zone).size)
+        val latest = bill("Rogers", "2026-09-01", "50.00", null, "refund" to "yes")
+        assertEquals(5000L, FileSubscriptions.find(FileIndex(months + latest), LocalDate.of(2026, 9, 2), zone = zone).single().cents)
+        assertEquals(months.last().id, FileSubscriptions.find(FileIndex(months + latest), LocalDate.of(2026, 9, 2), zone = zone).single().latest)
+        val sold = receipt("Esso", "2026-09-03", "30.00")
+        val undone = receipt("Esso", "2026-09-03", "30.00", "CAD", "refund" to "yes")
+        assertFalse(FileCleanup.suggest(FileIndex(listOf(sold, undone)), LocalDate.of(2026, 9, 4), zone = zone).any { it.why == CleanupWhy.NEAR_DUPLICATE })
+    }
 
     @Test fun spendingIsCodesSumInWholeCentsPerCurrency() {
         // 0.29 is 28.999999999999996 as a Double: three of them truncated to cents would give 86. Robot's sum is 87, exactly.

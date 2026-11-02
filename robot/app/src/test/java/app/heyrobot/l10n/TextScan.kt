@@ -345,7 +345,7 @@ internal object TextScan {
         return "visible"
     }
 
-    /** The Kotlin sources of the six modules' main code, by their path from robot/ (vendored code left out). */
+    /** The Kotlin sources of every module's main code, by their path from robot/ (vendored code left out). */
     fun sources(root: File, r: Rules): List<Pair<String, File>> = r.modules.flatMap { m ->
         File(root, "$m/src/main/java").walkTopDown().filter { it.isFile && it.name.endsWith(".kt") }
             .map { it.relativeTo(root).invariantSeparatorsPath to it }.toList()

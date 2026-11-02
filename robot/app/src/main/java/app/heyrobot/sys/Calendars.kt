@@ -55,6 +55,22 @@ object Calendars {
     }
 
     /**
+     * 1.5 L7: every calendar shown in your calendar apps (read-only ones too), for Settings › Robot to Robot's "Calendars other
+     * Robots see as busy": ids and names only. Empty without READ_CALENDAR.
+     */
+    fun visible(ctx: Context): List<CalendarInfo> {
+        if (!readGranted(ctx)) return emptyList()
+        val out = mutableListOf<CalendarInfo>()
+        try {
+            ctx.contentResolver.query(Cal.CONTENT_URI, arrayOf(Cal._ID, Cal.CALENDAR_DISPLAY_NAME, Cal.ACCOUNT_NAME), "${Cal.VISIBLE} = 1", null, Cal._ID)?.use { c ->
+                while (c.moveToNext()) out += CalendarInfo(c.getLong(0), c.getString(1)?.takeIf { it.isNotBlank() } ?: c.getString(2) ?: ctx.getString(R.string.settings_calendar_unnamed),
+                    c.getString(2).orEmpty(), null, false)
+            }
+        } catch (_: SecurityException) {}
+        return out
+    }
+
+    /**
      * The event instances of visible calendars around [range]. The query reaches a day further on each side: all-day
      * events are stored midnight to midnight UTC, and core's CalendarFormat.inRange keeps the ones that are really in it.
      */

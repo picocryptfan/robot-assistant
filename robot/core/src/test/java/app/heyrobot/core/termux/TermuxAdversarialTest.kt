@@ -89,16 +89,13 @@ class TermuxAdversarialTest {
     }
 
     @Test fun veryLongInputIsQuick() {
-        val inputs = listOf("rm " + "a ".repeat(60_000), "\$(".repeat(30_000), "echo \"" + "\\\"".repeat(50_000), "`".repeat(60_001), "a'b\"c".repeat(20_000),
-            "cat <<" + "E".repeat(50_000), "f(){ ".repeat(10_000), "case x in " + "a) ;; ".repeat(10_000), "[[ ".repeat(20_000), "‮".repeat(50_000),
-            "password=".repeat(10_000), "\$'".repeat(30_000) + "\\x", "{a,".repeat(30_000), "~".repeat(100_000), "ls " + "-".repeat(100_000))
-        val start = System.nanoTime()
-        for (s in inputs) {
+        fun inputs(d: Int) = listOf("rm " + "a ".repeat(60_000 / d), "\$(".repeat(30_000 / d), "echo \"" + "\\\"".repeat(50_000 / d), "`".repeat(60_000 / d + 1), "a'b\"c".repeat(20_000 / d),
+            "cat <<" + "E".repeat(50_000 / d), "f(){ ".repeat(10_000 / d), "case x in " + "a) ;; ".repeat(10_000 / d), "[[ ".repeat(20_000 / d), "‮".repeat(50_000 / d),
+            "password=".repeat(10_000 / d), "\$'".repeat(30_000 / d) + "\\x", "{a,".repeat(30_000 / d), "~".repeat(100_000 / d), "ls " + "-".repeat(100_000 / d))
+        LinearTime.assertHolds(::inputs) { s ->
             val a = CommandAnalyzer.analyze(s)
             TermuxPolicy.command(a, CommandSource.TYPED, loosest, false, false)
             TermuxOutput.prepare(TermuxResult(s, s, 1))
         }
-        val ms = (System.nanoTime() - start) / 1_000_000
-        assertTrue("took $ms ms", ms < 15_000)
     }
 }

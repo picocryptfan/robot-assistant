@@ -184,8 +184,25 @@ class MemoryVaultTest {
         assertTrue(src.contains("File(Paths.dir(ctx), MemorySettings.FILE)"))
         assertTrue(src.contains("File(ctx.filesDir, \"memory\")"))
         // The unlock-only key needs the phone unlocked; the lock screen's is the only one without.
-        assertTrue(src.contains(".setUnlockedDeviceRequired(alias == MemoryKeyAliases.UNLOCKED)"))
+        // 1.4 Lists (LS2), deliberately: the key class takes its unlock-only aliases as a parameter, memory's own by default
+        // (robot_memory_v1 alone), and memory's vault keeps the call without it.
+        assertTrue(src.contains("class KeystoreMemoryKeys(private val unlockOnly: Set<String> = setOf(MemoryKeyAliases.UNLOCKED)) : MemoryKeys"))
+        assertTrue(src.contains(".setUnlockedDeviceRequired(alias in unlockOnly)"))
+        assertTrue(src.contains("FileMemoryVault(dir(app), KeystoreMemoryKeys(), lockScreen ="))
         assertEquals("memory.json", MemorySettings.FILE)
         assertEquals(MemoryFile(), MemoryFile())
+    }
+
+    /** F66: a file that is there but can't be read now is not "no file": it reads as locked and nothing replaces it. */
+    @Test fun aReadErrorIsNotAnEmptyVaultAndNothingIsWritten() {
+        add(julie)
+        val before = vault.file.readBytes()
+        var broken = true
+        val flaky = FileMemoryVault(dir, keys, now = { 1_000L }, readFile = { f -> if (broken) throw java.io.IOException("EIO") else f.readBytes() })
+        assertEquals(MemoryLoad.Locked, flaky.load())
+        assertEquals(MemoryLoad.Locked, flaky.update { MemoryEdits.add(it, door).file })
+        assertTrue(before.contentEquals(vault.file.readBytes()))
+        broken = false
+        assertEquals(listOf(julie.id), (flaky.load() as MemoryLoad.Loaded).file.items.map { it.id })
     }
 }

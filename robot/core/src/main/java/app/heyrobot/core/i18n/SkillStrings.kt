@@ -124,6 +124,16 @@ object SkillStrings : Strings("skill", area = "skills") {
     val noNotifications = s("no_notifications", "Step {n} can't wait for you: Robot's notifications are off.",
         "L'étape {n} ne peut pas t'attendre : les notifications de Robot sont désactivées.")
 
+    // Skills connections (docs/plans/skills-connections-plan.md §5, C1): a step that reaches a connection, an app or a
+    // script, as a skill's card and Settings list it until C5 to C9 name the operation and the connection, and a skill
+    // whose link is gone (SkillCheck.attention).
+    val stepConnection = s("step_connection", "Use one of your connections", "Utiliser une de tes connexions")
+    val stepTravel = s("step_travel", "Check the travel time", "Vérifier le temps de trajet")
+    val stepScript = s("step_script", "Run your script “{name}”", "Lancer ton script « {name} »")
+    val stepHandOff = s("step_hand_off", "Open an app you picked", "Ouvrir une appli que tu as choisie")
+    val needsAttention = s("needs_attention", "“{name}” needs attention. Check its steps in {page}.",
+        "« {name} » a besoin de ton attention. Vérifie ses étapes dans {page}.")
+
     // Asking about skills, deleting one.
     val none = s("none", "You have no skills yet. Say “teach a skill called …” to make one.",
         "Tu n'as pas encore de compétences. Dis « apprends une compétence qui s'appelle … » pour en créer une.")

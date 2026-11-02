@@ -1,0 +1,19 @@
+{
+  "format": 1,
+  "id": "send-stops-at-card",
+  "title": "Sending a text by voice stops at the card; a spoken no cancels it",
+  "safety": "stops-at-card",
+  "testBench": ["v11-panel-split-smoke"],
+  "needs": {"model": true},
+  "setup": [{"set": "speakReplies", "value": "VOICE"}, {"set": "voiceCards", "value": true}],
+  "steps": [
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "Send a text to Sam saying I am on my way.", "voice": "heart"},
+    {"do": "wait_card", "kind": "send_text", "seconds": 90},
+    {"do": "wait_listening", "seconds": 30},
+    {"do": "say", "text": "No thanks.", "voice": "heart"},
+    {"do": "pause", "seconds": 4},
+    {"do": "check", "what": "showing", "equals": "send_text", "absent": true},
+    {"do": "end"}
+  ]
+}

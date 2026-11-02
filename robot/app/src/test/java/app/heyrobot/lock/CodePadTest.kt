@@ -13,6 +13,9 @@ import java.io.File
 import java.io.IOException
 import java.security.KeyStoreException
 
+/** The pad on a phone whose two clocks run together. */
+private fun CodePad.check(typed: String, now: Long) = check(typed, now, now, 1)
+
 /**
  * The code pad's steps (CodePad) with the real vault on a folder, the Keystore in software and a stand-in for LockEngine and
  * state.json: no failure ends the pad; a Keystore error that may pass changes nothing and isn't a wrong try; a key gone for
@@ -39,7 +42,7 @@ class CodePadTest {
         }
 
         override fun state() = st
-        override fun tried(right: Boolean) = write(st.copy(code = if (right) LockCodeRules.RIGHT else LockCodeRules.wrong(st.code, now)))
+        override fun tried(right: Boolean) = write(st.copy(code = if (right) LockCodeRules.RIGHT else LockCodeRules.wrong(st.code, now, now, 1)))
         override fun codeSet(set: Boolean) = write(st.copy(codeSet = set, code = LockCodeRules.RIGHT))
         override fun keyLost() {
             write(st.copy(codeSet = false))
@@ -61,6 +64,14 @@ class CodePadTest {
     private fun withCode(code: String = "123456") {
         assertTrue(pad.set(code))
         assertTrue(engine.st.codeSet)
+    }
+
+    @Test fun theWallClockMovedForwardKeepsTheWait() {
+        withCode()
+        repeat(LockCodeRules.FREE_TRIES) { assertEquals(CodePad.Done.WRONG, pad.check("000000", now)) }
+        // F25: a day on by the wall clock, a second on by the elapsed one: nothing is checked.
+        assertEquals(CodePad.Done.WAIT, pad.check("123456", now + 86_400_000L, now + 1_000, 1))
+        assertEquals(CodePad.Done.RIGHT, pad.check("123456", now + 86_400_000L, now + 30_000, 1))
     }
 
     @Test fun aRightCodeDoesWhatItWasForAndWrongOnesBringTheWaits() {
@@ -191,8 +202,34 @@ class CodePadTest {
         pad.reconcile()
         assertTrue(engine.st.codeSet)
         // Nothing to put right: nothing written.
-        engine.st = engine.st.copy(code = LockCodeRules.wrong(LockCodeRules.RIGHT, now))
+        engine.st = engine.st.copy(code = LockCodeRules.wrong(LockCodeRules.RIGHT, now, now, 1))
         pad.reconcile()
         assertEquals(1, engine.st.code.fails)
+    }
+
+    @Test fun thePadOpensItsKeysOnlyWithACodeToCheck() {
+        assertEquals(CodePad.Open.CLOSE, pad.open(LockSignals.PURPOSE_END, now))
+        assertEquals(CodePad.Open.SHOW, pad.open(LockSignals.PURPOSE_SET, now))
+        withCode()
+        assertEquals(CodePad.Open.SHOW, pad.open(LockSignals.PURPOSE_END, now))
+        // A new code over the old one only inside an edit session.
+        assertEquals(CodePad.Open.CLOSE, pad.open(LockSignals.PURPOSE_SET, now))
+        engine.st = engine.st.copy(edit = now + 60_000L)
+        assertEquals(CodePad.Open.SHOW, pad.open(LockSignals.PURPOSE_SET, now))
+    }
+
+    @Test fun theCodeIsRemovedOnlyInsideAnEditSessionAndAFailedReadClosesThePad() {
+        withCode()
+        assertEquals(CodePad.Open.CLOSE, pad.open(LockSignals.PURPOSE_REMOVE, now))
+        assertTrue(vault.isSet())
+        engine.st = engine.st.copy(edit = now + 60_000L)
+        assertEquals(CodePad.Open.DONE, pad.open(LockSignals.PURPOSE_REMOVE, now))
+        assertFalse(vault.isSet())
+        assertFalse(engine.st.codeSet)
+        // state.json unreadable: no edit session, so nothing is removed, and the pad doesn't end :lock.
+        withCode()
+        val broken = object : CodePad.Engine by engine { override fun state(): LockState = throw IOException("EIO") } // l10n: not text (a test's exception)
+        assertEquals(CodePad.Open.CLOSE, CodePad(vault, broken, floor).open(LockSignals.PURPOSE_REMOVE, now))
+        assertTrue(vault.isSet())
     }
 }

@@ -8,6 +8,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -45,7 +47,12 @@ import app.heyrobot.ui.pref.preferenceFooter
 import app.heyrobot.ui.pref.preferenceGroup
 import app.heyrobot.ui.theme.LocalLangs
 import app.heyrobot.ui.theme.str
+import app.heyrobot.sys.EverydaySettingsStore
+import app.heyrobot.sys.PhoneVoice
+import app.heyrobot.sys.VoicesForApps
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 // MAIN PROCESS. Settings › Voice (0.4.x redesign; before it, the Voice card on Settings' one long page): Robot's voice
 // and its speed, when replies are spoken, live words, hearing you while Robot talks, and the troubleshooting tools.
@@ -103,6 +110,17 @@ fun VoiceSettingsScreen(s: RobotSettings, snap: Snapshot, update: (RobotSettings
     val groupTrouble = stringResource(R.string.voice_group_trouble)
     val footer = stringResource(R.string.voice_footer)
     val languagesNote = stringResource(R.string.voice_languages_note)
+    // The everyday set's rows (EverydaySettings.kt): listening and voices for other apps, each shown once its job turns it on.
+    val everyday = rememberEveryday()
+    // E6 (D16): Robot as the phone's only engine makes its System voice Heart; and the engine's place in Android's list
+    // follows the switch (sys VoicesForApps), checked again here.
+    val appCtx = LocalContext.current.applicationContext
+    val robotOnly by produceState(false, s.voiceChoice, everyday.settings.voices) {
+        value = withContext(Dispatchers.IO) {
+            VoicesForApps.sync(appCtx, EverydaySettingsStore.current(appCtx).voices)
+            PhoneVoice.robotOnly(appCtx)
+        }
+    }
     PreferenceScreen(UiStrings.voice().str(), onBack, snackbar = snackbar) {
         item(key = "languages") { IntroPreference(languagesNote) }
         if (!snap.voiceReady) {
@@ -119,6 +137,7 @@ fun VoiceSettingsScreen(s: RobotSettings, snap: Snapshot, update: (RobotSettings
                 summary = if (installed(s.voiceChoice)) s.voiceChoice.titleText.render(langs) else stringResource(R.string.voice_not_downloaded_summary, s.voiceChoice.titleText.render(langs))) {
                 update(s.copy(voice = it.id))
             }
+            if (s.voiceChoice == VoiceChoice.SYSTEM && robotOnly) PreferenceItem(stringResource(R.string.everyday_voices_robot_only))
             val decimals = if (langs.ui == Lang.FR) Locale.CANADA_FRENCH else Locale.US
             SliderPreference(stringResource(R.string.voice_speed), s.speechRate, 0.5f..2.0f, 14, { String.format(decimals, "%.1f×", it) }) {
                 update(s.copy(speechRate = RobotSettings.clampRate(it)))
@@ -143,6 +162,7 @@ fun VoiceSettingsScreen(s: RobotSettings, snap: Snapshot, update: (RobotSettings
                 update(s.copy(stopKey = it))
             }
         }
+        everydayVoiceRows(everyday)
         preferenceGroup(groupTrouble, "trouble") {
             val e = snap.engines
             if (e != null) {

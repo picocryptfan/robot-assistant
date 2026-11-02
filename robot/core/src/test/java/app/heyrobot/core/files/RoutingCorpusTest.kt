@@ -38,7 +38,16 @@ class RoutingCorpusTest {
     private val helpers = listOf(HelperName.CLAUDE, HelperName("jarvis", listOf(listOf("jarvis")), phonetic = true))
     private val scripts = listOf(TermuxScriptInfo("backup", "Copies my notes to the server", listOf("sauvegarde", "save notes")), TermuxScriptInfo("hello", "Says hello"))
 
-    private fun norm(x: Any?): String = (x?.toString() ?: "-").replace(Regex("@[0-9a-f]{4,}"), "@").replace('\t', ' ').replace('\n', ' ')
+    private fun norm(x: Any?): String = C1_DEFAULTS.fold((x?.toString() ?: "-").replace(Regex("@[0-9a-f]{4,}"), "@").replace('\t', ' ').replace('\n', ' ')) { t, d ->
+        t.replace(d, "")
+    }
+
+    /**
+     * Skills connections C1 gave Skill, SkillParam and SkillStep new fields (skills-connections-plan.md §5.1); a 1.1 skill
+     * holds their defaults, left out here so the baseline, written before them, still compares every router's reading.
+     */
+    private val C1_DEFAULTS = listOf(", options=[], min=null, max=null, unit=null", ", id=null, conn=null, op=null, cond=null, check=null, onFail=STOP",
+        ", perHour=null")
 
     /** Each router's reading of [t], in the panel's order (files apart, in [files]). */
     private fun row(t: String): List<String> = listOf(
@@ -77,6 +86,28 @@ class RoutingCorpusTest {
     /** 1.4 F9: the corpus's phrases whose words name your files, for which ToolRouter now also describes the FILES group. */
     private val FILES_GROUP = 25
 
+    /**
+     * The everyday set (E2, everyday-set-plan.md §4.4): the corpus's phrases for which ToolRouter also describes the SUMS group
+     * (calculate), per file, as F9 counted FILES. It only describes a tool, so a phrase too many costs only its tokens; each is
+     * a number beside an operator or a sum's own word ("what's 15 % of 80", "calculate my taxes for 2026", "2 h 05 ago" is not).
+     */
+    /** corpus.txt: "what's 15 % of 80" and "answer this: what is 2 plus 2". */
+    private val SUMS_GROUP = 2
+    private val SUMS_F10 = 0
+    /** corpus-f12.txt: "calculate my taxes for 2026" (the word "calculate"; the model still answers it, the tool only described). */
+    private val SUMS_F12 = 1
+    private val SUMS_F13 = 0
+    private val SUMS_FX2 = 0
+
+    /** [row] with ToolRouter's column ([tools]) read without E2's SUMS group; [found] for each row that had it. */
+    private fun sumsFree(row: List<String>, tools: Int, found: () -> Unit): List<String> {
+        val g = row[tools]
+        val without = g.replace(", SUMS]", "]").replace("[SUMS, ", "[").replace(", SUMS, ", ", ").replace("[SUMS]", "[]")
+        if (without == g) return row
+        found()
+        return row.toMutableList().also { it[tools] = without }
+    }
+
     private fun corpus(): List<String> = javaClass.getResourceAsStream("/routing/corpus.txt")!!.bufferedReader().readLines().filter { it.isNotBlank() }
 
     /**
@@ -108,13 +139,17 @@ class RoutingCorpusTest {
         val before = base.bufferedReader().readLines().filter { it.isNotBlank() }
         assertEquals(before.size, lines.size)
         val changed = ArrayList<String>()
+        var sums = 0
         for ((b, a) in before.zip(lines)) {
             val bb = b.split('\t')
-            val aa = a.split('\t')
+            val aa0 = a.split('\t')
+            // The everyday set (E2): ToolRouter's SUMS group (calculate) is the only other change, counted per file.
+            val aa = sumsFree(aa0, bb.size - 2) { sums++ }
             assertEquals(bb.dropLast(1), aa.dropLast(1))
             if (bb.last() != aa.last()) changed += aa.first()
         }
         assertEquals(takenF10.sorted(), changed.sorted())
+        assertEquals(SUMS_F10, sums)
         for (t in takenF10) {
             val b = before.first { it.startsWith("$t\t") }.split('\t')
             assertEquals(t, List(b.size - 3) { "-" }, b.subList(1, b.size - 2))
@@ -142,13 +177,17 @@ class RoutingCorpusTest {
         val before = base.bufferedReader().readLines().filter { it.isNotBlank() }
         assertEquals(before.size, lines.size)
         val changed = ArrayList<String>()
+        var sums = 0
         for ((b, a) in before.zip(lines)) {
             val bb = b.split('\t')
-            val aa = a.split('\t')
+            val aa0 = a.split('\t')
+            // The everyday set (E2): ToolRouter's SUMS group (calculate) is the only other change, counted per file.
+            val aa = sumsFree(aa0, bb.size - 2) { sums++ }
             assertEquals(bb.dropLast(1), aa.dropLast(1))
             if (bb.last() != aa.last()) changed += aa.first()
         }
         assertEquals(takenF12.sorted(), changed.sorted())
+        assertEquals(SUMS_F12, sums)
         for (t in takenF12) {
             val b = before.first { it.startsWith("$t\t") }.split('\t')
             assertEquals(t, List(b.size - 3) { "-" }, b.subList(1, b.size - 2))
@@ -179,13 +218,17 @@ class RoutingCorpusTest {
         val before = base.bufferedReader().readLines().filter { it.isNotBlank() }
         assertEquals(before.size, lines.size)
         val changed = ArrayList<String>()
+        var sums = 0
         for ((b, a) in before.zip(lines)) {
             val bb = b.split('\t')
-            val aa = a.split('\t')
+            val aa0 = a.split('\t')
+            // The everyday set (E2): ToolRouter's SUMS group (calculate) is the only other change, counted per file.
+            val aa = sumsFree(aa0, bb.size - 2) { sums++ }
             assertEquals(bb.dropLast(1), aa.dropLast(1))
             if (bb.last() != aa.last()) changed += aa.first()
         }
         assertEquals(takenF13.sorted(), changed.sorted())
+        assertEquals(SUMS_F13, sums)
         for (t in takenF13) {
             val b = before.first { it.startsWith("$t\t") }.split('\t')
             assertEquals(t, List(b.size - 3) { "-" }, b.subList(1, b.size - 2))
@@ -216,13 +259,17 @@ class RoutingCorpusTest {
         val before = base.bufferedReader().readLines().filter { it.isNotBlank() }
         assertEquals(before.size, lines.size)
         val changed = LinkedHashMap<String, String>()
+        var sums = 0
         for ((b, a) in before.zip(lines)) {
             val bb = b.split('\t')
-            val aa = a.split('\t')
+            val aa0 = a.split('\t')
+            // The everyday set (E2): ToolRouter's SUMS group (calculate) is the only other change, counted per file.
+            val aa = sumsFree(aa0, bb.size - 2) { sums++ }
             assertEquals(bb.dropLast(1), aa.dropLast(1))
             if (bb.last() != aa.last()) changed[aa.first()] = aa.last()
         }
         assertEquals(changedFX2, changed.toSortedMap())
+        assertEquals(SUMS_FX2, sums)
     }
 
     /** FX2's changes to FilesRouter's reading of corpus-fx2.txt: each phrase and what FilesRouter makes of it now ("-": nothing). */
@@ -253,9 +300,10 @@ class RoutingCorpusTest {
         assertEquals(before.size, lines.size)
         val changed = ArrayList<String>()
         val filesGroup = ArrayList<String>()
+        var sums = 0
         for ((b, a) in before.zip(lines)) {
             val bb = b.split('\t')
-            val aa = a.split('\t')
+            val aa = sumsFree(a.split('\t'), b.split('\t').size - 2) { sums++ }
             // Every other router reads it as before.
             assertEquals(bb.dropLast(2), aa.dropLast(2))
             // 1.4 F9: ToolRouter adds its new FILES group (find_files, read_file) for your files' words (files-1.4-plan.md §5.1),
@@ -268,6 +316,7 @@ class RoutingCorpusTest {
         // Never for free_storage's files ("delete big files", « libère de l'espace »): FreeUp's own phrases keep their groups.
         assertEquals(emptyList<String>(), filesGroup.filter { FreeUp.asked(it) != null })
         assertEquals(filesGroup.toString(), FILES_GROUP, filesGroup.size)
+        assertEquals(SUMS_GROUP, sums)
         // FilesRouter takes what "file this" took, and only the phrases listed, which went to the model before (no router's).
         assertEquals(taken.sorted(), changed.map { it.substringBefore(" -> ") }.sorted())
         for (t in taken) {

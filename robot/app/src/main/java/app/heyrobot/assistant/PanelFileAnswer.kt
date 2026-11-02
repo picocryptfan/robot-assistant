@@ -15,6 +15,7 @@ import app.heyrobot.core.files.FileEntry
 import app.heyrobot.core.files.FileFindCode
 import app.heyrobot.core.files.FileIndex
 import app.heyrobot.core.files.FileKind
+import app.heyrobot.core.files.FilePeer
 import app.heyrobot.core.files.FilePrompt
 import app.heyrobot.core.i18n.FilesStrings
 import app.heyrobot.core.i18n.Langs
@@ -41,7 +42,7 @@ internal class PanelFileAnswer(
     private val state: MutableStateFlow<PanelState>,
     private val replies: PanelReplies,
     private val voice: ReplyVoice,
-    private val port: Port,
+    val port: Port,
 ) {
     /** What the answer needs of PanelController. */
     interface Port {
@@ -55,6 +56,8 @@ internal class PanelFileAnswer(
         fun privateAnswer(replyId: String)
         /** What the answer said, for QueryCheck (a later web search never carries a file's words online). */
         fun noteRead(text: String)
+        /** L11: the file came from [pairing]'s Robot: its words are in the conversation now, so that Robot counts as one of its senders. */
+        fun heardPeer(pairing: String) {}
         /** The vault's lock gate and index (tests give their own). */
         fun gate(): FilesIntake.Gate = FilesIntake.gate(ctx)
         fun index(): FileIndex? = app.heyrobot.sys.RobotFiles.shown(ctx)
@@ -80,6 +83,7 @@ internal class PanelFileAnswer(
         val req = FilePrompt.answer(ask.question, e.text, e.kind, e.from.source, langs.say, ZonedDateTime.now(), spoken = state.value.speak,
             maxTokens = port.contextTokens) ?: return said(replyId, ToolStrings.fileNoText())
         if (ask.private) port.privateAnswer(replyId)
+        FilePeer.peerOf(e)?.let(port::heardPeer)
         var streamed = 0
         val r = port.ask(req.request) { soFar ->
             // A request that gave way starts over: what was shown goes.

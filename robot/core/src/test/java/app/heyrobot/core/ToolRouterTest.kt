@@ -87,21 +87,38 @@ class ToolRouterTest {
         val browser = ToolName.BROWSER_SEARCH
         // 1.4: find_files and read_file only while Robot Files can be read (PanelFileTools.open: on, unlocked, no phone lock).
         val files = setOf(ToolName.FIND_FILES, ToolName.READ_FILE)
-        assertEquals(ToolName.entries - ToolName.ASK_HELPER - ToolName.CALL - ToolName.REMEMBER - ToolName.FORGET - ToolName.WEB_SEARCH - termux - browser - files,
+        // C4, deliberately: a skill's connection and hand-off steps are never described, whatever the groups.
+        val conn = setOf(ToolName.CONNECTION, ToolName.HAND_OFF)
+        // 1.4 Lists (LS4): add_to_list only while Lists can be changed (PanelLists.open: on, unlocked, no phone lock).
+        val lists = ToolName.ADD_TO_LIST
+        // 1.5: ask_robot only with Robot to Robot on, someone paired and the phone unlocked (PanelLinkAsk.described).
+        val link = ToolName.ASK_ROBOT
+        assertEquals(ToolName.entries - ToolName.ASK_HELPER - ToolName.CALL - ToolName.REMEMBER - ToolName.FORGET - ToolName.WEB_SEARCH - termux - browser - files - conn - lists - link,
             ToolRouter.tools(ToolGroup.entries.toSet(), d))
-        assertEquals(ToolName.entries - ToolName.ASK_HELPER - ToolName.CALL - ToolName.WEB_SEARCH - termux - browser - files,
+        assertEquals(ToolName.entries - ToolName.ASK_HELPER - ToolName.CALL - ToolName.WEB_SEARCH - termux - browser - files - conn - lists - link,
             ToolRouter.tools(ToolGroup.entries.toSet(), d, memory = true))
         // 0.9: web_search only with Settings › Web search on (and its group: the words called for it).
-        assertEquals(ToolName.entries - ToolName.ASK_HELPER - ToolName.CALL - ToolName.REMEMBER - ToolName.FORGET - termux - browser - files,
+        assertEquals(ToolName.entries - ToolName.ASK_HELPER - ToolName.CALL - ToolName.REMEMBER - ToolName.FORGET - termux - browser - files - conn - lists - link,
             ToolRouter.tools(ToolGroup.entries.toSet(), d, web = true))
-        assertEquals(ToolName.entries - ToolName.ASK_HELPER - ToolName.CALL - ToolName.REMEMBER - ToolName.FORGET - ToolName.WEB_SEARCH - browser - files,
+        assertEquals(ToolName.entries - ToolName.ASK_HELPER - ToolName.CALL - ToolName.REMEMBER - ToolName.FORGET - ToolName.WEB_SEARCH - browser - files - conn - lists - link,
             ToolRouter.tools(ToolGroup.entries.toSet(), d, termux = termux))
         assertEquals(Prompt.CORE_TOOLS + browser, ToolRouter.tools(route("look it up on Google"), d, browser = true))
-        assertEquals(ToolName.entries - ToolName.ASK_HELPER - ToolName.CALL - ToolName.REMEMBER - ToolName.FORGET - ToolName.WEB_SEARCH - termux - browser,
+        assertEquals(ToolName.entries - ToolName.ASK_HELPER - ToolName.CALL - ToolName.REMEMBER - ToolName.FORGET - ToolName.WEB_SEARCH - termux - browser - conn - lists - link,
             ToolRouter.tools(ToolGroup.entries.toSet(), d, files = true))
+        assertEquals(ToolName.entries - ToolName.ASK_HELPER - ToolName.CALL - ToolName.REMEMBER - ToolName.FORGET - ToolName.WEB_SEARCH - termux - browser - files - conn - lists,
+            ToolRouter.tools(ToolGroup.entries.toSet(), d, link = true))
+        assertTrue(link in ToolRouter.tools(route("ask Sam's robot when Sam is free"), d, link = true))
+        assertTrue(link in ToolRouter.tools(route("demande au robot de Sam s'il est libre"), d, link = true))
+        assertTrue(link !in ToolRouter.tools(route("ask Sam's robot when Sam is free"), d))
+        assertTrue(link !in ToolRouter.tools(route("thanks robot"), d, link = true))
+        assertTrue(link !in ToolRouter.tools(route("it's robot time"), d, link = true))
         assertEquals(Prompt.CORE_TOOLS + files, ToolRouter.tools(route("what was the total on my Costco receipt"), d, files = true))
         assertEquals(Prompt.CORE_TOOLS, ToolRouter.tools(route("what was the total on my Costco receipt"), d))
         assertEquals(Prompt.CORE_TOOLS, ToolRouter.tools(core, d, files = true))
+        assertEquals(ToolName.entries - ToolName.ASK_HELPER - ToolName.CALL - ToolName.REMEMBER - ToolName.FORGET - ToolName.WEB_SEARCH - termux - browser - files - conn - link,
+            ToolRouter.tools(ToolGroup.entries.toSet(), d, lists = true))
+        assertEquals(Prompt.CORE_TOOLS + lists, ToolRouter.tools(ToolRouter.route("add oat milk to the shopping list", lists = true), d, lists = true))
+        assertEquals(Prompt.CORE_TOOLS + listOf(ToolName.ADD_NOTE, ToolName.FIND_NOTES), ToolRouter.tools(route("add oat milk to the shopping list"), d, lists = true))
         assertEquals(Prompt.CORE_TOOLS + ToolName.WEB_SEARCH + browser, ToolRouter.tools(route("look it up on DuckDuckGo"), d, web = true, browser = true))
         assertEquals(Prompt.CORE_TOOLS, ToolRouter.tools(core, d, browser = true))
         assertEquals(Prompt.CORE_TOOLS, ToolRouter.tools(core, d, termux = termux))

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.car
 
+import app.heyrobot.core.ListenPause
 import app.heyrobot.core.i18n.HandsFreeStrings
 import app.heyrobot.core.i18n.Msg
 import app.heyrobot.core.i18n.Phrase
@@ -111,6 +112,12 @@ data class CarSettings(
     val work: SavedPlace? = null,
     /** "Drive brief when the car connects": the preset routine "what's next" plus the weather (DriveBrief). */
     val driveBrief: Boolean = false,
+    /** Settings › Car mode › Car screen: the large panel, the information panel and the fourth button. */
+    val layout: CarLayout = CarLayout(),
+    /** "Hear me in the car" (CarHearing). */
+    val hearMe: CarHearMe = CarHearMe.MORE,
+    /** "Wait before answering" in the car: Long or Very long (CarHearing.PAUSE_CHOICES). */
+    val waitPause: ListenPause = ListenPause.LONG,
 ) {
     val endGraceMs: Long get() = clampGrace(endGraceSeconds) * 1_000L
     val trustedMs: Long get() = clampHours(trustedHours) * 3_600_000L
@@ -133,6 +140,9 @@ data class CarSettings(
         home?.let { put("home", place(it)) }
         work?.let { put("work", place(it)) }
         put("driveBrief", driveBrief)
+        if (layout != CarLayout()) put("layout", layout.toJson())
+        if (hearMe != CarHearMe.MORE) put("hearMe", hearMe.name)
+        if (waitPause != ListenPause.LONG) put("waitPause", waitPause.id)
     }
 
     companion object {
@@ -170,6 +180,9 @@ data class CarSettings(
                 home = place(o.optJSONObject("home")),
                 work = place(o.optJSONObject("work")),
                 driveBrief = o.optBoolean("driveBrief", d.driveBrief),
+                hearMe = o.enumOr("hearMe", d.hearMe),
+                waitPause = ListenPause.of(o.optString("waitPause")).takeIf { it in CarHearing.PAUSE_CHOICES } ?: d.waitPause,
+                layout = CarLayout.fromJson(o.optJSONObject("layout")),
             )
         }
     }

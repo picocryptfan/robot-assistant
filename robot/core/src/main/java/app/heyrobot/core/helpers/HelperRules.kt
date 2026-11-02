@@ -143,10 +143,13 @@ object HelperTrust {
      * you received (0.7): other people's words.
      */
     private fun captured(personal: Set<Personal>): Boolean = Personal.SCREEN in personal || Personal.PHOTO in personal || Personal.MESSAGES in personal ||
-        Personal.FILES in personal
+        Personal.FILES in personal || Personal.LISTS in personal || Personal.SHARED in personal
 
-    /** 1.4: what Robot found in or read from your files goes only on a tap: no switch, no trust and no spoken yes sends it. */
-    private fun tapOnly(personal: Set<Personal>): Boolean = Personal.FILES in personal
+    /**
+     * 1.4: what Robot found in or read from your files goes only on a tap: no switch, no trust and no spoken yes sends it.
+     * The everyday set (E7): nor does what another app shared with Ask Robot.
+     */
+    private fun tapOnly(personal: Set<Personal>): Boolean = Personal.FILES in personal || Personal.LISTS in personal || Personal.SHARED in personal
 
     /**
      * 0.7: what Robot remembers about you is in [personal] and may go to [h] only through a card: neither "Send personal
@@ -168,6 +171,9 @@ object HelperTrust {
 
     /** This question's screen text and picture may go with an escalation without a tap (never by trust alone). */
     fun attachments(s: RobotSettings): Boolean = s.personalToHelpers
+
+    /** The same in a conversation that holds [personal]: never for what only a tap may send (Robot Files', Ask Robot's: E7). */
+    fun attachments(s: RobotSettings, personal: Set<Personal>): Boolean = attachments(s) && !tapOnly(personal)
 
     /** What a read tool finds for [h] (or an online lookup around where you are) goes without "Share with …". */
     fun reads(s: RobotSettings, h: HelperConfig?): Boolean = s.personalToHelpers || h?.trust == true

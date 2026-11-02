@@ -23,6 +23,13 @@ import app.heyrobot.core.output.VolumePolicy
 //
 // During a call (another app's, or the phone's), nothing changes: the question takes no focus and the voice asks no more
 // than it did before (FocusPlan.mayTake: the normal mode, or the communication mode Robot holds itself for a headset).
+//
+// The everyday set's music (everyday-set-plan.md §3.3, D3): a question notes whether media was playing before it takes the
+// focus (once paused by Robot, AudioManager.isMusicActive reads false), so a bare "pause" counts only when something
+// played. "Play", "next song" and "play Radiohead" let go of the focus first ([FocusKeeper.yieldToPlayer]) and Robot asks
+// for none again until the turn is over, so the player takes the focus cleanly and a follow-up listen in the same turn (a
+// headset or car session's window) doesn't pause the song you just started. "Pause" keeps the focus: the key goes while
+// Robot holds it.
 
 /** Pure. The focus Robot asks for (an AudioManager constant, [NONE] for none). */
 internal object FocusPlan {
@@ -71,6 +78,8 @@ internal class FocusKeeper(private val port: Port) {
         fun later(r: Runnable, ms: Long)
         fun cancel(r: Runnable)
         fun log(event: String, gain: Int) {}
+        /** Media is playing now (another app's music or video), read before Robot's question pauses it. */
+        fun playing(): Boolean = false
     }
 
     private data class Want(val gain: Int, val playback: Playback)
@@ -85,6 +94,8 @@ internal class FocusKeeper(private val port: Port) {
     private var held: Want? = null
     /** Another app took the focus for good: nothing is asked again until the turn and the voice are over. */
     private var lost = false
+    /** Media was playing as this turn first listened (§3.3), before its focus paused it. */
+    private var playingAtStart = false
 
     private val release = Runnable { synchronized(this) { if (turn && ending && speakers.isEmpty()) finish("focus_ended") } }
     private val safety = Runnable {
@@ -101,10 +112,19 @@ internal class FocusKeeper(private val port: Port) {
     /** The gain asked for now, [FocusPlan.NONE] for none. */
     val gain: Int @Synchronized get() = held?.gain ?: FocusPlan.NONE
 
+    /**
+     * Whether media was playing as this turn first listened (§3.3), or null when no question holds the turn (a typed
+     * question, a call): then the caller asks [Port.playing] itself.
+     */
+    val playingNote: Boolean? @Synchronized get() = if (turn) playingAtStart else null
+
     /** A question starts listening. False during a call: the turn takes no focus. */
     @Synchronized
     fun listen(): Boolean {
         if (!port.mayTake()) return false
+        // A new turn notes what played before its focus pauses it; a follow-up listen keeps the first note (by then the
+        // music is paused by Robot). Robot's own voice isn't media: while it speaks, nothing is noted as playing.
+        if (!turn) playingAtStart = speakers.isEmpty() && try { port.playing() } catch (_: Throwable) { false }
         if (!turn) lost = false
         turn = true
         ending = false
@@ -164,6 +184,22 @@ internal class FocusKeeper(private val port: Port) {
         lost = true
     }
 
+    /**
+     * The music: the player is about to start ("play", "next song", by name, §3.3): let go of the focus now, and ask for
+     * none again until the turn and the voice are over, as when another app takes it for good ([lostForGood]). Nothing
+     * while no question holds the focus.
+     */
+    @Synchronized
+    fun yieldToPlayer() {
+        if (!turn) return
+        port.log("focus_yield", held?.gain ?: FocusPlan.NONE)
+        lost = true
+        if (held != null) {
+            held = null
+            port.abandon()
+        }
+    }
+
     /** [event]: the log line's name (why the turn ended). */
     private fun finish(event: String) {
         port.log(event, held?.gain ?: FocusPlan.NONE)
@@ -182,13 +218,15 @@ internal class FocusKeeper(private val port: Port) {
         val may = port.mayTake()
         val g = FocusPlan.gain(turn, speakers.isNotEmpty(), pause, may)
         val want = if (g == FocusPlan.NONE) null else Want(g, if (turn && may) Playback.ASSISTANT else speakers.values.first())
-        if (want == held) return
         if (want == null) {
-            held = null
+            // Nothing wanted: the turn and the voice are over, so a loss (or a yield to the player) is forgotten too.
             lost = false
+            if (held == null) return
+            held = null
             port.abandon()
             return
         }
+        if (want == held) return
         // Lost for good: the other app keeps it until this is over.
         if (lost) return
         held = want
@@ -246,7 +284,31 @@ object TurnFocus {
         override fun log(event: String, gain: Int) = log(event, gain, -1)
 
         private fun log(event: String, gain: Int, result: Int) = RLog.i(event, "gain" to gain, "result" to result)
+
+        override fun playing(): Boolean = mediaPlaying()
     })
+
+    /** A cue Robot plays itself (Cues) sounds until this time (uptime), with what played as it started. */
+    @Volatile private var cue: Pair<Long, Boolean>? = null
+
+    /**
+     * Media is playing now: the music stream is active and some player has media or game usage (§3.3). Android gives no
+     * app another app's player state (AudioPlaybackConfiguration's state is a system API in android-36), so the
+     * stream's activity stands for it. While one of Robot's own cues sounds (the headset chime is on the music stream),
+     * what played as it started counts instead.
+     */
+    private fun mediaPlaying(): Boolean {
+        val am = audio ?: return false
+        cue?.let { (until, was) -> if (android.os.SystemClock.uptimeMillis() < until) return was }
+        return try {
+            am.isMusicActive && am.activePlaybackConfigurations.any {
+                it.audioAttributes.usage == android.media.AudioAttributes.USAGE_MEDIA || it.audioAttributes.usage == android.media.AudioAttributes.USAGE_GAME
+            }
+        } catch (t: Throwable) {
+            RLog.w("focus_playing", t)
+            false
+        }
+    }
 
     private fun init(ctx: Context) {
         if (audio == null) audio = ctx.applicationContext.getSystemService(AudioManager::class.java)
@@ -272,4 +334,31 @@ object TurnFocus {
 
     /** OutputGuard's volume for the sentence about to be queued (DUCK_OTHERS ducks, PAUSE_OTHERS pauses other sound). */
     fun volume(v: VolumePolicy) = keeper.volume(v)
+
+    /**
+     * The music (§3.3): whether media was playing as you started asking. The question's note while one holds the turn,
+     * else (a typed question takes no focus) whether it plays now.
+     */
+    fun playingAsAsked(ctx: Context): Boolean {
+        init(ctx)
+        return keeper.playingNote ?: mediaPlaying()
+    }
+
+    /** The music: whether media plays now (after "play music", to see whether anything came back). */
+    fun playingNow(ctx: Context): Boolean {
+        init(ctx)
+        return mediaPlaying()
+    }
+
+    /** The music (§3.3): the player is about to start; Robot lets go of the focus for the rest of the turn. */
+    fun yieldToPlayer() = keeper.yieldToPlayer()
+
+    /** Cues: one of Robot's own sounds starts on the music stream, for [ms]: what plays now is noted first. */
+    internal fun cueStarts(ms: Int) {
+        val was = cue?.takeIf { android.os.SystemClock.uptimeMillis() < it.first }?.second ?: mediaPlaying()
+        cue = (android.os.SystemClock.uptimeMillis() + ms + CUE_TAIL_MS) to was
+    }
+
+    /** A cue's sound lingers a little after its tone ends. */
+    private const val CUE_TAIL_MS = 400L
 }

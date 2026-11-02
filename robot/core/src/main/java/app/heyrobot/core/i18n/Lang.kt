@@ -39,6 +39,13 @@ data class Langs(val say: Lang, val ui: Lang, val system: Lang, val medium: Medi
     /** The same languages, for the voice. */
     val voice: Langs get() = copy(medium = Medium.VOICE)
 
+    /**
+     * A message's card title and its "Texting Sam." line: in the reply language, or the menus' when you spoke English to
+     * menus in another (lp-check phase 2: "Text Sam (+1 902-555-0142) in Cheogram" above « Annuler »). A French speaker on
+     * English menus keeps the French title (CardsInFrenchTest).
+     */
+    val message: Langs get() = if (say == Lang.EN && ui != Lang.EN) copy(say = ui) else this
+
     companion object {
         /** English everywhere: what core's tests render by default, and what [Phrase.en] gives the model and the logs. */
         val EN = Langs(Lang.EN, Lang.EN, Lang.EN)

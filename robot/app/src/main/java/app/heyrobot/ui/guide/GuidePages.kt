@@ -529,13 +529,14 @@ private fun LazyListScope.routines(g: GuideCtx) {
             RoutineCards.whenPhrase(BriefRoutine.of(rs.copy(briefEnabled = true))).str().replaceFirstChar { it.uppercase() }, rs.briefEnabled, icon = RIcons.Sunny) { on ->
             if (on && !rs.briefOnline) g.askBrief() else { g.stores.routines(rs.copy(briefEnabled = on)); g.changed() }
         }
-        // 1.2: "after your alarm" needs GrapheneOS Clock; on a phone without it the brief would never start (core ClockNeed).
+        // 1.2: "after your alarm" needs a Clock app; on a phone without one the brief would never start (core ClockNeed).
         val clock = g.snap.facts?.clockInstalled ?: true
         if (app.heyrobot.core.ClockNeed.unmet(BriefRoutine.of(rs).trigger, clock))
             StatusPreference(stringResource(R.string.routine_alarm_needs_clock), null, Mark.WARN)
         PreferenceItem(stringResource(R.string.guide_routines_change), stringResource(R.string.guide_routines_change_detail), RIcons.Alarm,
             onClick = { g.a.openPage(Page.Settings(RoutineRoutes.BRIEF)) })
     }
+    para(R.string.guide_routines_clock)
     para(R.string.guide_routines_voice)
     privacy(R.string.guide_routines_privacy)
     findIt(R.string.guide_path_routines)

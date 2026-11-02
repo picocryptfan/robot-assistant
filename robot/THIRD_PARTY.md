@@ -3,7 +3,9 @@
 Robot itself is GPL-3.0-only (see `../LICENSE`; Copyright (C) 2026 the Robot authors). Everything below keeps its own
 licence; all of them (Apache-2.0, MIT, BSD-2-Clause, BSD-3-Clause, MPL-2.0, CC-BY-4.0 for model weights and data, CC0 for
 the language ID data, GPL-3.0-or-later for espeak-ng, GPL-2.0-or-later with MPL-2.0 parts for slimt, MPL-2.0 for the
-translation models) are compatible with GPL-3.0. Native libraries, models and the espeak-ng data are not stored in git:
+translation models, AGPL-3.0-only for libsignal, which GPL-3.0's section 13 lets Robot combine with, the zlib licence for
+zlib in Tor, and ISC, 0BSD and CC0 for some of lyrebird's Go modules) are compatible with
+GPL-3.0. Native libraries, models and the espeak-ng data are not stored in git:
 `tools/fetch_third_party.sh` downloads the exact files below and checks every SHA-256. The speech recognition and voice models are not in the APK at all: the app
 downloads them on request (see "Downloaded by the app" below); `tools/fetch_voice_models.sh` fetches the same files on a
 computer and checks them.
@@ -26,9 +28,9 @@ licence and place (and the reverse), that every heading below and every Maven ar
 that every library the release build packs (`releaseRuntimeClasspath`) belongs to one, and that every text and notice
 file the list names exists.
 
-**Source for the GPL components.** espeak-ng (GPL-3.0-or-later) is statically linked into the prebuilt
+**Source for the GPL components.** espeak-ng (GPL-3.0-or-later), with Robot's patch, is statically linked into
 `libsherpa-onnx-jni.so`, and 17 of its compiled data files are in the APK. Robot's own source does not cover them: Robot's
-repository holds neither the sherpa-onnx source nor the espeak-ng source, so GPL-3.0 section 6 is met by a separate
+repository holds only that patch, neither the sherpa-onnx source nor the espeak-ng source, so GPL-3.0 section 6 is met by a separate
 source archive, not by Robot's repository. Each release attaches `robot-<version>-third-party-sources.tar.gz` (and its
 `.sha256`), made by `tools/make_source_bundle.sh`, next to the APK, for as long as that APK is offered. It holds:
 sherpa-onnx at the commit of v1.13.8, the exact espeak-ng archive (fork at `ed530aa1`) and every other source
@@ -38,12 +40,17 @@ in `librobotmt.so` since 0.6.0) with ruy, cpuinfo and SentencePiece, as the `git
 pins (below, "In the `:mt` process only"); llama.cpp and KleidiAI as `tools/build_llama.sh` pins them (MIT and Apache-2.0,
 included so the archive is the APK's whole native source; `--without-llama` leaves them out); and Robot's own native
 sources and build scripts at that commit. The script reads the slimt and llama.cpp pins from the two build scripts, so
-the archive always matches what they build. See the README's "Releasing".
+the archive always matches what they build. Three more libraries are prebuilt from Maven under Apache-2.0 (LiteRT-LM's
+`liblitertlm_jni.so`, the Tensor NPU's `libLiteRtDispatch_GoogleTensor.so` and AndroidX's `libandroidx.graphics.path.so`):
+Apache-2.0 asks for no source, so the bundle names where each comes from but doesn't carry it. For Robot to Robot the bundle
+also carries libsignal at the commit of its tag with the crates and git packages its Cargo.lock names, tor-android's sources
+jar (Tor, OpenSSL, libevent, zlib) and lyrebird with its Go modules; "libsignal's source" below says what building the first
+from the bundle showed. See the README's "Releasing".
 
 | Component | Version | Licence | Where |
 |---|---|---|---|
 | sherpa-onnx | 1.13.8 | Apache-2.0 | in the APK |
-| espeak-ng | csukuangfj/espeak-ng at ed530aa1 | GPL-3.0-or-later | in the APK |
+| espeak-ng | csukuangfj/espeak-ng at ed530aa1, with Robot's patch | GPL-3.0-or-later | in the APK |
 | piper-phonemize | csukuangfj/piper-phonemize at f3ff95af | MIT | in the APK |
 | kaldi-native-fbank | 1.22.3 | Apache-2.0 | in the APK |
 | kaldi-decoder | 0.3.0 | Apache-2.0 | in the APK |
@@ -61,6 +68,7 @@ the archive always matches what they build. See the README's "Releasing".
 | jsoup | 1.23.2 | MIT | in the APK |
 | Readability4J (Robot's copy) | 1.0.8 (dankito, 170d052e) | Apache-2.0 | in the APK |
 | Termux's constant strings (TermuxConstants.java) | termux-app 8629e63 | MIT | in the APK |
+| QR Code generator library's design (Project Nayuki) | design only, no code copied | MIT | in the APK |
 | Okio | 3.6.0 | Apache-2.0 | in the APK |
 | Public Suffix List (in OkHttp) | as in OkHttp 4.12.0 | MPL-2.0 | in the APK |
 | Jackson | 2.21.8 | Apache-2.0 | in the APK |
@@ -73,6 +81,15 @@ the archive always matches what they build. See the README's "Releasing".
 | Standard Webhooks | 1.2.0 | MIT | in the APK |
 | Bouncy Castle (Argon2 and BLAKE2b sources only) | 1.81 (r1rv81) | MIT | in the APK |
 | EFF's long word list for passphrases | eff_large_wordlist.txt, 2016-07-18 | CC-BY-3.0-US | in the APK |
+| libsignal | 0.105.2 | AGPL-3.0-only | in the APK |
+| Tor | 0.4.9.14 (Briar's tor-android build) | BSD-3-Clause | in the APK |
+| OpenSSL (in Tor) | 3.5.9 | Apache-2.0 | in the APK |
+| libevent (in Tor) | 2.1.13-stable | BSD-3-Clause | in the APK |
+| zlib (in Tor) | 1.3.2 | Zlib | in the APK |
+| onionwrapper (Tor's start-up, adapted) | 0.1.7 | GPL-3.0-only | in the APK |
+| lyrebird (Tor's bridges) | 0.9.0 (built from source) | GPL-3.0-or-later AND BSD-2-Clause AND BSD-3-Clause | in the APK |
+| UnifiedPush connector | 3.3.5 | Apache-2.0 | in the APK |
+| Tink | 1.23.0 | Apache-2.0 | in the APK |
 | LiteRT-LM | 0.18.0 | Apache-2.0 | in the APK |
 | LiteRT NPU runtime for Google Tensor | 2.3.0 | Apache-2.0 | in the APK |
 | llama.cpp (with ggml) | b11200 (81bc6b83) | MIT | in the APK |
@@ -131,7 +148,9 @@ the archive always matches what they build. See the README's "Releasing".
 
 - Release https://github.com/k2-fsa/sherpa-onnx/releases/tag/v1.13.8, archive `sherpa-onnx-v1.13.8-android.tar.bz2`
   (sha256 `2ff63469a71cb6009aa2e3ed5f4a670f8abdcbe4bb9ffd23776afc792a6b4f44`), arm64-v8a only:
-  - `voice/src/main/jniLibs/arm64-v8a/libsherpa-onnx-jni.so` sha256 `3c6492ea91ea68fd3b72b9495efdde6dd913f6b58c387e3b07389cf335f4d26f`
+  - `libsherpa-onnx-jni.so` sha256 `3c6492ea91ea68fd3b72b9495efdde6dd913f6b58c387e3b07389cf335f4d26f`: for the unit tests only.
+    The APK's `voice/src/main/jniLibs/arm64-v8a/libsherpa-onnx-jni.so` is built from the same commit by `tools/build_sherpa.sh`,
+    sha256 `8d3a191cdf05cd712c5b912545b3c7a0cd02101de84e4765579a483e5694c7ab`, because this one lacks the bounds below; `tools/verify_apk.sh` refuses any other.
   - `voice/src/main/jniLibs/arm64-v8a/libonnxruntime.so` (ONNX Runtime 1.28.2, **MIT**; its `ThirdPartyNotices.txt` at
     v1.28.2 is in the APK) sha256 `33847ad43bffe204699fd4a27f7f3603452a8cdaf2f9a44983a0bc31ffcf2da1`. Built by
     sherpa-onnx's author (`csukuangfj/onnxruntime-libs` release v1.28.2, `onnxruntime-android-1.28.2.zip`, sha256
@@ -154,7 +173,10 @@ the archive always matches what they build. See the README's "Releasing".
 - Statically linked into `libsherpa-onnx-jni.so` (nothing extra is packaged for them; the versions are the ones
   sherpa-onnx v1.13.8's CMake files pin, read from its source):
   **espeak-ng** (GPL-3.0-or-later; built from the `csukuangfj/espeak-ng` fork at
-  `ed530aa113046142eb5115cf2fc9157854d0ffe1`, per `cmake/espeak-ng-for-piper.cmake`), which turns text into phonemes for
+  `ed530aa113046142eb5115cf2fc9157854d0ffe1`, per `cmake/espeak-ng-for-piper.cmake`, changed by Robot's
+  `third_party/patches/espeak-ng-ed530aa1-robot.patch`: bounds on what text can write, Robot's own and from espeak-ng
+  58f1e0b6, which fixes CVE-2023-49990 to 49994, 17ca9c9c, 210dcced and 8afe77ba, none of which the fork has; `tools/espeak_bounds_check.sh`
+  shows each), which turns text into phonemes for
   the Kokoro and Kitten voices; piper-phonemize (MIT, fork at `f3ff95af`), kaldi-native-fbank 1.22.3, kaldi-decoder
   0.3.0, kaldifst 1.8.0 and OpenFst 1.8.5 (csukuangfj's 2026-07-09 copy), simple-sentencepiece 0.7 (all Apache-2.0), JSON
   for Modern C++ 3.12.0 (MIT), hclust-cpp 2026-02-25 (fastcluster, BSD-2-Clause, for speaker clustering) and Eigen 5.0.1
@@ -436,6 +458,169 @@ current files is still UNVERIFIED (no per-file notice in the bucket).
 The test set the speed test runs (`core/src/main/assets/mt/fr-CA-test.tsv`, a copy of `tools/lang/fr-CA/mt-test.tsv`)
 was written for Robot.
 
+## In the `:link` process only (1.5): Robot to Robot
+
+### libsignal 0.105.2 (AGPL-3.0-only): the Signal protocol's sessions
+
+Robot to Robot encrypts everything between your Robot and another person's with the Signal protocol's sessions: PQXDH
+with a Kyber-1024 prekey to start one, then the Double Ratchet with its post-quantum ratchet (SPQR, ML-KEM 768) mixed in.
+Robot writes none of that cryptography; it takes libsignal's, Signal's own library (https://github.com/signalapp/libsignal,
+tag `v0.105.2`, Copyright 2020-2026 Signal Messenger, LLC). Only the `link` module uses it, in the `:link` process.
+Signal's README says use outside Signal is unsupported and its APIs change without notice: Robot pins one version and
+upgrades on purpose, behind its round-trip tests.
+
+Signal publishes this version in its own Maven repository (https://build-artifacts.signal.org/libraries/maven/), not on
+Maven Central, which stops at 0.86.5. The build reads `org.signal:libsignal-client` and `org.signal:libsignal-android`
+from a local copy in `third_party/maven-local/` (not in git; `tools/fetch_libsignal.sh` fetches it once, or copies it from
+a folder, and checks every file), and `settings.gradle` lets no other group come from there and `org.signal` from nowhere
+else. `third_party/libsignal-0.105.2.sha256` pins the six files (the AAR and the jar by Signal's own `.sha256`), and
+`gradle/verification-metadata.xml` pins the same, so any other bytes stop the build.
+
+What ships: the client jar's Java and Kotlin classes (its POM's other dependencies, kotlinx.serialization 1.9.0 among them,
+aren't taken: no libsignal class refers to it), and from the AAR `libsignal_jni.so` for arm64-v8a, stripped of its debug
+symbols at build time with NDK 27.1.12297006's `llvm-strip --strip-unneeded` (123,449,888 bytes in, 9,390,016 out,
+pinned by SHA-256 `9e20c7dd…3a4a6c`), its 14 KB `classes.jar`, and its `assets/acknowledgments/libsignal.md`, the
+licences of the code the library is built from (`licenses/notices/libsignal-acknowledgments.md` in the APK). Never the
+AAR's `libsignal_jni_testing.so`, its other three ABIs or `libsignal-testing.md`, and never the jar's desktop libraries
+(`.so`, `.dylib`, `.dll`, 648 MB): `tools/verify_apk.sh` checks each. The JVM tests run the jar's amd64 library on the
+build machine. The AGPL's text ships as `licenses/AGPL-3.0.txt`.
+
+**libsignal's source.** The source bundle's `libsignal/` holds the tag's source and every crate Cargo.lock names, so the library
+can be built with no network (2 Nov 2026: Rust 1.98.1 with the aarch64-linux-android target, `java/build_jni.sh
+android-arm64`, about 99 minutes, nothing downloaded). The bundle doesn't hold the toolchain: Rust, the NDK, cmake, make, clang
+with libclang, protoc and python3 are installed first, and the build needs the empty `$CARGO_HOME/registry/src` folder made
+by hand; the bundle's README gives the steps. What that build made is not what ships. Robot ships the library from Signal's own
+published AAR, pinned by SHA-256 above. The rebuilt one has the same 660 exported symbols and is 0.17% apart in size once
+stripped, but its bytes differ (it was built with NDK r27's compiler, not r28's, and with other build paths), and how much of
+the difference each cause explains wasn't measured. So Robot claims no byte-for-byte match: the tag, Cargo.lock and the pins
+tie the source to the library, and Signal's own build is what produced the bytes.
+
+### Tor 0.4.9.14 (BSD-3-Clause), with OpenSSL, libevent and zlib: Robot to Robot's onion service
+
+Robot to Robot reaches other Robots over Tor when no shared network or push address will do, and always for Anonymous
+pairings (robot-to-robot-plan.md §2.2). The `:link` process runs Tor itself as its own child process: `libtor.so` for
+arm64-v8a, the executable from Briar's build, `org.briarproject:tor-android:0.4.9.14` on Maven Central (jar SHA-256
+`3c282777…6f481d2ed`, the same as Central's `.sha256`; the executable inside it `fee641c9…40ec44c3`, 8,842,120 bytes,
+already stripped). The jar is never on a classpath: `:link`'s `torBinary` task copies the executable out at build time and
+stops unless its SHA-256 is the pinned one; `tools/verify_apk.sh` checks the APK's copy, and that no other ABI's is in it.
+Tor's licence file (`licenses/BSD-3-Clause-tor.txt`) lists what Tor includes; Briar's build links in OpenSSL 3.5.9
+(Apache-2.0, the shared text), libevent 2.1.13-stable (BSD-3-Clause, `licenses/BSD-3-Clause-libevent.txt`) and zlib 1.3.2
+(the zlib licence, `licenses/Zlib-zlib.txt`). Their sources are in tor-android's sources jar on Maven Central and
+upstream (tor-0.4.9.14).
+
+Robot doesn't use Briar's onionwrapper library, which R0 found can't add client authorization or a `unix:` target and
+opens TCP ports other apps can reach. How `link/r2r/TorRuntime.kt` starts Tor (its arguments, waiting for the control
+socket and the cookie, taking ownership so Tor ends with `:link`) is adapted from onionwrapper 0.1.7
+(https://code.briarproject.org/briar/onionwrapper, GPL-3.0, Copyright Briar Project), with that notice in the file. Robot
+speaks Tor's control protocol itself (`link/r2r/TorControl.kt`); jtorctl, which R0 also fetched, isn't used.
+
+### lyrebird 0.9.0 (GPL-3.0-or-later, BSD-2-Clause and BSD-3-Clause), with its Go modules: Tor's bridges for Robot to Robot
+
+When a network blocks Tor, Settings › Robot to Robot › Tor bridges (off by default) lets Tor start from a bridge:
+Snowflake, obfs4, meek or WebTunnel, all carried by lyrebird, the Tor Project's pluggable transport program. The APK holds
+`liblyrebird.so` for arm64-v8a, which Robot builds from source with `tools/build_lyrebird.sh`: lyrebird's tag `0.9.0`, commit
+`89d54872b176` (23 Sep 2026), Go 1.27.3 (tarball SHA-256 checked against go.dev's) and the Android NDK r27b, reproducibly
+(the executable's SHA-256 `de94bedd…ad416845`, 17,694,016 bytes, stripped, 16 KB-aligned, the same on any machine). The one
+change to lyrebird is `third_party/patches/lyrebird-0.9.0-deps.patch`, which only moves `go.mod` and `go.sum` to
+golang.org/x/net v0.60.0, pion/stun/v3 v3.1.5 and pion/dtls/v3 v3.1.4 (with pion/transport/v4 v4.0.2 and golang.org/x/time
+v0.14.0): at the tag, govulncheck v1.9.0 (1 Nov 2026, its database of 27 Oct) finds seven published vulnerabilities in code
+the Android executable can reach, all in those first three, and with the patch it finds none. `:link`'s `lyrebirdBinary`
+task stops unless the executable's SHA-256 is the pinned one; `tools/verify_apk.sh` checks the APK's copy, and that no other
+ABI's is in it. Tor starts it only for a bridge line that names one of its transports, and ends it when Tor ends. Robot's
+copy of Tor Browser's built-in bridge lines (core `TorBuiltInBridges`, from tor-browser-build's
+`projects/tor-expert-bundle/pt_config.json`, last changed by its commit `01d3e9d35aab` on 9 Apr 2026, taken 28 Oct 2026) is
+data, not code.
+
+Its licence is mixed, and the executable as a whole is under GPL-3.0-or-later. `LICENSE` at that commit, word for word
+(`licenses/BSD-2-Clause-lyrebird.txt`), gives two-clause BSD for the Tor Project's and Yawning Angel's code and three-clause
+BSD for the part from the Go Authors; three files instead carry GPL-3.0-or-later headers: `internal/x25519ell2/x25519ell2.go`
+and its test, and `transports/meeklite/transport.go`. The GPL's text is `LICENSE-GPL3.txt`, identical to Robot's `LICENSE`,
+and Robot is GPL-3.0 itself, so these are compatible. The full source is in each release's source archive (`lyrebird/`).
+
+Statically linked into it, as its build information lists them, are the Go modules below (Go 1.27.3's standard library and
+runtime too, under the Go project's BSD-3-Clause licence). `licenses/notices/lyrebird-modules.txt` gives every licence,
+notice and patent file of each module, word for word. Each module's zip came from proxy.golang.org on 1 Nov 2026 and
+matched the `h1:` hash the build information names for it (Go's checksum of the whole module), so those are the
+licences of exactly the code that was built.
+
+| Go module | Version | Licence |
+|---|---|---|
+| `filippo.io/edwards25519` | v1.2.0 | BSD-3-Clause |
+| `github.com/andybalholm/brotli` | v1.0.6 | MIT |
+| `github.com/aws/aws-sdk-go-v2` | v1.40.0 | Apache-2.0, with a NOTICE file, 1 more licence file in its folders |
+| `github.com/aws/aws-sdk-go-v2/config` | v1.32.1 | Apache-2.0 |
+| `github.com/aws/aws-sdk-go-v2/credentials` | v1.19.1 | Apache-2.0 |
+| `github.com/aws/aws-sdk-go-v2/feature/ec2/imds` | v1.18.14 | Apache-2.0 |
+| `github.com/aws/aws-sdk-go-v2/internal/configsources` | v1.4.14 | Apache-2.0 |
+| `github.com/aws/aws-sdk-go-v2/internal/endpoints/v2` | v2.7.14 | Apache-2.0 |
+| `github.com/aws/aws-sdk-go-v2/internal/ini` | v1.8.4 | Apache-2.0 |
+| `github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding` | v1.13.3 | Apache-2.0 |
+| `github.com/aws/aws-sdk-go-v2/service/internal/presigned-url` | v1.13.14 | Apache-2.0 |
+| `github.com/aws/aws-sdk-go-v2/service/signin` | v1.0.1 | Apache-2.0 |
+| `github.com/aws/aws-sdk-go-v2/service/sqs` | v1.42.16 | Apache-2.0 |
+| `github.com/aws/aws-sdk-go-v2/service/sso` | v1.30.4 | Apache-2.0 |
+| `github.com/aws/aws-sdk-go-v2/service/ssooidc` | v1.35.9 | Apache-2.0 |
+| `github.com/aws/aws-sdk-go-v2/service/sts` | v1.41.1 | Apache-2.0 |
+| `github.com/aws/smithy-go` | v1.23.2 | Apache-2.0, with a NOTICE file, 1 more licence file in its folders |
+| `github.com/dchest/siphash` | v1.2.3 | CC0-1.0 |
+| `github.com/golang/mock` | v1.6.0 | Apache-2.0 |
+| `github.com/google/uuid` | v1.6.0 | BSD-3-Clause |
+| `github.com/klauspost/compress` | v1.18.0 | BSD-3-Clause and MIT and Apache-2.0, with 9 more licence files in its folders |
+| `github.com/klauspost/cpuid/v2` | v2.2.6 | MIT |
+| `github.com/klauspost/reedsolomon` | v1.12.0 | MIT |
+| `github.com/miekg/dns` | v1.1.65 | BSD-3-Clause |
+| `github.com/patrickmn/go-cache` | v2.1.0+incompatible | MIT |
+| `github.com/pion/datachannel` | v1.6.0 | MIT |
+| `github.com/pion/dtls/v3` | v3.1.4 | MIT |
+| `github.com/pion/ice/v4` | v4.2.0 | MIT |
+| `github.com/pion/interceptor` | v0.1.43 | MIT |
+| `github.com/pion/logging` | v0.2.4 | MIT |
+| `github.com/pion/mdns/v2` | v2.1.0 | MIT |
+| `github.com/pion/randutil` | v0.1.0 | MIT |
+| `github.com/pion/rtcp` | v1.2.16 | MIT |
+| `github.com/pion/rtp` | v1.10.1 | MIT |
+| `github.com/pion/sctp` | v1.9.2 | MIT |
+| `github.com/pion/sdp/v3` | v3.0.17 | MIT |
+| `github.com/pion/srtp/v3` | v3.0.10 | MIT |
+| `github.com/pion/stun/v3` | v3.1.5 | MIT |
+| `github.com/pion/transport/v4` | v4.0.2 | MIT |
+| `github.com/pion/turn/v4` | v4.1.4 | MIT |
+| `github.com/pion/webrtc/v4` | v4.2.3-securityfix | MIT, with 1 more licence file in its folders |
+| `github.com/pkg/errors` | v0.9.1 | BSD-2-Clause |
+| `github.com/realclientip/realclientip-go` | v1.0.0 | 0BSD |
+| `github.com/refraction-networking/utls` | v1.8.2 | BSD-3-Clause, with 1 more licence file in its folders |
+| `github.com/theodorsm/covert-dtls` | v1.5.0 | MIT |
+| `github.com/tjfoc/gmsm` | v1.4.1 | Apache-2.0 |
+| `github.com/txthinking/runnergroup` | v0.0.0-20210608031112-152c7c4432bf | MIT |
+| `github.com/txthinking/socks5` | v0.0.0-20251011041537-5c31f201a10e | MIT |
+| `github.com/wlynxg/anet` | v0.0.5 | BSD-3-Clause |
+| `github.com/xtaci/kcp-go/v5` | v5.6.24 | MIT |
+| `github.com/xtaci/smux` | v1.5.56 | MIT |
+| `gitlab.com/yawning/edwards25519-extra` | v0.0.0-20231005122941-2149dcafc266 | BSD-3-Clause |
+| `gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/goptlib` | v1.6.0 | CC0-1.0 |
+| `gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/ptutil` | v0.0.0-20250815012447-418f76dcf315 | BSD-3-Clause |
+| `gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/snowflake/v2` | v2.14.1 | BSD-3-Clause |
+| `gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/webtunnel` | v0.0.7 | MIT |
+| `golang.org/x/crypto` | v0.57.0 | BSD-3-Clause, with Google's patent grant |
+| `golang.org/x/net` | v0.60.0 | BSD-3-Clause, with Google's patent grant |
+| `golang.org/x/sys` | v0.48.0 | BSD-3-Clause, with Google's patent grant |
+| `golang.org/x/text` | v0.42.0 | BSD-3-Clause, with Google's patent grant |
+| `golang.org/x/time` | v0.14.0 | BSD-3-Clause, with Google's patent grant |
+
+### The UnifiedPush connector 3.3.5 and Tink 1.23.0 (Apache-2.0): your push distributor
+
+`org.unifiedpush.android:connector:3.3.5` (Maven Central, AAR SHA-256 `fa017cdf…f1e929b`; Central publishes only a SHA-1
+for it, `c61a755b…`, which matched) registers one push address per paired person with your distributor app, receives its
+broadcasts in `:link` (Robot's own receiver; the connector's is removed) and decrypts each push (RFC 8291). Its copy of
+Google Tink's web push code also encrypts what Robot posts to another Robot's push address, so Robot writes no push
+cryptography. That code uses 11 classes of `com.google.crypto.tink:tink:1.23.0` (jar SHA-256 `5bcdc879…5ca88ceb6ab9da10fa512`,
+Central's `.sha256`), taken without its dependencies: protobuf-java isn't needed by them and isn't in the APK. The
+connector keeps its push keys in its own database in `:link`, sealed by its own Keystore key (alias `UnifiedPush`).
+
+All three come from `third_party/maven-link/` (not in git; `tools/fetch_link_deps.sh` fetches them once from
+Maven Central, or copies them from a folder, and checks every file against `third_party/link-carriers.sha256`), which
+`settings.gradle` reads for exactly these three modules; `gradle/verification-metadata.xml` pins the same hashes.
+
 ## In the `:brain` process only
 
 - `com.google.ai.edge.litertlm:litertlm-android:0.18.0` (Apache-2.0), Google Maven; `liblitertlm_jni.so` arm64-v8a. It runs
@@ -639,3 +824,7 @@ about a dozen constant strings from Termux's `TermuxConstants.java` (termux/term
 package, service and permission names, the RUN_COMMAND extras and result keys, its folders and its known signers'
 SHA-256 digests. `termux-shared/LICENSE.md` releases that file under the MIT licence. Robot links no Termux code; Termux is
 a separate app you install yourself.
+
+**The QR code on the Support page (1.0).** `core/QrCode.kt` is Robot's own code (GPL-3.0-only), written from memory of the
+design of Project Nayuki's QR Code generator library (MIT): no code was copied, and it is credited here and on the
+Licences screen under the MIT licence all the same.

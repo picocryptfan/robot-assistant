@@ -2,6 +2,7 @@
 package app.heyrobot.helpers.web
 
 import app.heyrobot.core.Abort
+import app.heyrobot.core.online.NetPurpose
 import app.heyrobot.core.web.HostKind
 import app.heyrobot.core.web.PageSkip
 import app.heyrobot.core.web.PageType
@@ -12,6 +13,7 @@ import app.heyrobot.core.web.WebLimits
 import app.heyrobot.core.web.WebPlan
 import app.heyrobot.core.web.WebUrl
 import app.heyrobot.core.web.WebUserAgent
+import app.heyrobot.helpers.http.NetCount
 import okhttp3.Call
 import okhttp3.ConnectionSpec
 import okhttp3.Dns
@@ -112,6 +114,8 @@ class PageFetcher(dns: Dns = Dns.SYSTEM, private val rules: PageRules = PageRule
         .callTimeout(pageMs, TimeUnit.MILLISECONDS)
         .connectionSpecs(if (rules.httpsOnly) listOf(ConnectionSpec.MODERN_TLS, ConnectionSpec.COMPATIBLE_TLS) else listOf(ConnectionSpec.MODERN_TLS, ConnectionSpec.CLEARTEXT))
         .dns(PublicOnlyDns(dns, rules.isPublic))
+        // What went online: each page and each redirect hop, by host only (never the page's path).
+        .addInterceptor(NetCount(NetPurpose.WEB_PAGE))
         .addNetworkInterceptor(PublicGuard(rules.isPublic))
         .proxy(Proxy.NO_PROXY)
         .build()

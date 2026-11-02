@@ -7,6 +7,7 @@ import app.heyrobot.core.RoutineRouter
 import app.heyrobot.core.i18n.Lang
 import app.heyrobot.core.lock.LockRouter
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -112,6 +113,25 @@ class SkillRouterTest {
     }
 
     /** D8: the steps (or a name) said after a pause may start with the wake phrase or "please": they are read without it. */
+    @Test fun aSkillThatsOffDoesntClaimItsBareName() {
+        val off = home.copy(level = SkillLevel.OFF)
+        assertEquals(null, SkillRouter.route("heading home", listOf(off, pasta), people = emptyList()))
+        assertTrue(SkillRouter.route("run heading home", listOf(off, pasta), people = emptyList()) is SkillCommand.Run)
+    }
+
+    @Test fun onlyWordsThatOpenWithANameAskForTheSkill() {
+        assertTrue(SkillRouter.asksFor("heading home", home))
+        assertTrue(SkillRouter.asksFor("run heading home", home))
+        // Named, not asked for: the model's call takes a card, even at Just do it.
+        for (said in listOf("don't run heading home", "I'm not heading home yet", "ne lance pas heading home")) {
+            assertTrue(said, SkillRouter.saysName(said, home))
+            assertFalse(said, SkillRouter.asksFor(said, home))
+            val s = home.copy(level = SkillLevel.JUST_DO_IT)
+            val go = SkillRisk.decide(s, SkillRouter.saysName(said, s) && SkillRouter.asksFor(said, s), false, SkillTier.SIMPLE, false, false, false, false)
+            assertEquals(said, ModelGo.Card(tapOnly = false, didYouMean = true), go)
+        }
+    }
+
     @Test fun wordsAfterAPauseLoseTheirLead() {
         assertEquals("text Sam on my way home, then open the route home", SkillRouter.withoutLead("hey robot, text Sam on my way home, then open the route home"))
         assertEquals("Pasta", SkillRouter.withoutLead("please Pasta"))

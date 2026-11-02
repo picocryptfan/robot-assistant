@@ -10,7 +10,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.material3.AlertDialog
+import app.heyrobot.ui.common.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -97,7 +97,7 @@ fun MessagesSettingsScreen(
     val keepDetails = KeepMessages.entries.associateWith { keepDetail(it) }
     val afterDetails = AfterReading.entries.associateWith { afterDetail(it) }
     val lockedDetails = MessagesLocked.entries.associateWith { lockedDetail(it) }
-    val footer = stringResource(R.string.messages_footer)
+    val footer = stringResource(R.string.messages_footer) + "\n\n" + stringResource(R.string.people_access_car_tile)
     val apps = stringResource(R.string.messages_apps)
     val replies = stringResource(R.string.messages_replies)
     val reading = stringResource(R.string.messages_reading)

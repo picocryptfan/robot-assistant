@@ -19,7 +19,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
+import app.heyrobot.ui.common.AlertDialog
 import app.heyrobot.ui.common.NoImeLearning
 import app.heyrobot.ui.common.SecureDialog
 import app.heyrobot.ui.common.SecureWindow
@@ -511,7 +511,19 @@ fun MemorySettingsScreen(store: MemoryStore, a: AppActions, snackbar: SnackbarHo
         preferenceFooter(footer)
     }
 
-    editing?.let { item ->
+    editing?.takeIf { it.choice != null }?.let { item ->
+        ChoiceDialog(item, now(), onDismiss = { editing = null },
+            onDelete = {
+                editing = null
+                change(ctx.getString(R.string.memory_deleted)) { f -> MemoryEdits.forget(f, setOf(item.id)).first }
+                log(VoiceEvent.MEM_FORGET, 1, MemForget.SETTINGS.id)
+            },
+            onChange = { robot, text ->
+                editing = null
+                change(ctx.getString(R.string.memory_saved)) { f -> app.heyrobot.core.memory.MemoryChoices.change(f, item.id, robot, text, now()) ?: f }
+            })
+    }
+    editing?.takeIf { it.choice == null }?.let { item ->
         ItemDialog(item, pinFull = pinnedCount >= MemoryLimits.MAX_PINNED && !item.pinned, now = now(), onDismiss = { editing = null },
             onMine = {
                 editing = null
@@ -647,9 +659,9 @@ fun memorySummaryText(s: MemorySettings): Phrase = when {
 @Composable
 private fun ItemRow(i: MemoryItem, now: Long, onClick: () -> Unit) {
     // 1.4: a filing rule says so (Robot Files reads it; it never goes into an answer).
-    val line = listOfNotNull(if (i.filing != null) app.heyrobot.core.i18n.FilesStrings.ruleLabel().str() else null, MemoryDates.lineText(i, now).str())
+    val line = listOfNotNull(if (i.filing != null) app.heyrobot.core.i18n.FilesStrings.ruleLabel().str() else if (i.choice != null) app.heyrobot.core.i18n.HelperStrings.choiceLabel().str() else null, MemoryDates.lineText(i, now).str())
         .joinToString(" · ")
-    PreferenceItem(i.text, line, if (i.secret) RIcons.Lock else if (i.filing != null) RIcons.Folder else null, onClick = onClick,
+    PreferenceItem(i.text, line, if (i.secret) RIcons.Lock else if (i.filing != null) RIcons.Folder else if (i.choice != null) RIcons.Cloud else null, onClick = onClick,
         trailing = if (i.imported != null) { { ImportedChip() } } else null)
 }
 
@@ -733,6 +745,32 @@ private fun RuleDialog(item: MemoryItem, now: Long, onDismiss: () -> Unit, onMin
                         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     DialogAction(stringResource(R.string.memory_this_is_mine), stringResource(if (item.source == MemorySource.CONTENT)
                         R.string.memory_this_is_mine_content_detail else R.string.memory_this_is_mine_detail), onMine)
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.memory_cancel)) } },
+        dismissButton = { TextButton(onClick = onDelete) { Text(stringResource(R.string.memory_delete)) } },
+    )
+}
+
+/** A choice of who answers: its words, whether Robot follows it, and the change to the other answerer; Delete. Only your own words or a tap here set one. */
+@Composable
+private fun ChoiceDialog(item: MemoryItem, now: Long, onDismiss: () -> Unit, onDelete: () -> Unit, onChange: (robot: Boolean, text: String) -> Unit) {
+    val c = item.choice!!
+    val kind = app.heyrobot.core.helpers.QuestionKind.of(c.kind)
+    val mine = app.heyrobot.core.memory.MemoryChoices.applies(item, now)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        properties = SecureDialog,
+        title = { Text(app.heyrobot.core.i18n.HelperStrings.choiceLabel().str()) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(item.text, style = MaterialTheme.typography.bodyLarge)
+                Text((if (mine) app.heyrobot.core.i18n.HelperStrings.choiceChangeDetail() else app.heyrobot.core.i18n.HelperStrings.choiceNotYours()).str(), style = MaterialTheme.typography.bodyMedium)
+                Text(MemoryDates.lineText(item, now).str(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (mine && kind != null) {
+                    val to = kind.item(!c.robot).str()
+                    DialogAction((if (c.robot) app.heyrobot.core.i18n.HelperStrings.choiceToHelper() else app.heyrobot.core.i18n.HelperStrings.choiceToRobot()).str(), to) { onChange(!c.robot, to) }
                 }
             }
         },

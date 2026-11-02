@@ -346,4 +346,5 @@
     <string name="guide_home_again">Run the setup guide again</string>
     <string name="guide_about_row">Setup guide</string>
     <string name="guide_about_detail">What each feature does, what stays on the phone, and what to turn on</string>
+    <string name="guide_routines_clock">Robot uses your phone\'s default Clock app, for when an alarm ends and for alarms you ask it to set. To use another, choose “When I turn off my alarm”, then Clock app. GrapheneOS Clock tells Robot when an alarm ends. With other Clocks, Robot goes by when the alarm\'s sound stops, so an alarm that only vibrates won\'t start anything; a set time works instead.</string>
 </resources>

@@ -21,10 +21,12 @@ class ToolCallsTest {
     }
 
     @Test fun everySpecHasAtMostThreeArgumentsAndValidJson() {
-        assertEquals(ToolName.entries.toSet(), ToolSpecs.ALL.map { it.tool }.toSet())
+        // (C4, deliberately: a skill's connection and hand-off steps are never described, so they have no spec.)
+        assertEquals(ToolName.entries.filter { it.group != ToolGroup.CONNECTIONS }.toSet(), ToolSpecs.ALL.map { it.tool }.toSet())
         // Phase 2 raised the limit to three for draft_email and add_event only; everything else stays at two or fewer.
-        // 1.4: find_files takes three too (query, drawer, when: files-1.4-plan.md §5.1).
-        assertEquals(setOf(ToolName.DRAFT_EMAIL, ToolName.ADD_EVENT, ToolName.FIND_FILES), ToolSpecs.ALL.filter { it.params.size == 3 }.map { it.tool }.toSet())
+        // 1.4: find_files takes three too (query, drawer, when: files-1.4-plan.md §5.1). The everyday set (E2): so does calculate
+        // (expression, and a conversion's from and to: everyday-set-plan.md §4.4), the pin following deliberately. 1.5: ask_robot (person, request, details: robot-to-robot-plan.md §4.3).
+        assertEquals(setOf(ToolName.DRAFT_EMAIL, ToolName.ADD_EVENT, ToolName.FIND_FILES, ToolName.CALCULATE, ToolName.ASK_ROBOT), ToolSpecs.ALL.filter { it.params.size == 3 }.map { it.tool }.toSet())
         for (s in ToolSpecs.ALL) {
             val o = JSONObject(s.openApiJson())
             assertEquals(s.tool.id, o.getString("name"))
@@ -300,5 +302,19 @@ class ToolCallsTest {
         assertTrue(ToolCalls.parseText("A timer counts down. Set one in the Clock app.").isEmpty())
         assertTrue(ToolCalls.parseText("call:send_sms{to:1}").isEmpty())
         assertTrue(ToolCalls.parseText("{\"name\": \"rm\", \"arguments\": {}}").isEmpty())
+    }
+
+    /**
+     * F69: Android's regex engine (ICU) takes \\w as Unicode and the JVM's as ASCII, so the flag below makes the JVM act like
+     * the phone: "été" must not read as a new key there and cut the message at the comma.
+     */
+    @Test fun aFrenchWordAfterACommaStaysInTheValueOnThePhoneToo() {
+        val phone = java.util.regex.Pattern.compile(ToolCalls.GEMMA_ARGS, java.util.regex.Pattern.DOTALL or java.util.regex.Pattern.UNICODE_CHARACTER_CLASS).toRegex()
+        fun args(body: String) = phone.findAll(body).associate { it.groupValues[1] to it.groupValues[2] }
+        assertEquals(mapOf("to" to "Maman", "message" to "Il fait chaud, été: comme toujours, écrit: Paul"),
+            args("to:Maman,message:Il fait chaud, été: comme toujours, écrit: Paul"))
+        // An ASCII key after a comma still ends the value, as on the JVM.
+        assertEquals(mapOf("title" to "Thé, café", "when" to "demain"), args("title:Thé, café,when:demain"))
+        assertEquals("Il fait chaud, été: oui", ToolCalls.parseText("call:send_text{to:Maman,message:Il fait chaud, été: oui}").single().call.args["message"])
     }
 }

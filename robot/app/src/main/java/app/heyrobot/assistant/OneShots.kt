@@ -31,7 +31,7 @@ object BrainOneShots : OneShotTransport {
     override suspend fun run(req: BrainMsg.OneShot, budget: OneShotBudget, onText: (String) -> Unit): OneShotResult = send(req, null, budget, onText)
 
     /**
-     * 1.4 (Robot Files, plan §4.2): a FILE_READ of one page's picture, [jpeg] as `:files` made it. It crosses as a panel
+     * 1.4 (Robot Files, plan §4.2): a FILE_READ of one page's picture, [jpeg] encoded in this process from `:files`' pixels (F16). It crosses as a panel
      * photo does (a read-only SharedMemory, never a file); a model without vision answers NO_VISION (OneShotResult.Failed),
      * and the caller keeps the file for one that sees. A request that doesn't say it carries a picture isn't sent.
      */

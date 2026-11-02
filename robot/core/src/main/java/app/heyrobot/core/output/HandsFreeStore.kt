@@ -4,6 +4,7 @@ package app.heyrobot.core.output
 import app.heyrobot.core.car.CarSettings
 import app.heyrobot.core.car.SavedPlace
 import app.heyrobot.core.headset.HeadsetSettings
+import app.heyrobot.core.readForUpdate
 import app.heyrobot.core.writeAtomic
 import org.json.JSONObject
 import java.io.File
@@ -81,24 +82,23 @@ data class Places(val home: SavedPlace? = null, val work: SavedPlace? = null) {
     }
 }
 
-class HandsFreeStore(private val dir: File) {
+class HandsFreeStore(private val dir: File, private val readFile: (File) -> ByteArray = File::readBytes) {
     private fun f(name: String) = File(dir, name)
 
     /** Your headsets and cars; none while devices.json is missing, damaged or from a newer Robot. */
     fun devices(): DeviceMemory = (deviceFile() as? DeviceFile.Ok)?.memory ?: DeviceMemory()
 
-    fun deviceFile(): DeviceFile {
-        val text = read(f(DEVICES)) ?: return DeviceFile.Ok(DeviceMemory())
-        return DeviceMemory.decode(text)
-    }
+    fun deviceFile(): DeviceFile = decodeDevices(read(f(DEVICES)))
+
+    private fun decodeDevices(text: String?): DeviceFile = text?.let(DeviceMemory::decode) ?: DeviceFile.Ok(DeviceMemory())
 
     /**
      * Reads, changes and writes devices.json under the lock; null when it couldn't (a newer Robot's file, which is left
-     * alone, or a failed write). A damaged file is kept aside as devices.json.bad before it is replaced.
+     * alone, one that can't be read now, or a failed write). A damaged file is kept aside as devices.json.bad before it is replaced.
      */
     fun editDevices(change: (DeviceMemory) -> DeviceMemory): DeviceMemory? = try {
         locked {
-            val now = deviceFile()
+            val now = decodeDevices(readNow(f(DEVICES)))
             val memory = when (now) {
                 is DeviceFile.Ok -> now.memory
                 is DeviceFile.TooNew -> return@locked null
@@ -117,15 +117,15 @@ class HandsFreeStore(private val dir: File) {
 
     fun headset(): HeadsetFile = HeadsetFile.decode(read(f(HEADSET)))
 
-    fun editHeadset(change: (HeadsetFile) -> HeadsetFile): HeadsetFile? = update(::headset, change) { writeAtomic(f(HEADSET), it.encode()) }
+    fun editHeadset(change: (HeadsetFile) -> HeadsetFile): HeadsetFile? = update({ HeadsetFile.decode(readNow(f(HEADSET))) }, change) { writeAtomic(f(HEADSET), it.encode()) }
 
     fun car(): CarFile = CarFile.decode(read(f(CAR)))
 
-    fun editCar(change: (CarFile) -> CarFile): CarFile? = update(::car, change) { writeAtomic(f(CAR), it.encode()) }
+    fun editCar(change: (CarFile) -> CarFile): CarFile? = update({ CarFile.decode(readNow(f(CAR))) }, change) { writeAtomic(f(CAR), it.encode()) }
 
     fun places(): Places = Places.decode(read(f(PLACES)))
 
-    fun editPlaces(change: (Places) -> Places): Places? = update(::places, change) { writeAtomic(f(PLACES), it.encode()) }
+    fun editPlaces(change: (Places) -> Places): Places? = update({ Places.decode(readNow(f(PLACES))) }, change) { writeAtomic(f(PLACES), it.encode()) }
 
     /** Car mode's settings with its places: what CarModeMachine, CarNavigate and the call flow read. */
     fun carSettings(): CarSettings = places().let { p -> car().settings.copy(home = p.home, work = p.work) }
@@ -146,7 +146,11 @@ class HandsFreeStore(private val dir: File) {
         null
     }
 
-    private fun read(file: File): String? = try { if (file.isFile) file.readText(Charsets.UTF_8) else null } catch (_: Exception) { null }
+    /** For showing: a file that can't be read now reads as none. */
+    private fun read(file: File): String? = try { readNow(file) } catch (_: Exception) { null }
+
+    /** For an edit: a file that can't be read now throws, so nothing replaces it. */
+    private fun readNow(file: File): String? = readForUpdate(file, readFile)?.toString(Charsets.UTF_8)
 
     private fun <T> locked(block: () -> T): T = synchronized(LOCK) {
         dir.mkdirs()

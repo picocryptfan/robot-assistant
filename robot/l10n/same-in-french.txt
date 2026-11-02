@@ -19,6 +19,7 @@ Pause
 Notifications
 Date
 %1$d min
+%1$d minutes
 %1$d s
 Licence
 Source
@@ -35,3 +36,13 @@ Document
 Documents
 Conversations
 Total
+%1$s %2$s
+%1$s, %2$s
+Question
+Service
+Arguments
+Mode
+Plan
+Snowflake
+Robot
+Permissions

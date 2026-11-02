@@ -1,0 +1,22 @@
+{
+  "format": 1,
+  "id": "stop-recipe",
+  "title": "Stop during a how-to, in a second voice",
+  "safety": "read",
+  "testBench": ["v23-say-stop"],
+  "needs": {"model": true},
+  "setup": [{"set": "speakReplies", "value": "VOICE"}],
+  "steps": [
+    {"do": "open", "how": "wake"},
+    {"do": "say", "text": "How do I bake bread, step by step?", "voice": "kitten"},
+    {"do": "pause", "seconds": 25},
+    {"do": "say", "text": "Stop.", "voice": "heart"},
+    {"do": "pause", "seconds": 3},
+    {"do": "check", "what": "log", "regex": "stop_word acted=true"},
+    {"do": "open", "how": "wake"},
+    {"do": "wait_listening", "seconds": 30},
+    {"do": "say", "text": "What's the capital of France?", "voice": "kitten"},
+    {"do": "wait_reply", "seconds": 90, "contains": "Paris"},
+    {"do": "end"}
+  ]
+}

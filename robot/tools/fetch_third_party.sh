@@ -6,6 +6,7 @@
 # the keyword model's bpe.model, which the app reads to spell the user's wake phrases, plus the 17-file English +
 # French espeak-ng-data subset the Kokoro and Kitten voices need (docs/voice-plan.md 2.5).
 # The downloadable voice models themselves are not packaged: see tools/fetch_voice_models.sh.
+# The libsherpa-onnx-jni.so it installs is sherpa-onnx's own release, for the unit tests: an APK needs tools/build_sherpa.sh.
 # Usage: tools/fetch_third_party.sh [--install]
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
@@ -82,5 +83,6 @@ if [ "${1:-}" = "--install" ]; then
     cp "$TMP/espeak/espeak-ng-data/$f" "$VOICE/assets/espeak-ng-data/$f"
   done <<<"$ESPEAK_FILES"
   echo "installed (keywords.txt and stop.txt are in git; to regenerate them: python3 tools/make_keywords.py .)"
+  echo "for an APK, tools/build_sherpa.sh replaces libsherpa-onnx-jni.so with the patched build tools/verify_apk.sh wants"
 fi
 echo "all third-party files verified"

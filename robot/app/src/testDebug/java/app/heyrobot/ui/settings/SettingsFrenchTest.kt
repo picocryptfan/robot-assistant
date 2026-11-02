@@ -6,10 +6,11 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasStateDescription
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import app.heyrobot.core.AdbFixes
 import app.heyrobot.core.Approval
 import app.heyrobot.core.LookSettings
@@ -84,8 +85,17 @@ class SettingsFrenchTest {
         // 1.4: Settings › Files.
         rule.scrollToText("Fichiers")
         rule.onRow("Fichiers").assert(hasText("Aucun fichier pour l’instant"))
+        // 1.4 Lists: Settings › Lists.
+        rule.scrollToText("Listes")
+        rule.waitUntil(5_000) { runCatching { rule.onRow("Listes").assert(hasText("Aucune liste pour l’instant")) }.isSuccess }
         rule.onAllNodesWithText("Réglages").onFirst().assertExists()
         noProblems()
+    }
+
+    @Test fun robotToRobotIsFrench() {
+        rule.show { SettingsRoot(RobotSettings(), Snapshot(facts = facts(), phone = PIXEL_10_PRO), log.actions, look = LookSettings(), memory = MemorySettings()) }
+        rule.scrollToText("Robot à Robot")
+        rule.onRow("Robot à Robot").assert(hasText("Désactivé"))
     }
 
     @Test fun theRootsStatesInFrench() {
@@ -180,6 +190,46 @@ class SettingsFrenchTest {
         rule.onNodeWithText("2. Ouvrir l’itinéraire vers la maison dans Organic Maps").assertExists()
         rule.scrollToText("Supprimer la compétence")
         noProblems()
+    }
+
+    /** C11, Settings › Skills › Connections with the menus in French: the list, a row's state, the kinds to add; your names stay yours. */
+    @Test fun connectionsAreFrench() {
+        val now = java.time.ZonedDateTime.of(2026, 10, 27, 12, 0, 0, 0, java.time.ZoneId.of("America/Toronto"))
+        val ha = app.heyrobot.core.connect.Connection("c-ha0001", app.heyrobot.core.connect.ConnKind.HOME_ASSISTANT, "Maison",
+            app.heyrobot.core.connect.ConnUrl.parse("https://home.example.org")!!, auth = app.heyrobot.core.connect.ConnAuth.Bearer)
+        rule.show { ConnectionsScreen(ConnData(listOf(ha), keys = mapOf(ha.id to false)), ConnSettingsActions(), SnackbarHostState(), onBack = {}, now = now) }
+        rule.onNodeWithText("Tes connexions").assertExists()
+        rule.onRow("Maison").assert(hasText("Home Assistant · Il lui faut sa clé"))
+        noProblems()
+        rule.scrollToText("Relais vers une appli")
+        rule.onNodeWithText("Ouvre une appli que tu choisis avec les mots que tu as préparés. Rien ne quitte le téléphone avant que tu l’envoies de là.")
+            .assertExists()
+    }
+
+    /** C11: a connection's page in French, its operation under your own title. */
+    @Test fun aConnectionsPageIsFrench() {
+        val now = java.time.ZonedDateTime.of(2026, 10, 27, 12, 0, 0, 0, java.time.ZoneId.of("America/Toronto"))
+        val ha = app.heyrobot.core.connect.Connection("c-ha0001", app.heyrobot.core.connect.ConnKind.HOME_ASSISTANT, "Maison",
+            app.heyrobot.core.connect.ConnUrl.parse("https://home.example.org")!!, auth = app.heyrobot.core.connect.ConnAuth.Bearer,
+            ops = listOf(app.heyrobot.core.connect.ConnOp("light_off", "Éteindre les lumières d’en bas", app.heyrobot.core.connect.OpSpec.HaCall("light", "turn_off"),
+                mapOf(app.heyrobot.core.connect.ConnOp.ENTITY to app.heyrobot.core.connect.OpParam(app.heyrobot.core.skills.ParamType.CHOICE,
+                    listOf("light.downstairs"), default = "light.downstairs")))))
+        rule.show { ConnectionPageScreen(ha, ConnData(listOf(ha), keys = mapOf(ha.id to false)), ConnSettingsActions(), SnackbarHostState(), onBack = {}, now = now) }
+        rule.onRow("Coller la clé").assertExists()
+        rule.onRow("Tester").assertExists()
+        noProblems()
+        rule.scrollToText("Éteindre les lumières d’en bas")
+        rule.onNodeWithText("change quelque chose chez toi", substring = true).assertExists()
+        rule.scrollToText("Retirer la connexion")
+    }
+
+    /** C11: a connections.json Robot can't read offers « Recommencer », which asks first. */
+    @Test fun connectionsStartOverIsFrench() {
+        rule.show { ConnectionsScreen(ConnData(problem = app.heyrobot.core.connect.ConnFile.Damaged), ConnSettingsActions(), SnackbarHostState(), onBack = {}) }
+        rule.onNodeWithText("Robot n’a pas pu lire tes connexions, alors aucune n’est utilisée. Les compétences qui en ont besoin attendent.").assertExists()
+        noProblems()
+        rule.onNodeWithText("Recommencer").performClick()
+        rule.onNodeWithText("Recommencer${fine}?").assertExists()
     }
 
     @Test fun displayAndHistoryAreFrench() {

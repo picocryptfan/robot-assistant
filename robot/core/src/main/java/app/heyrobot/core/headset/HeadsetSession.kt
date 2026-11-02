@@ -31,6 +31,8 @@ enum class SessionPhase { IDLE, ROUTING, LISTENING, BUSY, FOLLOW_UP, ENDED }
 enum class EndWhy(override val id: Int, override val title: String) : LogCode {
     DONE(1, "done"), BY_YOU(2, "you stopped it"), DEVICE_GONE(3, "the headset went away"), CALL(4, "a call started"),
     ROUTE_FAILED(5, "the headset microphone didn't connect"), NO_HEADSET(6, "no headset"), NOTHING_HEARD(7, "nothing heard"),
+    /** The question ran into the 30 s cap: speech was heard, and Robot didn't act on it. */
+    CUT_AT_CAP(8, "cut at the 30-second limit"),
 }
 
 enum class TimerKind { ROUTE, FOLLOW_UP }
@@ -45,7 +47,7 @@ sealed class SessionEvent {
     data object RouteTimeout : SessionEvent()
 
     /** The question ended: [empty] when nothing was heard. */
-    data class Heard(val empty: Boolean) : SessionEvent()
+    data class Heard(val empty: Boolean, val cut: Boolean = false) : SessionEvent()
 
     /** Robot finished answering (or was stopped). */
     data object ReplyDone : SessionEvent()
@@ -113,7 +115,7 @@ object HeadsetSessionMachine {
                 else -> s to emptyList()
             }
             SessionPhase.LISTENING -> when (e) {
-                is SessionEvent.Heard -> if (e.empty) end(s, EndWhy.NOTHING_HEARD) else busy(s)
+                is SessionEvent.Heard -> if (e.cut) end(s, EndWhy.CUT_AT_CAP) else if (e.empty) end(s, EndWhy.NOTHING_HEARD) else busy(s)
                 is SessionEvent.Button -> when (e.action) {
                     ButtonAction.STOP_LISTENING, ButtonAction.CANCEL -> end(s, EndWhy.BY_YOU, listening = true)
                     ButtonAction.REPEAT -> busy(s, listOf(SessionEffect.StopListening, SessionEffect.Repeat))
@@ -134,7 +136,7 @@ object HeadsetSessionMachine {
                 else -> s to emptyList()
             }
             SessionPhase.FOLLOW_UP -> when (e) {
-                is SessionEvent.Heard -> if (e.empty) end(s, EndWhy.DONE, listening = true) else busy(s, listOf(SessionEffect.CancelTimers))
+                is SessionEvent.Heard -> if (e.cut) end(s, EndWhy.CUT_AT_CAP, listening = true) else if (e.empty) end(s, EndWhy.DONE, listening = true) else busy(s, listOf(SessionEffect.CancelTimers))
                 SessionEvent.FollowUpExpired -> end(s, EndWhy.DONE, listening = true)
                 is SessionEvent.Button -> when (e.action) {
                     ButtonAction.STOP_LISTENING, ButtonAction.CANCEL -> end(s, EndWhy.BY_YOU, listening = true)

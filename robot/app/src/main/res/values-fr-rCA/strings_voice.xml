@@ -30,14 +30,14 @@
     <string name="voice_show_words">Afficher les mots pendant que tu parles</string>
     <string name="voice_more_battery">Utilise plus de batterie</string>
     <string name="voice_wait">Attendre avant de répondre</string>
-    <string name="voice_wait_summary">%1$s · combien de temps Robot attend après que tu as arrêté de parler. Choisis Long s’il te coupe la parole.</string>
+    <string name="voice_wait_summary">%1$s · combien de temps Robot attend après que tu as arrêté de parler. Choisis Très long s’il te coupe la parole.</string>
     <string name="voice_wait_short">Court</string>
     <string name="voice_wait_normal">Normal</string>
     <string name="voice_wait_long">Long</string>
     <string name="voice_wait_very_long">Très long</string>
     <string name="voice_wait_short_detail">0,6&#160;s de silence</string>
-    <string name="voice_wait_normal_detail">Par défaut. 1&#160;s de silence</string>
-    <string name="voice_wait_long_detail">1,6&#160;s de silence</string>
+    <string name="voice_wait_normal_detail">1&#160;s de silence</string>
+    <string name="voice_wait_long_detail">Par défaut. 1,6&#160;s de silence</string>
     <string name="voice_wait_very_long_detail">2,5&#160;s de silence</string>
     <string name="voice_group_talks">Pendant que Robot parle</string>
     <string name="voice_hear_you">T’entendre pendant que Robot parle</string>
@@ -125,4 +125,7 @@
 
     <!-- A voice model's download (Android's download notification). -->
     <string name="voice_download_title">Robot&#160;: %1$s</string>
+    <string name="voice_saver_channel">Mot d’activation en pause</string>
+    <string name="voice_saver_paused">Mot d’activation en pause&#160;: économiseur de batterie</string>
+    <string name="voice_saver_paused_detail">Robot n’écoute pas sa phrase d’activation pendant que l’économiseur de batterie est activé. Il recommence quand l’économiseur s’arrête. Le balayage depuis un coin du bas ouvre toujours Robot.</string>
 </resources>

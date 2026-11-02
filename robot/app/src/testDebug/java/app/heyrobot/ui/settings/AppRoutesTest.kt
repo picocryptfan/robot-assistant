@@ -38,6 +38,8 @@ class AppRoutesTest {
         assertEquals(AppRoutes.Target(tab = Tab.FILES, filesIcon = true), open(Intent().setClassName(ctx.packageName, AppPages.FILES_ALIAS)))
         assertEquals(AppRoutes.Target(tab = Tab.FILES), open(main().putExtra(AppPages.EXTRA, AppPages.FILES)))
         assertEquals(AppRoutes.Target(page = Page.Setup(people = true)), open(HandOffApps.robotPage(ctx, AppPages.PERMISSIONS)))
+        // The everyday set (E7): Ask Robot's "Make Robot your assistant" opens Assistant setup from its top.
+        assertEquals(AppRoutes.Target(page = Page.Setup()), open(main().putExtra(AppPages.EXTRA, AppPages.SETUP)))
         assertEquals(AppRoutes.Target(tab = Tab.NOTES, notesIcon = true), open(HandOffApps.robotPage(ctx, AppPages.NOTES)))
         // 0.7.0: the panel's Settings button opens the Settings tab.
         assertEquals(AppRoutes.Target(tab = Tab.SETTINGS), open(HandOffApps.robotPage(ctx, AppPages.SETTINGS)))

@@ -39,6 +39,11 @@ import kotlin.concurrent.withLock
 // process is in the background, when asked, and when the last client unbinds.
 
 class MtService : Service() {
+    internal companion object {
+        /** The engine's native side: the library, in every build; a test's stand-in, in tests. */
+        @Volatile var native: MtNative = Slimt
+    }
+
     private lateinit var engine: BergamotEngine
     private lateinit var inbox: HandlerThread
     private lateinit var messenger: Messenger
@@ -68,7 +73,7 @@ class MtService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        engine = BergamotEngine(filesDir)
+        engine = BergamotEngine(filesDir, native)
         inbox = HandlerThread("robot-mt-inbox").apply { start() }
         messenger = Messenger(Handler(inbox.looper) { m -> handle(m); true })
         worker = Thread(::work, "robot-mt").apply { start() }
@@ -148,7 +153,7 @@ class MtService : Service() {
             }
             is MtMsg.Empty -> when (msg.what) {
                 MtProtocol.REQ_UNLOAD -> control(Control.Unload(c))
-                else -> send(c, MtProtocol.EV_STATUS, MtMsg.Status(Slimt.available, loadedNow, lock.withLock { queue.waiting }, memory()))
+                else -> send(c, MtProtocol.EV_STATUS, MtMsg.Status(native.available, loadedNow, lock.withLock { queue.waiting }, memory()))
             }
             else -> send(c, MtProtocol.EV_ERROR, MtMsg.Error(MtError.BAD_REQUEST))
         }

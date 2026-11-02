@@ -23,6 +23,27 @@ class RoutineStoreTest {
 
     @After fun clean() { dir.deleteRecursively() }
 
+    // F51: a file there that can't be read now is never rewritten from defaults.
+    @Test fun aFailedReadRefusesEveryEditAndLeavesTheFile() {
+        store.editReminders { listOf(BriefReminder("Call the vet", LocalDate.of(2026, 11, 1))) }
+        store.editSettings { it.copy(online = false) }
+        File(dir, RoutineStore.READY).writeText("[]")
+        File(dir, RoutineStore.STATE).writeText("{}")
+        val files = dir.listFiles { f -> f.name.endsWith(".json") && f.name != RoutineStore.ROUTINES }.orEmpty().toList()
+        val before = files.associateWith { it.readBytes().toList() }
+        files.forEach { it.setReadable(false) }
+        try {
+            assumeTrue(files.size == 4 && files.none { it.canRead() })
+            assertNull(store.editReminders { emptyList() })
+            assertNull(store.editSettings { it.copy(online = true) })
+            assertNull(store.editReady { emptyList() })
+            assertNull(store.editState { it })
+        } finally {
+            files.forEach { it.setReadable(true) }
+        }
+        for ((f, b) in before) assertEquals(f.name, b, f.readBytes().toList())
+    }
+
     private fun routine(id: String = "r-1", name: String = "Morning", steps: List<RoutineStep> = listOf(RoutineStep.Brief)) =
         Routine(id, name, RoutineTrigger.At(LocalTime.of(7, 0), RoutineWords.WEEKDAYS), steps, created = 1_000L)
 

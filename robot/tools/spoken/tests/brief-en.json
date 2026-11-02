@@ -1,0 +1,20 @@
+{
+  "format": 1,
+  "id": "brief-en",
+  "title": "The morning brief by voice; next, repeat and stop",
+  "safety": "read",
+  "testBench": ["v80-br-now"],
+  "setup": [{"set": "speakReplies", "value": "VOICE"}],
+  "steps": [
+    {"do": "open", "how": "wake"},
+    {"do": "say", "text": "Give me my morning brief.", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 60},
+    {"do": "check", "what": "router", "equals": "RoutineRouter"},
+    {"do": "say", "text": "Next.", "voice": "heart"},
+    {"do": "pause", "seconds": 4},
+    {"do": "say", "text": "Repeat.", "voice": "heart"},
+    {"do": "pause", "seconds": 4},
+    {"do": "say", "text": "Stop.", "voice": "heart"},
+    {"do": "end"}
+  ]
+}

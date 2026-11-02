@@ -15,6 +15,8 @@
     <string name="update_auto_check">Check for updates automatically</string>
     <string name="update_auto_check_on">Once a day, in the background</string>
     <string name="update_auto_check_off">Only when you tap Check now</string>
+    <string name="update_schedule_failed">Automatic updates can\'t run</string>
+    <string name="update_schedule_failed_detail">Android wouldn\'t schedule them on this phone. Check now still works.</string>
     <string name="update_wifi">Download updates on Wi-Fi</string>
     <string name="update_wifi_detail">Downloads and checks an update on Wi-Fi, then tells you it\'s ready to install</string>
     <string name="update_test_builds">Include test builds</string>

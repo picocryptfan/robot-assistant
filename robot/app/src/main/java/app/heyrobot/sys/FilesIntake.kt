@@ -147,6 +147,18 @@ class FilesIntake(private val vault: FilesVault, private val source: SharedSourc
     fun addTranscript(name: String, markdown: String): IntakeStep =
         add(markdown.toByteArray(Charsets.UTF_8)) { t -> FileIntake(name, app.heyrobot.core.files.FileSource.TRANSCRIPT, type = t.mime) }
 
+    /** L8: a file from another Robot (core PeerArrivals): the same copy and checks, committed by its own rules, not here. */
+    fun copyArriving(input: java.io.InputStream, declared: Long): Intake = copier.copy(input, declared)
+
+    /** L8: whether Robot Files holds these bytes already. */
+    fun holds(sha256: String): Boolean = try { vault.duplicateOf(sha256) != null } catch (_: Exception) { false }
+
+    /** L8: an arrival that passed: false for "not now" (the staged copy went with it; the arrival stays for the next pass). */
+    fun commitArriving(r: Intake.Ready, intake: FileIntake): Boolean = commit(r, intake) is IntakeStep.Added
+
+    /** L8: an arrival that didn't pass: its staged copy goes. */
+    fun discardArriving(staged: app.heyrobot.core.files.Staged) = vault.discard(staged)
+
     /** A duplicate you said to add anyway. */
     fun anyway(d: IntakeStep.Duplicate): IntakeStep = commit(d.ready, d.intake)
 
@@ -216,7 +228,7 @@ class FilesIntake(private val vault: FilesVault, private val source: SharedSourc
         }
 
         /** Why Robot won't take [uri] (core ShareRules), or null: [own] says which providers are Robot's. */
-        fun refusal(uri: Uri, own: (String) -> Boolean): ShareRefusal? = ShareRules.check(SharedRef(uri.scheme, uri.encodedAuthority), own)
+        fun refusal(uri: Uri, own: (String) -> Boolean): ShareRefusal? = ShareRules.check(SharedRef(uri.scheme, uri.authority, uri.encodedAuthority), own)
 
         /** Whether [authority] is one of Robot's own providers: by its name, and by the package Android says owns it. */
         fun ownAuthority(ctx: Context, authority: String): Boolean {

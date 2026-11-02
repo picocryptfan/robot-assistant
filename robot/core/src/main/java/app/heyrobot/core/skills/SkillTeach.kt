@@ -123,7 +123,7 @@ data class SkillDraft(
                 StepKind.SET_ALARM -> {
                     val h = (st.args["hour"] as? Number)?.toInt()
                     val m = (st.args["minute"] as? Number)?.toInt() ?: 0
-                    listOfNotNull(h?.let { Slot(i, "hour", ParamType.TIME, "%02d:%02d".format(it, m)) }) // l10n: not text (a value in the skills file)
+                    listOfNotNull(h?.let { Slot(i, "hour", ParamType.TIME, "%02d:%02d".format(Locale.ROOT, it, m)) }) // l10n: not text (a value in the skills file)
                 }
                 StepKind.OPEN_APP -> listOfNotNull(str("name")?.let { Slot(i, "name", ParamType.APP, it) })
                 StepKind.MAPS_SEARCH -> listOfNotNull(str("query")?.let { Slot(i, "query", ParamType.PLACE, it) })

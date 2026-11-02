@@ -45,6 +45,9 @@ import kotlinx.coroutines.withContext
 object FilesRequests {
     val pack = MutableStateFlow<String?>(null)
 
+    /** L8: a Robot's request for a file, from Requests: you pick the file here, and only you (D17). */
+    val robotAsk = MutableStateFlow<Pair<app.heyrobot.sys.RobotAsk, app.heyrobot.core.i18n.Phrase>?>(null)
+
     fun open(route: String) {
         pack.value = route
     }

@@ -5,7 +5,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.hasStateDescription
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import app.heyrobot.core.files.FileIntake
@@ -206,7 +206,7 @@ class FilesSettingsTest {
         rule.onRow("Photos and videos").performClick()
         rule.inDialog("Off: it stays in your Inbox, unread").performClick()
         rule.waitUntil(5_000) { store.settings.photos == app.heyrobot.core.files.FileLevel.OFF }
-        rule.onRow("Read text in images").assert(hasText("With Robot's own model, on this phone. Off, a photo is filed as a photo and Robot asks what a scan is."))
+        rule.waitUntil(5_000) { runCatching { rule.onRow("Read text in images").assert(hasText("With Robot's own model, on this phone. Off, a photo is filed as a photo and Robot asks what a scan is.")) }.isSuccess }
         rule.onRow("Read text in images").performClick()
         rule.waitUntil(5_000) { !store.settings.readImageText }
         rule.onRow("Strip location from photos I send").performClick()
@@ -242,7 +242,7 @@ class FilesSettingsTest {
         rule.inDialog("Désactivé${nb}: il reste dans ta boîte de réception, sans être lu").assertExists()
         rule.inDialog("Demander d’abord").performClick()
         rule.waitUntil(5_000) { store.settings.bills == app.heyrobot.core.files.FileLevel.ASK }
-        rule.onRow("Lire le texte dans les images").assertExists()
+        rule.waitUntil(5_000) { runCatching { rule.onRow("Lire le texte dans les images").assertExists() }.isSuccess }
         assertEquals(emptyList<String>(), rule.touchTargetProblems())
         rule.shot("files_settings_levels_fr")
     }

@@ -25,10 +25,16 @@ package app.heyrobot.voice
 // in many of its sentences, and setting aside every "stop" during each of those whole sentences (about a quarter of
 // a long story's talking) was one reason "stop" didn't work while Robot read one. While a piece is still being made, and
 // for the phone's voice (its words' places aren't known), the whole piece counts as before.
+//
+// 1.1.3: nothing can be an echo of what hasn't sounded. Writing is often slower than speaking, so she goes quiet for
+// seconds between sentences. A "stop" in that wait was set aside if the sentence being made said "step" further on, or
+// if the last one did, because the track's head stands still at the end of what it was given: the 1.2 s after a piece
+// never ran out. A piece now counts from its first audio ([sounding]), and the wait moves the head on by the clock
+// ([headInGap]). Nothing changes while she is actually talking: "step" does fire the spotter (st6-stop's numbers).
 
 class EchoGuard(private val rate: Int, private val beforeMs: Int = 300, private val afterMs: Int = AFTER_MS) {
     /** [stopAt]: where its words like "stop" are, as fractions of its text (start, end, start, end…); null: anywhere. */
-    private class Piece(val start: Long, var end: Long, val stop: Boolean, val wake: Boolean, val stopAt: FloatArray? = null)
+    private class Piece(val start: Long, var end: Long, val stop: Boolean, val wake: Boolean, val stopAt: FloatArray? = null, var sounding: Boolean = true)
 
     private val risky = ArrayDeque<Piece>()
     private var open: Piece? = null
@@ -38,9 +44,21 @@ class EchoGuard(private val rate: Int, private val beforeMs: Int = 300, private 
 
     /**
      * A piece of speech starts at output frame [start]; its end is not known until it is synthesised, and its first
-     * sentence may already play before then, so it counts as open-ended until [close].
+     * sentence may already play before then, so it counts as open-ended until [close]. [sounding] false: it has no audio
+     * yet, and counts for nothing until [sounding] is called.
      */
-    fun open(start: Long, text: String) = open(start, soundsLikeStop(text), saysWakeWord(text), stopSpans(text))
+    fun open(start: Long, text: String, sounding: Boolean = true) {
+        open(start, soundsLikeStop(text), saysWakeWord(text), stopSpans(text))
+        if (!sounding) setOpenSounding(false)
+    }
+
+    /** The open piece's first audio is about to be written. */
+    fun sounding() = setOpenSounding(true)
+
+    @Synchronized
+    private fun setOpenSounding(on: Boolean) {
+        open?.sounding = on
+    }
 
     /**
      * As [open], for a piece already found to say a word like "stop" ([stop]) or a wake phrase's word ([wake]), where in
@@ -91,6 +109,7 @@ class EchoGuard(private val rate: Int, private val beforeMs: Int = 300, private 
     fun mayBeEcho(played: Long): Boolean = risky.any { it.stop && nearStopWord(it, played) }
 
     private fun nearStopWord(p: Piece, played: Long): Boolean {
+        if (!p.sounding) return false
         val before = beforeMs.toLong() * rate / 1000
         val after = afterMs.toLong() * rate / 1000
         if (played < p.start - before || played > p.end + after) return false
@@ -120,7 +139,7 @@ class EchoGuard(private val rate: Int, private val beforeMs: Int = 300, private 
     private fun near(played: Long, afterMs: Int = this.afterMs, kind: (Piece) -> Boolean): Boolean {
         val before = beforeMs.toLong() * rate / 1000
         val after = afterMs.toLong() * rate / 1000
-        return risky.any { kind(it) && played >= it.start - before && played <= it.end + after }
+        return risky.any { it.sounding && kind(it) && played >= it.start - before && played <= it.end + after }
     }
 
     companion object {
@@ -143,6 +162,25 @@ class EchoGuard(private val rate: Int, private val beforeMs: Int = 300, private 
 
         fun soundsLikeStop(text: String): Boolean = STOP_LIKE.containsMatchIn(text)
 
+        /**
+         * A "STOP" heard at [heardAt] while no voice plays: her last sentence said such a word ([saidStopLike]) and went
+         * quiet at [quietSince] up to [AFTER_MS] before. Times in ms of one clock.
+         */
+        fun ownVoiceTail(saidStopLike: Boolean, quietSince: Long, heardAt: Long): Boolean = saidStopLike && heardAt <= quietSince + AFTER_MS
+
+        /** How long after the head should have run out of audio the clock starts moving it on: its start can lag. */
+        const val GAP_SLACK_MS = 300
+
+        /**
+         * Where to take the head to be at [heardAt] when it has played all [written] frames and stands still: past the
+         * end by the time since the audio ran out at [drainedAt], less [GAP_SLACK_MS]. Times in ms of one clock; [played]
+         * is the head at [heardAt] as far as the track can say, returned as it is while audio is left.
+         */
+        fun headInGap(played: Long, head: Long, written: Long, drainedAt: Long, heardAt: Long, rate: Int): Long {
+            val quiet = heardAt - drainedAt - GAP_SLACK_MS
+            return if (head < written || written == 0L || quiet <= 0) played else written + quiet * rate / 1000
+        }
+
         /** Where [text]'s words like "stop" are, as fractions of its length: start, end, start, end… (empty: none). */
         fun stopSpans(text: String): FloatArray {
             if (text.isEmpty()) return FloatArray(0)
@@ -163,11 +201,26 @@ class EchoGuard(private val rate: Int, private val beforeMs: Int = 300, private 
         const val WORD_MARGIN_MS = 1_000
         const val WORD_MARGIN_SHARE = 0.2
 
-        /** Any word starting with one of [words] ("robot", "Robot's", "robots", "robotic"), or null for none. */
+        /** Spellings that say a wake word out loud with other letters. */
+        private val SOUND_ALIKES = mapOf("robot" to listOf("row bot", "roe bot"))
+        private const val GAP = "[\\s-]*"
+        /** Shorter words keep their word boundary and exact spelling: "al" of "hey al" isn't in "also" or "a lot". */
+        private const val LOOSE_FROM = 4
+
+        /**
+         * Any word with one of [words] in it or at its start ("robot", "Robot's", "robots", "robotic", "heyrobot"), spaced or
+         * hyphenated too ("ro bot", "hey row bot"), or null for none. Too wide costs little: a wake during that piece is set aside.
+         */
         fun wakeRegex(words: List<String>): Regex? {
             val w = words.map { it.trim().lowercase() }.filter { it.isNotEmpty() }.distinct()
             if (w.isEmpty()) return null
-            return Regex("\\b(" + w.joinToString("|") { Regex.escape(it) } + ")[a-z']*", RegexOption.IGNORE_CASE)
+            val forms = w.joinToString("|") { word ->
+                if (word.length < LOOSE_FROM) "\\b" + Regex.escape(word)
+                else (listOf(word) + SOUND_ALIKES[word].orEmpty()).joinToString("|") { f ->
+                    f.filter { !it.isWhitespace() }.map { Regex.escape(it.toString()) }.joinToString(GAP)
+                }
+            }
+            return Regex("(?:$forms)[a-z']*", RegexOption.IGNORE_CASE)
         }
     }
 }

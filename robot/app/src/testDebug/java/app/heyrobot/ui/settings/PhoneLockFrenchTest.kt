@@ -2,7 +2,7 @@
 package app.heyrobot.ui.settings
 
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import app.heyrobot.core.TimeWindow
 import app.heyrobot.core.lock.EndEarly

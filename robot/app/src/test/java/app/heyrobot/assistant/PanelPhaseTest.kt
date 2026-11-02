@@ -33,4 +33,12 @@ class PanelPhaseTest {
         for (p in listOf(Phase.SPEAKING, Phase.IDLE, Phase.LISTENING, Phase.TRANSCRIBING)) assertEquals(p.name, false, p.stopEndsTurn(turnRunning = true))
         for (p in Phase.entries) assertEquals(p.name, false, p.stopEndsTurn(turnRunning = false))
     }
+
+    @Test fun aReplyToBeSpokenCountsWhileItIsBeingWritten() {
+        for (p in listOf(Phase.THINKING, Phase.ANSWERING)) {
+            assertEquals(p.name, true, p.spokenReplyComing(speak = true))
+            assertEquals(p.name, false, p.spokenReplyComing(speak = false))
+        }
+        for (p in Phase.entries - Phase.THINKING - Phase.ANSWERING) assertEquals(p.name, false, p.spokenReplyComing(speak = true))
+    }
 }

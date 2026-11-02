@@ -77,7 +77,7 @@ import java.time.ZoneId
 
 internal object PanelFiles {
     /** What "file this" would file: a screenshot, a photo's own bytes, or neither ([tooBig]: the photo was over the cap). */
-    class What(val shot: Bitmap?, val photo: ByteArray?, val tooBig: Boolean)
+    class What(val shot: Bitmap?, val photo: ByteArray?, val tooBig: Boolean, val name: String? = null)
 
     /**
      * Robot's reply: [text] shown (and kept in History), [spoken], and the card under it ([card]: the file, Move and Undo);
@@ -117,6 +117,8 @@ internal object PanelFiles {
     /** The last photo taken or picked in this panel, as its own bytes; null when there is none or it was too big. */
     @Volatile private var original: ByteArray? = null
     @Volatile private var originalTooBig = false
+    /** chat-files: an attached file's own name, for filing it under it. */
+    @Volatile private var originalName: String? = null
     /** A duplicate waiting for "file it anyway", until the panel closes. */
     @Volatile private var waiting: IntakeStep.Duplicate? = null
 
@@ -242,17 +244,28 @@ internal object PanelFiles {
         return (if (!ok) FilesStrings.notUndone() else if (u.was == null) FilesStrings.backInInbox() else FilesStrings.putBack()).render(langs)
     }
 
+    /**
+     * The question whose file's bytes are still [original]: only its Save to Robot Files has anything to file. A newer
+     * file or photo, or the panel closing ([forget]), and no chip offers it.
+     */
+    val savable = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+
+    /** The file just [picked] went with question [turnId]. */
+    fun sentWith(turnId: String) { if (original != null) savable.value = turnId }
+
     /** A photo came from the camera or the picker: its own bytes ([tooBig] when over what Robot reads). */
-    fun picked(bytes: ByteArray?, tooBig: Boolean) {
+    fun picked(bytes: ByteArray?, tooBig: Boolean, name: String? = null) {
         original = bytes
         originalTooBig = tooBig
+        originalName = name
+        savable.value = null
     }
 
     /** What the panel holds now: the attached photo; the attached screen or Android's screenshot; else the panel's last photo. */
     fun what(draft: Attachment, shot: Bitmap?): What = when (draft) {
-        Attachment.PHOTO -> What(null, original, originalTooBig)
+        Attachment.PHOTO, Attachment.FILE -> What(null, original, originalTooBig, originalName)
         Attachment.SCREEN -> What(shot, null, false)
-        Attachment.NONE -> if (original != null || originalTooBig) What(null, original, originalTooBig) else What(shot, null, false)
+        Attachment.NONE -> if (original != null || originalTooBig) What(null, original, originalTooBig, originalName) else What(shot, null, false)
     }
 
     /**
@@ -333,7 +346,7 @@ internal object PanelFiles {
         val photo = what.photo
         val shot = what.shot
         val step = when {
-            photo != null -> intake.add(photo) { t -> FileIntake(FilesStrings.namePhoto("when" to stamp).render(langs) + ext(t), FileSource.PANEL, type = t.mime) }
+            photo != null -> intake.add(photo) { t -> FileIntake(what.name ?: (FilesStrings.namePhoto("when" to stamp).render(langs) + ext(t)), FileSource.PANEL, type = t.mime) }
             what.tooBig -> return Reply(FilesStrings.photoTooBig())
             shot != null -> {
                 val png = png(shot) ?: return Reply(FilesStrings.problem(app.heyrobot.core.files.IntakeProblem.IO))
@@ -687,6 +700,9 @@ internal object PanelFiles {
         PanelFileAnswer.forget()
         original = null
         originalTooBig = false
+        originalName = null
+        savable.value = null
+        PanelAttach.forget()
         moving = null
         lastMoving = null
         yours = emptyList()

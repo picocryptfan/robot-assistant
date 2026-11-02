@@ -17,7 +17,7 @@ import java.util.Locale
  * What your own words said this turn ([words], never screen text or a tool's results), read at [now]: the days and clock
  * times in them (WhenParser.find). Null where nothing is checked (a routine's step, a skill, a helper's turn).
  */
-class TurnWords(val words: String, val now: ZonedDateTime, private val lang: Lang) {
+class TurnWords(val words: String, val now: ZonedDateTime, val lang: Lang) {
     /** The days and clock times in [words], read once, and only when an alarm is to be checked. */
     val mentions: List<Mention> by lazy { WhenParser.find(words, now, lang) }
 
@@ -61,6 +61,18 @@ object AlarmWords {
      */
     fun event(heard: TurnWords): Boolean =
         ToolRouter.asksEvent(heard.words) || heard.mentions.any { it.clock && !it.relative && it.span.end != null }
+
+    /**
+     * 1.1.2 (a Pixel 10, 23 Oct: « Ajoute un film ce soir de 22 h a 1 h » gave 22 h-23 h on the card): an add_event whose
+     * words name a start but no end takes the end of the range you said from that start; your words win over the model's
+     * length. Otherwise [a] as it was.
+     */
+    fun saidEnd(a: Action.AddEvent, heard: TurnWords): Action.AddEvent {
+        val call = (WhenParser.parse(a.whenText, heard.now, heard.lang) as? Read.Ok)?.value ?: return a
+        if (call.allDay || call.end != null) return a
+        val said = heard.mentions.firstOrNull { it.clock && it.span.start == call.start && it.span.end?.isAfter(call.start) == true } ?: return a
+        return a.copy(minutes = Duration.between(call.start, said.span.end).toMinutes().toInt())
+    }
 
     /** The day an alarm for [h]:[m] rings, set at [now]: today if that time is still to come, else tomorrow. */
     fun rings(h: Int, m: Int, now: ZonedDateTime): LocalDate =

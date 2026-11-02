@@ -80,7 +80,7 @@ object LockRouter {
     /**
      * The command [text] is, or null (the rest of the panel answers). [now]: for "until 7", the next 7:00. [names]: your
      * locks' names ("skip Bedtime" only names one of them, so "skip this song" stays the model's). [phoneLock]: Phone lock
-     * is on (asking and skipping need it; starting says to set it up). [lockOn]: a lock is on now ("end the lock" and
+     * is on (skipping needs it; starting says to set it up; a question naming the phone says none is on). [lockOn]: a lock is on now ("end the lock" and
      * "unlock the phone" mean nothing else to Robot then).
      */
     fun route(text: String, now: ZonedDateTime, names: List<String> = emptyList(), phoneLock: Boolean = true, lockOn: Boolean = true): LockCommand? {
@@ -94,7 +94,9 @@ object LockRouter {
             return if (m.groupValues[1].startsWith("jusqu")) clock(m.groupValues[2], Lang.FR)?.let { (c, _) -> LockCommand.Start(c, null, Lang.FR) }
             else length(m.groupValues[2])?.let { LockCommand.Start(null, it, Lang.FR) }
         }
-        if ((phoneLock && ASK.any { it.matches(t) }) || (lockOn && ASK_BARE.any { it.matches(t) })) return LockCommand.Ask(if (french(t)) Lang.FR else Lang.EN)
+        // 1 Nov (the spoken run: « À quelle heure mon téléphone débarre ? » went to the model, and on to set_alarm): these name the
+        // phone, so they're this router's with Phone lock off too, and the answer says no lock is on.
+        if (ASK.any { it.matches(t) } || (lockOn && ASK_BARE.any { it.matches(t) })) return LockCommand.Ask(if (french(t)) Lang.FR else Lang.EN)
         if (lockOn && END.any { it.matches(t) }) return LockCommand.End(if (french(t)) Lang.FR else Lang.EN)
         if (!phoneLock) return null
         val skip = SKIP_EN.matchEntire(t)?.let { it to Lang.EN } ?: SKIP_FR.matchEntire(t)?.let { it to Lang.FR } ?: return null

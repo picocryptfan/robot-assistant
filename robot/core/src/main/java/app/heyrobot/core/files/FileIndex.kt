@@ -31,7 +31,7 @@ enum class FileKind { RECEIPT, BILL, DOCUMENT, ID, TAX_SLIP, TICKET, MEDICAL, PH
 enum class FileState { INBOX, FILED, UNKNOWN }
 
 /**
- * How a file came in. ROBOT is reserved for 1.5 (from a paired Robot): 1.4 never writes it. RECOVERED: Robot found its
+ * How a file came in. ROBOT: from a paired Robot (1.5, FilePeer). RECOVERED: Robot found its
  * sealed bytes without an entry (an add cut short, Start over) and put it in Inbox; its name and source were lost.
  * UNKNOWN: a newer Robot's source.
  */
@@ -351,6 +351,9 @@ object FileIndexCodec {
         }
         return e.copy(text = cut(e.text, lo))
     }
+
+    /** [s] at most [n] characters long, never ending inside a pair (F54). */
+    fun clip(s: String, n: Int): String = if (s.length <= n) s else cut(s, n)
 
     private fun cut(s: String, n: Int): String = if (n > 0 && n < s.length && Character.isHighSurrogate(s[n - 1])) s.substring(0, n - 1) else s.substring(0, n)
 

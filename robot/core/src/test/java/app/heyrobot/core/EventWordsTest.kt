@@ -138,6 +138,21 @@ class EventWordsTest {
         assertEquals(listOf<Action>(Action.SetTimer(60)), cardFor(film[0], timer1, Lang.FR, answer = true).second)
     }
 
+    /** 1.1.2 (a Pixel 10, 23 Oct: the card said 22 h-23 h): a call naming 22 h and no end ends at 1 h, as you said. */
+    @Test fun theFilmEndsWhenYouSaid() {
+        for ((words, lang) in film.map { it to Lang.FR } + filmEn.map { it to Lang.EN }) {
+            for (call in listOf(mapOf("title" to "film", "when" to "ce soir à 22 h"), mapOf("title" to "film", "when" to "tonight at 10 pm", "duration_minutes" to 60))) {
+                val (_, ran) = cardFor(words, RawToolCall("add_event", call), lang, answer = true)
+                assertEquals("$words $call", 180, (ran.single() as Action.AddEvent).minutes)
+            }
+        }
+        // An end in the call, or a start your words don't give, is left as the model gave it.
+        val (_, kept) = cardFor(film[0], RawToolCall("add_event", mapOf("title" to "film", "when" to "ce soir de 22 h à minuit")), Lang.FR, answer = true)
+        assertNull((kept.single() as Action.AddEvent).minutes)
+        val (_, other) = cardFor(film[0], RawToolCall("add_event", mapOf("title" to "film", "when" to "demain à 9 h")), Lang.FR, answer = true)
+        assertNull((other.single() as Action.AddEvent).minutes)
+    }
+
     @Test fun theFilmNeverSetsAnAlarmWithoutACard() {
         val (card, ran) = cardFor(film[1], RawToolCall("set_alarm", mapOf("hour" to 22)), Lang.FR)
         assertEquals(ToolName.SET_ALARM, card?.tool)

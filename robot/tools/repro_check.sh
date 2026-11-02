@@ -4,7 +4,8 @@
 #
 # The first build runs in this checkout; the second in a fresh copy of the committed tree (`git archive HEAD`) in another
 # folder, with the git-ignored inputs Gradle packages hard-linked (or copied) in: local.properties, the native libraries
-# (brain/, mt/ and voice/src/main/jniLibs) and voice's models and espeak-ng data. So a difference that comes from the
+# (brain/, mt/ and voice/src/main/jniLibs), voice's models and espeak-ng data, and (1.5) libsignal's local Maven
+# repository, third_party/maven-local. So a difference that comes from the
 # folder, the time or leftovers of an earlier build shows up. Both builds use `--offline` and the same Gradle (each
 # tree's own ./gradlew, the version the wrapper pins, unless --gradle names another), JDK and Android SDK, so this
 # proves the build reproducible on this machine; another machine is the next check (README, "Releasing").
@@ -27,7 +28,7 @@
 #   --libs-only  with --native: stop after comparing the libraries (no APKs)
 #   --keep       keep the second copy's folder (printed at the end)
 #   --signed     a published, signed APK of this commit: also run `apksigcopier compare` against the rebuild
-#   --gradle     the Gradle to use (default: each tree's ./gradlew, Gradle 8.14.6 checked by its SHA-256)
+#   --gradle     the Gradle to use (default: harness/bin/gradle-guard.sh when present, else each tree's ./gradlew, Gradle 8.14.6 checked by its SHA-256)
 # Needs git, unzip, sha256sum and cmp (--native: what the two build scripts need). Run it by hand (no test runs it).
 # The second build goes in a new folder under $TMPDIR (default /tmp; point it at a disk when /tmp is in memory, as
 # --native's builds need about 2 GB). Uncommitted changes are left out of the second build, so commit first: the script
@@ -40,6 +41,9 @@ NATIVE=0
 LIBS_ONLY=0
 SIGNED=""
 GRADLE=""
+# Default on this PC: the build guard (lock, memory check, --offline); elsewhere each tree's ./gradlew. --gradle overrides.
+GUARD=/home/user/Robot/harness/bin/gradle-guard.sh
+[ -x "$GUARD" ] && GRADLE="$GUARD"
 while [ $# -gt 0 ]; do
   case "$1" in
     --native) NATIVE=1; shift ;;
@@ -93,7 +97,9 @@ mkdir -p "$COPY"
 git -C "$TOP" archive --format=tar HEAD "$SUB" | tar -xf - -C "$COPY"
 # LICENSE is packaged too (assets/licenses/GPL-3.0.txt is checked against it).
 git -C "$TOP" archive --format=tar HEAD LICENSE | tar -xf - -C "$COPY"
-inputs="local.properties voice/src/main/jniLibs voice/src/main/assets/espeak-ng-data voice/src/main/assets/vad voice/src/main/assets/kws"
+# 1.5: and libsignal's local Maven repository (tools/fetch_libsignal.sh), Tor's and the push connector's
+# (tools/fetch_link_deps.sh), and lyrebird's executable (tools/build_lyrebird.sh), which the build reads offline.
+inputs="local.properties voice/src/main/jniLibs voice/src/main/assets/espeak-ng-data voice/src/main/assets/vad voice/src/main/assets/kws third_party/maven-local third_party/maven-link third_party/lyrebird"
 [ "$NATIVE" = 1 ] || inputs="$inputs brain/src/main/jniLibs mt/src/main/jniLibs"
 for p in $inputs; do
   [ -e "$HERE/$p" ] || continue

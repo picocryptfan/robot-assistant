@@ -17,8 +17,11 @@ import android.os.BatteryManager
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
+import android.os.PowerManager
 import android.os.SystemClock
 import app.heyrobot.core.BargeIn
+import app.heyrobot.core.car.CarHearing
+import app.heyrobot.core.car.CarSettings
 import app.heyrobot.core.LockScreen
 import app.heyrobot.core.ToolName
 import app.heyrobot.lock.PhoneLockNow
@@ -54,12 +57,16 @@ import app.heyrobot.sys.KwsAssets
 import app.heyrobot.sys.RecognizerKeeper
 import app.heyrobot.sys.Paths
 import app.heyrobot.sys.RobotFiles
+import app.heyrobot.sys.ListsFiles
 import app.heyrobot.sys.SettingsStore
 import app.heyrobot.voice.CapturePolicy
 import app.heyrobot.voice.KeywordInputs
 import app.heyrobot.voice.Listener
 import app.heyrobot.voice.ListenerConfig
 import app.heyrobot.voice.SpeechToText
+import app.heyrobot.sys.HandsFreeFiles
+import app.heyrobot.voice.SpeechTuning
+import app.heyrobot.assistant.car.CarModeController
 import app.heyrobot.voice.TextToSpeech
 import app.heyrobot.voice.VoiceEngines
 import app.heyrobot.voice.VoiceOutput
@@ -69,6 +76,7 @@ import app.heyrobot.core.i18n.PanelStrings
 import app.heyrobot.core.i18n.Phrase
 import app.heyrobot.core.i18n.PhraseWire
 import app.heyrobot.sys.AppLanguage
+import app.heyrobot.sys.EverydaySettingsStore
 
 // VOICE PROCESS. The controller shared by the assistant service, the session and the panel: settings,
 // the wake-word listener (mode A: in the assistant's process, as phase 0 proved), the speech engines
@@ -179,8 +187,10 @@ object VoiceHub {
         worker = Handler(HandlerThread("robot-voice").apply { start() }.looper)
         // 1.4: Robot Files' filing in the background (assistant/FilingWork.kt): after each unlock, and now.
         FilingWork.start(app)
+        // 1.5 L6: Robot to Robot's notifications (cards, what Robot handled, a pairing's news), said only unlocked.
+        LinkNotices.start(app)
         // 1.1: a restore cut short in this process is finished or undone.
-        Thread({ RestoreSession.recover(app) }, "robot-restore-recover").apply { isDaemon = true; start() }
+        Thread({ RestoreSession.recoverAtStart(app) }, "robot-restore-recover").apply { isDaemon = true; start() }
         // Whether each helper's key is saved and today's spend, read off the main thread before the panel needs them.
         Thread({ HelperLink.refresh(app, settings); HelperSpendStore.current(app) }, "robot-helper-init").apply { isDaemon = true; start() }
         loaded = SettingsStore.load(app)
@@ -192,7 +202,7 @@ object VoiceHub {
             it.setListener(::onSpeakingChanged)
         }
         // With no listener of its own running, a question during a conversation takes the session's capture.
-        stt = VoiceEngines.speechToText(app) { listener ?: ConversationSession.frames() }.also { it.configure(settings.livePartials, settings.listenPause.ms) }
+        stt = VoiceEngines.speechToText(app) { listener ?: ConversationSession.frames() }.also { listenTuning(it) }
         worker.post { buildWakeLines() }
         // 0.5.0: a conversation this process died under is closed, and Resume offered (never resumed by itself).
         ConversationSession.recoverOnce(app)
@@ -211,6 +221,9 @@ object VoiceHub {
     }
 
     // ------------------------------------------------------------------ Robot's voice
+
+    /** The panel (main thread): a reply to be spoken is being written, so "stop" is heard while her voice is quiet. */
+    fun replyComing(on: Boolean) { inputs.replyComing = on }
 
     /** Main thread, from the voice: speaking started or the queue ran empty (or was stopped). */
     private fun onSpeakingChanged(on: Boolean) {
@@ -298,6 +311,10 @@ object VoiceHub {
         register(object : BroadcastReceiver() {
             override fun onReceive(c: Context, i: Intent) = applyListening(ListenWhy.POWER)
         }, IntentFilter().apply { addAction(Intent.ACTION_POWER_CONNECTED); addAction(Intent.ACTION_POWER_DISCONNECTED) }, null)
+        // week-fixes: Battery Saver pauses the wake word, and it says so (WakeNotices).
+        register(object : BroadcastReceiver() {
+            override fun onReceive(c: Context, i: Intent) = applyListening(ListenWhy.POWER)
+        }, IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED), null)
         // For the voice log only: "she didn't answer" may go with the screen being off.
         register(object : BroadcastReceiver() {
             override fun onReceive(c: Context, i: Intent) {
@@ -346,14 +363,17 @@ object VoiceHub {
         (app.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0) != 0
     } catch (_: Exception) { false }
 
+    private fun batterySaver(): Boolean = try { app.getSystemService(PowerManager::class.java).isPowerSaveMode } catch (_: Exception) { false }
+
     /** Only while Robot is the active assistant (its service between onReady and onShutdown). */
     private fun wantListening(): Boolean = active && RobotVoiceService.instance != null && settings.wakeWord && wakeDisabledReason == null &&
-        Assistant.granted(app, Manifest.permission.RECORD_AUDIO) && (!settings.wakeOnlyWhileCharging || charging())
+        Assistant.granted(app, Manifest.permission.RECORD_AUDIO) && (!settings.wakeOnlyWhileCharging || charging()) && !batterySaver()
 
     @Synchronized
     fun applyListening(why: ListenWhy) {
         val want = wantListening()
         val cur = listener
+        if (want) WakeNotices.batterySaver(app, false)
         if (want && cur != null && cur.running) return writeStatus(true, null)
         if (!want) {
             val reason = when {
@@ -361,14 +381,17 @@ object VoiceHub {
                 !settings.wakeWord -> ListenWhy.OFF
                 wakeDisabledReason != null -> ListenWhy.CRASHES
                 !Assistant.granted(app, Manifest.permission.RECORD_AUDIO) -> ListenWhy.NO_PERMISSION
-                else -> ListenWhy.NOT_CHARGING
+                settings.wakeOnlyWhileCharging && !charging() -> ListenWhy.NOT_CHARGING
+                else -> ListenWhy.BATTERY_SAVER
             }
+            WakeNotices.batterySaver(app, reason == ListenWhy.BATTERY_SAVER && why != ListenWhy.SHUTDOWN)
             stopListening(if (why == ListenWhy.SHUTDOWN) why else reason)
             writeStatus(false, when (reason) {
                 ListenWhy.NOT_ASSISTANT -> PanelStrings.notAssistant()
                 ListenWhy.OFF -> PanelStrings.wakeWordOff()
                 ListenWhy.CRASHES -> wakeDisabledReason
                 ListenWhy.NO_PERMISSION -> PanelStrings.needsMic()
+                ListenWhy.BATTERY_SAVER -> PanelStrings.batterySaver()
                 else -> PanelStrings.onlyCharging()
             })
             return
@@ -397,12 +420,30 @@ object VoiceHub {
         if (had) ConversationSession.audioChanged()
     }
 
+    /** Car mode on: the wake phrase and the speech detectors take a softer voice (core CarHearing), and the lines are built again. */
+    @Volatile private var hearMore = false
+
+    /** How a question is heard now: your pause and, while car mode is on, the car's (core CarHearing). Also when car mode starts or ends. */
+    fun listenTuning(to: SpeechToText = stt) {
+        val carOn = CarModeController.on
+        val car = if (carOn) HandsFreeFiles.store(app).carSettings() else CarSettings()
+        val more = CarHearing.more(carOn, car)
+        to.configure(settings.livePartials, CarHearing.pauseMs(settings.listenPause, carOn, car), SpeechTuning(CarHearing.speechThreshold(more), logMic = carOn))
+        inputs.logMic = carOn
+        if (more != hearMore) {
+            hearMore = more
+            worker.post { buildWakeLines() }
+        }
+    }
+
     /**
      * Worker thread: the wake phrases' keyword lines from the settings (pure Kotlin spelling, core KeywordBuffer). If
      * the spelling files can't be read, "hey robot" keeps its known spelling.
      */
     private fun buildWakeLines() {
         val phrases = settings.wakePhrases
+        val more = hearMore
+        val heard = phrases.map { it.copy(sensitivity = CarHearing.sensitivity(it.sensitivity, more)) }
         val interrupt = settings.interrupt
         // "Stop" takes the new level at once, even if the wake lines below can't be built.
         inputs.interrupt = interrupt
@@ -414,15 +455,15 @@ object VoiceHub {
                 .joinToString("\n") { KeywordBuffer.line(heyRobot, preset(it), KeywordBuffer.label(it.id)) }
         }
         val lines = if (sp != null) {
-            val b = KeywordBuffer.wake(phrases, sp)
+            val b = KeywordBuffer.wake(heard, sp)
             if (b.refused.isNotEmpty()) RLog.i("wake_phrases_refused", "count" to b.refused.size)
             VoiceLog.add(VoiceEvent.KWS_SET, b.ids.size, b.refused.size)
             b.text
         } else {
-            fallback { KwsThresholds.wake(it.sensitivity) }.also { VoiceLog.add(VoiceEvent.KWS_SET, it.lines().count { l -> l.isNotBlank() }, 0, 1) }
+            fallback { KwsThresholds.wake(CarHearing.sensitivity(it.sensitivity, more)) }.also { VoiceLog.add(VoiceEvent.KWS_SET, it.lines().count { l -> l.isNotBlank() }, 0, 1) }
         }
         // While Robot talks: the same phrases at Settings › Voice › "Interrupt sensitivity" (Medium: these very lines).
-        inputs.talkWakeLines = if (interrupt == InterruptSensitivity.MEDIUM) null else if (sp != null) KeywordBuffer.wake(phrases, sp, talk).text else fallback(talk)
+        inputs.talkWakeLines = if (interrupt == InterruptSensitivity.MEDIUM && !more) null else if (sp != null) KeywordBuffer.wake(phrases, sp, talk).text else fallback(talk)
         inputs.wakeLines = lines
         RLog.i("wake_phrases", "enabled" to phrases.count { it.enabled }, "lines" to lines.lines().count { it.isNotBlank() })
     }
@@ -477,7 +518,7 @@ object VoiceHub {
             // For the log: she said such a word lately, even outside the guard (did she stop herself?).
             val near = if (tts.saidStopLike(heardAt)) 1 else 0
             main.post {
-                val playing = tts.isSpeaking
+                val playing = tts.isSpeaking || inputs.replyComing
                 if (BargeTest.active) return@post BargeTest.onKeyword(0, safe)
                 if (!playing) return@post VoiceLog.add(VoiceEvent.STOP_HEARD, 0, near)
                 RLog.i("stop_word", "acted" to safe)
@@ -497,10 +538,12 @@ object VoiceHub {
             lastWakeE = e
         }
         val safe = tts.wakeWordSafe(heardAt)
+        // E6 (everyday-set-plan.md §6.3): Robot's voice reading for another app (the screen reader) said a wake phrase's word.
+        val appEcho = !VoiceEngines.otherAppsWakeSafe(heardAt)
         main.post {
             if (wakeTesting) return@post VoiceLog.add(VoiceEvent.WAKE, id, -1, WakeAction.TEST.id)
             if (BargeTest.active) return@post BargeTest.onKeyword(id, safe)
-            if (tts.isSpeaking && !safe) return@post VoiceLog.add(VoiceEvent.WAKE_IGNORED, WakeDrop.ECHO, id, echoVoice().id)
+            if ((tts.isSpeaking && !safe) || appEcho) return@post VoiceLog.add(VoiceEvent.WAKE_IGNORED, WakeDrop.ECHO, id, echoVoice().id)
             RLog.i("wake", "panelShown" to PanelController.shown)
             if (PanelController.shown) {
                 VoiceLog.add(VoiceEvent.WAKE, id, -1, WakeAction.NEW_QUESTION.id)
@@ -528,7 +571,7 @@ object VoiceHub {
                 tts.configure(settings.speechRate, settings.voice)
                 tts.setPlayback(settings.playback)
                 tts.setWakeWords(WakePhrases.echoWords(settings.wakePhrases))
-                stt.configure(settings.livePartials, settings.listenPause.ms)
+                listenTuning()
                 // New wake phrases (or interrupt sensitivity) go to the running listener: no restart.
                 if (old.wakePhrases != settings.wakePhrases || old.interrupt != settings.interrupt) worker.post { buildWakeLines() }
                 // "Hey robot works during a conversation" changed while one runs.
@@ -556,8 +599,15 @@ object VoiceHub {
             Cmd.VOICEPRINT_DELETED -> ConversationSession.voiceprintDeleted()
             Cmd.MEMORY_CHANGED -> PanelController.memoryChanged()
             Cmd.FILES -> { RobotFiles.changed(app); FilingWork.kick(); PanelController.filesChanged() }
+            Cmd.LISTS -> { ListsFiles.changed(app); PanelController.listsChanged(); LinkNotices.kick() }
             Cmd.FILES_UNDO -> FilingWork.act(app, Cmd.FILES_UNDO, i.getStringExtra(Cmd.EXTRA_KEY))
             Cmd.FILES_FILE -> FilingWork.act(app, Cmd.FILES_FILE, i.getStringExtra(Cmd.EXTRA_KEY))
+            // The everyday set: Settings or a restore changed everyday_settings.json.
+            Cmd.EVERYDAY -> EverydaySettingsStore.forget()
+            // 1.5 L6: :link's desk changed (nothing in the broadcast), and a card notification's Yes or Decline.
+            Cmd.LINK_DESK -> LinkNotices.kick()
+            Cmd.PHONE_LOCK -> PanelController.lockStarted()
+            Cmd.LINK_ANSWER -> LinkNotices.act(i.getStringExtra(Cmd.EXTRA_KEY))
             Cmd.SPEAK_TEST -> {
                 stopVoice(TtsStop.TEST)
                 tts.speak(PanelStrings.voiceSample().render(AppLanguage.langs(app).voice))

@@ -79,6 +79,14 @@ class EditSessionLeaveTest {
         assertFalse(endSent())
     }
 
+    @Test fun aStateThatCantBeReadEndsTheSessionToo() {
+        File(LockStore.dir(ctx), LockStore.STATE).writeText("{")
+        val a = Robolectric.buildActivity(Activity::class.java).setup().get()
+        taskTop(a, "app.heyrobot.ui.MainActivity")
+        PhoneLockPages.left(a)
+        assertTrue(endSent())
+    }
+
     @Test fun robotsCodePadOverItKeepsTheSession() {
         openSession()
         val a = Robolectric.buildActivity(Activity::class.java).setup().get()

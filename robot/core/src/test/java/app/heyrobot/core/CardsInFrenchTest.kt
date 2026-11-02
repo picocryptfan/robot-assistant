@@ -86,7 +86,7 @@ class CardsInFrenchTest {
         val view = View()
         TurnRunner(model, Actions(off), view, Confirmations(), untrusted = false, langs = fr) { "c${++ids}" }.run()
         val (bad, disabled) = view.cards.values.toList()
-        assertEquals("Impossible de faire « set_timer »", bad.summary)
+        assertEquals("Impossible de faire « Minuteries »", bad.summary)
         assertEquals("minutes doit être un nombre", bad.detail)
         assertEquals("Allumer la lampe de poche", disabled.summary)
         assertEquals("Lampe de poche : action désactivée dans les réglages de Robot.", disabled.detail)
@@ -181,6 +181,24 @@ class CardsInFrenchTest {
         assertEquals("Lire ton agenda et tes rappels", turn.actions.single().summary)
         assertTrue(Quoted.of(turn))
         assertTrue(Quoted.of(turn.copy(actions = listOf(Quoted.record()))))
+    }
+
+    /** lp-check phase 2: a message's card under French menus had an English title beside its French buttons. */
+    @Test fun aMessagesTitleIsInTheMenusLanguage() = runBlocking {
+        val enSpokenFrMenus = Langs(say = Lang.EN, ui = Lang.FR, system = Lang.EN)
+        val sam = TextTarget("Sam", "+19025550142@cheogram.com", "+1 902-555-0142", "Cheogram", TextVia.CHEOGRAM)
+        val model = Model(listOf(RawToolCall("send_text", mapOf("to" to "Sam", "message" to "Late")), timer(5)))
+        val view = View()
+        val conf = Confirmations()
+        val actions = Actions(ready = { a -> Prepared.Ready(if (a is Action.SendText) a.copy(target = sam) else a) })
+        val turn = async { TurnRunner(model, actions, view, conf, untrusted = false, langs = enSpokenFrMenus) { "c${++ids}" }.run() }
+        val id = withTimeout(5_000) { view.pending.receive() }
+        assertEquals("Texter **Sam** (+1 902-555-0142) dans Cheogram", view.cards[id]!!.summary)
+        assertTrue(conf.answer(id, false))
+        turn.await()
+        assertEquals("Texter **Sam** (+1 902-555-0142) dans Cheogram", view.cards[id]!!.summary)
+        // Other cards keep the reply language.
+        assertEquals("Set a timer for 5 minutes", view.cards.values.last().summary)
     }
 
     @Test fun anInvalidCallStillEqualsItsEnglish() {

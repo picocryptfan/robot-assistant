@@ -152,4 +152,76 @@ class EchoGuardTest {
         assertTrue(g.mayBeEcho(rate * 11L))
         assertEquals(0, EchoGuard.stopSpans("Nothing like it here.").size)
     }
+
+    /** st6-stop: she is quiet while the next sentence is made. "Stop" there is yours; "step" hasn't been said yet. */
+    @Test fun aPieceWithNoAudioYetCountsForNothing() {
+        val rate = 24_000
+        val g = EchoGuard(rate)
+        g.wakeWords = EchoGuard.wakeRegex(listOf("robot"))
+        g.onPiece(0, rate * 3L, "Baking bread is so rewarding.")
+        g.open(rate * 3L, "Here is a general step-by-step guide from Robot.", sounding = false)
+        // The head at the end of what was written, or the last of the sentence before.
+        assertFalse(g.mayBeEcho(rate * 3L))
+        assertFalse(g.mayBeEcho(rate * 3L - rate / 10))
+        assertFalse(g.mayBeWakeEcho(rate * 3L))
+        assertFalse(g.stopLikeWithin(rate * 3L, EchoGuard.NOTE_MS))
+        // Its first audio: guarded all through, as a piece being made always was, from just before it.
+        g.sounding()
+        assertTrue(g.mayBeEcho(rate * 3L - rate / 10))
+        assertTrue(g.mayBeEcho(rate * 3L + rate))
+        assertTrue(g.mayBeWakeEcho(rate * 3L + rate))
+        g.close(rate * 6L)
+        assertTrue(g.mayBeEcho(rate * 6L))
+    }
+
+    @Test fun aPieceThatNeverSoundsLeavesNoGuard() {
+        val g = EchoGuard(1_000)
+        g.open(1_000, "One step.", sounding = false)
+        g.close(1_000)
+        assertFalse(g.mayBeEcho(1_000))
+    }
+
+    @Test fun whileAudioIsLeftTheHeadIsWhatTheTrackSays() {
+        // Still playing, however late the clock says it is: a "step" being said stays guarded.
+        assertEquals(40L, EchoGuard.headInGap(40L, 50L, 60L, 1_000L, 9_000L, 1_000))
+        // Nothing written yet.
+        assertEquals(0L, EchoGuard.headInGap(0L, 0L, 0L, 0L, 9_000L, 1_000))
+    }
+
+    /** The head stood still at a risky sentence's end, so the 1.2 s after it never ran out while the next was made. */
+    @Test fun inTheWaitAfterARiskyPieceTheClockEndsTheGuard() {
+        val g = EchoGuard(1_000)
+        g.onPiece(0, 3_000, "Here is a step by step guide.")
+        fun head(heardAt: Long) = EchoGuard.headInGap(3_000L, 3_000L, 3_000L, 20_000L, heardAt, 1_000)
+        // Ran out at 20 s of the clock. Just before, the head is at its end, and for the slack and the 1.2 s after.
+        assertTrue(g.mayBeEcho(head(19_990L)))
+        assertTrue(g.mayBeEcho(head(20_000L + EchoGuard.GAP_SLACK_MS)))
+        assertTrue(g.mayBeEcho(head(20_000L + EchoGuard.GAP_SLACK_MS + EchoGuard.AFTER_MS)))
+        // Past that she has been quiet long enough: a "stop" is yours.
+        assertFalse(g.mayBeEcho(head(20_001L + EchoGuard.GAP_SLACK_MS + EchoGuard.AFTER_MS)))
+        assertFalse(g.mayBeEcho(head(30_000L)))
+    }
+
+    @Test fun wakeWordSpellingsCount() {
+        val g = EchoGuard(1_000)
+        g.wakeWords = EchoGuard.wakeRegex(listOf("robot"))
+        for (t in listOf("Hey Robot's here", "robotic arm", "#heyrobot is on", "hey row bot", "Ro-bot", "ro bot", "roe bot"))
+            assertTrue(t, g.saysWakeWord(t))
+        for (t in listOf("A row of bottles", "the rob of it", "All done."))
+            assertFalse(t, g.saysWakeWord(t))
+    }
+
+    @Test fun aShortWakeWordStaysWholeAndExact() {
+        val g = EchoGuard(1_000)
+        g.wakeWords = EchoGuard.wakeRegex(listOf("al"))
+        assertTrue(g.saysWakeWord("Hey Al there"))
+        for (t in listOf("metal", "a lot")) assertFalse(t, g.saysWakeWord(t))
+    }
+
+    @Test fun betweenSentencesOnlyTheEchoOfAStopLikeWordIsSetAside() {
+        assertTrue(EchoGuard.ownVoiceTail(true, 10_000, 9_900))
+        assertTrue(EchoGuard.ownVoiceTail(true, 10_000, 10_000 + EchoGuard.AFTER_MS.toLong()))
+        assertFalse(EchoGuard.ownVoiceTail(true, 10_000, 10_001 + EchoGuard.AFTER_MS.toLong()))
+        assertFalse(EchoGuard.ownVoiceTail(false, 10_000, 10_100))
+    }
 }

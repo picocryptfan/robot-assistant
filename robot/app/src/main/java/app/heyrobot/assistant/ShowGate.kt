@@ -17,6 +17,14 @@ object ShowGate {
      * "from Robot's app" and a conversation to continue, and only with Robot's own single-use nonce (MainActivity's Talk to
      * Robot). Every robot_* argument of a show is kept only when RobotVoiceService made it (its token).
      */
+    fun source(args: Bundle?, showFlags: Int): String? {
+        if (args == null) return null
+        val fromApp = showFlags and VoiceInteractionSession.SHOW_SOURCE_APPLICATION != 0
+        // Before onShow: no nonce is spent here, so a show from an app with one never counts.
+        val from = ShowTrust.from(fromApp, args.getString(ShowTrust.ARG_VIS), RobotVoiceService.TOKEN, null) { false }
+        return ShowTrust.source(from, args.getString(ShowTrust.ARG_SOURCE))
+    }
+
     fun args(ctx: Context, args: Bundle?, showFlags: Int): Bundle? {
         if (args == null) return null
         val fromApp = showFlags and VoiceInteractionSession.SHOW_SOURCE_APPLICATION != 0

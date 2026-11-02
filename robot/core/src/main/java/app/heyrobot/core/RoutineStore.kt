@@ -110,20 +110,20 @@ class RoutineStore(private val dir: File) {
 
     fun settings(): RoutineSettings = RoutineSettingsCodec.decode(read(settingsFile))
 
-    fun editSettings(change: (RoutineSettings) -> RoutineSettings): RoutineSettings? = update(::settings, change) { writeAtomic(settingsFile, RoutineSettingsCodec.encode(it)) }
+    fun editSettings(change: (RoutineSettings) -> RoutineSettings): RoutineSettings? = update({ RoutineSettingsCodec.decode(forUpdate(settingsFile)) }, change) { writeAtomic(settingsFile, RoutineSettingsCodec.encode(it)) }
 
     fun ready(): List<ReadyCard> = ReadyCards.decode(read(readyFile))
 
-    fun editReady(change: (List<ReadyCard>) -> List<ReadyCard>): List<ReadyCard>? = update(::ready, change) { writeAtomic(readyFile, ReadyCards.encode(it)) }
+    fun editReady(change: (List<ReadyCard>) -> List<ReadyCard>): List<ReadyCard>? = update({ ReadyCards.decode(forUpdate(readyFile)) }, change) { writeAtomic(readyFile, ReadyCards.encode(it)) }
 
     fun reminders(): List<BriefReminder> = BriefReminders.decode(read(remindersFile))
 
     fun editReminders(change: (List<BriefReminder>) -> List<BriefReminder>): List<BriefReminder>? =
-        update(::reminders, change) { writeAtomic(remindersFile, BriefReminders.encode(it)) }
+        update({ BriefReminders.decode(forUpdate(remindersFile)) }, change) { writeAtomic(remindersFile, BriefReminders.encode(it)) }
 
     fun state(): RoutineState = RoutineStateFile.decode(read(stateFile))
 
-    fun editState(change: (RoutineState) -> RoutineState): RoutineState? = update(::state, change) { writeAtomic(stateFile, RoutineStateFile.encode(it)) }
+    fun editState(change: (RoutineState) -> RoutineState): RoutineState? = update({ RoutineStateFile.decode(forUpdate(stateFile)) }, change) { writeAtomic(stateFile, RoutineStateFile.encode(it)) }
 
     /** Everything Routines keeps, deleted (Settings › Routines › Delete all routines); the files are gone, not emptied. */
     fun deleteAll(): Boolean = try {
@@ -144,6 +144,9 @@ class RoutineStore(private val dir: File) {
     }
 
     private fun read(f: File): String? = try { if (f.isFile) f.readText(Charsets.UTF_8) else null } catch (_: Exception) { null }
+
+    /** For an edit: a file there that can't be read now throws, so [update] answers null and writes nothing over it. */
+    private fun forUpdate(f: File): String? = readTextForUpdate(f)
 
     private fun <T> locked(block: () -> T): T = synchronized(LOCK) {
         dir.mkdirs()
@@ -178,6 +181,7 @@ object RoutineSettingsCodec {
         put("run_locked", s.runLocked)
         put("online", s.online)
         put("clock_silence_minutes", s.clockSilenceMinutes)
+        s.clockApp?.let { put("clock_app", it) }
         put("alarm_window", JSONObject().put("from", s.alarmWindow.from.toString()).put("to", s.alarmWindow.to.toString()))
         put("brief", JSONObject().apply {
             put("enabled", s.briefEnabled)
@@ -213,6 +217,7 @@ object RoutineSettingsCodec {
             briefLang = RoutineCodec.str(b, "lang")?.let { l -> Lang.entries.firstOrNull { it.id == l } },
             briefPrepare = RoutineCodec.bool(b, "prepare") ?: d.briefPrepare,
             clockSilenceMinutes = (o.opt("clock_silence_minutes") as? Number)?.toInt()?.takeIf { it in 1..60 } ?: d.clockSilenceMinutes,
+            clockApp = (o.opt("clock_app") as? String)?.takeIf { it.length <= 255 && Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+").matches(it) },
             alarmWindow = window,
             briefTrigger = trigger,
             briefOutput = RoutineOutput.of(RoutineCodec.str(b, "output")) ?: d.briefOutput,

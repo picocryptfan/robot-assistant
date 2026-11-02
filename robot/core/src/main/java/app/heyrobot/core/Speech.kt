@@ -170,6 +170,9 @@ class ReplyVoice(private val splitter: SentenceSplitter = SentenceSplitter()) {
 }
 
 object SpeechText {
+    /** The longest word (a run without an ASCII space, in UTF-16 units) a voice engine gets; a longer one is cut there. */
+    const val MAX_WORD = 40
+
     /** Markdown and symbols removed so a voice reads it naturally; blank when nothing is left to say. */
     fun clean(s: String): String = s
         .replace(Regex("""\[([^\]]+)]\([^)]*\)"""), "$1")
@@ -197,25 +200,60 @@ object SpeechText {
     private val ENGINE_DROP = Regex("[\\p{Cf}\\p{Cs}]")
 
     /**
-     * [s] with no control character left, for a speech engine. espeak-ng (under Kokoro and Kitten, and perhaps the phone's
-     * own voice) reads U+0001 as the start of an embedded command whatever its options, and after "B" it copies the next
-     * word into a fixed array with no bound: a helper's answer, a web page or a message could write past it in :voice.
-     * Every text Robot hands a voice engine passes here: [sayable] first, then each engine's own call (voice
-     * SherpaTextToSpeech.generate and AndroidTextToSpeech, pinned by voice EngineTextTest).
+     * [s] with no control character left and no word over [MAX_WORD], for a speech engine. espeak-ng (under Kokoro and
+     * Kitten, and perhaps the phone's own voice) reads U+0001 as the start of an embedded command whatever its options,
+     * and after "B" it copies the next word into a fixed array, with no bound in the fork sherpa-onnx pins: a helper's answer,
+     * a web page or a message could write past it in :voice (bounded now in Robot's build, tools/build_sherpa.sh; the phone's
+     * own voice may not be). A very long word overflows it too ([cutWords]). Every text Robot hands a voice
+     * engine passes here: [sayable] first, then each engine's own call (voice SherpaTextToSpeech.generate and
+     * AndroidTextToSpeech, pinned by voice EngineTextTest).
      */
-    fun forEngine(s: String): String = ENGINE_SPACE.replace(ENGINE_DROP.replace(s, ""), " ")
+    fun forEngine(s: String): String = cutWords(ENGINE_SPACE.replace(ENGINE_DROP.replace(s, ""), " "))
 
     /**
-     * Only what Robot's voices can say, and nothing sherpa-onnx would write to the log. No control characters
-     * ([forEngine]). CJK text is dropped: with no lexicon, Kokoro (1.13.8) sends every U+4E00-9FFF character through its
-     * Chinese path, which logs it ("Ignore OOV") whatever the debug setting, and the voices read English and French only.
-     * Fullwidth ASCII becomes ASCII. Blank when no letter or digit is left: sherpa logs a piece it cannot turn into sounds
-     * whole ("Failed to convert").
+     * Every run of more than [MAX_WORD] UTF-16 units without an ASCII space cut to its first [MAX_WORD], never between
+     * the two halves of a pair. espeak-ng keeps a word in buffers of N_WORD_BYTES (160) bytes, and RemoveEnding copies a
+     * whole word into one with no bound (CVE-2023-49992; fixed upstream in espeak-ng 58f1e0b6, in Robot's build by its patch, not in the
+     * fork sherpa-onnx 1.13.8 links). 40 units are at most 120 bytes of the modified UTF-8 sherpa hands over. Only ' ' ends a word here:
+     * whether espeak ends one at a no-break space is the C library's iswspace's choice, and controls are spaces by now.
+     * No sentence Robot says has a longer word; a web address or a run of digits from someone else's text loses its tail.
+     */
+    private fun cutWords(s: String): String {
+        var run = 0
+        var long = false
+        for (c in s) if (c == ' ') run = 0 else if (++run > MAX_WORD) { long = true; break }
+        if (!long) return s
+        val out = StringBuilder(s.length)
+        run = 0
+        var i = 0
+        while (i < s.length) {
+            val cp = s.codePointAt(i)
+            val n = Character.charCount(cp)
+            if (cp == ' '.code) {
+                run = 0
+                out.append(' ')
+            } else {
+                run += n
+                if (run <= MAX_WORD) out.appendCodePoint(cp)
+            }
+            i += n
+        }
+        return out.toString()
+    }
+
+    /**
+     * Only what Robot's voices can say, and nothing sherpa-onnx would write to the log. No control characters and no word
+     * over [MAX_WORD] ([forEngine]). CJK text is dropped: with no lexicon, Kokoro (1.13.8) sends every U+4E00-9FFF
+     * character through its Chinese path, which logs it ("Ignore OOV") whatever the debug setting, and the voices read
+     * English and French only. Fullwidth ASCII becomes ASCII. Blank when no letter or digit is left: sherpa logs a piece
+     * it cannot turn into sounds whole ("Failed to convert").
      */
     fun sayable(s: String): String {
         val ascii = buildString(s.length) { for (c in forEngine(s)) append(if (c in '\uFF01'..'\uFF5E') c - 0xFEE0 else c) }
         val out = ascii.replace(CJK, " ").replace(Regex("""\(\s*\)|\[\s*]"""), " ").replace(Regex("""\s+"""), " ").replace(Regex(""" ([,.;:!?])"""), "$1")
             .trim().trimStart(',', ';', ':', '.', ' ')
+            // Joining " ." to the word before can make it longer again ("word . . ."): cut once more.
+            .let(::cutWords)
         return if (out.any { it.isLetterOrDigit() }) out else ""
     }
 }

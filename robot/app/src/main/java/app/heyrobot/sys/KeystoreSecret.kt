@@ -11,6 +11,7 @@ import app.heyrobot.core.SecretRead
 import app.heyrobot.core.SecretReads
 import app.heyrobot.core.readOrNull
 import app.heyrobot.core.writeAtomic
+import app.heyrobot.core.writeAtomicBytes
 import org.json.JSONObject
 import java.io.File
 import java.io.FileNotFoundException
@@ -61,11 +62,7 @@ class KeystoreSecret(
     /** Encrypts and saves [value], with [masked] for Settings; false (nothing saved) if it can't. Background thread. */
     fun save(ctx: Context, value: String, masked: String): Boolean = try {
         val out = seal(secretKey(), value)
-        val f = secret(ctx)
-        f.parentFile?.mkdirs()
-        val tmp = File(f.parentFile, f.name + ".tmp")
-        tmp.writeBytes(out)
-        if (!tmp.renameTo(f)) throw java.io.IOException("rename")
+        writeAtomicBytes(secret(ctx), out)
         writeAtomic(meta(ctx), JSONObject().put("masked", masked).put("saved", System.currentTimeMillis()).toString())
         RLog.i(log, "op" to RLog.Code("saved"))
         true
@@ -106,8 +103,11 @@ class KeystoreSecret(
         if (f.exists()) throw e else null
     }
 
-    /** One that can never be decrypted again reads as none: its files and Keystore entry go, and a note lets Settings say why. */
-    private fun forget(ctx: Context) {
+    /**
+     * One that can never be decrypted again reads as none: its files and Keystore entry go, and a note lets Settings say why.
+     * (C3: also a connection's key file whose plain form is damaged, assistant/connect/ConnKeys.)
+     */
+    internal fun forget(ctx: Context) {
         delete(ctx)
         try { writeAtomic(meta(ctx), JSONObject().put("unreadable", true).toString()) } catch (t: Throwable) { RLog.w("${log}_forget", t) }
     }

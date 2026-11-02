@@ -154,11 +154,15 @@ class UpdateDecisionTest {
     @Test fun whatThePageOffers() {
         val repo = GitHubRepo("o", "r")
         val s = UpdateState(found = found())
-        assertEquals(found(), UpdateDecision.offered(s, repo, current))
-        assertNull(UpdateDecision.offered(s, GitHubRepo("fork", "r"), current))
-        assertNull(UpdateDecision.offered(s, null, current))
-        assertNull(UpdateDecision.offered(s, repo, v("0.4.6")))
-        assertNull(UpdateDecision.offered(UpdateState(), repo, current))
+        assertEquals(found(), UpdateDecision.offered(s, repo, current, false))
+        assertNull(UpdateDecision.offered(s, GitHubRepo("fork", "r"), current, false))
+        assertNull(UpdateDecision.offered(s, null, current, false))
+        assertNull(UpdateDecision.offered(s, repo, v("0.4.6"), false))
+        assertNull(UpdateDecision.offered(UpdateState(), repo, current, false))
+        // F71: a test build found while the switch was on goes with the switch.
+        val test = UpdateState(found = found().copy(testBuild = true))
+        assertNull(UpdateDecision.offered(test, repo, current, false))
+        assertEquals(test.found, UpdateDecision.offered(test, repo, current, true))
     }
 
     @Test fun spaceForTheRestOfTheFileAndAndroidsCopy() {

@@ -15,7 +15,7 @@ import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -24,6 +24,7 @@ import androidx.test.core.app.ApplicationProvider
 import app.heyrobot.core.LookSettings
 import app.heyrobot.sys.LookStore
 import app.heyrobot.ui.testing.PHONE
+import app.heyrobot.ui.testing.setShotContent
 import app.heyrobot.ui.testing.shot
 import app.heyrobot.ui.testing.touchTargetProblems
 import app.heyrobot.ui.theme.RobotTheme
@@ -64,7 +65,7 @@ class PanelLookTest {
     /** The panel for [st], which the test can change. */
     private fun showChanging(first: PanelState): (PanelState) -> Unit {
         var st by mutableStateOf(first)
-        rule.setContent { RobotTheme(dark = false, look = LookSettings(wallpaperColors = false)) { AssistantPanel(st, RecordingActions()) {} } }
+        rule.setShotContent { RobotTheme(dark = false, look = LookSettings(wallpaperColors = false)) { AssistantPanel(st, RecordingActions()) {} } }
         return { st = it; rule.waitForIdle() }
     }
 
@@ -151,7 +152,7 @@ class PanelLookTest {
         try {
             assertEquals(LookSettings(wallpaperColors = false), LookStore.reload(ctx))
             // The theme reads LookStore, as in the voice process.
-            rule.setContent { RobotTheme(dark = false) { AssistantPanel(PanelFixtures.idle, RecordingActions()) {} } }
+            rule.setShotContent { RobotTheme(dark = false) { AssistantPanel(PanelFixtures.idle, RecordingActions()) {} } }
             rule.onAllNodesWithTag("classic-orb").assertCountEquals(1)
             rule.onNodeWithText("Ask me anything.").assertExists()
         } finally {

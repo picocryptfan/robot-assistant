@@ -43,7 +43,7 @@ class FileParserTest {
     }
 
     private fun png(d: Dim): ByteArray = b(0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13) + "IHDR".toByteArray() +
-        ByteBuffer.allocate(13).putInt(d.width).putInt(d.height).put(8).put(6).array() + ByteArray(20)
+        ByteBuffer.allocate(13).putInt(d.width).putInt(d.height).put(8).put(6).array() + ByteArray(4) + b(0, 0, 0, 0) + "IEND".toByteArray() + ByteArray(4)
 
     private fun b(vararg v: Int) = ByteArray(v.size) { v[it].toByte() }
 
@@ -56,7 +56,24 @@ class FileParserTest {
         override fun straightened(quad: ScanQuad, size: Dim): Picture = FakePicture(size.width, size.height)
         override fun jpeg(quality: Int, max: Int): ByteArray? = jpegSize(width, height, quality).let { n -> if (n > max) null else jpeg(Dim(width, height), n) }
         override fun png(max: Int): ByteArray? = png(Dim(width, height))
-        override fun rgba(out: ByteBuffer) { out.put(ByteArray(width * height * 4) { 7 }) }
+        override fun rgba(out: ByteBuffer) {
+            val q = dec.qr?.let { app.heyrobot.core.QrCode.encode(it) }
+            if (q == null) { out.put(ByteArray(width * height * 4) { 7 }); return }
+            // The code on white, centred, a 4-module margin, as a camera would see another phone's screen square on.
+            val m = minOf(width, height) / (q.size + 8)
+            val x0 = (width - q.size * m) / 2
+            val y0 = (height - q.size * m) / 2
+            val px = ByteArray(width * height * 4)
+            for (y in 0 until height) for (x in 0 until width) {
+                val mx = (x - x0).let { if (it < 0) -1 else it / m }
+                val my = (y - y0).let { if (it < 0) -1 else it / m }
+                val dark = mx in 0 until q.size && my in 0 until q.size && q.dark(mx, my)
+                val v = (if (dark) 20 else 235).toByte()
+                val i = 4 * (y * width + x)
+                px[i] = v; px[i + 1] = v; px[i + 2] = v; px[i + 3] = -1
+            }
+            out.put(px)
+        }
         override fun close() { closed = true }
     }
 
@@ -84,6 +101,8 @@ class FileParserTest {
         var turned = false
         var fail: Throwable? = null
         var encrypted = false
+        /** 1.5 L4: the text of the QR code the decoded pictures show (none: a plain grey photo). */
+        var qr: String? = null
 
         override fun size(input: ByteBuffer): Dim? { calls += "size"; return source }
         override fun decode(input: ByteBuffer, box: Box): Picture {
@@ -400,5 +419,44 @@ class FileParserTest {
         // And an answer about another type than the link sent.
         val other = ParseResults.from(req, reply, FileType.PNG) { x -> ByteArray(x.length) }
         assertTrue(other is ParseResult.Failed)
+    }
+
+    /** 1.5, Robot to Robot (job L4): another Robot's pairing code, photographed in person, read from the photo's pixels. */
+    @Test fun aPairingCodesQrIsReadFromAPhoto() {
+        val code = "ROBOT-PAIR-AQEFBbX3Vb6h2k_1Qp0yV0Q6s8xJ3p7nT1m2c3d4e5f6g7h8i9j0kLmNoPqRsTuVwXyZaBcDeFgHiJkLmNoPqRsTuVwXyZ-_0123456789"
+        val photo = jpeg(Dim(4032, 3024), 3000)
+        val req = ParseRequest(ParseOp.QR, parts = listOf(photo.size))
+        assertEquals(1_024, req.outSize)
+        dec.qr = code
+        val (reply, result) = run(req, photo)
+        assertEquals(code, (result as ParseResult.Ok).out.text)
+        assertEquals(ParseReply.HAS_TEXT, reply!!.flags)
+        assertTrue(reply.blobs.isEmpty())
+        // Decoded within the QR box only, every picture closed.
+        assertTrue(opened.all { it.closed && it.width <= 2_048 && it.height <= 2_048 })
+        // No code in the photo, or a code whose text isn't a pairing code's characters: NO_CODE.
+        dec.qr = null
+        assertEquals(ParseStatus.NO_CODE, refused(run(req, photo)))
+        dec.qr = "Café ☕"
+        assertEquals(ParseStatus.NO_CODE, refused(run(req, photo)))
+        // Not an image: never decoded. A bomb: refused from its header.
+        dec.calls.clear()
+        val pdf = "%PDF-1.7\n".toByteArray() + ByteArray(500)
+        assertEquals(ParseStatus.NOT_READ, refused(run(ParseRequest(ParseOp.QR, parts = listOf(pdf.size)), pdf)))
+        assertTrue(dec.calls.isEmpty())
+        val bomb = jpeg(Dim(30_000, 30_000))
+        assertEquals(ParseStatus.TOO_LARGE, refused(run(ParseRequest(ParseOp.QR, parts = listOf(bomb.size)), bomb)))
+        // The link refuses an answer that isn't a QR's: blobs, other flags, text outside printable ASCII, past its cap.
+        fun answer(r: ParseReply) = FileParseWire.decodeReply(FileParseWire.encodeReply(r), req)
+        assertNotNull(answer(ParseReply(ParseOp.QR, ParseStatus.OK, FileType.JPEG, ParseReply.HAS_TEXT, 1, 4032, 3024, 0, code)))
+        assertNull(answer(ParseReply(ParseOp.QR, ParseStatus.OK, FileType.JPEG, 0, 1, 4032, 3024, 0, code)))
+        assertNull(answer(ParseReply(ParseOp.QR, ParseStatus.OK, FileType.JPEG, ParseReply.HAS_TEXT or ParseReply.TEXT_CUT, 1, 4032, 3024, 0, code)))
+        assertNull(answer(ParseReply(ParseOp.QR, ParseStatus.OK, FileType.JPEG, ParseReply.HAS_TEXT, 1, 4032, 3024, 0, "Café")))
+        assertNull(answer(ParseReply(ParseOp.QR, ParseStatus.OK, FileType.JPEG, ParseReply.HAS_TEXT, 1, 4032, 3024, 0, "a\nb")))
+        assertNull(answer(ParseReply(ParseOp.QR, ParseStatus.OK, FileType.JPEG, ParseReply.HAS_TEXT, 1, 4032, 3024, 0, "x".repeat(1_025))))
+        assertNull(answer(ParseReply(ParseOp.QR, ParseStatus.OK, FileType.JPEG, ParseReply.HAS_TEXT, 1, 4032, 3024, 0, null)))
+        assertNull(answer(ParseReply(ParseOp.QR, ParseStatus.OK, FileType.JPEG, ParseReply.HAS_TEXT, 1, 4032, 3024, 0, code,
+            listOf(app.heyrobot.core.parse.ParseBlob(BlobKind.THUMB, 10, 10, 0, 100)))))
+        assertNotNull(answer(ParseReply(ParseOp.QR, ParseStatus.NO_CODE, FileType.JPEG)))
     }
 }

@@ -29,6 +29,14 @@ robot/**/*.gguf
 # Robot's GGUF engine (0.4.5): the checked llama.cpp sources, the build and the library come from robot/tools/build_llama.sh
 robot/build-native/
 robot/brain/src/main/jniLibs/
+# Robot to Robot (1.5): libsignal 0.105.2's artifacts as Signal published them (the AAR, the client jar, their POMs and
+# module files), a local Maven repository Gradle reads offline (settings.gradle). Never in git: robot/README.md's
+# "Getting libsignal" fills it, and robot/third_party/libsignal-0.105.2.sha256 pins every file.
+robot/third_party/maven-local/
+# Robot to Robot's carriers (1.5, L3): Tor 0.4.9.14, jtorctl 0.5, the UnifiedPush connector 3.3.5 and Tink 1.23.0 as Maven
+# Central published them, a second local repository Gradle reads offline (settings.gradle). Never in git: robot/README.md's
+# "Getting Tor and the push connector" fills it, and robot/third_party/link-carriers.sha256 pins every file.
+robot/third_party/maven-link/
 
 # Editors
 .idea/
@@ -40,6 +48,7 @@ robot/brain/src/main/jniLibs/
 # Robot 0.5.0 fast translation engine: tools/build_robotmt.sh's fetched sources and build trees, and the library it
 # builds (packaged by Gradle when present, never stored in git).
 robot/mt/native/
+robot/voice/native/
 robot/mt/src/main/jniLibs/
 
 # Python bytecode (tools/*.py run from a script)

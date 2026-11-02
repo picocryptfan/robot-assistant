@@ -1,0 +1,25 @@
+{
+  "format": 1,
+  "id": "event-card-fr",
+  "title": "Québec French dates and times reach the event card",
+  "safety": "stops-at-card",
+  "testBench": ["v11-french-times"],
+  "needs": {"model": true},
+  "setup": [{"set": "speakReplies", "value": "VOICE"}, {"set": "voiceCards", "value": true}],
+  "steps": [
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "Ajoute un rendez-vous chez le dentiste demain après-midi.", "voice": "siwis"},
+    {"do": "wait_card", "kind": "add_event", "seconds": 120},
+    {"do": "wait_listening", "seconds": 30},
+    {"do": "say", "text": "Non merci.", "voice": "siwis"},
+    {"do": "wait_reply", "seconds": 30},
+    {"do": "end"},
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "Ajoute un souper samedi soir à sept heures.", "voice": "siwis"},
+    {"do": "wait_card", "kind": "add_event", "seconds": 120},
+    {"do": "wait_listening", "seconds": 30},
+    {"do": "say", "text": "Non merci.", "voice": "siwis"},
+    {"do": "wait_reply", "seconds": 30},
+    {"do": "end"}
+  ]
+}

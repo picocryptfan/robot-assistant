@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.Lang
+import app.heyrobot.core.i18n.ReplyLang
+import app.heyrobot.core.i18n.ReplyLangChoice
+import app.heyrobot.core.output.HandsFreeRouter
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -154,5 +158,20 @@ class LangIdTest {
         assertSame(f, LangId.loadOrFallback { "# robot-langid 1\n@langs\tfr\ten\nw:x\t1\n".byteInputStream() })
         val tiny = LangId.parse("# robot-langid 1\n@langs\tfr\ten\n@scale\t10\n@weights\t2\t1\n@margin\t1.0\t2.0\nw:oui\t-20\t-80\n")
         assertEquals("fr", tiny.detect("Oui").lang)
+    }
+
+    /** Typed "car mode" with English menus was answered in French: both words are French words too (cm-phone, 31 Oct 2026). */
+    @Test fun bareCarModeTakesTheLastTurnsOrTheMenusLanguage() {
+        assertEquals("fr", id.detect("car mode").lang)
+        fun say(s: String, ui: Lang, last: ReplyLang.Last? = null) =
+            ReplyLang.decide(id.detect(s).takeUnless { HandsFreeRouter.eitherLanguage(s) }, null, last, 0L, ui, ReplyLangChoice.SPOKEN)
+        for (s in listOf("car mode", "Car mode.", "CAR MODE")) {
+            assertEquals(s, Lang.EN, say(s, Lang.EN))
+            assertEquals(s, Lang.FR, say(s, Lang.FR))
+            assertEquals(s, Lang.FR, say(s, Lang.EN, ReplyLang.Last(Lang.FR, 0L)))
+        }
+        // Not that phrase: as before.
+        assertEquals(Lang.FR, say("mode auto", Lang.EN))
+        assertEquals(Lang.EN, say("driving mode", Lang.FR))
     }
 }

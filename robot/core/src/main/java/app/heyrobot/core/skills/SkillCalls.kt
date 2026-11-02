@@ -95,7 +95,7 @@ data class SkillRan(val status: ActionStatus, val forModel: Map<String, Any?>, v
          * A run's status as one card's: the first step that didn't happen; else a draft opened when one did (never "done":
          * nothing was sent); else done. A run stopped before an app because notifications are off: skipped.
          */
-        fun statusOf(o: SkillOutcome): ActionStatus = o.results.firstOrNull { !it.happened }?.status
+        fun statusOf(o: SkillOutcome): ActionStatus = o.results.firstOrNull { !it.happened && !it.wentOn }?.status
             ?: if (o.noNotifications) ActionStatus.SKIPPED
             else if (o.results.any { it.status == ActionStatus.DRAFT_OPENED }) ActionStatus.DRAFT_OPENED else ActionStatus.DONE
 

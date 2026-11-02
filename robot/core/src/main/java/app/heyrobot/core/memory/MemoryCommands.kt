@@ -113,7 +113,7 @@ object MemoryCommands {
         en("""^(?:remember|memori[sz]e)(?: this| the following)?\s*:\s*(?<rest>.+)$"""),
         // Spoken, the colon is a comma: "remember, call me Sam" (but "remember, the one with the dog?" asks).
         en("""^(?:remember|memori[sz]e)(?: this| the following)?\s*,\s*(?<rest>.+)$""", statement = true),
-        en("""^(?:remember|memori[sz]e) that (?<rest>.+)$"""),
+        en("""^(?:remember|memori[sz]e) that (?!time\b)(?<rest>.+)$"""),
         en("""^(?:keep|bear) (?:this )?in mind(?: that)?\s*[:,]?\s*(?<rest>.+)$"""),
         en("""^(?:don't|do not|dont) forget that (?<rest>.+)$"""),
         fr("""^(?:souviens[- ]toi|rappelle[- ]toi|retiens|memorise|garde en memoire|n'oublie pas|oublie pas)(?: bien)? (?:que |qu')(?<rest>.+)$"""),
@@ -232,6 +232,25 @@ object MemoryCommands {
         }
         return null
     }
+
+    /**
+     * 1 Nov (the spoken run): "Remember the movie where Tom Hanks is stranded on an island" asks something, with its question mark
+     * or without (the recognizer may drop it), so the model answers it and can't keep it. By its shape: "remember the … where",
+     * "remember when …", "do you remember …". "Remember that …" and "remember my …" stay saves ([parse] takes them first).
+     */
+    private val RECALL_SHAPED = listOf(
+        Regex("""^(?:(?:do|can|did) you |you )remember\b"""),
+        Regex("""^remember (?:when|how|what|who|whom|where|why|whether|if|back when|the time|that time)\b"""),
+        Regex("""^remember (?:the|that|those|this|a|an) (?:\S+ ){0,4}?(?:where|when|who|whom|which|that|with|about|from)\b"""),
+        Regex("""^(?:tu te (?:souviens|rappelles)|te (?:souviens|rappelles)[- ]tu)\b"""),
+        Regex("""^(?:souviens[- ]toi|rappelle[- ]toi) (?:quand|comment|ou|qui|pourquoi)\b"""),
+        Regex("""^(?:souviens[- ]toi|rappelle[- ]toi) (?:de |du |des |d'|le |la |les |ce |cette )(?:\S+ ){0,4}?(?:ou|quand|qui|avec|dans lequel|dans laquelle)\b"""),
+    )
+
+    /** What the model reads when it tried to keep [recallShaped] words (English, for the model). */
+    const val RECALL_NOT_KEPT = "That was a question, not something to keep. Nothing was saved. Answer the question." // l10n: not text (the model reads it, never shown or spoken)
+
+    fun recallShaped(text: String): Boolean = parse(text) !is MemoryCommand.Remember && said(text).key.let { k -> RECALL_SHAPED.any { it.containsMatchIn(k) } }
 
     /** A question that clearly asks what Robot remembers ("do you remember…", "tu te souviens…"): on a locked phone it hears "Unlock first". */
     fun asksMemory(text: String): Boolean {

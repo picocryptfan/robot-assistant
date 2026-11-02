@@ -47,6 +47,24 @@ class FileStoreTest {
 
     @After fun noInflight() = FileStore.forgetInflight()
 
+    /** F21: a move of a file at the entry's cap costs a little of its search text, never the write. */
+    @Test fun aChangeToAFullEntryFitsItsTextInsteadOfThrowing() {
+        val s = store()
+        val id = s.add("plain words\n".toByteArray().inputStream(), FileIntake("lease.txt", FileSource.SHARE, type = "text/plain")).id
+        s.update { i -> i.copy(entries = i.entries.map { FileIndexCodec.fitText(it.copy(text = "収".repeat(FileLimits.MAX_TEXT)))!! }) }
+        val full = loaded(s).entry(id)!!
+        assertTrue(FileIndexCodec.entry(full).toByteArray().size > FileLimits.MAX_ENTRY - 4)
+        val l = s.update { i -> i.copy(entries = i.entries.map { it.copy(drawer = "A drawer of a good length", state = FileState.FILED, tags = listOf("lease")) }) }
+        val after = (l as IndexLoad.Loaded).index.entry(id)!!
+        assertEquals("A drawer of a good length", after.drawer)
+        assertTrue(after.text.isNotEmpty() && after.text.length < full.text.length && full.text.startsWith(after.text))
+        assertEquals(after, loaded(store()).entry(id))
+        // An entry that couldn't fit even with no text is still refused, and nothing is written.
+        val many = (1..200).associate { "extra_$it" to FileField("v".repeat(FileIndexCodec.MAX_FIELD_VALUE), FieldBy.YOU) }
+        assertTrue(runCatching { s.update { i -> i.copy(entries = i.entries.map { it.copy(fields = many) }) } }.isFailure)
+        assertEquals(after, loaded(s).entry(id))
+    }
+
     private fun data(n: Int, seed: Int = n) = Random(seed).nextBytes(n)
     private fun sha(b: ByteArray) = MessageDigest.getInstance("SHA-256").digest(b).joinToString("") { "%02x".format(it) }
     private fun intake(name: String = "receipt.pdf") = FileIntake(name, FileSource.SHARE, app = "org.example.mail", type = "application/pdf")

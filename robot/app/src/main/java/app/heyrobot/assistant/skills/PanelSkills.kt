@@ -59,10 +59,19 @@ import app.heyrobot.core.skills.SkillTier
 import app.heyrobot.core.skills.SkillTool
 import app.heyrobot.core.skills.SkillWarnCode
 import app.heyrobot.core.BrainModel
+import app.heyrobot.core.connect.ConnLimits
+import app.heyrobot.core.connect.ConnLinks
+import app.heyrobot.core.termux.ScriptLinks
+import app.heyrobot.core.connect.SkillLimitCode
+import app.heyrobot.core.i18n.ConnStrings
+import app.heyrobot.core.skills.SkillLinks
+import app.heyrobot.core.skills.ValueSource
+import app.heyrobot.sys.ConnFiles
 import app.heyrobot.sys.PeopleFiles
 import app.heyrobot.sys.SkillContext
 import app.heyrobot.sys.SkillFiles
 import app.heyrobot.sys.SkillIntents
+import app.heyrobot.sys.TermuxStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.security.SecureRandom
@@ -74,6 +83,11 @@ import java.time.ZonedDateTime
 // listing them, deleting one (always a tap). Each step runs through the conversation's own ports (SkillRunner), with its
 // gate and its card, as a typed command would. PanelController keeps the turn and its bubble; this decides what goes in
 // them, through [Host]. Names, values and steps are never logged.
+//
+// Skills connections (C4): every decision about a skill sees your connections as they are now (ConnLinks: a step whose
+// connection is gone keeps its skill from running, and a linked step's effects count toward its tier); each value goes to
+// the steps with where it came from (your words, the model's, or fixed); a skill with a connection's step runs at most
+// its runs an hour (D16), refused before its card.
 
 object PanelSkills {
     /** What a skill turn may do in the panel: a routine turn's (bubble, voice, cards), and the conversation's ports. */
@@ -117,6 +131,39 @@ object PanelSkills {
     @Volatile private var cache: List<Skill>? = null
 
     private fun skills(): List<Skill> = cache ?: store().skills().also { cache = it }
+
+    /** Your connections as connections.json holds them now (a small file). Background thread. */
+    private fun connections(): List<app.heyrobot.core.connect.Connection> = try {
+        ConnFiles.store(app).connections()
+    } catch (t: Throwable) {
+        RLog.w("skill_links", t)
+        emptyList()
+    }
+
+    /** C8: your Termux scripts as the last listing run found them (termux_status.json, written in this process). Background thread. */
+    private fun scripts(): List<app.heyrobot.core.termux.TermuxScriptInfo> = try {
+        TermuxStore.status(app).scripts
+    } catch (t: Throwable) {
+        RLog.w("skill_links", t)
+        emptyList()
+    }
+
+    /** Your connections and typed scripts as a skill's checks, effects and tier see them now. Background thread. */
+    fun links(): SkillLinks = links(connections())
+
+    private fun links(conns: List<app.heyrobot.core.connect.Connection>): SkillLinks = ConnLinks(conns, ScriptLinks(scripts()))
+
+    /** D16: the skills whose runs an hour are counted: those with a connection's, an app's or a script's step. */
+    fun limited(s: Skill): Boolean = s.steps.any { it.kind.since >= 2 }
+
+    /** "Robot's limit for “Good night” was reached: 12 runs an hour.", or null when [s] may run now. Background thread. */
+    private fun overLimit(s: Skill): Phrase? {
+        if (!limited(s)) return null
+        val ok = try { ConnLimits.skill(store().state().limits, s, System.currentTimeMillis()) } catch (t: Throwable) { RLog.w("skill_state", t); true }
+        if (ok) return null
+        VoiceLog.add(VoiceEvent.SKILL_LIMIT, SkillLimitCode.SKILL_HOUR.id, s.runsPerHour)
+        return ConnStrings.skillLimit("skill" to s.name, "n" to s.runsPerHour.toString())
+    }
 
     /** Cmd.SKILLS (Settings › Skills, a restore) or a change made here: skills.json is read again. */
     fun reload() {
@@ -364,9 +411,13 @@ object PanelSkills {
 
     /** [s] named in your words, with [values] (plan §7.3): its level, the lock, its card, then its steps. */
     private suspend fun run(replyId: String, s: Skill, values: Map<String, String>, host: Host, l: Langs) {
-        when (val go = SkillPolicy.decide(s, host.locked, host.phoneLock, host.messages.active)) {
+        val links = withContext(Dispatchers.IO) { links() }
+        val go = SkillPolicy.decide(s, host.locked, host.phoneLock, host.messages.active, links)
+        if (go !is SkillGo.Refused) withContext(Dispatchers.IO) { overLimit(s) }?.let { return reply(replyId, host, it, l) }
+        when (go) {
             is SkillGo.Refused -> {
-                VoiceLog.add(VoiceEvent.SKILL_RUN, (if (s.level == SkillLevel.OFF) SkillRunCode.OFF else SkillRunCode.LOCKED).id, 0, s.steps.size)
+                val code = when { s.level == SkillLevel.OFF -> SkillRunCode.OFF; host.locked -> SkillRunCode.LOCKED; else -> SkillRunCode.NEEDS_ATTENTION }
+                VoiceLog.add(VoiceEvent.SKILL_RUN, code.id, 0, s.steps.size)
                 return reply(replyId, host, go.why, l)
             }
             is SkillGo.Card -> {
@@ -378,7 +429,7 @@ object PanelSkills {
                     go.tapOnly -> SkillStrings.runTapMessage("run" to run)
                     else -> SkillStrings.runSayYes("run" to run)
                 }
-                val body = SkillCards.run(s, values).joinToString("\n") { it.shown(l) }
+                val body = SkillCards.run(s, values, links).joinToString("\n") { it.shown(l) }
                 host.text(replyId, footer.shown(l))
                 host.say(footer.said(l))
                 val yes = host.ask(replyId, Card(id, null, title, ActionStatus.PENDING, footer.shown(l), body = body, confirm = UiStrings.run().button(l),
@@ -430,7 +481,15 @@ object PanelSkills {
 
     /** The word index over your skills (SkillSelect), rebuilt when they change. */
     @Volatile private var index: SkillSelect.Index? = null
-    private fun index(): SkillSelect.Index = index ?: SkillSelect.Index(skills()).also { index = it }
+    /** The connections (and C8: scripts) the index was built with: a change there builds it again (a skill whose link went is left out). */
+    @Volatile private var indexConns: Pair<List<app.heyrobot.core.connect.Connection>, List<app.heyrobot.core.termux.TermuxScriptInfo>>? = null
+    private fun index(conns: List<app.heyrobot.core.connect.Connection>): SkillSelect.Index {
+        val key = conns to scripts()
+        return index?.takeIf { indexConns == key } ?: SkillSelect.Index(skills(), ConnLinks(conns, ScriptLinks(key.second))).also {
+            index = it
+            indexConns = key
+        }
+    }
 
     /** The skills this conversation describes, at most 3 (the one used least recently goes first). */
     private val shelf = SkillShelf()
@@ -444,12 +503,14 @@ object PanelSkills {
     fun forModel(question: String): List<SkillTool> = try {
         if (!store().settings().modelPicks) emptyList() else {
             val all = skills()
+            val conns = connections()
+            val links = links(conns)
             val named = SkillRouter.namedWithWords(question, all)
-            val picked = index().pick(question, named)
+            val picked = index(conns).pick(question, named)
             val live = all.filter { it.level != SkillLevel.OFF }.associateBy { it.id }
             val kept = shelf.use(picked.map { it.id }, live.keys).mapNotNull { live[it] }
             if (picked.isNotEmpty()) VoiceLog.add(VoiceEvent.SKILL_PICK, SkillPickCode.DESCRIBED.id, kept.size, if (named != null) 1 else 0)
-            SkillSpecs.describe(kept, all)
+            SkillSpecs.describe(kept, all, links)
         }
     } catch (t: Throwable) {
         RLog.w("skill_select", t)
@@ -490,19 +551,29 @@ object PanelSkills {
         }
         fill as SkillFill.Ok
         val given = fill.sources.keys
-        val tier = SkillRisk.tier(s, given)
+        val links = withContext(Dispatchers.IO) { links() }
+        val tier = SkillRisk.tier(s, given, links)
         val trusted = fill.fromModel && withContext(Dispatchers.IO) { SkillStats.trusted(store().state(), s, model) }
         VoiceLog.add(VoiceEvent.SKILL_PICK, SkillPickCode.CALLED.id, tierCode(tier), if (named) 1 else 0)
-        when (val go = SkillRisk.decide(s, named, fill.fromModel, tier, trusted, host.locked, host.phoneLock, host.messages.active)) {
+        // C4: where each value came from goes to the steps (a connection's step takes a tap for words the model wrote).
+        val sources = s.params.associate { p -> p.name to (fill.sources[p.name]?.let(ValueSource::of) ?: ValueSource.FIXED) }
+        val go = SkillRisk.decide(s, named && SkillRouter.asksFor(said, s), fill.fromModel, tier, trusted, host.locked, host.phoneLock, host.messages.active, links)
+        if (go !is ModelGo.Refused) withContext(Dispatchers.IO) { overLimit(s) }?.let { why ->
+            host.append(replyId, why.shown(l))
+            host.say(why.said(l))
+            return SkillRan(ActionStatus.FAILED, ActionStatus.FAILED.toolResponse(why.en()), asked = named, text = why)
+        }
+        when (go) {
             is ModelGo.Refused -> {
                 host.append(replyId, go.why.shown(l))
                 host.say(go.why.said(l))
-                val status = if (s.level == SkillLevel.OFF) ActionStatus.DISABLED else ActionStatus.NEEDS_UNLOCK
+                // Connections C1: not off and not locked, so a step's link is gone (SkillCheck.attention): it didn't run.
+                val status = when { s.level == SkillLevel.OFF -> ActionStatus.DISABLED; host.locked -> ActionStatus.NEEDS_UNLOCK; else -> ActionStatus.FAILED }
                 return SkillRan(status, status.toolResponse(go.why.en()), asked = named, text = go.why)
             }
             is ModelGo.Card -> {
                 val edit = Edit(s.id, s.rev, fill.values, given, "", model.takeIf { fill.fromModel }, named, l.say)
-                val answer = card(replyId, s, fill.values, fill.sources, edit, go.didYouMean, go.tapOnly, host, l)
+                val answer = card(replyId, s, fill.values, fill.sources, edit, go.didYouMean, go.tapOnly, host, l, links)
                 when {
                     answer == Confirmations.YES -> {
                         if (fill.fromModel) sample(s, model, right = true)
@@ -536,7 +607,7 @@ object PanelSkills {
                 }
             }
         }
-        val out = SkillRunner.inTurn(replyId, s, fill.values, named, host, l, untrusted)
+        val out = SkillRunner.inTurn(replyId, s, fill.values, named, host, l, untrusted, sources)
         return SkillRan(SkillRan.statusOf(out), SkillRan.forModel(out), launched = out.launched,
             content = out.results.any { it.content } || s.provenance.fromContent, asked = named, text = out.line)
     }
@@ -548,7 +619,7 @@ object PanelSkills {
      * Card.CHIP + the index among [edit]'s given questions.
      */
     private suspend fun card(replyId: String, s: Skill, values: Map<String, String>, sources: Map<String, FillSource>, edit: Edit, didYouMean: Boolean,
-        tapOnly: Boolean, host: Host, l: Langs): Int {
+        tapOnly: Boolean, host: Host, l: Langs, links: SkillLinks): Int {
         val id = "skill-pick-" + random.nextLong().toString(16)
         val title = (if (didYouMean) SkillStrings.didYouMean("name" to s.name) else SkillStrings.runTitle("name" to s.name)).shown(l)
         val yes = if (didYouMean) SkillStrings.yesRun else UiStrings.run
@@ -561,7 +632,7 @@ object PanelSkills {
             else -> SkillStrings.runTapModel("run" to UiLabel(yes))
         }
         val lines = buildList {
-            addAll(SkillCards.run(s, values))
+            addAll(SkillCards.run(s, values, links))
             for (p in s.params) if (sources[p.name] == FillSource.MODEL) add(SkillStrings.valueChip("value" to values.getValue(p.name), "state" to SkillStrings.modelText()))
             edit.model?.let { add(SkillStrings.filledBy("model" to it.title)) }
         }
@@ -596,21 +667,26 @@ object PanelSkills {
         val e = r.edit
         val s = store().get(e.skillId)?.takeIf { it.rev == e.rev } ?: return reply(replyId, host, SkillStrings.changed(), l)
         val p = s.param(e.param) ?: return reply(replyId, host, SkillStrings.changed(), l)
-        val v = SkillFills.read(p.type, r.words) ?: return reply(replyId, host, SkillStrings.fillRefused("ask" to (if (l.say == Lang.FR) p.askFr else p.askEn)), l)
+        val v = SkillFills.read(p, r.words) ?: return reply(replyId, host, SkillStrings.fillRefused("ask" to (if (l.say == Lang.FR) p.askFr else p.askEn)), l)
         val values = e.values + (p.name to v)
         val sources = e.given.associateWith { if (it == p.name) FillSource.YOURS else FillSource.MODEL }
         if (host.locked) return reply(replyId, host, if (host.phoneLock) LockStrings.closedNow() else TurnStrings.unlockThenAsk(), l)
         if (s.level == SkillLevel.OFF) return reply(replyId, host, SkillStrings.isOff("name" to s.name, "page" to UiStrings.inSettings(UiStrings.skills)), l)
-        val tier = SkillRisk.tier(s, e.given)
+        val links = withContext(Dispatchers.IO) { links() }
+        if (SkillCheck.attention(s, links).isNotEmpty()) return reply(replyId, host, SkillPolicy.needsAttention(s), l)
+        withContext(Dispatchers.IO) { overLimit(s) }?.let { return reply(replyId, host, it, l) }
+        val tier = SkillRisk.tier(s, e.given, links)
         val tap = s.provenance.fromContent || host.messages.active || tier == SkillTier.RISKY
         val edit = Edit(s.id, s.rev, values, e.given, "", e.model, e.named, e.lang)
-        when (val answer = card(replyId, s, values, sources, edit, didYouMean = false, tapOnly = tap, host = host, l = l)) {
+        when (val answer = card(replyId, s, values, sources, edit, didYouMean = false, tapOnly = tap, host = host, l = l, links = links)) {
             Confirmations.YES -> {
                 // D16: a value changed, then Run: the model's fill was wrong.
                 e.model?.let { sample(s, it, right = false) }
                 VoiceLog.add(VoiceEvent.SKILL_WARN, SkillWarnCode.EDITED.id, tierCode(tier), 0)
                 VoiceLog.add(VoiceEvent.SKILL_PICK, SkillPickCode.WRONG.id, tierCode(tier), if (e.named) 1 else 0)
-                SkillRunner.run(replyId, s, values, e.named, host, l)
+                // The value you said is yours; the others the call gave stay the model's; the rest are fixed.
+                SkillRunner.run(replyId, s, values, e.named, host, l, sources = s.params.associate { q ->
+                    q.name to when (q.name) { p.name -> ValueSource.YOURS; in e.given -> ValueSource.MODEL; else -> ValueSource.FIXED } })
             }
             else -> if (answer >= Card.CHIP) {
                 val q = s.params.filter { it.name in e.given }.getOrNull(answer - Card.CHIP) ?: p
@@ -649,7 +725,8 @@ object PanelSkills {
                         val c = SkillContinue.take(app, token)
                         if (c == null) reply(replyId, host, SkillStrings.expired(), l) else {
                             VoiceLog.add(VoiceEvent.SKILL_RUN, SkillRunCode.CONTINUED.id, c.done, s.steps.size)
-                            SkillRunner.run(replyId, s, c.values, c.named, host, l, from = c.from, done = c.done, untrusted = c.untrusted)
+                            SkillRunner.run(replyId, s, c.values, c.named, host, l, from = c.from, done = c.done, untrusted = c.untrusted, sources = c.sources,
+                                outputs = c.outputs)
                         }
                     }
                 }

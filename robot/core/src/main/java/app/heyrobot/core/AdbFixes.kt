@@ -117,9 +117,9 @@ enum class AdbFixState {
 
 object AdbFixes {
     /** 1.0: [AppId.PACKAGE] (0.9's grants were for `app.heyrobot` and don't carry over to it). */
-    const val PACKAGE = AppId.PACKAGE
+    val PACKAGE: String get() = AppId.PACKAGE
     /** The package, then the class (whose own package stays `app.heyrobot`), as Android flattens a component. */
-    const val RECOGNIZER = "$PACKAGE/app.heyrobot.assistant.RobotRecognitionService" // l10n: not text (a component's name)
+    val RECOGNIZER: String get() = "$PACKAGE/app.heyrobot.assistant.RobotRecognitionService" // l10n: not text (a component's name)
 
     /** The page's words before the fixes, Android's screens in the phone's language. */
     val headerText: Phrase get() = SettingsStrings.adbHeader("about" to AndroidPath.ABOUT_PHONE, "build" to AndroidPath.BUILD_NUMBER,

@@ -1,0 +1,15 @@
+{
+  "format": 1,
+  "id": "lt-add-kitten-fast",
+  "title": "The same add in a second voice, spoken fast",
+  "safety": "robot-data",
+  "testBench": ["lt-add"],
+  "setup": [{"set": "speakReplies", "value": "VOICE"}],
+  "steps": [
+    {"do": "open", "how": "wake"},
+    {"do": "say", "text": "Add grapes to the shopping list.", "voice": "kitten", "speed": 1.2},
+    {"do": "wait_reply", "seconds": 30, "contains": "grapes"},
+    {"do": "check", "what": "router", "equals": "ListsRouter"},
+    {"do": "end"}
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "format": 1,
+  "id": "su4-misfires",
+  "title": "What Sums must leave alone: a dose, a list, a Files question",
+  "safety": "robot-data",
+  "testBench": ["SU4"],
+  "needs": {"model": true},
+  "setup": [{"set": "speakReplies", "value": "VOICE"}],
+  "steps": [
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "How much ibuprofen for a 30 kilo child?", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 120},
+    {"do": "check", "what": "router", "equals": "model"},
+    {"do": "end"},
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "Add 2 litres of milk to the shopping list.", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 30},
+    {"do": "check", "what": "router", "equals": "ListsRouter"},
+    {"do": "end"},
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "How much did I spend at Costco in October?", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 60},
+    {"do": "check", "what": "router", "equals": "FilesRouter"},
+    {"do": "end"}
+  ]
+}

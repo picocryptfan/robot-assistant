@@ -19,9 +19,12 @@
     <string name="backup_empty">Nothing yet</string>
     <string name="backup_memory_cant">Can\'t be opened just now: unlock your phone, or leave Memory out</string>
     <string name="backup_files_cant">Can\'t be read now: Settings › Files says why</string>
+    <!-- 1.4: Lists that can't be opened now (their key gone, damaged, a newer Robot's). -->
+    <string name="backup_lists_cant">Can\'t be read now: Settings › Lists says why</string>
     <string name="backup_history_travel">Left out while travel mode is on: it holds answers from Robot Files</string>
     <string name="backup_sum_settings">Voice, wake phrases, actions, safety, helpers (without keys), web search, Termux, display, updates</string>
     <string name="backup_sum_voiceprint">Made on this phone</string>
+    <string name="backup_sum_everyday">Music by voice, Robot\'s listening and voices for other apps, Ask Robot, What went online</string>
     <string name="backup_vp_warning">Biometric: it needs a strong passphrase, and comes back only from a backup you mark as your own.</string>
     <string name="backup_pictures">Saved screenshots and photos</string>
     <string name="backup_recordings">Recordings</string>
@@ -82,6 +85,7 @@
     <string name="backup_restore_replace">Replace what\'s here</string>
     <string name="backup_restore_mode_add">Added to what\'s on this phone</string>
     <string name="backup_restore_mode_replace">Replaces what\'s on this phone</string>
+    <string name="backup_restore_mode_replace_memory">Replaces what\'s on this phone, except its private codes</string>
     <string name="backup_restore_code">Enter this phone\'s lock code</string>
     <string name="backup_restore_code_detail">Phone lock comes back only with it.</string>
     <string name="backup_restore_mine">This backup is my own, from my own phone</string>
@@ -100,7 +104,25 @@
     <string name="backup_restore_result_room">not finished yet (short of free space, or a storage error). Robot tries again each time you unlock the phone.</string>
     <string name="backup_restore_result_earlier">not restored, and nothing of it changed: an earlier restore of it hasn\'t finished (short of free space, or a storage error). Free up space, then restore again.</string>
     <string name="backup_restore_result_others">From a backup not marked as yours: memories show Imported, restored routines and skills are off, and keys were left out.</string>
+    <string name="backup_restore_result_cut">not restored, and nothing of it changed: the restore stopped first. Restore again.</string>
+    <string name="backup_restore_result_refused">not restored, and nothing of it changed: this phone\'s own file for it can\'t be read or written. Check it in Settings, then restore again.</string>
+    <string name="backup_restore_stopped">This restore stopped part way, so this phone is part backup, part as it was. Lines that say restored are whole. For the rest, nothing changed: restore again to finish.</string>
+    <string name="backup_restore_result_links">Robot to Robot: your pairings come back paused once Robot to Robot is on. Answering while your phone is locked is off and each person\'s levels start over, until you set them again.</string>
+    <plurals name="backup_restore_result_keys_no_place">
+        <item quantity="one">not restored: %1$d key has no helper or connection here to go with. Restore it along with Settings or Connections, or enter it in Settings.</item>
+        <item quantity="other">not restored: %1$d keys have no helper or connection here to go with. Restore them along with Settings or Connections, or enter them in Settings.</item>
+    </plurals>
+    <plurals name="backup_restore_files_left_out">
+        <item quantity="one">Files: %1$d file couldn\'t be read when this backup was made, so it isn\'t in the backup and didn\'t come back.</item>
+        <item quantity="other">Files: %1$d files couldn\'t be read when this backup was made, so they aren\'t in the backup and didn\'t come back.</item>
+    </plurals>
+    <plurals name="backup_files_left_out">
+        <item quantity="one">Files: %1$d file couldn\'t be read, so it isn\'t in this backup.</item>
+        <item quantity="other">Files: %1$d files couldn\'t be read, so they aren\'t in this backup.</item>
+    </plurals>
+    <string name="backup_codes_left_out">Memory couldn\'t be read, so your private codes aren\'t in this backup. Unlock your phone and make it again.</string>
     <string name="backup_restore_result_close">Close this</string>
+    <string name="backup_restore_kept_unknown">Kept safer: Robot couldn\'t count these just now. Settings that let Robot act with fewer questions still keep this phone\'s values.</string>
     <plurals name="backup_restore_kept">
         <item quantity="one">Kept safer: %1$d setting that lets Robot act with fewer questions keeps this phone\'s value.</item>
         <item quantity="other">Kept safer: %1$d settings that let Robot act with fewer questions keep this phone\'s values.</item>
@@ -160,5 +182,20 @@
     <plurals name="backup_n_videos">
         <item quantity="one">%1$d video</item>
         <item quantity="other">%1$d videos</item>
+    </plurals>
+    <string name="backup_links_cant">Can\'t be read now: unlock your phone, or leave Robot to Robot out</string>
+    <string name="backup_links_off">Robot to Robot is off, so your pairings and its settings stay out. Turn it on to back them up</string>
+    <string name="backup_links_left_out">Your pairings couldn\'t be read, so Robot to Robot isn\'t in this backup. Unlock your phone and back up again.</string>
+    <plurals name="backup_sum_links">
+        <item quantity="one">%1$d person you\'re paired with, without any keys. They\'re told when you restore, and paused until they accept.</item>
+        <item quantity="other">%1$d people you\'re paired with, without any keys. They\'re told when you restore, and paused until they accept.</item>
+    </plurals>
+    <plurals name="backup_n_links">
+        <item quantity="one">%1$d pairing</item>
+        <item quantity="other">%1$d pairings</item>
+    </plurals>
+    <plurals name="backup_n_lists">
+        <item quantity="one">%1$d list</item>
+        <item quantity="other">%1$d lists</item>
     </plurals>
 </resources>

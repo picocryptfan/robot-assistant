@@ -8,9 +8,13 @@ import app.heyrobot.core.TextCommand
 // code before anything reaches the model and anchored at the start of what you said like HelperRouter: only "hey robot",
 // "please", "can you", "peux-tu" and the like in front, and only "please", "now", "merci" after. The short commands must
 // be the whole utterance, so "I'm driving to Montreal tomorrow, what's the weather there" and "my car mode button is
-// broken" stay questions. Car mode's own phrases (navigate, call, messages, what's next, music) count only while car mode
+// broken" stay questions. Car mode's own phrases (navigate, call, messages, what's next) count only while car mode
 // is on; outside it they go to the model and the tools as today. While the brief speaks, the routines'
 // BriefControl ("next", "skip", "repeat", "stop") is asked first.
+//
+// The everyday set (everyday-set-plan.md §3.2, D2): car mode's music phrases moved to core music MusicRouter, which hears
+// them in and out of car mode. They stay here only for [route]'s carMusic, the 0.8 handling the panel keeps while
+// Settings › Actions › Music › Music by voice is off (§3.6), so car mode's "pause" and "next song" never stop working.
 
 /** A media key sent to the current player (AudioManager.dispatchMediaKeyEvent, which needs no permission). */
 enum class MusicAction(val keyCode: Int) {
@@ -74,7 +78,8 @@ object HandsFreeRouter {
     private val WHATS_NEXT = list("whats next", "what is next", "whats next on my calendar", "whats my next meeting", "what is my next meeting", "my next meeting",
         "next meeting", "whats my next appointment", "my next appointment", "my next event", "whats my next event", "cest quoi la suite", "quest ce qui suit",
         "mon prochain rendez vous", "cest quoi mon prochain rendez vous", "cest quand mon prochain rendez vous", "mon prochain meeting")
-    private val MUSIC: Map<List<String>, MusicAction> = buildMap {
+    /** Car mode's music phrases (0.8), as words; MusicRouter hears every one of them (MusicRouterTest). */
+    internal val MUSIC: Map<List<String>, MusicAction> = buildMap {
         for (p in listOf("play music", "play some music", "play my music", "resume music", "resume the music", "start the music", "unpause", "unpause the music",
                 "mets de la musique", "mets la musique", "joue de la musique", "reprends la musique", "remets la musique", "partir la musique", "part la musique")) put(p.split(' '), MusicAction.PLAY)
         for (p in listOf("pause", "pause the music", "pause music", "stop the music", "stop music", "mets la musique sur pause", "pause la musique",
@@ -106,8 +111,17 @@ object HandsFreeRouter {
 
     private fun at(w: List<String>, i: Int, p: List<String>): Boolean = i + p.size <= w.size && p.indices.all { w[i + it] == p[it] }
 
-    /** The command at the start of [text], or null (ordinary talk). [carMode]: car mode is on. [wakePhrases]: yours. */
-    fun route(text: String, carMode: Boolean, wakePhrases: List<String> = emptyList()): HandsFreeCommand? {
+    /**
+     * "car mode" alone: both words are French words too, so LangId leans French on it, and on its own it says nothing of the
+     * language you're in. The reply language takes the last turn's or the menus' instead (ReplyLang, not sure).
+     */
+    fun eitherLanguage(text: String): Boolean = tokens(text).map { it.w } == listOf("car", "mode")
+
+    /**
+     * The command at the start of [text], or null (ordinary talk). [carMode]: car mode is on. [wakePhrases]: yours.
+     * [carMusic]: car mode's music phrases too (0.8), only while Music by voice is off; otherwise MusicRouter hears them.
+     */
+    fun route(text: String, carMode: Boolean, wakePhrases: List<String> = emptyList(), carMusic: Boolean = false): HandsFreeCommand? {
         val stripped = TextCommand.stripWake(text, wakePhrases, loose = true)
         val toks = tokens(stripped)
         val w = toks.map { it.w }
@@ -133,7 +147,7 @@ object HandsFreeRouter {
         if (!carMode) return null
         if (whole(READ_MESSAGES)) return HandsFreeCommand.ReadMessages
         if (whole(WHATS_NEXT)) return HandsFreeCommand.WhatsNext
-        (MUSIC[core] ?: MUSIC[full])?.let { return HandsFreeCommand.Music(it) }
+        if (carMusic) (MUSIC[core] ?: MUSIC[full])?.let { return HandsFreeCommand.Music(it) }
         navigate(core) { a, b -> stripped.substring(toks[i + a].start, toks[i + b - 1].end) }?.let { return it }
         // Reply: its words as said (the original text after the lead).
         REPLY.firstOrNull { at(core, 0, it) && core.size > it.size }?.let {

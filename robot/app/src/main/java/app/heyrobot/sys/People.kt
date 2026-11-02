@@ -369,12 +369,18 @@ object AppPages {
     const val EXTRA = "robot_page"
     /** Assistant setup, at "People, notes and calendar": the permissions and their grant buttons. */
     const val PERMISSIONS = "permissions"
+    /** The everyday set (E7): Assistant setup from its top, from Ask Robot's "Make Robot your assistant" line. */
+    const val SETUP = "setup"
     const val NOTES = "notes"
     /** 0.5.0: the Transcripts library, or one transcript ([EXTRA_TRANSCRIPT]); Settings › Conversation (the tile's long press). */
     const val TRANSCRIPTS = "transcripts"
     const val CONVERSATION_SETTINGS = "conversation_settings"
     /** 0.6.0: Settings › Helpers (the summary screen's link when no stronger AI is set up). */
     const val HELPERS = "helpers"
+    /** Settings › Car mode (the car screen's Settings button). */
+    const val CAR_SETTINGS = "car_settings"
+    /** Settings › Messages (the car screen's panel when messages are off). */
+    const val MESSAGES_SETTINGS = "messages_settings"
     const val EXTRA_TRANSCRIPT = "robot_transcript"
     /** 0.5.0, phase 5.6: the line a summary's [14:03] link points at, in [EXTRA_TRANSCRIPT]. */
     const val EXTRA_LINE = "robot_transcript_line"
@@ -392,11 +398,15 @@ object AppPages {
     const val SETTINGS = "settings"
     /** 1.4: the Files tab (a filing notification's tap: your Inbox is at its top). */
     const val FILES = "files"
+    /** Everyday set, E6: Settings › Voice (Android's text-to-speech settings: Robot's engine's settings and its voice download). */
+    const val VOICE = "voice"
     /**
      * 1.4 F12: a tax pack's or an expense report's page in the Files tab ("files_pack:tax:2026"), from the panel's card for
      * "make my 2026 tax pack". It only opens the page: exporting is a tap there.
      */
     const val FILES_PACK = "files_pack"
+    /** 1.5 L6: Settings › Robot to Robot › Requests (a card's notification, the panel's Open Requests). */
+    const val LINK_REQUESTS = "link_requests"
 
     /** [r]'s pack ("tax" or "expenses") and year when it is a [FILES_PACK] route, else null. */
     fun filesPack(r: String): Pair<String, Int>? {
@@ -411,6 +421,15 @@ object AppPages {
 
     /** The route for the pack [kind] ("tax", "expenses") for [year]. */
     fun packRoute(kind: String, year: Int): String = "$FILES_PACK:$kind:$year" // l10n: not text (a route)
+
+    /** 1.4 Lists (LS5): a list's page over the Notes tab ("lists:<its id>"), from a list card's "Open Shopping" in the panel. */
+    const val LISTS = "lists"
+
+    /** [r]'s list id when it is a [LISTS] route, else null: an id only (32 hex characters), never a name. */
+    fun listPage(r: String): String? = r.removePrefix("$LISTS:").takeIf { r.startsWith("$LISTS:") && app.heyrobot.core.lists.ListsId.of(it) != null }
+
+    /** The route for the list [id]. */
+    fun listRoute(id: String): String = "$LISTS:$id" // l10n: not text (a route)
 
     /** 1.4: the "Robot Files" launcher entry (an activity-alias of MainActivity): the Files tab, Back leaving the app. */
     const val FILES_ICON = "files_icon"

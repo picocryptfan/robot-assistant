@@ -182,7 +182,7 @@ class MessageTurnTest {
         assertEquals("New notes", back.turns[2].actions.single().summary)
         assertNull(back.turns[2].actions.single().detail)
         assertTrue(TurnRules.untrusted(back.turns))
-        assertEquals(setOf(Personal.MESSAGES), HelperContext.personal(back.turns))
+        assertEquals(setOf(Personal.MESSAGES, Personal.ACTED), HelperContext.personal(back.turns))
         // A turn marked without its placeholder still keeps no words.
         assertEquals(MessageReading.NOT_KEPT, ConversationCodec.fromJson(ConversationCodec.toJson(c.copy(turns = listOf(read.copy(kept = null)))))!!.turns.single().text)
         assertFalse(TurnRules.untrusted(listOf(user)))

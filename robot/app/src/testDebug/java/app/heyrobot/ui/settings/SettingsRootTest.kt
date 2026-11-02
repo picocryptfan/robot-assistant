@@ -3,7 +3,7 @@ package app.heyrobot.ui.settings
 
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -40,7 +40,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
-/** The Settings tab: twenty-four rows (0.7 added Memory and Messages, 0.8 Routines, Headset and Car mode, 0.9 Web search and Termux, 1.1 Language and Skills, 1.4 Files), each with its state under the title, each opening its page. */
+/** The Settings tab: twenty-five rows (0.7 added Memory and Messages, 0.8 Routines, Headset and Car mode, 0.9 Web search and Termux, 1.1 Language and Skills, 1.4 Files and Lists), each with its state under the title, each opening its page. */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35], qualifiers = PHONE)
@@ -76,6 +76,8 @@ class SettingsRootTest {
             "Termux" to "openPage ${Page.Settings(SettingsRoutes.TERMUX)}",
             "Memory" to "openPage ${Page.Settings(SettingsRoutes.MEMORY)}",
             "Files" to "openPage ${Page.Settings(SettingsRoutes.FILES)}",
+            // 1.4 Lists (LS2): Settings › Lists beside Settings › Files.
+            "Lists" to "openPage ${Page.Settings(SettingsRoutes.LISTS)}",
             "History" to "openPage ${Page.Settings(SettingsRoutes.HISTORY)}",
             "Display" to "openPage ${Page.Settings(SettingsRoutes.DISPLAY)}",
             "Language" to "openPage ${Page.Settings(SettingsRoutes.LANGUAGE)}",
@@ -134,6 +136,9 @@ class SettingsRootTest {
         // 1.4: Robot Files, counted without the key: nothing yet.
         rule.scrollToText("Files")
         rule.onRow("Files").assert(hasText("No files yet"))
+        // 1.4 Lists: counted only while unlocked, and nothing made by counting.
+        rule.scrollToText("Lists")
+        rule.waitUntil(5_000) { runCatching { rule.onRow("Lists").assert(hasText("No lists yet")) }.isSuccess }
     }
 
     @Test fun setupThatNeedsAttentionSaysSo() {

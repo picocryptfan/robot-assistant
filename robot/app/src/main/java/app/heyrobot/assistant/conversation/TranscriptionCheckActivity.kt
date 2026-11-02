@@ -382,7 +382,7 @@ class TranscriptionCheckActivity : ComponentActivity() {
                 verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 // Locked: none of it shows, the results kept for the process included.
                 if (lockedNow.value) {
-                    Text(stringResource(R.string.conv_unlock_screen), style = MaterialTheme.typography.bodyLarge)
+                    Text(stringResource(ConversationNotices.lockedLine(this@TranscriptionCheckActivity, R.string.conv_unlock_screen)), style = MaterialTheme.typography.bodyLarge)
                     return@Column
                 }
                 Text(stringResource(R.string.conv_check_intro, Math.round(Wer.PASS_FR * 100).toInt(), CheckReport.GATE_LINES, CheckReport.GATE_READERS,

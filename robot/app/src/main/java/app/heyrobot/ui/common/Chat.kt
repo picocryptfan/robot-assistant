@@ -76,6 +76,8 @@ data class ActionView(
     val chips: List<String> = emptyList(),
     /** 1.4: a Robot Files card: the folder's symbol. */
     val files: Boolean = false,
+    /** 1.4 Lists (LS12): a list card: the checklist's symbol. */
+    val lists: Boolean = false,
 )
 
 /** What a card can ask the panel for besides "Do it" and "Cancel". */
@@ -97,7 +99,7 @@ class CardActions(
  * own answer, after the local model first handed the question over.
  */
 data class OfferView(val api: Boolean, val text: String, val sends: List<String>, val preview: String? = null, val asWell: Boolean = false,
-    val name: String = "Claude", val app: String = "Claude")
+    val name: String = "Claude", val app: String = "Claude", val keep: String? = null, val note: String? = null)
 
 fun toolIcon(t: ToolName?): ImageVector = when (t) {
     ToolName.SET_TIMER -> RIcons.Timer
@@ -120,7 +122,20 @@ fun toolIcon(t: ToolName?): ImageVector = when (t) {
     ToolName.WEB_SEARCH, ToolName.BROWSER_SEARCH -> RIcons.Search
     ToolName.TERMUX_SCRIPT, ToolName.TERMUX_COMMAND -> RIcons.Terminal
     ToolName.FIND_FILES, ToolName.READ_FILE -> RIcons.Folder
+    ToolName.ADD_TO_LIST -> RIcons.Checklist
+    // Skills connections (C4): your home and your servers; an app you picked.
+    ToolName.CONNECTION -> RIcons.Home
+    ToolName.HAND_OFF -> RIcons.Apps
+    ToolName.CALCULATE -> RIcons.Check
+    ToolName.ASK_ROBOT -> RIcons.Robot
     null -> RIcons.Warning
+}
+
+/** A card's symbol: a Robot Files or a list card's own, else its tool's (a card with neither shows the warning sign). */
+fun cardIcon(a: ActionView): ImageVector = when {
+    a.files -> RIcons.Folder
+    a.lists -> RIcons.Checklist
+    else -> toolIcon(a.tool)
 }
 
 /** The line under a card's summary: what it waits for, or how it went (its state in the menus' language, its line as the turn said it). */

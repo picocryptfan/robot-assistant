@@ -40,6 +40,9 @@ import java.nio.charset.CodingErrorAction
 // codec (a newer one is left for a newer Robot; one it reads only in part is refused); then every file the index names
 // must have its bytes in the backup, of the size and SHA-256 it says (the reader's own count, never the index's word),
 // or the whole category is refused. Bytes the index doesn't name (a file the old phone couldn't read whole) are skipped.
+//
+// Skills connections (C10): connections.json by its strict codec (one it reads only in part is refused whole); each
+// connection key's plain form by ConnSecretsCodec, its bytes zeroed: only which parts it holds is kept, never a value.
 
 /** Why a category of the file won't be restored. */
 enum class SkipWhy {
@@ -101,6 +104,26 @@ class VerifiedBackup internal constructor(
     val files: app.heyrobot.core.files.FileIndex? = null,
     /** 1.4: Settings › Files (files_settings.json) when the file had it, with the keys this Robot doesn't know. */
     val filesSettings: app.heyrobot.core.files.FilesSettingsFile.Ok? = null,
+    /**
+     * 1.4, Lists: lists.json as read (lists v1, every list and item whole: a file this Robot can't read whole is refused), or
+     * null when the backup has none. Names and items: content, kept in RAM only for the restore ([toString] counts).
+     */
+    val lists: app.heyrobot.core.lists.ListsFile? = null,
+    /** 1.4, Lists: Settings › Lists (lists_settings.json) when the file had it, with the keys this Robot doesn't know. */
+    val listsSettings: app.heyrobot.core.lists.ListsSettingsFile.Ok? = null,
+    /** The everyday set: everyday_settings.json when the file had it, with the keys this Robot doesn't know. */
+    val everyday: app.heyrobot.core.everyday.EverydaySettingsFile.Ok? = null,
+    /** L12: links.json as read, whole or refused, or null when the backup has none ([toString] counts). */
+    val links: app.heyrobot.core.link.LinkBackupFile? = null,
+    /** L12: Settings › Robot to Robot when the file had it, with the keys this Robot doesn't know. */
+    val linkSettings: app.heyrobot.core.link.LinkSettingsFile.Ok? = null,
+    /**
+     * C10: connections.json as read, every connection whole (a file that drops one is refused whole), or null when the
+     * backup has none. Addresses and titles: kept in RAM only for the restore ([toString] counts).
+     */
+    val connections: List<app.heyrobot.core.connect.Connection>? = null,
+    /** C10: each connection key in the file, by connection id, with the parts it holds; never a key. */
+    val connKeys: Map<String, Set<app.heyrobot.core.connect.SecretPart>> = emptyMap(),
 ) {
     fun has(c: BackupCategory): Boolean = c in found
 
@@ -130,15 +153,17 @@ object RestoreReader {
 
     /** Reads the whole file and returns what it holds, or throws [BackupException]. Writes nothing. */
     fun verify(open: () -> InputStream, header: BackupHeader, key: BackupKey, progress: (Long) -> Unit = {}): VerifiedBackup =
-        verify(open, header, key, progress, BackupCategory::of)
+        verify(open, header, key, progress, known = BackupCategory::of)
 
     /**
      * [verify], with [known] saying which categories this Robot has: BackupDowngradeTest reads a 1.4 file as a Robot without
-     * Files (1.1 to 1.3), whose reader is this one less that category.
+     * Files (1.1 to 1.3), whose reader is this one less that category. C10: [schema], the newest schema of each entry name
+     * that Robot reads (1.1 read skills.json at 1, before connections' v2).
      */
     internal fun verify(open: () -> InputStream, header: BackupHeader, key: BackupKey, progress: (Long) -> Unit,
+                        schema: (BackupCategory, String) -> Int? = { c, n -> c.schema(n) },
                         known: (String) -> BackupCategory?): VerifiedBackup {
-        val v = Verify(known)
+        val v = Verify(known, schema)
         stream(open, header, key).use { s ->
             val r = BackupContainerReader(s)
             while (true) {
@@ -189,7 +214,7 @@ object RestoreReader {
         }
     }
 
-    private class Verify(private val known: (String) -> BackupCategory?) {
+    private class Verify(private val known: (String) -> BackupCategory?, private val schemaOf: (BackupCategory, String) -> Int?) {
         var manifest: BackupManifest? = null
         var entries = 0L
         var bytes = 0L
@@ -213,6 +238,13 @@ object RestoreReader {
         var skillSettings: app.heyrobot.core.skills.SkillSettings? = null
         var filesIndex: app.heyrobot.core.files.FileIndex? = null
         var filesSettings: app.heyrobot.core.files.FilesSettingsFile.Ok? = null
+        var lists: app.heyrobot.core.lists.ListsFile? = null
+        var listsSettings: app.heyrobot.core.lists.ListsSettingsFile.Ok? = null
+        var everyday: app.heyrobot.core.everyday.EverydaySettingsFile.Ok? = null
+        var links: app.heyrobot.core.link.LinkBackupFile? = null
+        var linkSettings: app.heyrobot.core.link.LinkSettingsFile.Ok? = null
+        var connections: List<app.heyrobot.core.connect.Connection>? = null
+        val connKeys = LinkedHashMap<String, Set<app.heyrobot.core.connect.SecretPart>>()
         /** Each file's bytes in the backup: the size and SHA-256 counted here. */
         val fileBlobs = HashMap<app.heyrobot.core.files.FileId, FilesBackup.Streamed>()
 
@@ -228,19 +260,20 @@ object RestoreReader {
             if (c in refused) return
             val max = c.maxBytes(e.name) ?: return refuse(c, SkipWhy.REFUSED)
             if (e.length > max || count.entries + 1 > c.maxEntries) return refuse(c, SkipWhy.TOO_BIG)
-            if (e.schema > (c.schema(e.name) ?: 0)) return refuse(c, SkipWhy.NEWER)
+            if (e.schema > (schemaOf(c, e.name) ?: 0)) return refuse(c, SkipWhy.NEWER)
             when (c) {
                 BackupCategory.TRANSCRIPTS -> return transcript(e)
                 BackupCategory.KEYS -> if (e.name != BackupCategory.MEMORY_CODES) return key(e)
                 BackupCategory.VOICEPRINT -> return voiceprint(e)
                 BackupCategory.FILES -> if (e.name != FilesBackup.SETTINGS) return files(e)
+                BackupCategory.CONN_KEYS -> return connKey(e)
                 else -> {}
             }
             val bytes = readAll(e.data, e.length)
             // StrictJson first (UTF-8, RFC 8259, no repeated keys, 32 levels), then the store's codec on the same text.
             val json = StrictJson.parse(bytes)?.value as? Map<*, *> ?: return refuse(c, SkipWhy.REFUSED)
             // The file's own version too, whatever its record said.
-            val known = c.schema(e.name) ?: 0
+            val known = schemaOf(c, e.name) ?: 0
             val own = (json[if (e.name == "settings.json") "schema" else "v"] as? Long) ?: 0L
             if (known > 0 && own > known) return refuse(c, SkipWhy.NEWER)
             val text = String(bytes, Charsets.UTF_8)
@@ -278,12 +311,48 @@ object RestoreReader {
                     val conv = ConversationCodec.fromJson(text)
                     if (conv == null || conv.id != BackupCategory.idOf(e.name)) SkipWhy.REFUSED else { history[conv.id] = conv.updated; null }
                 }
-                BackupCategory.TRANSCRIPTS, BackupCategory.VOICEPRINT -> null
+                BackupCategory.TRANSCRIPTS, BackupCategory.VOICEPRINT, BackupCategory.CONN_KEYS -> null
+                // C10: connections.json strictly, as ConnStore reads it: newer left for a newer Robot; damaged, or a connection
+                // this Robot drops, refuses it whole (a skill's step would point at a connection that didn't come back).
+                BackupCategory.CONNECTIONS -> when (val r = app.heyrobot.core.connect.ConnectionCodec.decode(bytes)) {
+                    is app.heyrobot.core.connect.ConnFile.Ok -> if (r.dropped > 0) SkipWhy.REFUSED else { connections = r.connections; null }
+                    is app.heyrobot.core.connect.ConnFile.TooNew -> SkipWhy.NEWER
+                    app.heyrobot.core.connect.ConnFile.Damaged -> SkipWhy.REFUSED
+                }
                 // files_settings.json: after StrictJson, its own codec; newer is left for a newer Robot.
                 BackupCategory.FILES -> when (val r = app.heyrobot.core.files.FilesSettingsCodec.decode(text)) {
                     is app.heyrobot.core.files.FilesSettingsFile.Ok -> { filesSettings = r; null }
                     is app.heyrobot.core.files.FilesSettingsFile.TooNew -> SkipWhy.NEWER
                     is app.heyrobot.core.files.FilesSettingsFile.Damaged -> SkipWhy.REFUSED
+                }
+                // 1.4, Lists: lists.json by its strict codec (one it can't read whole is refused whole: an item left out would be
+                // gone), lists_settings.json by its own; a newer one of either is left for a newer Robot.
+                BackupCategory.LISTS -> if (e.name == BackupCategory.LISTS_FILE) {
+                    when (val r = app.heyrobot.core.lists.ListsCodec.decode(bytes)) {
+                        is app.heyrobot.core.lists.ListsParse.Ok -> { lists = r.file; null }
+                        is app.heyrobot.core.lists.ListsParse.TooNew -> SkipWhy.NEWER
+                        app.heyrobot.core.lists.ListsParse.Damaged -> SkipWhy.REFUSED
+                    }
+                } else when (val r = app.heyrobot.core.lists.ListsSettingsCodec.decode(text)) {
+                    is app.heyrobot.core.lists.ListsSettingsFile.Ok -> { listsSettings = r; null }
+                    is app.heyrobot.core.lists.ListsSettingsFile.TooNew -> SkipWhy.NEWER
+                    is app.heyrobot.core.lists.ListsSettingsFile.Damaged -> SkipWhy.REFUSED
+                }
+                // L12: each by its own codec; newer is left for a newer Robot, damaged refused (the whole category).
+                BackupCategory.LINKS -> if (e.name == BackupCategory.LINKS_FILE) when (val r = app.heyrobot.core.link.LinkBackupCodec.decode(text)) {
+                    is app.heyrobot.core.link.LinkBackupRead.Ok -> { links = r.file; null }
+                    is app.heyrobot.core.link.LinkBackupRead.TooNew -> SkipWhy.NEWER
+                    app.heyrobot.core.link.LinkBackupRead.Damaged -> SkipWhy.REFUSED
+                } else when (val r = app.heyrobot.core.link.LinkSettingsCodec.decode(text)) {
+                    is app.heyrobot.core.link.LinkSettingsFile.Ok -> { linkSettings = r; null }
+                    is app.heyrobot.core.link.LinkSettingsFile.TooNew -> SkipWhy.NEWER
+                    app.heyrobot.core.link.LinkSettingsFile.Damaged -> SkipWhy.REFUSED
+                }
+                // The everyday set's everyday_settings.json: its own codec; newer is left for a newer Robot, damaged refused.
+                BackupCategory.EVERYDAY -> when (val r = app.heyrobot.core.everyday.EverydaySettingsCodec.decode(text)) {
+                    is app.heyrobot.core.everyday.EverydaySettingsFile.Ok -> { everyday = r; null }
+                    is app.heyrobot.core.everyday.EverydaySettingsFile.TooNew -> SkipWhy.NEWER
+                    app.heyrobot.core.everyday.EverydaySettingsFile.Damaged -> SkipWhy.REFUSED
                 }
             }
             if (why != null) refuse(c, why)
@@ -355,8 +424,9 @@ object RestoreReader {
         }
 
         private fun routines(name: String, text: String): SkipWhy? {
-            if (name == "routines.json") when (RoutineCodec.decode(text)) {
-                is RoutineFile.Ok -> {}
+            if (name == "routines.json") when (val r = RoutineCodec.decode(text)) {
+                // R13: as Skills: one that doesn't read refuses the file whole, so Replace never removes yours for what's left.
+                is RoutineFile.Ok -> if (r.dropped > 0) return SkipWhy.REFUSED
                 is RoutineFile.TooNew -> return SkipWhy.NEWER
                 else -> return SkipWhy.REFUSED
             }
@@ -373,7 +443,7 @@ object RestoreReader {
             files += file
             when {
                 file == TranscriptFiles.AUDIO -> { skipAll(e.data); recordings[id] = e.length }
-                file == TranscriptFiles.LOG -> if (!utf8(e.data)) refuse(c, SkipWhy.REFUSED)
+                file == TranscriptFiles.LOG -> if (!logLines(e.data)) refuse(c, SkipWhy.REFUSED)
                 else -> {
                     val bytes = readAll(e.data, e.length)
                     if (StrictJson.parse(bytes)?.value !is Map<*, *>) return refuse(c, SkipWhy.REFUSED)
@@ -387,6 +457,29 @@ object RestoreReader {
             try {
                 val ok = bytes.isNotEmpty() && utf8(bytes.inputStream())
                 if (!ok) refuse(BackupCategory.KEYS, SkipWhy.REFUSED) else keys += e.name
+            } finally {
+                bytes.fill(0)
+            }
+        }
+
+        /**
+         * C10: a connection key's plain form (ConnSecretsCodec: strict, versioned, every part a value it takes), read and
+         * zeroed: only which parts it holds is kept. A newer one is left for a newer Robot; a damaged one, an empty one or a
+         * second for the same connection refuses the category.
+         */
+        private fun connKey(e: BackupRecord.Entry) {
+            val c = BackupCategory.CONN_KEYS
+            val id = BackupCategory.connOf(e.name) ?: return refuse(c, SkipWhy.REFUSED)
+            val bytes = readAll(e.data, e.length)
+            try {
+                when (val r = app.heyrobot.core.connect.ConnSecretsCodec.read(bytes)) {
+                    is app.heyrobot.core.connect.SecretsFile.Ok -> {
+                        val parts = r.secrets.parts
+                        if (parts.isEmpty() || id in connKeys) refuse(c, SkipWhy.REFUSED) else connKeys[id] = parts
+                    }
+                    is app.heyrobot.core.connect.SecretsFile.TooNew -> refuse(c, SkipWhy.NEWER)
+                    app.heyrobot.core.connect.SecretsFile.Damaged -> refuse(c, SkipWhy.REFUSED)
+                }
             } finally {
                 bytes.fill(0)
             }
@@ -437,6 +530,13 @@ object RestoreReader {
                 skillSettings = ok(BackupCategory.SKILLS, skillSettings),
                 files = ok(BackupCategory.FILES, filesIndex),
                 filesSettings = ok(BackupCategory.FILES, filesSettings),
+                lists = ok(BackupCategory.LISTS, lists),
+                listsSettings = ok(BackupCategory.LISTS, listsSettings),
+                everyday = ok(BackupCategory.EVERYDAY, everyday),
+                links = ok(BackupCategory.LINKS, links),
+                linkSettings = ok(BackupCategory.LINKS, linkSettings),
+                connections = ok(BackupCategory.CONNECTIONS, connections),
+                connKeys = ok(BackupCategory.CONN_KEYS, connKeys).orEmpty(),
             )
         }
     }
@@ -473,6 +573,42 @@ object RestoreReader {
     }
 
     /** Whether the rest of [input] is valid UTF-8, read in pieces (a transcript's log may be 64 MiB). */
+    /**
+     * F20: lines.jsonl is text line by line, except that a line may stop inside a character: TranscriptStore keeps a line a
+     * crash cut (the next record starts on a new line) and its reader skips it. Anything else that isn't UTF-8 refuses it.
+     */
+    private fun logLines(input: InputStream): Boolean {
+        val dec = Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT).onUnmappableCharacter(CodingErrorAction.REPORT)
+        val inBuf = ByteBuffer.allocate(BackupFormat.CHUNK + 8)
+        val outBuf = CharBuffer.allocate(BackupFormat.CHUNK + 8)
+        val raw = ByteArray(BackupFormat.CHUNK)
+        val newline = '\n'.code.toByte()
+        try {
+            while (true) {
+                val k = input.read(raw)
+                if (k < 0) return true // A last line cut: the decoder holds its start, never a wrong byte.
+                var from = 0
+                while (from < k) {
+                    var to = from
+                    while (to < k && raw[to] != newline) to++
+                    inBuf.put(raw, from, to - from)
+                    inBuf.flip()
+                    if (dec.decode(inBuf, outBuf, false).isError) return false
+                    inBuf.compact()
+                    outBuf.clear()
+                    if (to < k) {
+                        // The line ended: what the decoder still holds is the start of a character it never finished.
+                        inBuf.clear()
+                        dec.reset()
+                    }
+                    from = to + 1
+                }
+            }
+        } catch (_: CharacterCodingException) {
+            return false
+        }
+    }
+
     private fun utf8(input: InputStream): Boolean {
         val dec = Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT).onUnmappableCharacter(CodingErrorAction.REPORT)
         val inBuf = ByteBuffer.allocate(BackupFormat.CHUNK + 8)

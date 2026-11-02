@@ -11,6 +11,7 @@ import app.heyrobot.core.TipKind
 import app.heyrobot.core.ToolName
 import app.heyrobot.core.TurnRole
 import app.heyrobot.ui.theme.RobotTheme
+import app.heyrobot.ui.testing.setShotContent
 
 /** Every PanelActions call, by name and arguments ("confirm a1 true"), so a test sees which one a tap asked for. */
 class RecordingActions : PanelActions {
@@ -33,6 +34,7 @@ class RecordingActions : PanelActions {
     override fun removeDraft() { calls += "removeDraft" }
     override fun openCapture(mode: String) { calls += "openCapture $mode" }
     override fun readClaudeAnswer() { calls += "readClaudeAnswer" }
+    override fun fillTaken() { calls += "fillTaken" }
     override fun micPressed() { calls += "micPressed" }
     override fun micReleased() { calls += "micReleased" }
     override fun stopGenerating() { calls += "stopGenerating" }
@@ -99,7 +101,7 @@ object PanelFixtures {
 
 /** Shows the panel for [st] in Robot's theme (Robot's own colours, as every screenshot). */
 fun ComposeContentTestRule.showPanel(st: PanelState, actions: PanelActions = RecordingActions(), dark: Boolean = false, onClose: () -> Unit = {}) {
-    setContent {
+    setShotContent {
         RobotTheme(dark = dark, look = LookSettings(wallpaperColors = false)) {
             // The app underneath, behind the scrim.
             Surface(color = MaterialTheme.colorScheme.background) { AssistantPanel(st, actions, onClose) }

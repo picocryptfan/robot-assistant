@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.sys
 
+import android.app.AlarmManager
+import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.ClipData
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.Handler
-import android.os.Looper
 import androidx.core.content.FileProvider
 import app.heyrobot.core.RLog
 import app.heyrobot.core.VoiceEvent
@@ -36,13 +37,19 @@ import java.security.SecureRandom
 // ([stopped], then [resumed]), at screen-off (RobotFiles' hook), when a Files screen goes or the phone locks, when the
 // file is deleted, after FileOut.MAX_MS at most, and at the main app's next start (after a crash). FX2 (K3): and by :voice
 // at its start and at each unlock, once older than FileOut.MAX_MS, so one doesn't wait for the main app when Android ended
-// it. Better later: serve the file through StorageManager.openProxyFileDescriptor, decrypting as it is read, with nothing
+// it. F55: Android 14 and later can freeze a cached main process, which then hears no screen-off and runs no timer: the
+// 15 minutes are an alarm to [FilesOutExpiry], which wakes it, and :voice deletes the copies at screen-off itself. Better later: serve the file through StorageManager.openProxyFileDescriptor, decrypting as it is read, with nothing
 // plain on disk at all. The other app may keep
 // what it read: the dialog before Open says so. Never while the phone is locked or a phone lock is on: the caller checks
 // the gate at the tap and again here, and the vault refuses anyway. The voice log gets codes only (FILE_OUT).
 
 /** The main app's provider for the copies handed to another app (cache/files_out only). Not exported; one-time read grants. */
 class FilesOutProvider : FileProvider()
+
+/** F55: the end of a copy's 15 minutes, from AlarmManager, so a main process Android froze still takes it back. Not exported, no filter. */
+class FilesOutExpiry : BroadcastReceiver() {
+    override fun onReceive(ctx: Context, intent: Intent?) = FilesOut.expire(ctx.applicationContext)
+}
 
 /** What making a copy came to. */
 sealed class OutCopy {
@@ -68,7 +75,6 @@ object FilesOut {
 
     private val live = ArrayList<Live>()
     private val random = SecureRandom()
-    private val main by lazy { Handler(Looper.getMainLooper()) }
     /** A copy was handed out and Robot went to the background since: coming back takes it back. */
     @Volatile private var away = false
 
@@ -108,7 +114,7 @@ object FilesOut {
             // [uriOf]: the tests' stand-in (Robolectric doesn't read a FileProvider's paths); the phone's is the provider's own.
             val uri = uriOf?.invoke(file) ?: FileProvider.getUriForFile(app, AUTHORITY, file)
             synchronized(live) { live += Live(id, uri, folder, System.currentTimeMillis() + FileOut.MAX_MS) }
-            main.postDelayed({ expire(app) }, FileOut.MAX_MS + 1_000)
+            arm(app)
             OutCopy.Ready(id, uri, mime, copy == OutgoingCopy.STRIPPED, dangerous)
         } catch (x: FileException) {
             folder.deleteRecursively()
@@ -163,9 +169,23 @@ object FilesOut {
     /** [id]'s copies taken back (the file is being deleted). */
     fun revoke(ctx: Context, id: FileId) = revoke(ctx) { it.id == id }
 
-    private fun expire(ctx: Context) {
-        val now = System.currentTimeMillis()
-        revoke(ctx) { it.until <= now }
+    /** Those whose 15 minutes are up taken back. */
+    internal fun expire(ctx: Context, now: Long = System.currentTimeMillis()) = revoke(ctx) { it.until <= now }
+
+    /** The one alarm, set for the soonest copy to go, or cancelled with none out. */
+    private fun arm(ctx: Context) {
+        val soonest = synchronized(live) { live.minOfOrNull { it.until } }
+        try {
+            val am = ctx.getSystemService(AlarmManager::class.java)
+            val alarm = PendingIntent.getBroadcast(ctx, 0, Intent(ctx, FilesOutExpiry::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+            when {
+                soonest == null -> am.cancel(alarm)
+                am.canScheduleExactAlarms() -> am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, soonest + 1_000, alarm)
+                else -> am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, soonest + 1_000, alarm)
+            }
+        } catch (t: Exception) {
+            RLog.w("files_out_alarm", t)
+        }
     }
 
     private fun revoke(ctx: Context, which: (Live) -> Boolean) {
@@ -175,10 +195,14 @@ object FilesOut {
             try { ctx.applicationContext.revokeUriPermission(l.uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (t: Exception) { RLog.w("files_out_revoke", t) }
             l.folder.deleteRecursively()
         }
+        arm(ctx.applicationContext)
         log(ctx, FileOutCode.REVOKED.id, gone.size, 0)
     }
 
-    /** At the main app's start (and Delete them all): no copy outlives the process that handed it out. */
+    /**
+     * At the main app's start (and Delete them all): no copy outlives the process that handed it out. F55: and from :voice at
+     * screen-off, for a main process Android froze. Its alarm stays: it finds nothing, and :voice has none to cancel.
+     */
     fun clear(ctx: Context) {
         synchronized(live) { live.clear() }
         dir(ctx).listFiles().orEmpty().forEach { it.deleteRecursively() }

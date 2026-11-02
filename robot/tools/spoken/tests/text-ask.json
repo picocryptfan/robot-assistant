@@ -1,0 +1,104 @@
+{
+  "format": 1,
+  "id": "text-ask",
+  "title": "\"Text mom\" with no message: Robot asks what to say, then the card; \"cancel\" cancels",
+  "safety": "stops-at-card",
+  "testBench": [
+    "v23-text-ask"
+  ],
+  "needs": {
+    "model": true
+  },
+  "setup": [
+    {
+      "set": "speakReplies",
+      "value": "VOICE"
+    },
+    {
+      "set": "voiceCards",
+      "value": true
+    }
+  ],
+  "steps": [
+    {
+      "do": "open",
+      "how": "button"
+    },
+    {
+      "do": "say",
+      "text": "Text mom.",
+      "voice": "heart"
+    },
+    {
+      "do": "wait_reply",
+      "seconds": 90,
+      "contains": "What should"
+    },
+    {
+      "do": "wait_listening",
+      "seconds": 30
+    },
+    {
+      "do": "say",
+      "text": "I'm running late.",
+      "voice": "heart"
+    },
+    {
+      "do": "wait_card",
+      "kind": "send_text",
+      "seconds": 90
+    },
+    {
+      "do": "wait_listening",
+      "seconds": 30
+    },
+    {
+      "do": "say",
+      "text": "No thanks.",
+      "voice": "heart"
+    },
+    {
+      "do": "pause",
+      "seconds": 4
+    },
+    {
+      "do": "end"
+    },
+    {
+      "do": "open",
+      "how": "button"
+    },
+    {
+      "do": "say",
+      "text": "Text mom.",
+      "voice": "heart"
+    },
+    {
+      "do": "wait_reply",
+      "seconds": 90,
+      "contains": "What should"
+    },
+    {
+      "do": "wait_listening",
+      "seconds": 30
+    },
+    {
+      "do": "say",
+      "text": "Cancel.",
+      "voice": "heart"
+    },
+    {
+      "do": "wait_reply",
+      "seconds": 30
+    },
+    {
+      "do": "check",
+      "what": "card",
+      "equals": "send_text",
+      "absent": true
+    },
+    {
+      "do": "end"
+    }
+  ]
+}

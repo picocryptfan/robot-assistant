@@ -51,4 +51,33 @@ class SystemVoiceTest {
         assertEquals(VoiceChoice.HEART.detailText, VoiceChoice.HEART.detailText("Speech Services"))
         assertEquals("English, natural (Kokoro)", VoiceChoice.HEART.detailText("Speech Services").en())
     }
+
+    /**
+     * The everyday set, E6 (D16): Robot's own "System voice" never speaks through Robot, now that Robot can be the phone's
+     * engine: the default when it's another engine, else the one before Robot, else the highest-ranked other one, else none.
+     */
+    @Test fun robotsSystemVoiceIsNeverRobot() {
+        val robot = TtsEngine("ai.robot_app", "Robot", system = false, priority = 0)
+        val own = robot.pkg
+        val engines = listOf(robot, graphene, google, store)
+        // The default is another engine: that one.
+        assertEquals(store, SystemVoice.forRobot(store.pkg, engines, own, before = null))
+        // Robot is the default: the one that was before it, while it's installed.
+        assertEquals(store, SystemVoice.forRobot(own, engines, own, before = store.pkg))
+        assertEquals(google, SystemVoice.forRobot(own, engines, own, before = "com.example.gone"))
+        // Else the highest-ranked other engine, system ones first.
+        assertEquals(google, SystemVoice.forRobot(own, engines, own, before = null))
+        assertEquals(store, SystemVoice.forRobot(own, listOf(robot, store), own, before = null))
+        assertEquals(graphene, SystemVoice.forRobot(null, listOf(robot, graphene), own, before = null))
+        // Robot alone: none (the System voice is then Heart).
+        assertNull(SystemVoice.forRobot(own, listOf(robot), own, before = own))
+        assertNull(SystemVoice.forRobot(null, emptyList(), own, before = null))
+        assertEquals("Speech engine by Example", SystemVoice.labelForRobot(own, engines, own, null))
+        assertNull(SystemVoice.labelForRobot(own, listOf(robot), own, null))
+        // What's kept as "before": another installed default only.
+        assertEquals(store.pkg, SystemVoice.toRemember(" ${store.pkg} ", engines, own))
+        assertNull(SystemVoice.toRemember(own, engines, own))
+        assertNull(SystemVoice.toRemember("com.example.gone", engines, own))
+        assertNull(SystemVoice.toRemember(null, engines, own))
+    }
 }

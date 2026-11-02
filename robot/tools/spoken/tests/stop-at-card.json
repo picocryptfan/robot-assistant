@@ -1,0 +1,23 @@
+{
+  "format": 1,
+  "id": "stop-at-card",
+  "title": "\"Stop\" at a card quiets Robot, and the card still waits for an answer",
+  "safety": "stops-at-card",
+  "testBench": ["v46-stop-cards"],
+  "needs": {"model": true},
+  "setup": [{"set": "speakReplies", "value": "VOICE"}, {"set": "voiceCards", "value": true}],
+  "steps": [
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "Text mom I'm running late.", "voice": "heart"},
+    {"do": "wait_card", "kind": "send_text", "seconds": 90},
+    {"do": "pause", "seconds": 5},
+    {"do": "say", "text": "Stop.", "voice": "heart"},
+    {"do": "wait_listening", "seconds": 30},
+    {"do": "say", "text": "No thanks.", "voice": "heart"},
+    {"do": "pause", "seconds": 4},
+    {"do": "check", "what": "log", "regex": "stop_word acted=true"},
+    {"do": "check", "what": "log", "regex": "card_answer yes=false spoken=true"},
+    {"do": "check", "what": "showing", "equals": "send_text", "absent": true},
+    {"do": "end"}
+  ]
+}

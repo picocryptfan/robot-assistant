@@ -135,6 +135,12 @@ object Problems {
     /** A GPU load another voice process started and never saw answered (the phone or Robot restarted during it), or null. */
     fun staleGpuTry(ctx: Context): GpuTrying? = GpuTrying.decode(readOrNull(tryingFile(ctx)))?.takeIf { it.voicePid != android.os.Process.myPid() }
 
+    /** [t], never answered, ended for a reason that isn't the GPU: an update, or you or Android stopping Robot (core GpuTrying.notTheGpu). */
+    fun staleTryNotTheGpu(ctx: Context, t: GpuTrying): Boolean {
+        val updated = try { ctx.packageManager.getPackageInfo(ctx.packageName, 0).lastUpdateTime } catch (e: Exception) { RLog.w("gpu_try_updated", e); 0L }
+        return t.notTheGpu(appExits(ctx, traces = false).filter { it.process == "voice" }.map { it.facts }, updated)
+    }
+
     /**
      * [VOICE] Keeps [p] as the last problem, adds it to the last 10 (the Model tab's list), and tells you once, with a
      * notification that opens Settings › Model.
@@ -316,6 +322,9 @@ object Problems {
         )
         return AppCrash.report(e, facts, System.currentTimeMillis())
     }
+
+    /** Android's records of :brain's ends, newest first, for core MemoryReclaim. */
+    fun brainExits(ctx: Context): List<ExitFacts> = appExits(ctx, false).filter { it.process == "brain" }.map { it.facts }
 
     /** Android's records of Robot's processes that ended, newest first; a native crash's tombstone read only with [traces]. */
     private fun appExits(ctx: Context, traces: Boolean): List<AppExit> = try {

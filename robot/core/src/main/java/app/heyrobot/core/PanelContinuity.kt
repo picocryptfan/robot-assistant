@@ -41,6 +41,12 @@ object PanelContinuity {
     }
 
     /**
+     * A turn starts with the phone locked in a conversation begun unlocked, with something in it: a lock came on while the panel
+     * was open (F27). The turn gets a new locked conversation, as showing the panel would have given it.
+     */
+    fun newLockedTurn(lockedNow: Boolean, startedLocked: Boolean, empty: Boolean): Boolean = lockedNow && !startedLocked && !empty
+
+    /**
      * Whether the conversation still counts as begun on the lock screen once it is shown or used with [lockedNow]: a
      * conversation you continued unlocked (your calendar, a contact, a memory answer) never goes back to it.
      */

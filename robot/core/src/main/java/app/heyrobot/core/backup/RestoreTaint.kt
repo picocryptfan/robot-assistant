@@ -21,9 +21,13 @@ import app.heyrobot.core.skills.SkillLevel
 // this phone arrive off, a headset's "only you can hear it" is asked again, and keys and private codes are skipped
 // (RestorePlanner). With the tick, everything comes back as saved; an item the file itself marks as content stays so.
 // 1.4: someone else's files land in Inbox and wait for you ([file]); their filing rules are memory items, so content
-// (memory's), shown in Settings › Memory and never applied (FilingRules.of).
+// (memory's), shown in Settings › Memory and never applied (FilingRules.of). C10: someone else's connections arrive
+// untrusted until you look at them ([connection]), and their keys never come (Connection keys is a Keys category).
 
 object RestoreTaint {
+    /** L12, D14: someone else's backup never restores pairings, permissions or what passed between Robots (RestorePlanner too). */
+    fun links(f: app.heyrobot.core.link.LinkBackupFile, mine: Boolean): app.heyrobot.core.link.LinkBackupFile? = if (mine) f else null
+
     fun memory(i: MemoryItem, mine: Boolean): MemoryItem = if (mine) i else i.copy(imported = MemoryImported.CONTENT)
 
     fun person(p: Person, mine: Boolean): Person = if (mine) p else p.copy(confirmed = false)
@@ -35,11 +39,12 @@ object RestoreTaint {
     fun skill(s: Skill, mine: Boolean): Skill = if (mine) s else s.copy(level = SkillLevel.OFF)
 
     /**
-     * A helper this phone doesn't have: off, untrusted, not on the lock screen, under [id] (RestoreSafety.settings gives
-     * it one no key on this phone is stored under), unless the backup is yours.
+     * A helper this phone doesn't have: off, untrusted, not on the lock screen, no web search and no actions (turning it on
+     * changes neither, so you choose them on its page), under [id] (RestoreSafety.settings gives it one no key on this phone
+     * is stored under), unless the backup is yours.
      */
     fun newHelper(h: HelperConfig, mine: Boolean, id: String = h.id): HelperConfig =
-        if (mine) h else h.copy(id = id, enabled = false, trust = false, locked = false)
+        if (mine) h else h.copy(id = id, enabled = false, trust = false, locked = false, search = false, actions = false)
 
     /**
      * 1.4, Robot Files (files-1.4-plan.md §2.8): someone else's file lands in Inbox with "From a backup that isn't yours"
@@ -51,9 +56,36 @@ object RestoreTaint {
     fun file(e: app.heyrobot.core.files.FileEntry, mine: Boolean, now: Long): app.heyrobot.core.files.FileEntry =
         if (mine) e else FilesMerge.theirs(e, now)
 
-    /** "Is it headphones only you can hear?" is asked again (a car is never private). */
-    fun device(d: RememberedDevice, mine: Boolean): RememberedDevice =
-        if (mine || d.role == DeviceRole.CAR) d else d.copy(private = null)
+    /**
+     * 1.4, Robot Lists (lists-plan.md §6): someone else's list arrives as its own list, marked "From a backup that isn't
+     * yours" (from: backup), with no role (so your Shopping still takes your voice adds; named by its role in [roleName]'s
+     * language instead), every item and change by "backup"; ListsMerge never merges it into yours. Yours come back as saved.
+     */
+    fun list(l: app.heyrobot.core.lists.ListsList, mine: Boolean, roleName: (app.heyrobot.core.lists.ListRole) -> String): app.heyrobot.core.lists.ListsList =
+        if (mine) l else app.heyrobot.core.lists.ListsMerge.theirs(l, roleName)
+
+    /**
+     * C10, Skills connections (plan §5.7; the main session's 26 Oct decision for hand-offs): a connection this phone doesn't
+     * have, from a backup that isn't yours, arrives untrusted until you look at it: no first-use answers (every host asks
+     * again), "A spoken yes may approve its changes" off, untested and with no home-or-internet fact ("Test it again": no
+     * step runs until it passes here), at most 30 requests a minute, and a hand-off's app not pinned (pick it again: trust
+     * is never restored). Its address, operations and your titles come as the file has them. Yours, as saved.
+     */
+    fun connection(c: app.heyrobot.core.connect.Connection, mine: Boolean): app.heyrobot.core.connect.Connection = if (mine) c else c.copy(
+        answers = emptyMap(), spokenYes = false, tested = null, where = null,
+        perMinute = minOf(c.perMinute, app.heyrobot.core.connect.Connection.DEFAULT_PER_MINUTE),
+        handOff = c.handOff?.copy(signer = null))
+
+    /**
+     * "Is it headphones only you can hear?" is asked again (a car is never private). A car stays off until you turn it on:
+     * connecting to one starts car mode, which sets your own Phone lock aside. [here]: the same device on this phone, whose
+     * switch a car keeps.
+     */
+    fun device(d: RememberedDevice, mine: Boolean, here: RememberedDevice? = null): RememberedDevice = when {
+        mine -> d
+        d.role == DeviceRole.CAR -> d.copy(enabled = here?.takeIf { it.role == DeviceRole.CAR }?.enabled ?: false)
+        else -> d.copy(private = null)
+    }
 
     /**
      * The conversation with one content record, "Restored from a backup file", on its last turn (once): TurnRules.untrusted

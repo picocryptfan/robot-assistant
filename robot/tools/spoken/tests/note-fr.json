@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "id": "note-fr",
+  "title": "A note by voice in Québec French",
+  "safety": "robot-data",
+  "testBench": ["v12-prompt-tools-still-work"],
+  "needs": {"model": true},
+  "setup": [{"set": "speakReplies", "value": "VOICE"}],
+  "steps": [
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "Note que j'ai besoin de lait.", "voice": "siwis"},
+    {"do": "wait_reply", "seconds": 120},
+    {"do": "check", "what": "tool", "equals": "add_note"},
+    {"do": "end"}
+  ]
+}

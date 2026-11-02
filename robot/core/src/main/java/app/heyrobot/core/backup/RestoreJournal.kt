@@ -4,9 +4,13 @@ package app.heyrobot.core.backup
 import app.heyrobot.core.readOrNull
 import app.heyrobot.core.withFileLock
 import app.heyrobot.core.writeAtomic
+import app.heyrobot.core.files.FileStore
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.io.FileDescriptor
+import java.io.FileOutputStream
+import java.io.InputStream
 
 // Pure (java.io under a file lock, as the stores do). All or nothing per category: files/robot/restore/
 // journal.json records each category's state (ids and states, never content) and which process must finish it.
@@ -16,7 +20,7 @@ import java.io.File
 //   and car, Notes, History, Transcripts)       then moved in ([StagedFiles.moveIn], under the store's lock), DONE
 //   the main app's settings files               staged by :voice in restore/settings/, COMMIT for the main app, which
 //                                               applies them through its stores, DONE
-//   keys                                        never staged: each key's name is noted before it is saved to its
+//   keys (C10: and connection keys)             never staged: each key's name is noted before it is saved to its
 //                                               Keystore file; a run cut short deletes the keys it saved
 //   1.4, Robot Files                            each file sealed again under this phone's robot_files_v1 into
 //                                               restore/files/, the entries it adds sealed too (names and text are
@@ -44,6 +48,12 @@ data class Recovered(val category: BackupCategory, val state: JournalState)
 class NotNow(val room: Boolean = false) : Exception() {
     override fun fillInStackTrace(): Throwable = this
 }
+
+/**
+ * F46: a category's store refused its staged files (a file a newer Robot wrote, one it can't read, a failed write). It is
+ * given up, once: never repeated at each start, and never applied later over what you have changed since.
+ */
+class CantFinish(what: String) : java.io.IOException(what)
 
 class RestoreJournal(val dir: File) {
     private val file get() = File(dir, FILE)
@@ -79,17 +89,28 @@ class RestoreJournal(val dir: File) {
         staging(c).deleteRecursively()
     }
 
-    /** Keys: [name] ("helper/claude") is about to be saved; noted first, so a cut run can delete it again. */
-    fun keySaving(name: String) = withFileLock(lock) {
+    /** F46: a finish of [c] during the run threw [CantFinish]: its line is settled and its staging goes. */
+    fun giveUp(c: BackupCategory) {
+        set(c, JournalState.ROLLED_BACK, null)
+        staging(c).deleteRecursively()
+    }
+
+    /**
+     * Keys: [name] ("helper/claude"; C10, in Connection keys [c]: "conn/c-ha0001") is about to be saved; noted first, so a
+     * cut run can delete it again.
+     */
+    fun keySaving(name: String, c: BackupCategory = BackupCategory.KEYS) = withFileLock(lock) {
+        check(c in BackupCategory.KEY_CATEGORIES && c.validName(name))
         val all = read()
-        val e = all[BackupCategory.KEYS] ?: JournalEntry(BackupCategory.KEYS, JournalState.STAGED, RestoreProcess.VOICE)
+        val e = all[c] ?: JournalEntry(c, JournalState.STAGED, RestoreProcess.VOICE)
         check(e.state == JournalState.STAGED)
-        write(all + (BackupCategory.KEYS to e.copy(keys = (e.keys + name).distinct())))
+        write(all + (c to e.copy(keys = (e.keys + name).distinct())))
     }
 
     /**
      * After a crash, at [process]'s start: each of its COMMIT categories is finished by [finish] (given its staging
-     * folder; it must be repeatable) and marked DONE, unless it throws [NotNow] (it stays at COMMIT for the next recovery);
+     * folder; it must be repeatable) and marked DONE, unless it throws [NotNow] (it stays at COMMIT for the next recovery)
+     * or [CantFinish] (ROLLED_BACK, not tried again);
      * each of its STAGED ones is undone ([undo] given its staging folder first, then the folder deleted, and for keys,
      * [deleteKeys] given the names this run saved) and marked ROLLED_BACK. Other processes' lines are left to them. Once
      * every line is DONE or ROLLED_BACK the journal goes. Under the journal's lock.
@@ -108,13 +129,15 @@ class RestoreJournal(val dir: File) {
                     JournalState.COMMIT -> {
                         try {
                             finish(e.category, staging(e.category))
+                            JournalState.DONE
                         } catch (_: NotNow) {
                             continue
+                        } catch (_: CantFinish) {
+                            JournalState.ROLLED_BACK
                         }
-                        JournalState.DONE
                     }
                     JournalState.STAGED -> {
-                        if (e.category == BackupCategory.KEYS && e.keys.isNotEmpty()) deleteKeys(e.keys)
+                        if (e.category in BackupCategory.KEY_CATEGORIES && e.keys.isNotEmpty()) deleteKeys(e.keys)
                         // 1.4: Robot Files' staged files are sealed: their keys are destroyed before the folder goes.
                         undo(e.category, staging(e.category))
                         JournalState.ROLLED_BACK
@@ -167,7 +190,7 @@ class RestoreJournal(val dir: File) {
                 val x = o.optJSONObject(k) ?: continue
                 val s = JournalState.entries.firstOrNull { it.name == x.optString("state") } ?: continue
                 val p = RestoreProcess.entries.firstOrNull { it.name == x.optString("process") } ?: continue
-                val keys = x.optJSONArray("keys")?.let { a -> (0 until a.length()).mapNotNull { a.optString(it).takeIf { n -> BackupCategory.KEYS.validName(n) } } }.orEmpty()
+                val keys = x.optJSONArray("keys")?.let { a -> (0 until a.length()).mapNotNull { a.optString(it).takeIf { n -> c in BackupCategory.KEY_CATEGORIES && c.validName(n) } } }.orEmpty()
                 out[c] = JournalEntry(c, s, p, keys)
             }
             return out
@@ -191,25 +214,47 @@ object StagedFiles {
     /**
      * Moves every file and folder of [staging] into [live] (one rename each, on the same storage), after deleting the
      * names staged for deletion. A name already moved, or already deleted, is skipped, so a repeat after a crash finishes
-     * the job and a second repeat changes nothing. Names are checked: nothing leaves [live].
+     * the job and a second repeat changes nothing. F44: the staged deletions go, on storage, before anything moves, so a
+     * repeat never deletes what the cut run moved in (a transcript on both sides has the same name). F47: when this returns
+     * the folders' entries are on storage, so DONE never comes before them ([sync]: a test's own). Names are checked: nothing
+     * leaves [live].
      */
-    fun moveIn(staging: File, live: File) {
+    fun moveIn(staging: File, live: File, sync: (File) -> Unit = FileStore::syncDir) {
         live.mkdirs()
-        readOrNull(File(staging, DELETE))?.let { t ->
-            val a = try { JSONArray(t) } catch (_: Exception) { JSONArray() }
+        val deletes = File(staging, DELETE)
+        if (deletes.exists()) {
+            val a = try { JSONArray(readOrNull(deletes)) } catch (_: Exception) { JSONArray() }
             for (i in 0 until a.length()) {
                 val n = a.optString(i)
                 if (safe(n)) File(live, n).deleteRecursively()
             }
+            sync(live)
+            deletes.delete()
+            sync(staging)
         }
         for (f in staging.listFiles().orEmpty().sortedBy { it.name }) {
             if (f.name == DELETE || !safe(f.name) || f.name.startsWith(".")) continue
             val target = File(live, f.name)
             // A folder (a transcript) never replaces one that is there: Add leaves yours alone, Replace deleted it first.
             if (f.isDirectory && target.exists()) continue
+            if (f.isDirectory) sync(f)
             if (!f.renameTo(target)) throw java.io.IOException("rename")
         }
-        File(staging, DELETE).delete()
+        sync(live)
+    }
+
+    /**
+     * F47: one file of a backup staged at [to], whole: on storage before its rename, as writeAtomic does, so the move in
+     * never puts a file whose bytes a power cut could still lose. [sync]: a test's own.
+     */
+    fun copy(data: InputStream, to: File, chunk: Int = BackupFormat.CHUNK, sync: (FileDescriptor) -> Unit = { it.sync() }) {
+        to.parentFile?.mkdirs()
+        val tmp = File(to.parentFile, to.name + ".tmp")
+        FileOutputStream(tmp).use {
+            data.copyTo(it, chunk)
+            sync(it.fd)
+        }
+        if (!tmp.renameTo(to)) throw java.io.IOException("rename")
     }
 
     private fun safe(name: String): Boolean = name.isNotEmpty() && name != "." && name != ".." && '/' !in name && '\\' !in name

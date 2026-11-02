@@ -34,9 +34,11 @@ object ToolStrings : Strings("tool", area = "cards") {
     // 1.4, Robot Files (F9): the model's two read tools (internal: Settings › Files governs them).
     val titleFindFiles = s("title_find_files", "File searches", "Recherches de fichiers")
     val titleReadFile = s("title_read_file", "Questions about a file", "Questions sur un fichier")
+    // 1.5, Robot to Robot (L7): asking a paired person's Robot (internal: Settings › Robot to Robot governs it).
+    val titleAskRobot = s("title_ask_robot", "Requests to other Robots", "Demandes à d'autres Robots")
 
     // Action summaries: what a card does (light Markdown: the person or title in bold, the calendar in italics).
-    val learned = s("learned", "{what} · name seen in a notification", "{what} · nom vu dans une notification")
+    val learned = s("learned", "{what} · name not confirmed", "{what} · nom non confirmé")
     val setTimer = s("set_timer", "Set a timer for {duration}", "Régler une minuterie de {duration}")
     val setAlarm = s("set_alarm", "Set an alarm for {time}", "Régler une alarme pour {time}")
     val openApp = s("open_app", "Open {appName}", "Ouvrir {appName}")
@@ -304,6 +306,14 @@ object ToolStrings : Strings("tool", area = "cards") {
     val noPhoneApp = s("no_phone_app", "No phone app opened.", "Aucune appli de téléphone ne s'est ouverte.")
     val dialerWithNumber = s("dialer_with_number", "The dialer is open with the number: tap Call.", "Le composeur est ouvert avec le numéro : touche Appeler.")
     val dialerCovered = s("dialer_covered", "The phone lock covers the dialer: tap Emergency call on its screen.", "Le blocage couvre le composeur : touche Appel d’urgence sur son écran.")
+    val callLockPermission = s("call_lock_permission", "Robot didn't call. During a phone lock it needs the Phone permission to place a call. Allow it on the lock's People row when the lock ends.",
+        "Robot n'a pas appelé. Pendant un blocage, il lui faut l'autorisation Téléphone pour passer un appel. Accorde-la à la ligne Personnes du blocage, une fois le blocage terminé.")
+    val callLockJustDoIt = s("call_lock_just_do_it", "Robot didn't call. During a phone lock a call goes through its card, and calls are set to Just do it. Set them to Ask first in Settings › Actions when the lock ends.",
+        "Robot n'a pas appelé. Pendant un blocage, un appel passe par sa carte, et les appels sont réglés à Faire sans demander. Règle-les à Demander d'abord dans Réglages › Actions, une fois le blocage terminé.")
+    val callLockCovered = s("call_lock_covered", "Robot didn't call. The phone lock covers the dialer. Ask again and tap Call on the card.",
+        "Robot n'a pas appelé. Le blocage couvre le composeur. Redemande-le et touche Appeler sur la carte.")
+    val callLockNotAllowed = s("call_lock_not_allowed", "Robot didn't call. This phone lock doesn't allow calls to that number. Only emergency calls and the People the lock names can go through until it ends.",
+        "Robot n'a pas appelé. Ce blocage ne permet pas d'appeler ce numéro. Seuls les appels d'urgence et les Personnes nommées par le blocage passent jusqu'à sa fin.")
     val calling = s("calling", "Calling.", "Appel en cours.")
     val dialerOpen = s("dialer_open", "The dialer is open: tap Call.", "Le composeur est ouvert : touche Appeler.")
 

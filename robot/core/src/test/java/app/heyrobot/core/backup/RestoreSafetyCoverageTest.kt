@@ -39,7 +39,13 @@ class RestoreSafetyCoverageTest {
             TermuxSettings::class.java, WebSettings::class.java, UpdateSettings::class.java, HeadsetSettings::class.java, HandsFreeSafety::class.java,
             CarSettings::class.java, RoutineSettings::class.java,
             // 1.4, Robot Files: files_settings.json (F11); F12's travel mode and hidden drawers, guarded even from your own backup.
-            app.heyrobot.core.files.FilesSettings::class.java)
+            app.heyrobot.core.files.FilesSettings::class.java,
+            // 1.4, Robot Lists: lists_settings.json (LS7), its two lock switches guarded.
+            app.heyrobot.core.lists.ListsSettings::class.java,
+            // The everyday set: everyday_settings.json (the EVERYDAY category); the record of what went online guarded, the music app trust.
+            app.heyrobot.core.everyday.EverydaySettings::class.java,
+            // L12: link_settings.json (the LINKS category): "Answer while locked" guarded, on and the calendars trust.
+            app.heyrobot.core.link.LinkSettings::class.java)
         for (c in must) assertTrue(c.simpleName, c in RestoreSafety.RULES)
         // Every nested field names a type that is classified too.
         for ((c, rules) in RestoreSafety.RULES) for ((name, r) in rules) if (r == FieldRule.NESTED) {
@@ -55,7 +61,8 @@ class RestoreSafetyCoverageTest {
         for (s in SaferField.entries) assertTrue(s.name, s.field in guarded)
         // The helpers' own switches are named once, as HELPERS, and so is where a helper sends your questions (its
         // company, its model and providers that keep nothing), which a backup that isn't yours never changes.
-        val named = SaferField.entries.map { it.field }.toSet() + setOf("enabled", "trust", "locked", "baseUrl", "budgetCents", "preset", "model", "zdr")
+        // C12's L2: a connection's name is kept with its operations, as CONN_OPS ("ops").
+        val named = SaferField.entries.map { it.field }.toSet() + setOf("enabled", "trust", "locked", "baseUrl", "budgetCents", "preset", "model", "zdr", "name", "aliases", "search", "actions")
         assertEquals(emptySet<String>(), guarded - named)
     }
 }

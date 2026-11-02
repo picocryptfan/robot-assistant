@@ -14,7 +14,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
+import app.heyrobot.ui.common.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
@@ -169,7 +169,7 @@ private fun dateTime(t: Long): String = java.text.DateFormat.getDateTimeInstance
 
 /** Settings › Model (the Model tab until 1.4, when Files took its place: files-1.4-plan.md Q1). */
 @Composable
-fun ModelScreen(s: RobotSettings, update: (RobotSettings) -> Unit, snap: Snapshot, busy: String?, a: AppActions, modifier: Modifier = Modifier,
+fun ModelScreen(s: RobotSettings, update: (RobotSettings) -> Unit, snap: Snapshot, a: AppActions, modifier: Modifier = Modifier,
     onBack: (() -> Unit)? = null, snackbar: SnackbarHostState? = null) {
     val phone = snap.phone
     val langs = LocalLangs.current
@@ -431,6 +431,7 @@ private fun ModelPage(m: BrainModel, s: RobotSettings, update: (RobotSettings) -
     fun download() { val t = ModelTerms.missing(s, m); if (t != null) askTerms = t to false else a.download(m) }
     fun import() { val t = ModelTerms.missing(s, m); if (t != null) askTerms = t to true else a.import(m) }
     val memoryTitle = stringResource(R.string.model_memory_title)
+    val moveTitle = stringResource(R.string.model_move_title)
     val groupDetails = stringResource(R.string.model_group_details)
     PreferenceScreen(ModelCatalogue.titleText(m, snap.phone, snap.tpuFailure != null).str(), onBack, snackbar = snackbar) {
         if (ms == null) return@PreferenceScreen
@@ -489,6 +490,7 @@ private fun ModelPage(m: BrainModel, s: RobotSettings, update: (RobotSettings) -
         ModelCatalogue.memoryWarningText(m, snap.phone)?.let { w ->
             preferenceGroup(null, "memory") { StatusPreference(memoryTitle, w.str(), Mark.WARN) }
         }
+        if (ms.moveNeed > 0) preferenceGroup(null, "move") { StatusPreference(moveTitle, ModelLogic.moveWaitsText(ms.moveNeed).str(), Mark.WARN) }
         item(key = "progress") { ProgressBlock(ms.progress, ms.percent, ms.failure.takeIf { st == ModelStatus.MISSING }) }
         preferenceGroup(groupDetails, "details") {
             val size = ModelLogic.gbText(m.bytes).str()

@@ -37,23 +37,48 @@ import kotlin.random.Random
  * nothing; History off and Memory off skip their categories; caps refuse a category.
  */
 class RestorePlanTest {
+    /** L12, D14: Robot to Robot comes only from your own backup, and only ever adds: a pairing here is never replaced. */
+    @Test fun someoneElsesBackupNeverPlansPairings() {
+        val f = BackupKit.resource(BackupFixtures.LINKS) ?: error("missing fixture")
+        val h = RestoreReader.header(f)
+        BackupKdf.derive(BackupFixtures.LINKS_PASSPHRASE, h).use { key ->
+            val v = RestoreReader.verify(BackupKit.opener(f), h, key)
+            val phone = PhoneHas(mapOf(BackupCategory.LINKS to 3))
+            val theirs = RestorePlanner.plan(v, phone, RestorePlanner.defaults(v), mine = false)
+            assertEquals(PlanSkip.NOT_YOURS, theirs.of(BackupCategory.LINKS).skip)
+            assertFalse(BackupCategory.LINKS in theirs.restoring)
+            assertTrue(BackupCategory.PEOPLE in theirs.restoring)
+            val ticked = RestorePlanner.plan(v, phone, RestorePlanner.defaults(v) + (BackupCategory.LINKS to CategoryChoice(restore = true)), mine = false)
+            assertFalse(BackupCategory.LINKS in ticked.restoring)
+            val mine = RestorePlanner.plan(v, phone, RestorePlanner.defaults(v), mine = true)
+            assertTrue(BackupCategory.LINKS in mine.restoring)
+            assertEquals(RestoreMode.ADD, mine.of(BackupCategory.LINKS).mode)
+        }
+    }
+
     private val v by lazy { BackupKit.verify(BackupKit.encrypt(BackupKit.contentRecords())) }
 
     @Test fun thePlanOnAFreshPhoneAndOnOneWithData() {
         val fresh = RestorePlanner.plan(v, PhoneHas(emptyMap()), RestorePlanner.defaults(v), mine = false)
-        // The fixture has no voiceprint (1.1's optional category).
-        assertEquals(BackupCategory.entries - BackupCategory.SENSITIVE, fresh.restoring)
+        // The fixture has no voiceprint (1.1's optional category), deliberately no everyday set (BackupDowngradeTest has its own),
+        // and no connections (C10's own tests have them).
+        assertEquals(BackupCategory.entries - BackupCategory.SENSITIVE - BackupCategory.EVERYDAY - BackupCategory.CONNECTIONS - BackupCategory.LINKS, fresh.restoring)
+        assertEquals(PlanSkip.NOT_IN_BACKUP, fresh.of(BackupCategory.EVERYDAY).skip)
         assertEquals(PlanSkip.NOT_IN_BACKUP, fresh.of(BackupCategory.VOICEPRINT).skip)
         assertEquals(PlanSkip.NOT_CHOSEN, fresh.of(BackupCategory.KEYS).skip)
-        assertTrue(fresh.categories.filter { it.category != BackupCategory.KEYS }.all { it.mode == RestoreMode.FRESH })
+        assertTrue(fresh.categories.filter { it.category !in BackupCategory.KEY_CATEGORIES }.all { it.mode == RestoreMode.FRESH })
         assertEquals(2L, fresh.of(BackupCategory.NOTES).inBackup)
 
         val has = PhoneHas(BackupCategory.entries.associateWith { 3 })
         val add = RestorePlanner.plan(v, has, RestorePlanner.defaults(v), mine = false)
         assertEquals(RestoreMode.REPLACE, add.of(BackupCategory.SETTINGS).mode)
-        for (c in BackupCategory.entries - BackupCategory.SETTINGS - BackupCategory.VOICEPRINT) assertEquals(c.id, RestoreMode.ADD, add.of(c).mode)
+        // The everyday set's one settings file is merged over this phone's as Settings' are (RestoreSafety.everydayFile).
+        assertEquals(RestoreMode.REPLACE, add.of(BackupCategory.EVERYDAY).mode)
+        for (c in BackupCategory.entries - BackupCategory.SETTINGS - BackupCategory.VOICEPRINT - BackupCategory.EVERYDAY) assertEquals(c.id, RestoreMode.ADD, add.of(c).mode)
         val replace = RestorePlanner.plan(v, has, BackupCategory.entries.associateWith { CategoryChoice(replace = true) }, mine = true)
-        for (c in BackupCategory.entries - BackupCategory.SENSITIVE) assertEquals(c.id, RestoreMode.REPLACE, replace.of(c).mode)
+        for (c in BackupCategory.entries - BackupCategory.SENSITIVE - BackupCategory.LINKS) assertEquals(c.id, RestoreMode.REPLACE, replace.of(c).mode)
+        // L12: a pairing here is never replaced by one from a file, whatever the choice says.
+        assertEquals(RestoreMode.ADD, replace.of(BackupCategory.LINKS).mode)
         // Keys are never replaced: only added where this phone has none.
         assertEquals(RestoreMode.ADD, replace.of(BackupCategory.KEYS).mode)
         assertTrue(replace.of(BackupCategory.KEYS).restores)
@@ -74,6 +99,10 @@ class RestorePlanTest {
         val on = RestorePlanner.plan(v, PhoneHas(emptyMap(), historyOn = false, memoryOn = false), RestorePlanner.defaults(v), mine = true)
         assertNull(on.of(BackupCategory.HISTORY).skip)
         assertNull(on.of(BackupCategory.MEMORY).skip)
+        // F25: a backup not yours doesn't turn them back on, so what it holds of them isn't restored.
+        val notYours = RestorePlanner.plan(v, PhoneHas(emptyMap(), historyOn = false, memoryOn = false), RestorePlanner.defaults(v), mine = false)
+        assertEquals(PlanSkip.HISTORY_OFF, notYours.of(BackupCategory.HISTORY).skip)
+        assertEquals(PlanSkip.MEMORY_OFF, notYours.of(BackupCategory.MEMORY).skip)
         val noHistory = BackupKit.content().toMutableMap().apply {
             put(BackupCategory.SETTINGS, mapOf("settings.json" to BackupKit.text(RobotSettings(saveHistory = false).toJson().toString()),
                 MemorySettings.FILE to BackupKit.text(MemorySettings(on = false).toJson())))
@@ -125,6 +154,16 @@ class RestorePlanTest {
         assertEquals(setOf(BackupKit.BOB, "new-bob", BackupKit.MARIE), clash.people.map { it.id }.toSet())
     }
 
+    @Test fun aRecordingHoldsBackOnlyTranscriptsReplace() {
+        // F45: a session started after the file was copied in isn't in the backup, so a Replace would delete it.
+        val beat = app.heyrobot.core.SessionHeartbeat("20261011-1402-7f3a", app.heyrobot.core.ConvMode.entries.first(), 1_000, 10_000, 0, 0).toJson()
+        assertTrue(RestoreMerge.transcriptsWait(RestoreMode.REPLACE, beat, 10_500, 2_000))
+        assertFalse(RestoreMerge.transcriptsWait(RestoreMode.REPLACE, beat, 12_000, 2_000))
+        assertFalse(RestoreMerge.transcriptsWait(RestoreMode.ADD, beat, 10_500, 2_000))
+        assertFalse(RestoreMerge.transcriptsWait(RestoreMode.FRESH, beat, 10_500, 2_000))
+        assertFalse(RestoreMerge.transcriptsWait(RestoreMode.REPLACE, null, 10_500, 2_000))
+    }
+
     @Test fun memoryFreshAddReplaceAndTwice() {
         val file = BackupKit.memory().items
         val codes = BackupKit.memoryCodes().items
@@ -148,6 +187,28 @@ class RestorePlanTest {
         // Replace keeps the file's ids, at memory's caps.
         val replace = MemoryRestore.replace(here, file, codes, mine = true, people = { it })
         assertEquals(listOf(BackupKit.MEM_MARIE, BackupKit.MEM_PLAIN, BackupKit.MEM_CODE), replace.file.items.map { it.id })
+        // F39: no backup's Memory holds private codes, so a Replace that brings none keeps this phone's.
+        val code = MemoryItem("m_000000000000secret", "My door code is 1234", secret = true, createdAt = 1)
+        val withCode = here.copy(items = here.items + code)
+        val kept = MemoryRestore.replace(withCode, file, emptyList(), mine = true, people = { it })
+        assertEquals(listOf(code.id) + file.map { it.id }, kept.file.items.map { it.id })
+        assertEquals(file.size, kept.added)
+        assertEquals(0, kept.skipped)
+        assertEquals(code, kept.file.items.first())
+        assertEquals(code.id, kept.landed[code.id])
+        // Someone else's codes never come in, so theirs doesn't take yours either.
+        assertTrue(MemoryRestore.replace(withCode, file, codes, mine = false, people = { it }).file.items.any { it.id == code.id })
+        // Your own codes, restored with Keys: those are the ones that stay.
+        val own = MemoryRestore.replace(withCode, file, codes, mine = true, people = { it })
+        assertFalse(own.file.items.any { it.id == code.id })
+        assertTrue(MemoryRestore.keepsPrivate(mine = true, codes = emptyList()))
+        assertTrue(MemoryRestore.keepsPrivate(mine = false, codes = codes))
+        assertFalse(MemoryRestore.keepsPrivate(mine = true, codes = codes))
+        // Memory full: a private code here still isn't the one to go.
+        val manyPlain = (0 until 2_100).map { MemoryItem("m_${it.toString().padStart(9, '0')}abcdef", "item $it", createdAt = 1) }
+        val full0 = MemoryRestore.replace(withCode, manyPlain, emptyList(), mine = true, people = { it })
+        assertEquals(MemoryLimits.MAX_ITEMS, full0.file.items.size)
+        assertTrue(full0.file.items.any { it.id == code.id })
         val many = (0 until 2_100).map { MemoryItem("m_${it.toString().padStart(9, '0')}abcdef", "item $it", pinned = true, createdAt = 1) }
         val capped = MemoryRestore.replace(MemoryFile(), many, emptyList(), mine = true, people = { it })
         assertEquals(MemoryLimits.MAX_ITEMS, capped.file.items.size)
@@ -226,8 +287,8 @@ class RestorePlanTest {
         assertEquals("dev-2", add.landed["dev-1"])
         // Asked again: "only you can hear it".
         assertNull(add.devices.devices[1].private)
-        // Home where this phone had none; Work stays this phone's; the settings stay this phone's.
-        assertEquals("Home", add.places.home?.label)
+        // F55: someone else's Home never comes in, even where this phone has none; Work stays this phone's; the settings too.
+        assertNull(add.places.home)
         assertEquals("Work", add.places.work?.label)
         assertEquals(HeadsetFile(), add.headset)
         val again = RestoreMerge.handsfree(add.devices, add.headset, add.car, add.places, files, RestoreMode.ADD, mine = false)
@@ -566,4 +627,23 @@ class RestorePlanTest {
         assertEquals(RestoreMode.ADD, ok.of(BackupCategory.FILES).mode)
         assertEquals(4L, ok.of(BackupCategory.FILES).inBackup)
     }
+
+    /** R14: someone else's copy of a note you have, newer or not, never writes over yours in Add. */
+    @Test fun someoneElsesNoteDoesNotReplaceYours() {
+        val here = mapOf("a" to 10L)
+        val file = mapOf("a" to 20L, "b" to 5L)
+        assertEquals(setOf("a", "b"), RestoreMerge.byUpdated(here, file, RestoreMode.ADD).write)
+        assertEquals(setOf("b"), RestoreMerge.byUpdated(here, file, RestoreMode.ADD, replaceYours = false).write)
+        assertEquals(setOf("b"), RestoreMerge.byUpdated(here, file, RestoreMode.FRESH, replaceYours = false).write)
+    }
+
+    /** R9: Replace on your own backup with no reminders file keeps this phone's; one with an empty file means none. */
+    @Test fun noRemindersFileKeepsThisPhones() {
+        val mine = listOf(BriefReminder("Bring the passport", LocalDate.of(2026, 10, 13)))
+        fun replace(file: List<BriefReminder>?) = RestoreMerge.routines(emptyList(), RoutineSettings(), mine, BackupKit.routines(), null, file,
+            RestoreMode.REPLACE, mine = true, devices = { "dev-9" }).reminders
+        assertEquals(mine, replace(null))
+        assertEquals(emptyList<BriefReminder>(), replace(emptyList()))
+    }
+
 }

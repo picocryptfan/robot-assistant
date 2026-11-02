@@ -68,6 +68,8 @@ data class ContactCard(
     val preferredText: String? = null,
     val preferredEmail: String? = null,
     val learned: Boolean = false,
+    /** Unconfirmed because it came on another Robot's card, not from a notification. */
+    val fromRobot: Boolean = false,
 )
 
 /** How a contact's name matched, best first. ALIAS: a name you told Robot to remember for that person, said exactly. */
@@ -182,6 +184,7 @@ data class Reach(
     val xmpp: Boolean = false,
     val account: String? = null,
     val learned: Boolean = false,
+    val fromRobot: Boolean = false,
 )
 
 object Recipients {
@@ -194,15 +197,15 @@ object Recipients {
      * shows [MAX_CHOICES] and says how many more there are. A contact with a remembered choice still among them
      * (ContactCard.preferredText) offers that one only.
      */
-    fun forText(cards: List<ContactCard>, xmppOk: Boolean): List<Reach> = cards.flatMap { c ->
+    fun forText(cards: List<ContactCard>, xmppOk: Boolean, gateway: String = PhoneNumbers.DEFAULT_GATEWAY): List<Reach> = cards.flatMap { c ->
         val jids = if (xmppOk) c.xmpp.filter { Addresses.isJid(it.jid) }.distinctBy { it.jid.lowercase(Locale.ROOT) } else emptyList()
-        val all = jids.map { Reach(c.id, c.name, it.jid, "XMPP", xmpp = true, account = it.account?.takeIf { _ -> it.picked }, learned = c.learned) } +
-            mobileFirst(c.phones).map { Reach(c.id, c.name, it.number, it.label, learned = c.learned) }
-        Preferred.only(all, c.preferredText)
+        val all = jids.map { Reach(c.id, c.name, it.jid, "XMPP", xmpp = true, account = it.account?.takeIf { _ -> it.picked }, learned = c.learned, fromRobot = c.fromRobot) } +
+            mobileFirst(c.phones).map { Reach(c.id, c.name, it.number, it.label, learned = c.learned, fromRobot = c.fromRobot) }
+        Preferred.only(all, c.preferredText, gateway)
     }
 
     fun forEmail(cards: List<ContactCard>): List<Reach> = cards.flatMap { c ->
-        val all = c.emails.filter(Addresses::isAddress).distinctBy { it.lowercase(Locale.ROOT) }.map { Reach(c.id, c.name, it, null, learned = c.learned) }
+        val all = c.emails.filter(Addresses::isAddress).distinctBy { it.lowercase(Locale.ROOT) }.map { Reach(c.id, c.name, it, null, learned = c.learned, fromRobot = c.fromRobot) }
         Preferred.only(all, c.preferredEmail)
     }
 
@@ -319,7 +322,7 @@ object Recipients {
             val emails = c.emails.distinct().take(2)
             if (emails.isNotEmpty()) put("emails", emails)
             c.xmpp.firstOrNull()?.let { put("xmpp", it.jid) }
-            if (c.learned) put("note", "name seen in a notification, not confirmed") // l10n: not text (model prompt)
+            if (c.learned) put("note", if (c.fromRobot) "name from another Robot's card, not confirmed" else "name seen in a notification, not confirmed") // l10n: not text (model prompt)
         }
     }
 }
@@ -330,22 +333,24 @@ object Recipients {
  * ("+15145550101@cheogram.com") names that number too.
  */
 object Preferred {
-    private fun key(s: String): String? {
+    private fun key(s: String, gateway: String): String? {
         val t = s.trim()
         if (t.isEmpty()) return null
-        if (t.contains('@')) {
-            val local = t.substringBeforeLast('@')
-            return if (Regex("""^\+\d{7,15}$""").matches(local)) "n:" + PhoneNumbers.digits(local).takeLast(10) else "x:" + t.lowercase(Locale.ROOT)
-        }
+        if (t.contains('@')) return PhoneNumbers.atGateway(t, gateway)?.let { "n:" + it.takeLast(10) } ?: ("x:" + t.lowercase(Locale.ROOT))
         return PhoneNumbers.digits(PhoneNumbers.normalize(t)).takeIf { it.length >= 3 }?.let { "n:" + it.takeLast(10) }
     }
 
-    fun same(address: String, pref: String): Boolean = key(address)?.let { it == key(pref) } == true
+    /**
+     * The same place: the same address, or a number and its address at the SMS gateway [gateway] (Settings' smsGateway; on
+     * any other server a JID is only itself, F6). With another gateway than the one given, a choice at worst isn't
+     * recognised, and every place is offered again.
+     */
+    fun same(address: String, pref: String, gateway: String = PhoneNumbers.DEFAULT_GATEWAY): Boolean = key(address, gateway)?.let { it == key(pref, gateway) } == true
 
     /** Only the place [pref] names, if it is among [all]; otherwise all of them (the remembered one is gone). */
-    fun only(all: List<Reach>, pref: String?): List<Reach> {
+    fun only(all: List<Reach>, pref: String?, gateway: String = PhoneNumbers.DEFAULT_GATEWAY): List<Reach> {
         if (pref.isNullOrBlank()) return all
-        return all.firstOrNull { same(it.address, pref) }?.let { listOf(it) } ?: all
+        return all.firstOrNull { same(it.address, pref, gateway) }?.let { listOf(it) } ?: all
     }
 }
 
@@ -370,6 +375,7 @@ object Addresses {
 
 object PhoneNumbers {
     const val DEFAULT_GATEWAY = "cheogram.com"
+    private val GATEWAY_LOCAL = Regex("""^\+\d{7,15}$""")
     /** The North American Numbering Plan's regions: their 10-digit numbers are +1 numbers. */
     private val NANP = setOf("US", "CA", "AG", "AI", "AS", "BB", "BM", "BS", "DM", "DO", "GD", "GU", "JM", "KN", "KY", "LC",
         "MP", "MS", "PR", "SX", "TC", "TT", "VC", "VG", "VI")
@@ -398,6 +404,15 @@ object PhoneNumbers {
     /** A plain domain name ("cheogram.com"), lower case; anything else is [DEFAULT_GATEWAY]. */
     fun gateway(s: String?): String = s?.trim()?.lowercase(Locale.ROOT)
         ?.takeIf { Regex("""^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$""").matches(it) } ?: DEFAULT_GATEWAY
+
+    /** The "+digits" a number's address at the SMS gateway [gateway] stands for ("+15145550101@cheogram.com"); null for any other address (F6). */
+    fun atGateway(jid: String, gateway: String): String? {
+        val t = jid.trim()
+        val local = t.substringBeforeLast('@', "")
+        // The domain without a resource ("/phone").
+        val domain = t.substringAfterLast('@').substringBefore('/').lowercase(Locale.ROOT)
+        return if (domain == gateway(gateway) && GATEWAY_LOCAL.matches(local)) digits(local) else null
+    }
 
     /**
      * [raw] in E.164 ("+15145550101"). [platform] is PhoneNumberUtils.formatNumberToE164(number, region) in the app;

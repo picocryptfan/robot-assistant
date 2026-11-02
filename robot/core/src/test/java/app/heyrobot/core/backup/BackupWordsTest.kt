@@ -32,6 +32,17 @@ class BackupWordsTest {
         for (s in PlanSkip.entries - PlanSkip.NOT_IN_BACKUP - PlanSkip.NOT_CHOSEN) assertTrue(s.name, BackupWords.skip(line(BackupCategory.KEYS, s), "1.1.0") != null)
         assertEquals("Part of this backup needs a newer Robot: update Robot, then restore again to bring it.",
             BackupWords.skipped(CategorySkip("skills", null, SkipWhy.UNKNOWN), "1.3.0").render(en))
+        // LS12: named by the file's own word for it, when it gives one that is plain words.
+        assertEquals("Links needs Robot 1.5.0 or later: update Robot, then restore again to bring it.",
+            BackupWords.skipped(CategorySkip("links", null, SkipWhy.UNKNOWN), "1.5.0", "Links").render(en))
+        val fr = app.heyrobot.core.i18n.Langs.of(app.heyrobot.core.i18n.Lang.FR)
+        assertEquals("La partie Liens demande Robot 1.5.0 ou plus récent : mets Robot à jour, puis restaure de nouveau pour l’ajouter.",
+            BackupWords.skipped(CategorySkip("links", null, SkipWhy.UNKNOWN), "1.5.0", "Liens").render(fr).replace('\u00A0', ' ').replace('\u202F', ' '))
+        for (bad in listOf("", " Links", "Links<b>", "Links\nnow", "https://x.example", "x".repeat(41), "12")) assertEquals(bad,
+            "Part of this backup needs a newer Robot: update Robot, then restore again to bring it.",
+            BackupWords.skipped(CategorySkip("links", null, SkipWhy.UNKNOWN), "1.5.0", bad).render(en))
+        // Every category's own names pass, in both languages, so a later Robot can show them.
+        for (c in BackupCategory.entries) for ((l, n) in BackupWords.names(c)) assertEquals("$c $l", n, CategoryNames.clean(n))
         assertEquals("Headset, car and places in this backup is damaged, so Robot leaves it out.",
             BackupWords.skipped(CategorySkip("handsfree", BackupCategory.HANDSFREE, SkipWhy.REFUSED), "1.1.0").render(en))
         assertEquals(BackupCategory.entries.size, BackupCategory.entries.map { BackupWords.category(it).id }.distinct().size)

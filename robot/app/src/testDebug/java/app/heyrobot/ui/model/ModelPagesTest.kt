@@ -15,7 +15,7 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import app.heyrobot.core.BrainModel
@@ -110,7 +110,7 @@ class ModelPagesTest {
 
     private fun tab(start: RobotSettings = RobotSettings(), snap: Snapshot = this.snap): SettingsHost {
         val host = SettingsHost(start)
-        rule.show { ModelScreen(host.now, host::update, snap, null, log.actions) }
+        rule.show { ModelScreen(host.now, host::update, snap, log.actions) }
         return host
     }
 

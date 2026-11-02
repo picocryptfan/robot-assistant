@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- 1.4 Lists (docs/plans/lists-plan.md §4.5, §7.5; LS2): Settings › Lists, its switches, what the lists take and their
+     states (the phone locked, the key gone, damaged, a newer Robot's). French in values-fr-rCA/strings_lists.xml. -->
+<resources>
+    <string name="lists_title">Lists</string>
+    <string name="lists_use">Use lists</string>
+    <string name="lists_intro">Lists you keep by voice, such as “add oat milk to the shopping list”.</string>
+    <string name="lists_opening">Opening your lists…</string>
+    <string name="lists_storage">Storage</string>
+    <string name="lists_none_yet">No lists yet</string>
+    <plurals name="lists_usage">
+        <item quantity="one">%1$d list · %2$s</item>
+        <item quantity="other">%1$d lists · %2$s</item>
+    </plurals>
+    <plurals name="lists_items">
+        <item quantity="one">%d item</item>
+        <item quantity="other">%d items</item>
+    </plurals>
+    <string name="lists_when_locked">While the phone is locked</string>
+    <string name="lists_add_locked">Add to lists while locked</string>
+    <string name="lists_add_locked_detail">Items you add while the phone is locked wait, encrypted, until you unlock it</string>
+    <string name="lists_lock_screen">Hear and tick on the lock screen</string>
+    <string name="lists_lock_screen_detail">Anyone who can talk to your locked phone can hear your lists and tick items</string>
+    <string name="lists_yours">Your lists</string>
+    <string name="lists_delete_all">Delete all lists</string>
+    <string name="lists_delete_all_detail">Every list and item</string>
+    <string name="lists_delete_all_title">Delete all lists?</string>
+    <string name="lists_delete_all_text">Every list and item goes, with anything added while the phone was locked. This can\'t be undone.</string>
+    <string name="lists_all_deleted">All lists deleted.</string>
+    <string name="lists_not_deleted">Robot couldn\'t delete your lists. Try again.</string>
+    <string name="lists_locked">Unlock your phone to change your lists.</string>
+    <string name="lists_not_now">Robot couldn\'t open your lists just now. Try again in a moment.</string>
+    <string name="lists_key_gone">Robot\'s lists key is gone, so your lists can\'t be read.</string>
+    <string name="lists_unreadable">Robot couldn\'t read your lists. The file is damaged.</string>
+    <string name="lists_too_new">Your lists are from a newer Robot, so this one can\'t read or change them. Update Robot, or start over.</string>
+    <string name="lists_restore">Restore from a backup</string>
+    <string name="lists_restore_detail">In %s</string>
+    <string name="lists_start_over">Start over</string>
+    <string name="lists_start_over_detail">The file is kept aside as lists.enc.bad</string>
+    <string name="lists_start_over_title">Start over?</string>
+    <string name="lists_start_over_text">Robot keeps the lists it can\'t read aside, as lists.enc.bad, and starts again with Shopping and To-do.</string>
+    <string name="lists_started_over">Your lists start again with Shopping and To-do.</string>
+    <string name="lists_not_started_over">Nothing changed. Try again.</string>
+    <string name="lists_try_again">Try again</string>
+    <string name="lists_key_failed">Robot couldn\'t change your lists\' key. Nothing changed.</string>
+    <string name="lists_waiting">Items you added while the phone was locked are waiting for room on a full list. Clear its done items, then try again.</string>
+    <string name="lists_not_saved">Robot couldn\'t save this. Nothing changed.</string>
+    <string name="lists_footer">Your lists are encrypted on this phone and never sent anywhere, except a list you share as text. History keeps what you say to Robot, as it does for everything you ask, but not what Robot reads back from a list.</string>
+    <!-- LS5 (lists-plan.md §7.1 to §7.4): the lists screen in the Notes tab, a list's page, Make a list from this note, the
+         panel's card. -->
+    <string name="lists_subtitle">Kept by voice, encrypted on this phone</string>
+    <string name="lists_empty">No lists yet. Say “add oat milk to the shopping list”, or tap New list.</string>
+    <string name="lists_new">New list</string>
+    <plurals name="lists_left">
+        <item quantity="one">%d item left</item>
+        <item quantity="other">%d items left</item>
+    </plurals>
+    <string name="lists_from_backup">From a backup that isn\'t yours</string>
+    <string name="lists_unlock_to_see">Unlock your phone to see your lists.</string>
+    <string name="lists_settings_button">Lists settings</string>
+    <string name="lists_add_hint">Add an item</string>
+    <string name="lists_add">Add</string>
+    <string name="lists_done_count">Done (%d)</string>
+    <string name="lists_clear_done">Clear done</string>
+    <plurals name="lists_cleared">
+        <item quantity="one">Cleared %d done item.</item>
+        <item quantity="other">Cleared %d done items.</item>
+    </plurals>
+    <string name="lists_undo">Undo</string>
+    <string name="lists_item_deleted">Deleted %s.</string>
+    <string name="lists_nothing_yet">Nothing on this list yet. Type an item above, or say “add eggs to the list”.</string>
+    <string name="lists_all_ticked">Everything is ticked off.</string>
+    <string name="lists_mark_locked">Added while the phone was locked</string>
+    <string name="lists_mark_content">From a screen or a message</string>
+    <string name="lists_mark_backup">From someone else\'s backup</string>
+    <string name="lists_mark_changed_locked">Changed while the phone was locked</string>
+    <string name="lists_item_options">Options for %s</string>
+    <string name="lists_edit">Edit</string>
+    <string name="lists_move_top">Move to top</string>
+    <string name="lists_move_to">Move to another list</string>
+    <string name="lists_delete">Delete</string>
+    <string name="lists_details">Details</string>
+    <string name="lists_edit_title">Edit item</string>
+    <string name="lists_item_field">Item</string>
+    <string name="lists_qty_field">Quantity</string>
+    <string name="lists_save">Save</string>
+    <string name="lists_cancel">Cancel</string>
+    <string name="lists_close">Close</string>
+    <string name="lists_move_title">Move %s to</string>
+    <string name="lists_no_other">You have no other list. Make one with New list.</string>
+    <string name="lists_moved">Moved %1$s to %2$s.</string>
+    <string name="lists_already_item">%s is already on this list.</string>
+    <string name="lists_op_add">Added</string>
+    <string name="lists_op_edit">Changed</string>
+    <string name="lists_op_tick">Ticked off</string>
+    <string name="lists_op_untick">Put back</string>
+    <string name="lists_op_move">Moved here</string>
+    <string name="lists_op_remove">Deleted</string>
+    <string name="lists_op_restore">Brought back</string>
+    <string name="lists_how_voice">by voice</string>
+    <string name="lists_how_typed">in the app</string>
+    <string name="lists_how_card">on a card</string>
+    <string name="lists_how_widget">on the widget</string>
+    <string name="lists_how_model">by Robot</string>
+    <string name="lists_how_note">from a note</string>
+    <string name="lists_how_restore">from a backup</string>
+    <string name="lists_by_locked">while the phone was locked</string>
+    <string name="lists_by_content">from a screen or a message</string>
+    <string name="lists_by_backup">from someone else\'s backup</string>
+    <string name="lists_by_peer">by someone else</string>
+    <string name="lists_hist_how">%1$s %2$s</string>
+    <string name="lists_hist_by">%1$s, %2$s</string>
+    <string name="lists_hist_when">%1$s · %2$s</string>
+    <string name="lists_more">More options</string>
+    <string name="lists_rename">Rename</string>
+    <string name="lists_share">Share as text</string>
+    <string name="lists_delete_list">Delete list</string>
+    <string name="lists_rename_title">Rename %s</string>
+    <string name="lists_name_field">Name</string>
+    <plurals name="lists_delete_list_text">
+        <item quantity="one">Delete %1$s and its %2$d item?</item>
+        <item quantity="other">Delete %1$s and its %2$d items?</item>
+    </plurals>
+    <string name="lists_delete_list_empty">Delete %s?</string>
+    <string name="lists_list_deleted">Deleted the list %s.</string>
+    <string name="lists_share_title">Share list</string>
+    <string name="lists_share_failed">No app on this phone can share the list.</string>
+    <string name="lists_from_note">Make a list from this note</string>
+    <plurals name="lists_made_from_note">
+        <item quantity="one">Made the list %1$s with %2$d item.</item>
+        <item quantity="other">Made the list %1$s with %2$d items.</item>
+    </plurals>
+    <plurals name="lists_skipped">
+        <item quantity="one">Left out %d line that can\'t be an item.</item>
+        <item quantity="other">Left out %d lines that can\'t be items.</item>
+    </plurals>
+    <string name="lists_two_lines">%1$s %2$s</string>
+    <string name="lists_note_no_items">This note has no lines that can be items.</string>
+    <string name="lists_open">Open</string>
+    <string name="lists_changed">This list changed meanwhile. Try again.</string>
+    <string name="lists_gone">This list isn\'t here any more.</string>
+    <string name="lists_card_open">Open %s</string>
+    <string name="lists_card_tick">Tick off %s</string>
+    <string name="lists_card_untick">Put back %s</string>
+    <!-- LS6 (lists-plan.md §7.6, D12): the home-screen widget, "Robot list", and the window that picks its list. -->
+    <string name="lists_widget_label">Robot list</string>
+    <string name="lists_widget_description">One of your lists on the home screen, to tick items off</string>
+    <string name="lists_widget_unlock">Unlock to see this list.</string>
+    <string name="lists_widget_robot_locked">Robot is locked.</string>
+    <string name="lists_widget_off">Lists are off in Robot.</string>
+    <string name="lists_widget_pick">Tap to pick a list.</string>
+    <!-- LS12: a widget that lost its list when Robot's data was cleared (a backup doesn't keep which list a widget shows). -->
+    <string name="lists_widget_pick_again">Robot\'s data was cleared, and a backup doesn\'t keep a widget\'s list. Tap to pick it again.</string>
+    <string name="lists_widget_empty">Nothing on this list yet.</string>
+    <plurals name="lists_widget_done">
+        <item quantity="one">%d done</item>
+        <item quantity="other">%d done</item>
+    </plurals>
+    <plurals name="lists_widget_more">
+        <item quantity="one">and %d more</item>
+        <item quantity="other">and %d more</item>
+    </plurals>
+    <string name="lists_widget_pick_title">Pick a list for the widget</string>
+    <string name="lists_widget_footer">A widget shows its list to your home-screen app.</string>
+    <!-- 1.5: lists shared between Robots. -->
+    <string name="lists_from_peer">From another person\'s Robot</string>
+    <string name="lists_share_robot">Share with a Robot</string>
+    <string name="lists_share_how">They\'re asked first. Once they say yes, what either of you changes here shows on both phones.</string>
+    <string name="lists_share_none">No paired Robot can share lists yet. You can allow it in that Robot\'s settings.</string>
+    <string name="lists_share_sent">Sent to %1$s. They\'re asked first.</string>
+    <string name="lists_share_not_sent">Couldn\'t send the list to %1$s. Try again later.</string>
+    <string name="lists_shared_with">Shared with %1$s</string>
+    <string name="lists_share_waiting">Waiting for %1$s to say yes</string>
+    <string name="lists_share_someone">another Robot</string>
+    <string name="lists_share_stop">Stop sharing</string>
+    <string name="lists_share_stop_title">Stop sharing this list?</string>
+    <string name="lists_share_stop_text">You each keep your copy. Changes stop going between your phones.</string>
+    <string name="lists_how_link">from another Robot</string>
+    <string name="lists_taken_title">Removed or changed by someone else</string>
+    <string name="lists_taken_was">Was: %1$s</string>
+    <string name="lists_put_back">Put back</string>
+    <string name="lists_peer_full">Some changes from %1$s didn\'t fit: this list is full here, so your copy and theirs now differ. Once there\'s room, they\'ll need to make those changes again.</string>
+    <string name="lists_peer_full_dismiss">Dismiss</string>
+</resources>

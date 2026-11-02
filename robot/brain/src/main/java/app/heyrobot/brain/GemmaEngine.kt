@@ -70,7 +70,6 @@ import com.google.ai.edge.litertlm.ThinkingConfig
 import com.google.ai.edge.litertlm.ToolProvider
 import com.google.ai.edge.litertlm.tool
 import java.io.File
-import java.io.FileInputStream
 import java.util.concurrent.CancellationException
 
 // :BRAIN PROCESS ONLY. The one file that uses LiteRT-LM (ProcessIsolationTest enforces that).
@@ -252,25 +251,25 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
         // Only a model file in Robot's own storage, and Fast only from its own pinned file.
         val allowed = listOfNotNull(ctx.getExternalFilesDir(null), ctx.filesDir).any { f.canonicalPath.startsWith(it.canonicalPath + File.separator) }
         if (!allowed || !f.isFile || f.name != req.model.file) return failed(req, LoadFailure.NO_FILE, VoiceStrings.engineFileMissing())
+        // 1.1: never a file outside internal storage (the audit's F18, F56). LiteRT-LM opens it by its path, and on the TPU
+        // keeps its vision cache beside it, so no hash here could say what it reads. The app's plan says so first; a move
+        // finishing at this moment is FILE_CHANGED, so BrainLink plans again.
+        if (ModelMove.hashBeforeLoad(f, ctx.filesDir)) return failed(req, LoadFailure.FILE_CHANGED, LoadCheck.outsideText(req.model))
         // The app's own records, read here again rather than trusted from the request: a built-in model's SHA-256 mark
         // for this very file, or your own file's record (unchanged since its check; the TPU only once you allowed it); and
         // the context Robot's prompts are made for with it (4,096, or a short file's own: 0.4.3).
         val records = File(ctx.filesDir, "robot")
         val ownRecord = if (req.model == BrainModel.OWN) readOrNull(File(records, ModelFiles.OWN_RECORD)) else null
+        val fingerprint = ModelFiles.fingerprint(f.length(), f.lastModified())
+        val mark = if (req.model.builtIn) readOrNull(File(records, ModelFiles.verifiedMark(req.model))) else null
+        // Not the file Robot checked (a move finished since the plan, or it changed): its own failure, never the device's (BrainLink).
+        if (LoadCheck.fileChanged(req.model, fingerprint, mark, ownRecord)) return failed(req, LoadFailure.FILE_CHANGED, LoadCheck.changedText)
         LoadCheck.refuseText(
-            req.model, req.backend, ModelFiles.fingerprint(f.length(), f.lastModified()),
-            mark = if (req.model.builtIn) readOrNull(File(records, ModelFiles.verifiedMark(req.model))) else null,
+            req.model, req.backend, fingerprint,
+            mark = mark,
             ownRecord = ownRecord,
             maxTokens = req.maxTokens, format = ModelFormat.LITERT_LM, phone = phone,
         )?.let { return failed(req, LoadFailure.NOT_ALLOWED, it) }
-        // 1.0.1: a file still outside internal storage (1.0's place, until the app moves it in) is trusted on its whole
-        // SHA-256, read now, not on its size and time (core ModelMove).
-        if (ModelMove.hashBeforeLoad(f, ctx.filesDir)) {
-            val want = if (req.model.builtIn) req.model.sha256 else OwnModel.fromJson(ownRecord)?.sha256
-            val got = try { FileInputStream(f).use { ModelMove.sha256(it) } } catch (_: Exception) { null }
-            RLog.i("brain_hash", "model" to RLog.Code(req.model.id), "ok" to (want != null && got == want))
-            if (want == null || got != want) return failed(req, LoadFailure.NOT_ALLOWED, LoadCheck.changedText)
-        }
         // The TPU only for a built-in TPU build's pinned file (its SHA-256 mark, just above; LoadCheck matched its chip to
         // this phone's) or a file whose contents prove a TPU build for this phone's own chip and that you allowed there; and
         // never TPU code on the CPU. Read here again, from the file about to load, with its context: never a KV cache larger
@@ -292,9 +291,9 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
         if (cacheDir != null) {
             cacheDir.mkdirs()
             // The first load writes the weight cache (about 2.5 GB for E4B; 0.4.7: about 0.8 GB on the GPU): never start one
-            // that can't finish. Every file under it, as Settings › Model counts it (ModelStore.cacheBytes), so a cache already
-            // written is never taken for one still to write.
-            val cached = try { cacheDir.walkTopDown().filter { it.isFile }.sumOf { it.length() } } catch (_: Exception) { 0L }
+            // that can't finish. Only this backend's files (core ModelFiles.cachedBytes): a cache already written is never taken
+            // for one still to write, and the other backend's (the GPU's when it reloads on the CPU) never for this one's.
+            val cached = try { ModelFiles.cachedBytes(req.backend, cacheDir.walkTopDown().filter { it.isFile }.map { it.name to it.length() }.toList()) } catch (_: Exception) { 0L }
             val need = ModelFiles.cacheBytes(req.model, req.backend, f.length()) - cached
             if (need > 0 && cacheDir.usableSpace in 0 until need + CACHE_SPARE) {
                 return failed(req, LoadFailure.NO_SPACE, VoiceStrings.engineNoCacheSpace("size" to gb(need)))

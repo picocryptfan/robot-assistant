@@ -48,6 +48,8 @@ object FilesBackup {
     const val MAX_ENTRIES = FileLimits.MAX_FILES + 2
     /** The index's top-level key: the ids of restored files whose thumbnail is made again (FilingWork), each tried once. */
     const val RETHUMB = app.heyrobot.core.files.FilingRun.RETHUMB
+    /** R4: index.json: how many files the backup meant to carry and couldn't read. Only ever in a backup, never kept in the live index. */
+    const val LEFT_OUT = "left_out" // l10n: not text (a JSON key)
 
     fun blobName(id: FileId): String = BLOB + id.hex
 
@@ -62,12 +64,16 @@ object FilesBackup {
 
     /**
      * index.json: [index]'s entries whose bytes went in whole ([streamed]: each one's size and SHA-256 as written), in its
-     * order, with its top-level keys. Nothing else of the entries changes (a restore clears `thumb`).
+     * order, with its top-level keys. Nothing else of the entries changes (a restore clears `thumb`). R4: [leftOut], the files it
+     * meant to carry and couldn't read, is noted for the restore to say.
      */
-    fun exported(index: FileIndex, streamed: Map<FileId, Streamed>): FileIndex = FileIndex(
+    fun exported(index: FileIndex, streamed: Map<FileId, Streamed>, leftOut: Int = 0): FileIndex = FileIndex(
         index.entries.mapNotNull { e -> streamed[e.id]?.let { s -> e.copy(from = e.from.copy(size = s.size, sha256 = s.sha256)) } },
-        index.extra,
+        if (leftOut > 0) index.extra + (LEFT_OUT to leftOut.toLong()) else index.extra,
     )
+
+    /** R4: what [exported] noted. */
+    fun leftOut(index: FileIndex?): Int = ((index?.extra?.get(LEFT_OUT) as? Long) ?: 0L).coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
 
     /** One file's bytes as they went in: [size] and [sha256] (lower-case hex). */
     data class Streamed(val size: Long, val sha256: String)
@@ -136,7 +142,7 @@ object FilesMerge {
         val out = LinkedHashMap(have)
         val drawers = FileViews.DRAWERS_KEY
         if (mine) {
-            for ((k, v) in file) if (k != drawers && k != FilesBackup.RETHUMB && (mode == RestoreMode.REPLACE || k !in out)) out[k] = v
+            for ((k, v) in file) if (k != drawers && k != FilesBackup.RETHUMB && k != FilesBackup.LEFT_OUT && (mode == RestoreMode.REPLACE || k !in out)) out[k] = v
             val theirs = FilesBackup.strings(file[drawers]).filter(FileIndexCodec::label)
             when {
                 mode == RestoreMode.REPLACE -> if (drawers in file) out[drawers] = theirs.distinct().take(FileViews.MAX_DRAWERS) else out.remove(drawers)

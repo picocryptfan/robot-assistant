@@ -1,6 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.ui.files
 
+import app.heyrobot.ui.link.LinkPorts
+import app.heyrobot.sys.RobotAsk
+import app.heyrobot.sys.LinkSettingsStore
+import app.heyrobot.sys.FilesToRobot
+import app.heyrobot.sys.LinkClient
+import app.heyrobot.core.link.PairingPhase
+import app.heyrobot.core.link.LinkNames
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.files.PeerSent
 import app.heyrobot.core.EventPlan
 import app.heyrobot.core.files.FileFindCode
 import app.heyrobot.sys.Calendars
@@ -90,6 +99,13 @@ interface FilesPort {
     fun page(e: FileEntry, page: Int): ShownPage?
     /** The type [e]'s bytes are (its provenance's sniff, else its first bytes'). */
     fun type(e: FileEntry): FileType
+    /** L8: the Robots you're paired with, their pairing's id and whose it is. */
+    fun robots(): List<Pair<String, Phrase>> = emptyList()
+    /** L8: [e] offered to [pairing]'s Robot, the copy made here ([ask]: as the answer to its request). */
+    /** L11: your file into a shared folder, as [sendToRobot]. */
+    fun addToFolder(e: FileEntry, pairing: String, folder: String, allowOriginal: Boolean): PeerSent = PeerSent.FAILED
+    fun folders(): List<app.heyrobot.core.link.FolderRec> = emptyList()
+    fun sendToRobot(e: FileEntry, pairing: String, allowOriginal: Boolean, ask: RobotAsk?): PeerSent = PeerSent.FAILED
     /** A copy of [e] to hand out: [copy] ORIGINAL or STRIPPED, named [name], typed [mime]. */
     fun copy(e: FileEntry, copy: OutgoingCopy, name: String, mime: String, dangerous: Boolean): OutCopy
     /** The chooser that hands [c] to the app you pick ([open]: Open with another app, else Share). */
@@ -199,6 +215,25 @@ class PhoneFilesPort(ctx: Context) : FilesPort {
         vault.open(e.id).use { FileSniff.sniff(it.readNBytes(FileSniff.PREFIX), e.from.size) }
     } catch (_: Exception) { FileType.UNKNOWN }
 
+    override fun robots(): List<Pair<String, Phrase>> {
+        if (locked() || !LinkSettingsStore.current(app).on) return emptyList()
+        val port = LinkPorts.make(app)
+        return try {
+            val people = port.people()
+            port.pairings().orEmpty().filter { it.phase == PairingPhase.ACTIVE }.map { it.id to LinkNames.of(it, people) }
+        } finally {
+            port.close()
+        }
+    }
+
+    override fun addToFolder(e: FileEntry, pairing: String, folder: String, allowOriginal: Boolean): PeerSent =
+        FilesToRobot.send(app, vault, { bytes -> reader.strip(bytes) }, ::locked, e, type(e), pairing, allowOriginal, null, folder)
+
+    override fun folders(): List<app.heyrobot.core.link.FolderRec> = LinkClient(app).let { c -> try { c.folders().orEmpty() } finally { c.close() } }
+
+    override fun sendToRobot(e: FileEntry, pairing: String, allowOriginal: Boolean, ask: RobotAsk?): PeerSent =
+        FilesToRobot.send(app, vault, { bytes -> reader.strip(bytes) }, ::locked, e, type(e), pairing, allowOriginal, ask)
+
     override fun copy(e: FileEntry, copy: OutgoingCopy, name: String, mime: String, dangerous: Boolean): OutCopy =
         FilesOut.make(app, vault, e.id, e.from.size, copy, name, mime, dangerous, ::locked, strip = { bytes -> reader.strip(bytes) })
 
@@ -262,24 +297,39 @@ class PhoneFilesPort(ctx: Context) : FilesPort {
     }
 }
 
-/** :files for the Files screens: one FileParseLink, made again when the last one ended (as scanning's). */
-class FilesReader(private val ctx: Context) {
+/**
+ * :files for the Files screens: one FileParseLink for pages and thumbnails, made again when the last one ended (as
+ * scanning's). F17: a copy to send never comes from that one: a file it read could have taken it over and would then write
+ * into your photo what it likes, so each strip has a process of its own, ended right after.
+ */
+class FilesReader(private val ctx: Context, private val open: () -> FileParseLink? = { FileParseLink(ctx.applicationContext).takeIf { it.start() } }) {
     private var link: FileParseLink? = null
+    private val once = HashSet<FileParseLink>()
 
     @Synchronized private fun link(): FileParseLink? {
         link?.takeIf { it.isAlive }?.let { return it }
-        val l = FileParseLink(ctx.applicationContext)
-        if (!l.start()) return null
+        val l = open() ?: return null
         link = l
         return l
     }
 
     fun pixels(bytes: ByteArray, thumb: Boolean, page: Int): ParseResult = link()?.pixels(bytes, thumb, page) ?: ParseResult.Failed(ParseFailure.UNAVAILABLE)
 
-    fun strip(bytes: ByteArray): ParseResult = link()?.strip(bytes) ?: ParseResult.Failed(ParseFailure.UNAVAILABLE)
+    fun strip(bytes: ByteArray): ParseResult {
+        val l = open() ?: return ParseResult.Failed(ParseFailure.UNAVAILABLE)
+        synchronized(this) { once += l }
+        try {
+            return l.strip(bytes)
+        } finally {
+            synchronized(this) { once -= l }
+            l.end("strip_once")  // l10n: not text (a log code)
+        }
+    }
 
     @Synchronized fun end() {
         link?.end("files_screen")  // l10n: not text (a log code)
         link = null
+        once.forEach { it.end("files_screen") }  // l10n: not text (a log code)
+        once.clear()
     }
 }

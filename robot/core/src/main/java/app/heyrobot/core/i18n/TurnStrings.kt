@@ -9,6 +9,7 @@ package app.heyrobot.core.i18n
 object TurnStrings : Strings("turn", area = "cards") {
     // Turn.kt: a call that doesn't run.
     val couldntDo = s("couldnt_do", "Couldn't do “{tool}”", "Impossible de faire « {tool} »")
+    val couldntDoThat = s("couldnt_do_that", "Couldn't do that", "Impossible de faire ça")
     val webFirst = s("web_first", "Robot answers from the web search first.", "Robot répond d'abord à partir de la recherche web.")
     val fileFirst = s("file_first", "Robot answers from the file first.", "Robot répond d'abord à partir du fichier.")
     val maxCalls = plural("max_calls", "n",
@@ -70,6 +71,12 @@ object TurnStrings : Strings("turn", area = "cards") {
     val tapOne = s("tap_one", "Tap the one you mean on the card.", "Touche ton choix sur la carte.")
     val tapFiles = s("tap_files", "This would send what Robot read from your files: check the card, then tap.",
         "Ceci enverrait ce que Robot a lu dans tes fichiers : vérifie la carte, puis touche-la.")
+    /** A helper's card that would send a list Robot read out. */
+    val tapLists = s("tap_lists", "This would send what Robot read from your lists: check the card, then tap.",
+        "Ceci enverrait ce que Robot a lu dans tes listes : vérifie la carte, puis touche-la.")
+    /** The everyday set's Ask Robot (E7): a helper's card that would send what another app shared. */
+    val tapShared = s("tap_shared", "This would send something you shared from another app: check the card, then tap.",
+        "Ceci enverrait quelque chose que tu as partagé d'une autre appli : vérifie la carte, puis touche-la.")
     val tapLearned = s("tap_learned", "Robot learned that name from a notification: check who it goes to on the card, then tap.",
         "Robot a appris ce nom dans une notification : vérifie à qui ça va sur la carte, puis touche.")
     val tapUnsure = s("tap_unsure", "Robot isn't sure who or which it is: check the card, then tap.",
@@ -98,6 +105,7 @@ object TurnStrings : Strings("turn", area = "cards") {
         "Android partage ton écran avec Robot seulement quand tu l'ouvres en balayant vers le haut depuis un coin du bas. Balaie vers le haut depuis un coin par-dessus l'écran, puis pose ta question.")
     val screenSwipeTextOff = s("screen_swipe_text_off", "{swipe} “Use text from screen” is off: turn it on first in {where}.",
         "{swipe} « Utiliser le texte de l'écran » est désactivé : active-le d'abord dans {where}.")
+    val screenUnlock = s("screen_unlock", "Unlock your phone first, then ask about your screen.", "Déverrouille ton téléphone d'abord, puis pose ta question sur ton écran.")
     val screenNotShared = s("screen_not_shared", "Android didn't share this screen with Robot.", "Android n'a pas partagé cet écran avec Robot.")
     val screenPrivate = s("screen_private", "this app may keep its screen private (banking apps and private tabs do)",
         "cette appli garde peut-être son écran privé (les applis bancaires et les onglets privés le font)")
@@ -166,6 +174,7 @@ object TurnStrings : Strings("turn", area = "cards") {
     val newConversation = s("new_conversation", "New conversation", "Nouvelle conversation")
     val titlePhoto = s("title_photo", "Photo", "Photo")
     val titleScreen = s("title_screen", "Screen", "Écran")
+    val titleFile = s("title_file", "File", "Fichier")
     val titleConversation = s("title_conversation", "Conversation", "Conversation")
 
     // ConversationState.kt: the reminder before transcribing or translating a conversation.

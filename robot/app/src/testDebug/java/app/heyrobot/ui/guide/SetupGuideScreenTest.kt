@@ -18,7 +18,7 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isHeading
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -682,12 +682,12 @@ class SetupGuideScreenTest {
     /** 1.2 (every-android-phone, Step 6): the brief "after your alarm" on a phone without GrapheneOS Clock says it won't start. */
     @Test fun theBriefWithClockSaysNothingMore() {
         guide(Stores(GuideStep.ROUTINES))
-        rule.onNodeWithText("Needs the GrapheneOS Clock app", substring = true).assertDoesNotExist()
+        rule.onNodeWithText("Needs a Clock app", substring = true).assertDoesNotExist()
     }
 
     @Test fun theBriefWithoutClockSaysSo() {
         guide(Stores(GuideStep.ROUTINES), snap = fresh.copy(facts = fresh.facts!!.copy(clockInstalled = false)))
-        rule.onNodeWithText("Needs the GrapheneOS Clock app", substring = true).assertExists()
+        rule.onNodeWithText("Needs a Clock app", substring = true).assertExists()
         assertEquals(emptyList<String>(), rule.touchTargetProblems())
         rule.shot("guide_routines_no_clock")
     }

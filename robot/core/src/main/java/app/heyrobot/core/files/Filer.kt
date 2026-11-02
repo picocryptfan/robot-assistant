@@ -165,7 +165,7 @@ object Filer {
             taxes = fields.filterKeys { it.startsWith("tax_") }.mapNotNull { (k, f) -> FileFields.amountOf(f.value)?.let { k.removePrefix("tax_") to it } }.toMap(),
             due = day("due"), period = v("period"), account = v("account"), card = v("card"), expiry = day("expiry"), slip = v("slip"),
             year = v("year")?.toIntOrNull(), category = v("category"), totalCheck = v("check") == "total", dateCheck = v("check") == "date", // l10n: not text (field codes)
-            returnBy = day("return_by"), warranty = day("warranty"),
+            returnBy = day("return_by"), warranty = day("warranty"), refund = v(FileViews.REFUND) != null,
         )
     }
 
@@ -191,6 +191,7 @@ object Filer {
         put("slip", v.slip)
         put("year", v.year?.toString())
         put("category", v.category)
+        if (v.refund) put(FileViews.REFUND, "yes") // l10n: not text (a field's code)
         if (v.totalCheck) put("check", "total") // l10n: not text (a field's code: "Check the total")
         else if (v.dateCheck) put("check", "date") // l10n: not text (a field's code: "Check the date")
         return out

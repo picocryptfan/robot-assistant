@@ -64,7 +64,10 @@ class FileParseLinkTest {
     private lateinit var fake: FakeFiles
     private lateinit var link: FileParseLink
 
-    private enum class Mode { OK, CRASH, HANG, GARBAGE, NOT_ISOLATED, WRONG_BYTES, WRONG_TYPE, EXCEPTION, HEADER }
+    private enum class Mode { OK, CRASH, HANG, GARBAGE, NOT_ISOLATED, WRONG_BYTES, WRONG_TYPE, EXCEPTION, HEADER, CUSTOM }
+
+    /** 1.5 L4: the text of the QR code the decoded pictures show (none: a plain grey photo). */
+    @Volatile private var qrText: String? = null
 
     // ------------------------------------------------------------------ the stand-in
 
@@ -85,7 +88,23 @@ class FileParseLinkTest {
         override fun straightened(quad: ScanQuad, size: Dim): Picture = Pic(size.width, size.height)
         override fun jpeg(quality: Int, max: Int): ByteArray = jpeg(Dim(width, height))
         override fun png(max: Int): ByteArray? = null
-        override fun rgba(out: ByteBuffer) { out.put(ByteArray(width * height * 4) { 3 }) }
+        override fun rgba(out: ByteBuffer) {
+            val q = qrText?.let { app.heyrobot.core.QrCode.encode(it) }
+            if (q == null) { out.put(ByteArray(width * height * 4) { 3 }); return }
+            // The code on white, centred, a 4-module margin: another phone's screen photographed square on.
+            val m = minOf(width, height) / (q.size + 8)
+            val x0 = (width - q.size * m) / 2
+            val y0 = (height - q.size * m) / 2
+            val px = ByteArray(width * height * 4)
+            for (y in 0 until height) for (x in 0 until width) {
+                val mx = if (x < x0) -1 else (x - x0) / m
+                val my = if (y < y0) -1 else (y - y0) / m
+                val v = (if (mx in 0 until q.size && my in 0 until q.size && q.dark(mx, my)) 20 else 235).toByte()
+                val i = 4 * (y * width + x)
+                px[i] = v; px[i + 1] = v; px[i + 2] = v; px[i + 3] = -1
+            }
+            out.put(px)
+        }
         override fun close() {}
     }
 
@@ -111,6 +130,8 @@ class FileParseLinkTest {
         val parses = AtomicInteger()
         val exits = AtomicInteger()
         @Volatile var lastInput: ByteArray? = null
+        /** CUSTOM's answer frame. */
+        @Volatile var custom: ByteArray? = null
         @Volatile var callback: IBinder? = null
 
         override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
@@ -205,6 +226,7 @@ class FileParseLinkTest {
                         listOf(ParseBlob(BlobKind.PAGE, 1024, 768, 0, 100))))
                 }
                 Mode.WRONG_TYPE -> FileParseWire.refusal(req.op, ParseStatus.NOT_READ, FileType.PNG)
+                Mode.CUSTOM -> custom!!
                 else -> FileParser(Fakes()).run(req, inBuf, outBuf)
             }
             SharedMemory.unmap(inBuf)
@@ -215,9 +237,12 @@ class FileParseLinkTest {
         }
     }
 
-    @Before fun setUp() {
+    @Before fun setUp() = fresh(HANG_MS)
+
+    /** A fresh stand-in and link, waiting [requestMs] for each answer. */
+    private fun fresh(requestMs: Long) {
         fake = FakeFiles()
-        link = FileParseLink(ctx, requestMs = 500)
+        link = FileParseLink(ctx, requestMs = requestMs)
         put(link, "remote", fake)
         put(link, "bound", false)
     }
@@ -265,6 +290,51 @@ class FileParseLinkTest {
     }
 
     /** The process crashes during a request: CRASHED, the link is gone, and no later request reaches anything. */
+    /** F17: pages and thumbnails share a process; each copy to send gets its own, ended after, never the shared one. */
+    @Test fun aCopyToSendHasAProcessOfItsOwn() {
+        val made = ArrayList<FakeFiles>()
+        val reader = app.heyrobot.ui.files.FilesReader(ctx) {
+            val f = FakeFiles().also { made += it }
+            FileParseLink(ctx, requestMs = 2_000).also { l ->
+                put(l, "remote", f)
+                put(l, "bound", false)
+                FileParseLink::class.java.getDeclaredMethod("prove", Long::class.javaPrimitiveType).apply { isAccessible = true }.invoke(l, 2_000L)
+            }
+        }
+        off {
+            reader.pixels(photo, true, 0)
+            reader.pixels(photo, true, 0)
+        }
+        assertEquals(1, made.size)
+        assertEquals(2, made[0].parses.get())
+        assertTrue(off { reader.strip(photo) } is ParseResult.Ok)
+        assertTrue(off { reader.strip(photo) } is ParseResult.Ok)
+        assertEquals(3, made.size)
+        assertEquals(2, made[0].parses.get())
+        for (f in made.drop(1)) {
+            assertEquals(1, f.parses.get())
+            assertEquals(1, f.exits.get())
+        }
+        assertEquals(0, made[0].exits.get())
+        reader.end()
+        assertEquals(1, made[0].exits.get())
+    }
+
+    /** F51: leaving Files shuts the link's thread under a request still being written: an answer, not a crash. */
+    @Test fun leavingWhileARequestIsWrittenAnswersUnavailable() {
+        assertTrue(prove())
+        val big = jpeg(Dim(4032, 3024), 200_000)
+        val leaves = object : ByteArrayInputStream(big) {
+            override fun read(b: ByteArray, off: Int, len: Int): Int {
+                if (pos >= 100_000) link.end("files_screen")
+                return super.read(b, off, len)
+            }
+        }
+        val r = off { link.read(leaves, big.size.toLong(), readAll) }
+        assertEquals(ParseFailure.UNAVAILABLE, (r as ParseResult.Failed).why)
+        assertEquals(0, fake.parses.get())
+    }
+
     @Test fun aCrashedProcessIsReportedAndTheLinkIsGone() {
         assertTrue(prove())
         fake.mode = Mode.CRASH
@@ -380,8 +450,45 @@ class FileParseLinkTest {
         assertNull(FilePixels.bitmap(ParsedPixels(1601, 2400, ByteArray(1601 * 2400 * 4)), thumb = false))
     }
 
+    /**
+     * 1.5, Robot to Robot (job L4): a pairing code's QR read through real Parcels and regions, and the answer checked as any
+     * other: no code is NO_CODE; an answer outside the QR's rules (text that isn't printable ASCII, past 1 KiB, cut, a blob)
+     * is MALFORMED and ends the process; what isn't an image is never sent.
+     */
+    @Test fun aQrCodeIsReadAndItsAnswerChecked() {
+        // A QR read decodes a 2,048 by 1,536 picture and scans every pixel of it: 470 to 590 ms in this JVM, the first read
+        // the slowest, so the 500 ms the hang tests wait timed it out (L-bridges, 28 Oct 2026). It waits as the phone does.
+        fresh(ParseLimits.LINK_MS)
+        assertTrue(prove())
+        val code = "ROBOT-PAIR-AQEFBbX3Vb6h2k_1Qp0yV0Q6s8xJ3p7nT1m2c3d4e5f6g7h8i9j0kLmNoPqRsTuVwXyZ"
+        qrText = code
+        assertEquals(code, (off { link.qr(photo) } as ParseResult.Ok).out.text)
+        qrText = null
+        assertEquals(ParseStatus.NO_CODE, (off { link.qr(photo) } as ParseResult.Refused).status)
+        val sent = fake.parses.get()
+        assertEquals(ParseStatus.NOT_READ, (off { link.qr("%PDF-1.4".toByteArray()) } as ParseResult.Refused).status)
+        assertEquals(sent, fake.parses.get())
+        assertTrue(link.isAlive)
+        for (bad in listOf(
+            ParseReply(ParseOp.QR, ParseStatus.OK, FileType.JPEG, ParseReply.HAS_TEXT, 1, 4032, 3024, 0, "Café"),
+            ParseReply(ParseOp.QR, ParseStatus.OK, FileType.JPEG, ParseReply.HAS_TEXT or ParseReply.TEXT_CUT, 1, 4032, 3024, 0, code),
+            ParseReply(ParseOp.QR, ParseStatus.OK, FileType.JPEG, ParseReply.HAS_TEXT, 1, 4032, 3024, 0, "x".repeat(1_025)),
+            ParseReply(ParseOp.QR, ParseStatus.OK, FileType.JPEG, ParseReply.HAS_TEXT, 1, 4032, 3024, 0, code, listOf(ParseBlob(BlobKind.THUMB, 10, 10, 0, 100))),
+        )) {
+            fresh(ParseLimits.LINK_MS)
+            assertTrue(prove())
+            fake.mode = Mode.CUSTOM
+            fake.custom = FileParseWire.encodeReply(bad)
+            assertEquals(ParseFailure.MALFORMED, (off { link.qr(photo) } as ParseResult.Failed).why)
+            assertEquals(1, fake.exits.get())
+            assertFalse(link.isAlive)
+        }
+    }
+
     private companion object {
         /** An isolated service's uid for user 0 (99,000 to 99,999). */
         const val ISOLATED_UID = 99_123
+        /** How long most tests let the link wait, so a hung process is found quickly (the phone waits ParseLimits.LINK_MS). */
+        const val HANG_MS = 500L
     }
 }

@@ -21,11 +21,15 @@ import app.heyrobot.core.Shared
 import app.heyrobot.core.TurnResult
 import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
+import app.heyrobot.core.helpers.HelperChoice
 import app.heyrobot.core.helpers.HelperConfig
 import app.heyrobot.core.helpers.HelperSettings
 import app.heyrobot.core.helpers.HelperTrust
 import app.heyrobot.core.helpers.HelperWho
 import app.heyrobot.core.helpers.HelperWords
+import app.heyrobot.core.helpers.QuestionKind
+import app.heyrobot.core.i18n.HelperStrings
+import app.heyrobot.core.memory.MemoryChoice
 import app.heyrobot.core.i18n.Langs
 import app.heyrobot.core.i18n.PanelStrings
 import app.heyrobot.core.i18n.Phrase
@@ -90,13 +94,36 @@ internal class PanelEscalation(private val state: MutableStateFlow<PanelState>, 
         /** Robot checks with helper [h] with exactly [blocks] (PanelHelperTurn.escalate). */
         suspend fun escalate(replyId: String?, question: String, blocks: List<HelperBlock>, voiceAsked: Boolean, reuseBubble: Boolean, h: HelperConfig,
             fallBack: Boolean): Boolean
+        /** Your remembered choice for [kind], the one Robot may follow now (Memory on, and readable with the phone as it is). */
+        suspend fun rememberedChoice(kind: QuestionKind): MemoryChoice?
+        /** "Try it here or ask": what was picked; null: nothing, in time (PanelHelperTurn.askChoice). */
+        suspend fun askChoice(replyId: String, h: HelperConfig): HelperChoice.Picked?
+        /** Opens helper [h]'s app with [question] (PanelHelperTurn.handOff): the turn ends there. */
+        suspend fun handOff(replyId: String, question: String, h: HelperConfig)
+        /** Offers to remember [k] under reply [replyId]. */
+        fun keepOffer(replyId: String, k: KeepChoice)
     }
 
-    /** What the pre-router left for after Robot's own answer: an offer ([offerAfter]), and whether it [needsSearch]. */
-    class Before(val offerAfter: EscalationTrigger?, val needsSearch: Boolean)
+    /**
+     * What the pre-router left for after Robot's own answer: an offer ([offerAfter]), and whether it [needsSearch]; [helper]: the
+     * helper it's for (your remembered one), null for the usual; [hold]: this question stays with Robot unless you tap;
+     * [keep]: you picked "try it here", so offer to remember that.
+     */
+    class Before(val offerAfter: EscalationTrigger?, val needsSearch: Boolean, val helper: HelperConfig? = null, val hold: Boolean = false, val keep: KeepChoice? = null)
+
+    /** This conversation already said no helper is set up. */
+    private var noHelperSaid = false
+
+    /** A new or loaded conversation. */
+    fun newConversation() {
+        noHelperSaid = false
+    }
 
     /** The day the "budget used up" sentence was said (once a day). */
     private var budgetSaid: String? = null
+
+    /** The reply whose "try it here or ask" nobody answered: the card has gone, so the offer under it says it was a lot. */
+    private var unanswered: String? = null
 
     private fun words(h: HelperConfig) = HelperWords(HelperWho.of(h))
 
@@ -111,41 +138,92 @@ internal class PanelEscalation(private val state: MutableStateFlow<PanelState>, 
      */
     suspend fun beforeModel(replyId: String, question: String, history: List<ChatTurn>, attachment: Attachment, voiceAsked: Boolean, guard: EscalationGuard,
         s: RobotSettings, target: HelperConfig?, localWeather: Boolean, localWeb: Boolean): Before? {
-        var offerAfter: EscalationTrigger? = null
-        // The offer is for current information: decided again after Gemma's answer, a helper that can't search still offers.
-        var offerNeedsSearch = false
-        // Not after "not Jarvis": that conversation stays with Robot.
-        if (attachment == Attachment.NONE && !port.helperDeclined && target != null) PreRouter.signal(question, localWeather, localWeb)?.let { signal ->
-            RLog.i("helper_trigger", "kind" to EscalationTrigger.PRE_ROUTER, "signal" to signal)
-            when (decide(attachment, guardFree = !guard.used, needsSearch = signal == PreRouter.Signal.CURRENT_INFO)) {
-                EscalationDecision.AUTO -> {
-                    guard.take(fromHelper = false)
-                    val personal = port.personalNow(null)
-                    val blocks = HelperContext.escalation(question, history, ZonedDateTime.now(), port.userRegion, personal = personal,
-                        includePersonal = HelperTrust.conversation(s, target, personal, MemoryPanel.toTrusted()))
-                    // A helper that can't be reached (a server that's off, no connection): Robot answers itself instead.
-                    if (!port.escalate(replyId, question, blocks, voiceAsked, reuseBubble = true, h = target, fallBack = true)) return null
-                    RLog.i("helper_fallback", "kind" to target.kind)
+        unanswered = null
+        // Not after "not Jarvis": that conversation stays with Robot. A screen or a photo only a tap sends: nothing here.
+        if (attachment != Attachment.NONE || port.helperDeclined) return Before(null, false)
+        val signal = PreRouter.signal(question, localWeather, localWeb)
+        val kind = HelperChoice.kindOf(question, localWeather, localWeb)
+        if (signal == null && kind == null) return Before(null, false)
+        // F18: a saved route covers its kind even when the question holds an action word ("add a column in SQL"), which has
+        // no kind of its own. Such a question opens no card by itself: under Ask first it's only offered (remembered, below).
+        val saved = (kind ?: signal?.let(QuestionKind::of))?.let { port.rememberedChoice(it) }
+        // F19: a route to a helper you've turned off or removed since is no route: what you set for everything else applies.
+        val choice = saved?.takeIf { c -> c.robot || c.helper == null || s.helper(c.helper)?.on == true }
+        val asked = choice?.helper?.let { id -> s.helper(id) } ?: target
+        val needsSearch = signal == PreRouter.Signal.CURRENT_INFO
+        val decision = if (asked == null) EscalationDecision.NONE else
+            decide(attachment, guardFree = !guard.used, needsSearch = needsSearch, asked = asked, remembered = choice?.robot == false && kind != null)
+        val step = HelperChoice.step(signal != null, kind, choice?.robot, decision, helperAround = asked != null)
+        RLog.i("helper_trigger", "kind" to EscalationTrigger.PRE_ROUTER, "signal" to signal, "step" to step, "remembered" to (choice != null))
+        return when (step) {
+            HelperChoice.Step.NOTHING -> Before(null, false)
+            HelperChoice.Step.ROBOT -> Before(null, false, hold = true)
+            HelperChoice.Step.SAY_NO_HELPER -> {
+                // Only with no helper on at all, and not with "When Robot needs help" off: that asks for no such line.
+                if (!noHelperSaid && s.help != Escalation.OFF && s.helpers.none { it.on }) {
+                    noHelperSaid = true
+                    port.notify(HelperStrings.choiceNoHelper().render(port.turnLangs))
+                    if (state.value.speak) port.speakRobot(port.said(HelperStrings.choiceNoHelper()))
                 }
-                EscalationDecision.OFFER -> {
-                    offerAfter = EscalationTrigger.PRE_ROUTER
-                    offerNeedsSearch = signal == PreRouter.Signal.CURRENT_INFO
+                Before(null, false)
+            }
+            HelperChoice.Step.GO -> {
+                asked!!
+                guard.take(fromHelper = false)
+                val personal = port.personalNow(null)
+                // F21: a saved route promises your question and nothing else (HelperStrings' route dialog).
+                val blocks = if (choice?.robot == false) HelperContext.oneShot(question, ZonedDateTime.now(), port.userRegion, app.heyrobot.core.Shared())
+                else HelperContext.escalation(question, history, ZonedDateTime.now(), port.userRegion, personal = personal,
+                    includePersonal = HelperTrust.conversation(s, asked, personal, MemoryPanel.toTrusted()))
+                // A helper that can't be reached (a server that's off, no connection): Robot answers itself instead.
+                if (!port.escalate(replyId, question, blocks, voiceAsked, reuseBubble = true, h = asked, fallBack = true)) return null
+                RLog.i("helper_fallback", "kind" to asked.kind)
+                Before(null, false)
+            }
+            HelperChoice.Step.OFFER_AFTER -> Before(EscalationTrigger.PRE_ROUTER, needsSearch, helper = asked, hold = choice?.robot == false)
+            HelperChoice.Step.CHOICE -> choose(replyId, question, voiceAsked, guard, s, asked!!, kind!!, needsSearch)
+        }
+    }
+
+    /**
+     * "Try it here or ask your helper." The helper: your question and nothing else goes, as for "ask the helper …". Here: Robot's
+     * model, no offer on top. Nothing: Robot tries, and the offer stays under its answer for a tap or a yes. Null: the helper took it.
+     */
+    private suspend fun choose(replyId: String, question: String, voiceAsked: Boolean, guard: EscalationGuard, s: RobotSettings, h: HelperConfig, kind: QuestionKind,
+        needsSearch: Boolean): Before? {
+        val api = HelperSettings.apiReady(h, port.keySaved(h))
+        val noAnswer = Before(EscalationTrigger.PRE_ROUTER, needsSearch, helper = h, hold = true)
+        if (!api && h.presetOf.app?.let { pkg -> withContext(Dispatchers.IO) { HandOffIntents.installed(port.ctx, pkg) } } != true) return noAnswer
+        return when (port.askChoice(replyId, h)) {
+            null -> noAnswer.also { unanswered = replyId }
+            HelperChoice.Picked.HERE -> Before(null, false, hold = true, keep = KeepChoice(kind, robot = true))
+            HelperChoice.Picked.HELPER -> {
+                guard.take(fromHelper = false)
+                // Asked now, and the panel goes: nothing stays on screen to answer an offer, so saying "always use it" is the way to keep this one.
+                if (!api) {
+                    port.handOff(replyId, question, h)
+                    return null
                 }
-                else -> {}
+                val blocks = HelperContext.oneShot(question, ZonedDateTime.now(), port.userRegion, app.heyrobot.core.Shared())
+                if (port.escalate(replyId, question, blocks, voiceAsked, reuseBubble = true, h = h, fallBack = true)) {
+                    RLog.i("helper_fallback", "kind" to h.kind)
+                    return Before(null, false)
+                }
+                if (state.value.turns.firstOrNull { it.id == replyId }?.text?.isNotBlank() == true) port.keepOffer(replyId, KeepChoice(kind, robot = false, helper = h.id, name = h.name, tapOnly = true))
+                null
             }
         }
-        return Before(offerAfter, offerNeedsSearch)
     }
 
     /**
      * The escalation policy for this question now ([attachment]: its screen or photo, which only a tap may send, unless
      * "Send personal content to helpers automatically" is on).
      */
-    private suspend fun decide(attachment: Attachment, guardFree: Boolean, needsSearch: Boolean = false): EscalationDecision {
+    private suspend fun decide(attachment: Attachment, guardFree: Boolean, needsSearch: Boolean = false, asked: HelperConfig? = null, remembered: Boolean = false): EscalationDecision {
         val s = port.settings
-        val target = target(s)
-        return EscalationPolicy.decide(s, target, port.keySaved(target), attachment != Attachment.NONE && !HelperTrust.attachments(s), port.locked(),
-            port.budgetReached(s, target), !guardFree, declined = port.helperDeclined, priceKnown = target?.price?.known ?: false, needsSearch = needsSearch)
+        val target = asked ?: target(s)
+        return EscalationPolicy.decide(s, target, port.keySaved(target), attachment == Attachment.FILE || attachment != Attachment.NONE && !HelperTrust.attachments(s, port.personalNow(null)), port.locked(),
+            port.budgetReached(s, target), !guardFree, declined = port.helperDeclined, priceKnown = target?.price?.known ?: false, needsSearch = needsSearch, remembered = remembered)
     }
 
     /**
@@ -156,16 +234,17 @@ internal class PanelEscalation(private val state: MutableStateFlow<PanelState>, 
      * its answer comes first, any offer goes under it, and with Automatic the helper is asked only when that answer is
      * missing or unsure (EscalationPolicy.afterOwnAnswer). [needsSearch]: the
      * question needs today's sources (the pre-router's current information, or a reply that said it has none): it goes by
-     * itself only to a helper that can search, as the pre-router decided (0.6.0).
+     * itself only to a helper that can search, as the pre-router decided (0.6.0). [helper]: your remembered helper for it, for the
+     * usual one. [hold]: you kept this with Robot, or didn't choose: the helper is only offered, even with Automatic.
      */
     suspend fun afterLocal(replyId: String, question: String, history: List<ChatTurn>, attachment: Attachment, screen: String?, image: ByteArray?,
         voiceAsked: Boolean, guard: EscalationGuard, trigger: EscalationTrigger, offerOnly: Boolean = false, ownAnswer: (suspend () -> TurnResult)? = null,
-        needsSearch: Boolean = false) {
+        needsSearch: Boolean = false, helper: HelperConfig? = null, hold: Boolean = false) {
         // A turn that already escalated decides NONE here.
-        var decision = decide(attachment, guardFree = !guard.used, needsSearch = needsSearch)
+        var decision = decide(attachment, guardFree = !guard.used, needsSearch = needsSearch, asked = helper).held(hold)
         guard.take(fromHelper = false)
         val s = port.settings
-        val target = target(s)
+        val target = helper ?: target(s)
         val keySaved = port.keySaved(target)
         // Never only "I'd rather check that with Jarvis.": the model's own answer first, in the same reply (and turn).
         var ranOwn = false
@@ -201,7 +280,7 @@ internal class PanelEscalation(private val state: MutableStateFlow<PanelState>, 
             // itself only to a helper that can search when it needs today's sources, otherwise offered under it.
             val after = EscalationPolicy.afterOwnAnswer(decision, answered, hedged)
             decision = if (after == EscalationDecision.AUTO && answered && Hedge.needsSearch(own?.text.orEmpty()))
-                decide(attachment, guardFree = true, needsSearch = true) else after
+                decide(attachment, guardFree = true, needsSearch = true, asked = helper).held(hold) else after
         }
         // The budget is used up for today: Automatic asks first, and Robot says so once a day.
         if (decision == EscalationDecision.OFFER && target != null && HelperSettings.apiReady(target, keySaved) &&
@@ -218,7 +297,7 @@ internal class PanelEscalation(private val state: MutableStateFlow<PanelState>, 
         when (decision) {
             EscalationDecision.AUTO -> if (offerOnly || target == null) port.finishOrDrop(replyId) else {
                 // A screen or photo question gets here only with personal content allowed to go by itself: it goes along.
-                val shared = if (attachment != Attachment.NONE && HelperTrust.attachments(s)) Shared(screenText = screen, image = image) else Shared()
+                val shared = if (attachment != Attachment.NONE && attachment != Attachment.FILE && HelperTrust.attachments(s, personal)) Shared(screenText = screen, image = image) else Shared()
                 val blocks = HelperContext.escalation(question, history, ZonedDateTime.now(), port.userRegion, shared, personal = personal,
                     includePersonal = HelperTrust.conversation(s, target, personal, MemoryPanel.toTrusted()))
                 port.finishOrDrop(replyId)
@@ -241,7 +320,7 @@ internal class PanelEscalation(private val state: MutableStateFlow<PanelState>, 
                 // What the tap sends is fixed now: this question's screen or picture, never one that arrives later.
                 val payload = if (!api) null else HelperContext.payload(question, history, ZonedDateTime.now(), port.userRegion, personal, attachment,
                     Shared(screenText = screen, image = image), includePersonal = HelperTrust.conversation(s, target, personal, MemoryPanel.toTrusted()))
-                port.offer(replyId, PanelOffers.Pending(api, question, payload, voiceAsked, asWell, target.id))
+                port.offer(replyId, PanelOffers.Pending(api, question, payload, voiceAsked, asWell, target.id, beyond = unanswered == replyId))
             }
             EscalationDecision.NEEDS_UNLOCK -> {
                 if (chat.none { it.id == replyId }) {
@@ -258,6 +337,8 @@ internal class PanelEscalation(private val state: MutableStateFlow<PanelState>, 
         }
         RLog.i("helper_escalation", "trigger" to trigger, "decision" to decision)
     }
+
+    private fun EscalationDecision.held(hold: Boolean) = if (hold && this == EscalationDecision.AUTO) EscalationDecision.OFFER else this
 
     /** Robot's reply [replyId] is still open and holds neither a word nor a card (Gemma handed straight over). */
     private fun saidNothing(replyId: String): Boolean = chat.none { it.id == replyId } &&

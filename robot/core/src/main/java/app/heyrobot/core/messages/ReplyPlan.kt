@@ -211,7 +211,32 @@ enum class WindowAnswer {
     OTHER,
 }
 
+/** Where a reply's 3 seconds stand: keep waiting, go on, or stop it into a card. */
+enum class WindowStep { WAIT, GO, STOP }
+
 object ReplyWindow {
+    /** How long Robot may still be talking before the reply's 3 seconds would start with no microphone. */
+    const val READ_OUT_MS = 15_000L
+    /** How long words begun inside the 3 seconds may take to arrive. */
+    const val HEARD_WAIT_MS = 5_000L
+
+    /** The read-out before the 3 seconds. Past [READ_OUT_MS] nothing could hear a "stop", so the reply waits for Send. */
+    fun afterReadOut(speaking: Boolean, waitedMs: Long): WindowStep = when {
+        !speaking -> WindowStep.GO
+        waitedMs < READ_OUT_MS -> WindowStep.WAIT
+        else -> WindowStep.STOP
+    }
+
+    /**
+     * The 3 seconds are up. Speech under way ([hearing], whether or not its words are on screen yet) or being written down
+     * may be a "stop": its words decide. If they don't come in [HEARD_WAIT_MS], the reply waits for Send.
+     */
+    fun afterThreeSeconds(transcribing: Boolean, listening: Boolean, hearing: Boolean, waitedMs: Long): WindowStep = when {
+        !transcribing && !(listening && hearing) -> WindowStep.GO
+        waitedMs < HEARD_WAIT_MS -> WindowStep.WAIT
+        else -> WindowStep.STOP
+    }
+
     /** A word of an objection anywhere in what was said, so a hurried "no no no" or "wait, don't" counts as "stop". */
     private val OBJECTION = Regex("""(?<![\p{L}\p{N}])(?:stop|stoppe|wait|hold on|no|nope|nah|don't|dont|do not|cancel|never mind|arrete|attends|attendez|non|annule|annuler|laisse faire|laisse tomber)(?![\p{L}\p{N}])""")
 

@@ -17,7 +17,7 @@ import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
@@ -39,6 +39,7 @@ import app.heyrobot.ui.testing.facts
 import app.heyrobot.ui.testing.inDialog
 import app.heyrobot.ui.testing.onRow
 import app.heyrobot.ui.testing.scrollToText
+import app.heyrobot.ui.testing.setShotContent
 import app.heyrobot.ui.testing.shot
 import app.heyrobot.ui.testing.show
 import app.heyrobot.ui.testing.touchTargetProblems
@@ -182,7 +183,7 @@ class MessagesSettingsTest {
     }
 
     @Test fun thePageWritesMessagesJsonNotSettingsJson() {
-        rule.setContent {
+        rule.setShotContent {
             RobotTheme(dark = false) {
                 SettingsNav(SettingsRoutes.MESSAGES, RobotSettings(), Snapshot(facts = facts()), emptyList(), {}, log.actions, SnackbarHostState(), onBack = {})
             }

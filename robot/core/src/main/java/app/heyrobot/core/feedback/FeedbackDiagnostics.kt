@@ -57,6 +57,16 @@ object FeedbackDiagnostics {
     }
 
     /** 0.4.7's problem report as it is (it holds codes, this phone and the model only: core ProblemReport). */
+    /**
+     * The everyday set (everyday-set-plan.md §5.8): What went online in the last 7 days, as core OnlineSummary.reportLines
+     * gives it (only servers Robot itself uses are named; your own servers and result pages by their kind). [recording]:
+     * the record's switch.
+     */
+    fun online(lastWeek: List<app.heyrobot.core.online.NetEntry>, recording: Boolean): DiagnosticBlock {
+        val lines = app.heyrobot.core.online.OnlineSummary.reportLines(lastWeek).ifEmpty { listOf("(nothing recorded)") } // l10n: not text (the report, a diagnostic: English)
+        return DiagnosticBlock(Diagnostic.ONLINE, "What went online, last 7 days, record " + on(recording) + " (server · kind · cause · count · bytes):", lines) // l10n: not text (the report, a diagnostic: English)
+    }
+
     fun problem(report: String, title: String = "Last problem report:"): DiagnosticBlock =
         DiagnosticBlock(Diagnostic.PROBLEM, title, report.replace("\r\n", "\n").trimEnd().lines())
 

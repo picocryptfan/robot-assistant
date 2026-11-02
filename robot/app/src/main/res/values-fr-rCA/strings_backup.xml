@@ -18,9 +18,11 @@
     <string name="backup_empty">Rien pour l’instant</string>
     <string name="backup_memory_cant">Ne peut pas être ouverte pour l’instant&#160;: déverrouille ton téléphone, ou laisse la Mémoire de côté</string>
     <string name="backup_files_cant">Ne peuvent pas être lus pour l’instant&#160;: Réglages › Fichiers dit pourquoi</string>
+    <string name="backup_lists_cant">Ne peuvent pas être lues pour l’instant&#160;: Réglages › Listes dit pourquoi</string>
     <string name="backup_history_travel">Laissé de côté pendant que le mode voyage est activé&#160;: il contient des réponses des Fichiers de Robot</string>
     <string name="backup_sum_settings">Voix, mots d’éveil, actions, sécurité, IA externes (sans les clés), recherche Web, Termux, affichage, mises à jour</string>
     <string name="backup_sum_voiceprint">Faite sur ce téléphone</string>
+    <string name="backup_sum_everyday">Musique à la voix, écoute et voix de Robot pour les autres applis, Demander à Robot, Ce qui est allé en ligne</string>
     <string name="backup_vp_warning">Biométrique&#160;: elle demande une phrase de passe forte et revient seulement d’une sauvegarde que tu marques comme la tienne.</string>
     <string name="backup_pictures">Captures d’écran et photos gardées</string>
     <string name="backup_recordings">Enregistrements</string>
@@ -80,6 +82,7 @@
     <string name="backup_restore_replace">Remplacer ce qui est ici</string>
     <string name="backup_restore_mode_add">Ajouté à ce qui est sur ce téléphone</string>
     <string name="backup_restore_mode_replace">Remplace ce qui est sur ce téléphone</string>
+    <string name="backup_restore_mode_replace_memory">Remplace ce qui est sur ce téléphone, sauf ses codes privés</string>
     <string name="backup_restore_code">Entrer le code de blocage de ce téléphone</string>
     <string name="backup_restore_code_detail">Le blocage du téléphone revient seulement avec lui.</string>
     <string name="backup_restore_mine">Cette sauvegarde est la mienne, de mon propre téléphone</string>
@@ -98,7 +101,28 @@
     <string name="backup_restore_result_room">pas encore terminé (manque d’espace libre, ou erreur de stockage). Robot réessaie chaque fois que tu déverrouilles le téléphone.</string>
     <string name="backup_restore_result_earlier">pas restauré, et rien n’a changé&#160;: une restauration précédente n’est pas terminée (manque d’espace libre, ou erreur de stockage). Libère de l’espace, puis restaure de nouveau.</string>
     <string name="backup_restore_result_others">D’une sauvegarde qui n’est pas marquée comme la tienne&#160;: les souvenirs indiquent Importé, les routines et les compétences restaurées sont désactivées, et les clés ont été laissées de côté.</string>
+    <string name="backup_restore_result_cut">pas restauré, et rien n’a changé&#160;: la restauration s’est arrêtée avant. Restaure de nouveau.</string>
+    <string name="backup_restore_result_refused">pas restauré, et rien n’a changé&#160;: le fichier de ce téléphone pour cet élément ne peut pas être lu ou écrit. Vérifie-le dans les Réglages, puis restaure de nouveau.</string>
+    <string name="backup_restore_stopped">Cette restauration s’est arrêtée en cours de route&#160;: ce téléphone est en partie restauré, en partie comme avant. Ce qui est indiqué comme restauré est complet. Pour le reste, rien n’a changé&#160;: restaure de nouveau pour terminer.</string>
+    <string name="backup_restore_result_links">Robot à Robot&#160;: tes personnes jumelées reviennent en pause une fois Robot à Robot activé. Répondre quand ton téléphone est verrouillé est désactivé et les niveaux de chaque personne recommencent, jusqu’à ce que tu les règles de nouveau.</string>
+    <plurals name="backup_restore_result_keys_no_place">
+        <item quantity="one">pas restaurée&#160;: %1$d clé n’a aucune IA externe ni aucune connexion ici à qui aller. Restaure-la avec les Réglages ou les Connexions, ou saisis-la dans les Réglages.</item>
+        <item quantity="many">pas restaurées&#160;: %1$d de clés n’ont aucune IA externe ni aucune connexion ici à qui aller. Restaure-les avec les Réglages ou les Connexions, ou saisis-les dans les Réglages.</item>
+        <item quantity="other">pas restaurées&#160;: %1$d clés n’ont aucune IA externe ni aucune connexion ici à qui aller. Restaure-les avec les Réglages ou les Connexions, ou saisis-les dans les Réglages.</item>
+    </plurals>
+    <plurals name="backup_restore_files_left_out">
+        <item quantity="one">Fichiers&#160;: %1$d fichier n’a pas pu être lu quand cette sauvegarde a été faite. Il n’est donc pas dans la sauvegarde et n’est pas revenu.</item>
+        <item quantity="many">Fichiers&#160;: %1$d de fichiers n’ont pas pu être lus quand cette sauvegarde a été faite. Ils ne sont donc pas dans la sauvegarde et ne sont pas revenus.</item>
+        <item quantity="other">Fichiers&#160;: %1$d fichiers n’ont pas pu être lus quand cette sauvegarde a été faite. Ils ne sont donc pas dans la sauvegarde et ne sont pas revenus.</item>
+    </plurals>
+    <plurals name="backup_files_left_out">
+        <item quantity="one">Fichiers&#160;: %1$d fichier n’a pas pu être lu, donc il n’est pas dans cette sauvegarde.</item>
+        <item quantity="many">Fichiers&#160;: %1$d de fichiers n’ont pas pu être lus, donc ils ne sont pas dans cette sauvegarde.</item>
+        <item quantity="other">Fichiers&#160;: %1$d fichiers n’ont pas pu être lus, donc ils ne sont pas dans cette sauvegarde.</item>
+    </plurals>
+    <string name="backup_codes_left_out">La Mémoire n’a pas pu être lue, donc tes codes privés ne sont pas dans cette sauvegarde. Déverrouille ton téléphone et refais-la.</string>
     <string name="backup_restore_result_close">Fermer ceci</string>
+    <string name="backup_restore_kept_unknown">Gardés plus sûrs&#160;: Robot n’a pas pu les compter pour l’instant. Les réglages qui laisseraient Robot agir avec moins de questions gardent quand même les valeurs de ce téléphone.</string>
     <plurals name="backup_restore_kept">
         <item quantity="one">Gardé plus sûr&#160;: %1$d réglage qui laisserait Robot agir avec moins de questions garde la valeur de ce téléphone.</item>
         <item quantity="many">Gardés plus sûrs&#160;: %1$d réglages qui laisseraient Robot agir avec moins de questions gardent les valeurs de ce téléphone.</item>
@@ -173,5 +197,23 @@
         <item quantity="one">%1$d vidéo</item>
         <item quantity="many">%1$d vidéos</item>
         <item quantity="other">%1$d vidéos</item>
+    </plurals>
+    <string name="backup_links_cant">Lecture impossible pour l’instant : déverrouille ton téléphone, ou laisse Robot à Robot de côté</string>
+    <string name="backup_links_off">Robot à Robot est désactivé, donc tes personnes jumelées et ses réglages restent de côté. Active-le pour les sauvegarder</string>
+    <string name="backup_links_left_out">Tes personnes jumelées n’ont pas pu être lues, donc Robot à Robot n’est pas dans cette sauvegarde. Déverrouille ton téléphone et refais-la.</string>
+    <plurals name="backup_sum_links">
+        <item quantity="one">%1$d personne jumelée, sans aucune clé. Elle est prévenue quand tu restaures, et en pause jusqu’à ce qu’elle accepte.</item>
+        <item quantity="many">%1$d personnes jumelées, sans aucune clé. Elles sont prévenues quand tu restaures, et en pause jusqu’à ce qu’elles acceptent.</item>
+        <item quantity="other">%1$d personnes jumelées, sans aucune clé. Elles sont prévenues quand tu restaures, et en pause jusqu’à ce qu’elles acceptent.</item>
+    </plurals>
+    <plurals name="backup_n_links">
+        <item quantity="one">%1$d jumelage</item>
+        <item quantity="many">%1$d jumelages</item>
+        <item quantity="other">%1$d jumelages</item>
+    </plurals>
+    <plurals name="backup_n_lists">
+        <item quantity="one">%1$d liste</item>
+        <item quantity="many">%1$d listes</item>
+        <item quantity="other">%1$d listes</item>
     </plurals>
 </resources>

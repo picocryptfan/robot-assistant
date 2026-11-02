@@ -46,6 +46,7 @@ val LoadFailure.titleText: Phrase get() = when (this) {
     LoadFailure.STOPPING -> ModelStrings.failureStopping()
     LoadFailure.TIMEOUT -> ModelStrings.failureTimeout()
     LoadFailure.PROCESS -> ModelStrings.failureProcess()
+    LoadFailure.FILE_CHANGED -> ModelStrings.failureFileChanged()
 }
 
 /** "The GPU didn't load (engine error)", "The TPU stopped while loading": a failure of [device] at [stage], for the screen. */
@@ -205,11 +206,48 @@ data class TpuFailure(val model: BrainModel, val time: Long, val failure: LoadFa
  * answered: the phone or Robot restarted in the middle of it, so the GPU counts as failed (never a loop of GPU loads
  * that take the phone down).
  */
+object MemoryReclaim {
+    /** ApplicationExitInfo.REASON_LOW_MEMORY: Android's low memory killer, nothing the model or the GPU did by itself. */
+    const val REASON_LOW_MEMORY = 3
+    /** Android's record of a death is looked for this long after it, and a record older than this is another death's. */
+    const val RECORD_MS = 60_000L
+    /** A second reclaim of a load within this is the load's own doing (too big for this phone): the old way, never a loop. */
+    const val LOAD_FORGIVEN_MS = 3_600_000L
+
+    /**
+     * What Android's records (newest first) say of the :brain with [pid] (0: not known, the newest record then) that died
+     * since [since]: true Android reclaimed its memory, false anything else, null no record yet. Fails closed: only a true
+     * spares the GPU, so a crash or an unexplained death is treated as it always was.
+     */
+    fun reclaimed(exits: List<ExitFacts>, pid: Int, since: Long): Boolean? =
+        exits.firstOrNull { (pid <= 0 || it.pid == pid) && it.time >= since }?.let { it.reason == REASON_LOW_MEMORY }
+
+    /** A load cut short by a reclaim at [now] is forgiven, unless one was within [LOAD_FORGIVEN_MS] ([earlier], 0: none). */
+    fun forgivesLoad(earlier: Long, now: Long): Boolean = earlier <= 0 || now - earlier >= LOAD_FORGIVEN_MS
+
+    /**
+     * A :brain death counts toward the three an hour only while it was doing something: at [stage] in an answer, or
+     * [loading]. Between answers it is most likely Android reclaiming memory, and nothing was wrong.
+     */
+    fun countsTowardLockout(stage: ProblemStage?, loading: Boolean): Boolean = stage != null || loading
+}
+
 data class GpuTrying(val model: BrainModel, val time: Long, val voicePid: Int) {
     fun encode(): String = "${model.id} $time $voicePid"
 
+    /**
+     * Whether this load, never answered, ended for a reason that isn't the GPU: Robot updated since it started ([updatedAt],
+     * PackageInfo.lastUpdateTime: an update's kill isn't reported the same way on every Android), or Android's record of
+     * the voice process ([voiceExits]) gives a [NOT_THE_GPU] reason. No record (the phone restarted) still counts as the GPU.
+     */
+    fun notTheGpu(voiceExits: List<ExitFacts>, updatedAt: Long): Boolean =
+        updatedAt >= time || voiceExits.firstOrNull { it.pid == voicePid && it.time >= time }?.let { it.reason in NOT_THE_GPU } == true
+
     companion object {
         const val FILE = "gpu_trying.txt"
+
+        /** ApplicationExitInfo: EXIT_SELF, PERMISSION_CHANGE, USER_REQUESTED, USER_STOPPED, PACKAGE_STATE_CHANGE, PACKAGE_UPDATED. */
+        val NOT_THE_GPU = setOf(1, 8, 10, 11, 15, 16)
 
         fun decode(text: String?): GpuTrying? {
             val p = text?.trim()?.split(' ') ?: return null

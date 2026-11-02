@@ -90,6 +90,8 @@ data class FileIntake(
     val app: String? = null,
     /** The type sniffed from its first bytes (F5): never the name's or the sender's claim. */
     val type: String? = null,
+    /** From another Robot (FilePeer, source ROBOT): where it came from and what that Robot said about it. */
+    val peer: PeerOrigin? = null,
 )
 
 /** A file sealed into incoming/ and not yet in the index: [FileStore.commit] it or [FileStore.discard] it. */
@@ -181,14 +183,16 @@ class FileStore(
     fun update(change: (FileIndex) -> FileIndex): IndexLoad = locked {
         val load = loadIndex()
         val current = load.current ?: return@locked load
-        val next = change(current)
+        val asked = change(current)
         // F12: a travel-mode view (TravelMode.shown) is never written back: it would lose the hidden drawers' entries.
-        require(next.outOfSight.isEmpty() && next.ids == current.ids && next.entries.size == current.entries.size)
+        require(asked.outOfSight.isEmpty() && asked.ids == current.ids && asked.entries.size == current.entries.size)
         val was = current.entries.associateBy { it.id }
-        for (e in next.entries) {
+        for (e in asked.entries) {
             val w = was.getValue(e.id)
             require(e.from.size == w.from.size && e.from.sha256 == w.from.sha256)
         }
+        // F21: a change to an entry at its cap costs some of its search text, never the write.
+        val next = asked.copy(entries = asked.entries.map { e -> if (e == was[e.id]) e else FileIndexCodec.fitText(e) ?: e })
         if (next == current) return@locked load
         writeIndex(next)
         IndexLoad.Loaded(next)
@@ -301,6 +305,8 @@ class FileStore(
                 kind = if (dangerous) FileKind.DANGEROUS else FileKind.UNKNOWN,
                 state = FileState.INBOX,
                 filing = if (dangerous) Filing(FilingStep.HELD, FilingWhy.DANGEROUS) else null,
+                fields = intake.peer?.fields.orEmpty(),
+                extra = intake.peer?.let(FilePeer::extra).orEmpty(),
                 from = Provenance(intake.source, at = now(), size = staged.size, sha256 = staged.sha256,
                     app = intake.app?.takeIf { it.length <= FileIndexCodec.MAX_APP && FileIndexCodec.PACKAGE.matches(it) },
                     type = intake.type?.takeIf { it.length <= FileIndexCodec.MAX_TYPE && FileIndexCodec.MIME.matches(it) }),
@@ -848,7 +854,7 @@ class FileStore(
     private fun nothingSealed(): Boolean = !indexFile.exists() && !badFile.exists() && !indexTmp.exists() &&
         // FX2 (files-1.4-review.md K2): any file in these folders counts, not only the names a listing takes (a ".part", a
         // ".tmp", a name this version doesn't know): each may be sealed with the key a replacement would destroy.
-        listOf(blobs, thumbs).all { anyFile(it).not() } && incomingDirs().all { anyFile(it).not() } &&
+        listOf(blobs, thumbs).all { anyFile(it).not() } && incomingDirs().all { it.name == INCOMING_LINK || anyFile(it).not() } &&
         // FX3: and a restore's staging, its sealed files (a staged one, its part, the sealed entries) the commit still holds.
         restoreStaging.let { st -> st == null || st.listFiles().orEmpty().none { it.isFile && (it.name.endsWith(SEALED_EXT) || it.name.endsWith(PART_EXT) || it.name.endsWith(TMP_EXT)) } }
 
@@ -870,6 +876,8 @@ class FileStore(
         const val BLOBS = "blobs"
         const val THUMBS = "thumbs"
         const val INCOMING = "incoming"
+        /** 1.5 L8: :link's folder in incoming/: format 2 only, under robot_inbox_v1, so it never needs robot_files_v1 kept. */
+        const val INCOMING_LINK = "link"
         const val SEALED_EXT = ".rf"
         const val PART_EXT = ".part"
         const val TMP_EXT = ".tmp"

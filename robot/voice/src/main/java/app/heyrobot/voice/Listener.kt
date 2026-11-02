@@ -445,7 +445,7 @@ class Listener(
                 wantSince = 0L
                 routeGen = CaptureRoute.generation
             }
-            val n = try { r.read(buf, 0, FRAME) } catch (_: Throwable) { AudioRecord.ERROR }
+            val n = try { FrameFeed.current?.read(buf, FRAME) ?: r.read(buf, 0, FRAME) } catch (_: Throwable) { AudioRecord.ERROR }
             if (n <= 0) {
                 if (n == AudioRecord.ERROR_DEAD_OBJECT || ++errors > MAX_READ_ERRORS) {
                     RLog.i("listen_error", "dead" to (n == AudioRecord.ERROR_DEAD_OBJECT), "errors" to errors)
@@ -483,13 +483,15 @@ class Listener(
             if (speaking != wasSpeaking) try { ww?.clearPreRoll() } catch (t: Throwable) { RLog.w("wake_word_preroll", t) }
             wasPaused = paused
             val w = ww?.takeIf { !paused }
-            if (speaking && w != null && !talkLoadStarted) {
+            // A spoken reply still being written counts: "stop" is heard between her sentences and before the first (KeywordInputs).
+            val talking = inputs.talking
+            if (talking && w != null && !talkLoadStarted) {
                 talkLoadStarted = true
                 try { loadTalkSpotter(w) } catch (t: Throwable) { RLog.w("wake_word_talk_start", t) }
             }
             // While Robot speaks, "stop" and the wake phrases at Settings › Voice › "Interrupt sensitivity" (Medium: as before).
-            val stop = if (speaking) KwsThresholds.stop(echoCancelled = communication && aec == AecState.ON, inputs.interrupt) else null
-            val hits = if (w == null) emptyList() else try { w.accept(x, inputs.wake(speaking), stop) } catch (t: Throwable) {
+            val stop = inputs.stopPreset(communication, echoCancelled = communication && aec == AecState.ON)
+            val hits = if (w == null) emptyList() else try { w.accept(x, inputs.wake(talking), stop) } catch (t: Throwable) {
                 // Java-side errors only; a native crash takes the whole voice process.
                 RLog.w("wake_word", t)
                 emptyList()
@@ -499,10 +501,11 @@ class Listener(
             wasSpeaking = speaking
             for (hit in hits) {
                 // Before any check (EchoGuard, the debounce, the tests): the line after it in the log says what came of it.
-                val by = if (!speaking) KwsSpotterCode.IDLE else if (w?.lastHitByTalkSpotter == true) KwsSpotterCode.TALK else KwsSpotterCode.IDLE_WHILE_TALKING
+                val by = if (!talking) KwsSpotterCode.IDLE else if (w?.lastHitByTalkSpotter == true) KwsSpotterCode.TALK else KwsSpotterCode.IDLE_WHILE_TALKING
                 VoiceLog.add(VoiceEvent.KWS_HIT, KeywordBuffer.idOf(hit) ?: 0, by.id, micKind.id * 10 + aec.id)
                 // Only a wake phrase marks where a question starts; "stop" is followed by Robot's own voice.
                 if (PreRoll.marksQuestion(hit)) synchronized(ringLock) { wakeAt = samplesSeen }
+                if (inputs.logMic) VoiceLog.add(VoiceEvent.CAR_MIC, 0, routedInput?.type ?: -1, frameDb.toInt())
                 try { onWake(hit, lastFrameAt) } catch (t: Throwable) { RLog.w("wake_hit", t) }
             }
         }

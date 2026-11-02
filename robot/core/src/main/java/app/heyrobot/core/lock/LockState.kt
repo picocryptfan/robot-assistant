@@ -31,8 +31,11 @@ data class ActiveLock(
     }
 }
 
-/** The lock code's wrong tries: how many in a row, and the wall-clock time the next try is allowed (LockCodeRules). */
-data class CodeTries(val fails: Int = 0, val nextTry: Long = 0)
+/**
+ * The lock code's wrong tries: how many in a row, the wall-clock time the next try is allowed, and the same time on the
+ * elapsed-time clock of boot [boot] (LockCodeRules: both must have passed; F25).
+ */
+data class CodeTries(val fails: Int = 0, val nextTry: Long = 0, val nextElapsed: Long? = null, val boot: Int? = null)
 
 /** What the record says (§3, "What happened"). Never a code, never an app's name: ids and numbers only. */
 enum class RecordEvent(val id: String) {
@@ -90,6 +93,15 @@ data class LockState(
      * so a restart of :lock while you drive never puts the cover over a map.
      */
     val car: Long = 0,
+    /** The app that handled geo: when the first of the active locks started, kept until none is on (F24; [LockSchedule.mapsKept]). */
+    val mapsApp: String? = null,
+    /**
+     * review-lock 9: until when an emergency dialer the cover or Robot opened counts as open (wall-clock ms; 0: none), so a
+     * restart of :lock without usage access doesn't put the cover back over it. [dialerUntil]: the same for the phone's
+     * dialer, when the cover's Emergency call had to fall back to it.
+     */
+    val emergencyUntil: Long = 0,
+    val dialerUntil: Long = 0,
     val last: LastSeen = LastSeen(),
     val record: List<RecordLine> = emptyList(),
 ) {
@@ -108,6 +120,9 @@ data class LockState(
     companion object {
         const val RECORD_MAX = 200
         const val CAR_MAX_MS = 12L * 3600 * 1000
+        const val EMERGENCY_OPEN_MS = 3L * 60 * 1000
+        /** [until] holds at [now]: never for longer than it could have been set for, whatever the clock did since. */
+        fun emergencyHeld(until: Long, now: Long): Boolean = now < until && until - now <= EMERGENCY_OPEN_MS
         const val RECORD_DAYS_MS = 30L * 24 * 3600 * 1000
     }
 }

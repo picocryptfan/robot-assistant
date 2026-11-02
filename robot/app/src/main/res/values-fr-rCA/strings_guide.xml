@@ -345,4 +345,5 @@
     <string name="guide_home_again">Refaire le guide de configuration</string>
     <string name="guide_about_row">Guide de configuration</string>
     <string name="guide_about_detail">Ce que fait chaque fonction, ce qui reste sur le téléphone, et quoi activer</string>
+    <string name="guide_routines_clock">Robot utilise l’appli d’horloge par défaut de ton téléphone, pour savoir quand une alarme se termine et pour les alarmes que tu lui demandes de régler. Pour en utiliser une autre, choisis «&#160;Quand j’éteins mon alarme&#160;», puis Appli d’horloge. L’Horloge de GrapheneOS indique à Robot quand une alarme se termine. Avec les autres, Robot se fie à l’arrêt de la sonnerie&#160;: une alarme qui ne fait que vibrer ne lancera donc rien, mais une heure fixe fonctionne.</string>
 </resources>

@@ -18,6 +18,7 @@ import app.heyrobot.core.VoiceFile
 import app.heyrobot.core.VoiceMark
 import app.heyrobot.core.VoiceModelLogic
 import app.heyrobot.core.installVerified
+import app.heyrobot.core.online.NetPurpose
 import app.heyrobot.core.readOrNull
 import app.heyrobot.core.writeAtomic
 import app.heyrobot.R
@@ -122,6 +123,7 @@ object VoiceModelStore {
     fun snapshot(ctx: Context, b: VoiceBundle): Snap {
         val v = vouched(ctx, b)
         val rem = b.files.filter { it.name !in v }
+        NetLog.settleDownloads(ctx)
         val ids = ids(ctx, b)
         val rows = query(ctx, ids.values)
         val active = rem.mapNotNull { f -> ids[f.name]?.let { rows[it] } }
@@ -210,6 +212,8 @@ object VoiceModelStore {
                     .addRequestHeader("User-Agent", DownloadPolicy.userAgent(BuildConfig.VERSION_NAME))
                     .setAllowedOverMetered(anyNetwork)
                 ids[f.name] = dm.enqueue(req)
+                // What went online: handed to Android's download service; its end is recorded once it has ended.
+                NetLog.downloadStarted(ctx, ids.getValue(f.name), NetPurpose.VOICE_DOWNLOAD, b.url(f), f.bytes)
             }
             setIds(ctx, b, ids)
             RLog.i("voice_download", "bundle" to RLog.Code(b.id), "op" to RLog.Code("start"), "files" to rem.size)
@@ -223,6 +227,7 @@ object VoiceModelStore {
 
     fun cancelDownload(ctx: Context, b: VoiceBundle) {
         val dm = ctx.getSystemService(DownloadManager::class.java)
+        NetLog.downloadsStopped(ctx, ids(ctx, b).values)
         for (id in ids(ctx, b).values) try { dm.remove(id) } catch (_: Exception) {}
         setIds(ctx, b, emptyMap())
         staging(ctx, b)?.deleteRecursively()

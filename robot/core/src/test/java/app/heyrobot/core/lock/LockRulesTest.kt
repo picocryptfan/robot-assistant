@@ -68,22 +68,41 @@ class LockRulesTest {
         assertEquals(listOf(0L, 0, 0, 0, 0, 30_000, min, 2 * min, 4 * min, 8 * min, 16 * min, 32 * min, 60 * min, 60 * min, 60 * min),
             (0..14).map { LockCodeRules.waitAfter(it) })
         var t = CodeTries()
-        for (i in 1..4) { t = LockCodeRules.wrong(t, 1_000); assertTrue(LockCodeRules.mayTry(t, 1_000)) }
-        t = LockCodeRules.wrong(t, 1_000)
-        assertEquals(CodeTries(5, 31_000), t)
-        assertFalse(LockCodeRules.mayTry(t, 30_999))
-        assertTrue(LockCodeRules.mayTry(t, 31_000))
+        for (i in 1..4) { t = LockCodeRules.wrong(t, 1_000, 1_000, 1); assertTrue(LockCodeRules.mayTry(t, 1_000, 1_000, 1)) }
+        t = LockCodeRules.wrong(t, 1_000, 1_000, 1)
+        assertEquals(CodeTries(5, 31_000, 31_000, 1), t)
+        assertFalse(LockCodeRules.mayTry(t, 30_999, 30_999, 1))
+        assertTrue(LockCodeRules.mayTry(t, 31_000, 31_000, 1))
         assertEquals(CodeTries(), LockCodeRules.RIGHT)
     }
 
     @Test fun aRestartKeepsTheWaitAndTheClockMovedBackDoesntStrandIt() {
         // nextTry is wall-clock time in state.json: a restart reads it back as it was.
         val t = CodeTries(12, 10 * min + 60 * min)
-        assertEquals(70 * min, LockCodeRules.nextTry(t, 10 * min))
+        assertEquals(70 * min, LockCodeRules.nextTry(t, 10 * min, 0, null))
         // The clock moved back a day: the wait counts from now, never more than the longest one.
         val back = 10 * min - 24 * 60 * min
-        assertEquals(back + 60 * min, LockCodeRules.nextTry(t, back))
-        assertEquals(5_000, LockCodeRules.nextTry(CodeTries(5, 0), 5_000))
+        assertEquals(back + 60 * min, LockCodeRules.nextTry(t, back, 0, null))
+        assertEquals(5_000, LockCodeRules.nextTry(CodeTries(5, 0), 5_000, 0, null))
+    }
+
+    @Test fun theWallClockMovedForwardDoesntSkipTheWait() {
+        // F25: five wrong tries at wall 1 000, elapsed 500: 30 s to wait on both clocks.
+        val t = (1..5).fold(CodeTries()) { x, _ -> LockCodeRules.wrong(x, 1_000, 500, 7) }
+        val aDayOn = 24 * 60 * min
+        assertFalse(LockCodeRules.mayTry(t, aDayOn, 10_000, 7))
+        assertEquals(aDayOn + 20_500, LockCodeRules.nextTry(t, aDayOn, 10_000, 7))
+        // Both clocks passed.
+        assertTrue(LockCodeRules.mayTry(t, 31_000, 30_500, 7))
+        // The wall clock not yet (moved back a little): still waiting.
+        assertFalse(LockCodeRules.mayTry(t, 30_999, 30_500, 7))
+        // A restart: the elapsed clock starts over, so the wall clock alone decides, as it did.
+        assertTrue(LockCodeRules.mayTry(t, 31_000, 5, 8))
+        assertFalse(LockCodeRules.mayTry(t, 30_999, 5, 8))
+        // An elapsed time further off than the wait can't strand the pad.
+        assertEquals(1_000 + 30_000, LockCodeRules.nextTry(t.copy(nextElapsed = 1_000_000), 1_000, 500, 7))
+        // A state from before this: wall clock only.
+        assertTrue(LockCodeRules.mayTry(CodeTries(5, 31_000), 31_000, 0, 7))
     }
 
     @Test fun theMacIsKeyedSaltedAndComparedWhole() {

@@ -11,7 +11,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
+import app.heyrobot.ui.common.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -36,6 +36,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import app.heyrobot.R
+import app.heyrobot.core.AlarmClocks
 import app.heyrobot.core.BriefItem
 import app.heyrobot.core.i18n.Lang
 import app.heyrobot.core.BriefLock
@@ -279,7 +280,12 @@ fun RoutinesScreen(d: RoutinesData, s: RobotSettings, facts: AssistantFacts?, ac
                     if (f.notifications) Mark.OK else Mark.TODO,
                     action = if (f.notifications) null else ({ TextButton(onClick = a.askPermissions, modifier = Modifier.heightIn(min = 48.dp)) { Text(allow) } }))
                 // 1.2: a warning, not a to-do, when a routine that is on (or the brief) waits for an alarm it won't hear.
-                StatusPreference(stringResource(R.string.routine_clock), stringResource(if (f.clock) R.string.routine_clock_ok else R.string.routine_clock_no),
+                val clockNow = f.clockNow(d.settings.clockApp)
+                StatusPreference(stringResource(R.string.routine_clock), when {
+                    clockNow == null -> stringResource(R.string.routine_clock_no)
+                    AlarmClocks.tells(clockNow.pkg) -> stringResource(R.string.routine_clock_ok)
+                    else -> stringResource(R.string.routine_clock_sound, clockNow.label)
+                },
                     if (f.clock) Mark.OK else if (ClockNeed.unmet(d.routines, d.settings, f.clock)) Mark.WARN else Mark.TODO)
                 StatusPreference(stringResource(R.string.routine_calendar), stringResource(if (f.calendar) R.string.routine_calendar_ok else R.string.routine_calendar_no),
                     if (f.calendar) Mark.OK else Mark.TODO,
@@ -328,6 +334,8 @@ private fun itemTitle(i: BriefItem): Int = when (i) {
     BriefItem.CLOSING -> R.string.brief_item_closing
     // 1.4: never listed here (above); Settings › Files' row names it.
     BriefItem.FILES -> R.string.brief_item_reminders
+    // 1.5 L6: never listed here either; Settings › Robot to Robot's "Show in morning brief" names it.
+    BriefItem.LINK -> R.string.brief_item_reminders
 }
 
 private fun lockDetail(l: BriefLock): Int = when (l) {
@@ -373,6 +381,7 @@ fun BriefSettingsScreen(d: RoutinesData, act: RoutineActions, snackbar: Snackbar
                 is RoutineTrigger.Unlock -> TimeRow(stringResource(R.string.routine_after), t.after) { act.settings(rs.copy(briefTrigger = RoutineTrigger.Unlock(it))) }
                 is RoutineTrigger.AlarmDismissed -> {
                     ClockNeeded(d, t)
+                    ClockChoice(d, act) { act.settings(rs.copy(briefTrigger = BriefRoutine.trigger(BriefRoutine.When.TIME, rs.briefTrigger))) }
                     TimeRow(stringResource(R.string.routine_alarms_from), rs.alarmWindow.from) {
                         if (it != rs.alarmWindow.to) act.settings(rs.copy(alarmWindow = TimeWindow(it, rs.alarmWindow.to)))
                     }
@@ -441,6 +450,27 @@ fun BriefSettingsScreen(d: RoutinesData, act: RoutineActions, snackbar: Snackbar
 @Composable
 private fun ClockNeeded(d: RoutinesData, t: RoutineTrigger) {
     if (d.facts != null && ClockNeed.unmet(t, d.facts.clock)) StatusPreference(stringResource(R.string.routine_alarm_needs_clock), null, Mark.WARN)
+}
+
+/**
+ * week-fixes: which Clock app, by the alarm options: the phone's default until you pick one. A Clock that doesn't tell other
+ * apps when an alarm ends says so, and offers a start at a set time instead ([atTime]).
+ */
+@Composable
+private fun ClockChoice(d: RoutinesData, act: RoutineActions, atTime: () -> Unit) {
+    val f = d.facts ?: return
+    if (f.clockApps.isEmpty()) return
+    val rs = d.settings
+    val pkgs = f.clockApps.map { it.pkg }
+    val phoneDefault = stringResource(R.string.routine_clock_default, f.clockNow(null)?.label.orEmpty())
+    val chosen = rs.clockApp?.takeIf { it in pkgs }
+    ListPreference(stringResource(R.string.routine_clock_app), chosen, listOf<String?>(null) + pkgs,
+        { p -> if (p == null) phoneDefault else f.clockApps.first { it.pkg == p }.label }, icon = RIcons.Alarm) {
+        act.settings(rs.copy(clockApp = it))
+    }
+    val now = f.clockNow(rs.clockApp) ?: return
+    if (!AlarmClocks.tells(now.pkg)) StatusPreference(stringResource(R.string.routine_clock_doesnt_tell, now.label), stringResource(R.string.routine_clock_sound_detail), Mark.WARN,
+        action = { TextButton(onClick = atTime, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.routine_clock_use_time)) } })
 }
 
 // ---------------------------------------------------------------------------------------------- a routine's page (the editor)
@@ -534,6 +564,7 @@ fun RoutineEditScreen(initial: Routine, isNew: Boolean, d: RoutinesData, act: Ro
                 }
                 is RoutineTrigger.AlarmDismissed -> {
                     ClockNeeded(d, t)
+                    ClockChoice(d, act) { edit(r.copy(trigger = StartKind.TIME.trigger(t.window), conditions = RoutineConditions())) }
                     TimeRow(stringResource(R.string.routine_alarms_from), t.window.from) {
                         if (it != t.window.to) edit(r.copy(trigger = RoutineTrigger.AlarmDismissed(TimeWindow(it, t.window.to))))
                     }

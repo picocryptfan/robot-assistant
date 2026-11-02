@@ -19,6 +19,7 @@ import app.heyrobot.core.memory.MemoryKeyException
 import app.heyrobot.core.memory.MemoryLoad
 import app.heyrobot.core.memory.MemorySettings
 import app.heyrobot.core.memory.MemoryVault
+import app.heyrobot.core.readForUpdate
 import app.heyrobot.core.readOrNull
 import app.heyrobot.core.writeAtomic
 import app.heyrobot.core.writeAtomicBytes
@@ -59,11 +60,13 @@ interface MemoryKeys {
 }
 
 /**
- * The Android Keystore's AES-256-GCM keys. [UNLOCKED][MemoryKeyAliases.UNLOCKED] is made with setUnlockedDeviceRequired
- * (true); the lock screen's without it. A random 12-byte IV per seal (the Keystore's own), the additional data
- * authenticated. A tag that fails is BAD_DATA, a key Android invalidated is GONE, anything else LOCKED ("not now").
+ * The Android Keystore's AES-256-GCM keys. An alias in [unlockOnly] is made with setUnlockedDeviceRequired(true), any
+ * other without it: memory's call keeps the default, so [UNLOCKED][MemoryKeyAliases.UNLOCKED] needs the phone unlocked
+ * and the lock screen's doesn't. 1.4 Lists (lists-plan.md §4.2 D1) passes its own, robot_lists_v1 (sys/ListsVault.kt).
+ * A random 12-byte IV per seal (the Keystore's own), the additional data authenticated. A tag that fails is BAD_DATA, a
+ * key Android invalidated is GONE, anything else LOCKED ("not now").
  */
-class KeystoreMemoryKeys : MemoryKeys {
+class KeystoreMemoryKeys(private val unlockOnly: Set<String> = setOf(MemoryKeyAliases.UNLOCKED)) : MemoryKeys {
     private fun store(): KeyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
 
     override fun cipher(alias: String, create: Boolean): MemoryCipher? {
@@ -83,7 +86,7 @@ class KeystoreMemoryKeys : MemoryKeys {
             .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
             .setKeySize(256)
             .setRandomizedEncryptionRequired(true)
-            .setUnlockedDeviceRequired(alias == MemoryKeyAliases.UNLOCKED)
+            .setUnlockedDeviceRequired(alias in unlockOnly)
             .build())
         return gen.generateKey()
     }
@@ -137,6 +140,7 @@ class FileMemoryVault(
     private val keys: MemoryKeys,
     private val lockScreen: () -> Boolean = { false },
     private val now: () -> Long = System::currentTimeMillis,
+    private val readFile: (File) -> ByteArray = File::readBytes,
 ) : MemoryVault {
     val file: File get() = File(dir, MemoryEnvelope.FILE)
 
@@ -144,16 +148,17 @@ class FileMemoryVault(
     fun stamp(): Long = file.let { if (it.isFile) it.lastModified() * 31 + it.length() else 0L }
 
     /** The key the file is sealed with now ([MemoryKeyAliases]), or null without a file. */
-    fun alias(): String? = MemoryEnvelope.alias(readBytes())
+    fun alias(): String? = try { MemoryEnvelope.alias(readBytes()) } catch (_: Exception) { null }
 
-    override fun load(): MemoryLoad = locked { open(readBytes()) }
+    override fun load(): MemoryLoad = locked { try { open(readBytes()) } catch (_: Exception) { MemoryLoad.Locked } }
 
     /**
      * One change under the lock: open, apply [change] (and the day-after sweep of items that ended), seal with the key the
-     * file has (a new file: [lockScreen]'s), write. Nothing is written when the file couldn't be opened, or nothing changed.
+     * file has (a new file: [lockScreen]'s), write. Nothing is written when the file couldn't be read or opened, or nothing
+     * changed. A file that can't be read now answers [MemoryLoad.Locked], never "no file yet": that would replace it.
      */
     override fun update(change: (MemoryFile) -> MemoryFile): MemoryLoad = locked {
-        val bytes = readBytes()
+        val bytes = try { readBytes() } catch (_: Exception) { return@locked MemoryLoad.Locked }
         val existing = bytes != null && bytes.isNotEmpty()
         val seal = try {
             if (existing) MemoryEnvelope.alias(bytes)?.let { keys.cipher(it, create = false) } else keys.cipher(defaultAlias(), create = true)
@@ -229,7 +234,7 @@ class FileMemoryVault(
         return MemoryEnvelope.open(bytes, { a -> if (a == alias) cipher else null })
     }
 
-    private fun readBytes(): ByteArray? = try { if (file.isFile) file.readBytes() else null } catch (_: Exception) { null }
+    private fun readBytes(): ByteArray? = readForUpdate(file, readFile)
 
     private inline fun <T> locked(block: () -> T): T = synchronized(LOCK) {
         dir.mkdirs()

@@ -188,6 +188,51 @@ class FileParseWireTest {
         assertNull(FileParseWire.decodeReply(FileParseWire.encodeReply(ParseReply(ParseOp.PIXELS, ParseStatus.OK, FileType.JPEG)), req))
     }
 
+    /** F17: :files may be compromised, so a stripped copy is read here, and metadata or anything after the image's end refuses it. */
+    @Test fun aCopyWithMetadataOrAnythingAfterItsEndIsRefused() {
+        fun ok(c: ByteArray, w: Int = 40, h: Int = 30) = FileParseWire.checkBlob(ParseBlob(BlobKind.COPY, w, h, 0, c.size), c)
+        fun seg(m: Int, data: ByteArray) = byteArrayOf(0xFF.toByte(), m.toByte(), ((data.size + 2) shr 8).toByte(), (data.size + 2).toByte()) + data
+        val jpeg = ParseFixtures.jpeg(40, 30)
+        fun withSeg(m: Int, data: ByteArray) = jpeg.copyOfRange(0, 2) + seg(m, data) + jpeg.copyOfRange(2, jpeg.size)
+        assertTrue(ok(jpeg))
+        // What the encoder writes itself: JFIF (the fixture's) and a colour profile.
+        assertTrue(ok(withSeg(0xE2, "ICC_PROFILE".toByteArray() + ByteArray(600))))
+        // Metadata, a comment, any other application segment, a profile that isn't one, or a colour profile too big to be one.
+        assertFalse(ok(ParseFixtures.jpeg(40, 30, exif = ByteArray(40))))
+        assertFalse(ok(withSeg(0xE1, "http://ns.adobe.com/xap/1.0/".toByteArray())))
+        assertFalse(ok(withSeg(0xED, "Photoshop 3.0".toByteArray())))
+        assertFalse(ok(withSeg(0xFE, "a comment".toByteArray())))
+        assertFalse(ok(withSeg(0xE9, ByteArray(40))))
+        assertFalse(ok(withSeg(0xE2, ByteArray(40))))
+        val big = seg(0xE2, "ICC_PROFILE".toByteArray() + ByteArray(40_000))
+        assertFalse(ok(jpeg.copyOfRange(0, 2) + big + big + jpeg.copyOfRange(2, jpeg.size)))
+        // Bytes after the end, or no end at all.
+        assertFalse(ok(jpeg + byteArrayOf(0)))
+        assertFalse(ok(jpeg + "another file".toByteArray()))
+        assertFalse(ok(jpeg + jpeg))
+        assertFalse(ok(jpeg.copyOf(jpeg.size - 2)))
+        // The scan's own stuffed bytes and restart markers aren't markers.
+        val scan = jpeg.copyOf(jpeg.size - 2) + byteArrayOf(0xFF.toByte(), 0, 0x11, 0xFF.toByte(), 0xD3.toByte(), 0x22, 0xFF.toByte(), 0xD9.toByte())
+        assertTrue(ok(scan))
+        // A scan's marker that ends it and hides a comment after.
+        assertFalse(ok(jpeg.copyOf(jpeg.size - 2) + seg(0xFE, ByteArray(10)) + byteArrayOf(0xFF.toByte(), 0xD9.toByte())))
+
+        val png = ParseFixtures.png(40, 30)
+        fun chunk(type: String, data: ByteArray): ByteArray = java.nio.ByteBuffer.allocate(4).putInt(data.size).array() + type.toByteArray() + data + ByteArray(4)
+        fun withChunk(type: String, data: ByteArray) = png.copyOfRange(0, 33) + chunk(type, data) + png.copyOfRange(33, png.size)
+        assertTrue(ok(png))
+        assertTrue(ok(withChunk("sRGB", ByteArray(1))))
+        assertTrue(ok(withChunk("iCCP", ByteArray(600))))
+        for (t in listOf("tEXt", "zTXt", "iTXt", "eXIf", "prVt")) assertFalse(t, ok(withChunk(t, ByteArray(20))))
+        assertFalse(ok(withChunk("iCCP", ByteArray(70_000))))
+        assertFalse(ok(ParseFixtures.png(40, 30, exif = ByteArray(20))))
+        assertFalse(ok(png + byteArrayOf(0)))
+        assertFalse(ok(png + png))
+        assertFalse(ok(png.copyOf(png.size - 12)))
+        // A length that runs past the file.
+        assertFalse(ok(png.copyOfRange(0, 33) + java.nio.ByteBuffer.allocate(8).putInt(Int.MAX_VALUE).put("IDAT".toByteArray()).array()))
+    }
+
     @Test fun aBlobsCopiedBytesAreWhatTheFrameSays() {
         val jpeg = ParseFixtures.jpeg(768, 1024)
         assertTrue(FileParseWire.checkBlob(ParseBlob(BlobKind.PAGE, 768, 1024, 0, jpeg.size), jpeg))

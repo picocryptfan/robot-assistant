@@ -30,6 +30,7 @@ class ChatOnlyTest {
             "Schedule a checkup with Dr Martin next week" to ToolName.ADD_EVENT,
             "Take a note: blood pressure 128 over 82" to ToolName.ADD_NOTE,
             "Note that I took 400 mg of ibuprofen at noon" to ToolName.ADD_NOTE,
+            // With Lists off (the default here); while it's on, add_to_list (listRowsAreTheListToolsWhileListsIsOn).
             "add vitamin D to my shopping list" to ToolName.ADD_NOTE,
             "Text Mom I'm on my way" to ToolName.SEND_TEXT,
             "Send Sam a message saying I'll be late" to ToolName.SEND_TEXT,
@@ -68,6 +69,20 @@ class ChatOnlyTest {
             "make a note to call the pharmacy" to ToolName.ADD_NOTE,
         )
         for ((q, tool) in asked) assertEquals(q, tool, ChatOnly.actionAsked(q))
+    }
+
+    /**
+     * 1.4 Lists (LS4, lists-plan.md §8.2): while Lists is on, the two add_note rows' list halves ask for add_to_list: Robot's
+     * answer to a chat-only model is the same, and the tool it logs is the list's. Notes stay add_note's; Lists off, as before.
+     */
+    @Test fun listRowsAreTheListToolsWhileListsIsOn() {
+        for (q in listOf("add vitamin D to my shopping list", "put eggs on the grocery list", "Ajoute du lait à ma liste d'épicerie",
+            "mets des œufs sur ma liste")) {
+            assertEquals(q, ToolName.ADD_TO_LIST, ChatOnly.actionAsked(q, lists = true))
+            assertEquals(q, ToolName.ADD_NOTE, ChatOnly.actionAsked(q, lists = false))
+        }
+        for (q in listOf("add the minutes to my notes", "Take a note: blood pressure 128 over 82", "ajoute ça à mes notes"))
+            assertEquals(q, ToolName.ADD_NOTE, ChatOnly.actionAsked(q, lists = true))
     }
 
     /**

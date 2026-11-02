@@ -142,6 +142,7 @@ class PageSaverTest {
         assertEquals(AppRoutes.Target(page = Page.Setup(people = true)), AppRoutes.target(AppPages.PERMISSIONS))
         assertEquals(AppRoutes.Target(tab = Tab.SETTINGS, page = Page.Settings(SettingsRoutes.MODEL)), AppRoutes.target(AppPages.MODEL))
         // 1.4: a filing notification opens the Files tab; the "Robot Files" icon too, Back then leaving the app.
+        assertEquals(AppRoutes.Target(page = Page.Settings(SettingsRoutes.MESSAGES)), AppRoutes.target(AppPages.MESSAGES_SETTINGS))
         assertEquals(AppRoutes.Target(tab = Tab.FILES), AppRoutes.target(AppPages.FILES))
         assertEquals(AppRoutes.Target(tab = Tab.FILES, filesIcon = true), AppRoutes.target(AppPages.FILES_ICON))
         assertEquals(AppRoutes.Target(page = Page.Transcripts), AppRoutes.target(AppPages.TRANSCRIPTS))

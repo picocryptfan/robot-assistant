@@ -1,0 +1,20 @@
+{
+  "format": 1,
+  "id": "brief-reminder",
+  "title": "A reminder for the brief, in English and French",
+  "safety": "robot-data",
+  "testBench": ["v80-br-reminders"],
+  "setup": [{"set": "speakReplies", "value": "VOICE"}],
+  "steps": [
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "Remind me in the morning to bring the passport.", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 30},
+    {"do": "check", "what": "router", "equals": "RoutineRouter"},
+    {"do": "open", "how": "wake"},
+    {"do": "wait_listening", "seconds": 30},
+    {"do": "say", "text": "Rappelle-moi demain matin d'apporter le passeport.", "voice": "siwis"},
+    {"do": "wait_reply", "seconds": 30},
+    {"do": "check", "what": "router", "equals": "RoutineRouter"},
+    {"do": "end"}
+  ]
+}

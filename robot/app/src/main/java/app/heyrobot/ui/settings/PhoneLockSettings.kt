@@ -108,17 +108,84 @@ class PhoneLockData(val read: LockFileRead, val state: LockState, val access: Bo
 
 /**
  * The edit session ends when you leave (§8.2): when the last Phone lock page closes (a page opening another doesn't end
- * it), when Robot's app leaves the screen ([left]), and at screen-off (:lock).
+ * it), when Robot's app leaves the screen ([left]), and at screen-off (:lock). During a lock, :lock's gate covers Robot's
+ * app once no session is open, but Android doesn't always send the window event it decides on (back from the code pad,
+ * on a Pixel 8). So Robot's app tells :lock it is in front: when it comes to the front ([resumed]), when the last page
+ * closes with it in front, and when the session's 5 minutes run out with it in front.
  */
 internal object PhoneLockPages {
     private var open = 0
+    /** MainActivity is resumed: Robot's app is in front (main thread). */
+    private var front = false
+    private var app: Context? = null
     private val main = Handler(Looper.getMainLooper())
+    private val runOut = Runnable { app?.let(::ranOut) }
 
     fun opened() { open++ }
     fun closed(ctx: Context) {
         open--
-        main.postDelayed({ if (open == 0 && LockStore.readState(ctx).edit > 0) LockSignals.editEnded(ctx) }, 1_000)
+        main.postDelayed({
+            if (open != 0) return@postDelayed
+            val inFront = front
+            Thread({ if (editMayBeOpen(ctx)) LockSignals.editEnded(ctx, inFront = inFront) }, "robot-lock-front").start()
+        }, 1_000)
     }
+
+    /**
+     * Phone lock is on (or locks.json can't be read), so a lock may be on whatever state.json says: only :lock writes it,
+     * it may not be readable, and a state :lock couldn't write yet (storage full) is invisible here. :lock looks at
+     * Robot's word only while it watches the windows, and its gate decides, so a word too many costs nothing. With Phone
+     * lock off :lock has no lock either.
+     */
+    private fun mayLock(ctx: Context): Boolean = LockStore.mayLock(ctx)
+
+    /** An edit session may be open: state.json says so, or can't be read. */
+    private fun editMayBeOpen(ctx: Context): Boolean = try { (LockStore.readStateOrNull(ctx)?.edit ?: 1L) > 0 } catch (_: Throwable) { true }
+
+    /**
+     * MainActivity's onResume. While Phone lock is on, :lock is told Robot's app is in front (covered during a lock unless
+     * a session is open), and while a session is open, the gate looks again as its 5 minutes run out.
+     */
+    fun resumed(a: Activity) {
+        front = true
+        val ctx = a.applicationContext
+        app = ctx
+        val at = SystemClock.uptimeMillis()
+        // The files off the main thread: this runs each time Robot's app comes back, and the record may be long.
+        Thread({
+            if (!mayLock(ctx)) return@Thread
+            LockSignals.front(ctx, at)
+            val edit = try { LockStore.readStateOrNull(ctx)?.edit } catch (_: Throwable) { null } ?: 0L
+            if (edit > 0) main.post { runOutAt(edit) }
+        }, "robot-lock-front").start()
+    }
+
+    /** MainActivity's onPause: Robot's app may not be in front any more. */
+    fun paused() {
+        front = false
+        main.removeCallbacks(runOut)
+    }
+
+    private fun runOutAt(edit: Long) {
+        if (!front) return
+        main.removeCallbacks(runOut)
+        main.postDelayed(runOut, (edit - System.currentTimeMillis()).coerceAtLeast(0) + RUN_OUT_MS)
+    }
+
+    /** The session's 5 minutes are up with Robot's app in front: :lock's gate looks at it (a newer session: at its end). */
+    private fun ranOut(ctx: Context) {
+        if (!front) return
+        val at = SystemClock.uptimeMillis()
+        // state.json off the main thread; one that can't be read counts as the session over.
+        Thread({
+            val st = try { LockStore.readStateOrNull(ctx) } catch (_: Throwable) { null }
+            if (st != null && st.editOpen(System.currentTimeMillis())) main.post { runOutAt(st.edit) }
+            else if (mayLock(ctx)) LockSignals.front(ctx, at)
+        }, "robot-lock-front").start()
+    }
+
+    /** Just past the session's end, so the gate sees it closed. */
+    private const val RUN_OUT_MS = 250L
 
     /**
      * MainActivity's onStop, never for a rotation: Home, Recents, the power button or another app's window (Android's
@@ -129,7 +196,7 @@ internal object PhoneLockPages {
     fun left(a: Activity) {
         if (padOnTop(a)) return
         val ctx = a.applicationContext
-        if (LockStore.readState(ctx).edit > 0) LockSignals.editEnded(ctx)
+        if (editMayBeOpen(ctx)) LockSignals.editEnded(ctx)
     }
 
     /** Robot's code pad is at the top of [a]'s task now. */
@@ -146,8 +213,14 @@ fun phoneLockSummaryText(ctx: Context): Phrase {
     val f = read.ok ?: return LockStrings.summaryDamaged()
     if (!f.settings.on) return LockStrings.summaryOff()
     val st = LockStore.readState(ctx)
-    val opens = if (st.active.isEmpty()) null else LockSchedule.opensAt(f, st, Clocks(ZonedDateTime.now(), SystemClock.elapsedRealtime(), null))
-    return if (opens != null && opens.isAfter(ZonedDateTime.now())) LockStrings.summaryNow("time" to opens.toLocalTime()) else LockStrings.summaryOn(f.locks.size)
+    // A timed lock's opening; One app first ends on its time in the app, so it gives its count instead (as the notice does).
+    val opens = if (st.active.isEmpty()) null else LockSchedule.timedOpensAt(f, st, Clocks(ZonedDateTime.now(), SystemClock.elapsedRealtime(), null))
+    if (opens != null && opens.isAfter(ZonedDateTime.now())) return LockStrings.summaryNow("time" to opens.toLocalTime())
+    // One app first: its count, as the notice shows it (kept current each minute while its app is in front).
+    LockSchedule.appLocks(f, st).firstOrNull()?.let { (a, r) ->
+        return LockStrings.summaryProgress("done" to a.usedMs / 60_000, "total" to r.minutes, "label" to appName(ctx, r.app))
+    }
+    return LockStrings.summaryOn(f.locks.size)
 }
 
 @Composable
@@ -351,7 +424,7 @@ private fun AddLockDialog(onDismiss: () -> Unit, onPick: (String) -> Unit) {
         Triple(PhoneLockRoutes.NEW, R.string.lock_kind_time, R.string.lock_kind_time_detail),
         Triple(PhoneLockRoutes.NEW_APP, R.string.lock_kind_app, R.string.lock_kind_app_detail),
     )
-    androidx.compose.material3.AlertDialog(
+    app.heyrobot.ui.common.AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.lock_add_title)) },
         text = {

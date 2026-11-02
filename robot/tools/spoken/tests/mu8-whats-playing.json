@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "id": "mu8-whats-playing",
+  "title": "\"What's playing?\" with Music by voice off, as in the test build, goes to the model",
+  "safety": "read",
+  "testBench": ["MU8"],
+  "needs": {"model": true},
+  "setup": [{"set": "speakReplies", "value": "VOICE"}],
+  "steps": [
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "What's playing?", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 120},
+    {"do": "check", "what": "router", "equals": "model"},
+    {"do": "end"}
+  ]
+}

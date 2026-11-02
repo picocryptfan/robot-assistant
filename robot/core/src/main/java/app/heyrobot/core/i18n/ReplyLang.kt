@@ -64,10 +64,30 @@ object ReplyLang {
 
     /**
      * The language the model is told to answer in (l10n design §4.8, Prompt.answerInLine): the turn's reply language [say]
-     * when the [setting] fixes it (English, Français, or the menus' language); null for "The language you speak", where
-     * the model answers in the question's language and its prompt stays as it was.
+     * when the [setting] fixes it (English, Français, or the menus' language). With "The language you speak", English after
+     * English adds nothing and its prompt stays as it was; 1 Nov (the spoken run: « Combien d'advil… » answered in English, and
+     * English stuck in French's wake), a French turn, or the first English one after it ([before]), is told too.
      */
-    fun answerIn(setting: ReplyLangChoice, say: Lang): Lang? = if (setting == ReplyLangChoice.SPOKEN) null else say
+    fun answerIn(setting: ReplyLangChoice, say: Lang, before: Lang? = null): Lang? =
+        if (setting != ReplyLangChoice.SPOKEN || say == Lang.FR || before == Lang.FR) say else null
+
+    private val COMMAND_EN = setOf("text", "call", "email", "open", "set", "play", "remind", "add", "send", "turn") // l10n: not text (heard words)
+    private val COMMAND_FR = setOf("texte", "appelle", "ouvre", "envoie", "ecris", "ajoute", "mets", "rappelle", "joue", "allume", "eteins") // l10n: not text (heard words)
+
+    /**
+     * 1 Nov (the spoken run: "Text mom." right after a French turn was answered in French): a line of up to three words that starts
+     * with a verb of one language only says which it's in, where LangId's guess on so few words isn't sure. Null: it doesn't.
+     */
+    fun commandLang(text: String): Lang? {
+        val words = java.text.Normalizer.normalize(text.lowercase(java.util.Locale.ROOT), java.text.Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "")
+            .split(Regex("[^\\p{L}0-9'-]+")).filter { it.isNotEmpty() }
+        val first = words.firstOrNull()?.takeIf { words.size <= 3 } ?: return null
+        return when (first) {
+            in COMMAND_EN -> Lang.EN
+            in COMMAND_FR -> Lang.FR
+            else -> null
+        }
+    }
 
     /** With nothing heard (a routine, the brief): the setting's language, else the app language. */
     fun unheard(ui: Lang, setting: ReplyLangChoice): Lang = decide(null, false, null, 0, ui, setting)

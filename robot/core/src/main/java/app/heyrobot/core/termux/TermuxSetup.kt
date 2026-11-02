@@ -45,7 +45,13 @@ data class TermuxSetupStatus(
         put("listAt", listAt)
         put("folderMissing", folderMissing)
         put("scripts", JSONArray().apply {
-            for (s in scripts) put(JSONObject().put("name", s.name).apply { s.comment?.let { put("comment", it) }; if (s.aliases.isNotEmpty()) put("aliases", JSONArray(s.aliases)) })
+            for (s in scripts) put(JSONObject().put("name", s.name).apply {
+                s.comment?.let { put("comment", it) }
+                if (s.aliases.isNotEmpty()) put("aliases", JSONArray(s.aliases))
+                // C8: the `# param:` and `# effect:` lines as listed (ScriptParams reads them again each time).
+                if (s.paramLines.isNotEmpty()) put("params", JSONArray(s.paramLines))
+                if (s.effectLines.isNotEmpty()) put("effects", JSONArray(s.effectLines))
+            })
         })
         listFailure?.let { put("listFailure", it.name) }
         running?.let { put("running", it); put("runningAt", runningAt) }
@@ -69,7 +75,9 @@ data class TermuxSetupStatus(
                     val name = s.optString("name")
                     if (!TermuxScripts.validName(name) || scripts.any { it.name == name }) continue
                     val aliases = s.optJSONArray("aliases")?.let { al -> (0 until al.length()).map { al.optString(it) }.filter { it.isNotBlank() } }.orEmpty()
-                    scripts += TermuxScriptInfo(name, s.optString("comment", "").takeIf { it.isNotBlank() }?.take(ScriptRegistry.MAX_COMMENT), aliases)
+                    fun lines(k: String) = s.optJSONArray(k)?.let { al -> (0 until minOf(al.length(), ScriptParams.MAX_LINES)).map { al.optString(it).take(ScriptParams.MAX_LINE) } }.orEmpty()
+                    scripts += TermuxScriptInfo(name, s.optString("comment", "").takeIf { it.isNotBlank() }?.take(ScriptRegistry.MAX_COMMENT), aliases,
+                        lines("params"), lines("effects"))
                 }
             }
             fun failure(k: String) = TermuxFailure.entries.firstOrNull { it.name == o.optString(k) }

@@ -10,11 +10,12 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextReplacement
 import app.heyrobot.core.skills.NameContext
 import app.heyrobot.core.skills.ParamType
@@ -174,6 +175,21 @@ class SkillsSettingsTest {
         assertEquals(1, back)
     }
 
+    @Test
+    fun aRemoveThatBreaksAReferenceSaysWhy() {
+        val s0 = home.copy(steps = listOf(SkillStep.of(StepKind.TRAVEL_TIME, mapOf("to" to "home"), id = "eta"),
+            SkillStep.of(StepKind.SEND_TEXT, mapOf("to" to "{{who}}", "message" to "About {{eta.minutes}} min."))))
+        var s by mutableStateOf(s0)
+        val host = SnackbarHostState()
+        rule.show { SkillPageScreen(s, data(listOf(s, pasta)), actions { s = it }, host, onBack = {}, now = now) }
+        val row = androidx.compose.ui.test.hasContentDescription("Remove step 1")
+        repeat(2) { rule.onNode(androidx.compose.ui.test.hasScrollToNodeAction()).performScrollToNode(row); rule.waitForIdle() }
+        rule.onNodeWithContentDescription("Remove step 1").performClick()
+        rule.waitForIdle()
+        assertEquals(s0, s)
+        assertTrue(host.currentSnackbarData?.visuals?.message.orEmpty().isNotBlank())
+    }
+
     @Test @Config(qualifiers = "w320dp-h640dp-mdpi")
     fun theLevelAndAQuestion() {
         var s by mutableStateOf(home)
@@ -208,5 +224,78 @@ class SkillsSettingsTest {
         rule.onNodeWithText("These steps are mine").performClick()
         assertFalse(s.provenance.fromContent)
         assertEquals(3, s.rev)
+    }
+
+    // ------------------------------------------------------------------ C9: Add a skill, Add a step, a step's page
+
+    private val ntfy = app.heyrobot.core.connect.ConnSetup.create("c-nt0001", app.heyrobot.core.connect.ConnKind.NTFY, "family ntfy", "https://ntfy.example.org",
+        ntfyTitle = "Tell the family").first!!
+    private fun withConnections(skills: List<Skill>) = data(skills).copy(connections = listOf(ntfy))
+    private val tell = app.heyrobot.core.connect.SkillEditor.newSkill("s-tell01", "Tell the family",
+        app.heyrobot.core.connect.SkillEditor.step(app.heyrobot.core.connect.SkillEditor.offers(listOf(ntfy), emptyList()).first()), 1L, app.heyrobot.core.i18n.Lang.EN)
+
+    @Test @Config(qualifiers = "w320dp-h640dp-mdpi")
+    fun addASkillThenPickItsFirstStep() {
+        val made = ArrayList<Skill>()
+        rule.show { SkillsScreen(withConnections(listOf(home)), actions { made += it }, SnackbarHostState(), onBack = {}, now = now) }
+        rule.onNodeWithText("family ntfy").assertExists()
+        rule.onRow("Add a skill").performClick()
+        rule.onNode(SemanticsMatcher.keyIsDefined(SemanticsProperties.EditableText)).performTextReplacement("Tell the family")
+        rule.inDialog("Save").performClick()
+        rule.inDialog("Your Termux scripts").assertDoesNotExist()
+        rule.inDialog("Tell the family · your family ntfy").performClick()
+        val k = made.single()
+        assertEquals("Tell the family", k.name)
+        assertEquals(StepKind.CONN, k.steps.single().kind)
+        assertEquals("open skills/${k.id}", calls.last())
+    }
+
+    @Test @Config(qualifiers = "w320dp-h640dp-mdpi")
+    fun aSkillsPageSaysWhatItDoesAndTestsWithoutSending() {
+        val filled = app.heyrobot.core.connect.SkillEditor.setConstant(tell, 0, app.heyrobot.core.connect.ArgSlot("message", ParamType.TEXT, maxLen = 4096), "I'm home.")!!
+        rule.show { SkillPageScreen(filled, withConnections(listOf(filled)).copy(masks = mapOf("c-nt0001" to mapOf(app.heyrobot.core.connect.SecretPart.TOPIC to "…AB12"))),
+            actions(), SnackbarHostState(), onBack = {}, now = now) }
+        rule.scrollToText("Risk")
+        rule.onNodeWithText("Simple: 1 step, tells people").assertExists()
+        rule.onNodeWithText("Needs a model: no").assertExists()
+        rule.scrollToText("What each step would do. Nothing is sent.")
+        rule.onRow("What each step would do. Nothing is sent.").performClick()
+        rule.inDialog("Request: POST https://ntfy.example.org", substring = true).assertExists()
+        rule.inDialog("…AB12", substring = true).assertExists()
+    }
+
+    @Test @Config(qualifiers = "w320dp-h640dp-mdpi")
+    fun aStepNeedingAValueSaysSoAndTakesOne() {
+        var s by mutableStateOf(tell)
+        rule.show { SkillPageScreen(s, withConnections(listOf(s)), actions { s = it }, SnackbarHostState(), onBack = {}, now = now) }
+        rule.onNodeWithText("Step 1 needs attention: a value is missing or doesn't fit what it takes.").assertExists()
+        rule.onRow("Step 1 needs attention: a value is missing or doesn't fit what it takes.").performClick()
+        assertEquals("open skills/s-tell01/step/0", calls.last())
+    }
+
+    @Test @Config(qualifiers = "w320dp-h640dp-mdpi")
+    fun aStepsPageTakesAValueAQuestionAndACondition() {
+        var s by mutableStateOf(tell)
+        rule.show { SkillStepScreen(s, 0, withConnections(listOf(s)), actions { s = it }, SnackbarHostState(), onBack = {}) }
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
+        rule.onNodeWithText("Not set yet").assertExists()
+        rule.onRow("message").performClick()
+        rule.inDialog("A value you set now").performClick()
+        rule.onNode(SemanticsMatcher.keyIsDefined(SemanticsProperties.EditableText)).performTextReplacement("I'm home.")
+        rule.inDialog("Save").performClick()
+        assertEquals("I'm home.", s.steps[0].args["message"])
+        // Then a question asked each time.
+        rule.onRow("message").performClick()
+        rule.inDialog("Ask each time").performClick()
+        rule.onNode(hasText("Question") and SemanticsMatcher.keyIsDefined(SemanticsProperties.EditableText)).performTextReplacement("What should I say?")
+        rule.onNode(hasText("Default") and SemanticsMatcher.keyIsDefined(SemanticsProperties.EditableText)).performTextReplacement("I'm home.")
+        rule.inDialog("Save").performClick()
+        assertEquals("{{message}}", s.steps[0].args["message"])
+        assertEquals("What should I say?", s.params.single().askEn)
+        rule.onNodeWithText("Asked each time: What should I say?").assertExists()
+        // A step that changes something stops the skill when it fails; Only if… offers only Always here (nothing typed to test).
+        rule.onNode(androidx.compose.ui.test.hasStateDescription("Stop the skill (a step that changes something always stops it)")).assertExists()
+        rule.onRow("Only if…").performClick()
+        rule.inDialog("Always runs").assertExists()
     }
 }

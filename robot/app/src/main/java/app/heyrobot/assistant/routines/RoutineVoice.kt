@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.assistant.routines
 
+import app.heyrobot.lock.PhoneLockNow
 import app.heyrobot.core.output.VolumePolicy
 import app.heyrobot.core.BriefItem
 import android.content.Context
@@ -336,8 +337,9 @@ object RoutineVoice {
         val am = app.getSystemService(AudioManager::class.java)
         val mode = try { am.mode } catch (_: Throwable) { AudioManager.MODE_NORMAL }
         return PhoneState(
-            // 1.1: the lock screen only (a phone lock leaves the screen unlocked; routines are unchanged).
-            locked = Assistant.keyguard(app),
+            // 1.1: the lock screen; F6: and someone else's lock, for parts still queued as one starts. Your own lock leaves the
+            // screen unlocked, and routines are unchanged during it.
+            locked = Assistant.keyguard(app) || PhoneLockNow.someoneElse(app),
             screenOn = try { app.getSystemService(PowerManager::class.java).isInteractive } catch (_: Throwable) { true },
             callActive = mode == AudioManager.MODE_IN_CALL || mode == AudioManager.MODE_IN_COMMUNICATION,
             mediaPlaying = try { am.isMusicActive } catch (_: Throwable) { false },

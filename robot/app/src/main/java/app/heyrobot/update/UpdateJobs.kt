@@ -29,26 +29,35 @@ object UpdateJobs {
 
     private fun scheduler(ctx: Context): JobScheduler? = ctx.getSystemService(JobScheduler::class.java)
 
-    /** The daily check scheduled while [s] has it on, cancelled (with any download waiting for Wi-Fi) while it is off. */
-    fun ensure(ctx: Context, s: UpdateSettings) {
-        val js = scheduler(ctx) ?: return
-        try {
+    /** The last Wi-Fi download couldn't be scheduled: Settings › About › Updates says so. */
+    @Volatile var downloadRefused = false
+        private set
+
+    /**
+     * The daily check scheduled while [s] has it on, cancelled (with any download waiting for Wi-Fi) while it is off. False
+     * when Android wouldn't schedule it: Settings › About › Updates says so.
+     */
+    fun ensure(ctx: Context, s: UpdateSettings): Boolean {
+        val js = scheduler(ctx) ?: return !s.autoCheck
+        return try {
             if (!s.autoCheck) {
                 js.cancel(CHECK)
                 js.cancel(DOWNLOAD)
-                return
+                return true
             }
             if (!s.wifiDownload) js.cancel(DOWNLOAD)
-            if (js.getPendingJob(CHECK) != null) return
-            js.schedule(JobInfo.Builder(CHECK, ComponentName(ctx, UpdateJobService::class.java))
+            if (js.getPendingJob(CHECK) != null) return true
+            val result = js.schedule(JobInfo.Builder(CHECK, ComponentName(ctx, UpdateJobService::class.java))
                 .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
                 .setPeriodic(DAY_MS, FLEX_MS)
                 .setPersisted(true)
                 .setEstimatedNetworkBytes(256L * 1024, 1024)
                 .build())
-            RLog.i("update_job", "op" to RLog.Code("scheduled"))
+            RLog.i("update_job", "op" to RLog.Code(if (result == JobScheduler.RESULT_SUCCESS) "scheduled" else "refused"))
+            result == JobScheduler.RESULT_SUCCESS
         } catch (t: Throwable) {
             RLog.w("update_job_schedule", t)
+            false
         }
     }
 
@@ -57,14 +66,16 @@ object UpdateJobs {
         val js = scheduler(ctx) ?: return
         try {
             if (js.getPendingJob(DOWNLOAD) != null) return
-            js.schedule(JobInfo.Builder(DOWNLOAD, ComponentName(ctx, UpdateJobService::class.java))
+            val result = js.schedule(JobInfo.Builder(DOWNLOAD, ComponentName(ctx, UpdateJobService::class.java))
                 .setRequiredNetworkType(JobInfo.NETWORK_TYPE_UNMETERED)
                 .setRequiresStorageNotLow(true)
                 .setPersisted(true)
                 .setEstimatedNetworkBytes(bytes, 1024)
                 .build())
+            downloadRefused = result != JobScheduler.RESULT_SUCCESS
         } catch (t: Throwable) {
             RLog.w("update_job_download", t)
+            downloadRefused = true
         }
     }
 

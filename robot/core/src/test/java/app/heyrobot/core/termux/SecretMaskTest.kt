@@ -105,15 +105,12 @@ class SecretMaskTest {
     }
 
     @Test fun hostileInputStaysFast() {
-        val inputs = listOf(
-            "password".repeat(20_000), "password=" + "a".repeat(200_000), "a".repeat(200_000), "sk-ant-".repeat(30_000),
-            "eyJ" + "A".repeat(100_000), "eyJaaaaaaaaa.".repeat(20_000), "https://" + "u".repeat(100_000) + ":" + "p".repeat(100_000),
-            "-----BEGIN ".repeat(30_000), "-----BEGIN PRIVATE KEY-----".repeat(10_000), "bearer ".repeat(30_000), "token: ".repeat(30_000),
-            "x://a:".repeat(30_000), "AKIA".repeat(50_000),
+        fun inputs(d: Int) = listOf(
+            "password".repeat(20_000 / d), "password=" + "a".repeat(200_000 / d), "a".repeat(200_000 / d), "sk-ant-".repeat(30_000 / d),
+            "eyJ" + "A".repeat(100_000 / d), "eyJaaaaaaaaa.".repeat(20_000 / d), "https://" + "u".repeat(100_000 / d) + ":" + "p".repeat(100_000 / d),
+            "-----BEGIN ".repeat(30_000 / d), "-----BEGIN PRIVATE KEY-----".repeat(10_000 / d), "bearer ".repeat(30_000 / d), "token: ".repeat(30_000 / d),
+            "x://a:".repeat(30_000 / d), "AKIA".repeat(50_000 / d),
         )
-        val start = System.nanoTime()
-        for (s in inputs) SecretMask.mask(s, listOf("owned-secret-value"))
-        val ms = (System.nanoTime() - start) / 1_000_000
-        assertTrue("took $ms ms", ms < 10_000)
+        LinearTime.assertHolds(::inputs) { SecretMask.mask(it, listOf("owned-secret-value")) }
     }
 }

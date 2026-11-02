@@ -197,4 +197,24 @@ class ReplyPlanTest {
         assertEquals(null, ChatLinks.cheogram("conv-17"))
         assertEquals(null, ChatLinks.cheogram("#x@y"))
     }
+
+    @Test fun speechBegunInTheWindowHoldsTheSendWithNoWordsOnScreen() {
+        // Listening, the voice detector has heard speech: no words needed.
+        assertEquals(WindowStep.WAIT, ReplyWindow.afterThreeSeconds(transcribing = false, listening = true, hearing = true, waitedMs = 0))
+        assertEquals(WindowStep.WAIT, ReplyWindow.afterThreeSeconds(transcribing = true, listening = false, hearing = false, waitedMs = 4_900))
+        // Listening to silence, or not listening at all: it goes.
+        assertEquals(WindowStep.GO, ReplyWindow.afterThreeSeconds(transcribing = false, listening = true, hearing = false, waitedMs = 0))
+        assertEquals(WindowStep.GO, ReplyWindow.afterThreeSeconds(transcribing = false, listening = false, hearing = false, waitedMs = 0))
+    }
+
+    @Test fun wordsThatNeverArriveStopTheReplyRatherThanSendIt() {
+        assertEquals(WindowStep.STOP, ReplyWindow.afterThreeSeconds(transcribing = false, listening = true, hearing = true, waitedMs = ReplyWindow.HEARD_WAIT_MS))
+        assertEquals(WindowStep.STOP, ReplyWindow.afterThreeSeconds(transcribing = true, listening = false, hearing = false, waitedMs = ReplyWindow.HEARD_WAIT_MS))
+    }
+
+    @Test fun aReadOutPastTheWaitStopsTheReplyRatherThanSendItUnheard() {
+        assertEquals(WindowStep.GO, ReplyWindow.afterReadOut(speaking = false, waitedMs = 60_000))
+        assertEquals(WindowStep.WAIT, ReplyWindow.afterReadOut(speaking = true, waitedMs = 14_900))
+        assertEquals(WindowStep.STOP, ReplyWindow.afterReadOut(speaking = true, waitedMs = ReplyWindow.READ_OUT_MS))
+    }
 }

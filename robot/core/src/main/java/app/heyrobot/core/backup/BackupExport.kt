@@ -21,6 +21,17 @@ object BackupExport {
     fun termux(text: String?): String =
         TermuxSettings.fromJson(try { text?.let(::JSONObject) } catch (_: Exception) { null }).untrust().toJson().toString()
 
+    /**
+     * The everyday set's everyday_settings.json as a backup carries it: your music and maps apps' pins dropped (its package and
+     * signer are this phone's decision; on a new phone you pick it again the first time you play by name). A file this
+     * Robot can't read whole keeps its other keys as they are; one that isn't a JSON object isn't written (null), since
+     * nothing can take a pin out of it.
+     */
+    fun everyday(text: String?): String? = when (val f = app.heyrobot.core.everyday.EverydaySettingsCodec.decode(text)) {
+        is app.heyrobot.core.everyday.EverydaySettingsFile.Ok -> app.heyrobot.core.everyday.EverydaySettingsCodec.encode(f.read.copy(musicApp = null, podcastApp = null, mapsApp = null), f.extra)
+        else -> try { JSONObject(text ?: "{}").apply { remove("musicApp"); remove("podcastApp"); remove("mapsApp") }.toString() } catch (_: Exception) { null }
+    }
+
     /** Memory split for a backup: [memory] what Memory carries, [codes] the items SecretDetector flags (Keys and private codes). */
     class MemorySplit(val memory: MemoryFile, val codes: MemoryFile) {
         override fun toString(): String = "MemorySplit(${memory.items.size} items, ${codes.items.size} codes)" // l10n: not text (toString for logs and tests)
@@ -30,6 +41,12 @@ object BackupExport {
         val (codes, rest) = f.items.partition { SecretDetector.isSecret(it.text) }
         return MemorySplit(f.copy(items = rest), MemoryFile(items = codes))
     }
+
+    /**
+     * 1.4, Lists: lists.json as a backup carries it: the lists as the vault opened them (the journal's adds merged in first),
+     * tombstones and someone else's lists included, in plain JSON inside the backup's own encryption. Never the sealed file.
+     */
+    fun lists(f: app.heyrobot.core.lists.ListsFile): ByteArray = app.heyrobot.core.lists.ListsCodec.encode(f)
 
     /** The categories as one number for the voice log (bit [BackupCategory.ordinal]). */
     fun bits(categories: Collection<BackupCategory>): Int = categories.fold(0) { acc, c -> acc or (1 shl c.ordinal) }
@@ -48,4 +65,10 @@ enum class BackupCode(override val id: Int, override val title: String) : LogCod
     FILES_UNREADABLE(8, "files couldn't be opened"),
     /** 1.4: over BackupCaps.MAX_TOTAL, refused before anything was written. */
     TOO_BIG(9, "too big"),
+    /** 1.4, Lists: Lists was chosen and the lists couldn't be opened (locked, their key gone, damaged, a newer Robot's). */
+    LISTS_UNREADABLE(10, "lists couldn't be opened"),
+    /** F20: read back whole, but a restore would leave a category out: the file deleted, the category named. */
+    CHECK_REFUSED(11, "a restore would refuse a part, deleted"),
+    /** F20: a category over what a restore takes, refused before anything was written. */
+    OVER_CAP(12, "a part over what a restore takes"),
 }

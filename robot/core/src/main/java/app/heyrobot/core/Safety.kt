@@ -83,10 +83,39 @@ enum class AskWhy {
      */
     FILES,
     /**
+     * The everyday set's Ask Robot (E7): a helper's card that would send what another app shared (Personal.SHARED):
+     * answered only by a tap, as [FILES]. A helper card's reason only, never the approval gate's.
+     */
+    SHARED,
+    /**
+     * A helper's card that would send a list Robot read out (Personal.LISTS): answered only by a tap, as [FILES]. A helper
+     * card's reason only, never the approval gate's.
+     */
+    LISTS,
+    /**
      * 1.1: a dated reminder ("remind me to … on the 20th", or an alarm offered as one): an event with an alert, always on
      * add_event's card, which a yes may answer, whatever Settings › Actions says for new events.
      */
     REMINDER,
+    /**
+     * 1.4, Robot Lists (lists-plan.md §8.2, D6; LS4): add_to_list with items that aren't all runs of your own words this turn,
+     * a conversation holding content, or a list it would make: always a card ("Add to Shopping" and the items), answered by a
+     * tap, whatever Safety cards says.
+     */
+    LIST_SUGGESTED,
+    /**
+     * Skills connections (C4, plan §5.4): a connection step's card. Its own rule shows it when Robot's model picked one of
+     * its values from your list; a spoken yes may answer it only as D14 allows (the step's action says when not:
+     * Action.tapOnly).
+     */
+    CONNECTION,
+    /** The first call to a connection's host (D13): Allow for this connection, Just this time or Cancel, answered by a tap. */
+    CONNECTION_FIRST,
+    /**
+     * A connection step that locks, unlocks or opens, deletes or can spend money, or that sends a value Robot's model wrote or
+     * Robot read from an answer or the phone (the brief's rule, design §3.5): answered by a tap.
+     */
+    CONNECTION_TAP,
 }
 
 /** The one-time line after updating to 0.4.0 ([RobotSettings.safetyNotice]); tapping it opens Settings › Safety & privacy. */
@@ -177,7 +206,7 @@ object CardAnswer {
      * loose app name), or going online for the first time. Null: a yes may answer it.
      */
     fun tapFor(why: Set<AskWhy>): AskWhy? = listOf(AskWhy.MESSAGE, AskWhy.LEARNED, AskWhy.WHO, AskWhy.ONLINE, AskWhy.SEARCH_PERSONAL, AskWhy.FROM_CONTENT,
-        AskWhy.COMMAND).firstOrNull { it in why }
+        AskWhy.COMMAND, AskWhy.LIST_SUGGESTED, AskWhy.CONNECTION_FIRST, AskWhy.CONNECTION_TAP).firstOrNull { it in why }
 
     /** What Robot says when a yes can't answer a card that needs a tap for [why]. */
     fun tapWords(why: AskWhy): String = tapText(why).en()
@@ -192,6 +221,13 @@ object CardAnswer {
         AskWhy.FROM_CONTENT -> TurnStrings.tapFromContent("run" to UiLabel(UiStrings.run))
         AskWhy.COMMAND -> TurnStrings.tapCommand("run" to UiLabel(UiStrings.run))
         AskWhy.FILES -> TurnStrings.tapFiles()
+        AskWhy.LIST_SUGGESTED -> app.heyrobot.core.i18n.ListsStrings.tapSuggested()
+        // Skills connections (C4): the first-use card's buttons, and a step's own Run.
+        AskWhy.CONNECTION_FIRST -> app.heyrobot.core.i18n.ConnStrings.tapFirst("allow" to UiLabel(app.heyrobot.core.i18n.ConnStrings.allow),
+            "once" to UiLabel(InfoStrings.justThisTime))
+        AskWhy.CONNECTION_TAP, AskWhy.CONNECTION -> app.heyrobot.core.i18n.ConnStrings.tapStep()
+        AskWhy.SHARED -> TurnStrings.tapShared()
+        AskWhy.LISTS -> TurnStrings.tapLists()
         else -> TurnStrings.tapOne()
     }
 

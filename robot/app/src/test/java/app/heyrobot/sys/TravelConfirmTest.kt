@@ -15,7 +15,7 @@ import java.io.File
  */
 class TravelConfirmTest {
     private val root: File = System.getProperty("robot.rootDir")?.let(::File) ?: File(System.getProperty("user.dir") ?: ".").absoluteFile.parentFile
-    private val modules = listOf("core", "brain", "voice", "helpers", "mt", "app")
+    private val modules = listOf("core", "brain", "voice", "helpers", "mt", "link", "app")
 
     /** Every source of ours, comments out, by "module/path below app/heyrobot". */
     private val code: Map<String, String> by lazy {

@@ -9,6 +9,7 @@ import app.heyrobot.core.parse.FileGroup
 import app.heyrobot.core.parse.FileSniff
 import app.heyrobot.core.parse.FileType
 import app.heyrobot.core.parse.ParseFailure
+import app.heyrobot.core.parse.ParsedPixels
 import app.heyrobot.core.parse.ParseRequest
 import app.heyrobot.core.parse.ParseResult
 import app.heyrobot.core.parse.ParseLimits
@@ -53,6 +54,10 @@ interface FilingPorts {
     fun bytes(id: FileId, max: Long): ByteArray
     /** :files' READ of [bytes] with [flags]. */
     fun parse(bytes: ByteArray, flags: Int): ParseResult
+    /** F16: :files' raw pixels of [bytes]' first page (a picture's own), for [pageJpeg]. */
+    fun pagePixels(bytes: ByteArray): ParseResult
+    /** F16: [p] encoded here, the one JPEG :brain gets of a picture; null when they aren't a page's pixels. */
+    fun pageJpeg(p: ParsedPixels): ByteArray?
     /** Seals [jpeg] as [id]'s thumbnail; false when it couldn't. */
     fun putThumb(id: FileId, jpeg: ByteArray): Boolean
     /** The model to read with, or null when there is none to ask. */
@@ -87,8 +92,15 @@ object FilingPolicy {
     const val MIN_PICTURE_CONTEXT = 3_000
     /** Files one batch takes at most; the next trigger takes the rest. */
     const val BATCH = 20
-    /** What :files is asked for filing: the text, the pages only when there is no text layer, a thumbnail, the date. */
-    const val READ_FLAGS = ParseRequest.TEXT or ParseRequest.PAGES or ParseRequest.PAGES_IF_NO_TEXT or ParseRequest.THUMB or ParseRequest.DATE
+    /** What :files is asked for filing: the text, a thumbnail, the date. Never a page's JPEG (F16): [FilingPorts.pagePixels] when one is to be read. */
+    const val READ_FLAGS = ParseRequest.TEXT or ParseRequest.THUMB or ParseRequest.DATE
+
+    /** F52: a picture's date taken ([taken], yyyy-mm-dd) is its date when its words give none; one still to come is no date. */
+    fun withDateTaken(v: FileFieldValues, taken: String?, today: LocalDate): FileFieldValues {
+        if (v.date != null || v.dateCheck || taken == null) return v
+        val d = try { LocalDate.parse(taken) } catch (_: java.time.DateTimeException) { return v }
+        return if (d.isAfter(today)) v else v.copy(date = d)
+    }
 
     fun ofParse(r: ParseResult): TryEnd = when (r) {
         is ParseResult.Ok, is ParseResult.Refused -> TryEnd.VERDICT
@@ -228,7 +240,7 @@ class FilingRun(private val ports: FilingPorts) {
         }
         val thumb = out.thumb?.let { ports.putThumb(id, it) } == true
         val own = out.text?.takeIf { out.has(ParseReply.HAS_TEXT) && it.isNotBlank() }
-        val picture = own == null && out.pageJpegs.isNotEmpty()
+        val picture = own == null && (type.group == FileGroup.IMAGE || type.group == FileGroup.PDF)
         trace.picture = picture
 
         // Rules first.
@@ -237,8 +249,9 @@ class FilingRun(private val ports: FilingPorts) {
         val dollar = ports.dollar()
         var vote = FileRules.kindOf(type, entry.from.source, own)
         val ruled = own?.let { FileFields.check(it, ownText = true, reading = null, dollar = dollar, today = today) } ?: FileFieldValues()
+        val dated = { v: FileFieldValues -> FilingPolicy.withDateTaken(v, out.date, today) }
         if (vote.settled && vote.kind != null && Filer.level(vote.kind!!, settings) == FileLevel.OFF)
-            return decide(id, entry, vote.kind, ruled, own, yourWords, null, emptyList(), thumb, tries + 1)
+            return decide(id, entry, vote.kind, dated(ruled), own, yourWords, null, emptyList(), thumb, tries + 1)
         val needModel = !(vote.settled && complete(vote.kind!!, ruled))
 
         // Model second.
@@ -247,10 +260,10 @@ class FilingRun(private val ports: FilingPorts) {
             val m = ports.model()
             val allLevelsOff = FileKind.entries.none { it != FileKind.DANGEROUS && it != FileKind.UNKNOWN && Filer.level(it, settings) != FileLevel.OFF }
             when {
-                allLevelsOff -> return decide(id, entry, vote.kind, ruled, own, yourWords, null, vote.leaning, thumb, tries + 1)
+                allLevelsOff -> return decide(id, entry, vote.kind, dated(ruled), own, yourWords, null, vote.leaning, thumb, tries + 1)
                 // "Read text in images" off: a picture is filed by its type and date only (§4.2): a photo; a scanned PDF (its
                 // pages are pictures too) is no photo, so Robot asks what it is.
-                picture && !settings.readImageText -> return decide(id, entry, vote.kind ?: FileKind.PHOTO.takeIf { type.group == FileGroup.IMAGE }, ruled, own,
+                picture && !settings.readImageText -> return decide(id, entry, vote.kind ?: FileKind.PHOTO.takeIf { type.group == FileGroup.IMAGE }, dated(ruled), own,
                     yourWords, null, vote.leaning, thumb, tries + 1)
                 m == null -> if (!vote.settled) return wait(id, tries, FilingWhy.NO_MODEL, thumb)
                 picture && m.vision == false -> return wait(id, tries, FilingWhy.NO_VISION, thumb)
@@ -265,7 +278,29 @@ class FilingRun(private val ports: FilingPorts) {
                             takeBack(id, tries)
                             return FilingOutcome.Locked
                         }
-                        val r = ports.read(req.request, if (picture) out.pageJpegs.first() else null)
+                        // F16: a picture goes to :brain as this process encodes it from :files' pixels, never as bytes :files made.
+                        var image: ByteArray? = null
+                        if (picture) {
+                            val page = ports.pagePixels(bytes)
+                            when (FilingPolicy.ofParse(page)) {
+                                TryEnd.COUNTS -> {
+                                    trace.parseFailed = (page as ParseResult.Failed).why
+                                    return counted(id, tries + 1)
+                                }
+                                TryEnd.STOP, TryEnd.WAIT -> {
+                                    trace.parseFailed = (page as? ParseResult.Failed)?.why
+                                    takeBack(id, tries)
+                                    return FilingOutcome.Stop
+                                }
+                                TryEnd.VERDICT -> {}
+                            }
+                            image = (page as? ParseResult.Ok)?.out?.pixels?.let(ports::pageJpeg) ?: return hold(id, FilingWhy.UNREADABLE, null)
+                            if (ports.locked()) {
+                                takeBack(id, tries)
+                                return FilingOutcome.Locked
+                            }
+                        }
+                        val r = ports.read(req.request, image)
                         val (end, why) = FilingPolicy.ofModel(r, picture, m.contextTokens in 1 until FilingPolicy.MIN_PICTURE_CONTEXT)
                         trace.read = end
                         when (end) {
@@ -293,7 +328,7 @@ class FilingRun(private val ports: FilingPorts) {
         val values = if (text != null) FileFields.check(text, ownText = own != null, reading = reading, dollar = dollar, today = today) else FileFieldValues()
         trace.traps = values.traps
         trace.rejected = values.rejected
-        return decide(id, entry, kind, values, text, yourWords, reading, choices, thumb, tries + 1)
+        return decide(id, entry, kind, dated(values), text, yourWords, reading, choices, thumb, tries + 1)
     }
 
     /** Whether the rules alone found what [kind]'s name and checks need, so no model is asked (§4.1 step 5). */
@@ -367,7 +402,7 @@ class FilingRun(private val ports: FilingPorts) {
         val d = Filer.decide(entry, kind, values, ports.settings(), ports.rules(), yourWords, ports.words(), text, choices)
         var after: FileEntry? = null
         val load = ports.update { idx -> apply(idx, id) { e ->
-            val searchText = if (e.text.isEmpty()) text?.take(FileLimits.MAX_TEXT)?.takeIf { FileIndexCodec.wellFormed(it) }.orEmpty() else e.text
+            val searchText = if (e.text.isEmpty()) text?.let { FileIndexCodec.clip(it, FileLimits.MAX_TEXT) }?.takeIf { FileIndexCodec.wellFormed(it) }.orEmpty() else e.text
             val base = e.copy(thumb = e.thumb || thumb, text = searchText)
             val next = when (d) {
                 is FilingDecision.File -> filed(base, d.placement, tries)

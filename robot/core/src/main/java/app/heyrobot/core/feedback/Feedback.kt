@@ -74,6 +74,11 @@ enum class Diagnostic(val bit: Int, private val titleMsg: Msg, private val detai
     VOICE_LOG(2, FeedbackStrings.voiceLog, FeedbackStrings.voiceLogDetail),
     SETTINGS(4, FeedbackStrings.settings, FeedbackStrings.settingsDetail),
     UPDATER(8, FeedbackStrings.updater, FeedbackStrings.updaterDetail),
+    /**
+     * The everyday set (everyday-set-plan.md §5.8): What went online, the last 7 days, hosts Robot itself uses, kinds and
+     * counts only. Never ticked for you, whatever you report ([defaults]).
+     */
+    ONLINE(16, app.heyrobot.core.i18n.EverydayStrings.onlineTick, app.heyrobot.core.i18n.EverydayStrings.onlineTickDetail),
     ;
 
     val titleText: Phrase get() = titleMsg()
@@ -213,7 +218,7 @@ object FeedbackReport {
     data class Composed(val text: String, val blocks: Map<Diagnostic, String>, val cut: Set<Diagnostic>, val textCut: Boolean)
 
     /** The order diagnostics are cut in. */
-    private val CUT_ORDER = listOf(Diagnostic.VOICE_LOG, Diagnostic.PROBLEM, Diagnostic.SETTINGS, Diagnostic.UPDATER)
+    private val CUT_ORDER = listOf(Diagnostic.ONLINE, Diagnostic.VOICE_LOG, Diagnostic.PROBLEM, Diagnostic.SETTINGS, Diagnostic.UPDATER)
 
     /**
      * [blocks]: every diagnostic Robot could add (only the ticked ones go in, in [Diagnostic] order), their lines passed through

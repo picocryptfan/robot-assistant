@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- The everyday set in Québec French (tu): the ids of values/strings_everyday.xml, each value written with the glossary
+     (robot/l10n/glossary.tsv: « appli », « liste de lecture », « Ce qui est allé en ligne », « Demander à Robot ») and the
+     OQLF's spaces (tools/fr_typo.py, FrenchTypographyTest). Each job adds its French in its own section, as in English. -->
+<resources>
+    <!-- E0: the Settings rows (§2.4). -->
+    <string name="everyday_group_music">Musique</string>
+    <string name="everyday_music">Musique à la voix</string>
+    <string name="everyday_music_summary">Mets sur pause, passe à la chanson suivante et fais jouer ce que tu veux par son nom dans ton appli de musique, à la voix</string>
+    <string name="everyday_music_app">Ton appli de musique</string>
+    <string name="everyday_music_app_none">Aucune pour l’instant. Robot te la demande la première fois que tu fais jouer quelque chose par son nom.</string>
+    <string name="everyday_group_other_apps">Autres applis</string>
+    <string name="everyday_ask">Demander à Robot dans les autres applis</string>
+    <string name="everyday_ask_summary">Dans le menu de sélection de texte et le menu de partage. Robot lit ce que tu lui donnes et n’écrit jamais dans l’autre appli.</string>
+    <string name="everyday_listen">Écoute pour les autres applis</string>
+    <string name="everyday_listen_summary">Les boutons de micro des autres applis utilisent l’écoute hors ligne de Robot, seulement pour une appli à l’écran qui a accès au micro. Rien n’est gardé.</string>
+    <string name="everyday_voices">Voix de Robot pour les autres applis</string>
+    <string name="everyday_voices_summary">Robot apparaît dans la liste des voix d’Android et parle pour les autres applis une fois que tu l’y choisis. Il ne garde rien de ce qu’il a lu.</string>
+    <string name="everyday_group_online">Ce qui est allé en ligne</string>
+    <string name="everyday_online">Garder une trace de ce qui est allé en ligne</string>
+    <plurals name="everyday_online_summary">
+        <item quantity="one">Chaque connexion de Robot, notée et gardée %1$d jour sur ce téléphone. Robot n’envoie jamais cette trace.</item>
+        <item quantity="many">Chaque connexion de Robot, notée et gardée %1$d jours sur ce téléphone. Robot n’envoie jamais cette trace.</item>
+        <item quantity="other">Chaque connexion de Robot, notée et gardée %1$d jours sur ce téléphone. Robot n’envoie jamais cette trace.</item>
+    </plurals>
+
+    <!-- E1: music. -->
+    <string name="everyday_music_app_replaced">%1$s, remplacée par une appli signée par quelqu’un d’autre. Choisis-la de nouveau.</string>
+    <string name="everyday_music_app_forget">Aucune</string>
+    <string name="everyday_music_app_none_found">Aucune appli de musique de ce téléphone n’accepte les demandes de Robot.</string>
+
+    <!-- Car mode's music and maps: Settings › Actions › Maps. -->
+    <string name="everyday_group_maps">Cartes</string>
+    <string name="everyday_maps_app">Ton appli de cartes</string>
+    <string name="everyday_maps_automatic">Automatique</string>
+    <string name="everyday_maps_automatic_summary">Organic Maps quand elle est installée, sinon l’appli de cartes par défaut de ton téléphone. Chaque itinéraire que Robot ouvre y va.</string>
+    <string name="everyday_maps_app_replaced">%1$s, remplacée par une appli signée par quelqu’un d’autre. Choisis-la de nouveau.</string>
+
+    <!-- E2: sums. -->
+
+    <!-- E3: What went online. -->
+    <string name="everyday_online_page">Voir ce qui est allé en ligne</string>
+    <string name="everyday_online_off_summary">Désactivé : rien de nouveau n’est noté</string>
+    <string name="everyday_online_intro">Chaque connexion de Robot, avec le serveur, ce à quoi elle servait, ce qui l’a permise et le nombre d’octets. Les pages d’une recherche web montrent leurs sites, et le nom d’un site peut laisser deviner ce que tu cherchais. Cette trace reste sur ce téléphone. Robot ne l’envoie jamais.</string>
+    <string name="everyday_online_days">La garder</string>
+    <plurals name="everyday_online_days_n">
+        <item quantity="one">%1$d jour</item>
+        <item quantity="many">%1$d jours</item>
+        <item quantity="other">%1$d jours</item>
+    </plurals>
+    <string name="everyday_online_cut">Cette trace est trop longue pour être affichée au complet. Les jours les plus anciens sont gardés, mais pas affichés.</string>
+    <string name="everyday_online_delete">Effacer la trace</string>
+    <string name="everyday_online_delete_detail">Chaque ligne gardée sur ce téléphone. Le décompte d’Android reste.</string>
+    <string name="everyday_online_delete_title">Effacer la trace ?</string>
+    <string name="everyday_online_delete_text">Robot efface chaque connexion qu’il a notée. Les nouvelles sont notées tant que l’interrupteur est activé.</string>
+    <string name="everyday_online_delete_confirm">Effacer</string>
+    <string name="everyday_online_deleted">Trace effacée</string>
+    <string name="everyday_online_filter">Afficher</string>
+    <string name="everyday_online_all">Tous les types</string>
+    <string name="everyday_online_g_weather">Météo</string>
+    <string name="everyday_online_g_places">Lieu le plus proche</string>
+    <string name="everyday_online_g_web">Recherche web</string>
+    <string name="everyday_online_g_helpers">IA externes</string>
+    <string name="everyday_online_g_downloads">Téléchargements</string>
+    <string name="everyday_online_g_updates">Mises à jour</string>
+    <string name="everyday_online_g_skills">Compétences</string>
+    <string name="everyday_online_g_link">Robot à Robot</string>
+    <plurals name="everyday_online_empty">
+        <item quantity="one">Robot n’est pas allé en ligne depuis %1$d jour.</item>
+        <item quantity="many">Robot n’est pas allé en ligne depuis %1$d jours.</item>
+        <item quantity="other">Robot n’est pas allé en ligne depuis %1$d jours.</item>
+    </plurals>
+    <string name="everyday_online_is_off">La trace est désactivée, alors rien de nouveau n’est noté. Le décompte d’Android s’affiche quand même.</string>
+    <string name="everyday_online_yesterday">Hier</string>
+    <string name="everyday_online_footer">Les applis auxquelles Robot confie des choses (ton navigateur, ton appli de musique, ton appli de messagerie, Termux) vont en ligne par elles-mêmes et ne sont pas dans cette liste. Les tailles sont ce que contenaient les demandes et les réponses ; le décompte d’Android ajoute le chiffrement et les en-têtes.</string>
+    <string name="everyday_online_d_when">Quand</string>
+    <string name="everyday_online_d_for">À quoi ça servait</string>
+    <string name="everyday_online_d_server">Serveur</string>
+    <string name="everyday_online_d_cause">Ce qui l’a permise</string>
+    <string name="everyday_online_d_sent">Envoyé</string>
+    <string name="everyday_online_d_received">Reçu</string>
+    <string name="everyday_online_d_planned">Taille prévue</string>
+    <string name="everyday_online_d_ended">Comment ça s’est terminé</string>
+    <string name="everyday_online_d_part">Partie de Robot</string>
+    <string name="everyday_online_d_settings">Réglé dans %1$s</string>
+    <string name="everyday_online_p_main">L’appli Robot</string>
+    <string name="everyday_online_p_voice">L’assistant</string>
+    <string name="everyday_online_p_link">Robot à Robot</string>
+    <string name="everyday_online_open">Ouvrir</string>
+    <string name="everyday_online_close">Fermer</string>
+    <string name="everyday_feedback_what_online">ce qui est allé en ligne</string>
+
+    <!-- E5: listening for other apps: the sheet another app's RECOGNIZE_SPEECH opens (assistant/listen/ListenSheetActivity). -->
+    <string name="everyday_listen_sheet_listening">À l’écoute…</string>
+    <string name="everyday_listen_sheet_writing">Transcription de ce que tu as dit…</string>
+    <string name="everyday_listen_sheet_stop">Arrêter</string>
+    <string name="everyday_listen_sheet_cancel">Annuler</string>
+    <string name="everyday_listen_sheet_close">Fermer</string>
+    <string name="everyday_listen_sheet_nothing">Robot n’a rien entendu.</string>
+    <string name="everyday_listen_sheet_off">L’écoute pour les autres applis est désactivée. Tu peux l’activer dans Réglages › Voix.</string>
+    <string name="everyday_listen_sheet_busy">Robot écoute ou parle déjà. Réessaie quand ce sera fini.</string>
+    <string name="everyday_listen_sheet_language">Robot écoute en anglais et en français seulement.</string>
+    <string name="everyday_listen_sheet_lock">Robot n’écoute pas pour cette appli pendant ce blocage du téléphone.</string>
+    <string name="everyday_listen_sheet_model">Le modèle de reconnaissance vocale de Robot n’est pas prêt. Tu peux le télécharger dans Réglages › Voix.</string>
+    <string name="everyday_listen_sheet_covered">Une autre appli s’affiche par-dessus, alors Robot a arrêté d’écouter.</string>
+    <string name="everyday_listen_sheet_mic">Robot n’a pas pu utiliser le micro.</string>
+    <string name="everyday_listen_sheet_failed">Robot n’a pas pu transcrire ça. Réessaie.</string>
+
+    <!-- E6: Robot's voices for other apps. -->
+    <string name="everyday_voices_list">Heart et Kitten parlent anglais (États-Unis). Siwis parle français, de France.</string>
+    <string name="everyday_voices_android">Paramètres de synthèse vocale d’Android</string>
+    <string name="everyday_voices_robot_only">Ce téléphone n’a aucun autre moteur de synthèse vocale, alors sa voix est Heart.</string>
+
+    <!-- E7: Ask Robot. The label is what the text-selection menu and the share sheet show. -->
+    <string name="everyday_ask_label">Demander à Robot</string>
+    <string name="everyday_ask_reading_photo">Lecture de la photo…</string>
+    <string name="everyday_ask_writing_down">Transcription du message vocal…</string>
+    <string name="everyday_ask_close">Fermer</string>
+    <string name="everyday_ask_tag">Partagé</string>
+    <string name="everyday_ask_remove">Retirer ce que tu as partagé</string>
+    <string name="everyday_ask_explain">Expliquer</string>
+    <string name="everyday_ask_translate">Traduire</string>
+    <string name="everyday_ask_summarize">Résumer</string>
+    <string name="everyday_ask_reply">Rédiger une réponse</string>
+    <string name="everyday_ask_remember">Retenir</string>
+    <string name="everyday_podcast_app">Ton appli de balados</string>
+    <string name="everyday_podcast_app_none">Aucune pour l’instant. Une fois choisie, le mode auto demande « Musique ou balados ? »</string>
+</resources>

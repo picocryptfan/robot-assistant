@@ -1,0 +1,203 @@
+# LS4's desk run of LIST_SPLIT (lists-plan.md §3.5, §8.3): runs of words with no separators, as the recognizer may write a
+# spoken list, and the items a person meant. lang, run, items joined by " | ". 120 are several items, 80 one item.
+# Written by job LS4 on 23 Oct 2026; ListSplitDeskTest checks each is one piece the model is asked about.
+en	eggs oat milk bread	eggs | oat milk | bread
+en	apples bananas peanut butter	apples | bananas | peanut butter
+en	coffee filters sugar cream	coffee filters | sugar | cream
+en	toilet paper dish soap paper towels	toilet paper | dish soap | paper towels
+en	chicken thighs rice broccoli	chicken thighs | rice | broccoli
+en	milk bread butter	milk | bread | butter
+en	tomatoes onions garlic	tomatoes | onions | garlic
+en	orange juice cereal yogurt	orange juice | cereal | yogurt
+en	ground beef taco shells cheddar cheese	ground beef | taco shells | cheddar cheese
+en	lettuce cucumbers cherry tomatoes	lettuce | cucumbers | cherry tomatoes
+en	dog food cat litter	dog food | cat litter
+en	shampoo conditioner toothpaste	shampoo | conditioner | toothpaste
+en	batteries light bulbs tape	batteries | light bulbs | tape
+en	pasta tomato sauce parmesan	pasta | tomato sauce | parmesan
+en	maple syrup pancake mix blueberries	maple syrup | pancake mix | blueberries
+en	salmon lemons dill	salmon | lemons | dill
+en	almond milk granola strawberries	almond milk | granola | strawberries
+en	hot dogs buns mustard ketchup	hot dogs | buns | mustard | ketchup
+en	sunscreen bug spray water bottles	sunscreen | bug spray | water bottles
+en	flour baking soda vanilla extract	flour | baking soda | vanilla extract
+en	eggs bacon hash browns	eggs | bacon | hash browns
+en	green peppers mushrooms mozzarella	green peppers | mushrooms | mozzarella
+en	diapers wipes baby formula	diapers | wipes | baby formula
+en	tea honey lemons	tea | honey | lemons
+en	avocados limes cilantro tortilla chips	avocados | limes | cilantro | tortilla chips
+en	frozen peas ice cream	frozen peas | ice cream
+en	paper plates napkins plastic forks	paper plates | napkins | plastic forks
+en	garbage bags dish soap sponges	garbage bags | dish soap | sponges
+en	carrots celery potatoes	carrots | celery | potatoes
+en	brown sugar oats raisins	brown sugar | oats | raisins
+en	2 litres of milk eggs bread	2 litres of milk | eggs | bread
+en	a dozen eggs butter jam	a dozen eggs | butter | jam
+en	three avocados two lemons cilantro	three avocados | two lemons | cilantro
+en	sour cream salsa ground turkey	sour cream | salsa | ground turkey
+en	kleenex cough drops ginger ale	kleenex | cough drops | ginger ale
+en	hamburger buns lettuce pickles	hamburger buns | lettuce | pickles
+en	vitamin d fish oil	vitamin d | fish oil
+en	charcoal lighter fluid marshmallows	charcoal | lighter fluid | marshmallows
+en	olive oil balsamic vinegar arugula	olive oil | balsamic vinegar | arugula
+en	bagels cream cheese smoked salmon	bagels | cream cheese | smoked salmon
+en	call the bank pick up dry cleaning	call the bank | pick up dry cleaning
+en	book dentist renew passport	book dentist | renew passport
+en	pay hydro bill email sam	pay hydro bill | email sam
+en	water the plants take out the recycling	water the plants | take out the recycling
+en	buy stamps mail the package	buy stamps | mail the package
+en	tent sleeping bags flashlight	tent | sleeping bags | flashlight
+en	passport phone charger adapter	passport | phone charger | adapter
+en	socks underwear toothbrush	socks | underwear | toothbrush
+en	swimsuit sandals sunglasses	swimsuit | sandals | sunglasses
+en	laptop notebook pens	laptop | notebook | pens
+en	coke chips salsa	coke | chips | salsa
+en	wine cheese crackers grapes	wine | cheese | crackers | grapes
+en	kale spinach blueberries	kale | spinach | blueberries
+en	chicken broth noodles celery	chicken broth | noodles | celery
+en	rice vinegar soy sauce sesame oil	rice vinegar | soy sauce | sesame oil
+en	bread milk butter jam and eggs	bread | milk | butter | jam | eggs
+en	some apples some pears some plums some grapes	apples | pears | plums | grapes
+en	tuna mayo celery	tuna | mayo | celery
+en	gum mints lip balm	gum | mints | lip balm
+en	printer paper ink cartridges stapler	printer paper | ink cartridges | stapler
+en	peanut butter cookies	peanut butter cookies
+en	call the bank	call the bank
+en	pick up dry cleaning	pick up dry cleaning
+en	chocolate chip cookies	chocolate chip cookies
+en	extra virgin olive oil	extra virgin olive oil
+en	sea salt potato chips	sea salt potato chips
+en	cream of mushroom soup	cream of mushroom soup
+en	book a dentist appointment	book a dentist appointment
+en	renew my driver's license	renew my driver's license
+en	buy a birthday present for mom	buy a birthday present for mom
+en	gluten free bread	gluten free bread
+en	sweet potato fries	sweet potato fries
+en	red wine vinegar	red wine vinegar
+en	low fat greek yogurt	low fat greek yogurt
+en	ice cream sandwiches	ice cream sandwiches
+en	fix the kitchen tap	fix the kitchen tap
+en	call mom about sunday	call mom about sunday
+en	cancel the gym membership	cancel the gym membership
+en	green tea bags	green tea bags
+en	whole wheat pasta	whole wheat pasta
+en	paper towel rolls	paper towel rolls
+en	frozen pizza dough	frozen pizza dough
+en	bag of baby carrots	bag of baby carrots
+en	chicken noodle soup	chicken noodle soup
+en	vanilla almond milk	vanilla almond milk
+en	bottle of hot sauce	bottle of hot sauce
+en	schedule the oil change	schedule the oil change
+en	take the car to the garage	take the car to the garage
+en	return library books	return library books
+en	clean out the fridge	clean out the fridge
+en	sharp cheddar cheese	sharp cheddar cheese
+en	black bean burgers	black bean burgers
+en	pick up the prescription	pick up the prescription
+en	reply to the school email	reply to the school email
+en	dark chocolate almonds	dark chocolate almonds
+en	toilet bowl cleaner	toilet bowl cleaner
+en	apple cider vinegar	apple cider vinegar
+en	large tub of vanilla ice cream	large tub of vanilla ice cream
+en	new running shoes	new running shoes
+en	plan the birthday party	plan the birthday party
+fr	des œufs du lait d'avoine du pain	œufs | lait d'avoine | pain
+fr	pommes bananes beurre d'arachide	pommes | bananes | beurre d'arachide
+fr	café sucre crème	café | sucre | crème
+fr	papier de toilette savon à vaisselle essuie-tout	papier de toilette | savon à vaisselle | essuie-tout
+fr	poulet riz brocoli	poulet | riz | brocoli
+fr	lait pain beurre	lait | pain | beurre
+fr	tomates oignons ail	tomates | oignons | ail
+fr	jus d'orange céréales yogourt	jus d'orange | céréales | yogourt
+fr	bœuf haché coquilles à tacos fromage cheddar	bœuf haché | coquilles à tacos | fromage cheddar
+fr	laitue concombres tomates cerises	laitue | concombres | tomates cerises
+fr	nourriture pour chien litière à chat	nourriture pour chien | litière à chat
+fr	shampoing revitalisant dentifrice	shampoing | revitalisant | dentifrice
+fr	piles ampoules ruban adhésif	piles | ampoules | ruban adhésif
+fr	pâtes sauce tomate parmesan	pâtes | sauce tomate | parmesan
+fr	sirop d'érable mélange à crêpes bleuets	sirop d'érable | mélange à crêpes | bleuets
+fr	saumon citrons aneth	saumon | citrons | aneth
+fr	lait d'amande granola fraises	lait d'amande | granola | fraises
+fr	saucisses pains à hot-dog moutarde ketchup	saucisses | pains à hot-dog | moutarde | ketchup
+fr	crème solaire chasse-moustiques bouteilles d'eau	crème solaire | chasse-moustiques | bouteilles d'eau
+fr	farine bicarbonate de soude extrait de vanille	farine | bicarbonate de soude | extrait de vanille
+fr	œufs bacon patates rissolées	œufs | bacon | patates rissolées
+fr	poivrons verts champignons mozzarella	poivrons verts | champignons | mozzarella
+fr	couches lingettes lait maternisé	couches | lingettes | lait maternisé
+fr	thé miel citrons	thé | miel | citrons
+fr	avocats limes coriandre croustilles de maïs	avocats | limes | coriandre | croustilles de maïs
+fr	petits pois surgelés crème glacée	petits pois surgelés | crème glacée
+fr	assiettes en carton serviettes fourchettes en plastique	assiettes en carton | serviettes | fourchettes en plastique
+fr	sacs à ordures savon à vaisselle éponges	sacs à ordures | savon à vaisselle | éponges
+fr	carottes céleri patates	carottes | céleri | patates
+fr	cassonade gruau raisins secs	cassonade | gruau | raisins secs
+fr	deux litres de lait des œufs du pain	deux litres de lait | œufs | pain
+fr	une douzaine d'œufs beurre confiture	une douzaine d'œufs | beurre | confiture
+fr	trois avocats deux citrons coriandre	trois avocats | deux citrons | coriandre
+fr	crème sure salsa dinde hachée	crème sure | salsa | dinde hachée
+fr	mouchoirs pastilles pour la toux soda gingembre	mouchoirs | pastilles pour la toux | soda gingembre
+fr	pains à hamburger laitue cornichons	pains à hamburger | laitue | cornichons
+fr	vitamine d huile de poisson	vitamine d | huile de poisson
+fr	charbon allume-feu guimauves	charbon | allume-feu | guimauves
+fr	huile d'olive vinaigre balsamique roquette	huile d'olive | vinaigre balsamique | roquette
+fr	bagels fromage à la crème saumon fumé	bagels | fromage à la crème | saumon fumé
+fr	appeler la banque aller chercher le nettoyage à sec	appeler la banque | aller chercher le nettoyage à sec
+fr	prendre rendez-vous chez le dentiste renouveler mon passeport	prendre rendez-vous chez le dentiste | renouveler mon passeport
+fr	payer la facture d'hydro écrire à sam	payer la facture d'hydro | écrire à sam
+fr	arroser les plantes sortir le recyclage	arroser les plantes | sortir le recyclage
+fr	acheter des timbres poster le colis	acheter des timbres | poster le colis
+fr	tente sacs de couchage lampe de poche	tente | sacs de couchage | lampe de poche
+fr	passeport chargeur de téléphone adaptateur	passeport | chargeur de téléphone | adaptateur
+fr	bas sous-vêtements brosse à dents	bas | sous-vêtements | brosse à dents
+fr	maillot de bain sandales lunettes de soleil	maillot de bain | sandales | lunettes de soleil
+fr	ordinateur cahier crayons	ordinateur | cahier | crayons
+fr	liqueur chips salsa	liqueur | chips | salsa
+fr	vin fromage craquelins raisins	vin | fromage | craquelins | raisins
+fr	chou kale épinards bleuets	chou kale | épinards | bleuets
+fr	bouillon de poulet nouilles céleri	bouillon de poulet | nouilles | céleri
+fr	vinaigre de riz sauce soya huile de sésame	vinaigre de riz | sauce soya | huile de sésame
+fr	pain lait beurre confiture et œufs	pain | lait | beurre | confiture | œufs
+fr	des pommes des poires des prunes	pommes | poires | prunes
+fr	thon mayonnaise céleri	thon | mayonnaise | céleri
+fr	gomme menthes baume à lèvres	gomme | menthes | baume à lèvres
+fr	papier d'imprimante cartouches d'encre agrafeuse	papier d'imprimante | cartouches d'encre | agrafeuse
+fr	biscuits au beurre d'arachide	biscuits au beurre d'arachide
+fr	appeler la banque	appeler la banque
+fr	aller chercher le nettoyage à sec	aller chercher le nettoyage à sec
+fr	biscuits aux brisures de chocolat	biscuits aux brisures de chocolat
+fr	huile d'olive extra vierge	huile d'olive extra vierge
+fr	croustilles saveur ketchup	croustilles saveur ketchup
+fr	crème de champignons	crème de champignons
+fr	prendre rendez-vous chez le dentiste	prendre rendez-vous chez le dentiste
+fr	renouveler mon permis de conduire	renouveler mon permis de conduire
+fr	acheter un cadeau pour maman	acheter un cadeau pour maman
+fr	pain sans gluten	pain sans gluten
+fr	frites de patates douces	frites de patates douces
+fr	vinaigre de vin rouge	vinaigre de vin rouge
+fr	yogourt grec sans gras	yogourt grec sans gras
+fr	sandwichs à la crème glacée	sandwichs à la crème glacée
+fr	réparer le robinet de la cuisine	réparer le robinet de la cuisine
+fr	appeler maman pour dimanche	appeler maman pour dimanche
+fr	annuler l'abonnement au gym	annuler l'abonnement au gym
+fr	sachets de thé vert	sachets de thé vert
+fr	pâtes de blé entier	pâtes de blé entier
+fr	gros rouleaux d'essuie-tout	gros rouleaux d'essuie-tout
+fr	pâte à pizza congelée	pâte à pizza congelée
+fr	sac de petites carottes	sac de petites carottes
+fr	soupe aux pois	soupe aux pois
+fr	lait d'amande à la vanille	lait d'amande à la vanille
+fr	faire changer l'huile	faire changer l'huile
+fr	amener l'auto au garage	amener l'auto au garage
+fr	rapporter les livres à la bibliothèque	rapporter les livres à la bibliothèque
+fr	vider le frigo	vider le frigo
+fr	fromage cheddar fort	fromage cheddar fort
+fr	galettes de haricots noirs	galettes de haricots noirs
+fr	aller chercher la prescription	aller chercher la prescription
+fr	répondre au courriel de l'école	répondre au courriel de l'école
+fr	amandes au chocolat noir	amandes au chocolat noir
+fr	nettoyant pour la toilette	nettoyant pour la toilette
+fr	vinaigre de cidre de pomme	vinaigre de cidre de pomme
+fr	crème glacée à la vanille	crème glacée à la vanille
+fr	nouveaux souliers de course	nouveaux souliers de course
+fr	organiser la fête d'anniversaire	organiser la fête d'anniversaire
+fr	pâte de tomates	pâte de tomates

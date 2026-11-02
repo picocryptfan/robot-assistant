@@ -3,6 +3,7 @@ package app.heyrobot.helpers.http
 
 import app.heyrobot.core.HelperFailure
 import app.heyrobot.core.helpers.LanRule
+import app.heyrobot.core.online.NetPurpose
 import okhttp3.Call
 import okhttp3.ConnectionSpec
 import okhttp3.Dns
@@ -95,9 +96,11 @@ class HelperHttp private constructor(val client: OkHttpClient, val base: HttpUrl
         /**
          * A client for [baseUrl] with [key] (none for a server that doesn't ask for one). [home]: a server on your network
          * (cleartext allowed on private addresses only, and never with a key). [dns]: the system's in the app, a fake in
-         * tests. Null when [refusal] gives a reason.
+         * tests. [record]: what each request is for in What went online (a question; Test connection's own). Null when
+         * [refusal] gives a reason.
          */
-        fun create(baseUrl: String, key: String?, home: Boolean, dns: Dns = Dns.SYSTEM, connectMs: Long = if (home) HOME_CONNECT_MS else CLOUD_CONNECT_MS): HelperHttp? {
+        fun create(baseUrl: String, key: String?, home: Boolean, dns: Dns = Dns.SYSTEM, connectMs: Long = if (home) HOME_CONNECT_MS else CLOUD_CONNECT_MS,
+            record: NetCount = NetCount(NetPurpose.HELPER)): HelperHttp? {
             if (refusal(baseUrl, key, home) != null) return null
             val base = baseUrl.trimEnd('/').toHttpUrlOrNull() ?: return null
             val https = base.isHttps
@@ -110,6 +113,8 @@ class HelperHttp private constructor(val client: OkHttpClient, val base: HttpUrl
                 .readTimeout(READ_MS, TimeUnit.MILLISECONDS)
                 .writeTimeout(WRITE_MS, TimeUnit.MILLISECONDS)
                 .callTimeout(0, TimeUnit.MILLISECONDS)
+                // What went online: each request, a question or a connection test ([record]).
+                .addInterceptor(record)
             when {
                 https -> b.connectionSpecs(listOf(ConnectionSpec.MODERN_TLS))
                 home -> b.connectionSpecs(listOf(ConnectionSpec.CLEARTEXT)).dns(LanDns(dns)).addNetworkInterceptor(LanGuard).proxy(Proxy.NO_PROXY)

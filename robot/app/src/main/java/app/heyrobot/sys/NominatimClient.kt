@@ -12,6 +12,10 @@ import app.heyrobot.core.NearbyFailure
 import app.heyrobot.core.NearbyPlace
 import app.heyrobot.core.NearbySearch
 import app.heyrobot.core.NearbyServer
+import app.heyrobot.core.online.NetCause
+import app.heyrobot.core.online.NetPurpose
+import app.heyrobot.core.online.NetRecord
+import app.heyrobot.core.online.NetResult
 import java.io.IOException
 import java.io.InputStream
 import java.net.ConnectException
@@ -47,7 +51,11 @@ object NominatimClient {
     fun search(ctx: Context, query: String, lat: Double, lon: Double, server: NearbyServer, abort: Abort = Abort(), requests: (Int) -> Unit = {}): List<NearbyPlace> =
         searches.search(query, lat, lon, abort, { url, a -> get(ctx, url, server, a) }, server, requests)
 
-    /** The body of a 200 answer from [server]; anything else throws [NearbyFailure]. Blocking. */
+    /**
+     * The body of a 200 answer from [server]; anything else throws [NearbyFailure]. Blocking. What went online
+     * (everyday-set-plan.md §5.3): each request that left is recorded here, the server's host (or "your network"), the
+     * reply's bytes and how it ended; one refused by the Network switch never left, and a cached answer makes none.
+     */
     private fun get(ctx: Context, url: String, server: NearbyServer, abort: Abort): String {
         // GrapheneOS's Network toggle is the INTERNET permission at run time.
         if (!Assistant.granted(ctx, Manifest.permission.INTERNET)) throw NearbyFailure(NearbyFail.NO_NETWORK_PERMISSION)
@@ -56,6 +64,8 @@ object NominatimClient {
         require(u.protocol == "https" && u.host == server.host && u.port == server.port && u.path.startsWith(server.path + "/")) { "not the chosen Nominatim server" } // l10n: not text (a developer's error)
         val c = u.openConnection() as HttpURLConnection
         val forget = abort.onCancel { c.disconnect() }
+        val got = longArrayOf(0)
+        var outcome: NetResult? = NetResult.FAILED
         try {
             val timeout = minOf(TIMEOUT_MS.toLong(), abort.remainingMs()).toInt()
             c.connectTimeout = timeout
@@ -66,30 +76,39 @@ object NominatimClient {
             c.setRequestProperty("Accept", "application/json")
             val code = c.responseCode
             Nearby.httpFail(code)?.let { throw NearbyFailure(it, code) }
-            return c.inputStream.use(::read)
+            return c.inputStream.use { read(it, got) }.also { outcome = NetResult.DONE }
         } catch (f: NearbyFailure) {
             throw f
         } catch (e: Exception) {
-            if (abort.cancelled || abort.expired) throw NearbySearch.ended(abort)
-            throw when (e) {
+            if (abort.cancelled || abort.expired) {
+                outcome = NetResult.STOPPED
+                throw NearbySearch.ended(abort)
+            }
+            val f = when (e) {
                 is UnknownHostException, is ConnectException, is NoRouteToHostException, is SocketTimeoutException -> NearbyFailure(NearbyFail.NO_INTERNET)
                 is SecurityException -> NearbyFailure(NearbyFail.NO_NETWORK_PERMISSION)
                 is IOException -> NearbyFailure(if (e.message?.contains("EACCES") == true || e.message?.contains("Permission denied") == true) NearbyFail.NO_NETWORK_PERMISSION else NearbyFail.NO_INTERNET) // l10n: not text (the system's error message, matched)
                 else -> e
             }
+            // The Network switch refused the socket: nothing went online.
+            if ((f as? NearbyFailure)?.why == NearbyFail.NO_NETWORK_PERMISSION) outcome = null
+            throw f
         } finally {
             forget()
             c.disconnect()
+            outcome?.let { NetRecord.record(NetPurpose.NEAREST_PLACE, u.host, NetCause.ASKED, 0, got[0], it) }
         }
     }
 
-    private fun read(s: InputStream): String {
+    /** The body as text, its bytes counted into [got][0] as they arrive. */
+    private fun read(s: InputStream, got: LongArray): String {
         val out = java.io.ByteArrayOutputStream()
         val buf = ByteArray(8192)
         while (true) {
             val n = s.read(buf)
             if (n < 0) break
             out.write(buf, 0, n)
+            got[0] += n
             if (out.size() > MAX_BYTES) throw NearbyFailure(NearbyFail.SERVICE)
         }
         return out.toString(Charsets.UTF_8.name())

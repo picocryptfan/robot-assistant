@@ -82,8 +82,8 @@ data class CallRules(val setting: CallSetting = CallSetting.OPEN_DIALER, val has
 }
 
 enum class CallRefuse { NOT_FOUND, XMPP_ONLY, LOCKED }
-/** Why a call goes to the screen's card: a name learned from a notification, more than three numbers, or no usable answer. */
-enum class CallOnScreen { LEARNED, TOO_MANY, NO_ANSWER }
+/** Why a call goes to the screen's card: a name learned from a notification, more than three numbers, no usable answer, or a phone lock's cover over the dialer. */
+enum class CallOnScreen { LEARNED, TOO_MANY, NO_ANSWER, LOCK }
 
 sealed class CallPlan {
     /** Read back [target] and wait for a yes; then call it [way]. */
@@ -161,6 +161,16 @@ object CallTarget {
         val action = spoken(HandsFreeStrings.callWho("who" to asked.trim()), lang)
         val card = SpokenCard(action, options, CardAnswer.Waiting(options.size, AskWhy.WHO), spokenWho = true, confirmWords = CALL_WORDS, personal = true, carFunction = true)
         return CallPlan.Choose(phones, card, rules.way)
+    }
+
+    /**
+     * A session's call during a phone lock with the screen unlocked ([lockOn]). The dialer you'd tap Call in is covered, so
+     * a plan that would open it goes to the call tool's card, whose Call places it (CallPlacer.lockDirect); the tap is the
+     * same one. Car mode's direct call after a yes and an emergency number (the phone's own emergency dialer) stay as planned.
+     */
+    fun duringLock(plan: CallPlan, lockOn: Boolean, lang: Lang): CallPlan {
+        val dialer = (plan as? CallPlan.Confirm)?.way == CallWay.DIAL || (plan as? CallPlan.Choose)?.way == CallWay.DIAL
+        return if (lockOn && dialer) CallPlan.OnScreen(ON_SCREEN.get(lang), CallOnScreen.LOCK) else plan
     }
 
     /** The read-back card for [target]. */

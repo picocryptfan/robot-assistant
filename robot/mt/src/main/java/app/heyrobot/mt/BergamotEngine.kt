@@ -12,7 +12,7 @@ import java.io.File
 // bundle at most (fr↔en: two models of about 140 MB each in memory), loaded only from files the main app verified
 // (the bundle's mark vouches for every one), and freed on unload.
 
-internal class BergamotEngine(private val filesDir: File) {
+internal class BergamotEngine(private val filesDir: File, private val native: MtNative = Slimt) {
     private var bundle: MtBundle? = null
     private val handles = LinkedHashMap<String, Long>()
 
@@ -25,7 +25,7 @@ internal class BergamotEngine(private val filesDir: File) {
      * LOAD_FAILED when slimt refuses the files.
      */
     fun load(b: MtBundle): Map<String, Long> {
-        if (!Slimt.available) throw MtException(MtError.NO_ENGINE)
+        if (!native.available) throw MtException(MtError.NO_ENGINE)
         if (bundle != null && bundle != b) unload()
         bundle = b
         val dir = MtBundle.dir(filesDir, b)
@@ -34,7 +34,7 @@ internal class BergamotEngine(private val filesDir: File) {
             if (d.id in handles) continue
             if (!MtMark.ready(b, d, dir)) throw MtException(MtError.NOT_DOWNLOADED)
             val t0 = SystemClock.elapsedRealtime()
-            val h = Slimt.open(File(dir, d.model), File(dir, d.vocabulary), File(dir, d.shortlist)) ?: throw MtException(MtError.LOAD_FAILED)
+            val h = native.open(File(dir, d.model), File(dir, d.vocabulary), File(dir, d.shortlist)) ?: throw MtException(MtError.LOAD_FAILED)
             handles[d.id] = h
             ms[d.id] = SystemClock.elapsedRealtime() - t0
         }
@@ -44,10 +44,10 @@ internal class BergamotEngine(private val filesDir: File) {
     fun has(direction: String): Boolean = direction in handles
 
     /** One line of a loaded [direction]; null when the engine failed on it. */
-    fun translate(direction: String, line: String): String? = handles[direction]?.let { Slimt.translate(it, line) }
+    fun translate(direction: String, line: String): String? = handles[direction]?.let { native.translate(it, line) }
 
     fun unload() {
-        for (h in handles.values) Slimt.close(h)
+        for (h in handles.values) native.close(h)
         handles.clear()
         bundle = null
     }

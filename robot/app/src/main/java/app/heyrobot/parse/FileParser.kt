@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.parse
 
+import app.heyrobot.core.QrReader
 import app.heyrobot.core.parse.BlobKind
 import app.heyrobot.core.parse.Box
 import app.heyrobot.core.parse.Dim
@@ -70,6 +71,7 @@ internal class FileParser(private val decoders: Decoders) {
                 ParseOp.STRIP -> strip(parts[0], type, out)
                 ParseOp.STRAIGHTEN -> straighten(req, parts[0], type, out)
                 ParseOp.SCAN_PDF -> scanPdf(parts, type, out)
+                ParseOp.QR -> qr(parts[0], type)
             }
             FileParseWire.encodeReply(reply)
         } catch (r: Refuse) {
@@ -289,6 +291,24 @@ internal class FileParser(private val decoders: Decoders) {
             }
         }
         return ParseReply(ParseOp.STRAIGHTEN, ParseStatus.OK, type, 0, 1, src.width, src.height, 0, null, out.blobs)
+    }
+
+    /**
+     * 1.5, Robot to Robot (job L4): the QR code in a photo, as another Robot shows its pairing code in person (§2.3, D21):
+     * decoded to at most 2,048 px, its pixels read by core's QrReader (a code Robot's QrCode could have written, nothing
+     * else), the text printable ASCII within ParseLimits.QR_TEXT. None found: NO_CODE.
+     */
+    private fun qr(b: ByteBuffer, type: FileType): ParseReply {
+        gate(type, b, setOf(FileGroup.IMAGE))
+        val src = declared(type, b)
+        val text = decode(b, ParseLimits.QR_SOURCE).use { p ->
+            val px = ByteBuffer.allocate(p.width * p.height * 4)
+            p.rgba(px)
+            if (px.position() != px.capacity()) throw Refuse(ParseStatus.FAILED)
+            QrReader.read(px.array(), p.width, p.height)
+        }
+        if (text == null || !FileParseWire.qrTextOk(text)) throw Refuse(ParseStatus.NO_CODE)
+        return ParseReply(ParseOp.QR, ParseStatus.OK, type, ParseReply.HAS_TEXT, 1, src.width, src.height, 0, text)
     }
 
     /** Straightened pages (JPEGs, at most 2,400 px each) into one PDF, a page each at 200 pixels an inch. */

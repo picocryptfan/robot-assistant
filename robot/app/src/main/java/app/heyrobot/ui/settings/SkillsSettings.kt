@@ -18,6 +18,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -59,6 +60,7 @@ import app.heyrobot.ui.pref.preferenceGroup
 import app.heyrobot.ui.theme.LocalLangs
 import app.heyrobot.ui.theme.str
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.time.ZoneId
 import java.time.ZonedDateTime
 
@@ -81,15 +83,24 @@ data class SkillsData(
     /** Phase B: skills_state.json (the last runs and the fill samples) and skill_settings.json. */
     val state: SkillState = SkillState(),
     val settings: SkillSettings = SkillSettings(),
+    /** C9: your connections and typed scripts, for Add a step, each step's page and the lines a skill's page computes. */
+    val connections: List<app.heyrobot.core.connect.Connection> = emptyList(),
+    val scripts: List<app.heyrobot.core.termux.TermuxScriptInfo> = emptyList(),
+    val masks: Map<String, Map<app.heyrobot.core.connect.SecretPart, String>> = emptyMap(),
 ) {
+    /** What a skill's steps link to (C9: ConnLinks over your connections and typed scripts). */
+    val links: app.heyrobot.core.connect.ConnLinks get() = app.heyrobot.core.connect.ConnLinks(connections, app.heyrobot.core.termux.ScriptLinks(scripts))
+
     companion object {
         fun read(ctx: android.content.Context): SkillsData {
             val store = SkillFiles.store(ctx)
             val file = store.file()
             val skills = (file as? SkillFile.Ok)?.skills.orEmpty()
             val state = store.state()
+            val conns = app.heyrobot.sys.ConnFiles.store(ctx).connections()
             return SkillsData(skills, file.takeIf { it !is SkillFile.Ok }, (file as? SkillFile.Ok)?.dropped ?: 0, state.lastRun, SkillContext.of(ctx, skills),
-                state, store.settings())
+                state, store.settings(), conns, try { app.heyrobot.sys.TermuxStore.status(ctx).scripts } catch (_: Throwable) { emptyList() },
+                conns.associate { it.id to app.heyrobot.sys.ConnKeyFiles.masks(ctx, it.id) })
         }
     }
 }
@@ -129,6 +140,8 @@ fun skillsSummary(ctx: android.content.Context): String {
 /** Settings › Skills and each skill's page. */
 @Composable
 fun SkillsRoute(route: String, a: AppActions, snackbar: SnackbarHostState, onBack: () -> Unit) {
+    // C9: Settings › Skills › Connections and its pages.
+    if (route == ConnRoutes.LIST || route.startsWith(ConnRoutes.LIST + "/")) return ConnectionsRoute(route, a, snackbar, onBack)
     val ctx = LocalContext.current
     var tick by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) { while (true) { delay(2_000); tick++ } }
@@ -143,6 +156,12 @@ fun SkillsRoute(route: String, a: AppActions, snackbar: SnackbarHostState, onBac
         setModelPicks = { on -> store.saveSettings(store.settings().copy(modelPicks = on)); changed() },
     )
     if (route == SettingsRoutes.SKILLS) return SkillsScreen(data, act, snackbar, onBack)
+    // C9: a step's page.
+    SkillStepRoutes.of(route)?.let { (id, i) ->
+        val k = data.skills.firstOrNull { it.id == id }
+        if (k == null || i !in k.steps.indices) LaunchedEffect(route) { onBack() } else SkillStepScreen(k, i, data, act, snackbar, onBack)
+        return
+    }
     val s = data.skills.firstOrNull { it.id == route.removePrefix(SettingsRoutes.SKILLS + "/") }
     if (s == null) LaunchedEffect(route) { onBack() } else SkillPageScreen(s, data, act, snackbar, onBack)
 }
@@ -150,6 +169,9 @@ fun SkillsRoute(route: String, a: AppActions, snackbar: SnackbarHostState, onBac
 @Composable
 fun SkillsScreen(d: SkillsData, act: SkillActions, snackbar: SnackbarHostState, onBack: () -> Unit, now: ZonedDateTime = ZonedDateTime.now()) {
     var startOver by rememberSaveable { mutableStateOf(false) }
+    var naming by rememberSaveable { mutableStateOf(false) }
+    var newName by rememberSaveable { mutableStateOf<String?>(null) }
+    val langs = LocalLangs.current
     val tYours = stringResource(R.string.skill_yours)
     val footer = stringResource(R.string.skill_footer)
     PreferenceScreen(UiStrings.skills().str(), onBack, snackbar = snackbar) {
@@ -168,6 +190,15 @@ fun SkillsScreen(d: SkillsData, act: SkillActions, snackbar: SnackbarHostState, 
         preferenceGroup(tYours, "mine") {
             if (d.skills.isEmpty()) PreferenceItem(stringResource(R.string.skill_none_yet), null, RIcons.Robot)
             for (s in d.skills) PreferenceItem(s.name, SkillCards.row(s, d.runs[s.id], now).str(), RIcons.Robot, onClick = { act.open(SkillRoutes.skill(s.id)) })
+            // C9 (plan §6.1): a name, then the first step from Add a step's sheet.
+            if (d.problem == null && d.skills.size < app.heyrobot.core.skills.SkillCheck.MAX_SKILLS)
+                PreferenceItem(stringResource(R.string.conn_add_skill), stringResource(R.string.conn_add_skill_summary), RIcons.Add, onClick = { naming = true })
+        }
+        // C9 (plan §6.1): your connections, and how many skills need attention.
+        preferenceGroup(null, "connections") {
+            val attention = d.skills.count { app.heyrobot.core.skills.SkillCheck.attention(it, d.links).isNotEmpty() }
+            PreferenceItem(app.heyrobot.core.i18n.ConnStrings.title().str(), app.heyrobot.core.connect.ConnSetup.summary(d.connections, attention).str(), RIcons.Settings,
+                onClick = { act.open(ConnRoutes.LIST) })
         }
         preferenceGroup(null, "model") {
             SwitchPreference(stringResource(R.string.skill_model_picks), stringResource(R.string.skill_model_picks_summary), d.settings.modelPicks) {
@@ -178,6 +209,17 @@ fun SkillsScreen(d: SkillsData, act: SkillActions, snackbar: SnackbarHostState, 
     }
     if (startOver) ConfirmDialog(stringResource(R.string.skill_start_over_title), stringResource(R.string.skill_start_over_text),
         stringResource(R.string.skill_start_over), onDismiss = { startOver = false }) { startOver = false; act.startOver() }
+    if (naming) EditDialog(stringResource(R.string.conn_add_skill), "", stringResource(R.string.skill_name), stringResource(R.string.skill_name_supporting),
+        validate = { n -> if (n.isBlank()) null else SkillNames.check(n.trim(), null, d.names, now)?.render(langs) }, canSave = { it.isNotBlank() },
+        onDismiss = { naming = false }) { n -> naming = false; newName = n }
+    newName?.let { n ->
+        StepOffersDialog(app.heyrobot.core.connect.SkillEditor.offers(d.connections, d.scripts), onDismiss = { newName = null }, onConnections = { act.open(ConnRoutes.LIST) }) { o, said ->
+            newName = null
+            val k = app.heyrobot.core.connect.SkillEditor.newSkill(app.heyrobot.core.skills.SkillIds.make(), n, app.heyrobot.core.connect.SkillEditor.step(o, said),
+                System.currentTimeMillis(), langs.ui)
+            if (app.heyrobot.core.skills.SkillCheck.valid(k) && act.save(k)) act.open(SkillRoutes.skill(k.id))
+        }
+    }
 }
 
 /** A skill's page: every change is saved at once (SkillEdit.saved), checked first. */
@@ -186,16 +228,29 @@ fun SkillPageScreen(s: Skill, d: SkillsData, act: SkillActions, snackbar: Snackb
     val langs = LocalLangs.current
     var deleting by rememberSaveable { mutableStateOf(false) }
     var adding by rememberSaveable { mutableStateOf<String?>(null) }
-    fun edit(new: Skill) { if (SkillCheck.valid(new)) act.save(SkillEdit.saved(s, new, System.currentTimeMillis())) }
+    var addingStep by rememberSaveable { mutableStateOf(false) }
+    var testing by rememberSaveable { mutableStateOf(false) }
+    val links = d.links
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    fun edit(new: Skill) {
+        val problem = SkillCheck.problems(new).firstOrNull()
+        if (problem != null) { scope.launch { snackbar.showSnackbar(problem.render(langs)) }; return }
+        act.save(SkillEdit.saved(s, new, System.currentTimeMillis()))
+    }
     fun nameWhy(n: String, other: Boolean): String? = SkillNames.check(n, s.id, d.names, now, other)?.render(langs)
     val tOther = stringResource(R.string.skill_other_names)
     val tQuestions = stringResource(R.string.skill_questions)
     val tSteps = stringResource(R.string.skill_steps)
+    val tDoes = stringResource(R.string.conn_skill_does)
     PreferenceScreen(s.name, onBack, snackbar = snackbar) {
         val shadows = SkillNames.shadows(s, d.names)
-        if (shadows.isNotEmpty() || s.provenance.fromContent) {
+        val attention = SkillCheck.attention(s, links)
+        if (shadows.isNotEmpty() || s.provenance.fromContent || attention.isNotEmpty()) {
             preferenceGroup(null, "notes") {
                 for (w in shadows) StatusPreference(w.str(), null, Mark.TODO)
+                // C9: a step whose connection, app, script or routing server is gone or no longer fits.
+                for (a in attention) StatusPreference(app.heyrobot.core.connect.ConnSetup.attention(a.step, a.why).str(), null, Mark.WARN,
+                    onClick = { act.open(SkillStepRoutes.step(s.id, a.step)) })
                 if (s.provenance.fromContent) StatusPreference(SkillStrings.contentCheck().str(), null, Mark.WARN, action = {
                     TextButton(onClick = { act.save(SkillEdit.mine(s)) }, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.skill_mine)) }
                 })
@@ -242,10 +297,12 @@ fun SkillPageScreen(s: Skill, d: SkillsData, act: SkillActions, snackbar: Snackb
             }
         }
         preferenceGroup(tSteps, "steps") {
-            val lines = SkillCards.steps(s)
-            s.steps.forEachIndexed { i, _ ->
-                PreferenceItem(lines[i].str().replace("*", ""), null, trailing = {
+            val lines = SkillCards.steps(s, links = links)
+            s.steps.forEachIndexed { i, st ->
+                // C9: a step opens its page (its values, Only if…, If it doesn't work).
+                PreferenceItem(lines[i].str().replace("*", ""), st.cond?.let { app.heyrobot.core.connect.SkillEditor.condText(it).str() }, trailing = {
                     Row {
+                        IconButton(onClick = { act.open(SkillStepRoutes.step(s.id, i)) }) { Icon(RIcons.Chevron, stringResource(R.string.conn_open_step, i + 1)) }
                         if (i > 0) IconButton(onClick = { edit(SkillEdit.move(s, i, -1)) }) {
                             Icon(RIcons.Back, stringResource(R.string.skill_move_up, i + 1), Modifier.rotate(90f))
                         }
@@ -258,6 +315,16 @@ fun SkillPageScreen(s: Skill, d: SkillsData, act: SkillActions, snackbar: Snackb
                     }
                 })
             }
+            if (s.steps.size < SkillCheck.MAX_STEPS) PreferenceItem(stringResource(R.string.conn_add_step), null, RIcons.Add, onClick = { addingStep = true })
+        }
+        // C9 (plan §6.4): computed, read-only.
+        preferenceGroup(tDoes, "does") {
+            val chips = app.heyrobot.core.connect.SkillEditor.chips(app.heyrobot.core.connect.SkillEditor.effects(s, links))
+            PreferenceItem(stringResource(R.string.conn_effects), if (chips.isEmpty()) stringResource(R.string.conn_effects_none)
+                else app.heyrobot.core.i18n.Phrase.ListOf(chips).str())
+            PreferenceItem(stringResource(R.string.conn_risk), app.heyrobot.core.connect.SkillEditor.risk(s, links).str())
+            PreferenceItem(app.heyrobot.core.connect.SkillEditor.model(s).str(), null)
+            PreferenceItem(stringResource(R.string.conn_test), stringResource(R.string.conn_test_skill_summary), RIcons.Refresh, onClick = { testing = true })
         }
         preferenceGroup(null, "made") {
             PreferenceItem(stringResource(R.string.skill_made), SkillCards.made(s, ZoneId.systemDefault()).str(), RIcons.History)
@@ -276,6 +343,25 @@ fun SkillPageScreen(s: Skill, d: SkillsData, act: SkillActions, snackbar: Snackb
             adding = null
             edit(SkillEdit.addName(s, n, lang))
         }
+    }
+    if (addingStep) StepOffersDialog(app.heyrobot.core.connect.SkillEditor.offers(d.connections, d.scripts), onDismiss = { addingStep = false },
+        onConnections = { act.open(ConnRoutes.LIST) }) { o, said ->
+        addingStep = false
+        app.heyrobot.core.connect.SkillEditor.add(s, app.heyrobot.core.connect.SkillEditor.step(o, said))?.let { edit(it); act.open(SkillStepRoutes.step(s.id, s.steps.size)) }
+    }
+    if (testing) {
+        app.heyrobot.ui.common.SecureWindow()
+        val lines = app.heyrobot.core.connect.SkillEditor.dryRun(s, d.connections, links) { d.masks[it].orEmpty() }
+        app.heyrobot.ui.common.AlertDialog(onDismissRequest = { testing = false }, properties = app.heyrobot.ui.common.SecureDialog,
+            title = { Text(stringResource(R.string.conn_test_skill_title)) },
+            text = {
+                androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()),
+                    verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp)) {
+                    Text(stringResource(R.string.conn_test_skill_intro))
+                    for (l in lines) Text(l.str())
+                }
+            },
+            confirmButton = { TextButton(onClick = { testing = false }) { Text(UiStrings.done().str()) } })
     }
     if (deleting) ConfirmDialog(stringResource(R.string.skill_delete_title, s.name), stringResource(R.string.skill_delete_text), UiStrings.delete().str(),
         onDismiss = { deleting = false }) {

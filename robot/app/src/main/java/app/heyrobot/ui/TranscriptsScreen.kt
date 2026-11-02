@@ -31,8 +31,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenu
+import app.heyrobot.ui.common.AlertDialog
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
@@ -98,6 +97,7 @@ import app.heyrobot.sys.Exports
 import app.heyrobot.sys.FilesIntake
 import app.heyrobot.sys.IntakeStep
 import app.heyrobot.sys.Transcripts
+import app.heyrobot.ui.common.DropdownMenu
 import app.heyrobot.ui.common.RIcons
 import app.heyrobot.ui.theme.LocalLangs
 import app.heyrobot.ui.theme.str
@@ -325,11 +325,13 @@ fun TranscriptScreen(id: String, focusLine: Int?, snackbar: SnackbarHostState, o
     val resumed = resumed()
     LaunchedEffect(id, tick, resumed) {
         while (true) {
-            val (m, tr, l) = withContext(Dispatchers.IO) {
+            // Read here, written below on the main thread: the list reads summaries while it measures (flakes-2).
+            val (read, sums) = withContext(Dispatchers.IO) {
                 val s = Transcripts.store(ctx)
-                summaries = s.summaries(id)
-                Triple(s.meta(id), s.load(id), Transcripts.live(ctx) == id)
+                Triple(s.meta(id), s.load(id), Transcripts.live(ctx) == id) to s.summaries(id)
             }
+            val (m, tr, l) = read
+            summaries = sums
             meta = m
             t = tr
             live = l

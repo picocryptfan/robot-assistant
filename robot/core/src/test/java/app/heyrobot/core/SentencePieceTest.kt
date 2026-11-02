@@ -166,6 +166,8 @@ class SentencePieceTest {
         assertEquals(KwsThresholds.HIGH, KwsThresholds.stop(false, InterruptSensitivity.HIGH))
         assertEquals(KwsThresholds.Preset(0.3f, 1.0f), KwsThresholds.stop(true, InterruptSensitivity.LOW))
         assertEquals(KwsThresholds.Preset(0.13f, 2.0f), KwsThresholds.stop(true, InterruptSensitivity.HIGH))
+        assertEquals(KwsThresholds.STOP_QUIET, KwsThresholds.stopQuiet(InterruptSensitivity.MEDIUM))
+        assertTrue(KwsThresholds.stopQuiet(InterruptSensitivity.MEDIUM).threshold < KwsThresholds.stop(true).threshold)
         assertEquals(KwsThresholds.HIGH, KwsThresholds.talkWake(WakeSensitivity.MEDIUM, InterruptSensitivity.HIGH))
         assertEquals(KwsThresholds.Preset(0.45f, 0.5f), KwsThresholds.talkWake(WakeSensitivity.LOW, InterruptSensitivity.LOW))
         assertEquals(KwsThresholds.Preset(0.11f, 2.5f), KwsThresholds.talkWake(WakeSensitivity.HIGH, InterruptSensitivity.HIGH))

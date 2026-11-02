@@ -134,7 +134,7 @@
     <string name="files_field_tax">Taxe (%s)</string>
     <string name="files_read_by_robot">Lu par Robot</string>
     <string name="files_set_by_you">Défini par toi</string>
-    <string name="files_field_hint_amount">Un montant, comme 84,12</string>
+    <string name="files_field_hint_amount">Un montant, comme 84,12. Pour un remboursement, -84,12.</string>
     <string name="files_field_hint_date">Une date, comme 2026-08-14</string>
     <string name="files_field_invalid">Robot n’a pas pu lire ça. Vérifie-le et réessaie.</string>
     <string name="files_add_detail">Ajouter un détail</string>

@@ -14,7 +14,7 @@ import android.provider.OpenableColumns
 import android.view.WindowManager
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import app.heyrobot.core.files.FileEntry
@@ -195,10 +195,13 @@ class FilesShareTest {
         val path = Uri.parse("file:///data/user/0/ai.robot_app/files/files/index.enc")
         val other = file("content://10@media/external/images/1", "x.jpg", pdf)
         val good = file("content://org.example.mail.files/att/1", "receipt.pdf", pdf)
-        val m = model(listOf(own, capture, path, other, good))
+        // F50: Android reads the escapes away, so these are Robot's own provider and another user's.
+        val escaped = file("content://ai%2Erobot_app.exports/exports/talk.md", "talk.md", pdf)
+        val escapedUser = file("content://10%40media/external/images/1", "x.jpg", pdf)
+        val m = model(listOf(own, capture, path, other, good, escaped, escapedUser))
         val r = review(m)
-        assertEquals(listOf(true, true, true, true, false), r.items.map { it.refused })
-        assertEquals(listOf(ShareRefusal.OWN, ShareRefusal.OWN, ShareRefusal.NOT_CONTENT, ShareRefusal.OTHER_USER, null), r.items.map { it.file!!.refusal })
+        assertEquals(listOf(true, true, true, true, false, true, true), r.items.map { it.refused })
+        assertEquals(listOf(ShareRefusal.OWN, ShareRefusal.OWN, ShareRefusal.NOT_CONTENT, ShareRefusal.OTHER_USER, null, ShareRefusal.OWN, ShareRefusal.OTHER_USER), r.items.map { it.file!!.refusal })
         m.add()
         done(m)
         // Only the other app's file was asked about and opened.

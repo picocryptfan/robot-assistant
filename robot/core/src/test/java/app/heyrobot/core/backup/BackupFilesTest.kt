@@ -30,7 +30,9 @@ class BackupFilesTest {
     private val photo = FileId.of(BackupKit.FILE_PHOTO)!!
 
     @Test fun theCategoryIsAppendedWithItsNamesAndCaps() {
-        assertEquals(BackupCategory.entries.last(), BackupCategory.FILES)
+        // Appended after Voiceprint; C10's Connections and Connection keys come after it (BackupConnectionsTest), then 1.4's Lists
+        // (BackupListsTest), then the everyday set's EVERYDAY. Its place never changes.
+        assertEquals(BackupCategory.VOICEPRINT.ordinal + 1, BackupCategory.FILES.ordinal)
         assertEquals("files", BackupCategory.FILES.id)
         assertTrue(BackupCategory.FILES.defaultOn)
         assertEquals(RestoreProcess.VOICE, BackupCategory.FILES.writer)
@@ -149,4 +151,16 @@ class BackupFilesTest {
         assertEquals(receipt, FilesBackup.blobId("blob/${receipt.hex}"))
         assertNull(FilesBackup.blobId("index.json"))
     }
+
+    /** R4: index.json says how many files the backup couldn't read, and the live index never keeps it. */
+    @Test fun theCatalogueNotesWhatWasLeftOut() {
+        val idx = BackupKit.filesIndex()
+        val streamed = mapOf(receipt to FilesBackup.Streamed(5, "a".repeat(64)))
+        assertEquals(0, FilesBackup.leftOut(FilesBackup.exported(idx, streamed)))
+        val out = FilesBackup.exported(idx, streamed, leftOut = 2)
+        assertEquals(2, FilesBackup.leftOut((FileIndexCodec.decode(FileIndexCodec.encode(out)) as app.heyrobot.core.files.IndexParse.Ok).index))
+        assertEquals(0, FilesBackup.leftOut(null))
+        assertFalse(FilesMerge.extra(emptyMap(), out.extra, RestoreMode.REPLACE, mine = true, rethumb = emptyList()).containsKey(FilesBackup.LEFT_OUT))
+    }
+
 }

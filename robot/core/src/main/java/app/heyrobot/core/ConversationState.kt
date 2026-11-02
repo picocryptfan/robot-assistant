@@ -116,6 +116,16 @@ object ConversationLock {
     /** Starting needs an unlocked phone unless "Start from the lock screen" is on. */
     fun mayStart(locked: Boolean, s: RobotSettings): Boolean = !locked || s.convStartLocked
 
+    /**
+     * 1.1.2, FA8g (docs/plans/phone-lock-design.md §5.2): during a phone lock ([phoneLock]) nothing starts or resumes,
+     * whatever "Start from the lock screen" says, and a session running when one starts stops ([stopsFor]). Otherwise as
+     * above.
+     */
+    fun mayStart(locked: Boolean, s: RobotSettings, phoneLock: Boolean): Boolean = !phoneLock && mayStart(locked, s)
+
+    /** A session that is on ([active]: running, paused or starting) stops when a phone lock is on, keeping what it has. */
+    fun stopsFor(phoneLock: Boolean, active: Boolean): Boolean = phoneLock && active
+
     /** A screen opened over the lock screen shows only the lines heard since then; unlocked, the whole transcript. */
     fun showsEarlier(locked: Boolean): Boolean = !locked
 }

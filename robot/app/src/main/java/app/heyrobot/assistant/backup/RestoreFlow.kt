@@ -23,9 +23,11 @@ import android.view.WindowManager
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -48,6 +50,7 @@ import app.heyrobot.core.backup.BackupCategory
 import app.heyrobot.core.backup.BackupWords
 import app.heyrobot.core.backup.CategoryChoice
 import app.heyrobot.core.backup.FilesHere
+import app.heyrobot.core.backup.ListsHere
 import app.heyrobot.core.backup.OpenProblem
 import app.heyrobot.core.backup.PhoneHas
 import app.heyrobot.core.backup.PlanSkip
@@ -92,7 +95,8 @@ private sealed class Why {
 internal fun RestoreFlow(host: BackupActivity) {
     val ctx = LocalContext.current
     val session = remember { RestoreSession(ctx.applicationContext).also { host.restore = it } }
-    var step by remember { mutableStateOf(RStep.PICK) }
+    // R11: a window made again while a restore runs shows it running: no picker over it, no second one on the same journal.
+    var step by remember { mutableStateOf(if (RestoreSession.running) RStep.WORKING else RStep.PICK) }
     var why by remember { mutableStateOf<Why?>(null) }
     var progress by remember { mutableFloatStateOf(0f) }
     var pass by remember { mutableStateOf("") }
@@ -100,7 +104,7 @@ internal fun RestoreFlow(host: BackupActivity) {
     var choices by remember { mutableStateOf<Map<BackupCategory, CategoryChoice>>(emptyMap()) }
     var mine by remember { mutableStateOf(false) }
     var phone by remember { mutableStateOf<PhoneHas?>(null) }
-    var kept by remember { mutableIntStateOf(0) }
+    var kept by remember { mutableStateOf<Int?>(0) }
     var current by remember { mutableStateOf<BackupCategory?>(null) }
     val scope = rememberCoroutineScope()
     fun fail(w: Why) { why = w; step = RStep.FAILED }
@@ -126,8 +130,20 @@ internal fun RestoreFlow(host: BackupActivity) {
         if (step == RStep.WORKING) host.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         onDispose { host.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
     }
+    // LS12 (LT12 step 5 on the Pixel 8): back in view, "Kept safer" is counted again, so a switch changed meanwhile (Settings ›
+    // Lists' "Hear and tick on the lock screen", in the main app) counts as it is now, not as it was when the preview opened.
+    val owner = LocalLifecycleOwner.current
+    // Counted again for each choice too, so it's the number for the restore you're about to start.
+    LaunchedEffect(owner, choices, mine) {
+        owner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            val v = session.verified
+            val has = phone
+            if (step == RStep.PREVIEW && v != null && has != null) kept = withContext(Dispatchers.IO) { session.keptSafer(RestorePlanner.plan(v, has, choices, mine)) }
+        }
+    }
     LaunchedEffect(Unit) {
         when {
+            step == RStep.WORKING -> {}
             Assistant.locked(ctx) -> fail(Why.Locked)
             session.recording() -> fail(Why.Recording)
             else -> picker.launch(arrayOf("*/*"))
@@ -150,8 +166,9 @@ internal fun RestoreFlow(host: BackupActivity) {
             BackupActivity.clearClipboard(ctx, p)
             pass = ""
             phone = withContext(Dispatchers.IO) { session.phone() }
-            kept = withContext(Dispatchers.IO) { session.keptSafer(false) }
-            choices = RestorePlanner.defaults(session.verified!!, phone)
+            val first = RestorePlanner.defaults(session.verified!!, phone)
+            kept = withContext(Dispatchers.IO) { session.keptSafer(RestorePlanner.plan(session.verified!!, phone!!, first, false)) }
+            choices = first
             step = RStep.PREVIEW
         }
     }
@@ -162,8 +179,9 @@ internal fun RestoreFlow(host: BackupActivity) {
         RStep.OPENING -> Busy(stringResource(R.string.backup_restore_opening), null)
         RStep.VERIFY -> Busy(stringResource(R.string.backup_restore_checking), progress)
         RStep.PREVIEW -> Preview(session.verified!!, phone!!, choices, mine, kept,
-            onChoice = { c, ch -> choices = choices + (c to ch) },
-            onMine = { m -> mine = m; scope.launch { kept = withContext(Dispatchers.IO) { session.keptSafer(m) } } },
+            // C10: a row's choice covers the categories shown in it (Keys and private codes covers Connection keys).
+            onChoice = { c, ch -> choices = choices + BackupCategory.covers(c).associateWith { ch } },
+            onMine = { m -> mine = m },
             onCode = { code.launch(LockSignals.code(ctx, LockSignals.PURPOSE_RESTORE)) },
             onCancel = { host.finish() },
             onRestore = {
@@ -172,6 +190,7 @@ internal fun RestoreFlow(host: BackupActivity) {
                 val plan = RestorePlanner.plan(session.verified!!, phone!!, choices, mine)
                 // Its own thread, so the screen going off can't stop it half way: it always ends with the restart.
                 host.restoring = true
+                RestoreSession.willRun()
                 Thread({
                     try {
                         session.apply(plan) { c -> host.runOnUiThread { current = c } }
@@ -251,8 +270,11 @@ private fun count(v: VerifiedBackup, c: BackupCategory): Int? = when (c) {
     BackupCategory.ROUTINES -> (RoutineCodec.decode(v.routines["routines.json"]) as? RoutineFile.Ok)?.routines?.size // l10n: not text (a file name)
     BackupCategory.PHONE_LOCK -> v.phoneLock?.locks?.size
     BackupCategory.SKILLS -> v.skills?.size
-    BackupCategory.KEYS -> v.keys.size + (v.memoryCodes?.items?.size ?: 0)
+    BackupCategory.KEYS -> v.keys.size + (v.memoryCodes?.items?.size ?: 0) + v.connKeys.size
     BackupCategory.FILES -> v.files?.entries?.size
+    BackupCategory.LISTS -> v.lists?.lists?.size
+    BackupCategory.CONNECTIONS -> v.connections?.size
+    BackupCategory.LINKS -> v.links?.pairings?.size
     else -> null
 }
 
@@ -267,11 +289,14 @@ private fun countText(c: BackupCategory, n: Int): String? = when (c) {
     BackupCategory.SKILLS -> pluralStringResource(R.plurals.backup_n_skills, n, n)
     BackupCategory.PHONE_LOCK -> pluralStringResource(R.plurals.backup_n_locks, n, n)
     BackupCategory.FILES -> pluralStringResource(R.plurals.backup_n_files, n, n)
+    BackupCategory.LISTS -> pluralStringResource(R.plurals.backup_n_lists, n, n)
+    BackupCategory.CONNECTIONS -> pluralStringResource(R.plurals.conn_backup_n, n, n)
+    BackupCategory.LINKS -> pluralStringResource(R.plurals.backup_n_links, n, n)
     else -> null
 }
 
 @Composable
-private fun Preview(v: VerifiedBackup, phone: PhoneHas, choices: Map<BackupCategory, CategoryChoice>, mine: Boolean, kept: Int,
+private fun Preview(v: VerifiedBackup, phone: PhoneHas, choices: Map<BackupCategory, CategoryChoice>, mine: Boolean, kept: Int?,
                     onChoice: (BackupCategory, CategoryChoice) -> Unit, onMine: (Boolean) -> Unit, onCode: () -> Unit,
                     onCancel: () -> Unit, onRestore: () -> Unit) {
     val plan = RestorePlanner.plan(v, phone, choices, mine)
@@ -279,15 +304,24 @@ private fun Preview(v: VerifiedBackup, phone: PhoneHas, choices: Map<BackupCateg
     val head = stringResource(R.string.backup_restore_header, DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(v.manifest.made)), madeBy)
     val again = stringResource(R.string.backup_restore_again)
     val note = stringResource(R.string.backup_restore_restart_note)
-    val keptLine = if (!mine && kept > 0) pluralStringResource(R.plurals.backup_restore_kept, kept, kept) else null
-    val byName = v.skipped.filter { it.category == null }.distinctBy { it.name }.map { BackupWords.skipped(it, madeBy).str() }
+    val keptLine = when {
+        mine -> null
+        kept == null -> stringResource(R.string.backup_restore_kept_unknown)
+        kept > 0 -> pluralStringResource(R.plurals.backup_restore_kept, kept, kept)
+        else -> null
+    }
+    // LS12: a part this Robot doesn't know, named by the file's own word for it when it has one ("Links needs Robot 1.5.0…").
+    val lang = app.heyrobot.ui.theme.LocalLangs.current.ui
+    val byName = v.skipped.filter { it.category == null }.distinctBy { it.name }.map { BackupWords.skipped(it, madeBy, v.manifest.name(it.name, lang)).str() }
     val mineTitle = stringResource(R.string.backup_restore_mine)
     val mineDetail = stringResource(R.string.backup_restore_mine_detail)
     val codeTitle = stringResource(R.string.backup_restore_code)
     val codeDetail = stringResource(R.string.backup_restore_code_detail)
     val replaceTitle = stringResource(R.string.backup_restore_replace)
-    val rows = BackupCategory.entries.filter { v.has(it) || v.skipped.any { s -> s.category == it } }.map { c ->
-        val line = plan.of(c)
+    val rows = BackupCategory.ROWS.filter { r -> BackupCategory.covers(r).any { v.has(it) || v.skipped.any { s -> s.category == it } } }.map { c ->
+        // C10: Keys and private codes' row says how its categories go: the first that restores, else the first the file has.
+        val covered = BackupCategory.covers(c).map(plan::of)
+        val line = covered.firstOrNull { it.restores } ?: covered.firstOrNull { it.skip != PlanSkip.NOT_IN_BACKUP } ?: plan.of(c)
         val choice = choices[c] ?: CategoryChoice(restore = false)
         val n = count(v, c)
         val what = n?.let { countText(c, it) }
@@ -297,15 +331,21 @@ private fun Preview(v: VerifiedBackup, phone: PhoneHas, choices: Map<BackupCateg
             c == BackupCategory.FILES && phone.files == FilesHere.KEY_GONE && here > 0 -> BackupStrings.filesKeyGone(here.toLong()).str()
             !line.restores -> what
             c == BackupCategory.FILES && line.mode == RestoreMode.REPLACE -> BackupStrings.filesDeleted(here.toLong()).str()
+            // 1.4, Lists: their key gone, the lists here are kept aside; with Replace on, how many go (§6).
+            c == BackupCategory.LISTS && phone.lists == ListsHere.KEY_GONE -> BackupStrings.listsKeyGone().str()
+            c == BackupCategory.LISTS && line.mode == RestoreMode.REPLACE -> BackupStrings.listsReplaced(here.toLong()).str()
+            // F39: this phone's private codes stay unless your own come back with Keys.
+            c == BackupCategory.MEMORY && line.mode == RestoreMode.REPLACE && app.heyrobot.core.memory.MemoryRestore.keepsPrivate(plan.mine,
+                if (BackupCategory.KEYS in plan.restoring) v.memoryCodes?.items.orEmpty() else emptyList()) -> stringResource(R.string.backup_restore_mode_replace_memory)
             line.mode == RestoreMode.REPLACE -> stringResource(R.string.backup_restore_mode_replace)
             line.mode == RestoreMode.ADD -> stringResource(R.string.backup_restore_mode_add)
             else -> what
         }
         Row5(c, BackupWords.category(c)().str(), summary, choice, line.restores || line.skip == PlanSkip.NEEDS_CODE,
-            canReplace = choice.restore && !phone.empty(c) && c !in setOf(BackupCategory.SETTINGS, BackupCategory.KEYS, BackupCategory.VOICEPRINT) &&
-                !(c == BackupCategory.FILES && phone.files != FilesHere.OK),
+            canReplace = choice.restore && !phone.empty(c) && c !in setOf(BackupCategory.SETTINGS, BackupCategory.KEYS, BackupCategory.VOICEPRINT, BackupCategory.EVERYDAY, BackupCategory.LINKS) &&
+                !(c == BackupCategory.FILES && phone.files != FilesHere.OK) && !(c == BackupCategory.LISTS && phone.lists != ListsHere.OK),
             needsCode = c == BackupCategory.PHONE_LOCK && phone.lockCode && choice.restore && !choice.codeOk,
-            selectable = v.has(c))
+            selectable = BackupCategory.covers(c).any(v::has))
     }
     PreferenceScreen(stringResource(R.string.backup_restore_title), onBack = onCancel, bottomBar = {
         Actions(stringResource(R.string.backup_restore_go), enabled = plan.restoring.isNotEmpty(), onCancel = onCancel, onGo = onRestore)

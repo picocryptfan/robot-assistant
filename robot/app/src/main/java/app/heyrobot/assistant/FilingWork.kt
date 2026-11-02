@@ -35,10 +35,13 @@ import app.heyrobot.core.files.ModelInfo
 import app.heyrobot.core.files.NameWords
 import app.heyrobot.core.i18n.FilesStrings
 import app.heyrobot.core.parse.ParseFailure
+import app.heyrobot.core.parse.ParseLimits
 import app.heyrobot.core.parse.ParseResult
+import app.heyrobot.core.parse.ParsedPixels
 import app.heyrobot.lock.PhoneLockNow
 import app.heyrobot.sys.AppLanguage
 import app.heyrobot.sys.FileParseLink
+import app.heyrobot.sys.FilePixels
 import app.heyrobot.sys.FilesSettingsStore
 import app.heyrobot.sys.FilingMemory
 import app.heyrobot.sys.ProtectedBroadcasts
@@ -292,9 +295,19 @@ object FilingWork {
         override fun head(id: FileId, n: Int): ByteArray = RobotFiles.vault(ctx).open(id).use { it.readNBytes(n) }
         override fun bytes(id: FileId, max: Long): ByteArray = RobotFiles.vault(ctx).open(id).use { it.readAll(max) }
 
-        override fun parse(bytes: ByteArray, flags: Int): ParseResult {
+        override fun parse(bytes: ByteArray, flags: Int): ParseResult = viaLink { it.read(bytes, flags) }
+
+        override fun pagePixels(bytes: ByteArray): ParseResult = viaLink { it.pixels(bytes, thumb = false) }
+
+        /** F16: :brain never gets bytes :files made: its pixels, which nothing decodes, are encoded here as a panel photo is. */
+        override fun pageJpeg(p: ParsedPixels): ByteArray? {
+            val b = FilePixels.bitmap(p, thumb = false) ?: return null
+            return try { Images.jpeg(b, ParseLimits.PAGE.long, ParseLimits.PAGE_QUALITY) } finally { b.recycle() }
+        }
+
+        private fun viaLink(ask: (FileParseLink) -> ParseResult): ParseResult {
             val l = link ?: FileParseLink(ctx).also { if (!it.start()) { it.end("filing_start"); return ParseResult.Failed(ParseFailure.UNAVAILABLE) }; link = it } // l10n: not text (a log code)
-            val r = l.read(bytes, flags)
+            val r = ask(l)
             // A link that failed is gone: the next file gets a fresh :files.
             if (r is ParseResult.Failed) { l.end("filing_failed"); link = null } // l10n: not text (a log code)
             return r

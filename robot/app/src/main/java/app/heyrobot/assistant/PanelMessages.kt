@@ -275,6 +275,16 @@ object PanelMessages {
         return if (chat.any { it.locked }) t.copy(saidLocked = true) else t
     }
 
+    /**
+     * 1.5 L6: the conversation shows requests from these pairings' Robots (PanelLink): content from then on, each of those
+     * Robots one of its senders (core LinkTaint), so every later action asks first and anything going to anyone else needs
+     * a tap (MessageQuarantine), through the real turn runner.
+     */
+    fun withPairings(ids: Collection<String>) {
+        sync()
+        for (id in ids) if (app.heyrobot.core.link.LinkIds.isId(id)) taint = with(app.heyrobot.core.link.LinkTaint) { taint.withPairing(id) }
+    }
+
     /** [q] as a messages command, or a message's words heard back; null: not about messages. */
     fun route(q: String, fromVoice: Boolean): Routed? {
         sync()
@@ -779,17 +789,30 @@ object PanelMessages {
             Spoken(p.sendText, MessageLanguage.frenchLine(langId)(p.sendText))))
         window?.cancel()
         window = scope.launch {
-            val t0 = System.currentTimeMillis()
-            while (VoiceHub.tts.isSpeaking && System.currentTimeMillis() - t0 < SPEECH_WAIT_MS) delay(100)
+            // A read-out too long to wait for leaves no microphone for "stop": the reply waits for Send.
+            if (windowWait { app.heyrobot.core.messages.ReplyWindow.afterReadOut(VoiceHub.tts.isSpeaking, it) } == app.heyrobot.core.messages.WindowStep.STOP) {
+                if (card === p) stopWindow(CardEnd.STOPPED)
+                return@launch
+            }
             if (PanelController.state.value.speak) PanelController.messagesListen(now = true)
             delay(ReplyPlanner.STOP_WINDOW_MS)
-            // You began saying something ("stop"): wait for its words.
-            var waited = 0
-            while (waited < 50 && PanelController.state.value.let { it.phase == Phase.LISTENING || it.phase == Phase.TRANSCRIBING } && PanelController.state.value.partial.isNotBlank()) {
-                delay(100)
-                waited++
+            // You began saying something ("stop"): wait for its words, even before any is on screen.
+            val end = windowWait { waited ->
+                val phase = PanelController.state.value.phase
+                app.heyrobot.core.messages.ReplyWindow.afterThreeSeconds(phase == Phase.TRANSCRIBING, phase == Phase.LISTENING, VoiceHub.stt.hearing, waited)
             }
-            if (card === p && p.state == ReplyCardState.STOP_WINDOW) fire(p, CardEnd.NO_CARD)
+            if (card === p && p.state == ReplyCardState.STOP_WINDOW) {
+                if (end == app.heyrobot.core.messages.WindowStep.STOP) stopWindow(CardEnd.STOPPED) else fire(p, CardEnd.NO_CARD)
+            }
+        }
+    }
+
+    private suspend fun windowWait(step: (Long) -> app.heyrobot.core.messages.WindowStep): app.heyrobot.core.messages.WindowStep {
+        val t0 = System.currentTimeMillis()
+        while (true) {
+            val s = step(System.currentTimeMillis() - t0)
+            if (s != app.heyrobot.core.messages.WindowStep.WAIT) return s
+            delay(100)
         }
     }
 
@@ -1102,6 +1125,4 @@ object PanelMessages {
     /** A summary's or a draft's one-shot may wait for the model to load. */
     private const val ONE_SHOT_MS = 120_000L
     private const val SUMMARY_CHUNKS = 400
-    /** How long Robot may still be talking before a reply's 3 seconds start anyway. */
-    private const val SPEECH_WAIT_MS = 15_000L
 }

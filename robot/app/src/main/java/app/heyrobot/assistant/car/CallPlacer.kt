@@ -30,6 +30,7 @@ import app.heyrobot.core.i18n.HandsFreeStrings
 import app.heyrobot.core.i18n.InfoStrings
 import app.heyrobot.core.i18n.ToolStrings
 import app.heyrobot.lock.LockSignals
+import app.heyrobot.sys.SettingsStore
 import app.heyrobot.lock.PhoneLockNow
 import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.Contacts
@@ -55,10 +56,13 @@ object CallPlacer {
     fun intentFor(number: String, way: CallWay, emergency: Boolean): Intent =
         Intent(actionFor(way, emergency), Uri.fromParts("tel", CallTarget.dialable(number), null))
 
-    /** Android's emergency numbers for this phone, or the region's list when it can't say (errs towards the dialer). */
+    /**
+     * Android's emergency numbers for this phone, or the list of the [region] set or of where the phone is when it can't
+     * say (no SIM, say): errs towards the dialer, which only ever shows the number for you to tap Call.
+     */
     fun isEmergency(ctx: Context, number: String, region: String?): Boolean {
         val android = try { ctx.getSystemService(TelephonyManager::class.java)?.isEmergencyNumber(number) == true } catch (_: Throwable) { false }
-        return android || EmergencyNumbers.basic(number, region)
+        return android || EmergencyNumbers.basic(number, region) || EmergencyNumbers.basic(number, Phones.deviceRegion(ctx))
     }
 
     /** What the call setting and the Phone permission allow now. */
@@ -73,7 +77,7 @@ object CallPlacer {
         val matches = book.best(name, max = Recipients.MAX_PEOPLE, reach = Reachable.text(xmppOk = true))
         if (matches.isEmpty()) return emptyList()
         val region = settings.regionFor(Phones.deviceRegion(ctx))
-        return Recipients.forText(book.cards(matches) { Contacts.cards(ctx, it) }, xmppOk = true).mapNotNull { r ->
+        return Recipients.forText(book.cards(matches) { Contacts.cards(ctx, it) }, xmppOk = true, gateway = settings.smsGateway).mapNotNull { r ->
             if (r.xmpp) return@mapNotNull PhoneCandidate(r.name, r.address, learned = r.learned, xmpp = true)
             val e164 = Phones.e164(r.address, region) ?: return@mapNotNull null
             PhoneCandidate(r.name, e164, label(r.label), r.learned)
@@ -95,7 +99,7 @@ object CallPlacer {
         if (Addresses.isPhone(to) || to.all { it.isDigit() || it in "+-(). " }) {
             val number = Phones.e164(to, region) ?: CallTarget.dialable(to).takeIf { it.length >= 2 }
                 ?: return Prepared.Refused(ActionStatus.INVALID, ToolStrings.badNumber())
-            val emergency = isEmergency(ctx, number, region)
+            val emergency = isEmergency(ctx, number, region) || isEmergency(ctx, CallTarget.dialable(to), region)
             return Prepared.Ready(a.copy(number = number, emergency = emergency, direct = lockDirect(ctx, number, emergency, settings)))
         }
         val all = candidates(ctx, to, settings)
@@ -131,6 +135,22 @@ object CallPlacer {
     private fun lockAllows(ctx: Context, number: String): Boolean =
         !PhoneLockNow.on(ctx) || PhoneLockNow.callKey(number) in PhoneLockNow.callKeys(ctx)
 
+    /** A lock lets the phone app itself be used only when it is one of the lock's chosen apps, or in car mode your car started during your own lock, which covers nothing. */
+    private fun dialerAllowed(ctx: Context): Boolean = PhoneLockNow.carOwn(ctx) || try {
+        ctx.getSystemService(android.telecom.TelecomManager::class.java)?.defaultDialerPackage in PhoneLockNow.apps(ctx)
+    } catch (t: Throwable) { RLog.w("call_dialer", t); false }
+
+    /**
+     * F126: what's missing for a call during a lock: the number on the lock's People first, since nothing else would let it
+     * through; then the Phone permission, the call tool on Ask first, or else (a card from before the lock) only asking again.
+     */
+    internal fun lockRefusal(numberAllowed: Boolean, phonePermission: Boolean, askFirst: Boolean): Executed = when {
+        !numberAllowed -> Executed(ActionStatus.NEEDS_UNLOCK, ToolStrings.callLockNotAllowed())
+        !phonePermission -> Executed(ActionStatus.NEEDS_PERMISSION, ToolStrings.callLockPermission())
+        !askFirst -> Executed(ActionStatus.NEEDS_UNLOCK, ToolStrings.callLockJustDoIt())
+        else -> Executed(ActionStatus.NEEDS_UNLOCK, ToolStrings.callLockCovered())
+    }
+
     /**
      * Opens the dialer with the number, or calls it ([Action.Call.direct]: after car mode's spoken yes, or a phone lock's
      * call card). During a lock a direct call goes only to a number the locks still allow; any other opens the dialer.
@@ -138,12 +158,17 @@ object CallPlacer {
     fun run(ctx: Context, a: Action.Call, launch: (Intent) -> Boolean): Executed {
         val number = a.number ?: return Executed(ActionStatus.FAILED, ToolStrings.noOneToCall())
         val way = if (a.direct && !a.emergency && Assistant.granted(ctx, Manifest.permission.CALL_PHONE) && lockAllows(ctx, number)) CallWay.CALL else CallWay.DIAL
+        // F126: during a lock the dialer is covered, so it isn't opened behind the cover: Robot says why there's no call.
+        if (way == CallWay.DIAL && !a.emergency && PhoneLockNow.on(ctx) && !Assistant.keyguard(ctx) && !dialerAllowed(ctx)) {
+            return lockRefusal(PhoneLockNow.callKey(number) in PhoneLockNow.callKeys(ctx), Assistant.granted(ctx, Manifest.permission.CALL_PHONE), SettingsStore.load(ctx).approval(ToolName.CALL) == Approval.ASK)
+        }
         // On Android's lock screen too: its emergency dialer shows over the lock, where the dialer would ask for an unlock.
         val locked = a.emergency && PhoneLockNow.on(ctx)
         val sos = (locked || a.emergency && Assistant.keyguard(ctx)) && LockSignals.emergencyDialer(ctx, Uri.fromParts("tel", CallTarget.dialable(number), null))?.let { i ->
             try { launch(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (t: Throwable) { RLog.w("call_sos", t); false }
         } == true
         val ok = sos || try { launch(intentFor(number, way, a.emergency).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (t: Throwable) { RLog.w("call_start", t); false }
+        if (sos && locked) LockSignals.emergencyOpened(ctx)
         VoiceLog.add(VoiceEvent.CAR_CALL, way, if (a.emergency) 1 else 0)
         if (!ok) return Executed(ActionStatus.NO_APP, ToolStrings.noPhoneApp())
         return Executed(ActionStatus.DONE, when {

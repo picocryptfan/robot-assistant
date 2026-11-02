@@ -91,7 +91,7 @@ import app.heyrobot.sys.Paths
 import app.heyrobot.ui.common.RIcons
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.material3.AlertDialog
+import app.heyrobot.ui.common.AlertDialog
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.RadioButton
@@ -191,6 +191,9 @@ fun WakePhrasesScreen(s: RobotSettings, update: (RobotSettings) -> Unit, a: AppA
             SwitchPreference(stringResource(R.string.voice_only_charging), stringResource(R.string.voice_saves_battery), s.wakeOnlyWhileCharging, enabled = on) {
                 update(s.copy(wakeOnlyWhileCharging = it))
             }
+            // week-fixes: Battery Saver pauses it (VoiceHub), said here and in a notification.
+            if (on && LocalContext.current.getSystemService(android.os.PowerManager::class.java)?.isPowerSaveMode == true)
+                StatusPreference(stringResource(R.string.voice_saver_paused), stringResource(R.string.voice_saver_paused_detail), Mark.WARN)
         }
         preferenceGroup(groupPhrases, "phrases") {
             if (s.wakePhrases.none { it.enabled }) {

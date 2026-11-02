@@ -58,6 +58,8 @@ object LockNotices {
             val progress = LockSchedule.appLocks(s.file, s.state).firstOrNull()?.takeIf { access }
             if (opens != null || progress != null) {
                 val tap = PendingIntent.getActivity(ctx, ID_ON, LockSignals.cover(ctx).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_IMMUTABLE)
+                // The count shown, in Robot's log (no app named), so a phone check can see it move each minute.
+                if (opens == null) progress?.let { (a, r) -> RLog.i("lock_progress", "done" to a.usedMs / 60_000, "total" to r.minutes) }
                 val title = if (opens != null) LockStrings.noticeOn("time" to opens.toLocalTime()).render(l) else progress!!.let { (a, r) ->
                     LockStrings.noticeProgress("done" to a.usedMs / 60_000, "total" to r.minutes, "label" to label(ctx, r.app)).render(l)
                 }

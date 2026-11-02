@@ -6,6 +6,8 @@ import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import app.heyrobot.core.AlarmClocks
 import android.provider.AlarmClock
 import app.heyrobot.core.NextFire
 import app.heyrobot.core.RLog
@@ -97,23 +99,49 @@ object RoutineAlarms {
 data class RoutineFacts(
     val exactAlarms: Boolean,
     val notifications: Boolean,
-    /** GrapheneOS Clock (com.android.deskclock) is installed: its ALARM_ALERT and ALARM_DONE broadcasts can come. */
+    /** A Clock app is installed (core AlarmClocks says how Robot hears its alarm end). */
     val clock: Boolean,
     val calendar: Boolean,
     val location: Boolean,
+    /** week-fixes: the Clocks installed, for the Clock app setting, and the phone's default among them. */
+    val clockApps: List<ClockApp> = emptyList(),
+    val phoneClock: String? = null,
 ) {
+    /** The Clock in use with [chosen] set. */
+    fun clockNow(chosen: String?): ClockApp? =
+        AlarmClocks.effective(chosen, clockApps.map { it.pkg }, phoneClock)?.let { p -> clockApps.firstOrNull { it.pkg == p } }
+
+    data class ClockApp(val pkg: String, val label: String)
+
     companion object {
-        const val CLOCK = "com.android.deskclock"
+        const val CLOCK = AlarmClocks.GRAPHENE
 
         /**
-         * GrapheneOS Clock is installed (seen through the SET_ALARM <queries> entry the alarm tool already has: no new
-         * package visibility). 1.2: also where a routine or a lock is set to start after an alarm (the routine editor,
-         * the brief's page, the guide, a routine made by voice), so a phone with another Clock is told plainly. Other
-         * Clocks' broadcasts are UNVERIFIED and not guessed (every-android-phone design, Step 6).
+         * A Clock is installed (seen through the SET_ALARM <queries> entry the alarm tool already has: no new package
+         * visibility). 1.2: where a routine is set to start after an alarm (the routine editor, the brief's page, the
+         * guide, a routine made by voice), so a phone without one is told plainly.
          */
-        fun clockInstalled(ctx: Context): Boolean = try {
-            ctx.packageManager.queryIntentActivities(Intent(AlarmClock.ACTION_SET_ALARM), 0).any { it.activityInfo.packageName == CLOCK }
-        } catch (_: Throwable) { false }
+        fun clockInstalled(ctx: Context): Boolean = clockApps(ctx).isNotEmpty()
+
+        fun clockApps(ctx: Context): List<ClockApp> = try {
+            val pm = ctx.packageManager
+            pm.queryIntentActivities(Intent(AlarmClock.ACTION_SET_ALARM), 0).distinctBy { it.activityInfo.packageName }
+                .map { ClockApp(it.activityInfo.packageName, it.loadLabel(pm).toString()) }.sortedBy { it.label }
+        } catch (_: Throwable) { emptyList() }
+
+        /** The phone's default Clock; with several and no default, Android answers with its chooser, which is no Clock. */
+        fun phoneClock(ctx: Context): String? = try {
+            ctx.packageManager.resolveActivity(Intent(AlarmClock.ACTION_SET_ALARM), PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName
+        } catch (_: Throwable) { null }
+
+        fun currentClock(ctx: Context, chosen: String?): String? = AlarmClocks.effective(chosen, clockApps(ctx).map { it.pkg }, phoneClock(ctx))
+
+        /** Robot's own alarm and timer requests go to the chosen Clock, if there is one that takes this request; else as they were. */
+        fun toChosenClock(ctx: Context, i: Intent): Intent = try {
+            val chosen = RoutineFiles.store(ctx).settings().clockApp
+            val there = chosen?.let { Intent(i).setPackage(it) }
+            if (there != null && ctx.packageManager.queryIntentActivities(there, 0).isNotEmpty()) there else i
+        } catch (_: Throwable) { i }
 
         fun read(ctx: Context): RoutineFacts = RoutineFacts(
             exactAlarms = RoutineAlarms.exact(ctx),
@@ -121,6 +149,8 @@ data class RoutineFacts(
             clock = clockInstalled(ctx),
             calendar = Calendars.readGranted(ctx),
             location = CoarseLocation.granted(ctx),
+            clockApps = clockApps(ctx),
+            phoneClock = phoneClock(ctx),
         )
     }
 }

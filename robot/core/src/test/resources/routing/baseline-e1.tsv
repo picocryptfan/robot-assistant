@@ -1,0 +1,106 @@
+pause the music	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	Music(action=PAUSE)
+stop the music	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	Music(action=PAUSE)
+pause music	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	Music(action=PAUSE)
+pause	-	-	Pause	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	Music(action=PAUSE)
+arrête la musique	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	Music(action=PAUSE)
+coupe la musique	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	Music(action=PAUSE)
+mets la musique sur pause	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	Music(action=PAUSE)
+play music	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	Music(action=PLAY)
+resume the music	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	Music(action=PLAY)
+unpause	-	-	Resume	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	Music(action=PLAY)
+mets de la musique	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	Music(action=PLAY)
+reprends la musique	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	Music(action=PLAY)
+remets la musique	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	Music(action=PLAY)
+play	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+resume	-	-	Resume	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+joue	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+reprends	-	-	Resume	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+next song	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	Music(action=NEXT)
+skip this song	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	Music(action=NEXT)
+previous song	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	Music(action=PREVIOUS)
+go back a song	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	Music(action=PREVIOUS)
+chanson suivante	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	Music(action=NEXT)
+prochaine toune	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	Music(action=NEXT)
+passe la toune	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	Music(action=NEXT)
+chanson précédente	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	Music(action=PREVIOUS)
+next track	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	Music(action=NEXT)
+last song	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	Music(action=PREVIOUS)
+start the music	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	Music(action=PLAY)
+play some music	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	Music(action=PLAY)
+play my music	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	Music(action=PLAY)
+partir la musique	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	Music(action=PLAY)
+toune précédente	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	Music(action=PREVIOUS)
+play Radiohead	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+play OK Computer by Radiohead	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+play the album Kid A	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+play some jazz	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+play my workout playlist	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+play my running playlist	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+play Stand by Me	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+play Stand by Me by Ben E. King	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+play songs by Radiohead	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+play a song	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+play something	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+put on some jazz	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+fais jouer Radiohead	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+mets du Radiohead	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+joue l'album Kid A	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+mets du jazz	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+mets ma liste de lecture d'entraînement	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, NOTES]	-
+fais jouer la chanson Creep de Radiohead	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+mets des chansons de Céline Dion	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+hey robot, play the album Kid A please	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+what's playing	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+what song is this	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+who sings this	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+c'est quoi cette toune	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+qui chante ça	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+play a game with me	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+play 20 questions	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+play trivia	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+jouons à un jeu	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+play my voicemail	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+play my messages	Read(lang=EN)	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, PEOPLE]	-
+play the recording	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+play back the transcript	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+role play a job interview	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+play along	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+play dead	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+add this song to my playlist	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+remind me to play music at 7	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, NOTES, CALENDAR]	-
+every morning, play music	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, CALENDAR]	-
+play the video	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+play YouTube	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+play my running mix	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+add this song to the shopping list	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, NOTES]	-
+stop	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+next	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+play chess	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+play tennis tonight	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, CALENDAR]	-
+play hockey	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+play the guitar	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+play piano for me	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+mets un minuteur de 5 minutes	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+mets une alarme à 7 h	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, CALENDAR]	-
+mets la table	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+mets le téléphone en silencieux	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, PEOPLE]	-
+mets ça dans mes notes	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, NOTES]	-
+joue avec moi	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+on joue aux échecs	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+joue-moi un tour	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+fais jouer ma messagerie vocale	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+play it cool	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+play house	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+play ball	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+play with the dog	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+play the next episode	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+play my podcast	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+I remember that song	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, NOTES, MEMORY]	-
+what's the name of that song you played yesterday	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+skip	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+play it by ear	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+put on your shoes	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+mets le mode auto	-	-	-	-	-	-	-	-	-	-	-	CarModeOn	-	-	-	-	-	[CORE]	CarModeOn
+fais jouer le jeu	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+joue aux cartes	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+joue du piano	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-

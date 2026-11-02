@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.assistant
 
-import android.content.Intent
 import android.os.Bundle
 import android.service.voice.VoiceInteractionService
 import android.service.voice.VoiceInteractionSession
-import android.speech.RecognitionService
-import android.speech.SpeechRecognizer
 import app.heyrobot.core.RLog
 import app.heyrobot.core.ShowSource
 import app.heyrobot.core.ShowTrust
@@ -49,12 +46,14 @@ class RobotVoiceService : VoiceInteractionService() {
     override fun onShowSessionFailed(args: Bundle) {
         val src = args.getString(ARG_SOURCE)
         RLog.i("show_failed", "src" to src?.let { RLog.Code(it) })
+        app.heyrobot.assistant.car.CarModeController.showFailed(src) { show(src ?: SRC_HEADSET, Bundle(args)) }
         VoiceLog.add(VoiceEvent.SHOW_FAILED, when (src) {
             SRC_WAKE -> ShowSource.WAKE
             SRC_KEYGUARD -> ShowSource.KEYGUARD
             SRC_APP -> ShowSource.APP
             SRC_CAPTURE -> ShowSource.CAPTURE
             SRC_HEADSET -> ShowSource.HEADSET
+            SRC_SHARE -> ShowSource.SHARE
             else -> ShowSource.SWIPE
         })
     }
@@ -88,6 +87,11 @@ class RobotVoiceService : VoiceInteractionService() {
         /** Bundle keys in the session's show args. */
         const val ARG_SOURCE = "robot_source"
         const val ARG_CONVERSATION = "robot_conversation"
+        /**
+         * The everyday set's Ask Robot (everyday-set-plan.md §7.2, E7): the one-time id of what another app shared, held in
+         * :voice's memory. Through PanelLaunchActivity only, capped there; "robot_" so ShowTrust keeps it on the service's show.
+         */
+        const val ARG_SHARED = "robot_shared"
 
         const val SRC_WAKE = "wake"
         const val SRC_KEYGUARD = "keyguard"
@@ -97,20 +101,7 @@ class RobotVoiceService : VoiceInteractionService() {
         const val SRC_CAPTURE = "capture"
         /** 0.8: a headset's or car's button (HeadsetEntryActivity), or the car screen's Talk. */
         const val SRC_HEADSET = "headset"
+        /** The everyday set's Ask Robot (E7): opened with what another app shared ([ARG_SHARED]); the screen is never offered. */
+        const val SRC_SHARE = "share"
     }
-}
-
-/**
- * Named by the voice-interaction metadata (android:recognitionService) and discoverable (see the
- * manifest), so the system keeps Robot as the assistant across restarts. Phase 1 has no recognizer for
- * other apps: it refuses every request and logs only that one came in.
- */
-class RobotRecognitionService : RecognitionService() {
-    override fun onStartListening(intent: Intent?, listener: Callback) {
-        RLog.i("recognizer", "op" to RLog.Code("refused"))
-        try { listener.error(SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE) } catch (_: Exception) {}
-    }
-
-    override fun onStopListening(listener: Callback) {}
-    override fun onCancel(listener: Callback) {}
 }

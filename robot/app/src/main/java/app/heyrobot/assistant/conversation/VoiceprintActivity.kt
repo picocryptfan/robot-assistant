@@ -20,7 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
+import app.heyrobot.ui.common.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -293,7 +293,7 @@ class VoiceprintActivity : ComponentActivity() {
             Column(Modifier.fillMaxSize().padding(pad).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 if (lockedNow.value) {
-                    Text(stringResource(R.string.conv_unlock_screen), style = MaterialTheme.typography.bodyLarge)
+                    Text(stringResource(ConversationNotices.lockedLine(this@VoiceprintActivity, R.string.conv_unlock_screen)), style = MaterialTheme.typography.bodyLarge)
                     return@Column
                 }
                 Text(stringResource(R.string.conv_vp_intro), style = MaterialTheme.typography.bodyLarge)

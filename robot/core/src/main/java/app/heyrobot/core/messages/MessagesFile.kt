@@ -2,7 +2,7 @@
 package app.heyrobot.core.messages
 
 import app.heyrobot.core.i18n.Lang
-import app.heyrobot.core.readOrNull
+import app.heyrobot.core.readForUpdate
 import app.heyrobot.core.withFileLock
 import app.heyrobot.core.writeAtomic
 import org.json.JSONArray
@@ -100,10 +100,13 @@ data class MessagesFile(
          * One change to [file]: under [LOCK] (this process's threads and other processes alike), [change] applied to what
          * the file holds now, written whole (a temporary file, fsync, rename) when it changed. The file as it is after.
          * Settings › Messages, People's "without a card" and the bridge's "Always for …" all write this way, so none of
-         * them loses another's change.
+         * them loses another's change. A file that is there but can't be read now throws, as a failed write does: nothing is written.
          */
-        fun update(file: File, change: (MessagesFile) -> MessagesFile): MessagesFile = withFileLock(File(file.parentFile, LOCK)) {
-            val now = fromJson(readOrNull(file))
+        fun update(file: File, change: (MessagesFile) -> MessagesFile): MessagesFile = update(file, File::readBytes, change)
+
+        /** [update] reading through [readFile] (a test's failing disk). */
+        internal fun update(file: File, readFile: (File) -> ByteArray, change: (MessagesFile) -> MessagesFile): MessagesFile = withFileLock(File(file.parentFile, LOCK)) {
+            val now = fromJson(readForUpdate(file, readFile)?.toString(Charsets.UTF_8))
             val next = change(now)
             if (next != now) writeAtomic(file, next.toJson())
             next

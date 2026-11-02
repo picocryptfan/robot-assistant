@@ -93,7 +93,7 @@ class FilesModelTest {
         assertEquals("CAD", r[0]["currency"])
         assertEquals(true, r[2]["total_unchecked"])
         // Only the listed keys, and no value holds the file's text.
-        val allowed = setOf("number", "name", "kind", "drawer", "date", "private", "total_unchecked") + FileTools.FIELDS
+        val allowed = setOf("number", "name", "kind", "drawer", "date", "private", "total_unchecked", "total_is_refund") + FileTools.FIELDS
         for (m in r) {
             assertTrue(m.keys.toString(), allowed.containsAll(m.keys))
             assertFalse(m.values.any { it.toString().contains("zq9text") })

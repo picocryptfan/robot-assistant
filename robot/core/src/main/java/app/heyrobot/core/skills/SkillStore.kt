@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.skills
 
+import app.heyrobot.core.connect.ConnLimits
+import app.heyrobot.core.connect.LimitState
+import app.heyrobot.core.readTextForUpdate
 import app.heyrobot.core.writeAtomic
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
-import java.nio.channels.FileChannel
-import java.nio.file.StandardOpenOption
 
 // Pure (java.io, org.json). Where skills live (plan §3): files/robot/, beside routines.json, written whole and atomically
 // under skills.lock, which both app processes take, because two write them: the main app's Settings › Skills and the
@@ -107,7 +109,7 @@ class SkillStore(private val dir: File) {
     /** Writes [s] under the lock; never over a file from a newer Robot. False when it couldn't. */
     fun saveSettings(s: SkillSettings): Boolean = try {
         locked {
-            if (settingsFile() is SkillSettingsFile.TooNew) false
+            if (SkillSettingsCodec.decode(readTextForUpdate(settingsFile)) is SkillSettingsFile.TooNew) false
             else { writeAtomic(settingsFile, SkillSettingsCodec.encode(s)); true }
         }
     } catch (_: Exception) {
@@ -120,7 +122,7 @@ class SkillStore(private val dir: File) {
 
     fun editState(change: (SkillState) -> SkillState): SkillState? = try {
         locked {
-            val now = state()
+            val now = SkillStateFile.decode(readTextForUpdate(stateFile))
             val next = change(now)
             if (next != now) writeAtomic(stateFile, SkillStateFile.encode(next))
             next
@@ -131,28 +133,26 @@ class SkillStore(private val dir: File) {
 
     private fun read(f: File): String? = try { if (f.isFile) f.readText(Charsets.UTF_8) else null } catch (_: Exception) { null }
 
-    private fun <T> locked(block: () -> T): T = synchronized(LOCK) {
-        dir.mkdirs()
-        FileChannel.open(File(dir, LOCK_FILE).toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE).use { ch ->
-            val l = ch.lock()
-            try { block() } finally { l.release() }
-        }
-    }
+    // Shared with ConnStore (connections.json): one monitor and one file lock for both (SkillsLock).
+    private fun <T> locked(block: () -> T): T = SkillsLock.locked(dir, block)
 
     companion object {
         const val SKILLS = "skills.json"
         const val STATE = "skills_state.json"
         const val SETTINGS = "skill_settings.json"
-        const val LOCK_FILE = "skills.lock"
-        private val LOCK = Any()
+        const val LOCK_FILE = SkillsLock.FILE
     }
 }
 
 /** A skill's last run: when ([at], wall clock ms), how many steps happened, out of how many. */
 data class SkillRunRecord(val at: Long, val done: Int, val total: Int)
 
-/** skills_state.json: the last run of each skill, and its fill samples (phase B, SkillStats), by id. Counts and times only. */
-data class SkillState(val lastRun: Map<String, SkillRunRecord> = emptyMap(), val fills: Map<String, FillSamples> = emptyMap())
+/**
+ * skills_state.json: the last run of each skill, and its fill samples (phase B, SkillStats), by id; and the rate limits'
+ * recent times (connections plan D16: [limits], ConnLimits). Counts and times only.
+ */
+data class SkillState(val lastRun: Map<String, SkillRunRecord> = emptyMap(), val fills: Map<String, FillSamples> = emptyMap(),
+    val limits: LimitState = LimitState())
 
 /** skills_state.json, v1. Lenient: what can't be read is left out (it is only what Settings shows). */
 object SkillStateFile {
@@ -167,11 +167,33 @@ object SkillStateFile {
                 for ((m, ring) in f.byModel) put(m.id, ring.joinToString("") { if (it) "1" else "0" })
             }))
         })
+        // Connections plan D16: each connection's recent calls and each skill's recent runs (wall-clock ms).
+        if (!s.limits.isEmpty) put("limits", JSONObject().put("calls", times(s.limits.calls)).put("runs", times(s.limits.runs)))
     }.toString()
 
     fun decode(json: String?): SkillState {
         val o = try { JSONObject(json ?: return SkillState()) } catch (_: Exception) { return SkillState() }
-        return SkillState(runs(o.optJSONObject("runs")), fills(o.optJSONObject("fills")))
+        val l = o.optJSONObject("limits")
+        val limits = LimitState(times(l?.optJSONObject("calls"), { SkillStep.validConnId(it) }, ConnLimits.PER_DAY),
+            times(l?.optJSONObject("runs"), SkillCheck::validId, ConnLimits.MAX_PER_HOUR))
+        return SkillState(runs(o.optJSONObject("runs")), fills(o.optJSONObject("fills")), limits)
+    }
+
+    private fun times(m: Map<String, List<Long>>): JSONObject = JSONObject().apply { for ((id, t) in m) put(id, JSONArray(t)) }
+
+    /** Recent times by id: ids of [valid]'s shape, at most [ConnLimits.MAX_IDS] of them, at most [max] whole numbers each. */
+    private fun times(o: JSONObject?, valid: (String) -> Boolean, max: Int): Map<String, List<Long>> {
+        o ?: return emptyMap()
+        val out = LinkedHashMap<String, List<Long>>()
+        for (id in o.keys()) {
+            if (!valid(id) || out.size >= ConnLimits.MAX_IDS) continue
+            val a = o.optJSONArray(id) ?: continue
+            if (a.length() > max) continue
+            val t = (0 until a.length()).map { i -> (a.opt(i) as? Number)?.takeIf { it is Int || it is Long }?.toLong() ?: return@map null }
+            if (t.any { it == null }) continue
+            out[id] = t.filterNotNull()
+        }
+        return out
     }
 
     private fun fills(o: JSONObject?): Map<String, FillSamples> {
@@ -210,5 +232,6 @@ object SkillStateFile {
 
     /** [s] with [id]'s run recorded, and only the runs of [keep] (a deleted skill's run goes). */
     fun record(s: SkillState, id: String, r: SkillRunRecord, keep: Set<String>): SkillState =
-        s.copy(lastRun = (s.lastRun + (id to r)).filterKeys { it in keep || it == id }, fills = s.fills.filterKeys { it in keep || it == id })
+        s.copy(lastRun = (s.lastRun + (id to r)).filterKeys { it in keep || it == id }, fills = s.fills.filterKeys { it in keep || it == id },
+            limits = s.limits.copy(runs = s.limits.runs.filterKeys { it in keep || it == id }))
 }

@@ -5,7 +5,7 @@ I made Robot because I couldn't find a complete voice assistant that doesn't com
 Robot is a private voice assistant for GrapheneOS on Google Pixel phones. I start with Pixels because GrapheneOS runs
 on them, and the point is to keep Google off the phone. Robot's AI model runs on the phone, so what you say and what it
 answers stay there. Robot goes online for what you ask: the weather, a web search you set up, a question you hand to
-an online helper with your own key, or a download. It also checks for its own updates once a day and downloads them on
+an online helper with your own key, a skill that uses a connection you added, or a download. It also checks for its own updates once a day and downloads them on
 Wi-Fi, checks for Termux updates once a week after you set Termux up, and lets routines go online if you allow it.
 Each can be turned off: Settings › About › Updates (Check for updates automatically, Download updates on Wi-Fi),
 Settings › Termux (Check for Termux updates), Settings › Routines (Routines may go online by themselves).
@@ -102,8 +102,8 @@ Coming from 0.9? Robot 1.0 installs beside it under a new app ID, and you move y
 - Back up and restore saves what you choose, your files included, into one encrypted file, protected by a passphrase
   only you have, to a place you pick. Robot never uploads it.
 - Routines and a morning brief. Headset mode, where your headset's button opens Robot, and car mode.
-- Web search uses the service you choose: your own SearXNG, Brave, Kagi, Mojeek, DuckDuckGo's Instant Answers or a
-  public SearXNG. It is off until you set it up, and answers name their sources. With nothing to set up, you can
+- Web search uses the service you choose: your own SearXNG, Wikipedia, Brave, Kagi, Mojeek, DuckDuckGo's Instant
+  Answers or a public SearXNG. It is off until you set it up, and answers name their sources. With nothing to set up, you can
   search in your browser with Startpage, DuckDuckGo, Google and five others, each listed with its privacy level.
 - Termux runs your own scripts and short commands. You approve each command on a card first, and it is off until you
   set it up.
@@ -118,20 +118,24 @@ My development notes, with the design, the checks and the history, are in [`robo
 
 - Your voice is turned into text on the phone and never recorded. Answers are made on the phone.
 - Nothing about you is collected. I receive nothing from your phone.
-- Robot goes online for what you start (a download, the weather, the nearest place, a web search, a helper), for the
-  daily update check and its download on Wi-Fi, for the weekly Termux check once Termux is set up, and for routines
-  you allow to; each of those can be turned off. You can turn off Robot's Network permission in GrapheneOS and
+- Robot goes online for what you start (a download, the weather, the nearest place, a web search, a helper, a skill
+  that uses one of your connections), for the daily update check and its download on Wi-Fi, for the weekly Termux check
+  once Termux is set up, and for routines you allow to; each of those can be turned off. Robot to
+  Robot is off until you turn it on: while it's on, it stays connected to the Robots you've paired with. You can turn off Robot's Network permission in GrapheneOS and
   everything on the phone keeps working.
 - The nearest-place search uses OpenStreetMap's Nominatim server unless you pick another one in Settings › Actions ›
   Search server. You can switch servers there at any time without an update, or choose Never.
 - A helper's or web search key only ever goes over https.
-- Robot Files, backups, Phone lock and skills never go online. A file leaves the phone only when you share it, open it
+- Robot Files, backups, Phone lock and skills without a connection never go online. A file leaves the phone only when you share it, open it
   with another app or export it (exports aren't encrypted), or when you tap a card that sends what Robot read from it to a
   helper. Settings › About › Support Robot makes no network call until you tap its Ko-fi link.
-- PRIVACY.md lists every permission and why. 1.1 adds two. USE_BIOMETRIC lets travel mode ask for your PIN, pattern or
+- [`PRIVACY.md`](PRIVACY.md) lists every permission and why. 1.1 adds two. USE_BIOMETRIC lets travel mode ask for your PIN, pattern or
   password on Android's own confirm screen (never a fingerprint or face). ACCESS_NETWORK_STATE lets the daily update
   check, the download on Wi-Fi and Termux's weekly check wait for the network: Android requires it for that, and
-  without it those checks never ran in 1.0.x. On 1.0.x, tap Check now in Settings › About › Updates to get 1.1.
+  without it those checks never ran in 1.0.x. On 1.0.x, tap Check now in Settings › About › Updates to get 1.1. 1.2
+  adds one more, HIDE_OVERLAY_WINDOWS: a normal permission, granted at install with no prompt, that lets the
+  sheet Robot opens to listen hide other apps' floating windows while it is up, so nothing can sit over what you say or tap.
+  It also drops VIBRATE, which Robot never used.
 - Logs hold codes and numbers only, never what you said.
 
 The full policy is in [`PRIVACY.md`](PRIVACY.md).
@@ -159,8 +163,8 @@ you pick one: only import files you trust. See [`SECURITY.md`](SECURITY.md).
 
 Settings › About › Licences lists every part of Robot with its version, licence and full licence text, and
 [`robot/THIRD_PARTY.md`](robot/THIRD_PARTY.md) lists them with their pins and hashes. Each release also attaches the
-complete source of the copyleft native code Robot ships (sherpa-onnx with espeak-ng, ONNX Runtime, slimt and llama.cpp)
-as `robot-<version>-third-party-sources.tar.gz`. LiteRT-LM's native libraries come as Google's prebuilt files, not as source.
+complete source of the copyleft native code Robot ships (sherpa-onnx with espeak-ng, ONNX Runtime, slimt and llama.cpp,
+and for Robot to Robot libsignal, Tor and lyrebird) as `robot-<version>-third-party-sources.tar.gz`. LiteRT-LM's native libraries come as Google's prebuilt files, not as source. libsignal's source builds with no network, but not to the same bytes as the library Signal publishes and Robot ships ([`robot/THIRD_PARTY.md`](robot/THIRD_PARTY.md) says what was compared).
 
 ## Build from source
 
@@ -172,9 +176,13 @@ dependency is checked against the SHA-256 in `robot/gradle/verification-metadata
 cd robot
 echo "sdk.dir=/path/to/android-sdk" > local.properties
 tools/fetch_third_party.sh --install    # sherpa-onnx libraries, wake-word and VAD models, espeak-ng data, each checked by SHA-256
+tools/build_sherpa.sh                   # libsherpa-onnx-jni.so with Robot's patch to espeak-ng (about 15 minutes): the APK needs this one
 tools/build_robotmt.sh                  # librobotmt.so, the fast translation engine, from pinned sources
+tools/fetch_libsignal.sh                # libsignal, for Robot to Robot, checked by SHA-256 (about 375 MB)
+tools/fetch_link_deps.sh                # Tor, the UnifiedPush connector and Tink, for Robot to Robot, checked by SHA-256
+tools/build_lyrebird.sh                 # liblyrebird.so from pinned source (needs Go, downloaded if missing, and the NDK)
 tools/build_llama.sh                    # optional: librobot_llama.so, for your own GGUF files
-./gradlew :core:testReleaseUnitTest :voice:testReleaseUnitTest :helpers:testReleaseUnitTest :app:testReleaseUnitTest
+./gradlew :core:testReleaseUnitTest :voice:testReleaseUnitTest :helpers:testReleaseUnitTest :link:testReleaseUnitTest :app:testReleaseUnitTest
 ./gradlew :app:testDebugUnitTest        # Compose UI tests and screenshots (Robolectric, offline)
 ./gradlew :app:assembleRelease          # unsigned without a key: see robot/README.md, "Building"
 tools/verify_apk.sh app/build/outputs/apk/release/app-release.apk

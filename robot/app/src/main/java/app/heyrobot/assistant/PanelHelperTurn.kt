@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.assistant
 
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.currentCoroutineContext
+import app.heyrobot.core.i18n.HelperStrings
+import app.heyrobot.core.helpers.HelperChoice
 import android.content.Context
 import android.graphics.Bitmap
 import app.heyrobot.core.ActionStatus
@@ -75,6 +80,9 @@ import kotlinx.coroutines.withContext
  * conversation; [screenShare]: the screen's text and picture; [cardVoice]: a card answered by voice; [port]: what it
  * needs of PanelController.
  */
+/** "Try it here or ask": silence (Confirmations has a yes, a no and a choice's index; this card has no choices). */
+private const val NO_ANSWER = 1
+
 internal class PanelHelperTurn(
     private val scope: CoroutineScope,
     private val state: MutableStateFlow<PanelState>,
@@ -215,6 +223,8 @@ internal class PanelHelperTurn(
     }
 
     /** The app's name for the Send card ("a screenshot of Signal"), or null when it isn't known or visible to Robot. */
+    private fun closedByLock(h: HelperConfig): Boolean = port.locked() && (!h.locked || port.someoneElse())
+
     private fun appLabel(pkg: String?): String? = pkg?.let {
         try {
             val pm = port.ctx.packageManager
@@ -240,7 +250,7 @@ internal class PanelHelperTurn(
 
     /** A question for helper [h] ("ask ChatGPT …", "go get Jarvis", or any question in a helper's conversation). */
     suspend fun run(replyId: String, cmd: HelperCommand?, h: HelperConfig?, said: String, attachment: Attachment, sText: String?, image: ByteArray?,
-        thumb: Bitmap?, history: List<ChatTurn>, voiceAsked: Boolean) {
+        thumb: Bitmap?, history: List<ChatTurn>, voiceAsked: Boolean, fromAnotherApp: Boolean = false) {
         val s = port.settings
         if (h == null) {
             helperMode.end()
@@ -282,7 +292,7 @@ internal class PanelHelperTurn(
         val mode = state.value.helperMode == h.id
         val deep = (cmd as? HelperCommand.Ask)?.deep ?: HelperRouter.deep(said)
         // The screen or a photo goes only after a tap on its card ("Send your screen's text to Jarvis?").
-        val extra = if (attachment != Attachment.NONE) attachment else (cmd as? HelperCommand.Ask)?.extra ?: Attachment.NONE
+        val extra = if (attachment != Attachment.NONE && attachment != Attachment.FILE) attachment else (cmd as? HelperCommand.Ask)?.extra ?: Attachment.NONE
         var shared = Shared()
         if (extra != Attachment.NONE) {
             val screen = if (extra == Attachment.SCREEN) sText ?: screenShare.text else null
@@ -294,11 +304,17 @@ internal class PanelHelperTurn(
             // The card says exactly what goes and shows the picture: the photo, or a screenshot of the app on screen.
             val pic = if (photo) (if (attachment == Attachment.PHOTO) thumb else port.lastThumb) else screenShare.shot?.let { Images.scaled(it, Images.THUMB_EDGE) }
             val appName = if (!photo && img != null) withContext(Dispatchers.IO) { appLabel(screenShare.pkg) } else null
-            val what = if (photo) PanelStrings.thePhoto() else Phrase.ListOf(listOfNotNull(screen?.let { PanelStrings.screenText() },
+            // The everyday set (E7): what another app shared is named as what it is, and only a tap sends it (Personal.SHARED).
+            val what = if (fromAnotherApp) app.heyrobot.core.i18n.HelperStrings.personalShared() else if (photo) PanelStrings.thePhoto() else Phrase.ListOf(listOfNotNull(screen?.let { PanelStrings.screenText() },
                 img?.let { appName?.let { a -> PanelStrings.aScreenshotOf("appName" to a) } ?: PanelStrings.aScreenshot() }))
             if (!askToShare(replyId, PanelStrings.sendTo("what" to what, "name" to h.name), screen?.let { ToolCalls.safeTake(it, 600) }, PanelStrings.send(),
-                    picture = pic, name = h.name)) {
+                    picture = pic, name = h.name, tapFor = if (fromAnotherApp) app.heyrobot.core.AskWhy.SHARED else null)) {
                 return port.localReply(replyId, w.nothingSentText, w.nothingSentText)
+            }
+            // F98: a lock may have started while the card was up: the tap doesn't send what it now closes.
+            if (closedByLock(h)) {
+                helperMode.end()
+                return port.localReply(replyId, LockStrings.closedNow(), LockStrings.closedNow())
             }
             shared = Shared(screenText = screen, image = img)
         }
@@ -325,8 +341,15 @@ internal class PanelHelperTurn(
                             askToShare(replyId, Phrase.plain(q), null, PanelStrings.include(), PanelStrings.startFresh(),
                                 detail = PanelStrings.startFreshDetail("name" to h.name), personal = personal.isNotEmpty(), name = h.name,
                                 // 1.4: what Robot read from your files goes only on a tap, never a spoken yes (HelperTrust).
-                                tapFor = if (app.heyrobot.core.Personal.FILES in personal) app.heyrobot.core.AskWhy.FILES else null)
+                                tapFor = if (app.heyrobot.core.Personal.FILES in personal) app.heyrobot.core.AskWhy.FILES
+                                    else if (app.heyrobot.core.Personal.SHARED in personal) app.heyrobot.core.AskWhy.SHARED
+                                    else if (app.heyrobot.core.Personal.LISTS in personal) app.heyrobot.core.AskWhy.LISTS else null)
                         } ?: false
+                    // F98: as above, for the conversation so far.
+                    if (closedByLock(h)) {
+                        helperMode.end()
+                        return port.localReply(replyId, LockStrings.closedNow(), LockStrings.closedNow())
+                    }
                     HelperContext.join(before, question ?: said, now, port.userRegion, shared, include, helperMode.misheard)
                 }
                 else -> HelperContext.next(question ?: said, shared)
@@ -482,6 +505,40 @@ internal class PanelHelperTurn(
         return pick >= 0
     }
 
+    /**
+     * "Try it here, or ask Jarvis?", on screen and aloud, answered by a tap or a word (PanelCardVoice, core HelperChoice.answer).
+     * Null: nothing, in [HelperChoice.WAIT_MS], or no speech heard: Robot tries. The card goes with the answer: it was only a
+     * question, and the reply it sits on is about to be written.
+     */
+    suspend fun askChoice(replyId: String, h: HelperConfig): HelperChoice.Picked? {
+        val id = port.newId()
+        val view = port.view(replyId, h.name)
+        val ask = HelperStrings.choiceAsk("name" to h.name)
+        replies.upsertAction(replyId, UiAction(id, ToolName.ASK_HELPER, ask.render(port.turnLangs), ActionStatus.PENDING,
+            HelperStrings.choiceDetail("name" to h.name).render(port.turnLangs), confirm = HelperStrings.choiceHelperButton("name" to h.name).render(port.turnLangs),
+            cancel = HelperStrings.choiceHereButton().render(port.turnLangs), personal = false)) // rc4: its buttons in the question's language, as its words
+        cardVoice.choiceWaits(id, HelperName.all(port.settings), h.id) { port.confirmations.choose(id, NO_ANSWER) }
+        if (state.value.speak) {
+            port.speakRobot(port.said(ask))
+            cardVoice.saidPrompt()
+        }
+        view.phase(TurnPhase.CONFIRMING)
+        val pick = try {
+            withTimeoutOrNull(HelperChoice.WAIT_MS) { port.confirmations.ask(id) } ?: NO_ANSWER
+        } finally {
+            cardVoice.choiceDone()
+            cardVoice.stop()
+            replies.removeAction(replyId, id)
+        }
+        currentCoroutineContext().ensureActive()
+        view.phase(TurnPhase.THINKING)
+        return when (pick) {
+            Confirmations.YES -> HelperChoice.Picked.HELPER
+            Confirmations.NO -> HelperChoice.Picked.HERE
+            else -> null
+        }
+    }
+
     /** GrapheneOS's Network toggle is off for Robot: a card that says so (no helper can be reached at all), said too. */
     private fun networkCard(replyId: String) {
         port.view(replyId).card(Card(port.newId(), ToolName.ASK_HELPER, PanelStrings.noNetwork().render(port.turnLangs), ActionStatus.FAILED,
@@ -497,7 +554,7 @@ internal class PanelHelperTurn(
      * the question and the panel steps aside (the launchedApp path). Robot never hears the answer; with the Claude app you
      * can read it back with the corner swipe.
      */
-    private suspend fun handOff(replyId: String, text: String, h: HelperConfig) {
+    suspend fun handOff(replyId: String, text: String, h: HelperConfig) {
         port.handedToApp(text.takeIf { it.isNotBlank() })
         replies.markHelper(replyId, null)
         val scripted = object : TurnModel {

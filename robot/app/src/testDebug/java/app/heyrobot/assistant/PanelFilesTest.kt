@@ -83,6 +83,30 @@ class PanelFilesTest {
 
     @After fun clean() = PanelFiles.forget(ctx) {}
 
+    // Finding A (cf-phone): the chip's Save to Robot Files shows only while its own file's bytes are still held.
+    @Test fun theChipCanSaveOnlyTheFileItsQuestionCameWith() {
+        val b = "words".toByteArray()
+        assertEquals(null, PanelFiles.savable.value)
+        PanelFiles.picked(b, tooBig = false, name = "a.txt")
+        assertEquals("not sent yet: no chip in the conversation", null, PanelFiles.savable.value)
+        PanelFiles.sentWith("u1")
+        assertEquals("u1", PanelFiles.savable.value)
+        PanelFiles.picked(b, tooBig = false, name = "b.txt")
+        assertEquals("a newer file: Save would file that one, not u1's", null, PanelFiles.savable.value)
+        PanelFiles.sentWith("u2")
+        assertEquals("u2", PanelFiles.savable.value)
+        PanelFiles.forget(ctx) {}
+        assertEquals("the panel closed: the bytes are gone", null, PanelFiles.savable.value)
+    }
+
+    @Test fun nothingHeldLeavesNoChipToSave() {
+        PanelFiles.picked(null, tooBig = true, name = "big.pdf")
+        PanelFiles.sentWith("u1")
+        assertEquals(null, PanelFiles.savable.value)
+        PanelFiles.sentWith("u2")
+        assertEquals(null, PanelFiles.savable.value)
+    }
+
     /** What FilingWork.fileNow would have done with a file that just came in (none: it didn't finish in time). */
     private var filing: (FileId) -> FilingOutcome? = { null }
 

@@ -122,6 +122,14 @@ class FileExtrasTest {
         assertEquals(listOf(biz.id), e.files.map { it.id })
     }
 
+    @Test fun aRefundGoesInTheTableBelowZero() {
+        val back = dated(FileKind.RECEIPT, "2025-03-02", tags = listOf(FileTags.TAX), fields = mapOf("total" to "84.12", "currency" to "CAD", "tax_gst" to "3.66", "refund" to "yes"))
+        val p = FilePack.of(FileIndex(listOf(back)), PackKind.TAX, 2025, utc)
+        val words = PackWords(FilesStrings.csvColumns().map { it.render(Langs.of(Lang.EN)) }, { it.name }, { FilesStrings.drawer(it).render(Langs.of(Lang.EN)) }, "Check", "Not copied")
+        val row = FilePack.csv(p, mapOf(back.id to "a.pdf"), words, utc).removePrefix("\uFEFF").split("\r\n")[1]
+        assertTrue(row, row.contains(",-84.12,CAD,-3.66,"))
+    }
+
     @Test fun theTableIsCodesNumbersAndNoFormulas() {
         val a = dated(FileKind.RECEIPT, "2025-03-02", tags = listOf(FileTags.TAX), fields = mapOf("total" to "84.12", "currency" to "CAD", "tax_gst" to "3.66",
             "tax_qst" to "7.30")).let { it.copy(fields = it.fields + ("merchant" to FileField("=HYPERLINK(\"x\")", FieldBy.READ))) }

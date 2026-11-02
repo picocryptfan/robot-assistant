@@ -70,7 +70,7 @@
     <string name="lock_cant_stop_3">En mode sans échec, ou en dehors d’un blocage&#160;: désinstaller Robot ou effacer son stockage supprime tous les blocages et le code.</string>
     <string name="lock_cant_stop_4">En dehors d’un blocage&#160;: désactiver l’accès d’accessibilité de Robot ou forcer l’arrêt de Robot désactive le blocage du téléphone. Ce qui s’est passé le note, et le prochain blocage dit qu’il n’a pas pu commencer.</string>
     <string name="lock_cant_stop_5">Un ordinateur avec le débogage USB peut tout faire. Sur le téléphone d’un enfant, désactive les options pour les développeurs.</string>
-    <string name="lock_cant_stop_6">Le volet des notifications reste utilisable pendant un blocage, avec ses réponses et ses réglages rapides, parce que le couvrir couvrirait aussi l’écran de verrouillage. Une vidéo en mode image dans l’image lancée avant un blocage peut rester par-dessus.</string>
+    <string name="lock_cant_stop_6">Le volet des notifications reste utilisable pendant un blocage, avec ses réponses et ses réglages rapides, parce que le couvrir couvrirait aussi l’écran de verrouillage. Une vidéo en mode image dans l’image lancée avant un blocage peut rester par-dessus. Pendant un appel, les applis de téléphone habituelles s’en tiennent à leur écran d’appel ; toute autre appli de téléphone reste entièrement ouverte.</string>
     <string name="lock_cant_stop_7">Le blocage du téléphone bloque seulement l’utilisateur dans lequel Robot fonctionne, pas un autre utilisateur ni un espace privé.</string>
     <string name="lock_cant_stop_8">Changer la date ou l’heure en dehors d’un blocage déplace les blocages Heure de la journée avec l’horloge.</string>
 

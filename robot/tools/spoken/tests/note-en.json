@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "id": "note-en",
+  "title": "A note by voice with the compact prompt's tool",
+  "safety": "robot-data",
+  "testBench": ["v12-prompt-tools-still-work"],
+  "needs": {"model": true},
+  "setup": [{"set": "speakReplies", "value": "VOICE"}],
+  "steps": [
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "Take a note that says milk.", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 120},
+    {"do": "check", "what": "tool", "equals": "add_note"},
+    {"do": "end"}
+  ]
+}

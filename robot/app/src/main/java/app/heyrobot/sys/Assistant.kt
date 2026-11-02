@@ -89,7 +89,7 @@ data class AssistantFacts(
     val headsetButton: Map<String, app.heyrobot.core.headset.ButtonHandler>? = null,
     /** 1.2: [recognizer] names an installed recognition service (RecognizerKeeper's check, the one its repair uses). */
     val recognizerInstalled: Boolean = false,
-    /** 1.2: GrapheneOS Clock is installed (RoutineFacts.clockInstalled), for the guide's morning brief "after your alarm". */
+    /** 1.2: a Clock app is installed (RoutineFacts.clockInstalled), for the guide's morning brief "after your alarm". */
     val clockInstalled: Boolean = true,
 ) {
     /**

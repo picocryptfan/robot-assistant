@@ -16,7 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.AlertDialog
+import app.heyrobot.ui.common.AlertDialog
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -37,6 +37,9 @@ import app.heyrobot.core.car.CarAnnounce
 import app.heyrobot.core.car.CarAnnounceFrom
 import app.heyrobot.core.car.CarCandidate
 import app.heyrobot.core.car.CarDetect
+import app.heyrobot.core.car.CarHearMe
+import app.heyrobot.core.car.CarHearing
+import app.heyrobot.core.ListenPause
 import app.heyrobot.core.car.CarLockUse
 import app.heyrobot.core.car.CarSettings
 import app.heyrobot.core.car.CarSetup
@@ -343,7 +346,8 @@ private fun placeLine(ctx: Context, p: SavedPlace?): String =
     p?.let { it.label + " · " + String.format(Locale.US, "%.4f, %.4f", it.lat, it.lon) } ?: ctx.getString(R.string.car_not_set)
 
 @Composable
-fun CarSettingsScreen(d: CarPageData, act: HandsFreeActions, snackbar: SnackbarHostState, onBack: () -> Unit) {
+fun CarSettingsScreen(d: CarPageData, act: HandsFreeActions, snackbar: SnackbarHostState, onBack: () -> Unit,
+    carRunning: (android.content.Context) -> Boolean = ::carModeRunning, endCar: (android.content.Context) -> Unit = ::endCarMode) {
     val f = d.file
     val s = d.settings
     fun set(n: CarSettings) = act.car(f.copy(settings = n))
@@ -355,12 +359,14 @@ fun CarSettingsScreen(d: CarPageData, act: HandsFreeActions, snackbar: SnackbarH
     val use = stringResource(R.string.car_use)
     val tYours = stringResource(R.string.car_yours)
     val tWhen = stringResource(R.string.car_when_run)
+    val tScreen = stringResource(R.string.car_screen_group)
     val tCalls = UiStrings.calls().str()
     val tPlaces = stringResource(R.string.car_places)
     val tNew = stringResource(R.string.headset_new_messages)
     val tDrive = stringResource(R.string.car_while_drive)
     val footer = stringResource(R.string.car_footer)
     PreferenceScreen(UiStrings.carMode().str(), onBack, snackbar = snackbar) {
+        item(key = "end") { EndCarModeRow(carRunning, endCar) }
         item(key = "main") { MainSwitchBar(use, f.on) { act.car(f.copy(on = it)) } }
         preferenceGroup(tYours, "cars") {
             for (c in d.memory.cars) TwoTargetSwitchPreference(c.name.ifEmpty { stringResource(R.string.car_number, c.number) },
@@ -386,6 +392,16 @@ fun CarSettingsScreen(d: CarPageData, act: HandsFreeActions, snackbar: SnackbarH
                 { if (it == ListenWith.PHONE_MIC) phoneMicDetail else carMicDetail }, enabled = f.on) {
                 set(s.copy(wakeListenWith = it))
             }
+            ListPreference(stringResource(R.string.car_hear_me), s.hearMe, CarHearMe.entries,
+                { ctx.getString(if (it == CarHearMe.MORE) R.string.car_hear_more else R.string.voice_wait_normal) },
+                { ctx.getString(if (it == CarHearMe.MORE) R.string.car_hear_more_detail else R.string.car_hear_normal_detail) }, enabled = f.on) {
+                set(s.copy(hearMe = it))
+            }
+            ListPreference(stringResource(R.string.voice_wait), s.waitPause, CarHearing.PAUSE_CHOICES,
+                { ctx.getString(if (it == ListenPause.LONG) R.string.voice_wait_long else R.string.voice_wait_very_long) },
+                { ctx.getString(if (it == ListenPause.LONG) R.string.voice_wait_long_detail else R.string.voice_wait_very_long_detail) }, enabled = f.on) {
+                set(s.copy(waitPause = it))
+            }
             ListPreference(stringResource(R.string.car_lock_use), s.lockUse, CarLockUse.entries, { it.text.render(langs) }, { ctx.getString(lockDetail(it)) },
                 RIcons.Lock, enabled = f.on) {
                 set(s.copy(lockUse = it))
@@ -397,6 +413,7 @@ fun CarSettingsScreen(d: CarPageData, act: HandsFreeActions, snackbar: SnackbarH
                 set(s.copy(keepScreenOn = it))
             }
         }
+        preferenceGroup(tScreen, "screen") { CarScreenRows(s.layout, enabled = f.on) { set(s.copy(layout = it)) } }
         preferenceGroup(tCalls, "calls") {
             val phone = d.facts?.callPhone == true
             ListPreference(tCalls, s.calls, CallSetting.entries, { it.text.render(langs) }, { ctx.getString(callDetail(it)) }, RIcons.Call, enabled = f.on) { c ->

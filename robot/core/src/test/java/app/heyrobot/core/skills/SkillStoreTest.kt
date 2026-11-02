@@ -69,9 +69,10 @@ class SkillStoreTest {
     }
 
     @Test fun aNewerOrDamagedFileIsNeverWrittenOver() {
-        val newer = """{"v":2,"skills":[]}"""
+        // C1 (connections plan D6) moved this pin from 2 to 3 on purpose: this Robot reads and writes v2 (savesAV2FileAndBackToV1).
+        val newer = """{"v":3,"skills":[]}"""
         file.writeText(newer)
-        assertEquals(SkillFile.TooNew(2), store.file())
+        assertEquals(SkillFile.TooNew(3), store.file())
         assertFalse(store.save(SkillFixtures.pasta()))
         assertFalse(store.delete("s-pasta1"))
         assertEquals(newer, file.readText())
@@ -107,5 +108,49 @@ class SkillStoreTest {
         // What can't be read is left out.
         assertEquals(SkillState(), SkillStateFile.decode("""{"v":1,"runs":{"s-pasta1":{"at":1,"done":3,"total":2},"bad id":{"at":1,"done":1,"total":1}}}"""))
         assertEquals(SkillState(), SkillStateFile.decode("nope"))
+    }
+
+    /** D6: a skill that needs v2 makes the file v2; deleting it writes v1 again, which a 1.1 Robot reads whole. */
+    @Test fun savesAV2FileAndBackToV1() {
+        val dir = java.nio.file.Files.createTempDirectory("skills").toFile()
+        try {
+            val store = SkillStore(dir)
+            val file = java.io.File(dir, SkillStore.SKILLS)
+            assertTrue(store.save(SkillFixtures.pasta()))
+            assertEquals(1, SkillCodec.versionOf(file.readText()))
+            assertTrue(store.save(SkillFixtures.goodNight()))
+            assertEquals(2, SkillCodec.versionOf(file.readText()))
+            assertEquals(listOf(SkillFixtures.pasta(), SkillFixtures.goodNight()), store.skills())
+            assertEquals(SkillFile.TooNew(2), SkillCodec11.decode(file.readText()))
+            assertTrue(store.delete(SkillFixtures.goodNight().id))
+            assertEquals(1, SkillCodec.versionOf(file.readText()))
+            assertEquals(SkillFile.Ok(listOf(SkillFixtures.pasta())), SkillCodec11.decode(file.readText()))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+
+    // F51: settings and the last runs: a file there that can't be read now is never rewritten.
+    @Test fun aFailedReadRefusesTheWriteAndLeavesTheFile() {
+        assertTrue(store.saveSettings(SkillSettings()))
+        val settings = File(dir, SkillStore.SETTINGS)
+        val before = settings.readBytes().toList()
+        settings.setReadable(false)
+        try {
+            org.junit.Assume.assumeFalse(settings.canRead())
+            assertFalse(store.saveSettings(SkillSettings()))
+        } finally {
+            settings.setReadable(true)
+        }
+        assertEquals(before, settings.readBytes().toList())
+        val state = File(dir, SkillStore.STATE)
+        state.writeText("{\"v\":1,\"runs\":{}}")
+        state.setReadable(false)
+        try {
+            assertEquals(null, store.editState { it })
+        } finally {
+            state.setReadable(true)
+        }
     }
 }

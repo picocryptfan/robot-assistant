@@ -2,7 +2,6 @@
 package app.heyrobot.assistant
 
 import android.content.Intent
-import android.os.SystemClock
 import app.heyrobot.assistant.routines.PanelRoutines
 import app.heyrobot.assistant.routines.RoutineRunner
 import app.heyrobot.core.ActionStatus
@@ -46,7 +45,7 @@ object PanelLock {
         null
     }
 
-    private fun clocks() = Clocks(ZonedDateTime.now(), SystemClock.elapsedRealtime(), null)
+    private fun clocks(): Clocks = PhoneLockNow.clocks(app)
 
     suspend fun handle(replyId: String, cmd: LockCommand, host: PanelRoutines.Host, said: String) {
         val l = host.langs(said, cmd.lang)
@@ -56,7 +55,7 @@ object PanelLock {
         }
         val files = PhoneLockNow.files(app)
         try {
-            if (files == null) answer(LockStrings.voiceNeedSetup())
+            if (files == null) answer(if (cmd is LockCommand.Ask) LockStrings.voiceNone() else LockStrings.voiceNeedSetup())
             else when (cmd) {
                 is LockCommand.Start -> start(replyId, cmd, files.first, files.second, host, l, ::answer)
                 is LockCommand.Ask -> answer(*ask(files.first, files.second))
@@ -96,6 +95,8 @@ object PanelLock {
         val done = LockStrings.voiceStarted("time" to end.toLocalTime())
         host.show(replyId, Card(id, null, done.render(l), ActionStatus.DONE, detail))
         host.say(RoutineRunner.said(done, l))
+        // The conversation so far can't be read over the lock: the panel goes, its words still being said (review-lock 3).
+        host.leave()
     }
 
     /**

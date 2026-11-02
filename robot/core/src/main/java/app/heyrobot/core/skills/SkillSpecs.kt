@@ -97,10 +97,10 @@ object SkillSpecs {
         return folded.take(MAX_SLUG).trimEnd('_').ifEmpty { "skill" } // l10n: not text (a tool name)
     }
 
-    /** [skills] as tools, their slugs computed among [all] (your skills). */
-    fun describe(skills: List<Skill>, all: List<Skill>): List<SkillTool> {
+    /** [skills] as tools, their slugs computed among [all] (your skills), a connection's step said by what it does ([links], D19). */
+    fun describe(skills: List<Skill>, all: List<Skill>, links: SkillLinks = SkillLinks.NONE): List<SkillTool> {
         val slugs = slugs((all + skills).distinctBy { it.id })
-        return skills.map { s -> SkillTool(SkillToolSpec(PREFIX + slugs.getValue(s.id), line(s), s.params.map { it.name to ask(it.askEn) }), s.id, s.rev) }
+        return skills.map { s -> SkillTool(SkillToolSpec(PREFIX + slugs.getValue(s.id), line(s, links), s.params.map { it.name to ask(it.askEn) }), s.id, s.rev) }
     }
 
     /** An ask cut to [MAX_ASK] characters on a word. */
@@ -112,7 +112,20 @@ object SkillSpecs {
         return (if (space > MAX_ASK / 2) cut.substring(0, space) else cut).trimEnd(',', ';', ':', ' ')
     }
 
-    /** What a step kind does, in the model's English, without its values (D20). */
+    /**
+     * What step [st] does, in the model's English, without its values (D20). Connections plan D19 (C4): a connection's
+     * operation by its kind and whether it reads, never a host, a path, an entity, a topic or your operation's title.
+     */
+    private fun does(st: SkillStep, links: SkillLinks): String = if (st.kind != StepKind.CONN) does(st.kind) else {
+        val op = if (st.conn != null && st.op != null) links.op(st.conn, st.op) else null
+        if (op == null) does(st.kind) else when (op.kind) {
+            "home_assistant" -> if (op.read) "reads something at home" else "changes something at home" // l10n: not text (the model's prompt)
+            "ntfy" -> "sends a notification" // l10n: not text (the model's prompt)
+            "webhook" -> "calls a web address" // l10n: not text (the model's prompt)
+            else -> does(st.kind)
+        }
+    }
+
     private fun does(k: StepKind): String = when (k) { // l10n: not text (the model's prompt)
         StepKind.SET_TIMER -> "sets a timer" // l10n: not text (the model's prompt)
         StepKind.SET_ALARM -> "sets an alarm" // l10n: not text (the model's prompt)
@@ -130,14 +143,20 @@ object SkillSpecs {
         StepKind.PHONE_STATUS -> "checks the phone" // l10n: not text (the model's prompt)
         StepKind.LOOKUP_CONTACT -> "looks up a contact" // l10n: not text (the model's prompt)
         StepKind.SAY -> "says a sentence" // l10n: not text (the model's prompt)
+        // Connections plan D19: the kind only, never a host, a path, an entity, a topic or a script's name (a connection's
+        // operation is said by what it does when its link is known: does(step, links)).
+        StepKind.CONN -> "uses one of your connections" // l10n: not text (the model's prompt)
+        StepKind.APP -> "opens an app" // l10n: not text (the model's prompt)
+        StepKind.TRAVEL_TIME -> "checks the travel time" // l10n: not text (the model's prompt)
+        StepKind.TERMUX_SCRIPT -> "runs one of your scripts" // l10n: not text (the model's prompt)
     }
 
     /**
      * The line: what the steps do, in order, the same kind twice in a row said once ("Sets a timer, then texts someone."),
      * at most [MAX_LINE] characters ("…, and more." when the steps don't fit).
      */
-    fun line(s: Skill): String {
-        val parts = s.steps.map { does(it.kind) }.fold(mutableListOf<String>()) { acc, p -> if (acc.lastOrNull() != p) acc += p; acc }
+    fun line(s: Skill, links: SkillLinks = SkillLinks.NONE): String {
+        val parts = s.steps.map { does(it, links) }.fold(mutableListOf<String>()) { acc, p -> if (acc.lastOrNull() != p) acc += p; acc }
         fun join(ps: List<String>, more: Boolean): String {
             val body = when {
                 more -> ps.joinToString(", ") + ", and more" // l10n: not text (the model's prompt)

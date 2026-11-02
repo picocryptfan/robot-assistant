@@ -3,11 +3,14 @@ package app.heyrobot.helpers.web
 
 import app.heyrobot.core.Abort
 import app.heyrobot.core.helpers.LanRule
+import app.heyrobot.core.online.NetCause
+import app.heyrobot.core.online.NetPurpose
 import app.heyrobot.core.web.SearchRequest
 import app.heyrobot.core.web.WebFail
 import app.heyrobot.core.web.WebLimits
 import app.heyrobot.helpers.http.LanDns
 import app.heyrobot.helpers.http.LanGuard
+import app.heyrobot.helpers.http.NetCount
 import app.heyrobot.helpers.http.NotLocalException
 import app.heyrobot.helpers.http.textUpTo
 import okhttp3.ConnectionSpec
@@ -48,8 +51,12 @@ fun interface WebSender {
     fun send(req: SearchRequest, route: WebTransport.Route, abort: Abort): Reply
 }
 
-class WebTransport(private val dns: Dns = Dns.SYSTEM, private val connectMs: Long = WebLimits.CONNECT_MS, private val readMs: Long = WebLimits.SEARCH_MS) : WebSender {
+class WebTransport(private val dns: Dns = Dns.SYSTEM, private val connectMs: Long = WebLimits.CONNECT_MS, private val readMs: Long = WebLimits.SEARCH_MS,
+    /** What allowed it, in What went online: a question, or Settings › Web search's test (a tap). */
+    cause: NetCause = NetCause.ASKED) : WebSender {
     enum class Route { CLOUD, HOME }
+
+    private val record = NetCount(cause) { NetPurpose.search(it.url.host) }
 
     private fun builder(): OkHttpClient.Builder = OkHttpClient.Builder()
         .followRedirects(false)
@@ -59,6 +66,8 @@ class WebTransport(private val dns: Dns = Dns.SYSTEM, private val connectMs: Lon
         .readTimeout(readMs, TimeUnit.MILLISECONDS)
         .writeTimeout(readMs, TimeUnit.MILLISECONDS)
         .callTimeout(readMs + connectMs, TimeUnit.MILLISECONDS)
+        // What went online: the search, or an encyclopedia lookup when it goes to Wikipedia or Open Library (audit F37).
+        .addInterceptor(record)
 
     private val cloud: OkHttpClient by lazy { builder().connectionSpecs(listOf(ConnectionSpec.MODERN_TLS)).dns(dns).build() }
     private val homeTls: OkHttpClient by lazy { builder().connectionSpecs(listOf(ConnectionSpec.MODERN_TLS)).dns(dns).proxy(Proxy.NO_PROXY).build() }

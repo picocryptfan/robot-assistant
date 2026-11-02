@@ -66,7 +66,7 @@ class UtteranceTest {
 
     @Test fun aQuestionEndsAfterTheChosenPause() {
         // Speech from 0.6 s to 3.0 s: the flag drops about 0.25 s later, and the question ends 1 s (Normal) after that.
-        val e = Endpointer()
+        val e = pause(ListenPause.NORMAL.ms)
         val ev = run(e, 6_000, VadFlag { t -> t in 600..3_000 }::at)
         assertEquals(listOf(Endpointer.Event.SPEECH, Endpointer.Event.END), ev.map { it.first })
         assertTrue(ev[1].second.toString(), ev[1].second in 4_200..4_350)
@@ -100,9 +100,90 @@ class UtteranceTest {
     @Test fun speechComingBackResetsTheCount() {
         // Four pauses of 0.7 s: 2.8 s of silence in all, none of them long enough at Normal.
         val talk = listOf(500L..1_500L, 2_200L..3_000L, 3_700L..4_500L, 5_200L..6_000L, 6_700L..7_500L)
-        val ev = run(Endpointer(), 12_000, VadFlag { t -> talk.any { t in it } }::at)
+        val ev = run(pause(ListenPause.NORMAL.ms), 12_000, VadFlag { t -> talk.any { t in it } }::at)
         assertEquals(listOf(Endpointer.Event.SPEECH, Endpointer.Event.END), ev.map { it.first })
         assertTrue(ev[1].second.toString(), ev[1].second in 8_700..8_850)
+    }
+
+    @Test fun theDefaultPauseIsLong() {
+        // Speech to 3.0 s: the flag drops about 0.25 s later, and with no saved choice the question ends 1.6 s after that.
+        val ev = run(Endpointer(), 8_000, VadFlag { t -> t in 600..3_000 }::at)
+        assertEquals(Endpointer.Event.END, ev.last().first)
+        assertTrue(ev.last().second.toString(), ev.last().second in 4_800..4_950)
+        assertEquals(ListenPause.LONG.ms, Endpointer.DEFAULT_PAUSE_MS)
+    }
+
+    private fun openRule(pauseMs: Int) = Endpointer(Endpointer.Config(silenceSamples = Endpointer.windowFor(pauseMs),
+        openSamples = Endpointer.windowFor(ListenPause.VERY_LONG.ms)))
+
+    @Test fun anOpenWordMakesThePauseVeryLong() {
+        // 2 s of silence: Long would end it, but the words so far stop on "and".
+        val e = openRule(ListenPause.LONG.ms)
+        e.openEnded = true
+        val ev = withPause(e, 2_000)
+        assertEquals(listOf(Endpointer.Event.SPEECH, Endpointer.Event.END), ev.map { it.first })
+        // The second part is heard; the end comes 2.5 s after it, and the flag dropped 0.25 s after the words.
+        assertTrue(ev[1].second.toString(), ev[1].second in 7_900..8_050)
+    }
+
+    @Test fun aFinishedSentenceEndsAsFastAsBefore() {
+        val open = openRule(ListenPause.LONG.ms)
+        val plain = pause(ListenPause.LONG.ms)
+        val talk = VadFlag { t -> t in 600..3_000 }
+        val a = run(open, 8_000, talk::at)
+        val b = run(plain, 8_000, VadFlag { t -> t in 600..3_000 }::at)
+        assertEquals(b, a)
+    }
+
+    @Test fun theWordsChangingBackEndTheLongerWait() {
+        val e = openRule(ListenPause.LONG.ms)
+        e.openEnded = true
+        val ev = run(e, 8_000) { t ->
+            if (t >= 4_000) e.openEnded = false
+            t in 600..3_250
+        }
+        assertEquals(listOf(Endpointer.Event.SPEECH, Endpointer.Event.END), ev.map { it.first })
+        assertTrue(ev[1].second.toString(), ev[1].second in 4_800..4_950)
+    }
+
+    @Test fun anOpenWordNeverShortensALongerChoice() {
+        val e = Endpointer(Endpointer.Config(silenceSamples = Endpointer.windowFor(3_000), openSamples = Endpointer.windowFor(ListenPause.VERY_LONG.ms)))
+        e.openEnded = true
+        val ev = run(e, 8_000, VadFlag { t -> t in 600..3_000 }::at)
+        assertTrue(ev.last().second.toString(), ev.last().second >= 6_200)
+    }
+
+    @Test fun aCardsShortAnswerIgnoresOpenWords() {
+        val e = Endpointer(Endpointer.Config(silenceSamples = Endpointer.CARD_WINDOW_SAMPLES))
+        assertFalse(e.waitsForOpenWords)
+        e.openEnded = true
+        val ev = run(e, 3_000, VadFlag { t -> t in 500..1_000 }::at)
+        assertEquals(Endpointer.Event.END, ev.last().first)
+        assertTrue(ev.last().second.toString(), ev.last().second < 1_750)
+    }
+
+    @Test fun wordsAddedWhileTheEndIsWrittenDownBringTheQuestionBack() {
+        val e = Endpointer(Endpointer.Config(silenceSamples = Endpointer.windowFor(1_000), listensOn = true))
+        // Speech to 2 s, ended at about 3.25 s; more from 3.4 s, whose flag is up about 0.25 s later.
+        val ev = run(e, 9_000, VadFlag { t -> t in 500..2_000 || t in 3_400..4_500 }::at)
+        assertEquals(listOf(Endpointer.Event.SPEECH, Endpointer.Event.END, Endpointer.Event.RESUMED, Endpointer.Event.END), ev.map { it.first })
+        assertTrue(ev[2].second.toString(), ev[2].second in 3_600..3_750)
+        assertTrue(ev[3].second.toString(), ev[3].second in 5_700..5_850)
+    }
+
+    @Test fun withoutListeningOnNothingComesBack() {
+        val e = pause(1_000)
+        val ev = run(e, 9_000, VadFlag { t -> t in 500..2_000 || t in 3_400..4_500 }::at)
+        assertEquals(listOf(Endpointer.Event.SPEECH, Endpointer.Event.END), ev.map { it.first })
+        assertFalse(e.listeningOn)
+    }
+
+    @Test fun aClosedCaptureEndsTheListeningOn() {
+        val e = Endpointer(Endpointer.Config(silenceSamples = Endpointer.windowFor(1_000), listensOn = true))
+        run(e, 4_000, VadFlag { t -> t in 500..2_000 }::at)
+        assertTrue(e.listeningOn)
+        assertEquals(Endpointer.Event.NONE, e.cut())
+        assertEquals(Endpointer.Event.NONE, e.onFrame(true, frame))
     }
 
     @Test fun aHeldButtonIgnoresAThreeSecondPauseAndEndsOnRelease() {
@@ -129,6 +210,21 @@ class UtteranceTest {
         val ev = run(e, 3_000, VadFlag { t -> t in 300..700 }::at)
         assertEquals(listOf(Endpointer.Event.SPEECH, Endpointer.Event.END), ev.map { it.first })
         assertTrue(ev[1].second.toString(), ev[1].second in 1_250..1_400)
+    }
+
+    @Test fun aCardWaitsForTheChosenPauseNeverLessThanItsOwnFloor() {
+        assertEquals(Endpointer.windowFor(1_600), Endpointer.cardWindow(1_600))
+        assertEquals(Endpointer.CARD_WINDOW_SAMPLES, Endpointer.cardWindow(100))
+        // "Yes... wait, no": a pause under the setting doesn't end it, with the default long pause.
+        val e = Endpointer(Endpointer.Config(silenceSamples = Endpointer.cardWindow(Endpointer.DEFAULT_PAUSE_MS), listensOn = true))
+        val ev = run(e, 5_000, VadFlag { t -> t in 300..700 || t in 1_700..2_100 }::at)
+        assertEquals(listOf(Endpointer.Event.SPEECH, Endpointer.Event.END), ev.map { it.first })
+        assertTrue(ev[1].second.toString(), ev[1].second > 3_000)
+    }
+
+    @Test fun speechRunningIntoTheCapIsTheCapNotAnEnd() {
+        val ev = run(Endpointer(), 31_000) { true }
+        assertEquals(listOf(Endpointer.Event.SPEECH, Endpointer.Event.MAX_LENGTH), ev.map { it.first })
     }
 
     @Test fun silenceGivesUpAfterSixSeconds() {
@@ -241,5 +337,15 @@ class UtteranceTest {
         assertEquals((0.3 * rate).toInt(), PreRoll.samples(-5))
         // Never more than the ring.
         assertEquals((PreRoll.RING_MS * rate / 1000).toInt(), PreRoll.samples(10 * rate, sinceWakeMs = 20_000))
+    }
+
+    /**
+     * The everyday set (E5): another app's request attaches with no pre-roll (SherpaSpeechToText.startForApp), so it gets
+     * only what is said after it asked: never a question said to Robot after "hey robot" just before, nor the moment before.
+     */
+    @Test fun anotherAppsRequestGetsNoAudioFromBeforeItAsked() {
+        val rate = Endpointer.RATE.toLong()
+        for (sinceWake in listOf(-5L, 0L, 1L, (1.2 * rate).toLong(), PreRoll.SINCE_WAKE_MS * rate / 1000, Long.MAX_VALUE / 2))
+            assertEquals("$sinceWake", 0, PreRoll.samples(sinceWake, sinceWakeMs = 0, otherwiseMs = 0))
     }
 }

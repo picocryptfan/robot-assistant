@@ -148,6 +148,25 @@ class FilesOutTest {
         assertTrue(FilesOut.dir(ctx).listFiles().orEmpty().isEmpty())
     }
 
+    /** F55: Android can freeze a cached main process, so the 15 minutes are an alarm's broadcast, not a timer in it. */
+    @Test fun anAlarmTakesACopyBackAfterFifteenMinutes() {
+        val alarms = org.robolectric.Shadows.shadowOf(ctx.getSystemService(android.app.AlarmManager::class.java))
+        val a = add()
+        val t0 = System.currentTimeMillis()
+        FilesOut.make(ctx, vault, a.id, a.from.size, OutgoingCopy.ORIGINAL, "a.pdf", "application/pdf", false, { locked }, noStrip, uriOf)
+        val alarm = alarms.peekNextScheduledAlarm() ?: throw AssertionError("no alarm")
+        assertTrue(alarm.triggerAtTime in (t0 + FileOut.MAX_MS)..(System.currentTimeMillis() + FileOut.MAX_MS + 1_000))
+        assertTrue(org.robolectric.Shadows.shadowOf(alarm.operation).isBroadcast)
+        assertEquals(FilesOutExpiry::class.java.name, org.robolectric.Shadows.shadowOf(alarm.operation).savedIntent.component!!.className)
+        // Too early: it stays.
+        FilesOutExpiry().onReceive(ctx, null)
+        assertEquals(1, copies().size)
+        FilesOut.expire(ctx, System.currentTimeMillis() + FileOut.MAX_MS + 1)
+        assertTrue(copies().isEmpty())
+        // None out: no alarm left to wake the phone.
+        assertEquals(null, alarms.peekNextScheduledAlarm())
+    }
+
     @Test fun oneFilesCopiesWhenItIsDeletedAllAtScreenOff() {
         val a = add()
         val b = FileStore(dir, KeystoreFileKeys(keystore), "voice", space = { 100L shl 30 }).add(ByteArrayInputStream(ByteArray(10) { 1 }), FileIntake("b.pdf", FileSource.SHARE, type = "application/pdf"))

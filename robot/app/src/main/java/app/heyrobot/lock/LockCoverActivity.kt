@@ -3,6 +3,7 @@ package app.heyrobot.lock
 
 import android.content.Intent
 import android.os.Bundle
+import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
@@ -24,11 +25,16 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import app.heyrobot.R
 import app.heyrobot.core.RLog
 import app.heyrobot.core.i18n.LockStrings
@@ -39,6 +45,7 @@ import app.heyrobot.core.lock.LockSchedule
 import app.heyrobot.ui.theme.RobotTheme
 import app.heyrobot.ui.theme.str
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZonedDateTime
 
@@ -49,9 +56,25 @@ import java.time.ZonedDateTime
 // buttons for what is allowed, and End early as Settings › Phone lock says.
 
 class LockCoverActivity : ComponentActivity() {
-    private val tick = mutableIntStateOf(0)
+    /**
+     * What the cover shows, as Compose state passed to [Cover], which reads both: a change draws it again. (A tick Cover
+     * never read let Compose skip it, so a cover that stayed up kept its first minutes left and apps.)
+     */
+    private var shown by mutableStateOf(LockEngine.snapshot)
+    private var now by mutableLongStateOf(wallClock())
+
     /** The engine changed: the cover follows, and goes once no lock is on. */
-    private val watcher: () -> Unit = { runOnUiThread { if (LockEngine.snapshot?.active == false) finish() else tick.intValue++ } }
+    private val watcher: () -> Unit = { runOnUiThread(::follow) }
+
+    private var openedAt = -OWN_WINDOW_MS
+
+    /** The engine's last snapshot (memory only, no disk) and the time now. */
+    private fun follow() {
+        val s = LockEngine.snapshot
+        if (s?.active == false) return finish()
+        shown = s
+        now = wallClock()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -60,21 +83,33 @@ class LockCoverActivity : ComponentActivity() {
             override fun handleOnBackPressed() {}
         })
         LockEngine.watch(watcher)
+        // The minutes left, while the cover is resumed only: at each change of the number, once a minute at most apart.
+        lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.RESUMED) { while (true) { follow(); delay(nextTick(shown, now)) } } }
         setContent {
-            RobotTheme {
-                LaunchedEffect(Unit) { while (true) { delay(60_000); tick.intValue++ } }
-                Cover(tick.intValue)
-            }
+            RobotTheme { Cover(shown, now) }
         }
     }
 
     override fun onResume() {
         super.onResume()
+        showing = this
         LockAccessibilityService.instance?.coverShown()
         Thread({ LockEngine.current(applicationContext).let { if (!it.active) runOnUiThread { finish() } else watcher() } }, "robot-lock").start()
     }
 
+    /** F13: a window the cover opens itself, as opposed to one that took the front from it. */
+    override fun startActivity(intent: Intent?) {
+        openedAt = SystemClock.uptimeMillis()
+        super.startActivity(intent)
+    }
+
+    override fun onStop() {
+        LockAccessibilityService.instance?.coverStopped(own = SystemClock.uptimeMillis() - openedAt < OWN_WINDOW_MS)
+        super.onStop()
+    }
+
     override fun onDestroy() {
+        if (showing === this) showing = null
         LockEngine.unwatch(watcher)
         super.onDestroy()
     }
@@ -85,6 +120,7 @@ class LockCoverActivity : ComponentActivity() {
         val opened = LockSignals.emergencyDialer(this)?.let { i ->
             try { startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); true } catch (t: Throwable) { RLog.w("lock_sos", t); false }
         } == true
+        background { LockEngine.emergencyOpened(applicationContext, dialer = !opened) }
         if (opened) return
         // No emergency dialer, or it wouldn't open: the dialer, open for 3 minutes (§6).
         LockEngine.dialerOpenUntil = System.currentTimeMillis() + 3 * 60_000L
@@ -96,9 +132,7 @@ class LockCoverActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun Cover(@Suppress("UNUSED_PARAMETER") tick: Int) {
-        val s = LockEngine.snapshot
-        val now = System.currentTimeMillis()
+    private fun Cover(s: LockEngine.Snapshot?, now: Long) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Column(
                 Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 32.dp).widthIn(max = 640.dp),
@@ -119,13 +153,16 @@ class LockCoverActivity : ComponentActivity() {
                 }
                 // Phase B: One app first, "8 of 20 minutes in Libby done" (its app is named: the button below opens it).
                 for ((a, r) in LockSchedule.appLocks(s.file, s.state)) {
-                    Text(LockStrings.coverProgress("done" to a.usedMs / 60_000, "total" to r.minutes, "label" to LockNotices.label(this@LockCoverActivity, r.app)).str(),
+                    val label = LockNotices.label(this@LockCoverActivity, r.app)
+                    Text(LockStrings.coverProgress("done" to a.usedMs / 60_000, "total" to r.minutes, "label" to label).str(),
                         style = MaterialTheme.typography.titleLarge)
+                    // Its count stands still while the cover is up: time counts only with the app in front.
+                    Text(LockStrings.coverCounts("label" to label).str(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                val settings = s.file?.settings
+                val settings = s.settings
                 if (settings?.forWho == LockFor.SOMEONE_ELSE) Text(stringResource(R.string.lock_cover_someone), style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(8.dp))
-                for (p in LockSchedule.allowedPackages(s.file, s.state, LockMaps.app(this@LockCoverActivity)).sorted()) {
+                for (p in LockSchedule.allowedPackages(s.file, s.state, s.state.mapsApp).sorted()) {
                     val label = try { packageManager.getApplicationLabel(packageManager.getApplicationInfo(p, 0)).toString() } catch (_: Throwable) { null } ?: continue
                     OutlinedButton(onClick = { open(p) }, modifier = Modifier.heightIn(min = 48.dp)) { Text(LockStrings.coverOpenApp("label" to label).str()) }
                 }
@@ -160,4 +197,31 @@ class LockCoverActivity : ComponentActivity() {
     }
 
     private fun clock(ms: Long) = Instant.ofEpochMilli(ms).atZone(ZonedDateTime.now().zone).toLocalTime()
+
+    companion object {
+        private const val OWN_WINDOW_MS = 5_000L
+        /** The cover on the screen, for the service to take off a call's screen (main thread). */
+        @Volatile internal var showing: LockCoverActivity? = null
+            private set
+        /** The time now, wall-clock ms (a test moves it on). */
+        internal var wallClock: () -> Long = System::currentTimeMillis
+
+        /**
+         * How long until what the cover shows changes with time alone: the minutes left (rounded up, so the number drops as
+         * a whole minute passes) or the end of End early's wait or window. 0.25 to 60 s.
+         */
+        internal fun nextTick(s: LockEngine.Snapshot?, now: Long): Long {
+            var wait = 60_000L
+            s?.opensAt?.toInstant()?.toEpochMilli()?.let { opens -> if (opens > now) wait = Math.floorMod(opens - now - 1, 60_000L) + 1 }
+            s?.settings?.let { settings ->
+                val until = when (val e = EndEarlyRules.view(settings, s.state.active, now)) {
+                    is EarlyView.Waiting -> e.until
+                    is EarlyView.Ready -> e.until
+                    else -> null
+                }
+                if (until != null && until > now) wait = minOf(wait, until - now)
+            }
+            return wait.coerceIn(250L, 60_000L)
+        }
+    }
 }

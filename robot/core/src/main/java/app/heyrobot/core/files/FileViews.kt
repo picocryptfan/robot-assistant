@@ -128,7 +128,7 @@ object FileViews {
         for (e in files) {
             if (e.kind != FileKind.RECEIPT && e.kind != FileKind.BILL) continue
             if (e.fields["check"]?.value == "total") { check++; continue } // l10n: not text (a field's code)
-            val cents = e.fields["total"]?.value?.let(FileFields::amountOf) ?: continue
+            val cents = signedTotal(e) ?: continue
             val cur = e.fields["currency"]?.value
             val (sum, n) = sums[cur] ?: (0L to 0)
             sums[cur] = (sum + cents) to (n + 1)
@@ -153,6 +153,18 @@ object FileViews {
     }
 
     /** The fields Files lets you set, in the order a file's page shows them. */
+    /** F42: the field that says a receipt's or a bill's total is money back; the total itself stays a plain amount. */
+    const val REFUND = "refund" // l10n: not text (a field's name)
+
+    /** [e] is a receipt or a bill whose total is money back. */
+    fun refund(e: FileEntry): Boolean = e.fields[REFUND] != null && (e.kind == FileKind.RECEIPT || e.kind == FileKind.BILL)
+
+    /** [e]'s total in cents, below zero for a refund; null when it has none. */
+    fun signedTotal(e: FileEntry): Long? = e.fields["total"]?.value?.let(FileFields::amountOf)?.let { if (refund(e)) -it else it } // l10n: not text (a field's name)
+
+    /** [e]'s total as the box you edit it in starts: with its minus for a refund, so taking the minus off says it isn't one. */
+    fun totalToEdit(e: FileEntry): String = e.fields["total"]?.value.orEmpty().let { if (refund(e) && it.isNotEmpty()) "-$it" else it } // l10n: not text (a field's name and a minus)
+
     val EDITABLE = listOf("merchant", "date", "total", "currency", "due", "expiry", "return_by", "warranty", "account", "slip", "year")
 
     /** The fields that hold a date (F10: a return's last day and a warranty's end too). */
@@ -163,7 +175,7 @@ object FileViews {
         val v = value.trim()
         if (v.isEmpty()) return null
         return when (key) {
-            "total" -> FileFields.amountOf(v)?.let(FileFields::plain)
+            "total" -> FileFields.amountOf(v.trimStart(*FileFields.MINUS).trim())?.let(FileFields::plain)
             in DATE_FIELDS -> try { LocalDate.parse(v).toString() } catch (_: DateTimeParseException) { null }
             "currency" -> v.uppercase().takeIf { it.length == 3 && it.all { c -> c in 'A'..'Z' } }
             "year" -> v.toIntOrNull()?.takeIf { it in 1900..2200 }?.toString()
@@ -174,7 +186,8 @@ object FileViews {
 
     /**
      * You set [key] on [id] ("Set by you"); empty [value] removes it. A total or date you set answers "Check the total" or
-     * "Check the date". Null when the value isn't one of that field's (an amount, a date) or the key isn't settable.
+     * "Check the date". A total you type taken off ("-45.00") is a refund, and one you don't type so isn't (F42). Null when
+     * the value isn't one of that field's (an amount, a date) or the key isn't settable.
      */
     fun setField(idx: FileIndex, id: FileId, key: String, value: String): FileIndex? {
         if (key !in EDITABLE) return null
@@ -182,6 +195,7 @@ object FileViews {
         return change(idx, id) { e ->
             val fields = LinkedHashMap(e.fields)
             if (clean == null) fields.remove(key) else fields[key] = FileField(clean, FieldBy.YOU)
+            if (key == "total") { if (clean != null && FileFields.takenOff(value)) fields[REFUND] = FileField("yes", FieldBy.YOU) else fields.remove(REFUND) } // l10n: not text (a field's code)
             val check = fields["check"]?.value
             if ((key == "total" && check == "total") || (key == "date" && check == "date")) fields.remove("check")
             if (fields.size > FileIndexCodec.MAX_FIELD_COUNT) null else e.copy(fields = fields)

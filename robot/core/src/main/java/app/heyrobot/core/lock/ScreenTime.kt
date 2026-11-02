@@ -13,6 +13,10 @@ data class UsageEvent(val t: Long, val type: Int, val pkg: String? = null, val c
 data class ScreenNow(val screenOn: Boolean = false, val unlocked: Boolean = false, val appInFront: Boolean = false)
 
 object ScreenTime {
+    /** The window last resumed in [events] (package, class), oldest first or not: what is in front now, as far as they say. */
+    fun front(events: List<UsageEvent>): Pair<String, String?>? =
+        events.filter { it.type == 1 && it.pkg != null }.maxByOrNull { it.t }?.let { it.pkg!! to it.cls }
+
     const val RESUMED = 1
     const val PAUSED = 2
     const val SCREEN_ON = 15

@@ -101,6 +101,8 @@
     <string name="conv_vad_failed">Le détecteur de voix n’a pas pu démarrer.</string>
     <string name="conv_stopped_disk">Arrêtée&#160;: le stockage est presque plein. La transcription est enregistrée.</string>
     <string name="conv_stopped_error">Arrêtée après une erreur. Ce qui a été entendu est enregistré.</string>
+    <string name="conv_phone_lock_closed">Le mode conversation est fermé pendant le blocage du téléphone.</string>
+    <string name="conv_phone_lock_stopped">Arrêtée&#160;: un blocage du téléphone a commencé. Ce qui a été entendu est enregistré.</string>
     <string name="conv_asr_stopped">La reconnaissance vocale a cessé de fonctionner. Ce qui a été entendu avant est enregistré.</string>
     <string name="conv_not_while_speaking">Robot n’écoute pas pendant qu’il parle&#160;: ce qui se dit pendant ce temps n’est pas transcrit.</string>
     <string name="conv_still_hours">Transcription toujours en cours — %1$d&#160;h.</string>
@@ -162,7 +164,7 @@
     <string name="conv_model_works">Le modèle de Robot y travaille entre deux autres tâches (tes questions et les traductions passent d’abord). Il peut s’arrêter et reprendre plus tard.</string>
     <string name="conv_send">Envoyer</string>
     <string name="conv_no_helper">Pour utiliser une IA plus puissante, ajoute une IA externe avec sa clé d’API (ou ton propre serveur) dans Réglages › IA externes.</string>
-    <string name="conv_card_changed">Les réglages de cette IA externe ont changé depuis la carte : vérifie-la de nouveau, puis touche Envoyer.</string>
+    <string name="conv_card_changed">Les réglages de cette IA externe ont changé depuis la carte&#160;: vérifie-la de nouveau, puis touche Envoyer.</string>
     <string name="conv_clip_for">Conversation pour %1$s</string>
 
     <!-- The Transcription check (TranscriptionCheckActivity). -->
@@ -394,4 +396,5 @@
     <string name="conv_where_other_started">Où l’autre personne a-t-elle commencé&#8239;?</string>
     <string name="conv_who_said_rest">Qui a dit le reste&#8239;?</string>
     <string name="conv_quoted">«&#160;%1$s&#160;»</string>
+    <string name="conv_stopped_quiet">Arrêtée&#160;: rien entendu depuis %1$d minutes. La transcription est enregistrée.</string>
 </resources>

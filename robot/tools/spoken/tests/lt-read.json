@@ -1,0 +1,19 @@
+{
+  "format": 1,
+  "id": "lt-read",
+  "title": "Hearing a long list: twelve items, then how many more",
+  "safety": "robot-data",
+  "testBench": ["lt-read"],
+  "setup": [{"set": "speakReplies", "value": "VOICE"}],
+  "steps": [
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "Add almonds, bagels, carrots, dates, eggplant, figs and garlic to the shopping list.", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 30},
+    {"do": "say", "text": "Add ham, ice cream, jam, kale, lemons, mangoes and noodles to the shopping list.", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 30},
+    {"do": "say", "text": "What's on the shopping list?", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 30, "regex": "(?i)\\d+ more"},
+    {"do": "check", "what": "router", "equals": "ListsRouter"},
+    {"do": "end"}
+  ]
+}

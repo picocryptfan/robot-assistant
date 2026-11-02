@@ -158,14 +158,16 @@ object HandsFreeMessages {
         val people = withContext(Dispatchers.IO) { try { PeopleFiles.store(app).list() } catch (_: Throwable) { emptyList() } }
         val listed = MessagesLink(app).use { link -> withTimeoutOrNull(LIST_MS) { link.list() } } ?: return
         val held = listed.second.firstOrNull { it.key == key } ?: return
-        val thread = MessagePeople.named(held, people)
+        // Whose number an address is depends on the SMS gateway you text through (Settings), as everywhere else (F6).
+        val gateway = VoiceHub.settings.smsGateway
+        val thread = MessagePeople.named(held, people, gateway)
         val n = thread.notice(dnd) ?: return
         val l = lang
         if (car) {
             val cs = HandsFreeHub.car.settings
-            val chosen = cs.announceFrom != CarAnnounceFrom.CHOSEN_PEOPLE || AnnounceSenders.chosen(held, people, f.announcePeople)
+            val chosen = cs.announceFrom != CarAnnounceFrom.CHOSEN_PEOPLE || AnnounceSenders.chosen(held, people, f.announcePeople, gateway)
             val ctx = MessageFlowContext(cs, HandsFreeHub.headset.safety, phone.locked, CarModeController.trusted, l,
-                HandsFreeReplies.of(held, s, phone.locked, MessagePeople.withoutCard(held, people, f.noCard)))
+                HandsFreeReplies.of(held, s, phone.locked, MessagePeople.withoutCard(held, people, f.noCard, gateway)))
             when (val a = CarMessages.announce(n, cs, phone.locked, CarModeController.trusted, chosen, l)) {
                 is CarAnnouncement.Skip -> return log(a.why)
                 is CarAnnouncement.Announce -> open(Opening(thread, n, true, a.say, readNow = false, asks = !n.hidden, ctx, SystemClock.elapsedRealtime()), headphones)
@@ -173,7 +175,7 @@ object HandsFreeMessages {
             }
         } else {
             val hs = HandsFreeHub.headset.settings
-            val chosen = hs.announceFrom == AnnounceFrom.EVERYONE || AnnounceSenders.chosen(held, people, f.announcePeople)
+            val chosen = hs.announceFrom == AnnounceFrom.EVERYONE || AnnounceSenders.chosen(held, people, f.announcePeople, gateway)
             when (val d = HeadsetAnnounce.decide(n, hs, headsetRouted = true, trust = Trust.PRIVATE, phone = phone, robotBusy = false, senderAllowed = chosen, lang = l)) {
                 is AnnounceDecision.Skip -> return log(d.why)
                 is AnnounceDecision.Announce -> open(Opening(thread, n, false, d.say, readNow = false, asks = d.asks, null, SystemClock.elapsedRealtime()), headphones)

@@ -28,7 +28,9 @@ import app.heyrobot.core.backup.BackupExport
 import app.heyrobot.core.backup.BackupFormat
 import app.heyrobot.core.backup.BackupHeader
 import app.heyrobot.core.backup.BackupKey
+import app.heyrobot.core.backup.CantFinish
 import app.heyrobot.core.backup.CategoryOutcome
+import app.heyrobot.core.backup.RestoreFinish
 import app.heyrobot.core.backup.OpenProblem
 import app.heyrobot.core.backup.PhoneHas
 import app.heyrobot.core.backup.PlanSkip
@@ -86,6 +88,7 @@ import app.heyrobot.core.backup.FilesMerge
 import app.heyrobot.core.backup.FilesRestored
 import app.heyrobot.core.backup.JournalState
 import app.heyrobot.core.backup.NotNow
+import app.heyrobot.core.backup.Recovered
 import app.heyrobot.core.files.FileException
 import app.heyrobot.core.files.FileId
 import app.heyrobot.core.files.FileIndex
@@ -94,14 +97,29 @@ import app.heyrobot.core.files.FileStore
 import app.heyrobot.core.files.FilesSettingsCodec
 import app.heyrobot.core.files.IndexLoad
 import app.heyrobot.core.parse.FileType
+import app.heyrobot.core.connect.ConnFile
+import app.heyrobot.core.connect.ConnectionCodec
+import app.heyrobot.sys.ConnFiles
+import app.heyrobot.sys.ConnKeyFiles
 import app.heyrobot.sys.FilesSettingsStore
 import app.heyrobot.sys.FilesVault
 import app.heyrobot.sys.RobotFiles
+import app.heyrobot.sys.ListsFiles
+import app.heyrobot.sys.ListsFollow
+import app.heyrobot.sys.ListsRestore
+import app.heyrobot.sys.ListsSettingsStore
+import app.heyrobot.sys.ListsVault
+import app.heyrobot.core.backup.ListsHere
+import app.heyrobot.core.i18n.ListsStrings
+import app.heyrobot.core.lists.ListRole
+import app.heyrobot.core.lists.ListsLoad
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
+import app.heyrobot.core.everyday.EverydaySettingsCodec
+import app.heyrobot.sys.EverydaySettingsStore
 
 // :VOICE PROCESS (docs/plans/backup-1.1-design.md §7). A restore: the picked file copied in (encrypted) to
 // files/robot/restore/incoming, its header and passphrase checked, the whole file verified before anything is written,
@@ -111,11 +129,18 @@ import java.io.InputStream
 // straight to new Keystore keys (BackupSecrets). The main app's settings files and Phone lock's locks.json are staged here
 // and written by the main app at its next start (sys/RestoreApply), which the restart brings. 1.4: Robot Files' files sealed
 // again under this phone's robot_files_v1 into restore/files/ during the same pass, then committed through its vault
-// (FileStore.restoreIn). Nothing of the file's content is logged: the voice log gets codes (events 241, 242).
+// (FileStore.restoreIn). C10: Skills connections staged and written under skills.lock (ConnStore), this phone's keys of the
+// connections that go deleted first in the same step; connection keys saved as helper keys are, each with a fresh Keystore
+// key (BackupSecrets). Nothing of the file's content is logged: the voice log gets codes (events 241, 242).
 
 internal class RestoreSession(private val ctx: Context,
+                              /** 1.4: this process's Robot Lists (a test's own vault with software keys). */
+                              private val lists: () -> ListsVault = { ListsFiles.vault(ctx) },
                               /** 1.4: this process's Robot Files (a test's own vault with a software key). */
                               private val files: () -> FilesVault = { RobotFiles.vault(ctx) }) : AutoCloseable {
+    init { sessions.incrementAndGet() }
+    private var closed = false
+
     var header: BackupHeader? = null
         private set
     private var key: BackupKey? = null
@@ -141,6 +166,8 @@ internal class RestoreSession(private val ctx: Context,
     fun copyIn(uri: Uri, progress: (Float) -> Unit): Refused? {
         if (Assistant.locked(ctx)) return Refused.Locked
         if (recording()) return Refused.Recording
+        // F91: a copy left by a restore cut short doesn't count against this one's space check.
+        incoming.delete()
         val cr = ctx.contentResolver
         val size = try {
             cr.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { c -> if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else -1L } ?: -1L
@@ -240,6 +267,8 @@ internal class RestoreSession(private val ctx: Context,
             BackupCategory.HISTORY to ids(Paths.conversations(ctx), BackupCategory::conversationId).size,
             BackupCategory.TRANSCRIPTS to haveTranscripts().size,
             BackupCategory.VOICEPRINT to if (VoiceprintFiles.saved(ctx)) 1 else 0,
+            BackupCategory.EVERYDAY to if (EverydaySettingsStore.file(ctx).isFile) 1 else 0,
+            BackupCategory.LINKS to if (app.heyrobot.sys.LinkSettingsStore.file(ctx).isFile) 1 else 0,
         )
         // 1.4, Robot Files: its files (counted from their sealed sizes when the list can't be read: no key needed), and
         // whether it can take a restore (its key gone: Replace only; its list unreadable: left out until Start over).
@@ -258,9 +287,26 @@ internal class RestoreSession(private val ctx: Context,
             IndexLoad.Unreadable, is IndexLoad.TooNew -> FilesHere.UNREADABLE
             else -> FilesHere.OK
         }
+        // 1.4, Lists: how many lists (one when they can't be read: something is here), and whether they can take a restore.
+        val listsLoad = try { lists().load(firstUse = false) } catch (t: Throwable) { RLog.w("restore_lists_here", t); ListsLoad.Locked }
+        val listsHere = when (listsLoad) {
+            ListsLoad.KeyGone -> ListsHere.KEY_GONE
+            ListsLoad.Unreadable, is ListsLoad.TooNew -> ListsHere.UNREADABLE
+            else -> ListsHere.OK
+        }
+        val listsCount = when (listsLoad) {
+            is ListsLoad.Loaded -> listsLoad.value.lists.size
+            ListsLoad.Empty, ListsLoad.Locked -> 0
+            else -> 1
+        }
+        // C10: your connections (a damaged or newer connections.json takes no restore: it is never written over) and their keys.
+        val conn = ConnFiles.store(ctx).file()
+        val connCounts = mapOf(BackupCategory.CONNECTIONS to ((conn as? ConnFile.Ok)?.connections?.size ?: 1),
+            BackupCategory.CONN_KEYS to BackupSecrets.connectionsWithKeys(ctx).size)
         // Phone lock's code is verified by :lock's code pad only (CategoryChoice.codeOk); this only says whether one is set.
-        return PhoneHas(counts + (BackupCategory.FILES to filesCount), historyOn = s.saveHistory, memoryOn = MemorySettingsStore.current(ctx).on,
-            lockCode = LockStore.readState(ctx).codeSet, files = filesHere)
+        return PhoneHas(counts + connCounts + (BackupCategory.FILES to filesCount) + (BackupCategory.LISTS to listsCount), historyOn = s.saveHistory,
+            memoryOn = MemorySettingsStore.current(ctx).on, lockCode = LockStore.readState(ctx).codeSet, files = filesHere, lists = listsHere,
+            connections = conn is ConnFile.Ok)
     }
 
     private fun settingsNow(): SettingsNow {
@@ -276,13 +322,57 @@ internal class RestoreSession(private val ctx: Context,
         )
     }
 
-    /** How many guarded settings keep this phone's value for [mine] (the preview's "Kept safer"). */
-    fun keptSafer(mine: Boolean): Int {
-        val v = verified ?: return 0
-        val settings = try { RestoreMerge.settings(settingsNow(), v.settings - BackupCategory.UPDATES_FILE, mine) { it }.kept.size } catch (_: Throwable) { 0 }
-        // 1.4: Settings › Files' safer values too.
-        val files = v.filesSettings?.let { RestoreSafety.filesSettings(FilesSettingsStore.current(ctx), it.read, mine).kept.size } ?: 0
-        return settings + files
+    /**
+     * How many guarded settings [plan] keeps at this phone's value (the preview's "Kept safer"), each counted as apply() counts it:
+     * only what the plan restores, in the mode you chose. Null when they can't be counted, which isn't the same as none.
+     */
+    fun keptSafer(plan: RestorePlan): Int? {
+        val v = verified ?: return null
+        return try {
+            val mine = plan.mine
+            val restoring = plan.restoring.toSet()
+            fun of(c: BackupCategory, n: () -> Int?) = if (c in restoring) n() ?: 0 else 0
+            val settings = of(BackupCategory.SETTINGS) { RestoreMerge.settings(settingsNow(), v.settings - BackupCategory.UPDATES_FILE, mine) { it }.kept.size }
+            // 1.4: Settings › Files' safer values too.
+            val files = of(BackupCategory.FILES) { v.filesSettings?.let { RestoreSafety.filesSettings(FilesSettingsStore.current(ctx), it.read, mine).kept.size } }
+            // 1.4: Settings › Lists' too.
+            val lists = of(BackupCategory.LISTS) { v.listsSettings?.let { RestoreSafety.listsSettings(ListsSettingsStore.current(ctx), it.read, mine).kept.size } }
+            // The everyday set's record of what went online too.
+            val everyday = of(BackupCategory.EVERYDAY) { v.everyday?.let { RestoreSafety.everyday(EverydaySettingsStore.current(ctx), it.read, mine).kept.size } }
+            // C10: what a connection of the file trusts.
+            val conns = of(BackupCategory.CONNECTIONS) {
+                val store = ConnFiles.store(ctx)
+                if (store.file() !is ConnFile.Ok) 0 else RestoreMerge.connections(store.connections(), v.connections.orEmpty(), plan.of(BackupCategory.CONNECTIONS).mode, mine, ConnKeyFiles.ids(ctx)).kept.size
+            }
+            // L12: "Answer while locked" comes back off.
+            val links = of(BackupCategory.LINKS) { if (mine) v.linkSettings?.let { RestoreSafety.link(app.heyrobot.sys.LinkSettingsStore.current(ctx), it.read).kept.size } else 0 }
+            settings + files + lists + everyday + conns + links + keptSaferVoice(v, plan, restoring)
+        } catch (t: Throwable) {
+            RLog.w("restore_kept", t)
+            null
+        }
+    }
+
+    /** Hands-free, routines and skills, as apply() counts them; routines point at the devices as hands-free lands them. */
+    private fun keptSaferVoice(v: VerifiedBackup, plan: RestorePlan, restoring: Set<BackupCategory>): Int {
+        val mine = plan.mine
+        val hf = HandsFreeFiles.store(ctx)
+        val hands = if (BackupCategory.HANDSFREE in restoring) RestoreMerge.handsfree(hf.devices(), hf.headset(), hf.car(), hf.places(), v.handsfree, plan.of(BackupCategory.HANDSFREE).mode, mine) else null
+        val devicesLanded: (String) -> String? = hands?.let { h -> { id: String -> h.landed[id] } } ?: RestoreRefs.same(hf.devices().devices.map { it.id }.toSet())
+        val routines = if (BackupCategory.ROUTINES in restoring) {
+            val rs = RoutineFiles.store(ctx)
+            val file = (RoutineCodec.decode(v.routines["routines.json"]) as? RoutineFile.Ok)?.routines.orEmpty() // l10n: not text (a file name)
+            RestoreMerge.routines(rs.routines(), rs.settings(), rs.reminders(), file,
+                v.routines["routine_settings.json"]?.let(RoutineSettingsCodec::decode), // l10n: not text (a file name)
+                v.routines["reminders.json"]?.let(BriefReminders::decode), // l10n: not text (a file name)
+                plan.of(BackupCategory.ROUTINES).mode, mine, devicesLanded, langs = AppLanguage.langs(ctx)).kept.size
+        } else 0
+        val skills = if (BackupCategory.SKILLS in restoring) {
+            val ss = SkillFiles.store(ctx)
+            RestoreMerge.skills(ss.skills(), v.skills.orEmpty(), plan.of(BackupCategory.SKILLS).mode, mine, newId = { SkillIds.make() },
+                langs = AppLanguage.langs(ctx), haveSettings = ss.settings(), fileSettings = v.skillSettings).kept.size
+        } else 0
+        return (hands?.kept?.size ?: 0) + routines + skills
     }
 
     // ------------------------------------------------------------------------------------------------------ the restore
@@ -306,12 +396,19 @@ internal class RestoreSession(private val ctx: Context,
         val out = LinkedHashMap<BackupCategory, CategoryOutcome>()
         for (line in plan.categories) if (!line.restores && line.skip != PlanSkip.NOT_IN_BACKUP) out[line.category] = CategoryOutcome.Skipped(line.skip!!)
         val restoring = plan.restoring.toSet()
+        // R1: what's said if this run never reaches finish(): each category ended so far, the rest Cut.
+        val told = RestoreFiles.progress(ctx)
+        fun sofar(): RestoreResult {
+            val lines = LinkedHashMap(out).apply { for (c in restoring) putIfAbsent(c, CategoryOutcome.Cut) }
+            return RestoreResult(now, mine, lines, 0, v.manifest.robot, cut = true, pid = android.os.Process.myPid(), filesLeftOut = filesLeft(lines, v))
+        }
         fun mode(c: BackupCategory) = plan.of(c).mode
         // Checked again before the first write.
         if (Assistant.locked(ctx)) {
             for (c in restoring) out[c] = CategoryOutcome.Locked
             return finish(out, v, mine, 0)
         }
+        told.begin(sofar())
         // FX1 (files-1.4-review.md finding 10): a Files commit an earlier restore left waiting for an unlock is finished
         // first (never overwritten); still waiting, this restore's Files waits too.
         // FX3: waiting for free space or the storage rather than the unlock, it says so (EarlierWaits), not "the phone locked".
@@ -323,12 +420,17 @@ internal class RestoreSession(private val ctx: Context,
         fun step(c: BackupCategory, write: () -> CategoryOutcome) {
             if (c !in restoring || out[c] != null) return
             progress(c)
-            out[c] = try { write() } catch (t: Throwable) { RLog.w("restore_" + c.id, t); CategoryOutcome.Failed }
+            out[c] = try { write() } catch (t: Throwable) {
+                RLog.w("restore_" + c.id, t)
+                if (t is CantFinish) try { j.giveUp(c) } catch (x: Throwable) { RLog.w("restore_giveup", x) }
+                CategoryOutcome.Failed
+            }
+            told.note(sofar())
         }
 
         // People first in memory: the other categories point at where each person landed.
         val peopleStore = PeopleFiles.store(ctx)
-        val people = if (BackupCategory.PEOPLE in restoring) RestoreMerge.people(peopleStore.list(), v.people!!.people, mode(BackupCategory.PEOPLE), mine, now) else null
+        val people = if (BackupCategory.PEOPLE in restoring) RestoreMerge.people(peopleStore.list(), v.people!!.people, mode(BackupCategory.PEOPLE), mine, now, SettingsStore.load(ctx).smsGateway) else null
         val peopleLanded: (String) -> String? = people?.let { p -> { id: String -> p.landed[id] } } ?: RestoreRefs.same(peopleStore.list().map { it.id }.toSet())
         // Settings in memory too: which helpers exist after it (keys), its History switch (decided by the plan).
         // updates.json is the updater's: staged as it is, merged by the main app (sys/RestoreApply), never read here.
@@ -370,6 +472,7 @@ internal class RestoreSession(private val ctx: Context,
             } catch (t: Throwable) { RLog.w("restore_memory", t); CategoryOutcome.Failed }
             if (memoryToo) out[BackupCategory.MEMORY] = r
             else if (r != CategoryOutcome.Done) out[BackupCategory.KEYS] = r
+            told.note(sofar())
         }
 
         // Headset, car and places: staged, then written under the store's lock (repeatable after a crash).
@@ -396,7 +499,7 @@ internal class RestoreSession(private val ctx: Context,
             val file = (RoutineCodec.decode(v.routines["routines.json"]) as? RoutineFile.Ok)?.routines.orEmpty() // l10n: not text (a file name)
             val m = RestoreMerge.routines(rs.routines(), rs.settings(), rs.reminders(), file,
                 v.routines["routine_settings.json"]?.let(RoutineSettingsCodec::decode), // l10n: not text (a file name)
-                v.routines["reminders.json"]?.let(BriefReminders::decode).orEmpty(), // l10n: not text (a file name)
+                v.routines["reminders.json"]?.let(BriefReminders::decode), // l10n: not text (a file name)
                 mode(BackupCategory.ROUTINES), mine, devicesLanded, langs = AppLanguage.langs(ctx))
             kept += m.kept.size
             j.begin(BackupCategory.ROUTINES, RestoreProcess.VOICE)
@@ -429,7 +532,7 @@ internal class RestoreSession(private val ctx: Context,
         // Phone lock: staged for the main app, which writes locks.json and tells :lock (§12 of the phone lock design).
         step(BackupCategory.PHONE_LOCK) {
             val f = RestoreSafety.phoneLock(LockStore.read(ctx).ok, v.phoneLock!!, mine, LockStore.readState(ctx).codeSet,
-                add = mode(BackupCategory.PHONE_LOCK) == RestoreMode.ADD)
+                add = mode(BackupCategory.PHONE_LOCK) != RestoreMode.REPLACE)
             j.begin(BackupCategory.PHONE_LOCK, RestoreProcess.VOICE)
             val st = j.staging(BackupCategory.PHONE_LOCK).apply { mkdirs() }
             writeAtomic(File(st, LockStore.LOCKS), LockCodec.encode(f))
@@ -437,11 +540,38 @@ internal class RestoreSession(private val ctx: Context,
             CategoryOutcome.Done
         }
 
+        // C10, Skills connections: after Skills (their steps name its ids, never changed), staged and written under skills.lock;
+        // this phone's key of each connection that goes, or now reaches another address, is deleted right after, in the same
+        // repeatable step. Someone else's arrive untrusted (RestoreSafety.connection). C12's L1: a key folder without a
+        // connection here goes too (read before the connections, so one saved meanwhile is never taken for a stray).
+        val connStore = ConnFiles.store(ctx)
+        step(BackupCategory.CONNECTIONS) {
+            if (connStore.file() !is ConnFile.Ok) return@step CategoryOutcome.Skipped(PlanSkip.CONNECTIONS_UNREADABLE)
+            val keyIds = ConnKeyFiles.ids(ctx)
+            val m = RestoreMerge.connections(connStore.connections(), v.connections.orEmpty(), mode(BackupCategory.CONNECTIONS), mine, keyIds)
+            kept += m.kept.size
+            j.begin(BackupCategory.CONNECTIONS, RestoreProcess.VOICE)
+            val st = j.staging(BackupCategory.CONNECTIONS).apply { mkdirs() }
+            writeAtomic(File(st, BackupCategory.CONNECTIONS_FILE), ConnectionCodec.encode(m.connections))
+            writeAtomic(File(st, DROP_KEYS), JSONArray(m.dropKeys.sorted()).toString())
+            j.commit(BackupCategory.CONNECTIONS, RestoreProcess.VOICE)
+            finishVoice(ctx, BackupCategory.CONNECTIONS, st)
+            j.done(BackupCategory.CONNECTIONS)
+            CategoryOutcome.Done
+        }
+
         // Notes, History, Transcripts, keys and the voiceprint come from one more pass over the file (every chunk checked again).
-        val notes = if (BackupCategory.NOTES in restoring) RestoreMerge.byUpdated(haveNotes(), v.notes, mode(BackupCategory.NOTES)) else null
+        val notes = if (BackupCategory.NOTES in restoring) RestoreMerge.byUpdated(haveNotes(), v.notes, mode(BackupCategory.NOTES), replaceYours = mine) else null
         val history = if (BackupCategory.HISTORY in restoring) RestoreMerge.byUpdated(haveHistory(), v.history, mode(BackupCategory.HISTORY)) else null
+        // F45: the first check was when the file was copied in, minutes ago; again here, before anything is staged, and before the move.
+        fun transcriptsWait() = BackupCategory.TRANSCRIPTS in restoring && RestoreMerge.transcriptsWait(mode(BackupCategory.TRANSCRIPTS),
+            readOrNull(File(transcriptsDir(), SessionHeartbeat.FILE)), System.currentTimeMillis(), HEARTBEAT_MS)
+        if (transcriptsWait()) out[BackupCategory.TRANSCRIPTS] = CategoryOutcome.Skipped(PlanSkip.RECORDING)
         val transcripts = if (BackupCategory.TRANSCRIPTS in restoring) RestoreMerge.transcripts(haveTranscripts(), v.transcripts.keys, mode(BackupCategory.TRANSCRIPTS)) else null
         val keys = if (BackupCategory.KEYS in restoring) RestoreMerge.keys(v.keys, robot.helpers.map { it.id }.toSet(), { BackupSecrets.hasKey(ctx, it) }, mine) else null
+        // C10: connection keys, for the connections here now (after the Connections step), each to the address it was saved for.
+        val connKeys = if (BackupCategory.CONN_KEYS in restoring) RestoreMerge.connectionKeys(v.connKeys, v.connections, connStore.connections(),
+            { BackupSecrets.hasConnectionKey(ctx, it) }, mine) else null
         // 1.4, Robot Files: planned now (People landed), its files sealed again under this phone's key in the same pass.
         val filesPlan = if (BackupCategory.FILES in restoring && out[BackupCategory.FILES] == null) try {
             planFiles(v, mode(BackupCategory.FILES), mine, now, peopleLanded)
@@ -455,9 +585,10 @@ internal class RestoreSession(private val ctx: Context,
         val wanted = filesPlan?.add?.associateBy { it.id }.orEmpty()
         val toSeal = filesPlan?.staged.orEmpty()
         var filesFailed: Throwable? = null
-        val streamed = (listOf(BackupCategory.NOTES, BackupCategory.HISTORY, BackupCategory.TRANSCRIPTS, BackupCategory.KEYS, BackupCategory.VOICEPRINT)
+        val streamed = (listOf(BackupCategory.NOTES, BackupCategory.HISTORY, BackupCategory.TRANSCRIPTS, BackupCategory.KEYS, BackupCategory.CONN_KEYS, BackupCategory.VOICEPRINT)
             .filter { it in restoring && out[it] == null } + listOfNotNull(BackupCategory.FILES.takeIf { toSeal.isNotEmpty() })).toSet()
         val keyBytes = LinkedHashMap<String, ByteArray>()
+        val connKeyBytes = LinkedHashMap<String, ByteArray>()
         var voiceprint: ByteArray? = null
         if (streamed.isNotEmpty()) {
             for (c in streamed) if (c != BackupCategory.VOICEPRINT) j.begin(c, RestoreProcess.VOICE, undo = undoFor(c))
@@ -474,6 +605,7 @@ internal class RestoreSession(private val ctx: Context,
                         }
                         BackupCategory.TRANSCRIPTS -> if (BackupCategory.transcriptOf(name) in transcripts!!.write) copy(data, File(j.staging(c), name))
                         BackupCategory.KEYS -> if (name in keys!!.save) keyBytes[name] = data.readBytes()
+                        BackupCategory.CONN_KEYS -> if (name in connKeys!!.save) connKeyBytes[name] = data.readBytes()
                         BackupCategory.VOICEPRINT -> voiceprint = data.readBytes()
                         // Each file sealed again with a fresh key, never on disk in the clear; a problem here is Files' alone
                         // (the backup's own problems still stop the pass).
@@ -501,19 +633,44 @@ internal class RestoreSession(private val ctx: Context,
         }
         step(BackupCategory.NOTES) { files(j, BackupCategory.NOTES, notes!!.delete.map { "$it.json" }, NotesFiles.dir(ctx)) }
         step(BackupCategory.HISTORY) { files(j, BackupCategory.HISTORY, history!!.delete.map { "$it.json" }, Paths.conversations(ctx)) }
-        step(BackupCategory.TRANSCRIPTS) { files(j, BackupCategory.TRANSCRIPTS, transcripts!!.delete, transcriptsDir()) }
+        step(BackupCategory.TRANSCRIPTS) {
+            // Left STAGED: the recovery below undoes it, nothing of yours changed.
+            if (transcriptsWait()) CategoryOutcome.Skipped(PlanSkip.RECORDING) else files(j, BackupCategory.TRANSCRIPTS, transcripts!!.delete, transcriptsDir())
+        }
         step(BackupCategory.KEYS) {
+            // F46: a key that wasn't saved and isn't here counts; one already here is kept on purpose.
+            var missed = 0
             try {
                 for ((name, bytes) in keyBytes) {
                     j.keySaving(name)
-                    BackupSecrets.saveKey(ctx, robot, name, bytes)
+                    if (!BackupSecrets.saveKey(ctx, robot, name, bytes) && !BackupSecrets.hasKey(ctx, name)) missed++
                 }
             } finally {
                 keyBytes.values.forEach { it.fill(0) }
             }
             j.done(BackupCategory.KEYS)
-            CategoryOutcome.Done
+            CategoryOutcome.keys(missed, keyBytes.size, keys!!.noPlace, alsoCame = codes.isNotEmpty())
         }
+        // C10: each connection key noted, then saved with a fresh Keystore key (a cut run deletes those it saved).
+        step(BackupCategory.CONN_KEYS) {
+            // F88: as Keys (F46): one that wasn't saved and isn't here counts.
+            var missed = 0
+            try {
+                for ((name, bytes) in connKeyBytes) {
+                    val id = BackupCategory.connOf(name) ?: continue
+                    j.keySaving(name, BackupCategory.CONN_KEYS)
+                    if (!BackupSecrets.saveConnectionKey(ctx, id, bytes, v.connKeys[id].orEmpty()) && !BackupSecrets.hasConnectionKey(ctx, id)) missed++
+                }
+            } finally {
+                connKeyBytes.values.forEach { it.fill(0) }
+            }
+            j.done(BackupCategory.CONN_KEYS)
+            CategoryOutcome.keys(missed, connKeyBytes.size, connKeys!!.noPlace)
+        }
+        // Whatever the steps did, no key's bytes stay in memory.
+        keyBytes.values.forEach { it.fill(0) }
+        connKeyBytes.values.forEach { it.fill(0) }
+
         // 1.4, Robot Files: whole or not at all. Everything that can fail for good fails before COMMIT; after it,
         // FileStore.restoreIn (Replace's deletes, the index, the files moved in) is repeated until it is done.
         step(BackupCategory.FILES) {
@@ -523,7 +680,7 @@ internal class RestoreSession(private val ctx: Context,
                 if (BackupCategory.FILES !in streamed) j.begin(BackupCategory.FILES, RestoreProcess.VOICE, undo = undoFor(BackupCategory.FILES))
                 if (toSeal.any { !File(filesStaging, it.hex + FileStore.SEALED_EXT).isFile }) throw IOException("files") // l10n: not text (a log code)
                 val add = f.add.map { e -> sniffs[e.id]?.let { FilesMerge.sniffed(e, it, mine) } ?: e }
-                val extra = (if (mine) v.files!!.extra - FilesBackup.RETHUMB else emptyMap()) + (FilesBackup.RETHUMB to f.rethumb.map { it.hex })
+                val extra = (if (mine) v.files!!.extra - FilesBackup.RETHUMB - FilesBackup.LEFT_OUT else emptyMap()) + (FilesBackup.RETHUMB to f.rethumb.map { it.hex })
                 files().sealRestoreIndex(File(filesStaging, ENTRIES), FileIndex(add, extra))
                 writeAtomic(File(filesStaging, PLAN), JSONObject().put("v", 1).put("mode", mode(BackupCategory.FILES).name).put("mine", mine)
                     .put("delete", JSONArray(f.delete.map { it.hex })).toString())
@@ -551,6 +708,40 @@ internal class RestoreSession(private val ctx: Context,
             }
         }
 
+        // 1.4, Lists (lists-plan.md §6): one file under one lock, as Memory: sealed again under this phone's key by the vault's
+        // own write, merged by ListsMerge (Add) or taken whole (Replace), someone else's apart. Then Settings › Lists: the
+        // restored lock switches followed by the seal and the journal first (follow), then saved, as Settings › Lists does;
+        // when they can't be followed now, both stay at this phone's values.
+        step(BackupCategory.LISTS) {
+            j.begin(BackupCategory.LISTS, RestoreProcess.VOICE)
+            val vault = lists()
+            val file = v.lists
+            if (file != null) {
+                val langs = AppLanguage.langs(ctx)
+                val roleName = { r: ListRole -> (if (r == ListRole.SHOPPING) ListsStrings.shopping() else ListsStrings.todo()).render(langs) }
+                when (val r = vault.restore { have, ids -> RestoreMerge.lists(have, file, mode(BackupCategory.LISTS), mine, ids, roleName) }) {
+                    is ListsRestore.Done -> {}
+                    ListsRestore.TooBig -> return@step CategoryOutcome.Skipped(PlanSkip.TOO_BIG)
+                    is ListsRestore.Problem -> return@step when (r.load) {
+                        ListsLoad.Locked -> CategoryOutcome.Locked
+                        ListsLoad.Unreadable, is ListsLoad.TooNew -> CategoryOutcome.Skipped(PlanSkip.LISTS_UNREADABLE)
+                        else -> CategoryOutcome.Failed
+                    }
+                }
+            }
+            v.listsSettings?.let { fs ->
+                val here = ListsSettingsStore.current(ctx)
+                val g = RestoreSafety.listsSettings(here, fs.read, mine)
+                kept += g.kept.size
+                val want = g.value
+                val followed = if (want.addLocked == here.addLocked && want.lockScreen == here.lockScreen) true
+                    else vault.follow(want) is ListsFollow.Done
+                ListsSettingsStore.restore(ctx) { raw -> RestoreSafety.listsSettingsFile(raw, fs, mine, want.takeIf { followed }) }
+            }
+            j.done(BackupCategory.LISTS)
+            CategoryOutcome.Done
+        }
+
         var voiceprintSaved = false
         step(BackupCategory.VOICEPRINT) {
             val b = voiceprint ?: return@step CategoryOutcome.Failed
@@ -569,6 +760,33 @@ internal class RestoreSession(private val ctx: Context,
             v.settings[BackupCategory.UPDATES_FILE]?.let { writeAtomic(File(st, BackupCategory.UPDATES_STAGED), it) }
             if (mine) writeAtomic(File(st, BackupCategory.MINE_STAGED), "1")
             j.commit(BackupCategory.SETTINGS, RestoreProcess.MAIN)
+            CategoryOutcome.Done
+        }
+        // The everyday set: staged for the main app, which merges it over its own file as it is then (RestoreApply,
+        // EverydaySettingsStore.restore); the backup's pin of a music app, if an older file had one, is never taken.
+        step(BackupCategory.EVERYDAY) {
+            val e = v.everyday ?: return@step CategoryOutcome.Failed
+            kept += RestoreSafety.everyday(EverydaySettingsStore.current(ctx), e.read, mine).kept.size
+            j.begin(BackupCategory.EVERYDAY, RestoreProcess.VOICE)
+            val st = j.staging(BackupCategory.EVERYDAY).apply { mkdirs() }
+            writeAtomic(File(st, BackupCategory.EVERYDAY_FILE), EverydaySettingsCodec.encode(e.read, e.extra))
+            if (mine) writeAtomic(File(st, BackupCategory.MINE_STAGED), "1")
+            j.commit(BackupCategory.EVERYDAY, RestoreProcess.MAIN)
+            CategoryOutcome.Done
+        }
+        // L12, D14: staged here, in :voice, and only when the backup is yours. The main app merges the settings (RestoreSafety.link)
+        // and leaves links.json for :link, which adds it as paused pairings.
+        step(BackupCategory.LINKS) {
+            val links = v.links?.let { app.heyrobot.core.backup.RestoreTaint.links(it, mine) }
+            val settings = v.linkSettings
+            if (!mine || (links == null && settings == null)) return@step CategoryOutcome.Failed
+            settings?.let { kept += RestoreSafety.link(app.heyrobot.sys.LinkSettingsStore.current(ctx), it.read).kept.size }
+            j.begin(BackupCategory.LINKS, RestoreProcess.VOICE)
+            val st = j.staging(BackupCategory.LINKS).apply { mkdirs() }
+            links?.let { writeAtomic(File(st, BackupCategory.LINKS_FILE), app.heyrobot.core.link.LinkBackupCodec.encode(it)) }
+            settings?.let { writeAtomic(File(st, BackupCategory.LINK_SETTINGS), app.heyrobot.core.link.LinkSettingsCodec.encode(it.read, it.extra)) }
+            writeAtomic(File(st, BackupCategory.MINE_STAGED), "1")
+            j.commit(BackupCategory.LINKS, RestoreProcess.MAIN)
             CategoryOutcome.Done
         }
         // The voiceprint came back without Settings: the main app still notes that it is enrolled here (a line of its own).
@@ -616,25 +834,26 @@ internal class RestoreSession(private val ctx: Context,
         return CategoryOutcome.Done
     }
 
-    private fun copy(data: InputStream, to: File) {
-        to.parentFile?.mkdirs()
-        val tmp = File(to.parentFile, to.name + ".tmp")
-        tmp.outputStream().use { data.copyTo(it, BackupFormat.CHUNK) }
-        if (!tmp.renameTo(to)) throw IOException("rename")
-    }
+    private fun copy(data: InputStream, to: File) = StagedFiles.copy(data, to)
 
     private fun finish(out: Map<BackupCategory, CategoryOutcome>, v: VerifiedBackup, mine: Boolean, kept: Int): RestoreResult {
-        val r = RestoreResult(System.currentTimeMillis(), mine, out, kept, v.manifest.robot)
-        try { writeAtomic(RestoreFiles.resultFile(ctx), r.toJson()) } catch (t: Throwable) { RLog.w("restore_result", t) }
+        val r = RestoreResult(System.currentTimeMillis(), mine, out, kept, v.manifest.robot, filesLeftOut = filesLeft(out, v))
+        RestoreFiles.progress(ctx).end(r)
         val notDone = out.filterValues { it != CategoryOutcome.Done && it !is CategoryOutcome.Skipped }.keys
         VoiceLog.add(VoiceEvent.RESTORE, if (notDone.isEmpty()) 1 else 2, BackupExport.bits(r.done), BackupExport.bits(notDone))
         return r
     }
 
+    /** R4: the files this backup itself lacks, for a restore that took (or meant to take) its Robot Files. */
+    private fun filesLeft(lines: Map<BackupCategory, CategoryOutcome>, v: VerifiedBackup): Int =
+        if (lines[BackupCategory.FILES].let { it == null || it is CategoryOutcome.Skipped }) 0 else FilesBackup.leftOut(v.files)
+
     override fun close() {
         key?.close()
         key = null
         incoming.delete()
+        if (!closed) sessions.decrementAndGet()
+        closed = true
     }
 
     companion object {
@@ -643,6 +862,8 @@ internal class RestoreSession(private val ctx: Context,
         /** 1.4: Robot Files' staging: the entries the restore adds (sealed) and its plan (ids and switches only). */
         const val ENTRIES = "entries.rf"
         const val PLAN = "plan.json"
+        /** C10: Connections' staging: the ids whose key on this phone goes before connections.json is written. */
+        const val DROP_KEYS = "drop_keys.json"
 
         /** FX3: why Robot Files' commit last stayed at COMMIT: free space or the storage (true), or the unlock (false). */
         @Volatile private var waitsForRoom = false
@@ -652,6 +873,11 @@ internal class RestoreSession(private val ctx: Context,
         /** 1.4: a restore is being written in this process now (FilingWork's unlock recovery leaves the journal alone then). */
         @Volatile var running = false
             private set
+        /** R10: the sessions open in this process: one of them may be using the copy in restore/incoming. */
+        private val sessions = java.util.concurrent.atomic.AtomicInteger()
+
+        /** R11: the window's tap on Restore: from here a window made again shows the restore running, never the picker. */
+        fun willRun() { running = true }
         /** Room left free after a restore (EST). */
         const val SPARE = 512L * 1024 * 1024
 
@@ -662,27 +888,24 @@ internal class RestoreSession(private val ctx: Context,
                     finished = went
                     settled(ctx, went)
                 }
-                BackupCategory.HANDSFREE -> {
-                    val hf = HandsFreeFiles.store(ctx)
-                    readOrNull(File(staging, HandsFreeStore.DEVICES))?.let { t -> (DeviceMemory.decode(t) as? DeviceFile.Ok)?.memory }?.let { m -> hf.editDevices { m } }
-                    readOrNull(File(staging, HandsFreeStore.HEADSET))?.let { t -> HeadsetFile.decode(t) }?.let { h -> hf.editHeadset { h } }
-                    readOrNull(File(staging, HandsFreeStore.CAR))?.let { t -> CarFile.decode(t) }?.let { x -> hf.editCar { x } }
-                    readOrNull(File(staging, HandsFreeStore.PLACES))?.let { t -> Places.decode(t) }?.let { p -> hf.editPlaces { p } }
-                }
-                BackupCategory.ROUTINES -> {
-                    val rs = RoutineFiles.store(ctx)
-                    readOrNull(File(staging, "routines.json"))?.let { t -> (RoutineCodec.decode(t) as? RoutineFile.Ok)?.routines }?.let { l -> rs.edit { l } } // l10n: not text (a file name)
-                    readOrNull(File(staging, "routine_settings.json"))?.let(RoutineSettingsCodec::decode)?.let { s -> rs.editSettings { s } } // l10n: not text (a file name)
-                    readOrNull(File(staging, "reminders.json"))?.let(BriefReminders::decode)?.let { l -> rs.editReminders { l } } // l10n: not text (a file name)
-                }
+                BackupCategory.HANDSFREE -> RestoreFinish.handsfree(HandsFreeFiles.store(ctx), staging)
+                BackupCategory.ROUTINES -> RestoreFinish.routines(RoutineFiles.store(ctx), staging)
                 BackupCategory.SKILLS -> {
-                    val ss = SkillFiles.store(ctx)
-                    readOrNull(File(staging, SkillStore.SKILLS))?.let { t -> (SkillCodec.decode(t) as? SkillFile.Ok)?.skills }?.let { l -> ss.edit { l } }
-                    readOrNull(File(staging, SkillStore.SETTINGS))?.let { t -> (app.heyrobot.core.skills.SkillSettingsCodec.decode(t) as? app.heyrobot.core.skills.SkillSettingsFile.Ok)?.read }
-                        ?.let { ss.saveSettings(it) }
-                    // Phase B: the fill samples start over after a restore (plan §4), the safe side.
-                    ss.editState { app.heyrobot.core.skills.SkillStats.cleared(it) }
+                    RestoreFinish.skills(SkillFiles.store(ctx), staging)
                     SkillFiles.changed(ctx)
+                }
+                // C10: connections.json, then the keys of those that go or now reach another address (a connection that moves
+                // never keeps this phone's key), together under skills.lock. Both repeatable. F89: a list that can't be written
+                // fails the category (CantFinish) with every key still here.
+                BackupCategory.CONNECTIONS -> ConnFiles.store(ctx).let { store ->
+                    store.locked {
+                        val l = readOrNull(File(staging, BackupCategory.CONNECTIONS_FILE))?.let { t -> (ConnectionCodec.decode(t) as? ConnFile.Ok)?.connections }
+                            ?: throw CantFinish(BackupCategory.CONNECTIONS_FILE)
+                        store.edit { l } ?: throw CantFinish(BackupCategory.CONNECTIONS_FILE)
+                        readOrNull(File(staging, DROP_KEYS))?.let { t -> try { JSONArray(t) } catch (_: Exception) { null } }?.let { a ->
+                            for (i in 0 until a.length()) a.optString(i).takeIf { app.heyrobot.core.skills.SkillStep.validConnId(it) }?.let { ConnKeyFiles.removeAll(ctx, it) }
+                        }
+                    }
                 }
                 BackupCategory.NOTES -> StagedFiles.moveIn(staging, live ?: NotesFiles.dir(ctx))
                 BackupCategory.HISTORY -> StagedFiles.moveIn(staging, live ?: Paths.conversations(ctx))
@@ -692,14 +915,33 @@ internal class RestoreSession(private val ctx: Context,
         }
 
         /** At :voice's start (VoiceHub) and after a restore: its COMMIT categories finished, its STAGED ones undone. */
-        fun recover(ctx: Context, files: () -> FilesVault = { RobotFiles.vault(ctx) }) {
+        fun recover(ctx: Context, files: () -> FilesVault = { RobotFiles.vault(ctx) }): List<Recovered> =
             try {
                 val j = RestoreFiles.journal(ctx)
-                if (j.read().isEmpty()) return
-                j.recover(RestoreProcess.VOICE, { c, st -> finishVoice(ctx, c, st, files = files) }, { names -> BackupSecrets.deleteKeys(ctx, names) },
+                if (j.read().isEmpty()) emptyList()
+                else j.recover(RestoreProcess.VOICE, { c, st -> finishVoice(ctx, c, st, files = files) }, { names -> BackupSecrets.deleteKeys(ctx, names) },
                     undo = { c, st -> if (c == BackupCategory.FILES) files().discardRestore(st) })
             } catch (t: Throwable) {
                 RLog.w("restore_recover", t)
+                emptyList()
+            }
+
+        /** F23: [recover] at :voice's start, never over a restore being written in this process: its staged lines aren't leftovers. */
+        fun recoverAtStart(ctx: Context) {
+            if (running) return
+            finished = null
+            val lines = recover(ctx).associateTo(LinkedHashMap()) { it.category to (it.state == JournalState.DONE) }
+            try {
+                // R1: a restore that stopped part way gets its result now, saying which categories it finished.
+                if (finished == false) lines[BackupCategory.FILES] = false
+                val waits = RestoreFiles.journal(ctx).state(BackupCategory.FILES) == JournalState.COMMIT
+                RestoreFiles.progress(ctx).settle(lines, if (!waits) null else if (waitsForRoom) CategoryOutcome.WaitsForRoom else CategoryOutcome.AfterUnlock)?.let { r ->
+                    VoiceLog.add(VoiceEvent.RESTORE, 2, BackupExport.bits(r.done), BackupExport.bits(r.outcomes.filterValues { it != CategoryOutcome.Done && it !is CategoryOutcome.Skipped }.keys))
+                }
+                // R10: a cut restore's copy of the backup doesn't wait for the next restore to go.
+                if (sessions.get() == 0 && !running) RestoreFiles.incoming(ctx).delete()
+            } catch (t: Throwable) {
+                RLog.w("restore_settle", t)
             }
         }
 

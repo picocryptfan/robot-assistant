@@ -111,4 +111,26 @@ class LockStateWriteTest {
         assertEquals(ActiveLock.VOICE, line.lock)
         assertEquals(180, line.n)
     }
+
+    /**
+     * FA2's follow-up: the code's key is gone and locks.json can't be written (here only that file: its temporary name is
+     * taken). keyLost throws, so the pad reports "not saved", the code and the locks stay, and the next try does it again;
+     * nothing may say there's no code while a lock for someone else is still on.
+     */
+    @Test fun keyLostFailsWhenLocksJsonCantBeWritten() {
+        assertNotNull(LockStore.editLocks(ctx) { f -> f.copy(settings = f.settings.copy(forWho = app.heyrobot.core.lock.LockFor.SOMEONE_ELSE)) })
+        LockStore.editState(ctx) { it.copy(codeSet = true) }
+        val tmp = File(dir, ".${LockStore.LOCKS}.tmp").apply { mkdirs() }
+        try {
+            assertTrue(runCatching { LockEngine.keyLost(ctx) }.isFailure)
+            assertTrue(stored().codeSet)
+            assertTrue(LockStore.read(ctx).ok!!.locks.single().on)
+        } finally {
+            tmp.delete()
+        }
+        // Next try, the file writable again: done.
+        LockEngine.keyLost(ctx)
+        assertFalse(stored().codeSet)
+        assertFalse(LockStore.read(ctx).ok!!.locks.single().on)
+    }
 }

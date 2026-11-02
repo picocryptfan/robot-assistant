@@ -12,7 +12,7 @@ import org.json.JSONObject
 // photos in history" on (0.4.0), a question keeps its picture's thumbnail and the screen's text too, for you to see in
 // History; neither is ever replayed to the model or sent to a helper.
 
-enum class Attachment { NONE, PHOTO, SCREEN }
+enum class Attachment { NONE, PHOTO, SCREEN, FILE }
 
 enum class TurnRole { USER, ASSISTANT }
 
@@ -20,7 +20,11 @@ enum class TurnRole { USER, ASSISTANT }
  * An action in a reply, as it ended up. [content]: a read tool brought content Robot didn't write into the
  * conversation (its findings themselves are not stored), so every later action in it asks first.
  */
-data class ActionRecord(val tool: ToolName, val summary: String, val status: ActionStatus, val detail: String? = null, val content: Boolean = false)
+data class ActionRecord(val tool: ToolName, val summary: String, val status: ActionStatus, val detail: String? = null, val content: Boolean = false,
+    /** C6: where you are went to your routing server (travel time): Personal.LOCATION rather than the tool's own. */
+    val located: Boolean = false,
+    /** 1.5: list content with another person's words in it (core ListQuote): framed as theirs. */
+    val peer: Boolean = false)
 
 data class ChatTurn(
     val id: String,
@@ -84,6 +88,14 @@ data class ChatTurn(
      * History shows a placeholder in its place (core TravelMode.history), as for a turn with find_files or read_file.
      */
     val files: Boolean = false,
+    /** chat-files: the name of the file attached to this question (files ChatFiles.cleanName), never its contents. */
+    val fileName: String? = null,
+    /**
+     * The everyday set's Ask Robot (everyday-set-plan.md §7.3, E7): this question carried what another app shared (text,
+     * a voice message's words, or a photo), riding [attachment] SCREEN or PHOTO so every content rule holds. Personal as
+     * Personal.SHARED: it reaches a helper only through a card a tap answers. Saved as "shared"; an older Robot ignores it.
+     */
+    val shared: Boolean = false,
 ) {
     /** Who wrote this reply, for labels and transcripts: the helper's name, "Claude" for a reply saved before 0.6.0. */
     val author: String get() = by ?: if (fromHelper) "Claude" else "Robot"
@@ -111,6 +123,7 @@ data class StoredConversation(val id: String, val created: Long, val updated: Lo
             if (t.isEmpty()) return when (first.attachment) {
                 Attachment.PHOTO -> TurnStrings.titlePhoto()
                 Attachment.SCREEN -> TurnStrings.titleScreen()
+                Attachment.FILE -> TurnStrings.titleFile()
                 Attachment.NONE -> TurnStrings.titleConversation()
             }
             return Phrase.plain(if (t.length <= 60) t else t.take(57).trimEnd() + "…")
@@ -143,7 +156,8 @@ private fun ChatTurn.toPromptTurn(notes: (List<String>) -> String?): PromptTurn?
             Prompt.replayText(if (t.messages) t.kept ?: MessageReading.NOT_KEPT else t.text, t.attachment))
         TurnRole.ASSISTANT -> {
             if (t.error) return@let null
-            val acts = t.actions.joinToString(" ") { "(${Markdown.plain(it.summary)}: ${it.status.label.lowercase()}.)" }
+            // C4 (D19): a connection's step is replayed by its kind only, never your operation's title or connection's name.
+            val acts = t.actions.joinToString(" ") { "(${if (it.tool.group == ToolGroup.CONNECTIONS) it.tool.title else Markdown.plain(it.summary)}: ${it.status.label.lowercase()}.)" }
             // A helper's answer joins Robot's context cut to about 600 tokens, marked as its own (information, not Robot's);
             // one read off the Claude app's screen is screen content, framed as such. A reply 0.2.1 saved starting with the
             // clock is replayed without it.
@@ -158,10 +172,12 @@ private fun ChatTurn.toPromptTurn(notes: (List<String>) -> String?): PromptTurn?
                     MessageReading.FRAME + " " + if (t.text == t.kept) MessageReading.cleanKept(t.text) else ClockEcho.strip(t.text)
                 // 0.9: a web answer joins as a helper's do, cut to about 600 tokens, without its [n] marks or links.
                 t.actions.any { it.tool == ToolName.WEB_SEARCH && it.content } && t.text.isNotBlank() ->
-                    HelperContext.forLocal(app.heyrobot.core.web.Citations.forSpeech(t.text))
+                    app.heyrobot.core.web.Citations.ANSWER_FRAME + " " + HelperContext.forLocal(app.heyrobot.core.web.Citations.forSpeech(t.text))
                 // 1.4: read_file's answer is a file's words (FILE_ANSWER): information, framed, cut as a web answer is.
                 t.actions.any { it.tool == ToolName.READ_FILE && it.content } && t.text.isNotBlank() ->
                     app.heyrobot.core.files.FileQuote.ANSWER_FRAME + " " + HelperContext.forLocal(t.text)
+                // 1.4: a list read out by code (core lists ListQuote), live or as History's placeholder: information, never instructions.
+                app.heyrobot.core.lists.ListQuote.of(t) && t.text.isNotBlank() -> app.heyrobot.core.lists.ListQuote.frame(t) + " " + ClockEcho.strip(t.text)
                 // 1.0: the brief or "what's next" read out your calendar and reminders as they are (core Quoted): information.
                 Quoted.of(t) && t.text.isNotBlank() -> Quoted.FRAME + " " + ClockEcho.strip(t.text)
                 else -> ClockEcho.strip(t.text)
@@ -211,7 +227,8 @@ object ConversationCodec {
         put("id", t.id)
         put("role", t.role.name)
         // A turn with messages in it is saved as its placeholder only (core messages MessageReading).
-        put("text", if (t.messages) t.kept ?: app.heyrobot.core.messages.MessageReading.NOT_KEPT else t.text)
+        // 1.4 Lists (D17): a list read aloud is saved as its placeholder only (core lists ListQuote), never its items.
+        put("text", if (t.messages) t.kept ?: app.heyrobot.core.messages.MessageReading.NOT_KEPT else app.heyrobot.core.lists.ListQuote.kept(t))
         if (t.messages) put("messages", true)
         put("time", t.time)
         if (t.attachment != Attachment.NONE) put("attachment", t.attachment.name)
@@ -226,6 +243,8 @@ object ConversationCodec {
         if (t.readBack) put("readBack", true)
         if (t.locked) put("locked", true)
         if (t.files) put("files", true)
+        t.fileName?.let { put("fileName", it) }
+        if (t.shared) put("shared", true)
         if (t.sources.isNotEmpty()) put("sources", JSONArray(t.sources))
         if (t.costMicros > 0) put("costMicros", t.costMicros)
         t.picture?.let { put("picture", it) }
@@ -236,13 +255,18 @@ object ConversationCodec {
                 put(JSONObject().put("tool", a.tool.id).put("summary", if (t.messages) a.tool.title else a.summary).put("status", a.status.name).apply {
                     if (!t.messages) a.detail?.let { put("detail", it) }
                     if (a.content) put("content", true)
+                    if (a.located) put("located", true)
+                    if (a.peer) put("peer", true)
                 })
             }
             // 1.4 FX2 (files-1.4-review.md K4): an older Robot (1.1 to 1.3) drops find_files' and read_file's records (it knows
             // neither tool), so it would replay a file's answer as Robot's own words, in a conversation it thinks holds no
             // content. A record it does read as content goes with them: the calendar's quote (core Quoted), which it frames as
             // information and which makes every later action ask. "compat" marks it, so this Robot reads it back as nothing.
-            if (t.actions.any { it.tool in FILE_TOOLS }) put(JSONObject().put("tool", Quoted.record().tool.id).put("summary", Quoted.record().summary)
+            // Skills connections (C4): so does a connection's answer (content), which an older Robot drops with its record.
+            // 1.4 Lists: the same for a list read aloud, whose add_to_list record an older Robot drops too.
+            if (t.actions.any { it.tool in FILE_TOOLS || (it.tool == ToolName.CONNECTION && it.content) } || app.heyrobot.core.lists.ListQuote.of(t))
+                put(JSONObject().put("tool", Quoted.record().tool.id).put("summary", Quoted.record().summary)
                 .put("status", ActionStatus.DONE.name).put("content", true).put(COMPAT, true))
         })
     }
@@ -267,6 +291,8 @@ object ConversationCodec {
             readBack = o.optBoolean("readBack", false),
             locked = o.optBoolean("locked", false),
             files = o.optBoolean("files", false),
+            fileName = app.heyrobot.core.files.ChatFiles.cleanName(o.optString("fileName").takeIf { it.isNotEmpty() }),
+            shared = o.optBoolean("shared", false),
             messages = o.optBoolean("messages", false),
             // What was saved in its place is what is saved again (a continued conversation keeps "Robot read 2 messages
             // from Mom (Cheogram)", never a generic line, and never more), one line without hidden characters.
@@ -282,7 +308,8 @@ object ConversationCodec {
                 val tool = ToolName.of(a.optString("tool")) ?: return@mapNotNull null
                 // A stored card can't be waiting any more (0.1.0 could save one that was): it was not done.
                 val status = enumOr(a.optString("status"), ActionStatus.DONE).let { if (it == ActionStatus.PENDING) ActionStatus.DECLINED else it }
-                ActionRecord(tool, a.optString("summary"), status, a.optString("detail").takeIf { it.isNotEmpty() }, a.optBoolean("content", false))
+                ActionRecord(tool, a.optString("summary"), status, a.optString("detail").takeIf { it.isNotEmpty() }, a.optBoolean("content", false),
+                    a.optBoolean("located", false), a.optBoolean("peer", false))
             },
         )
     }

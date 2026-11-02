@@ -1,0 +1,17 @@
+{
+  "format": 1,
+  "id": "ai-card-gpt",
+  "title": "\"Ask GPT\": the card shows; no app opens, since it is never tapped",
+  "safety": "stops-at-card",
+  "testBench": ["v100-anyai-apps"],
+  "setup": [{"set": "speakReplies", "value": "VOICE"}, {"set": "voiceCards", "value": true}],
+  "steps": [
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "Ask GPT what a heron eats.", "voice": "heart"},
+    {"do": "wait_card", "kind": "other", "seconds": 90},
+    {"do": "wait_listening", "seconds": 30},
+    {"do": "say", "text": "No thanks.", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 30},
+    {"do": "end"}
+  ]
+}

@@ -10,6 +10,22 @@ class ApprovalGateTest {
     private val defaults = RobotSettings()
     private val allAuto = defaults.copy(approvals = ToolName.entries.associateWith { Approval.AUTO })
 
+    /**
+     * The everyday set (everyday-set-plan.md §4.4, D8): calculate passes the gate locked or unlocked, during a phone lock, with
+     * content, a message or a helper in the conversation, and "Works on the lock screen" never lists it.
+     */
+    @Test fun calculateRunsLockedAndUnlocked() {
+        for (locked in listOf(false, true)) for (content in listOf(false, true)) for (messages in listOf(false, true)) for (lockedTools in listOf(emptySet(), LockScreen.DEFAULT)) {
+            val s = defaults.copy(lockedTools = lockedTools, safetyCards = SafetyCards.AFTER_READING)
+            assertEquals(GateDecision.RUN, ApprovalGate.decide(ToolName.CALCULATE, locked, s, content = content, messages = messages, saidLocked = true))
+            assertFalse(ApprovalGate.lockedOut(ToolName.CALCULATE, locked, s))
+        }
+        assertFalse(ToolName.CALCULATE in LockScreen.CHOICES)
+        assertTrue(ToolName.CALCULATE.internal && !ToolName.CALCULATE.reads && !ToolName.CALCULATE.online)
+        // Only calculate: every other tool keeps its lock rule.
+        assertEquals(setOf(ToolName.CALCULATE), ToolName.entries.filter { ApprovalGate.free(it) }.toSet())
+    }
+
     @Test fun timersAndAlarmsJustRunByDefaultEvenLocked() {
         for (locked in listOf(false, true)) {
             assertEquals(GateDecision.RUN, ApprovalGate.decide(ToolName.SET_TIMER, locked, defaults))
@@ -19,7 +35,8 @@ class ApprovalGateTest {
 
     @Test fun everythingElseNeedsUnlockOnTheLockScreen() {
         // (0.9: the Termux tools follow Settings › Termux instead, TermuxPolicy's lock rule: TermuxToolsTest.)
-        for (t in ToolName.entries.filter { !it.termux } - LockScreen.DEFAULT) {
+        // (The everyday set, E2: calculate works locked by its own rule, ApprovalGate.free: calculateRunsLockedAndUnlocked.)
+        for (t in ToolName.entries.filter { !it.termux && !ApprovalGate.free(it) } - LockScreen.DEFAULT) {
             assertEquals(t.name, GateDecision.NEEDS_UNLOCK, ApprovalGate.decide(t, true, defaults))
         }
     }
@@ -32,7 +49,7 @@ class ApprovalGateTest {
         assertEquals(GateDecision.RUN, ApprovalGate.decide(ToolName.FLASHLIGHT, true, flashlight))
         assertEquals(GateDecision.NEEDS_UNLOCK, ApprovalGate.decide(ToolName.SET_TIMER, true, flashlight))
         val none = defaults.copy(lockedTools = emptySet())
-        for (t in ToolName.entries.filter { defaults.approval(it) != Approval.OFF && !it.termux }) assertEquals(t.name, GateDecision.NEEDS_UNLOCK, ApprovalGate.decide(t, true, none))
+        for (t in ToolName.entries.filter { defaults.approval(it) != Approval.OFF && !it.termux && !ApprovalGate.free(it) }) assertEquals(t.name, GateDecision.NEEDS_UNLOCK, ApprovalGate.decide(t, true, none))
         // Allowed there, a level still counts: Ask first asks, Off stays off.
         val texts = defaults.copy(lockedTools = setOf(ToolName.SEND_TEXT))
         assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(ToolName.SEND_TEXT, true, texts))
@@ -79,7 +96,8 @@ class ApprovalGateTest {
     @Test fun afterReadingScreenTextOrAPictureTurnsJustDoItIntoAsk() {
         for (s in listOf(defaults, allAuto).map { it.copy(safetyCards = SafetyCards.AFTER_READING) }) {
             // Every tool that writes or leaves the phone; the read tools only bring more to read (below).
-            for (t in ToolName.entries.filter { !it.reads && !it.termux }) for (asked in listOf(false, true)) {
+            // (The everyday set, E2: calculate writes nothing and runs with content too, calculateRunsLockedAndUnlocked.)
+            for (t in ToolName.entries.filter { !it.reads && !it.termux && !ApprovalGate.free(it) }) for (asked in listOf(false, true)) {
                 assertEquals(t.name, GateDecision.CONFIRM, ApprovalGate.decide(t, locked = false, settings = s, content = true, asked = asked))
             }
         }
@@ -102,7 +120,8 @@ class ApprovalGateTest {
     /** The default, "When you didn't ask for it": content forces a card only for an action your own words didn't ask for. */
     @Test fun byDefaultContentAsksOnlyForWhatYouDidNotAskFor() {
         assertEquals(SafetyCards.UNASKED, defaults.safetyCards)
-        for (s in listOf(defaults, allAuto)) for (t in ToolName.entries.filter { (!it.reads || it.online) && !it.termux }) {
+        // (The everyday set, E2: not calculate, which runs with content too: calculateRunsLockedAndUnlocked.)
+        for (s in listOf(defaults, allAuto)) for (t in ToolName.entries.filter { (!it.reads || it.online) && !it.termux && !ApprovalGate.free(it) }) {
             val level = s.approval(t)
             // Not asked for: as before, a card.
             assertEquals(t.name, if (level == Approval.OFF) GateDecision.DISABLED else GateDecision.CONFIRM,
@@ -122,7 +141,8 @@ class ApprovalGateTest {
     @Test fun unsureOnlyIgnoresContent() {
         val s = allAuto.copy(safetyCards = SafetyCards.UNSURE_ONLY)
         // 0.7: remember with content, or not asked for, is always a card (below and in everyCombination).
-        for (t in ToolName.entries - ToolName.ASK_HELPER - ToolName.REMEMBER) {
+        // (The everyday set, E2: calculate never carries a reason to ask; it runs: calculateRunsLockedAndUnlocked.)
+        for (t in ToolName.entries - ToolName.ASK_HELPER - ToolName.REMEMBER - ToolName.CALCULATE) {
             assertEquals(t.name, GateDecision.RUN, ApprovalGate.decide(t, false, s, content = true))
             assertEquals(t.name, GateDecision.CONFIRM, ApprovalGate.decide(t, false, s, why = setOf(AskWhy.WHO), content = true))
         }
@@ -132,8 +152,9 @@ class ApprovalGateTest {
         val t = ToolName.SEND_TEXT
         val s = allAuto
         assertEquals(GateDecision.RUN, ApprovalGate.decide(t, false, s))
-        // (1.4: AskWhy.FILES is a helper card's reason only: the gate never sees it.)
-        for (why in AskWhy.entries - AskWhy.FILES) assertEquals(why.name, GateDecision.CONFIRM, ApprovalGate.decide(t, false, s, why = setOf(why)))
+        // (1.4: AskWhy.FILES is a helper card's reason only: the gate never sees it. The everyday set's AskWhy.SHARED, E7,
+        // deliberately the same.)
+        for (why in AskWhy.entries - AskWhy.FILES - AskWhy.SHARED - AskWhy.LISTS) assertEquals(why.name, GateDecision.CONFIRM, ApprovalGate.decide(t, false, s, why = setOf(why)))
         assertEquals(GateDecision.RUN, ApprovalGate.decide(t, false, s.copy(whoCards = false), why = setOf(AskWhy.WHO)))
         assertEquals(GateDecision.RUN, ApprovalGate.decide(t, false, s.copy(learnedCards = false), why = setOf(AskWhy.LEARNED)))
         assertEquals(GateDecision.RUN, ApprovalGate.decide(ToolName.FREE_STORAGE, false, s.copy(deleteCards = false), why = setOf(AskWhy.DELETE)))
@@ -184,11 +205,14 @@ class ApprovalGateTest {
         // Every set of the first five reasons, and the Termux ones (0.9) alone and together.
         val termuxWhy = listOf(AskWhy.TERMUX, AskWhy.COMMAND, AskWhy.FROM_CONTENT)
         // 1.1: a dated reminder's card (AskWhy.REMINDER) alone and with a who-to reason, so the sets don't double.
-        // (1.4: AskWhy.FILES is a helper card's reason only: the gate never sees it.)
-        val plain = AskWhy.entries - termuxWhy - AskWhy.FILES - AskWhy.REMINDER
+        // (1.4: AskWhy.FILES is a helper card's reason only: the gate never sees it. E7's AskWhy.SHARED, deliberately the same.)
+        // C4: a connection step's three reasons alone, together and beside a who-to reason (not in the powerset: 8 times the cases).
+        val connWhy = listOf(AskWhy.CONNECTION, AskWhy.CONNECTION_FIRST, AskWhy.CONNECTION_TAP)
+        val plain = AskWhy.entries - termuxWhy - AskWhy.FILES - AskWhy.SHARED - AskWhy.LISTS - AskWhy.REMINDER - connWhy
         val reasons = (0 until (1 shl plain.size)).map { m -> plain.filterIndexed { i, _ -> m and (1 shl i) != 0 }.toSet() } +
             listOf(setOf(AskWhy.TERMUX), setOf(AskWhy.COMMAND), setOf(AskWhy.FROM_CONTENT), setOf(AskWhy.TERMUX, AskWhy.COMMAND), setOf(AskWhy.TERMUX, AskWhy.FROM_CONTENT),
-                setOf(AskWhy.REMINDER), setOf(AskWhy.REMINDER, AskWhy.WHO))
+                setOf(AskWhy.REMINDER), setOf(AskWhy.REMINDER, AskWhy.WHO), setOf(AskWhy.CONNECTION), setOf(AskWhy.CONNECTION_FIRST), setOf(AskWhy.CONNECTION_TAP),
+                connWhy.toSet(), setOf(AskWhy.CONNECTION_FIRST, AskWhy.WHO), setOf(AskWhy.CONNECTION_TAP, AskWhy.MESSAGE))
         var n = 0
         for (t in ToolName.entries) for (level in Approval.entries) for (mode in SafetyCards.entries) for (lockSet in listOf(LockScreen.DEFAULT, setOf(t)))
             for (claudeCards in bools) for (who in bools) for (learned in bools) for (delete in bools) for (helpers in bools) {
@@ -200,7 +224,8 @@ class ApprovalGateTest {
                     val cardReasons = listOf(
                         t == ToolName.ASK_HELPER,
                         remote && claudeCards,
-                        remote && t.reads && !helpers,
+                        // (C4: the gate's rule is a read's or an online lookup's; a connection's step is the first tool online that doesn't read.)
+                        remote && (t.reads || t.online) && !helpers,
                         level == Approval.ASK,
                         AskWhy.PICK in why,
                         AskWhy.ONLINE in why,
@@ -216,17 +241,27 @@ class ApprovalGateTest {
                         t == ToolName.REMEMBER && (!asked || content),
                         why.any { it in termuxWhy },
                         AskWhy.REMINDER in why,
+                        // 1.4 Lists (LS4): add_to_list's items that aren't your words, content or a new list: always a card.
+                        AskWhy.LIST_SUGGESTED in why,
+                        why.any { it in connWhy },
                     )
                     val want = when {
                         // 0.9: TermuxPolicy decided when it was prepared (Settings › Termux, the lock, rules 2 to 5): only its reasons count.
                         t.termux -> if (why.any { it in termuxWhy } || AskWhy.PICK in why || AskWhy.ONLINE in why || AskWhy.MESSAGE in why ||
                             AskWhy.SEARCH in why || AskWhy.SEARCH_PERSONAL in why || (AskWhy.WHO in why && who) ||
-                            (AskWhy.LEARNED in why && learned) || (AskWhy.DELETE in why && delete) || AskWhy.REMINDER in why) GateDecision.CONFIRM else GateDecision.RUN
+                            (AskWhy.LEARNED in why && learned) || (AskWhy.DELETE in why && delete) || AskWhy.REMINDER in why || AskWhy.LIST_SUGGESTED in why || why.any { it in connWhy })
+                            GateDecision.CONFIRM else GateDecision.RUN
                         level == Approval.OFF -> GateDecision.DISABLED
+                        // The everyday set (E2): calculate reads and changes nothing: it runs, locked or not, whatever else holds.
+                        t == ToolName.CALCULATE -> GateDecision.RUN
                         // 0.7: memory is never changed on the lock screen, whatever "Works on the lock screen" holds.
                         locked && (t == ToolName.REMEMBER || t == ToolName.FORGET) -> GateDecision.NEEDS_UNLOCK
                         // 1.4: Robot Files' reads never run locked, whatever "Works on the lock screen" holds (files-1.4-plan.md §5.3).
                         locked && (t == ToolName.FIND_FILES || t == ToolName.READ_FILE) -> GateDecision.NEEDS_UNLOCK
+                        // 1.4 Lists (LS4): the model never changes your lists on a locked phone, whatever the lock-screen list holds.
+                        locked && t == ToolName.ADD_TO_LIST -> GateDecision.NEEDS_UNLOCK
+                        // C4: a connection's or a hand-off's step never runs locked, whatever "Works on the lock screen" holds (D8).
+                        locked && (t == ToolName.CONNECTION || t == ToolName.HAND_OFF) -> GateDecision.NEEDS_UNLOCK
                         locked && t !in lockSet -> GateDecision.NEEDS_UNLOCK
                         cardReasons.any { it } -> GateDecision.CONFIRM
                         else -> GateDecision.RUN
@@ -314,5 +349,51 @@ class ApprovalGateTest {
         assertEquals(mapOf("status" to "done", "detail" to "Timer set"), ActionStatus.DONE.toolResponse("Timer set"))
         assertEquals(mapOf("status" to "phone_locked_user_must_unlock"), ActionStatus.NEEDS_UNLOCK.toolResponse(null))
         assertEquals("cancelled_by_user", ActionStatus.DECLINED.toolResponse("").getValue("status"))
+    }
+
+    /**
+     * Skills connections (C4, plan §5.4, D8): the connection branch. Never locked, whatever "Works on the lock screen" holds,
+     * before and after the card; then the usual rules (content, messages, said locked, remote); its level isn't one you set
+     * (always read as its default, Just do it); each of its reasons shows the card, and the first-use one can never be a
+     * silent first choice.
+     */
+    @Test fun theConnectionBranch() {
+        val conn = listOf(ToolName.CONNECTION, ToolName.HAND_OFF)
+        for (t in conn) {
+            assertTrue(t.internal && !t.forModel && t !in LockScreen.CHOICES)
+            assertEquals(Approval.AUTO, defaults.approval(t))
+            for (s in listOf(defaults, allAuto, defaults.copy(lockedTools = ToolName.entries.toSet()))) {
+                assertEquals(GateDecision.NEEDS_UNLOCK, ApprovalGate.decide(t, true, s))
+                assertTrue(ApprovalGate.lockedOut(t, true, s))
+                assertFalse(ApprovalGate.lockedOut(t, false, s))
+            }
+            assertEquals(GateDecision.RUN, ApprovalGate.decide(t, false, defaults, asked = true))
+            // Content, a message, words said locked: asks.
+            assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(t, false, defaults, content = true, asked = true))
+            assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(t, false, defaults, messages = true, asked = true))
+            assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(t, false, defaults, saidLocked = true))
+        }
+        // A settings file can't set a level for them: read as their default.
+        val o = defaults.toJson()
+        o.getJSONObject("approvals").put("connection", "OFF").put("hand_off", "ASK")
+        val read = RobotSettings.fromJson(o.toString())
+        assertEquals(Approval.AUTO, read.approval(ToolName.CONNECTION))
+        assertEquals(Approval.AUTO, read.approval(ToolName.HAND_OFF))
+        // Each reason shows the card under every setting that could loosen it; the first-use card never runs by itself.
+        val loose = allAuto.copy(safetyCards = SafetyCards.UNSURE_ONLY, whoCards = false, learnedCards = false, deleteCards = false, personalToHelpers = true)
+        for (why in listOf(AskWhy.CONNECTION, AskWhy.CONNECTION_FIRST, AskWhy.CONNECTION_TAP)) for (s in listOf(defaults, allAuto, loose))
+            for (asked in listOf(false, true)) assertEquals(why.name, GateDecision.CONFIRM, ApprovalGate.decide(ToolName.CONNECTION, false, s, setOf(why), asked = asked))
+        // A spoken yes: never for the first use or a tap reason; the plain connection card's yes is the action's to refuse (D14).
+        assertEquals(AskWhy.CONNECTION_FIRST, CardAnswer.tapFor(setOf(AskWhy.CONNECTION_FIRST)))
+        assertEquals(AskWhy.CONNECTION_TAP, CardAnswer.tapFor(setOf(AskWhy.CONNECTION_TAP, AskWhy.CONNECTION)))
+        assertEquals(null, CardAnswer.tapFor(setOf(AskWhy.CONNECTION)))
+        assertEquals(AskWhy.MESSAGE, CardAnswer.tapFor(setOf(AskWhy.CONNECTION_TAP, AskWhy.MESSAGE)))
+        assertEquals("Tap Allow for this connection, Just this time or Cancel: Robot sends nothing to a new address on a spoken yes.",
+            CardAnswer.tapText(AskWhy.CONNECTION_FIRST).render(app.heyrobot.core.i18n.Langs.EN))
+        assertEquals("Tap the card to go ahead: a spoken yes doesn't run this step.", CardAnswer.tapText(AskWhy.CONNECTION_TAP).render(app.heyrobot.core.i18n.Langs.EN))
+        for (why in listOf(AskWhy.CONNECTION_FIRST, AskWhy.CONNECTION_TAP))
+            assertEquals(CardAnswer.Does.TAP, CardAnswer.reply("yes", CardAnswer.Waiting(tapFor = why), voiceCards = true, voiceYesPersonal = true, spoken = true)!!.does)
+        // A routine never reaches a connection (D9).
+        for (t in conn) assertEquals(StepClass.NEVER, RoutineGate.classOf(t))
     }
 }

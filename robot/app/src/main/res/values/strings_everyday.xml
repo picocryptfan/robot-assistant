@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- The everyday set (docs/plans/everyday-set-plan.md): its Settings rows, laid by E0 (ui/settings/EverydaySettings.kt),
+     and each job's own strings in its own section below, so jobs running side by side merge without touching each other's
+     lines. What Robot says aloud goes in core's catalogs. -->
+<resources>
+    <!-- E0: the Settings rows (§2.4). -->
+    <string name="everyday_group_music">Music</string>
+    <string name="everyday_music">Music by voice</string>
+    <string name="everyday_music_summary">Pause, skip and play by name in your music app, with your voice</string>
+    <string name="everyday_music_app">Your music app</string>
+    <string name="everyday_music_app_none">None yet. Robot asks the first time you play something by name.</string>
+    <string name="everyday_group_other_apps">Other apps</string>
+    <string name="everyday_ask">Ask Robot in other apps</string>
+    <string name="everyday_ask_summary">In the text-selection menu and the share sheet. Robot reads what you hand it and never writes back.</string>
+    <string name="everyday_listen">Listening for other apps</string>
+    <string name="everyday_listen_summary">Other apps\' mic buttons use Robot\'s offline listening, only for an app on screen that has microphone access. Nothing is kept.</string>
+    <string name="everyday_voices">Robot\'s voices for other apps</string>
+    <string name="everyday_voices_summary">Robot shows in Android\'s list of voices and speaks for other apps once you pick it there. It keeps nothing it read.</string>
+    <string name="everyday_group_online">What went online</string>
+    <string name="everyday_online">Keep a record of what went online</string>
+    <plurals name="everyday_online_summary">
+        <item quantity="one">Every connection Robot makes, kept %1$d day on this phone. Robot never sends it.</item>
+        <item quantity="other">Every connection Robot makes, kept %1$d days on this phone. Robot never sends it.</item>
+    </plurals>
+
+    <!-- E1: music. -->
+    <string name="everyday_music_app_replaced">%1$s, replaced by an app signed by someone else. Pick it again.</string>
+    <string name="everyday_music_app_forget">None</string>
+    <string name="everyday_music_app_none_found">No music app on this phone takes requests from Robot.</string>
+
+    <!-- Car mode's music and maps: Settings › Actions › Maps. -->
+    <string name="everyday_group_maps">Maps</string>
+    <string name="everyday_maps_app">Your maps app</string>
+    <string name="everyday_maps_automatic">Automatic</string>
+    <string name="everyday_maps_automatic_summary">Organic Maps when it\'s installed, else your phone\'s default app for map links. Every route Robot opens goes there.</string>
+    <string name="everyday_maps_app_replaced">%1$s, replaced by an app signed by someone else. Pick it again.</string>
+
+    <!-- E2: sums. -->
+
+    <!-- E3: What went online. -->
+    <string name="everyday_online_page">See what went online</string>
+    <string name="everyday_online_off_summary">Off: nothing new is recorded</string>
+    <string name="everyday_online_intro">Every connection Robot made, with the server, what it was for, what allowed it and how many bytes. A web search\'s pages show their sites, and a site\'s name can hint at what you looked for. This record stays on this phone. Robot never sends it.</string>
+    <string name="everyday_online_days">Keep it for</string>
+    <plurals name="everyday_online_days_n">
+        <item quantity="one">%1$d day</item>
+        <item quantity="other">%1$d days</item>
+    </plurals>
+    <string name="everyday_online_cut">This record is too long to show in full. The oldest days are kept but not shown.</string>
+    <string name="everyday_online_delete">Delete the record</string>
+    <string name="everyday_online_delete_detail">Every row kept on this phone. Android\'s own count stays.</string>
+    <string name="everyday_online_delete_title">Delete the record?</string>
+    <string name="everyday_online_delete_text">Robot deletes every connection it recorded. New ones are recorded while the switch is on.</string>
+    <string name="everyday_online_delete_confirm">Delete</string>
+    <string name="everyday_online_deleted">Record deleted</string>
+    <string name="everyday_online_filter">Show</string>
+    <string name="everyday_online_all">Every kind</string>
+    <string name="everyday_online_g_weather">Weather</string>
+    <string name="everyday_online_g_places">Nearest place</string>
+    <string name="everyday_online_g_web">Web search</string>
+    <string name="everyday_online_g_helpers">Helpers</string>
+    <string name="everyday_online_g_downloads">Downloads</string>
+    <string name="everyday_online_g_updates">Updates</string>
+    <string name="everyday_online_g_skills">Skills</string>
+    <string name="everyday_online_g_link">Robot to Robot</string>
+    <plurals name="everyday_online_empty">
+        <item quantity="one">Robot hasn\'t gone online in the last %1$d day.</item>
+        <item quantity="other">Robot hasn\'t gone online in the last %1$d days.</item>
+    </plurals>
+    <string name="everyday_online_is_off">The record is off, so nothing new is recorded. Android\'s count still shows.</string>
+    <string name="everyday_online_yesterday">Yesterday</string>
+    <string name="everyday_online_footer">Apps Robot hands things to (your browser, your music app, your messaging app, Termux) go online on their own and aren\'t in this list. Sizes are what the requests and replies held; Android\'s count adds encryption and headers.</string>
+    <string name="everyday_online_d_when">When</string>
+    <string name="everyday_online_d_for">What for</string>
+    <string name="everyday_online_d_server">Server</string>
+    <string name="everyday_online_d_cause">What allowed it</string>
+    <string name="everyday_online_d_sent">Sent</string>
+    <string name="everyday_online_d_received">Received</string>
+    <string name="everyday_online_d_planned">Planned size</string>
+    <string name="everyday_online_d_ended">How it ended</string>
+    <string name="everyday_online_d_part">Part of Robot</string>
+    <string name="everyday_online_d_settings">Controlled in %1$s</string>
+    <string name="everyday_online_p_main">Robot\'s app</string>
+    <string name="everyday_online_p_voice">The assistant</string>
+    <string name="everyday_online_p_link">Robot to Robot</string>
+    <string name="everyday_online_open">Open</string>
+    <string name="everyday_online_close">Close</string>
+    <string name="everyday_feedback_what_online">what went online</string>
+
+    <!-- E5: listening for other apps: the sheet another app's RECOGNIZE_SPEECH opens (assistant/listen/ListenSheetActivity). -->
+    <string name="everyday_listen_sheet_listening">Listening…</string>
+    <string name="everyday_listen_sheet_writing">Writing down what you said…</string>
+    <string name="everyday_listen_sheet_stop">Stop</string>
+    <string name="everyday_listen_sheet_cancel">Cancel</string>
+    <string name="everyday_listen_sheet_close">Close</string>
+    <string name="everyday_listen_sheet_nothing">Robot didn\'t hear anything.</string>
+    <string name="everyday_listen_sheet_off">Listening for other apps is off. You can turn it on in Robot\'s Settings › Voice.</string>
+    <string name="everyday_listen_sheet_busy">Robot is already listening or talking. Try again when it\'s done.</string>
+    <string name="everyday_listen_sheet_language">Robot listens in English and French only.</string>
+    <string name="everyday_listen_sheet_lock">Robot doesn\'t listen for this app during this phone lock.</string>
+    <string name="everyday_listen_sheet_model">Robot\'s speech model isn\'t ready. You can download it in Robot\'s Settings › Voice.</string>
+    <string name="everyday_listen_sheet_covered">Another app is showing over this, so Robot stopped listening.</string>
+    <string name="everyday_listen_sheet_mic">Robot couldn\'t use the microphone.</string>
+    <string name="everyday_listen_sheet_failed">Robot couldn\'t write that down. Try again.</string>
+
+    <!-- E6: Robot's voices for other apps. -->
+    <string name="everyday_voices_list">Heart and Kitten speak English (US). Siwis speaks French, from France.</string>
+    <string name="everyday_voices_android">Android\'s text-to-speech settings</string>
+    <string name="everyday_voices_robot_only">No other text-to-speech engine is on this phone, so the phone\'s voice is Heart.</string>
+
+    <!-- E7: Ask Robot. The label is what the text-selection menu and the share sheet show. -->
+    <string name="everyday_ask_label">Ask Robot</string>
+    <string name="everyday_ask_reading_photo">Reading the photo…</string>
+    <string name="everyday_ask_writing_down">Writing down the voice message…</string>
+    <string name="everyday_ask_close">Close</string>
+    <string name="everyday_ask_tag">Shared</string>
+    <string name="everyday_ask_remove">Remove what you shared</string>
+    <string name="everyday_ask_explain">Explain</string>
+    <string name="everyday_ask_translate">Translate</string>
+    <string name="everyday_ask_summarize">Summarize</string>
+    <string name="everyday_ask_reply">Draft a reply</string>
+    <string name="everyday_ask_remember">Remember</string>
+    <string name="everyday_podcast_app">Your podcast app</string>
+    <string name="everyday_podcast_app_none">None yet. Once it’s set, car mode asks “Music or podcasts?”</string>
+</resources>

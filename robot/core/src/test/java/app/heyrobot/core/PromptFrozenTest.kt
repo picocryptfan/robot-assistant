@@ -33,6 +33,9 @@ import java.time.ZonedDateTime
  *
  * - 1.4 F9 (Robot Files' two reads): find_files' and read_file's descriptions, their two examples in the text-call hint, and
  *   every "every group" estimate (329 more, ToolBudget giving way as before). Nothing else of any prompt changed.
+ * - 1.5 L7 (ask_robot, robot-to-robot-plan.md §4.3): its description, its example in the text-call hint, and every "every
+ *   group" estimate (228 more; like Files' reads it is described only while its feature is on, and gives way in
+ *   ToolBudget). Nothing else of any prompt changed.
  */
 class PromptFrozenTest {
     private val now = ZonedDateTime.of(2026, 10, 20, 14, 5, 0, 0, ZoneId.of("America/Halifax"))
@@ -216,6 +219,40 @@ class PromptFrozenTest {
             val i = (0 until minOf(e.size, a.size)).firstOrNull { e[it] != a[it] } ?: minOf(e.size, a.size)
             File("build/prompts-files.actual.txt").apply { parentFile.mkdirs(); writeText(actual) }
             assertEquals("first difference at line ${i + 1}", e.getOrNull(i), a.getOrNull(i))
+            assertEquals(expected, actual)
+        }
+    }
+
+    /**
+     * 1.4 Lists (LS4, lists-plan.md §8.3): the LIST_SPLIT one-shot (core lists ListSplit) as :brain gets it, in its own record
+     * (test resource `prompts/lists.txt`, first written by job LS4): the fixed prompt, its size, and the requests for a short
+     * run in each language and the longest one sent, at 4,096 and 2,048 tokens of context. Never re-record this file to make a
+     * change pass either.
+     */
+    private fun listRecord(): String = buildString {
+        val ls = app.heyrobot.core.lists.ListSplit
+        append("# The list one-shot Robot builds for its model (PromptFrozenTest, 1.4 Lists). Frozen: never re-record to make a change pass.\n")
+        append("\n# System prompt.\n== split\n").append(one(ls.SYSTEM)).append('\n').append("tokens ").append(TokenEstimate.text(ls.SYSTEM)).append('\n')
+        append("\n# Requests.\n")
+        val longest = ("oat milk eggs bread coffee butter jam cheese apples pears flour sugar salt rice beans pasta sauce soap tea milk ").repeat(3).take(ls.MAX_CHARS).trim()
+        for (max in listOf(4096, 2048)) for ((name, piece) in listOf("en" to "eggs oat milk bread", "fr" to "des œufs du lait d'avoine du pain", "longest" to longest)) {
+            val o = ls.request(piece)
+            append("== ").append(name).append(" @").append(max).append('\n')
+            append(o.kind).append(' ').append(o.priority).append(" maxChunks ").append(OneShotRules.maxChunks(o, max)).append(" hasImage ").append(o.hasImage)
+                .append(" tokens ").append(OneShotRules.tokens(o)).append(" fits ").append(OneShotRules.fits(o, max)).append(" wants ").append(ls.wants(piece)).append('\n')
+            append(one(o.text)).append('\n')
+        }
+    }
+
+    @Test fun theListPromptIsAsFrozen() {
+        val actual = listRecord()
+        val expected = javaClass.getResourceAsStream("/prompts/lists.txt")?.bufferedReader()?.readText()
+        if (expected == null) {
+            val out = File("build/prompts-lists.actual.txt").apply { parentFile.mkdirs(); writeText(actual) }
+            fail("No frozen record yet: wrote ${out.absolutePath}")
+        }
+        if (expected != actual) {
+            File("build/prompts-lists.actual.txt").apply { parentFile.mkdirs(); writeText(actual) }
             assertEquals(expected, actual)
         }
     }

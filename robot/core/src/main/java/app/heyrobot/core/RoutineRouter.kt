@@ -366,15 +366,40 @@ object RoutineRouter {
     /** A clock time in a reminder's words: then it's an alarm or an event, as today. */
     private val HAS_TIME = Regex("""\d{1,2}\s*(?::\d{2}|h\d{0,2}|\s?[ap]\.?m\b)|\bat \d{1,2}\b|\bà \d{1,2}\b|\bnoon\b|\bmidi\b""", RegexOption.IGNORE_CASE)
 
+    /** The first word from [i] that isn't a comma. */
+    private fun pastCommas(p: Words, i: Int): Int {
+        var k = i
+        while (p.w(k) == ",") k++
+        return k
+    }
+
+    /**
+     * MORNING's longest phrase at [i], with the recognizer's stray comma inside it not counting (1 Nov, the spoken run:
+     * « Rappelle-moi demain, matin d'apporter … »): how many tokens it spans, and whether it's tomorrow.
+     */
+    private fun morningAt(p: Words, i: Int): Pair<Int, Boolean>? {
+        val said = mutableListOf<String>()
+        var best: Pair<Int, Boolean>? = null
+        var k = i
+        while (k < p.size && said.size < MORNING_MAX) {
+            val w = p.w(k++)!!
+            if (w == ",") continue
+            said += w
+            MORNING[said.joinToString(" ")]?.let { best = (k - i) to it }
+        }
+        return best
+    }
+    private const val MORNING_MAX = 5
+
     private fun remind(p: Words, i: Int): RoutineCommand? {
         val lead = p.at(i, REMIND_LEAD)
         if (lead > 0) {
-            var j = i + lead
+            var j = pastCommas(p, i + lead)
             // "remind me in the morning to …", "rappelle-moi demain matin d'apporter …".
-            val m = p.at(j, MORNING.keys)
-            if (m > 0) {
-                val tomorrow = MORNING.getValue((j until j + m).joinToString(" ") { p.w(it)!! })
-                j += m
+            val m = morningAt(p, j)
+            if (m != null) {
+                val tomorrow = m.second
+                j = pastCommas(p, j + m.first)
                 val to = p.at(j, "to", "de", "d")
                 if (to == 0) return null
                 return reminder(p.span(j + to, p.size), tomorrow)
@@ -384,7 +409,7 @@ object RoutineRouter {
             if (to == 0) return null
             for (k in p.size - 1 downTo j + to + 1) {
                 val n = p.at(k, MORNING.keys)
-                if (n > 0 && k + n == p.size) return reminder(p.span(j + to, k), MORNING.getValue((k until k + n).joinToString(" ") { p.w(it)!! }))
+                if (n > 0 && k + n == p.size) return reminder(p.span(j + to, if (p.w(k - 1) == ",") k - 1 else k), MORNING.getValue((k until k + n).joinToString(" ") { p.w(it)!! }))
             }
             return null
         }

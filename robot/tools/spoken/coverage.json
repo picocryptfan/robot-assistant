@@ -1,0 +1,508 @@
+{
+  "about": "Which Test Bench rows the spoken scripts cover. covers: all, or part with what stays on your list. MU, SU, WO, SE and AR are the everyday plan's ids until their rows are written.",
+  "rows": {
+    "MU2": {
+      "covers": "part",
+      "scripts": [
+        "mu2-bare-pause"
+      ],
+      "left": "\"pause\" with music playing. Music by voice is off in the test build, so the script's check can't fail on MusicRouter: by hand with it on"
+    },
+    "MU6": {
+      "covers": "part",
+      "scripts": [
+        "mu6-misfires"
+      ],
+      "left": "the whole check with Music by voice on: it is off in the test build, so the script can't fail on MusicRouter; \"play a game with me\" and \"play my voicemail\" (never said: they start with play); « mets » (the recognizer hears « mais »)"
+    },
+    "MU8": {
+      "covers": "part",
+      "scripts": [
+        "mu8-whats-playing"
+      ],
+      "left": "all of Music's answer: the test build has Music by voice off (its keys have no card), so the script only checks that the phrase goes to the model. By hand: \"Robot can't see...\" with no app picked, and with a music app picked"
+    },
+    "SU1": {
+      "covers": "all",
+      "scripts": [
+        "su1-tip"
+      ]
+    },
+    "SU2": {
+      "covers": "all",
+      "scripts": [
+        "su2-units"
+      ]
+    },
+    "SU3": {
+      "covers": "all",
+      "scripts": [
+        "su3-french"
+      ]
+    },
+    "SU4": {
+      "covers": "part",
+      "scripts": [
+        "su4-misfires",
+        "su4-misfires-fr"
+      ],
+      "left": "\"set a timer for 5 minutes\" is never said; Files' and Lists' replies themselves"
+    },
+    "SU5": {
+      "covers": "all",
+      "scripts": [
+        "su5-model"
+      ]
+    },
+    "WO1": {
+      "covers": "part",
+      "scripts": [
+        "wo1-after-weather"
+      ],
+      "left": "the row on the page"
+    },
+    "WO4": {
+      "covers": "part",
+      "scripts": [
+        "wo4-summary",
+        "wo-misfires"
+      ],
+      "left": "locked"
+    },
+    "c30-app-route": {
+      "covers": "part",
+      "scripts": [
+        "ai-card-claude"
+      ],
+      "left": "the tap, and the app opening"
+    },
+    "fl-french": {
+      "covers": "part",
+      "scripts": [
+        "files-spent-fr"
+      ],
+      "left": "the amount and file names (no demo files on the test build)"
+    },
+    "lt-add": {
+      "covers": "all",
+      "scripts": [
+        "lt-add",
+        "lt-add-kitten-fast",
+        "lt-add-noisy"
+      ]
+    },
+    "lt-french": {
+      "covers": "part",
+      "scripts": [
+        "lt-french"
+      ],
+      "left": "French menus, the check after ticking off, « y'a-tu » and « est-tu » (the recognizer mishears them from the clip voice)"
+    },
+    "lt-read": {
+      "covers": "all",
+      "scripts": [
+        "lt-read"
+      ]
+    },
+    "lt-several": {
+      "covers": "all",
+      "scripts": [
+        "lt-several"
+      ]
+    },
+    "v100-anyai-apps": {
+      "covers": "part",
+      "scripts": [
+        "ai-card-claude",
+        "ai-card-gpt"
+      ],
+      "left": "the taps, apps opening, Grok, Gemini, Mistral, DeepSeek, the lock"
+    },
+    "v100-helper-near-misses": {
+      "covers": "all",
+      "scripts": [
+        "helper-near-misses"
+      ]
+    },
+    "v100-se-model-words": {
+      "covers": "part",
+      "scripts": [
+        "look-it-up-card"
+      ],
+      "left": "the Search tap, the lock, the card after a message"
+    },
+    "v102-weather-day": {
+      "covers": "part",
+      "scripts": [
+        "weather-paris",
+        "weather-refused"
+      ],
+      "left": "the card's words"
+    },
+    "v11-french-times": {
+      "covers": "part",
+      "scripts": [
+        "event-card-fr"
+      ],
+      "left": "the three other phrases, the time range, and the dates on the card (the runner sees the card's kind only)"
+    },
+    "v11-lock-voice": {
+      "covers": "part",
+      "scripts": [
+        "lock-by-voice-no",
+        "lock-left-fr"
+      ],
+      "left": "the lock card itself (the test build has no lock set up, so the script checks the refusal), a real lock: its cover, the lock screen, a call during it"
+    },
+    "v11-panel-split-smoke": {
+      "covers": "part",
+      "scripts": [
+        "send-stops-at-card"
+      ],
+      "left": "all but the text card; \"banana\" at a card is refused by the safety rule"
+    },
+    "v11-update-from-101": {
+      "covers": "part",
+      "scripts": [
+        "event-card-en"
+      ],
+      "left": "the update, and French menus; the pause is the voice's own, not a set length"
+    },
+    "v11-voice-times": {
+      "covers": "part",
+      "scripts": [
+        "time-en",
+        "time-fr"
+      ],
+      "left": "how times sound; the alarm's and the events' lines (an alarm is never set unattended)"
+    },
+    "v12-prompt-tools-still-work": {
+      "covers": "part",
+      "scripts": [
+        "draft-text-card",
+        "note-en",
+        "note-fr",
+        "weather-paris"
+      ],
+      "left": "the timer, the alarm and opening Clock are never said unattended; turning the GPU off"
+    },
+    "v23-say-stop": {
+      "covers": "part",
+      "scripts": [
+        "stop-story",
+        "stop-recipe"
+      ],
+      "left": "that she goes quiet within a second (hearing)"
+    },
+    "v23-text-ask": {
+      "covers": "part",
+      "scripts": [
+        "text-ask"
+      ],
+      "left": "the draft opening in your messaging app"
+    },
+    "v40-free-memory": {
+      "covers": "part",
+      "scripts": [
+        "free-memory-card"
+      ],
+      "left": "the app list, Usage access, the lock"
+    },
+    "v40-phone-status": {
+      "covers": "part",
+      "scripts": [
+        "free-storage-card",
+        "battery-level"
+      ],
+      "left": "the tap on Usage access"
+    },
+    "v40-weather": {
+      "covers": "part",
+      "scripts": [
+        "weather-refused"
+      ],
+      "left": "location, the lock, no network"
+    },
+    "v46-stop-cards": {
+      "covers": "part",
+      "scripts": [
+        "stop-at-card"
+      ],
+      "left": "a yes or tap still answering the card, Claude's stream, the Tricky words test"
+    },
+    "v46-stop-long": {
+      "covers": "part",
+      "scripts": [
+        "stop-story"
+      ],
+      "left": "the screen timeout, a tap, TalkBack, words close to stop"
+    },
+    "v70-fb-voice": {
+      "covers": "part",
+      "scripts": [
+        "feedback-en",
+        "feedback-fr"
+      ],
+      "left": "the page Send feedback opens with Bug, the lock"
+    },
+    "v70-mem-model": {
+      "covers": "part",
+      "scripts": [
+        "mem-code-private"
+      ],
+      "left": "the card from the screen"
+    },
+    "v70-mem-private": {
+      "covers": "part",
+      "scripts": [
+        "mem-code-private"
+      ],
+      "left": "the lock screen, Say private items aloud"
+    },
+    "v70-mem-remember": {
+      "covers": "part",
+      "scripts": [
+        "mem-remember"
+      ],
+      "left": "the restart"
+    },
+    "v70-mem-what-saves": {
+      "covers": "part",
+      "scripts": [
+        "mem-what-saves"
+      ],
+      "left": "\"Remember: call me Sam\" (the safety rule reads \"call\")"
+    },
+    "v80-br-now": {
+      "covers": "part",
+      "scripts": [
+        "brief-en",
+        "brief-fr"
+      ],
+      "left": "the first words within 2 s (timing the voice), calendar events (calendar never granted), the notification's buttons, the brief in French's voice, « suivant » (the recognizer hears « suivante »)"
+    },
+    "v80-br-reminders": {
+      "covers": "part",
+      "scripts": [
+        "brief-reminder"
+      ],
+      "left": "the lock, the next morning's brief"
+    },
+    "v80-car-call-tool": {
+      "covers": "part",
+      "scripts": [
+        "call-card"
+      ],
+      "left": "the dialer; \"Call 911\" is never said"
+    },
+    "v80-rt-by-voice": {
+      "covers": "part",
+      "scripts": [
+        "routine-by-voice-no"
+      ],
+      "left": "a yes, a card from the screen, the lock"
+    }
+  },
+  "notScripted": {
+    "hardware": {
+      "why": "Needs a headset, a car or another phone; clips go in after the microphone, so none of that is exercised",
+      "rows": [
+        "cm-car-drive",
+        "v100-car-holds-off",
+        "v12-lock-oneui-call",
+        "v12-lock-oneui-escapes",
+        "v12-pause-media-oneui",
+        "v12-warning-4gb",
+        "v12-warning-6gb",
+        "v12-warning-cpu",
+        "v47-9a-cpu",
+        "v47-9a-fallback",
+        "v47-9a-gpu",
+        "v47-9a-use",
+        "v60-9a-gguf-crash",
+        "v60-9a-gpu-fail-report",
+        "v60-9a-gpu-oneshots",
+        "v80-an-car-park",
+        "v80-an-car-reply",
+        "v80-an-headset",
+        "v80-car-button",
+        "v80-car-core",
+        "v80-car-mic",
+        "v80-hs-button",
+        "v80-hs-mic",
+        "v80-hs-session",
+        "v80-hs-settings",
+        "v80-p11-fast",
+        "v80-p11-tpu-fails",
+        "v80-rt-unlock-devices"
+      ]
+    },
+    "service": {
+      "why": "Needs a server, Termux, a helper's key, your own model file or an app the test build must not reach",
+      "rows": [
+        "cf-helper",
+        "email-proton",
+        "v100-tx-shizuku-run",
+        "v11-gguf-reply",
+        "v40-helpers-auto",
+        "v45-gguf-actions",
+        "v45-gguf-answers",
+        "v45-gguf-control-tokens",
+        "v45-gguf-photos-screen",
+        "v46-claude-offer",
+        "v60-gguf-oneshots",
+        "v60-help-address",
+        "v60-help-budget-lock",
+        "v60-help-companies",
+        "v60-help-trust",
+        "v90-tx-limits",
+        "v90-tx-lock",
+        "v90-tx-readonly",
+        "v90-tx-setup",
+        "v90-tx-start",
+        "v90-web-first",
+        "v90-web-french",
+        "v90-web-lock-network",
+        "v90-web-pages"
+      ]
+    },
+    "messages": {
+      "why": "Needs message, contact or calendar access, which the test build is never granted",
+      "rows": [
+        "v12-reminders-no-calendar",
+        "v23-text-fast",
+        "v70-msg-gate-replies",
+        "v70-msg-groups-open-chat",
+        "v70-msg-language-voice",
+        "v70-msg-locked-signal",
+        "v70-msg-planted",
+        "v70-msg-setup-read",
+        "v70-msg-without-card",
+        "v80-br-unread"
+      ]
+    },
+    "lock": {
+      "why": "Needs the lock screen, a restart or a real phone lock: the guard stops any input there",
+      "rows": [
+        "cn-ha-security",
+        "fl-locked",
+        "lt-lock-screen",
+        "lt-locked",
+        "v100-sec-history-continue",
+        "v100-sec-locked-unlock",
+        "v11-lock-always",
+        "v11-lock-code",
+        "v11-skill-safety",
+        "v12-lock-stock-call-emergency",
+        "v40-lock",
+        "v60-conv-lock",
+        "v70-mem-key-change",
+        "v70-mem-locked",
+        "v80-br-locked"
+      ]
+    },
+    "other-app": {
+      "why": "Would open, read or change another app, install something, or set a real alarm or timer",
+      "rows": [
+        "actions-maps",
+        "c30-private",
+        "fl-file-this",
+        "v100-install",
+        "v100-move",
+        "v100-se-default",
+        "v100-se-engine-yours",
+        "v100-se-your-words",
+        "v100-sec-memory-taint",
+        "v102-cancel-honest",
+        "v11-pause-media",
+        "v12-clock-warning",
+        "v40-safety-cards",
+        "v40-screen",
+        "v60-conv-interrupts",
+        "v60-upd-install",
+        "v60-upd-options",
+        "v60-upd-refused",
+        "v60-upd-test-build",
+        "v80-br-alarm",
+        "v80-rt-clock"
+      ]
+    },
+    "person": {
+      "why": "A person's speech, ears or eyes, or the room's sound (the transcript and interpreter listen to the room, not to clips)",
+      "rows": [
+        "v11-translate-not-follow",
+        "v40-interrupt",
+        "v60-conv-check",
+        "v60-conv-start",
+        "v60-spk-fix",
+        "v60-spk-two-people",
+        "v60-spk-voice",
+        "v60-tr-interpreter-fast",
+        "v60-tr-interpreter-model",
+        "v60-tr-model-transcript"
+      ]
+    },
+    "taps": {
+      "why": "Depends on taps, Settings pages off the short list, a screen reader, demo files, your eyes or hours of use: a script can only speak and read",
+      "rows": [
+        "battery-overnight",
+        "fl-delete-tap",
+        "l10n-menus-follow",
+        "v100-a11y-answer",
+        "v100-a11y-pass",
+        "v100-classic-only",
+        "v100-guide-talkback",
+        "v100-mem-import-preview",
+        "v100-robot-face",
+        "v102-panel-fit",
+        "v11-answers-in",
+        "v11-listen-pause",
+        "v12-gpu-os-update",
+        "v12-gpu-selftest-note",
+        "v12-gpu-selftest-run",
+        "v12-gpu-try-again",
+        "v12-prompt-compact-gpu-off",
+        "v12-speeds-measure",
+        "v40-keep-media",
+        "v40-safety-defaults",
+        "v45-look-display",
+        "v45-talkback",
+        "v60-keys-kept",
+        "v60-markers-fast",
+        "v80-rt-settings"
+      ]
+    },
+    "everyday": {
+      "why": "MU1 MU3 MU4 MU5 MU7 MU9: Media keys and play by name reach your music app, and need music playing, the lock or the car; SU6: On the lock screen, where the guard stops; WO2 WO3 WO5 WO6 WO7: Taps, Android's own count, the Network switch, a web search or Send feedback; SE1 SE2 SE3 SE4 SE5 SE6 SE7 SE8: Another app or the screen reader is the point of the test; AR1 AR2 AR3 AR4 AR5 AR6 AR7: Another app is where Ask Robot starts",
+      "rows": [
+        "MU1",
+        "MU3",
+        "MU4",
+        "MU5",
+        "MU7",
+        "MU9",
+        "SU6",
+        "WO2",
+        "WO3",
+        "WO5",
+        "WO6",
+        "WO7",
+        "SE1",
+        "SE2",
+        "SE3",
+        "SE4",
+        "SE5",
+        "SE6",
+        "SE7",
+        "SE8",
+        "AR1",
+        "AR2",
+        "AR3",
+        "AR4",
+        "AR5",
+        "AR6",
+        "AR7"
+      ]
+    }
+  }
+}

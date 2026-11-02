@@ -83,8 +83,10 @@ enum class Priority { PANEL, INTERPRETER, TRANSCRIPT, SUMMARY }
  * What a one-shot request is for: 0.9's WEB_ANSWER is a web search's answer (core web WebPrompt), at the panel's priority.
  * 1.4 (Robot Files, plan §4.2 and §5.1): FILE_READ reads one file for filing, a page's picture or its text (core files
  * FilePrompt), and is the only kind that may carry a picture; FILE_ANSWER answers a question from one file's text.
+ * 1.4 (Robot Lists, lists-plan.md §8.3): LIST_SPLIT splits a run of your words with no separators into items (core lists
+ * ListSplit), at the panel's priority; code keeps its answer only when every item is a run of your words.
  */
-enum class OneShotKind { TRANSLATE, SUMMARY_MAP, SUMMARY_REDUCE, WEB_ANSWER, FILE_READ, FILE_ANSWER }
+enum class OneShotKind { TRANSLATE, SUMMARY_MAP, SUMMARY_REDUCE, WEB_ANSWER, FILE_READ, FILE_ANSWER, LIST_SPLIT }
 
 enum class BrainError {
     NOT_LOADED, NO_VISION, BAD_REQUEST, ENGINE, BUSY,

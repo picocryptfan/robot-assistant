@@ -19,6 +19,15 @@ import java.time.ZonedDateTime
  */
 class ActionOutcomeTest {
     // ------------------------------------------------------------------ claims
+    @Test fun aClaimInAnyWords() {
+        for (s in listOf("I've paused whatever you were doing.", "I paused it.", "I have just stopped the music.", "Paused.", "Okay, done.", "All set.",
+            "The music has been paused.", "J'ai arrêté la musique.", "Je viens de le mettre en pause.")) assertTrue(s, ActionOutcome.claimsAnything(s))
+        for (s in listOf("I can't pause anything.", "I need to know how long.", "I have a question.", "I've got no way to pause.", "What should I pause?",
+            "J'ai besoin d'une durée.", "Je n'ai rien arrêté.", "The timer needs a length.", "I can help with timers.", "Pausing isn't something I do.",
+            "Good morning.")) assertFalse(s, ActionOutcome.claimsAnything(s))
+        assertEquals("Anything else?", ActionOutcome.withoutAnyClaims("I've paused it. Anything else?"))
+    }
+
 
     @Test fun theRepliesThePhoneGaveAreClaims() {
         for (s in listOf(
@@ -94,6 +103,11 @@ class ActionOutcomeTest {
         assertTrue(ToolName.DRAFT_EMAIL in ToolRouter.asked("email Bob about lunch"))
         // What Robot read or saw is not: "what's on my screen?" asks for no action.
         assertFalse(ToolName.OPEN_APP in ToolRouter.asked("what's on my screen?"))
+        // L16, finding 13: only as a request, since a word too many skips a card.
+        for (q in listOf("what time does the store open", "is the pharmacy open today", "when does the game start tonight", "à quelle heure le magasin ouvre ce soir", "the store opens at nine"))
+            assertFalse(q, ToolName.OPEN_APP in ToolRouter.asked(q))
+        for (q in listOf("open the camera", "please open Maps", "can you open YouTube", "start Spotify", "launch the calculator", "ouvre Chrome", "peux-tu ouvrir la caméra", "I want to open Maps", "go ahead and open Maps"))
+            assertTrue(q, ToolName.OPEN_APP in ToolRouter.asked(q))
         assertFalse(ToolName.ADD_NOTE in ToolRouter.asked("what does this note say?"))
     }
 

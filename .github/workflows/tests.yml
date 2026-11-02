@@ -41,11 +41,25 @@ jobs:
       - name: Fetch the pinned third-party files
         run: robot/tools/fetch_third_party.sh --install
 
+      # :link builds against libsignal, Tor's and the push connector's local Maven repositories. Also not in git; pinned the same way.
+      - name: Fetch libsignal and the Robot to Robot carriers
+        run: |
+          robot/tools/fetch_libsignal.sh
+          robot/tools/fetch_link_deps.sh
+
+      # :link needs liblyrebird.so, built from source with the pinned Go (the script downloads it and checks its
+      # SHA-256) and the NDK it names; the runner image may carry another NDK, so this installs that one.
+      - name: Build liblyrebird
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.1.12297006"
+          ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.1.12297006" robot/tools/build_lyrebird.sh
+
       - name: Unit tests
         working-directory: robot
         run: >
           ./gradlew --no-daemon
           :core:testReleaseUnitTest :voice:testReleaseUnitTest :helpers:testReleaseUnitTest
+          :link:testReleaseUnitTest :brain:testReleaseUnitTest :mt:testReleaseUnitTest
           :app:testReleaseUnitTest :app:testDebugUnitTest
 
       - name: Test reports

@@ -197,6 +197,34 @@ class BackupRoundTripTest {
     }
 
     /**
+     * A phone with no locks when the preview opened (FRESH) and one added since: it stays and the backup's join it, as
+     * every other FRESH category does (backup-1.1-design §7.3). Only Replace replaces locks.json.
+     */
+    @Test fun aFreshRestoreKeepsALockAddedSinceThePreview() {
+        val lockDir = app.heyrobot.lock.LockStore.dir(ctx)
+        fun lock(id: String) = app.heyrobot.core.lock.PhoneLock(id, id, app.heyrobot.core.lock.LockRule.Time(
+            app.heyrobot.core.TimeWindow(java.time.LocalTime.of(22, 0), java.time.LocalTime.of(7, 0))), on = true)
+        fun write(id: String) = File(lockDir, app.heyrobot.lock.LockStore.LOCKS).writeText(app.heyrobot.core.lock.LockCodec.encode(
+            app.heyrobot.core.lock.LockFile(app.heyrobot.core.lock.LockSettings(on = true), listOf(lock(id)))))
+        write("lk_0000aaaa")
+        val out = File(ctx.cacheDir, "lock-fresh.robotbackup")
+        assertTrue(BackupJob(ctx, setOf(BackupCategory.PHONE_LOCK), recordings = false, pictures = true).run(Uri.fromFile(out), pass) {} is BackupJob.Outcome.Done)
+        File(lockDir, app.heyrobot.lock.LockStore.LOCKS).delete()
+        val s = RestoreSession(ctx)
+        assertNull(s.copyIn(Uri.fromFile(out)) {})
+        assertNull(s.unlock(pass))
+        assertNull(s.verify {})
+        val v = s.verified!!
+        val plan = RestorePlanner.plan(v, s.phone(), RestorePlanner.defaults(v), mine = true)
+        assertEquals(app.heyrobot.core.backup.RestoreMode.FRESH, plan.of(BackupCategory.PHONE_LOCK).mode)
+        write("lk_0000bbbb")
+        assertEquals(CategoryOutcome.Done, s.apply(plan) {}.outcomes[BackupCategory.PHONE_LOCK])
+        s.close()
+        RestoreApply.recover(ctx)
+        assertEquals(listOf("lk_0000bbbb", "lk_0000aaaa"), app.heyrobot.lock.LockStore.read(ctx).ok!!.locks.map { it.id })
+    }
+
+    /**
      * 1.1, Skills (plan §4): skills.json goes into the backup (never skills_state.json); your own come back as saved, someone
      * else's arrive off, renamed when the name is taken (Add).
      */
@@ -237,6 +265,100 @@ class BackupRoundTripTest {
         assertEquals("Heading home (restored)", added.name)
         assertEquals(app.heyrobot.core.skills.SkillLevel.OFF, added.level)
         assertTrue(added.id != home.id)
+    }
+
+    /**
+     * L12, D14: Settings › Robot to Robot goes in; "Answer while locked" comes back off even from your own backup, whether Robot to
+     * Robot is on stays this phone's, and someone else's backup restores nothing of it.
+     */
+    @Test fun linkSettingsComeBackOnlyFromYourOwnWithAnswerWhileLockedOff() {
+        val store = app.heyrobot.sys.LinkSettingsStore
+        assertTrue(store.update(ctx) { it.copy(name = "Jo", whileLocked = true, brief = false) })
+        val out = File(ctx.cacheDir, "links.robotbackup")
+        val r = BackupJob(ctx, setOf(BackupCategory.LINKS), recordings = false, pictures = true).run(Uri.fromFile(out), pass) {}
+        assertEquals(setOf(BackupCategory.LINKS), (r as BackupJob.Outcome.Done).categories)
+        fun restore(mine: Boolean) {
+            val s = RestoreSession(ctx)
+            assertNull(s.copyIn(Uri.fromFile(out)) {})
+            assertNull(s.unlock(pass))
+            assertNull(s.verify {})
+            val v = s.verified!!
+            val plan = RestorePlanner.plan(v, s.phone(), RestorePlanner.defaults(v), mine)
+            assertEquals(if (mine) listOf(BackupCategory.LINKS) else emptyList(), plan.restoring)
+            if (mine) assertEquals(CategoryOutcome.Done, s.apply(plan) {}.outcomes[BackupCategory.LINKS])
+            s.close()
+            RestoreApply.recover(ctx)
+            assertTrue(RestoreFiles.journal(ctx).read().isEmpty())
+        }
+        store.file(ctx).delete()
+        restore(mine = false)
+        assertEquals(false, store.file(ctx).isFile)
+        restore(mine = true)
+        assertEquals(app.heyrobot.core.link.LinkSettings(name = "Jo", whileLocked = false, brief = false), store.current(ctx))
+    }
+
+    /** L12: the main app's own gate: staged pairings with no mark that the backup is yours go nowhere; marked, they wait for :link. */
+    @Test fun stagedPairingsReachLinkOnlyWhenMarkedYours() {
+        val pending = File(ctx.filesDir, app.heyrobot.core.link.LinkBackupCodec.PENDING)
+        fun staged(mine: Boolean) {
+            val j = RestoreFiles.journal(ctx)
+            j.begin(BackupCategory.LINKS, app.heyrobot.core.backup.RestoreProcess.VOICE)
+            val st = j.staging(BackupCategory.LINKS).apply { mkdirs() }
+            File(st, BackupCategory.LINKS_FILE).writeText(app.heyrobot.core.link.LinkBackupCodec.encode(app.heyrobot.core.link.LinkBackupFile()))
+            if (mine) File(st, BackupCategory.MINE_STAGED).writeText("1")
+            j.commit(BackupCategory.LINKS, app.heyrobot.core.backup.RestoreProcess.MAIN)
+            RestoreApply.recover(ctx)
+            assertTrue(j.read().isEmpty())
+        }
+        pending.delete()
+        staged(mine = false)
+        assertEquals(false, pending.isFile)
+        staged(mine = true)
+        assertEquals(true, pending.isFile)
+        pending.delete()
+    }
+
+    /**
+     * The everyday set (everyday-set-plan.md §2.4): everyday_settings.json goes into the backup without your music app's pin
+     * (trust stays on the phone); :voice stages it and the main app merges it at its start (RestoreApply): someone else's
+     * can't turn the record of what went online off, your own comes back as saved, and a music app picked here stays.
+     */
+    @Test fun everydaySettingsComeBackWithoutTheMusicAppsPin() {
+        val store = app.heyrobot.sys.EverydaySettingsStore
+        val music = app.heyrobot.core.everyday.MusicApp("org.example.music", "c".repeat(64), "Music")
+        assertTrue(store.update(ctx) { it.copy(music = false, online = false, musicApp = music) })
+        val out = File(ctx.cacheDir, "everyday.robotbackup")
+        val r = BackupJob(ctx, setOf(BackupCategory.EVERYDAY), recordings = false, pictures = true).run(Uri.fromFile(out), pass) {}
+        assertEquals(setOf(BackupCategory.EVERYDAY), (r as BackupJob.Outcome.Done).categories)
+        fun restore(mine: Boolean) {
+            val s = RestoreSession(ctx)
+            assertNull(s.copyIn(Uri.fromFile(out)) {})
+            assertNull(s.unlock(pass))
+            assertNull(s.verify {})
+            val v = s.verified!!
+            assertEquals(null, v.everyday!!.read.musicApp)
+            val plan = RestorePlanner.plan(v, s.phone(), RestorePlanner.defaults(v), mine)
+            assertEquals(listOf(BackupCategory.EVERYDAY), plan.restoring)
+            assertEquals(CategoryOutcome.Done, s.apply(plan) {}.outcomes[BackupCategory.EVERYDAY])
+            s.close()
+            // Staged for the main app, which writes it at its start.
+            assertEquals(app.heyrobot.core.backup.JournalState.COMMIT, RestoreFiles.journal(ctx).state(BackupCategory.EVERYDAY))
+            RestoreApply.recover(ctx)
+            assertTrue(RestoreFiles.journal(ctx).read().isEmpty())
+            store.forget()
+        }
+        // A new phone, someone else's backup: as saved, but the record of what went online stays on; no music app.
+        store.file(ctx).delete()
+        restore(mine = false)
+        assertEquals(app.heyrobot.core.everyday.EverydaySettings(music = false), store.current(ctx))
+        // Your own: as saved, still without the pin (it never went into the backup).
+        store.file(ctx).delete()
+        restore(mine = true)
+        assertEquals(app.heyrobot.core.everyday.EverydaySettings(music = false, online = false), store.current(ctx))
+        // A music app picked on this phone stays this phone's.
+        assertTrue(store.update(ctx) { it.copy(musicApp = music) })
+        restore(mine = true)
+        assertEquals(music, store.current(ctx).musicApp)
     }
 
     /** A voiceprint restored without Settings: :voice stages only its flag, and the main app notes it once (meVoiceprint). */
@@ -591,4 +713,148 @@ class BackupRoundTripTest {
         assertEquals(1, index(fresh).entries.size)
         assertTrue(RestoreFiles.journal(ctx).read().isEmpty())
     }
+
+    // ------------------------------------------------------------------------------------------------- 1.4, Robot Lists
+
+    /** A phone's Robot Lists: its own two keys in software (each phone has its own), Settings › Lists from its file. */
+    private fun listsPhone(keys: app.heyrobot.sys.SoftListsKeys = app.heyrobot.sys.SoftListsKeys()) =
+        app.heyrobot.sys.ListsVault(app.heyrobot.sys.ListsFiles.dir(ctx), keys, settings = { app.heyrobot.sys.ListsSettingsStore.current(ctx) },
+            someoneElse = { false }, locked = { false })
+
+    private fun listsSettings(s: app.heyrobot.core.lists.ListsSettings) {
+        app.heyrobot.sys.ListsSettingsStore.file(ctx).writeText(app.heyrobot.core.lists.ListsSettingsCodec.encode(s))
+        app.heyrobot.sys.ListsSettingsStore.forget()
+    }
+
+    private fun lists(v: app.heyrobot.sys.ListsVault) = (v.load(firstUse = false) as app.heyrobot.core.lists.ListsLoad.Loaded).value
+
+    private fun restoreLists(file: File, vault: app.heyrobot.sys.ListsVault, mine: Boolean, replace: Boolean = false): app.heyrobot.core.backup.RestoreResult {
+        val s = RestoreSession(ctx, lists = { vault })
+        assertNull(s.copyIn(Uri.fromFile(file)) {})
+        assertNull(s.unlock(pass))
+        assertNull(s.verify {})
+        val v = s.verified!!
+        val r = s.apply(RestorePlanner.plan(v, s.phone(), mapOf(BackupCategory.LISTS to CategoryChoice(replace = replace)), mine)) {}
+        s.close()
+        return r
+    }
+
+    /**
+     * lists-plan.md §6 (LS7), LT12 on one phone: back up with lists (an add said while locked merged in first) and "Hear and
+     * tick on the lock screen" on; restore on a reset phone with its own keys: the lists as they were, sealed under the new
+     * phone's key that the restored switch calls for; someone else's backup then arrives apart, marked, and its looser
+     * switch is kept safer. The old phone's keys are never in the file.
+     */
+    @Test fun listsGoToANewPhoneSealedUnderItsKey() {
+        app.heyrobot.sys.ListsFiles.onChange = null
+        val oldKeys = app.heyrobot.sys.SoftListsKeys()
+        val old = listsPhone(oldKeys)
+        listsSettings(app.heyrobot.core.lists.ListsSettings())
+        val first = lists(old.also { it.load() })
+        val shopping = first.withRole(app.heyrobot.core.lists.ListRole.SHOPPING)!!.id
+        old.update(app.heyrobot.core.lists.ItemHow.TYPED) { f, who ->
+            app.heyrobot.core.lists.ListsEdits.add(f, shopping, listOf(app.heyrobot.core.lists.NewItem("oat milk")), who) { app.heyrobot.core.lists.ListsId.new(java.security.SecureRandom()) }
+        }
+        // An add said while locked, waiting in the journal: a backup carries it merged.
+        oldKeys.locked = true
+        assertTrue(old.addLocked(shopping, listOf(app.heyrobot.core.lists.NewItem("eggs"))) is app.heyrobot.sys.LockedAdd.Ok)
+        oldKeys.locked = false
+        listsSettings(app.heyrobot.core.lists.ListsSettings(lockScreen = true))
+        val out = File(ctx.cacheDir, "lists.robotbackup")
+        val done = BackupJob(ctx, setOf(BackupCategory.LISTS), recordings = false, pictures = true, lists = { listsPhone(oldKeys) }).run(Uri.fromFile(out), pass) {}
+        assertTrue(done.toString(), done is BackupJob.Outcome.Done)
+        assertEquals(setOf(BackupCategory.LISTS), (done as BackupJob.Outcome.Done).categories)
+        // Neither the sealed file nor a key in it: the plain words only inside the backup's own encryption.
+        assertFalse(String(out.readBytes(), Charsets.ISO_8859_1).contains("oat milk"))
+
+        // A reset phone: no lists, no settings, new keys.
+        app.heyrobot.sys.ListsFiles.dir(ctx).deleteRecursively()
+        app.heyrobot.sys.ListsSettingsStore.file(ctx).delete()
+        app.heyrobot.sys.ListsSettingsStore.forget()
+        val newKeys = app.heyrobot.sys.SoftListsKeys()
+        val fresh = listsPhone(newKeys)
+        assertEquals(CategoryOutcome.Done, restoreLists(out, fresh, mine = true).outcomes[BackupCategory.LISTS])
+        val back = lists(fresh)
+        assertEquals(first.lists.map { it.id }, back.lists.map { it.id })
+        assertEquals(listOf("oat milk", "eggs"), back.withRole(app.heyrobot.core.lists.ListRole.SHOPPING)!!.live.map { it.text })
+        // Sealed under the new phone's lock-screen key, as the restored switch says; the old phone's keys never asked for.
+        assertEquals(app.heyrobot.sys.ListsKeyAliases.LOCK_SCREEN,
+            app.heyrobot.core.lists.ListsEnvelope.alias(File(app.heyrobot.sys.ListsFiles.dir(ctx), app.heyrobot.core.lists.ListsEnvelope.FILE).readBytes()))
+        assertTrue(app.heyrobot.sys.ListsSettingsStore.current(ctx).lockScreen)
+        assertTrue(app.heyrobot.sys.ListsKeyAliases.LOCK_SCREEN in newKeys.keys)
+        assertTrue(RestoreFiles.journal(ctx).read().isEmpty())
+
+        // Someone else's backup on a phone with the switch off: theirs apart, marked, and the switch stays off.
+        listsSettings(app.heyrobot.core.lists.ListsSettings())
+        fresh.follow(app.heyrobot.core.lists.ListsSettings())
+        val r = restoreLists(out, fresh, mine = false)
+        assertEquals(CategoryOutcome.Done, r.outcomes[BackupCategory.LISTS])
+        assertEquals(1, r.keptSafer)
+        val all = lists(fresh)
+        val theirs = all.lists.filter { it.from == app.heyrobot.core.lists.ListFrom.BACKUP }
+        assertEquals(first.lists.size, theirs.size)
+        assertTrue(theirs.all { it.role == null && it.items.all { i -> i.by == app.heyrobot.core.lists.ItemBy.BACKUP } })
+        assertFalse(app.heyrobot.sys.ListsSettingsStore.current(ctx).lockScreen)
+        assertEquals(app.heyrobot.sys.ListsKeyAliases.UNLOCKED,
+            app.heyrobot.core.lists.ListsEnvelope.alias(File(app.heyrobot.sys.ListsFiles.dir(ctx), app.heyrobot.core.lists.ListsEnvelope.FILE).readBytes()))
+        // With Replace, the preview counts what goes: this phone's lists here.
+        val s = RestoreSession(ctx, lists = { fresh })
+        assertEquals(all.lists.size, s.phone().counts[BackupCategory.LISTS])
+        s.close()
+    }
+
+    /**
+     * LS12 (LT12 step 5 on the Pixel 8): a backup made with "Hear and tick on the lock screen" on, opened as not yours. The
+     * preview's "Kept safer" counts the switch when this phone's is off, and doesn't when it is on too; the restore then
+     * keeps this phone's off.
+     */
+    @Test fun thePreviewCountsTheLockScreenSwitchItKeepsSafer() {
+        app.heyrobot.sys.ListsFiles.onChange = null
+        val keys = app.heyrobot.sys.SoftListsKeys()
+        val phone = listsPhone(keys)
+        phone.load()
+        listsSettings(app.heyrobot.core.lists.ListsSettings(lockScreen = true))
+        phone.follow(app.heyrobot.core.lists.ListsSettings(lockScreen = true))
+        val out = File(ctx.cacheDir, "lock-screen.robotbackup")
+        val done = BackupJob(ctx, setOf(BackupCategory.SETTINGS, BackupCategory.LISTS), recordings = false, pictures = true, lists = { listsPhone(keys) }).run(Uri.fromFile(out), pass) {}
+        assertTrue(done.toString(), done is BackupJob.Outcome.Done)
+        fun preview(): Int {
+            val s = RestoreSession(ctx, lists = { phone })
+            assertNull(s.copyIn(Uri.fromFile(out)) {})
+            assertNull(s.unlock(pass))
+            assertNull(s.verify {})
+            // LS12: the manifest names each category in words, for a Robot that doesn't know one.
+            assertEquals("Listes", s.verified!!.manifest.name("lists", app.heyrobot.core.i18n.Lang.FR))
+            assertEquals("Settings", s.verified!!.manifest.name("settings", app.heyrobot.core.i18n.Lang.EN))
+            return s.keptSafer(RestorePlanner.plan(s.verified!!, s.phone(), RestorePlanner.defaults(s.verified!!), false))!!.also { s.close() }
+        }
+        val on = preview()
+        // This phone's switch off (Settings › Lists' own way: the seal first, then the file).
+        assertTrue(phone.follow(app.heyrobot.core.lists.ListsSettings()) is app.heyrobot.sys.ListsFollow.Done)
+        assertTrue(app.heyrobot.sys.ListsSettingsStore.update(ctx) { it.copy(lockScreen = false) })
+        val off = preview()
+        assertEquals(on + 1, off)
+        val r = restoreLists(out, phone, mine = false)
+        assertEquals(1, r.keptSafer)
+        assertFalse(app.heyrobot.sys.ListsSettingsStore.current(ctx).lockScreen)
+    }
+
+    /** Lists that can't be opened now never go half: Back up now says so, and leaves the file unwritten. */
+    @Test fun listsThatCantBeOpenedStopTheBackupWithTheirWords() {
+        app.heyrobot.sys.ListsFiles.onChange = null
+        val keys = app.heyrobot.sys.SoftListsKeys()
+        val v = listsPhone(keys)
+        v.load()
+        keys.invalid += app.heyrobot.sys.ListsKeyAliases.UNLOCKED
+        val survey = BackupSources.survey(ctx, RobotSettings(), lists = { listsPhone(keys) })
+        assertEquals(-1, survey.getValue(BackupCategory.LISTS).count)
+        val out = File(ctx.cacheDir, "no-lists.robotbackup")
+        val r = BackupJob(ctx, setOf(BackupCategory.LISTS), recordings = false, pictures = true, lists = { listsPhone(keys) }).run(Uri.fromFile(out), pass) {}
+        assertEquals(app.heyrobot.core.backup.BackupCode.LISTS_UNREADABLE, (r as BackupJob.Outcome.Failed).code)
+        // A restore on that phone: Replace only, the lists kept aside.
+        val s = RestoreSession(ctx, lists = { listsPhone(keys) })
+        assertEquals(app.heyrobot.core.backup.ListsHere.KEY_GONE, s.phone().lists)
+        s.close()
+    }
 }
+

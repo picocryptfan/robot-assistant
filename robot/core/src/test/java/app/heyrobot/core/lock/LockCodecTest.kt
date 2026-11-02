@@ -25,6 +25,14 @@ class LockCodecTest {
     private val file = LockFile(LockSettings(on = true, forWho = LockFor.SOMEONE_ELSE, endEarly = EndEarly.WAIT, waitMin = 15, warnMin = 10, showLeft = false),
         listOf(bedtime, wake, reading, limit, alarmStart))
 
+    @Test fun theCodesWaitKeepsBothClocks() {
+        val s = LockState(code = CodeTries(5, 31_000, 30_500, 7))
+        assertEquals(s, LockCodec.decodeState(LockCodec.encodeState(s)))
+        // A state written before 1.1.1 has the wall clock only.
+        val old = org.json.JSONObject(LockCodec.encodeState(s)).apply { getJSONObject("code").apply { remove("nextElapsed"); remove("boot") } }.toString()
+        assertEquals(CodeTries(5, 31_000), LockCodec.decodeState(old)?.code)
+    }
+
     @Test fun roundTrip() {
         assertEquals(LockFileRead.Ok(file), LockCodec.decode(LockCodec.encode(file)))
         assertEquals(LockFileRead.Ok(LockFile()), LockCodec.decode(LockCodec.encode(LockFile())))

@@ -36,7 +36,7 @@ class BackupStreamPinTest {
     private fun outputs(): Map<String, ByteArray> {
         val out = LinkedHashMap<String, ByteArray>()
         // The content as it was pinned (1.4's Files content came after the pin: the writer's bytes for this input stay the same).
-        out["backup-content"] = BackupKit.encrypt(BackupKit.contentRecords(BackupKit.content() - BackupCategory.FILES))
+        out["backup-content"] = BackupKit.encrypt(BackupKit.contentRecords(BackupKit.content() - BackupCategory.FILES - BackupCategory.LISTS))
         for (n in listOf(1, c - 1, c, c + 1, 2 * c, 3 * c + 17, 5 * 1024 * 1024)) out["stream-$n"] = BackupKit.encrypt(data(n))
         // Odd pieces and single bytes, as BackupStreamTest.writesInAnyPieces writes them.
         val d = data(3 * c + 17)
@@ -154,17 +154,24 @@ class BackupStreamPinTest {
             val r: InputStream = BackupReader(ByteArrayInputStream(b, h, b.size - h), BackupHeader.parse(b), key)
             assertEquals(n, len, r.readBytes().size)
         }
-        assertEquals(BackupKit.contentRecords(BackupKit.content() - BackupCategory.FILES).toList(), BackupKit.decrypt(outputs().getValue("backup-content")).toList())
+        assertEquals(BackupKit.contentRecords(BackupKit.content() - BackupCategory.FILES - BackupCategory.LISTS).toList(), BackupKit.decrypt(outputs().getValue("backup-content")).toList())
     }
 
     private companion object {
         /**
          * Made by 1.1's writer (f764d4d4) before the move. 1.4 F9 changed only backup-content's input, not the writer: the
          * fixtures' settings.json holds every tool's approval (RobotSettings.toJson), and find_files and read_file are two more
-         * (internal: written, always read back as their default). Every stream below is the same bytes as before.
+         * (internal: written, always read back as their default). Every stream below is the same bytes as before. 1.4 LS4, the
+         * same way and deliberately: add_to_list is one more approval in settings.json (internal), so backup-content's input
+         * changed; the writer and every stream did not.
+         * Skills connections C4 changed backup-content the same way, deliberately: connection and hand_off are two more internal
+         * tools in settings.json; the writer and every other stream are unchanged.
+         * The everyday set's E2 the same: calculate's approval is one more (internal, AUTO), so backup-content's input changed and only it.
+         * 1.5 L7 the same way: ask_robot's approval is one more.
+         * F122 the same way: settings.json always holds listenPause now, so backup-content's input changed and only it.
          */
         val PINNED = """
-backup-content de5ea2529114d51bea00b75669640e7a9117a4555dc16cb0bba3304683c3e8d6
+backup-content c478ea1d9e7a0d6f7343cc4160a6d9066023e783a66349cb94cff694b6ad160e
 stream-1 5735a2f3c7e66c08f62acf11eb714629700b308bd26850bb0966d20084b23083
 stream-65535 433cc4ff3f8e3014028baa16af4ec09c07c14a2d45b70aca2c0e3b7e414fec8f
 stream-65536 4537ca2f42d664368994346ad30c2f132e3b0a3563f8e879dfcc29abbb9808cf

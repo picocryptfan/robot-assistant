@@ -53,6 +53,7 @@ import app.heyrobot.core.VoiceBundle
 import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
 import app.heyrobot.R
+import app.heyrobot.lock.PhoneLockNow
 import app.heyrobot.sys.AppLanguage
 import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.SettingsStore
@@ -194,6 +195,9 @@ object ConversationSession {
     private var lastMinute = 0L
     private var lastDisk = 0L
     private var longNoticed = false
+    /** week-fixes: lines at the last look, and when that count last moved (elapsed; -1: not yet looked). */
+    private var heardLines = -1
+    private var lastHeard = 0L
     private var lastSaveFail: IoCode? = null
     /** The transcript was deleted under the session: nothing more is written. */
     @Volatile private var discarded = false
@@ -296,6 +300,11 @@ object ConversationSession {
 
     /** Control thread. Null when started, else why not. */
     private fun startNow(mode: ConvMode, entry: ConvEntry, resumeId: String?): String? {
+        // 1.1.2, FA8g: never during a phone lock, before anything else (phone-lock-design §5.2). Every way in ends here.
+        if (PhoneLockNow.on(app)) {
+            ConversationNotices.phoneLock(app, stopped = false)
+            return app.getString(R.string.conv_phone_lock_closed)
+        }
         VoiceHub.init(app)
         val s = VoiceHub.settings
         if (!Assistant.granted(app, Manifest.permission.RECORD_AUDIO)) return app.getString(R.string.conv_needs_mic)
@@ -335,6 +344,7 @@ object ConversationSession {
         firstPause = null
         lastSaveFail = null
         longNoticed = false
+        heardLines = -1
         lastBeat = SystemClock.elapsedRealtime()
         lastMinute = lastBeat
         lastDisk = lastBeat
@@ -356,7 +366,7 @@ object ConversationSession {
         VoiceHub.conversationWake(!s.convWakeDuring)
         wake = (app.getSystemService(PowerManager::class.java)).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "robot:conversation").apply {
             setReferenceCounted(false)
-            acquire()
+            acquire(ConversationRules.WAKE_HOLD_MS)
         }
         watchThermal()
         screenOn = app.getSystemService(PowerManager::class.java).isInteractive
@@ -376,6 +386,15 @@ object ConversationSession {
         ctl.postDelayed(tick, 1_000)
         ConversationNotices.changed(app)
         return null
+    }
+
+    /**
+     * 1.1.2, FA8g (phone-lock-design §5.2): :lock says a phone lock started (Cmd.PHONE_LOCK). A session that is on, running
+     * or paused, stops as Stop does, so nothing is recorded behind the cover and everything heard is saved.
+     */
+    fun phoneLockCheck() {
+        if (!::app.isInitialized) return
+        ctl.post { if (writer != null && ConversationLock.stopsFor(PhoneLockNow.on(app), active = true)) stopNow(ConvStop.PHONE_LOCK) }
     }
 
     /** Stops the session (from any thread); every segment heard is decoded and saved first. */
@@ -432,8 +451,11 @@ object ConversationSession {
         val note = when (why) {
             ConvStop.DISK -> app.getString(R.string.conv_stopped_disk)
             ConvStop.ERROR -> app.getString(R.string.conv_stopped_error)
+            ConvStop.PHONE_LOCK -> app.getString(R.string.conv_phone_lock_stopped)
+            ConvStop.FORGOTTEN -> app.getString(R.string.conv_stopped_quiet, (ConversationRules.FORGOTTEN_MS / 60_000).toInt())
             else -> null
         }
+        if (why == ConvStop.PHONE_LOCK) ConversationNotices.phoneLock(app, stopped = true)
         synchronized(startLock) {
             _state.update {
                 val ended = Ui(savedId = if (discarded) null else w.id, lines = if (discarded) emptyList() else it.lines, total = if (discarded) 0 else it.total,
@@ -494,9 +516,11 @@ object ConversationSession {
      */
     fun userResume() = ctl.post {
         if (!::app.isInitialized) return@post
+        val phoneLock = PhoneLockNow.on(app)
         val refused = app.getString(R.string.conv_unlock_to_start)
-        if (!ConversationLock.mayStart(Assistant.locked(app), VoiceHub.settings)) {
-            _state.update { it.copy(notice = refused) }
+        if (!ConversationLock.mayStart(Assistant.locked(app), VoiceHub.settings, phoneLock)) {
+            // A session left on when a phone lock started stops at the next tick; until then nothing resumes.
+            _state.update { it.copy(notice = if (phoneLock) app.getString(R.string.conv_phone_lock_closed) else refused) }
             return@post
         }
         _state.update { if (it.notice == refused) it.copy(notice = null) else it }
@@ -522,6 +546,7 @@ object ConversationSession {
         if (why in pauses) return
         val wasRunning = pauses.isEmpty()
         pauses += why
+        if (ConversationRules.closesMic(pauses)) detachAudio()
         if (!wasRunning) return publishPause()
         e.endRun()
         pausedAt = System.currentTimeMillis()
@@ -536,6 +561,12 @@ object ConversationSession {
         val e = engine ?: return
         if (pauses.isNotEmpty()) return publishPause()
         if (_state.value.status != Status.PAUSED) return
+        // The pause closed the microphone. If it can't open again the session stays paused, and the tick keeps trying.
+        if (source == null && !attachAudio()) {
+            VoiceLog.add(VoiceEvent.CONV_MIC, MicEvent.SILENCED)
+            pauses += ConvPause.MIC_TAKEN
+            return publishPause()
+        }
         val now = System.currentTimeMillis()
         synchronized(writerLock) { gap(w, now) }
         VoiceLog.add(VoiceEvent.CONV_RESUME, firstPause ?: ConvPause.USER, ((SystemClock.elapsedRealtime() - pausedE) / 1000).toInt())
@@ -597,6 +628,8 @@ object ConversationSession {
 
     private fun checkAudio() {
         if (writer == null) return
+        // Paused by you or the heat: nothing opens the microphone until the pause ends.
+        if (ConversationRules.closesMic(pauses)) return
         val hub = VoiceHub.listener?.takeIf { it.running }
         val src = source
         when {
@@ -970,6 +1003,8 @@ object ConversationSession {
 
     private fun onTick() {
         val w = writer ?: return
+        // 1.1.2, FA8g: a phone lock started (its Cmd.PHONE_LOCK missed or not yet here): stop, keeping what was heard.
+        if (ConversationLock.stopsFor(PhoneLockNow.on(app), active = true)) return stopNow(ConvStop.PHONE_LOCK)
         checkAudio()
         val nowE = SystemClock.elapsedRealtime()
         val now = System.currentTimeMillis()
@@ -980,8 +1015,14 @@ object ConversationSession {
                 return stopNow(ConvStop.USER)
             }
         }
+        if (w.lines != heardLines) {
+            heardLines = w.lines
+            lastHeard = nowE
+        }
+        if (ConversationRules.forgotten(lastHeard, nowE)) return stopNow(ConvStop.FORGOTTEN)
         if (nowE - lastMinute >= 60_000) {
             lastMinute = nowE
+            try { wake?.acquire(ConversationRules.WAKE_HOLD_MS) } catch (t: Throwable) { RLog.w("conv_wake", t) }
             engine?.stats?.take()?.let { (m, l) ->
                 VoiceLog.add(VoiceEvent.CONV_MINUTE, m.first, m.second, m.third)
                 VoiceLog.add(VoiceEvent.CONV_LANG, l.first, l.second, l.third)

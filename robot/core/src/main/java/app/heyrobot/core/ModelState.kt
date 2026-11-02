@@ -317,6 +317,23 @@ object ModelFiles {
         else -> m.cacheBytes
     }
 
+    /**
+     * What [files] (names and sizes, in [m]'s cache folder) already hold of the cache a load on [backend] writes. The CPU's
+     * and the GPU's share the folder and neither reads the other's: "….xnnpack_cache" is the CPU's weights,
+     * "…_mldrift_compiled_cache.bin" and "…_mldrift_weight_cache.bin" the GPU's (LiteRT-LM 0.18). A name that is neither
+     * counts for both, as every file did before 1.1.
+     */
+    fun cachedBytes(backend: ModelBackend, files: List<Pair<String, Long>>): Long = files.filter { (name, _) ->
+        when (backend) {
+            ModelBackend.CPU -> !name.contains(GPU_CACHE_NAME)
+            ModelBackend.GPU -> !name.contains(CPU_CACHE_NAME)
+            ModelBackend.TPU -> true
+        }
+    }.sumOf { (_, bytes) -> bytes }
+
+    private const val CPU_CACHE_NAME = "xnnpack_cache" // l10n: not text (a file name)
+    private const val GPU_CACHE_NAME = "_mldrift_" // l10n: not text (a file name)
+
     /** Your own file's record (core OwnModel), written by the main app after the check. */
     const val OWN_RECORD = "own_model.json"
 
@@ -352,6 +369,12 @@ object ModelFiles {
         val cache = if (m == BrainModel.OWN) (if (gguf) 0 else cacheEstimate(file)) else m.cacheBytes.coerceAtLeast(0)
         return file + cache + BrainModel.HEADROOM
     }
+
+    /**
+     * What a built-in model's download needs free: [needBytes], or, when that's more, the moment its check copies it into
+     * Robot's own storage (the downloaded file, its copy and the move's margin). Without that room it could never load.
+     */
+    fun downloadNeedBytes(m: BrainModel): Long = maxOf(needBytes(m), m.bytes + ModelMove.spaceToMove(m.bytes))
 }
 
 /** :brain's "loaded" file: "<model id> <backend id> <pid>", or nothing. Numbers and fixed ids only. */
@@ -446,11 +469,12 @@ object ModelLogic {
     /**
      * Null when [needBytes] (default: the model's file, its first-load cache and the headroom) fits; else why not, in
      * plain words. [freeBytes] < 0 = unknown (allowed). [pendingBytes]: what downloads under way (voice models, another
-     * model) will still take (DownloadManager does not reserve their space).
+     * model) will still take (DownloadManager does not reserve their space). [copyIn]: [needBytes] is a download's, and says
+     * so when the copy into Robot's own storage is what makes it that much.
      */
     fun spaceProblemText(
         m: BrainModel, freeBytes: Long, reclaimableBytes: Long, needBytes: Long = ModelFiles.needBytes(m), pendingBytes: Long = 0,
-        fileBytes: Long = m.bytes, gguf: Boolean = false,
+        fileBytes: Long = m.bytes, gguf: Boolean = false, copyIn: Boolean = false,
     ): Phrase? {
         if (freeBytes < 0) return null
         val pending = pendingBytes.coerceAtLeast(0)
@@ -459,7 +483,8 @@ object ModelLogic {
         val left = if (pending > 0) ModelStrings.leftPending("size" to gbText((free - pending).coerceAtLeast(0)))
         else ModelStrings.leftFree("size" to gbText(free))
         val cache = if (m == BrainModel.OWN) (if (gguf) 0 else ModelFiles.cacheEstimate(fileBytes)) else m.cacheBytes
-        val what = if (cache > 0 && fileBytes > 0) ModelStrings.needWithCache("file" to gbText(fileBytes), "cache" to gbText(cache))
+        val what = if (copyIn && needBytes > ModelFiles.needBytes(m)) ModelStrings.needWithCopy("file" to gbText(fileBytes), "spare" to gbText(ModelMove.MARGIN))
+        else if (cache > 0 && fileBytes > 0) ModelStrings.needWithCache("file" to gbText(fileBytes), "cache" to gbText(cache))
         else ModelStrings.needFile()
         return ModelStrings.notEnoughSpace("name" to nameText(m), "need" to gbText(needBytes), "what" to what, "left" to left)
     }
@@ -480,7 +505,7 @@ object ModelLogic {
             ModelStatus.IMPORTING -> ModelStrings.importRunning()
             ModelStatus.VERIFYING -> ModelStrings.beingChecked()
             ModelStatus.VERIFIED, ModelStatus.UNVERIFIED -> ModelStrings.alreadyHere()
-            ModelStatus.MISSING, ModelStatus.BAD -> spaceProblemText(m, freeBytes, existingBytes, pendingBytes = pendingBytes)
+            ModelStatus.MISSING, ModelStatus.BAD -> spaceProblemText(m, freeBytes, existingBytes, ModelFiles.downloadNeedBytes(m), pendingBytes, copyIn = true)
         }
     }
 
@@ -504,6 +529,9 @@ object ModelLogic {
         else -> spaceProblemText(m, freeBytes, reclaimableBytes, ModelFiles.needBytes(m, docBytes, gguf && !m.builtIn), pendingBytes, fileBytes = docBytes,
             gguf = gguf && !m.builtIn)
     }
+
+    /** Settings › Model, for a checked model with no room to move into Robot's own storage. [need]: the free space that takes. */
+    fun moveWaitsText(need: Long): Phrase = ModelStrings.moveWaits("size" to gbText(need))
 
     /** One line for the model card. */
     fun headlineText(status: ModelStatus, m: BrainModel = BrainModel.FAST): Phrase = when (status) {
@@ -548,6 +576,8 @@ enum class ModelAvailability {
     NEEDS_TPU_OK,
     /** The file is damaged, or your own file can't run here. */
     UNUSABLE,
+    /** Checked, but still outside Robot's own storage, where LiteRT-LM never reads it (the Robot app moves it when there's room). */
+    NEEDS_MOVE,
 }
 
 /**
@@ -584,6 +614,14 @@ object LoadCheck {
 
     /** The context asked for isn't the one Robot's prompts are made for with this file. */
     fun wrongContextText(expected: Int): Phrase = ModelStrings.wrongContext("n" to expected.toString())
+
+    /** :brain, for a LiteRT-LM file still outside Robot's own storage (the plan says so first, with the room it needs). */
+    fun outsideText(m: BrainModel): Phrase = ModelStrings.mustMove("model" to m.titleText)
+
+    /** The file is no longer the one Robot checked: [m]'s mark, or your own file's record, is for another size or time. */
+    fun fileChanged(m: BrainModel, fingerprintNow: String, mark: String?, ownRecord: String?): Boolean =
+        if (m.builtIn) mark?.trim() != "${m.sha256}|$fingerprintNow"
+        else OwnModel.fromJson(ownRecord)?.fingerprint != fingerprintNow
 
     /**
      * Null when [m] may load on [backend] with a context of [maxTokens] as a file of [format]; else why not, in plain
@@ -642,6 +680,7 @@ enum class FallbackWhy(override val id: Int, override val title: String) : LogCo
     UNUSABLE(4, "can't be used"), LOAD_FAILED(5, "didn't load"), FAILED_EARLIER(6, "didn't load earlier"),
     /** Its model process stopped while it was in memory (a native crash, or Android reclaiming its memory). */
     STOPPED(7, "stopped unexpectedly"),
+    NEEDS_MOVE(8, "has to move into Robot's storage first"),
 }
 
 /** Why a model didn't load (BrainMsg.Loaded, and the voice log stores [id]). */
@@ -649,6 +688,8 @@ enum class LoadFailure(override val id: Int, override val title: String) : LogCo
     NO_FILE(1, "file missing"), NOT_ALLOWED(2, "refused by Robot's check of the file"), NO_SPACE(3, "no room for its cache"),
     ENGINE(4, "engine error"), STOPPING(5, "the last model was still stopping"), TIMEOUT(6, "no answer in time"),
     PROCESS(7, "the model process stopped"),
+    /** The file isn't the one the plan named any more (a move into Robot's storage finished, or it changed): never the device's doing. */
+    FILE_CHANGED(8, "the file changed or moved"),
 }
 
 /**
@@ -688,7 +729,8 @@ object ModelChoice {
         fast: BrainModel = BrainModel.FAST,
     ): Decision {
         if (chosen == fast) {
-            return if (fastState == ModelAvailability.READY) Decision.Load(fast) else Decision.NoLoad(noModelText, openApp = true)
+            return if (fastState == ModelAvailability.READY) Decision.Load(fast)
+            else Decision.NoLoad(if (fastState == ModelAvailability.NEEDS_MOVE) ModelStrings.fastNeedsMove("size" to ModelLogic.gbText(ModelMove.spaceToMove(fast.bytes))) else noModelText, openApp = true)
         }
         val why = when {
             chosenState != ModelAvailability.READY -> whyFor(chosenState)
@@ -713,6 +755,13 @@ object ModelChoice {
         else -> Decision.NoLoad(alone(tried, FallbackWhy.LOAD_FAILED), openApp = true)
     }
 
+    /**
+     * A load that says something about the GPU or the beta TPU build, so it is recorded against them until you try again: an
+     * error, a refusal, no answer or a stopped process. Never a file that changed or went, no room, or the last model stopping.
+     */
+    fun deviceFailure(failure: LoadFailure): Boolean = failure == LoadFailure.ENGINE || failure == LoadFailure.TIMEOUT ||
+        failure == LoadFailure.PROCESS || failure == LoadFailure.NOT_ALLOWED
+
     /** A failure worth remembering (so the next question doesn't wait for the same failure). */
     fun remember(failure: LoadFailure): Boolean = failure != LoadFailure.STOPPING
 
@@ -720,6 +769,7 @@ object ModelChoice {
         ModelAvailability.NOT_DOWNLOADED -> FallbackWhy.NOT_DOWNLOADED
         ModelAvailability.NOT_CHECKED -> FallbackWhy.NOT_CHECKED
         ModelAvailability.NEEDS_TPU_OK -> FallbackWhy.NEEDS_TPU_OK
+        ModelAvailability.NEEDS_MOVE -> FallbackWhy.NEEDS_MOVE
         ModelAvailability.UNUSABLE, ModelAvailability.READY -> FallbackWhy.UNUSABLE
     }
 
@@ -739,6 +789,8 @@ object ModelChoice {
             FallbackWhy.LOAD_FAILED -> if (detail != null) ModelStrings.whyLoadFailedDetail(model, "detail" to detail) else ModelStrings.whyLoadFailed(model)
             FallbackWhy.FAILED_EARLIER -> ModelStrings.whyFailedEarlier(model)
             FallbackWhy.STOPPED -> ModelStrings.whyStopped(model)
+            FallbackWhy.NEEDS_MOVE -> if (wanted.bytes > 0) ModelStrings.whyNeedsMove(model, "size" to ModelLogic.gbText(ModelMove.spaceToMove(wanted.bytes)))
+                else ModelStrings.whyNeedsMoveOwn(model)
         }
     }
 
@@ -748,6 +800,7 @@ object ModelChoice {
         return when (why) {
             FallbackWhy.NOT_DOWNLOADED -> Phrase.join(using, (if (wanted.builtIn) ModelStrings.downloadIt else ModelStrings.importIt)("page" to page))
             FallbackWhy.NOT_CHECKED -> Phrase.join(using, ModelStrings.checkIt("page" to page))
+            FallbackWhy.NEEDS_MOVE -> Phrase.join(using, ModelStrings.moveIt())
             FallbackWhy.FAILED_EARLIER, FallbackWhy.STOPPED -> Phrase.join(using, ModelStrings.retryIt("page" to page))
             else -> using
         }

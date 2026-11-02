@@ -1,0 +1,45 @@
+{
+  "format": 1,
+  "id": "lock-left-fr",
+  "title": "« À quelle heure mon téléphone débarre ? » is Phone lock's question, with no lock on (« combien de temps il reste » alone goes to the model unless a lock is on, by design)",
+  "safety": "stops-at-card",
+  "testBench": [
+    "v11-lock-voice"
+  ],
+  "setup": [
+    {
+      "set": "speakReplies",
+      "value": "VOICE"
+    }
+  ],
+  "steps": [
+    {
+      "do": "open",
+      "how": "button"
+    },
+    {
+      "do": "say",
+      "text": "À quelle heure mon téléphone débarre ?",
+      "voice": "siwis"
+    },
+    {
+      "do": "wait_reply",
+      "seconds": 30
+    },
+    {
+      "do": "check",
+      "what": "router",
+      "equals": "LockRouter"
+    },
+    {
+      "do": "check",
+      "what": "card",
+      "equals": "other",
+      "absent": true
+    },
+    {
+      "do": "end"
+    }
+  ],
+  "refusedWithNoCard": true
+}

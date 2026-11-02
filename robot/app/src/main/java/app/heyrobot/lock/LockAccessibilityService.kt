@@ -10,9 +10,12 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.PixelFormat
+import android.media.AudioAttributes
+import android.media.AudioManager
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
+import android.os.SystemClock
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
@@ -21,12 +24,16 @@ import app.heyrobot.core.lock.GateDecision
 import app.heyrobot.core.lock.GateFacts
 import app.heyrobot.core.lock.LockGate
 import app.heyrobot.core.lock.LockSchedule
+import app.heyrobot.core.lock.LockState
 import app.heyrobot.sys.ProtectedBroadcasts
 
 // :LOCK PROCESS ONLY. Phone lock's accessibility service: it sees which app comes to the front and
 // nothing else. Its XML asks for window-state events only, no window content (canRetrieveWindowContent false), no
-// gestures, and it isn't an accessibility tool. From an event it reads the type, the package and the class, never the
-// text, the source node or a description (ProcessIsolationTest scans this file for that). While no lock is on or due
+// gestures, and it isn't an accessibility tool. From an event it reads the type, the package, the class and when, never
+// the text, the source node or a description (ProcessIsolationTest scans this file for that). Robot's own app, and since
+// LS13 every window Phone lock covers, also says when it is in front (LockSignals.ACTION_FRONT, LockFrontWatch), as Android
+// doesn't always send an event for it (none at all for a data-sensitive window to a service that isn't an accessibility
+// tool, which this one isn't, on purpose). While no lock is on or due
 // within 10 minutes it asks for no events at all. During a lock, a window that isn't allowed (core LockGate) gets the
 // curtain at once and the cover right after; the curtain comes off when the cover shows, on any allowed window, or after
 // a second. While the keyguard is locked neither comes: the lock screen is never covered, and the unlock decides.
@@ -39,15 +46,32 @@ class LockAccessibilityService : AccessibilityService() {
     private var lastAllowed: String? = null
     private var lastAllowedClass: String? = null
     /**
-     * The window in front as the last event showed it, known only while window events are on. The gate looks at it again
-     * when the edit session or car mode your car started ends, and at the unlock. The keyboard, the system's windows (the
-     * lock screen, the shade) and Robot's own dialogs and panel sit above it, so they don't replace it.
+     * The window in front as the last event (or Robot's app) showed it, known only while window events are on. The gate
+     * looks at it again when the edit session or car mode your car started ends, and at the unlock. The keyboard, the
+     * system's windows (the lock screen, the shade) and Robot's own dialogs and panel sit above it, so they don't
+     * replace it.
      */
     private var frontPkg: String? = null
     private var frontCls: String? = null
+    /**
+     * When that window came to the front (SystemClock.uptimeMillis, as its event or Robot's app says), never later than
+     * when it was kept: a time in the future would make every later word lose.
+     */
+    private var frontAt = 0L
+    /** Window events are on: a lock is on or due within 10 minutes (main thread). */
+    private var watching = false
     /** What the last engine change said of the edit session and of car mode your car started (main thread). */
     private var wasEdit = false
     private var wasCar = false
+    /** F13: the cover is up, and since when (SystemClock.uptimeMillis; main thread). */
+    private var coverUp = false
+    private var coverUpAt = 0L
+    private val coverGone = Runnable { afterCoverStopped() }
+    /** review-lock 7: the window the gate last covered, and when (SystemClock.uptimeMillis; main thread). */
+    private var coveredPkg: String? = null
+    private var coveredCls: String? = null
+    private var coveredAt = 0L
+    private val modeChanged = AudioManager.OnModeChangedListener { callMaybeStarted() }
     /** Robot's activities by class (an event names an activity-alias's window by its target's class). */
     private val ownActivities: Set<String> by lazy {
         try { packageManager.getPackageInfo(packageName, PackageManager.GET_ACTIVITIES).activities.orEmpty().map { it.name }.toSet() } catch (_: Throwable) { emptySet() }
@@ -84,9 +108,16 @@ class LockAccessibilityService : AccessibilityService() {
         // The unlock comes from SystemUI, so these go through ProtectedBroadcasts (1.0, ipc-3); the shutdown is the system's own.
         ProtectedBroadcasts.register(this, screen, ProtectedBroadcasts.filter(Intent.ACTION_USER_PRESENT, Intent.ACTION_SCREEN_ON, Intent.ACTION_SCREEN_OFF), main)
         registerReceiver(shutdown, IntentFilter(Intent.ACTION_SHUTDOWN), null, main, Context.RECEIVER_NOT_EXPORTED)
+        try { getSystemService(AudioManager::class.java).addOnModeChangedListener(mainExecutor, modeChanged) } catch (t: Throwable) { RLog.w("lock_mode", t) }
         Thread({
             LockEngine.access(applicationContext, on = true)
-            LockEngine.refresh(applicationContext)
+            // F67: :lock restarted during a lock: the cover comes back now, not at the next window event.
+            // The emergency dialer may be up: what said so was in memory, so usage access says what's in front. Unknown: the cover (fails closed).
+            val s = LockEngine.refresh(applicationContext)
+            val front = try { if (s.active) LockEngine.usageFront(applicationContext)?.first else null } catch (t: Throwable) { RLog.w("lock_usage_front", t); null }
+            val emergency = s.active && (LockGate.emergencyInFront(front, LockEngine.facts(applicationContext, s)) ||
+                LockState.emergencyHeld(s.state.emergencyUntil, System.currentTimeMillis()))
+            if (s.active) onEngine(s, startedNow = !emergency)
         }, "robot-lock").start()
     }
 
@@ -107,6 +138,7 @@ class LockAccessibilityService : AccessibilityService() {
         LockClock.stop(applicationContext)
         try { unregisterReceiver(screen) } catch (_: Throwable) {}
         try { unregisterReceiver(shutdown) } catch (_: Throwable) {}
+        try { getSystemService(AudioManager::class.java).removeOnModeChangedListener(modeChanged) } catch (_: Throwable) {}
         removeCurtain()
     }
 
@@ -114,14 +146,35 @@ class LockAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null || event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
-        decide(event.packageName?.toString(), event.className?.toString(), fromUnlock = false)
+        decide(event.packageName?.toString(), event.className?.toString(), fromUnlock = false, at = event.eventTime)
     }
 
-    /** Main thread: what [pkg]'s window gets during a lock. */
-    private fun decide(pkg: String?, cls: String?, fromUnlock: Boolean) {
-        val s = try { LockEngine.current(applicationContext) } catch (t: Throwable) { RLog.w("lock_current", t); return }
+    /**
+     * Robot's app says its window ([LockSignals.MAIN]) is in front since [at]: it came to the front during a lock, or the
+     * edit session ended with it there (you left Phone lock's pages, or the 5 minutes ran out). Android may send no window
+     * event for it (back from the code pad, on a Pixel 8), and the gate decides on it as on one, unless a window event
+     * since [at] says another window came up (at the same time: the event, which is the real one). LS13: or another covered
+     * [window] came up (LockFrontWatch), whose event Android may never send (a data-sensitive window, LT8 step 4); any
+     * class the gate doesn't cover counts as Robot's app (core LockGate.saidInFront), so this word only ever covers.
+     */
+    fun robotInFront(at: Long, window: String? = null) = main.post {
+        // Only while window events are on, as for an event.
+        val t = minOf(at, SystemClock.uptimeMillis())
+        if (watching && t > frontAt) decide(packageName, LockGate.saidInFront(window), fromUnlock = false, at = t)
+    }
+
+    /**
+     * Main thread: what [pkg]'s window gets during a lock. [at]: when it came to the front (an event, or Robot's app saying
+     * so), and it is kept as the window in front; null when the gate looks again at the one kept, or at the unlock.
+     */
+    private fun decide(pkg: String?, cls: String?, fromUnlock: Boolean, at: Long? = null) {
+        // review-lock 11: unreadable: the last state decides; with none and window events on (a lock is on or due), the cover.
+        val s = try { LockEngine.current(applicationContext) } catch (t: Throwable) {
+            RLog.w("lock_current", t)
+            LockEngine.snapshot ?: return if (watching && !keyguard()) showCover() else Unit
+        }
         val facts = LockEngine.facts(applicationContext, s)
-        if (!fromUnlock && inFront(pkg, cls, facts)) { frontPkg = pkg; frontCls = cls }
+        if (at != null && !fromUnlock && inFront(pkg, cls, facts)) { frontPkg = pkg; frontCls = cls; frontAt = minOf(at, SystemClock.uptimeMillis()) }
         if (!s.active) return removeCurtain()
         // Phase B (§9.3): car mode your car started, during your own lock: no cover, whatever comes up.
         if (facts.carOwnLock) return removeCurtain()
@@ -132,6 +185,7 @@ class LockAccessibilityService : AccessibilityService() {
             GateDecision.COVER -> {
                 // The lock screen is never covered: no curtain over it, no cover behind it. The unlock decides.
                 if (!fromUnlock && keyguard()) return removeCurtain()
+                coveredPkg = pkg; coveredCls = cls; coveredAt = SystemClock.uptimeMillis()
                 LockEngine.foreground(applicationContext, packageName)
                 showCover()
             }
@@ -144,9 +198,22 @@ class LockAccessibilityService : AccessibilityService() {
         }
     }
 
+    /**
+     * review-lock 7: the audio mode changed. A call's window can come before the mode says so, and nothing else would decide
+     * again: a dialer window covered in the last moments gets the gate's new answer, and the cover leaves the call's screen.
+     */
+    private fun callMaybeStarted() {
+        if (SystemClock.uptimeMillis() - coveredAt > CALL_WINDOW_MS) return
+        val s = try { LockEngine.current(applicationContext) } catch (t: Throwable) { RLog.w("lock_current", t); return }
+        if (!s.active || !LockGate.callUncovers(coveredPkg, coveredCls, LockEngine.facts(applicationContext, s))) return
+        coveredPkg = null
+        removeCurtain()
+        LockCoverActivity.showing?.finish()
+    }
+
     /** [pkg]'s window replaces the one in front: not the keyboard, a system window, or one of Robot's dialogs or its panel. */
     private fun inFront(pkg: String?, cls: String?, facts: GateFacts): Boolean =
-        pkg != null && pkg != facts.keyboard && pkg !in LockGate.SYSTEM && (pkg != packageName || cls in ownActivities)
+        pkg != null && (pkg != facts.keyboard || cls in facts.keyboardActivities) && pkg !in LockGate.SYSTEM && (pkg != packageName || cls in ownActivities)
 
     /**
      * Main thread, at the unlock during a lock: the window in front decides when the gate covers it (Settings › Phone lock
@@ -181,13 +248,16 @@ class LockAccessibilityService : AccessibilityService() {
                 RLog.w("lock_events", t)
             }
             // Without window events, the window in front isn't known any more.
-            if (!want) { frontPkg = null; frontCls = null }
+            watching = want
+            if (!want) { frontPkg = null; frontCls = null; frontAt = 0 }
             val facts = LockEngine.facts(this, s)
             val ended = (wasEdit && !facts.editSession) || (wasCar && !facts.carOwnLock)
             wasEdit = facts.editSession
             wasCar = facts.carOwnLock
-            if (!s.active) return@post removeCurtain()
-            if (startedNow && interactive() && !keyguard() && !facts.inCall && !facts.carOwnLock) showCover()
+            // F96: the last allowed app belongs to the lock that just ended, not to the next one.
+            if (!s.active) { lastAllowed = null; lastAllowedClass = null; return@post removeCurtain() }
+            val held = facts.inCall || LockGate.ringingInFront(alarmSounding(), frontPkg, facts)
+            if (startedNow && interactive() && !keyguard() && !held && !facts.carOwnLock) showCover()
             else if (ended) frontPkg?.let { decide(it, frontCls, fromUnlock = false) }
         }
     }
@@ -195,17 +265,52 @@ class LockAccessibilityService : AccessibilityService() {
     private fun interactive() = try { getSystemService(PowerManager::class.java).isInteractive } catch (_: Throwable) { true }
     private fun keyguard() = try { getSystemService(KeyguardManager::class.java).isKeyguardLocked } catch (_: Throwable) { false }
 
+    /** F95: an alarm is sounding now, any clock's (usage alarm; Android tells this without a permission, and never whose). */
+    private fun alarmSounding() = try {
+        getSystemService(AudioManager::class.java).activePlaybackConfigurations.any { it.audioAttributes.usage == AudioAttributes.USAGE_ALARM }
+    } catch (_: Throwable) { false }
+
     private fun showCover() {
         addCurtain()
         try {
-            startActivity(LockSignals.cover(this).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_NO_ANIMATION))
+            // F94: NO_USER_ACTION: the app under the cover isn't told you left it, so a video doesn't float over in picture-in-picture.
+            startActivity(LockSignals.cover(this).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_NO_ANIMATION or Intent.FLAG_ACTIVITY_NO_USER_ACTION))
         } catch (t: Throwable) {
             RLog.w("lock_cover", t)
         }
     }
 
     /** The cover is showing: the curtain comes off. */
-    fun coverShown() = main.post { removeCurtain() }
+    fun coverShown() = main.post {
+        coverUp = true
+        coverUpAt = SystemClock.uptimeMillis()
+        main.removeCallbacks(coverGone)
+        removeCurtain()
+    }
+
+    /**
+     * F13: the cover stopped. [own]: it opened that window itself (the code pad, an allowed app, the emergency dialer), so
+     * the next window decides as usual. Otherwise another window took the front; Android sends no event for a data-sensitive
+     * one, so with none within [COVER_GONE_MS] the gate decides on what usage access says is in front.
+     */
+    fun coverStopped(own: Boolean) = main.post {
+        coverUp = false
+        main.removeCallbacks(coverGone)
+        if (!own) main.postDelayed(coverGone, COVER_GONE_MS)
+    }
+
+    private fun afterCoverStopped() {
+        if (coverUp || !watching || !interactive() || keyguard()) return
+        // Android sends no event for some windows, and a call's screen must not be taken for Robot's app; the next window decides.
+        try { if (LockEngine.facts(applicationContext, LockEngine.current(applicationContext)).inCall) return } catch (t: Throwable) { RLog.w("lock_current", t) }
+        // An event since the cover came up named the window, and the gate has decided on it.
+        if (frontAt > coverUpAt && frontCls != LockSignals.COVER) return
+        Thread({
+            val top = try { LockEngine.usageFront(applicationContext) } catch (t: Throwable) { RLog.w("lock_usage_front", t); null }
+            // Nothing known of the window (no usage access): it counts as Robot's app, covered. Fails closed.
+            main.post { if (!coverUp) decide(top?.first ?: packageName, top?.let { it.second } ?: LockSignals.MAIN, fromUnlock = false) }
+        }, "robot-lock").start()
+    }
 
     /** A full-screen, opaque, touch-consuming overlay in the cover's colour, no text, no motion, for 1 s at most (§5.1). */
     private fun addCurtain() {
@@ -240,5 +345,7 @@ class LockAccessibilityService : AccessibilityService() {
         @Volatile var instance: LockAccessibilityService? = null
             private set
         private const val CURTAIN_MS = 1_000L
+        private const val COVER_GONE_MS = 1_500L
+        private const val CALL_WINDOW_MS = 10_000L
     }
 }

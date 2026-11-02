@@ -60,6 +60,7 @@ import app.heyrobot.sys.FilesIntake
 import app.heyrobot.sys.IntakeStep
 import app.heyrobot.sys.SharedFile
 import app.heyrobot.ui.common.RIcons
+import app.heyrobot.ui.common.filterObscuredTouches
 import app.heyrobot.ui.theme.LocalLangs
 import app.heyrobot.ui.theme.RobotTheme
 import app.heyrobot.ui.theme.str
@@ -92,7 +93,7 @@ class FilesShareActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
-        window.decorView.filterTouchesWhenObscured = true
+        window.filterObscuredTouches()
         val i = intent
         if (i?.action != Intent.ACTION_SEND && i?.action != Intent.ACTION_SEND_MULTIPLE) {
             finish()

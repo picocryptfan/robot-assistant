@@ -29,6 +29,9 @@ class TurnFocusTest {
         override fun abandon() { asked += "give" }
         override fun later(r: Runnable, ms: Long) { timers[r] = now + ms }
         override fun cancel(r: Runnable) { timers.remove(r) }
+        /** Another app's music plays (the everyday set's note, §3.3). */
+        var playingNow = false
+        override fun playing() = playingNow
 
         /** Moves the clock on by [ms], running each timer that comes due. */
         fun pass(ms: Long) {
@@ -409,5 +412,75 @@ class TurnFocusTest {
         port.pass(FocusKeeper.SAFETY_MS)
         assertEquals(emptyList<String>(), port.asked)
         assertTrue(port.timers.isEmpty())
+    }
+
+    // The everyday set's music (everyday-set-plan.md §3.3, D3).
+
+    @Test fun playLetsGoAtOnceAndAFollowUpListenInTheTurnTakesNothing() {
+        k.listen()
+        // "Next song": Robot lets go before the key, so the player takes the focus cleanly.
+        k.yieldToPlayer()
+        assertEquals(listOf("take exclusive", "give"), port.asked)
+        assertEquals(FocusPlan.NONE, k.gain)
+        // A line spoken in the same turn, and a headset session's follow-up listen, don't pause the song again.
+        speak(true)
+        speak(false)
+        k.listen()
+        busy()
+        idle()
+        port.pass(grace)
+        assertEquals(listOf("take exclusive", "give"), port.asked)
+        // Once the turn is over, Robot's voice asks as before, and the next question pauses again.
+        speak(true)
+        speak(false)
+        k.listen()
+        assertEquals(listOf("take exclusive", "give", "take duck", "give", "take exclusive"), port.asked)
+    }
+
+    @Test fun pauseKeepsTheFocusUntilTheTurnEnds() {
+        k.listen()
+        // "Pause the music": the key goes while Robot holds the focus; nothing changes until the turn is over.
+        idle()
+        assertEquals(listOf("take exclusive"), port.asked)
+        port.pass(grace)
+        assertEquals(listOf("take exclusive", "give"), port.asked)
+    }
+
+    @Test fun yieldingWithoutAQuestionDoesNothing() {
+        k.yieldToPlayer()
+        speak(true)
+        assertEquals(listOf("take duck"), port.asked)
+    }
+
+    @Test fun theTurnNotesWhatPlayedBeforeItsFocusPausedIt() {
+        assertEquals(null, k.playingNote)
+        port.playingNow = true
+        k.listen()
+        assertEquals(true, k.playingNote)
+        // Robot's focus paused the music: a follow-up listen keeps the first note.
+        port.playingNow = false
+        k.listen()
+        assertEquals(true, k.playingNote)
+        idle()
+        port.pass(grace)
+        // No question holds the turn (a typed one): no note; the caller asks itself.
+        assertEquals(null, k.playingNote)
+        k.listen()
+        assertEquals(false, k.playingNote)
+    }
+
+    @Test fun robotsOwnVoiceIsNeverNotedAsMusic() {
+        port.playingNow = true
+        speak(true)
+        // You start asking while Robot speaks: what plays may be Robot itself.
+        k.listen()
+        assertEquals(false, k.playingNote)
+    }
+
+    @Test fun duringACallNothingIsNoted() {
+        port.playingNow = true
+        port.mode = AudioManager.MODE_IN_CALL
+        assertFalse(k.listen())
+        assertEquals(null, k.playingNote)
     }
 }

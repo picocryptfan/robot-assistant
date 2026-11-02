@@ -8,6 +8,7 @@ import app.heyrobot.core.Abort
 import app.heyrobot.core.RLog
 import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
+import app.heyrobot.core.online.NetCause
 import app.heyrobot.core.termux.TermuxUpdateState
 import app.heyrobot.core.termux.TermuxUpdates
 import app.heyrobot.core.update.UpdateFail
@@ -37,31 +38,31 @@ object TermuxUpdateCheck {
     fun autoCheck(ctx: Context, a: Abort, network: Network?) {
         if (!on(ctx)) return
         if (System.currentTimeMillis() - TermuxUpdateStore.load(ctx).checkedAt < TermuxUpdates.MIN_GAP_MS) return
-        check(ctx, a, network)
+        check(ctx, a, network, NetCause.SWITCH)
     }
 
     /** "Check now" (on its own thread; the page reads termux_updates.json again when [running] ends). */
     fun checkNow(ctx: Context, done: () -> Unit = {}) {
         val app = ctx.applicationContext
         Thread({
-            try { if (on(app)) check(app, Abort(), null) } finally { done() }
+            try { if (on(app)) check(app, Abort(), null, NetCause.TAP) } finally { done() }
         }, "robot-termux-updates").start()
     }
 
     val busy: Boolean get() = running.get()
 
-    /** Both answers asked and kept (one at a time). Blocking. */
-    fun check(ctx: Context, a: Abort, network: Network?): TermuxUpdateState? {
+    /** Both answers asked and kept (one at a time). Blocking. [cause]: the weekly switch or Check now's tap, for What went online. */
+    fun check(ctx: Context, a: Abort, network: Network?, cause: NetCause): TermuxUpdateState? {
         if (!running.compareAndSet(false, true)) return null
         try {
             var ghFail: UpdateFail? = null
             var fdFail: UpdateFail? = null
             val gh = try {
                 TermuxUpdates.parseGitHub(GitHubClient.publicJson(ctx, TermuxUpdates.GITHUB_URL, app.heyrobot.core.update.GitHubHosts.ACCEPT_JSON,
-                    TermuxUpdates.MAX_GITHUB, a, network)) ?: run { ghFail = UpdateFail.BAD_ANSWER; null }
+                    TermuxUpdates.MAX_GITHUB, a, network, cause)) ?: run { ghFail = UpdateFail.BAD_ANSWER; null }
             } catch (f: GitHubClient.Failure) { ghFail = f.why; null }
             val fd = try {
-                TermuxUpdates.parseFdroid(GitHubClient.publicJson(ctx, TermuxUpdates.FDROID_URL, TermuxUpdates.FDROID_ACCEPT, TermuxUpdates.MAX_FDROID, a, network))
+                TermuxUpdates.parseFdroid(GitHubClient.publicJson(ctx, TermuxUpdates.FDROID_URL, TermuxUpdates.FDROID_ACCEPT, TermuxUpdates.MAX_FDROID, a, network, cause))
                     ?: run { fdFail = UpdateFail.BAD_ANSWER; null }
             } catch (f: GitHubClient.Failure) { fdFail = f.why; null }
             if (a.cancelled) return null

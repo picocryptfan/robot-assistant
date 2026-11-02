@@ -22,6 +22,13 @@ class PanelContinuityTest {
     private fun reply(text: String, time: Long, vararg status: ActionStatus) =
         ChatTurn("r$time", TurnRole.ASSISTANT, text, time, actions = status.map { ActionRecord(ToolName.SEND_TEXT, "Text Mom", it) })
 
+    @Test fun aLockThatComesOnWithThePanelOpenStartsANewLockedConversation() {
+        assertTrue(PanelContinuity.newLockedTurn(lockedNow = true, startedLocked = false, empty = false))
+        assertFalse(PanelContinuity.newLockedTurn(lockedNow = true, startedLocked = true, empty = false))
+        assertFalse(PanelContinuity.newLockedTurn(lockedNow = true, startedLocked = false, empty = true))
+        assertFalse(PanelContinuity.newLockedTurn(lockedNow = false, startedLocked = false, empty = false))
+    }
+
     @Test fun aCaptureReturnOnTheLockScreenStillStartsAfresh() {
         // ipc-2: a forged (or stale) "capture" show used to skip the lock-screen rule.
         assertEquals(Open.NEW_LOCKED, open(locked = true, startedLocked = false, returning = true))

@@ -7,6 +7,7 @@ import app.heyrobot.core.i18n.Phrase
 import app.heyrobot.core.LogCode
 import app.heyrobot.core.ToolName
 import app.heyrobot.core.output.BtClass
+import app.heyrobot.core.output.DeviceFamily
 import app.heyrobot.core.output.DeviceMemory
 import app.heyrobot.core.output.DeviceRole
 import app.heyrobot.core.output.Line
@@ -121,6 +122,8 @@ sealed class CarEffect {
     data class Trusted(val on: Boolean, val why: TrustEnd) : CarEffect()
     /** Voice log CAR_MODE. */
     data class Logged(val on: Boolean, val why: CarWhy) : CarEffect()
+    /** Phone lock's car flag goes: nothing else clears it when :voice died or the phone restarted during a drive. */
+    data object ClearLockCar : CarEffect()
     /** Call [CarModeMachine.on] with a Tick at [at]. */
     data class WakeAt(val at: Long) : CarEffect()
 }
@@ -145,6 +148,32 @@ object CarModeMachine {
             CarPhase.ACTIVE -> active(st, input, settings)
             CarPhase.ENDING -> ending(st, input, settings)
         }
+    }
+
+    /**
+     * What a drive :voice didn't live to end may have left on. Once, when :voice starts: its state is in memory only, so OFF
+     * there says nothing about the last drive. A car still connected starts car mode again after this.
+     */
+    fun leftovers(s: CarState): List<CarEffect> =
+        if (s.phase == CarPhase.OFF) listOf(CarEffect.SetDnd(false), CarEffect.AndroidCarMode(false), CarEffect.ClearLockCar) else emptyList()
+
+    /**
+     * Cars car mode counts on that you forgot or turned off in Settings: Android still lists them, so no disconnect will
+     * come. Each goes as if it drove away, once.
+     */
+    fun forgotten(s: CarState, memory: DeviceMemory, at: Long): List<CarInput.CarGone> {
+        val counted = s.present + listOfNotNull(s.car?.takeIf { s.phase == CarPhase.ACTIVE || s.phase == CarPhase.CONNECTED })
+        return counted.filter { n -> memory.byNumber(n).let { it == null || !it.enabled || it.role != DeviceRole.CAR } }.map { n ->
+            CarInput.CarGone(memory.byNumber(n) ?: RememberedDevice(n, DeviceRole.CAR, DeviceFamily.OTHER, ""), at)
+        }
+    }
+
+    /** A timer's moment has passed: [CarEffect.WakeAt] runs on uptime and the phone may have slept through it. */
+    fun due(s: CarState, at: Long): Boolean = when {
+        !s.on -> false
+        s.phase == CarPhase.ENDING && s.endsAt != null && at >= s.endsAt -> true
+        s.trusted != null && at >= s.trusted.until -> true
+        else -> s.phase == CarPhase.ACTIVE && s.car == null && at - s.since >= MANUAL_MAX_MS
     }
 
     private fun off(s: CarState, input: CarInput, settings: CarSettings): Pair<CarState, List<CarEffect>> = when (input) {
@@ -219,8 +248,9 @@ object CarModeMachine {
         val fx = buildList {
             if (s.trusted != null) add(CarEffect.Trusted(false, if (why == CarWhy.CAR_GONE) TrustEnd.CAR_GONE else TrustEnd.CAR_MODE_ENDED))
             add(CarEffect.CarModeFlag(false))
-            if (settings.dndWhileDriving) add(CarEffect.SetDnd(false))
-            if (settings.androidCarMode) add(CarEffect.AndroidCarMode(false))
+            // Always, whatever Settings says now: they may have been turned off during the drive.
+            add(CarEffect.SetDnd(false))
+            add(CarEffect.AndroidCarMode(false))
             add(CarEffect.StopService)
             if (why == CarWhy.ENDED_BY_YOU) add(CarEffect.Say(CAR_OFF))
             add(CarEffect.Logged(false, why))
@@ -283,6 +313,9 @@ enum class CarFunction(val tools: Set<ToolName>) {
 object CarGate {
     val UNLOCK_ONCE = Line(HandsFreeStrings.unlockOnce())
     val INDICATOR = Line(HandsFreeStrings.indicator())
+
+    /** A phone lock for someone else outranks the trusted session: whoever holds the phone isn't you. */
+    fun trustedNow(session: Boolean, someoneElseLock: Boolean): Boolean = session && !someoneElseLock
 
     /** A car function may run now: unlocked, or locked in a trusted session. */
     fun allowed(function: CarFunction, locked: Boolean, trusted: Boolean): Boolean = !locked || trusted

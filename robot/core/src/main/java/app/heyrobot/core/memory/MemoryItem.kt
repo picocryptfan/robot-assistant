@@ -80,6 +80,8 @@ data class MemoryItem(
      * it never goes into a question's prompt ([MemoryEdits.forQuestions]). Always a fact, never pinned.
      */
     val filing: MemoryFiling? = null,
+    /** Who answers a kind of question (MemoryChoice): a fact, never pinned, never in a question's prompt, only as your own followed. */
+    val choice: MemoryChoice? = null,
 ) {
     /**
      * Retrieved into a conversation, it makes that conversation content (later actions follow Safety cards): kept from
@@ -90,7 +92,7 @@ data class MemoryItem(
     /** Past its end ("until tonight"): never retrieved, deleted by [MemoryEdits.sweep] a day later. */
     fun expired(now: Long): Boolean = expiresAt != null && now >= expiresAt
 
-    override fun toString(): String = "MemoryItem(id=$id, kind=$kind, secret=$secret, pinned=$pinned, source=$source, imported=$imported, rule=${filing != null}, chars=${text.length})" // l10n: not text (toString for logs and tests)
+    override fun toString(): String = "MemoryItem(id=$id, kind=$kind, secret=$secret, pinned=$pinned, source=$source, imported=$imported, rule=${filing != null}, choice=${choice != null}, chars=${text.length})" // l10n: not text (toString for logs and tests)
 }
 
 /** A suggestion waiting in Settings › Memory › Suggestions: never spoken, never saved without your tap. */
@@ -210,7 +212,7 @@ object MemoryEdits {
         val item = file.items.firstOrNull { it.id == id } ?: return null
         if (item.pinned == pinned) return file
         // 1.4: a filing rule is never pinned (pinned items go into every prompt; a rule never goes into one).
-        if (pinned && item.filing != null) return null
+        if (pinned && (item.filing != null || item.choice != null)) return null
         if (pinned && (item.secret || file.items.count { it.pinned } >= MemoryLimits.MAX_PINNED)) return null
         return file.copy(items = file.items.map { if (it.id == id) it.copy(pinned = pinned) else it })
     }
@@ -222,7 +224,7 @@ object MemoryEdits {
     fun edit(file: MemoryFile, id: String, text: String, now: Long): MemoryFile? {
         val t = clean(text)
         // 1.4: a filing rule's words are its template: deleted, never edited.
-        if (t.isEmpty() || file.items.none { it.id == id } || file.items.any { it.id == id && it.filing != null }) return null
+        if (t.isEmpty() || file.items.none { it.id == id } || file.items.any { it.id == id && (it.filing != null || it.choice != null) }) return null
         return file.copy(items = file.items.map {
             if (it.id != id) it else {
                 val secret = it.secret || SecretDetector.isSecret(t)
@@ -263,7 +265,7 @@ object MemoryEdits {
      * 1.4: what a question may ever be given, or have found for it: [live] items without filing rules. A rule's words may
      * come from a file (a merchant), so they never reach a prompt, a reply, a helper or the model's forget (§4.5).
      */
-    fun forQuestions(items: List<MemoryItem>, now: Long): List<MemoryItem> = items.filter { !it.expired(now) && it.filing == null }
+    fun forQuestions(items: List<MemoryItem>, now: Long): List<MemoryItem> = items.filter { !it.expired(now) && it.filing == null && it.choice == null }
 
     /**
      * 1.4: a filing rule kept ([item] with its [MemoryItem.filing]). Not [add]: a rule is a fact, never pinned, and the

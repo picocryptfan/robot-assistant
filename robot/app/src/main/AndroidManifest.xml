@@ -34,7 +34,8 @@
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- 1.1.2, F14: the listening sheet hides other apps' overlays while it's up (a normal permission, no prompt). -->
+    <uses-permission android:name="android.permission.HIDE_OVERLAY_WINDOWS" />
     <!-- 1.4 FX1: travel mode's confirms ask for the phone's PIN, pattern or password through Android's BiometricPrompt,
          allowing the device credential only (sys/DevicePin.kt): Android checks this permission for every prompt, even
          one that never offers a fingerprint or a face. A normal permission, granted at install; no sensor is used. -->
@@ -91,6 +92,10 @@
          asked for by the main app only, from that page. With it (and allow-external-apps=true in Termux) the :voice process
          sends commands to Termux's RunCommandService; each one's card comes first unless you chose otherwise. -->
     <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
+    <!-- 1.5, Robot to Robot (robot-to-robot-plan.md §5.2; job L3): :link notices when the phone's network changes (a new
+         Wi-Fi), to tell paired Robots its new address on a shared network (a Private pairing's direct carrier). A normal
+         permission, no prompt; it reads the network's state, never anything on it. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <queries>
         <!-- open_app: every app with a launcher icon (no QUERY_ALL_PACKAGES). -->
@@ -293,17 +298,38 @@
              (exported, RecognitionService intent filter, android.speech meta-data, selectableAsDefault left at
              its default true): at every boot VoiceInteractionManagerService.initForUser keeps a third-party
              assistant only when a current speech recognizer is set and selectable; without one it clears the
-             assistant (probe 1.1 failed the reboot test exactly so). It refuses every request in phase 1 and,
-             like the system recognizers, takes no permission: it reads nothing and answers only "unavailable". -->
+             assistant (probe 1.1 failed the reboot test exactly so). Its switch is in the code, never this component.
+             Since the everyday set (E5, docs/plans/everyday-set-plan.md §6.2) it listens for other apps' mic buttons:
+             only for an app in front that holds the microphone permission, which Android's RecognitionService and Robot
+             both check in code. Since 1.1.2 (F15) it takes Robot's signature permission: only the system binds it for other
+             apps (SpeechRecognizer goes through SpeechRecognitionManagerService, and the system's uid passes any permission
+             check), and a hand-built call to the framework's binder, which crashes :voice on a null listener, can't reach it. -->
         <service
             android:name=".assistant.RobotRecognitionService"
             android:process=":voice"
+            android:permission="${applicationId}.permission.INTERNAL"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.speech.RecognitionService" />
             </intent-filter>
             <meta-data android:name="android.speech" android:resource="@xml/recognition_service" />
         </service>
+        <!-- The everyday set (E5, §6.2, D15): the listening sheet another app's RECOGNIZE_SPEECH opens, in :voice where the
+             speech model and the microphone loop are. Exported only because other apps start it for a result: one filter, that
+             action and DEFAULT; no permission (the intent has none). Never over the lock screen (no showWhenLocked, and refused
+             while it's up), out of Recents. It listens with Robot's own permission only while it's on screen, and gives back
+             only the text. -->
+        <activity
+            android:name=".assistant.listen.ListenSheetActivity"
+            android:process=":voice"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.Robot.Translucent">
+            <intent-filter>
+                <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
         <!-- Camera / photo picker trampoline for the panel (a session cannot start activities for a result). -->
         <activity
             android:name=".assistant.CaptureActivity"
@@ -322,6 +348,36 @@
             android:excludeFromRecents="true"
             android:noHistory="true"
             android:theme="@style/Theme.Robot.Translucent" />
+        <!-- The everyday set's Ask Robot (docs/plans/everyday-set-plan.md §7, D19, D20; E7): "Ask Robot" in another app's
+             text-selection menu (PROCESS_TEXT) and share sheet (SEND of text, one image or one audio file; several files are
+             Robot Files'). In :voice, where the panel and the speech model are. Exported, because those menus must reach it;
+             no permission, as for any share target: an app in front can start it, and all it can do is open the panel with
+             what it handed over, as content, where every action asks first. Never over the lock screen (no showWhenLocked),
+             out of Recents, no history. It reads what it was given once (another app's content:// only, capped), hands the
+             panel a one-time id through PanelLaunchActivity, and never answers the app (Q5). "Ask Robot in other apps" off
+             disables it (sys AskRobotDoor). ProcessIsolationTest's askRobotOnlyCopies, verify_apk.sh. -->
+        <activity
+            android:name=".assistant.ask.AskRobotActivity"
+            android:process=":voice"
+            android:exported="true"
+            android:label="@string/everyday_ask_label"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
+            android:theme="@style/Theme.Robot.Translucent">
+            <intent-filter>
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="audio/*" />
+            </intent-filter>
+        </activity>
         <!-- A helper's connection window (0.6.0; Claude's key window before): its API key is pasted here, in the :voice
              process, encrypted there and never passes through the main app (which opens this window by class name), and Test
              connection runs here. -->
@@ -349,6 +405,16 @@
             android:theme="@style/Theme.Robot" />
         <activity
             android:name=".assistant.WebSearchActivity"
+            android:process=":voice"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.Robot.Translucent" />
+        <!-- Skills connections (C3): a connection's window, where its key is pasted and Test runs, in :voice (the main app
+             opens it by class name and never reads a key or loads the HTTP client). Not exported, no intent filter, out of
+             Recents, never over the lock screen. -->
+        <activity
+            android:name=".assistant.connect.ConnectionWindow"
             android:process=":voice"
             android:exported="false"
             android:excludeFromRecents="true"
@@ -406,7 +472,6 @@
             android:name=".assistant.car.CarModeActivity"
             android:process=":voice"
             android:exported="false"
-            android:excludeFromRecents="true"
             android:launchMode="singleTask"
             android:taskAffinity="${applicationId}.car"
             android:theme="@style/Theme.Robot" />
@@ -534,6 +599,63 @@
             android:exported="false"
             android:permission="${applicationId}.permission.INTERNAL" />
 
+        <!-- The everyday set, E6 (docs/plans/everyday-set-plan.md §6.3, D16, D17): Robot's voices for other apps, Robot as one of
+             Android's text-to-speech engines (Heart and Kitten in English, Siwis in French from France). It speaks for an app
+             only once you pick Robot in Android's text-to-speech settings. Exported with no permission because Android's
+             text-to-speech clients hold none (the screen reader, an e-book app). In :voice, on Robot's own engine, not in an
+             isolated process: the speech library opens its voices and espeak-ng's data by name, which an isolated process
+             can't (tts/RobotTtsService.kt, SECURITY.md); every text passes core TtsText's filter before the library. A request
+             from Robot's own uid is refused (Robot never speaks through itself). Not direct-boot aware: before the first
+             unlock Android uses another engine. Settings › Voice's switch disables it and the three activities below
+             (sys VoicesForApps). ProcessIsolationTest and verify_apk.sh pin all four. -->
+        <service
+            android:name=".tts.RobotTtsService"
+            android:process=":voice"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.TTS_SERVICE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data android:name="android.speech.tts" android:resource="@xml/tts_engine" />
+        </service>
+        <!-- E6: the three activities Android's text-to-speech settings start for an engine: which languages have a voice, the
+             example sentence, and Settings › Voice to download one (also the engine's settings page). Main process, exported
+             (Android's settings and any app start them), each with exactly its one action, no permission, nothing shown,
+             never over the lock screen, out of Recents. They read only whether a voice model is downloaded. -->
+        <activity
+            android:name=".ui.tts.TtsCheckDataActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.NoDisplay">
+            <intent-filter>
+                <action android:name="android.speech.tts.engine.CHECK_TTS_DATA" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".ui.tts.TtsSampleTextActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.NoDisplay">
+            <intent-filter>
+                <action android:name="android.speech.tts.engine.GET_SAMPLE_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".ui.tts.TtsInstallDataActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.NoDisplay">
+            <intent-filter>
+                <action android:name="android.speech.tts.engine.INSTALL_TTS_DATA" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
         <!-- 1.4, Robot Files (files-1.4-plan.md §4.3, D5): ":files", the one place a file's bytes are decoded, in an isolated
              process: a uid of its own with no permissions, no network and none of Robot's files. Bound only by Robot's
              FileParseLink (main and :voice), a fresh instance each time (bindIsolatedService), never exported, no
@@ -579,6 +701,10 @@
              one hand-off into cache/files_out/ (never the sealed file), with a one-time read grant through the system's chooser;
              taken back (revoked, deleted) when you come back to Robot, at screen-off, or after 15 minutes. Main process, not
              exported, that folder alone (ProcessIsolationTest, verify_apk.sh). -->
+        <!-- F55: a copy handed to another app goes after 15 minutes, by this alarm's broadcast (main, not exported, no filter). -->
+        <receiver
+            android:name=".sys.FilesOutExpiry"
+            android:exported="false" />
         <provider
             android:name=".sys.FilesOutProvider"
             android:authorities="${applicationId}.files_out"
@@ -586,6 +712,37 @@
             android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/files_out_paths" />
         </provider>
+
+        <!-- 1.4, Robot Lists (lists-plan.md §7.6, D12; LS6): the home-screen widget "Robot list", one list per widget, ticks
+             only. Main process. The provider is exported as a widget provider must be, with exactly the APPWIDGET_UPDATE
+             filter and its meta-data, and reads nothing from what it is sent (it redraws the widgets the system lists for it).
+             The tick receiver isn't exported and has no filter: only the widget's own template PendingIntent reaches it, and
+             it only ticks or unticks an item on that widget's list. The setup window is exported for the home-screen app with
+             exactly the APPWIDGET_CONFIGURE filter, never over the lock screen, out of Recents (ProcessIsolationTest's
+             theWidgetOnlyTicks, verify_apk.sh). Its own task (LS12): opened from a widget's line, it never sits on Robot's
+             screens, so closing it shows the home screen and a stray tap can't reach Settings › Lists' Delete all lists. -->
+        <receiver
+            android:name=".ui.lists.ListsWidgetProvider"
+            android:exported="true"
+            android:label="@string/lists_widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/lists_widget_info" />
+        </receiver>
+        <receiver
+            android:name=".ui.lists.ListsTickReceiver"
+            android:exported="false" />
+        <activity
+            android:name=".ui.lists.ListsWidgetSetup"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity="${applicationId}.widget"
+            android:theme="@style/Theme.Robot.Translucent">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
 
         <!-- Not exported: the system's boot broadcast still arrives, other apps cannot fake it. Direct-boot aware (0.2.3)
              so it also gets LOCKED_BOOT_COMPLETED, before the first unlock: there it only checks the speech recognizer
@@ -656,5 +813,62 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+
+        <!-- 1.5, Robot to Robot (robot-to-robot-plan.md §5.1, §5.3; job L3): ":link", the process that holds Robot to Robot's
+             keys (the vault, L2), libsignal's sessions and the carriers: Tor as its child process, its direct listener on a
+             shared network, your push distributor's messages. Off until you set Robot to Robot up; nothing else runs here.
+             LinkService: bound by name from main and :voice only (Robot's signature permission, and each call's uid checked),
+             not exported, no intent filter. LinkJobService: the push job, only the system binds it. -->
+        <service
+            android:name=".link.LinkService"
+            android:process=":link"
+            android:exported="false"
+            android:permission="${applicationId}.permission.INTERNAL" />
+        <service
+            android:name=".link.LinkJobService"
+            android:process=":link"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+        <!-- Your push distributor's broadcasts (the UnifiedPush connector, R0 §5): exported, as a distributor app must reach
+             it, with exactly the connector's five actions. A broadcast counts only with the token the connector gave that
+             distributor; a message is RFC 8291 ciphertext the connector decrypts, holding the session's ciphertext. The
+             connector's own receiver is removed: this is the only one. -->
+        <receiver
+            android:name="app.heyrobot.r2r.LinkPushReceiver"
+            android:process=":link"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="org.unifiedpush.android.connector.MESSAGE" />
+                <action android:name="org.unifiedpush.android.connector.UNREGISTERED" />
+                <action android:name="org.unifiedpush.android.connector.NEW_ENDPOINT" />
+                <action android:name="org.unifiedpush.android.connector.REGISTRATION_FAILED" />
+                <action android:name="org.unifiedpush.android.connector.TEMP_UNAVAILABLE" />
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name="org.unifiedpush.android.connector.internal.MessagingReceiverImpl"
+            tools:node="remove" />
+        <!-- The connector's service a distributor binds to raise an app while a message arrives is removed: it was exported
+             to any app and has only onBind, and Robot's receiver needs no raising (each event becomes an expedited job).
+             The connector's translucent window, moved into :link (main never runs the connector's code; not exported): -->
+        <service
+            android:name="org.unifiedpush.android.connector.internal.RaiseToForegroundService"
+            tools:node="remove" />
+        <activity
+            android:name="org.unifiedpush.android.connector.internal.LinkActivity"
+            android:process=":link"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            tools:node="merge" />
+        <!-- 1.5, Robot to Robot (robot-to-robot-plan.md §5.1, §5.3; job L4): ":linkparse", the one place a request another
+             Robot sent is decoded (and a contact card's vCard read), in an isolated process as :files is: a uid of its own
+             with no permissions, no network, no Keystore and none of Robot's files. Bound only by :link (LinkParseLink), a
+             fresh instance while it is awake (bindIsolatedService); never exported, no permission, no intent filter, never
+             shared with another isolated service nor started from the app zygote. -->
+        <service
+            android:name=".linkparse.LinkParseService"
+            android:process=":linkparse"
+            android:isolatedProcess="true"
+            android:exported="false" />
     </application>
 </manifest>

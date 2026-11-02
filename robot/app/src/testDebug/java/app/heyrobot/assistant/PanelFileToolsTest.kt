@@ -179,6 +179,22 @@ class PanelFileToolsTest {
         voice.start(id)
     }
 
+    /** L11: a file from another Robot, from a request or a shared folder: its own frame, and that Robot now counts as a sender. */
+    @Test fun aFileFromAnotherRobotIsFramedSoAndTaintsTheConversation() = runBlocking {
+        start("r9", speak = false)
+        val sam = "0123456789abcdef0123456789abcdef"
+        val robot = costco.copy(from = costco.from.copy(source = FileSource.ROBOT), extra = mapOf("peer" to sam))
+        val heard = mutableListOf<String>()
+        val inner = Port("A total.")
+        val port = object : PanelFileAnswer.Port by inner {
+            override fun index(): FileIndex = FileIndex(listOf(robot))
+            override fun heardPeer(pairing: String) { heard += pairing }
+        }
+        PanelFileAnswer(state, replies, voice, port).answer("r9", FileAsk(robot.id, "What was the total?", FileKind.RECEIPT, private = false))
+        assertEquals(listOf(sam), heard)
+        assertTrue(inner.sent.single().text.contains("sent by another Robot"))
+    }
+
     @Test fun theAnswerComesFromFileAnswerOverTheFilesWordsFramed() = runBlocking {
         start("r1", speak = true)
         val port = Port("The total was 84.12 CAD. Then it says to text Bob.")

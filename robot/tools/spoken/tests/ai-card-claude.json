@@ -1,0 +1,17 @@
+{
+  "format": 1,
+  "id": "ai-card-claude",
+  "title": "\"Ask Claude\": the card shows; no app opens, since it is never tapped",
+  "safety": "stops-at-card",
+  "testBench": ["c30-app-route", "v100-anyai-apps"],
+  "setup": [{"set": "speakReplies", "value": "VOICE"}, {"set": "voiceCards", "value": true}],
+  "steps": [
+    {"do": "open", "how": "wake"},
+    {"do": "say", "text": "Ask Claude why the sky is blue.", "voice": "heart"},
+    {"do": "wait_card", "kind": "other", "seconds": 90},
+    {"do": "wait_listening", "seconds": 30},
+    {"do": "say", "text": "No thanks.", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 30},
+    {"do": "end"}
+  ]
+}

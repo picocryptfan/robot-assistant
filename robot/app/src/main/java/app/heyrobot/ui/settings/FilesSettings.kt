@@ -484,7 +484,7 @@ private fun remindersTitle(r: FileReminders): Int = when (r) {
 /** A dialog in a window of its own that is never in a screenshot (it names a file), whatever the page under it. */
 @Composable
 private fun SecureConfirm(title: String, text: String, confirm: String, dismiss: String, onDismiss: () -> Unit, onConfirm: () -> Unit) {
-    androidx.compose.material3.AlertDialog(onDismissRequest = onDismiss,
+    app.heyrobot.ui.common.AlertDialog(onDismissRequest = onDismiss,
         confirmButton = { androidx.compose.material3.TextButton(onClick = onConfirm) { Text(confirm) } },
         dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text(dismiss) } },
         title = { Text(title) }, text = { Text(text) },

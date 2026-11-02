@@ -25,7 +25,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.AlertDialog
+import app.heyrobot.ui.common.AlertDialog
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -45,6 +45,8 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -133,19 +135,19 @@ fun NoteScreen(noteId: String?, version: Int, a: AppActions, snackbar: SnackbarH
     val ctx = LocalContext.current
     val store = remember { NotesFiles.store(ctx) }
     var id by rememberSaveable { mutableStateOf(noteId) }
-    var title by rememberSaveable { mutableStateOf("") }
-    var text by rememberSaveable { mutableStateOf("") }
+    // After the id: a note too big for saved state comes back with its id and is read again.
+    val words = rememberSaveable(saver = NoteWordsSaver) { NoteWords(loaded = id == null) }
+    var title by words::title
+    var text by words::text
     var created by rememberSaveable { mutableLongStateOf(0L) }
     var updated by rememberSaveable { mutableLongStateOf(0L) }
-    /** Title and text as last written; the editor writes only when they change. */
-    var saved by rememberSaveable { mutableStateOf<String?>(null) }
-    /** False until an existing note was read (saveable: after a rotation the edited text is kept, not re-read). */
-    var loaded by rememberSaveable { mutableStateOf(noteId == null) }
+    var saved by words::saved
+    var loaded by words::loaded
     var deleted by rememberSaveable { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     val created1 by rememberUpdatedState(onCreated)
 
-    fun key(t: String, x: String) = t.trim() + "\u0000" + x.trim()
+    fun key(t: String, x: String) = noteKey(t, x)
 
     /** Writes the note now if it changed (a small file: on the main thread, also from onDispose and onStop). */
     fun save() {
@@ -218,6 +220,8 @@ fun NoteScreen(noteId: String?, version: Int, a: AppActions, snackbar: SnackbarH
                         a.say(ctx.getString(R.string.notes_share_nothing))
                     }
                 }) { Icon(RIcons.Share, stringResource(R.string.notes_share)) }
+                // 1.4 Lists (LS5): the note's lines as a new list's items; the note is kept.
+                if (!deleted) app.heyrobot.ui.lists.MakeListButton(title, text, a, snackbar)
                 if (!deleted) IconButton(onClick = { confirmDelete = true }) { Icon(RIcons.Delete, stringResource(R.string.notes_delete)) }
             }
         },
@@ -280,3 +284,32 @@ fun NoteScreen(noteId: String?, version: Int, a: AppActions, snackbar: SnackbarH
 
 /** Typing pauses this long before the note is written. */
 private const val AUTOSAVE_MS = 600L
+
+/** Title and text compared when saving. */
+internal fun noteKey(title: String, text: String) = title.trim() + "\u0000" + text.trim()
+
+/** The note being edited, kept across a rotation by [NoteWordsSaver]. */
+internal class NoteWords(title: String = "", text: String = "", saved: String? = null, loaded: Boolean = false) {
+    var title by mutableStateOf(title)
+    var text by mutableStateOf(text)
+    /** Title and text as last written; the editor writes only when they change. */
+    var saved by mutableStateOf(saved)
+    /** False until an existing note was read. */
+    var loaded by mutableStateOf(loaded)
+}
+
+/** Android's saved state crashes the app above about 1 MB, and it holds more than this note: bigger notes aren't put in it. */
+internal const val NOTE_MAX_SAVED_CHARS = 32_000
+
+/**
+ * Saved state holds a note's words while they fit (after a rotation the edited text is kept, not re-read). A bigger one saves
+ * nothing: it was written when the app stopped, so it is read again by its id. Only whether it matched the file is kept, not
+ * a second copy of the words.
+ */
+internal val NoteWordsSaver: Saver<NoteWords, Any> = listSaver(
+    save = { w ->
+        if (w.title.length + w.text.length > NOTE_MAX_SAVED_CHARS) emptyList()
+        else listOf(w.title, w.text, w.saved == noteKey(w.title, w.text), w.loaded)
+    },
+    restore = { l -> NoteWords(l[0] as String, l[1] as String, if (l[2] as Boolean) noteKey(l[0] as String, l[1] as String) else null, l[3] as Boolean) },
+)

@@ -14,6 +14,7 @@ import app.heyrobot.core.helpers.HelperTrust
 import app.heyrobot.core.helpers.HelperWho
 import app.heyrobot.core.helpers.HelperWords
 import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.i18n.HelperStrings
 import app.heyrobot.core.i18n.PanelStrings
 import app.heyrobot.core.i18n.Phrase
 import kotlinx.coroutines.CoroutineScope
@@ -65,6 +66,8 @@ internal class PanelOffers(private val scope: CoroutineScope, private val state:
         /** Robot checks with helper [h] with exactly [blocks] (PanelHelperTurn.escalate). */
         suspend fun escalate(replyId: String?, question: String, blocks: List<HelperBlock>, voiceAsked: Boolean, reuseBubble: Boolean, h: HelperConfig,
             fallBack: Boolean): Boolean
+        /** "Always ask Jarvis for these": [k] goes into Memory, and Robot says so. [spoken]: a yes, not a tap. */
+        fun keepChoice(k: KeepChoice, spoken: Boolean)
     }
 
     /**
@@ -72,12 +75,14 @@ internal class PanelOffers(private val scope: CoroutineScope, private val state:
      * helper's app. It never picks up a screen or a picture that arrived later.
      */
     class Pending(val api: Boolean, val question: String, val payload: HelperPayload?, val voiceAsked: Boolean, val asWell: Boolean = false,
-        val helper: String = HelperConfig.CLAUDE_ID)
+        val helper: String = HelperConfig.CLAUDE_ID, val keep: KeepChoice? = null, val beyond: Boolean = false)
 
     /** The offer waiting under a reply, by reply id, with exactly what a tap would send (at most one at a time). */
     private val offers = HashMap<String, Pending>()
 
     private fun words(h: HelperConfig) = HelperWords(HelperWho.of(h))
+
+    private val wasBig get() = app.heyrobot.core.i18n.HelperStrings.choiceWasBig()
 
     /**
      * Shows "Want me to check with Jarvis?" under [replyId] (any helper, by its name), or "Want Jarvis's take as well?"
@@ -85,18 +90,39 @@ internal class PanelOffers(private val scope: CoroutineScope, private val state:
      */
     fun show(replyId: String, o: Pending) {
         drop()
+        o.keep?.let { k -> return showKeep(replyId, o, k) }
         val h = port.settings.helper(o.helper) ?: return
         offers[replyId] = o
         val text = if (o.api) o.question else AppHandOff.cap(o.question)
         state.update { st ->
             st.copy(turns = st.turns.map { if (it.id == replyId) it.copy(offer = Offer(o.api, text, o.payload?.sendsText.orEmpty().map { p -> p.render(port.turnLangs) }, o.payload?.preview, o.asWell, h.name,
-                h.presetOf.defaultName)) else it })
+                h.presetOf.defaultName, note = if (o.beyond) wasBig.render(port.turnLangs) else null)) else it })
         }
         // Said too, so you know a yes will do.
         if (state.value.speak) {
-            port.speakRobot(port.said(if (!o.api) PanelStrings.wantOpenApp("appName" to h.presetOf.defaultName) else if (o.asWell) words(h).offerAsWellText else words(h).offerText))
+            val want = port.said(if (!o.api) PanelStrings.wantOpenApp("appName" to h.presetOf.defaultName) else if (o.asWell) words(h).offerAsWellText else words(h).offerText)
+            port.speakRobot(if (o.beyond) port.said(wasBig) + " " + want else want)
         }
     }
+
+    /** "Always ask Jarvis for code questions?" under [replyId]: nothing is sent, a yes or a tap only remembers it. */
+    private fun showKeep(replyId: String, o: Pending, k: KeepChoice) {
+        offers[replyId] = o
+        state.update { st -> st.copy(turns = st.turns.map { if (it.id == replyId) it.copy(offer = Offer(true, "", emptyList(), keep = k.offer.render(port.turnLangs))) else it }) }
+        if (state.value.speak) port.speakRobot(port.said(k.offer))
+    }
+
+    /** Offers to remember [k] under [replyId]. */
+    fun showKeep(replyId: String, k: KeepChoice) = show(replyId, Pending(false, "", null, false, keep = k))
+
+    /** The helper the offer under [replyId] is for; null: none by name (a keep for Robot, or for the usual helper). */
+    fun helperOf(replyId: String): String? = offers[replyId]?.let { o -> if (o.keep != null) o.keep.helper else o.helper }
+
+    /** A yes to the offer under [replyId] may name only its own helper: "yes, ask Jarvis" under an offer for Home isn't one. */
+    fun namesFor(replyId: String, names: List<app.heyrobot.core.HelperName>) = names.filter { it.id == helperOf(replyId) }
+
+    /** The offer under [replyId] only remembers a choice. */
+    fun isKeep(replyId: String): Boolean = offers[replyId]?.keep != null
 
     /** Every offer goes, from the panel too. */
     fun drop() {
@@ -124,6 +150,11 @@ internal class PanelOffers(private val scope: CoroutineScope, private val state:
     fun accept(replyId: String, tapped: Boolean) {
         if (state.value.busy || port.running) return
         val o = offers[replyId] ?: return
+        o.keep?.let { k ->
+            if (k.tapOnly && !tapped) return port.notify(HelperStrings.choiceKeepTap())
+            dismiss(replyId)
+            return port.keepChoice(k, spoken = !tapped)
+        }
         val s = port.settings
         val h = s.helper(o.helper)
         // The helper was turned off or removed since the offer was made.

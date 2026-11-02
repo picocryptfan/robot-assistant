@@ -32,7 +32,8 @@ class CallToolTest {
         // phones anyone. Locked, it waits for the unlock (car mode's trusted session is CarGate's, on top).
         assertFalse(ToolName.CALL.forModel)
         assertTrue(ToolName.CALL !in ToolRouter.tools(ToolGroup.entries.toSet(), RobotSettings()))
-        assertTrue(ToolName.entries.filter { it != ToolName.CALL }.all { it.forModel })
+        // (C4, deliberately: a skill's connection and hand-off steps are never the model's either.)
+        assertTrue(ToolName.entries.filter { it != ToolName.CALL && it.group != ToolGroup.CONNECTIONS }.all { it.forModel })
         assertEquals(app.heyrobot.core.output.HandsFreeCommand.Call("Mom"), app.heyrobot.core.output.HandsFreeRouter.route("call Mom", carMode = true))
         assertTrue(ToolName.CALL !in app.heyrobot.core.LockScreen.DEFAULT)
         assertEquals(app.heyrobot.core.GateDecision.NEEDS_UNLOCK, app.heyrobot.core.ApprovalGate.decide(ToolName.CALL, locked = true, settings = RobotSettings()))
@@ -48,7 +49,7 @@ class CallToolTest {
         assertEquals("Call", c.copy(direct = true).confirmLabel)
         // An emergency number never says Call: the dialer opens and you tap Call there.
         assertEquals("Open the dialer", c.copy(direct = true, emergency = true).confirmLabel)
-        assertTrue(c.copy(learned = true).describe().contains("seen in a notification"))
+        assertTrue(c.copy(learned = true).describe().contains("name not confirmed"))
     }
 
     /**

@@ -115,7 +115,7 @@
     <string name="people_access_still">L’accès aux notifications est encore autorisé</string>
     <string name="people_access_still_detail">Robot ignore les notifications tant que ceci est désactivé</string>
     <string name="people_open">Ouvrir</string>
-    <string name="people_learned">Appris des notifications (%1$d)</string>
+    <string name="people_learned">Pas encore confirmés (%1$d)</string>
     <string name="people_keep">Garder</string>
     <string name="people_keep_named">Garder %1$s</string>
     <string name="people_remove">Retirer</string>
@@ -190,8 +190,9 @@
     <string name="people_open_access">Ouvre %1$s, ou %2$s.</string>
     <!-- Settings › People › Notification access, and what learning from Cheogram reads. -->
     <string name="people_access_title">Accès aux notifications</string>
-    <string name="people_access_allowed_detail">Ce que Personnes et Messages activent, rien d’autre</string>
+    <string name="people_access_allowed_detail">Ce qu’utilisent Personnes, Messages et la tuile de musique du mode auto, rien d’autre</string>
     <string name="people_access_footer">Pour apprendre des noms, Robot ne regarde que les notifications d’une seule appli de messagerie, et parmi elles, seulement l’expéditeur d’une conversation en tête-à-tête. Avec Réglages › Messages activé, il lit aussi les messages des applis que tu y actives, en mémoire seulement. Réglages › Personnes et Réglages › Messages disent ce que Robot lit, où c’est gardé, et comment le reprendre.</string>
+    <string name="people_access_car_tile">La tuile de musique du mode auto utilise aussi cet accès, pour montrer ce que joue n’importe quelle appli&#160;: l’appli, le titre et l’artiste, sur l’écran de l’auto seulement. Rien de cela n’est consigné, gardé ni envoyé.</string>
     <string name="people_steps_title">Autoriser l’accès aux notifications</string>
     <string name="people_steps_why">Android appelle l’accès aux notifications un paramètre restreint pour les applis installées à partir d’un fichier plutôt que d’une boutique d’applis, comme Robot&#160;: des applis malveillantes installées ainsi s’en sont servies pour lire les messages et les codes de connexion des gens. Il faut donc trois étapes.</string>
     <string name="people_step_1">1. Touche Accès aux notifications et active l’accès de Robot (dans une liste, touche d’abord Robot). Si Android dit «&#160;Paramètre restreint&#160;», touche OK.</string>

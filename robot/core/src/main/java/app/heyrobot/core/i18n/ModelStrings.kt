@@ -118,6 +118,8 @@ object ModelStrings : Strings("model", area = "model") {
     val leftFree = s("left_free", "{size} is free", "il y a {size} de libre")
     val needWithCache = s("need_with_cache", "the {file} file, about {cache} for the cache the CPU writes on its first load, and 1 GB to spare",
         "le fichier de {file}, environ {cache} pour le cache que le CPU écrit à son premier chargement, et 1 Go de marge")
+    val needWithCopy = s("need_with_copy", "the {file} file twice while it moves into Robot's own storage, and {spare} to spare",
+        "le fichier de {file} deux fois pendant son déplacement dans le stockage de Robot, et {spare} de marge")
     val needFile = s("need_file", "the file plus 1 GB to spare", "le fichier plus 1 Go de marge")
     val notEnoughSpace = s("not_enough_space", "Not enough free space: {name} needs {need} ({what}) and {left}.",
         "Pas assez d'espace libre : {name} a besoin de {need} ({what}) et {left}.")
@@ -199,6 +201,17 @@ object ModelStrings : Strings("model", area = "model") {
     val fastFailed = s("fast_failed", "The model didn't load in time.", "Le modèle ne s'est pas chargé à temps.")
     val whyNotDownloaded = s("why_not_downloaded", "“{model}” isn't on this phone yet", "« {model} » n'est pas encore sur ce téléphone")
     val whyNotChecked = s("why_not_checked", "“{model}” hasn't been checked yet", "« {model} » n'a pas encore été vérifié")
+    val whyNeedsMove = s("why_needs_move", "“{model}” has to move into Robot's own storage first, which needs about {size} free",
+        "« {model} » doit d'abord passer dans le stockage de Robot, ce qui demande environ {size} d'espace libre")
+    val whyNeedsMoveOwn = s("why_needs_move_own", "“{model}” has to move into Robot's own storage first, which needs room for the file",
+        "« {model} » doit d'abord passer dans le stockage de Robot, ce qui demande de la place pour le fichier")
+    val moveIt = s("move_it", "Free up space if you need to, then open the Robot app.", "Libère de l'espace au besoin, puis ouvre l'appli Robot.")
+    val mustMove = s("must_move", "“{model}” has to move into Robot's own storage first. Open the Robot app.",
+        "« {model} » doit d'abord passer dans le stockage de Robot. Ouvre l'appli Robot.")
+    val fastNeedsMove = s("fast_needs_move", "Robot's model has to move into its own storage first, which needs about {size} free. Free up space if you need to, then open the Robot app.",
+        "Le modèle de Robot doit d'abord passer dans son propre stockage, ce qui demande environ {size} d'espace libre. Libère de l'espace au besoin, puis ouvre l'appli Robot.")
+    val moveWaits = s("move_waits", "Robot can't use this model until it moves into Robot's own storage, which needs about {size} free. It moves by itself once there's room, while the app is open.",
+        "Robot ne peut pas utiliser ce modèle avant son déplacement dans le stockage de Robot, ce qui demande environ {size} d'espace libre. Il se déplace tout seul dès qu'il y a de la place, tant que l'appli est ouverte.")
     val whyNeedsTpu = s("why_needs_tpu", "“{model}” waits for you to allow the TPU in the Robot app › {page}",
         "« {model} » attend que tu autorises le TPU dans l'appli Robot › {page}")
     val whyUnusable = s("why_unusable", "Robot can't use “{model}” (the Robot app › {page} says why)",
@@ -226,6 +239,7 @@ object ModelStrings : Strings("model", area = "model") {
     val whileIdle = s("while_idle", "while loaded, between answers", "pendant qu'il était chargé, entre deux réponses")
     val failureNoFile = s("failure_no_file", "file missing", "fichier manquant")
     val failureNotAllowed = s("failure_not_allowed", "refused by Robot's check of the file", "refusé par la vérification du fichier")
+    val failureFileChanged = s("failure_file_changed", "the file changed or moved", "le fichier a changé ou a été déplacé")
     val failureNoSpace = s("failure_no_space", "no room for its cache", "pas de place pour son cache")
     val failureEngine = s("failure_engine", "engine error", "erreur du moteur")
     val failureStopping = s("failure_stopping", "the last model was still stopping", "le modèle précédent s'arrêtait encore")

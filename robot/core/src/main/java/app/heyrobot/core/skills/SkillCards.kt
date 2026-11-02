@@ -28,15 +28,39 @@ object SkillCards {
         SkillLevel.OFF -> SettingsStrings.approvalOff()
     }
 
-    /** Step [step] of [s] in its card's words, with [values] for its questions (the defaults for the rest). */
-    fun stepText(s: Skill, step: SkillStep, values: Map<String, String> = emptyMap()): Phrase {
-        if (step.kind == StepKind.SAY) return SkillStrings.stepSay("text" to (step.args["text"] as? String).orEmpty())
-        return SkillCheck.action(s, step, values)?.summary() ?: step.kind.tool!!.titleText
+    /**
+     * Step [step] of [s] in its card's words, with [values] for its questions (the defaults for the rest). A connection's step
+     * whose link is known ([links], C4, plan §5.4): your operation's title, your connection's name, its host and what it
+     * does ("Turn off a light · your Home Assistant (home.example.org) · changes your home"): shown, never logged or told to a model.
+     */
+    fun stepText(s: Skill, step: SkillStep, values: Map<String, String> = emptyMap(), links: SkillLinks = SkillLinks.NONE): Phrase {
+        val op = if (step.kind == StepKind.CONN && step.conn != null && step.op != null) links.op(step.conn, step.op) else null
+        val title = op?.title
+        if (op != null && title != null) {
+            val effects = app.heyrobot.core.connect.ConnStep.chips(SkillEffects.step(s, step, links), op.host.orEmpty())
+            return app.heyrobot.core.i18n.ConnStrings.skillStep("title" to title, "name" to op.name.orEmpty(), "host" to op.host.orEmpty(),
+                "effects" to Phrase.ListOf(effects))
+        }
+        if (step.kind.tool == null) return kindTitle(step)
+        return SkillCheck.action(s, step, values)?.summary() ?: kindTitle(step)
+    }
+
+    /**
+     * What kind of step [step] is, without its values: its tool's title, "Say …", or one of the connections plan's steps
+     * (its operation's and connection's names come with C5 to C9; never an address, an entity or a topic).
+     */
+    fun kindTitle(step: SkillStep): Phrase = when (step.kind) {
+        StepKind.SAY -> SkillStrings.stepSay("text" to (step.args["text"] as? String).orEmpty())
+        StepKind.CONN -> SkillStrings.stepConnection()
+        StepKind.APP -> SkillStrings.stepHandOff()
+        StepKind.TRAVEL_TIME -> SkillStrings.stepTravel()
+        StepKind.TERMUX_SCRIPT -> SkillStrings.stepScript("name" to (step.args["script"] as? String).orEmpty())
+        else -> step.kind.tool!!.titleText
     }
 
     /** "1. Text **Sam**", "2. Open the route home in Organic Maps". */
-    fun steps(s: Skill, values: Map<String, String> = emptyMap()): List<Phrase> =
-        s.steps.mapIndexed { i, st -> SkillStrings.stepLine("i" to (i + 1).toString(), "step" to stepText(s, st, values)) }
+    fun steps(s: Skill, values: Map<String, String> = emptyMap(), links: SkillLinks = SkillLinks.NONE): List<Phrase> =
+        s.steps.mapIndexed { i, st -> SkillStrings.stepLine("i" to (i + 1).toString(), "step" to stepText(s, st, values, links)) }
 
     /**
      * The save card of [d]. [nameProblem]: why its name can't be used (SkillNames), or null. [paused]: D8, the steps came
@@ -75,8 +99,8 @@ object SkillCards {
         return SaveCard(title, steps(s), chips, lines, footer, levelChip, nameProblem)
     }
 
-    /** The run card's body: the steps with the values this run uses. */
-    fun run(s: Skill, values: Map<String, String>): List<Phrase> = steps(s, values)
+    /** The run card's body: the steps with the values this run uses, a connection's step named as [links] knows it (C4). */
+    fun run(s: Skill, values: Map<String, String>, links: SkillLinks = SkillLinks.NONE): List<Phrase> = steps(s, values, links)
 
     /** "Today 17:32 · 2 of 2 done", "Never run": a skill's last run as Settings › Skills shows it. */
     fun lastRun(r: SkillRunRecord?, now: ZonedDateTime): Phrase {

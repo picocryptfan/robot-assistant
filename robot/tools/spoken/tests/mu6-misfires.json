@@ -1,0 +1,21 @@
+{
+  "format": 1,
+  "id": "mu6-misfires",
+  "title": "What Music must leave alone",
+  "safety": "read",
+  "testBench": ["MU6"],
+  "needs": {"model": true},
+  "setup": [{"set": "speakReplies", "value": "VOICE"}],
+  "steps": [
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "Role play a job interview.", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 120},
+    {"do": "check", "what": "router", "equals": "MusicRouter", "absent": true},
+    {"do": "end"},
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "Add this song to my playlist.", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 120},
+    {"do": "check", "what": "router", "equals": "MusicRouter", "absent": true},
+    {"do": "end"}
+  ]
+}

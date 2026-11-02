@@ -8,6 +8,7 @@ import app.heyrobot.core.ChatTurn
 import app.heyrobot.core.Executed
 import app.heyrobot.core.HelperBlock
 import app.heyrobot.core.HelperContext
+import app.heyrobot.core.HelperName
 import app.heyrobot.core.HelperPayload
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.Shared
@@ -16,6 +17,7 @@ import app.heyrobot.core.TurnRole
 import app.heyrobot.core.helpers.HelperConfig
 import app.heyrobot.core.helpers.HelperWho
 import app.heyrobot.core.helpers.HelperWords
+import app.heyrobot.core.helpers.QuestionKind
 import app.heyrobot.core.i18n.Langs
 import app.heyrobot.core.i18n.PanelStrings
 import app.heyrobot.core.i18n.Phrase
@@ -51,6 +53,51 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class PanelOffersTest {
+    /** L16: from a conversation holding content, a spoken yes (a read-aloud's, perhaps) doesn't save a route; your tap does. */
+    @Test fun aTapOnlyKeepOffer_ignoresAYes() {
+        val k = KeepChoice(QuestionKind.CODE, robot = false, helper = server.id, name = server.name, tapOnly = true)
+        offers.showKeep("r2", k)
+        offers.accept("r2", tapped = false)
+        assertTrue(calls.none { it.startsWith("keep") })
+        assertTrue(offers.isKeep("r2"))
+        offers.accept("r2", tapped = true)
+        assertTrue("keep CODE false false" in calls)
+    }
+
+    @Test fun aYesUnderAnOffer_namesOnlyItsHelper() {
+        val names = HelperName.all(RobotSettings(helpers = listOf(server, HelperConfig("h9", "home", "Other", "m"))))
+        offers.show("r1", PanelOffers.Pending(true, "q", null, false, helper = server.id))
+        assertEquals(server.id, offers.helperOf("r1"))
+        assertEquals(listOf(server.id), offers.namesFor("r1", names).map { it.id })
+        // A keep for Robot names no helper at all.
+        offers.showKeep("r2", KeepChoice(QuestionKind.CODE, robot = true))
+        assertNull(offers.helperOf("r2"))
+        assertEquals(emptyList<String>(), offers.namesFor("r2", names).map { it.id })
+    }
+
+    @Test fun anOfferAfterAnUnansweredCard_saysItWasALot_onScreenAndAloud() {
+        offers.show("r1", PanelOffers.Pending(true, "q", null, false, helper = server.id))
+        assertNull(state.value.turns.first().offer?.note)
+        state.update { it.copy(speak = true) }
+        offers.show("r1", PanelOffers.Pending(true, "q", null, false, helper = server.id, beyond = true))
+        assertEquals("That was a lot for me on my own.", state.value.turns.first().offer?.note)
+        assertTrue(calls.toString(), "speak That was a lot for me on my own. Want me to check with My server?" in calls)
+    }
+
+    @Test fun aKeepOffer_onlyRemembers_itNeverSendsAnything() {
+        val k = KeepChoice(QuestionKind.CODE, robot = false, helper = server.id, name = server.name)
+        offers.showKeep("r2", k)
+        assertEquals("Always ask My server for code questions?", state.value.turns.last().offer?.keep)
+        assertTrue(offers.isKeep("r2"))
+        offers.accept("r2", tapped = false)
+        assertNull(escalated)
+        assertTrue("keep CODE false true" in calls)
+        assertNull(state.value.turns.last().offer)
+        offers.showKeep("r2", k)
+        offers.accept("r2", tapped = true)
+        assertTrue("keep CODE false false" in calls)
+    }
+
     private val state = MutableStateFlow(PanelState("c", turns = listOf(UiTurn("r1", TurnRole.ASSISTANT, "Paris, I think."),
         UiTurn("r2", TurnRole.ASSISTANT, "Maybe."))))
     /** A server on your network: no key, its API, a known price (free). */
@@ -101,6 +148,7 @@ class PanelOffersTest {
             escalated = blocks
             return false
         }
+        override fun keepChoice(k: KeepChoice, spoken: Boolean) { calls += "keep ${k.kind} ${k.robot} $spoken" }
     })
 
     private val words = HelperWords(HelperWho.of(server))

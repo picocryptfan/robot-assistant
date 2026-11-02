@@ -263,4 +263,43 @@ class ModelProblemsTest {
         assertFalse(fields(ModelProblem::class.java).any { it.type == String::class.java })
         assertFalse(fields(VoiceLogEntry::class.java).any { it.type == String::class.java })
     }
+
+
+    // F123: a voice process that an update or a stop ended isn't the GPU failing; anything else, or no record, still is.
+    @Test fun aGpuLoadCutByAnUpdateOrAStopIsNotTheGpuFailing() {
+        val t = GpuTrying(BrainModel.FAST, 1_000, 42)
+        fun exit(reason: Int, pid: Int = 42, time: Long = 2_000) = ExitFacts(time, pid, reason, "R", 0, null, 0, 0, 0, null)
+        for (reason in listOf(1, 8, 10, 11, 15, 16)) assertTrue("$reason", t.notTheGpu(listOf(exit(reason)), updatedAt = 0))
+        for (reason in listOf(0, 2, 3, 4, 5, 6, 7, 9, 12, 13, 14)) assertFalse("$reason", t.notTheGpu(listOf(exit(reason)), updatedAt = 0))
+        assertFalse(t.notTheGpu(emptyList(), updatedAt = 0))
+        // Another process's record, or one older than the load (its pid used again).
+        assertFalse(t.notTheGpu(listOf(exit(16, pid = 7)), updatedAt = 0))
+        assertFalse(t.notTheGpu(listOf(exit(16, time = 999)), updatedAt = 0))
+        // Updated after the load started, whatever Android's record says; before it, no.
+        assertTrue(t.notTheGpu(listOf(exit(13)), updatedAt = 1_500))
+        assertFalse(t.notTheGpu(emptyList(), updatedAt = 500))
+    }
+
+    // review-week 5 and 7: Android reclaiming memory is told apart from a crash by its own record, and only then.
+    @Test fun onlyAndroidsOwnRecordOfAReclaimSparesTheGpu() {
+        fun exit(reason: Int, pid: Int = 42, time: Long = 2_000) = ExitFacts(time, pid, reason, "R", 0, null, 0, 0, 0, null)
+        assertEquals(true, MemoryReclaim.reclaimed(listOf(exit(MemoryReclaim.REASON_LOW_MEMORY)), 42, 1_000))
+        for (crash in listOf(4, 5, 6, 2, 0)) assertEquals(false, MemoryReclaim.reclaimed(listOf(exit(crash)), 42, 1_000))
+        // No record yet, another process's, or an older death's: not a reclaim.
+        assertEquals(null, MemoryReclaim.reclaimed(emptyList(), 42, 1_000))
+        assertEquals(null, MemoryReclaim.reclaimed(listOf(exit(3, pid = 7)), 42, 1_000))
+        assertEquals(null, MemoryReclaim.reclaimed(listOf(exit(3, time = 999)), 42, 1_000))
+        // Its pid unknown (a load): the newest record decides, so a crash after an old reclaim is a crash.
+        assertEquals(false, MemoryReclaim.reclaimed(listOf(exit(5, pid = 8), exit(3, pid = 7)), 0, 1_000))
+        // A load: once an hour, then the old way.
+        assertTrue(MemoryReclaim.forgivesLoad(0, 5_000))
+        assertFalse(MemoryReclaim.forgivesLoad(5_000, 5_000 + MemoryReclaim.LOAD_FORGIVEN_MS - 1))
+        assertTrue(MemoryReclaim.forgivesLoad(5_000, 5_000 + MemoryReclaim.LOAD_FORGIVEN_MS))
+    }
+
+    @Test fun aDeathBetweenAnswersIsNotOneOfTheThreeAnHour() {
+        assertFalse(MemoryReclaim.countsTowardLockout(null, loading = false))
+        assertTrue(MemoryReclaim.countsTowardLockout(null, loading = true))
+        for (s in ProblemStage.entries) assertTrue(MemoryReclaim.countsTowardLockout(s, loading = false))
+    }
 }

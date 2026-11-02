@@ -29,9 +29,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
+import app.heyrobot.ui.common.AlertDialog
 import androidx.compose.material3.AssistChip
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -77,6 +76,7 @@ import app.heyrobot.R
 import app.heyrobot.core.Addresses
 import app.heyrobot.core.i18n.AndroidPath
 import app.heyrobot.core.i18n.UiStrings
+import app.heyrobot.ui.common.DropdownMenu
 import app.heyrobot.ui.theme.str
 import app.heyrobot.core.CheogramLinks
 import app.heyrobot.core.ContactPhone
@@ -153,6 +153,7 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: Assis
     /** The file is there but can't be read: nothing is written until "Start over". */
     var damaged by remember { mutableStateOf(false) }
     var tick by remember { mutableIntStateOf(0) }
+    var robots by remember { mutableStateOf<Set<String>>(emptySet()) }
     var query by rememberSaveable { mutableStateOf("") }
     var confirmReset by remember { mutableStateOf(false) }
     /** A contacts file read and waiting for "Import": what it holds, and what importing it into the list as it was would do. */
@@ -165,6 +166,8 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: Assis
     val resumed = lstate.isAtLeast(Lifecycle.State.RESUMED)
     LaunchedEffect(resumed, tick) {
         if (resumed) withContext(Dispatchers.IO) { People.sorted(store.list()) to store.damaged() }.let { (l, d) -> people = l; damaged = d }
+        // 1.5: who has a Robot link (only asked of :link while Robot to Robot is on).
+        if (resumed) robots = withContext(Dispatchers.IO) { app.heyrobot.ui.link.linkedPeople(ctx) }
     }
     // The panel opens over this window without pausing it: read again when the window gets the focus back.
     val windowInfo = LocalWindowInfo.current
@@ -183,7 +186,7 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: Assis
                 val f = VCard.parse(VCard.decode(bytes))
                 val incoming = f.entries.map { VCard.person(it, PeopleStore.newId(), now()) }
                 val before = store.list()
-                Preview(f, incoming, before, PeopleEdit.merge(before, incoming, now()))
+                Preview(f, incoming, before, PeopleEdit.merge(before, incoming, now(), s.smsGateway))
             }
             if (p.file.entries.isEmpty()) a.say(ctx.getString(R.string.people_nothing_to_reach)) else preview = p
         }
@@ -226,7 +229,7 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: Assis
             val p = withContext(Dispatchers.IO) { try { PhoneContacts.read(ctx, uri, now()) } catch (t: Exception) { RLog.w("people_pick", t); null } }
                 ?: return@launch a.say(ctx.getString(R.string.people_contact_unreadable))
             var id: String? = null
-            withContext(Dispatchers.IO) { store.update { l -> PeopleEdit.merge(l, listOf(p), now()).also { id = it.landed.firstOrNull() }.people } }
+            withContext(Dispatchers.IO) { store.update { l -> PeopleEdit.merge(l, listOf(p), now(), s.smsGateway).also { id = it.landed.firstOrNull() }.people } }
             tick++
             id?.let(onOpen) ?: a.say(ctx.getString(R.string.people_contact_empty))
         }
@@ -362,7 +365,7 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: Assis
                 )
             }
             if (shown.isEmpty()) item(key = "nomatch") { IntroPreference(stringResource(R.string.people_no_match)) }
-            preferenceItems(yours, "people", shown, { it.id }) { p -> PersonRow(p) { onOpen(p.id) } }
+            preferenceItems(yours, "people", shown, { it.id }) { p -> PersonRow(p, robot = p.id in robots) { onOpen(p.id) } }
         }
         preferenceFooter(footer)
     }
@@ -393,7 +396,7 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: Assis
                         // The merge the preview worked out is written as it is, unless the list changed meanwhile.
                         var done: PeopleEdit.Merged? = merged
                         val ok = withContext(Dispatchers.IO) {
-                            store.commit(pv.before, merged.people) { l -> PeopleEdit.merge(l, pv.incoming, now()).also { done = it }.people }
+                            store.commit(pv.before, merged.people) { l -> PeopleEdit.merge(l, pv.incoming, now(), s.smsGateway).also { done = it }.people }
                         } != null
                         tick++
                         val d = done
@@ -490,7 +493,7 @@ internal fun openFirst(ctx: android.content.Context, intents: List<android.conte
  */
 @Composable
 fun NotificationAccessScreen(facts: AssistantFacts?, onBack: () -> Unit) {
-    val footer = stringResource(R.string.people_access_footer)
+    val footer = stringResource(R.string.people_access_footer) + "\n\n" + stringResource(R.string.people_access_car_tile)
     PreferenceScreen(stringResource(R.string.people_access_title), onBack) {
         if (facts?.notificationAccess == true) {
             preferenceGroup(null, "done") {
@@ -541,6 +544,7 @@ internal fun CheogramPrivacy(canTakeBack: Boolean, openAccess: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(stringResource(R.string.people_privacy_title), style = MaterialTheme.typography.titleSmall)
         Text(stringResource(R.string.people_privacy_1), style = MaterialTheme.typography.bodyMedium, color = muted)
+        Text(stringResource(R.string.people_access_car_tile), style = MaterialTheme.typography.bodyMedium, color = muted)
         Text(stringResource(R.string.people_privacy_2), style = MaterialTheme.typography.bodyMedium, color = muted)
         Text(stringResource(R.string.people_privacy_3), style = MaterialTheme.typography.bodyMedium, color = muted)
         Text(stringResource(R.string.people_privacy_4), style = MaterialTheme.typography.bodyMedium, color = muted)
@@ -551,9 +555,10 @@ internal fun CheogramPrivacy(canTakeBack: Boolean, openAccess: () -> Unit) {
 
 /** One person in the list: a letter avatar (decoration, hidden from TalkBack), the name, what you call them and how to reach them. */
 @Composable
-private fun PersonRow(p: Person, onClick: () -> Unit) {
+private fun PersonRow(p: Person, robot: Boolean = false, onClick: () -> Unit) {
     val also = (p.aliases + p.nicknames).takeIf { it.isNotEmpty() }?.let { stringResource(R.string.people_also_called, it.joinToString(", ")) }
-    val line = listOfNotNull(also, People.summary(p).takeIf { it.isNotEmpty() }, if (!p.confirmed) stringResource(R.string.people_seen_in_cheogram) else null)
+    // 1.5: a small "Robot" label on someone paired with your Robot (§6.3).
+    val line = listOfNotNull(if (robot) stringResource(R.string.link_label) else null, also, People.summary(p).takeIf { it.isNotEmpty() }, if (!p.confirmed) stringResource(R.string.people_seen_in_cheogram) else null)
         .joinToString(" · ")
     PreferenceItem(p.name, line.ifEmpty { null }, onClick = onClick, leading = {
         Box(Modifier.size(40.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondaryContainer).clearAndSetSemantics {},
@@ -613,7 +618,7 @@ private fun nextKind(k: PhoneKind): PhoneKind = PhoneKind.entries[(k.ordinal + 1
  * "Keep") confirms someone learned from a Cheogram notification.
  */
 @Composable
-fun PersonScreen(id: String?, a: AppActions, snackbar: SnackbarHostState, onBack: () -> Unit) {
+fun PersonScreen(id: String?, gateway: String, a: AppActions, snackbar: SnackbarHostState, onBack: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val store = remember { PeopleFiles.store(ctx) }
@@ -692,7 +697,7 @@ fun PersonScreen(id: String?, a: AppActions, snackbar: SnackbarHostState, onBack
             var result: Person? = null
             var deleted = false
             val ok = withContext(Dispatchers.IO) {
-                store.update { l -> PeopleEdit.applyEdit(l, from, edited, now)?.let { (list, p) -> result = p; list } ?: l.also { deleted = true } }
+                store.update { l -> PeopleEdit.applyEdit(l, from, edited, now, gateway)?.let { (list, p) -> result = p; list } ?: l.also { deleted = true } }
             } != null
             saving = false
             val p = result
@@ -835,6 +840,8 @@ fun PersonScreen(id: String?, a: AppActions, snackbar: SnackbarHostState, onBack
                 // 0.7: Settings › Messages on: replies to them without a card (3-second stop).
                 app.heyrobot.ui.settings.NoCardSwitch(o)
                 app.heyrobot.ui.settings.AnnounceSwitch(o)
+                // 1.5: their Robot link, when you're paired (§6.3).
+                app.heyrobot.ui.link.PersonLinkSection(o.id, a)
                 Text(stringResource(R.string.people_source_changed, o.source.titleText.str(), DateUtils.getRelativeTimeSpanString(o.updatedAt)),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)

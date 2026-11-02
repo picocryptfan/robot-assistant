@@ -44,8 +44,8 @@ class VoiceLogTest {
         assertEquals(listOf(VoiceLogEntry(1, VoiceEvent.WAKE, 1, -1, 0), VoiceLogEntry(4, VoiceEvent.SESSION_SHOWN, 1)), VoiceLogCodec.decode(text))
         assertEquals(emptyList<VoiceLogEntry>(), VoiceLogCodec.decode("something else\n1 1 1 1 1\n"))
         assertEquals(emptyList<VoiceLogEntry>(), VoiceLogCodec.decode(null))
-        // More than the capacity keeps the newest.
-        val many = VoiceLogCodec.HEADER + "\n" + (1..400).joinToString("\n") { "$it 11 100 1 0" }
+        // More than the capacity and what stays past it keeps the newest.
+        val many = VoiceLogCodec.HEADER + "\n" + (1..500).joinToString("\n") { "$it 11 100 1 0" }
         assertEquals(101L, VoiceLogCodec.decode(many).first().time)
     }
 
@@ -121,8 +121,8 @@ class VoiceLogTest {
         assertEquals((200..209).toList(), headset.map { it.id })
         // 212 (CAR_PARKED, 1.0's test builds' park list) is retired, never reused.
         val car = listOf(VoiceEvent.CAR_MODE, VoiceEvent.CAR_TRUSTED, VoiceEvent.CAR_CALL, VoiceEvent.CAR_REPLY, VoiceEvent.CAR_DND,
-            VoiceEvent.CAR_NAV, VoiceEvent.CAR_MUSIC, VoiceEvent.HEADSET_END)
-        assertEquals((210..218).toList() - 212, car.map { it.id })
+            VoiceEvent.CAR_NAV, VoiceEvent.CAR_MUSIC, VoiceEvent.HEADSET_END, VoiceEvent.CAR_MIC)
+        assertEquals((210..219).toList() - 212, car.map { it.id })
         // An old log's 212 line is skipped, never fatal.
         assertEquals(emptyList<VoiceLogEntry>(), VoiceLogCodec.decode(VoiceLogCodec.HEADER + "\n1 212 1 0 0\n"))
         assertEquals(headset + car, VoiceEvent.entries.filter { it.id in 200..219 })
@@ -165,6 +165,19 @@ class VoiceLogTest {
         assertEquals("Robot Files, filing: waits for you · receipt · total", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.FILE_FILED,
             app.heyrobot.core.files.FileFiledCode.ASKED.id, app.heyrobot.core.files.FileKind.RECEIPT.ordinal + 1, app.heyrobot.core.files.FilingWhy.TOTAL.ordinal + 1)))
         for (e in files) assertTrue(e.name, VoiceLogText.describe(VoiceLogEntry(0, e, 1, 1, 1)).startsWith("Robot Files"))
+        // 1.5, Robot to Robot: 300 to 319 (D13), in the plan's order, and nothing else there; each described with codes only.
+        val link = listOf(VoiceEvent.LINK_IN, VoiceEvent.LINK_OUT, VoiceEvent.LINK_CARD, VoiceEvent.LINK_AUTO, VoiceEvent.LINK_UNDO, VoiceEvent.LINK_PAIR,
+            VoiceEvent.LINK_MODE, VoiceEvent.LINK_FILE, VoiceEvent.LINK_MONEY, VoiceEvent.LINK_LIMIT, VoiceEvent.LINK_LOCKED, VoiceEvent.LINK_LEVEL)
+        assertEquals((300..311).toList(), link.map { it.id })
+        assertEquals(link, VoiceEvent.entries.filter { it.id in 300..319 })
+        assertTrue(VoiceEvent.entries.none { it.name.startsWith("LINK_") && it.id !in 300..319 })
+        for (e in link) assertTrue(e.name, VoiceLogText.describe(VoiceLogEntry(0, e, 1, 1, 1)).startsWith("Robot to Robot"))
+        assertEquals("Robot to Robot, sent: free/busy asked", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.LINK_OUT, app.heyrobot.core.link.LinkOutCode.FREE_BUSY.id, 0, 0)))
+        assertEquals("Robot to Robot, locked: a request, at Send", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.LINK_LOCKED, app.heyrobot.core.link.LinkLockedCode.SEND.id, 0, 0)))
+        for (codes in listOf(app.heyrobot.core.link.LinkOutCode.entries, app.heyrobot.core.link.LinkCardCode.entries, app.heyrobot.core.link.LinkLockedCode.entries,
+            app.heyrobot.core.link.LinkPairCode.entries, app.heyrobot.core.link.LinkModeCode.entries, app.heyrobot.core.link.LinkLimitCode.entries,
+            app.heyrobot.core.link.LinkInCode.entries))
+            assertEquals(codes.size, codes.map { it.id }.toSet().size)
         for (codes in listOf(app.heyrobot.core.files.FileInCode.entries, app.heyrobot.core.files.FileParseCode.entries, app.heyrobot.core.files.FileReadCode.entries,
             app.heyrobot.core.files.FileFiledCode.entries, app.heyrobot.core.files.FileMoveCode.entries, app.heyrobot.core.files.FileDeleteCode.entries,
             app.heyrobot.core.files.FileOutCode.entries))
@@ -174,6 +187,56 @@ class VoiceLogTest {
             app.heyrobot.core.files.FileDeleteCode.DELETED.id, 2, 0)))
         assertEquals("Robot Files: shared · without its metadata", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.FILE_OUT,
             app.heyrobot.core.files.FileOutCode.SHARED.id, 1, 0)))
+        // 1.4, Robot Lists: 280 to 289 (D14), in the plan's order, and nothing else there; codes and counts only.
+        val lists = listOf(VoiceEvent.LIST_ADD, VoiceEvent.LIST_READ, VoiceEvent.LIST_TICK, VoiceEvent.LIST_EDIT, VoiceEvent.LIST_MAKE,
+            VoiceEvent.LIST_LOCKED, VoiceEvent.LIST_MERGE, VoiceEvent.LIST_KEY, VoiceEvent.LIST_WIDGET, VoiceEvent.LIST_SPLIT)
+        assertEquals((280..289).toList(), lists.map { it.id })
+        assertEquals(lists, VoiceEvent.entries.filter { it.id in 280..289 })
+        assertTrue(VoiceEvent.entries.none { it.name.startsWith("LIST_") && it.id !in 280..289 })
+        for (e in lists) assertTrue(e.name, VoiceLogText.describe(VoiceLogEntry(0, e, 1, 1, 1)).startsWith("Lists"))
+        for (codes in listOf(app.heyrobot.core.lists.ListAddCode.entries, app.heyrobot.core.lists.ListReadCode.entries, app.heyrobot.core.lists.ListTickCode.entries,
+            app.heyrobot.core.lists.ListEditCode.entries, app.heyrobot.core.lists.ListMakeCode.entries, app.heyrobot.core.lists.ListLockedCode.entries))
+            assertEquals(codes.size, codes.map { it.id }.toSet().size)
+        assertEquals("Lists, an add: waiting for the unlock · 2 items · while locked", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.LIST_ADD,
+            app.heyrobot.core.lists.ListAddCode.JOURNAL.id, 2, 1)))
+        // The everyday set (everyday-set-plan.md §2.5, D22): 320 to 334 reserved in the plan's order, nothing else from 320 to
+        // 349 (335 to 339 stay free for the set's fixes, 340 to 349 for the spoken tests). Each reads as its feature and numbers.
+        val everyday = listOf(VoiceEvent.MUSIC_KEY, VoiceEvent.MUSIC_PLAY, VoiceEvent.MUSIC_APP, VoiceEvent.MUSIC_NOW, VoiceEvent.SUMS,
+            VoiceEvent.CALC_TOOL, VoiceEvent.ONLINE_PAGE, VoiceEvent.ONLINE_ASKED, VoiceEvent.LISTEN_FOR_APP, VoiceEvent.LISTEN_SHEET,
+            VoiceEvent.VOICE_FOR_APP, VoiceEvent.VOICE_FOR_APP_LOAD, VoiceEvent.ASK_SHARED, VoiceEvent.ASK_TRANSCRIBE, VoiceEvent.ASK_REFUSED)
+        assertEquals((320..334).toList(), everyday.map { it.id })
+        assertEquals(everyday, VoiceEvent.entries.filter { it.id in 320..349 })
+        // E1 gave the music's four their words (codes only: never a song, an artist or an app).
+        assertEquals("Music: play", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MUSIC_KEY, 1, 0, 0)))
+        assertEquals("Music: pause · something was playing · car mode", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MUSIC_KEY, 2, 1, 1)))
+        assertEquals("Music by name: the music app's media service · playing", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MUSIC_PLAY, 1, 1, 1)))
+        assertEquals("Music by name: the music app's media service · no play from search",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MUSIC_PLAY, 1, app.heyrobot.core.music.MusicPlayCode.NO_SEARCH.id, 0)))
+        assertEquals("Your music app: picked · 2 apps found", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MUSIC_APP, 1, 2, 0)))
+        assertEquals("Your music app: refused: signed by someone else · 1 app found · in Settings",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MUSIC_APP, 3, 1, 1)))
+        assertEquals("What's playing: found", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MUSIC_NOW, 1, 0, 0)))
+        // E7 gave Ask Robot's three their words (deliberately replacing E0's numbers-only line): codes only, never the content.
+        assertEquals("Ask Robot took nothing: the phone was locked", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.ASK_REFUSED, 2, 0, 0)))
+        assertEquals("Ask Robot took nothing: during a phone lock · image", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.ASK_REFUSED, 1, 2, 0)))
+        assertEquals("Ask Robot: text · the panel opened with the first part", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.ASK_SHARED, 1, 2, 0)))
+        assertEquals("Ask Robot: a voice message up to 30 s · words", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.ASK_TRANSCRIBE, 2, 1, 0)))
+        for (codes in listOf(app.heyrobot.core.ask.SharedKind.entries, app.heyrobot.core.ask.AskShown.entries, app.heyrobot.core.ask.AskRefusal.entries,
+                app.heyrobot.core.ask.AskHeard.entries))
+            assertEquals(codes.size, codes.map { it.id }.toSet().size)
+        // E3: What went online's two in words, never what the answer named.
+        assertEquals("What went online: asked by voice · locked", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.ONLINE_ASKED, 1, 0, 0)))
+        assertEquals("What went online: asked by voice", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.ONLINE_ASKED, 0, 0, 0)))
+        assertEquals("What went online: the page opened", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.ONLINE_PAGE, 1, 0, 0)))
+        // E6's two events read in words.
+        assertEquals("Robot's voice for another app: spoken · 50 to 199 characters · 12 requests", VoiceLogText.describe(VoiceLogEntry(0,
+            VoiceEvent.VOICE_FOR_APP, app.heyrobot.core.tts.VoiceForAppResult.SPOKEN.id, app.heyrobot.core.tts.CharsBucket.UNDER_200.id, 12)))
+        assertEquals("Robot's voice for another app: its voice isn't downloaded · under 50 characters", VoiceLogText.describe(VoiceLogEntry(0,
+            VoiceEvent.VOICE_FOR_APP, app.heyrobot.core.tts.VoiceForAppResult.NOT_DOWNLOADED.id, app.heyrobot.core.tts.CharsBucket.UNDER_50.id, 1)))
+        assertEquals("Robot's voice for another app loaded in :voice, beside Robot's own voice · 1 to 3 s", VoiceLogText.describe(VoiceLogEntry(0,
+            VoiceEvent.VOICE_FOR_APP_LOAD, app.heyrobot.core.tts.VoiceForAppProcess.VOICE.id, app.heyrobot.core.tts.LoadBucket.UNDER_3S.id, 0)))
+        // E7's Ask Robot opens the panel as a show of its own.
+        assertEquals(9, ShowSource.SHARE.id)
         // Routines' (140 to 159), memory's (180 to 189), messages' (190 to 199), headset's (200 to 209), car's (210 to 219)
         // and feedback's (220 to 229) events never share an id with each other or with any other event, and no id is used twice.
         assertEquals(VoiceEvent.entries.size, VoiceEvent.entries.map { it.id }.toSet().size)
@@ -458,5 +521,29 @@ class VoiceLogTest {
         for (m in VoiceLogText::class.java.declaredMethods.filter { it.name == "plain" }) {
             assertFalse(m.toGenericString(), m.parameterTypes.any { kotlin.jvm.functions.Function1::class.java.isAssignableFrom(it) })
         }
+    }
+
+    // review-week 4: a failure in the morning is still there after a busy day, within a limit, as numbers.
+    @Test fun aFailureOutlivesTheRingWithinItsLimit() {
+        val r = VoiceLogRing(VoiceLog.CAPACITY)
+        r.add(1, VoiceEvent.BRAIN_DIED, 2)
+        repeat(5_000) { r.add(10L + it, VoiceEvent.WAKE) }
+        assertEquals(VoiceLogEntry(1, VoiceEvent.BRAIN_DIED, 2), r.snapshot().first())
+        assertEquals(VoiceLog.CAPACITY + 1, r.size())
+        // Through the file as well, oldest first.
+        val back = VoiceLogCodec.decode(VoiceLogCodec.encode(r.snapshot()))
+        assertEquals(r.snapshot(), back)
+        val again = VoiceLogRing(VoiceLog.CAPACITY).apply { replace(back) }
+        assertEquals(r.snapshot(), again.snapshot())
+        // One event flooding keeps its newest, and leaves the others alone.
+        repeat(5_000) { r.add(100_000L + it, VoiceEvent.LISTEN_FAILED, 6); r.add(200_000L + it, VoiceEvent.WAKE); r.add(200_000L + it, VoiceEvent.WAKE) }
+        val past = r.snapshot().dropLast(VoiceLog.CAPACITY)
+        assertEquals(VoiceLog.KEPT_EACH, past.count { it.event == VoiceEvent.LISTEN_FAILED })
+        assertTrue(past.any { it.event == VoiceEvent.BRAIN_DIED })
+        // Plain events never stay, and the whole never passes its limit.
+        assertTrue(past.all { it.event in VoiceLog.KEPT_EVENTS })
+        for (e in VoiceLog.KEPT_EVENTS) repeat(50) { r.add(300_000L, e); repeat(3) { r.add(300_000L, VoiceEvent.WAKE) } }
+        for (e in VoiceLog.KEPT_EVENTS) repeat(400) { r.add(400_000L, e) }
+        assertTrue(r.size() <= VoiceLog.CAPACITY + VoiceLog.KEPT)
     }
 }

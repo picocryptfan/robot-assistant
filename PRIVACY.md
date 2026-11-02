@@ -1,13 +1,14 @@
 # Robot's privacy policy
 
-This policy applies to Robot 1.0.0 and later. Last changed 23 Oct 2026 (1.1: Robot Files and travel mode, files in backups, the speeds and GPU check kept on the phone, the chip in reports, Phone lock, backups, skills and what Robot's model is told about them, the Support page, the two new permissions, the date and country a helper's first message carries, up to 5 result pages for a web search, when GitHub receives a feedback issue, and the Phone permission during a phone lock).
+This policy applies to Robot 1.0.0 and later. Last changed 2 Nov 2026 (every permission and notice now listed, and the alarms for routines and temporary copies; 1.1: the car screen's message panels, Robot Files and travel mode, files in backups, the speeds and GPU check kept on the phone, the chip in reports, Phone lock, backups, skills and what Robot's model is told about them, the Support page, the two new permissions, the date and country a helper's first message carries, up to 5 result pages for a web search, when GitHub receives a feedback issue, and the Phone permission during a phone lock; since then: Lists, the journal of what you add while the phone is locked, the list widget and what your home-screen app sees, and what History keeps of a list; Skills connections, what each kind sends and when, the first-use card, connections and their keys in backups, and the network type Robot reads for them; Robot to Robot; what "What went online" keeps of a web search; files you attach that hold something private; and what History keeps after a list is read).
 
 ## The short version
 
 Robot does not collect anything about you. There is no account, no analytics, no ads, no crash reporting and no tracking.
 I receive nothing from your phone. Robot goes online only for the things listed below, and only
-when you start them, except the daily check for updates and, on Wi-Fi, the download of an update it found, and, once
-you set up Termux, a weekly check for a newer Termux, which you can each turn off.
+when you start them (a skill you run that uses one of your connections counts), except the daily check for updates and, on Wi-Fi, the download of an update it found, and, once
+you set up Termux, a weekly check for a newer Termux, which you can each turn off, and, once you turn on Robot to Robot, the
+connections it keeps with the Robots you've paired with (below).
 
 ## What stays on your phone
 
@@ -23,6 +24,10 @@ you set up Termux, a weekly check for a newer Termux, which you can each turn of
 - What Robot reads for you. Your contacts and calendar (to text "Mom" or say what's on tomorrow), the screen when you
   ask about it, a photo you attach, your largest photos and videos when you ask it to free space: read on the phone, for
   the question you asked.
+- What's playing, when you ask. Robot asks the music app you picked, and no other, for the title and artist through that
+  app's own media service (this doesn't use notification access), then shows and says them. History and the rest of the
+  conversation keep a placeholder instead, the voice log keeps a code, and they're never saved or sent. Which app you
+  picked is kept with your settings.
 - What Robot remembers (Settings › Memory, on by default): only what you ask it to remember ("remember that …"),
   what you keep from a card, or what you import from a memory export. It is kept in one file encrypted again, beyond
   Android's own storage encryption, with a key in your phone's secure hardware (Android Keystore, AES-256-GCM) that
@@ -51,7 +56,8 @@ you set up Termux, a weekly check for a newer Termux, which you can each turn of
   speakers apart" and "Your voice" keep voice fingerprints (lists of numbers, not audio) on the phone.
 - Routines, headset and car mode (off until you set them up): your routines, the morning brief's settings, and the
   headsets and cars you add (their Bluetooth name and address, kept so Robot knows them again) stay in Robot's private
-  storage. New messages you ask Robot to announce in the headset or the car are read aloud there, from memory, never
+  storage. If you pick a messages panel for the car screen (off by default), new messages show there from memory, as
+  Settings › Messages allows; they're never saved, and the panel can't send anything. New messages you ask Robot to announce in the headset or the car are read aloud there, from memory, never
   stored.
 - Termux (off until you set it up): your scripts' names and settings stay in Robot's settings, with the Termux you
   trusted (its signing key's fingerprint, version and install time, so Robot notices when it changes). A command Robot
@@ -70,6 +76,14 @@ you set up Termux, a weekly check for a newer Termux, which you can each turn of
   to a helper. How often each model filled each skill right (the last 10 fills, right or wrong) is kept in
   `skills_state.json` too: on the phone, never backed up, logged or sent, and it starts over after a restore. The switch
   itself is kept in `skill_settings.json` and goes into a backup with your skills.
+- Skills connections (Settings › Skills › Connections, none until you add one). Each connection's
+  name, address, operations, your answers to its first-use cards and its switches are kept in `connections.json` in
+  Robot's private storage. Its key (a token, a password, a header's value, an ntfy topic or a webhook address that holds
+  a secret) is kept apart, encrypted with its own key in your phone's secure hardware (Android Keystore), pasted only in
+  a window that screenshots and autofill can't see, and read only just before a request to that connection. Remove
+  connection deletes it. What Test reads from your Home Assistant (its devices and services, to pick from) stays in
+  memory while that window is open and is never written down. Robot's model is never told an address, an entity, a
+  topic or a script's name. The voice log keeps codes only, never an address, an entity, a value or an answer.
 - Phone lock (1.1, off until you set it up): your locks, their times, the apps you let stay open, and a check of the
   lock code (not the code; its key is in your phone's secure hardware and never leaves it) stay in Robot's private
   storage. "What happened" lists when locks started and ended and anything Robot noticed, for 30 days, on the phone
@@ -84,12 +98,17 @@ you set up Termux, a weekly check for a newer Termux, which you can each turn of
   never keeps the passphrase and never uploads the file: nobody can open it without the passphrase, Robot included. You
   choose what goes in. It can hold your settings (without keys), People, Memory, headset and car mode settings,
   routines, Phone lock's locks (not the lock code), skills, notes, History, transcripts, Robot Files (each file as it is,
-  with the list of your files and Settings › Files; videos have their own row) and, only if you tick them,
-  recordings, API keys with Memory's private items, and your voiceprint (biometric: it comes back only from a backup you
+  with the list of your files and Settings › Files; videos have their own row), your lists (with what waits in the
+  journal, and Settings › Lists), your connections (addresses, operations and first-use answers, never a
+  key) and, only if you tick them,
+  recordings, API keys with Memory's private items and your connections' keys (a Strong passphrase), and your voiceprint (biometric: it comes back only from a backup you
   mark as your own). It never holds the models, the updater's token or the apps Robot trusts. If the place you pick is a
   folder that another app syncs to a cloud, that app uploads the file; it stays encrypted. Restore reads a file you pick
   the same way and checks all of it before it changes anything; restored files are encrypted again under the new phone's
-  key, and files from a backup that isn't yours arrive in Inbox. While travel mode is on, Robot Files stays out of
+  key, and files from a backup that isn't yours arrive in Inbox. Lists are encrypted again under the new phone's key too;
+  someone else's lists arrive beside yours, marked as theirs, without anything that looks like a code or a card number.
+  Connections from a backup that isn't yours arrive untested,
+  without their first-use answers or keys, and a hand-off waits until you pick its app again. While travel mode is on, Robot Files stays out of
   backups and restores. A monthly reminder, if you turn it on, is a notification on the phone. Android's own backup
   stays off.
 - Robot Files (1.1, Settings › Files; on, and empty until you add a file). The files you share to Robot Files, scan,
@@ -111,6 +130,45 @@ you set up Termux, a weekly check for a newer Termux, which you can each turn of
   leave Robot Files out, and History too while it holds answers from your files. Which drawers are hidden is kept in
   Robot's private storage without Robot's own encryption. It's a privacy screen, not encryption: the files stay
   encrypted as before, and anyone who knows your PIN can show them again.
+- Lists (Settings › Lists, on, with Shopping and To-do until you make more). Your lists and their
+  items are kept in one file in Robot's private storage, encrypted with a key in your phone's secure hardware (Android
+  Keystore, AES-256-GCM) that works only while the phone is unlocked, as memory is. Each item keeps who added it and how
+  (by voice, typed, on a card, on the widget, by Robot's model, from a note or a backup), when, and its last 8 changes,
+  so its details can say "Added by voice while the phone was locked". A removed item is kept hidden for 30 days, for
+  Undo, then deleted. Lists never go online. A list leaves the phone only when you tap Share as text on its page, in a
+  backup you make (below), or in a helper's card you tap (4 below).
+- Adding to a list while the phone is locked (Settings › Lists › "Add to lists while locked", on by default). What you
+  add then waits in a small journal, encrypted with a second Keystore key that works while the phone is locked: it
+  holds the words you added and your lists' names, so Robot can find the list. It is never read to answer anything, and
+  at unlock its items join your lists, marked "Added while the phone was locked", and the journal is emptied. Anyone who
+  can talk to your locked phone can add to a list this way; they can't hear or change what is on it. With "Hear and tick
+  on the lock screen" on (off by default), your lists are encrypted with the second key instead, so Robot can read them
+  aloud and tick items on the lock screen: anyone who can talk to your locked phone can then hear them. That key exists
+  only while one of the two switches is on. During a phone lock for someone else, Robot reads and changes no list.
+- The list widget (Robot list, only if you add it to your home screen). It shows one list's open items, with tick
+  boxes. Your home-screen app draws it, so that app and Android's widget service receive the text of those items.
+  Robot takes the items off the widget when the screen goes off and puts them back when you unlock, unless "Hear and
+  tick on the lock screen" is on; if no Robot process is running when the screen goes off, they stay until Robot next
+  runs. Robot keeps which list each widget shows by ids only, never a name.
+- Robot to Robot (off until you turn it on). Your keys, your pairings and each person's permissions are kept in Robot's
+  private storage, encrypted with a key in your phone's secure hardware (Android Keystore). A request waiting for you
+  is sealed until you answer it or it runs out, and can be read only while the phone is unlocked. The list of what you
+  sent and received keeps the words of a request that came in for 7 days, then codes only, and every entry goes after 30
+  days; a shared plan goes 30 days after it ends. A file another Robot sends arrives sealed and is filed once you
+  unlock. The connection log (the last 300 events) holds codes and small numbers, never a name, an address or anything
+  another Robot sent. A backup can carry your pairings (their names, public keys and push addresses), permissions, blocked
+  list and that list's codes, never your keys, sessions, tokens or what's waiting. After a restore, what you'd set to Answer on its own goes
+  back to Ask me first, answering while locked is off, and a restored pairing you never use goes after 30 days. A pairing
+  code you copy is marked sensitive and leaves the clipboard once it's used, cancelled or expired, or when you leave the
+  pairing screen. If you're in another app at that moment, Android won't let Robot check the clipboard, so it goes when
+  you come back; if Android has closed Robot by then, it stays until something replaces it.
+- What History keeps of your lists. What you say to Robot is kept as you said it ("add oat milk to the shopping list"),
+  as for everything you ask, and so are its add replies ("Added oat milk to Shopping."). What Robot reads back from a
+  list is not: History keeps "Robot read Shopping: 5 items" for a read, and "Robot answered from your lists" for a check
+  or any other answer from your lists, never the items. Once a list has been read in a conversation, every later reply
+  in it is kept as that second line too, because Robot's model may repeat the items in its own words. Something that looks like a PIN, a code or a card number is
+  never added to a list, and the question that held it is kept as a private placeholder, in the panel and in History,
+  never as you said it.
 - Measured speeds and the GPU check (1.1). To show how fast answers start on your phone, Robot keeps numbers only in
   `speeds.txt` (the reading and writing speeds of the last 20 answers per model, with the model file, where it ran and
   the Android build), and the result of its three-question check of the GPU in `gpu_check.txt`, in Robot's private
@@ -128,6 +186,12 @@ you set up Termux, a weekly check for a newer Termux, which you can each turn of
 - Robot's diagnostic logs (Settings › Voice › Voice log, and Android's log) hold codes and numbers only, never what
   you said or what Robot answered. They stay on the phone; you can copy the Voice log yourself (wake phrases by number)
   or add it to a bug report (below).
+- What went online (Settings › Safety & privacy › What went online). On unless you turn it off: a list on the phone of each connection Robot
+  made, with when, the server's name, what it was for, what allowed it and how many bytes, kept 30 days unless you pick
+  another length. For a web search that includes the site of each result page and each redirect, and a site's name can hint at
+  what you looked for; never the rest of the page's address or your words. Robot never sends it. If you tick it in Send
+  feedback, your message adds a summary of the last 7 days that names only the servers Robot itself uses; your own servers
+  and result pages appear by their kind only.
 - "Robot closed unexpectedly." When the app or the assistant panel crashed or stopped responding, Robot reads
   Android's own record of it (the reason, the time, and for a native crash the library names and offsets) when you next
   open it, and offers Send feedback. Nothing is sent unless you send it yourself.
@@ -138,7 +202,7 @@ you set up Termux, a weekly check for a newer Termux, which you can each turn of
   50 voice log events. It stays on the phone; you may copy or share it, and Robot never sends it.
 - Feedback (Settings › About › Send feedback). A bug report or an idea you write, with only what you tick added: the
   problem report, the last 60 voice log events, a summary of your settings' switches and levels, the updater's error
-  codes. Each part has a Preview of exactly what it adds, and none of them holds your conversations or History,
+  codes, the summary of what went online. Each part has a Preview of exactly what it adds, and none of them holds your conversations or History,
   transcripts, messages or their senders, what Robot remembers, your files, notes, people or contacts, calendar, wake phrases' words,
   helpers' names, addresses or keys, the updater's repository or token, Wi-Fi or Bluetooth names, or where you are. Robot sends nothing: you send the message with
   the app you pick (below), or copy it (the clipboard copy is marked sensitive and cleared after a minute if nothing
@@ -161,7 +225,8 @@ you set up Termux, a weekly check for a newer Termux, which you can each turn of
    address, a phone number or an email) and your area (about 1 km) to OpenStreetMap's Nominatim server
    (nominatim.openstreetmap.org), or to the Nominatim server you choose in Settings › Actions › Search server. The card
    names the server before anything goes. You can choose Never.
-4. Helpers, only if you ask for one, or let Robot check a hard question with it (Settings › Helpers): a paid AI
+4. Helpers, only if you ask for one, tell Robot to always ask it for a kind of question (kept in Memory, where you can
+   change or delete it), or let Robot check a hard question with it (Settings › Helpers): a paid AI
    service with your own API key, or a model on your own computer:
    - With your own API key, Robot sends your question and the part of the conversation it shows you it will send to
      that company's API. That can include screen text or a photo you attached; personal content goes only with your tap
@@ -182,7 +247,10 @@ you set up Termux, a weekly check for a newer Termux, which you can each turn of
    - What Robot found in or read from your files (1.1) goes to a helper only on a card that lists it, with your tap,
      whatever you trust. A medical file, an ID, or a file that holds a password, a code or a card number is private:
      Robot shows its answer on the screen only, never reads it aloud, keeps a placeholder in History, and never sends it
-     to a helper.
+     to a helper. A file you attach to a question in the panel gets the same treatment when it holds one of those, or
+     enough of a medical file's or an ID's words. Robot goes by the words it can read, so it can miss one.
+   - What Robot read back from your lists in a conversation goes to a helper only on a card that
+     lists it, with your tap, whatever you trust, as for your files.
    - Without a key, the button that opens the service's own app only fills in that app (and may put your question on
      the clipboard); you press Send there.
 5. Other apps you hand things to (your messaging app, your email app, your SMS or calendar app, your maps app, an AI service's
@@ -256,6 +324,63 @@ you set up Termux, a weekly check for a newer Termux, which you can each turn of
     browser at Ko-fi's page, where Ko-fi and your browser handle your visit under their own policies. The crypto
     addresses are text on the page, with Copy and a QR code Robot draws on the phone; Robot never sends anything about
     a payment and never learns whether you paid.
+11. Skills connections, only after you set one up in Settings › Skills › Connections, and then
+    only when you tap Test or a skill you run reaches that step. Never on a locked phone and never from a routine. The
+    first time a skill reaches a new address, a card names it and asks: Allow for this connection, Just this time, or
+    No, and only a tap answers it. What goes, and where:
+    - Home Assistant: the service, the entities and the values the step's card shows, with your token, to your own
+      server's address. Test reads its devices and services into memory only. After a change Robot may ask your server
+      once more, 2 s later, whether it happened.
+    - ntfy: the notification's words (and its title and priority) to your topic, on the server you typed.
+    - A webhook: exactly the request you declared, with the values the card shows, to the address you typed. Test only
+      opens the server's front page, with no key and nothing of yours.
+    - A routing server you run, for a travel time: where you are, rounded to about 1 km, and the place you saved as Home
+      or Work in Settings › Car mode. Test sends two points near your Home, never where you are. The first-use card says
+      so. Your location goes over plain http only to your server's Tailscale address.
+    - An app hand-off: the words and address you set, to the app you picked, from the open panel. Nothing leaves the
+      phone until you send it there yourself.
+    - A typed Termux script: its values to Termux on the phone, as for any of your scripts (Robot can't see what the
+      script then does).
+    Anything with a key goes only over https, with a certificate Android trusts, and only to the address it was saved
+    for; plain http is only for your own network with nothing secret. Each request names Robot ("Robot") and nothing
+    about you; your server sees your IP address. Robot never follows a redirect. What your server, your ntfy server or
+    your webhook's service does with a request is under its own terms, or yours if you run it.
+
+Robot to Robot, off until you turn it on (Settings › Robot to Robot). Your Robot and the Robots of people you pair with
+can ask each other things, end-to-end encrypted, with no Robot server in between. While it's on, Robot stays reachable and
+connects to those Robots without you starting anything, so it can deliver requests and answer the ones you set to Answer on
+its own, also while the phone is locked unless you turn that off. Nothing reaches me. You pick a mode each time you pair:
+in Anonymous, Tor carries everything, and it's slower and uses more battery; in Private, phones on the same network talk directly, and a push server
+wakes the other phone. What each sees:
+
+- The person you paired with: what you send them and your mode; in Private, your current addresses on a shared network.
+  In a group plan, the other members see at most the name you paired under, once you've said yes; on an Anonymous
+  pairing, no name. Anyone who's out or hasn't answered is only a count. The person who organized it sees who said what.
+- The receiving Robot's push server, and the push app on that phone: that phone's address, when each request arrives and its
+  padded size, and the push address given to that person; the sender's address in Private, a Tor exit's in Anonymous.
+  Never what's in it, names, keys or which Robot sent it.
+- Tor's first relay: your address and that you use Tor. The other relays can't link you to the other Robot.
+- Your Wi-Fi network, in Private on a shared network: the two phones' local addresses talking on a port, sizes and times.
+- Someone with an old pairing code: nothing. A spent or expired code gets no reply.
+
+Some networks block Tor, so Settings › Robot to Robot › Tor bridges (Off by default) lets Tor start from a bridge instead
+of a public relay. What each sees:
+
+- Off: Tor connects as it always does. Your network can see that you use Tor; Tor's first relay sees your IP address.
+- Snowflake: a volunteer's proxy sees your IP address and that you use Snowflake. Your first contact reaches the Tor
+  Project's broker through a large web service (CDN77), which sees your IP address; the broker receives an offer that
+  holds your address, and the Tor Project says it doesn't record it. A few public STUN servers, listed in the bridge
+  line, see your IP address too: they tell your phone its own public address.
+- Built-in obfs4, or a bridge of your own: the bridge sees your IP address and that you use Tor, as a first relay does.
+  Your network sees only random-looking bytes.
+- Automatic: Tor on its own first, so your network can see Tor being tried; then Snowflake, the built-in obfs4 bridges,
+  and last meek, where a large web service (CDN77) sees your IP address and that you use meek.
+
+None of them sees whom you reach or what your Robot sends: that stays inside Tor and Robot's own encryption.
+
+With a bridge in use, its helper program (lyrebird) listens on a network port that only apps on your phone can reach. Another
+app on your phone that's allowed the network could find that port, and so learn that you use a Tor bridge, and could send
+its own traffic out through the bridge, which Android would then count as Robot's. It never sees what Robot sends.
 
 Nothing else goes online. You can turn off Robot's Network permission in GrapheneOS: everything on the phone keeps
 working, and the online features above say they can't connect.
@@ -268,7 +393,7 @@ network permissions are granted at install; GrapheneOS lets you turn the network
 - Microphone: wake words and speech.
 - Contacts: "text Mom", "what's Alex's number".
 - Calendar: "what's on tomorrow", "add lunch with Sam on Friday".
-- Approximate location: the weather "here" and the nearest place.
+- Approximate location: the weather "here", the nearest place, and a travel time step of a skill.
 - Nearby devices (Bluetooth, asked for only from Settings › Headset or Car mode): to answer your headset's voice
   button and know your car when it connects. It doesn't allow scanning for devices.
 - Phone calls (optional, asked for from Settings › Car mode › Calls, or from a phone lock's People row in 1.1): in car
@@ -286,11 +411,25 @@ network permissions are granted at install; GrapheneOS lets you turn the network
   again, in Android's own window.
 - Notifications (Robot's own): that Android turned Robot off as the assistant after a restart or an update, a model
   problem, an update that is available or ready, and the one that shows while a conversation is transcribed or a
-  routine speaks. With Phone lock: a warning before a lock starts and a quiet notice while one is on.
+  routine speaks, what a routine left for you to tap, and a monthly backup reminder if you turn it on. With Phone lock: a
+  warning before a lock starts and a quiet notice while one is on. With car mode: a notice while it's on, and "Car
+  connected" when Android didn't let it start by itself. With Robot Files: what was filed in the background, or a batch
+  waiting for you to say yes. With a skill: its next step after an app opens. With Robot to Robot: what's waiting from
+  the people you've paired with.
 - Exact alarms (at install): one alarm 3 minutes after the phone restarts (or Robot updates), to check that Robot is
-  still your digital assistant and tell you if Android turned it off, and, with Phone lock, one alarm for the next lock's
-  warning, start or end. The timers and alarms you ask for are set by your
+  still your digital assistant and tell you if Android turned it off; with Phone lock, one alarm for the next lock's
+  warning, start or end; with routines, one alarm for the next routine's time; and, while a temporary copy of a file you
+  shared is out, one alarm to delete it after 15 minutes. The timers and alarms you ask for are set by your
   Clock app, which Robot only asks (the "set an alarm" permission); Robot keeps no alarm of its own for them.
+- Audio settings (at install, no prompt): to route Robot's listening and speaking to your headset or your car.
+- Start at boot (at install, no prompt): the assistant check above, and to set routines' and Phone lock's alarms again
+  after a restart.
+- Foreground service, with microphone and media playback (at install, no prompt): so Android lets a conversation keep
+  transcribing, and a routine keep speaking, with their notification showing.
+- Keep awake (at install, no prompt): so the phone doesn't go to sleep partway through transcribing a conversation or a
+  routine speaking.
+- Robot's own signature permission (`INTERNAL`): keeps Robot's processes and its recognizer closed to other apps, which
+  go through Android. It gives Robot nothing new.
 - Usage access (optional, in Android's settings): which apps use the most space, and, when you ask Robot to free up
   memory, which apps you used in the last few hours (read on the phone, for that answer only). With Phone lock's One
   app first or Daily limit (1.1), the time you spend in the app you chose and today's screen time, counted on the phone;
@@ -299,14 +438,20 @@ network permissions are granted at install; GrapheneOS lets you turn the network
   never reads the screen or taps anything. Android calls this a restricted setting for an app installed from a file,
   and says Robot can "view and control the screen" in its standard wording for every app with this access. Turn it off
   in Android's settings and Phone lock stops.
-- Notification access (optional): learning names from your messaging app, and reading your messages from the apps you turn on in
-  Settings › Messages (nothing from any other app is read).
+- Notification access (optional): learning names from your messaging app, reading your messages from the apps you turn on in
+  Settings › Messages (no other app's notifications are read), and, while the car screen is up, the name of the app that's
+  playing with its title and artist, so the music tile can show them. Those are shown on that screen only, and never logged,
+  saved or sent. Without this access the tile asks only your own music app.
 - Network (at install): the online features above.
 - Network state (at install, 1.1): lets an app see whether the phone is online. Android requires it before a scheduled
   job can wait for the network, as the daily update check, the download on Wi-Fi and Termux's weekly check do. Robot
-  uses it for those jobs and nothing else.
+  uses it for those jobs and for one thing more: before a skill reaches a connection on your home
+  network, Robot checks only whether the phone is on Wi-Fi, Ethernet or a VPN, so it can say "Robot can't reach your
+  Home Assistant off your home network." instead of trying. It never reads the network's name or address.
 - Biometric prompt (at install, 1.1): so travel mode can ask for your PIN, pattern or password on Android's own confirm
   screen. Robot accepts only those there, never a fingerprint or face, and never sees what you enter.
+- Hide overlay windows (at install, no prompt): so the sheet Robot opens to listen hides other apps' floating windows while it
+  is up, and nothing can be drawn over what you say or tap. Robot reads nothing with it.
 - Install unknown apps (optional, in Android's settings, which Settings › About › Updates opens): so Robot can install its own
   updates. It installs nothing else. "Install updates without asking" (off by default) uses a permission granted at
   install that lets Robot ask Android to skip its confirmation for Robot's own update.

@@ -12,6 +12,8 @@ import app.heyrobot.core.parse.ParseOutput
 import app.heyrobot.core.parse.ParseReply
 import app.heyrobot.core.parse.ParseRequest
 import app.heyrobot.core.parse.ParseResult
+import app.heyrobot.core.parse.ParseStatus
+import app.heyrobot.core.parse.ParsedPixels
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -57,6 +59,11 @@ class FilingRunTest {
         override fun head(id: FileId, n: Int): ByteArray = store.open(id).use { r -> val b = ByteArray(n); val k = r.read(b, 0, n); if (k <= 0) ByteArray(0) else b.copyOf(k) }
         override fun bytes(id: FileId, max: Long): ByteArray = store.readAll(id, max)
         override fun parse(bytes: ByteArray, flags: Int): ParseResult { parses++; return parse(bytes) }
+        var pagePixels: () -> ParseResult = { ParseResult.Ok(ParseOutput(FileType.JPEG, 1, 2, 2, null, null, 0, pixels = ParsedPixels(2, 2, ByteArray(16)))) }
+        var encoded: ByteArray? = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 1, 2, 3)
+        var pixelReads = 0
+        override fun pagePixels(bytes: ByteArray): ParseResult { pixelReads++; return pagePixels() }
+        override fun pageJpeg(p: ParsedPixels): ByteArray? = encoded
         override fun putThumb(id: FileId, jpeg: ByteArray): Boolean { thumbs++; store.putThumb(id, jpeg); return true }
         override fun model() = model
         override fun read(req: BrainMsg.OneShot, jpeg: ByteArray?): OneShotResult { reads += req to jpeg; return reply(req) }
@@ -110,7 +117,7 @@ class FilingRunTest {
         val (req, sent) = ports.reads.single()
         assertEquals(OneShotKind.FILE_READ, req.kind)
         assertTrue(req.hasImage)
-        assertTrue(sent!!.contentEquals(jpeg))
+        assertTrue(sent!!.contentEquals(ports.encoded))
         // The currency is Robot's rule's (a bare "$" on a Canadian phone), never the model's "USD".
         assertEquals("2026-08-14 Harbourside Grocer 66.31 CAD", entry(id).name)
         // The tax rate given as taxes.
@@ -488,5 +495,94 @@ class FilingRunTest {
         assertEquals(p + 1, ports.parses)
         assertFalse(entry(text).thumb)
         assertFalse(FilingRun.RETHUMB in (store.load() as IndexLoad.Loaded).index.extra)
+    }
+
+    /** F54: a search text whose MAX_TEXT-th character splits a pair is cut before the pair, never dropped whole. */
+    @Test fun aSearchTextCutInsideAPairKeepsItsWords() {
+        val id = add(pdf, FileType.PDF)
+        val text = "Some page\n" + "w".repeat(FileLimits.MAX_TEXT - 11) + "😀" + " and more"
+        ports.parse = { textLayer(text) }
+        ports.reply = { done("""{"kind":"other"}""") }
+        assertTrue(run.file(id) is FilingOutcome.Filed)
+        assertEquals(text.substring(0, FileLimits.MAX_TEXT - 1), entry(id).text)
+    }
+
+    /** F52: a picture's date taken is its date when its words give none, and nothing overrides what the words say. */
+    @Test fun aPicturesDateTakenIsKeptWhenItsWordsGiveNone() {
+        // Read text in images off: filed by its type and date alone (§4.2).
+        ports.settings = FilesSettings(readImageText = false)
+        val off = add(jpeg, FileType.JPEG, FileSource.PANEL, "beach.jpg")
+        ports.parse = { picture() }
+        assertTrue(run.file(off) is FilingOutcome.Filed)
+        assertEquals(FileField("2026-08-14", FieldBy.READ), entry(off).fields["date"])
+        // Read, no words.
+        ports.settings = FilesSettings()
+        val silent = add(jpeg, FileType.JPEG, FileSource.PANEL, "lake.jpg")
+        ports.reply = { done("""{"kind":"photo"}""") }
+        run.file(silent)
+        assertEquals(FileField("2026-08-14", FieldBy.READ), entry(silent).fields["date"])
+        // A date in the words wins.
+        val worded = add(jpeg, FileType.JPEG, FileSource.PANEL, "note.jpg")
+        ports.reply = { done("""{"kind":"other","text":"Meeting notes\n2026-07-02"}""") }
+        run.file(worded)
+        assertEquals("2026-07-02", entry(worded).fields["date"]?.value)
+        // A date taken that hasn't happened yet is no date.
+        val future = add(jpeg, FileType.JPEG, FileSource.PANEL, "clock.jpg")
+        ports.reply = { done("""{"kind":"photo"}""") }
+        ports.parse = { ParseResult.Ok(ParseOutput(FileType.JPEG, 1, 1000, 1500, "2031-01-01", null, 0, pageJpegs = listOf(jpeg))) }
+        run.file(future)
+        assertNull(entry(future).fields["date"])
+    }
+
+    /** F16: what :brain gets of a picture is encoded in this process from :files' pixels, never a JPEG :files made. */
+    @Test fun aPictureReachesTheModelEncodedHereNeverAsFilesMadeIt() {
+        val id = add(jpeg, FileType.JPEG, FileSource.PANEL, "beach.jpg")
+        ports.parse = { picture() }
+        ports.reply = { done("""{"kind":"photo"}""") }
+        assertTrue(run.file(id) is FilingOutcome.Filed)
+        assertEquals(1, ports.pixelReads)
+        assertTrue(ports.reads.single().first.hasImage)
+        assertTrue(ports.reads.single().second.contentEquals(ports.encoded))
+        assertFalse(FilingPolicy.READ_FLAGS and ParseRequest.PAGES != 0)
+        // No text layer, no JPEG asked for: a scanned PDF is a picture all the same.
+        val scan = add(pdf, FileType.PDF)
+        ports.parse = { ParseResult.Ok(ParseOutput(FileType.PDF, 1, 0, 0, null, null, 0)) }
+        run.file(scan)
+        assertEquals(2, ports.pixelReads)
+        assertEquals(2, ports.reads.size)
+        // Words of its own: no pixels. No reading to do: no pixels.
+        val words = add(pdf, FileType.PDF, name = "words.pdf")
+        ports.parse = { textLayer(costcoText) }
+        run.file(words)
+        ports.settings = FilesSettings(readImageText = false)
+        val off = add(jpeg, FileType.JPEG, FileSource.PANEL, "lake.jpg")
+        ports.parse = { picture() }
+        run.file(off)
+        assertEquals(2, ports.pixelReads)
+    }
+
+    /** F16: the pixels' read ends as a READ does; pixels that can't be a page's are unreadable; a lock takes the try back. */
+    @Test fun aPicturesPixelsFailAsAReadFails() {
+        ports.parse = { picture() }
+        ports.reply = { done("""{"kind":"photo"}""") }
+        val crashed = add(jpeg, FileType.JPEG, FileSource.PANEL, "a.jpg")
+        ports.pagePixels = { ParseResult.Failed(ParseFailure.CRASHED) }
+        val c = run.file(crashed)
+        assertTrue(c.toString(), c is FilingOutcome.Waiting && c.counted)
+        assertEquals(1, entry(crashed).filing?.tries)
+        val gone = add(jpeg, FileType.JPEG, FileSource.PANEL, "b.jpg")
+        ports.pagePixels = { ParseResult.Failed(ParseFailure.UNAVAILABLE) }
+        assertEquals(FilingOutcome.Stop, run.file(gone))
+        assertEquals(0, entry(gone).filing?.tries ?: 0)
+        val refused = add(jpeg, FileType.JPEG, FileSource.PANEL, "c.jpg")
+        ports.pagePixels = { ParseResult.Refused(ParseStatus.MALFORMED, FileType.JPEG) }
+        val r = run.file(refused)
+        assertTrue(r.toString(), r is FilingOutcome.Held && r.why == FilingWhy.UNREADABLE)
+        ports.pagePixels = { ParseResult.Ok(ParseOutput(FileType.JPEG, 1, 2, 2, null, null, 0, pixels = ParsedPixels(2, 2, ByteArray(16)))) }
+        ports.encoded = null
+        val bad = add(jpeg, FileType.JPEG, FileSource.PANEL, "d.jpg")
+        val b = run.file(bad)
+        assertTrue(b.toString(), b is FilingOutcome.Held && b.why == FilingWhy.UNREADABLE)
+        assertEquals(0, ports.reads.size)
     }
 }

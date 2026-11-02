@@ -14,6 +14,15 @@ class PromptTest {
     private val BROWSER_MAX = 200
     /** 1.4: find_files and read_file together, estimated (F9: 329 with the plan's five parameters; JSON marks count a token each). */
     private val FILES_MAX = 340
+    /** 1.4 Lists (LS4): add_to_list, estimated (160 measured with its two parameters; JSON marks count a token each). */
+    private val LISTS_MAX = 170
+    /**
+     * The everyday set (E2): calculate alone, estimated (222 at E2: one line and three short parameters, everyday-set-plan.md
+     * §4.4; every tool's JSON marks count, as find_files' and read_file's 329 do). Like
+     * Robot Files' two reads, it is measured on its own (calculateCostsOneLineAndGivesWayLast), and the worst cases below leave
+     * it out: the SUMS group gives way last of the optional groups, so ToolBudget keeps the room they check.
+     */
+    private val SUMS_MAX = 240
 
     private val now = ZonedDateTime.of(2026, 10, 10, 9, 5, 0, 0, ZoneId.of("Europe/Berlin"))
 
@@ -87,7 +96,7 @@ class PromptTest {
         assertEquals(Prompt.fixedTokens(plain, tools) + cost, Prompt.fixedTokens(Prompt.system(now, locked = false, answerIn = app.heyrobot.core.i18n.Lang.FR), tools))
         // The worst case of eachToolGroupCostsTokensOnlyWhenUsed with the line still leaves the new turn its room.
         val worstWeb = Prompt.fixedTokens(Prompt.system(now, locked = false, askHelper = true, texting = true, weather = true, phone = true, web = true,
-            answerIn = app.heyrobot.core.i18n.Lang.FR), ToolName.entries.filter { it.group != ToolGroup.FILES && it.forModel && it.group != ToolGroup.MEMORY && !it.termux && it != ToolName.BROWSER_SEARCH })
+            answerIn = app.heyrobot.core.i18n.Lang.FR), ToolName.entries.filter { it.group != ToolGroup.FILES && it.group != ToolGroup.LISTS && it.group != ToolGroup.SUMS && it.group != ToolGroup.LINK && it.forModel && it.group != ToolGroup.MEMORY && !it.termux && it != ToolName.BROWSER_SEARCH })
         assertTrue("worst with web and the line $worstWeb", worstWeb < 3_050)
         assertTrue("${ContextWindow.newTurnLimit(worstWeb)}", ContextWindow.newTurnLimit(worstWeb) > 270)
     }
@@ -220,7 +229,8 @@ class PromptTest {
     @Test fun textCallHintParsesBackIntoValidActions() {
         val hint = Prompt.textCallHint(ToolName.entries)
         val calls = Regex("call:[a-z_]+\\{[^}]*\\}").findAll(hint).map { it.value }.toList()
-        assertEquals(ToolName.entries.size, calls.size)
+        // (C4, deliberately: a skill's connection and hand-off steps are never in the hint, nor read from a reply.)
+        assertEquals(ToolName.entries.count { it.group != ToolGroup.CONNECTIONS }, calls.size)
         for (c in calls) {
             val found = ToolCalls.parseText(c)
             assertEquals(c, 1, found.size)
@@ -249,14 +259,16 @@ class PromptTest {
         // The worst case: every group, Ask Claude on (its tool and line) and every optional system line. About 500 tokens
         // are left for the new turn: screen text is cut to fit (fitTurn) and older turns are dropped first.
         // (0.9: the Termux group, only while Settings › Termux is on, is measured with it in TermuxToolsTest.)
+        // (1.4: Robot Files' two reads and, LS4 deliberately, Lists' add_to_list are measured on their own below, as F9 did:
+        // each is described only for its own words, and ToolBudget keeps it for them.)
         val beforeMemory = Prompt.fixedTokens(Prompt.system(now, locked = false, askHelper = true, texting = true, weather = true, phone = true),
-            ToolName.entries.filter { it.group != ToolGroup.FILES && it.forModel && it.group != ToolGroup.MEMORY && it.group != ToolGroup.WEB && !it.termux })
+            ToolName.entries.filter { it.group != ToolGroup.FILES && it.group != ToolGroup.LISTS && it.group != ToolGroup.SUMS && it.group != ToolGroup.LINK && it.forModel && it.group != ToolGroup.MEMORY && it.group != ToolGroup.WEB && !it.termux })
         assertTrue("worst before memory $beforeMemory", beforeMemory < 2_850)
         assertTrue(ContextWindow.newTurnLimit(beforeMemory) > 450)
         // 0.7: memory's two tools (only in a conversation whose words called for them, with Memory on) are kept to one
         // argument each and its line short: about 200 more estimated tokens (a third fewer real ones), still over 300 left.
         val worst = Prompt.fixedTokens(app.heyrobot.core.memory.MemoryPrompt.system(Prompt.system(now, locked = false, askHelper = true, texting = true,
-            weather = true, phone = true), tools = true, pinned = null), ToolName.entries.filter { it.group != ToolGroup.FILES && it.forModel && it.group != ToolGroup.WEB && !it.termux })
+            weather = true, phone = true), tools = true, pinned = null), ToolName.entries.filter { it.group != ToolGroup.FILES && it.group != ToolGroup.LISTS && it.group != ToolGroup.SUMS && it.group != ToolGroup.LINK && it.forModel && it.group != ToolGroup.WEB && !it.termux })
         assertTrue("worst ${worst - beforeMemory}", worst - beforeMemory < 260)
         assertTrue("worst $worst", ContextWindow.newTurnLimit(worst) > 280)
         // 0.9, web search on and its words used: web_search (about 140 estimated tokens, two parameters) and its line. The
@@ -267,7 +279,7 @@ class PromptTest {
         val allWeb = Prompt.fixedTokens(Prompt.system(now, locked = false, web = true), ToolName.entries.filter { !it.internal && it.forModel })
         assertTrue("all with web $allWeb", allWeb < 2_800)
         val worstWeb = Prompt.fixedTokens(Prompt.system(now, locked = false, askHelper = true, texting = true, weather = true, phone = true, web = true),
-            ToolName.entries.filter { it.group != ToolGroup.FILES && it.forModel && it.group != ToolGroup.MEMORY && !it.termux && it != ToolName.BROWSER_SEARCH })
+            ToolName.entries.filter { it.group != ToolGroup.FILES && it.group != ToolGroup.LISTS && it.group != ToolGroup.SUMS && it.group != ToolGroup.LINK && it.forModel && it.group != ToolGroup.MEMORY && !it.termux && it != ToolName.BROWSER_SEARCH })
         assertTrue("worst with web $worstWeb", worstWeb < 3_050)
         assertTrue("${ContextWindow.newTurnLimit(worstWeb)}", ContextWindow.newTurnLimit(worstWeb) > 270)
         // 1.0, a question that names an engine or the browser ("look it up on Google"): browser_search (two short parameters)
@@ -275,7 +287,7 @@ class PromptTest {
         val browser = Prompt.fixedTokens(Prompt.system(now, locked = false, browser = true), Prompt.CORE_TOOLS + ToolName.BROWSER_SEARCH)
         assertTrue("browser_search ${browser - core}", browser - core in 1..BROWSER_MAX)
         val worstBrowser = Prompt.fixedTokens(Prompt.system(now, locked = false, askHelper = true, texting = true, weather = true, phone = true, web = true,
-            browser = true), ToolName.entries.filter { it.group != ToolGroup.FILES && it.forModel && it.group != ToolGroup.MEMORY && !it.termux })
+            browser = true), ToolName.entries.filter { it.group != ToolGroup.FILES && it.group != ToolGroup.LISTS && it.group != ToolGroup.SUMS && it.group != ToolGroup.LINK && it.forModel && it.group != ToolGroup.MEMORY && !it.termux })
         assertTrue("worst with the browser $worstBrowser", worstBrowser - worstWeb in 1..BROWSER_MAX)
         val fitted = ToolBudget.fit(ToolGroup.entries.toSet() - ToolGroup.TERMUX, ToolRouter.route("look it up on Google"), 4_096) { g ->
             val t = ToolRouter.tools(g, RobotSettings(), askHelper = true, memory = true, web = true, browser = true)
@@ -311,7 +323,68 @@ class PromptTest {
         assertTrue(ToolBudget.room(Prompt.fixedTokens(sys, ToolRouter.tools(fitted, RobotSettings(), askHelper = true, memory = true, web = true, browser = true,
             files = true)), 4_096, fitted))
         // Among the groups a question doesn't call for, Robot Files gives way first after memory's tools (ToolBudget.OPTIONAL).
-        assertEquals(listOf(ToolGroup.TERMUX, ToolGroup.WEB, ToolGroup.SKILLS, ToolGroup.MEMORY, ToolGroup.FILES), ToolBudget.OPTIONAL.take(5))
+        // LS4, deliberately: Lists' one tool, appended after FILES (lists-plan.md §8.2), now gives way just before it, and
+        // 1.5 L7's ask_robot (appended after it) before that.
+        assertEquals(listOf(ToolGroup.TERMUX, ToolGroup.WEB, ToolGroup.SKILLS, ToolGroup.MEMORY, ToolGroup.LINK, ToolGroup.LISTS, ToolGroup.FILES), ToolBudget.OPTIONAL.take(7))
+    }
+
+    /**
+     * 1.4 Lists (LS4, lists-plan.md §8.2): add_to_list is measured on its own, as the file tools are: described only for your
+     * lists' words with Lists open, at its longest (full) and compact, and in the worst case, every group at once, ToolBudget
+     * keeps it for a question about your lists.
+     */
+    @Test fun theListToolCostsFewTokensAndGiveWay() {
+        val system = Prompt.system(now, locked = false)
+        val core = Prompt.fixedTokens(system, Prompt.CORE_TOOLS)
+        val lists = Prompt.fixedTokens(system, Prompt.CORE_TOOLS + ToolName.ADD_TO_LIST)
+        assertTrue("lists ${lists - core}", lists - core in 1..LISTS_MAX)
+        val cSys = Prompt.system(now, locked = false, compact = true)
+        val compact = Prompt.fixedTokens(cSys, Prompt.CORE_TOOLS + ToolName.ADD_TO_LIST, compact = true) - Prompt.fixedTokens(cSys, Prompt.CORE_TOOLS, compact = true)
+        assertTrue("compact $compact", compact in 1..(lists - core))
+        val q = "add the ingredients on this screen to my grocery list"
+        val sys = Prompt.system(now, locked = false, askHelper = true, texting = true, weather = true, phone = true, web = true, browser = true)
+        fun tools(g: Set<ToolGroup>) = ToolRouter.tools(g, RobotSettings(), askHelper = true, memory = true, web = true, browser = true, files = true, lists = true)
+        val fitted = ToolBudget.fit(ToolGroup.entries.toSet() - ToolGroup.TERMUX, ToolRouter.route(q, lists = true), 4_096) { g -> Prompt.fixedTokens(sys, tools(g)) }
+        assertTrue(fitted.toString(), ToolGroup.LISTS in fitted)
+        assertTrue(ToolBudget.room(Prompt.fixedTokens(sys, tools(fitted)), 4_096, fitted))
+    }
+
+    /**
+     * The everyday set (E2, everyday-set-plan.md §4.4): calculate costs about 200 estimated tokens, described only for number words beside an
+     * operator, and of the groups that may give way it gives way last: in the worst case, every group at once, a sum keeps it.
+     */
+    @Test fun calculateCostsOneLineAndGivesWayLast() {
+        val system = Prompt.system(now, locked = false)
+        val core = Prompt.fixedTokens(system, Prompt.CORE_TOOLS)
+        val sums = Prompt.fixedTokens(system, Prompt.CORE_TOOLS + ToolName.CALCULATE)
+        assertTrue("calculate ${sums - core}", sums - core in 1..SUMS_MAX)
+        assertEquals(ToolGroup.SUMS, ToolBudget.OPTIONAL.last())
+        val q = "I have 3 kids, the trip is $45 each plus 13% HST, how much is that?"
+        val sys = Prompt.system(now, locked = false, askHelper = true, texting = true, weather = true, phone = true, web = true, browser = true)
+        val fitted = ToolBudget.fit(ToolGroup.entries.toSet() - ToolGroup.TERMUX, ToolRouter.route(q), 4_096) { g ->
+            Prompt.fixedTokens(sys, ToolRouter.tools(g, RobotSettings(), askHelper = true, memory = true, web = true, browser = true, files = true))
+        }
+        assertTrue(fitted.toString(), ToolGroup.SUMS in fitted)
+        // Locked too: a sum reads and changes nothing (ApprovalGate.free), so calculate is described on the lock screen.
+        assertTrue(ToolName.CALCULATE in ToolRouter.tools(setOf(ToolGroup.CORE, ToolGroup.SUMS), RobotSettings()))
+    }
+
+    /**
+     * 1.5 L7: ask_robot, like Robot Files' reads, is described only while Robot to Robot is on with someone paired and the
+     * phone unlocked, for words naming someone's Robot (the worst cases above leave it out as they leave Files out): one
+     * tool of three parameters, and ToolBudget lets it give way when a question doesn't call for it.
+     */
+    @Test fun askRobotCostsOneToolAndGivesWay() {
+        val system = Prompt.system(now, locked = false)
+        val core = Prompt.fixedTokens(system, Prompt.CORE_TOOLS)
+        val link = Prompt.fixedTokens(system, Prompt.CORE_TOOLS + ToolName.ASK_ROBOT)
+        assertTrue("ask_robot ${link - core}", link - core in 1..240)
+        val q = "ask Sam's robot when Sam is free Friday"
+        val sys = Prompt.system(now, locked = false, askHelper = true, texting = true, weather = true, phone = true, web = true, browser = true)
+        val fitted = ToolBudget.fit(ToolGroup.entries.toSet() - ToolGroup.TERMUX, ToolRouter.route(q), 4_096) { g ->
+            Prompt.fixedTokens(sys, ToolRouter.tools(g, RobotSettings(), askHelper = true, memory = true, web = true, browser = true, files = true, link = true))
+        }
+        assertTrue(fitted.toString(), ToolGroup.LINK in fitted)
     }
 
     @Test fun carModeAddsOneShortLine() {
@@ -322,13 +395,13 @@ class PromptTest {
         val cost = Prompt.fixedTokens(car) - Prompt.fixedTokens(plain)
         assertTrue("car line $cost", cost in 1..40)
         val beforeMemory = Prompt.fixedTokens(Prompt.system(now, locked = true, askHelper = true, texting = true, weather = true, phone = true,
-            driving = true), ToolName.entries.filter { it.group != ToolGroup.FILES && it.forModel && it.group != ToolGroup.MEMORY && it.group != ToolGroup.WEB && !it.termux })
+            driving = true), ToolName.entries.filter { it.group != ToolGroup.FILES && it.group != ToolGroup.LISTS && it.group != ToolGroup.SUMS && it.group != ToolGroup.LINK && it.forModel && it.group != ToolGroup.MEMORY && it.group != ToolGroup.WEB && !it.termux })
         assertTrue("worst before memory $beforeMemory", beforeMemory < 2_900)
         assertTrue(ContextWindow.newTurnLimit(beforeMemory) > 450)
         // With 0.7's memory tools and line too (a conversation whose words called for them; unlocked, as Memory stays off the
         // lock screen by default): the car line's tokens come out of the 0.7 worst case's, still about 250 left.
         val worst = Prompt.fixedTokens(app.heyrobot.core.memory.MemoryPrompt.system(Prompt.system(now, locked = false, askHelper = true, texting = true,
-            weather = true, phone = true, driving = true), tools = true, pinned = null), ToolName.entries.filter { it.group != ToolGroup.FILES && it.forModel && it.group != ToolGroup.WEB && !it.termux })
+            weather = true, phone = true, driving = true), tools = true, pinned = null), ToolName.entries.filter { it.group != ToolGroup.FILES && it.group != ToolGroup.LISTS && it.group != ToolGroup.SUMS && it.group != ToolGroup.LINK && it.forModel && it.group != ToolGroup.WEB && !it.termux })
         assertTrue("worst ${worst - beforeMemory}", worst - beforeMemory < 260)
         assertTrue("worst $worst ${ContextWindow.newTurnLimit(worst)}", ContextWindow.newTurnLimit(worst) >= 240)
     }
@@ -347,7 +420,8 @@ class PromptTest {
         }
         val pinned = app.heyrobot.core.memory.PromptPacking.pinnedLine(items, 2).first!!
         assertTrue("pinned ${TokenEstimate.text(pinned)}", TokenEstimate.text(pinned) in 80..100)
-        val all = ToolGroup.entries.toSet()
+        // (C4, deliberately: CONNECTIONS describes nothing and no conversation ever holds it, ToolRouter.used: not a group to fit.)
+        val all = ToolGroup.entries.toSet() - ToolGroup.CONNECTIONS
         // The big optional groups, called for or not; every other group always called for (the worst).
         // 1.1, Skills phase B: 3 skills at their longest (SkillSpecsTest.longest), and their system line.
         val big = listOf(ToolGroup.TERMUX, ToolGroup.WEB, ToolGroup.SKILLS, ToolGroup.MEMORY)

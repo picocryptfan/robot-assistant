@@ -12,6 +12,7 @@ object LockStrings : Strings("lock", area = "lock") {
     val summaryOff = s("summary_off", "Off", "Désactivé")
     val summaryOn = plural("summary_on", "n", Plural("On, {n} lock", "On, {n} locks"), Plural("Activé, {n} blocage", "Activé, {n} blocages", "Activé, {n} de blocages"))
     val summaryNow = s("summary_now", "On now, opens at {time}", "En cours, s'ouvre à {time}")
+    val summaryProgress = s("summary_progress", "On now, {done} of {total} minutes in {label} done", "En cours, {done} minutes sur {total} passées dans {label}")
     val summaryDamaged = s("summary_damaged", "Paused: its file can't be read", "En pause : son fichier est illisible")
 
     // A lock's row: "Every day, 22:00 to 7:00".
@@ -28,6 +29,7 @@ object LockStrings : Strings("lock", area = "lock") {
     val coverWaitUntil = s("cover_wait_until", "You can end this lock at {time}.", "Tu pourras arrêter ce blocage à {time}.")
     val coverEndBy = s("cover_end_by", "End the lock now works until {time}.", "Arrêter le blocage maintenant fonctionne jusqu'à {time}.")
     val coverProgress = s("cover_progress", "{done} of {total} minutes in {label} done", "{done} minutes sur {total} passées dans {label}")
+    val coverCounts = s("cover_counts", "Time counts while {label} is open.", "Le temps compte seulement dans {label}.")
     val coverOpenApp = s("cover_open_app", "Open {label}", "Ouvrir {label}")
 
     // The code pad.

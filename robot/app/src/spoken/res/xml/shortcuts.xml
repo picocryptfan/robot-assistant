@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The test build's copy of main's shortcuts: a resource can't take ${applicationId}. SpokenBuildTest holds it to main's, the id aside. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="transcribe"
+        android:enabled="true"
+        android:icon="@drawable/ic_robot"
+        android:shortcutShortLabel="@string/shortcut_transcribe"
+        android:shortcutLongLabel="@string/shortcut_transcribe_long">
+        <intent
+            android:action="app.heyrobot.action.TRANSCRIBE"
+            android:targetPackage="ai.robot_app.spoken"
+            android:targetClass="app.heyrobot.assistant.conversation.ConversationActivity">
+            <extra android:name="entry" android:value="SHORTCUT" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:shortcutId="transcripts"
+        android:enabled="true"
+        android:icon="@drawable/ic_robot"
+        android:shortcutShortLabel="@string/shortcut_transcripts">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="ai.robot_app.spoken"
+            android:targetClass="app.heyrobot.ui.MainActivity">
+            <extra android:name="robot_page" android:value="transcripts" />
+        </intent>
+    </shortcut>
+</shortcuts>

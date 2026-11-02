@@ -119,7 +119,7 @@ import app.heyrobot.ui.common.TurnActions
 import app.heyrobot.ui.common.TurnUi
 import app.heyrobot.ui.common.answerSemantics
 import app.heyrobot.ui.common.spans
-import app.heyrobot.ui.common.toolIcon
+import app.heyrobot.ui.common.cardIcon
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -323,7 +323,7 @@ fun ClassicListeningRow(partial: String, transcribing: Boolean, card: Boolean = 
  * Claude app ([readClaude]).
  */
 @Composable
-fun ClassicContextRow(draft: Attachment?, thumb: Bitmap?, readClaude: Boolean, onRemove: () -> Unit, onReadClaude: () -> Unit) {
+fun ClassicContextRow(draft: Attachment?, thumb: Bitmap?, readClaude: Boolean, onRemove: () -> Unit, onReadClaude: () -> Unit, name: String? = null) {
     if (draft != null) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Box {
@@ -331,17 +331,18 @@ fun ClassicContextRow(draft: Attachment?, thumb: Bitmap?, readClaude: Boolean, o
                     Image(thumb.asImageBitmap(), null, contentScale = ContentScale.Crop, modifier = Modifier.size(64.dp).clip(RoundedCornerShape(14.dp)))
                 } else {
                     Box(Modifier.size(64.dp).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.secondaryContainer), contentAlignment = Alignment.Center) {
-                        Icon(RIcons.Phone, null)
+                        Icon(if (draft == Attachment.FILE) RIcons.Folder else RIcons.Phone, null)
                     }
                 }
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(stringResource(if (draft == Attachment.SCREEN) R.string.panel_your_screen else R.string.panel_photo), style = MaterialTheme.typography.titleSmall)
+                Text(if (draft == Attachment.FILE) name ?: stringResource(R.string.panel_file) else stringResource(if (draft == Attachment.SCREEN) R.string.panel_your_screen else R.string.panel_photo),
+                    style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(stringResource(R.string.panel_goes_with_next), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             IconButton(onClick = onRemove, modifier = Modifier.size(48.dp)) {
-                Icon(RIcons.Close, stringResource(if (draft == Attachment.SCREEN) R.string.panel_remove_screen else R.string.panel_remove_photo))
+                Icon(RIcons.Close, stringResource(when (draft) { Attachment.SCREEN -> R.string.panel_remove_screen; Attachment.FILE -> R.string.panel_remove_file; else -> R.string.panel_remove_photo }))
             }
         }
     } else if (readClaude) {
@@ -358,10 +359,11 @@ fun ClassicContextRow(draft: Attachment?, thumb: Bitmap?, readClaude: Boolean, o
 }
 
 @Composable
-fun ClassicAttachRow(locked: Boolean, onDone: () -> Unit, onCamera: () -> Unit, onPhotos: () -> Unit) {
+fun ClassicAttachRow(locked: Boolean, onDone: () -> Unit, onCamera: () -> Unit, onPhotos: () -> Unit, onFile: (() -> Unit)? = null) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         BigChoice(RIcons.Camera, stringResource(R.string.panel_camera), Modifier.weight(1f)) { onDone(); onCamera() }
         BigChoice(RIcons.Image, stringResource(R.string.panel_photos), Modifier.weight(1f)) { onDone(); onPhotos() }
+        if (onFile != null) BigChoice(RIcons.Folder, stringResource(R.string.panel_file), Modifier.weight(1f)) { onDone(); onFile() }
     }
     if (locked) Text(stringResource(R.string.panel_unlock_for_your_photos), style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 20.dp))
@@ -408,7 +410,7 @@ class ClassicInputActions(
 fun ClassicInputRow(st: ClassicInputState, input: String, onInput: (String) -> Unit, onSend: () -> Unit, focus: FocusRequester, actions: ClassicInputActions) {
     Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 12.dp, top = 6.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         // No camera while a turn runs: the panel would hide with the answer still going.
-        IconButton(onClick = actions.attach, enabled = !st.busy, modifier = Modifier.size(52.dp)) { Icon(RIcons.Camera, stringResource(R.string.panel_add_photo)) }
+        IconButton(onClick = actions.attach, enabled = !st.busy, modifier = Modifier.size(52.dp)) { Icon(RIcons.Camera, stringResource(R.string.panel_add_photo_or_file)) }
         if (st.screenChip != ScreenChip.HIDDEN) ScreenButton(st, actions.attachScreen)
         TextField(
             value = input,
@@ -525,7 +527,8 @@ private fun MicButton(listening: Boolean, hint: String?, actions: ClassicInputAc
 /** One turn as 0.6.0's bubbles (ui/common TurnView), in the panel and in History. */
 @Composable
 fun ClassicBubbleTurn(t: TurnUi, actions: TurnActions, modifier: Modifier = Modifier) {
-    if (t.user) UserBubble(t.text, t.attachment, t.thumb, modifier, screenText = t.screenText)
+    if (t.user) UserBubble(t.text, t.attachment, t.thumb, modifier, screenText = t.screenText, fileName = t.fileName, shared = t.shared,
+        onSaveFile = actions.saveFile?.takeIf { t.attachment == Attachment.FILE && t.canSaveFile }?.let { f -> val l = LocalLangs.current; { f(l) } })
     else Column(modifier) {
         AssistantBubble(
             text = t.text, streaming = t.streaming, stopped = t.stopped, error = t.error, actions = t.cards, announce = t.announce,
@@ -533,6 +536,7 @@ fun ClassicBubbleTurn(t: TurnUi, actions: TurnActions, modifier: Modifier = Modi
             fromHelper = t.helper, readBack = t.readBack, footer = t.footer, by = t.by, home = t.home,
         )
         t.web?.let { app.heyrobot.ui.common.WebAnswerCard(it, onOpen = { url -> actions.openSource(t.id, url) }, modifier = Modifier.padding(top = 6.dp)) }
+        t.list?.let { v -> app.heyrobot.ui.common.ListCard(v, actions.list?.let { f -> { op: app.heyrobot.ui.common.ListCardOp -> f(t.id, op) } }, Modifier.padding(top = 8.dp)) }
         t.offer?.let { ClassicOfferCard(it, onDismiss = { actions.dismissOffer(t.id) }, onAccept = { actions.acceptOffer(t.id) }) }
         // 0.7: the reply card, in the same tonal colours.
         t.reply?.let { r -> app.heyrobot.ui.common.ReplyCard(r, actions.reply?.let { f -> { op: app.heyrobot.ui.common.ReplyOp -> f(t.id, op) } },
@@ -541,7 +545,8 @@ fun ClassicBubbleTurn(t: TurnUi, actions: TurnActions, modifier: Modifier = Modi
 }
 
 @Composable
-fun UserBubble(text: String, attachment: Attachment, thumb: Bitmap?, modifier: Modifier = Modifier, screenText: String? = null) {
+fun UserBubble(text: String, attachment: Attachment, thumb: Bitmap?, modifier: Modifier = Modifier, screenText: String? = null, fileName: String? = null,
+    onSaveFile: (() -> Unit)? = null, shared: Boolean = false) {
     val youSaid = stringResource(R.string.card_you, text)
     Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
         if (thumb != null) {
@@ -550,9 +555,10 @@ fun UserBubble(text: String, attachment: Attachment, thumb: Bitmap?, modifier: M
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.padding(bottom = 4.dp).size(132.dp).clip(RoundedCornerShape(18.dp)),
             )
-        } else if (attachment != Attachment.NONE) {
-            AttachmentTag(attachment)
         }
+        if (attachment == Attachment.FILE || (thumb == null && attachment != Attachment.NONE)) AttachmentTag(attachment, fileName, shared)
+        // chat-files: "file this" for the file attached here.
+        if (onSaveFile != null) TextButton(onClick = onSaveFile, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.panel_save_to_files)) }
         // "Keep screenshots and photos in history": the screen's text kept with the question, a few lines until tapped.
         if (!screenText.isNullOrBlank()) {
             var open by remember { mutableStateOf(false) }
@@ -583,14 +589,16 @@ fun UserBubble(text: String, attachment: Attachment, thumb: Bitmap?, modifier: M
 }
 
 @Composable
-private fun AttachmentTag(a: Attachment) {
+private fun AttachmentTag(a: Attachment, fileName: String? = null, shared: Boolean = false) {
     Row(
         Modifier.padding(bottom = 4.dp).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.secondaryContainer).padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(if (a == Attachment.SCREEN) RIcons.Phone else RIcons.Image, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
+        Icon(if (shared) RIcons.Share else when (a) { Attachment.SCREEN -> RIcons.Phone; Attachment.FILE -> RIcons.Folder; else -> RIcons.Image }, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
         Spacer(Modifier.width(6.dp))
-        Text(stringResource(if (a == Attachment.SCREEN) R.string.panel_screen else R.string.panel_photo), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSecondaryContainer)
+        // E7: what another app shared rides SCREEN or PHOTO, and is tagged as what it is.
+        Text(if (a == Attachment.FILE) fileName ?: stringResource(R.string.panel_file) else stringResource(if (shared) R.string.everyday_ask_tag else if (a == Attachment.SCREEN) R.string.panel_screen else R.string.panel_photo),
+            style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSecondaryContainer, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -687,7 +695,7 @@ fun ClassicActionCard(a: ActionView, onConfirm: ((String, Boolean) -> Unit)?, mo
                     Image(a.icon.asImageBitmap(), null, Modifier.size(40.dp))
                 } else {
                     Box(Modifier.size(40.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
-                        Icon(if (a.files) RIcons.Folder else toolIcon(a.tool), null, Modifier.size(22.dp))
+                        Icon(cardIcon(a), null, Modifier.size(22.dp))
                     }
                 }
                 Spacer(Modifier.width(12.dp))
@@ -783,10 +791,11 @@ fun ClassicOfferCard(o: OfferView, onDismiss: () -> Unit, onAccept: () -> Unit) 
         modifier = Modifier.padding(top = 6.dp).widthIn(max = 340.dp).fillMaxWidth(),
     ) {
         Column(Modifier.padding(14.dp)) {
+            o.note?.let { Text(it, Modifier.padding(bottom = 6.dp), style = MaterialTheme.typography.bodyMedium) }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(RIcons.Cloud, null, Modifier.size(22.dp))
                 Spacer(Modifier.width(10.dp))
-                Text(if (!o.api) stringResource(R.string.panel_open_app_with, o.app, o.text.take(120) + if (o.text.length > 120) "…" else "")
+                Text(if (o.keep != null) o.keep else if (!o.api) stringResource(R.string.panel_open_app_with, o.app, o.text.take(120) + if (o.text.length > 120) "…" else "")
                     else if (o.asWell) stringResource(R.string.panel_want_take_as_well, o.name) else stringResource(R.string.panel_want_check_with, o.name),
                     style = MaterialTheme.typography.titleSmall)
             }
@@ -801,7 +810,7 @@ fun ClassicOfferCard(o: OfferView, onDismiss: () -> Unit, onAccept: () -> Unit) 
             Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End)) {
                 TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.panel_no_thanks)) }
                 FilledTonalButton(onClick = onAccept, modifier = Modifier.heightIn(min = 48.dp)) {
-                    Text(stringResource(if (o.api) R.string.panel_send else R.string.panel_open_app))
+                    Text(stringResource(if (o.keep != null) R.string.panel_remember else if (o.api) R.string.panel_send else R.string.panel_open_app))
                 }
             }
         }

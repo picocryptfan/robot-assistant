@@ -10,8 +10,8 @@ import java.time.format.DateTimeFormatter
 // content provider, once, while its window is open. Everything a share says is the sender's claim: its files, their names,
 // sizes and types, and who sent it. The app reads Android's parse of each URI (scheme and authority) and asks here.
 
-/** One URI a share names, as Android parsed it. */
-data class SharedRef(val scheme: String?, val authority: String?)
+/** One URI a share names, as Android parsed it: [authority] decoded (what Android finds the provider by), [encodedAuthority] as written. */
+data class SharedRef(val scheme: String?, val authority: String?, val encodedAuthority: String? = authority)
 
 /** Why Robot doesn't take a URI a share names. */
 enum class ShareRefusal {
@@ -36,6 +36,8 @@ object ShareRules {
             authority.isNullOrEmpty() -> ShareRefusal.NO_PROVIDER
             '@' in authority -> ShareRefusal.OTHER_USER
             own(authority) -> ShareRefusal.OWN
+            // F50: no provider's name needs escapes, and one written in them is a sender's trick.
+            ref.encodedAuthority != authority -> ShareRefusal.NO_PROVIDER
             else -> null
         }
     }

@@ -103,7 +103,7 @@ class CarModeTest {
         val (off, fx) = run(CarInput.CarGone(car, 10_000), CarInput.Tick(40_000), start = st)
         assertEquals(CarPhase.OFF, off.phase)
         assertNull(off.trusted)
-        assertEquals(listOf(CarEffect.Trusted(false, TrustEnd.CAR_GONE), CarEffect.CarModeFlag(false), CarEffect.StopService,
+        assertEquals(listOf(CarEffect.Trusted(false, TrustEnd.CAR_GONE), CarEffect.CarModeFlag(false), CarEffect.SetDnd(false), CarEffect.AndroidCarMode(false), CarEffect.StopService,
             CarEffect.Logged(false, CarWhy.CAR_GONE)), fx[1])
         // Connecting again starts a new car mode, without the trust.
         val (again, _) = run(CarInput.CarSeen(car, 50_000), CarInput.Started(50_100), start = off)
@@ -291,5 +291,22 @@ class CarGateTest {
         assertTrue(CarGate.allowed(CarFunction.CALL, locked = false, trusted = false))
         assertEquals("Car mode · unlocked features", CarScreen.title(true, Lang.EN))
         assertEquals("Mode auto", CarScreen.title(false, Lang.FR))
+    }
+
+    /** During a phone lock the dialer is covered: a call that would open it goes to the card, whose Call places it. */
+    @Test fun aSessionsCallDuringALockGoesPastTheCoveredDialer() {
+        val mom = PhoneCandidate("Mom", "+15145550101")
+        val dial = CallTarget.confirm(mom, CallWay.DIAL, Lang.EN)
+        val onScreen = CallTarget.duringLock(dial, lockOn = true, Lang.EN) as CallPlan.OnScreen
+        assertEquals(CallOnScreen.LOCK, onScreen.why)
+        assertEquals(FlowEffect.CallCard(CallOnScreen.LOCK), CallFlow.start(onScreen, "Mom", Lang.EN).second.last())
+        val choose = CallPlan.Choose(listOf(mom), dial.card, CallWay.DIAL)
+        assertTrue(CallTarget.duringLock(choose, lockOn = true, Lang.EN) is CallPlan.OnScreen)
+        // No lock, a direct call after a yes in the car, and an emergency number: as planned.
+        assertEquals(dial, CallTarget.duringLock(dial, lockOn = false, Lang.EN))
+        val call = CallTarget.confirm(mom, CallWay.CALL, Lang.EN)
+        assertEquals(call, CallTarget.duringLock(call, lockOn = true, Lang.EN))
+        val sos = CallPlan.Emergency("911", "911")
+        assertEquals(sos, CallTarget.duringLock(sos, lockOn = true, Lang.EN))
     }
 }

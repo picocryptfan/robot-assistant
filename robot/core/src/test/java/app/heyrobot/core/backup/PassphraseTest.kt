@@ -66,6 +66,34 @@ class PassphraseTest {
         assertFalse(PassphraseCheck.rate(words.take(3).joinToString("-") + "-xyzzy", set).bits == 4 * PassphraseCheck.WORD_BITS)
     }
 
+    @Test fun aRepeatedListWordCountsOnce() {
+        val set = words.toSet() + "password" + "apple"
+        // F15: the search is one word, however many times it is typed.
+        assertEquals(PassphraseLevel.TOO_EASY, level(List(6) { "password" }.joinToString(" "), set))
+        assertEquals(PassphraseLevel.TOO_EASY, level(List(4) { "apple" }.joinToString("-"), set))
+        assertEquals(PassphraseLevel.TOO_EASY, level(List(8) { "apple" }.joinToString(" "), set))
+        val a = words[0]
+        val b = words[1]
+        assertEquals(2 * PassphraseCheck.WORD_BITS, PassphraseCheck.rate("$a $b $a $b", set).bits, 0.001)
+    }
+
+    @Test fun aCommonWordOnTheListCountsAsAPattern() {
+        val set = words.toSet() + "password" + "dragon"
+        val p = (words.take(4) + "password" + "dragon").joinToString(" ")
+        assertEquals(4 * PassphraseCheck.WORD_BITS + 2 * PassphraseCheck.PATTERN_BITS, PassphraseCheck.rate(p, set).bits, 0.001)
+    }
+
+    @Test fun repetitionIsCaughtWithoutTheList() {
+        // F15: as characters, the first copy counts and the rest are one pattern.
+        assertEquals(PassphraseLevel.TOO_EASY, level("appleappleappleapple"))
+        assertEquals(PassphraseLevel.TOO_EASY, level("apple apple apple apple"))
+        assertEquals(PassphraseLevel.FAIR, level("Tr0ub4dorTr0ub4dor"))
+        assertEquals(PassphraseLevel.TOO_EASY, level("password password password password password password"))
+        assertEquals(PassphraseLevel.TOO_EASY, level("\uD83D\uDE00\uD83D\uDE01\uD83D\uDE00\uD83D\uDE01\uD83D\uDE00\uD83D\uDE01\uD83D\uDE00\uD83D\uDE01\uD83D\uDE00\uD83D\uDE01\uD83D\uDE00\uD83D\uDE01"))
+        // Nothing repeats here: as before.
+        assertEquals(PassphraseLevel.STRONG, level("kvmrtzdpwxjqhbngfcsl"))
+    }
+
     @Test fun keysNeedStrong() {
         val fair = PassphraseCheck.rate("kvmrtzdpwxjq")
         val strong = PassphraseCheck.rate("Kv7#mR2!tZ9@dP4")
@@ -79,6 +107,16 @@ class PassphraseTest {
         assertTrue(PassphraseCheck.rate(" kvmrtzdpwxjq").edgeSpace)
         assertTrue(PassphraseCheck.rate("kvmrtzdpwxjq ").edgeSpace)
         assertFalse(PassphraseCheck.rate("kvmrt zdpwxjq").edgeSpace)
+    }
+
+    @Test fun theGeneratorNeverRepeatsAWord() {
+        // A word typed again counts nothing (F15), so five different words would rate only Fair: keys could not go in the backup.
+        val always0 = object : SecureRandom() {
+            override fun nextInt(bound: Int): Int = 0
+        }
+        val p = PassphraseMaker(words, always0).make()
+        assertEquals(6, p.split("-").toSet().size)
+        assertEquals(PassphraseLevel.STRONG, level(p, words.toSet()))
     }
 
     @Test fun theGeneratorPicksSixWordsWithSecureRandom() {

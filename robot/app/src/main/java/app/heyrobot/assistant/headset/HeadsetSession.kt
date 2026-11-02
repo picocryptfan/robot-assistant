@@ -94,8 +94,8 @@ class HeadsetSession(private val entry: EntryKind, private val locked: Boolean, 
     fun callStarted() = on(SessionEvent.CallStarted)
 
     /** The panel heard the question ([empty]: nothing came). */
-    fun heard(empty: Boolean) {
-        if (state.phase == SessionPhase.LISTENING || state.phase == SessionPhase.FOLLOW_UP) on(SessionEvent.Heard(empty))
+    fun heard(empty: Boolean, cut: Boolean = false) {
+        if (state.phase == SessionPhase.LISTENING || state.phase == SessionPhase.FOLLOW_UP) on(SessionEvent.Heard(empty, cut))
         if (state.phase == SessionPhase.BUSY) watchReply()
     }
 

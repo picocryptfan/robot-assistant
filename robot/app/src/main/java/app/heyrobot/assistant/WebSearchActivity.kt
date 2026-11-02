@@ -189,7 +189,7 @@ class WebSearchActivity : ComponentActivity() {
                 }
                 if (service.needsKey && key == null) false to WebFail.KEY_MISSING.textPhrase(service)
                 else try {
-                    SearchClient(s, key, BuildConfig.VERSION_NAME, WebTransport(), Abort(WebLimits.TOTAL_MS)).testText()
+                    SearchClient(s, key, BuildConfig.VERSION_NAME, WebTransport(cause = app.heyrobot.core.online.NetCause.TAP), Abort(WebLimits.TOTAL_MS)).testText()
                 } catch (t: Throwable) {
                     RLog.w("web_test", t)
                     false to WebFail.SERVICE.textPhrase(service)

@@ -8,7 +8,10 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** skills.json v1 (plan §3, D2): a strict reading, a skill dropped whole, never read in part. */
+/**
+ * skills.json v1 (plan §3, D2): a strict reading, a skill dropped whole, never read in part. And v2 (skills connections
+ * plan D6, §5.1, §7.1): what connections add, the lowest version that holds a file, and what a 1.1 Robot does with each.
+ */
 class SkillCodecTest {
     private val home = SkillFixtures.headingHome()
     private val pasta = SkillFixtures.pasta()
@@ -110,9 +113,11 @@ class SkillCodecTest {
     }
 
     @Test fun aNewerFileIsLeftAlone() {
-        assertEquals(SkillFile.TooNew(2), SkillCodec.decode(file(json(home), v = 2)))
+        // C1 (connections plan D6) moved this pin from 2 to 3 on purpose: this Robot reads v2; 1.1's answer to a v2 file is
+        // in a11RobotReadsV1WholeAndLeavesV2Alone.
+        assertEquals(SkillFile.TooNew(3), SkillCodec.decode(file(json(home), v = 3)))
         // Even with fields this version doesn't know.
-        assertEquals(SkillFile.TooNew(2), SkillCodec.decode("""{"v":2,"skills":[],"model_picks":true}"""))
+        assertEquals(SkillFile.TooNew(3), SkillCodec.decode("""{"v":3,"skills":[],"model_picks":true}"""))
     }
 
     @Test fun duplicateIdsAndNamesDropTheSecond() {
@@ -155,5 +160,181 @@ class SkillCodecTest {
         val s = json(SkillFixtures.headingHome(fromContent = true)).put("level", "just_do_it")
         assertEquals(SkillFile.Ok(emptyList(), 1), SkillCodec.decode(file(s)))
         assertTrue(SkillCodec.decode(file(json(SkillFixtures.headingHome(fromContent = true)))) == SkillFile.Ok(listOf(SkillFixtures.headingHome(fromContent = true))))
+    }
+
+    // ------------------------------------------------------------------ v2 (skills connections plan D6, §5.1)
+
+    private val v2 = listOf(SkillFixtures.headingHomeV2("s-v2home"), SkillFixtures.goodNight(), SkillFixtures.backUp())
+
+    @Test fun v2RoundTrips() {
+        for (s in v2) assertEquals(s.name, 2, SkillCodec.needs(s))
+        val text = SkillCodec.encode(v2)
+        assertEquals(2, JSONObject(text).getInt("v"))
+        assertEquals(SkillFile.Ok(v2), SkillCodec.decode(text))
+        assertEquals(text, SkillCodec.encode((SkillCodec.decode(text) as SkillFile.Ok).skills))
+        // The plan's example, as written there.
+        val example = """{"v":2,"skills":[{ "id": "s-k3f9q2", "rev": 5, "name": "Heading home",
+            "names": { "en": ["heading home"], "fr": ["je rentre"] },
+            "params": [ { "name": "who", "type": "person", "default": "Sam", "ask": { "en": "Who should I tell?", "fr": "À qui je le dis?" } } ],
+            "steps": [
+              { "id": "eta", "use": "travel_time", "args": { "to": "home" }, "on_fail": "go_on" },
+              { "use": "send_text", "args": { "to": "{{who}}", "message": "On my way home, about {{eta.minutes}} min." }, "if": { "value": "eta.minutes", "is": "set" } },
+              { "use": "send_text", "args": { "to": "{{who}}", "message": "On my way home." }, "if": { "value": "eta.minutes", "is": "unset" } },
+              { "use": "maps_navigate", "args": { "destination": "home" } } ],
+            "limits": { "per_hour": 12 }, "level": "ask_first",
+            "provenance": { "made": "settings", "from_content": false, "created": 1761000000000, "edited": 1761000000000 } }]}"""
+        assertEquals(SkillFile.Ok(listOf(SkillFixtures.headingHomeV2())), SkillCodec.decode(example))
+        // Every new field as the file writes it.
+        val night = json(SkillFixtures.goodNight())
+        val q = night.getJSONArray("params")
+        assertEquals("light.downstairs", q.getJSONObject(0).get("default"))
+        assertEquals("Cocina", q.getJSONObject(0).getJSONArray("options").getJSONObject(1).getString("es"))
+        assertEquals(20L, (q.getJSONObject(1).get("default") as Number).toLong())
+        assertEquals(0L, (q.getJSONObject(1).get("min") as Number).toLong())
+        assertEquals("percent", q.getJSONObject(1).getString("unit"))
+        assertEquals(false, q.getJSONObject(2).get("default"))
+        val st = night.getJSONArray("steps")
+        assertEquals("conn:c-ha1234:light_dim", st.getJSONObject(0).getString("use"))
+        assertEquals("lights", st.getJSONObject(0).getString("id"))
+        assertEquals("/0/state", st.getJSONObject(0).getJSONObject("check").getString("pointer"))
+        assertEquals(true, st.getJSONObject(1).getJSONObject("if").get("is"))
+        assertTrue(!st.getJSONObject(0).has("on_fail"))
+        val back = json(SkillFixtures.backUp())
+        assertEquals(20.5, back.getJSONArray("params").getJSONObject(2).getDouble("default"), 0.0)
+        assertEquals(18L, (back.getJSONArray("steps").getJSONObject(3).getJSONObject("if").get("more_than") as Number).toLong())
+        assertEquals("app:c-ap9012", back.getJSONArray("steps").getJSONObject(4).getString("use"))
+        assertEquals(3, back.getJSONObject("limits").getInt("per_hour"))
+    }
+
+    @Test fun theWriterPicksTheLowestVersionThatHoldsTheFile() {
+        assertEquals(1, JSONObject(SkillCodec.encode(listOf(home, pasta))).getInt("v"))
+        assertEquals(1, JSONObject(SkillCodec.encode(emptyList())).getInt("v"))
+        assertEquals(2, JSONObject(SkillCodec.encode(listOf(home, SkillFixtures.goodNight()))).getInt("v"))
+        // A v2 file holding only what 1.1 reads is written back as v1.
+        val read = SkillCodec.decode(file(json(home), json(pasta), v = 2)) as SkillFile.Ok
+        assertEquals(listOf(home, pasta), read.skills)
+        assertEquals(1, JSONObject(SkillCodec.encode(read.skills)).getInt("v"))
+        // Each new thing alone is enough for v2.
+        val one = listOf<Skill>(
+            home.copy(perHour = 12),
+            home.copy(steps = home.steps.mapIndexed { i, st -> if (i == 0) st.copy(id = "text") else st }),
+            home.copy(steps = home.steps.mapIndexed { i, st -> if (i == 1) st.copy(cond = SkillIf(SkillRef("who"), IfTest.Set)) else st }),
+            home.copy(steps = home.steps + SkillFixtures.goodNight().steps[0]),
+            home.copy(steps = listOf(home.steps[0].copy(args = mapOf("to" to "{{who}}", "message" to "Hi {{who}}")))),
+            home.copy(steps = listOf(SkillLibrary.fixed(StepKind.WEATHER, mapOf("day" to "today")).copy(onFail = OnFail.GO_ON)) + home.steps),
+        )
+        for ((i, s) in one.withIndex()) assertEquals("change $i", 2, SkillCodec.needs(s))
+        assertEquals(1, SkillCodec.needs(home))
+        assertEquals(1, SkillCodec.needs(SkillFixtures.headingHomeMore()))
+    }
+
+    /**
+     * D6 and §7.1: a 1.1 Robot (its codec as it shipped, frozen in SkillCodec11) reads a v1 file this Robot wrote whole, and
+     * leaves a v2 file alone: "Your skills are from a newer Robot", nothing run, never written over (1.1's SkillStore only
+     * writes after an Ok read). A v1 file with something that needs v2 in it drops that skill here exactly as 1.1 does.
+     */
+    @Test fun a11RobotReadsV1WholeAndLeavesV2Alone() {
+        val v1 = SkillCodec.encode(listOf(home, pasta, SkillFixtures.headingHomeMore("s-more01").copy(name = "Going home", namesEn = listOf("going home"),
+            namesFr = emptyList())))
+        val old = SkillCodec11.decode(v1) as SkillFile.Ok
+        assertEquals(0, old.dropped)
+        assertEquals(SkillCodec.decode(v1), old)
+        val mixed = SkillCodec.encode(listOf(home, SkillFixtures.goodNight()))
+        assertEquals(SkillFile.TooNew(2), SkillCodec11.decode(mixed))
+        assertEquals(SkillFile.TooNew(2), SkillCodec11.decode(SkillCodec.encode(v2)))
+        // A v1 file holding v2's fields: each such skill dropped, here as in 1.1.
+        val needsV2 = listOf<(JSONObject) -> Unit>(
+            { it.put("limits", JSONObject().put("per_hour", 12)) },
+            { it.getJSONArray("steps").getJSONObject(0).put("id", "text") },
+            { it.getJSONArray("steps").getJSONObject(1).put("if", JSONObject().put("value", "who").put("is", "set")) },
+            { it.getJSONArray("steps").getJSONObject(1).put("on_fail", "stop") },
+            { it.getJSONArray("steps").getJSONObject(0).getJSONObject("args").put("message", "Hi {{who}}") },
+            { it.getJSONArray("steps").put(json(SkillFixtures.headingHomeV2()).getJSONArray("steps").getJSONObject(0)) },
+            { it.getJSONArray("params").getJSONObject(0).put("type", "choice") },
+            { it.getJSONArray("params").getJSONObject(0).put("unit", "minutes") },
+        )
+        for ((i, change) in needsV2.withIndex()) {
+            val text = file(json(home).also(change), json(pasta))
+            assertEquals("change $i (1.1)", SkillFile.Ok(listOf(pasta), 1), SkillCodec11.decode(text))
+            assertEquals("change $i", SkillFile.Ok(listOf(pasta), 1), SkillCodec.decode(text))
+        }
+    }
+
+    /** §5.1's limits: every new field out of its limits, or in a place it doesn't fit, drops its skill whole. */
+    @Test fun everyNewFieldsLimits() {
+        fun night() = json(SkillFixtures.goodNight())
+        fun back() = json(SkillFixtures.backUp())
+        fun hh() = json(SkillFixtures.headingHomeV2())
+        fun JSONObject.step(i: Int) = getJSONArray("steps").getJSONObject(i)
+        fun JSONObject.param(i: Int) = getJSONArray("params").getJSONObject(i)
+        val bad = listOf<Pair<String, () -> JSONObject>>(
+            "per_hour 0" to { hh().put("limits", JSONObject().put("per_hour", 0)) },
+            "per_hour 61" to { hh().put("limits", JSONObject().put("per_hour", 61)) },
+            "per_hour as text" to { hh().put("limits", JSONObject().put("per_hour", "12")) },
+            "limits' unknown key" to { hh().put("limits", JSONObject().put("per_hour", 12).put("per_day", 100)) },
+            "a step id's shape" to { hh().also { it.step(0).put("id", "Eta") } },
+            "two steps, one id" to { hh().also { it.step(3).put("id", "eta") } },
+            "a template naming a later step" to { hh().also { it.step(0).remove("id"); it.step(3).put("id", "eta") } },
+            "an output its kind doesn't have" to { hh().also { it.step(1).getJSONObject("args").put("message", "About {{eta.hours}} h.") } },
+            "a template naming no question" to { hh().also { it.step(2).getJSONObject("args").put("to", "{{whom}}") } },
+            "an output in a typed argument" to { hh().also { it.step(3).getJSONObject("args").put("destination", "{{eta.minutes}}") } },
+            "words in a typed argument" to { hh().also { it.step(3).getJSONObject("args").put("destination", "home {{who}}") } },
+            "a stray brace" to { hh().also { it.step(1).getJSONObject("args").put("message", "About {{eta.minutes} min.") } },
+            "a yes or no inside words" to { night().also { it.step(2).getJSONObject("args").put("text", "Lock: {{lock}}") } },
+            "a condition on free text" to { hh().also { it.step(2).put("if", JSONObject().put("value", "who").put("is", "set")) } },
+            "a condition naming nothing" to { hh().also { it.step(2).put("if", JSONObject().put("value", "nobody").put("is", "set")) } },
+            "a condition with two tests" to { hh().also { it.step(2).getJSONObject("if").put("less_than", 5) } },
+            "a condition's unknown test" to { hh().also { it.step(2).put("if", JSONObject().put("value", "eta.minutes").put("equals", 5)) } },
+            "a choice not listed" to { night().also { it.step(1).put("if", JSONObject().put("value", "room").put("is", "light.porch")) } },
+            "a number test on a choice" to { night().also { it.step(1).put("if", JSONObject().put("value", "room").put("less_than", 3)) } },
+            "yes on a number" to { night().also { it.step(1).put("if", JSONObject().put("value", "level").put("is", true)) } },
+            "on_fail's unknown value" to { hh().also { it.step(0).put("on_fail", "maybe") } },
+            "go on after a send" to { hh().also { it.step(1).put("on_fail", "go_on") } },
+            "a pointer check on a built-in step" to { hh().also { it.step(1).put("check", JSONObject().put("pointer", "/0").put("equals", 1)) } },
+            "a regex check on a connection" to { night().also { it.step(0).put("check", JSONObject().put("matches", "on")) } },
+            "a pointer without its slash" to { night().also { it.step(0).getJSONObject("check").put("pointer", "0/state") } },
+            "a pointer's lone tilde" to { night().also { it.step(0).getJSONObject("check").put("pointer", "/a~2b") } },
+            "a check with two keys" to { back().also { it.step(1).getJSONObject("check").put("pointer", "/0") } },
+            "a regex Java can't read" to { back().also { it.step(1).put("check", JSONObject().put("matches", "(done")) } },
+            "one option" to { night().also { it.param(0).put("options", JSONArray().put(it.param(0).getJSONArray("options").get(0))) } },
+            "13 options" to { night().also { o -> o.param(0).put("options", JSONArray((0 until 13).map { i ->
+                JSONObject().put("value", if (i == 0) "light.downstairs" else "light.r$i").put("en", "Room $i").put("fr", "Pièce $i") })) } },
+            "two options, one value" to { night().also { it.param(0).getJSONArray("options").getJSONObject(1).put("value", "light.downstairs") } },
+            "an option without its French" to { night().also { it.param(0).getJSONArray("options").getJSONObject(1).remove("fr") } },
+            "an option named like a test" to { night().also { it.param(0).getJSONArray("options").getJSONObject(1).put("value", "unset") } },
+            "a default not listed" to { night().also { it.param(0).put("default", "light.porch") } },
+            "a choice without options" to { night().also { it.param(0).remove("options") } },
+            "options on a whole number" to { night().also { it.param(1).put("options", it.param(0).getJSONArray("options")) } },
+            "min above max" to { night().also { it.param(1).put("min", 101) } },
+            "no max" to { night().also { it.param(1).remove("max") } },
+            "a half in a whole number's limits" to { night().also { it.param(1).put("min", 0.5) } },
+            "a whole number's default out of range" to { night().also { it.param(1).put("default", 101) } },
+            "a whole number's default as text" to { night().also { it.param(1).put("default", "20") } },
+            "a unit Robot doesn't know" to { night().also { it.param(1).put("unit", "parsecs") } },
+            "a min on a choice" to { night().also { it.param(0).put("min", 1) } },
+            "a yes or no's default as text" to { night().also { it.param(2).put("default", "no") } },
+            "a number beyond its limits" to { back().also { it.param(2).put("default", 30) } },
+            "a script's name from a question" to { back().also { it.step(1).getJSONObject("args").put("script", "{{folder}}") } },
+            "a script's name Termux can't run" to { back().also { it.step(1).getJSONObject("args").put("script", "../backup") } },
+            "a step's output as a script's argument (D15)" to { back().also { it.getJSONArray("steps").put(JSONObject().put("use", "termux_script")
+                .put("args", JSONObject().put("script", "backup").put("folder", "{{folder}}").put("days", "{{run.exit}}"))) } },
+            "a travel time to Mars" to { hh().also { it.step(0).getJSONObject("args").put("to", "mars") } },
+            "a travel time with words" to { hh().also { it.step(0).getJSONObject("args").put("via", "the bridge") } },
+            "a connection's id" to { night().also { it.step(0).put("use", "conn:c-HA1234:light_dim") } },
+            "a connection without its operation" to { night().also { it.step(0).put("use", "conn:c-ha1234") } },
+            "conn alone" to { night().also { it.step(0).put("use", "conn") } },
+            "an app hand-off with an operation" to { back().also { it.step(4).put("use", "app:c-ap9012:send") } },
+            "an argument's name" to { back().also { it.step(4).getJSONObject("args").put("Text", "hi") } },
+            "an unknown key in a step" to { hh().also { it.step(0).put("marks", JSONArray().put("money")) } },
+            "an unknown key in a question" to { night().also { it.param(0).put("hint", "x") } },
+            "a key-shaped fixed value" to { back().also { it.step(4).getJSONObject("args").put("text", "sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA") } },
+            "a key-shaped check value" to { night().also { it.step(0).getJSONObject("check").put("equals", "sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA") } },
+        )
+        for ((what, make) in bad) {
+            val o = make()
+            assertEquals(what, SkillFile.Ok(listOf(pasta), 1), SkillCodec.decode(file(o, json(pasta), v = 2)))
+        }
+        // And each base is fine as it is.
+        for (o in listOf(night(), back(), hh())) assertEquals(1, (SkillCodec.decode(file(o, json(pasta), v = 2)) as SkillFile.Ok).skills.size - 1)
     }
 }

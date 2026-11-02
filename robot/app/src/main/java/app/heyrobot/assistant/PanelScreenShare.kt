@@ -167,6 +167,16 @@ internal class PanelScreenShare(
         }
     }
 
+    /** "What's on my screen?" in your words: true with the screen on its way as the draft, else the panel says why it can't. */
+    fun attachAsked(): Boolean {
+        if (state.value.screenChip == ScreenChip.HIDDEN) {
+            hint(ScreenAccess.hiddenHint(state.value.locked, settings.first))
+            return false
+        }
+        attach()
+        return state.value.draft?.kind == Attachment.SCREEN
+    }
+
     private fun hint(h: ScreenAccess.Hint) {
         val n = Notice(h.phrase.render(langs()), if (h.openSettings) NoticeAction.OPEN_ASSIST_SETTINGS else NoticeAction.NONE)
         notice = n

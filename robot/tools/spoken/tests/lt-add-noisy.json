@@ -1,0 +1,17 @@
+{
+  "format": 1,
+  "id": "lt-add-noisy",
+  "title": "The same add with a fan at 10 dB and with people talking at 20 dB",
+  "safety": "robot-data",
+  "testBench": ["lt-add"],
+  "setup": [{"set": "speakReplies", "value": "VOICE"}],
+  "steps": [
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "Add peaches to the shopping list.", "voice": "heart", "noise": "fan", "snr": 10},
+    {"do": "wait_reply", "seconds": 30, "contains": "peaches"},
+    {"do": "say", "text": "Add cherries to the shopping list.", "voice": "heart", "noise": "babble", "snr": 20},
+    {"do": "wait_reply", "seconds": 30, "contains": "cherries"},
+    {"do": "check", "what": "router", "equals": "ListsRouter"},
+    {"do": "end"}
+  ]
+}

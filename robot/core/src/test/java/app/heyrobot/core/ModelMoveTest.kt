@@ -105,4 +105,22 @@ class ModelMoveTest {
         assertEquals(sha, src.inputStream().use { ModelMove.sha256(it) })
         assertEquals(sha, RandomAccessFile(src, "r").use { ModelMove.sha256(it.channel) })
     }
+
+
+    // F52: a copy cut by the process dying leaves .part holding space; the next move deletes it first, so it counts as free.
+    @Test fun aLeftoverPartCountsAsFreeForTheNextMove() {
+        val folder = java.nio.file.Files.createTempDirectory("move").toFile()
+        try {
+            val dst = java.io.File(folder, "m.litertlm")
+            val need = ModelMove.spaceToMove(1_000)
+            assertEquals(need - 100, ModelMove.freeForMove(need - 100, dst))
+            assertFalse(ModelMove.room(1_000, ModelMove.freeForMove(need - 100, dst)))
+            ModelMove.part(dst).writeBytes(ByteArray(100))
+            assertEquals(need, ModelMove.freeForMove(need - 100, dst))
+            assertTrue(ModelMove.room(1_000, ModelMove.freeForMove(need - 100, dst)))
+            assertEquals(-1L, ModelMove.freeForMove(-1, dst))
+        } finally {
+            folder.deleteRecursively()
+        }
+    }
 }

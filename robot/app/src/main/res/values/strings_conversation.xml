@@ -102,6 +102,9 @@
     <string name="conv_vad_failed">The voice detector couldn\'t start.</string>
     <string name="conv_stopped_disk">Stopped: storage is nearly full. The transcript is saved.</string>
     <string name="conv_stopped_error">Stopped after an error. What was heard is saved.</string>
+    <!-- 1.1.2, FA8g: conversation mode during a phone lock (docs/plans/phone-lock-design.md §5.2). -->
+    <string name="conv_phone_lock_closed">Conversation mode is closed during the phone lock.</string>
+    <string name="conv_phone_lock_stopped">Stopped: a phone lock started. What was heard is saved.</string>
     <string name="conv_asr_stopped">Speech recognition stopped working. What was heard before is saved.</string>
     <string name="conv_not_while_speaking">Robot doesn\'t listen while it speaks: what is said meanwhile isn\'t transcribed.</string>
     <string name="conv_still_hours">Still transcribing — %1$d h.</string>
@@ -391,4 +394,5 @@
     <string name="conv_where_other_started">Where did the other person start?</string>
     <string name="conv_who_said_rest">Who said the rest?</string>
     <string name="conv_quoted">“%1$s”</string>
+    <string name="conv_stopped_quiet">Stopped: nothing heard for %1$d minutes. The transcript is saved.</string>
 </resources>

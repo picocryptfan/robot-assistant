@@ -30,6 +30,51 @@ object HelperStrings : Strings("helper", area = "helpers") {
         "Robot n'a pas pu lire ta clé {name} enregistrée pour l'instant. Elle est toujours enregistrée, alors réessaie dans un moment.")
     val offer = s("offer", "Want me to check with {name}?", "Veux-tu que je vérifie avec {name} ?")
     val offerAsWell = s("offer_as_well", "Want {name}'s take as well?", "Veux-tu aussi l'avis de {name} ?")
+    // Who answers (core HelperChoice).
+    val kindThinking = s("kind_thinking", "questions that take reasoning", "les questions qui demandent de la réflexion")
+    val kindWriting = s("kind_writing", "writing requests", "les demandes de rédaction")
+    val kindCode = s("kind_code", "code questions", "les questions de code")
+    val kindMath = s("kind_math", "math questions", "les questions de maths")
+    val kindCurrent = s("kind_current", "questions about current information", "les questions d'actualité")
+    val kindBig = s("kind_big", "long or many-part questions", "les questions longues ou en plusieurs parties")
+    val choiceAsk = s("choice_ask", "That's a lot for me to do well on my own. Try it here, or ask {name}?", "C'est beaucoup pour moi tout seul. J'essaie ici, ou je demande à {name} ?")
+    val choiceDetail = s("choice_detail", "Only your question goes to {name}, and only if you choose it. Say nothing and Robot tries.",
+        "Seule ta question va à {name}, et seulement si tu le choisis. Si tu ne dis rien, Robot essaie.")
+    val choiceWasBig = s("choice_was_big", "That was a lot for me on my own.", "C'était beaucoup pour moi tout seul.")
+    val choiceHelperButton = s("choice_helper_button", "Ask {name}", "Demander à {name}")
+    val choiceHereButton = s("choice_here_button", "Try it here", "Essayer ici")
+    val choiceNoHelper = s("choice_no_helper", "That's a lot for me, and no helper is set up, so I'll give it a try.",
+        "C'est beaucoup pour moi, et aucune IA externe n'est configurée, alors je vais essayer.")
+    val choiceKeepHelper = s("choice_keep_helper", "Always ask {name} for {kind}?", "Toujours demander à {name} pour {kind} ?")
+    val choiceKeepRobot = s("choice_keep_robot", "Always keep {kind} on Robot?", "Toujours garder {kind} sur Robot ?")
+    val choiceItemHelper = s("choice_item_helper", "Ask {name} for {kind}.", "Demander à {name} pour {kind}.")
+    val choiceItemRobot = s("choice_item_robot", "Keep {kind} on Robot.", "Garder {kind} sur Robot.")
+    val choiceYourHelper = s("choice_your_helper", "your helper", "ton IA externe")
+    val choiceSavedHelper = s("choice_saved_helper", "OK. I'll ask {name} for {kind} from now on, and say so each time. It's in Memory, or say \"stop asking the helper for these\".",
+        "D'accord. Je vais demander à {name} pour {kind} à partir de maintenant, et je le dirai chaque fois. C'est dans Mémoire, ou dis « arrête de demander à l'assistant pour ces questions ».")
+    val choiceSavedRobot = s("choice_saved_robot", "OK. I'll keep {kind} here from now on. It's in Memory, or say \"forget that choice\".",
+        "D'accord. Je vais garder {kind} ici à partir de maintenant. C'est dans Mémoire, ou dis « oublie ce choix ».")
+    val choiceSavedOff = s("choice_saved_off", "OK, it's in Memory. But \"When Robot needs help\" is off in Settings, so I won't ask {name} by myself until that's on.",
+        "D'accord, c'est dans Mémoire. Mais « Quand Robot a besoin d'aide » est désactivé dans les réglages, alors je ne demanderai pas à {name} de moi-même tant que ce n'est pas activé.")
+    val choiceKeepTap = s("choice_keep_tap", "This conversation holds words Robot didn't write, so tap to keep this choice.", "Cette conversation contient des mots que Robot n’a pas écrits, alors touche pour retenir ce choix.")
+    val choiceDropHeld = s("choice_drop_held", "This conversation holds words Robot didn't write, so I left that choice as it is. You can delete it in Memory.", "Cette conversation contient des mots que Robot n’a pas écrits, alors j’ai laissé ce choix tel quel. Tu peux le supprimer dans Mémoire.")
+    val choiceDropped = s("choice_dropped", "OK, I've forgotten that choice for {kind}.", "D'accord, j'ai oublié ce choix pour {kind}.")
+    val choiceNone = s("choice_none", "I don't have a choice saved for {kind}.", "Je n'ai aucun choix enregistré pour {kind}.")
+    val choiceNoKind = s("choice_no_kind", "I remember this by kind of question, and that last one isn't a kind I can tell. Reasoning, writing, code, math, current information and long questions are.",
+        "Je retiens ça par genre de question, et je ne reconnais pas le genre de la dernière. La réflexion, la rédaction, le code, les maths, l'actualité et les questions longues, oui.")
+    val choiceFull = s("choice_full", "Memory is full, so I couldn't keep that. Delete something in Memory first.", "Mémoire est pleine, alors je n'ai pas pu retenir ça. Supprime d'abord quelque chose dans Mémoire.")
+    val choiceLabel = s("choice_label", "Who answers", "Qui répond")
+    val choiceToRobot = s("choice_to_robot", "Change to Robot", "Changer pour Robot")
+    val choiceToHelper = s("choice_to_helper", "Change to your helper", "Changer pour ton IA externe")
+    val choiceChangeDetail = s("choice_change_detail", "Only your question goes, and only when your settings for helpers allow it.", "Seule ta question part, et seulement quand tes réglages pour les IA externes le permettent.")
+    val choiceNotYours = s("choice_not_yours", "This didn't come from your own words, so Robot doesn't follow it.", "Ça ne vient pas de tes propres mots, alors Robot ne le suit pas.")
+    val insteadNothing = s("instead_nothing", "There's no question to send yet. Ask it first.", "Il n'y a pas encore de question à envoyer. Pose-la d'abord.")
+    val insteadAttached = s("instead_attached", "That one had your screen, a photo or a file with it, so it can't just be sent again. Ask again with it attached.",
+        "Celle-là avait ton écran, une photo ou un fichier avec elle, alors je ne peux pas simplement la renvoyer. Redemande avec la pièce jointe.")
+    val insteadActed = s("instead_acted", "That one was done on your phone, so it stays here.", "Ça s'est fait sur ton téléphone, alors ça reste ici.")
+    val insteadUnlock = s("instead_unlock", "Unlock your phone to send that question.", "Déverrouille ton téléphone pour envoyer cette question.")
+    val insteadSameHelper = s("instead_same_helper", "That answer was {name}'s already.", "Cette réponse venait déjà de {name}.")
+    val insteadSameRobot = s("instead_same_robot", "That answer was mine already.", "Cette réponse venait déjà de moi.")
     val rather = s("rather", "I'd rather check that with {name}.", "Je préfère vérifier ça avec {name}.")
     val loading = s("loading", "{name} is loading its model…", "{name} charge son modèle…")
     val unlockToCheck = s("unlock_to_check", "Unlock your phone to check with {name}.", "Déverrouille ton téléphone pour vérifier avec {name}.")
@@ -113,6 +158,12 @@ object HelperStrings : Strings("helper", area = "helpers") {
     val personalMessages = s("personal_messages", "messages you received", "des messages que tu as reçus")
     val personalTermux = s("personal_termux", "your Termux output", "la sortie de Termux")
     val personalFiles = s("personal_files", "your files", "tes fichiers")
+    /** 1.4: a list Robot read out (core lists ListQuote). */
+    val personalLists = s("personal_lists", "your lists", "tes listes")
+    /** The everyday set's Ask Robot (E7): text, a voice message or a photo another app handed Robot. */
+    val personalShared = s("personal_shared", "something you shared from another app", "quelque chose que tu as partagé d'une autre appli")
+    /** Your own words for an action: a text, a call, a note (Personal.ACTED). */
+    val personalActed = s("personal_acted", "something you asked Robot to do", "quelque chose que tu as demandé à Robot de faire")
 
     // HelperContext: what an offer's tap sends (its card's "Sends: …"). The first message also carries today's date and
     // your country (HelperPrompt.context), so the first line says so.
@@ -122,6 +173,8 @@ object HelperStrings : Strings("helper", area = "helpers") {
     val sendsScreen = s("sends_screen", "Your screen's text", "Le texte de ton écran")
     val sendsPhoto = s("sends_photo", "The photo", "La photo")
     val sendsScreenshot = s("sends_screenshot", "A screenshot", "Une capture d'écran")
+    /** The everyday set's Ask Robot (E7): text, a voice message's words or a photo another app handed Robot. */
+    val sendsShared = s("sends_shared", "What you shared from another app", "Ce que tu as partagé d'une autre appli")
 
     // WP2b, second part: the words core gives Settings › Helpers and the connection window (shown in the menus' language).
     // Claude's models (core AnthropicModel): what each is for and its published price per million tokens.
@@ -160,12 +213,12 @@ object HelperStrings : Strings("helper", area = "helpers") {
     val escalationOffDetail = s("escalation_off_detail", "Robot never suggests a helper.", "Robot ne suggère jamais d'IA externe.")
     val escalationAsk = s("escalation_ask", "Ask me first", "Me demander d'abord")
     val escalationAskFirst = s("escalation_ask_first", "Ask first", "Demander d'abord")
-    val escalationAskDetail = s("escalation_ask_detail", "Robot offers to check with the helper and waits for a yes or a tap.",
-        "Robot propose de vérifier avec l'IA externe et attend ton oui ou que tu touches la carte.")
+    val escalationAskDetail = s("escalation_ask_detail", "Robot offers to check with the helper and waits for a yes or a tap, except for a kind of question you told it to always send there.",
+        "Robot propose de vérifier avec l'IA externe et attend ton oui ou que tu touches la carte, sauf pour un type de question que tu lui as dit d'y envoyer toujours.")
     val escalationAuto = s("escalation_auto", "Automatic", "Automatique")
     val escalationAutoDetail = s("escalation_auto_detail",
-        "Robot checks with the helper by itself for hard questions (only through its API, at a price it knows).",
-        "Robot vérifie de lui-même avec l'IA externe pour les questions difficiles (seulement par son API, à un prix qu'il connaît).")
+        "Robot checks with the helper by itself for hard questions (only through its API, at a price it knows), except a kind of question you told it to keep.",
+        "Robot vérifie de lui-même avec l'IA externe pour les questions difficiles (seulement par son API, à un prix qu'il connaît), sauf un type de question que tu lui as dit de garder.")
 
     // The presets (core helpers Presets): who a helper is, what its key costs, what the company does with what you send.
     val companyHome = s("company_home", "Your own server", "Ton propre serveur")

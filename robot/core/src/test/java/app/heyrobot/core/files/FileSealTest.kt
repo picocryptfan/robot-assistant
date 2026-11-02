@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.files
 
+import app.heyrobot.core.seal.FakeInboxWrap
+import app.heyrobot.core.seal.PublicWrap
 import app.heyrobot.core.seal.SealStream
 import app.heyrobot.core.seal.SealWriter
 import org.junit.Assert.assertArrayEquals
@@ -19,6 +21,10 @@ import kotlin.random.Random
  * (each field, each truncation), a changed header, chunk or tag, a cut file, a header or wrapped key from another file or
  * purpose, the wrong robot_files_v1, a locked or gone key, wrap type 2, a fresh key for every stream, and the caps. Every
  * failure is a [FileException]: no plaintext, no other exception reaches the caller.
+ *
+ * 1.5 (robot-to-robot-plan.md §3.6 and §9.1, job L2): format 2, a file that arrived while the phone was locked: its round
+ * trip, its 420-byte header, a 1.4 reader refusing it as NEWER, a wrapped key moved between files, sealed while locked and
+ * opened only unlocked, and sealed again as format 1 at the unlock. Format 1's tests above are unchanged.
  */
 class FileSealTest {
     private val c = SealStream.CHUNK
@@ -264,5 +270,116 @@ class FileSealTest {
             override fun read(): Int = if (n++ < 500) s[n - 1].toInt() and 0xFF else throw IOException("disk")
         }
         assertTrue(runCatching { FileSeal.readAll(failing, SealPurpose.FILE, idA, keys) }.exceptionOrNull() is IOException)
+    }
+
+    // 1.5: format 2, a file that arrived while the phone was locked. ------------------------------------------------------
+
+    private val inbox = FakeInboxWrap()
+
+    private fun arrive(plain: ByteArray, id: FileId = idA, w: PublicWrap = inbox): ByteArray {
+        val out = ByteArrayOutputStream()
+        FileSeal.arrivedWriter(out, id, w, random).use { it.write(plain) }
+        return out.toByteArray()
+    }
+
+    private fun opened(sealed: ByteArray, id: FileId? = idA, w: PublicWrap = inbox): ByteArray =
+        FileSeal.arrivedReader(ByteArrayInputStream(sealed), id, w).use { it.readBytes() }
+
+    private fun arrivedProblem(sealed: ByteArray, id: FileId? = idA, w: PublicWrap = inbox): FileProblem? = try {
+        opened(sealed, id, w)
+        null
+    } catch (x: FileException) {
+        x.problem
+    }
+
+    @Test fun format2RoundTripsAndItsHeaderIsTheTable() {
+        for (n in listOf(0, 1, 15, 16, 17, c - 1, c, c + 1, 3 * c + 7)) {
+            val d = data(n)
+            val s = arrive(d)
+            assertEquals("size of $n", FileSeal.arrivedSize(n.toLong()), s.size.toLong())
+            assertArrayEquals("$n bytes", d, opened(s))
+        }
+        val s = arrive(data(10))
+        assertEquals(420, FileSeal.ARRIVED_HEADER_SIZE)
+        assertArrayEquals("ROBOTFIL".toByteArray(), s.copyOfRange(0, 8))
+        assertArrayEquals(byteArrayOf(0, 2), s.copyOfRange(8, 10))
+        assertEquals(4, s[10].toInt())
+        assertEquals(2, s[11].toInt())
+        assertArrayEquals(idA.bytes(), s.copyOfRange(12, 28))
+        assertArrayEquals(byteArrayOf(1, 0x80.toByte()), s.copyOfRange(28, 30))
+        assertArrayEquals(byteArrayOf(0, 1, 0, 0), s.copyOfRange(414, 418))
+        assertArrayEquals(byteArrayOf(0, 0), s.copyOfRange(418, 420))
+        val h = FileSeal.parseArrived(s)
+        assertArrayEquals(s.copyOf(420), h.encode())
+        assertArrayEquals(h.wrapped, s.copyOfRange(30, 414))
+        // Purpose 4 (ARRIVED) and wrap type 2 belong to format 2 alone; format 1's three purposes are as they were.
+        assertEquals(4, FileSeal.ARRIVED)
+        assertEquals(FileSeal.WRAP_PUBLIC, s[11].toInt())
+        assertEquals(listOf(1, 2, 3), SealPurpose.entries.map { it.code })
+        assertEquals(FileLimits.MAX_FILE, FileSeal.ARRIVED_KIND.purposes.single().maxBytes)
+    }
+
+    /** §9.1: 1.4's reader (format 1's, unchanged here) refuses format 2 as NEWER: a 1.4 Robot never misreads one. */
+    @Test fun a14ReaderRefusesFormat2AsNewer() {
+        val s = arrive(data(1000))
+        assertEquals(FileProblem.NEWER, (runCatching { FileSeal.parse(s) }.exceptionOrNull() as FileException).problem)
+        for (p in SealPurpose.entries) assertEquals(p.name, FileProblem.NEWER, problem(s, p, id = null))
+        // Format 1 with wrap type 2 stays NEWER, as in 1.4 (no Robot writes it).
+        assertEquals(FileProblem.NEWER, problem(seal(data(10)).also { it[11] = 2 }))
+    }
+
+    @Test fun format2IsReadOnlyAsAnArrival() {
+        val one = seal(data(1000))
+        assertEquals(FileProblem.DAMAGED, arrivedProblem(one))
+        assertEquals(FileProblem.DAMAGED, (runCatching { FileSeal.parseArrived(one) }.exceptionOrNull() as FileException).problem)
+        val s = arrive(data(1000))
+        fun with(at: Int, vararg v: Int) = s.copyOf().also { b -> v.forEachIndexed { i, x -> b[at + i] = x.toByte() } }
+        assertEquals(FileProblem.NEWER, arrivedProblem(with(8, 0, 3)))
+        assertEquals(FileProblem.DAMAGED, arrivedProblem(with(10, 1)))
+        assertEquals(FileProblem.DAMAGED, arrivedProblem(with(10, 5)))
+        assertEquals(FileProblem.DAMAGED, arrivedProblem(with(11, 1)))
+        assertEquals(FileProblem.NEWER, arrivedProblem(with(11, 3)))
+        assertEquals(FileProblem.DAMAGED, arrivedProblem(with(0, 'r'.code)))
+        for (len in 0 until 420) assertEquals("cut at $len", FileProblem.DAMAGED, arrivedProblem(s.copyOf(len)))
+        for (at in 0 until 420) {
+            val p = arrivedProblem(flip(s, at))
+            assertTrue("byte $at: $p", p == FileProblem.DAMAGED || p == FileProblem.NEWER)
+        }
+        for (at in listOf(420, 421, 600, s.size - 1)) assertEquals("byte $at", FileProblem.DAMAGED, arrivedProblem(flip(s, at)))
+    }
+
+    /** §9.1: a wrapped key moved between files fails (it binds the id inside the RSA block, and the header binds every chunk). */
+    @Test fun aWrappedKeyMovedBetweenArrivalsIsRefused() {
+        val a = arrive(data(500, 1), idA)
+        val b = arrive(data(500, 2), idB)
+        assertEquals(FileProblem.DAMAGED, arrivedProblem(a.copyOf().also { b.copyInto(it, 30, 30, 414) }))
+        assertEquals(FileProblem.DAMAGED, arrivedProblem((b.copyOf(420) + a.copyOfRange(420, a.size)).also { idA.bytes().copyInto(it, 12) }))
+        assertEquals(FileProblem.DAMAGED, arrivedProblem(b, idA))
+        assertArrayEquals(data(500, 2), opened(b, id = null))
+    }
+
+    @Test fun anArrivalIsSealedWhileLockedAndOpenedOnlyUnlocked() {
+        val locked = FakeInboxWrap().apply { this.locked = true }
+        val s = arrive(data(c + 9), w = locked)
+        assertEquals(FileProblem.LOCKED, arrivedProblem(s, w = locked))
+        assertArrayEquals(data(c + 9), opened(s))
+        assertEquals(FileProblem.KEY_GONE, arrivedProblem(s, w = FakeInboxWrap().apply { gone = true }))
+        assertEquals(FileProblem.DAMAGED, arrivedProblem(s, w = FakeInboxWrap(FakeInboxWrap.OTHER)))
+        // Sealing needs only the public key: no unwrap happened while locked.
+        assertEquals(0, locked.unwraps)
+    }
+
+    /** §3.6: at the first unlock Files' intake opens it and seals it again as format 1 under robot_files_v1. */
+    @Test fun anArrivalIsSealedAgainAsFormat1AtTheUnlock() {
+        val d = data(2 * c + 5)
+        val out = ByteArrayOutputStream()
+        FileSeal.arrivedReader(ByteArrayInputStream(arrive(d)), idA, inbox).use { input ->
+            FileSeal.writer(out, SealPurpose.FILE, idA, keys, create = false, random = random).use { input.copyTo(it) }
+        }
+        val f = out.toByteArray()
+        assertArrayEquals(byteArrayOf(0, 1), f.copyOfRange(8, 10))
+        assertEquals(FileSeal.WRAP_KEYSTORE, f[11].toInt())
+        assertEquals(FileSeal.sealedSize(d.size.toLong()), f.size.toLong())
+        assertArrayEquals(d, open(f))
     }
 }

@@ -210,6 +210,12 @@ class RoutineRouterTest {
         assertEquals(RoutineCommand.Remind("call the garage", false), route("add to my brief: call the garage"))
         assertEquals(RoutineCommand.Remind("call the garage", false), route("add call the garage to my brief"))
         assertEquals(RoutineCommand.Remind("apporter le passeport", true), route("Rappelle-moi demain matin d'apporter le passeport"))
+        // The spoken run: the recognizer's stray comma.
+        assertEquals(RoutineCommand.Remind("apporter le passeport", true), route("Rappelle-moi demain, matin d'apporter le passeport."))
+        assertEquals(RoutineCommand.Remind("apporter le passeport", true), route("Rappelle-moi, demain matin, d'apporter le passeport."))
+        assertEquals(RoutineCommand.Remind("bring the passport", false), route("Remind me, in the morning, to bring the passport."))
+        assertEquals(RoutineCommand.Remind("bring the passport", false), route("Remind me to bring the passport, in the morning."))
+        assertEquals(RoutineCommand.Remind("buy milk, eggs", false), route("Remind me in the morning to buy milk, eggs."))
         assertEquals(RoutineCommand.Remind("acheter du lait", false), route("ajoute à mon résumé : acheter du lait"))
         // 0.8: "in my brief" names the brief itself.
         assertEquals(RoutineCommand.Remind("water the plants", false), route("remind me in my brief to water the plants"))

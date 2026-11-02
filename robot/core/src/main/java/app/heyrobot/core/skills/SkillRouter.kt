@@ -101,6 +101,12 @@ object SkillRouter {
         return s.allNames.map(::words).any { n -> n.isNotEmpty() && (0..w.size - n.size).any { i -> n.indices.all { w[i + it] == n[it] } } }
     }
 
+    /**
+     * [said] asks for [s]: it opens with one of its names, or with "run" and one. A name further along ("don't start good
+     * night", "I'm heading home now") is a mention: the model's call for it takes a card first, whatever the skill's level.
+     */
+    fun asksFor(said: String, s: Skill): Boolean = namedWithWords(said, listOf(s)) != null
+
     /** Your skill [said] names, or null. */
     fun find(said: String, skills: List<Skill>): Skill? {
         val w = words(said)
@@ -256,8 +262,8 @@ object SkillRouter {
     private fun run(p: Words, i: Int, skills: List<Skill>, people: List<String>, apps: List<String>): SkillCommand? {
         if (skills.isEmpty()) return null
         val end = end(p, i)
-        // "<name>" or "<name> <values>".
-        named(p, i, skills)?.let { (s, e) -> values(p, e, end, s, people, apps)?.let { return SkillCommand.Run(s, it, saidInFrench(p, i, e, s)) } }
+        // "<name>" or "<name> <values>". A skill that's off doesn't claim its bare name ("good night" is everyday words): "run <name>" still says it's off.
+        named(p, i, skills.filter { it.level != SkillLevel.OFF })?.let { (s, e) -> values(p, e, end, s, people, apps)?.let { return SkillCommand.Run(s, it, saidInFrench(p, i, e, s)) } }
         // "run <name>", « lance <nom> », with values after it.
         for ((verbs, lang) in listOf(SkillWords.RUN_EN to Lang.EN, SkillWords.RUN_FR to Lang.FR)) {
             val v = p.at(i, verbs)

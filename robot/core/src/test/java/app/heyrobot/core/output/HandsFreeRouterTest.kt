@@ -70,10 +70,6 @@ class HandsFreeRouterTest {
             "lis-moi mes messages" to ReadMessages, "j'ai-tu des messages?" to ReadMessages, "est-ce que j'ai des messages" to ReadMessages,
             "what's next" to WhatsNext, "What's my next meeting?" to WhatsNext, "my next appointment" to WhatsNext, "c'est quoi la suite?" to WhatsNext,
             "mon prochain rendez-vous" to WhatsNext,
-            "play music" to HandsFreeCommand.Music(MusicAction.PLAY), "pause the music" to HandsFreeCommand.Music(MusicAction.PAUSE),
-            "next song" to HandsFreeCommand.Music(MusicAction.NEXT), "toune suivante" to HandsFreeCommand.Music(MusicAction.NEXT),
-            "mets de la musique" to HandsFreeCommand.Music(MusicAction.PLAY), "chanson précédente" to HandsFreeCommand.Music(MusicAction.PREVIOUS),
-            "pause" to HandsFreeCommand.Music(MusicAction.PAUSE),
             "tell her I'm 10 minutes away" to HandsFreeCommand.Reply("I'm 10 minutes away"),
             "reply I'm on my way" to HandsFreeCommand.Reply("I'm on my way"),
             "réponds-lui que j'arrive" to HandsFreeCommand.Reply("j'arrive"),
@@ -81,6 +77,23 @@ class HandsFreeRouterTest {
         )
         for ((s, c) in car) {
             assertEquals(s, c, r(s))
+            assertNull(s, r(s, car = false))
+        }
+    }
+
+    /**
+     * The everyday set (everyday-set-plan.md §3.2, D2): car mode's music phrases moved to core music MusicRouter, which
+     * hears them in and out of car mode (MusicRouterTest). Here they count only with carMusic, the 0.8 handling the panel
+     * keeps while Music by voice is off (§3.6), and then exactly as before: in car mode only.
+     */
+    @Test fun carModesMusicOnlyWhileMusicByVoiceIsOff() {
+        val music = mapOf("play music" to MusicAction.PLAY, "pause the music" to MusicAction.PAUSE, "next song" to MusicAction.NEXT,
+            "toune suivante" to MusicAction.NEXT, "mets de la musique" to MusicAction.PLAY, "chanson précédente" to MusicAction.PREVIOUS,
+            "pause" to MusicAction.PAUSE)
+        for ((s, a) in music) {
+            assertEquals(s, HandsFreeCommand.Music(a), HandsFreeRouter.route(s, carMode = true, carMusic = true))
+            assertNull(s, HandsFreeRouter.route(s, carMode = false, carMusic = true))
+            assertNull(s, r(s))
             assertNull(s, r(s, car = false))
         }
     }

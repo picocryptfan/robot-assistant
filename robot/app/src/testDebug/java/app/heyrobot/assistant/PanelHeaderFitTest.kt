@@ -3,7 +3,7 @@ package app.heyrobot.assistant
 
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.text.TextLayoutResult
@@ -12,6 +12,7 @@ import app.heyrobot.core.LockScreen
 import app.heyrobot.core.LookSettings
 import app.heyrobot.core.TurnRole
 import app.heyrobot.ui.testing.PHONE
+import app.heyrobot.ui.testing.setShotContent
 import app.heyrobot.ui.testing.shot
 import app.heyrobot.ui.testing.touchTargetProblems
 import app.heyrobot.ui.theme.RobotTheme
@@ -40,7 +41,7 @@ class PanelHeaderFitTest {
     private val many = LockScreen.CHOICES.take(9).toSet()
 
     private fun show(st: PanelState) =
-        rule.setContent { RobotTheme(dark = false, look = LookSettings(wallpaperColors = false)) { AssistantPanel(st, RecordingActions()) {} } }
+        rule.setShotContent { RobotTheme(dark = false, look = LookSettings(wallpaperColors = false)) { AssistantPanel(st, RecordingActions()) {} } }
 
     private fun ComposeContentTestRule.layoutOf(text: String): TextLayoutResult {
         val out = ArrayList<TextLayoutResult>()
@@ -102,7 +103,7 @@ class PanelHeaderFitTest {
 
     @Test fun keepStillKeeps() {
         val actions = RecordingActions()
-        rule.setContent { RobotTheme(dark = false, look = LookSettings(wallpaperColors = false)) { AssistantPanel(PanelState("c1", turns = screenTurns, keep = false), actions) {} } }
+        rule.setShotContent { RobotTheme(dark = false, look = LookSettings(wallpaperColors = false)) { AssistantPanel(PanelState("c1", turns = screenTurns, keep = false), actions) {} } }
         rule.onNodeWithText("Keep").performSemanticsAction(SemanticsActions.OnClick)
         assertEquals(listOf("keepConversation"), actions.calls)
     }

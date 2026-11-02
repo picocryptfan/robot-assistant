@@ -310,8 +310,8 @@ object InfoStrings : Strings("info", area = "cards") {
 
     // People.kt and PeopleStore.kt: a text's or an email's card, and where a person came from.
     val learnedNote = s("learned_note",
-        "This name was seen in a notification, and whoever sent it chose it. Robot treats them as someone you know only once you tick the box, or tap {keep} in {page}.",
-        "Ce nom a été vu dans une notification, et la personne qui l'a envoyée l'a choisi. Robot la traite comme quelqu'un que tu connais seulement quand tu coches la case, ou que tu touches {keep} dans {page}.")
+        "This name came from a notification or another Robot's card, and whoever sent it chose it. Robot treats them as someone you know only once you tick the box, or tap {keep} in {page}.",
+        "Ce nom vient d'une notification ou de la carte d'un autre Robot, et la personne qui l'a envoyé l'a choisi. Robot la traite comme quelqu'un que tu connais seulement quand tu coches la case, ou que tu touches {keep} dans {page}.")
     val alwaysUseFor = s("always_use_for", "Always use this for “{name}”", "Toujours utiliser ceci pour « {name} »")
     val pickNoteCheogram = s("pick_note_cheogram",
         "“{pick}” opens Cheogram's contact list, titled “Create shortcut”: nothing goes on your home screen, and Robot remembers who you pick. “{choose}” opens its share screen instead.",
@@ -319,11 +319,13 @@ object InfoStrings : Strings("info", area = "cards") {
     val allowNote = s("allow_note", "Robot can't read your contacts: allow it to find people there too.",
         "Robot ne peut pas lire tes contacts : autorise-le pour y trouver aussi des gens.")
     val seenInCheogram = s("seen_in_cheogram", "seen in a notification", "vu dans une notification")
+    val fromRobotCard = s("from_robot_card", "from another Robot's card", "de la carte d'un autre Robot")
     val sourceManual = s("source_manual", "Added by you", "Ajouté par toi")
     val sourceVcard = s("source_vcard", "From a contacts file", "D'un fichier de contacts")
     val sourceCheogramPick = s("source_cheogram_pick", "Picked in Cheogram", "Choisi dans Cheogram")
     val sourcePhonePicker = s("source_phone_picker", "From the phone's contacts", "Des contacts du téléphone")
     val sourceNotification = s("source_notification", "Seen in a notification", "Vu dans une notification")
+    val sourceLinkCard = s("source_link_card", "From another Robot's card", "De la carte d'un autre Robot")
     val sourceShare = s("source_share", "Shared to Robot", "Partagé avec Robot")
     val sourceRemembered = s("source_remembered", "Remembered from a card", "Retenu depuis une carte")
     val phoneMobile = s("phone_mobile", "Mobile", "Cellulaire")

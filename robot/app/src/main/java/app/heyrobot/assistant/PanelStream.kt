@@ -137,6 +137,8 @@ internal class PanelStream(private val scope: CoroutineScope, private val replie
             }
             // A reply shorter than the hold-back window.
             streamText(replyId, echo.flush())
+            // 1 Nov: a reply never names a tool (core ReplyWords); each sentence read out went through it too (speakSentence).
+            replies.text(replyId)?.let { t -> app.heyrobot.core.ReplyWords.scrub(t, port.langs.say).let { if (it != t) replies.setText(replyId, it) } }
         } finally {
             watchdog.cancel()
             port.reqId = 0

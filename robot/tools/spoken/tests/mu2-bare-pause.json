@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "id": "mu2-bare-pause",
+  "title": "\"Pause\" with nothing playing goes to the model, and changes nothing",
+  "safety": "read",
+  "testBench": ["MU2"],
+  "needs": {"model": true},
+  "setup": [{"set": "speakReplies", "value": "VOICE"}],
+  "steps": [
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "Pause.", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 120},
+    {"do": "check", "what": "router", "equals": "MusicRouter", "absent": true},
+    {"do": "end"}
+  ]
+}

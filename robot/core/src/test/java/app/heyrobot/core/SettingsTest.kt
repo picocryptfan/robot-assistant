@@ -133,7 +133,7 @@ class SettingsTest {
         // Settings from 0.2.2 (no such keys) get the defaults (and, as an update, the one-time line about Safety & privacy);
         // an emptied list stays empty.
         // 1.0.0: and Claude, as every version before 0.6.0 had it (a new install has no helper).
-        assertEquals(d.copy(safetyNotice = true, helpers = listOf(HelperConfig.claude())), RobotSettings.fromJson("{}"))
+        assertEquals(d.copy(safetyNotice = true, helpers = listOf(HelperConfig.claude()), listenPause = ListenPause.NORMAL), RobotSettings.fromJson("{}"))
         assertEquals(emptyList<WakePhrase>(), RobotSettings.fromJson(d.copy(wakePhrases = emptyList()).toJson().toString()).wakePhrases)
         // A damaged or invalid entry is dropped, never fatal.
         val j = """{"wakePhrases":[{"id":1,"text":"hey robot"},{"id":2,"text":"stop"},"x",{"id":5,"text":"jarvis","sensitivity":"NOPE"}],"bargeIn":"NOPE"}"""
@@ -182,18 +182,23 @@ class SettingsTest {
         assertEquals(false, ConversationSettings.partials(d, screenOn = true, warm = true))
     }
 
-    @Test fun theListeningPauseRoundTripsAndIsWrittenOnlyWhenSet() {
+    @Test fun theListeningPauseRoundTripsAndIsAlwaysWritten() {
         val d = RobotSettings()
-        assertEquals(ListenPause.NORMAL, d.listenPause)
-        assertEquals(1_000, d.listenPause.ms)
-        assertEquals(false, d.toJson().has("listenPause"))
+        assertEquals(ListenPause.LONG, d.listenPause)
+        assertEquals(1_600, d.listenPause.ms)
+        // F122: a choice saved earlier stays, and so does a file without the key: up to 1.1.2 absent meant Normal.
+        assertEquals(ListenPause.SHORT, RobotSettings.fromJson("""{"schema":13,"listenPause":"short"}""").listenPause)
+        assertEquals(ListenPause.NORMAL, RobotSettings.fromJson("""{"schema":13}""").listenPause)
+        assertEquals(ListenPause.LONG, RobotSettings.fromJson(null).listenPause)
+        assertEquals(true, d.copy(listenPause = ListenPause.NORMAL).toJson().has("listenPause"))
+        assertEquals("long", d.toJson().getString("listenPause"))
         for (p in ListenPause.entries) assertEquals(p, RobotSettings.fromJson(d.copy(listenPause = p).toJson().toString()).listenPause)
-        // An older file, or an id this Robot doesn't know: Normal.
-        assertEquals(ListenPause.NORMAL, RobotSettings.fromJson("""{"schema":13,"listenPause":"forever"}""").listenPause)
+        // An id this Robot doesn't know: Long.
+        assertEquals(ListenPause.LONG, RobotSettings.fromJson("""{"schema":13,"listenPause":"forever"}""").listenPause)
         assertEquals(listOf(600, 1_000, 1_600, 2_500), ListenPause.entries.map { it.ms })
         // A restore carries it as is (RestoreSafety's AS_IS), from either phone.
         for (mine in listOf(true, false)) {
-            assertEquals(ListenPause.LONG, app.heyrobot.core.backup.RestoreSafety.settings(d, d.copy(listenPause = ListenPause.LONG), mine).value.listenPause)
+            assertEquals(ListenPause.SHORT, app.heyrobot.core.backup.RestoreSafety.settings(d, d.copy(listenPause = ListenPause.SHORT), mine).value.listenPause)
         }
     }
 
@@ -206,7 +211,7 @@ class SettingsTest {
         // A 0.4.0-era file (schema 5) gets the defaults, except that live words in a conversation follow live words for questions.
         val old = RobotSettings.fromJson("""{"schema":5,"livePartials":false,"speechRate":1.2}""")
         assertEquals(false, old.convPartials)
-        assertEquals(RobotSettings().copy(livePartials = false, speechRate = 1.2f, convPartials = false, safetyNotice = true, helpers = listOf(HelperConfig.claude())), old)
+        assertEquals(RobotSettings().copy(listenPause = ListenPause.NORMAL, livePartials = false, speechRate = 1.2f, convPartials = false, safetyNotice = true, helpers = listOf(HelperConfig.claude())), old)
         assertEquals(true, RobotSettings.fromJson("""{"schema":5}""").convPartials)
         // A 0.4.0 file (schema 6) too, 0.4.4's (7), the GGUF branch's (10) and 0.4.5's (12); from schema 13 on, the two are
         // separate choices.
@@ -231,7 +236,7 @@ class SettingsTest {
         assertEquals(0L, RobotSettings.fromJson("""{"schema":13,"convWakeDuring":true}""").convReminderAt)
         assertEquals(0L, RobotSettings.fromJson("""{"schema":5}""").convReminderAt)
         assertEquals(0L, RobotSettings.fromJson("""{"schema":13,"convReminderAt":-5}""").convReminderAt)
-        assertEquals(RobotSettings().copy(convWakeDuring = true), RobotSettings.fromJson("""{"schema":13,"convWakeDuring":true}"""))
+        assertEquals(RobotSettings().copy(convWakeDuring = true, listenPause = ListenPause.NORMAL), RobotSettings.fromJson("""{"schema":13,"convWakeDuring":true}"""))
     }
 
     /**
@@ -249,7 +254,7 @@ class SettingsTest {
         assertTrue(!RobotSettings().toJson().has("convSpeakers"))
         assertEquals(null, RobotSettings.fromJson("""{"schema":13,"convMaxSpeakers":4}""").convSpeakers)
         assertEquals(null, RobotSettings.fromJson("""{"schema":5}""").convSpeakers)
-        assertEquals(RobotSettings().copy(convMaxSpeakers = 4), RobotSettings.fromJson("""{"schema":13,"convMaxSpeakers":4}"""))
+        assertEquals(RobotSettings().copy(convMaxSpeakers = 4, listenPause = ListenPause.NORMAL), RobotSettings.fromJson("""{"schema":13,"convMaxSpeakers":4}"""))
         assertEquals(false, RobotSettings.fromJson("""{"schema":13,"convSpeakers":false}""").convSpeakers)
         // On once downloaded unless you turned it off; the download is offered unless you did.
         val d = RobotSettings()
@@ -285,6 +290,24 @@ class SettingsTest {
         assertTrue(!ConversationLock.mayStart(locked = true, d.copy(convStartLocked = false)))
         assertTrue(ConversationLock.mayStart(locked = false, d.copy(convStartLocked = false)))
         assertTrue(!ConversationLock.showsEarlier(locked = true))
+    }
+
+    /**
+     * 1.1.2, FA8g: during a phone lock conversation mode never starts or resumes, whether the phone is unlocked or on the
+     * lock screen and whatever "Start from the lock screen" says; a session that is on stops. Outside a lock, the rule
+     * above is unchanged.
+     */
+    @Test fun conversationModeDuringAPhoneLock() {
+        val d = RobotSettings()
+        for (locked in listOf(false, true)) for (startLocked in listOf(false, true)) {
+            val s = d.copy(convStartLocked = startLocked)
+            assertTrue(!ConversationLock.mayStart(locked, s, phoneLock = true))
+            assertEquals(ConversationLock.mayStart(locked, s), ConversationLock.mayStart(locked, s, phoneLock = false))
+        }
+        assertTrue(ConversationLock.stopsFor(phoneLock = true, active = true))
+        assertTrue(!ConversationLock.stopsFor(phoneLock = true, active = false))
+        assertTrue(!ConversationLock.stopsFor(phoneLock = false, active = true))
+        assertEquals("a phone lock started", ConvStop.PHONE_LOCK.title)
     }
 
     /**
@@ -452,6 +475,7 @@ class SettingsTest {
 
     /** Every choice 0.4.4 and 0.4.5 could save, each away from its default (the 0.4.0 file has all but the model). */
     private val chosen044 = RobotSettings(
+        listenPause = ListenPause.NORMAL,
         wakeWord = false, wakeOnlyWhileCharging = true, speakReplies = SpeakReplies.ALWAYS, speechRate = 1.25f,
         voice = VoiceChoice.KITTEN.id, livePartials = false, directAnswers = false, keepModelMinutes = 15, saveHistory = false,
         approvals = RobotSettings.DEFAULT_APPROVALS + (ToolName.SEND_TEXT to Approval.AUTO) + (ToolName.MAPS_SEARCH to Approval.OFF) +
@@ -559,7 +583,7 @@ class SettingsTest {
             confirmedTerms = mapOf(ModelTerms.UNCENSORED.id to 1L), convSpeak = true, convSpeakers = true, convSummaryLang = "fr",
             convReminderAt = 5).toJson().keys().asSequence().toSet()
         assertEquals(setOf("modelThinks", "nearestServer", "confirmedTerms", "convSpeak", "convSpeakers", "convSummaryLang", "convReminderAt",
-            "modelGpu") + conversationKeys + helperKeys, everything - keys044)
+            "modelGpu", "listenPause") + conversationKeys + helperKeys, everything - keys044)
         assertEquals(emptySet<String>(), keys044 - everything)
 
         // The GGUF branch's file (schema 10, never released): the same choices and the switch on, kept on through 13.
@@ -593,7 +617,7 @@ class SettingsTest {
         val keys045 = org.json.JSONObject(v045).keys().asSequence().toSet()
         val keysNow = saved.keys().asSequence().toSet()
         assertEquals(emptySet<String>(), keys045 - keysNow)
-        assertEquals(conversationKeys + helperKeys + "modelGpu", keysNow - keys045)
+        assertEquals(conversationKeys + helperKeys + "modelGpu" + "listenPause", keysNow - keys045)
         // Live words for questions on (0.4.5's default): live words in a conversation on too, as for a new install.
         val withWords = RobotSettings.fromJson(v045.replace(""""livePartials":false""", """"livePartials":true"""))
         assertEquals(true, withWords.convPartials)
@@ -649,7 +673,7 @@ class SettingsTest {
         assertEquals(13, saved047.getInt("schema"))
         assertEquals(false, saved047.getBoolean("modelGpu"))
         assertEquals(from047, RobotSettings.fromJson(saved047.toString()))
-        assertEquals(conversationKeys + helperKeys, saved047.keys().asSequence().toSet() - org.json.JSONObject(v047).keys().asSequence().toSet())
+        assertEquals(conversationKeys + helperKeys + "listenPause", saved047.keys().asSequence().toSet() - org.json.JSONObject(v047).keys().asSequence().toSet())
         // Off in a schema 13 file, and in older schemas too should one carry it: kept.
         for (schema in listOf(6, 7, 12, 13)) {
             assertEquals(schema.toString(), false, RobotSettings.fromJson("""{"schema":$schema,"modelGpu":false}""").modelGpu)

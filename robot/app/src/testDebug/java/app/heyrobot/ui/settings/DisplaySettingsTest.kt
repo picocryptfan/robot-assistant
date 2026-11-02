@@ -13,7 +13,7 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
@@ -23,6 +23,7 @@ import app.heyrobot.core.RobotSettings
 import app.heyrobot.sys.LookStore
 import app.heyrobot.ui.Snapshot
 import app.heyrobot.ui.testing.PHONE
+import app.heyrobot.ui.testing.setShotContent
 import app.heyrobot.ui.testing.shot
 import app.heyrobot.ui.testing.show
 import app.heyrobot.ui.testing.touchTargetProblems
@@ -70,7 +71,7 @@ class DisplaySettingsTest {
     }
 
     @Test fun aChangeWritesLookJson() {
-        rule.setContent {
+        rule.setShotContent {
             RobotTheme(dark = false) { SettingsNav(SettingsRoutes.DISPLAY, RobotSettings(), Snapshot(), emptyList(), {}, NO_ACTIONS, SnackbarHostState(), onBack = {}) }
         }
         rule.onNodeWithText("Use wallpaper colours").performClick()
@@ -84,7 +85,7 @@ class DisplaySettingsTest {
         // 0.9 with the Classic look on and Robot's own colours.
         LookStore.file(ctx).apply { parentFile?.mkdirs() }.writeText("""{"v": 1, "wallpaperColors": false, "classic": true}""")
         assertEquals(LookSettings(wallpaperColors = false), LookStore.reload(ctx))
-        rule.setContent {
+        rule.setShotContent {
             RobotTheme(dark = false) { SettingsNav(SettingsRoutes.DISPLAY, RobotSettings(), Snapshot(), emptyList(), {}, NO_ACTIONS, SnackbarHostState(), onBack = {}) }
         }
         rule.onNodeWithText("Use wallpaper colours").assertIsOff()
@@ -97,7 +98,7 @@ class DisplaySettingsTest {
 
     @Test fun anUnknownRouteGoesBack() {
         var back = 0
-        rule.setContent { RobotTheme(dark = false) { SettingsNav("later", RobotSettings(), Snapshot(), emptyList(), {}, NO_ACTIONS, SnackbarHostState(), onBack = { back++ }) } }
+        rule.setShotContent { RobotTheme(dark = false) { SettingsNav("later", RobotSettings(), Snapshot(), emptyList(), {}, NO_ACTIONS, SnackbarHostState(), onBack = { back++ }) } }
         rule.waitForIdle()
         assertEquals(1, back)
     }

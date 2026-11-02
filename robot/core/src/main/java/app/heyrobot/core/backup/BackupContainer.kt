@@ -11,7 +11,10 @@ import java.io.OutputStream
 //   record = kind(1) ‖ meta_len(u32) ‖ meta(StrictJson object, ≤ 4 KiB) ‖ [data_len(u64) ‖ data]   (data for 'E' only)
 //
 //   'M' manifest  {"robot":"1.1.0","code":1100099,"made":1760270000000,"format":1,"categories":{"notes":{"entries":37,"bytes":122880},…},"keys":false}
-//                 first, exactly once
+//                 first, exactly once. LS12 (1.1.2): each category may also carry its name in words, by language,
+//                 "lists":{"entries":2,"bytes":900,"name":{"en":"Lists","fr":"Listes"}}, so a Robot that doesn't know the
+//                 category can still say which part it leaves out. Readers before it ignore the key (1.1.0 and 1.1.1 read
+//                 only "entries" and "bytes"); the names are dropped rather than let the manifest pass 4 KiB.
 //   'E' entry     {"c":"notes","n":"3f2a….json","v":1}   a category, a name of that category, the file's own schema
 //   'Z' end       {"entries":1043,"bytes":24117248}       last, exactly once; must equal what was read
 //
@@ -53,14 +56,24 @@ data class BackupManifest(
     val categories: Map<String, CategoryCount>,
     val keys: Boolean,
     val format: Int = BackupFormat.FORMAT,
+    /**
+     * LS12: each category's name in words by language id ("lists" to {"en": "Lists", "fr": "Listes"}). Read leniently: a
+     * name that isn't plain words ([CategoryNames.clean]) is dropped, never the manifest. Untrusted: the file chose it.
+     */
+    val names: Map<String, Map<String, String>> = emptyMap(),
 ) {
     init {
         require(robot.length in 1..MAX_VERSION && robot.all { it in '!'..'~' })
         require(code >= 0 && made >= 0 && categories.size <= MAX_CATEGORIES)
     }
 
-    /** Written by hand in a fixed order (org.json's order differs between the JVM and Android). */
-    fun toJson(): String = buildString {
+    /** [id]'s name in [lang] (else in English), as the file gave it; null when it gave none. */
+    fun name(id: String, lang: app.heyrobot.core.i18n.Lang): String? = names[id]?.let { it[lang.id] ?: it[app.heyrobot.core.i18n.Lang.EN.id] }
+
+    /** Written by hand in a fixed order (org.json's order differs between the JVM and Android); without the names when they'd pass 4 KiB. */
+    fun toJson(): String = json(names).takeIf { it.toByteArray(Charsets.UTF_8).size <= BackupCaps.META } ?: json(emptyMap())
+
+    private fun json(names: Map<String, Map<String, String>>): String = buildString {
         append("{\"robot\":").append(jsonString(robot))  // l10n: not text (JSON keys of the manifest)
         append(",\"code\":").append(code)  // l10n: not text (JSON keys of the manifest)
         append(",\"made\":").append(made)  // l10n: not text (JSON keys of the manifest)
@@ -68,7 +81,13 @@ data class BackupManifest(
         append(",\"categories\":{")
         categories.entries.forEachIndexed { i, (c, n) ->
             if (i > 0) append(',')
-            append(jsonString(c)).append(":{\"entries\":").append(n.entries).append(",\"bytes\":").append(n.bytes).append('}')  // l10n: not text (JSON keys of the manifest)
+            append(jsonString(c)).append(":{\"entries\":").append(n.entries).append(",\"bytes\":").append(n.bytes)  // l10n: not text (JSON keys of the manifest)
+            names[c]?.filter { (l, v) -> CategoryNames.lang(l) && CategoryNames.clean(v) != null }?.toSortedMap()?.takeIf { it.isNotEmpty() }?.let { byLang ->
+                append(",\"name\":{")  // l10n: not text (a JSON key of the manifest)
+                byLang.entries.forEachIndexed { j, (l, v) -> if (j > 0) append(','); append(jsonString(l)).append(':').append(jsonString(v)) }
+                append('}')
+            }
+            append('}')
         }
         append("},\"keys\":").append(keys).append('}')  // l10n: not text (JSON keys of the manifest)
     }
@@ -95,10 +114,31 @@ data class BackupManifest(
                         (o["bytes"] as? Long)?.takeIf { it >= 0 } ?: return null,
                     )
                 },
+                names = cats.entries.mapNotNull { (k, v) ->
+                    val byLang = ((v as? Map<*, *>)?.get("name") as? Map<*, *>)?.entries?.mapNotNull { (l, s) ->
+                        val lang = (l as? String)?.takeIf(CategoryNames::lang) ?: return@mapNotNull null
+                        CategoryNames.clean(s)?.let { lang to it }
+                    }?.toMap().orEmpty()
+                    (k as? String)?.takeIf { byLang.isNotEmpty() }?.let { it to byLang }
+                }.toMap(),
             )
         } catch (_: IllegalArgumentException) {
             null
         }
+    }
+}
+
+/** LS12: a category's name in words, as the manifest may carry it: what a reader that doesn't know the category may show. */
+object CategoryNames {
+    const val MAX = 40
+
+    /** A language id: two lower-case letters ("en", "fr"). */
+    fun lang(id: String): Boolean = id.length == 2 && id.all { it in 'a'..'z' }
+
+    /** [s] when it is plain words a sentence can hold (letters, digits, spaces, apostrophes, hyphens, commas; at most [MAX]); else null. */
+    fun clean(s: Any?): String? = (s as? String)?.takeIf { t ->
+        t.length in 1..MAX && t.trim() == t && !t.contains("  ") && t.any(Char::isLetter) &&
+            t.all { it.isLetterOrDigit() || it == ' ' || it == '\'' || it == '’' || it == '-' || it == ',' }
     }
 }
 
@@ -138,7 +178,8 @@ class BackupContainerWriter(private val out: OutputStream) {
         record(RecordKind.MANIFEST, m.toJson())
     }
 
-    fun entry(category: BackupCategory, name: String, data: ByteArray, schema: Int? = category.schema(name)) =
+    /** [schema]: by default what [data] itself says it is (BackupCategory.schemaOf: skills.json's own "v", D6). */
+    fun entry(category: BackupCategory, name: String, data: ByteArray, schema: Int? = category.schemaOf(name, data)) =
         entry(category, name, data.size.toLong(), data.inputStream(), schema)
 
     /** Writes exactly [length] bytes of [data] (fewer is refused: the file changed while it was read). */

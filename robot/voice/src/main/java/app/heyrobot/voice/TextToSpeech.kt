@@ -81,7 +81,11 @@ interface TextToSpeech {
     }
 }
 
-class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
+/**
+ * The phone's own text to speech, bound to [engine] by its package. E6 (everyday-set-plan.md §6.3, D16): always an engine
+ * that isn't Robot (VoiceOutput gets it from OtherEngines.pick), never the default by itself, which may now be Robot.
+ */
+class AndroidTextToSpeech(ctx: Context, val engine: String) : TextToSpeech {
     private val app = ctx.applicationContext
     private val main = Handler(Looper.getMainLooper())
     @Volatile private var playback = Playback.ASSISTANT
@@ -127,9 +131,9 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
     /** The utterance playing now (the engine's thread, under [echo]'s guard of it). */
     private var playingId: String? = null
 
-    private val tts: android.speech.tts.TextToSpeech = android.speech.tts.TextToSpeech(app) { status ->
+    private val tts: android.speech.tts.TextToSpeech = android.speech.tts.TextToSpeech(app, { status ->
         main.post { onInit(status == android.speech.tts.TextToSpeech.SUCCESS) }
-    }
+    }, engine)
 
     private fun onInit(ok: Boolean) {
         ready = ok

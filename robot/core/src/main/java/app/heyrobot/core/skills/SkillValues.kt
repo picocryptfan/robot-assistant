@@ -5,6 +5,7 @@ import app.heyrobot.core.Durations
 import app.heyrobot.core.StepPhrases
 import app.heyrobot.core.StepPhrases.Words
 import app.heyrobot.core.i18n.Phrase
+import java.util.Locale
 
 // Pure. The values Robot reads in your words after a skill's name (plan §7.2): a duration ("pasta for 8 minutes",
 // « pâtes pour 8 minutes »), a time ("at 7", « à 7 h »), one of your People by name or alias, an installed app, a place
@@ -75,7 +76,7 @@ object SkillValues {
         if (c.end > to) return null
         val (per, n) = StepPhrases.clockPeriod(p, c.end)
         val t = StepPhrases.resolve(c, per, mutableListOf<Phrase>())
-        return "%02d:%02d".format(t.hour, t.minute) to c.end + n // l10n: not text (a value in the skills file)
+        return "%02d:%02d".format(Locale.ROOT, t.hour, t.minute) to c.end + n // l10n: not text (a value in the skills file)
     }
 
     /** The longest of [names] said at [from] (after "to", « à », "with" when said), and where it ends. */

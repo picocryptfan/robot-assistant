@@ -1,0 +1,28 @@
+{
+  "format": 1,
+  "id": "lt-french",
+  "title": "Lists in Québec French: adding, checking, ticking off",
+  "safety": "robot-data",
+  "testBench": ["lt-french"],
+  "setup": [{"set": "speakReplies", "value": "VOICE"}],
+  "steps": [
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "Ajoute des œufs à ma liste de commissions.", "voice": "siwis"},
+    {"do": "wait_reply", "seconds": 30, "regex": "(?i)œufs|oeufs"},
+    {"do": "check", "what": "router", "equals": "ListsRouter"},
+    {"do": "say", "text": "J'ai-tu des œufs sur ma liste ?", "voice": "siwis"},
+    {"do": "wait_reply", "seconds": 30, "regex": "^Oui"},
+    {"do": "say", "text": "As-tu des œufs sur ma liste ?", "voice": "siwis"},
+    {"do": "wait_reply", "seconds": 30, "regex": "^Oui"},
+    {"do": "say", "text": "Est-ce que j'ai des œufs sur ma liste ?", "voice": "siwis"},
+    {"do": "wait_reply", "seconds": 30, "regex": "^Oui"},
+    {"do": "say", "text": "Est-ce que le café est sur ma liste d'épicerie ?", "voice": "siwis"},
+    {"do": "wait_reply", "seconds": 30, "regex": "^Non"},
+    {"do": "say", "text": "Est-ce que j'ai du pain sur ma liste ?", "voice": "siwis"},
+    {"do": "wait_reply", "seconds": 30, "regex": "^Non"},
+    {"do": "say", "text": "Enlève les œufs de la liste.", "voice": "siwis"},
+    {"do": "wait_reply", "seconds": 30},
+    {"do": "check", "what": "router", "equals": "ListsRouter"},
+    {"do": "end"}
+  ]
+}

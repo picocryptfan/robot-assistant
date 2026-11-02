@@ -22,10 +22,11 @@ class EmergencyCallLockedTest {
     }
 
     /** [emergency]: what prepare's check of Android's list says about the number. */
-    private class Actions(override val locked: Boolean, override val phoneLock: Boolean, private val emergency: Boolean) : TurnActions {
+    private class Actions(override val locked: Boolean, override val phoneLock: Boolean, private val emergency: Boolean,
+        override val settings: RobotSettings = RobotSettings(), private val region: String? = null) : TurnActions {
         val ran = mutableListOf<Action>()
         val prepared = mutableListOf<Action>()
-        override val settings = RobotSettings()
+        override suspend fun emergencyNumber(to: String) = app.heyrobot.core.car.EmergencyNumbers.basic(to, region)
         override suspend fun prepare(action: Action): Prepared {
             prepared += action
             val c = action as Action.Call
@@ -44,9 +45,10 @@ class EmergencyCallLockedTest {
         override fun say(sentence: String) {}
     }
 
-    private fun turn(to: String, locked: Boolean, phoneLock: Boolean, emergency: Boolean): Triple<Actions, View, Calls> = runBlocking {
+    private fun turn(to: String, locked: Boolean, phoneLock: Boolean, emergency: Boolean, settings: RobotSettings = RobotSettings(),
+        region: String? = null): Triple<Actions, View, Calls> = runBlocking {
         var n = 0
-        val actions = Actions(locked, phoneLock, emergency)
+        val actions = Actions(locked, phoneLock, emergency, settings, region)
         val view = View()
         val model = Calls(to)
         TurnRunner(model, actions, view, Confirmations(), untrusted = false, asked = setOf(ToolName.CALL)) { "c${++n}" }.run()
@@ -63,6 +65,48 @@ class EmergencyCallLockedTest {
                 assertEquals("$label $number", ActionStatus.DONE, view.cards.values.single().status)
             }
         }
+    }
+
+    // review-lock 1: only 112 and 911 got past the lock, wherever the phone was.
+    @Test fun theNumbersOfWhereThePhoneIsRunLocked() {
+        for ((region, numbers) in listOf("GB" to listOf("999"), "AU" to listOf("000"), "NZ" to listOf("111"), "DE" to listOf("110"), "FR" to listOf("15", "17", "18"))) {
+            for (number in numbers) {
+                val (actions, view, _) = turn(number, locked = true, phoneLock = true, emergency = true, region = region)
+                assertEquals("$region $number", 1, actions.ran.size)
+                assertTrue("$region $number", (actions.ran.single() as Action.Call).emergency)
+                assertEquals("$region $number", ActionStatus.DONE, view.cards.values.single().status)
+            }
+        }
+        // Somewhere else 999 is an ordinary number, and it never reaches prepare.
+        val (a, v, _) = turn("999", locked = true, phoneLock = true, emergency = false, region = "CA")
+        assertTrue(a.prepared.isEmpty())
+        assertEquals(ActionStatus.NEEDS_UNLOCK, v.cards.values.single().status)
+    }
+
+    // review-lock 2: Call set to Off refused 911, locked or not.
+    @Test fun callSetToOffStillOpensTheDialerForAnEmergencyNumber() {
+        val off = RobotSettings(approvals = mapOf(ToolName.CALL to Approval.OFF))
+        for (locked in listOf(false, true)) for ((number, region) in listOf("911" to null, "999" to "GB")) {
+            val (actions, view, _) = turn(number, locked = locked, phoneLock = locked, emergency = true, settings = off, region = region)
+            assertEquals("$locked $number", 1, actions.ran.size)
+            assertTrue("$locked $number", (actions.ran.single() as Action.Call).emergency)
+            assertEquals("$locked $number", ActionStatus.DONE, view.cards.values.single().status)
+        }
+    }
+
+    @Test fun callSetToOffRefusesEveryoneElse() {
+        val off = RobotSettings(approvals = mapOf(ToolName.CALL to Approval.OFF))
+        val (a1, v1, _) = turn("5550100", locked = false, phoneLock = false, emergency = false, settings = off)
+        assertTrue(a1.prepared.isEmpty())
+        assertEquals(ActionStatus.DISABLED, v1.cards.values.single().status)
+        // Android's list says no after all: refused after prepare, and nothing opens.
+        val (a2, v2, _) = turn("911", locked = false, phoneLock = false, emergency = false, settings = off)
+        assertTrue(a2.ran.isEmpty())
+        assertEquals(ActionStatus.DISABLED, v2.cards.values.single().status)
+        // A name holding an emergency number is a name.
+        val (a3, v3, _) = turn("Room 911", locked = true, phoneLock = true, emergency = false, settings = off)
+        assertTrue(a3.prepared.isEmpty())
+        assertEquals(ActionStatus.DISABLED, v3.cards.values.single().status)
     }
 
     @Test fun anyoneElseIsStillRefusedLocked() {

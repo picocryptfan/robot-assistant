@@ -226,7 +226,9 @@ enum class StepCode(override val id: Int, override val title: String) : LogCode 
     READ_CALENDAR(22, "calendar"), WEATHER(23, "weather"), PHONE_STATUS(24, "phone status"), FREE_MEMORY(25, "free memory"),
     FREE_STORAGE(26, "free storage"), ASK_HELPER(27, "Ask a helper"), REMEMBER(28, "remember"), FORGET(29, "forget"), CALL(30, "call"),
     WEB_SEARCH(31, "web search"), TERMUX_SCRIPT(32, "Termux script"), TERMUX_COMMAND(33, "Termux command"), BROWSER_SEARCH(34, "browser search"),
-    FIND_FILES(35, "file search"), READ_FILE(36, "file question");
+    FIND_FILES(35, "file search"), READ_FILE(36, "file question"), ADD_TO_LIST(37, "list add"), CALCULATE(38, "sum"), ASK_ROBOT(39, "a request to another Robot"),
+    // Skills connections (C4, plan §5.4): a skill's steps that reach your connections, apps and scripts (40 and up).
+    CONNECTION(40, "connection"), HAND_OFF(41, "app hand-off"), TRAVEL_TIME(42, "travel time"), TYPED_SCRIPT(43, "typed script");
 
     companion object {
         fun of(t: ToolName): StepCode = when (t) {
@@ -257,6 +259,11 @@ enum class StepCode(override val id: Int, override val title: String) : LogCode 
             ToolName.BROWSER_SEARCH -> BROWSER_SEARCH
             ToolName.FIND_FILES -> FIND_FILES
             ToolName.READ_FILE -> READ_FILE
+            ToolName.ADD_TO_LIST -> ADD_TO_LIST
+            ToolName.CONNECTION -> CONNECTION
+            ToolName.HAND_OFF -> HAND_OFF
+            ToolName.CALCULATE -> CALCULATE
+            ToolName.ASK_ROBOT -> ASK_ROBOT
         }
     }
 }
@@ -506,6 +513,13 @@ object RoutineCodec {
         // 1.4: never a routine's step either (RoutineGate: NEVER): a routine runs while you may not be there, files need you.
         is Action.FindFiles -> buildMap { put("query", a.query); a.drawer?.let { put("drawer", it) }; a.whenText?.let { put("when", it) } }
         is Action.ReadFile -> mapOf("file" to a.file, "question" to a.question)
+        // 1.4 Lists: never a routine's step either (RoutineGate: NEVER).
+        is Action.AddToList -> buildMap { put("items", a.items); a.list?.let { put("list", it) } }
+        // C4: never a routine's step (RoutineGate: NEVER), never captured as one: a skill's run makes it with its typed call only.
+        is ConnStepAction, is HandOffStepAction -> emptyMap()
+        // The everyday set: never a routine's step either (RoutineGate: NEVER); a sum is asked, not scheduled.
+        is Action.Calculate -> buildMap { put("expression", a.ask.expression); a.ask.from?.let { put("from", it) }; a.ask.to?.let { put("to", it) } }
+        is Action.AskRobot -> mapOf("person" to a.person, "request" to a.request, "details" to a.details)
     }
 
     private fun nearest(a: Action): Boolean = (a as? Action.MapsSearch)?.nearest == true || (a as? Action.MapsNavigate)?.nearest == true

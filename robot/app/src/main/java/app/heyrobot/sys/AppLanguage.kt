@@ -10,6 +10,7 @@ import android.content.res.Resources
 import android.net.Uri
 import android.os.LocaleList
 import android.provider.Settings
+import android.view.ContextThemeWrapper
 import app.heyrobot.core.i18n.Lang
 import app.heyrobot.core.i18n.Langs
 import app.heyrobot.core.i18n.Pseudo
@@ -28,16 +29,24 @@ enum class Menus(val tag: String?) {
 object AppLanguage {
     private fun manager(ctx: Context): LocaleManager? = try { ctx.getSystemService(LocaleManager::class.java) } catch (_: Throwable) { null }
 
+    /** The menus' languages Android keeps for Robot; null when they follow the phone's. */
+    private fun chosen(ctx: Context): LocaleList? = (try { manager(ctx)?.applicationLocales } catch (_: Throwable) { null })?.takeIf { !it.isEmpty }
+
     /** The menus' language Android has for Robot. */
     fun menus(ctx: Context): Menus {
-        val l = try { manager(ctx)?.applicationLocales } catch (_: Throwable) { null }
-        if (l == null || l.isEmpty) return Menus.PHONE
+        val l = chosen(ctx) ?: return Menus.PHONE
         return when (l[0].language) {
             "fr" -> Menus.FR
             "en" -> Menus.EN
             else -> Menus.PHONE
         }
     }
+
+    /**
+     * The menus' languages as a key that changes when they do: the chosen ones, or the phone's when the menus follow it
+     * (the panel's view is built again when it changes, RobotSession).
+     */
+    fun menusKey(ctx: Context): String = chosen(ctx)?.toLanguageTags() ?: ("phone:" + systemLocales(ctx).toLanguageTags()) // l10n: not text (a key)
 
     /** Sets the menus' language; Android recreates Robot's activities in it. */
     fun setMenus(ctx: Context, m: Menus) {
@@ -53,13 +62,25 @@ object AppLanguage {
     /**
      * The languages a screen renders core's words in (core i18n Langs): Robot's screens' from [config] (what the resources
      * resolved to; a German phone gets the English resources, so English), Android's from the phone's, and the pseudo-locale
-     * when the menus are en-XA or ar-XB (debug builds). Outside a turn, a sentence is in the screens' language.
+     * when the menus are en-XA or ar-XB (debug builds). Outside a turn, a sentence is in the screens' language. The menus'
+     * own language wins over [config]'s when one is chosen: :voice's panel kept the phone's (LS12, P2 on the Pixel 8).
      */
     fun langs(ctx: Context, config: Configuration = ctx.resources.configuration): Langs {
-        val first = config.locales.takeIf { !it.isEmpty }?.get(0)
+        val first = (chosen(ctx) ?: config.locales.takeIf { !it.isEmpty })?.get(0)
         val ui = Lang.of(first?.language)
         val system = Lang.of(systemLocales(ctx).takeIf { !it.isEmpty }?.get(0)?.language)
         return Langs(say = ui, ui = ui, system = system, pseudo = Pseudo.of(first?.toLanguageTag()))
+    }
+
+    /**
+     * [ctx] with its resources in the menus' language (design §7.2: the panel's buttons follow the menus). Android puts the
+     * per-app language into Robot's activities, but on the Pixel 8 :voice's panel window kept the phone's (LS12, P2), so
+     * the panel asks for it itself. [ctx] itself when the menus follow the phone or its resources already match.
+     */
+    fun localized(ctx: Context): Context {
+        val l = chosen(ctx) ?: return ctx
+        if (ctx.resources.configuration.locales == l) return ctx
+        return ContextThemeWrapper(ctx, ctx.theme).apply { applyOverrideConfiguration(Configuration().apply { setLocales(l) }) }
     }
 
     /** Android's language page for Robot (Settings › Apps › Robot › Language). */

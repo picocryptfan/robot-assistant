@@ -250,3 +250,71 @@ ticket or booking	billet ou réservation		-	1.4: boarding passes too (« carte d
 CRA	l'ARC		-	1.4 F10: « l'ARC et Revenu Québec »; Revenu Québec keeps its name
 GST / HST / PST / QST	TPS / TVH / TVP / TVQ		-	1.4 F12: the table's columns
 currency	devise		-	1.4: a file's field and the table's column
+list (Robot Lists')	liste		-	1.4 Lists: « la liste d'épicerie », « Nouvelle liste »; a playlist is a « liste de lecture », never one of Robot's lists
+shopping list	liste d'épicerie	liste de courses, liste d'achats, liste de commissions, liste des commissions, liste de magasinage	word	1.4 Lists: Québec's word; « liste de l'épicerie », « liste de courses », « liste d'achats », « liste de commissions », « liste de magasinage », « liste de choses à acheter » are heard (ListsRouter), never written (LS8)
+Shopping (the default list's name)	Épicerie		-	1.4 Lists: the shopping list's name until you rename it; it follows the app's language (Shopping, Épicerie)
+To-do (the default list's name)	À faire	liste de tâches	word	1.4 Lists: the to-do list's name until you rename it; « liste de choses à faire » in a sentence; « liste de tâches », « liste d'affaires à faire » heard, never written (LS8)
+tick (an item on a list)	cocher	rayé, rayée, rayés, rayées, biffé, biffés	word	1.4 Lists: « J'ai coché les œufs. »; « coche », « raye », « enlève », « ôte », « biffe » are heard, and a ticked item is never written « rayé » (LS8); « case à cocher » as messages_their_language_detail
+untick (an item on a list)	décocher		-	1.4 Lists: the tick box; spoken, an item ticked by mistake is « remis » (« J'ai remis les œufs sur Épicerie. »)
+ticked (an item)	coché (cochés, cochée, cochées)		-	1.4 Lists: an item's state; « efface ce qui est coché » is heard
+item (on a list)	élément	item, items	word	1.4 Lists: « 5 éléments », as backups count theirs (backup_n_items); « article » stays a web page's article
+Done (a list's ticked items)	Fait	Terminé	-	1.4 Lists: the section on a list's page and card, « Fait (5) », the pair of « À faire »; « Terminé » stays for something that ended (backup_close)
+widget (home screen)	widget (le)		-	1.4 Lists (LS6): Android's own word in French (« Ajouter un widget », android-36 values-fr-rCA), so you find it in your home-screen app; the OQLF's GDT (fiche « gadget logiciel », 2017, vitrinelinguistique.oqlf.gouv.qc.ca/fiche-gdt/fiche/26501657) prefers « gadget logiciel » or « objet fenêtre » and calls « widget » used in some contexts, not without reserve in Québec
+Clear done (a list's ticked items)	Effacer ce qui est coché		-	1.4 Lists (LS8): the button and its replies (« 4 éléments cochés effacés »), as « efface ce qui est coché » is heard; « Supprimer » stays for what goes for good, « Vider » for a whole list
+Empty (a list)	Vider		-	1.4 Lists (LS8): open items too, on a card only a tap confirms (« Vider la liste Épicerie ? »)
+move (an item to another list)	déplacer (vers)		-	1.4 Lists (LS8): « Déplacer vers une autre liste », « Déplacé vers la liste Camping : œufs. »; Robot Files' « déplacer dans » is a drawer's
+Share as text (a list)	Partager en texte		-	1.4 Lists (LS8): a list's open items, through Android's share sheet
+Robot list (the widget's name)	Liste Robot		-	1.4 Lists (LS6, LS8): the name your home-screen app shows in its widget picker
+Settings › Lists	Réglages › Listes		-	1.4 Lists (LS8): core UiStrings.lists, so a sentence can name the page as « Réglages › Listes » (GlossaryTest's path rule)
+playlist	liste de lecture		-	Everyday set (everyday-set-plan.md §2.8): never « liste » alone, which Lists owns
+song	chanson		-	Everyday set: « toune » is heard (HandsFreeRouter); Robot writes « chanson »
+music app	appli de musique		-	Everyday set: Settings › Actions › Music, « Ton appli de musique »
+What went online	Ce qui est allé en ligne		-	Everyday set: Settings › Safety & privacy; « connexion », Robot's word, as for Skills' connections (the row below)
+record (of what went online)	trace		-	Everyday set: « Garder une trace de ce qui est allé en ligne »
+Listening for other apps	Écoute pour les autres applis		-	Everyday set: Settings › Voice
+Robot's voices for other apps	Voix de Robot pour les autres applis		-	Everyday set: Settings › Voice; Android's own page is « Synthèse vocale » (not checked on GrapheneOS in fr-CA)
+Ask Robot	Demander à Robot		-	Everyday set: the label in the text-selection menu and the share sheet
+count (Android's, of bytes)	décompte		-	E8: « le compte d'Android » reads as an Android account; « Android a compté » stays
+dollar (heard)	dollar		-	E8: « piasse », « piastre » and « cenne » are heard (SumWords); Robot writes « dollar » and « $ »
+tip (at a restaurant)	pourboire		-	Everyday set: sums, « un pourboire de 18 % »; « tip » is heard (SumsRouter), Robot writes « pourboire »
+connection (Skills')	connexion (la)		-	C11, Skills connections: Réglages › Compétences › Connexions, « Tes connexions »; feminine (« Testée aujourd'hui », « Utilisée par »); « ta connexion {name} » where English says "your {name}" and the name's gender is unknown (as « ta clé {name} » in helpers)
+key (a connection's)	clé		-	C11: a connection's secret parts together (« Coller la clé », « Il lui faut sa clé »), as helpers' API keys
+token (a server's)	jeton		-	C11: « Un jeton (en-tête Authorization, Bearer) »; also the model's tokens and GitHub's « jeton d'accès »
+address (a server's)	adresse		-	C11: a connection's address (« Changer l'adresse supprime la clé enregistrée »)
+topic (ntfy's)	sujet		-	C11: « Seuls mes appareils suivent ce sujet »; ntfy's own French word (UNVERIFIED in ntfy's fr translation)
+certificate	certificat		-	C11: « un certificat auquel Android fait confiance »
+travel time	temps de trajet	durée du trajet, temps de parcours	word	C11: a skill's step to a routing server; the Car mode words (domicile, travail) for its places
+routing server	serveur d'itinéraires	serveur de routage	word	C11: OSRM, Valhalla, GraphHopper; its software's name under « Logiciel du serveur »
+webhook	webhook (le)		-	C11: no entry in the OQLF's Grand dictionnaire terminologique (Vitrine linguistique searched 28 Oct 2026: none for webhook); « crochet Web » unconfirmed, so Robot keeps the word the services' own screens use
+app hand-off	relais vers une appli (le relais)		-	C11: a connection that opens an app you picked with your words (« Relais vers des applis », « Vérifie le relais »); you still send it there yourself
+operation (a connection's)	opération		-	C11: what a skill's step can ask a connection (« Ajouter une opération »)
+entity (Home Assistant's)	entité		-	C11: Home Assistant's own French word (UNVERIFIED in its fr translation); Robot says an entity by its id's words, « la lumière downstairs »
+service (Home Assistant's)	service		-	C11: « Appeler un service »
+state (Home Assistant's)	état		-	C11: « Lire un état »; a step's result says the state through « c'est » or « ça » (« la lumière downstairs, c'est allumé », « …, ça ne s'est pas éteint ») so nothing agrees with a list of things whose gender Robot can't know
+request (HTTP)	requête		-	C11: a webhook's request, « Requêtes par minute »; its parts « méthode », « chemin », « paramètres de requête », « en-têtes », « corps »
+header (HTTP)	en-tête (l', m.)		-	C11: « Un en-tête à toi », « Nom de l'en-tête »
+first use (a host's)	première utilisation		-	C11: the tap-only card before a connection's first request to a host
+spoken yes	oui dit à voix haute		-	C11, as Car mode's text: « Un oui dit à voix haute peut approuver ses changements »
+Simple / Careful / Risky (a skill's risk)	Simple / Délicate / Risquée		-	C11: a skill's Risk line (« Délicate : 3 étapes, envoie une notification »), feminine as « compétence »
+user guide (Robot's)	guide d'utilisation (le)		-	C13: the document that explains every feature, which the https help points to; not the setup guide in the app (« Guide de configuration »)
+Robot to Robot	Robot à Robot		-	L13: the feature, as Everyday's What went online already says it; « Réglages › Robot à Robot » (a UiStrings title)
+someone's Robot	le Robot de {name}, son Robot		-	L13: the one place Robot takes an article: another person's Robot, with their name right after. GlossaryTest lets exactly « le/du/au Robot de {name} » or « de %1$s » through; everywhere else the Robot rule holds. « Le Robot de Ève » isn't elided: the name comes in at run time
+they, their (the other person)	cette personne, l'autre personne, son Robot		-	L13: never a gendered he or she for someone Robot only knows by name; agreement avoided (« Jumelage fait avec », not « Jumelé à »)
+pair, pairing	se jumeler, jumelage	appairer, appairage, pairage, couplage	word	L13: « Se jumeler avec quelqu'un », « Code de jumelage », button « Jumeler »; Bluetooth's own word is Android's business
+unpair	se dissocier, Dissocier (button)	déjumeler, désappairer	word	L13: « Te dissocier de Sam ? », « Le Robot de Sam s'est dissocié »
+Anonymous (mode)	mode anonyme; Anonyme (the choice's label)		-	L13: lower case in a sentence, « Passer au mode anonyme »
+Private (mode)	mode privé; Privé (the choice's label)		-	L13: as Anonymous; a memory item's « privé » is a different thing
+safety number	numéro de sécurité	empreinte de sécurité	word	L13: 60 digits two Robots compare
+request (another Robot's)	demande		-	L13: the Requests page is « Demandes »; « requête » stays HTTP's
+Robot link (a person's page)	lien Robot		-	L13
+block (another Robot)	bloquer		-	L13: never to be confused with Phone lock, « blocage du téléphone »
+on its own	sans demander, de lui-même		-	L13: Answer on its own is « Répondre sans demander »; « de lui-même » where « demander » would read as asking the other Robot
+Ask me first (a level)	Me demander d'abord		-	L13: Ask first in the first person
+free and busy times	moments libres et occupés		-	L13: gender-free; « occupé » is never said of the person
+plan (between people)	plan		-	L13: as L10's « proposer ou annuler un plan »; a subscription's plan stays « forfait »
+split, ledger (costs)	partage, registre		-	L13: Splitting costs is « Partage des coûts »; « partager une facture » as Bills' word
+push server, push app	serveur push, appli push		-	L13: as Everyday's What went online
+bridge (Tor's)	pont		-	L13: « Ponts Tor », « ligne de pont », as the Tor Project's French. obfs4, meek, Snowflake, WebTunnel stay as they are
+proxy, broker, relay (Tor's)	serveur mandataire, courtier, relais		-	L13: OQLF's « serveur mandataire »; « courtier » UNVERIFIED against the Tor Project's French for Snowflake's broker
+your address (seen by a bridge)	ton adresse IP		-	L13: « ton adresse » alone reads as where you live, so the French says IP where the English says address
+cloud service	service infonuagique		-	L13: OQLF

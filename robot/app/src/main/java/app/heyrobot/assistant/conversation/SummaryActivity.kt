@@ -212,7 +212,7 @@ class SummaryActivity : ComponentActivity() {
             val t = tid
             LazyColumn(Modifier.fillMaxSize().padding(pad), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 if (locked) {
-                    item { Text(stringResource(R.string.conv_summary_unlock), style = MaterialTheme.typography.bodyLarge) }
+                    item { Text(stringResource(ConversationNotices.lockedLine(this@SummaryActivity, R.string.conv_summary_unlock)), style = MaterialTheme.typography.bodyLarge) }
                     return@LazyColumn
                 }
                 if (t == null || l == null) {

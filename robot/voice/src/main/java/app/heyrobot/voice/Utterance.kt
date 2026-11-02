@@ -24,6 +24,13 @@ class Endpointer(private val cfg: Config = Config()) {
         val watchdogMs: Long = 35_000L,
         /** How long the VAD's flag stays down before the question ends: [windowFor] the chosen pause. */
         val silenceSamples: Long = windowFor(DEFAULT_PAUSE_MS),
+        /** The same when the latest live words end on an open word ([openEnded]); never shorter than [silenceSamples]. */
+        val openSamples: Long = silenceSamples,
+        /**
+         * After [Event.END] the frames are still looked at while the words are written down: speech coming back gives
+         * [Event.RESUMED] and the question goes on, so what you add in that moment isn't lost.
+         */
+        val listensOn: Boolean = false,
     )
 
     enum class Event {
@@ -34,6 +41,8 @@ class Endpointer(private val cfg: Config = Config()) {
         END,
         NO_SPEECH,
         MAX_LENGTH,
+        /** Speech came back after [END] ([Config.listensOn]): the question goes on, and ends again by the same rules. */
+        RESUMED,
     }
 
     @Volatile var samples = 0L; private set
@@ -44,6 +53,14 @@ class Endpointer(private val cfg: Config = Config()) {
      * the release does, or [Config.maxSamples] and the watchdog.
      */
     @Volatile var held = false
+    /** The latest live words end on an open word (core OpenWords): this pause counts as [Config.openSamples]. */
+    @Volatile var openEnded = false
+    /** Has this question got a longer pause to give an open sentence? (A card's short answer hasn't.) */
+    val waitsForOpenWords: Boolean get() = cfg.openSamples > cfg.silenceSamples
+    /** Sample index where the flag last dropped after speech, while it is down; -1 otherwise. */
+    val pauseStart: Long @Synchronized get() = downSince
+    /** [Event.END] came and speech may still bring the question back. */
+    @Volatile var listeningOn = false; private set
     private var speaking = false
     /** Sample index where the flag last dropped after speech, or -1 while it is up. */
     private var downSince = -1L
@@ -57,7 +74,15 @@ class Endpointer(private val cfg: Config = Config()) {
     /** One frame of [n] samples with the VAD's flag after it; returns what that means (once [END], [NO_SPEECH] or [MAX_LENGTH], always NONE). */
     @Synchronized
     fun onFrame(speech: Boolean, n: Int): Event {
-        if (done) return Event.NONE
+        if (done) {
+            if (!listeningOn) return Event.NONE
+            samples += n
+            if (!speech) return Event.NONE
+            done = false
+            listeningOn = false
+            speaking = true
+            return Event.RESUMED
+        }
         samples += n
         var ev = Event.NONE
         if (speech && speechStart < 0) {
@@ -67,14 +92,17 @@ class Endpointer(private val cfg: Config = Config()) {
         if (speech) downSince = -1 else if (speaking) downSince = samples - n
         speaking = speech
         val out = when {
-            !held && downSince >= 0 && samples - downSince >= cfg.silenceSamples -> Event.END
+            !held && downSince >= 0 && samples - downSince >= window() -> Event.END
             samples >= cfg.maxSamples -> Event.MAX_LENGTH
             !held && speechStart < 0 && samples >= cfg.noSpeechSamples -> Event.NO_SPEECH
             else -> ev
         }
         if (out == Event.END || out == Event.NO_SPEECH || out == Event.MAX_LENGTH) done = true
+        if (out == Event.END && cfg.listensOn) listeningOn = true
         return out
     }
+
+    private fun window(): Long = if (openEnded) maxOf(cfg.openSamples, cfg.silenceSamples) else cfg.silenceSamples
 
     /**
      * The audio stopped coming (the microphone was closed under the question, or the watchdog fired): [Event.END]
@@ -82,7 +110,10 @@ class Endpointer(private val cfg: Config = Config()) {
      */
     @Synchronized
     fun cut(): Event {
-        if (done) return Event.NONE
+        if (done) {
+            listeningOn = false
+            return Event.NONE
+        }
         done = true
         return if (heardSpeech) Event.END else Event.NO_SPEECH
     }
@@ -97,11 +128,14 @@ class Endpointer(private val cfg: Config = Config()) {
         const val VAD_MIN_SILENCE_S = 0.25f
         const val VAD_MIN_SPEECH_S = 0.25f
 
-        /** Settings › Voice › "Wait before answering" at Normal (core ListenPause). */
-        const val DEFAULT_PAUSE_MS = 1_000
+        /** Settings › Voice › "Wait before answering" at its default, Long (core ListenPause). */
+        const val DEFAULT_PAUSE_MS = 1_600
 
-        /** Answering a card by voice ("yes", "no"): the flag down 0.35 s, about 0.6 s of silence, whatever the setting. */
+        /** The shortest pause that answers a card by voice ("yes", "no"): the flag down 0.35 s, about 0.6 s of silence. */
         const val CARD_WINDOW_SAMPLES = 350L * RATE / 1000
+
+        /** Answering a card by voice: never cut sooner than "Wait before answering" would cut a question. */
+        fun cardWindow(pauseMs: Int): Long = maxOf(CARD_WINDOW_SAMPLES, windowFor(pauseMs))
 
         /**
          * The flag's down-window for a chosen pause: the pause itself, not the pause less the VAD's 0.25 s. A pause of

@@ -45,6 +45,56 @@ object Fmt {
         return (if (negative) "-" else "") + w + if (frac.isEmpty()) "" else (if (lang == Lang.FR) "," else ".") + frac
     }
 
+    /**
+     * The everyday set's sums (core sums): [x] rounded half up to at most [decimals] digits after the point, trailing zeros
+     * dropped ("2", not "2.00"); exact, never through a Double.
+     */
+    fun exactShown(x: java.math.BigDecimal, decimals: Int): java.math.BigDecimal {
+        val r = x.setScale(decimals.coerceAtLeast(0), java.math.RoundingMode.HALF_UP).stripTrailingZeros()
+        return if (r.scale() < 0) r.setScale(0) else r
+    }
+
+    /**
+     * [x] as [exactShown] writes it: "1,234.5", "-0.25" / « 1 234,5 », « -0,25 »; aloud a minus is said, "minus 5" / « moins
+     * 5 », and the digits are grouped as on screen.
+     */
+    fun exact(x: java.math.BigDecimal, decimals: Int, lang: Lang, medium: Medium = Medium.SCREEN): String {
+        val r = exactShown(x, decimals)
+        val plain = r.abs().toPlainString()
+        val whole = plain.substringBefore('.')
+        val frac = plain.substringAfter('.', "")
+        val sep = if (lang == Lang.FR) NBSP else ','
+        val grouped = StringBuilder()
+        for ((i, c) in whole.withIndex()) {
+            if (i > 0 && (whole.length - i) % 3 == 0) grouped.append(sep)
+            grouped.append(c)
+        }
+        val n = grouped.toString() + if (frac.isEmpty()) "" else (if (lang == Lang.FR) "," else ".") + frac
+        return when {
+            r.signum() >= 0 -> n
+            medium == Medium.VOICE -> (if (lang == Lang.FR) "moins " else "minus ") + n
+            else -> "-$n"
+        }
+    }
+
+    /**
+     * The everyday set's sums: dollars, [cents], as Canadians write them, "$64.50", "-$3.00" / « 64,50 $ » ([money]'s CAD);
+     * aloud in English "64 dollars 50", "1 dollar", "50 cents", "64 dollars" (how people say a price), and in French
+     * [money]'s own voice, « 64 dollars et 50 ».
+     */
+    fun dollars(cents: Long, lang: Lang, medium: Medium = Medium.SCREEN): String {
+        if (medium != Medium.VOICE) return if (lang == Lang.EN && cents < 0) "-$" + money(-cents, null, lang) else money(cents, "CAD", lang, medium)
+        if (lang == Lang.FR) return money(cents, "CAD", lang, medium)
+        val d = abs(cents) / 100
+        val c = abs(cents) % 100
+        val sign = if (cents < 0) "minus " else ""
+        return sign + when {
+            d == 0L -> int(c, lang) + if (c == 1L) " cent" else " cents"
+            c == 0L -> int(d, lang) + if (d == 1L) " dollar" else " dollars"
+            else -> int(d, lang) + (if (d == 1L) " dollar " else " dollars ") + c
+        }
+    }
+
     /** "30%" / « 30 % »; aloud "30 percent" / « 30 pour cent ». */
     fun percent(p: Int, lang: Lang, medium: Medium = Medium.SCREEN): String = int(p.toLong(), lang) + when {
         medium == Medium.VOICE -> if (lang == Lang.FR) " pour cent" else " percent"

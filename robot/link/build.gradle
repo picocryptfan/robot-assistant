@@ -1,0 +1,243 @@
+// SPDX-License-Identifier: GPL-3.0-only
+plugins {
+    id 'com.android.library'
+    id 'org.jetbrains.kotlin.android'
+}
+android {
+    namespace = 'app.heyrobot.r2r'
+    compileSdk = rootProject.ext.robotCompileSdk
+    buildToolsVersion = rootProject.ext.robotBuildTools
+    defaultConfig { minSdk = rootProject.ext.robotMinSdk }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    // libsignal_jni.so arrives stripped and pinned (libsignalJni, below), libtor.so stripped by Briar's build,
+    // liblyrebird.so stripped by tools/build_lyrebird.sh, both pinned (torBinary, lyrebirdBinary): AGP never strips them again, so the APK's copies are byte for byte the
+    // pinned ones.
+    packaging { jniLibs { keepDebugSymbols += ['**/libsignal_jni.so', '**/libtor.so', '**/liblyrebird.so'] } }
+}
+kotlin { compilerOptions { jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17 } }
+
+// 1.5, Robot to Robot (robot-to-robot-plan.md §5.1, job L2): the module of the :link process, the only one that links
+// libsignal (and, from L3, Tor, the push connector and the carriers). Only the app's link package (app/link/, the :link
+// process) depends on it (ProcessIsolationTest's modulesDependOnlyWhereAllowed and linkStaysInItsProcess). No network
+// code in L2; L3 adds the carriers. Its classes are in app.heyrobot.r2r.
+//
+// libsignal 0.105.2 (AGPL-3.0-only, Signal Messenger), from the local repository settings.gradle names for org.signal, each
+// file pinned in third_party/libsignal-0.105.2.sha256 and in gradle/verification-metadata.xml:
+//   - libsignal-client's jar gives the classes (720 of them). Not transitive: its POM asks for kotlin-stdlib 2.2.20,
+//     kotlinx-coroutines-core 1.10.2 and kotlinx-serialization-json 1.9.0. Robot already packs kotlin-stdlib 2.4.21 and
+//     coroutines 1.11.0 (which would win anyway), and no libsignal class names kotlinx.serialization (R0's jar, scanned in
+//     L2), so the APK gains no serialization 1.9.0 and the build stays offline. The jar also carries 648 MB of desktop
+//     libraries: app/build.gradle keeps every one out of the APK, verify_apk.sh checks it.
+//   - libsignal-android's AAR is never on a classpath (AGP would merge its unstripped libraries, its testing library and
+//     three more ABIs). libsignalJni takes three things out of it: the arm64 libsignal_jni.so, stripped with the pinned NDK
+//     and checked against its pin; its classes.jar (14 KB: the TLS verifier class libsignal's Android start-up looks up,
+//     and a logger Robot never installs); and its acknowledgments, the notices of what the library links, for Settings ›
+//     About › Licences. Never libsignal_jni_testing.so, never libsignal-testing.md.
+//   - The JVM tests run two Robots in one JVM on the desktop library (R0 §3): libsignalTestNatives makes a copy of the
+//     client jar without any native library and puts its amd64 library on java.library.path as libsignal_jni.so, so the
+//     loader finds no testing library and copies nothing to /tmp (in memory on this PC).
+def libsignalVersion = '0.105.2'
+def ndkVersionPinned = '27.1.12297006'
+configurations {
+    libsignalAar { transitive = false; canBeConsumed = false }
+    libsignalDesktop { transitive = false; canBeConsumed = false }
+    torAndroid { transitive = false; canBeConsumed = false }
+}
+
+// 1.5, Robot to Robot's carriers (robot-to-robot-r0.md §4 and §5, R0 §9 items 9 to 12; job L3), from the local repository
+// settings.gradle names for exactly these modules, each file pinned in third_party/link-carriers.sha256 and in
+// gradle/verification-metadata.xml (LinkCarrierPinsTest):
+//   - tor-android 0.4.9.14 (Briar's build of Tor, BSD-3-Clause) is never on a classpath: torBinary takes its arm64
+//     executable, libtor.so, out of the jar and checks it against its pin. :link starts it as a child process with Robot's
+//     own torrc and controller (TorProcess, TorControl), never Briar's onionwrapper: onionwrapper 0.1.7 can't add client
+//     authorization or a unix: target and opens TCP ports other apps can reach (R0 §4.2). Its start-up sequence is adapted
+//     in TorProcess with its notice (GPL-3.0, as Robot). Robot speaks the control protocol itself: jtorctl 0.5 can't build
+//     the commands client authorization needs, so it isn't taken.
+//   - The UnifiedPush connector 3.3.5 (Apache-2.0): registering with your distributor app, the receiver's RFC 8291
+//     decryption and, in its copy of Tink's fixed_webpush, the sender's encryption. Not transitive: its one run-time
+//     dependency besides kotlin-stdlib (Robot's 2.4.21 wins) is Tink 1.23.0, which it uses through 11 classes (EC keys,
+//     HKDF, random bytes) that need nothing else: Tink comes on its own, without protobuf-java (R0 §5.5 counted Tink and
+//     protobuf at 1.37 MB of dex; without protobuf, Tink's share is about 0.74 MB).
+def torVersion = '0.4.9.14'
+// L-bridges: the Tor Project's lyrebird, built from source by tools/build_lyrebird.sh (reproducible, so the pin holds on any
+// machine) into third_party/lyrebird/, git-ignored. lyrebirdBinary checks it against its pin. Tor starts it
+// (ClientTransportPlugin) only while a bridge that needs it is in use.
+
+// One arm64 executable out of a pinned jar (Tor's libtor.so; L-bridges: lyrebird's liblyrebird.so), checked against its
+// line in third_party/link-carriers.sha256, never stripped or changed.
+abstract class TorBinary extends DefaultTask {
+    @InputFiles @PathSensitive(PathSensitivity.NAME_ONLY) abstract ConfigurableFileCollection getJar()
+    @InputFile @PathSensitive(PathSensitivity.NONE) abstract RegularFileProperty getPins()
+    @Input abstract Property<String> getLibName()
+    @OutputDirectory abstract DirectoryProperty getJniDir()
+
+    @TaskAction void run() {
+        def name = libName.get()
+        if (!(name ==~ /lib[a-z]+\.so/)) throw new GradleException("not a library name: $name")
+        def pin = pins.get().asFile.readLines().find { it ==~ /[0-9a-f]{64}  lib\/arm64-v8a\/${java.util.regex.Pattern.quote(name)}/ }
+        if (pin == null) throw new GradleException("no $name line in ${pins.get().asFile}")
+        def want = pin.substring(0, 64)
+        def jni = new File(jniDir.get().asFile, 'arm64-v8a')
+        jniDir.get().asFile.deleteDir(); jni.mkdirs()
+        def out = new File(jni, name)
+        new java.util.zip.ZipFile(jar.singleFile).withCloseable { zip ->
+            def e = zip.getEntry("arm64-v8a/$name")
+            if (e == null) throw new GradleException("${jar.singleFile.name} has no arm64-v8a/$name")
+            out.withOutputStream { o -> o << zip.getInputStream(e) }
+        }
+        def got = java.security.MessageDigest.getInstance('SHA-256').digest(out.bytes).encodeHex().toString()
+        if (got != want) {
+            out.delete()
+            throw new GradleException("$name is $got, not the pinned $want (third_party/link-carriers.sha256)")
+        }
+    }
+}
+
+abstract class LyrebirdBinary extends DefaultTask {
+    @InputFiles @PathSensitive(PathSensitivity.NAME_ONLY) abstract ConfigurableFileCollection getBuilt()
+    @InputFile @PathSensitive(PathSensitivity.NONE) abstract RegularFileProperty getPins()
+    @OutputDirectory abstract DirectoryProperty getJniDir()
+
+    @TaskAction void run() {
+        def from = built.singleFile
+        if (!from.isFile()) throw new GradleException("no $from: run tools/build_lyrebird.sh (robot/README.md, \"Getting Tor and the push connector\")")
+        def pin = pins.get().asFile.readLines().find { it ==~ /[0-9a-f]{64}  lib\/arm64-v8a\/liblyrebird\.so/ }
+        if (pin == null) throw new GradleException("no liblyrebird.so line in ${pins.get().asFile}")
+        def got = java.security.MessageDigest.getInstance('SHA-256').digest(from.bytes).encodeHex().toString()
+        if (got != pin.substring(0, 64)) throw new GradleException("$from is $got, not the pinned ${pin.substring(0, 64)}: run tools/build_lyrebird.sh")
+        def jni = new File(jniDir.get().asFile, 'arm64-v8a')
+        jniDir.get().asFile.deleteDir(); jni.mkdirs()
+        new File(jni, 'liblyrebird.so').bytes = from.bytes
+    }
+}
+
+abstract class LibsignalJni extends DefaultTask {
+    @InputFiles @PathSensitive(PathSensitivity.NAME_ONLY) abstract ConfigurableFileCollection getAar()
+    @InputFile @PathSensitive(PathSensitivity.NONE) abstract RegularFileProperty getPins()
+    @Input abstract Property<String> getStrip()
+    @OutputDirectory abstract DirectoryProperty getJniDir()
+    @OutputDirectory abstract DirectoryProperty getAssetsDir()
+    @OutputFile abstract RegularFileProperty getClassesJar()
+
+    @TaskAction void run() {
+        def pin = pins.get().asFile.readLines().find { it ==~ /[0-9a-f]{64}  lib\/arm64-v8a\/libsignal_jni\.so/ }
+        if (pin == null) throw new GradleException("no libsignal_jni.so line in ${pins.get().asFile}")
+        def want = pin.substring(0, 64)
+        def stripTool = new File(strip.get())
+        if (!stripTool.canExecute()) throw new GradleException("libsignal_jni.so is stripped with NDK 27.1.12297006's llvm-strip, not found at $stripTool (sdkmanager 'ndk;27.1.12297006')")
+        def jni = new File(jniDir.get().asFile, 'arm64-v8a')
+        jniDir.get().asFile.deleteDir(); jni.mkdirs()
+        def notices = new File(assetsDir.get().asFile, 'licenses/notices')
+        assetsDir.get().asFile.deleteDir(); notices.mkdirs()
+        def raw = new File(temporaryDir, 'libsignal_jni.unstripped.so')
+        def out = new File(jni, 'libsignal_jni.so')
+        new java.util.zip.ZipFile(aar.singleFile).withCloseable { zip ->
+            def take = { String entry, File to ->
+                def e = zip.getEntry(entry)
+                if (e == null) throw new GradleException("${aar.singleFile.name} has no $entry")
+                to.withOutputStream { o -> o << zip.getInputStream(e) }
+            }
+            take('jni/arm64-v8a/libsignal_jni.so', raw)
+            take('classes.jar', classesJar.get().asFile)
+            take('assets/acknowledgments/libsignal.md', new File(notices, 'libsignal-acknowledgments.md'))
+        }
+        def proc = new ProcessBuilder(stripTool.absolutePath, '--strip-unneeded', '-o', out.absolutePath, raw.absolutePath).redirectErrorStream(true).start()
+        def said = proc.inputStream.text
+        if (proc.waitFor() != 0) throw new GradleException("llvm-strip failed: $said")
+        raw.delete()
+        def got = java.security.MessageDigest.getInstance('SHA-256').digest(out.bytes).encodeHex().toString()
+        if (got != want) {
+            out.delete()
+            throw new GradleException("stripped libsignal_jni.so is $got, not the pinned $want (third_party/libsignal-0.105.2.sha256)")
+        }
+    }
+}
+
+abstract class LibsignalTestNatives extends DefaultTask {
+    @InputFiles @PathSensitive(PathSensitivity.NAME_ONLY) abstract ConfigurableFileCollection getJar()
+    @OutputFile abstract RegularFileProperty getClassesJar()
+    @OutputDirectory abstract DirectoryProperty getLibDir()
+
+    @TaskAction void run() {
+        libDir.get().asFile.deleteDir(); libDir.get().asFile.mkdirs()
+        def lib = new File(libDir.get().asFile, 'libsignal_jni.so')
+        def natives = ~/.*\.(so|dylib|dll)$/
+        new java.util.zip.ZipFile(jar.singleFile).withCloseable { zip ->
+            def found = false
+            classesJar.get().asFile.withOutputStream { os ->
+                def zo = new java.util.zip.ZipOutputStream(os)
+                zip.entries().each { e ->
+                    if (e.name ==~ natives) {
+                        if (e.name == 'libsignal_jni_amd64.so') { lib.withOutputStream { o -> o << zip.getInputStream(e) }; found = true }
+                        return
+                    }
+                    def ne = new java.util.zip.ZipEntry(e.name)
+                    ne.time = 0L
+                    zo.putNextEntry(ne)
+                    if (!e.directory) zo << zip.getInputStream(e)
+                    zo.closeEntry()
+                }
+                zo.finish()
+            }
+            if (!found) throw new GradleException("${jar.singleFile.name} has no libsignal_jni_amd64.so")
+        }
+    }
+}
+
+def libsignalJni = tasks.register('libsignalJni', LibsignalJni) {
+    aar.from(configurations.libsignalAar)
+    pins = rootProject.file("third_party/libsignal-${libsignalVersion}.sha256")
+    def prebuilt = new File(androidComponents.sdkComponents.sdkDirectory.get().asFile, "ndk/$ndkVersionPinned/toolchains/llvm/prebuilt")
+    strip = (prebuilt.listFiles()?.find { it.isDirectory() }?.with { new File(it, 'bin/llvm-strip') } ?: new File(prebuilt, 'missing/bin/llvm-strip')).absolutePath
+    jniDir = layout.buildDirectory.dir('generated/libsignal/jniLibs')
+    assetsDir = layout.buildDirectory.dir('generated/libsignal/assets')
+    classesJar = layout.buildDirectory.file('generated/libsignal/libsignal-android-classes.jar')
+}
+def libsignalTestNatives = tasks.register('libsignalTestNatives', LibsignalTestNatives) {
+    jar.from(configurations.libsignalDesktop)
+    classesJar = layout.buildDirectory.file('libsignal-test/libsignal-client-classes.jar')
+    libDir = layout.buildDirectory.dir('libsignal-test/lib')
+}
+def torBinary = tasks.register('torBinary', TorBinary) {
+    jar.from(configurations.torAndroid)
+    pins = rootProject.file('third_party/link-carriers.sha256')
+    libName = 'libtor.so'
+    jniDir = layout.buildDirectory.dir('generated/tor/jniLibs')
+}
+def lyrebirdBinary = tasks.register('lyrebirdBinary', LyrebirdBinary) {
+    built.from(rootProject.file('third_party/lyrebird/liblyrebird.so'))
+    pins = rootProject.file('third_party/link-carriers.sha256')
+    jniDir = layout.buildDirectory.dir('generated/lyrebird/jniLibs')
+}
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        variant.sources.jniLibs?.addGeneratedSourceDirectory(libsignalJni, { it.jniDir })
+        variant.sources.jniLibs?.addGeneratedSourceDirectory(torBinary, { it.jniDir })
+        variant.sources.jniLibs?.addGeneratedSourceDirectory(lyrebirdBinary, { it.jniDir })
+        variant.sources.assets?.addGeneratedSourceDirectory(libsignalJni, { it.assetsDir })
+    }
+}
+
+// The unit tests load libsignal's classes from the copy without natives and the amd64 library from java.library.path.
+configurations.configureEach { c ->
+    if (c.name.endsWith('UnitTestRuntimeClasspath')) c.exclude(group: 'org.signal', module: 'libsignal-client')
+}
+tasks.withType(Test).configureEach { t ->
+    t.dependsOn libsignalTestNatives
+    t.systemProperty 'java.library.path', libsignalTestNatives.get().libDir.get().asFile.absolutePath
+}
+
+dependencies {
+    implementation project(':core')
+    implementation("org.signal:libsignal-client:$libsignalVersion") { transitive = false }
+    implementation files(libsignalJni.flatMap { it.classesJar })
+    libsignalAar "org.signal:libsignal-android:$libsignalVersion@aar"
+    libsignalDesktop "org.signal:libsignal-client:$libsignalVersion"
+    implementation('org.unifiedpush.android:connector:3.3.5') { transitive = false }
+    implementation('com.google.crypto.tink:tink:1.23.0') { transitive = false }
+    torAndroid "org.briarproject:tor-android:$torVersion"
+    testImplementation 'junit:junit:4.13.2'
+    // Real org.json for JVM tests (L12: core LinkBackupCodec, here through the harness); the same version as core's and the app's.
+    testImplementation 'org.json:json:20180813'
+    testRuntimeOnly files(libsignalTestNatives.flatMap { it.classesJar })
+}

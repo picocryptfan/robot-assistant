@@ -53,7 +53,7 @@ object FileParseIpc {
 }
 
 enum class ParseOp(val code: Int) {
-    /** For filing: the type, page count, a PDF's text layer or a text file's text, page JPEGs for :brain, a thumbnail, the date taken. */
+    /** For filing: the type, page count, a PDF's text layer or a text file's text, page JPEGs when asked, a thumbnail, the date taken. */
     READ(1),
     /** For showing (D19): raw pixels of an image or a PDF page, so no decoder runs outside :files. */
     PIXELS(2),
@@ -62,7 +62,12 @@ enum class ParseOp(val code: Int) {
     /** Scanning: the camera's photo straightened from four corners to a page JPEG. */
     STRAIGHTEN(4),
     /** Scanning: page JPEGs (STRAIGHTEN's) into one PDF. */
-    SCAN_PDF(5);
+    SCAN_PDF(5),
+    /**
+     * 1.5, Robot to Robot (robot-to-robot-plan.md §2.3, §5.1, D21; job L4): a photo's QR code, as another Robot shows its
+     * pairing code in person: its text (printable ASCII, at most ParseLimits.QR_TEXT bytes) in the reply, nothing else.
+     */
+    QR(6);
 
     companion object {
         fun of(code: Int): ParseOp? = entries.firstOrNull { it.code == code }
@@ -87,7 +92,9 @@ enum class ParseStatus(val code: Int) {
     ENCRYPTED(7),
     BAD_REQUEST(9),
     /** An output would pass its cap. */
-    OUTPUT_TOO_LARGE(10);
+    OUTPUT_TOO_LARGE(10),
+    /** QR: no code Robot writes could be read in the photo. */
+    NO_CODE(11);
 
     companion object {
         fun of(code: Int): ParseStatus? = entries.firstOrNull { it.code == code }
@@ -96,7 +103,7 @@ enum class ParseStatus(val code: Int) {
 
 /** A reply's outputs, by kind; each kind's caps are checked where the frame is read and again on the copied bytes. */
 enum class BlobKind(val code: Int) {
-    /** A page's JPEG for :brain (READ): at most [ParseLimits.READ_PAGES], 1,024 px, F4's 4 MiB. */
+    /** A page's JPEG (READ, when asked): at most [ParseLimits.READ_PAGES], 1,024 px, F4's 4 MiB. Never for :brain (F16): filing doesn't ask for it. */
     PAGE(1),
     /** The thumbnail JPEG (READ): 320 px, 64 KiB. */
     THUMB(2),
@@ -300,6 +307,8 @@ object FileParseWire {
     /** What each op may answer: a refusal carries nothing; an answer only the outputs its request asked for, within caps. */
     private fun fits(r: ParseReply, req: ParseRequest): Boolean {
         if (r.status != ParseStatus.OK) return r.blobs.isEmpty() && r.text == null && r.flags == 0 && r.date == 0
+        // QR: the code's text and nothing else; printable ASCII (what a pairing code is), within its cap.
+        if (req.op == ParseOp.QR) return r.blobs.isEmpty() && r.flags == ParseReply.HAS_TEXT && r.date == 0 && r.text != null && qrTextOk(r.text)
         if (r.text != null && (req.op != ParseOp.READ || !req.has(ParseRequest.TEXT) || !r.has(ParseReply.HAS_TEXT))) return false
         if (r.date != 0 && (req.op != ParseOp.READ || !req.has(ParseRequest.DATE))) return false
         val kinds = r.blobs.map { it.kind }
@@ -314,6 +323,7 @@ object FileParseWire {
             ParseOp.STRIP -> kinds == listOf(BlobKind.COPY)
             ParseOp.STRAIGHTEN -> kinds == listOf(BlobKind.SCAN)
             ParseOp.SCAN_PDF -> kinds == listOf(BlobKind.PDF)
+            ParseOp.QR -> false
         }
         if (!ok) return false
         var at = 0L
@@ -351,7 +361,7 @@ object FileParseWire {
 
     /**
      * A blob's bytes, as copied out of the region, are what the frame says: a JPEG (or a COPY's PNG) whose own header is
-     * the blob's size, a PDF that starts as one, pixels of exactly width × height × 4 bytes.
+     * the blob's size (a COPY with no metadata either), a PDF that starts as one, pixels of exactly width × height × 4 bytes.
      */
     fun checkBlob(x: ParseBlob, bytes: ByteArray): Boolean {
         if (bytes.size != x.length) return false
@@ -359,14 +369,18 @@ object FileParseWire {
         return when (x.kind) {
             BlobKind.PAGE, BlobKind.THUMB, BlobKind.SCAN -> FileSniff.sniff(bytes, bytes.size.toLong()) == FileType.JPEG && ImageHeader.jpeg(ByteBuffer.wrap(bytes)) == d
             BlobKind.COPY -> when (FileSniff.sniff(bytes, bytes.size.toLong())) {
-                FileType.JPEG -> ImageHeader.jpeg(ByteBuffer.wrap(bytes)) == d
-                FileType.PNG -> ImageHeader.png(ByteBuffer.wrap(bytes)) == d
+                // F17: :files may be compromised, so what it calls stripped is read here too.
+                FileType.JPEG -> ImageHeader.jpeg(ByteBuffer.wrap(bytes)) == d && ImageHeader.jpegClean(bytes)
+                FileType.PNG -> ImageHeader.png(ByteBuffer.wrap(bytes)) == d && ImageHeader.pngClean(bytes)
                 else -> false
             }
             BlobKind.PDF -> FileSniff.sniff(bytes, bytes.size.toLong()) == FileType.PDF
             BlobKind.PIXELS -> bytes.size.toLong() == d.pixels * 4
         }
     }
+
+    /** A QR code's text as :files may answer it: 1 to ParseLimits.QR_TEXT characters, each printable ASCII. */
+    fun qrTextOk(t: String): Boolean = t.length in 1..ParseLimits.QR_TEXT && t.all { it in ' '..'~' }
 
     /** Strict UTF-8 (no malformed or cut sequence), or null. */
     fun utf8(bytes: ByteArray): String? = try {

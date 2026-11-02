@@ -16,6 +16,8 @@ import java.util.regex.Pattern
  * forbids in any French value (the app's values-fr-rCA and core's catalogs; brand names left out), tutoiement everywhere,
  * and « Réglages › » only before a Robot screen's title (core UiStrings), never Android's « Paramètres » pages.
  */
+private val PERSONS_ROBOT = Regex("""(?<![\p{L}\p{N}])(le|du|au) Robot de (\{[a-z_]+\}|%\d\${'$'}s)""")
+
 class GlossaryTest {
     /** Every French text: (where, text). */
     private val french: List<Pair<String, String>> by lazy {
@@ -41,10 +43,18 @@ class GlossaryTest {
         val rules = L10nFiles.glossary.filter { it.check == "word" || it.check == "case" }.flatMap { t -> t.never.map { v -> t to word(v, t.check == "word") } }
         val problems = mutableListOf<String>()
         for ((where, text) in french) {
-            val t = L10nFiles.withoutBrands(text.replace('’', '\''), keep = setOf("Robot"))
+            val t = L10nFiles.withoutBrands(text.replace('’', '\''), keep = setOf("Robot")).replace(PERSONS_ROBOT, "")
             for ((term, rx) in rules) rx.find(t)?.let { problems += "$where: « ${it.value} » (${term.english}: « ${term.french} »)" }
         }
         assertEquals(problems.joinToString("\n"), 0, problems.size)
+    }
+
+    /** L13: another person's Robot, their name right after, is the one place Robot takes an article (the glossary's "someone's Robot"). */
+    @Test fun aPersonsRobotTakesItsArticleAndNothingElseDoes() {
+        val rx = word("le Robot", false)
+        val cut = { s: String -> L10nFiles.withoutBrands(s, keep = setOf("Robot")).replace(PERSONS_ROBOT, "") }
+        for (s in listOf("Compare avec le Robot de {name}.", "Vérifie que le Robot de %1\$s répond.")) assertTrue(s, !rx.containsMatchIn(cut(s)))
+        for (s in listOf("Demande à le Robot.", "Pas le Robot de Sam.", "Pas le Robot qui répond.")) assertTrue(s, rx.containsMatchIn(cut(s)))
     }
 
     /** The "le Robot" rule used to be unable to fail: the brand names, Robot among them, were cut out before it looked. */
@@ -55,6 +65,22 @@ class GlossaryTest {
         assertTrue(rx.containsMatchIn(L10nFiles.withoutBrands("Demande au téléphone, pas le Robot.", keep = setOf("Robot"))))
         assertTrue(!rx.containsMatchIn(L10nFiles.withoutBrands("Demande au téléphone, pas le Robot.")))
         assertTrue(!rx.containsMatchIn(L10nFiles.withoutBrands("Robot répond. Notes de Robot.", keep = setOf("Robot"))))
+    }
+
+    /** E8: the car screen said « Paramètres › Messages » for Robot's own page; the path rule below only reads « Réglages › ». */
+    @Test fun parametresNeverNamesARobotScreen() {
+        val android = listOf("Application", "Notifications", "À propos", "Système", "Sécurité", "Son", "Accessibilité", "Connexions", "Réseau", "Stockage", "Silence")
+        val titles = UiStrings.all.map { Phrase.M(it).render(app.heyrobot.core.i18n.Langs.of(Lang.FR)) }
+        val problems = mutableListOf<String>()
+        for ((where, text) in french) {
+            var at = text.indexOf("Paramètres › ")
+            while (at >= 0) {
+                val rest = text.substring(at + "Paramètres › ".length).replace('\'', '’')
+                if (android.none { rest.startsWith(it) } && titles.any { rest.startsWith(it) }) problems += "$where: « ${text.substring(at).take(40)} » is a Robot screen: « Réglages › »"
+                at = text.indexOf("Paramètres › ", at + 1)
+            }
+        }
+        assertEquals(problems.joinToString("\n"), 0, problems.size)
     }
 
     @Test fun reglagesNamesARobotScreen() {

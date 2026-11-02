@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.assistant
 
+import app.heyrobot.core.memory.MemoryChoice
+import app.heyrobot.core.helpers.QuestionKind
+import app.heyrobot.core.helpers.HelperChoice
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import app.heyrobot.core.Attachment
@@ -108,9 +111,254 @@ class PanelEscalationTest {
             fallBack: Boolean): Boolean {
             assertEquals(asks.id, h.id)
             asked += Asked(replyId, blocks, reuseBubble, fallBack)
+            replyId?.let { replies.setText(it, "The helper's answer.") }
             return fellBack
         }
+        override suspend fun rememberedChoice(kind: QuestionKind) = remembered[kind]
+        override suspend fun askChoice(replyId: String, h: HelperConfig): HelperChoice.Picked? {
+            cardsFor += h.id
+            return picked
+        }
+        override suspend fun handOff(replyId: String, question: String, h: HelperConfig) { calls += "app ${h.id} $question" }
+        override fun keepOffer(replyId: String, k: KeepChoice) { keeps += k }
     })
+    private val remembered = HashMap<QuestionKind, MemoryChoice>()
+    private var picked: HelperChoice.Picked? = null
+    private val cardsFor = mutableListOf<String>()
+    private val keeps = mutableListOf<KeepChoice>()
+    private val hard = "explain why the sky is blue step by step"
+    private val manyParts = "how does a heat pump work and why is it cold outside and when should I change the filter"
+    private fun before(q: String = hard, s: RobotSettings = settings, guard: EscalationGuard = EscalationGuard(), target: HelperConfig? = server, attachment: Attachment = Attachment.NONE) =
+        runBlocking { this@PanelEscalationTest.settings = s; escalation.beforeModel("r1", q, chat.toList(), attachment, false, guard, s, target, false, false) }
+    private val askFirst get() = settings.copy(help = Escalation.ASK)
+
+    // ---- "Try it here or ask your helper"
+
+    @Test fun beyondRobot_itSaysSoAndOffers_withoutSendingAWord() {
+        val b = before(s = askFirst)
+        assertEquals(listOf(server.id), cardsFor)
+        assertEquals(0, asked.size)
+        // Silence: Robot tries, the offer stays under its answer.
+        assertEquals(EscalationTrigger.PRE_ROUTER, b!!.offerAfter)
+        assertEquals(true, b.hold)
+    }
+
+    /** phone-rc3-2: these three, typed, a server with no key, Ask first. The same with a spoken question. */
+    @Test fun thePhonesQuestions_goToTheCardBeforeRobotsModel_typedOrSpoken() {
+        settings = askFirst
+        for (q in listOf(hard, "compare the pros and cons of a heat pump and a furnace", "write me a cover letter for a barista job")) for (spoken in listOf(false, true)) {
+            cardsFor.clear()
+            assertNull(q, app.heyrobot.core.HelperRouter.route(q, app.heyrobot.core.HelperName.all(askFirst)))
+            assertFalse(app.heyrobot.core.FastPath.of(null, false, Attachment.NONE) == app.heyrobot.core.FastPath.Way.HELPER)
+            val b = runBlocking { escalation.beforeModel("r1", q, chat.toList(), Attachment.NONE, spoken, EscalationGuard(), askFirst, server, false, false) }
+            assertEquals(q, listOf(server.id), cardsFor)
+            assertEquals(q, 0, asked.size)
+            // What the phone showed: an offer under an answer that didn't hedge. Only a card nobody answered leaves one here.
+            assertEquals(q, EscalationTrigger.PRE_ROUTER, b!!.offerAfter)
+            assertEquals(q, true, b.hold)
+        }
+    }
+
+    @Test fun aQuestionWithoutASignal_noCardAndNoOfferBeforeRobotsAnswer() {
+        val b = before(q = "what's the capital of France", s = askFirst)
+        assertEquals(emptyList<String>(), cardsFor)
+        assertNull(b!!.offerAfter)
+    }
+
+    private fun after(b: PanelEscalation.Before, trigger: EscalationTrigger = b.offerAfter!!) = runBlocking {
+        escalation.afterLocal("r1", hard, emptyList(), Attachment.NONE, null, null, false, EscalationGuard(), trigger, offerOnly = !b.hold, needsSearch = b.needsSearch,
+            helper = b.helper, hold = b.hold)
+    }
+
+    @Test fun nobodyAnsweredTheCard_theOfferUnderRobotsAnswerStillSaysItWasALot() {
+        val b = before(s = askFirst)!!
+        replied("Sunlight scatters.")
+        after(b)
+        assertTrue(offered.single().beyond)
+        assertEquals(0, asked.size)
+    }
+
+    @Test fun nobodyAnsweredTheCard_theModelHandedOver_itStillSaysSo() {
+        val b = before(s = askFirst)!!
+        after(b, EscalationTrigger.LOCAL_TOOL)
+        assertTrue(offered.single().beyond)
+    }
+
+    @Test fun aHedge_onAnotherQuestion_doesntSayItWasALot() {
+        before(s = askFirst)
+        val b = before(q = "what's the capital of France", s = askFirst)!!
+        replied("I'm not sure.")
+        after(b, EscalationTrigger.HEDGE)
+        assertFalse(offered.single().beyond)
+    }
+
+    @Test fun manyParts_seenWithoutTheModel_asksEvenUnderAutomatic_neverSendsItself() {
+        val b = before(q = manyParts)
+        assertEquals(listOf(server.id), cardsFor)
+        assertEquals(0, asked.size)
+        assertEquals(true, b!!.hold)
+    }
+
+    @Test fun pickingTheHelper_sendsOnlyTheQuestion_thenOffersToRemember() {
+        personal()
+        picked = HelperChoice.Picked.HELPER
+        assertNull(before(s = askFirst))
+        assertEquals(listOf(hard), texts(asked.single().blocks).drop(1).ifEmpty { texts(asked.single().blocks) })
+        assertFalse(texts(asked.single().blocks).any { "4471" in it })
+        assertEquals(false, keeps.single().robot)
+        assertEquals(QuestionKind.THINKING, keeps.single().kind)
+        assertEquals(server.id, keeps.single().helper)
+        // F22: the conversation now holds a helper's words, so only a tap saves the route.
+        assertTrue(keeps.single().tapOnly)
+    }
+
+    @Test fun pickingHere_runsTheModel_noOffer_andOffersToRemember() {
+        picked = HelperChoice.Picked.HERE
+        val b = before(s = askFirst)!!
+        assertNull(b.offerAfter)
+        assertEquals(true, b.hold)
+        assertEquals(true, b.keep!!.robot)
+        assertEquals(0, asked.size)
+    }
+
+    @Test fun whenRobotCantAnswerOff_meansNoOfferNoLineNoRoute() {
+        val off = settings.copy(help = Escalation.OFF)
+        remembered[QuestionKind.THINKING] = MemoryChoice("THINKING", false)
+        val b = before(s = off)!!
+        assertEquals(0, cardsFor.size + asked.size + calls.size)
+        assertNull(b.offerAfter)
+        assertEquals(0, before(q = manyParts, s = off.copy(helpers = emptyList()), target = null).let { calls.size + cardsFor.size })
+    }
+
+    @Test fun noHelperSetUp_saysSoOnce_andTries() {
+        val none = settings.copy(helpers = emptyList())
+        assertNull(before(s = none, target = null)!!.offerAfter)
+        before(s = none, target = null)
+        assertEquals(1, calls.count { it.startsWith("notice ") && "no helper" in it })
+        assertEquals(0, cardsFor.size)
+        escalation.newConversation()
+        before(s = none, target = null)
+        assertEquals(2, calls.size)
+    }
+
+    @Test fun aHelperOnButNotReady_isntCalledNoHelper() {
+        before(s = settings.copy(helpers = listOf(server.copy(enabled = true))), target = null)
+        assertEquals(0, calls.size)
+    }
+
+    @Test fun anythingThatActsNeverGetsTheChoiceNorARoute() {
+        remembered[QuestionKind.THINKING] = MemoryChoice("THINKING", false)
+        remembered[QuestionKind.WRITING] = MemoryChoice("WRITING", false)
+        for (q in listOf("text Sam why I am late and explain step by step", "call mum and compare the plans", "write a message to Sam")) {
+            before(q = q, s = askFirst)
+            assertEquals(q, 0, cardsFor.size + asked.size)
+        }
+    }
+
+    // ---- remembered
+
+    @Test fun rememberedHelper_goesAsAutomaticWould_withoutAsking() {
+        remembered[QuestionKind.THINKING] = MemoryChoice("THINKING", false)
+        assertNull(before(s = askFirst))
+        assertEquals(1, asked.size)
+        assertEquals(0, cardsFor.size)
+    }
+
+    @Test fun rememberedHelper_refusedStaysRefused() {
+        remembered[QuestionKind.THINKING] = MemoryChoice("THINKING", false)
+        // Locked, and the helper isn't allowed there.
+        locked = true
+        val b = before(s = askFirst)!!
+        assertEquals(0, asked.size + cardsFor.size)
+        assertNull(b.offerAfter)
+        locked = false
+        // A screen goes on a tap only.
+        before(s = askFirst, attachment = Attachment.SCREEN)
+        assertEquals(0, asked.size)
+        // "Not Jarvis" holds.
+        declined = true
+        before(s = askFirst)
+        assertEquals(0, asked.size)
+        declined = false
+        // Personal: as under Automatic, the question goes and what's personal stays here.
+        personal()
+        assertNull(before(s = askFirst))
+        assertFalse(texts(asked.single().blocks).any { "4471" in it })
+        asked.clear()
+        chat.clear()
+        // Once a turn.
+        before(s = askFirst, guard = EscalationGuard().also { it.take(fromHelper = false) })
+        assertEquals(0, asked.size)
+        // The budget.
+        budget = true
+        assertEquals(EscalationTrigger.PRE_ROUTER, before(s = askFirst)!!.offerAfter)
+        assertEquals(0, asked.size)
+    }
+
+    @Test fun rememberedRobot_holdsEvenUnderAutomatic_andAHedgeIsOnlyOffered() {
+        remembered[QuestionKind.THINKING] = MemoryChoice("THINKING", true)
+        val guard = EscalationGuard()
+        val b = before(guard = guard)!!
+        assertEquals(0, asked.size + cardsFor.size)
+        assertEquals(true, b.hold)
+        assertNull(b.offerAfter)
+        replied("I don't know.")
+        runBlocking { escalation.afterLocal("r1", hard, chat.toList(), Attachment.NONE, null, null, false, guard, EscalationTrigger.HEDGE, hold = b.hold) }
+        assertEquals(0, asked.size)
+        assertEquals(1, offered.size)
+    }
+
+    @Test fun aRememberedHelperThatIsOff_followsAskFirst_nothingGoesByItself() {
+        val other = HelperConfig("h3", "home", "Other", "m", enabled = false)
+        remembered[QuestionKind.THINKING] = MemoryChoice("THINKING", false, other.id)
+        // Ask first: the card, as with no route, for the usual helper.
+        before(s = askFirst.copy(helpers = listOf(server, other)))
+        assertEquals(listOf(server.id), cardsFor)
+        assertEquals(0, asked.size)
+        // Removed, the same.
+        remembered[QuestionKind.THINKING] = MemoryChoice("THINKING", false, "gone")
+        cardsFor.clear()
+        before(s = askFirst)
+        assertEquals(listOf(server.id), cardsFor)
+        assertEquals(0, asked.size)
+        // Automatic: as any question there, with the last turns as the policy says, and no route's words.
+        assertNull(before(s = settings.copy(help = Escalation.AUTO, helpers = listOf(server, other))))
+        assertEquals(1, asked.size)
+    }
+
+    private val sql = "How do I add a column in SQL?"
+
+    @Test fun aRouteToRobot_holdsAQuestionWithAnActionWord() {
+        assertNull(HelperChoice.kindOf(sql))
+        remembered[QuestionKind.CODE] = MemoryChoice("CODE", true)
+        val b = before(q = sql)!!
+        assertEquals(0, asked.size + cardsFor.size)
+        assertTrue(b.hold)
+    }
+
+    @Test fun aRouteToAHelper_namesWhoAnActionWordQuestionGoesTo_andAskFirstStillAsks() {
+        val home = HelperConfig("h3", "home", "Home", "m")
+        val both = settings.copy(helpers = listOf(server, home))
+        remembered[QuestionKind.CODE] = MemoryChoice("CODE", false, home.id)
+        // Ask first: an offer for a tap, never sent by itself on the strength of the route.
+        val b = before(q = sql, s = both.copy(help = Escalation.ASK))!!
+        assertEquals(0, asked.size)
+        assertEquals(home.id, b.helper?.id)
+        assertEquals(EscalationTrigger.PRE_ROUTER, b.offerAfter)
+        // Automatic: to the helper you named, not the usual one.
+        asks = home
+        assertNull(before(q = sql, s = both.copy(help = Escalation.AUTO)))
+        assertEquals(1, asked.size)
+    }
+
+    @Test fun aSavedRoute_sendsOnlyYourQuestion() {
+        chat += ChatTurn("u0", TurnRole.USER, "my dentist is Dr. Lee", 1L)
+        chat += ChatTurn("a0", TurnRole.ASSISTANT, "Good to know.", 2L)
+        remembered[QuestionKind.THINKING] = MemoryChoice("THINKING", false)
+        assertNull(before())
+        assertFalse(texts(asked.single().blocks).toString(), texts(asked.single().blocks).any { "Dr. Lee" in it })
+        assertTrue(texts(asked.single().blocks).any { it == hard })
+    }
 
     private val words = HelperWords(HelperWho.of(server))
     private val savedSettingsFor = MemoryPanel.settingsFor

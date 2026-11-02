@@ -5,6 +5,8 @@ import android.app.Activity
 import android.content.ClipData
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.ImageDecoder
 import android.os.Bundle
 import android.provider.MediaStore
@@ -33,11 +35,28 @@ object Images {
         return Bitmap.createScaledBitmap(b, (b.width * f).roundToInt().coerceAtLeast(1), (b.height * f).roundToInt().coerceAtLeast(1), true)
     }
 
-    fun jpeg(src: Bitmap, maxEdge: Int = MAX_EDGE, quality: Int = 85): ByteArray =
-        ByteArrayOutputStream().use { out ->
-            scaled(src, maxEdge).compress(Bitmap.CompressFormat.JPEG, quality, out)
-            out.toByteArray()
+    fun jpeg(src: Bitmap, maxEdge: Int = MAX_EDGE, quality: Int = 85): ByteArray {
+        val small = scaled(src, maxEdge)
+        val flat = if (small.hasAlpha()) onWhite(small) else small
+        try {
+            return ByteArrayOutputStream().use { out ->
+                flat.compress(Bitmap.CompressFormat.JPEG, quality, out)
+                out.toByteArray()
+            }
+        } finally {
+            if (flat !== small) flat.recycle()
         }
+    }
+
+    /** A JPEG has no transparency: a see-through picture goes on white, as :files' own JPEGs do, or its background turns black. */
+    private fun onWhite(b: Bitmap): Bitmap {
+        val c = Bitmap.createBitmap(b.width, b.height, Bitmap.Config.ARGB_8888)
+        Canvas(c).apply {
+            drawColor(Color.WHITE)
+            drawBitmap(b, 0f, 0f, null)
+        }
+        return c
+    }
 
     /** Decodes an image (EXIF rotation applied by ImageDecoder), already scaled to at most [maxEdge]. */
     fun decode(source: ImageDecoder.Source, maxEdge: Int = MAX_EDGE): Bitmap =
@@ -79,6 +98,12 @@ class CaptureActivity : Activity() {
                     startActivityForResult(i, REQ_CAMERA)
                     true
                 }
+                // chat-files: pictures, PDFs and text files, read once for this conversation (no lasting grant).
+                MODE_FILE -> {
+                    startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")
+                        .putExtra(Intent.EXTRA_MIME_TYPES, PanelAttach.PICKER_TYPES), REQ_FILE)
+                    true
+                }
                 else -> {
                     startActivityForResult(Intent(MediaStore.ACTION_PICK_IMAGES).setType("image/*"), REQ_PICK)
                     true
@@ -88,7 +113,7 @@ class CaptureActivity : Activity() {
             RLog.w("capture_start", t)
             false
         }
-        if (!ok) done(null, PanelStrings.cameraDidntOpen().render(AppLanguage.langs(this)))
+        if (!ok) done(null, (if (intent.getStringExtra(EXTRA_MODE) == MODE_FILE) PanelStrings.filePickerDidntOpen() else PanelStrings.cameraDidntOpen()).render(AppLanguage.langs(this)))
     }
 
     @Deprecated("Deprecated in Java") // l10n: not text (annotation)
@@ -96,6 +121,15 @@ class CaptureActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (resultCode != RESULT_OK) return done(null, null)
         val app = applicationContext
+        if (requestCode == REQ_FILE) {
+            val uri = data?.data ?: return done(null, PanelStrings.fileUnreadable().render(AppLanguage.langs(app)))
+            decoding = true
+            Thread({
+                try { PanelAttach.attach(app, uri) } catch (t: Throwable) { RLog.w("capture_file", t) } finally { decoding = false }
+                runOnUiThread { done(null, null) }
+            }, "robot-attach").start()
+            return
+        }
         decoding = true
         Thread({
             val (bmp, error) = try {
@@ -149,6 +183,8 @@ class CaptureActivity : Activity() {
         const val EXTRA_MODE = "mode"
         const val MODE_CAMERA = "camera"
         const val MODE_PHOTOS = "photos"
+        const val MODE_FILE = "file"
+        private const val REQ_FILE = 3
         /** The manifest's `${applicationId}.capture` (unique on the phone, so 1.0 installs beside 0.9). */
         const val AUTHORITY = app.heyrobot.BuildConfig.APPLICATION_ID + ".capture"
         private const val REQ_CAMERA = 1

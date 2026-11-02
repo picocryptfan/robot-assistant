@@ -4,6 +4,145 @@ What changed in each version of Robot, newest first. Each version's full notes, 
 [`robot/README.md`](robot/README.md) ("What's new in …" and the feature sections). Versions before 1.0 were test
 builds.
 
+## 1.2.0 (2026-11-02)
+
+The full phone pass for this release isn't finished; 1.2.1 follows with its fixes. The release notes' Known limits say what's still open.
+
+- If your model never moved into Robot's private storage after an update from 1.0 because there wasn't room, it won't load until there's room for a second copy of it (its size plus 0.5 GB). Free that space and open Robot: it moves on its own, and Settings › Model says how much it needs. A model file you imported yourself still loads, checked in full each time.
+- Wait before answering (Settings › Voice) starts at Long (1.6 s) on a new install. If you already use Robot, yours stays as it was.
+- The car screen, rebuilt: half for your map, the media player or messages, a quarter for media buttons, directions or
+  your latest message, and one row of big buttons: Talk, a button you choose (your music app, Maps,
+  navigate home or any app), Apps and Settings. The home directions button is gone unless you pick it. Your map runs beside Robot in Android's
+  split screen, one tap away; you drag the bar to resize. Choose it all in Settings › Car mode › Car screen. The screen now
+  follows your light or dark theme. Message panels only show: to reply, tap Talk, and the usual read-back and "send" apply.
+- Lists: shopping and to-do lists you keep by voice. "Add oat milk to the shopping list", "what's on the packing list",
+  "is oat milk on my list" ("milk" finds oat milk, never milk thistle; a yes names what it found; with no list named it
+  looks at every list), "take eggs off" (it ticks; nothing said aloud deletes an item), "put eggs back on",
+  "make a camping list", "clear the done items", "undo that", in English and Québec French (« ajoute du lait d'avoine à
+  ma liste d'épicerie », « enlève les œufs »). Robot's own code hears these and answers; no model runs for them. Shopping
+  and To-do are there from the start, and a new list is made the first time you name it. Lists sit beside Notes in the
+  Notes tab: tick boxes, Done, edit, Move to top, Move to another list, Delete with Undo, Rename, Share as text, and
+  Make a list from this note. After a read, the panel shows a card with tick boxes.
+- Lists are encrypted on the phone the way memory is, under an Android Keystore key that needs the phone unlocked, and
+  never go online. While the phone is locked you can still add by voice ("Add to lists while locked", on by default):
+  the words wait in a small encrypted journal until you unlock, and each item is marked "Added while the phone was
+  locked". Hearing and ticking a list on the lock screen is a switch, off by default. During a phone lock for someone
+  else, Robot changes and reads no list. Settings › Lists holds both switches, the storage, Delete all lists, and Start
+  over or Restore from a backup if the key is gone.
+- A home-screen widget, Robot list: one list per widget, its open items with tick boxes, and how many are done. It only
+  ticks. Its items go when the screen goes off and come back when you unlock. Your home-screen app draws it, so it sees
+  that list's open items. Which list a widget shows stays on this phone: after Robot's data is cleared, the widget says
+  a backup doesn't keep it and asks you to pick again. During a phone lock the widget and its list picker say "Robot is
+  locked", and the picker is under the lock's cover, as Robot Files' share window now is too.
+- History keeps what you say to Robot, but not what Robot reads back from a list: "Robot read Shopping: 5 items", or
+  "Robot answered from your lists". Something that looks like a PIN or a card number isn't added, and that question is
+  kept as private. When a conversation read a list, later actions by Robot's model ask first, and what Robot read back
+  goes to a helper only on a card you tap.
+- Robot's model can add to a list ("add what I need for pancakes"): with a card you tap, unless every item is your own
+  words. It never reads a list.
+- Backups carry your lists (a Lists row, on by default). Someone else's lists arrive beside yours, marked "From a
+  backup that isn't yours", and never turn their looser lock-screen switches on here. Robot 1.1.1 and older skip Lists
+  in a backup and restore the rest. Backups now name each part in words, so a later Robot that can't restore a part says
+  which one.
+- Attach a PDF, a picture or a text file to a question in Robot's panel. It's read on the phone and kept only for
+  that conversation, unless you file it.
+- One app first's notice, the cover and Settings › Phone lock now count your minutes in the app as they pass. The cover
+  says time counts only while that app is open.
+- The panel's buttons follow the language you chose for the menus, even when your phone is in another language. When
+  you change the menus' language, the panel follows the next time it opens, without a restart. With French menus, a
+  text's card title and its « Texto à Sam. » line are in French too.
+- Lists in Québec French also hear « as-tu du lait sur ma liste » and « on a-tu du beurre sur ma liste ». Asking about
+  an item you ticked off now starts with a yes: "Yes, Shopping has eggs, ticked off." (« Oui, c'est coché … »).
+- After you cancel a text's card, the panel no longer shows "Texting Sam." above it.
+- Robot no longer drops a question it showed you while you spoke. When the last pass over your words found none, Robot
+  said "Sorry, I didn't catch that."; now the words you watched appear are the question, and the voice log says so
+  ("Used the words shown: the last pass found none").
+- Robot offers the helper after more kinds of "I don't have that" answers ("I don't have specific, up-to-the-minute
+  documents for…", « je n'ai pas de données récentes… »), and when its answer only sends you to an official website
+  "for the most accurate information". An answer that answers and then names a website for details is still an
+  answer: it no longer brings the helper by itself.
+- Car mode shows what's playing and brings back your directions. The car screen's music tile names the app that's playing and
+  its song (with notification access; without it, your music app and its song), shown there only, with Previous, Play or Pause and Next; the maps button reads "Back to directions" once Robot opened a route
+  this drive. Pick your maps app in Settings › Actions › Maps: every route Robot opens goes to it, beside the car
+  screen. In split screen, the car screen keeps the music tile and Talk first.
+
+- Skills connections: a skill's step can now reach your own server, hand a step to an app you pick, or run one of your
+  Termux scripts with typed values. Set each one up once in Settings › Skills › Connections: Home Assistant (turn
+  things on and off, read a state, run a script), ntfy (send a notification), a webhook (one request you declare), a
+  routing server you run (OSRM, Valhalla or GraphHopper) for "about 25 min" travel times, and app hand-offs that open
+  an app you picked with the words you set. Typed Termux scripts declare up to 3 values with `# param:` lines.
+- Settings › Skills gains Add a skill, and a skill's page gains Add a step, a page for each step (a value, a question,
+  words with a value inside, or an earlier step's answer; Only if…; If it doesn't work), and computed Effects, Risk and
+  Test lines. Test is a dry run: nothing is sent.
+- Every connection that holds a key, a token, an ntfy topic or a secret address is https only, with a certificate
+  Android trusts (Tailscale HTTPS, your own domain or Home Assistant Cloud). Plain http works only on your own network,
+  with nothing secret. Keys are pasted in a window of their own, kept encrypted on the phone, and go only to their own
+  connection.
+- The first time a skill reaches a new host, a card asks: Allow for this connection, Just this time, or No (a tap). A
+  step that locks, unlocks or opens something, deletes, can spend money, runs code Robot can't see (scripts,
+  automations, scenes, groups) or carries words Robot's model wrote always takes a tap. Connection steps never run on
+  a locked phone or from a routine. A step that changed after its card showed doesn't run: "This step changed after
+  its card showed, so Robot didn't run it. Ask again."
+- Backups gain Connections (on by default) and connection keys (only with Keys and private codes). Robot 1.1.1 and
+  older skip both and restore the rest.
+- Robot now reads whether the phone is on Wi-Fi, Ethernet or a VPN, only to say "Robot can't reach your Home Assistant
+  off your home network." instead of trying a home connection on mobile data.
+- A spoken yes or no to a card now waits as long as Settings › Voice › Wait before answering says (1.6 s on Long),
+  about a second slower than before, so a pause in your answer doesn't send it.
+- "Play Text Me" and other song titles with "text" in them no longer search your music app unless you say music
+  ("play a song called Text Me").
+- Robot's listening sheet hides other apps' floating windows while it is up. This adds the HIDE_OVERLAY_WINDOWS
+  permission, which Android grants at install with no prompt.
+- Robot to Robot: Settings › Robot to Robot › Push app lets you choose which push app delivers to Robot, or None; only your
+  tap saves it. A shared folder's limits (500 files, 1 GiB) now count everything the other person ever sent into it, so
+  a folder in use for a long time can stop taking their files until one of you leaves and invites again. A list someone
+  shares with you shows what they removed or changed under "Removed or changed by someone else", with Put back. A
+  pairing made by photographing a code now says "Verified with a photo of their code".
+- Clock app (under the alarm options on the morning brief's page and on a routine's page): pick which Clock "When I turn
+  off my alarm" goes by, the phone's default first. GrapheneOS Clock works as before. For another Clock Robot goes by the
+  alarm's sound stopping, without using the microphone, and only for that Clock's own next alarm; a timer or another
+  app's alarm starts nothing, and an alarm that only vibrates isn't seen. A Clock that can't be followed says so and offers
+  "Start at a set time instead". This is unproven on Google Clock. Your alarm, timer and show requests go to the Clock you
+  chose when it takes them.
+- Battery Saver now pauses the all-day wake word and says so: a quiet notification while it lasts (none of your words in it),
+  a row on the wake word page, and a note in Listening. The corner swipe still opens Robot.
+- A conversation nobody added to for 30 minutes now ends and is saved, paused or not, so a forgotten one can't keep the
+  phone awake until the battery runs out.
+- A model that Android took memory from between answers no longer counts toward three problems an hour, and a reclaim
+  during a load moves the Fast model off the GPU only the second time in an hour. A failed save in Settings or History now
+  says so, once until a save works.
+- The voice log keeps up to 20 of each failure and 100 in all after the 300 newest events have moved on; numbers only.
+- Call set to Off still opens the phone's dialer with an emergency number in it (you tap Call); every other number is still
+  refused. During a lock with no session, 112 and 911 and the emergency numbers of where the phone is (Android's list, your
+  region, the device's) get the emergency dialer. When a lock starts, Robot's panel closes and clears its conversation; a
+  call starting takes the cover off the call's screen; and Robot's routine notices and a skill's Continue notice stay out of
+  the shade during a lock for someone else.
+- Robot Files: a refund counts as money back. A total written as money taken off ("-45.00", "(45.00)") or a line that is
+  only "Refund 45.00" comes off your spending ("That's after 1 refund.", and when the sum is below zero, "so below zero means more back than
+  spent"), the tax
+  pack and the file's page; the total's edit box starts at "-45.00" and you decide by taking the minus off or typing it.
+  Files you filed before keep their check.
+- A restore that stops part way now says so, finished parts read restored and the rest "not restored, nothing of it
+  changed". Keys with no connection or helper here, files that could not be read when the backup was made, a refused write
+  in Phone lock, Everyday or Robot to Robot, and pairings that come back paused are each said in the result. A second restore
+  keeps pairings still waiting, a backup without reminders leaves yours, and notes from someone else's backup no longer
+  replace yours. The "kept safer" preview counts only what the restore will change.
+- Robot to Robot: when a change to a shared list doesn't fit on your phone (full lists), you get a notification and a row
+  at the top of the list's page with Dismiss. The other phone isn't told: its copy and yours differ until it makes the
+  change again. A folder row now shows the same count as the folder ("2 of 500 files"). A restart while the phone is locked
+  no longer gives one person another 100 items. A Start over that is cut part way opens as damaged, not as a Robot with part
+  of its pairings. A photo or video you sent from Files no longer goes out under the camera's dated name.
+- Every pop-up menu in Robot refuses taps while another app's window is over it, as dialogs do. Robot's vibrate
+  permission, which it never used, is gone. In the car, words cut at the 30-second limit are held only where the box to
+  answer stays, and the voice log names that end.
+- Phone lock's cover comes back about a second after you go Back from Settings › Phone lock into Robot's other
+  settings, and when the 5 minutes of changes run out with Robot open; in 1.1.1 it waited for another app or screen.
+  A cover that stays up keeps its minutes left, its app buttons, its end and who the lock is for current (in 1.1.0 and
+  1.1.1 it kept what it first showed). The Robot Files icon and the backup window are covered too. If Robot can't read
+  Phone lock's files, it assumes a lock may be on and lets the cover decide.
+- Every word longer than 40 characters is cut before it reaches the voice engine, which closes a known crash in
+  espeak-ng's text reader (CVE-2023-49992). The engine itself is now built with a patch that adds espeak-ng's own fix for CVE-2023-49990 to 49994.
+
 ## 1.1.1 (2026-10-23)
 
 - During a phone lock, asking Robot to call an emergency number (typed, or said outside car mode) opens the phone's own

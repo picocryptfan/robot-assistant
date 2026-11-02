@@ -124,7 +124,9 @@ object SpokenCards {
         fun defer(why: CardVoiceCode) = CardVoice.Defer(OutputLines.KEEP_FOR_LOOK.get(lang), why)
         if (!ctx.voiceCards) return defer(CardVoiceCode.VOICE_OFF)
         val tap = card.waiting.tapFor
-        if (tap == AskWhy.LEARNED || tap == AskWhy.ONLINE || card.deletes || (card.waiting.personal && !ctx.voiceYesPersonal)) return defer(CardVoiceCode.MUST_SEE)
+        // Skills connections (C4): a connection's first-use card and a step a tap answers must be seen, as a first online lookup.
+        if (tap == AskWhy.LEARNED || tap == AskWhy.ONLINE || tap == AskWhy.CONNECTION_FIRST || tap == AskWhy.CONNECTION_TAP || card.deletes ||
+            (card.waiting.personal && !ctx.voiceYesPersonal)) return defer(CardVoiceCode.MUST_SEE)
         if (tap == AskWhy.WHO && !card.spokenWho) return defer(CardVoiceCode.WHO_UNSURE)
         if (card.options.size > MAX_SPOKEN) return defer(CardVoiceCode.TOO_MANY)
         if (ctx.locked && card.personal && !(car && ctx.carTrusted && card.carFunction)) return CardVoice.Defer(UNLOCK_TO_ANSWER.get(lang), CardVoiceCode.LOCKED)

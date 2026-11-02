@@ -18,7 +18,7 @@ import androidx.compose.ui.test.hasScrollToNodeAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithText
@@ -133,13 +133,22 @@ class FilesScreenTest {
         val vault = FilesVault(dir, KeystoreFileKeys(keystore), "main", space = { 100L shl 30 }, locked = { locked })
         val events = ArrayList<String>()
         val launched = ArrayList<Intent>()
+        var folderList = emptyList<app.heyrobot.core.link.FolderRec>()
+        var folderAnswer = app.heyrobot.core.files.PeerSent.OFFERED
+        override fun folders() = folderList
+        override fun addToFolder(e: FileEntry, pairing: String, folder: String, allowOriginal: Boolean) = folderAnswer.also { events += "folder ${e.name} $folder $allowOriginal" }
 
         override fun locked() = locked
         /** FX1: travel mode as the phone's port shows it (the index without its hidden drawers); null: the whole index. */
         var travel: FilesSettings? = null
         private fun shown(l: IndexLoad): IndexLoad = travel?.let { t -> (l as? IndexLoad.Loaded)?.let { IndexLoad.Loaded(app.heyrobot.core.files.TravelMode.shown(it.index, t)) } } ?: l
         override fun load(): IndexLoad = shown(vault.load())
-        override fun update(change: (FileIndex) -> FileIndex) = shown(vault.update(change))
+        /** F21: a write that fails, as a full disk's or an entry over its cap does. */
+        var failWrites = false
+        override fun update(change: (FileIndex) -> FileIndex): IndexLoad {
+            if (failWrites) throw IllegalArgumentException()
+            return shown(vault.update(change))
+        }
         override fun delete(ids: Collection<FileId>): Boolean = ((vault.delete(ids)?.removed ?: 0) > 0).also { events += "delete ${ids.size} $it" }
         override fun settings() = settings
         override fun words() = NameWords("due")
@@ -283,6 +292,7 @@ class FilesScreenTest {
         rule.scrollToText(title)
         rule.onRow(title).performClick()
         filePage()
+        pictureShown()
     }
 
     /** A file's page (or a drawer's) is showing: its bar has Back, Files' home has none. */
@@ -295,6 +305,16 @@ class FilesScreenTest {
      */
     private fun fileShown() = rule.waitUntil(5_000) {
         rule.onAllNodes(hasText("Name")).fetchSemanticsNodes().isNotEmpty() && rule.onAllNodes(hasText("Opening your files…")).fetchSemanticsNodes().isEmpty()
+    }
+
+    /**
+     * A file's page has its picture (or says it has none): the picture loads on Dispatchers.IO, which waitForIdle doesn't
+     * wait for. Drawn after a scroll (in full runs, where it's slower), it left the rows behind files_delete's dialog about
+     * 48 px off; not by its Name row, which a small screen's picture pushes out of the list.
+     */
+    private fun pictureShown() {
+        rule.waitUntil(5_000) { rule.onAllNodes(hasText("Opening your files…")).fetchSemanticsNodes().isEmpty() }
+        rule.waitForIdle()
     }
 
     /** A drawer's row on the home page ("Receipts" with its count; a filed file's line may name its drawer too). */
@@ -413,7 +433,8 @@ class FilesScreenTest {
         open()
         waitFor("From a backup that isn't yours: file it where you want it.")
         rule.onNodeWithText("File in Boat").performClick()
-        rule.waitUntil(5_000) { port.entry(theirs)!!.state == FileState.FILED }
+        rule.waitUntil(5_000) { "move ${FileMoveCode.MOVED} 1" in port.events }
+        assertEquals(FileState.FILED, port.entry(theirs)!!.state)
         assertEquals("Boat", port.entry(theirs)!!.drawer)
         assertEquals(FiledBy.YOU, port.entry(theirs)!!.from.filedBy)
         assertTrue("move ${FileMoveCode.MOVED} 1" in port.events)
@@ -433,7 +454,8 @@ class FilesScreenTest {
         assertEquals(FiledBy.YOU, kind.from.filedBy)
         // "File them" files Ask me first's batch, as Robot would have.
         rule.onNodeWithText("File them").performClick()
-        rule.waitUntil(5_000) { port.entry(ids.getValue("them1"))!!.state == FileState.FILED }
+        rule.waitUntil(5_000) { "changed" in port.events && "move ${FileMoveCode.FILE_THEM} 2" in port.events }
+        assertEquals(FileState.FILED, port.entry(ids.getValue("them1"))!!.state)
         assertEquals(Drawers.RECEIPTS, port.entry(ids.getValue("them1"))!!.drawer)
         assertEquals("2026-10-19 Jean Coutu 23.45 CAD", port.entry(ids.getValue("them1"))!!.name)
         assertEquals(Drawers.BILLS, port.entry(ids.getValue("them2"))!!.drawer)
@@ -498,6 +520,18 @@ class FilesScreenTest {
         assertEquals(FilingStep.KEPT, e.filing!!.step)
         says("Back in your Inbox.")
         assertTrue("move ${FileMoveCode.UNDO} 1" in port.events)
+    }
+
+    /** F21: a write that fails says so and leaves the file as it was; the app stays up. */
+    @Test fun aFailedMoveSaysNotNow() {
+        cabinet()
+        open()
+        openFile("2026-10-18 Costco 84.12 CAD")
+        rule.onRow("Drawer").performClick()
+        port.failWrites = true
+        rule.inDialog("Taxes").performClick()
+        says("Robot couldn't do that now. Try again.")
+        assertEquals(Drawers.RECEIPTS, port.entry(ids.getValue("costco"))!!.drawer)
     }
 
     @Test fun moveAndItsUndo() {
@@ -728,6 +762,7 @@ class FilesScreenTest {
         rule.onNodeWithText("Next page").performClick()
         rule.waitUntil(5_000) { "page 1" in port.events }
         rule.onNodeWithText("Previous page").performClick()
+        pictureShown()
         assertEquals(emptyList<String>(), rule.touchTargetProblems())
         rule.shot("files_file")
         rule.scrollToText("Where it came from")
@@ -870,6 +905,48 @@ class FilesScreenTest {
         // The plan for the others: a video asks first, a photo goes without its metadata (both on screen below).
         assertTrue(FileOut.plan(port.entry(video)!!, FileType.MP4, port.settings.stripLocation) is app.heyrobot.core.files.OutPlan.AskFirst)
         assertEquals(app.heyrobot.core.files.OutPlan.Go(OutgoingCopy.STRIPPED, "IMG_3002.jpg", "image/jpeg"), FileOut.plan(port.entry(photo)!!, FileType.HEIC, true))
+    }
+
+    private val joinedFolder = app.heyrobot.core.link.FolderRec("f".repeat(32), "p".repeat(32), app.heyrobot.core.link.FolderState.JOINED, "Trip", true, 1)
+    private val waitingFolder = joinedFolder.copy(fold = "g".repeat(32), state = app.heyrobot.core.link.FolderState.INVITED, name = "Taxes")
+    private fun noFolderRow() {
+        rule.scrollToText("Share")
+        rule.waitForIdle()
+        assertEquals(0, rule.onAllNodes(hasText("Add to a shared folder")).fetchSemanticsNodes().size)
+    }
+
+    /** L11: only a folder you both joined is offered. */
+    @Test fun aFolderStillWaitingForItsAnswerIsNotOffered() {
+        port.add("IMG_1.jpg", "image/jpeg") { filed(Drawers.PHOTOS, FileKind.PHOTO, FiledBy.ROBOT, HOUR, "IMG_1.jpg")(it) }
+        port.folderList = listOf(waitingFolder)
+        open()
+        openFile("IMG_1.jpg")
+        noFolderRow()
+    }
+
+    /** L11: a dangerous file never goes to a folder, where it would arrive with no one asked. */
+    @Test fun aDangerousFileIsNotOfferedToAFolder() {
+        port.add("setup.apk", "application/vnd.android.package-archive") { filed(Drawers.PHOTOS, FileKind.DANGEROUS, FiledBy.ROBOT, HOUR, "setup.apk")(it) }
+        port.folderList = listOf(joinedFolder)
+        open()
+        openFile("setup.apk")
+        noFolderRow()
+    }
+
+    /** L11: a folder has no one to ask about an original, so a file that needs one stays out and you're told. */
+    @Test fun aFileGoesIntoAJoinedFolderAndNeverAsAnOriginal() {
+        port.add("IMG_1.jpg", "image/jpeg") { filed(Drawers.PHOTOS, FileKind.PHOTO, FiledBy.ROBOT, HOUR, "IMG_1.jpg")(it) }
+        port.folderList = listOf(waitingFolder, joinedFolder)
+        port.folderAnswer = app.heyrobot.core.files.PeerSent.ASK_FIRST
+        open()
+        openFile("IMG_1.jpg")
+        rule.scrollToText("Add to a shared folder")
+        rule.onRow("Add to a shared folder").performClick()
+        rule.waitUntil(5_000) { rule.onAllNodes(hasText("Trip")).fetchSemanticsNodes().isNotEmpty() }
+        assertEquals(0, rule.onAllNodes(hasText("Taxes")).fetchSemanticsNodes().size)
+        rule.onNode(hasText("Trip") and hasClickAction()).performClick()
+        rule.waitUntil(5_000) { log.any { "stays out of the folder" in it } }
+        assertTrue(port.events.toString(), port.events.contains("folder IMG_1.jpg ${joinedFolder.fold} false"))
     }
 
     @Test fun aVideoAsksBeforeItGoesWithItsLocation() {

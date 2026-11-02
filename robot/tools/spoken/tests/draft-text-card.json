@@ -1,0 +1,19 @@
+{
+  "format": 1,
+  "id": "draft-text-card",
+  "title": "Drafting a text picks the right tool, and stops at its card",
+  "safety": "stops-at-card",
+  "testBench": ["v12-prompt-tools-still-work"],
+  "needs": {"model": true},
+  "setup": [{"set": "speakReplies", "value": "VOICE"}, {"set": "voiceCards", "value": true}],
+  "steps": [
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "Please draft a text to Sam saying I am on my way.", "voice": "heart"},
+    {"do": "wait_card", "kind": "send_text", "seconds": 90},
+    {"do": "check", "what": "tool", "equals": "send_text"},
+    {"do": "wait_listening", "seconds": 30},
+    {"do": "say", "text": "No thanks.", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 30},
+    {"do": "end"}
+  ]
+}

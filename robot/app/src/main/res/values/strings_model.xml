@@ -106,6 +106,7 @@
     <string name="model_on_this_phone">On this phone, on the %1$s. %2$s</string>
     <string name="model_on_the_measured">On the %1$s. %2$s</string>
     <string name="model_memory_title">This phone\'s memory</string>
+    <string name="model_move_title">Waiting for room</string>
     <string name="model_group_details">Details</string>
     <string name="model_download_size_title">Download size</string>
     <string name="model_size_gpu_cache">%1$s, plus a cache its first load writes: about %2$s on the GPU, up to %3$s on the CPU</string>

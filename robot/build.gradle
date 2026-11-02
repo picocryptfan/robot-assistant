@@ -21,7 +21,7 @@ ext {
 // THIRD_PARTY.md, support-addresses.txt, the build files, tools/ and third_party/. Gradle only tracks a test task's
 // classes, so those are declared as its inputs too: a change to one reruns the tests instead of leaving them up to date
 // (or handing back a cached result). Compared by path within the checkout, wherever it is.
-def robotModules = ['core', 'brain', 'voice', 'helpers', 'mt', 'app']
+def robotModules = ['core', 'brain', 'voice', 'helpers', 'mt', 'link', 'app']
 subprojects {
     tasks.withType(Test).configureEach { t ->
         t.inputs.files(robotModules.collect { rootProject.file("$it/src/main") })
@@ -30,8 +30,12 @@ subprojects {
             def top = rootProject.projectDir.parentFile
             t.inputs.files(['README.md', 'LICENSE', '.gitignore', 'fastlane'].collect { new File(top, it) })
                 .withPropertyName('robotRepositoryFiles').withPathSensitivity(PathSensitivity.RELATIVE)
-            t.inputs.files(['THIRD_PARTY.md', 'support-addresses.txt', 'build.gradle', 'tools', 'third_party']
-                    .collect { rootProject.file(it) } + robotModules.collect { rootProject.file("$it/build.gradle") })
+            // 1.5: third_party/ without maven-local/, libsignal's 375 MB of AAR and jar (LibsignalPinsTest hashes them, but
+            // Gradle's own verification already refuses any change to them), and the files LibsignalPinsTest compares.
+            t.inputs.files(['THIRD_PARTY.md', 'support-addresses.txt', 'build.gradle', 'settings.gradle', 'README.md',
+                    'gradle/verification-metadata.xml', 'tools']
+                    .collect { rootProject.file(it) } + robotModules.collect { rootProject.file("$it/build.gradle") } +
+                    rootProject.fileTree('third_party') { exclude 'maven-local/**' })
                 .withPropertyName('robotBuildFiles').withPathSensitivity(PathSensitivity.RELATIVE)
         }
     }

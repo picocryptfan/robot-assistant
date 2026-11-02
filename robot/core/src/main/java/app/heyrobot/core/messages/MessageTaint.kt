@@ -141,9 +141,13 @@ object MessageQuarantine {
     /** A spoken yes may answer a reply card [now]: Robot isn't saying a message's words, and finished them [YES_AFTER_MS] ago or more. */
     fun voiceYesNow(readAloud: List<ReadAloud>, now: Long): Boolean = readAloud.none { now - it.endedAt < YES_AFTER_MS }
 
-    /** Actions whose effect reaches someone else: a text, an email, a helper, a search in your browser (1.0), or anything that goes online. */
+    /**
+     * Actions whose effect reaches someone else: a text, an email, a helper, a search in your browser (1.0), a request to
+     * another Robot (1.5), or anything that goes online.
+     */
     fun leavesForOthers(tool: ToolName): Boolean =
-        tool == ToolName.SEND_TEXT || tool == ToolName.DRAFT_EMAIL || tool == ToolName.ASK_HELPER || tool == ToolName.BROWSER_SEARCH || tool.online
+        tool == ToolName.SEND_TEXT || tool == ToolName.DRAFT_EMAIL || tool == ToolName.ASK_HELPER || tool == ToolName.BROWSER_SEARCH ||
+            tool == ToolName.ASK_ROBOT || tool.online
 
     /**
      * The quarantine's verdict for [tool] asked for by [origin] in a conversation marked [taint]. [toSender]: the action
@@ -160,12 +164,19 @@ object MessageQuarantine {
         // never become a command by themselves).
         tool.termux -> QuarantineVerdict.TAP_ONLY
         tool.reads && !tool.online -> QuarantineVerdict.NONE
-        leavesForOthers(tool) && !(toSender && tool == ToolName.SEND_TEXT) -> QuarantineVerdict.TAP_ONLY
+        leavesForOthers(tool) && !(toSender && (tool == ToolName.SEND_TEXT || tool == ToolName.ASK_ROBOT)) -> QuarantineVerdict.TAP_ONLY
         else -> QuarantineVerdict.CARD
     }
 
-    /** A text back to the conversation's own sender (resolved by the app before the card), not to "someone else". */
-    fun toSender(a: Action, taint: MessageTaint): Boolean = a is Action.SendText && taint.isSenderAddress(a.target?.address)
+    /**
+     * A text back to the conversation's own sender (resolved by the app before the card), not to "someone else". 1.5 (L7): a
+     * request to the Robot whose request is in the conversation (core LinkTaint.toPairing), likewise.
+     */
+    fun toSender(a: Action, taint: MessageTaint): Boolean = when (a) {
+        is Action.SendText -> taint.isSenderAddress(a.target?.address)
+        is Action.AskRobot -> a.ready?.let { with(app.heyrobot.core.link.LinkTaint) { taint.toPairing(it.pairing) } } == true
+        else -> false
+    }
 
     /**
      * What the gate's reasons gain for [a] in a conversation marked [taint]: [AskWhy.MESSAGE] (a card answered by a tap)

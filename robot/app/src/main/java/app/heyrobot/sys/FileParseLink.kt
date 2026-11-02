@@ -34,6 +34,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicInteger
@@ -193,6 +194,13 @@ class FileParseLink(private val ctx: Context, private val requestMs: Long = Pars
         if (pages.size !in 1..ParseLimits.MAX_SCAN_PAGES) ParseResult.Refused(ParseStatus.BAD_REQUEST, FileType.EMPTY)
         else run(ParseRequest(ParseOp.SCAN_PDF, parts = pages.map { it.size }), pages.map(Part::of))
 
+    /**
+     * 1.5, Robot to Robot (job L4): the QR code in a photo, another Robot's pairing code shown in person (§2.3, D21): its text
+     * (printable ASCII, at most ParseLimits.QR_TEXT), or Refused NO_CODE. The text is then a pairing code to check
+     * (PairCode, in :link), nothing more.
+     */
+    fun qr(bytes: ByteArray): ParseResult = run(ParseRequest(ParseOp.QR, parts = listOf(bytes.size)), listOf(Part.of(bytes)))
+
     /** Ends the process, whatever it is doing: EXIT (one way), then unbinding. */
     fun end(why: String) {
         if (ending) return
@@ -283,7 +291,12 @@ class FileParseLink(private val ctx: Context, private val requestMs: Long = Pars
                 SharedMemory.unmap(w)
             }
             input.setProtect(OsConstants.PROT_READ)
-            val job: Future<Pair<Int, ByteArray?>> = calls.submit<Pair<Int, ByteArray?>> { transact(b, req, input, output) }
+            // F51: end() (you left Files) may have shut the link's thread while this request was being written.
+            val job: Future<Pair<Int, ByteArray?>> = try {
+                calls.submit<Pair<Int, ByteArray?>> { transact(b, req, input, output) }
+            } catch (_: RejectedExecutionException) {
+                return ParseResult.Failed(ParseFailure.UNAVAILABLE)
+            }
             val (marker, frame) = try {
                 job.get(requestMs, TimeUnit.MILLISECONDS)
             } catch (_: TimeoutException) {

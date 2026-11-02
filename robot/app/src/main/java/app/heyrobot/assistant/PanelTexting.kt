@@ -2,6 +2,7 @@
 package app.heyrobot.assistant
 
 import android.content.Context
+import app.heyrobot.core.ActionStatus
 import app.heyrobot.core.DoneReason
 import app.heyrobot.core.RLog
 import app.heyrobot.core.RawToolCall
@@ -119,10 +120,17 @@ internal class PanelTexting(
         }
         RLog.i("text_direct", "typed" to typed)
         // A short line for the conversation, so later questions know what happened (the card has the rest).
-        replies.setText(replyId, PanelStrings.texting("name" to name).render(turnLangs))
+        replies.setText(replyId, PanelStrings.texting("name" to name).render(turnLangs.message))
         val call = RawToolCall(ToolName.SEND_TEXT.id, mapOf("to" to req.name, "message" to req.message))
         // Your own words asked for this text (or answered "what should it say?").
-        val result = port.textTurn(replyId, call, untrusted)
+        val result = try {
+            port.textTurn(replyId, call, untrusted)
+        } finally {
+            // A declined card (Cancel, or Stop while it waited) leaves no "Texting Sam.": nothing is being texted.
+            if (state.value.turns.firstOrNull { it.id == replyId }?.actions?.any { it.tool == ToolName.SEND_TEXT && it.status == ActionStatus.DECLINED } == true) {
+                replies.setText(replyId, "")
+            }
+        }
         result.failure?.let { port.failReply(replyId, it); return true }
         port.finishReply(replyId, result.reason ?: DoneReason.END)
         if (result.launchedApp) port.leaveForApp()

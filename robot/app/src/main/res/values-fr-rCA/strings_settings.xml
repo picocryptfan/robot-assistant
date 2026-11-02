@@ -255,4 +255,5 @@
     <!-- Names the app gives when Android or a file has none (sys/Calendars.kt, sys/KeystoreSecret.kt). -->
     <string name="settings_calendar_unnamed">Agenda</string>
     <string name="settings_key_saved">Enregistrée</string>
+    <string name="settings_save_failed">Tes réglages n’ont pas pu être enregistrés&#160;: le stockage du téléphone est peut-être plein. Les derniers réglages enregistrés reviendront au redémarrage.</string>
 </resources>

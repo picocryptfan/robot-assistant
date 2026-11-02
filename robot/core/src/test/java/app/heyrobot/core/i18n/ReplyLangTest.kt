@@ -28,9 +28,25 @@ class ReplyLangTest {
         assertEquals(Lang.EN, decide(Lang.FR, true, ui = Lang.EN, setting = ReplyLangChoice.MENUS))
     }
 
-    /** l10n design §4.8: the model is told the language only when the setting fixes it; the default tells it nothing. */
-    @Test fun theModelIsToldOnlyAFixedLanguage() {
-        for (say in Lang.entries) assertEquals(say.name, null, ReplyLang.answerIn(ReplyLangChoice.SPOKEN, say))
+    /** A short line in one language's command words is sure of it (the spoken run: "Text mom." right after French). */
+    @Test fun aShortCommandSaysItsLanguage() {
+        for (s in listOf("Text mom.", "Call Marie", "open maps")) assertEquals(s, Lang.EN, ReplyLang.commandLang(s))
+        for (s in listOf("Texte maman.", "Appelle Marie", "Écris à Bob")) assertEquals(s, Lang.FR, ReplyLang.commandLang(s))
+        for (s in listOf("OK", "Marie-Ève", "5 minutes", "Pause.", "text mom about the party tonight", "")) assertEquals(s, null, ReplyLang.commandLang(s))
+        // With LangId's guess unsure and French the last turn's language, the command's language wins.
+        val french = ReplyLang.Last(Lang.FR, 1000L)
+        assertEquals(Lang.EN, ReplyLang.decide(null, ReplyLang.commandLang("Text mom."), french, 2000L, Lang.EN, ReplyLangChoice.SPOKEN))
+    }
+
+    /**
+     * l10n design §4.8: "The language you speak" tells the model nothing on English after English; 1 Nov: a French turn is told
+     * (« Combien d'advil… » answered in English), and so is the first English turn after French.
+     */
+    @Test fun theModelIsToldAFixedLanguageAndFrench() {
+        assertEquals(null, ReplyLang.answerIn(ReplyLangChoice.SPOKEN, Lang.EN))
+        assertEquals(null, ReplyLang.answerIn(ReplyLangChoice.SPOKEN, Lang.EN, Lang.EN))
+        assertEquals(Lang.FR, ReplyLang.answerIn(ReplyLangChoice.SPOKEN, Lang.FR))
+        assertEquals(Lang.EN, ReplyLang.answerIn(ReplyLangChoice.SPOKEN, Lang.EN, Lang.FR))
         // A fixed setting's turn language is the setting's (decide), so the line says what Robot's own lines say.
         assertEquals(Lang.EN, ReplyLang.answerIn(ReplyLangChoice.EN, decide(Lang.FR, true, setting = ReplyLangChoice.EN)))
         assertEquals(Lang.FR, ReplyLang.answerIn(ReplyLangChoice.FR, decide(Lang.EN, true, setting = ReplyLangChoice.FR)))

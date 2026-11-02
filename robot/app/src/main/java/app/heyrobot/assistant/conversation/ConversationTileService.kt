@@ -49,6 +49,9 @@ class ConversationTileService : TileService() {
             update()
             return
         }
+        // 1.1.2, FA8g: during a phone lock the shade stays open, but the tile starts nothing and opens no screen
+        // (phone-lock-design §5.2). Its notification says so, and stays for after the lock.
+        if (app.heyrobot.lock.PhoneLockNow.on(this)) return ConversationNotices.phoneLock(this, stopped = false)
         val open = {
             try {
                 val i = Intent(Transcripts.ACTION_START).setClassName(packageName, Transcripts.ACTIVITY)

@@ -50,7 +50,7 @@ object ExifDate {
     /** A wire date (yyyymmdd, or 0) as it is shown and filed: "2026-08-14", or null. */
     fun iso(v: Int): String? {
         if (v == 0 || of(v / 10_000, v / 100 % 100, v % 100) != v) return null
-        return "%04d-%02d-%02d".format(v / 10_000, v / 100 % 100, v % 100)  // l10n: not text (an ISO date)
+        return "%04d-%02d-%02d".format(java.util.Locale.ROOT, v / 10_000, v / 100 % 100, v % 100)  // l10n: not text (an ISO date)
     }
 
     /** The TIFF block inside a JPEG's first APP1 "Exif\0\0" segment, before the scan. */

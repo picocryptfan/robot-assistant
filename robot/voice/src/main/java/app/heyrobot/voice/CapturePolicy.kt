@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.voice
 
+import app.heyrobot.core.KwsThresholds
 import app.heyrobot.core.BargeIn
 import app.heyrobot.core.InterruptSensitivity
 
@@ -46,6 +47,25 @@ object CapturePolicy {
  * between the two (the wake word would stay deaf), a shared one can't.
  */
 class KeywordInputs {
+    /** A reply to be spoken is still being written (the panel, main thread): her voice may be quiet for seconds, and "stop" must still end it. */
+    @Volatile var replyComing: Boolean = false
+
+    /** "Stop" is listened for: Robot speaks, or will in a moment. */
+    val talking: Boolean get() = speaking || replyComing
+
+    /**
+     * What "stop" is heard with on this frame; null when it isn't listened for. Her voice has started once the capture is
+     * in call mode. With her voice quiet and nothing queued, ECHO_CANCEL leaves call mode after [TAIL_MS] (BargeIn.OFF at
+     * once), so such a wait inside a reply is heard with [KwsThresholds.stopQuiet] too, with no echo canceller.
+     */
+    fun stopPreset(communication: Boolean, echoCancelled: Boolean): KwsThresholds.Preset? = when {
+        !talking -> null
+        speaking || communication -> KwsThresholds.stop(echoCancelled, interrupt)
+        else -> KwsThresholds.stopQuiet(interrupt)
+    }
+
+    /** Car mode is on: wake hits log the microphone (VoiceEvent.CAR_MIC). */
+    @Volatile var logMic: Boolean = false
     /** The wake phrases' keyword lines (core KeywordBuffer.wake); empty: none. */
     @Volatile var wakeLines: String = ""
     /**

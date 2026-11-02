@@ -113,6 +113,24 @@ object ActionOutcome {
     /** A sentence that says it wasn't done (or asks) is never a claim. */
     private val NEGATED = Regex("""\b(?:not|no|never|nothing|n't|cannot|couldn't|didn't|wasn't|haven't|hasn't|won't|unable|cancel\w*|would|should|could|shall|want|ne|n'|pas|rien|aucun\w*|annule\w*|veux|voulez)\b|n't\b|\?""")
 
+    /** The words after "I" or "we" that say nothing about doing ("I have a question", "I've got", "I need"). */
+    private const val NOT_DOING = "been|got|a|an|the|no|to|some|your|my|this|that|these|those|one|two|many|more|any|enough|need|feed|speed|" + // l10n: not text (the words a claim is matched on)
+        "une?|de|des|du|le|la|les|ton|ta|tes|mon|ma|mes|ce|cet|cette|ces|plus|besoin|peur|envie|ete|faim|soif|acces|deux|trois|quelques"
+    private const val MANNER = "(?:just|now|also|already|successfully|gone ahead and|bien|deja|aussi|maintenant|donc)\\s+"
+
+    /**
+     * 1 Nov (the spoken run: "Pause." got "I've paused whatever you were doing"): the shape of a claim, whatever its verb. A
+     * reply can word what it did in endless ways, so where nothing backs it this is read rather than [DONE_VERBS]' list:
+     * "I've …", "I …ed", "j'ai …", "je viens de …", "… has been …ed", or a reply that is only "Paused." or "Okay, done."
+     */
+    private val ANY_CLAIM = Regex(
+        """\b(?:i've|ive|i have|we've|weve|we have)\s+(?:$MANNER){0,3}(?!(?:$NOT_DOING)\b)\p{L}+|""" +
+            """\b(?:i|we)\s+(?:$MANNER){0,3}(?!(?:$NOT_DOING)\b)\p{L}+ed\b|""" +
+            """\b(?:j'ai|jai|nous avons|on a|je t'ai|je l'ai|je te l'ai|je vous ai)\s+(?:$MANNER){0,3}(?!(?:$NOT_DOING)\b)\p{L}+|""" +
+            """\b(?:je|nous)\s+(?:viens|venons)\s+d(?:e\s|')|""" +
+            """\b(?:has|have|a|ont)\s+(?:been|ete)\s+\p{L}+|""" +
+            """^(?:(?:ok|okay|sure|alright|d'accord)[,\s]+)?(?:all set|done|fait|c'est fait|\p{L}{3,}ed|\p{L}{3,}ing)(?:\s+(?:now|it|that|for you))?[\s.!…]*$""")
+
     private fun plain(s: String) = Normalizer.normalize(s, Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "").lowercase(Locale.ROOT)
         .replace('’', '\'')
 
@@ -128,6 +146,16 @@ object ActionOutcome {
     /** [text] without the sentences that say an action was done; the rest as it was. */
     fun withoutClaims(text: String): String =
         text.split("\n").joinToString("\n") { line -> sentences(line).filterNot(::claimsSentence).joinToString(" ") }
+            .replace(Regex("\n{3,}"), "\n\n").trim()
+
+    /** [text] says somewhere, in any words, that something was done ([ANY_CLAIM]): for a turn in which nothing was. */
+    fun claimsAnything(text: String): Boolean = sentences(text).any(::claimsAnySentence)
+
+    private fun claimsAnySentence(s: String): Boolean = plain(s).trim().let { (CLAIM.containsMatchIn(it) || ANY_CLAIM.containsMatchIn(it)) && !NEGATED.containsMatchIn(it) }
+
+    /** [withoutClaims], in any words ([claimsAnything]). */
+    fun withoutAnyClaims(text: String): String =
+        text.split("\n").joinToString("\n") { line -> sentences(line).filterNot(::claimsAnySentence).joinToString(" ") }
             .replace(Regex("\n{3,}"), "\n\n").trim()
 
     private fun sentences(text: String): List<String> = text.split(Regex("""(?<=[.!?…])\s+|\n+""")).filter { it.isNotBlank() }

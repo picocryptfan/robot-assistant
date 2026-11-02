@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- 1.4 Lists' home-screen widget, "Robot list" (lists-plan.md §7.6, D12): the home screen only (never the lock screen),
+     no timed updates (Robot redraws at every change, screen-off and unlock), a list picked when you place it and again
+     from the widget's own Reconfigure. -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:configure="app.heyrobot.ui.lists.ListsWidgetSetup"
+    android:description="@string/lists_widget_description"
+    android:initialLayout="@layout/lists_widget"
+    android:minWidth="180dp"
+    android:minHeight="110dp"
+    android:minResizeWidth="110dp"
+    android:minResizeHeight="110dp"
+    android:resizeMode="horizontal|vertical"
+    android:targetCellWidth="3"
+    android:targetCellHeight="3"
+    android:updatePeriodMillis="0"
+    android:widgetCategory="home_screen"
+    android:widgetFeatures="reconfigurable" />

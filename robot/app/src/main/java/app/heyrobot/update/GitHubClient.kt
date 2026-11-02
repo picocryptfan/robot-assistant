@@ -16,6 +16,10 @@ import app.heyrobot.core.update.GitHubRepo
 import app.heyrobot.core.update.Hop
 import app.heyrobot.core.update.ReleaseAssets
 import app.heyrobot.core.update.UpdateFail
+import app.heyrobot.core.online.NetCause
+import app.heyrobot.core.online.NetPurpose
+import app.heyrobot.core.online.NetRecord
+import app.heyrobot.core.online.NetResult
 import app.heyrobot.core.termux.TermuxUpdates
 import app.heyrobot.sys.Assistant
 import java.io.File
@@ -49,9 +53,9 @@ internal object GitHubClient {
     private val REDIRECTS = setOf(301, 302, 303, 307, 308)
 
     /** The newest releases, as GitHub's JSON. Blocking. */
-    fun releases(ctx: Context, repo: GitHubRepo, abort: Abort, network: Network?): String =
-        request(ctx, repo.releasesUrl(), GitHubHosts.ACCEPT_JSON, UpdateToken.read(ctx), 0, abort, network) { c, _ ->
-            readText(c, GitHubReleases.MAX_JSON)
+    fun releases(ctx: Context, repo: GitHubRepo, abort: Abort, network: Network?, cause: NetCause): String =
+        request(ctx, repo.releasesUrl(), GitHubHosts.ACCEPT_JSON, UpdateToken.read(ctx), 0, abort, network, purpose = NetPurpose.UPDATE_CHECK, cause = cause) { c, _, got ->
+            readText(c, GitHubReleases.MAX_JSON, got)
         }
 
     /**
@@ -59,15 +63,17 @@ internal object GitHubClient {
      * [max] bytes). No token (it is a public request, never the updater's), no redirect followed, and only those URLs.
      * Blocking.
      */
-    fun publicJson(ctx: Context, url: String, accept: String, max: Int, abort: Abort, network: Network?): String {
+    fun publicJson(ctx: Context, url: String, accept: String, max: Int, abort: Abort, network: Network?, cause: NetCause): String {
         if (!TermuxUpdates.allowed(url)) throw Failure(UpdateFail.REDIRECT_REFUSED)
-        return request(ctx, url, accept, SecretRead.Absent, 0, abort, network, public = true) { c, _ -> readText(c, max) }
+        return request(ctx, url, accept, SecretRead.Absent, 0, abort, network, public = true, purpose = NetPurpose.TERMUX_CHECK, cause = cause) { c, _, got ->
+            readText(c, max, got)
+        }
     }
 
     /** A release's SHA256SUMS. Blocking. */
-    fun sums(ctx: Context, repo: GitHubRepo, file: FileRef, abort: Abort, network: Network?): String =
-        request(ctx, repo.assetUrl(file.id), GitHubHosts.ACCEPT_FILE, UpdateToken.read(ctx), 0, abort, network) { c, _ ->
-            readText(c, ReleaseAssets.MAX_SUMS)
+    fun sums(ctx: Context, repo: GitHubRepo, file: FileRef, abort: Abort, network: Network?, cause: NetCause): String =
+        request(ctx, repo.assetUrl(file.id), GitHubHosts.ACCEPT_FILE, UpdateToken.read(ctx), 0, abort, network, purpose = NetPurpose.UPDATE_DOWNLOAD, cause = cause) { c, _, got ->
+            readText(c, ReleaseAssets.MAX_SUMS, got)
         }
 
     /**
@@ -75,14 +81,14 @@ internal object GitHubClient {
      * again starts it over). Exactly [FileRef.size] bytes or it throws; what arrived before a cut stays for next time.
      * Blocking. [progress] gets the bytes so far.
      */
-    fun download(ctx: Context, repo: GitHubRepo, file: FileRef, part: File, abort: Abort, network: Network?, progress: (Long) -> Unit) {
+    fun download(ctx: Context, repo: GitHubRepo, file: FileRef, part: File, abort: Abort, network: Network?, cause: NetCause, progress: (Long) -> Unit) {
         var have = if (part.isFile) part.length() else 0L
         if (have > file.size) {
             part.delete()
             have = 0
         }
         if (have == file.size) return
-        request(ctx, repo.assetUrl(file.id), GitHubHosts.ACCEPT_FILE, UpdateToken.read(ctx), have, abort, network) { c, code ->
+        request(ctx, repo.assetUrl(file.id), GitHubHosts.ACCEPT_FILE, UpdateToken.read(ctx), have, abort, network, purpose = NetPurpose.UPDATE_DOWNLOAD, cause = cause) { c, code, got ->
             val append = when {
                 have > 0 && code == 206 && ByteRange.continues(c.getHeaderField("Content-Range"), have, file.size) -> true
                 code == 200 -> false
@@ -102,6 +108,7 @@ internal object GitHubClient {
                             // Never more than GitHub said the file has.
                             if (done + n > file.size) throw Failure(UpdateFail.TOO_BIG, code)
                             out.write(buf, 0, n)
+                            got[0] += n
                             done += n
                             progress(done)
                         }
@@ -121,10 +128,12 @@ internal object GitHubClient {
     /**
      * Opens [start] and hands the 2xx answer to [read], following redirects only as core GitHubHosts allows, the token
      * ([saved], as UpdateToken read it) only to the API. A 3xx is never followed by the platform (instanceFollowRedirects
-     * off), so a header set here goes to the host it was set for and no other.
+     * off), so a header set here goes to the host it was set for and no other. What went online (everyday-set-plan.md
+     * §5.3): each hop that left is recorded here, its host (a redirect's is another), [purpose], [cause], the bytes [read]
+     * counts into its third argument, and how it ended; one refused by the Network switch never left, so it isn't.
      */
     private fun <T> request(ctx: Context, start: String, accept: String, saved: SecretRead, from: Long, abort: Abort, network: Network?,
-                            public: Boolean = false, read: (HttpsURLConnection, Int) -> T): T {
+                            public: Boolean = false, purpose: NetPurpose, cause: NetCause, read: (HttpsURLConnection, Int, LongArray) -> T): T {
         // GrapheneOS's Network toggle is the INTERNET permission at run time.
         if (!Assistant.granted(ctx, Manifest.permission.INTERNET)) throw Failure(UpdateFail.NO_NETWORK_PERMISSION)
         // 1.0: a public request (Termux's update check) never carries the token.
@@ -140,6 +149,8 @@ internal object GitHubClient {
             val u = URL(url)
             val c = (network?.openConnection(u) ?: u.openConnection()) as? HttpsURLConnection ?: throw Failure(UpdateFail.REDIRECT_REFUSED)
             val forget = abort.onCancel { c.disconnect() }
+            val got = longArrayOf(0)
+            var outcome: NetResult? = NetResult.FAILED
             try {
                 c.connectTimeout = CONNECT_MS
                 c.readTimeout = READ_MS
@@ -154,6 +165,8 @@ internal object GitHubClient {
                 // The access token: to api.github.com only (HTTPS, no other port or user), never to a download server.
                 if (token != null && GitHubHosts.mayAuthorize(url)) c.setRequestProperty("Authorization", "Bearer $token") // l10n: not text (an HTTP header)
                 val code = c.responseCode
+                // The server answered: a redirect hop is done, an error answer failed (and a read below may fail it again).
+                outcome = if (code in REDIRECTS || code in 200..299) NetResult.DONE else NetResult.FAILED
                 if (code in REDIRECTS) {
                     if (public) throw Failure(UpdateFail.REDIRECT_REFUSED, code)
                     when (val next = GitHubHosts.redirect(url, c.getHeaderField("Location"), ++hop)) {
@@ -166,12 +179,17 @@ internal object GitHubClient {
                     val (why, retryAt) = GitHubErrors.classify(code, token != null, { c.getHeaderField(it) }, System.currentTimeMillis(), tokenKept)
                     throw Failure(why, code, retryAt)
                 }
-                return read(c, code)
+                outcome = NetResult.FAILED
+                return read(c, code, got).also { outcome = NetResult.DONE }
             } catch (f: Failure) {
+                if (f.why == UpdateFail.STOPPED) outcome = NetResult.STOPPED
                 throw f
             } catch (e: Exception) {
-                if (abort.cancelled) throw Failure(UpdateFail.STOPPED)
-                throw when (e) {
+                if (abort.cancelled) {
+                    outcome = NetResult.STOPPED
+                    throw Failure(UpdateFail.STOPPED)
+                }
+                val f = when (e) {
                     is UnknownHostException, is ConnectException, is NoRouteToHostException, is SocketTimeoutException -> Failure(UpdateFail.NO_INTERNET)
                     is SecurityException -> Failure(UpdateFail.NO_NETWORK_PERMISSION)
                     is SSLException -> Failure(UpdateFail.NO_INTERNET)
@@ -180,26 +198,31 @@ internal object GitHubClient {
                         UpdateFail.NO_NETWORK_PERMISSION else UpdateFail.NO_INTERNET)
                     else -> Failure(UpdateFail.SERVICE)
                 }
+                // The Network switch refused the socket: nothing went online.
+                if (f.why == UpdateFail.NO_NETWORK_PERMISSION) outcome = null
+                throw f
             } finally {
                 forget()
                 c.disconnect()
+                outcome?.let { NetRecord.record(purpose, u.host, cause, 0, got[0], it) }
             }
         }
     }
 
-    /** The body as text, at most [max] bytes (more is refused, not cut). */
-    private fun readText(c: HttpsURLConnection, max: Int): String {
+    /** The body as text, at most [max] bytes (more is refused, not cut), its bytes counted into [got][0]. */
+    private fun readText(c: HttpsURLConnection, max: Int, got: LongArray): String {
         c.getHeaderField("Content-Length")?.toLongOrNull()?.let { if (it > max) throw Failure(UpdateFail.TOO_BIG) }
-        return c.inputStream.use { read(it, max) }
+        return c.inputStream.use { read(it, max, got) }
     }
 
-    private fun read(s: InputStream, max: Int): String {
+    private fun read(s: InputStream, max: Int, got: LongArray): String {
         val out = java.io.ByteArrayOutputStream()
         val buf = ByteArray(8192)
         while (true) {
             val n = s.read(buf)
             if (n < 0) break
             out.write(buf, 0, n)
+            got[0] += n
             if (out.size() > max) throw Failure(UpdateFail.TOO_BIG)
         }
         return out.toString(Charsets.UTF_8.name())

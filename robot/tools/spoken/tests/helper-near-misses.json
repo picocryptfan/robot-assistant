@@ -1,0 +1,21 @@
+{
+  "format": 1,
+  "id": "helper-near-misses",
+  "title": "Words close to \"ask the helper\" stay with Robot",
+  "safety": "read",
+  "testBench": ["v100-helper-near-misses"],
+  "needs": {"model": true},
+  "setup": [{"set": "speakReplies", "value": "VOICE"}],
+  "steps": [
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "Help.", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 120},
+    {"do": "check", "what": "router", "equals": "HelperRouter", "absent": true},
+    {"do": "end"},
+    {"do": "open", "how": "button"},
+    {"do": "say", "text": "Ask for help.", "voice": "heart"},
+    {"do": "wait_reply", "seconds": 120},
+    {"do": "check", "what": "router", "equals": "HelperRouter", "absent": true},
+    {"do": "end"}
+  ]
+}

@@ -10,6 +10,11 @@ import org.junit.Test
 class EscalationTest {
     @Test fun preRouterSendsStrongSignalsToClaude() {
         assertEquals(PreRouter.Signal.REASONING, PreRouter.signal("explain why the sky is blue"))
+        // rc4: French asks for reasoning too, with its accents or typed without them.
+        for (q in listOf("explique pourquoi le ciel est bleu etape par etape", "Explique pourquoi le ciel est bleu étape par étape", "explique-moi comment marche une thermopompe",
+            "explique comment une thermopompe fonctionne", "montre-moi pas à pas", "les avantages et les inconvénients d'une thermopompe", "aide-moi à décider", "devrais-je louer ou acheter"))
+            assertEquals(q, PreRouter.Signal.REASONING, PreRouter.signal(q))
+        for (q in listOf("pourquoi le ciel est bleu", "explique la photosynthèse", "ou est le chat", "explique comment mettre une alarme")) assertEquals(q, null, PreRouter.signal(q))
         assertEquals(PreRouter.Signal.REASONING, PreRouter.signal("Explain how a heat pump works"))
         assertEquals(PreRouter.Signal.REASONING, PreRouter.signal("compare the iPhone and the Pixel"))
         assertEquals(PreRouter.Signal.REASONING, PreRouter.signal("walk me through it step by step"))
@@ -263,6 +268,8 @@ class EscalationTest {
         assertEquals(HelperLeftOut.DECLINED, left(declined = true))
         assertEquals(HelperLeftOut.SCREEN, left(a = Attachment.SCREEN))
         assertEquals(HelperLeftOut.PHOTO, left(a = Attachment.PHOTO))
+        // chat-files: an attached file's words reach a helper only through a card you tap, never the model's own call.
+        assertEquals(HelperLeftOut.FILE, left(a = Attachment.FILE))
         // The first reason wins: a refusal says more than the picture.
         assertEquals(HelperLeftOut.DECLINED, left(declined = true, a = Attachment.SCREEN))
         assertEquals(HelperLeftOut.OFF, left(claudeSettings(claudeEnabled = false), declined = true, a = Attachment.PHOTO))
@@ -271,7 +278,7 @@ class EscalationTest {
                 val offered = AskHelperTool.offered(s, keySaved, true, declined, a)
                 assertEquals("$s $keySaved $declined $a", !declined && a == Attachment.NONE, offered)
             }
-        assertEquals(5, HelperLeftOut.entries.map { it.id }.toSet().size)
+        assertEquals(6, HelperLeftOut.entries.map { it.id }.toSet().size)
     }
 
     /** A follow-up in a conversation that showed Robot the screen or a photo is about it too. */

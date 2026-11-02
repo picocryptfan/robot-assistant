@@ -1,0 +1,7 @@
+<resources>
+    <!-- 1.4 Lists' home-screen widget (LS6), dark. -->
+    <color name="lists_widget_bg">@android:color/system_surface_container_dark</color>
+    <color name="lists_widget_ink">@android:color/system_on_surface_dark</color>
+    <color name="lists_widget_quiet">@android:color/system_on_surface_variant_dark</color>
+    <color name="lists_widget_accent">@android:color/system_primary_dark</color>
+</resources>
