@@ -13,7 +13,10 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import app.heyrobot.core.Person
 import app.heyrobot.core.link.BlockedView
+import app.heyrobot.core.link.BridgeChoice
+import app.heyrobot.core.link.BridgeLine
 import app.heyrobot.core.link.CodeState
+import app.heyrobot.core.link.EventAlone
 import app.heyrobot.core.link.LinkCapability
 import app.heyrobot.core.link.LinkIds
 import app.heyrobot.core.link.LinkIpcProtocol
@@ -21,6 +24,7 @@ import app.heyrobot.core.link.LinkLevel
 import app.heyrobot.core.link.LinkLevels
 import app.heyrobot.core.link.LinkMode
 import app.heyrobot.core.link.LinkPreset
+import app.heyrobot.core.link.LinkReach
 import app.heyrobot.core.link.LinkSettings
 import app.heyrobot.core.link.MakeCodeResult
 import app.heyrobot.core.link.PairCodeForm
@@ -39,6 +43,7 @@ import app.heyrobot.ui.testing.onRow
 import app.heyrobot.ui.testing.scrollToText
 import app.heyrobot.ui.testing.show
 import androidx.compose.ui.test.onAllNodesWithText
+import java.time.LocalTime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -131,7 +136,26 @@ class LinkScreensTest {
         rule.onNode(hasText("everything it saved", substring = true)).performClick()
         waitFor("no one is told")
         rule.onAllNodes(hasText("Start over")).onLast().performClick()
-        rule.waitUntil(5_000) { "startOver" in port.calls }
+        rule.waitUntil(5_000) { "startOver" in port.calls && "save" in port.calls }
+        // "Everything it saved": the name goes too, so turning on again asks for it.
+        assertEquals("", port.settings.name)
+        assertEquals(false, port.settings.on)
+    }
+
+    /** "Everything it saved" means the file too: your own bridge lines and every other setting go back to their defaults. */
+    @Test fun startOverClearsEveryLinkSetting() {
+        val own = listOf(BridgeLine.parse("192.0.2.9:443 0123456789ABCDEF0123456789ABCDEF01234567")!!)
+        val saved = LinkSettings(on = false, name = "Matt", reach = LinkReach.TOR, whileLocked = false,
+            hours = EventAlone.Hours(LocalTime.of(10, 0), LocalTime.of(16, 0)), brief = false, busyCalendars = setOf(3L),
+            bridges = BridgeChoice.OWN, ownBridges = own)
+        val port = FakePort(saved).apply { holds = true }
+        rule.setContent { LinkSettingsScreen(port, ActionLog().actions, SnackbarHostState()) {} }
+        waitFor("everything it saved")
+        rule.onNode(hasText("everything it saved", substring = true)).performClick()
+        waitFor("no one is told")
+        rule.onAllNodes(hasText("Start over")).onLast().performClick()
+        rule.waitUntil(5_000) { "startOver" in port.calls && "save" in port.calls }
+        assertEquals(LinkSettings.CLOSED, port.settings)
     }
 
     /** F59: turned on over a state that won't read, the switch stays on so the warning shows. */

@@ -87,7 +87,7 @@ class TorBridgesTest {
 
     /** Tor Browser's built-in lines, as taken on 28 Oct 2026: a change to them is deliberate (refreshed at each release). */
     @Test fun theBuiltInLinesArePinnedAsTaken() {
-        assertEquals("2026-10-28", TorBuiltInBridges.TAKEN)
+        assertEquals("2026-11-02", TorBuiltInBridges.TAKEN)
         val t = TorBuiltInBridges.texts
         assertEquals(listOf(2, 7, 1), listOf(TorRoute.SNOWFLAKE, TorRoute.OBFS4, TorRoute.MEEK).map { t.getValue(it).size })
         for ((route, lines) in t) {

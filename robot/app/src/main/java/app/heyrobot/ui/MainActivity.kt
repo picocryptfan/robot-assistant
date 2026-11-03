@@ -138,10 +138,14 @@ class MainActivity : ComponentActivity() {
      */
     val route = mutableStateOf<String?>(null)
 
+    /** The page car mode opened, from the intent, so it holds through a rotation; any other way in clears it. */
+    val carPage = mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         if (savedInstanceState == null) route.value = routeOf(intent)
+        carPage.value = AppRoutes.fromCar(intent)
         // F115: a tap on Yes, Allow or Delete here must be yours: none goes through while another app's window covers this one.
         window.filterObscuredTouches()
         setContent { RobotTheme { RobotAppUi(this) } }
@@ -193,6 +197,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         route.value = routeOf(intent)
+        carPage.value = AppRoutes.fromCar(intent)
     }
 
     /** The pages other screens and apps may open (ui/settings AppRoutes). */
@@ -939,6 +944,10 @@ fun RobotAppUi(activity: MainActivity) {
             dismissButton = { TextButton(onClick = { crashTold(e) }) { Text(androidx.compose.ui.res.stringResource(R.string.home_not_now)) } },
         )
     }
+
+    // Opened from car mode: this screen closes, and car mode, under it in the same half of the screen, is back.
+    nav.leaveAt = activity.carPage.value?.let(AppRoutes::target)?.page
+    nav.leave = activity::finish
 
     BackHandler(enabled = page != null || (tab != Tab.HOME && !(tab == Tab.NOTES && fromNotesIcon) && !(tab == Tab.FILES && fromFilesIcon))) {
         if (page != null) nav.back() else tab = Tab.HOME

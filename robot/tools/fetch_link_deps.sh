@@ -27,7 +27,7 @@ trap 'rm -rf "$TMP"' EXIT
 
 # The pinned files: "<sha256>  <group path>/<artifact>/<version>/<file>".
 mapfile -t LINES < <(grep -E '^[0-9a-f]{64}  (org|com)/' "$PINS")
-[ "${#LINES[@]}" = 8 ] || { echo "expected 8 pinned files in $PINS, found ${#LINES[@]}" >&2; exit 1; }
+[ "${#LINES[@]}" = 6 ] || { echo "expected 6 pinned files in $PINS, found ${#LINES[@]}" >&2; exit 1; }
 
 fetch() { # relative-path -> $TMP/relative-path
   local rel="$1" name; name="$(basename "$rel")"
@@ -46,7 +46,7 @@ for line in "${LINES[@]}"; do
   fetch "$rel"
   got="$(sha256sum "$TMP/$rel" | cut -d' ' -f1)"
   [ "$got" = "$sha" ] || { echo "SHA-256 MISMATCH $rel: $got != $sha" >&2; exit 1; }
-  # Maven Central publishes a .sha256 for these three jars: it must say the same.
+  # Maven Central publishes a .sha256 for these two jars: it must say the same.
   case "$rel" in
     */tor-android-0.4.9.14.jar|*/tink-1.23.0.jar)
       fetch "$rel.sha256"

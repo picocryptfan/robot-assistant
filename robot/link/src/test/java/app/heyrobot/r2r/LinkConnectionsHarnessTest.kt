@@ -101,6 +101,9 @@ class LinkConnectionsHarnessTest {
         return used.pairing!! to onSecond
     }
 
+    /** fix-1.2.1-b: [r]'s listener now, not the port its peer last heard: after a sleep it may be another. */
+    private fun listening(lan: LoopbackLan, r: TestRobot): Int = lan.port(if (r.name == "Matt") 1 else 2)
+
     /** A stranger's socket on [port] that sends a connection hello with [token]. */
     private fun bind(port: Int, token: ByteArray): Socket {
         val s = Socket()
@@ -139,10 +142,10 @@ class LinkConnectionsHarnessTest {
         val rec = second.state.pairings.getValue(onSecond)
         val current = rec.inToken!!.copyOf()
         val before = rec.inPrev!!.copyOf()
-        val port = first.state.pairings.getValue(onFirst).peerAddrs.first().port
         // Matt's Robot goes quiet and the shared network goes; someone who saw both tokens opens two connections to Sam's.
         first.n().sleep(); second.n().sleep(); idle(first, second)
         second.n().wake(); idle(second)
+        val port = listening(lan, second)
         lan.down = true
         val raw1 = bind(port, current)
         val raw2 = bind(port, before)
@@ -154,7 +157,11 @@ class LinkConnectionsHarnessTest {
         idle(second)
         // The stranger's token never made Sam's Robot give a new one.
         assertTrue(second.state.pairings.getValue(onSecond).inToken!!.contentEquals(current))
+        // link-flake-1.2.1: Matt's onion comes up a while after he wakes (Tor's own thread); a try before then fails and
+        // waits out its backoff, which this test's clock never reaches. Time moves on only once it answers.
+        tor.publishDelayMs = 500
         first.n().wake()
+        until("Matt's onion answers") { first.state.tor?.let { tor.serving(it.onion) } == true }
         later(2 * 60_000L, first, second)
         until("Matt's Robot got it by Tor") { idle(first, second); first.sink.delivered.any { it.second.id == e.id } }
         assertTrue(second.log.snapshot().any { it.event == LinkEvent.REQUEST_OUT && it.b == LinkWay.TOR.code })
@@ -173,12 +180,16 @@ class LinkConnectionsHarnessTest {
         val tor = FakeTorNetwork()
         val (first, second) = sorted(robot("Matt", lan, 1, tor, null), robot("Sam", lan, 2, tor, null))
         val (onFirst, onSecond) = pairInPerson(first, second)
-        val port = first.state.pairings.getValue(onFirst).peerAddrs.first().port
         first.n().sleep(); second.n().sleep(); idle(first, second)
         second.n().wake(); idle(second)
+        val port = listening(lan, second)
         // Eight connections to Sam's listener that never say hello: four wait (their own cap), four are closed at once.
+        // fix-1.2.1-b: wait until Sam's Robot has taken in all eight, not a fixed half second: under a full run's load the
+        // listener's thread and :link's own lag behind, and fewer than eight in by then failed the counts below.
+        val mark = second.log.snapshot().lastOrNull()
         val socks = List(8) { Socket().apply { connect(InetSocketAddress(InetAddress.getLoopbackAddress(), port), 5_000) } }
-        Thread.sleep(500)
+        until("all eight taken in") { second.log.snapshot().let { l -> l.drop(l.indexOfLast { it === mark } + 1) }.count { it.event == LinkEvent.CONNECT } >= 8 }
+        idle(second)
         assertEquals(4, second.n().status().get().connections)
         assertEquals(4, socks.count { closedByPeer(it, 300) })
         // Sam's request still reaches Matt's Robot, long before the silent ones time out (30 seconds).
@@ -213,6 +224,7 @@ class LinkConnectionsHarnessTest {
         assertTrue(b.sink.delivered.none { it.second.id == e.id })
         // Awake (a client bound, or the push job): it goes.
         a.n().wake()
+        until("Matt's onion answers") { a.state.tor?.let { tor.serving(it.onion) } == true } // link-flake-1.2.1, as above
         later(5 * 60_000L, a, b)
         until("delivered once awake") { idle(a, b); b.sink.delivered.any { it.second.id == e.id } }
     }

@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.car
 
+import app.heyrobot.core.output.SeenDevice
+import app.heyrobot.core.output.RouteType
+import app.heyrobot.core.headset.RoutePlanner
+import app.heyrobot.core.headset.HeadsetSettings
+import app.heyrobot.core.headset.EntryKind
+import app.heyrobot.core.output.DeviceMemory
 import app.heyrobot.core.everyday.EverydaySettings
 import app.heyrobot.core.everyday.EverydaySettingsCodec
 import app.heyrobot.core.everyday.EverydaySettingsFile
@@ -164,11 +170,26 @@ class CarDriveTest {
         assertEquals(null, hold.next(null, keep = false, nowMs = 6_010))
     }
 
+    @Test fun carModeWithNothingConnectedListensOnThePhone() {
+        val speaker = SeenDevice(RouteType.SPEAKER, "", "")
+        val sco = SeenDevice(RouteType.BT_SCO, "00:11", "Earbuds")
+        fun plan(vararg d: SeenDevice, call: Boolean = false, car: SeenDevice? = null) =
+            RoutePlanner.plan(EntryKind.BVRA, d.toList(), DeviceMemory(), HeadsetSettings(), call, car = car)
+        assertEquals(true, CarTurn.listensOnPhone(on = true, fromCar = true, decision = plan(speaker)))
+        // A headset or the car takes the session, as before; a call and car mode being off change nothing.
+        assertEquals(false, CarTurn.listensOnPhone(on = true, fromCar = true, decision = plan(speaker, sco)))
+        assertEquals(false, CarTurn.listensOnPhone(on = true, fromCar = true, decision = plan(speaker, sco, car = sco)))
+        assertEquals(false, CarTurn.listensOnPhone(on = true, fromCar = true, decision = plan(speaker, call = true)))
+        assertEquals(false, CarTurn.listensOnPhone(on = false, fromCar = true, decision = plan(speaker)))
+        assertEquals(false, CarTurn.listensOnPhone(on = true, fromCar = false, decision = plan(speaker)))
+    }
+
     @Test fun onlyTheCarsOwnShowsWithTheScreenUpHaveNoPanel() {
         assertEquals(true, CarTurn.quiet(on = true, screenUp = true, fromCar = true, windowNeeded = false))
         assertEquals(false, CarTurn.quiet(on = false, screenUp = true, fromCar = true, windowNeeded = false))
         assertEquals(false, CarTurn.quiet(on = true, screenUp = false, fromCar = true, windowNeeded = false))
         assertEquals(false, CarTurn.quiet(on = true, screenUp = true, fromCar = false, windowNeeded = false))
         assertEquals(false, CarTurn.quiet(on = true, screenUp = true, fromCar = true, windowNeeded = true))
+        assertEquals(false, CarTurn.quiet(on = true, screenUp = true, fromCar = true, windowNeeded = false, route = false))
     }
 }

@@ -133,6 +133,9 @@ class LoopbackLan {
     val dials = AtomicInteger()
     /** L5-fix: the network both phones are on is gone (each dial fails), while the listeners stay up. */
     @Volatile var down = false
+    /** fix-1.2.1-b: each Robot's listening port now; one that slept may come back on another (its old one taken meanwhile). */
+    private val listening = ConcurrentHashMap<Int, Int>()
+    fun port(n: Int): Int = listening.getValue(n)
 
     fun carrier(n: Int): DirectNet = object : DirectNet {
         private var server: ServerSocket? = null
@@ -144,6 +147,7 @@ class LoopbackLan {
             last = s.localPort
             server = s
             ports["10.0.0.$n:${s.localPort}"] = s.localPort
+            listening[n] = s.localPort
             Thread {
                 while (!s.isClosed) {
                     val c = try { s.accept() } catch (_: IOException) { break }
@@ -176,11 +180,16 @@ class FakeTorNetwork {
     private val services = ConcurrentHashMap<String, Service>()
     @Volatile var drop: Double = 0.0
     @Volatile var delayMs: Long = 0
+    /** link-flake-1.2.1: how long an onion takes to come up once published, as a real Tor's does (seconds there). */
+    @Volatile var publishDelayMs: Long = 0
     val dials = AtomicInteger()
     val hostDials = AtomicInteger()
     val refused = AtomicInteger()
     private val random = java.util.Random(1502)
     var push: FakePushServer? = null
+
+    /** link-flake-1.2.1: true once [onion] answers dials. */
+    fun serving(onion: OnionKey): Boolean = services.containsKey(OnionAddress.of(onion))
 
     fun carrier(): TorNet = object : TorNet {
         private val auth = ConcurrentHashMap<String, ByteArray>()
@@ -191,6 +200,7 @@ class FakeTorNetwork {
         override val running: Boolean get() = up
         override fun publish(slot: Int, keyBlob: String?, clients: List<ByteArray>, accept: (Duplex) -> Unit): PublishedOnion {
             if (!up) throw TorException(TorProblem.NOT_READY)
+            if (publishDelayMs > 0) Thread.sleep(publishDelayMs)
             val blob = keyBlob ?: ("ED25519-V3:" + Base64.getEncoder().encodeToString(ByteArray(64).also(SecureRandom()::nextBytes)))
             val key = OnionKey(MessageDigest.getInstance("SHA-256").digest(blob.toByteArray()))
             val id = OnionAddress.of(key)

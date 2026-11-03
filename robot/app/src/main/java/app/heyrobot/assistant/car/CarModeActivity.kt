@@ -275,10 +275,7 @@ class CarModeActivity : ComponentActivity() {
         val lockOn = PhoneLockNow.on(this)
         val no = closed(CarOpen.app(app.pkg, Assistant.keyguard(this), CarModeController.trusted, lockOn, if (lockOn) PhoneLockNow.apps(this) else emptySet()))
         val i = if (no == null && MusicApps.check(this, app) == MusicApps.PinNow.OK) packageManager.getLaunchIntentForPackage(app.pkg) else null
-        val opened = i != null && try {
-            startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT))
-            true
-        } catch (_: Throwable) { false }
+        val opened = i != null && CarSplitOpen.start(this, i)
         said = no ?: if (opened) "" else getString(R.string.car_fourth_gone, app.label)
         if (opened) CarModeController.besideOpened(CarBeside.Last.App(app.pkg))
         refresh()
@@ -288,7 +285,7 @@ class CarModeActivity : ComponentActivity() {
     private fun openSettings(page: String) {
         val no = closed(CarOpen.settings(HandsFreeHub.phone().locked))
         if (no == null) try {
-            startActivity(Intent().setClassName(packageName, "app.heyrobot.ui.MainActivity").putExtra(AppPages.EXTRA, page).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            startActivity(Intent().setClassName(packageName, "app.heyrobot.ui.MainActivity").putExtra(AppPages.EXTRA, page).putExtra(AppPages.EXTRA_FROM_CAR, true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         } catch (_: Throwable) {}
         said = no ?: ""
         refresh()
@@ -335,7 +332,7 @@ class CarModeActivity : ComponentActivity() {
     private fun maps() {
         val lockOn = PhoneLockNow.on(this)
         val no = closed(CarOpen.maps(Assistant.keyguard(this), CarModeController.trusted, lockOn, lockOn && PhoneLockNow.mapsInCar(this)))
-        val back = no == null && MapsApps.bringForward(this, adjacent = true)
+        val back = no == null && MapsApps.bringForward(this, adjacent = false) { CarSplitOpen.start(this, it) }
         said = no ?: if (back) "" else spoken(HandsFreeStrings.noOrganicMaps(), HandsFreeHub.lang)
         if (back) CarModeController.besideOpened(CarBeside.Last.Map)
         refresh()
@@ -349,10 +346,7 @@ class CarModeActivity : ComponentActivity() {
         val lockOn = PhoneLockNow.on(this)
         val no = closed(CarOpen.app(pkg, Assistant.keyguard(this), CarModeController.trusted, lockOn, if (lockOn) PhoneLockNow.apps(this) else emptySet()))
         val i = if (no == null && (app == null || MusicApps.check(this, app) == MusicApps.PinNow.OK)) packageManager.getLaunchIntentForPackage(pkg) else null
-        if (i != null) try {
-            startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT))
-            CarModeController.besideOpened(CarBeside.Last.App(pkg))
-        } catch (_: Throwable) {}
+        if (i != null && CarSplitOpen.start(this, i)) CarModeController.besideOpened(CarBeside.Last.App(pkg))
         said = no ?: ""
         refresh()
     }

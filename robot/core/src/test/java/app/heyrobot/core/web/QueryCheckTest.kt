@@ -132,7 +132,7 @@ class QueryCheckTest {
     }
 
     @Test fun codeLikeTokensNeverGo() {
-        for (q in listOf("aGVsbG8gd29ybGQgc2VjcmV0", "sk-ant-api03-ABCDEFghij12xyzQRS", "token ghp_aB3cD4eF5gH6iJ7kL8mN9oP",
+        for (q in listOf("aGVsbG8gd29ybGQgc2VjcmV0", "sk-ant-api03-FAKEkeyNOT4testZ00", "token ghp_FAKE0token0NOT0real0abc",
             "a1".repeat(21), "x".repeat(65))) {
             assertEquals(q, QueryRefusal.CODE, refused(q))
         }

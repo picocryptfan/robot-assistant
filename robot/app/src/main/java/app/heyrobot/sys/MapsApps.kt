@@ -108,10 +108,10 @@ object MapsApps {
     }
 
     /** Brings your maps app forward as it was (its directions, when it shows them), beside Robot when Android allows it. */
-    fun bringForward(ctx: Context, adjacent: Boolean): Boolean {
+    fun bringForward(ctx: Context, adjacent: Boolean, launch: (Intent) -> Boolean = { start(ctx, it) }): Boolean {
         val pkg = app(ctx) ?: return false
         val i = ctx.packageManager.getLaunchIntentForPackage(pkg) ?: return false
-        return start(ctx, i.addFlags(flags(adjacent)))
+        return launch(i.addFlags(flags(adjacent)))
     }
 
     /** Said when your picked maps app is now signed by someone else: nothing opened. */

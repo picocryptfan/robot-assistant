@@ -24,7 +24,7 @@ class SecretMaskTest {
             "github_pat_" + "1".repeat(22) + "_" + "a".repeat(59) to SecretMask.Kind.TOKEN,
             "glpat-" + "y".repeat(20) to SecretMask.Kind.TOKEN,
             "xoxb-1234567890-abcdefghij" to SecretMask.Kind.TOKEN,
-            "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U" to SecretMask.Kind.TOKEN,
+            "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.FAKE_signature_not_a_real_token_0000000000" to SecretMask.Kind.TOKEN,
         )
         for ((secret, kind) in samples) {
             val text = "before $secret after"

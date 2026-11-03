@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import app.heyrobot.core.car.CarAction
+import app.heyrobot.core.car.CarBeside
 import app.heyrobot.core.car.CarFourth
 import app.heyrobot.core.car.CarInfo
 import app.heyrobot.core.car.CarLarge
@@ -59,6 +60,10 @@ private const val FR = "fr-rCA-w411dp-h891dp-xhdpi"
 private const val HALF = "w411dp-h420dp-xhdpi"
 private const val HALF_FR = "fr-rCA-w411dp-h420dp-xhdpi"
 private const val HALF_SHORT = "w411dp-h400dp-xhdpi"
+/** The car screen at the split's smallest stop: 3/4 for the other app, and Android's own smallest window. */
+private const val SPLIT_34 = "w411dp-h240dp-xhdpi"
+private const val SPLIT_LEAST = "w411dp-h220dp-xhdpi"
+private const val SPLIT_34_FR = "fr-rCA-w411dp-h240dp-xhdpi"
 private const val HALF_SHORT_FR = "fr-rCA-w411dp-h400dp-xhdpi"
 
 /** A Pixel 8 on its side, inside the system bars: 359dp high, not the 411 of the whole screen. */
@@ -320,7 +325,32 @@ class CarLayoutScreenTest {
 
     @Test fun theArtistHasItsOwnLineAndATitleStopsAtAWord() = titleStops()
     @Test @Config(qualifiers = WIDE) fun theArtistHasItsOwnLineAndATitleStopsAtAWordOnItsSide() = titleStops()
-    @Test @Config(qualifiers = HALF) fun theArtistHasItsOwnLineAndATitleStopsAtAWordInSplitScreen() = titleStops(mapMedia.copy(beside = true, music = longSong))
+
+    // The user's report on 1.2.0: at 3/4 the name was always cut off. It held 64 dp of width, beside a picture.
+    private val podcast = "The Long Road Home to Cape Breton Island, Episode 212: All the Places In Between"
+    private fun wholeName(s: CarScreenState) {
+        draw(s)
+        val shown = textNodes().single { (_, r) -> r.layoutInput.text.text.startsWith(s.music.song!!.take(8)) }
+        assertEquals(s.music.song, shown.second.layoutInput.text.text)
+        assertTrue("clipped: ${shown.second.didOverflowHeight}", !shown.second.didOverflowHeight)
+        assertTrue("${shown.second.layoutInput.style.fontSize}", shown.second.layoutInput.style.fontSize.value >= 6.9f)
+        assertEquals(emptyList<String>(), touchProblems())
+    }
+    private val inSplit = mapMedia.copy(beside = true)
+    private val withArt = android.graphics.Bitmap.createBitmap(64, 64, android.graphics.Bitmap.Config.ARGB_8888)
+    @Test @Config(qualifiers = SPLIT_34) fun aLongNameIsWholeAtTheSmallestSplit() { wholeName(inSplit.copy(music = song.copy(song = podcast, art = withArt))); rule.shot("car_split34_long") }
+    @Test @Config(qualifiers = SPLIT_34) fun aLongNameIsWholeWithTheAppsIconToo() = wholeName(inSplit.copy(music = song.copy(song = podcast, icon = withArt)))
+    @Test @Config(qualifiers = SPLIT_34) fun aLongNameIsWholeWithTheWayBackToTheMap() = wholeName(inSplit.copy(music = song.copy(song = podcast), back = CarBeside.Back.INFO))
+    @Test @Config(qualifiers = SPLIT_LEAST) fun aLongNameIsWholeInAndroidsSmallestWindow() = wholeName(inSplit.copy(music = song.copy(song = podcast)))
+    @Test @Config(qualifiers = SPLIT_34, fontScale = 2f) fun aLongNameIsWholeAtTheLargestFontSize() { wholeName(inSplit.copy(music = song.copy(song = podcast))); rule.shot("car_split34_long_large_font") }
+    @Test @Config(qualifiers = SPLIT_34_FR) fun aLongNameIsWholeInFrench() = wholeName(inSplit.copy(music = song.copy(song = podcast)).fr())
+    @Test @Config(qualifiers = SPLIT_34) fun aShortNameKeepsItsSizeAndItsArtist() {
+        draw(inSplit.copy(music = song))
+        val shown = texts().first { it.layoutInput.text.text == song.song }
+        assertEquals(20f, shown.layoutInput.style.fontSize.value, 0.01f)
+        assertTrue("Neil Young" in texts().map { it.layoutInput.text.text })
+    }
+    @Test @Config(qualifiers = HALF) fun aLongNameIsWholeHalfwayToo() = wholeName(inSplit.copy(music = longSong))
 
     private fun titleStops(s: CarScreenState = longLatest) {
         draw(s)

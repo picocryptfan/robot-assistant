@@ -199,14 +199,18 @@ object Assistant {
  * The restart fallback (spec item 9): Android 17 may drop a third-party assistant at boot (see the
  * manifest's recognizer note). 3 minutes after BOOT_COMPLETED, if Robot was the assistant before and has
  * not started in this boot, a high-importance notification takes the person to the assistant setting.
- * It never binds or starts the assistant itself.
+ * It never binds or starts the assistant itself. 1.2.1: the same notice when the assistant stops between restarts
+ * ([onVisShutdown]).
  */
 object BootCheck {
     const val DELAY_MS = 180_000L
+    /** After onShutdown: long enough for Android to bind the assistant again when it only meant to restart it. */
+    const val DROP_DELAY_MS = 60_000L
     private const val CHANNEL = "assistant_restart"
     private const val NOTICE_ID = 77
     private const val REQ_ALARM = 7_701
     private const val REQ_OPEN = 7_702
+    private const val REQ_DROP = 7_703
 
     /** [VOICE] onReady: the assistant runs in this boot; a notice saying otherwise is out of date. */
     fun onVisReady(ctx: Context) {
@@ -216,6 +220,12 @@ object BootCheck {
         } catch (_: Exception) {}
         try { ctx.getSystemService(NotificationManager::class.java).cancel(NOTICE_ID) } catch (_: Exception) {}
     }
+
+    /**
+     * [VOICE] onShutdown: Android let the assistant go, with the system up, so nothing else would say that the wake word has
+     * stopped. A minute later [run] looks again, in the main process: this process may be gone by then.
+     */
+    fun onVisShutdown(ctx: Context) = arm(ctx, REQ_DROP, DROP_DELAY_MS, Intent(ctx, BootCheckReceiver::class.java).putExtra(EXTRA_DROPPED, true))
 
     /** The assistant started in this boot, and since Robot was last installed or updated. */
     fun readyThisBoot(ctx: Context): Boolean {
@@ -228,15 +238,20 @@ object BootCheck {
     /** The alarm's extra: the check follows an update rather than a restart. */
     const val EXTRA_UPDATE = "robot_after_update"
 
+    /** The alarm's extra: the check follows the assistant's onShutdown ([onVisShutdown]). */
+    const val EXTRA_DROPPED = "robot_assistant_dropped"
+
     /**
      * [MAIN] From BOOT_COMPLETED (and MY_PACKAGE_REPLACED, [afterUpdate]): an exact alarm (USE_EXACT_ALARM), inexact if the
      * system refuses.
      */
-    fun schedule(ctx: Context, afterUpdate: Boolean = false) {
+    fun schedule(ctx: Context, afterUpdate: Boolean = false) =
+        arm(ctx, REQ_ALARM, DELAY_MS, Intent(ctx, BootCheckReceiver::class.java).putExtra(EXTRA_UPDATE, afterUpdate))
+
+    private fun arm(ctx: Context, request: Int, delayMs: Long, intent: Intent) {
         val am = ctx.getSystemService(AlarmManager::class.java)
-        val pi = PendingIntent.getBroadcast(ctx, REQ_ALARM, Intent(ctx, BootCheckReceiver::class.java).putExtra(EXTRA_UPDATE, afterUpdate),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        val at = SystemClock.elapsedRealtime() + DELAY_MS
+        val pi = PendingIntent.getBroadcast(ctx, request, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val at = SystemClock.elapsedRealtime() + delayMs
         try {
             if (am.canScheduleExactAlarms()) am.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, at, pi)
             else am.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, at, pi)
@@ -245,16 +260,22 @@ object BootCheck {
         }
     }
 
-    /** [MAIN] The alarm. */
-    fun run(ctx: Context, afterUpdate: Boolean = false) {
+    /** [MAIN] The alarm. After a drop this boot's start proves nothing: only being the assistant now counts. */
+    fun run(ctx: Context, alarm: Intent) {
+        val afterUpdate = alarm.getBooleanExtra(EXTRA_UPDATE, false)
+        val dropped = alarm.getBooleanExtra(EXTRA_DROPPED, false)
         val ever = Paths.marker(ctx, "vis_ever_ready").isFile
-        val ready = readyThisBoot(ctx) || Assistant.facts(ctx).active == true
+        val ready = (!dropped && readyThisBoot(ctx)) || Assistant.facts(ctx).active == true
         val notify = BootLogic.shouldNotify(ever, ready)
-        RLog.i("boot_check", "everReady" to ever, "ready" to ready, "notify" to notify, "afterUpdate" to afterUpdate)
-        if (notify) notifyMissing(ctx, afterUpdate)
+        RLog.i("boot_check", "everReady" to ever, "ready" to ready, "notify" to notify, "afterUpdate" to afterUpdate, "dropped" to dropped)
+        if (notify) notifyMissing(ctx, when {
+            dropped -> R.string.settings_dropped_text
+            afterUpdate -> R.string.settings_restart_text_update
+            else -> R.string.settings_restart_text_restart
+        })
     }
 
-    private fun notifyMissing(ctx: Context, afterUpdate: Boolean) {
+    private fun notifyMissing(ctx: Context, textId: Int) {
         try {
             val nm = ctx.getSystemService(NotificationManager::class.java)
             nm.createNotificationChannel(NotificationChannel(CHANNEL, ctx.getString(R.string.settings_restart_channel), NotificationManager.IMPORTANCE_HIGH).apply {
@@ -263,7 +284,7 @@ object BootCheck {
             val target = Assistant.settingsIntent(ctx)
                 ?: Intent().setClassName(ctx.packageName, "app.heyrobot.ui.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             val open = PendingIntent.getActivity(ctx, REQ_OPEN, target, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-            val text = ctx.getString(if (afterUpdate) R.string.settings_restart_text_update else R.string.settings_restart_text_restart)
+            val text = ctx.getString(textId)
             nm.notify(NOTICE_ID, Notification.Builder(ctx, CHANNEL)
                 .setSmallIcon(R.drawable.ic_robot)
                 .setContentTitle(ctx.getString(R.string.settings_restart_title))

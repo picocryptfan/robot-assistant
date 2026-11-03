@@ -22,9 +22,7 @@ import app.heyrobot.core.headset.EntryKind
 import app.heyrobot.core.headset.HeadsetAuto
 import app.heyrobot.core.headset.HeadsetSessionMachine
 import app.heyrobot.core.headset.HeadsetSessionState
-import app.heyrobot.core.headset.ListenWith
 import app.heyrobot.core.headset.RouteDecision
-import app.heyrobot.core.headset.RoutePlanner
 import app.heyrobot.core.headset.SessionEffect
 import app.heyrobot.core.headset.SessionEvent
 import app.heyrobot.core.headset.SessionPhase
@@ -68,10 +66,7 @@ class HeadsetSession(private val entry: EntryKind, private val locked: Boolean, 
     val phase: SessionPhase get() = state.phase
 
     fun begin() {
-        val hs = HandsFreeHub.headset.settings
-        val cs = HandsFreeHub.car.settings
-        val decision = RoutePlanner.plan(entry, HandsFreeHub.devices(), HandsFreeHub.memory, hs, HandsFreeHub.callActive(), car = car,
-            wakeInCar = car != null && (wake && cs.wakeListenWith == ListenWith.PHONE_MIC), carAsCall = cs.speakAsCall)
+        val decision = HandsFreeHub.route(entry, wake, car)
         if (decision is RouteDecision.Plan) {
             device = decision.plan.output
             // Settings › Headset › Your headphones fills with a headset's first use (a car is car mode's).

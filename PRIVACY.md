@@ -416,8 +416,9 @@ network permissions are granted at install; GrapheneOS lets you turn the network
   connected" when Android didn't let it start by itself. With Robot Files: what was filed in the background, or a batch
   waiting for you to say yes. With a skill: its next step after an app opens. With Robot to Robot: what's waiting from
   the people you've paired with.
-- Exact alarms (at install): one alarm 3 minutes after the phone restarts (or Robot updates), to check that Robot is
-  still your digital assistant and tell you if Android turned it off; with Phone lock, one alarm for the next lock's
+- Exact alarms (at install): one alarm 3 minutes after the phone restarts (or Robot updates), and one a minute after
+  Robot's assistant service stops, to check that Robot is still your digital assistant and tell you if Android turned it
+  off; with Phone lock, one alarm for the next lock's
   warning, start or end; with routines, one alarm for the next routine's time; and, while a temporary copy of a file you
   shared is out, one alarm to delete it after 15 minutes. The timers and alarms you ask for are set by your
   Clock app, which Robot only asks (the "set an alarm" permission); Robot keeps no alarm of its own for them.

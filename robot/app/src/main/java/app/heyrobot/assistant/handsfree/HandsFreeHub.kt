@@ -28,6 +28,9 @@ import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
 import app.heyrobot.core.headset.EntryDecision
 import app.heyrobot.core.headset.EntryKind
+import app.heyrobot.core.headset.RoutePlanner
+import app.heyrobot.core.headset.RouteDecision
+import app.heyrobot.core.headset.ListenWith
 import app.heyrobot.core.headset.EntryCaller
 import app.heyrobot.core.headset.EntryReferrer
 import app.heyrobot.core.headset.HeadsetEntry
@@ -125,6 +128,13 @@ object HandsFreeHub {
     }
 
     fun devices(): List<SeenDevice> = AudioDevices.all(app)
+
+    /** The route a session would take now, [carSeen] being car mode's car while it's connected. */
+    fun route(entry: EntryKind, wake: Boolean, carSeen: SeenDevice?): RouteDecision {
+        val cs = car.settings
+        return RoutePlanner.plan(entry, devices(), memory, headset.settings, callActive(), car = carSeen,
+            wakeInCar = carSeen != null && wake && cs.wakeListenWith == ListenWith.PHONE_MIC, carAsCall = cs.speakAsCall)
+    }
 
     // ------------------------------------------------------------------ the button
 

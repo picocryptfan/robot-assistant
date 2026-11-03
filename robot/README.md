@@ -44,7 +44,7 @@ Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `
 
 Robot 1.2.0 is everything built since 1.1.1, from `release/1.2`: Lists, files in a question, the rebuilt car screen with
 music and maps, Skills connections, Robot to Robot, and the fixes from the reviews and phone runs. Settings stay at schema
-13. The full phone pass isn't finished; 1.2.1 follows with its fixes. CHANGELOG.md has the list, the sections below the
+13. 1.2.1 carries the fixes for what was reported after 1.2.0. CHANGELOG.md has the list, the sections below the
 details, and the release notes what is still open.
 
 ## What's new in 1.1
@@ -6614,6 +6614,10 @@ itself belongs to RoleManager): at boot (also before the first unlock; the boot 
 the app or Assistant setup opens, and when the assistant starts, if it holds the assistant role and no other installed
 recognizer is set. Each write goes to the voice log. Assistant setup shows "Survives restarts". The same runs after
 Robot is updated, which ends its processes as a restart does (`MY_PACKAGE_REPLACED`; "Updates" above).
+
+Robot tells you when it stops being your assistant. Three minutes after a restart or an update, and a minute after Android
+lets the assistant go at any other time (1.2.1), a notification says so if Robot isn't the assistant then and takes you to
+the setting. That includes when you chose another assistant yourself.
 
 The phone region for numbers without a country code now comes from the SIM, then the network, then the language
 setting, unless one is set in Settings. Earlier versions saved "CA" whether it was chosen or not, so a settings file

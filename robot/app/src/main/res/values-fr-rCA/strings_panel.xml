@@ -8,6 +8,7 @@
     <string name="panel_keep">Garder</string>
     <string name="panel_speak_replies">Lire les réponses à voix haute</string>
     <string name="panel_new_conversation">Nouvelle conversation</string>
+    <string name="panel_conversation_mode">Transcrire cette conversation</string>
     <string name="panel_settings">Réglages</string>
     <string name="panel_model_not_ready">Le modèle n’est pas prêt.</string>
     <string name="panel_open_robot">Ouvrir Robot</string>

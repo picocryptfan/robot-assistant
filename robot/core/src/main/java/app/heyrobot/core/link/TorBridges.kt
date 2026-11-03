@@ -139,14 +139,14 @@ object TorBridges {
 /**
  * Tor Browser's built-in bridges, copied from tor-browser-build's projects/tor-expert-bundle/pt_config.json (main, last
  * changed by 01d3e9d35aab on 9 Apr 2026, "Update STUN Server List for Snowflake Default Bridge Line"; the file's SHA-256
- * 6169848125847b9d471de800b7c4278f2fb142e4bffc03e84700aa654d90ae1c), taken 28 Oct 2026. Its obfs4 and meek lines are the
+ * 6169848125847b9d471de800b7c4278f2fb142e4bffc03e84700aa654d90ae1c), taken 28 Oct 2026; checked again 2 Nov 2026, the same file. Its obfs4 and meek lines are the
  * same as Briar's onionwrapper 0.1.7 lists; its Snowflake lines differ only in their STUN servers. Refreshed at each release
  * (TorBridgesTest pins them, so a change is deliberate). WebTunnel has no built-in bridge: you enter one as your own.
  * Snowflake's broker, front domains and STUN servers come from these lines, not from lyrebird, so they change without a
  * new lyrebird.
  */
 object TorBuiltInBridges {
-    const val TAKEN = "2026-10-28" // l10n: not text (a date)
+    const val TAKEN = "2026-11-02" // l10n: not text (a date)
 
     private val SNOWFLAKE = listOf(
         "snowflake 192.0.2.3:80 2B280B23E1107BB62ABFC40DDCC8824814F80A72 fingerprint=2B280B23E1107BB62ABFC40DDCC8824814F80A72 url=https://1098762253.rsc.cdn77.org/ fronts=app.datapacket.com,www.datapacket.com ice=stun:stun.epygi.com:3478,stun:stun.uls.co.za:3478,stun:stun.voipgate.com:3478,stun:stun.mixvoip.com:3478,stun:stun.telnyx.com:3478,stun:stun.hot-chilli.net:3478,stun:stun.fitauto.ru:3478,stun:stun.m-online.net:3478 utls-imitate=hellorandomizedalpn", // l10n: not text (a bridge line)

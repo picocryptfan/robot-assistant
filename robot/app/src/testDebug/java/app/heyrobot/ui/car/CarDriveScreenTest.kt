@@ -11,6 +11,10 @@ import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import app.heyrobot.core.car.CarBeside
@@ -86,6 +90,49 @@ class CarDriveScreenTest {
     @Test @Config(qualifiers = FR) fun noArtShowsTheAppsIconFrench() { draw(CarScreenState(music = withIcon, layout = big)); rule.shot("car_no_art_fr"); noProblems() }
     @Test @Config(qualifiers = WIDE) fun noArtOnItsSide() { draw(CarScreenState(music = withIcon, layout = big)); rule.shot("car_no_art_landscape"); noProblems() }
     @Test @Config(qualifiers = WIDE_FR) fun noArtOnItsSideFrench() { draw(CarScreenState(music = withIcon, layout = big)); rule.shot("car_no_art_landscape_fr"); noProblems() }
+
+    // The picture is the card, not an icon in it (the user, 2 Nov 2026).
+    private fun artNode() = rule.onNodeWithContentDescription("Album art", substring = true, useUnmergedTree = true).fetchSemanticsNode()
+    @Test fun theArtFillsTheLargeCard() {
+        draw(CarScreenState(music = withArt, layout = big))
+        val b = artNode().boundsInRoot
+        val root = rule.onRoot().fetchSemanticsNode().boundsInRoot
+        assertTrue("art $b in $root", b.width >= root.width - 80f && b.height > b.width)
+    }
+    @Test @Config(qualifiers = HALF) fun theArtFillsTheCardBesideTheMap() {
+        draw(CarScreenState(music = withArt, layout = small, beside = true))
+        val b = artNode().boundsInRoot
+        val root = rule.onRoot().fetchSemanticsNode().boundsInRoot
+        assertTrue("art $b in $root", b.width >= root.width - 80f && b.height > 400f)
+    }
+    @Test fun aTurnInTheCardTakesTheArtAway() {
+        draw(CarScreenState(music = withArt, layout = small, turn = CarTurnUi(words = "Twelve degrees")))
+        rule.onAllNodesWithContentDescription("Album art", useUnmergedTree = true).assertCountEquals(0)
+    }
+
+    /** The words stay white whatever the theme, and the picture shows, with the scrim, in the golden. */
+    private fun over(color: Int, dark: Boolean, name: String) {
+        val picture = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888).apply { eraseColor(color) }
+        rule.show(dark = dark) { CarModeScreen(CarScreenState(music = song.copy(art = picture), layout = big), actions) }
+        rule.waitForIdle()
+        val results = ArrayList<androidx.compose.ui.text.TextLayoutResult>()
+        rule.onNodeWithText("Harvest Moon", useUnmergedTree = true).fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult].action!!.invoke(results)
+        assertEquals(Color.White, results.first().layoutInput.style.color)
+        rule.shot(name)
+        noProblems()
+    }
+    @Test fun overAWhitePicture() = over(android.graphics.Color.WHITE, dark = false, "car_art_white")
+    @Test fun overAWhitePictureDark() = over(android.graphics.Color.WHITE, dark = true, "car_art_white_dark")
+    @Test fun overABlackPicture() = over(android.graphics.Color.BLACK, dark = false, "car_art_black")
+    @Test fun overABlackPictureDark() = over(android.graphics.Color.BLACK, dark = true, "car_art_black_dark")
+
+    /** The worst picture is a white one: the scrim leaves the words 4.5:1 on it, the title and the softer artist line. */
+    @Test fun theScrimLeavesTheWordsReadableOverWhite() {
+        val under = ArtScrim.compositeOver(Color.White)
+        fun contrast(a: Color) = (a.luminance() + 0.05) / (under.luminance() + 0.05)
+        assertTrue(contrast(Color.White) >= 4.5f)
+        assertTrue(contrast(ArtSoft.compositeOver(under)) >= 4.5f)
+    }
 
     @Test fun artIsNamedAndTheIconIsNot() {
         draw(CarScreenState(music = withArt, layout = big))

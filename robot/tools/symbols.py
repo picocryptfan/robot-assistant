@@ -35,6 +35,7 @@ SYMBOLS = [
     ("ScreenShare", "screenshot", "Ask about this screen."),
     ("Close", "close", ""),
     ("Add", "add", ""),
+    ("Conversation", "communication", "Conversation mode, at the top of the card: two people talking."),
     ("VolumeUp", "volume_up", ""),
     ("VolumeOff", "volume_off", ""),
     ("History", "history", ""),

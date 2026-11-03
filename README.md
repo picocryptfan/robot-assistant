@@ -10,8 +10,9 @@ Wi-Fi, checks for Termux updates once a week after you set Termux up, and lets r
 Each can be turned off: Settings › About › Updates (Check for updates automatically, Download updates on Wi-Fi),
 Settings › Termux (Check for Termux updates), Settings › Routines (Routines may go online by themselves).
 Say "hey robot", or swipe up from a bottom corner, and ask.
-With "hey robot" on, Robot used about 3% of the battery overnight, and the first word of an answer
-comes after about 0.25 s (both measured on a Pixel 10 Pro).
+The first word of an answer comes after about 0.25 s (measured on a Pixel 10 Pro). What the all-day wake word costs in
+battery depends on the phone and I haven't measured a full day yet: "Only while charging" turns the microphone off, and
+the release notes have what I've measured so far.
 
 Robot is free software under the GNU GPL version 3 (GPL-3.0-only). There is no account, no analytics, no ads and no
 crash reporting.
@@ -80,6 +81,12 @@ Coming from 0.9? Robot 1.0 installs beside it under a new app ID, and you move y
   (OpenStreetMap), your phone's storage, battery and memory, and freeing space. Robot asks first when an action
   needs it, and every rule about when it asks is a switch in Settings › Safety & privacy.
 - It remembers what you ask it to, encrypted on the phone.
+- Lists you keep by voice: "add oat milk to the shopping list", "what's on the packing list", "take eggs off". Robot's
+  own code hears these, in English and Québec French, with no model. Lists sit beside Notes, with a home-screen widget,
+  and are encrypted on the phone; one leaves it only when you share it
+  through Robot to Robot.
+- File, next to Camera and Photos, attaches a PDF, a text file or a picture to your question. Robot reads it on the
+  phone, once, and forgets it when the question is sent; History keeps its name, never its contents.
 - Robot Files keeps your receipts, bills, documents and photos on the phone, each file encrypted. Share a file to it from
   any app, scan paper with the camera, or say "file this", and Robot reads it on the phone and files it in a drawer.
   Then ask "how much did I spend on gas in August" or "what bills are due this week". Travel mode hides the drawers you
@@ -101,7 +108,13 @@ Coming from 0.9? Robot 1.0 installs beside it under a new app ID, and you move y
   open the route home"). You say a skill's name to run it, and each step still shows its own card.
 - Back up and restore saves what you choose, your files included, into one encrypted file, protected by a passphrase
   only you have, to a place you pick. Robot never uploads it.
-- Routines and a morning brief. Headset mode, where your headset's button opens Robot, and car mode.
+- Routines and a morning brief. Headset mode, where your headset's button opens Robot.
+- Car mode gives you a screen of big buttons with your map, your messages or the song playing beside it, in Android's
+  split screen. The song's title, artist and art are read from the phone and only shown: never saved or sent. Talk and
+  "hey robot" answer in a panel on the car screen without covering the map.
+- Robot to Robot lets your Robot talk to a friend's: ask when they're free, plan something, share a list or a folder,
+  send a file or a reminder, encrypted end to end. You pair in person with a photo of each other's code, or at a
+  distance with a code you send. It is off until you turn it on.
 - Web search uses the service you choose: your own SearXNG, Wikipedia, Brave, Kagi, Mojeek, DuckDuckGo's Instant
   Answers or a public SearXNG. It is off until you set it up, and answers name their sources. With nothing to set up, you can
   search in your browser with Startpage, DuckDuckGo, Google and five others, each listed with its privacy level.

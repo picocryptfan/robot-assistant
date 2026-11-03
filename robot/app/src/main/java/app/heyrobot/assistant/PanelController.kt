@@ -195,6 +195,8 @@ object PanelController {
     private var hidingFor: String? = null
     /** 0.8: what a headset's button or car mode asked of this show (PanelHandsFree), or null. */
     private var handsFree: PanelHandsFree.Show? = null
+    /** fix-1.2.1-b: this show came from the wake word (a hands-free voice session; PanelRoutines.Host.handsFree). */
+    private var wokeBy = false
     private var reqId = 0
     private var client: BrainClient? = null
     /** What of the streaming reply is read aloud (muted by "stop", silent once cancelled). */
@@ -576,6 +578,7 @@ object PanelController {
             _state.update { it.copy(speak = speak, notice = null, draft = null, focusRequest = 0) }
             // 0.8: a headset's button or car mode (assistant/handsfree PanelHandsFree): a session routes the microphone first.
             handsFree = PanelHandsFree.onShow(source, args, locked)?.also { hf -> _state.update { it.copy(speak = hf.speak) } }
+            wokeBy = source == RobotVoiceService.SRC_WAKE
             draftJpeg = null
         }
         // A helper's conversation never carries over onto the lock screen unless that helper is allowed there.
@@ -605,7 +608,7 @@ object PanelController {
         VoiceLog.add(VoiceEvent.SESSION_SHOWN, from)
         screenShare.start(from, showFlags)
         // The question first: once it is attached, the capture mode can't switch under it ("Always echo cancellation").
-        if (source == RobotVoiceService.SRC_WAKE && handsFree == null) startListening()
+        if ((source == RobotVoiceService.SRC_WAKE && handsFree == null) || handsFree?.listenNow == true) startListening()
         // E7 (Q4): with what was shared on screen, Robot listens right away; without the speech model, the keyboard comes up.
         else if (shared != null && handsFree == null) if (VoiceHub.stt.available) startListening() else _state.update { it.copy(focusRequest = it.focusRequest + 1) }
         // 0.8: opened by Settings' Run now or a Ready card's tap.
@@ -2651,6 +2654,7 @@ object PanelController {
     private val routineHost = object : PanelRoutines.Host {
         override val speak: Boolean get() = _state.value.speak
         override val locked: Boolean get() = Assistant.locked(VoiceHub.app)
+        override val handsFree: Boolean get() = wokeBy || PanelHandsFree.active || CarModeController.on
         /** 1.1: the turn's languages, decided once with the routine router's match (or the setting, for Run now). */
         override fun langs(said: String?, router: Lang?): Langs = turnLangs
         override fun text(replyId: String, text: String) = replies.setText(replyId, text)

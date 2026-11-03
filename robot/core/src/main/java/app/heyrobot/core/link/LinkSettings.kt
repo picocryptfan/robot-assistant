@@ -37,7 +37,7 @@ enum class LinkReach {
 data class LinkSettings(
     /** Robot to Robot on: off until you set it up (turning it on makes the keys). */
     val on: Boolean = false,
-    /** "Name other Robots see": asked when you turn it on; never sent until you pair. Empty until then. */
+    /** "Name other Robots see": asked when you turn it on; never sent until you pair. Empty until then, and again after Start over. */
     val name: String = "",
     val reach: LinkReach = LinkReach.PUSH,
     /** Q3, "Answer while my phone is locked": what you set to Answer on its own still answers while locked. */

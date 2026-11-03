@@ -275,7 +275,8 @@ fun LinkSettingsScreen(port: LinkPort, a: AppActions, snackbar: SnackbarHostStat
             stringResource(R.string.link_start_over),
             onDismiss = { confirmStartOver = false }) {
             confirmStartOver = false
-            work({ port.startOver().also { if (it) port.saveSettings { s -> s.copy(on = false) } } }, R.string.link_started_over)
+            // Every setting goes with the rest, your own bridge lines too: turning on again asks for the name.
+            work({ port.startOver().also { if (it) port.saveSettings { LinkSettings.CLOSED } } }, R.string.link_started_over)
         }
     }
 }

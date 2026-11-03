@@ -42,7 +42,7 @@
     <string name="link_start_over">Recommencer</string>
     <string name="link_start_over_detail">Dissocier tout le monde et supprimer les clés de Robot à Robot</string>
     <string name="link_start_over_title">Recommencer&#8239;?</string>
-    <string name="link_start_over_text">Robot se dissocie de toutes les personnes jumelées et supprime les clés de Robot à Robot. Pour te jumeler de nouveau, il faudra refaire un jumelage avec chaque personne.</string>
+    <string name="link_start_over_text">Robot se dissocie de toutes les personnes jumelées, supprime les clés de Robot à Robot et réinitialise ses réglages, ponts Tor compris. Pour te jumeler de nouveau, il faudra refaire un jumelage avec chaque personne.</string>
     <string name="link_started_over">Robot à Robot est reparti à zéro.</string>
     <string name="link_keys_gone">Les clés ou les données de Robot à Robot sont illisibles. Recommence, puis refais un jumelage avec chaque personne.</string>
     <string name="link_start_over_off_detail">Supprimer les clés de Robot à Robot et tout ce qu’il a enregistré sur ce téléphone</string>

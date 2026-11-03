@@ -4,6 +4,24 @@ What changed in each version of Robot, newest first. Each version's full notes, 
 [`robot/README.md`](robot/README.md) ("What's new in …" and the feature sections). Versions before 1.0 were test
 builds.
 
+## 1.2.1 (2026-11-03)
+
+- Car mode with no car or headset connected: "hey robot" and Talk listen on the phone. Before, "hey robot" opened the
+  panel without listening and Talk closed it at once.
+- The car screen's media card shows the album art as its background, under a dark layer that keeps the words readable.
+- In split screen, a long song name shows whole, on as many lines as fit and smaller if it must; the artist gives way.
+- Settings opened from car mode: Back returns to car mode instead of Robot's home.
+- "Cancel the timer" asks your clock app to stop a ringing timer, then opens its timers to cancel a running one, which
+  Android doesn't let an app do. Locked, Robot says to unlock and open the clock; in car mode, a headset session or
+  after "hey robot", it opens nothing and says so.
+- A card's result shows once, on the card, not again in the reply above it. While a card waits for your answer,
+  TalkBack reads its line.
+- The Robot card's header has a button that transcribes a conversation, as saying "transcribe this conversation"
+  does. Camera, Photos and File keep each icon and word on one line, side by side when they fit.
+- A notification says when Robot stops being your assistant while the phone is on, about a minute later, and opens the
+  setting. It already came after a restart or update.
+- Robot to Robot's Start over also resets all its settings, your name and your own Tor bridge lines included.
+
 ## 1.2.0 (2026-11-02)
 
 The full phone pass for this release isn't finished; 1.2.1 follows with its fixes. The release notes' Known limits say what's still open.

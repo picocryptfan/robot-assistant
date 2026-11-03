@@ -27,6 +27,8 @@ class RobotVoiceService : VoiceInteractionService() {
     override fun onShutdown() {
         RLog.i("vis", "state" to RLog.Code("shutdown"))
         VoiceHub.onShutdown()
+        // Not silently: if this isn't only a restart of the assistant, a notice says the wake word has stopped.
+        BootCheck.onVisShutdown(this)
         instance = null
         super.onShutdown()
     }

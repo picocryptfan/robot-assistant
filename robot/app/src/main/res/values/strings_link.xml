@@ -41,7 +41,7 @@
     <string name="link_start_over">Start over</string>
     <string name="link_start_over_detail">Unpair everyone and delete Robot to Robot\'s keys</string>
     <string name="link_start_over_title">Start over?</string>
-    <string name="link_start_over_text">Robot unpairs everyone you\'re paired with and deletes Robot to Robot\'s keys. To pair again, each of you makes a new pairing.</string>
+    <string name="link_start_over_text">Robot unpairs everyone you\'re paired with and deletes Robot to Robot\'s keys and resets its settings, Tor bridges included. To pair again, each of you makes a new pairing.</string>
     <string name="link_started_over">Robot to Robot started over.</string>
     <string name="link_keys_gone">Robot to Robot\'s keys or saved data can\'t be read. Start over, then pair again with each person.</string>
     <string name="link_start_over_off_detail">Delete Robot to Robot\'s keys and everything it saved on this phone</string>

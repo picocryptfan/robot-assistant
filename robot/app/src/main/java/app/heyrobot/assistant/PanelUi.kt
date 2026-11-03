@@ -278,10 +278,13 @@ private fun keyboardPad(): Pair<Dp, Dp> {
 @Composable
 private fun PanelTop(st: PanelState, actions: PanelActions, onClose: () -> Unit) {
     ClassicDragHandle()
+    // The button's words are also what it says for you, through the same door as typing them (core ConversationRouter).
+    val startConversation = androidx.compose.ui.res.stringResource(app.heyrobot.R.string.panel_conversation_mode)
     ClassicHeader(
         mood = orbMood(st.phase), status = statusLine(st, LocalLangs.current), showKeep = !st.keep && st.turns.isNotEmpty(), speak = st.speak,
         onKeep = actions::keepConversation, onToggleSpeak = actions::toggleSpeak, onNew = actions::newConversation, onClose = onClose,
         onSettings = actions::openSettings, face = st.face,
+        onConversation = { actions.send(startConversation) }, conversationEnabled = !st.busy && st.draft == null,
     )
 }
 

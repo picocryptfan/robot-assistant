@@ -2,6 +2,7 @@
 package app.heyrobot.core.car
 
 import app.heyrobot.core.everyday.MusicApp
+import app.heyrobot.core.headset.RouteDecision
 
 // Pure. What car mode learned from a real drive (docs/pm/handoff-car-mode-drive-fixes.md): album art, music or podcasts,
 // the way back to the map and what Recents may show.
@@ -121,7 +122,14 @@ class CarLineHold<T : Any>(private val holdMs: Long) {
 
 object CarTurn {
     /** Whether a show opens no panel: car mode on, the car screen in front or split, opened by Talk, the car's button or "hey robot" ([fromCar]), and Android has let this work this drive. */
-    fun quiet(on: Boolean, screenUp: Boolean, fromCar: Boolean, windowNeeded: Boolean): Boolean = on && screenUp && fromCar && !windowNeeded
+    fun quiet(on: Boolean, screenUp: Boolean, fromCar: Boolean, windowNeeded: Boolean, route: Boolean = true): Boolean = on && screenUp && fromCar && !windowNeeded && route
+
+    /**
+     * Car mode is on, with no car and no headset connected ([decision]), and Talk, the car's button or "hey robot" asked ([fromCar]):
+     * a session has nothing to route, so the panel opens on the phone, as any other way in, and listens. It used to begin a
+     * session that ended at once, which left "hey robot" with a panel that didn't listen, and closed Talk's panel as it opened.
+     */
+    fun listensOnPhone(on: Boolean, fromCar: Boolean, decision: RouteDecision): Boolean = on && fromCar && decision == RouteDecision.NoHeadset
 }
 
 object CarTurnEnd {

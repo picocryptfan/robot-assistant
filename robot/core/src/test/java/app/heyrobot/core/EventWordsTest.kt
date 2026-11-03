@@ -214,8 +214,11 @@ class EventWordsTest {
             "remove all my alarms", "stop the alarm", "please disable my alarms")
         val alarmsFr = listOf("annule mon alarme de 6 h 30", "Annule mon alarme de 6 h 30", "supprime l'alarme de 7 h", "désactive mon réveil",
             "desactive mon reveil", "arrête l'alarme", "enlève toutes mes alarmes", "éteins mon cadran")
-        val timers = listOf("cancel the timer", "stop my timer", "turn off the countdown")
-        val timersFr = listOf("annule la minuterie", "arrête le minuteur", "efface ma minuterie de 10 minutes", "arrête le compte à rebours")
+        // fix-timers-1.2.1: "turn the timer off", "silence the timer", « coupe la minuterie » too.
+        val timers = listOf("cancel the timer", "stop my timer", "turn off the countdown", "turn the timer off", "silence the timer",
+            "end my timer", "shut the timer off")
+        val timersFr = listOf("annule la minuterie", "arrête le minuteur", "efface ma minuterie de 10 minutes", "arrête le compte à rebours",
+            "coupe la minuterie")
         for (t in alarms) assertEquals(t, RoutineCommand.CantCancel(timer = false, french = false), route(t))
         for (t in alarmsFr) assertEquals(t, RoutineCommand.CantCancel(timer = false, french = true), route(t))
         for (t in timers) assertEquals(t, RoutineCommand.CantCancel(timer = true, french = false), route(t))
@@ -230,7 +233,8 @@ class EventWordsTest {
     @Test fun notACancel() {
         for (t in listOf("set an alarm for 7", "cancel my meeting at 7", "delete the note about the alarm code and set an alarm for 7",
             "Réveille-moi demain à 6 h 30", "mets une minuterie de 5 minutes", "stop talking", "cancel", "annule mon rendez-vous de 15 h",
-            "remind me to cancel my alarm", "delete the note about my alarm code", "efface ce que tu sais sur mon alarme")) {
+            "remind me to cancel my alarm", "delete the note about my alarm code", "efface ce que tu sais sur mon alarme",
+            "turn the lights off", "turn off", "end the call")) {
             assertFalse(t, route(t) is RoutineCommand.CantCancel)
         }
         // A routine named for the alarm stays a routine's to delete.

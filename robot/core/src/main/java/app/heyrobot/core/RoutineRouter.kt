@@ -467,11 +467,12 @@ object RoutineRouter {
     // ------------------------------------------------------------------ alarms and timers Robot can't cancel (1.1)
 
     private val CANCEL_EN = listOf("cancel", "delete", "remove", "turn off", "switch off", "shut off", "disable", "stop", "dismiss", "clear",
-        "get rid of", "unset")
+        "get rid of", "unset", "silence", "mute", "end", "kill")
     private val CANCEL_FR = listOf("annule", "annuler", "supprime", "supprimer", "efface", "effacer", "enleve", "enlever", "retire", "retirer",
-        "desactive", "desactiver", "arrete", "arreter", "eteins", "eteindre", "ferme", "fermer", "stoppe")
+        "desactive", "desactiver", "arrete", "arreter", "eteins", "eteindre", "ferme", "fermer", "stoppe", "coupe", "couper")
     private val ALARM_NOUNS = setOf("alarm", "alarms", "alarme", "alarmes", "reveil", "reveils", "cadran", "cadrans")
     private val TIMER_NOUNS = setOf("timer", "timers", "countdown", "minuterie", "minuteries", "minuteur", "minuteurs", "rebours")
+    private val OFF_VERBS = setOf("turn", "switch", "shut")
     /** Words that ask for something else as well ("cancel the meeting and set an alarm"): left to the model. */
     private val NOT_ONLY_CANCEL = setOf("set", "add", "create", "make", "new", "remind", "wake", "mets", "ajoute", "cree", "rappelle", "reveille", "programme")
 
@@ -489,9 +490,12 @@ object RoutineRouter {
      */
     private fun cantCancel(p: Words, i: Int): RoutineCommand.CantCancel? {
         val fr = p.at(i, CANCEL_FR)
-        val n = maxOf(p.at(i, CANCEL_EN), fr)
+        var n = maxOf(p.at(i, CANCEL_EN), fr)
+        // fix-timers-1.2.1: "turn the timer off", "shut my alarm off": the verb, then "off" last.
+        val off = n == 0 && p.w(i) in OFF_VERBS && p.size - i > 2 && p.w(p.size - 1) == "off"
+        if (off) n = 1
         if (n == 0) return null
-        val rest = (i + n until p.size).mapNotNull { p.w(it) }
+        val rest = (i + n until if (off) p.size - 1 else p.size).mapNotNull { p.w(it) }
         if (rest.size > 10 || rest.any { it in NOT_ONLY_CANCEL }) return null
         val k = rest.indexOfFirst { w -> w !in BEFORE_NOUN && !w.matches(Regex("""\d{1,2}(?::\d{2})?""")) }
         val noun = rest.getOrNull(k) ?: return null

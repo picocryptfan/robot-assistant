@@ -29,7 +29,7 @@ class SecretDetectorTest {
         assertTrue(SecretKind.CODE in kinds("The gate code is the year Mom was born"))
         assertTrue(SecretKind.CODE in kinds("The code for the locker is A4512"))
         assertTrue(SecretKind.KEY in kinds("My seed phrase starts with apple banana"))
-        assertTrue(SecretKind.KEY in kinds("The API key is sk-ant-api03-AbCdEf1234567890xyzQ"))
+        assertTrue(SecretKind.KEY in kinds("The API key is sk-ant-api03-FAKEkeyNOTreal0000xyz"))
         assertTrue(SecretKind.KEY in kinds("backup codes are in the blue folder"))
     }
 

@@ -251,10 +251,11 @@
     <string name="about_licences_no_text">No licence text ships for this part: see its page and the licence\'s link above.</string>
     <string name="about_licences_text_missing">This text is missing from this build.</string>
     <!-- The reminder after a restart or an update turned Robot off as the assistant (sys/Assistant.kt, BootCheck). -->
-    <string name="settings_restart_channel">Assistant after a restart</string>
-    <string name="settings_restart_channel_detail">Tells you when Android turned Robot off as the assistant after a restart.</string>
+    <string name="settings_restart_channel">When Robot stops being the assistant</string>
+    <string name="settings_restart_channel_detail">Tells you when Robot stops being your assistant: after a restart, after an update, or at any other time.</string>
     <string name="settings_restart_title">Turn Robot back on</string>
     <string name="settings_restart_text_restart">Android turned Robot off as your assistant during the restart. Tap, choose Digital assistant app, and pick Robot again.</string>
+    <string name="settings_dropped_text">Robot is no longer your assistant, so it isn\'t listening for its wake word. If you didn\'t change this, tap, choose Digital assistant app, and pick Robot again.</string>
     <string name="settings_restart_text_update">Android turned Robot off as your assistant during the update. Tap, choose Digital assistant app, and pick Robot again.</string>
     <!-- Names the app gives when Android or a file has none (sys/Calendars.kt, sys/KeystoreSecret.kt). -->
     <string name="settings_calendar_unnamed">Calendar</string>

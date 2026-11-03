@@ -14,7 +14,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -78,6 +82,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -89,6 +94,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -105,6 +111,7 @@ import androidx.compose.ui.res.stringResource
 import app.heyrobot.core.i18n.PanelStrings
 import app.heyrobot.core.i18n.TurnStrings
 import app.heyrobot.ui.common.cardStatusLine
+import app.heyrobot.ui.common.bubbleText
 import app.heyrobot.ui.theme.LocalLangs
 import app.heyrobot.ui.theme.str
 import app.heyrobot.ui.common.ActionView
@@ -156,6 +163,7 @@ enum class OrbMood {
     TALKING,
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ClassicHeader(
     mood: OrbMood,
@@ -170,6 +178,10 @@ fun ClassicHeader(
     onSettings: () -> Unit = {},
     /** 1.0: the robot inside the orb, by what Robot is doing. */
     face: RobotFace = RobotFace.IDLE,
+    /** 1.2.1: conversation mode, what saying "transcribe this conversation" does. */
+    onConversation: () -> Unit = {},
+    /** Not while a turn runs or something waits to go with your next question (it would go with this instead). */
+    conversationEnabled: Boolean = true,
 ) {
     // 1.0: the status line runs under the name and the buttons, so its words are read whole ("On this phone, private",
     // "Waiting for you: tap the card, or answer yes or no"); before, it shared the row with four buttons and was cut.
@@ -177,16 +189,21 @@ fun ClassicHeader(
         StatusOrb(mood, face)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Robot", style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            // 1.2.1: five buttons; where they don't fit beside "Robot" (a narrow phone, large text) they take the line under it.
+            FlowRow(Modifier.fillMaxWidth()) {
+                Text("Robot", style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).align(Alignment.CenterVertically))
+                // A row of its own that wraps too: at Android's narrowest width five don't fit even alone.
+                FlowRow(Modifier.align(Alignment.CenterVertically), horizontalArrangement = Arrangement.End) {
                 // A toggle, so TalkBack says "Speak replies, checked" or "not checked"; drawn as before (no colour when on).
                 IconToggleButton(checked = speak, onCheckedChange = { onToggleSpeak() }, modifier = Modifier.size(48.dp),
                     colors = IconButtonDefaults.iconToggleButtonColors(checkedContentColor = LocalContentColor.current)) {
                     Icon(if (speak) RIcons.VolumeUp else RIcons.VolumeOff, stringResource(R.string.panel_speak_replies))
                 }
+                IconButton(onClick = onConversation, enabled = conversationEnabled, modifier = Modifier.size(48.dp)) { Icon(RIcons.Conversation, stringResource(R.string.panel_conversation_mode)) }
                 IconButton(onClick = onNew, modifier = Modifier.size(48.dp)) { Icon(RIcons.Add, stringResource(R.string.panel_new_conversation)) }
                 IconButton(onClick = onSettings, modifier = Modifier.size(48.dp)) { Icon(RIcons.Settings, stringResource(R.string.panel_settings)) }
                 IconButton(onClick = onClose, modifier = Modifier.size(48.dp)) { Icon(RIcons.Close, stringResource(R.string.panel_close)) }
+                }
             }
             // A polite live region, so TalkBack says each new state once. Drawn 6 dp higher, close under "Robot" (the
             // buttons' 48 dp row leaves room), with the header's 6 dp below it. 1.0.2: it wraps whole (the lock screen's list of
@@ -360,10 +377,26 @@ fun ClassicContextRow(draft: Attachment?, thumb: Bitmap?, readClaude: Boolean, o
 
 @Composable
 fun ClassicAttachRow(locked: Boolean, onDone: () -> Unit, onCamera: () -> Unit, onPhotos: () -> Unit, onFile: (() -> Unit)? = null) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        BigChoice(RIcons.Camera, stringResource(R.string.panel_camera), Modifier.weight(1f)) { onDone(); onCamera() }
-        BigChoice(RIcons.Image, stringResource(R.string.panel_photos), Modifier.weight(1f)) { onDone(); onPhotos() }
-        if (onFile != null) BigChoice(RIcons.Folder, stringResource(R.string.panel_file), Modifier.weight(1f)) { onDone(); onFile() }
+    val choices = buildList {
+        add(AttachChoice(RIcons.Camera, stringResource(R.string.panel_camera)) { onDone(); onCamera() })
+        add(AttachChoice(RIcons.Image, stringResource(R.string.panel_photos)) { onDone(); onPhotos() })
+        if (onFile != null) add(AttachChoice(RIcons.Folder, stringResource(R.string.panel_file)) { onDone(); onFile() })
+    }
+    // 1.2.1: each icon and its word stay on one line ("Camera" broke over two beside "Photos"): side by side when the longest
+    // word fits its button, otherwise one under the other (French, large text).
+    val measurer = rememberTextMeasurer()
+    val style = MaterialTheme.typography.labelLarge
+    BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
+        val widest = with(LocalDensity.current) { choices.maxOf { measurer.measure(it.label, style, maxLines = 1, softWrap = false).size.width }.toDp() }
+        if (widest + ChoiceChrome <= (maxWidth - ChoiceGap * (choices.size - 1)) / choices.size) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(ChoiceGap)) {
+                for (c in choices) BigChoice(c.icon, c.label, Modifier.weight(1f), c.onClick)
+            }
+        } else {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(ChoiceGap)) {
+                for (c in choices) BigChoice(c.icon, c.label, Modifier.fillMaxWidth(), c.onClick)
+            }
+        }
     }
     if (locked) Text(stringResource(R.string.panel_unlock_for_your_photos), style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 20.dp))
@@ -371,12 +404,21 @@ fun ClassicAttachRow(locked: Boolean, onDone: () -> Unit, onCamera: () -> Unit, 
 
 @Composable
 private fun BigChoice(icon: ImageVector, label: String, modifier: Modifier, onClick: () -> Unit) {
-    FilledTonalButton(onClick = onClick, modifier = modifier.heightIn(min = 56.dp), shape = RoundedCornerShape(18.dp)) {
+    FilledTonalButton(onClick = onClick, modifier = modifier.heightIn(min = 56.dp), shape = RoundedCornerShape(18.dp),
+        contentPadding = PaddingValues(horizontal = ChoicePadding, vertical = 8.dp)) {
         Icon(icon, null)
-        Spacer(Modifier.width(8.dp))
-        Text(label)
+        Spacer(Modifier.width(ChoiceIconGap))
+        Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
+
+private class AttachChoice(val icon: ImageVector, val label: String, val onClick: () -> Unit)
+
+private val ChoiceGap = 10.dp
+private val ChoicePadding = 12.dp
+private val ChoiceIconGap = 8.dp
+/** A choice's button without its word: the padding on both sides, the 24 dp icon and the gap after it. */
+private val ChoiceChrome = ChoicePadding * 2 + 24.dp + ChoiceIconGap
 
 /** What the old input row needs to know about the panel. */
 data class ClassicInputState(
@@ -626,6 +668,10 @@ fun AssistantBubble(
     announce: Boolean = false,
 ) {
     val errorState = stringResource(R.string.card_error)
+    // fix-timers-1.2.1: a card's own line isn't said again under it; and while a card waits for you nothing is being
+    // written, so the reply has no caret and TalkBack reads it out (it waited for the card's answer before).
+    val shown = bubbleText(text, actions)
+    val live = streaming && actions.none { it.status == ActionStatus.PENDING }
     Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
         if (fromHelper && !error) {
             Row(Modifier.padding(start = 12.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -638,7 +684,7 @@ fun AssistantBubble(
             ClassicActionCard(a, onConfirm, cardActions)
             Spacer(Modifier.size(6.dp))
         }
-        if (text.isNotBlank() || (streaming && actions.isEmpty())) {
+        if (shown.isNotBlank() || (live && actions.isEmpty())) {
             Surface(
                 color = when {
                     error -> MaterialTheme.colorScheme.errorContainer
@@ -654,9 +700,9 @@ fun AssistantBubble(
                 modifier = Modifier.widthIn(max = 340.dp).testTag("classic-bubble"),
             ) {
                 // An error says so in words too, not only by its colour.
-                Box(Modifier.padding(horizontal = 16.dp, vertical = 11.dp).answerSemantics(streaming, announce && text.isNotBlank())
+                Box(Modifier.padding(horizontal = 16.dp, vertical = 11.dp).answerSemantics(live, announce && shown.isNotBlank())
                     .then(if (error) Modifier.semantics(mergeDescendants = true) { stateDescription = errorState } else Modifier)) {
-                    if (text.isBlank()) TypingDots() else MarkdownText(text, streaming)
+                    if (shown.isBlank()) TypingDots() else MarkdownText(shown, live)
                 }
             }
         }

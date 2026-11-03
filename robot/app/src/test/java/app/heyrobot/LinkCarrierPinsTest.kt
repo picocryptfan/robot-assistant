@@ -46,6 +46,13 @@ class LinkCarrierPinsTest {
     }
 
     /** Gradle's dependency verification pins exactly those files, with the same hashes. */
+    /** A pin dropped from the list without the script's count stopped every build from source, and GitHub's tests, at the fetch. */
+    @Test fun theFetchScriptCountsWhatIsPinned() {
+        val script = File(root, "tools/fetch_link_deps.sh").readText()
+        val said = Regex("""\$\{#LINES\[@]\}" = (\d+) ]""").find(script)?.groupValues?.get(1)?.toInt()
+        assertEquals(pins.keys.count { it.startsWith("org/") || it.startsWith("com/") }, said)
+    }
+
     @Test fun theVerificationMetadataSaysTheSame() {
         val xml = File(root, "gradle/verification-metadata.xml").readText()
         val pinned = HashMap<String, String>()

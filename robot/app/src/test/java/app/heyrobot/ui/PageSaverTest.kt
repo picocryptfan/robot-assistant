@@ -37,6 +37,29 @@ class PageSaverTest {
         Page.Helpers, Page.Helper("claude"), Page.Helper("h0a9z7k"), Page.AddHelper, Page.Guide,
     ) + SETTINGS_ROUTES.map { Page.Settings(it) }
 
+    // Car mode's Settings button: Back from the page it opened goes back to car mode; from a page under it, to that page first.
+    @Test fun backFromThePageCarModeOpenedLeavesAndNeverGoesHome() {
+        val entry = AppRoutes.target(AppPages.CAR_SETTINGS)!!.page!!
+        val below = Page.Settings(SettingsRoutes.CAR + "/below")
+        val nav = PageStack(listOf(entry, below))
+        var left = 0
+        nav.leaveAt = entry
+        nav.leave = { left++ }
+        nav.back()
+        assertEquals(entry, nav.top)
+        assertEquals(0, left)
+        nav.back()
+        assertEquals(1, left)
+        assertEquals(entry, nav.top)
+    }
+
+    @Test fun withoutCarModeBackGoesUpAsItAlwaysDid() {
+        val entry = AppRoutes.target(AppPages.CAR_SETTINGS)!!.page!!
+        val nav = PageStack(listOf(entry))
+        nav.back()
+        assertEquals(parentOf(entry), nav.top)
+    }
+
     @Test fun everyPageRoundTrips() {
         for (p in every + listOf<Page?>(null)) assertEquals(p, Page.Saver.restore(save(p)))
     }

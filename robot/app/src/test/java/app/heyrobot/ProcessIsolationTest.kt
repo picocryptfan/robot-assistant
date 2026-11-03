@@ -506,7 +506,7 @@ class ProcessIsolationTest {
         assertHas(source, "ShowTrust.from(fromApp, args.getString(ShowTrust.ARG_VIS), RobotVoiceService.TOKEN, null) { false }", "ShowTrust.source(from,")
         assertHasNot(source, "ShowNonces")
         val c = flatCode(kt("app", "assistant/car/CarModeController.kt")).body("fun prepareShow(")
-        assertHas(c, "RobotVoiceService.SRC_HEADSET", "RobotVoiceService.SRC_WAKE", "CarTurn.quiet(on, screenUp, fromCar, windowNeeded)")
+        assertHas(c, "RobotVoiceService.SRC_HEADSET", "RobotVoiceService.SRC_WAKE", "CarTurn.quiet(on, screenUp, fromCar, windowNeeded, route = !phone)")
     }
 
     /** Car mode's button shows what the app reports and does what it shows (the stream alone left a driver with no Pause). */
@@ -547,7 +547,8 @@ class ProcessIsolationTest {
     /** The car screen's new ways out follow the locks: the app you chose as a fourth button, and Settings. */
     @Test fun carFourthButtonAndSettingsFollowTheLocks() {
         val a = flatCode(kt("app", "assistant/car/CarModeActivity.kt"))
-        assertInOrder(a.body("private fun openApp("), "closed(CarOpen.app(", "MusicApps.check(", "FLAG_ACTIVITY_LAUNCH_ADJACENT")
+        assertInOrder(a.body("private fun openApp("), "closed(CarOpen.app(", "MusicApps.check(", "CarSplitOpen.start(")
+        assertHas(flatCode(kt("app", "assistant/car/CarSplitOpen.kt")), "FLAG_ACTIVITY_LAUNCH_ADJACENT")
         assertInOrder(a.body("private fun openSettings("), "closed(CarOpen.settings(HandsFreeHub.phone().locked))", "startActivity(")
         // The whole list comes through the launcher query the manifest already has: no new <queries> entry and no overlay.
         assertHas(flatCode(kt("app", "ui/settings/CarLayoutSettings.kt")).body("internal fun launcherApps("), "Intent.CATEGORY_LAUNCHER")

@@ -43,6 +43,7 @@ import app.heyrobot.core.car.CallWay
 import app.heyrobot.core.car.CarGate
 import app.heyrobot.core.car.CarNavigate
 import app.heyrobot.core.car.CarSpeech
+import app.heyrobot.core.car.CarTurn
 import app.heyrobot.core.car.FlowEffect
 import app.heyrobot.core.car.NavDestination
 import app.heyrobot.core.car.NavPlan
@@ -141,6 +142,11 @@ object PanelHandsFree {
         if (!headset && !carWake) return null
         reset()
         val entry = args?.getString(HandsFreeHub.ARG_ENTRY)?.let { e -> EntryKind.entries.firstOrNull { it.name == e } } ?: EntryKind.BVRA
+        if (CarTurn.listensOnPhone(CarModeController.on, true, HandsFreeHub.route(entry, carWake, CarModeController.carSeen()))) {
+            HandsFreeHub.session?.cancel()
+            // The lock screen's own show listens as it does outside car mode: after a tap on the mic.
+            return Show(speak = true, listenNow = source != RobotVoiceService.SRC_KEYGUARD)
+        }
         // The car screen's Call: Robot asks who first, and what you say is who to call.
         if (args?.getBoolean(ARG_CALL) == true) {
             intro = CALL_WHO.get(lang)

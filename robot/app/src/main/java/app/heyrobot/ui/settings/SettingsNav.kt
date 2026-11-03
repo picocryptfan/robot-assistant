@@ -214,8 +214,13 @@ class PageStack(initial: List<Page> = emptyList()) {
         pages = pages.dropLast(1) + p
     }
 
+    /** The page that car mode opened, and how to leave for it: Back from that page goes there, never to Robot's home. */
+    var leaveAt: Page? = null
+    var leave: () -> Unit = {}
+
     /** Back: the page under the one showing, or its parent when it was alone. */
     fun back() {
+        if (top != null && top == leaveAt) return leave()
         pages = if (pages.size > 1) pages.dropLast(1) else listOfNotNull(top?.let(::parentOf))
     }
 
@@ -243,6 +248,10 @@ fun rememberPageStack(): PageStack = rememberSaveable(saver = PageStack.Saver) {
  * the summary screen's "Helpers", the updater's notifications.
  */
 object AppRoutes {
+    /** The page [i] opens when car mode asked for it: only car mode's own two, whatever else an intent says. */
+    fun fromCar(i: Intent?): String? = i?.takeIf { it.getBooleanExtra(AppPages.EXTRA_FROM_CAR, false) }?.getStringExtra(AppPages.EXTRA)
+        ?.takeIf { it == AppPages.CAR_SETTINGS || it == AppPages.MESSAGES_SETTINGS }
+
     /** What [i] asks for, as a route [target] understands, or null. */
     fun of(i: Intent?): String? = when {
         i == null -> null

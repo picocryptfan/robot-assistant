@@ -29,6 +29,15 @@ class AppRoutesTest {
 
     private fun main() = Intent().setClassName(ctx.packageName, "app.heyrobot.ui.MainActivity")
 
+    @Test fun carModesTwoPagesAreKnownAsItsAndNothingElse() {
+        fun car(page: String) = main().putExtra(AppPages.EXTRA, page).putExtra(AppPages.EXTRA_FROM_CAR, true)
+        assertEquals(AppPages.CAR_SETTINGS, AppRoutes.fromCar(car(AppPages.CAR_SETTINGS)))
+        assertEquals(AppPages.MESSAGES_SETTINGS, AppRoutes.fromCar(car(AppPages.MESSAGES_SETTINGS)))
+        assertNull(AppRoutes.fromCar(car(AppPages.MEMORY)))
+        assertNull(AppRoutes.fromCar(main().putExtra(AppPages.EXTRA, AppPages.CAR_SETTINGS)))
+        assertNull(AppRoutes.fromCar(null))
+    }
+
     private fun open(i: Intent): AppRoutes.Target? = AppRoutes.of(i)?.let(AppRoutes::target)
 
     @Test fun thePanelsLinks() {

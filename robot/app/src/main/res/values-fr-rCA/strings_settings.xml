@@ -247,10 +247,11 @@
     <string name="about_licences_no_text">Aucun texte de licence n’est fourni pour ce composant&#160;: vois sa page et le lien de la licence ci-dessus.</string>
     <string name="about_licences_text_missing">Ce texte manque dans cette version.</string>
     <!-- The reminder after a restart or an update turned Robot off as the assistant (sys/Assistant.kt, BootCheck). -->
-    <string name="settings_restart_channel">Assistant après un redémarrage</string>
-    <string name="settings_restart_channel_detail">Te dit quand Android a désactivé Robot comme assistant après un redémarrage.</string>
+    <string name="settings_restart_channel">Quand Robot n’est plus l’assistant</string>
+    <string name="settings_restart_channel_detail">Te dit quand Robot n’est plus ton assistant : après un redémarrage, après une mise à jour ou à tout autre moment.</string>
     <string name="settings_restart_title">Réactiver Robot</string>
     <string name="settings_restart_text_restart">Android a désactivé Robot comme assistant pendant le redémarrage. Touche ici, choisis Application d’assistant numérique, puis choisis Robot de nouveau.</string>
+    <string name="settings_dropped_text">Robot n’est plus ton assistant, donc il n’écoute plus son mot d’éveil. Si tu n’as rien changé, touche ici, choisis Application d’assistant numérique, puis choisis Robot de nouveau.</string>
     <string name="settings_restart_text_update">Android a désactivé Robot comme assistant pendant la mise à jour. Touche ici, choisis Application d’assistant numérique, puis choisis Robot de nouveau.</string>
     <!-- Names the app gives when Android or a file has none (sys/Calendars.kt, sys/KeystoreSecret.kt). -->
     <string name="settings_calendar_unnamed">Agenda</string>

@@ -81,7 +81,8 @@ import app.heyrobot.ui.theme.RobotTokens
 
 /**
  * The music tile: [app] the name (null: none chosen yet), its [song] and [artist], whether something [playing]; [art] the
- * song's picture, or else [icon] the app's. Held in memory only while shown (CarArtHold), never logged, saved or sent.
+ * song's picture, the whole card's background, or else [icon] the app's, small. Held in memory only while shown
+ * (CarArtHold), never logged, saved or sent.
  */
 data class CarMusicUi(val app: String? = null, val song: String? = null, val playing: Boolean = false, val artist: String? = null, val art: Bitmap? = null, val icon: Bitmap? = null)
 
@@ -165,9 +166,19 @@ private val TileIcon = 40.dp
 /** Talk's share of the row, the others' being one. */
 private const val TalkWeight = 1.6f
 
-/** The song's picture in the small panel, and the least room left for its words under the big one. */
+/** The app's icon in the small panel, and the least room left for its words under the big one. */
 private val ArtSmall = 64.dp
 private val ArtWords = 88.dp
+
+/** Over a song's picture: dark enough that white words have 4.5:1 over a white picture, whatever the phone's theme. */
+internal val ArtScrim = Color.Black.copy(alpha = 0.6f)
+internal val ArtSoft = Color.White.copy(alpha = 0.9f)
+
+/** The song's name in a short panel gets this small, on the screen, at any font size, before any of it is cut. */
+private val SongFloor = 14.dp
+
+/** The padding of a media panel at the split's smallest stops, where every dp goes to the song's name. */
+private val InnerTight = 8.dp
 
 /** Below this the large panel's media buttons give up some height, so the title has room in landscape. */
 private val MediaRoomy = 280.dp
@@ -215,15 +226,21 @@ fun CarModeScreen(s: CarScreenState, a: CarScreenActions, modifier: Modifier = M
 
 /** A panel: the same corner, colour and padding wherever it sits. */
 @Composable
-private fun Panel(modifier: Modifier, content: @Composable () -> Unit) {
-    Box(modifier.clip(Corner).background(MaterialTheme.colorScheme.surfaceContainer).padding(Inner)) { content() }
+private fun Panel(modifier: Modifier, art: Bitmap? = null, inner: Dp = Inner, content: @Composable () -> Unit) {
+    Box(modifier.clip(Corner).background(MaterialTheme.colorScheme.surfaceContainer)) {
+        if (art != null) {
+            Image(art.asImageBitmap(), stringResource(R.string.car_art), Modifier.matchParentSize(), contentScale = ContentScale.Crop)
+            Box(Modifier.matchParentSize().background(ArtScrim))
+        }
+        Box(Modifier.fillMaxSize().padding(inner)) { content() }
+    }
 }
 
 @Composable
 private fun LargePanel(large: CarLarge, s: CarScreenState, a: CarScreenActions, modifier: Modifier) {
     when (large) {
         CarLarge.MAP -> MapPanel(s, a, modifier)
-        CarLarge.MEDIA -> Panel(modifier) { MediaBig(s.music, a) }
+        CarLarge.MEDIA -> Panel(modifier, s.music.art) { MediaBig(s.music, a) }
         CarLarge.MESSAGES -> Panel(modifier) { MessagesList(s.messages, a) }
     }
 }
@@ -231,14 +248,16 @@ private fun LargePanel(large: CarLarge, s: CarScreenState, a: CarScreenActions, 
 @Composable
 private fun InfoPanel(s: CarScreenState, a: CarScreenActions, modifier: Modifier) {
     val info = s.layout.infoNow(s.beside)
-    Panel(modifier) {
+    val media = info == CarInfo.MEDIA && s.turn == null && s.said.isEmpty()
+    BoxWithConstraints(modifier) {
+    Panel(Modifier.fillMaxSize(), s.music.art.takeIf { media }, if (media && s.beside && maxHeight < PanelStacks + Inner * 2) InnerTight else Inner) {
         Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(Gap), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.CenterStart) {
                 val turn = s.turn
                 when {
                     turn != null -> TurnLines(turn, a)
                     s.said.isNotEmpty() -> WholeWords(s.said, MaterialTheme.colorScheme.onSurface, BodySize, BodyLine, 2, weight = FontWeight.Medium)
-                    info == CarInfo.MEDIA -> MediaSmall(s.music, a)
+                    info == CarInfo.MEDIA -> MediaSmall(s.music, a, s.beside)
                     info == CarInfo.DIRECTIONS -> DirectionsInfo(s, a)
                     else -> LatestMessage(s.messages, a)
                 }
@@ -246,6 +265,7 @@ private fun InfoPanel(s: CarScreenState, a: CarScreenActions, modifier: Modifier
             // The way back to your map joins this panel when the fourth button isn't the one that can become it.
             if (s.back == CarBeside.Back.INFO && (info != CarInfo.DIRECTIONS || s.turn != null || s.said.isNotEmpty())) Tile(mapLabel(s), RIcons.Maps, a.maps, Modifier.width(Target))
         }
+    }
     }
 }
 
@@ -380,8 +400,10 @@ private fun cutToFit(measurer: TextMeasurer, text: String, style: TextStyle, spa
  * the height doesn't hold goes, in the other order. The name opens the app when there is one.
  */
 @Composable
-private fun NowPlaying(m: CarMusicUi, a: CarScreenActions, modifier: Modifier, songSize: TextUnit, songLines: Int) {
+private fun NowPlaying(m: CarMusicUi, a: CarScreenActions, modifier: Modifier, songSize: TextUnit, songLines: Int, fit: Boolean = false) {
     val c = MaterialTheme.colorScheme
+    val ink = if (m.art != null) Color.White else c.onSurface
+    val soft = if (m.art != null) ArtSoft else c.onSurfaceVariant
     val open = m.app?.let { stringResource(R.string.car_music_open, it) } ?: stringResource(R.string.car_music_choose)
     val tap = Modifier.clickable(onClickLabel = open, onClick = a.openMusic)
     val songLine = songSize * 1.25f
@@ -389,27 +411,60 @@ private fun NowPlaying(m: CarMusicUi, a: CarScreenActions, modifier: Modifier, s
         contentAlignment = Alignment.CenterStart) {
         val (small, big) = with(LocalDensity.current) { SmallLine.toDp() to songLine.toDp() }
         when {
-            m.app == null -> Text(stringResource(R.string.car_music_choose), color = c.onSurface, fontSize = songSize, lineHeight = songLine, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            m.song == null -> Text(m.app, color = c.onSurface, fontSize = songSize, lineHeight = songLine, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            fit -> FittedSong(m, ink, soft, songSize, constraints)
+            m.app == null -> Text(stringResource(R.string.car_music_choose), color = ink, fontSize = songSize, lineHeight = songLine, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            m.song == null -> Text(m.app, color = ink, fontSize = songSize, lineHeight = songLine, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
             else -> {
                 val artist = m.artist?.takeIf { maxHeight >= big + small }
                 val app = m.app.takeIf { maxHeight >= big + small * (if (artist != null) 2 else 1) }
                 Column(Modifier.fillMaxWidth()) {
-                    if (app != null) Text(app, color = c.onSurfaceVariant, fontSize = SmallSize, lineHeight = SmallLine, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    WholeWords(m.song, c.onSurface, songSize, songLine, songLines, Modifier.weight(1f, fill = false), FontWeight.Medium)
-                    if (artist != null) Text(artist, color = c.onSurfaceVariant, fontSize = SmallSize, lineHeight = SmallLine, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (app != null) Text(app, color = soft, fontSize = SmallSize, lineHeight = SmallLine, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    WholeWords(m.song, ink, songSize, songLine, songLines, Modifier.weight(1f, fill = false), FontWeight.Medium)
+                    if (artist != null) Text(artist, color = soft, fontSize = SmallSize, lineHeight = SmallLine, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
     }
 }
 
-/** The song's picture, or the app's icon when the song has none. Never with words over it. */
+/**
+ * The short panels, where the height is what's short: the whole name, on as many lines as the panel holds, at the largest
+ * size that does it, with the artist and the app's name only where they leave it readable. A name too long even at
+ * [SongFloor] stops at a word, as everywhere else.
+ */
+@Composable
+private fun FittedSong(m: CarMusicUi, ink: Color, soft: Color, start: TextUnit, space: Constraints) {
+    val name = m.song ?: m.app ?: stringResource(R.string.car_music_choose)
+    val artist = m.artist.takeIf { m.song != null }
+    val app = m.app.takeIf { m.song != null }
+    val density = LocalDensity.current
+    val measurer = rememberTextMeasurer()
+    val style = LocalTextStyle.current.merge(TextStyle(fontWeight = FontWeight.Medium))
+    val (extras, size) = remember(name, artist, app, style, space.maxWidth, space.maxHeight, density) {
+        with(density) {
+            val sizes = (generateSequence(start.toPx()) { it * 0.9f }.takeWhile { it > SongFloor.toPx() } + SongFloor.toPx()).map { it.toSp() }.toList()
+            val line = SmallLine.toPx()
+            fun fits(s: TextUnit, lines: Int) = measurer.measure(name, style.copy(fontSize = s, lineHeight = s * 1.25f), TextOverflow.Clip,
+                constraints = Constraints(maxWidth = space.maxWidth)).multiParagraph.height <= space.maxHeight - lines * line
+            when {
+                artist != null && app != null && fits(sizes.first(), 2) -> 2 to sizes.first()
+                artist != null || app != null -> sizes.firstOrNull { it >= SmallSize && fits(it, 1) }?.let { 1 to it }
+                else -> null
+            } ?: (0 to (sizes.firstOrNull { fits(it, 0) } ?: sizes.last()))
+        }
+    }
+    Column(Modifier.fillMaxWidth()) {
+        if (app != null && (extras == 2 || (extras == 1 && artist == null))) Text(app, color = soft, fontSize = SmallSize, lineHeight = SmallLine, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        WholeWords(name, ink, size, size * 1.25f, 10, Modifier.weight(1f, fill = false), FontWeight.Medium)
+        if (artist != null && extras >= 1) Text(artist, color = soft, fontSize = SmallSize, lineHeight = SmallLine, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/** The app's icon when the song has no picture of its own (the picture is the card's background, [Panel]). */
 @Composable
 private fun Picture(m: CarMusicUi, modifier: Modifier) {
-    val bitmap = m.art ?: m.icon ?: return
-    val said = if (m.art != null) stringResource(R.string.car_art) else null
-    Image(bitmap.asImageBitmap(), said, modifier.clip(Corner), contentScale = if (m.art != null) ContentScale.Crop else ContentScale.Fit)
+    val icon = m.icon?.takeIf { m.art == null } ?: return
+    Image(icon.asImageBitmap(), null, modifier.clip(Corner), contentScale = ContentScale.Fit)
 }
 
 @Composable
@@ -422,7 +477,7 @@ private fun MediaBig(m: CarMusicUi, a: CarScreenActions) {
                 val h = maxHeight
                 val tall = h > w * 1.2f
                 when {
-                    m.art == null && m.icon == null -> NowPlaying(m, a, Modifier.fillMaxSize(), HeadSize, 4)
+                    m.art != null || m.icon == null -> NowPlaying(m, a, Modifier.fillMaxSize(), HeadSize, 4)
                     tall -> Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Gap)) {
                         Picture(m, Modifier.size(min(w, h - ArtWords - Gap).coerceAtLeast(ArtSmall)))
                         NowPlaying(m, a, Modifier.weight(1f).fillMaxWidth(), HeadSize, 3)
@@ -438,26 +493,27 @@ private fun MediaBig(m: CarMusicUi, a: CarScreenActions) {
     }
 }
 
-/** The picture small, beside the song. */
+/** The app's icon small, beside the song, when the song has no picture. */
 @Composable
-private fun SongBeside(m: CarMusicUi, a: CarScreenActions, modifier: Modifier, lines: Int) {
+private fun SongBeside(m: CarMusicUi, a: CarScreenActions, modifier: Modifier, lines: Int, fit: Boolean) {
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(Gap), verticalAlignment = Alignment.CenterVertically) {
         Picture(m, Modifier.size(ArtSmall))
-        NowPlaying(m, a, Modifier.weight(1f), BodySize, lines)
+        NowPlaying(m, a, Modifier.weight(1f), BodySize, lines, fit)
     }
 }
 
 @Composable
-private fun MediaSmall(m: CarMusicUi, a: CarScreenActions) {
+private fun MediaSmall(m: CarMusicUi, a: CarScreenActions, inSplit: Boolean) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         if (maxHeight >= PanelStacks) {
             Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                SongBeside(m, a, Modifier.weight(1f).fillMaxWidth(), 1)
+                SongBeside(m, a, Modifier.weight(1f).fillMaxWidth(), 1, inSplit)
                 Controls(m, a, Modifier.fillMaxWidth(), Target, 40.dp)
             }
         } else {
+            // The smallest split: the name has only this much width, so even the app's icon gives it up.
             Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(Gap), verticalAlignment = Alignment.CenterVertically) {
-                SongBeside(m, a, Modifier.weight(1f), 2)
+                NowPlaying(m, a, Modifier.weight(1f), BodySize, 2, inSplit)
                 Controls(m, a, Modifier.weight(1.4f), Target, 36.dp)
             }
         }

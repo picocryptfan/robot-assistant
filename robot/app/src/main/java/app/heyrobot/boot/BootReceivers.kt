@@ -68,14 +68,16 @@ class UpdatedReceiver : BroadcastReceiver() {
     }
 }
 
-/** 3 minutes after BOOT_COMPLETED (or an update): notifies if the assistant did not come back. Never binds it itself. */
+/**
+ * 3 minutes after BOOT_COMPLETED (or an update), or a minute after the assistant's onShutdown: notifies if the assistant did
+ * not come back. Never binds it itself.
+ */
 class BootCheckReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {
         val app = ctx.applicationContext
-        val afterUpdate = intent.getBooleanExtra(BootCheck.EXTRA_UPDATE, false)
         val done = goAsync()
         Thread({
-            try { BootCheck.run(app, afterUpdate) } catch (t: Throwable) { RLog.w("boot_check", t) } finally { done.finish() }
+            try { BootCheck.run(app, intent) } catch (t: Throwable) { RLog.w("boot_check", t) } finally { done.finish() }
         }, "robot-boot-check").start()
     }
 }

@@ -379,6 +379,9 @@ object AppPages {
     const val HELPERS = "helpers"
     /** Settings › Car mode (the car screen's Settings button). */
     const val CAR_SETTINGS = "car_settings"
+
+    /** Car mode opened this page: Back from it goes back to car mode, not to Robot's home screen. */
+    const val EXTRA_FROM_CAR = "app.heyrobot.extra.FROM_CAR"
     /** Settings › Messages (the car screen's panel when messages are off). */
     const val MESSAGES_SETTINGS = "messages_settings"
     const val EXTRA_TRANSCRIPT = "robot_transcript"

@@ -138,6 +138,21 @@ fun cardIcon(a: ActionView): ImageVector = when {
     else -> toolIcon(a.tool)
 }
 
+/**
+ * fix-timers-1.2.1: a reply's text without the paragraphs that only repeat what its done cards already say. A timer, an
+ * alarm, an event or a note is confirmed in Robot's words from its card (core ActionOutcome.confirms), and the card shows
+ * that line too: "Timer set for 3 minutes." once, on the card. The text itself (History, read aloud) keeps it.
+ */
+fun bubbleText(text: String, actions: List<ActionView>): String {
+    val lines = actions.filter { it.status == ActionStatus.DONE || it.status == ActionStatus.DRAFT_OPENED }
+        .mapNotNull { a -> a.detail?.trim()?.trimEnd('.')?.takeIf { it.isNotEmpty() } }
+    if (lines.isEmpty() || text.isBlank()) return text
+    return text.split("\n\n").filterNot { p ->
+        val rest = lines.sortedByDescending { it.length }.fold(p) { acc, l -> acc.replace(l, " ") }
+        rest.all { it.isWhitespace() || it == '.' }
+    }.joinToString("\n\n")
+}
+
 /** The line under a card's summary: what it waits for, or how it went (its state in the menus' language, its line as the turn said it). */
 @Composable
 fun cardStatusLine(a: ActionView): String = when (a.status) {

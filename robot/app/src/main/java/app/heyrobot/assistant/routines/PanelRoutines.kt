@@ -101,6 +101,9 @@ object PanelRoutines {
          * ReplyLang); the panel may return its own turn's languages instead (PanelController's turnLangs).
          */
         fun langs(said: String?, router: Lang?): Langs = PanelRoutines.decideLangs(said, router)
+
+        /** fix-1.2.1-b: car mode, a headset or car session, or a panel the wake word opened: Robot opens no app on its own. */
+        val handsFree: Boolean get() = false
     }
 
     private val app get() = VoiceHub.app
@@ -416,6 +419,7 @@ object PanelRoutines {
      * your clock app on a tap only (a spoken yes doesn't; locked, the line alone).
      */
     private suspend fun cantCancel(replyId: String, cmd: RoutineCommand.CantCancel, host: Host, l: Langs): Boolean {
+        if (cmd.timer) return cancelTimer(replyId, host, l)
         reply(replyId, host, if (cmd.timer) ToolStrings.cantCancelTimers() else ToolStrings.cantCancelAlarms(), l)
         if (host.locked) return true
         val id = id()
@@ -435,6 +439,37 @@ object PanelRoutines {
         }
         host.leave()
         return true
+    }
+
+    /**
+     * fix-timers-1.2.1, "cancel the timer", « arrête la minuterie »: AlarmClock's ACTION_DISMISS_TIMER stops the timers that
+     * are ringing (nothing when none is), and Android has nothing public for a running one. So Robot sends the dismiss when
+     * your clock takes it, then, unlocked, opens your clock's timers at once, with no card, so a running one is a tap away;
+     * locked, it says how. Robot's words say only what it asked for: the clock's answer isn't seen.
+     * fix-1.2.1-b: hands-free (car mode, the wake word) no clock page comes up in front of you: the dismiss and one short line.
+     */
+    private suspend fun cancelTimer(replyId: String, host: Host, l: Langs): Boolean {
+        val dismissed = host.launch(RoutineFacts.toChosenClock(app, android.content.Intent(android.provider.AlarmClock.ACTION_DISMISS_TIMER)))
+        if (host.handsFree) {
+            val line = if (dismissed) ToolStrings.timerHandsFree() else ToolStrings.cantCancelTimers()
+            host.text(replyId, line.shown(l))
+            host.say(line.said(l))
+            return dismissed
+        }
+        val opened = !host.locked && host.launch(RoutineFacts.toChosenClock(app, android.content.Intent(android.provider.AlarmClock.ACTION_SHOW_TIMERS)))
+        val lines = listOfNotNull(
+            ToolStrings.timerDismissAsked().takeIf { dismissed },
+            when {
+                opened -> ToolStrings.timerRunningOpened()
+                host.locked -> if (dismissed) ToolStrings.timerRunningUnlock() else ToolStrings.cantCancelTimers()
+                dismissed -> ToolStrings.timerRunningClock()
+                else -> ToolStrings.noClockTimers()
+            },
+        )
+        host.text(replyId, lines.joinToString(" ") { it.shown(l) })
+        lines.forEach { host.say(it.said(l)) }
+        if (opened) host.leave()
+        return dismissed || opened
     }
 
     // ------------------------------------------------------------------ the panel opened for a routine

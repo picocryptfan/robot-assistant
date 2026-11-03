@@ -192,7 +192,9 @@ object CarModeController {
     /** Asked as the session prepares a show from [source] (null for anything not Robot's own): whether it has no panel. */
     fun prepareShow(source: String?): Boolean {
         val fromCar = source == RobotVoiceService.SRC_HEADSET || source == RobotVoiceService.SRC_WAKE
-        quietTurn = CarTurn.quiet(on, screenUp, fromCar, windowNeeded)
+        // With no car and no headset connected, the turn is the panel's, on the phone (CarTurn.listensOnPhone).
+        val phone = CarTurn.listensOnPhone(on, fromCar, HandsFreeHub.route(EntryKind.BVRA, source == RobotVoiceService.SRC_WAKE, carSeen()))
+        quietTurn = CarTurn.quiet(on, screenUp, fromCar, windowNeeded, route = !phone)
         notifyWatchers()
         return quietTurn
     }
@@ -372,7 +374,7 @@ object CarModeController {
         VoiceLog.add(VoiceEvent.CAR_NAV, plan.kind)
         val home = s.home
         if (plan is NavPlan.Route && home != null) {
-            val said = when (val o = MapsApps.open(ctx, MapsApps.route(ctx, here, CarNavigate.HERE.get(lang), home.lat to home.lon, home.label), adjacent = true)) {
+            val said = when (val o = MapsApps.open(ctx, MapsApps.route(ctx, here, CarNavigate.HERE.get(lang), home.lat to home.lon, home.label), launch = { CarSplitOpen.start(ctx, it) })) {
                 MapsApps.Opened.Done -> { routeOpened(); plan.say }
                 is MapsApps.Opened.Repick -> spoken(MapsApps.replacedText(), lang)
                 MapsApps.Opened.None -> spoken(HandsFreeStrings.noOrganicMaps(), lang)

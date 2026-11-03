@@ -180,6 +180,18 @@ object ToolStrings : Strings("tool", area = "cards") {
         "Robot ne peut pas annuler ni désactiver les alarmes : fais-le dans ton appli d'horloge.")
     val cantCancelTimers = s("cant_cancel_timers", "Robot can't cancel or stop timers: do it in your clock app.",
         "Robot ne peut pas annuler ni arrêter les minuteries : fais-le dans ton appli d'horloge.")
+    // fix-timers-1.2.1: "cancel the timer" (PanelRoutines): Android stops a ringing timer for Robot, never a running one.
+    val timerDismissAsked = s("timer_dismiss_asked", "Robot asked your clock app to stop any timer that's ringing.",
+        "Robot a demandé à ton appli d'horloge d'arrêter toute minuterie qui sonne.")
+    val timerRunningOpened = s("timer_running_opened", "Android doesn't let Robot cancel a running timer: your clock's timers are open, cancel it there.",
+        "Android ne laisse pas Robot annuler une minuterie en cours : les minuteries de ton horloge sont ouvertes, annule-la là.")
+    val timerRunningUnlock = s("timer_running_unlock", "To cancel a running timer, unlock and open your clock app.",
+        "Pour annuler une minuterie en cours, déverrouille et ouvre ton appli d'horloge.")
+    // fix-1.2.1-b: in car mode or a hands-free voice session Robot opens no clock page; one short spoken line instead.
+    val timerHandsFree = s("timer_hands_free", "Robot asked your clock to stop a ringing timer. Cancel a running one in your clock app.",
+        "Robot a demandé à ton horloge d'arrêter une minuterie qui sonne. Annule une minuterie en cours dans ton appli d'horloge.")
+    val timerRunningClock = s("timer_running_clock", "Android doesn't let Robot cancel a running timer: do it in your clock app.",
+        "Android ne laisse pas Robot annuler une minuterie en cours : fais-le dans ton appli d'horloge.")
     val openClockApp = s("open_clock_app", "Open your clock app", "Ouvrir ton appli d'horloge")
     val tapOpenClock = s("tap_open_clock", "Tap {open} to open your clock app.", "Touche {open} pour ouvrir ton appli d'horloge.")
     val noClockAlarms = s("no_clock_alarms", "No clock app on this phone takes alarms.", "Aucune appli d'horloge sur ce téléphone n'accepte les alarmes.")
