@@ -4,6 +4,15 @@ What changed in each version of Robot, newest first. Each version's full notes, 
 [`robot/README.md`](robot/README.md) ("What's new in …" and the feature sections). Versions before 1.0 were test
 builds.
 
+## 1.2.2 (2026-11-04)
+
+- "Open car mode", « ouvre le mode voiture », "carmode" and other ways of asking now start car mode, as "car mode"
+  and "start car mode" always did. Before, Robot sent them to the model, which answered that it has no car mode. The
+  matching ways to end it ("close car mode", « ferme le mode voiture » and the like) work too. With car mode already
+  on, Robot says so.
+- A fact you asked Robot to remember is found when you ask about it, even while memory holds only one or a few items.
+  Before, with so few items the question missed it and the model answered without it. In English and French.
+
 ## 1.2.1 (2026-11-03)
 
 - Car mode with no car or headset connected: "hey robot" and Talk listen on the phone. Before, "hey robot" opened the

@@ -134,6 +134,7 @@ class Bm25Index private constructor(
     private val df: Map<String, Int>,
     private val k1: Double,
     private val b: Double,
+    private val minDocs: Int,
 ) {
     /** One document found: its score and the query terms it holds (for the exact-token boost). */
     data class Hit(val id: String, val score: Double, val matched: Set<String>)
@@ -141,9 +142,10 @@ class Bm25Index private constructor(
     val size: Int get() = ids.size
     private val avgLength: Double = if (lengths.isEmpty()) 0.0 else lengths.average()
 
+    /** Counted over at least [minDocs] documents: see [build]. */
     private fun idf(term: String): Double {
         val n = df[term] ?: return 0.0
-        return ln(1.0 + (ids.size - n + 0.5) / (n + 0.5))
+        return ln(1.0 + (maxOf(ids.size, minDocs) - n + 0.5) / (n + 0.5))
     }
 
     /** The documents sharing a term with [query], best first, at most [limit], each scoring at least [minScore]. */
@@ -166,13 +168,18 @@ class Bm25Index private constructor(
     }
 
     companion object {
-        fun build(documents: List<Pair<String, String>>, k1: Double = 1.2, b: Double = 0.75): Bm25Index {
+        /**
+         * [minDocs]: the word weights are counted as if there were at least that many documents, the others holding none
+         * of the words. In a small set every word is in most documents, so its weight says nothing about it being
+         * common: one remembered item scored 0.58 for its two words, under the recall floor, and was never found.
+         */
+        fun build(documents: List<Pair<String, String>>, k1: Double = 1.2, b: Double = 0.75, minDocs: Int = 0): Bm25Index {
             val ids = documents.map { it.first }
             val docs = documents.map { (_, text) -> MemoryText.tokens(text).groupingBy { it }.eachCount() }
             val lengths = IntArray(docs.size) { docs[it].values.sum() }
             val df = HashMap<String, Int>()
             for (d in docs) for (t in d.keys) df[t] = (df[t] ?: 0) + 1
-            return Bm25Index(ids, docs, lengths, df, k1, b)
+            return Bm25Index(ids, docs, lengths, df, k1, b, minDocs)
         }
     }
 }

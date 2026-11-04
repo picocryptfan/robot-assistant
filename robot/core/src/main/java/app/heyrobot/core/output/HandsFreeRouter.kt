@@ -51,6 +51,8 @@ object HandsFreeRouter {
     private fun tokens(text: String): List<Tok> =
         Regex("[\\p{L}\\p{N}]+(?:['’][\\p{L}\\p{N}]+)*").findAll(text).map { Tok(HelperRouter.plain(it.value), it.range.first, it.range.last + 1) }.toList()
 
+    private fun apart(w: List<String>): List<String> = w.flatMap { if (it == "carmode") listOf("car", "mode") else listOf(it) }
+
     private fun list(vararg p: String): List<List<String>> = p.map { it.split(' ') }.sortedByDescending { it.size }
 
     private val HEAD = list("hey robot", "hi robot", "ok robot", "okay robot", "hello robot", "he robot", "dis robot", "robot", "please", "can you", "could you",
@@ -61,11 +63,18 @@ object HandsFreeRouter {
     private val CAR_ON = list("car mode", "turn on car mode", "start car mode", "car mode on", "switch to car mode", "enable car mode", "go to car mode",
         "driving mode", "start driving mode", "turn on driving mode", "im driving", "i am driving", "mode auto", "mode voiture", "active le mode auto",
         "demarre le mode auto", "mets le mode auto", "lance le mode auto", "passe en mode auto", "je conduis", "active le mode voiture",
-        "activer le mode auto", "demarrer le mode auto", "mettre le mode auto")
+        "activer le mode auto", "demarrer le mode auto", "mettre le mode auto",
+        // bug-open-car-mode (4 Nov 2026): "open car mode" and its kin fell to the model, which has no car mode and said so.
+        "open car mode", "open the car mode", "open up car mode", "launch car mode", "open driving mode", "ouvre le mode voiture",
+        "ouvre le mode auto", "ouvrir le mode auto", "ouvrir le mode voiture", "lance le mode voiture", "demarre le mode voiture",
+        "mets le mode voiture", "passe en mode voiture")
     private val CAR_OFF = list("end car mode", "stop car mode", "turn off car mode", "car mode off", "exit car mode", "leave car mode", "disable car mode",
         "quit car mode", "end driving mode", "turn off driving mode", "fin du mode auto", "arrete le mode auto", "desactive le mode auto", "quitte le mode auto",
         "sors du mode auto", "ferme le mode auto", "termine le mode auto", "mode auto off", "arrete le mode voiture", "fin du mode voiture",
-        "arreter le mode auto", "desactiver le mode auto", "quitter le mode auto")
+        "arreter le mode auto", "desactiver le mode auto", "quitter le mode auto",
+        // bug-open-car-mode: open's twin.
+        "close car mode", "close driving mode", "ferme le mode voiture", "quitte le mode voiture", "desactive le mode voiture",
+        "sors du mode voiture")
     private val REPEAT = list("repeat", "repeat that", "repeat it", "repeat that please", "say that again", "say it again", "read that again", "read it again",
         "can you repeat that", "what did you say", "come again", "repete", "repete ca", "repete moi ca", "repete le", "redis le", "redis ca", "redis moi ca",
         "relis le", "relis ca", "relis moi ca", "repeter", "repeter ca", "tu peux repeter", "repete sil te plait")
@@ -140,8 +149,10 @@ object HandsFreeRouter {
         // A phrase may end in a tail word of its own ("that's all for now").
         val full = w.subList(i, w.size)
         fun whole(l: List<List<String>>) = l.any { it == core || it == full }
-        if (whole(CAR_OFF)) return HandsFreeCommand.CarModeOff
-        if (whole(CAR_ON)) return HandsFreeCommand.CarModeOn
+        // bug-open-car-mode: "carmode" as one word, as you'd type it and as speech may write it.
+        fun carWhole(l: List<List<String>>) = whole(l) || l.any { it == apart(core) || it == apart(full) }
+        if (carWhole(CAR_OFF)) return HandsFreeCommand.CarModeOff
+        if (carWhole(CAR_ON)) return HandsFreeCommand.CarModeOn
         if (whole(REPEAT)) return HandsFreeCommand.Repeat
         if (whole(STOP_LISTENING)) return HandsFreeCommand.StopListening
         if (!carMode) return null

@@ -31,7 +31,7 @@ class Bm25Retriever(private val minScore: Double = MIN_SCORE, private val maxHit
     override fun retrieve(query: RecallQuery, items: List<MemoryItem>, limit: Int): List<Recalled> {
         if (items.isEmpty() || limit <= 0) return emptyList()
         val byId = items.associateBy { it.id }
-        val index = Bm25Index.build(items.sortedByDescending { it.createdAt }.map { it.id to it.text })
+        val index = Bm25Index.build(items.sortedByDescending { it.createdAt }.map { it.id to it.text }, minDocs = MIN_DOCS)
         return index.search(query.text, minOf(limit, maxHits), minScore).mapNotNull { h -> byId[h.id]?.let { Recalled(it, h.score, RecallBy.WORDS) } }
     }
 
@@ -46,6 +46,12 @@ class Bm25Retriever(private val minScore: Double = MIN_SCORE, private val maxHit
         /** BM25 scores under this share only weak words with the question. */
         const val MIN_SCORE = 1.0
         const val MAX_HITS = 4
+        /**
+         * Word weights as if memory held at least this many items ([Bm25Index.build]): with one to a few items, a word
+         * shared with the question is not known to be common, and "when is my sister's birthday?" must find the one item
+         * that says it. From 20 items on, the plain weights (the floor was tuned on 40).
+         */
+        const val MIN_DOCS = 20
     }
 }
 
