@@ -191,6 +191,8 @@ object ListsRouter {
     private val ROLE_EN: Map<String, ListRole> = mapOf(
         "shopping" to ListRole.SHOPPING, "grocery" to ListRole.SHOPPING, "groceries" to ListRole.SHOPPING, "store" to ListRole.SHOPPING, // l10n: not text (words Robot hears)
         "the store" to ListRole.SHOPPING, "grocery store" to ListRole.SHOPPING, "shopping and grocery" to ListRole.SHOPPING, // l10n: not text (words Robot hears)
+        // everyday-1.2.2-a bug 2: more of Shopping's usual names.
+        "grocery shopping" to ListRole.SHOPPING, "supermarket" to ListRole.SHOPPING, // l10n: not text (words Robot hears)
         "to-do" to ListRole.TODO, "to do" to ListRole.TODO, "todo" to ListRole.TODO, "to-dos" to ListRole.TODO, "task" to ListRole.TODO, // l10n: not text (words Robot hears)
         "tasks" to ListRole.TODO, "things to do" to ListRole.TODO, // l10n: not text (words Robot hears)
     )
@@ -370,7 +372,11 @@ object ListsRouter {
     private val TO_EN = setOf("to", "on", "onto", "in", "into") // l10n: not text (words Robot hears)
     private val READ_ON_EN = listOf("what's on", "whats on", "what is on", "what's in", "whats in", "what is in", "what's left on", "whats left on", // l10n: not text (words Robot hears)
         "what is left on", "what's left in", "what else is on", "what do i have on", "what do i have in", "what have i got on", "what do i need from", // l10n: not text (words Robot hears)
-        "what's still on", "whats still on", "what is still on") // l10n: not text (words Robot hears)
+        "what's still on", "whats still on", "what is still on", // l10n: not text (words Robot hears)
+        // everyday-1.2.2-a bug 2: how many things a list holds is a read (its reply counts them), never an app search.
+        "how many items are on", "how many things are on", "how many items are in", "how many things are in", "how many items on", // l10n: not text (words Robot hears)
+        "how many things on", "how many items do i have on", "how many things do i have on", "how many items have i got on", // l10n: not text (words Robot hears)
+        "how many items are there on", "how many things are there on", "how much is on", "how much stuff is on") // l10n: not text (words Robot hears)
     private val READ_EN = listOf("read", "read me", "read out", "read back", "read out loud", "tell me", "show", "show me", "go over", "go through", // l10n: not text (words Robot hears)
         "what's", "whats", "what is", "open") // l10n: not text (words Robot hears)
     private val MY_LISTS_EN = setOf("what lists do i have", "which lists do i have", "what are my lists", "what lists have i got", "read me my lists", // l10n: not text (words Robot hears)
@@ -604,7 +610,13 @@ object ListsRouter {
         // LS8: « mets-moi du lait sur ma liste », « peux-tu me mettre des bananes sur ma liste » (« peux-tu » is a filler).
         "mets-moi", "mets moi", "ajoute-moi", "ajoute moi", "rajoute-moi", "rajoute moi", "me mettre", "m'ajouter", "me rajouter") // l10n: not text (words Robot hears)
     private val TO_FR = setOf("a", "sur", "dans", "au") // l10n: not text (words Robot hears)
-    private val READ_ON_FR = listOf("qu'est-ce qu'il y a sur", "qu'est-ce qu'il y a dans", "qu'est-ce qui est sur", "qu'est-ce qui reste sur", // l10n: not text (words Robot hears)
+    private val READ_ON_FR = listOf(
+        // everyday-1.2.2-a bug 2: « combien … sur ma liste » is a read (its reply counts them).
+        "combien d'items sur", "combien d'articles sur", "combien de choses sur", "combien de trucs sur", "combien d'affaires sur", // l10n: not text (words Robot hears)
+        "combien d'items il y a sur", "combien d'articles il y a sur", "combien de choses il y a sur", "combien de trucs il y a sur", // l10n: not text (words Robot hears)
+        "combien il y a d'items sur", "combien il y a de choses sur", "combien y a-t-il de choses sur", "combien y a-t-il d'items sur", // l10n: not text (words Robot hears)
+        "j'ai combien d'items sur", "j'ai combien de choses sur", "j'ai combien d'affaires sur", "j'ai combien de trucs sur", // l10n: not text (words Robot hears)
+        "qu'est-ce qu'il y a sur", "qu'est-ce qu'il y a dans", "qu'est-ce qui est sur", "qu'est-ce qui reste sur", // l10n: not text (words Robot hears)
         "qu'est-ce qu'il reste sur", "qu'est-ce qu'il reste dans", "qu'y a-t-il sur", "qu'y a-t-il dans", "c'est quoi sur", "c'est quoi dans", // l10n: not text (words Robot hears)
         "il y a quoi sur", "il y a quoi dans", "y a quoi sur", "y a quoi dans", "quoi sur", "qu'est-ce que j'ai sur", "qu'est-ce que j'ai dans", // l10n: not text (words Robot hears)
         // LS8: Québec's spoken forms.

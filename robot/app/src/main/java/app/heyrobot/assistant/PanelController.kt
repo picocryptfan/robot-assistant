@@ -1405,6 +1405,9 @@ object PanelController {
         val keep = if ((marked == Attachment.SCREEN || sharedNow != null) && !keptByUser) false else st.keep
         // Screen text, a picture, a read tool's findings or a helper's words anywhere in this conversation: every action asks first.
         val untrusted = TurnRules.untrusted(chat)
+        // fix-123-d: a note you dictate is add_note's call in your words, never left to the model to call (core NoteDictation.direct).
+        val dictated = if (way == FastPath.Way.MODEL && cmd == null && attachment == Attachment.NONE && !untrusted && !_state.value.inHelperMode)
+            app.heyrobot.core.NoteDictation.direct(q) else null
         // The helper this turn goes to: the one named, or the one whose conversation is on. 1.0.0: "ask the helper …" names
         // none (HelperName.ANY_ID): one that can take it now, the one you chose first (HelperSettings.askTarget); none, and
         // PanelHelperTurn.run says what's missing.
@@ -1489,6 +1492,7 @@ object PanelController {
                 }
                 // A plain request to text someone (or the answer to "what should it say?") goes straight to send_text.
                 way == FastPath.Way.TEXT && texting.direct(replyId, q, textingFor, fromVoice, untrusted) -> {}
+                dictated != null -> noteTurn(replyId, dictated)
                 else -> {
                     helperChoice.asked(asked)
                     runTurn(replyId, user.text, attachment, sText, image, history, untrusted, guard, fromVoice)
@@ -1755,6 +1759,8 @@ object PanelController {
                 override suspend fun runSkill(call: app.heyrobot.core.skills.SkillCall.Ok, untrusted: Boolean) =
                     PanelSkills.runForModel(replyId, call, untrusted, question, loaded.model, skillHost)
             }
+            // everyday-1.2.2-a bug 7: a question about you, nothing asked for: no "I saved that" read out (core ReplyVoice).
+            if (app.heyrobot.core.ActionOutcome.recallOnly(askedNow, question)) voice.recallOnly(replyId)
             return TurnRunner(model, actions, PanelView(replyId), slot.confirmations, untrusted || mem.content,
                 asked = askedNow, messages = PanelMessages.taint(chat), langs = turnLangs,
                 skills = PanelSkills.menu(if (skillSpecs.isEmpty()) emptyList() else skillTools), newId = ::newId,
@@ -2066,6 +2072,13 @@ object PanelController {
             }
         }
         return true
+    }
+
+    /** fix-123-d: a dictated note (core NoteDictation.direct) as add_note's call in your words, without the model. */
+    private suspend fun noteTurn(replyId: String, call: RawToolCall) {
+        val r = TurnRunner(app.heyrobot.core.NoteDictation.Direct(call), PanelActions, PanelView(replyId), slot.confirmations, false,
+            asked = setOf(ToolName.ADD_NOTE), messages = PanelMessages.taint(chat), langs = turnLangs, newId = ::newId).run()
+        r.failure?.let { failReply(replyId, it) } ?: finishReply(replyId, r.reason ?: DoneReason.END)
     }
 
     /**

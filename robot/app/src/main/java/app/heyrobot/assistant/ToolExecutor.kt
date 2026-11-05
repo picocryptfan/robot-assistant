@@ -284,7 +284,9 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
             .putExtra(AlarmClock.EXTRA_LENGTH, seconds.toInt())
             .putExtra(AlarmClock.EXTRA_SKIP_UI, true)
             .putExtra(AlarmClock.EXTRA_MESSAGE, "Robot")
-        return if (start(app.heyrobot.sys.RoutineFacts.toChosenClock(ctx, i))) Executed(ActionStatus.DONE, ToolStrings.timerSet("duration" to app.heyrobot.core.i18n.Arg.Seconds(seconds)))
+        // fix-everyday-e: Android can't tell Robot about a clock's timers, so Robot keeps its own record (sys RobotTimers).
+        return if (start(app.heyrobot.sys.RoutineFacts.toChosenClock(ctx, i)).also { if (it) app.heyrobot.sys.RobotTimers.set(ctx, seconds) })
+            Executed(ActionStatus.DONE, ToolStrings.timerSet("duration" to app.heyrobot.core.i18n.Arg.Seconds(seconds)))
         else Executed(ActionStatus.FAILED, ToolStrings.noClockTimers())
     }
 

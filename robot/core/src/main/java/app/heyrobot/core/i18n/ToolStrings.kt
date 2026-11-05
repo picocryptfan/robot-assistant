@@ -192,6 +192,15 @@ object ToolStrings : Strings("tool", area = "cards") {
         "Robot a demandé à ton horloge d'arrêter une minuterie qui sonne. Annule une minuterie en cours dans ton appli d'horloge.")
     val timerRunningClock = s("timer_running_clock", "Android doesn't let Robot cancel a running timer: do it in your clock app.",
         "Android ne laisse pas Robot annuler une minuterie en cours : fais-le dans ton appli d'horloge.")
+    // fix-everyday-e: "how much time is left on my timer" (core TimerAsk), from the timers Robot set; the clock's own aren't seen.
+    val timerLeft = s("timer_left", "Your timer for {duration} has {left} left. It ends at {time}.",
+        "Il reste {left} à ta minuterie de {duration}. Elle finit à {time}.")
+    val timerLeftUnless = s("timer_left_unless", "Your timer for {duration} has {left} left, unless you cancelled it in your clock app. It ends at {time}.",
+        "Il reste {left} à ta minuterie de {duration}, sauf si tu l'as annulée dans ton appli d'horloge. Elle finit à {time}.")
+    val timerNoneSet = s("timer_none_set", "Robot hasn't set a timer. It can't see one set in your clock app: check there.",
+        "Robot n'a pas réglé de minuterie. Il ne voit pas celles réglées dans ton appli d'horloge : regarde là.")
+    val timerRanOut = s("timer_ran_out", "Your timer for {duration} ran out at {time}. Robot can't see one set in your clock app: check there.",
+        "Ta minuterie de {duration} a fini à {time}. Robot ne voit pas celles réglées dans ton appli d'horloge : regarde là.")
     val openClockApp = s("open_clock_app", "Open your clock app", "Ouvrir ton appli d'horloge")
     val tapOpenClock = s("tap_open_clock", "Tap {open} to open your clock app.", "Touche {open} pour ouvrir ton appli d'horloge.")
     val noClockAlarms = s("no_clock_alarms", "No clock app on this phone takes alarms.", "Aucune appli d'horloge sur ce téléphone n'accepte les alarmes.")

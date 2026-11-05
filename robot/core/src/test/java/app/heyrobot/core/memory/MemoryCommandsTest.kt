@@ -40,6 +40,21 @@ class MemoryCommandsTest {
      * que …", « souviens-toi que … »; "remember to …" stays a note). "Remember the movie where …", "do you remember …",
      * "remember when …" are questions, never saves, in English and Québec French.
      */
+    @Test fun rememberIIsASave() {
+        // fix-123-d, Test Bench bug-everyday-b-1 on 1.2.3: the second remember went to the model and was never kept.
+        val car = MemoryCommands.parse("remember I parked the car on level 3, row B") as MemoryCommand.Remember
+        assertEquals("I parked the car on level 3, row B", car.text)
+        val food = MemoryCommands.parse("remember my favourite food is pad thai") as MemoryCommand.Remember
+        val one = MemoryEdits.add(MemoryFile(), MemoryItem("a", food.text, food.kind, createdAt = 1L))
+        val two = MemoryEdits.add(one.file, MemoryItem("b", car.text, car.kind, createdAt = 2L))
+        assertEquals(AddOutcome.SAVED, two.outcome)
+        assertEquals(2, two.file.items.size)
+        assertEquals("I'm allergic to peanuts", (MemoryCommands.parse("Remember I'm allergic to peanuts") as MemoryCommand.Remember).text)
+        for (s in listOf("remember I told you about Bob", "Remember I said I'd call?", "remember I parked the car?")) {
+            assertFalse(s, MemoryCommands.parse(s) is MemoryCommand.Remember)
+        }
+    }
+
     @Test fun questionsAboutRememberingAreNeverSaves() {
         for (s in listOf("Remember the movie where Tom Hanks is stranded on an island", "remember the movie where a guy loses his memory?",
             "Do you remember my sister's birthday?", "Do you remember when we went to Paris", "Remember when Julie was a baby", "remember when the store opens",

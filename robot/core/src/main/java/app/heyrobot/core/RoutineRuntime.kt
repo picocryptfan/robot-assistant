@@ -351,7 +351,9 @@ enum class RoutineCommandCode(override val id: Int, override val title: String) 
     /** 1.1: "remind me about it", nothing to remind and no time: Robot asked what and when. */
     REMIND_WHAT(8, "a reminder with nothing to remind"),
     /** 1.1: "cancel my alarm": Robot can't, and offered the clock app. */
-    CANT_CANCEL(9, "an alarm or timer to cancel");
+    CANT_CANCEL(9, "an alarm or timer to cancel"),
+    /** fix-everyday-e: "how much time is left on my timer", from the timers Robot set. */
+    TIMER_LEFT(10, "time left on a timer");
 
     companion object {
         fun of(c: RoutineCommand): RoutineCommandCode = when (c) {
@@ -364,6 +366,7 @@ enum class RoutineCommandCode(override val id: Int, override val title: String) 
             is RoutineCommand.RemindOn -> REMIND_ON
             RoutineCommand.RemindWhat -> REMIND_WHAT
             is RoutineCommand.CantCancel -> CANT_CANCEL
+            is RoutineCommand.TimerLeft -> TIMER_LEFT
         }
     }
 }

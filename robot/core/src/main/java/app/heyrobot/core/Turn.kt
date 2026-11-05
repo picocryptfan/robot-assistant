@@ -643,6 +643,9 @@ class TurnRunner(
         if (acts.isEmpty()) {
             // 1 Nov: you asked for an action, the model called nothing, and its reply says it was done.
             if (outcomes.isEmpty() && asked.isNotEmpty() && ActionOutcome.claims(view.text)) writeOutcome(listOf(Outcome(null, ActionStatus.SKIPPED, null)))
+            // everyday-1.2.2-a bug 7: a question about you, nothing asked or done, and the answer says it saved something.
+            else if (ActionOutcome.recallOnly(asked, heard?.words) && ActionOutcome.claims(view.text))
+                ActionOutcome.withoutClaims(view.text).takeIf { it.isNotBlank() }?.let(view::replaceText)
             return
         }
         if (acts.any { it.status.succeeded || it.status == ActionStatus.PENDING }) return
@@ -804,7 +807,9 @@ class TurnRunner(
 
     private suspend fun decideAndRun(called: Action, speak: Boolean): Pair<Pair<String, Map<String, Any?>>, Boolean> {
         // 1.1.2: an event's end is the one you said when the call names none (core AlarmWords.saidEnd).
-        val asked = if (called is Action.AddEvent && heard != null && !remote) AlarmWords.saidEnd(called, heard) else called
+        // everyday-1.2.2-a bug 6: a note you dictated is saved in your words (core NoteDictation).
+        val asked = if (called is Action.AddEvent && heard != null && !remote) AlarmWords.saidEnd(called, heard)
+            else if (called is Action.AddNote && heard != null && !remote && !untrusted) NoteDictation.keep(called, heard.words) else called
         val id = newId()
         /** The card as it ended ([detail]: its line, in the reply language) and what the model is told ([model], English). */
         fun done(a: Action, status: ActionStatus, detail: String?, launched: Boolean = false, r: Executed? = null, model: String? = detail,

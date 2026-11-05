@@ -66,6 +66,12 @@ sealed class RoutineCommand {
      * only by a tap ([timer]: a timer was named; [french]: said in French).
      */
     data class CantCancel(val timer: Boolean, val french: Boolean) : RoutineCommand()
+
+    /**
+     * fix-everyday-e: "how much time is left on my timer", « il reste combien de temps à ma minuterie »: answered from the
+     * timers Robot set (core TimerAsk), never the model's to guess ([french]: a French timer word was said).
+     */
+    data class TimerLeft(val french: Boolean) : RoutineCommand()
 }
 
 /**
@@ -264,6 +270,7 @@ object RoutineRouter {
         if (whole(p, i, LIST)) return RoutineCommand.ListAll
         named(p, i, DELETE, names)?.let { return RoutineCommand.Delete(it) }
         named(p, i, RUN, names)?.let { return RoutineCommand.Run(it) }
+        timerLeft(p, i)?.let { return it }
         cantCancel(p, i)?.let { return it }
         return null
     }
@@ -287,6 +294,7 @@ object RoutineRouter {
         cmd is RoutineCommand.Create -> Lang.EN
         // 1.1: "remind me …", "set a reminder …" (the French leads are French's).
         cmd is RoutineCommand.CantCancel -> if (cmd.french) Lang.FR else Lang.EN
+        cmd is RoutineCommand.TimerLeft -> if (cmd.french) Lang.FR else Lang.EN
         cmd is RoutineCommand.RemindOn || cmd is RoutineCommand.RemindWhat -> Lang.EN
         else -> null
     }
@@ -503,6 +511,34 @@ object RoutineRouter {
         if (!timer && noun !in ALARM_NOUNS) return null
         if (rest.getOrNull(k + 1) in NOT_THE_CLOCK) return null
         return RoutineCommand.CantCancel(timer = timer, french = fr == n)
+    }
+
+    // ------------------------------------------------------------------ time left on Robot's timers (fix-everyday-e)
+
+    private val LEFT_EN = listOf(
+        Regex("""^(?:how (?:much (?:more )?time|long|many (?:minutes|seconds|mins))|whats|what is|time|is there (?:any )?time) .*\b(?:left|remaining|to go)\b.*"""),
+        Regex("""^how much longer\b.*"""),
+        Regex("""^(?:when|how long (?:until|till|til|before)|how soon) .*\b(?:go(?:es)? off|rings?|ends?|finish(?:es)?|done|up)$"""),
+        Regex("""^(?:is|are) (?:the|my|a|any) (?:timers?|countdown) (?:still )?(?:running|going|on|set)$"""),
+        Regex("""^(?:check|check on|hows|how is) (?:the|my) (?:timers?|countdown)(?: doing| going)?$"""),
+    )
+    private val LEFT_FR = listOf(
+        Regex("""^(?:.* )?(?:combien|quel temps|temps|qu est ce qui|il) .*\b(?:reste|restant|restent|reste t il)\b.*"""),
+        Regex("""^(?:.* )?(?:combien|temps) (?:de temps )?(?:il )?(?:reste|restant|reste t il)\b.*"""),
+        Regex("""^(?:quand|dans combien de temps|a quelle heure|combien de temps avant que) .*\b(?:sonne|sonner|sonnera|finit|finir|finira|termine|terminer|terminera|fini|finie)\b.*"""),
+        Regex("""^(?:est ce que )?(?:ma|la|mon|le) (?:minuterie|minuteur) (?:est encore|roule|tourne|marche)\b.*"""),
+    )
+
+    /** "How much time is left on my timer", « il reste combien de temps à ma minuterie »: a question about a timer, nothing else asked. */
+    private fun timerLeft(p: Words, i: Int): RoutineCommand.TimerLeft? {
+        val ws = (i until p.size).mapNotNull { p.w(it) }.filter { it != "," }
+        if (ws.isEmpty() || ws.size > 16 || p.at(i, CANCEL_EN) > 0 || p.at(i, CANCEL_FR) > 0) return null
+        if (ws.any { it in NOT_ONLY_CANCEL || it in ALARM_NOUNS }) return null
+        val k = ws.indexOfFirst { it in TIMER_NOUNS }
+        if (k < 0 || ws.getOrNull(k + 1) in NOT_THE_CLOCK) return null
+        val s = ws.joinToString(" ")
+        val french = ws[k] != "timer" && ws[k] != "timers" && ws[k] != "countdown"
+        return if ((if (french) LEFT_FR else LEFT_EN).any { it.matches(s) }) RoutineCommand.TimerLeft(french) else null
     }
 
     /** 1.1 (phone, 22 Oct): a reminder that names nothing to remind and no time ([RoutineCommand.RemindWhat]), as a whole utterance. */
@@ -839,6 +875,6 @@ object RoutineLockedPhone {
         is RoutineCommand.RemindOn -> RoutineStrings.unlockRemindOn()
         RoutineCommand.ListAll -> RoutineStrings.unlockList()
         // 1.1: Robot only asks what and when.
-        RoutineCommand.BriefNow, is RoutineCommand.Run, RoutineCommand.RemindWhat, is RoutineCommand.CantCancel -> null
+        RoutineCommand.BriefNow, is RoutineCommand.Run, RoutineCommand.RemindWhat, is RoutineCommand.CantCancel, is RoutineCommand.TimerLeft -> null
     }
 }

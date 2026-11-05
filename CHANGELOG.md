@@ -4,6 +4,25 @@ What changed in each version of Robot, newest first. Each version's full notes, 
 [`robot/README.md`](robot/README.md) ("What's new in …" and the feature sections). Versions before 1.0 were test
 builds.
 
+## 1.2.3 (2026-11-05)
+
+- A fact you asked Robot to remember is found when you ask about it in other words ("what do I like to eat most" for
+  "my favourite food is pad thai"), while memory holds 8 items or fewer. Before, the two shared no word and the model
+  answered without the note.
+- "How many items are on my grocery list" (« combien d'items il y a sur ma liste d'épicerie ») counts the Shopping
+  list. Before, the model tried to open an app called Grocery List.
+- "Read me my last note" (« lis-moi ma dernière note ») reads the newest note. Before, Robot searched for the word "last".
+- A note you dictate ("take a note that …", "jot down …", « prends en note que … ») is saved in your words, every time.
+  Before, the model sometimes reworded it, or answered without saving it.
+- "Remember I parked the car on level 3" is kept like "remember my …". Before, it went to the model and wasn't saved.
+- An answer to a question about you no longer says it saved something when it saved nothing, on screen or aloud.
+- General knowledge is answered again ("how many people live in Halifax", in English and French; figures may be dated).
+  Before, the model said it had no real-time information. News, prices and scores are still declined.
+- "How much time is left on my timer" is answered for a timer Robot set. Robot can't see timers set in your clock app.
+  "Cancel the timer" opens the clock's timers and says why: Android lets no app stop a running timer.
+- Robot's record of the timers it set is deleted 12 hours after the last one ends, and with History › Delete all,
+  Memory › Delete all, Start over and a restore's Replace of History. Before, the last timers stayed on the phone for good.
+
 ## 1.2.2 (2026-11-04)
 
 - "Open car mode", « ouvre le mode voiture », "carmode" and other ways of asking now start car mode, as "car mode"

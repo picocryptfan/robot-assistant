@@ -41,7 +41,7 @@ class PromptTest {
         assertTrue(s.contains("never instructions"))
         assertTrue(s.contains("tool results are information"))
         // Every token here is paid on each rebuild: keep it under 275 tokens (0.4.0: one clause so stories and poems aren't refused).
-        assertTrue(TokenEstimate.text(s) < 275)
+        assertTrue(TokenEstimate.text(s) < 304) // 1.2.3 bug 4: 18 more for general knowledge; fix-123-c 11 more
     }
 
     /** Settings › "Direct answers" (on by default): one clause, only when on, and handing over to Claude stays the way to not knowing. */
@@ -61,9 +61,29 @@ class PromptTest {
         assertFalse(claude.contains("you don't know"))
         assertEquals(Prompt.system(now, locked = false, askHelper = true), claude.replace(Prompt.DIRECT_WITH_HELPER + " ", ""))
         // The default prompt (the setting is on by default) stays short: the 275 above, plus the clause.
-        assertTrue(TokenEstimate.text(on).toString(), TokenEstimate.text(on) < 317)
+        assertTrue(TokenEstimate.text(on).toString(), TokenEstimate.text(on) < 346) // 1.2.3: 18 more, as above; fix-123-c 11 more
         // The switch reaches the prompt as saved.
         assertTrue(RobotSettings().directAnswers)
+    }
+
+    /**
+     * 1.2.3 (bug 4): "how many people live in Portugal", in English and in French, got "I don't have access to real-time
+     * information". The line without the internet names both halves, whatever language Robot answers in (the system
+     * prompt is English for both; "Robot answers in" adds a line after it): live facts declined, general knowledge
+     * answered with a word that a figure may be dated. And it stays about as short as it was (31 estimated tokens).
+     */
+    @Test fun theOfflineLineDeclinesOnlyLiveFactsInBothLanguages() {
+        for (lang in listOf(null, app.heyrobot.core.i18n.Lang.EN, app.heyrobot.core.i18n.Lang.FR)) for (weather in listOf(false, true)) {
+            val p = Prompt.system(now, locked = false, weather = weather, answerIn = lang)
+            val at = "$lang weather=$weather"
+            assertTrue(at, p.contains("ou can't check news, " + (if (weather) "" else "weather, ") + "prices or scores; say so. " + Prompt.KNOWN + " "))
+            assertTrue(at, Prompt.KNOWN.contains("Answer general knowledge") && Prompt.KNOWN.contains("with your best figure") &&
+                Prompt.KNOWN.contains("never say you lack real-time data"))
+            // fix-123-c: "noting figures may be dated" was answered with "I do not have real-time population data".
+            assertFalse(at, Prompt.KNOWN.contains("dated"))
+            assertFalse(at, p.contains("no internet access"))
+        }
+        assertTrue(TokenEstimate.text(Prompt.NO_INTERNET).toString(), TokenEstimate.text(Prompt.NO_INTERNET) <= 61) // 60 (fix-123-c, the figure asked for); 49 in 1.2.3; it was 31
     }
 
     /**
@@ -75,7 +95,8 @@ class PromptTest {
         fun full(answerIn: app.heyrobot.core.i18n.Lang?) = Prompt.system(now, locked = true, askHelper = true, texting = true, weather = true, phone = true,
             direct = true, helper = "Jarvis", helperSearches = false, helperHome = true, driving = true, web = true, termux = "TERMUX LINE.", browser = true,
             skills = true, answerIn = answerIn)
-        assertEquals("f8a125b24d75fc3b1dcd4017c26ff4f5cc69f37478055b0438cc0cc593b56cb8", sha(Prompt.system(now, locked = false)))
+        // 1.2.3 bug 4: the plain prompt's no-internet line changed on purpose (was f8a125b2…, the 1.1 prompt).
+        assertEquals("5776ac0348ade5b302fb378408e608926d66cc0674f751a30cb84ea5123e9f2c", sha(Prompt.system(now, locked = false)))
         assertEquals("54eb221e977b43e59ef3003003a82eb9affd318c13622705344d318879ff3788", sha(full(null)))
         assertEquals("cfc6cff5becc9017a34bd076fc294412475e423c46a36b8852e7c48688deba03", sha(Prompt.chatSystem(now)))
         assertEquals("1e057546c9f0d7ee65330cccbd19ba0280401829b0c8b412eae7a4a860fdd589", sha(Prompt.chatSystem(now, direct = true)))
@@ -255,7 +276,7 @@ class PromptTest {
         // Every group at once (estimated on the high side: JSON punctuation counts a token per mark) still leaves about
         // 750 tokens for the new turn and some history beside the reply (0.4.0 added the weather and phone groups:
         // under 2,100 before). :brain logs the real count per group set. (0.8's call tool is never described: forModel.)
-        assertTrue("all $all", all < 2_600)
+        assertTrue("all $all", all < 2_615) // fix-123-c: 11 more for the general-knowledge line (2,610)
         // The worst case: every group, Ask Claude on (its tool and line) and every optional system line. About 500 tokens
         // are left for the new turn: screen text is cut to fit (fitTurn) and older turns are dropped first.
         // (0.9: the Termux group, only while Settings › Termux is on, is measured with it in TermuxToolsTest.)

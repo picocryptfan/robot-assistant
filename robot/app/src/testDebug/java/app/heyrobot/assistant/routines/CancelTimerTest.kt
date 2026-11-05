@@ -11,6 +11,8 @@ import app.heyrobot.core.RoutineCommand
 import app.heyrobot.core.RoutineStep
 import app.heyrobot.core.i18n.Lang
 import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.TimerAsk
+import app.heyrobot.sys.RobotTimers
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -50,7 +52,7 @@ class CancelTimerTest {
         override fun langs(said: String?, router: Lang?): Langs = Langs.of(lang)
     }
 
-    @Before fun hub() { VoiceHub.init(ApplicationProvider.getApplicationContext()) }
+    @Before fun hub() { VoiceHub.init(ApplicationProvider.getApplicationContext()); RobotTimers.clear(VoiceHub.app) }
 
     private fun cancel(host: Fake, french: Boolean = false, words: String = "cancel the timer"): Fake {
         runBlocking { PanelRoutines.handle("reply", RoutineCommand.CantCancel(timer = true, french = french), host, words) }
@@ -97,6 +99,45 @@ class CancelTimerTest {
         assertFalse(h.left)
         assertEquals("Robot a demandé à ton horloge d’arrêter une minuterie qui sonne. Annule une minuterie en cours dans ton appli d’horloge.", h.text)
         assertEquals(1, h.said.size)
+    }
+
+    /**
+     * fix-everyday-e (everyday-1.2.2-a: "cancel the timer" showed nothing): a timer Robot set that still runs is named with its
+     * time left; no dismiss goes first (nothing of Robot's rings), so the clock's timers are the one page that opens; and
+     * "how much time is left" after it no longer says for sure it runs.
+     */
+    @Test fun aRunningTimerRobotSetIsNamedAndOnlyTheClocksTimersOpen() {
+        val now = System.currentTimeMillis()
+        RobotTimers.set(VoiceHub.app, 300, now - 60_000)
+        val h = cancel(Fake())
+        assertEquals(listOf(AlarmClock.ACTION_SHOW_TIMERS), h.launched)
+        assertTrue(h.left)
+        assertTrue(h.text, h.text.matches(Regex("""Your timer for 5 minutes has (4 minutes|3 minutes and 59 seconds) left\. It ends at .+\. """ +
+            """Android doesn't let Robot cancel a running timer: your clock's timers are open, cancel it there\.""")))
+        assertTrue(RobotTimers.load(VoiceHub.app).single().cancelAsked)
+        val left = TimerAsk.answer(RobotTimers.load(VoiceHub.app), now, java.time.ZoneId.systemDefault()).render(Langs.of(Lang.EN))
+        assertTrue(left, left.contains(", unless you cancelled it in your clock app."))
+    }
+
+    @Test fun oneThatRanOutMayRingSoTheDismissStillGoes() {
+        val now = System.currentTimeMillis()
+        RobotTimers.set(VoiceHub.app, 60, now - 120_000)
+        RobotTimers.set(VoiceHub.app, 300, now - 10_000)
+        val h = cancel(Fake())
+        assertEquals(listOf(AlarmClock.ACTION_DISMISS_TIMER, AlarmClock.ACTION_SHOW_TIMERS), h.launched)
+        assertTrue(h.text, h.text.contains("left. It ends at "))
+        assertTrue(h.text, h.text.contains("Robot asked your clock app to stop any timer that's ringing."))
+    }
+
+    @Test fun handsFreeOrLockedARunningOneIsNamedWithNoPage() {
+        RobotTimers.set(VoiceHub.app, 300, System.currentTimeMillis())
+        val hf = cancel(Fake(handsFree = true))
+        assertEquals(emptyList<String>(), hf.launched)
+        assertTrue(hf.text, hf.text.endsWith("Android doesn't let Robot cancel a running timer: do it in your clock app."))
+        assertEquals(2, hf.said.size)
+        val locked = cancel(Fake(locked = true))
+        assertEquals(emptyList<String>(), locked.launched)
+        assertTrue(locked.text, locked.text.endsWith("To cancel a running timer, unlock and open your clock app."))
     }
 
     @Test fun noClockAppSaysSo() {

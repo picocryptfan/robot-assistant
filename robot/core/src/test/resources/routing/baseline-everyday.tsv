@@ -414,7 +414,7 @@ barre le téléphone	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, PEOPLE]	-
 skip this song	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	Music(action=NEXT)
 skip it	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
 skip to the next track	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
-how long is left on my timer	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+how long is left on my timer	-	-	-	-	-	TimerLeft(french=false)	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
 lock the phone until later	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, PEOPLE]	-
 lock the phone for a while	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, PEOPLE]	-
 lock the phone until 25	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, PEOPLE]	-

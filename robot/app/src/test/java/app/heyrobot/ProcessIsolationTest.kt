@@ -4442,8 +4442,8 @@ class ProcessIsolationTest {
         // (Seven: the chat turn, a helper's, the Claude app's hand-off, texting without the model, 0.7 memory's "remember
         // that …" in a conversation that holds a message, 0.7.0's "free up memory" card, 0.8's routine steps and calls, and 0.9's
         // "search the web for …" and "run <script>"; 1.4 F10's Add to calendar from a file's date; 1.5 L7's words to another Robot;
-        // 1.1.2's timer without the model, ClockAsk.)
-        assertEquals(12, pc.count("messages = PanelMessages.taint(chat)"))
+        // 1.1.2's timer without the model, ClockAsk; fix-123-d's dictated note, NoteDictation.direct.)
+        assertEquals(13, pc.count("messages = PanelMessages.taint(chat)"))
         assertEquals(pc.count(Regex("""TurnRunner\(""")), pc.count("messages = PanelMessages.taint(chat)"))
         // (1.1: a helper's turn and the hand-off to its app are PanelHelperTurn's; their TurnRunners stay here, untrusted and
         // remote with only what HelperTrust lets a read share and the tools the session offered, and the shared port hands

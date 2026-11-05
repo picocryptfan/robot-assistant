@@ -324,4 +324,40 @@ class SpeechTest {
         assertEquals("a b", SpeechText.forEngine("a\u0001b"))
         assertEquals("ab", SpeechText.forEngine("a\u200Db"))
     }
+
+    /** What the voice says of [reply] streamed in 4-character chunks, after [said]; each piece with the chunk count it came after. */
+    private fun spoken(said: String, reply: String): List<Pair<Int, String>> {
+        val v = ReplyVoice()
+        v.start("r1")
+        if (ActionOutcome.recallOnly(emptySet(), said)) v.recallOnly("r1")
+        val out = mutableListOf<Pair<Int, String>>()
+        reply.chunked(4).forEachIndexed { n, c -> v.feed("r1", c, speak = true).forEach { out += n to it } }
+        v.finish("r1", cancelled = false, speak = true)?.let { out += -1 to it }
+        return out
+    }
+
+    // everyday-1.2.2-a bug 7: the screen dropped "I've saved that" from a recall answer, but the voice had read it out.
+    @Test fun aRecallAnswerNeverSaysAloudThatItSaved() {
+        for ((said, reply) in listOf(
+            "what's my doctor's name" to "Your doctor's name is Dr. Anika Patel. I have saved that information for you. Anything else?",
+            "What date is my mom's anniversary?" to "Your mom's anniversary is August 20. I've noted that for you.",
+            "Qui est mon dentiste ?" to "Ton dentiste s'appelle docteur Martin. Je l'ai enregistré pour toi.",
+        )) {
+            val heard = spoken(said, reply)
+            assertTrue(heard.toString(), heard.none { ActionOutcome.claims(it.second) })
+            // The other sentences come out at the same chunk as without the check: no added wait.
+            val plain = spoken("tell me a joke", reply).filterNot { ActionOutcome.claims(it.second) }
+            assertEquals(plain, heard)
+            assertTrue(heard.isNotEmpty())
+        }
+    }
+
+    @Test fun otherRepliesAreSaidAsBefore() {
+        val joke = "Why did the robot cross the road? It was programmed to."
+        assertEquals(listOf("Why did the robot cross the road?", "It was programmed to."), spoken("tell me a joke", joke).map { it.second })
+        // You asked for it: "save my doctor's name" is not a question, its claim is said.
+        assertTrue(spoken("save my doctor's name, Dr. Patel", "I have saved that.").any { ActionOutcome.claims(it.second) })
+        // A recall reply that is nothing but the claim is said at its end, as the screen keeps it.
+        assertEquals(listOf(-1 to "I have saved that."), spoken("what's my doctor's name", "I have saved that."))
+    }
 }

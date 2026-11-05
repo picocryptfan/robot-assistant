@@ -3,6 +3,7 @@ package app.heyrobot.ui.settings
 
 import app.heyrobot.core.files.TravelMode
 import app.heyrobot.sys.FilesSettingsStore
+import app.heyrobot.sys.RobotTimers
 import app.heyrobot.sys.TravelReveal
 import android.content.ActivityNotFoundException
 import android.content.Context
@@ -171,8 +172,8 @@ class PhoneMemoryStore(ctx: Context) : MemoryStore {
     }
     override fun load() = vault.load()
     override fun update(change: (MemoryFile) -> MemoryFile) = vault.update(change)
-    override fun deleteAll() = vault.deleteAll()
-    override fun startOver() = vault.startOver()
+    override fun deleteAll() = vault.deleteAll().also { if (it) RobotTimers.clear(app) }
+    override fun startOver() = vault.startOver().also { if (it) RobotTimers.clear(app) }
     override fun rekey(lockScreen: Boolean) = vault.rekey(lockScreen)
     override fun export(uri: Uri, text: String): Boolean = try {
         app.contentResolver.openOutputStream(uri, "wt")?.use { it.write(text.toByteArray(Charsets.UTF_8)) } != null

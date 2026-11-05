@@ -121,6 +121,9 @@ object MemoryCommands {
         // "Remember my locker is number 12": "remember my …" is a save too, unless it asks ("remember my name?").
         en("""^(?:remember|memori[sz]e) (?<rest>(?:my|our)\b.+)$""", statement = true),
         fr("""^(?:souviens[- ]toi|rappelle[- ]toi|retiens) (?<rest>(?:mon|ma|mes|notre|nos)\b.+)$""", statement = true),
+        // fix-123-d (Test Bench bug-everyday-b-1 on 1.2.3): "remember I parked the car on level 3, row B" went to the model and
+        // was never kept. "Remember I …" is a save too, unless it asks ("remember I told you about Bob?") or recalls what was said.
+        en("""^(?:remember|memori[sz]e) (?<rest>(?:i|i'm|i've|i'd|i'll|we|we're|we've)\b(?! (?:told|said|mentioned|asked|showed|sent|gave|talked|was telling)\b).+)$""", statement = true),
         // Nothing else saves: "remember the movie where …", "remember when …", "remember I told you …" are questions about
         // what Robot remembers (or the model's), never something to keep.
     )

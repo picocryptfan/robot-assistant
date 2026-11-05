@@ -59,13 +59,13 @@ internal class PanelStream(private val scope: CoroutineScope, private val replie
         override suspend fun ask(): ModelOutcome {
             currentCoroutineContext().ensureActive()
             VoiceLog.add(VoiceEvent.BRAIN_SENT, 0, if (img != null || gen.hasImage) 1 else 0)
-            return collect(c, c.request(BrainProtocol.REQ_GENERATE, gen, img), replyId)
+            return collect(c, c.request(BrainProtocol.REQ_GENERATE, gen, img), replyId, gen.text)
         }
 
         override suspend fun answer(results: List<Pair<String, Map<String, Any?>>>): ModelOutcome {
             currentCoroutineContext().ensureActive()
             VoiceLog.add(VoiceEvent.BRAIN_SENT, ++round, 0)
-            return collect(c, c.request(BrainProtocol.REQ_TOOL_RESULT, BrainMsg.ToolResult(convId, results)), replyId)
+            return collect(c, c.request(BrainProtocol.REQ_TOOL_RESULT, BrainMsg.ToolResult(convId, results)), replyId, gen.text)
         }
 
         override fun close() = c.post(BrainProtocol.REQ_CLOSE_CONV, BrainMsg.CloseConv(convId))
@@ -80,7 +80,7 @@ internal class PanelStream(private val scope: CoroutineScope, private val replie
     }
 
     /** One request's events ([req]: its id and its stream) into reply [replyId], until its end or the watchdog's. */
-    suspend fun collect(c: BrainClient, req: Pair<Int, Flow<BrainMsg>>, replyId: String): ModelOutcome {
+    suspend fun collect(c: BrainClient, req: Pair<Int, Flow<BrainMsg>>, replyId: String, question: String = ""): ModelOutcome {
         port.reqId = req.first
         // 1.2: the model this request runs on, for its reply's numbers (BrainKeeper.measured).
         val plan = BrainKeeper.planNow()
@@ -88,6 +88,8 @@ internal class PanelStream(private val scope: CoroutineScope, private val replie
         var out: ModelOutcome = ModelOutcome.Failed(PanelStrings.modelDidntAnswer().render(port.langs))
         // Each model round (the reply, then its text after a tool round) is checked for a copy of the clock at its start.
         val echo = ClockEcho()
+        // 1.2.3 (bug 4): and for a "no real-time data, but" opening before an answer it knows (core LiveHedge).
+        val hedge = app.heyrobot.core.LiveHedge(question)
         val t0 = SystemClock.elapsedRealtime()
         var first = -1L
         var chars = 0
@@ -116,7 +118,7 @@ internal class PanelStream(private val scope: CoroutineScope, private val replie
                             VoiceLog.add(VoiceEvent.BRAIN_FIRST, first.toInt())
                         }
                         chars += m.text.length
-                        streamText(replyId, echo.feed(m.text))
+                        streamText(replyId, hedge.feed(echo.feed(m.text)))
                     }
                     is BrainMsg.ToolCallsMsg -> calls = m.calls
                     is BrainMsg.Done -> {
@@ -136,7 +138,7 @@ internal class PanelStream(private val scope: CoroutineScope, private val replie
                 }
             }
             // A reply shorter than the hold-back window.
-            streamText(replyId, echo.flush())
+            streamText(replyId, hedge.feed(echo.flush()) + hedge.flush())
             // 1 Nov: a reply never names a tool (core ReplyWords); each sentence read out went through it too (speakSentence).
             replies.text(replyId)?.let { t -> app.heyrobot.core.ReplyWords.scrub(t, port.langs.say).let { if (it != t) replies.setText(replyId, it) } }
         } finally {

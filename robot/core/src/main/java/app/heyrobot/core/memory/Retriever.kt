@@ -31,8 +31,13 @@ class Bm25Retriever(private val minScore: Double = MIN_SCORE, private val maxHit
     override fun retrieve(query: RecallQuery, items: List<MemoryItem>, limit: Int): List<Recalled> {
         if (items.isEmpty() || limit <= 0) return emptyList()
         val byId = items.associateBy { it.id }
-        val index = Bm25Index.build(items.sortedByDescending { it.createdAt }.map { it.id to it.text }, minDocs = MIN_DOCS)
-        return index.search(query.text, minOf(limit, maxHits), minScore).mapNotNull { h -> byId[h.id]?.let { Recalled(it, h.score, RecallBy.WORDS) } }
+        val newest = items.sortedByDescending { it.createdAt }
+        val index = Bm25Index.build(newest.map { it.id to it.text }, minDocs = MIN_DOCS)
+        val hits = index.search(query.text, minOf(limit, maxHits), minScore).mapNotNull { h -> byId[h.id]?.let { Recalled(it, h.score, RecallBy.WORDS) } }
+        // everyday-1.2.2-a bug 1: "what do I like to eat most" shares no word with "my favourite food is pad thai". While
+        // memory is small, a question about you that the words found nothing for takes every item, newest first.
+        if (hits.isNotEmpty() || items.size > SMALL_MEMORY || !aboutYou(query.text)) return hits
+        return newest.take(limit).map { Recalled(it, 0.0, RecallBy.WORDS) }
     }
 
     /**
@@ -52,6 +57,29 @@ class Bm25Retriever(private val minScore: Double = MIN_SCORE, private val maxHit
          * that says it. From 20 items on, the plain weights (the floor was tuned on 40).
          */
         const val MIN_DOCS = 20
+
+        /**
+         * Up to this many items, a question about you ([aboutYou]) that shares no word with any takes them all: the model
+         * reads a few short lines and finds the one meant ("where's my car" for "I parked on level 3"). Past it, words only.
+         */
+        const val SMALL_MEMORY = 8
+
+        // l10n: not text (words Robot hears)
+        private val QUESTION = setOf("what", "what's", "whats", "where", "where's", "wheres", "when", "when's", "who", "who's", "whose", "which",
+            "how", "how's", "do", "does", "did", "is", "are", "was", "were", "can", "could", "have", "has", "qu'est-ce", "qu'est", "que",
+            "quel", "quelle", "quels", "quelles", "ou", "quand", "qui", "comment", "combien", "c'est", "est-ce", "c'etait", "quoi", "j'ai-tu", "ai-je") // l10n: not text (words Robot hears)
+        private val YOU = setOf("my", "i", "i'm", "im", "i've", "ive", "i'd", "mine", "myself", "mon", "ma", "mes", "je", "j'ai", "moi-meme") // l10n: not text (words Robot hears)
+
+        /**
+         * A question about you: it starts with a question word or ends with "?", and says "my" or "I" (« mon », « ma »,
+         * « mes », « je », « j'… »). "Me" and « moi » alone don't count: "tell me a joke", « dis-moi l'heure ».
+         */
+        fun aboutYou(question: String): Boolean {
+            val words = MemoryText.fold(question).split(Regex("[^\\p{L}\\p{N}'-]+")).filter { it.isNotEmpty() }
+            if (words.isEmpty()) return false
+            val asks = question.trimEnd().endsWith("?") || words[0] in QUESTION || words[0].substringBefore('-') in QUESTION
+            return asks && words.any { w -> w in YOU || (w.startsWith("j'") && w.length > 2) }
+        }
     }
 }
 

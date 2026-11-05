@@ -278,7 +278,7 @@ class TextCommandTest {
         assertFalse(Prompt.system(now, locked = false).contains("send_text"))
         // Still short: it is paid on every rebuild of a conversation that can text (with "Direct answers", on by default,
         // its one clause more).
-        assertTrue(TokenEstimate.text(s) < 315)
-        assertTrue(TokenEstimate.text(Prompt.system(now, locked = false, texting = true, direct = true)) < 362)
+        assertTrue(TokenEstimate.text(s) < 344) // 1.2.3 bug 4: 18 more for general knowledge; fix-123-c 11 more
+        assertTrue(TokenEstimate.text(Prompt.system(now, locked = false, texting = true, direct = true)) < 391) // fix-123-c: 11 more for general knowledge
     }
 }

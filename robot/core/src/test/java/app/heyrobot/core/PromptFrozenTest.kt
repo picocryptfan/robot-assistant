@@ -36,6 +36,10 @@ import java.time.ZonedDateTime
  * - 1.5 L7 (ask_robot, robot-to-robot-plan.md §4.3): its description, its example in the text-call hint, and every "every
  *   group" estimate (228 more; like Files' reads it is described only while its feature is on, and gives way in
  *   ToolBudget). Nothing else of any prompt changed.
+ * - 1.2.3 bug 4 (fix-everyday-d): the no-internet line, alone and after the weather's, declines only what a live source
+ *   knows and answers general knowledge ([Prompt.KNOWN]), and every estimate that holds it. Nothing else changed.
+ * - 1.2.3 fix-123-c: [Prompt.KNOWN] asks for the figure and names the "real-time data" disclaimer instead of "noting
+ *   figures may be dated", and every estimate that holds it. Nothing else changed.
  */
 class PromptFrozenTest {
     private val now = ZonedDateTime.of(2026, 10, 20, 14, 5, 0, 0, ZoneId.of("America/Halifax"))
@@ -210,14 +214,14 @@ class PromptFrozenTest {
         val actual = fileRecord()
         val expected = javaClass.getResourceAsStream("/prompts/files.txt")?.bufferedReader()?.readText()
         if (expected == null) {
-            val out = File("build/prompts-files.actual.txt").apply { parentFile.mkdirs(); writeText(actual) }
+            val out = File("build/reports/prompts-files.actual.txt").apply { parentFile.mkdirs(); writeText(actual) }
             fail("No frozen record yet: wrote ${out.absolutePath}")
         }
         if (expected != actual) {
             val e = expected!!.lines()
             val a = actual.lines()
             val i = (0 until minOf(e.size, a.size)).firstOrNull { e[it] != a[it] } ?: minOf(e.size, a.size)
-            File("build/prompts-files.actual.txt").apply { parentFile.mkdirs(); writeText(actual) }
+            File("build/reports/prompts-files.actual.txt").apply { parentFile.mkdirs(); writeText(actual) }
             assertEquals("first difference at line ${i + 1}", e.getOrNull(i), a.getOrNull(i))
             assertEquals(expected, actual)
         }
@@ -248,11 +252,11 @@ class PromptFrozenTest {
         val actual = listRecord()
         val expected = javaClass.getResourceAsStream("/prompts/lists.txt")?.bufferedReader()?.readText()
         if (expected == null) {
-            val out = File("build/prompts-lists.actual.txt").apply { parentFile.mkdirs(); writeText(actual) }
+            val out = File("build/reports/prompts-lists.actual.txt").apply { parentFile.mkdirs(); writeText(actual) }
             fail("No frozen record yet: wrote ${out.absolutePath}")
         }
         if (expected != actual) {
-            File("build/prompts-lists.actual.txt").apply { parentFile.mkdirs(); writeText(actual) }
+            File("build/reports/prompts-lists.actual.txt").apply { parentFile.mkdirs(); writeText(actual) }
             assertEquals(expected, actual)
         }
     }
@@ -261,14 +265,14 @@ class PromptFrozenTest {
         val actual = record()
         val expected = javaClass.getResourceAsStream("/prompts/full.txt")?.bufferedReader()?.readText()
         if (expected == null) {
-            val out = File("build/prompts-full.actual.txt").apply { parentFile.mkdirs(); writeText(actual) }
+            val out = File("build/reports/prompts-full.actual.txt").apply { parentFile.mkdirs(); writeText(actual) }
             fail("No frozen record yet: wrote ${out.absolutePath}")
         }
         if (expected != actual) {
             val e = expected!!.lines()
             val a = actual.lines()
             val i = (0 until minOf(e.size, a.size)).firstOrNull { e[it] != a[it] } ?: minOf(e.size, a.size)
-            File("build/prompts-full.actual.txt").apply { parentFile.mkdirs(); writeText(actual) }
+            File("build/reports/prompts-full.actual.txt").apply { parentFile.mkdirs(); writeText(actual) }
             assertEquals("first difference at line ${i + 1}", e.getOrNull(i), a.getOrNull(i))
             assertEquals(expected, actual)
         }

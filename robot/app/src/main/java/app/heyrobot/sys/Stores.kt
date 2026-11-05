@@ -133,8 +133,10 @@ object ConversationStore {
      */
     fun removeMedia(ctx: Context): Int = list(ctx).mapNotNull(ConversationCodec::withoutMedia).onEach { save(ctx, it) }.size
 
+    /** History's Delete all: the record of the timers you asked for goes with it (fix-timers-store). */
     fun deleteAll(ctx: Context) {
         Paths.conversations(ctx).listFiles().orEmpty().forEach { it.delete() }
+        RobotTimers.clear(ctx)
     }
 }
 

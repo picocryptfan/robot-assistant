@@ -148,6 +148,14 @@ object ActionOutcome {
         text.split("\n").joinToString("\n") { line -> sentences(line).filterNot(::claimsSentence).joinToString(" ") }
             .replace(Regex("\n{3,}"), "\n\n").trim()
 
+    /**
+     * everyday-1.2.2-a bug 7: a question about you ("what's my doctor's name?", [heard]) with no action asked for: a
+     * sentence of the answer saying something was saved or done ([claimsSentence]) is neither shown (TurnRunner) nor
+     * read out (ReplyVoice).
+     */
+    fun recallOnly(asked: Set<ToolName>, heard: String?): Boolean =
+        asked.isEmpty() && heard != null && app.heyrobot.core.memory.Bm25Retriever.aboutYou(heard)
+
     /** [text] says somewhere, in any words, that something was done ([ANY_CLAIM]): for a turn in which nothing was. */
     fun claimsAnything(text: String): Boolean = sentences(text).any(::claimsAnySentence)
 

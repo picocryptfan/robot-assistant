@@ -65,6 +65,7 @@ import app.heyrobot.core.writeAtomic
 import app.heyrobot.lock.LockStore
 import app.heyrobot.sys.AppLanguage
 import app.heyrobot.sys.Assistant
+import app.heyrobot.sys.RobotTimers
 import app.heyrobot.sys.HandsFreeFiles
 import app.heyrobot.sys.MemoryFiles
 import app.heyrobot.sys.MemorySettingsStore
@@ -632,7 +633,10 @@ internal class RestoreSession(private val ctx: Context,
             }
         }
         step(BackupCategory.NOTES) { files(j, BackupCategory.NOTES, notes!!.delete.map { "$it.json" }, NotesFiles.dir(ctx)) }
-        step(BackupCategory.HISTORY) { files(j, BackupCategory.HISTORY, history!!.delete.map { "$it.json" }, Paths.conversations(ctx)) }
+        step(BackupCategory.HISTORY) {
+            if (mode(BackupCategory.HISTORY) == RestoreMode.REPLACE) RobotTimers.clear(ctx)
+            files(j, BackupCategory.HISTORY, history!!.delete.map { "$it.json" }, Paths.conversations(ctx))
+        }
         step(BackupCategory.TRANSCRIPTS) {
             // Left STAGED: the recovery below undoes it, nothing of yours changed.
             if (transcriptsWait()) CategoryOutcome.Skipped(PlanSkip.RECORDING) else files(j, BackupCategory.TRANSCRIPTS, transcripts!!.delete, transcriptsDir())

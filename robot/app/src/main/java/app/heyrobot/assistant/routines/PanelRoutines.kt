@@ -26,6 +26,7 @@ import app.heyrobot.core.RoutineCards
 import app.heyrobot.core.RoutineCommand
 import app.heyrobot.core.RoutineLockedPhone
 import app.heyrobot.core.RoutineCommandCode
+import app.heyrobot.core.TimerAsk
 import app.heyrobot.core.RoutineDraft
 import app.heyrobot.core.RoutineGate
 import app.heyrobot.core.RoutineRouter
@@ -46,6 +47,7 @@ import app.heyrobot.core.i18n.UiStrings
 import app.heyrobot.voice.ConversationEngine
 import app.heyrobot.sys.AppLanguage
 import app.heyrobot.sys.RoutineFacts
+import app.heyrobot.sys.RobotTimers
 import app.heyrobot.sys.RoutineFiles
 import app.heyrobot.sys.RoutineIntents
 import kotlinx.coroutines.Dispatchers
@@ -163,6 +165,8 @@ object PanelRoutines {
             is RoutineCommand.RemindOn -> remindOn(replyId, cmd, host, langs)
             RoutineCommand.RemindWhat -> reply(replyId, host, RoutineStrings.remindWhat(), langs)
             is RoutineCommand.CantCancel -> cantCancel(replyId, cmd, host, langs)
+            is RoutineCommand.TimerLeft ->
+                reply(replyId, host, TimerAsk.answer(RobotTimers.load(app), System.currentTimeMillis(), java.time.ZoneId.systemDefault()), langs)
         }
         VoiceLog.add(VoiceEvent.ROUTINE_COMMAND, RoutineCommandCode.of(cmd), if (done) 1 else 0)
         host.finish(replyId)
@@ -447,21 +451,29 @@ object PanelRoutines {
      * your clock takes it, then, unlocked, opens your clock's timers at once, with no card, so a running one is a tap away;
      * locked, it says how. Robot's words say only what it asked for: the clock's answer isn't seen.
      * fix-1.2.1-b: hands-free (car mode, the wake word) no clock page comes up in front of you: the dismiss and one short line.
+     * fix-everyday-e: a timer Robot set that still runs (sys RobotTimers) is named first, with its time left; while none of
+     * Robot's own may be ringing, no dismiss is sent, so the clock's timers are the one page that opens. The running ones are
+     * marked as asked to cancel: whether you did, in the clock, Robot can't see.
      */
     private suspend fun cancelTimer(replyId: String, host: Host, l: Langs): Boolean {
-        val dismissed = host.launch(RoutineFacts.toChosenClock(app, android.content.Intent(android.provider.AlarmClock.ACTION_DISMISS_TIMER)))
+        val now = System.currentTimeMillis()
+        val mine = RobotTimers.load(app)
+        val known = TimerAsk.running(mine, now).take(3).map { TimerAsk.leftLine(it, now, java.time.ZoneId.systemDefault()) }
+        if (known.isNotEmpty()) RobotTimers.cancelAsked(app, now)
+        val dismissed = (known.isEmpty() || TimerAsk.mayRing(mine, now)) &&
+            host.launch(RoutineFacts.toChosenClock(app, android.content.Intent(android.provider.AlarmClock.ACTION_DISMISS_TIMER)))
         if (host.handsFree) {
-            val line = if (dismissed) ToolStrings.timerHandsFree() else ToolStrings.cantCancelTimers()
-            host.text(replyId, line.shown(l))
-            host.say(line.said(l))
+            val line = if (dismissed) ToolStrings.timerHandsFree() else if (known.isNotEmpty()) ToolStrings.timerRunningClock() else ToolStrings.cantCancelTimers()
+            host.text(replyId, (known + line).joinToString(" ") { it.shown(l) })
+            (known + line).forEach { host.say(it.said(l)) }
             return dismissed
         }
         val opened = !host.locked && host.launch(RoutineFacts.toChosenClock(app, android.content.Intent(android.provider.AlarmClock.ACTION_SHOW_TIMERS)))
-        val lines = listOfNotNull(
+        val lines = known + listOfNotNull(
             ToolStrings.timerDismissAsked().takeIf { dismissed },
             when {
                 opened -> ToolStrings.timerRunningOpened()
-                host.locked -> if (dismissed) ToolStrings.timerRunningUnlock() else ToolStrings.cantCancelTimers()
+                host.locked -> if (dismissed || known.isNotEmpty()) ToolStrings.timerRunningUnlock() else ToolStrings.cantCancelTimers()
                 dismissed -> ToolStrings.timerRunningClock()
                 else -> ToolStrings.noClockTimers()
             },

@@ -65,11 +65,11 @@ class WeatherToolTest {
 
     @Test fun thePromptOffersTheWeatherOnlyWhenTheToolIsThere() {
         val without = Prompt.system(now, locked = false)
-        assertTrue(without.contains("for news, weather or prices, say you can't check that"))
+        assertTrue(without.contains("You can't check news, weather, prices or scores; say so."))
         val with = Prompt.system(now, locked = false, weather = true)
         assertTrue(with.contains("For the weather, call weather."))
-        assertTrue(with.contains("for news or prices, say you can't check that"))
-        assertFalse(with.contains("news, weather or prices"))
+        assertTrue(with.contains("you can't check news, prices or scores; say so."))
+        assertFalse(with.contains("news, weather, prices"))
         val claude = Prompt.system(now, locked = false, askHelper = true, weather = true)
         assertTrue(claude.contains("for the weather, call weather; for up-to-date facts"))
         // A dozen tokens more, and only in conversations that describe the tool.

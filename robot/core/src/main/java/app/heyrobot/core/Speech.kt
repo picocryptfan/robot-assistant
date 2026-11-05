@@ -136,27 +136,54 @@ class SentenceSplitter(private val maxChars: Int = 220, private val firstMinWord
 class ReplyVoice(private val splitter: SentenceSplitter = SentenceSplitter()) {
     private var reply: String? = null
     private var muted = false
+    private var recall = false
+    private var spoke = false
+    private val held = mutableListOf<String>()
 
     /** Reply [id] starts: its first piece is short again, and it is not muted. */
     fun start(id: String) {
         reply = id
         muted = false
+        recall = false
+        spoke = false
+        held.clear()
         splitter.reset()
     }
 
+    /**
+     * everyday-1.2.2-a bug 7: reply [id] answers a question about you with nothing asked for ([ActionOutcome.recallOnly]).
+     * A piece saying something was saved or done is held back (the screen's check); the other pieces are said as they
+     * come. A reply that is nothing but such a piece is said at its end, as the screen keeps it then.
+     */
+    fun recallOnly(id: String) {
+        if (id == reply) recall = true
+    }
+
     /** Streamed text of reply [id]: the pieces to say now (none with [speak] off, or for a muted or old reply). */
-    fun feed(id: String, text: String, speak: Boolean): List<String> = if (speak && live(id)) splitter.feed(text) else emptyList()
+    fun feed(id: String, text: String, speak: Boolean): List<String> = if (speak && live(id)) said(splitter.feed(text)) else emptyList()
 
     /** A whole sentence reply [id]'s turn says by itself (an action's result), or null if it must stay silent. */
-    fun say(id: String, sentence: String, speak: Boolean): String? = sentence.takeIf { speak && live(id) }
+    fun say(id: String, sentence: String, speak: Boolean): String? = sentence.takeIf { speak && live(id) }?.also { spoke = true }
 
     /** Reply [id] ended: the rest to say, or null (cancelled, muted, speech off, or not the current reply). */
     fun finish(id: String, cancelled: Boolean, speak: Boolean): String? {
         if (id != reply) return null
-        val rest = if (speak && !muted && !cancelled) splitter.flush() else null
+        val live = speak && !muted && !cancelled
+        val rest = if (live) splitter.flush() else null
+        val out = if (!recall) rest else said(listOfNotNull(rest)).ifEmpty { if (live && !spoke) held.toList() else emptyList() }
+            .joinToString(" ").ifEmpty { null }
         splitter.reset()
         reply = null
-        return rest
+        return out
+    }
+
+    /** The pieces to say of [pieces]; in a [recall] reply, a piece's claim is held back. */
+    private fun said(pieces: List<String>): List<String> {
+        if (!recall) return pieces
+        return pieces.mapNotNull { p ->
+            if (!ActionOutcome.claims(p)) p
+            else ActionOutcome.withoutClaims(p).ifBlank { held += p; null }
+        }.also { if (it.isNotEmpty()) spoke = true }
     }
 
     /** "Stop" while the reply streams (or Stop, or a new question by voice): nothing more of it is spoken. */

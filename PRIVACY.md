@@ -1,6 +1,6 @@
 # Robot's privacy policy
 
-This policy applies to Robot 1.0.0 and later. Last changed 2 Nov 2026 (every permission and notice now listed, and the alarms for routines and temporary copies; 1.1: the car screen's message panels, Robot Files and travel mode, files in backups, the speeds and GPU check kept on the phone, the chip in reports, Phone lock, backups, skills and what Robot's model is told about them, the Support page, the two new permissions, the date and country a helper's first message carries, up to 5 result pages for a web search, when GitHub receives a feedback issue, and the Phone permission during a phone lock; since then: Lists, the journal of what you add while the phone is locked, the list widget and what your home-screen app sees, and what History keeps of a list; Skills connections, what each kind sends and when, the first-use card, connections and their keys in backups, and the network type Robot reads for them; Robot to Robot; what "What went online" keeps of a web search; files you attach that hold something private; and what History keeps after a list is read).
+This policy applies to Robot 1.0.0 and later. Last changed 5 Nov 2026 (the timers record, 1.2.3; every permission and notice now listed, and the alarms for routines and temporary copies; 1.1: the car screen's message panels, Robot Files and travel mode, files in backups, the speeds and GPU check kept on the phone, the chip in reports, Phone lock, backups, skills and what Robot's model is told about them, the Support page, the two new permissions, the date and country a helper's first message carries, up to 5 result pages for a web search, when GitHub receives a feedback issue, and the Phone permission during a phone lock; since then: Lists, the journal of what you add while the phone is locked, the list widget and what your home-screen app sees, and what History keeps of a list; Skills connections, what each kind sends and when, the first-use card, connections and their keys in backups, and the network type Robot reads for them; Robot to Robot; what "What went online" keeps of a web search; files you attach that hold something private; and what History keeps after a list is read).
 
 ## The short version
 
@@ -169,6 +169,11 @@ connections it keeps with the Robots you've paired with (below).
   in it is kept as that second line too, because Robot's model may repeat the items in its own words. Something that looks like a PIN, a code or a card number is
   never added to a list, and the question that held it is kept as a private placeholder, in the panel and in History,
   never as you said it.
+- Timers Robot sets (1.2.3). When Robot sets a timer in your clock app, it keeps when the timer ends and how long it
+  was, with no label, in `robot_timers.json` in its private storage (up to 20), to answer "how much time is left on my
+  timer". It never leaves the phone and is not in a backup, Robot's or Android's. It goes 12 hours after the last timer
+  ends, and with Settings › History › Delete all, Settings › Memory › Delete all, Start over, and a restore's Replace
+  of History. Robot can't see timers set in your clock app.
 - Measured speeds and the GPU check (1.1). To show how fast answers start on your phone, Robot keeps numbers only in
   `speeds.txt` (the reading and writing speeds of the last 20 answers per model, with the model file, where it ran and
   the Android build), and the result of its three-question check of the GPU in `gpu_check.txt`, in Robot's private

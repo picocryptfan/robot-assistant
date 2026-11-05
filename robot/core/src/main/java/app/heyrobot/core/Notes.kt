@@ -68,7 +68,14 @@ object NoteSearch {
 
     /** Words that say "my notes", not what they are about. */
     private val STOP = setOf("a", "an", "the", "my", "me", "i", "about", "note", "notes", "noted", "on", "of", "for", "to", "what",
-        "did", "do", "all", "any", "some", "with", "and", "or", "in", "that", "this", "is", "was", "find", "search", "show", "list")
+        "did", "do", "all", "any", "some", "with", "and", "or", "in", "that", "this", "is", "was", "find", "search", "show", "list",
+        // everyday-1.2.2-a bug 5: the French for "my notes" too (« ma dernière note »).
+        "ma", "mon", "mes", "la", "le", "les", "de", "des", "du", "un", "une", "sur") // l10n: not text (words a search drops)
+
+    /** Words that say which note, the newest, not what it is about: "read me my last note", « ma dernière note ». */
+    private val LAST = setOf("last", "latest", "newest", "recent", "derniere", "dernier", "recente") // l10n: not text (words a search reads)
+    /** Said with [LAST] ("the most recent", « la plus récente »): dropped with it. */
+    private val MOST = setOf("most", "plus") // l10n: not text (words a search reads)
 
     fun words(s: String): List<String> =
         Normalizer.normalize(s, Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "").lowercase(Locale.ROOT)
@@ -80,8 +87,11 @@ object NoteSearch {
      * with nothing but words like "my notes" lists the newest notes.
      */
     fun find(query: String, notes: List<Note>, limit: Int = MAX_RESULTS): List<Note> {
-        val q = words(query).filter { it !in STOP }.distinct()
-        if (q.isEmpty()) return notes.sortedByDescending { it.updated }.take(limit)
+        val all = words(query).filter { it !in STOP }.distinct()
+        val last = all.any { it in LAST }
+        val q = if (last) all.filter { it !in LAST && it !in MOST } else all
+        // "My last note": the newest one; "my notes": the newest few.
+        if (q.isEmpty()) return notes.sortedByDescending { it.updated }.take(if (last) 1 else limit)
         return notes.mapNotNull { n ->
             val title = words(n.title)
             val text = words(n.text)

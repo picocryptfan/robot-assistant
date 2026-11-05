@@ -76,7 +76,9 @@ Coming from 0.9? Robot 1.0 installs beside it under a new app ID, and you move y
 
 - Robot answers by voice or text, on the phone, and about a photo or the screen you're on (once the phone is
   unlocked). You can choose a smarter, slower model, or your own `.litertlm` or `.gguf` file.
-- It sets timers and alarms. It drafts texts and emails: it writes the text, you press Send. It also handles notes,
+- It sets timers and alarms, and says how much time is left on a timer it set (it can't see timers set in your clock
+  app, and Android lets no app cancel a running one). It drafts texts and emails: it writes the text, you press Send.
+  It also handles notes,
   your calendar and contacts, directions in your maps app, the weather (Open-Meteo), the nearest place of a kind
   (OpenStreetMap), your phone's storage, battery and memory, and freeing space. Robot asks first when an action
   needs it, and every rule about when it asks is a switch in Settings › Safety & privacy.

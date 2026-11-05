@@ -31,13 +31,20 @@ object MemoryRecall {
         // 1.4: filing rules never go into a prompt (§4.5).
         val live = MemoryEdits.forQuestions(file.items, now)
         if (live.isEmpty()) return Recall(PackedMemory.NONE, RecallBy.WORDS)
-        val budget = budget(maxTokens, compact)
-        val ranked = retriever.retrieve(RecallQuery(question), live, budget.maxRetrieved * 2)
+        val small = budget(maxTokens, compact)
+        val ranked = retriever.retrieve(RecallQuery(question), live, small.maxRetrieved * 2)
+        // everyday-1.2.2-a bug 1: a small memory taken whole (Bm25Retriever.aboutYou, every score 0) gets room for all of it
+        // on a full prompt; a compact or chat-only one keeps its budget, newest first.
+        val whole = ranked.isNotEmpty() && ranked.all { it.score == 0.0 } && small == PackBudget()
+        val budget = if (whole) small.copy(retrievedTokens = TAKE_ALL_TOKENS, maxRetrieved = Bm25Retriever.SMALL_MEMORY) else small
         val packed = PromptPacking.pack(question, live, ranked, now, unlocked = !locked, alreadyGiven = alreadyGiven, budget = budget, zone = zone)
         val by = ranked.filter { it.item.id in packed.retrievedIds }.map { it.by }.toSet()
         return Recall(packed, if (by.size > 1 || RecallBy.BOTH in by) RecallBy.BOTH else by.firstOrNull() ?: RecallBy.WORDS,
             secret = (packed.retrievedIds.toSet()).let { ids -> live.any { it.id in ids && it.secret } })
     }
+
+    /** The notes block's room when a small memory goes whole: eight short items with their dates and the header. */
+    const val TAKE_ALL_TOKENS = 300
 
     /** What [forTurn] found, how ([by], for the voice log), and whether a secret item went in ([secret]: the answer isn't kept). */
     data class Recall(val packed: PackedMemory, val by: RecallBy, val secret: Boolean = false) {
