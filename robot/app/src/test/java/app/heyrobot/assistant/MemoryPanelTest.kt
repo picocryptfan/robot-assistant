@@ -244,6 +244,11 @@ class MemoryPanelTest {
         lockedNow = true
         assertEquals("Unlock first to change what I remember.", MemoryPanel.undo(saved.card!!.undo!!))
         assertEquals(2, items().size)
+        // lists-undo-fix: an Undo that failed while locked keeps its button, and works once unlocked.
+        assertTrue(MemoryPanel.canUndo(saved.card!!.undo!!))
+        lockedNow = false
+        assertEquals("Removed from memory.", MemoryPanel.undo(saved.card!!.undo!!))
+        assertFalse(MemoryPanel.canUndo(saved.card!!.undo!!))
     }
 
     /**

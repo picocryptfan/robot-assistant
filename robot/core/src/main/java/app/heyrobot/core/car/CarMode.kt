@@ -28,7 +28,7 @@ import app.heyrobot.core.i18n.Lang
 /** Why car mode started or ended. Also the voice log's CAR_MODE b. */
 enum class CarWhy(override val id: Int, override val title: String) : LogCode {
     CAR_CONNECTED(1, "your car connected"), ASKED(2, "you asked"), TAPPED(3, "you tapped Start"), CAR_GONE(4, "the car disconnected"),
-    ENDED_BY_YOU(5, "you ended it"), TIMEOUT(6, "on for too long without a car"),
+    ENDED_BY_YOU(5, "you ended it"), TIMEOUT(6, "on for too long without a car"), BUTTON(7, "you tapped Car mode"),
 }
 
 /** Why the trusted session started or ended. Also the voice log's CAR_TRUSTED b. */
@@ -93,7 +93,9 @@ sealed class CarInput {
     data class StartRefused(override val at: Long) : CarInput()
 
     /** "Car mode", "I'm driving", "mode auto", the notification's Start, the app's button. */
-    data class Start(override val at: Long) : CarInput()
+    data class Start(override val at: Long, val byHand: Boolean = false) : CarInput()
+    // byHand (1.2.4): the app's Car mode button and its launcher shortcut. For no car: no car leaving ends it, and a car
+    // that connects isn't taken up; you end it (or the four hours without a car do).
 
     /** "End car mode", "fin du mode auto", the car screen's End. */
     data class End(override val at: Long) : CarInput()
@@ -180,8 +182,8 @@ object CarModeMachine {
         is CarInput.CarSeen -> if (input.car.number in s.present && settings.startOnConnect && s.declined != input.car.number) {
             s.copy(phase = CarPhase.CONNECTED, car = input.car.number, since = input.at, endsAt = null, startedBy = CarWhy.CAR_CONNECTED) to listOf(CarEffect.StartService)
         } else s to emptyList()
-        is CarInput.Start -> s.copy(phase = CarPhase.CONNECTED, car = s.present.minOrNull(), since = input.at, declined = null, startedBy = CarWhy.ASKED) to
-            listOf(CarEffect.StartService)
+        is CarInput.Start -> s.copy(phase = CarPhase.CONNECTED, car = if (input.byHand) null else s.present.minOrNull(), since = input.at, declined = null,
+            startedBy = if (input.byHand) CarWhy.BUTTON else CarWhy.ASKED) to listOf(CarEffect.StartService)
         else -> s to emptyList()
     }
 
@@ -201,7 +203,7 @@ object CarModeMachine {
             }
         }
         is CarInput.StartRefused -> s to listOf(CarEffect.Notify(START_NOTICE))
-        is CarInput.Start -> s.copy(startedBy = CarWhy.TAPPED) to listOf(CarEffect.StartService)
+        is CarInput.Start -> s.copy(startedBy = if (s.startedBy == CarWhy.BUTTON) CarWhy.BUTTON else CarWhy.TAPPED) to listOf(CarEffect.StartService)
         is CarInput.CarGone -> if (input.car.number == s.car) CarState(present = s.present) to listOf(CarEffect.StopService) else s to emptyList()
         is CarInput.End -> CarState(present = s.present, declined = s.car) to listOf(CarEffect.StopService)
         else -> s to emptyList()
@@ -213,7 +215,7 @@ object CarModeMachine {
             s.copy(phase = CarPhase.ENDING, endsAt = at) to listOf(CarEffect.WakeAt(at))
         } else s to emptyList()
         // Car mode for no car picks up the car that connects.
-        is CarInput.CarSeen -> if (s.car == null && input.car.number in s.present) s.copy(car = input.car.number) to emptyList() else s to emptyList()
+        is CarInput.CarSeen -> if (s.car == null && s.startedBy != CarWhy.BUTTON && input.car.number in s.present) s.copy(car = input.car.number) to emptyList() else s to emptyList()
         is CarInput.Unlocked -> {
             val car = s.car
             if (settings.lockUse == CarLockUse.AFTER_ONE_UNLOCK && car != null && car in s.present && s.trusted == null) {

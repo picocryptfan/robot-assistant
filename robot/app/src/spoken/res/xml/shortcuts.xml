@@ -26,4 +26,15 @@
             <extra android:name="robot_page" android:value="transcripts" />
         </intent>
     </shortcut>
+    <!-- 1.2.4: car mode by hand, with no car connected (ui/car/CarButton). -->
+    <shortcut
+        android:shortcutId="car_mode"
+        android:enabled="true"
+        android:icon="@drawable/ic_robot"
+        android:shortcutShortLabel="@string/car_shortcut">
+        <intent
+            android:action="app.heyrobot.action.CAR_MODE"
+            android:targetPackage="ai.robot_app.spoken"
+            android:targetClass="app.heyrobot.ui.MainActivity" />
+    </shortcut>
 </shortcuts>

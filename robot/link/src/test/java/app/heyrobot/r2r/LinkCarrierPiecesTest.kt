@@ -189,14 +189,77 @@ class LinkCarrierPiecesTest {
         return KeyStore.getInstance("PKCS12").apply { f.inputStream().use { load(it, "testpass".toCharArray()) } }
     }
 
+    /** fix-push-tls: every post is a full TLS handshake; no session from an earlier post (a direct one, another pairing's) is offered. */
+    @Test fun noTlsSessionIsResumedBetweenPosts() {
+        val ks = serverKeys()
+        val base = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm()).apply { init(ks, "testpass".toCharArray()) }.keyManagers[0] as javax.net.ssl.X509ExtendedKeyManager
+        // The server picks its certificate only in a full handshake; a resumed session skips it.
+        val chose = java.util.concurrent.atomic.AtomicBoolean(false)
+        val km = object : javax.net.ssl.X509ExtendedKeyManager() {
+            override fun getClientAliases(t: String?, i: Array<out java.security.Principal>?): Array<String>? = base.getClientAliases(t, i)
+            override fun chooseClientAlias(t: Array<out String>?, i: Array<out java.security.Principal>?, s: Socket?): String? = base.chooseClientAlias(t, i, s)
+            override fun getServerAliases(t: String?, i: Array<out java.security.Principal>?): Array<String>? = base.getServerAliases(t, i)
+            override fun chooseServerAlias(t: String?, i: Array<out java.security.Principal>?, s: Socket?): String? { chose.set(true); return base.chooseServerAlias(t, i, s) }
+            override fun chooseEngineServerAlias(t: String?, i: Array<out java.security.Principal>?, e: javax.net.ssl.SSLEngine?): String? { chose.set(true); return base.chooseEngineServerAlias(t, i, e) }
+            override fun getCertificateChain(a: String?): Array<java.security.cert.X509Certificate>? = base.getCertificateChain(a)
+            override fun getPrivateKey(a: String?): java.security.PrivateKey? = base.getPrivateKey(a)
+        }
+        val server = SSLContext.getInstance("TLS").apply { init(arrayOf(km), null, null) }
+        val ss = server.serverSocketFactory.createServerSocket(0, 5, InetAddress.getLoopbackAddress()) as SSLServerSocket
+        val full = java.util.concurrent.CopyOnWriteArrayList<Boolean>()
+        Thread {
+            while (true) {
+                val s = try { ss.accept() as javax.net.ssl.SSLSocket } catch (_: Exception) { break }
+                try {
+                    chose.set(false)
+                    s.startHandshake()
+                    full += chose.get()
+                    val input = s.getInputStream()
+                    val head = StringBuilder()
+                    while (!head.endsWith("\r\n\r\n")) head.append(input.read().also { if (it < 0) throw java.io.EOFException() }.toChar())
+                    val len = Regex("Content-Length: (\\d+)").find(head)!!.groupValues[1].toInt()
+                    val b = ByteArray(len); var at = 0
+                    while (at < len) at += input.read(b, at, len - at)
+                    s.getOutputStream().apply { write("HTTP/1.1 201 Created\r\n\r\n".toByteArray()); flush() }
+                } catch (_: Exception) {
+                } finally {
+                    s.close()
+                }
+            }
+        }.apply { isDaemon = true }.start()
+        val trust = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm()).apply { init(ks) }.trustManagers
+        try {
+            // The check sees a resumption: two handshakes from one shared context (as every post was before) resume the first's session.
+            val shared = SSLContext.getInstance("TLS").apply { init(null, trust, null) }
+            repeat(2) {
+                Socket(InetAddress.getLoopbackAddress(), ss.localPort).use { s ->
+                    val io = TlsStream(shared.createSSLEngine("localhost", ss.localPort).apply { useClientMode = true }, s.getInputStream(), s.getOutputStream())
+                    io.handshake()
+                    io.write("POST /up HTTP/1.1\r\nContent-Length: 0\r\n\r\n".toByteArray())
+                    assertEquals(201, io.statusLine())
+                }
+            }
+            assertEquals(listOf(true, false), full.toList())
+            full.clear()
+            // One PushHttp serves every pairing and both carriers: each of its posts is a full handshake.
+            val http = PushHttp(trust) { _, _ -> true }
+            repeat(3) {
+                Socket(InetAddress.getLoopbackAddress(), ss.localPort).use { s ->
+                    http.post(SocketDuplex(s), PushTarget.of("https://localhost:${ss.localPort}/up/abc")!!, ByteArray(10) { 1 }, 60)
+                }
+            }
+            assertEquals(listOf(true, true, true), full.toList())
+        } finally {
+            ss.close()
+        }
+    }
+
     @Test fun aPushIsPostedOverTlsAndRefusedForAnotherHost() {
         val ks = serverKeys()
         val server = SSLContext.getInstance("TLS").apply {
             init(KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm()).apply { init(ks, "testpass".toCharArray()) }.keyManagers, null, null)
         }
-        val trust = SSLContext.getInstance("TLS").apply {
-            init(null, TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm()).apply { init(ks) }.trustManagers, null)
-        }
+        val trust = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm()).apply { init(ks) }.trustManagers
         val ss = server.serverSocketFactory.createServerSocket(0, 5, InetAddress.getLoopbackAddress()) as SSLServerSocket
         val seen = java.util.concurrent.CopyOnWriteArrayList<String>()
         val bodies = java.util.concurrent.CopyOnWriteArrayList<ByteArray>()
@@ -240,14 +303,14 @@ class LinkCarrierPiecesTest {
             assertEquals(1, bodies.size)
             // A server we don't trust at all: refused.
             val z = Socket(InetAddress.getLoopbackAddress(), ss.localPort).use { s ->
-                runCatching { PushHttp(SSLContext.getDefault()) { _, _ -> true }.post(SocketDuplex(s), PushTarget.of("https://localhost:${ss.localPort}/up")!!, body, 60) }.exceptionOrNull()
+                runCatching { PushHttp(PushHttp.platformTrust()) { _, _ -> true }.post(SocketDuplex(s), PushTarget.of("https://localhost:${ss.localPort}/up")!!, body, 60) }.exceptionOrNull()
             }
             assertEquals(PushProblem.TLS, (z as PushException).problem)
             // E4: a direct post that was taken is a row in What went online: the body's bytes, and "localhost" as "your network".
             val rows = ArrayList<app.heyrobot.core.online.NetEntry>()
             app.heyrobot.core.online.NetRecord.sink = app.heyrobot.core.online.NetSink { rows += it }
             try {
-                HttpPushPoster(http, { null }).post(PushRoute("https://localhost:${ss.localPort}/up/abc", ByteArray(65).also { it[0] = 4 }, ByteArray(16) { 1 }), body, 60, false, "p")
+                HttpPushPoster(http, { null }, lookup = { InetAddress.getAllByName(it).toList() }).post(PushRoute("https://localhost:${ss.localPort}/up/abc", ByteArray(65).also { it[0] = 4 }, ByteArray(16) { 1 }), body, 60, false, "p")
             } finally {
                 app.heyrobot.core.online.NetRecord.sink = null
             }

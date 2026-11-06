@@ -65,13 +65,31 @@ sealed class RoutineCommand {
      * minuterie ». Android lets an app set alarms and timers, not cancel them: Robot says so and offers your clock app, opened
      * only by a tap ([timer]: a timer was named; [french]: said in French).
      */
-    data class CantCancel(val timer: Boolean, val french: Boolean) : RoutineCommand()
+    /** fix-everyday-c: an alarm's [hour] (0 to 23) and [minute] when you said its time; [exact], "am", "pm" or 13 to 23 said; [all], "all my alarms". */
+    data class CantCancel(val timer: Boolean, val french: Boolean, val hour: Int? = null, val minute: Int? = null, val exact: Boolean = false,
+        val all: Boolean = false) : RoutineCommand() {
+        /** As before fix-everyday-c, so the routing corpora (EverydayCorpusTest, RoutingCorpusTest) stay as they are. */
+        override fun toString(): String = "CantCancel(timer=$timer, french=$french)" // l10n: not text (the routing corpora's key)
+    }
 
     /**
      * fix-everyday-e: "how much time is left on my timer", « il reste combien de temps à ma minuterie »: answered from the
      * timers Robot set (core TimerAsk), never the model's to guess ([french]: a French timer word was said).
      */
     data class TimerLeft(val french: Boolean) : RoutineCommand()
+
+    /**
+     * fix-cancel-alarm (phone-1.2.4: "what alarms do I have" was the model's, an "Open Clock" card that then held the next
+     * request back): "what alarms do I have", « c'est quand ma prochaine alarme »: the next alarm, the only one Android
+     * shows Robot, in words (core AlarmCancel.nextLine), no card ([french]: a French alarm word was said).
+     */
+    data class NextAlarm(val french: Boolean) : RoutineCommand()
+
+    /**
+     * fix-note-delete: "delete the note about the gate code", "delete my last note", « supprime la note sur le code »:
+     * [query], the words that say which note for NoteSearch ("last" for the newest); [french]: said in French.
+     */
+    data class DeleteNote(val query: String, val french: Boolean) : RoutineCommand()
 }
 
 /**
@@ -268,9 +286,11 @@ object RoutineRouter {
         if (remindWhat(p, i)) return RoutineCommand.RemindWhat
         if (whole(p, i, BRIEF_NOW)) return RoutineCommand.BriefNow
         if (whole(p, i, LIST)) return RoutineCommand.ListAll
+        deleteNote(p, i)?.let { return it }
         named(p, i, DELETE, names)?.let { return RoutineCommand.Delete(it) }
         named(p, i, RUN, names)?.let { return RoutineCommand.Run(it) }
         timerLeft(p, i)?.let { return it }
+        nextAlarm(p, i)?.let { return it }
         cantCancel(p, i)?.let { return it }
         return null
     }
@@ -295,6 +315,8 @@ object RoutineRouter {
         // 1.1: "remind me …", "set a reminder …" (the French leads are French's).
         cmd is RoutineCommand.CantCancel -> if (cmd.french) Lang.FR else Lang.EN
         cmd is RoutineCommand.TimerLeft -> if (cmd.french) Lang.FR else Lang.EN
+        cmd is RoutineCommand.NextAlarm -> if (cmd.french) Lang.FR else Lang.EN
+        cmd is RoutineCommand.DeleteNote -> if (cmd.french) Lang.FR else Lang.EN
         cmd is RoutineCommand.RemindOn || cmd is RoutineCommand.RemindWhat -> Lang.EN
         else -> null
     }
@@ -510,7 +532,68 @@ object RoutineRouter {
         val timer = noun in TIMER_NOUNS || (noun == "compte" && rest.getOrNull(k + 1) == "a" && rest.getOrNull(k + 2) == "rebours")
         if (!timer && noun !in ALARM_NOUNS) return null
         if (rest.getOrNull(k + 1) in NOT_THE_CLOCK) return null
-        return RoutineCommand.CantCancel(timer = timer, french = fr == n)
+        if (timer) return RoutineCommand.CantCancel(timer = true, french = fr == n)
+        // fix-everyday-c: the alarm's time as you said it ("6:30", "7 am", « 6 h 30 », « 7 h »), and "all".
+        val t = rest.indexOfFirst { it.matches(Regex("""\d{1,2}(?::\d{2})?""")) }
+        var hour = rest.getOrNull(t)?.substringBefore(':')?.toInt()
+        var minute = rest.getOrNull(t)?.substringAfter(':', "")?.toIntOrNull()
+        val after = rest.getOrNull(t + 1)
+        if (hour != null && minute == null && after == "h") minute = rest.getOrNull(t + 2)?.takeIf { it.matches(Regex("""\d{2}""")) }?.toInt()
+        val pm = after == "pm" || after == "p"
+        val exact = hour != null && (pm || after == "am" || after == "a" || hour == 0 || hour > 12)
+        if (hour != null && hour == 12 && (after == "am" || after == "a")) hour = 0
+        if (hour != null && pm && hour < 12) hour += 12
+        if (hour != null && (hour > 23 || (minute ?: 0) > 59)) { hour = null; minute = null }
+        val all = rest.any { it == "all" || it == "every" || it == "tous" || it == "toutes" }
+        return RoutineCommand.CantCancel(timer = false, french = fr == n, hour = hour, minute = minute?.takeIf { hour != null },
+            exact = exact && hour != null, all = all)
+    }
+
+    // ------------------------------------------------------------------ deleting a note (fix-note-delete)
+
+    private val DELETE_FR = setOf("supprime", "efface", "enleve", "retire") // l10n: not text (words a router reads)
+    private val NOTE_DET = setOf("my", "the", "this", "that", "ma", "la", "cette", "mon", "ce") // l10n: not text (words a router reads)
+    /** "the last note", "my most recent note", « ma dernière note », « la note la plus récente ». */
+    private val NOTE_LAST = listOf("last", "latest", "newest", "most recent", "derniere", "dernier", "plus recente", "la plus recente") // l10n: not text (words a router reads)
+    private val NOTE_ABOUT = listOf("about", "on", "for", "called", "named", "titled", "that says", "saying", "with", "sur", "a propos de",
+        "a propos du", "a propos des", "qui parle de", "qui parle du", "intitulee", "appelee", "de", "du", "des", "d", "avec") // l10n: not text (words a router reads)
+    private val NOTE_SUBJECT_DROP = setOf("the", "a", "an", "my", "le", "la", "l", "les", "un", "une", "mon", "ma", "mes") // l10n: not text (words a router reads)
+    /** "… and set an alarm for 7": a second request after the note is the model's. */
+    private val NOTE_THEN = setOf("and", "then", "et", "puis") // l10n: not text (words a router reads)
+    private val NOTE_THEN_VERB = setOf("set", "add", "send", "text", "call", "remind", "delete", "remove", "open", "play", "turn", "start", "make",
+        "create", "tell", "read", "show", "save", "write", "take", "mets", "ajoute", "envoie", "appelle", "rappelle", "supprime", "efface", "ouvre",
+        "joue", "lis", "montre", "ecris", "cree", "fais") // l10n: not text (words a router reads)
+
+    /**
+     * fix-note-delete: a delete verb, an article or possessive, "note" (singular: "delete my notes" stays the model's), then
+     * "about …" (« sur … ») or "last" before it. "delete the note" alone, or with a second request after it, is null.
+     */
+    private fun deleteNote(p: Words, i: Int): RoutineCommand.DeleteNote? {
+        val v = p.at(i, DELETE)
+        if (v == 0) return null
+        val fr = p.w(i) in DELETE_FR
+        var j = i + v
+        while (p.w(j) in NOTE_DET) j++
+        var last = false
+        p.at(j, NOTE_LAST).takeIf { it > 0 }?.let { last = true; j += it }
+        if (p.w(j) != "note") return null
+        j++
+        p.at(j, NOTE_LAST).takeIf { it > 0 }?.let { last = true; j += it }
+        var end = p.size
+        while (true) {
+            val k = (j until end).firstOrNull { p.at(it, TAIL) == end - it } ?: break
+            end = k
+        }
+        if (j >= end) return if (last) RoutineCommand.DeleteNote("last", fr) else null
+        val a = p.at(j, NOTE_ABOUT)
+        if (a == 0) return null
+        var k = j + a
+        while (k < end - 1 && p.w(k) in NOTE_SUBJECT_DROP) k++
+        if (k >= end) return null
+        if ((k until end).any { p.w(it) in NOTE_THEN && p.w(it + 1) in NOTE_THEN_VERB }) return null
+        val subject = p.span(k, end).trim().trim('«', '»', '"', '“', '”', '.', '?', '!').trim()
+        if (subject.isEmpty()) return null
+        return RoutineCommand.DeleteNote(if (last) "last $subject" else subject, fr)
     }
 
     // ------------------------------------------------------------------ time left on Robot's timers (fix-everyday-e)
@@ -539,6 +622,36 @@ object RoutineRouter {
         val s = ws.joinToString(" ")
         val french = ws[k] != "timer" && ws[k] != "timers" && ws[k] != "countdown"
         return if ((if (french) LEFT_FR else LEFT_EN).any { it.matches(s) }) RoutineCommand.TimerLeft(french) else null
+    }
+
+    // ------------------------------------------------------------------ the next alarm (fix-cancel-alarm)
+
+    private val NEXT_EN = listOf(
+        Regex("""^(?:what|which) alarms? (?:do i have|have i got|have i set|are (?:set|on)|is set)(?: set| on)?(?: for tomorrow)?$"""),
+        Regex("""^(?:do|have) i (?:have|got|set) (?:an|any) alarms?(?: set| on)?(?: for tomorrow)?$"""),
+        Regex("""^(?:is|are) (?:my|an|any|the) alarms? (?:set|on)(?: for tomorrow)?$"""),
+        Regex("""^(?:when|what time) (?:is|does) (?:my|the) (?:next )?alarm(?: set for| for| set| go off| ring)?$"""),
+        Regex("""^(?:whats|what is|what s) my (?:next )?alarm(?: set for| at)?$"""),
+        Regex("""^(?:list|tell me) (?:my|all my) alarms$"""),
+    )
+    private val NEXT_FR = listOf(
+        Regex("""^quelles? alarmes? (?:j ai|ai je|est ce que j ai)(?: de)?(?: reglees?)?(?: pour demain)?$"""),
+        Regex("""^(?:est ce que )?j ai (?:une|des) alarmes?(?: de)?(?: reglees?)?(?: pour demain)?$"""),
+        Regex("""^(?:c est )?quand (?:sonne )?(?:ma|mon) (?:prochaine |prochain )?(?:alarme|reveil|cadran)(?: sonne)?$"""),
+        Regex("""^a quelle heure (?:sonne )?(?:ma|mon) (?:prochaine |prochain )?(?:alarme|reveil|cadran)(?: sonne| est reglee?)?$"""),
+        Regex("""^(?:c est quoi|quelle est) (?:ma|mon) (?:prochaine |prochain )?(?:alarme|reveil|cadran)$"""),
+    )
+
+    /** "What alarms do I have", "when is my next alarm", « quelles alarmes j'ai »: a question about the alarms, nothing else asked. */
+    private fun nextAlarm(p: Words, i: Int): RoutineCommand.NextAlarm? {
+        val ws = (i until p.size).mapNotNull { p.w(it) }.filter { it != "," && it != "?" }
+        if (ws.isEmpty() || ws.size > 12 || ws.none { it in ALARM_NOUNS }) return null
+        val s = ws.joinToString(" ")
+        return when {
+            NEXT_EN.any { it.matches(s) } -> RoutineCommand.NextAlarm(false)
+            NEXT_FR.any { it.matches(s) } -> RoutineCommand.NextAlarm(true)
+            else -> null
+        }
     }
 
     /** 1.1 (phone, 22 Oct): a reminder that names nothing to remind and no time ([RoutineCommand.RemindWhat]), as a whole utterance. */
@@ -873,8 +986,10 @@ object RoutineLockedPhone {
         is RoutineCommand.Create, is RoutineCommand.Delete -> RoutineStrings.unlockChange()
         is RoutineCommand.Remind -> RoutineStrings.unlockRemind()
         is RoutineCommand.RemindOn -> RoutineStrings.unlockRemindOn()
+        is RoutineCommand.DeleteNote -> app.heyrobot.core.i18n.ToolStrings.noteDeleteUnlock()
         RoutineCommand.ListAll -> RoutineStrings.unlockList()
         // 1.1: Robot only asks what and when.
-        RoutineCommand.BriefNow, is RoutineCommand.Run, RoutineCommand.RemindWhat, is RoutineCommand.CantCancel, is RoutineCommand.TimerLeft -> null
+        RoutineCommand.BriefNow, is RoutineCommand.Run, RoutineCommand.RemindWhat, is RoutineCommand.CantCancel, is RoutineCommand.TimerLeft,
+        is RoutineCommand.NextAlarm -> null
     }
 }

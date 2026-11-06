@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.ui.settings
 
+import android.app.Activity
+import android.content.Intent
+import androidx.activity.compose.LocalActivityResultRegistryOwner
+import androidx.activity.result.ActivityResultRegistry
+import androidx.activity.result.ActivityResultRegistryOwner
+import androidx.activity.result.contract.ActivityResultContract
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,7 +39,14 @@ import app.heyrobot.ui.testing.onRow
 import app.heyrobot.ui.testing.shot
 import app.heyrobot.ui.testing.show
 import app.heyrobot.ui.testing.touchTargetProblems
+import app.heyrobot.update.UpdateInstaller
 import app.heyrobot.update.Updater
+import androidx.core.app.ActivityOptionsCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import org.robolectric.RuntimeEnvironment
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -137,6 +151,58 @@ class UpdatesSettingsTest {
         assertEquals(listOf(UpdateSettings(testBuilds = true), UpdateSettings(testBuilds = true, installWithoutAsking = true),
             UpdateSettings(autoCheck = false, testBuilds = true, installWithoutAsking = true)), seen)
         assertEquals(emptyList<String>(), rule.touchTargetProblems())
+    }
+
+    // Phone, 5 Nov 2026: "Android's own window then asks you to confirm." showed with Install updates without asking on.
+    @Test fun whatIsCheckedSaysWhetherAndroidAsksYouToConfirm() {
+        var ui by mutableStateOf(upToDate)
+        rule.show { UpdatesScreen(ui, UpdatesActions(), onBack = {}) }
+        val scroll = rule.onNode(hasScrollAction())
+        val asks = "signed with Robot's key. Android's own window then asks you to confirm."
+        val silent = "signed with Robot's key. Android then installs it without asking you to confirm."
+        scroll.performScrollToNode(hasText(asks, substring = true))
+        rule.onNodeWithText(silent, substring = true).assertDoesNotExist()
+        ui = upToDate.copy(settings = UpdateSettings(installWithoutAsking = true))
+        scroll.performScrollToNode(hasText(silent, substring = true))
+        rule.onNodeWithText(asks, substring = true).assertDoesNotExist()
+        // Another app store keeps Robot's updates: Android asks anyway, switch or not.
+        ui = ui.copy(otherOwner = "org.example.store")
+        scroll.performScrollToNode(hasText(asks, substring = true))
+    }
+
+    // Phone, 5 Nov 2026: "Allow Robot to install updates" stayed on To do after it was allowed. The page reads it again on
+    // each resume and when Android's page closes, also when Robot stayed resumed (split screen).
+    @Test fun thePageReadsAgainOnResumeAndWhenAndroidsPageCloses() {
+        val opened = ArrayList<Intent>()
+        val results = object : ActivityResultRegistryOwner {
+            override val activityResultRegistry = object : ActivityResultRegistry() {
+                override fun <I, O> onLaunch(requestCode: Int, contract: ActivityResultContract<I, O>, input: I, options: ActivityOptionsCompat?) {
+                    opened += input as Intent
+                    dispatchResult(requestCode, Activity.RESULT_CANCELED, null)
+                }
+            }
+        }
+        val life = object : LifecycleOwner {
+            val reg = LifecycleRegistry.createUnsafe(this).apply { currentState = Lifecycle.State.RESUMED }
+            override val lifecycle: Lifecycle get() = reg
+        }
+        var reads = 0
+        var open: ((Intent) -> Boolean)? = null
+        rule.show {
+            CompositionLocalProvider(LocalLifecycleOwner provides life, LocalActivityResultRegistryOwner provides results) {
+                open = rememberOpenAndReread { reads++ }
+            }
+        }
+        val shown = rule.runOnIdle { reads }
+        assertEquals(1, shown)
+        val page = UpdateInstaller.allowIntent(RuntimeEnvironment.getApplication())
+        // Opened for a result, so not in a task of its own (that would return at once, before you allow it).
+        assertEquals(0, page.flags and Intent.FLAG_ACTIVITY_NEW_TASK)
+        rule.runOnIdle { assertEquals(true, open!!(page)) }
+        assertEquals(listOf(page), opened)
+        assertEquals(shown + 1, rule.runOnIdle { reads })
+        rule.runOnIdle { life.reg.currentState = Lifecycle.State.CREATED; life.reg.currentState = Lifecycle.State.RESUMED }
+        assertEquals(shown + 2, rule.runOnIdle { reads })
     }
 
     @Test fun whenAnotherAppStoreKeepsRobotsUpdatesAndroidAsksAnyway() {

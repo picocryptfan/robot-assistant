@@ -39,6 +39,12 @@ class PanelPrivacyPinsTest {
         assertInOrder(a, "FilesForHelper.attachedPrivate(file.name, text)", "val speak = state.value.speak && !private", "if (private) port.privateAnswer(replyId)", "port.ask(req.request)")
     }
 
+    // review-1.2.4 finding 1: a misheard note is named aloud before a spoken yes can delete it.
+    @Test fun aNoteIsNamedAloudBeforeItsDeleteIsAsked() {
+        val del = flat("assistant/routines/PanelRoutines.kt").body("private suspend fun deleteNote(")
+        assertInOrder(del, "is NoteDelete.Plan.One ->", "host.say(ask.said(l))", "host.ask(replyId, Card(id, ToolName.ADD_NOTE, ask.shown(l), ActionStatus.PENDING")
+    }
+
     @Test fun aRoutinesOwnLinesAreQuotedAndAnOffRoutineWaitsForATap() {
         val panel = flat("assistant/routines/PanelRoutines.kt")
         // The Say step's sentence and the reminders, as written: the reply carries the content record before either is shown.

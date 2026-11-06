@@ -260,6 +260,8 @@ class FakePushServer {
 
     /** A push app is chosen; false, as on a phone with none. */
     @Volatile var chosen = true
+    /** How long a push app takes to give an address after [PushNet.register] (0: at once). A slow phone takes a while. */
+    @Volatile var endpointDelayMs = 0L
     val registered = java.util.concurrent.atomic.AtomicInteger()
 
     fun net(node: () -> LinkNode?): PushNet = object : PushNet {
@@ -270,7 +272,7 @@ class FakePushServer {
             val i = Instance(node, instance, g.public as JcaEcPublicKey, g.private as JcaEcPrivateKey, ByteArray(16).also(SecureRandom()::nextBytes))
             val url = "https://push.example.org/up/$instance"
             byUrl[url] = i
-            Thread { node()?.onPush(PushEvent(PushEvent.Kind.ENDPOINT, instance, route = PushRoute(url, point(i.pub), i.auth))) }.start()
+            Thread { if (endpointDelayMs > 0) Thread.sleep(endpointDelayMs); node()?.onPush(PushEvent(PushEvent.Kind.ENDPOINT, instance, route = PushRoute(url, point(i.pub), i.auth))) }.start()
             return true
         }
         override fun unregister(instance: String) { byUrl.entries.removeIf { it.value.name == instance } }

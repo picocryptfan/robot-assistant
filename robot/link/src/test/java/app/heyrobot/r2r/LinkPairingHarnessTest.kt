@@ -441,6 +441,20 @@ class LinkPairingHarnessTest {
         assertEquals(listOf(samOnMatt), a.sink.lowered)
     }
 
+    /**
+     * ci-link-tests: the maker's push address for the pairing comes late (a slow phone or push app). The hint of the Robot that
+     * used the code had no carrier when it was queued; it goes as soon as the maker's hint brings that address, not after L1's
+     * minute (the clock here never moves, so it would wait for good).
+     */
+    @Test fun theCodeUsersFirstHintGoesAsSoonAsTheMakersPushAddressComes() {
+        val push = FakePushServer().apply { endpointDelayMs = 500 }
+        val a = robot("Matt", null, 1, null, push)
+        val b = robot("Sam", null, 2, null, push)
+        val (samOnMatt, mattOnSam) = pairByPush(a, b)
+        assertNotNull(a.state.pairings.getValue(samOnMatt).movedOut)
+        assertNotNull(b.state.pairings.getValue(mattOnSam).peerPush)
+    }
+
     /** L5-fix: "Raise to Anonymous" waits 30 days for a Robot that can't be reached, not one, so the two modes meet again. */
     @Test fun aRaiseWaitsThirtyDaysForARobotThatCantBeReached() {
         val push = FakePushServer()
@@ -452,7 +466,8 @@ class LinkPairingHarnessTest {
         idle(a, b)
         // Sam's push server is down and Sam's Robot asleep (no onion) for 30 hours: Matt's raise can't reach it.
         push.down = true
-        b.n().sleep()
+        // Asleep before the raise: a Tor connection the pairing opened (a slow push address) is closed first.
+        b.n().sleep(); idle(a, b)
         assertTrue(a.n().raise(onA).get())
         for (i in 1..30) { later(3_600_000L, a); a.n().pump().get(10, TimeUnit.SECONDS) }
         idle(a)
@@ -462,12 +477,15 @@ class LinkPairingHarnessTest {
         later(7 * 3_600_000L, a)
         until("raised on Sam's side") { idle(a, b); view(b, onB).mode == LinkMode.ANONYMOUS }
         assertEquals(listOf(onB), b.sink.raised)
-        // Sam's next request to Matt goes to the push server through Tor.
+        // Sam's next request to Matt goes only through Tor: to the push server through Tor, or on a Tor connection already open.
         val before = push.posts.size
+        val outBefore = b.log.snapshot().count { it.event == LinkEvent.REQUEST_OUT }
         val e = send(b, onB, EtaTell(9, null))
         until("Matt's Robot got it") { idle(a, b); a.sink.delivered.any { it.second.id == e.id } }
         val since = push.posts.drop(before)
-        assertTrue(since.isNotEmpty() && since.all { it })
+        val ways = b.log.snapshot().filter { it.event == LinkEvent.REQUEST_OUT }.drop(outBefore).map { it.b }
+        assertTrue("ways out: $ways", ways.isNotEmpty() && ways.all { it == LinkWay.PUSH_TOR.code || it == LinkWay.TOR.code })
+        assertTrue("posts since, true for through Tor: $since", since.all { it })
     }
 
     /** L5-fix: a raise answered `busy` (Matt passed 60 requests in the hour) is kept and goes again after the pause. */

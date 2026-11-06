@@ -64,6 +64,7 @@ import androidx.compose.ui.res.stringResource
 import app.heyrobot.R
 import app.heyrobot.sys.NotesFiles
 import app.heyrobot.ui.common.RIcons
+import app.heyrobot.ui.common.SecureWindow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -73,6 +74,7 @@ import kotlinx.coroutines.withContext
 
 @Composable
 fun NotesScreen(notes: List<Note>, a: AppActions, modifier: Modifier) {
+    SecureWindow()  // A note is what you told Robot: out of screenshots, casting and Recents.
     var query by rememberSaveable { mutableStateOf("") }
     // Search: the same ranking find_notes uses, or every note (newest first) while the field is empty.
     val shown = remember(notes, query) { if (query.isBlank()) notes else NoteSearch.find(query, notes, limit = notes.size) }
@@ -132,6 +134,7 @@ private fun NoteRow(n: Note, onClick: () -> Unit) {
  */
 @Composable
 fun NoteScreen(noteId: String?, version: Int, a: AppActions, snackbar: SnackbarHostState, onCreated: (String) -> Unit, onBack: () -> Unit) {
+    SecureWindow()
     val ctx = LocalContext.current
     val store = remember { NotesFiles.store(ctx) }
     var id by rememberSaveable { mutableStateOf(noteId) }

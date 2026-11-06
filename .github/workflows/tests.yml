@@ -57,7 +57,7 @@ jobs:
       - name: Unit tests
         working-directory: robot
         run: >
-          ./gradlew --no-daemon
+          ./gradlew --no-daemon --continue
           :core:testReleaseUnitTest :voice:testReleaseUnitTest :helpers:testReleaseUnitTest
           :link:testReleaseUnitTest :brain:testReleaseUnitTest :mt:testReleaseUnitTest
           :app:testReleaseUnitTest :app:testDebugUnitTest

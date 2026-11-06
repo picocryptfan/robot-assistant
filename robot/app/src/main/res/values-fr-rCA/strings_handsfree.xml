@@ -196,4 +196,5 @@
     <string name="car_apps_add">Ajouter des applis</string>
     <string name="car_apps_title">Applis pour l’auto</string>
     <string name="car_apps_summary_none">Aucune pour l’instant. Garde-en jusqu’à %1$d, puis touche Applis sur l’écran de l’auto pour en ouvrir une à côté de Robot.</string>
+    <string name="car_shortcut">Mode auto</string>
 </resources>

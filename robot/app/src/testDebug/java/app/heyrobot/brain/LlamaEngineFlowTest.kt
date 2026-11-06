@@ -218,6 +218,9 @@ class LlamaEngineFlowTest {
         fake.holdPrompt = setOf(1)
         val summary = Client()
         oneShot(summary)
+        // Its second run waits at its prompt until the checks below have looked: started over as soon as the question
+        // ends, it could otherwise end in the same pass of the work thread as the question.
+        fake.pausePrompt = setOf(3)
         pump("the summary's prompt") { fake.generates.get() == 1 }
         val panel = Client()
         ask(panel)
@@ -225,7 +228,10 @@ class LlamaEngineFlowTest {
         // The summary gave way: queued again, no terminal event.
         assertTrue(summary.requeued >= 1)
         assertTrue(summary.terminals.isEmpty())
-        pump("the summary, started over") { summary.terminals.isNotEmpty() }
+        pump("the summary, started over") { fake.generates.get() == 3 }
+        assertTrue(summary.terminals.isEmpty())
+        fake.pausePrompt = emptySet()
+        pump("the summary's end") { summary.terminals.isNotEmpty() }
         settle()
         assertEquals(DoneReason.END, panel.done())
         assertEquals(DoneReason.END, summary.done())
@@ -613,7 +619,8 @@ class LlamaEngineFlowTest {
 
     /**
      * The isolated process as LlamaService answers :brain (LlamaIpc's layouts), with llama.cpp replaced by a script: each
-     * GENERATE ([generates] counts them, from 1) reads its "prompt" (held while its number is in [holdPrompt]), writes
+     * GENERATE ([generates] counts them, from 1) reads its "prompt" (held while its number is in [holdPrompt] until it is
+     * stopped, or in [pausePrompt] until the test takes it out), writes
      * [pieces] through :brain's callback, and waits at the end while its number is in [holdEnd]; a CANCEL stops it (unless
      * [honourCancel] is off), and EXIT ends the "process" ([dead], and the death notice).
      */
@@ -625,6 +632,8 @@ class LlamaEngineFlowTest {
         @Volatile var cancelUpto = 0L
         @Volatile var holdPrompt: Set<Int> = emptySet()
         @Volatile var holdEnd: Set<Int> = emptySet()
+        /** Runs that wait at their prompt while their number is in it (unless stopped): the test lets them go. */
+        @Volatile var pausePrompt: Set<Int> = emptySet()
         /** Its template never finishes (only its process ending stops it). */
         @Volatile var stuckTemplate = false
         /** A text robot_llama.cpp's check finds a control token's text in (PREP_CONTROL_TEXT for any message but the system prompt). */
@@ -716,6 +725,7 @@ class LlamaEngineFlowTest {
             fun hold() { while (!stopped() && !dead) Thread.sleep(2) }
             var result = GEN_END
             if (n in holdPrompt) hold()
+            while (n in pausePrompt && !stopped() && !dead) Thread.sleep(2)
             if (!dead && stopped()) result = GEN_CANCELLED
             if (result == GEN_END) for (p in pieces) {
                 if (dead) break

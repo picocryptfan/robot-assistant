@@ -104,6 +104,12 @@ fun HomeScreen(snap: Snapshot, recent: List<StoredConversation>, a: AppActions, 
             Spacer(Modifier.width(10.dp))
             Text(stringResource(R.string.home_talk_to_robot), style = MaterialTheme.typography.titleMedium)
         }
+        // 1.2.4: car mode by hand, for a ride with no car connected; under Talk to Robot, hands-free from the first tap.
+        FilledTonalButton(onClick = a.carMode, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp), shape = RoundedCornerShape(20.dp)) {
+            Icon(RIcons.Car, null)
+            Spacer(Modifier.width(10.dp))
+            Text(stringResource(R.string.home_car_mode), style = MaterialTheme.typography.titleMedium)
+        }
         // 1.0: the setup guide left with Finish later: where it was, and Continue.
         val underWay = guide.at?.takeIf { SetupGuide.home(guide) == HomeGuide.CONTINUE }
         if (underWay != null) {

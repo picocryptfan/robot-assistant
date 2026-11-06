@@ -149,6 +149,8 @@ object CarNotice {
     /** The channel car mode's notice lives on, and the action that ends it: both processes' one way to see and end car mode. */
     const val CHANNEL = "car_mode"
     const val ACTION_END = "app.heyrobot.car.END"
+    /** 1.2.4: the app's Car mode button and shortcut: car mode by hand, or its screen when it's on already. */
+    const val ACTION_OPEN = "app.heyrobot.car.OPEN"
 
     /** Car mode is on: its ongoing notice; the offer to start lives on the same channel and isn't ongoing. */
     fun running(channel: String?, ongoing: Boolean): Boolean = channel == CHANNEL && ongoing

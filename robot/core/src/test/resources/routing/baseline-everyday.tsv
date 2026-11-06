@@ -1721,7 +1721,7 @@ delete big files	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, PHONE]	-
 delete large files	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, PHONE]	-
 delete old files	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, PHONE]	-
 delete my old photos	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, PHONE]	-
-delete the last note	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, NOTES, PHONE]	-
+delete the last note	-	-	-	-	-	DeleteNote(query=last, french=false)	-	-	-	-	-	-	-	-	-	-	-	[CORE, NOTES, PHONE]	-
 delete my evening routine	-	-	-	-	-	Delete(name=Evening routine)	-	-	-	-	-	-	-	-	-	-	-	[CORE, CALENDAR, PHONE]	-
 delete the alarm	-	-	-	-	-	CantCancel(timer=false, french=false)	-	-	-	-	-	-	-	-	-	-	-	[CORE, PHONE]	-
 free up space	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, PHONE]	-
@@ -1769,7 +1769,7 @@ souviens-toi que les reçus d'Esso vont dans Auto	-	-	-	-	-	-	-	-	-	-	-	-	-	-	Ru
 enregistre ça	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
 garde ça en tête	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
 ouvre mes fichiers	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, FILES]	-
-efface ma dernière note	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, NOTES, PHONE]	-
+efface ma dernière note	-	-	-	-	-	DeleteNote(query=last, french=true)	-	-	-	-	-	-	-	-	-	-	-	[CORE, NOTES, PHONE]	-
 how much did I spend on gas in August	-	-	-	-	-	-	-	Spend	-	-	-	-	-	-	-	-	-	[CORE, CALENDAR]	-
 how much did I spend on gas in September	-	-	-	-	-	-	-	Spend	-	-	-	-	-	-	-	-	-	[CORE, CALENDAR]	-
 how much have I spent at Costco this month	-	-	-	-	-	-	-	Spend	-	-	-	-	-	-	-	-	-	[CORE]	-

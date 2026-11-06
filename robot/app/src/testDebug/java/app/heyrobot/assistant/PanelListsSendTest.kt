@@ -34,6 +34,11 @@ import java.io.File
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class PanelListsSendTest {
+    private companion object {
+        val UUID = Regex("[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}")
+        val TIME = Regex("""(?<=":)\d{10,}(?=[,}\]])""")
+    }
+
     @get:Rule val tmp = TemporaryFolder(File("build/tmp").apply { mkdirs() })
 
     private val ctx = RuntimeEnvironment.getApplication()
@@ -66,6 +71,19 @@ class PanelListsSendTest {
             check(System.currentTimeMillis() < end) { "timed out" } // l10n: not text (a test's failure)
             Thread.sleep(20)
         }
+    }
+
+    /**
+     * [json] with its UUIDs and its epoch times (ten digits or more after a key) masked: the words History keeps, without
+     * what chance puts in them. About 1 run in 150 a turn's id or time held "4821" (skills-fix-review: "…-79b9-4821-…").
+     */
+    private fun words(json: String): String = json.replace(UUID, "<id>").replace(TIME, "<time>")
+
+    /** skills-fix-review's failure, made certain: the PIN's digits in an id and a time are masked, in a turn's text they stay. */
+    @Test fun theSecretCheckReadsTheWordsNotTheIdsOrTimes() {
+        val json = """{"id":"e5554265-79b9-4821-a70f-851abde84005","created":1793858148210,"turns":[{"text":"PIN 4821","time":1793858116421}]}"""
+        assertEquals("""{"id":"<id>","created":<time>,"turns":[{"text":"PIN 4821","time":<time>}]}""", words(json))
+        assertFalse(words(json.replace("PIN 4821", "PIN")).contains("4821"))
     }
 
     /** [q] typed, to the end of its turn: the reply's text. */
@@ -101,7 +119,8 @@ class PanelListsSendTest {
         assertTrue(ListQuote.of(c.turns[5]))
         assertEquals("Robot answered from your lists", c.turns[5].text)
         assertEquals(MemoryHygiene.PRIVATE, c.turns[6].text)
-        val json = ConversationCodec.toJson(c)
+        // Read with its ids and times masked: they're random and the clock's, so "4821" turns up in them by chance (fix-flaky-lists-send).
+        val json = words(ConversationCodec.toJson(c))
         assertFalse(json, json.contains("4821") || json.contains("Shopping has"))
         // The add is your own words, kept as said.
         assertEquals("add oat milk to the shopping list", c.turns[0].text)

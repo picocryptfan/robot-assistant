@@ -83,6 +83,13 @@ class ListsSeen private constructor(private val focus: ListsId?, private val lis
         return lists.values.count(::on) == 1
     }
 
+    /** fix-list-it: whether [words] name items, open or ticked, all on one of your lists, whichever (for "it", which asks if need be). */
+    fun anywhere(words: String, lang: Lang = Lang.EN): Boolean {
+        val pieces = ItemText.split(words)
+        if (pieces.isEmpty()) return false
+        return lists.values.any { l -> pieces.all { ListsMatch.names(l.first + l.second, it, lang) } }
+    }
+
     override fun toString(): String = "ListsSeen(${lists.size} lists)" // l10n: not text (never an item's words in a log)
 
     companion object {

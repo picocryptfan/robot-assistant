@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.assistant.routines
 
+import app.heyrobot.core.Choice
+import app.heyrobot.core.Confirmations
+import app.heyrobot.core.NoteDelete
 import app.heyrobot.lock.PhoneLockNow
+import app.heyrobot.core.AlarmCancel
+import app.heyrobot.core.EventText
 import app.heyrobot.core.lock.SomeoneElseLock
 import app.heyrobot.core.RLog
 import app.heyrobot.core.ToolName
@@ -44,6 +49,7 @@ import app.heyrobot.core.i18n.RoutineStrings
 import app.heyrobot.core.i18n.ToolStrings
 import app.heyrobot.core.i18n.UiLabel
 import app.heyrobot.core.i18n.UiStrings
+import app.heyrobot.sys.NotesFiles
 import app.heyrobot.voice.ConversationEngine
 import app.heyrobot.sys.AppLanguage
 import app.heyrobot.sys.RoutineFacts
@@ -165,6 +171,8 @@ object PanelRoutines {
             is RoutineCommand.RemindOn -> remindOn(replyId, cmd, host, langs)
             RoutineCommand.RemindWhat -> reply(replyId, host, RoutineStrings.remindWhat(), langs)
             is RoutineCommand.CantCancel -> cantCancel(replyId, cmd, host, langs)
+            is RoutineCommand.DeleteNote -> deleteNote(replyId, cmd, host, langs)
+            is RoutineCommand.NextAlarm -> nextAlarm(replyId, host, langs)
             is RoutineCommand.TimerLeft ->
                 reply(replyId, host, TimerAsk.answer(RobotTimers.load(app), System.currentTimeMillis(), java.time.ZoneId.systemDefault()), langs)
         }
@@ -418,31 +426,123 @@ object PanelRoutines {
         return r.status.succeeded
     }
 
+    /** "cancel the timer" goes to [cancelTimer]; "cancel my alarm" to [cancelAlarm] (1.1 only said it couldn't, with a card for the clock). */
+    private suspend fun cantCancel(replyId: String, cmd: RoutineCommand.CantCancel, host: Host, l: Langs): Boolean =
+        if (cmd.timer) cancelTimer(replyId, host, l) else cancelAlarm(replyId, cmd, host, l)
+
     /**
-     * 1.1, "cancel my alarm": Android lets Robot set alarms and timers, never cancel them. Robot says so, and its card opens
-     * your clock app on a tap only (a spoken yes doesn't; locked, the line alone).
+     * fix-everyday-c ("cancel my alarm", Pixel 8, 5 Nov 2026: a card that only offered to open the clock app): AlarmClock's
+     * ACTION_DISMISS_ALARM turns off an upcoming alarm where your clock takes it (core AlarmCancel: with no time said, a card
+     * about the next alarm first, the one Robot sees; a spoken yes answers it). Robot then checks the next alarm moved on;
+     * when it didn't, or Robot can't see (another time), your clock's alarms open (unlocked, not hands-free) with one line
+     * saying why. Locked, nothing is turned off: one line.
      */
-    private suspend fun cantCancel(replyId: String, cmd: RoutineCommand.CantCancel, host: Host, l: Langs): Boolean {
-        if (cmd.timer) return cancelTimer(replyId, host, l)
-        reply(replyId, host, if (cmd.timer) ToolStrings.cantCancelTimers() else ToolStrings.cantCancelAlarms(), l)
-        if (host.locked) return true
-        val id = id()
-        val title = ToolStrings.openClockApp().shown(l)
-        val open = UiLabel(UiStrings.open)
-        val yes = host.ask(replyId, Card(id, ToolName.OPEN_APP, title, ActionStatus.PENDING, null, confirm = UiStrings.open().button(l),
-            cancel = UiStrings.cancel().button(l)), tapOnly = ToolStrings.tapOpenClock("open" to open).said(l))
-        if (!yes) {
-            host.show(replyId, Card(id, ToolName.OPEN_APP, title, ActionStatus.DECLINED, null))
-            return true
+    private suspend fun cancelAlarm(replyId: String, cmd: RoutineCommand.CantCancel, host: Host, l: Langs): Boolean {
+        if (host.locked) return !reply(replyId, host, ToolStrings.alarmOffUnlock(), l)
+        val alarms = app.getSystemService(android.app.AlarmManager::class.java)
+        val zone = java.time.ZoneId.systemDefault()
+        val before = alarms?.nextAlarmClock?.triggerTime
+        val nextTime = before?.let { java.time.Instant.ofEpochMilli(it).atZone(zone).toLocalTime().withSecond(0).withNano(0) }
+        val (time, next) = when (val p = AlarmCancel.plan(cmd, nextTime)) {
+            is AlarmCancel.Plan.Open -> return openAlarms(replyId, host, l, if (p.none) ToolStrings.alarmNoneSeen() else ToolStrings.alarmOneAtATime())
+            is AlarmCancel.Plan.Dismiss -> p.time to p.next
+            is AlarmCancel.Plan.Ask -> {
+                val id = id()
+                val title = ToolStrings.alarmTurnOffTitle("time" to EventText.clock(p.time.hour, p.time.minute)).shown(l)
+                val yes = host.ask(replyId, Card(id, ToolName.SET_ALARM, title, ActionStatus.PENDING, null, confirm = ToolStrings.turnOff().button(l),
+                    cancel = UiStrings.cancel().button(l)))
+                host.show(replyId, Card(id, ToolName.SET_ALARM, title, if (yes) ActionStatus.DONE else ActionStatus.DECLINED, null))
+                if (!yes) return true
+                p.time to true
+            }
         }
-        val show = android.content.Intent(if (cmd.timer) android.provider.AlarmClock.ACTION_SHOW_TIMERS else android.provider.AlarmClock.ACTION_SHOW_ALARMS)
-        if (!host.launch(RoutineFacts.toChosenClock(app, show))) {
-            host.show(replyId, Card(id, ToolName.OPEN_APP, title, ActionStatus.NO_APP,
-                (if (cmd.timer) ToolStrings.noClockTimers() else ToolStrings.noClockAlarms()).shown(l)))
-            return false
+        val t = EventText.clock(time.hour, time.minute)
+        val dismiss = android.content.Intent(android.provider.AlarmClock.ACTION_DISMISS_ALARM)
+            .putExtra(android.provider.AlarmClock.EXTRA_ALARM_SEARCH_MODE, android.provider.AlarmClock.ALARM_SEARCH_MODE_TIME)
+            .putExtra(android.provider.AlarmClock.EXTRA_HOUR, time.hour).putExtra(android.provider.AlarmClock.EXTRA_MINUTES, time.minute)
+            .putExtra(android.provider.AlarmClock.EXTRA_IS_PM, time.hour >= 12)
+        if (!host.launch(RoutineFacts.toChosenClock(app, dismiss))) return !reply(replyId, host, ToolStrings.noClockAlarms(), l)
+        if (next && before != null) {
+            var after: Long? = before
+            for (i in 0 until 8) {
+                kotlinx.coroutines.delay(250)
+                after = alarms?.nextAlarmClock?.triggerTime
+                if (AlarmCancel.gone(before, after)) return reply(replyId, host, ToolStrings.alarmOff("time" to t), l)
+            }
         }
-        host.leave()
+        return openAlarms(replyId, host, l, if (next) ToolStrings.alarmStillOn("time" to t) else ToolStrings.alarmOffAsked("time" to t))
+    }
+
+    /** fix-cancel-alarm: "what alarms do I have": the next alarm Android shows Robot, in words, with no card to answer. */
+    private fun nextAlarm(replyId: String, host: Host, l: Langs): Boolean {
+        val zone = java.time.ZoneId.systemDefault()
+        val at = app.getSystemService(android.app.AlarmManager::class.java)?.nextAlarmClock?.triggerTime
+        return reply(replyId, host, AlarmCancel.nextLine(at?.let { java.time.Instant.ofEpochMilli(it).atZone(zone) }, java.time.ZonedDateTime.now(zone)), l)
+    }
+
+    /** fix-note-delete: the notes deleted by voice in this process, for their cards' Undo. */
+    private val noteUndos = NoteDelete.Undos()
+
+    /**
+     * fix-note-delete ("delete the note about the gate code" only searched, Pixel 8, phone-1.2.3-b): the note found
+     * (core NoteDelete), a card naming it (several: the card asks which), deleted on your yes or tap, with Undo
+     * ([undoNoteDelete]) that puts it back whole. None: Robot says so.
+     */
+    private suspend fun deleteNote(replyId: String, cmd: RoutineCommand.DeleteNote, host: Host, l: Langs): Boolean {
+        val store = NotesFiles.store(app)
+        val notes = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { store.list() }
+        val note = when (val p = NoteDelete.plan(cmd.query, notes)) {
+            NoteDelete.Plan.None -> return !reply(replyId, host, if (notes.isEmpty() || cmd.query == "last") ToolStrings.noteDeleteNoNotes()
+                else ToolStrings.noteDeleteNone("what" to cmd.query), l)
+            is NoteDelete.Plan.One -> {
+                val id = id()
+                val title = ToolStrings.noteDeleteTitle("title" to p.note.displayTitle).shown(l)
+                // review-1.2.4 finding 1: the note is named aloud before a spoken yes can delete it.
+                val ask = ToolStrings.noteDeleteAsk("title" to p.note.displayTitle)
+                host.say(ask.said(l))
+                val yes = host.ask(replyId, Card(id, ToolName.ADD_NOTE, ask.shown(l), ActionStatus.PENDING, null, confirm = UiStrings.delete().button(l),
+                    cancel = UiStrings.cancel().button(l)))
+                if (!yes) { host.show(replyId, Card(id, ToolName.ADD_NOTE, title, ActionStatus.DECLINED, null)); return true }
+                host.show(replyId, Card(id, ToolName.ADD_NOTE, title, ActionStatus.DONE, null))
+                p.note
+            }
+            is NoteDelete.Plan.Several -> {
+                val id = id()
+                val which = ToolStrings.noteDeleteWhich().shown(l)
+                // A choice's action is never run here: the pick's index says which note.
+                val choices = p.notes.map { Choice(it.displayTitle, Action.OpenApp(it.displayTitle)) }
+                host.say(ToolStrings.noteDeleteWhich().said(l))
+                val pick = host.pick(replyId, Card(id, ToolName.ADD_NOTE, which, ActionStatus.PENDING, null, choices = choices,
+                    cancel = UiStrings.cancel().button(l)))
+                val chosen = p.notes.getOrNull(if (pick >= Confirmations.REMEMBER) pick - Confirmations.REMEMBER else pick)
+                host.show(replyId, Card(id, ToolName.ADD_NOTE, chosen?.let { ToolStrings.noteDeleteTitle("title" to it.displayTitle).shown(l) } ?: which,
+                    if (chosen != null) ActionStatus.DONE else ActionStatus.DECLINED, null))
+                chosen ?: return true
+            }
+        }
+        val key = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { noteUndos.delete(store, note) }
+            ?: return !reply(replyId, host, ToolStrings.noteDeleteFailed(), l)
+        val done = ToolStrings.noteDeleted("title" to note.displayTitle)
+        host.show(replyId, Card(id(), ToolName.ADD_NOTE, done.shown(l), ActionStatus.DONE, null, undo = key))
+        host.say(done.said(l), personal = true)
         return true
+    }
+
+    /** A deleted note's Undo ([deleteNote]'s card): the line its card shows after. */
+    /** lists-undo-fix: the deleted note's Undo can still be tried (its restore couldn't be written). */
+    fun canUndoNote(key: String): Boolean = noteUndos.has(key)
+
+    fun undoNoteDelete(key: String, l: Langs): String =
+        (if (noteUndos.restore(NotesFiles.store(app), key)) ToolStrings.noteRestored() else ToolStrings.noteNotRestored()).render(l)
+
+    /** Your clock's alarms, after [why]: opened unlocked and not hands-free (a line says where to look otherwise). */
+    private suspend fun openAlarms(replyId: String, host: Host, l: Langs, why: Phrase): Boolean {
+        val opened = !host.handsFree && host.launch(RoutineFacts.toChosenClock(app, android.content.Intent(android.provider.AlarmClock.ACTION_SHOW_ALARMS)))
+        val lines = listOf(why, if (opened) ToolStrings.alarmsOpened() else ToolStrings.alarmsInClock())
+        host.text(replyId, lines.joinToString(" ") { it.shown(l) })
+        lines.forEach { host.say(it.said(l)) }
+        if (opened) host.leave()
+        return opened
     }
 
     /**

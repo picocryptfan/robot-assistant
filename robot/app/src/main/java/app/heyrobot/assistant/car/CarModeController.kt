@@ -131,6 +131,9 @@ object CarModeController {
     /** "Car mode", "I'm driving", the notification's Start, the car screen. */
     fun start() = input(CarInput.Start(now()))
 
+    /** The app's Car mode button and its shortcut (1.2.4): car mode for no car, until you end it. */
+    fun startByHand() = input(CarInput.Start(now(), byHand = true))
+
     /** "End car mode", the notification's End, the car screen's End. */
     fun end() = input(CarInput.End(now()))
 

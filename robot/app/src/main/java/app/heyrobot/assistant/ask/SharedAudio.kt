@@ -33,7 +33,7 @@ import java.nio.ByteOrder
 //     PcmSink.format) and the PCM (capped by PcmSink). The choice and its reason go to E9's review and the audit.
 // Caps: the bytes at most AskCaps.MAX_AUDIO_BYTES (read before this); at most AskCaps.MAX_SECONDS of the message (by its
 // own timestamps: past them nothing more is fed to the decoder); the whole decode within AskCaps.DECODE_MS. ClipReader
-// (the Transcription check's 60 s import) is left as it is.
+// (the Transcription check's 60 s import) comes here the same way, since audit-next-a.
 
 object SharedAudio {
     /** [samples]: 16 kHz mono; [seconds]: the message's length as the file says it (or as decoded); [cut]: past the cap. */

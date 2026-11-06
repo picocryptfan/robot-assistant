@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.assistant
 
+import app.heyrobot.core.NoteDelete
 import app.heyrobot.core.i18n.LockStrings
 import app.heyrobot.lock.PhoneLockNow
 import android.content.Intent
@@ -1649,7 +1650,9 @@ object PanelController {
         }
         var cutSaid = false
         // What you asked for in your own words this turn (never the screen's text or a photo): Safety cards' "asked for".
-        val askedNow = ToolRouter.asked(question, listsOn)
+        // fix-everyday-c: "and tomorrow?" also asks for what the turn before asked for (its read tools: core ToolRouter.asked).
+        val askedNow = ToolRouter.asked(question, chat.filter { it.role == TurnRole.USER }.map { it.text }.let { u ->
+            u.getOrNull(u.size - if (u.lastOrNull() == question) 2 else 1) }, listsOn)
         // The loaded model's context: every budget below is made from it (4,096, or a short-context file's own).
         val maxTokens = loaded.contextTokens
         // 0.7: what Robot remembers goes with this panel chat question (pinned preferences, found items), within that context;
@@ -1717,7 +1720,7 @@ object PanelController {
             val skillSpecs = if (ToolGroup.SKILLS in described) specs else emptyList()
             val system = systemFor(tools, skillSpecs.isNotEmpty())
             // The time only for a question that needs it, after the question: the model copied a leading time into its replies.
-            val clock = if (Prompt.needsClock(question, groups)) Prompt.clock(now) else ""
+            val clock = (if (Prompt.needsClock(question, groups)) Prompt.clock(now) else "") + Prompt.figureNote(question, history.size >= 2)
             // The new turn always fits the model's context: cut (and say so) rather than overflow. Memory's notes go before it only
             // when the question still fits whole with them.
             val notes = mem.packed.notesBlock?.takeIf {
@@ -2463,12 +2466,21 @@ object PanelController {
             }
             return
         }
+        // fix-note-delete: a note deleted by voice comes back whole (PanelRoutines.deleteNote).
+        if (NoteDelete.isUndo(key)) {
+            replies.upsertAction(turn.id, a.copy(status = ActionStatus.UNDONE, detail = null, undo = null))
+            scope.launch {
+                val (line, again) = withContext(Dispatchers.IO) { PanelRoutines.undoNoteDelete(key, turnLangs).let { it to PanelRoutines.canUndoNote(key) } }
+                undoSaid(turn.id, actionId, line, if (again) a else null)
+            }
+            return
+        }
         // 1.4 Lists: a list card's Undo (PanelLists): the change put back; the card says whether it could be.
         if (PanelLists.isUndo(key)) {
             replies.upsertAction(turn.id, a.copy(status = ActionStatus.UNDONE, detail = null, undo = null))
             scope.launch {
-                val line = withContext(Dispatchers.IO) { PanelLists.undo(VoiceHub.app, key, turnLangs) }
-                _state.value.turns.firstOrNull { it.id == turn.id }?.actions?.firstOrNull { it.id == actionId }?.let { replies.upsertAction(turn.id, it.copy(detail = line)) }
+                val (line, again) = withContext(Dispatchers.IO) { PanelLists.undo(VoiceHub.app, key, turnLangs).let { it to PanelLists.canUndo(key) } }
+                undoSaid(turn.id, actionId, line, if (again) a else null)
             }
             return
         }
@@ -2476,8 +2488,9 @@ object PanelController {
             // 0.7: a memory card's Undo (an item saved, or items forgotten); the card says what it did.
             replies.upsertAction(turn.id, a.copy(status = ActionStatus.UNDONE, detail = null, undo = null))
             scope.launch {
-                val line = withContext(Dispatchers.IO) { MemoryPanel.undo(key, turnLangs) }
-                _state.value.turns.firstOrNull { it.id == turn.id }?.actions?.firstOrNull { it.id == actionId }?.let { replies.upsertAction(turn.id, it.copy(detail = line)) }
+                val (line, again) = withContext(Dispatchers.IO) { MemoryPanel.undo(key, turnLangs).let { it to MemoryPanel.canUndo(key) } }
+                undoSaid(turn.id, actionId, line, if (again) a else null)
+                if (again) recordCards(turn.id)
             }
         } else {
             replies.upsertAction(turn.id, a.copy(status = ActionStatus.UNDONE, detail = PanelStrings.removedFromNotes().render(turnLangs), undo = null))
@@ -2485,13 +2498,26 @@ object PanelController {
         }
         // The live conversation still believes the note was saved: it is rebuilt from the history ("undone") next time.
         if (slot.running) closeConvAfterTurn = true else closeLiveConversation()
-        // A finished reply's record changes with it (a reply still running records its cards when it ends).
-        val i = chat.indexOfFirst { it.id == turn.id }
+        recordCards(turn.id)
+    }
+
+    /** A finished reply's record changes with its cards (a reply still running records its cards when it ends). */
+    private fun recordCards(turnId: String) {
+        val i = chat.indexOfFirst { it.id == turnId }
         if (i >= 0) {
-            val ui = _state.value.turns.first { it.id == turn.id }
+            val ui = _state.value.turns.first { it.id == turnId }
             chat[i] = chat[i].copy(actions = records(settled(ui.actions)))
             persist()
         }
+    }
+
+    /**
+     * An Undo's [line] on its card. lists-undo-fix (as spoken-log-4's logbook): one that failed for now (locked, not written)
+     * gets back [kept]'s state and button, so you can try again once you unlock.
+     */
+    private fun undoSaid(turnId: String, actionId: String, line: String?, kept: UiAction?) {
+        _state.value.turns.firstOrNull { it.id == turnId }?.actions?.firstOrNull { it.id == actionId }
+            ?.let { replies.upsertAction(turnId, if (kept != null) it.copy(detail = line, undo = kept.undo, status = kept.status) else it.copy(detail = line)) }
     }
 
     private fun closeLiveConversation() {

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.ui
 
+import app.heyrobot.ui.car.CarButton
 import android.Manifest
 import android.content.Intent
 import android.net.Uri
@@ -145,6 +146,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         if (savedInstanceState == null) route.value = routeOf(intent)
+        if (savedInstanceState == null && CarButton.take(intent)) CarButton.open(this)?.let { route.value = it }
         carPage.value = AppRoutes.fromCar(intent)
         // F115: a tap on Yes, Allow or Delete here must be yours: none goes through while another app's window covers this one.
         window.filterObscuredTouches()
@@ -197,6 +199,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         route.value = routeOf(intent)
+        if (CarButton.take(intent)) CarButton.open(this)?.let { route.value = it }
         carPage.value = AppRoutes.fromCar(intent)
     }
 
@@ -866,6 +869,7 @@ fun RobotAppUi(activity: MainActivity) {
             // By name: the screen runs in the voice process, which starts the session.
             try { ctx.startActivity(Transcripts.startIntent(ctx, ConvEntry.APP.name)) } catch (_: Exception) { tell(R.string.home_no_transcript_screen) }
         },
+        carMode = { CarButton.open(ctx)?.let { page = Page.Settings(SettingsRoutes.CAR) } },
         interpret = {
             try { ctx.startActivity(Transcripts.startIntent(ctx, ConvEntry.APP.name, app.heyrobot.core.ConvMode.INTERPRET.name)) } catch (_: Exception) {
                 tell(R.string.home_no_interpreter)
@@ -1074,6 +1078,8 @@ class AppActions(
     val askMedia: () -> Unit = {},
     /** 0.5.0: the transcript screen (voice process), to start transcribing; Settings › Voice › Transcription check. */
     val transcribe: () -> Unit = {},
+    /** 1.2.4: car mode by hand, for no car (ui/car/CarButton). */
+    val carMode: () -> Unit = {},
     /** 0.5.0: the interpreter (face to face, spoken translations). */
     val interpret: () -> Unit = {},
     val openTranscriptionCheck: () -> Unit = {},

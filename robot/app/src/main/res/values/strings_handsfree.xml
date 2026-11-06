@@ -196,4 +196,5 @@
     <string name="car_apps_add">Add apps</string>
     <string name="car_apps_title">Apps for the car</string>
     <string name="car_apps_summary_none">None yet. Keep up to %1$d, then tap Apps on the car screen to open one beside Robot.</string>
+    <string name="car_shortcut">Car mode</string>
 </resources>

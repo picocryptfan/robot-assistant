@@ -139,8 +139,9 @@ class ProcessIsolationTest {
      */
     @Test fun termuxRunsOnlyFromTheVoiceProcess() {
         assertEquals(listOf("app/assistant/TermuxResultReceiver.kt"), usersOf(Regex("""\bTermuxIntents\.ACTION_RUN_COMMAND\b""")))
-        // (0.8: routines' speaking service starts itself the same way.)
-        assertEquals(listOf("app/assistant/TermuxResultReceiver.kt", "app/assistant/conversation/ConversationService.kt", "app/assistant/routines/RoutineSpeakingService.kt"),
+        // (0.8: routines' speaking service starts itself the same way; 1.2.4: the app's Car mode button starts it in :voice.)
+        assertEquals(listOf("app/assistant/TermuxResultReceiver.kt", "app/assistant/conversation/ConversationService.kt", "app/assistant/routines/RoutineSpeakingService.kt",
+            "app/ui/car/CarButton.kt"),
             usersOf(Regex("""\bstartForegroundService\(""")))
         assertEquals(listOf("app/assistant/TermuxResultReceiver.kt", "app/assistant/TermuxTool.kt"), usersOf(Regex("""\bTermuxSend\b""")))
         // The result PendingIntent: explicit to the receiver, one-shot and mutable (Termux fills the result in), made there only.
@@ -1094,7 +1095,7 @@ class ProcessIsolationTest {
         for (a in affinities) assertTrue(a, a.startsWith("ai.robot_app."))
         // The launcher shortcuts target this package (a resource can't take the placeholder) and classes that exist.
         val shortcuts = parse(File(main("app"), "res/xml/shortcuts.xml")).getElementsByTagName("intent")
-        assertEquals(2, shortcuts.length)
+        assertEquals(3, shortcuts.length)
         for (i in 0 until shortcuts.length) (shortcuts.item(i) as Element).let { e ->
             assertEquals(BuildConfig.APPLICATION_ID, e.getAttributeNS(ns, "targetPackage"))
             assertTrue(comps.containsKey(e.getAttributeNS(ns, "targetClass")))
@@ -4169,11 +4170,13 @@ class ProcessIsolationTest {
         assertHas(panel.body("private fun attachShared("), "val kind = if (item.kind == app.heyrobot.core.ask.SharedKind.PHOTO) Attachment.PHOTO else Attachment.SCREEN",
             "PanelFiles.picked(null, false)")
         assertEquals(2, panel.count("shared = turnShared"))
-        // A voice message: sniffed, then from memory alone (no URI, no file) into Android's extractor; the decoders only there
-        // and in the Transcription check's ClipReader.
+        // A voice message, and a clip the Transcription check imports: capped, sniffed, then from memory alone (no URI, no file)
+        // into Android's extractor, with SharedAudio's format bounds and deadline; the decoders only there.
         val audio = flatCode(kt("app", "assistant/ask/SharedAudio.kt"))
         assertHas(audio, "ex.setDataSource(InMemory(bytes))", "if (cancelled() || SystemClock.elapsedRealtime() - started > AskCaps.DECODE_MS) return null")
-        assertEquals(listOf("app/assistant/ask/SharedAudio.kt", "app/assistant/conversation/ClipReader.kt"), usersOf(Regex("""\bMediaExtractor\b|\bMediaCodec\b""")))
+        assertEquals(listOf("app/assistant/ask/SharedAudio.kt"), usersOf(Regex("""\bMediaExtractor\b|\bMediaCodec\b""")))
+        assertInOrder(flatText(kt("app", "assistant/conversation/ClipReader.kt")).body("fun read("), "readNBytes(AskCaps.MAX_AUDIO_BYTES + 1)",
+            "if (bytes.size > AskCaps.MAX_AUDIO_BYTES) return null", "AudioSniff.container(", "SharedAudio.decode(bytes, MAX_SECONDS)?.samples")
         // A photo: only an image goes to :files, and back come only pixels (FilePixels), never a decoder here; the JPEG the model
         // sees is encoded here, as a filed page's and an attached picture's are (F16: a JPEG :files made never reaches :brain).
         assertInOrder(flatText(kt("app", "assistant/ask/SharedPhoto.kt")).body("fun read("), "FileSniff.sniff(head, bytes.size.toLong()).group != FileGroup.IMAGE",
@@ -4824,7 +4827,7 @@ class ProcessIsolationTest {
         assertEquals(3, node.count("startListening()"))
         assertInOrder(node.body("private fun refreshCarriers()"), "if (!awake) return", "if (!env.networkAllowed())", "startListening()")
         assertHas(node, "if (inPerson && mode == LinkMode.PRIVATE && direct != null && awake)")
-        assertHas(node.body("fun sleep()"), "direct?.stopListening()", "t.down()")
+        assertHas(node.body("fun sleep()"), "direct?.stopListening()", "t.sleep()")
         // Robot's network access before every send, listen, accept, Tor start and pairing step.
         for (f in listOf("private fun attempt(o: OutboxItem)", "private fun sendHello(p: PairingRecord)", "fun accepted(d: Duplex", "fun makeCode(mode: LinkMode",
             "fun useCode(text: String", "private fun refreshCarriers()", "private fun refreshOnionNow()",

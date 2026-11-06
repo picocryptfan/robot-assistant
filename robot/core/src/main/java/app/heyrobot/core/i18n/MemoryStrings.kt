@@ -32,6 +32,7 @@ object MemoryStrings : Strings("memory", area = "memory") {
     val quoted = s("quoted", "“{text}”", "« {text} »")
     val recall = s("recall", "Here's what I remember about {about}: {list}.", "Voici ce que je retiens sur {about} : {list}.")
     val recallNone = s("recall_none", "I don't remember anything about {about}.", "Je ne me souviens de rien sur {about}.")
+    val parkedHow = s("parked_how", "Tell me where you parked and I'll remember it.", "Dis-moi où tu t'es stationné et je vais m'en souvenir.")
     val privateMore = plural("private_more", "n",
         Plural(one = "And {n} private item, in {page}.", other = "And {n} private items, in {page}."),
         Plural(one = "Et {n} chose privée, dans {page}.", other = "Et {n} choses privées, dans {page}."))

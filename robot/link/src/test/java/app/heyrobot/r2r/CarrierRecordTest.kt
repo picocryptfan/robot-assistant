@@ -20,7 +20,6 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.util.Collections
-import javax.net.ssl.SSLContext
 
 /** E4: Robot to Robot's direct and push carriers in What went online: hosts and bytes, never an address or a path. */
 class CarrierRecordTest {
@@ -82,7 +81,46 @@ class CarrierRecordTest {
 
     private fun route(url: String) = PushRoute(url, ByteArray(65).also { it[0] = 4 }, ByteArray(16) { 1 })
 
-    private fun poster(tor: () -> TorNet? = { null }) = HttpPushPoster(PushHttp(SSLContext.getDefault()) { _, _ -> true }, tor, 500)
+    private fun poster(tor: () -> TorNet? = { null }) = HttpPushPoster(PushHttp(PushHttp.platformTrust()) { _, _ -> true }, tor, 500, { InetAddress.getAllByName(it).toList() })
+
+    /** fix-push-tls: a push host that resolves to your network or the phone itself is refused before any connection. */
+    @Test fun aPushHostOnYourNetworkIsRefusedBeforeAnyConnection() {
+        ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { ss ->
+            val p = HttpPushPoster(PushHttp(PushHttp.platformTrust()) { _, _ -> true }, { null }, 500)
+            val x = runCatching { p.post(route("https://localhost:${ss.localPort}/up/x"), ByteArray(50), 60, false, "p") }
+            assertEquals(PushProblem.BAD_ADDRESS, (x.exceptionOrNull() as PushException).problem)
+            ss.soTimeout = 300
+            assertTrue(runCatching { ss.accept() }.exceptionOrNull() is java.net.SocketTimeoutException)
+        }
+        assertEquals(NetResult.FAILED, rows.single().result)
+    }
+
+    /** fix-push-tls: a server that trickles its answer a byte at a time can't hold a post past its deadline. */
+    @Test fun aPostEndsAtItsDeadline() {
+        ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { ss ->
+            Thread {
+                try {
+                    ss.accept().use { c ->
+                        val o = c.getOutputStream()
+                        // A TLS record header for 16 KiB of handshake, then a byte every 50 ms: never a whole record.
+                        o.write(byteArrayOf(0x16, 3, 3, 0x40, 0)); o.flush()
+                        while (true) { Thread.sleep(50); o.write(0); o.flush() }
+                    }
+                } catch (_: Exception) {}
+            }.apply { isDaemon = true; start() }
+            val started = System.nanoTime()
+            val pool = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r).apply { isDaemon = true } }
+            val f = pool.submit<Throwable?> {
+                java.net.Socket(InetAddress.getLoopbackAddress(), ss.localPort).use { s ->
+                    runCatching { PushHttp(PushHttp.platformTrust(), 800) { _, _ -> true }.post(SocketDuplex(s), PushTarget.of("https://localhost:${ss.localPort}/up")!!, ByteArray(10), 60) }.exceptionOrNull()
+                }
+            }
+            val x = f.get(20, java.util.concurrent.TimeUnit.SECONDS)
+            pool.shutdown()
+            assertEquals(PushProblem.FAILED, (x as PushException).problem)
+            assertTrue(System.nanoTime() - started < 10_000_000_000L)
+        }
+    }
 
     @Test fun aPostThatFailsIsARowWithTheHostAlone() {
         val x = runCatching { poster().post(route("https://push.example.org:1/up/secret?x=1"), ByteArray(50), 60, false, "p") }

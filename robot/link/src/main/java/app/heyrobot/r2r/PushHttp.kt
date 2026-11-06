@@ -12,18 +12,22 @@ import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLEngine
 import javax.net.ssl.SSLEngineResult
 import javax.net.ssl.SSLException
+import javax.net.ssl.TrustManager
+import javax.net.ssl.TrustManagerFactory
 
 // :LINK PROCESS. 1.5, Robot to Robot (robot-to-robot-plan.md §2.2, §3.7; R0 §5.5; job L3): posting one push message to
 // the other Robot's push address, an UnifiedPush endpoint (RFC 8030's push resource). Always https: a push address is
 // checked as https when it's read (core PushRoute), and here again. The body is RFC 8291's aes128gcm ciphertext.
 //
-// The TLS is the platform's (SSLEngine from the default SSLContext: on the phone Conscrypt, the system's CAs only, as
-// network_security_config.xml says) over any byte stream: a TCP socket (Private pairings post directly) or a stream
+// The TLS is the platform's (SSLEngine from a new SSLContext over the platform's trust managers: on the phone Conscrypt, the
+// system's CAs only, as network_security_config.xml says). fix-push-tls: a new context for each post, so no TLS session is
+// cached or resumed between posts; a resumed session would let the push server tie an Anonymous post to a direct one, or
+// two pairings to each other. The cost is a full handshake each post (the trust managers are made once). over any byte stream: a TCP socket (Private pairings post directly) or a stream
 // through Tor's SOCKS socket, which is a unix socket and not a java.net.Socket (Anonymous pairings post through Tor, so the
 // push server never sees the phone's address). One path for both, so both are the same tested code. The host name goes in
 // SNI, the certificate is checked for it by the trust manager (endpoint identification "HTTPS") and again by [hostnames]
 // (the platform's verifier on the phone), and nothing but the status line is read back. No redirect, no cookie, no proxy,
-// no retry here (the outbox retries), and no message of any exception leaves: every failure is a [PushProblem].
+// no retry here (the outbox retries), at most [PushHttp.DEADLINE_MS] for the whole answer, and no message of any exception leaves: every failure is a [PushProblem].
 
 /** Why a push wasn't taken. Codes are stable (the link log). */
 enum class PushProblem(val code: Int) {
@@ -71,13 +75,17 @@ class PushTarget private constructor(val host: String, val port: Int, val path: 
 
 /**
  * One POST to a push server over [stream], already connected to [target]'s host and port (directly or through Tor). [tls]:
- * the platform's TLS; [hostnames]: the platform's host name check (the phone's default verifier).
+ * [trust]: the platform's trust managers (each post gets its own SSLContext over them); [hostnames]: the platform's host name
+ * check (the phone's default verifier). [deadlineMs]: the most a post may take once its stream is open.
  */
-class PushHttp(private val tls: SSLContext, private val hostnames: HostnameVerifier) {
+class PushHttp(private val trust: Array<out TrustManager>, private val deadlineMs: Long = DEADLINE_MS, private val hostnames: HostnameVerifier) {
     /** Posts [body] with RFC 8030's TTL (seconds) and urgency `normal` (R0 §9 item 16). Returns when the server took it. */
     fun post(stream: Duplex, target: PushTarget, body: ByteArray, ttlSeconds: Long) {
         require(body.size in 1..MAX_BODY && ttlSeconds in 0..MAX_TTL)
+        val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(deadlineMs)
         stream.readTimeout(TIMEOUT_MS)
+        // fix-push-tls: never a shared context, so never a session from another post.
+        val tls = try { SSLContext.getInstance("TLS").apply { init(null, trust, null) } } catch (_: Exception) { throw PushException(PushProblem.TLS) } // l10n: not text (JSSE's name)
         val engine = tls.createSSLEngine(target.host, target.port).apply {
             useClientMode = true
             sslParameters = sslParameters.apply {
@@ -85,7 +93,7 @@ class PushHttp(private val tls: SSLContext, private val hostnames: HostnameVerif
                 if (!target.host.contains(':') && !target.host.all { it.isDigit() || it == '.' }) serverNames = listOf(SNIHostName(target.host))
             }
         }
-        val io = TlsStream(engine, stream.input, stream.output)
+        val io = TlsStream(engine, stream.input, stream.output, stream::readTimeout, deadline)
         try {
             io.handshake()
             if (!hostnames.verify(target.host, engine.session)) throw PushException(PushProblem.TLS)
@@ -130,13 +138,25 @@ class PushHttp(private val tls: SSLContext, private val hostnames: HostnameVerif
         /** RFC 8030's TTL Robot asks for: at most a request's lifetime, 30 days. */
         const val MAX_TTL = 30L * 86_400
         const val TIMEOUT_MS = 30_000
+        /** A post's whole answer, handshake included: a server that trickles a byte at a time can't hold it longer. */
+        const val DEADLINE_MS = 60_000L
+
+        /** The platform's trust managers (on the phone, network_security_config.xml's: the system's CAs). */
+        fun platformTrust(): Array<TrustManager> =
+            TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm()).apply { init(null as java.security.KeyStore?) }.trustManagers
         /** The status line at most; nothing more of the answer is read. */
         const val MAX_STATUS_LINE = 1_024
     }
 }
 
 /** TLS through [engine] over plain [input] and [output] streams: a handshake, writes, and the start of the answer. */
-internal class TlsStream(private val engine: SSLEngine, private val input: InputStream, private val output: OutputStream) {
+internal class TlsStream(
+    private val engine: SSLEngine,
+    private val input: InputStream,
+    private val output: OutputStream,
+    private val timeout: (Int) -> Unit = {},
+    private val deadlineNs: Long = Long.MAX_VALUE,
+) {
     private val session = engine.session
     private var netIn: ByteBuffer = ByteBuffer.allocate(session.packetBufferSize).apply { flip() }
     private var appIn: ByteBuffer = ByteBuffer.allocate(session.applicationBufferSize).apply { flip() }
@@ -211,6 +231,10 @@ internal class TlsStream(private val engine: SSLEngine, private val input: Input
     }
 
     private fun readMore() {
+        // Each read waits at most what's left of the post's deadline.
+        val left = deadlineNs - System.nanoTime()
+        if (left <= 0) throw java.net.SocketTimeoutException()
+        if (deadlineNs != Long.MAX_VALUE) timeout(minOf(PushHttp.TIMEOUT_MS.toLong(), maxOf(1L, left / 1_000_000)).toInt())
         val n = input.read(readBuf)
         if (n < 0) throw IOException()
         netIn.compact()

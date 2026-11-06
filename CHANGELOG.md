@@ -4,6 +4,45 @@ What changed in each version of Robot, newest first. Each version's full notes, 
 [`robot/README.md`](robot/README.md) ("What's new in …" and the feature sections). Versions before 1.0 were test
 builds.
 
+## 1.2.4 (2026-11-06)
+
+- A Car mode button on the home screen, and a Car mode shortcut when you long-press Robot's icon, open car mode with no
+  car connected, for a ride in a rental or a car without Bluetooth. It stays on until you end it (or after four hours);
+  no car leaving ends it.
+- "Delete the note about the gate code" (« supprime la note sur le code de la barrière ») deletes it: Robot shows a card
+  naming the note and says its name aloud (several that fit: it asks which), deletes it on your yes or tap, and offers
+  Undo that brings it back whole while Robot keeps running. Before, Robot only searched your notes.
+- "Cancel my alarm" turns the alarm off through your clock app, where it takes the request: Robot asks first about your
+  next alarm (the only one Android shows it), or goes straight to the time you said ("cancel my 6:30 am alarm"), then
+  checks it went. A time with no a.m. or p.m. that only fits your next alarm at the other half of the day ("cancel my 7
+  alarm" when the next is at 7 PM) gets the card first. When it didn't, or Robot can't tell, your clock's alarms open with one line saying why. Before, Robot
+  only offered to open the clock app.
+- "What alarms do I have", "when is my next alarm" and "is my alarm set" (« quelles alarmes j'ai ») get Robot's own answer: your
+  next alarm, the only one Android shows it, and that your clock app has the others. Before, Robot only offered to open the clock app.
+- Car mode started from its shortcut doesn't start again when you reopen Robot from your recent apps.
+- The Notes list, a note and its editor are kept out of screenshots and screen recordings, as your other private pages are.
+- Robot to Robot: each push post starts a fresh secure connection (none is resumed), a push server's
+  address is checked after it's looked up, so push servers on your own network are now refused, and a pairing that's
+  Anonymous never falls back to a plain post. Tor is noticed when it ends on its own and started again, at most three
+  times an hour, then it waits; it starts at once when Robot to Robot is needed again.
+- A clip you pick for the Transcription check is refused over 25 MB and decoded in memory, with the same limits as a
+  shared voice message, up to its first 60 seconds.
+- Settings › About › Updates: "Allow Robot to install updates" shows Done as soon as you come back from Android's page,
+  also in split screen, and What is checked says Android installs without asking you when Install updates without
+  asking is on. Before, it always said Android's window asks you to confirm.
+- "Where's my car" (« où est ma voiture ») answers from what you asked Robot to remember, in Robot's own words.
+  "Where did I park" with nothing saved says how to save it; "where's my lease" still goes to Robot Files. Before, the
+  model said it had no access to your car even with the fact saved.
+- "And tomorrow?" after a question about the weather gets tomorrow's forecast straight away. Before, it waited on a card
+  for your yes.
+- Right after Robot has talked about a list, "take the milk off it", "milk is done" and "is milk on it" (« enlève le lait
+  de celle-là », « le lait, c'est fait », « le lait est-tu dessus ») mean that list, so you don't have to name it again.
+  When the milk isn't on that list, Robot asks which list instead of guessing. Once you've asked about anything else,
+  "it" no longer means a list.
+- Undo on a card for a list, a memory or a deleted note stays on the card when it can't work yet (the phone is locked,
+  or the change couldn't be saved): the card says why, and you can tap Undo again once you unlock. Before, the button
+  went away and the change stayed.
+
 ## 1.2.3 (2026-11-05)
 
 - A fact you asked Robot to remember is found when you ask about it in other words ("what do I like to eat most" for

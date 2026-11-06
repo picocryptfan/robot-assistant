@@ -153,9 +153,13 @@ class LinkNode(
 
     /** L5-fix: a cross-paste this side wins: its SENT pairing's id, and its own code the other Robot's hello came to. */
     private val crossed = HashMap<String, String>()
-    private var awake = false
+    // review-1.2.4 finding 5: read on torThread by [sleep]'s Tor stop.
+    @Volatile private var awake = false
     private var listenPort = 0
     private var onionClients: Set<String>? = null
+    /** fix-push-tls: Tor's [TorNet.starts] when your onion was last published (a new start publishes it again). */
+    @Volatile private var onionStarts = 0
+    private val reviving = java.util.concurrent.atomic.AtomicBoolean(false)
     private var stopped = false
 
     private fun nowMs() = env.now()
@@ -179,6 +183,9 @@ class LinkNode(
      */
     fun wake(quiet: Boolean = false) = post {
         awake = true
+        // review-1.2.4 finding 5: Tor is let start now, not after what Tor's thread has queued (a PUSH_TOR send's up()
+        // found it still held and waited a backoff). A sleep queued before stands down when it sees [awake].
+        tor?.wake()
         quietWake = quiet
         if (!quiet) retryPush()
         refreshCarriers()
@@ -199,7 +206,7 @@ class LinkNode(
         direct?.stopListening(); listenPort = 0
         conns.toList().forEach { it.close() }; conns.clear()
         val t = tor
-        if (t != null) torThread.execute { try { t.down() } catch (_: Exception) {} }
+        if (t != null) torThread.execute { try { if (!awake) { t.sleep(); if (awake) t.wake() } } catch (_: Exception) {} }
         onionClients = null
     }
 
@@ -276,6 +283,11 @@ class LinkNode(
         if (stopped) return
         // What went online's hourly row for Tor (E4): off this thread, as it asks Tor's control socket.
         tor?.let { t -> io.execute { t.tally() } }
+        // fix-push-tls: Tor ended on its own, or started again for a send: your onion is published again.
+        tor?.let { t ->
+            if (awake && !onionClients.isNullOrEmpty() && (t.exited || t.starts != onionStarts) && reviving.compareAndSet(false, true))
+                torThread.execute { try { refreshOnionNow() } catch (_: Exception) {} finally { reviving.set(false) } }
+        }
         // Robot's network access off (the Network toggle): nothing is tried, nothing counted; the next pump tries again.
         if (!env.networkAllowed()) {
             if (st.outbox.isNotEmpty()) log.add(LinkEvent.NO_NETWORK)
@@ -392,6 +404,8 @@ class LinkNode(
         return when (r.way) {
             LinkWay.PUSH, LinkWay.PUSH_TOR -> {
                 val route = peerPush ?: throw java.io.IOException()
+                // fix-push-tls: routed before Raise to Anonymous: never by plain push after it.
+                if (r.way == LinkWay.PUSH && call { st.pairings[pairing]?.mode?.let(Ways::pushViaTor) }.get(10, TimeUnit.SECONDS) == true) throw java.io.IOException()
                 val env = LinkEnvelope(kind, LinkEnvelope.NO_ROUTE, body).encode(LinkCarrier.PUSH)
                 if (r.way == LinkWay.PUSH_TOR && tor?.up() != true) throw TorException(TorProblem.NOT_READY)
                 poster!!.post(route, WebPush.seal(route, env), minOf(ttl, PushHttp.MAX_TTL), r.way == LinkWay.PUSH_TOR, pairing)
@@ -823,6 +837,7 @@ class LinkNode(
     }
 
     private fun applyHint(p: PairingRecord, h: NetHint) {
+        val hadPush = p.peerPush?.endpoint; val hadOnion = p.peerOnion != null
         h.push?.let { p.peerPush = it }
         if (h.onion != null && h.onionAuth != null) {
             p.peerOnion = h.onion; p.peerOnionAuth = h.onionAuth
@@ -834,6 +849,13 @@ class LinkNode(
         // L5: what a moved hello from you to them must carry, should you move to a new phone (§2.7).
         h.moved?.let { p.movedOut = LinkBytes.unhex(it, LinkIds.BYTES) }
         stateful { st.put(p) }
+        // A push address or onion you didn't have: what waits unsent (no carrier could take it, or the one there was failed)
+        // goes on the pump below, not at its backoff. Right after pairing, the code user's first hint waits like this when the
+        // maker's push address comes late (a slow phone): a minute, before this.
+        if (p.peerPush?.endpoint != hadPush || (!hadOnion && p.peerOnion != null)) {
+            val now = nowS()
+            for (o in st.outbox.values) if (o.pairing == p.id && !o.sent && o.nextAt > now && o.id !in inFlight) { o.nextAt = now; stateful { st.put(o) } }
+        }
         exec.execute { guard { pumpNow() } }
     }
 
@@ -1442,8 +1464,9 @@ class LinkNode(
         val clients = call { st.pairings.values.mapNotNull { it.myAuthPub } }.get(10, TimeUnit.SECONDS)
         val key = clients.map { LinkBytes.hex(it) }.toSet()
         if (clients.isEmpty()) { t.unpublish(0); post { onionClients = emptySet() }; return false }
-        if (call { onionClients == key }.get(10, TimeUnit.SECONDS) && t.running) return true
+        if (call { onionClients == key }.get(10, TimeUnit.SECONDS) && t.running && t.starts == onionStarts) return true
         if (!env.networkAllowed() || !t.up()) return false
+        val starts = t.starts
         val blob = call { st.tor?.keyBlob }.get(10, TimeUnit.SECONDS)
         val pub = try { t.publish(0, blob, clients) { d -> accepted(d, LinkWay.TOR) } } catch (_: Exception) { log.add(LinkEvent.TOR, 5, 0); return false }
         val onion = OnionAddress.keyOf(pub.serviceId) ?: return false
@@ -1451,6 +1474,7 @@ class LinkNode(
             if (st.tor == null) stateful { st.putTor(TorRecord(pub.keyBlob, onion)) }
             val before = onionClients.orEmpty()
             onionClients = key
+            onionStarts = starts
             // Pairings your onion now answers that weren't told yet: their net.hint, with the key you made for them.
             for (p in st.pairings.values) if (p.state == PairingState.ACTIVE && p.myAuthPub?.let { LinkBytes.hex(it) }?.let { it in key && it !in before } == true) wakeHint(p)
             // Every paired Robot's client authorization, for streams to their onions.

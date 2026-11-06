@@ -219,8 +219,16 @@ class EventWordsTest {
             "end my timer", "shut the timer off")
         val timersFr = listOf("annule la minuterie", "arrête le minuteur", "efface ma minuterie de 10 minutes", "arrête le compte à rebours",
             "coupe la minuterie")
-        for (t in alarms) assertEquals(t, RoutineCommand.CantCancel(timer = false, french = false), route(t))
-        for (t in alarmsFr) assertEquals(t, RoutineCommand.CantCancel(timer = false, french = true), route(t))
+        fun plain(t: String) = (route(t) as? RoutineCommand.CantCancel)?.copy(hour = null, minute = null, exact = false, all = false)
+        for (t in alarms) assertEquals(t, RoutineCommand.CantCancel(timer = false, french = false), plain(t))
+        for (t in alarmsFr) assertEquals(t, RoutineCommand.CantCancel(timer = false, french = true), plain(t))
+        // fix-everyday-c: the alarm's time and "all" go with it, for AlarmClock's dismiss.
+        assertEquals(RoutineCommand.CantCancel(timer = false, french = false), route("cancel my alarm"))
+        assertEquals(RoutineCommand.CantCancel(false, false, hour = 6, minute = 30), route("Cancel my 6:30 alarm"))
+        assertEquals(RoutineCommand.CantCancel(false, false, hour = 7, exact = true), route("delete the 7 am alarm"))
+        assertEquals(RoutineCommand.CantCancel(false, false, hour = 19, minute = 15, exact = true), route("turn off my 7:15 pm alarm"))
+        assertEquals(RoutineCommand.CantCancel(false, true, hour = 6, minute = 30), route("annule mon alarme de 6 h 30"))
+        assertEquals(RoutineCommand.CantCancel(false, false, all = true), route("remove all my alarms"))
         for (t in timers) assertEquals(t, RoutineCommand.CantCancel(timer = true, french = false), route(t))
         for (t in timersFr) assertEquals(t, RoutineCommand.CantCancel(timer = true, french = true), route(t))
         assertEquals(Lang.FR, RoutineRouter.lang("annule mon alarme de 6 h 30", route("annule mon alarme de 6 h 30")!!))

@@ -165,6 +165,8 @@ internal object PanelLists {
     private class Undo(val items: List<Pair<ListsId, ItemDone>>, val made: ListsId? = null)
 
     @Volatile private var focus: Focus? = null
+    /** list-it-fix: the turn just before was Lists' (set by [handle], cleared by [otherTurn] and [forget]): only then is "it" a list. */
+    @Volatile private var lastTurn = false
     @Volatile private var seen: ListsSeen? = null
     @Volatile private var names: List<String> = emptyList()
     private val undos = LinkedHashMap<String, Undo>()
@@ -187,7 +189,7 @@ internal object PanelLists {
     fun route(ctx: Context, q: String): ListsCommand? {
         val s = try { env(ctx).settings() } catch (t: Exception) { RLog.w("lists_route", t); return null }
         if (!s.on) return null
-        return ListsRouter.route(q, ListsHeard(names = names, focus = focus != null, undo = lastUndo != null, seen = seen))
+        return ListsRouter.route(q, ListsHeard(names = names, focus = focus != null, undo = lastUndo != null, seen = seen, lastTurn = lastTurn))
     }
 
     /**
@@ -241,6 +243,7 @@ internal object PanelLists {
      */
     fun otherTurn() {
         lastUndo = null
+        lastTurn = false
     }
 
     /**
@@ -259,6 +262,7 @@ internal object PanelLists {
         focus = null
         seen = null
         lastUndo = null
+        lastTurn = false
     }
 
     /**
@@ -289,6 +293,7 @@ internal object PanelLists {
 
     /** Does [cmd] (a background thread): the reply, its card, and what History keeps. [spoken]: said rather than typed. */
     fun handle(ctx: Context, replyId: String, cmd: ListsCommand, langs: Langs, spoken: Boolean): Reply {
+        lastTurn = true
         val e = env(ctx)
         val r = try {
             run(e, cmd, langs, if (spoken) ItemHow.VOICE else ItemHow.TYPED)
@@ -386,7 +391,7 @@ internal object PanelLists {
         is ListRef.Role -> file.withRole(ref.role)?.takeIf { it.yours }
         is ListRef.Named -> yours(file).firstOrNull { l -> l.names.any { ItemText.same(it, ref.name) } }
             ?: ListRole.entries.firstOrNull { r -> r.names.any { ItemText.same(it, ref.name) } }?.let { file.withRole(it) }
-        ListRef.Unnamed -> focus?.let { f -> file.list(f.id) }?.takeIf { it.yours }
+        ListRef.Unnamed, ListRef.It -> focus?.let { f -> file.list(f.id) }?.takeIf { it.yours }
     }
 
     /** The list [ref] names, else, for "the list" with none in focus, Shopping. */
@@ -402,7 +407,7 @@ internal object PanelLists {
     private fun refName(ref: ListRef): Phrase = when (ref) {
         is ListRef.Named -> Phrase.plain(ref.name)
         is ListRef.Role -> if (ref.role == ListRole.TODO) ListsStrings.todo() else ListsStrings.shopping()
-        ListRef.Unnamed -> ListsStrings.shopping()
+        ListRef.Unnamed, ListRef.It -> ListsStrings.shopping()
     }
 
     private fun focusOn(l: ListsList) {
@@ -568,6 +573,7 @@ internal object PanelLists {
             is ListRef.Role -> ListsJournal.withRole(j, ref.role)
             is ListRef.Named -> ListsJournal.named(j, ref.name)
             ListRef.Unnamed -> focus?.let { f -> j.lists.firstOrNull { it.id == f.id } } ?: ListsJournal.withRole(j, ListRole.SHOPPING)
+            ListRef.It -> focus?.let { f -> j.lists.firstOrNull { it.id == f.id } }
         } ?: return lockedNoList(cmd)
         val listSaid: Phrase = if (Regex("(?i)\\b(list|checklist|liste)\\b").containsMatchIn(cmd.said)) Phrase.plain(cmd.said) // l10n: not text (a parser's pattern)
             else ListsStrings.namedList("name" to cmd.said)
@@ -625,8 +631,9 @@ internal object PanelLists {
         val piece = cmd.words
         // LS13 (§3.6, LT3 on the Pixel 8): a check that names no list looks at every list, whichever is in focus. With several
         // lists "my list" is any of them unless you name one ("No, Pharmacy doesn't have milk." though Shopping had Milk).
+        // fix-list-it: "is milk on it" is the list in focus only; with none in focus any more, every list.
         val l = if (cmd.list == ListRef.Unnamed) null else find(file, cmd.list)
-        if (cmd.list != ListRef.Unnamed && l == null) return noList(cmd.list, file)
+        if (cmd.list != ListRef.Unnamed && cmd.list != ListRef.It && l == null) return noList(cmd.list, file)
         VoiceLog.add(VoiceEvent.LIST_READ, ListReadCode.CHECK.id, 1)
         val lang = cmd.lang
         if (l != null) {
@@ -682,9 +689,17 @@ internal object PanelLists {
                 if (m.size > 1) return Found.Which(m.map { Phrase.plain(ItemText.shown(it.text)) })
                 if (m.size == 1) { out += named to m[0]; continue }
                 // "The list" in focus doesn't have it: any one list that does, as the router heard it.
-                if (ref != ListRef.Unnamed) return Found.Not(piece, named, ListsMatch.find(if (done) named.open else named.done, piece, lang).firstOrNull())
+                if (ref != ListRef.Unnamed && ref != ListRef.It) return Found.Not(piece, named, ListsMatch.find(if (done) named.open else named.done, piece, lang).firstOrNull())
             }
             val lists = yours(file).mapNotNull { l -> pick(l).takeIf { it.isNotEmpty() }?.let { l to it } }
+            // fix-list-it: "it" is the list in focus and no other. With none in focus, or the item only on other lists, the
+            // reply asks which list (never a guess); on none, the list in focus says it hasn't it.
+            if (ref == ListRef.It) {
+                if (named != null && lists.isEmpty()) return Found.Not(piece, named, ListsMatch.find(if (done) named.open else named.done, piece, lang).firstOrNull())
+                val options = lists.map { it.first }.ifEmpty { yours(file) }
+                if (options.isEmpty()) return Found.Not(piece, null, null)
+                return Found.Which(options.map(::label))
+            }
             when {
                 lists.isEmpty() -> return Found.Not(piece, named, yours(file).firstNotNullOfOrNull { l -> ListsMatch.find(if (done) l.open else l.done, piece, lang).firstOrNull() })
                 lists.size > 1 -> return Found.Which(lists.map { label(it.first) })
@@ -696,7 +711,7 @@ internal object PanelLists {
     }
 
     private fun tick(e: Env, file: ListsFile, cmd: ListsCommand.Tick, locked: Boolean, langs: Langs, how: ItemHow): Reply {
-        if (cmd.list !is ListRef.Unnamed && find(file, cmd.list) == null) return noList(cmd.list, file)
+        if (cmd.list !is ListRef.Unnamed && cmd.list !is ListRef.It && find(file, cmd.list) == null) return noList(cmd.list, file)
         return when (val f = found(file, cmd.list, cmd.words, done = false, cmd.lang)) {
             is Found.Which -> which(f)
             is Found.Not -> {
@@ -718,7 +733,7 @@ internal object PanelLists {
     }
 
     private fun putBack(e: Env, file: ListsFile, cmd: ListsCommand.PutBack, locked: Boolean, langs: Langs, how: ItemHow): Reply {
-        if (cmd.list !is ListRef.Unnamed && find(file, cmd.list) == null) return noList(cmd.list, file)
+        if (cmd.list !is ListRef.Unnamed && cmd.list !is ListRef.It && find(file, cmd.list) == null) return noList(cmd.list, file)
         return when (val f = found(file, cmd.list, cmd.words, done = true, cmd.lang)) {
             is Found.Which -> which(f)
             is Found.Not -> {
@@ -1091,12 +1106,20 @@ internal object PanelLists {
         return if (line == ListsStrings.undone()) null else line.render(langs)
     }
 
+    /** lists-undo-fix: the Undo under [key] can still be tried (one that failed for now, locked, keeps its button). */
+    fun canUndo(key: String): Boolean = synchronized(this) { key in undos }
+
     private fun undo(e: Env, key: String, how: ItemHow): Phrase {
         if (e.someoneElse()) return ListsStrings.someoneElse()
         if (e.locked()) return ListsStrings.unlockToUndo()
         val u = synchronized(this) { undos.remove(key) } ?: return app.heyrobot.core.i18n.PanelStrings.nothingToUndo()
         if (lastUndo == key) lastUndo = null
         val w = e.vault().update(how) { f, who -> reverse(f, u, who) }
+        // lists-undo-fix: the lists' key locked since (a race with the lock): nothing written, the Undo kept to try again.
+        if (w.load == ListsLoad.Locked) {
+            synchronized(this) { undos[key] = u }
+            return ListsStrings.unlockToUndo()
+        }
         val ok = w.done?.changed == true
         val changes = u.items.size
         VoiceLog.add(VoiceEvent.LIST_EDIT, (if (ok) ListEditCode.UNDONE else ListEditCode.NOT_UNDONE).id, changes)

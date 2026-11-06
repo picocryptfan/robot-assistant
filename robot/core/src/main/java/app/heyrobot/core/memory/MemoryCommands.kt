@@ -87,8 +87,11 @@ sealed class MemoryCommand {
     /** "Forget everything": never by voice. Robot says to open Settings › Memory. */
     data class ForgetEverything(override val language: String) : MemoryCommand()
 
-    /** "What do you remember about Julie?": the items about [about] (up to 10), read aloud. */
-    data class Recall(val about: String, override val language: String) : MemoryCommand() {
+    /**
+     * "What do you remember about Julie?": the items about [about] (up to 10), read aloud. [parking]: "where did I park"
+     * (MemoryWhere), whose answer with nothing saved says how to save one.
+     */
+    data class Recall(val about: String, override val language: String, val parking: Boolean = false) : MemoryCommand() {
         override fun toString(): String = "Recall(language=$language, chars=${about.length})" // l10n: not text (toString for logs and tests)
     }
 

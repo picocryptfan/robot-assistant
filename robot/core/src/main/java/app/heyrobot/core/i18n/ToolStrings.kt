@@ -201,6 +201,39 @@ object ToolStrings : Strings("tool", area = "cards") {
         "Robot n'a pas réglé de minuterie. Il ne voit pas celles réglées dans ton appli d'horloge : regarde là.")
     val timerRanOut = s("timer_ran_out", "Your timer for {duration} ran out at {time}. Robot can't see one set in your clock app: check there.",
         "Ta minuterie de {duration} a fini à {time}. Robot ne voit pas celles réglées dans ton appli d'horloge : regarde là.")
+    // fix-everyday-c: "cancel my alarm" (PanelRoutines' cancelAlarm, core AlarmCancel): AlarmClock's dismiss, then a check.
+    val alarmOffUnlock = s("alarm_off_unlock", "Unlock to turn off an alarm.", "Déverrouille pour désactiver une alarme.")
+    val alarmNoneSeen = s("alarm_none_seen", "Robot doesn't see an alarm set.", "Robot ne voit aucune alarme réglée.")
+    val alarmOneAtATime = s("alarm_one_at_a_time", "Robot turns off one alarm at a time.", "Robot désactive une alarme à la fois.")
+    val alarmTurnOffTitle = s("alarm_turn_off_title", "Turn off your {time} alarm", "Désactiver ton alarme de {time}")
+    val turnOff = s("turn_off", "Turn off", "Désactiver")
+    val alarmOff = s("alarm_off", "Turned off your {time} alarm.", "J'ai désactivé ton alarme de {time}.")
+    val alarmStillOn = s("alarm_still_on", "Your clock app didn't turn off the {time} alarm for Robot.",
+        "Ton appli d'horloge n'a pas désactivé l'alarme de {time} pour Robot.")
+    val alarmOffAsked = s("alarm_off_asked", "Robot asked your clock app to turn off the {time} alarm, but Android doesn't show Robot whether it did.",
+        "Robot a demandé à ton appli d'horloge de désactiver l'alarme de {time}, mais Android ne montre pas à Robot si c'est fait.")
+    val alarmsOpened = s("alarms_opened", "Your clock's alarms are open.", "Les alarmes de ton horloge sont ouvertes.")
+    // fix-cancel-alarm: "what alarms do I have" (core AlarmCancel.nextLine).
+    val alarmNextToday = s("alarm_next_today", "Your next alarm is at {time} today. Android shows Robot only that one: your clock app has the others.",
+        "Ta prochaine alarme sonne aujourd'hui à {time}. Android ne montre à Robot que celle-là. Ton appli d'horloge a les autres.")
+    val alarmNextTomorrow = s("alarm_next_tomorrow", "Your next alarm is at {time} tomorrow. Android shows Robot only that one: your clock app has the others.",
+        "Ta prochaine alarme sonne demain à {time}. Android ne montre à Robot que celle-là. Ton appli d'horloge a les autres.")
+    val alarmNextDay = s("alarm_next_day", "Your next alarm is at {time} on {day}. Android shows Robot only that one: your clock app has the others.",
+        "Ta prochaine alarme sonne le {day} à {time}. Android ne montre à Robot que celle-là. Ton appli d'horloge a les autres.")
+    val alarmsInClock = s("alarms_in_clock", "Check in your clock app.", "Vérifie dans ton appli d'horloge.")
+    // fix-note-delete: "delete the note about …" (PanelRoutines' deleteNote, core NoteDelete).
+    val noteDeleteUnlock = s("note_delete_unlock", "Unlock to delete a note.", "Déverrouille pour supprimer une note.")
+    val noteDeleteTitle = s("note_delete_title", "Delete the note “{title}”", "Supprimer la note « {title} »")
+    // fix-124-review (review-1.2.4 finding 1): the card's title while it waits and Robot's words aloud, so a misheard
+    // note is named before a spoken yes deletes it ("Say yes or no." follows, PanelCardVoice).
+    val noteDeleteAsk = s("note_delete_ask", "Delete the note “{title}”?", "Supprimer la note « {title} » ?")
+    val noteDeleteWhich = s("note_delete_which", "Which note do you want to delete?", "Quelle note veux-tu supprimer ?")
+    val noteDeleteNone = s("note_delete_none", "Robot didn't find a note about {what}.", "Robot n'a pas trouvé de note sur {what}.")
+    val noteDeleteNoNotes = s("note_delete_no_notes", "You have no notes.", "Tu n'as aucune note.")
+    val noteDeleted = s("note_deleted", "Deleted the note “{title}”.", "J'ai supprimé la note « {title} ».")
+    val noteDeleteFailed = s("note_delete_failed", "Robot couldn't delete that note.", "Robot n'a pas pu supprimer cette note.")
+    val noteRestored = s("note_restored", "The note is back in your notes.", "La note est de retour dans tes notes.")
+    val noteNotRestored = s("note_not_restored", "Robot couldn't put the note back.", "Robot n'a pas pu remettre la note.")
     val openClockApp = s("open_clock_app", "Open your clock app", "Ouvrir ton appli d'horloge")
     val tapOpenClock = s("tap_open_clock", "Tap {open} to open your clock app.", "Touche {open} pour ouvrir ton appli d'horloge.")
     val noClockAlarms = s("no_clock_alarms", "No clock app on this phone takes alarms.", "Aucune appli d'horloge sur ce téléphone n'accepte les alarmes.")

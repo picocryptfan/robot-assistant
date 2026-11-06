@@ -2,7 +2,9 @@
      values-fr-rCA/strings_updates.xml. 1.1 split strings.xml into one file per area, ids and texts unchanged. -->
 <resources>
     <!-- Settings › About › Updates: this version, the last check, the release on offer, the switches, the repository and the access token. -->
-    <string name="update_footer">What is sent: To check, Robot asks GitHub (api.github.com) for the repository\'s newest releases, and it downloads an update from GitHub\'s servers. GitHub sees your IP address and Robot\'s version in the request; nothing else is sent. An access token, if you add one, goes to api.github.com only.\n\nWhat is checked: Before installing, Robot checks the file\'s SHA-256 against the release\'s SHA256SUMS, then that it is Robot, the release\'s version, newer than this one, and signed with Robot\'s key. Android\'s own window then asks you to confirm.</string>
+    <string name="update_footer">What is sent: To check, Robot asks GitHub (api.github.com) for the repository\'s newest releases, and it downloads an update from GitHub\'s servers. GitHub sees your IP address and Robot\'s version in the request; nothing else is sent. An access token, if you add one, goes to api.github.com only.\n\nWhat is checked: Before installing, Robot checks the file\'s SHA-256 against the release\'s SHA256SUMS, then that it is Robot, the release\'s version, newer than this one, and signed with Robot\'s key. %1$s</string>
+    <string name="update_footer_confirm">Android\'s own window then asks you to confirm.</string>
+    <string name="update_footer_silent">Android then installs it without asking you to confirm.</string>
     <string name="update_installed_detail">The version on this phone</string>
     <string name="update_checking">Checking…</string>
     <string name="update_status">Update</string>

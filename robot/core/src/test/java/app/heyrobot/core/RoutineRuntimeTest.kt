@@ -323,7 +323,8 @@ class RoutineRuntimeTest {
         val draft = RoutineDraft(Routine("r-1", "X", RoutineTrigger.Asked, listOf(RoutineStep.Brief), created = 1), Lang.EN)
         val all = listOf(RoutineCommand.BriefNow, RoutineCommand.Create(draft), RoutineCommand.Run("x"), RoutineCommand.ListAll, RoutineCommand.Delete("x"),
             RoutineCommand.Remind("x", false), RoutineCommand.RemindOn("x", "on the 20th"), RoutineCommand.RemindWhat,
-            RoutineCommand.CantCancel(timer = false, french = false), RoutineCommand.TimerLeft(french = false))
+            RoutineCommand.CantCancel(timer = false, french = false), RoutineCommand.TimerLeft(french = false),
+            RoutineCommand.DeleteNote("x", french = false), RoutineCommand.NextAlarm(french = false))
         assertEquals(RoutineCommandCode.entries.toList(), all.map(RoutineCommandCode::of))
     }
 }

@@ -125,7 +125,7 @@ class ListsRoutingCorpusTest {
         val packing = ListsList(id(8), name = "Packing", made = 0, items = listOf(item(9, "sunscreen")))
         val names = listOf("Packing", "Work", "Home", "Car", "Kids", "Sam", "Maison", "Travail")
         val file = ListsFile(listOf(shopping, packing) + names.drop(1).mapIndexed { i, n -> ListsList(id(20 + i), name = n, made = 0) })
-        check(corpus(), base, ListsHeard(names = names, focus = true, undo = true, seen = ListsSeen.of(file, shopping.id)), takenInFocus,
+        check(corpus(), base, ListsHeard(names = names, focus = true, undo = true, seen = ListsSeen.of(file, shopping.id), lastTurn = true), takenInFocus,
             // With a list called Maison, Files' rule « mets toutes les factures de Bell dans Maison » reads as an add too; Files
             // is asked first (D9), so Lists never hears it.
             first = setOf("mets toutes les factures de Bell dans Maison"))

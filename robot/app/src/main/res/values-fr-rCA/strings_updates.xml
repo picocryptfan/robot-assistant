@@ -3,7 +3,9 @@
      (tools/fr_typo.py, FrenchTypographyTest). -->
 <resources>
     <!-- Settings › About › Updates: this version, the last check, the release on offer, the switches, the repository and the access token. -->
-    <string name="update_footer">Ce qui est envoyé&#160;: pour vérifier, Robot demande à GitHub (api.github.com) les publications les plus récentes du dépôt, et il télécharge une mise à jour depuis les serveurs de GitHub. GitHub voit ton adresse IP et la version de Robot dans la demande&#8239;; rien d’autre n’est envoyé. Un jeton d’accès, si tu en ajoutes un, va seulement à api.github.com.\n\nCe qui est vérifié&#160;: avant d’installer, Robot compare le SHA-256 du fichier au SHA256SUMS de la publication, puis vérifie que c’est Robot, la version de la publication, plus récente que celle-ci, et signée avec la clé de Robot. La fenêtre d’Android te demande ensuite de confirmer.</string>
+    <string name="update_footer">Ce qui est envoyé&#160;: pour vérifier, Robot demande à GitHub (api.github.com) les publications les plus récentes du dépôt, et il télécharge une mise à jour depuis les serveurs de GitHub. GitHub voit ton adresse IP et la version de Robot dans la demande&#8239;; rien d’autre n’est envoyé. Un jeton d’accès, si tu en ajoutes un, va seulement à api.github.com.\n\nCe qui est vérifié&#160;: avant d’installer, Robot compare le SHA-256 du fichier au SHA256SUMS de la publication, puis vérifie que c’est Robot, la version de la publication, plus récente que celle-ci, et signée avec la clé de Robot. %1$s</string>
+    <string name="update_footer_confirm">La fenêtre d’Android te demande ensuite de confirmer.</string>
+    <string name="update_footer_silent">Android l’installe ensuite sans te demander de confirmer.</string>
     <string name="update_installed_detail">La version sur ce téléphone</string>
     <string name="update_checking">Vérification…</string>
     <string name="update_status">Mise à jour</string>

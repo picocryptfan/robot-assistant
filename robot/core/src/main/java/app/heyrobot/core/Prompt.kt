@@ -283,6 +283,25 @@ object Prompt {
             TIME_PHRASES.any { padded.contains(" $it ") } || CLOCK_TIME.containsMatchIn(plain) || IN_SOME_TIME.containsMatchIn(padded)
     }
 
+    /**
+     * fix-124-recall (Test Bench bug-everyday-b-4 on 1.2.3): "What's the capital of Portugal?", then "How many people live
+     * there?" got "Lisbon is a very large city" with no figure (« vivent là » the same), while the question alone got its
+     * figure. A follow-up is read after the earlier answer, far from the system prompt's [KNOWN] line, and Gemma hedged. So a
+     * follow-up ([followUp]: the conversation already has a question and an answer) asking for a figure, not about you, gets
+     * [FIGURE_NOTE] after it, as the clock does. Anything else: "".
+     */
+    fun figureNote(question: String, followUp: Boolean): String {
+        if (!followUp) return ""
+        val plain = Normalizer.normalize(question, Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "").lowercase(Locale.ROOT).replace('’', '\'')
+        if (MINE.containsMatchIn(plain)) return ""
+        return if (FIGURE.containsMatchIn(plain)) FIGURE_NOTE else ""
+    }
+
+    /** After a follow-up that asks for a figure ([figureNote]). */
+    const val FIGURE_NOTE = "\n(If this is general knowledge, give your best figure, never a disclaimer.)" // l10n: not text (model prompt)
+    private val FIGURE = Regex("""\b(?:how (?:many|much|big|large|tall|long|far|old|high|deep)|population|combien|quelle (?:taille|population|superficie|hauteur))\b""") // l10n: not text (words Robot hears)
+    private val MINE = Regex("""\b(?:my|mine|i|i'm|i've|me|mon|ma|mes|je|j'ai|moi)\b""") // l10n: not text (words Robot hears)
+
     private val TIME_WORDS = setOf("time", "clock", "oclock", "now", "today", "tonight", "tomorrow", "morning", "afternoon", "evening",
         "noon", "midnight", "until", "till", "when", "late", "later", "early", "earlier", "alarm", "timer", "countdown", "wake", "remind",
         "reminder", "reminded", "schedule", "scheduled", "calendar", "deadline",

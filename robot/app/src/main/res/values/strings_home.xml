@@ -106,4 +106,5 @@
     <string name="home_make_assistant_routines">Make Robot your digital assistant first: routines run in the assistant.</string>
     <string name="home_send_feedback">Send feedback</string>
     <string name="home_not_now">Not now</string>
+    <string name="home_car_mode">Car mode</string>
 </resources>

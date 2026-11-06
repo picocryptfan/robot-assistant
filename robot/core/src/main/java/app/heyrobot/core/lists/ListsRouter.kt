@@ -50,6 +50,13 @@ sealed class ListRef {
 
     /** "The list", "my list", « ma liste »: the list in focus; with none, Shopping for an add or a read, any list for a check or a tick. */
     data object Unnamed : ListRef()
+
+    /**
+     * fix-list-it: "it" after a list turn ("take the milk off it", "is milk on it"; « enlève le lait de celle-là », « le lait
+     * est-tu dessus »), and "milk is done": the list in focus and no other. With none in focus, or the item not on it, a
+     * tick asks which list (never a guess); a check with none in focus looks at every list.
+     */
+    data object It : ListRef()
 }
 
 /** What your words ask of your lists. [lang]: the language they were said in. */
@@ -102,7 +109,8 @@ sealed class ListsCommand {
 /**
  * What the router knows besides your words. [names]: your lists' own names (not a role list's), heard after to, on, onto,
  * off without the word "list"; [focus]: a list is in focus in this conversation; [undo]: a list change of this
- * conversation can be undone; [seen]: your lists' items as the panel last saw them, to tell a bare "take eggs off" from
+ * conversation can be undone; [lastTurn]: the turn just before this one was Lists' (only then is "it" a list:
+ * list-it-fix, the review found a stale "it" ticking an item on a list you'd moved on from); [seen]: your lists' items as the panel last saw them, to tell a bare "take eggs off" from
  * "take my shoes off" (null: they can't be seen now, the phone being locked).
  */
 class ListsHeard(
@@ -110,6 +118,7 @@ class ListsHeard(
     val focus: Boolean = false,
     val undo: Boolean = false,
     val seen: ListsSeen? = null,
+    val lastTurn: Boolean = false,
 )
 
 object ListsRouter {
@@ -318,7 +327,7 @@ object ListsRouter {
             heard.names.any { ListsText.key(it) == k } || ListRole.entries.any { role -> role.names.any { ListsText.key(it) == k } }
         }
         is ListRef.Role -> w[0] in MINE || w.any { it == "list" || it == "checklist" || it == "liste" }
-        ListRef.Unnamed -> true
+        ListRef.Unnamed, ListRef.It -> true
     }
 
     /** The whole of [s] from word [from] as a list of yours, for a question. */
@@ -418,8 +427,13 @@ object ListsRouter {
                 ?.let { r -> if (hasNoun(s, n) || r.ref is ListRef.Role) return ListsCommand.Read(r.ref, r.said, en) }
         }
 
-        // Check: "is oat milk on the shopping list", "do I have eggs on my list".
+        // Check: "is oat milk on the shopping list", "do I have eggs on my list"; "is milk on it" after a list turn.
         startsAny(s, CHECK_EN).takeIf { it > 0 }?.let { n ->
+            val f = s.folded
+            if (heard.lastTurn && f.size > n + 2 && f.last() == "it" && f[f.size - 2] == "on") { // l10n: not text (words Robot hears)
+                val item = s.words.subList(n, f.size - 2).joinToString(" ")
+                if (ownItems(item) && !asksAnything(item)) return ListsCommand.Check(item, ListRef.It, en)
+            }
             split(s, n, setOf("on", "in"), fr = false, heard) { w, r -> yoursAsked(w, r, heard) }?.let { (item, r) ->
                 if (ownItems(item) && (hasNoun(s, n) || r.ref is ListRef.Role)) return if (asksAnything(item)) ListsCommand.Read(r.ref, r.said, en) else ListsCommand.Check(item, r.ref, en)
             }
@@ -428,7 +442,10 @@ object ListsRouter {
         // Clear and empty.
         clearEn(s, heard)?.let { return it }
 
-        // Tick: "take eggs off the shopping list", "cross off bread", "remove eggs from the list".
+        // Tick: "take eggs off the shopping list", "cross off bread", "remove eggs from the list"; "take the milk off it",
+        // "milk is done" for the list in focus.
+        tickItEn(s, heard)?.let { return it }
+        doneIt(s, DONE_IT_EN, heard, en)?.let { return it }
         tickEn(s, heard)?.let { return it }
 
         return null
@@ -436,6 +453,60 @@ object ListsRouter {
 
     /** Whether the words from [n] hold the noun itself ("list", "checklist", « liste »). */
     private fun hasNoun(s: Said, n: Int): Boolean = s.folded.drop(n).any { it == "list" || it == "checklist" || it == "liste" || it == "groceries" }
+
+    /**
+     * fix-list-it: "take the milk off it", "cross milk off of it", "remove milk from it", "cross off milk from it": a tick on
+     * the list in focus ([ListRef.It]), claimed only right after a list turn, with a list in focus or the items on one of your
+     * lists as seen ("take the lid off it" stays out otherwise).
+     */
+    private fun tickItEn(s: Said, heard: ListsHeard): ListsCommand? {
+        val f = s.folded
+        if (f.size < 4 || f.last() != "it" || (f[0] !in TICK_VERB_EN && f[0] !in REMOVE_EN)) return null
+        var end = f.size - 1
+        // list-it-fix: "off of" is "off"; a bare "of" ("take care of it", "take a note of it") is no tick.
+        if (f[end - 1] == "of" && f[end - 2] == "off") end-- // l10n: not text (words Robot hears)
+        if (f[end - 1] !in setOf("off", "from")) return null // l10n: not text (words Robot hears)
+        end--
+        val start = if (f[1] == "off") 2 else 1
+        if (end <= start) return null
+        val items = s.words.subList(start, end).joinToString(" ")
+        if (!ownItems(items) || !takesIt(items, heard, Lang.EN)) return null
+        return ListsCommand.Tick(items, ListRef.It, Lang.EN)
+    }
+
+    /**
+     * "It" is claimed only right after a list turn (list-it-fix: a list in focus from earlier in the conversation isn't "it"),
+     * with a list in focus or [items] on one of your lists as the panel saw them.
+     */
+    private fun takesIt(items: String, heard: ListsHeard, lang: Lang): Boolean =
+        heard.lastTurn && (heard.focus || heard.seen?.anywhere(items, lang) == true)
+
+    private val DONE_IT_EN = listOf(listOf("is", "done"), listOf("are", "done"), listOf("'s", "done")) // l10n: not text (words Robot hears)
+    private val DONE_IT_FR = listOf(listOf("c'est", "fait"), listOf("est", "fait"), listOf("est", "faite"), listOf("sont", "faits"), listOf("sont", "faites")) // l10n: not text (words Robot hears)
+
+    /**
+     * fix-list-it: "milk is done", « le lait, c'est fait »: a tick on the list in focus ([ListRef.It]), claimed only for items on
+     * one of your lists as seen, or, while they can't be seen (locked), with a list in focus; and only right after a list turn
+     * (list-it-fix): "dinner is done" stays out.
+     */
+    private fun doneIt(s: Said, ends: List<List<String>>, heard: ListsHeard, lang: Lang): ListsCommand? {
+        val f = s.folded.map { it.trimEnd(',') }
+        val w = s.words.map { it.trimEnd(',') }.toMutableList()
+        // "milk's done": the 's is its own word here.
+        if (lang == Lang.EN && f.size >= 2 && f.last() == "done" && f[f.size - 2].endsWith("'s") && f[f.size - 2].length > 2) {
+            return doneItems(w.subList(0, w.size - 2) + w[w.size - 2].dropLast(2), heard, lang)
+        }
+        val end = ends.firstOrNull { e -> f.size > e.size && f.takeLast(e.size) == e } ?: return null
+        return doneItems(w.subList(0, w.size - end.size), heard, lang)
+    }
+
+    private fun doneItems(words: List<String>, heard: ListsHeard, lang: Lang): ListsCommand? {
+        val items = words.joinToString(" ").trim()
+        if (items.isEmpty() || !ownItems(items)) return null
+        // list-it-fix: and only right after a list turn ("the chicken is done" while cooking isn't a tick).
+        if (!heard.lastTurn || !(heard.seen?.anywhere(items, lang) ?: heard.focus)) return null
+        return ListsCommand.Tick(items, ListRef.It, lang)
+    }
 
     private fun tickEn(s: Said, heard: ListsHeard): ListsCommand? {
         val f = s.folded
@@ -688,12 +759,20 @@ object ListsRouter {
         }
         // LS8: « le lait est-tu sur ma liste d'épicerie », « les œufs sont-ils sur ma liste », « le beurre est tu dans ma liste »
         isItOn(s, heard)?.let { return it }
+        // fix-list-it: « le lait est-tu dessus », « j'ai-tu du lait sur celle-là » after a list turn.
+        checkItFr(s, heard)?.let { return it }
+        doneIt(s, DONE_IT_FR, heard, fr)?.let { return it }
 
         clearFr(s, heard)?.let { return it }
 
         // « enlève les œufs de la liste d'épicerie », « raye le pain », « coche la crème solaire »
         val f = s.folded
         if (f.size >= 2 && f[0] in TICK_FR) {
+            // fix-list-it: « enlève le lait de celle-là », « retire le pain de là », « ôte les œufs de dessus »: the list in focus.
+            IT_OFF_FR.firstOrNull { e -> f.size > e.size + 1 && f.takeLast(e.size) == e }?.let { e ->
+                val items = s.words.subList(1, f.size - e.size).joinToString(" ")
+                return if (ownItems(items) && takesIt(items, heard, fr)) ListsCommand.Tick(items, ListRef.It, fr) else null
+            }
             // « enlève les œufs d'la liste » too (LS8).
             split(s, 1, OFF_FR, fr = true, heard)?.let { (items, r) -> return if (ownItems(items)) ListsCommand.Tick(items, r.ref, fr) else null }
             val items = s.words.drop(1).joinToString(" ")
@@ -708,6 +787,28 @@ object ListsRouter {
             return bare(items, done = true, heard, fr)?.let { ListsCommand.PutBack(items, it, fr) }
         }
         return null
+    }
+
+    private val IT_OFF_FR = listOf(listOf("de", "la"), listOf("de", "celle-la"), listOf("de", "dessus"), listOf("d'la", "dessus")) // l10n: not text (words Robot hears)
+    private val IT_ON_FR = listOf(listOf("dessus"), listOf("sur", "celle-la"), listOf("dans", "celle-la"), listOf("la-dessus")) // l10n: not text (words Robot hears)
+
+    /** fix-list-it: « le lait est-tu dessus », « est-ce que le lait est dessus », « j'ai-tu du lait sur celle-là »: the list in focus. */
+    private fun checkItFr(s: Said, heard: ListsHeard): ListsCommand? {
+        if (!heard.lastTurn) return null // list-it-fix: only right after a list turn
+        val f = s.folded
+        val tail = IT_ON_FR.firstOrNull { t -> f.size > t.size && f.takeLast(t.size) == t } ?: return null
+        val end = f.size - tail.size
+        val n = startsAny(s, CHECK_FR)
+        val item: List<String> = if (n > 0) s.words.subList(n, end) else {
+            val from = startsAny(s, listOf("est-ce que")).coerceAtLeast(0) // l10n: not text (words Robot hears)
+            val i = (from until end).firstOrNull { f[it] in BE_TU || f[it] in BE } ?: return null
+            val after = if (f[i] in BE && i + 1 < end && f[i + 1] in TU) i + 2 else i + 1
+            if (after != end || i <= from) return null
+            s.words.subList(from, i)
+        }
+        val words = item.joinToString(" ")
+        if (words.isBlank() || !ownItems(words) || asksAnything(words)) return null
+        return ListsCommand.Check(words, ListRef.It, Lang.FR)
     }
 
     /** « le lait est-tu sur ma liste »: the words before « est-tu » are the item, those after « sur » or « dans » the list. */

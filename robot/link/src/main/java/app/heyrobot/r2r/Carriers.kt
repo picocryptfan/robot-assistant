@@ -142,6 +142,13 @@ interface TorNet {
     fun dialHost(host: String, port: Int, isolation: String): Duplex
     /** What went online: Tor's counters read when it's time, and an ended hour's row (LinkNode's pump; may block briefly). */
     fun tally() {}
+    /** fix-push-tls: how many times Tor came up; a new start means your onion must be published again. */
+    val starts: Int get() = 0
+    /** Tor was started and its process has ended on its own (Robot didn't stop it). */
+    val exited: Boolean get() = false
+    /** :link sleeps: Tor stops, and no [up] starts it again until [wake]. */
+    fun sleep() = down()
+    fun wake() {}
 }
 
 /** Your push distributor: one instance per pairing and per open code, each with a random name (D6, R0 item 14). */
@@ -250,11 +257,23 @@ class SocketDirectNet(
 }
 
 /** Posts push bodies over [http]: directly (a TCP socket to the push server) or through [tor] (Anonymous). */
-class HttpPushPoster(private val http: PushHttp, private val tor: () -> TorNet?, private val connectTimeoutMs: Int = 15_000) : PushPoster {
+class HttpPushPoster(
+    private val http: PushHttp,
+    private val tor: () -> TorNet?,
+    private val connectTimeoutMs: Int = 15_000,
+    private val lookup: (String) -> List<InetAddress> = PUBLIC,
+) : PushPoster {
     companion object {
-        /** The phone's TLS (the default context: Conscrypt and the system's CAs) and its host name verifier. */
+        /** The phone's TLS (Conscrypt and the system's CAs, a new context each post) and its host name verifier. */
         fun platform(tor: () -> TorNet?): HttpPushPoster =
-            HttpPushPoster(PushHttp(javax.net.ssl.SSLContext.getDefault(), javax.net.ssl.HttpsURLConnection.getDefaultHostnameVerifier()), tor)
+            HttpPushPoster(PushHttp(PushHttp.platformTrust(), hostnames = javax.net.ssl.HttpsURLConnection.getDefaultHostnameVerifier()), tor)
+
+        /** fix-push-tls: a direct post's host looked up, and refused unless every address is on the internet (not your network or the phone). */
+        val PUBLIC: (String) -> List<InetAddress> = { host ->
+            val all = InetAddress.getAllByName(host).toList()
+            if (all.isEmpty() || all.any { !app.heyrobot.core.web.PublicAddress.isPublic(it.address) }) throw PushException(PushProblem.BAD_ADDRESS)
+            all
+        }
     }
 
     override fun post(route: PushRoute, body: ByteArray, ttlSeconds: Long, viaTor: Boolean, isolation: String) {
@@ -278,9 +297,10 @@ class HttpPushPoster(private val http: PushHttp, private val tor: () -> TorNet?,
             if (viaTor) {
                 (tor() ?: throw PushException(PushProblem.UNREACHABLE)).dialHost(target.host, target.port, isolation)
             } else {
+                val at = lookup(target.host).first()
                 val s = Socket()
                 try {
-                    s.connect(InetSocketAddress(target.host, target.port), connectTimeoutMs)
+                    s.connect(InetSocketAddress(at, target.port), connectTimeoutMs)
                 } catch (x: IOException) {
                     try { s.close() } catch (_: IOException) {}
                     throw PushException(PushProblem.UNREACHABLE)

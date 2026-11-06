@@ -123,6 +123,37 @@ class TorRuntimeBridgesTest {
         }
     }
 
+    /** fix-push-tls: Tor ending on its own is seen (no longer running), and the next up() starts it again, a new start. */
+    @Test fun torEndingOnItsOwnIsNoticedAndStartedAgain() {
+        works = setOf("plain")
+        val t = tor({ plan(BridgeChoice.OFF) })
+        assertTrue(t.up())
+        assertEquals(1, t.starts)
+        File(paths.dir, "alive").delete()
+        val until = System.nanoTime() + 5_000_000_000L
+        while (t.running && System.nanoTime() < until) Thread.sleep(20)
+        assertFalse(t.running)
+        assertTrue(t.exited)
+        assertTrue(t.up())
+        assertEquals(listOf("plain", "plain"), starts)
+        assertEquals(2, t.starts)
+        assertFalse(t.exited)
+    }
+
+    /** fix-push-tls: after sleep(), nothing starts Tor again (a send already under way) until wake(). */
+    @Test fun noStartBetweenSleepAndWake() {
+        works = setOf("plain")
+        val t = tor({ plan(BridgeChoice.OFF) })
+        assertTrue(t.up())
+        t.sleep()
+        assertFalse(t.running)
+        assertFalse(t.up())
+        assertEquals(listOf("plain"), starts)
+        t.wake()
+        assertTrue(t.up())
+        assertEquals(listOf("plain", "plain"), starts)
+    }
+
     @Test fun offIsPlainTorAlone() {
         val t = tor({ plan(BridgeChoice.OFF) })
         assertFalse(t.up())

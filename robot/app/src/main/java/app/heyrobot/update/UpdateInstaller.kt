@@ -59,9 +59,9 @@ object UpdateInstaller {
     /** Settings › Apps › Special app access › Install unknown apps › Robot is on. */
     fun allowed(ctx: Context): Boolean = try { ctx.packageManager.canRequestPackageInstalls() } catch (_: Throwable) { false }
 
-    /** Android's page for that switch, for Robot. */
+    /** Android's page for that switch, for Robot: opened for a result from the Updates page, so not in a task of its own. */
     fun allowIntent(ctx: Context): Intent =
-        Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${ctx.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${ctx.packageName}"))
 
     /**
      * The app store that keeps Robot's updates (Android 14 update ownership), if one other than Robot does: then Android asks

@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.memory
 
+import app.heyrobot.core.ToolGroup
+import app.heyrobot.core.ToolRouter
+import app.heyrobot.core.files.FilesRouter
 import app.heyrobot.core.i18n.InfoStrings
 import app.heyrobot.core.i18n.Lang
 import app.heyrobot.core.i18n.Langs
@@ -37,9 +40,10 @@ object MemoryRouting {
      * and usable (unlocked, or "Use memory on the lock screen"); one that changes it ("remember that …", "forget …") only on
      * an unlocked phone ("Unlock first to save to memory."); "forget everything" always gets its answer (Settings, never by
      * voice). A question that only asks for memory ("do you remember…") on a locked phone hears "Unlock first"; any other
-     * question goes to the model, without memory.
+     * question goes to the model, without memory. [saved]: whether a saved item answers a "where's my …" recall (fix-124-recall-b:
+     * with none, the question routes as before; "where did I park" is memory's either way). Default: nothing saved.
      */
-    fun route(text: String, s: MemorySettings, locked: Boolean): MemoryRoute? {
+    fun route(text: String, s: MemorySettings, locked: Boolean, saved: (MemoryCommand.Recall) -> Boolean = { false }): MemoryRoute? {
         val c = MemoryCommands.parse(text)
         if (!s.on) return c?.let { MemoryRoute.Off(it.language) }
         val usable = !locked || s.onLockScreen
@@ -49,8 +53,55 @@ object MemoryRouting {
             (c is MemoryCommand.Forget || c is MemoryCommand.ForgetLast) && !MemoryAccess.writes(locked) -> MemoryRoute.Unlock(c.language, changing = true)
             c != null -> if (usable) MemoryRoute.Run(c) else MemoryRoute.Unlock(c.language)
             MemoryAccess.whenLocked(locked, s, text) == LockedMemory.SAY_UNLOCK -> MemoryRoute.Unlock(if (FRENCH_ASK.containsMatchIn(MemoryCommands.foldAligned(text))) "fr" else "en")
+            // fix-124-recall: "where's my car" is Robot's own recall from memory, never the model's guess (MemoryWhere).
+            usable && s.useInAnswers -> MemoryWhere.recall(text)?.takeIf { it.parking || saved(it) }?.let { MemoryRoute.Run(it) }
             else -> null
         }
+    }
+}
+
+/**
+ * fix-124-recall (Test Bench bug-everyday-b-1 on 1.2.3): "where's my car" after "remember I parked the car on level 3, row
+ * B" got "I don't have access to your personal location" twice on the Pixel 8, though the note went with the question
+ * (MemoryRecall finds it): Gemma refuses a where-question about your things. So "where is my …", "where did I park …", « où est
+ * ma … », « où j'ai garé … » are memory's recall ("Here's what I remember about your car: …"), answered by
+ * Robot from what you saved; with nothing saved, Robot says so. Never "where is the …" (a place), "my nearest …", or a file or drawer (Files).
+ */
+object MemoryWhere {
+    private const val THING = """([\p{L}\p{N}' -]{1,40}?)""" // l10n: not text (pattern)
+    private val EN_IS = Regex("""^where(?:'s| is| are|'re) (my|our) $THING[?.! ]*$""") // l10n: not text (words Robot hears)
+    private val EN_DID = Regex("""^where (?:did|have) (?:i|we) (park|parked)(?: (my|our|the) $THING)?[?.! ]*$""") // l10n: not text (words Robot hears)
+    private val FR_IS = Regex("""^o[uù] (?:est|sont|se trouve|se trouvent) (mon|ma|mes|notre|nos) $THING[?.! ]*$""") // l10n: not text (words Robot hears)
+    private val FR_DID = Regex("""^o[uù] (?:est-ce que )?(?:j'ai|on a) (gar[ée]e?s?)(?: (mon|ma|mes|la|le|les|l') ?$THING)?[?.! ]*$""") // l10n: not text (words Robot hears)
+    private val NOT_KEPT = setOf("nearest", "closest", "next", "local", "nearby", "current", "location", "position", "phone",
+        "drawer", "drawers", "file", "files", "document", "documents", "folder", "tiroir", "tiroirs", "fichier", "fichiers", "dossier", "document") // l10n: not text (words Robot hears)
+    private val YOURS = mapOf("my" to "your", "mon" to "ton", "ma" to "ta", "mes" to "tes") // l10n: not text (words Robot hears)
+
+    /**
+     * The recall [question] asks for ("your car", « ta voiture », "where you parked"), or null when it isn't one, or when the
+     * files router or ToolRouter's FILES group claims its words ("where's my lease": fix-124-recall-b, Files first).
+     */
+    fun recall(question: String): MemoryCommand.Recall? =
+        if (FilesRouter.route(question) != null || ToolGroup.FILES in ToolRouter.route(question)) null else heard(question)
+
+    private fun heard(question: String): MemoryCommand.Recall? {
+        val q = question.trim().replace('’', '\'').lowercase().replace(Regex("\\s+"), " ").removePrefix("robot, ").removePrefix("robot ")
+        fun thing(own: String?, what: String?): String? {
+            val w = what?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+            if (w.substringBefore(' ') in NOT_KEPT) return null
+            return (YOURS[own] ?: own)?.let { if (it.endsWith("'")) it + w else "$it $w" } ?: w
+        }
+        EN_IS.find(q)?.let { m -> return thing(m.groupValues[1], m.groupValues[2])?.let { MemoryCommand.Recall(it, "en") } }
+        EN_DID.find(q)?.let { m ->
+            val about = if (m.groupValues[3].isBlank()) "where you parked" else thing(m.groupValues[2], m.groupValues[3]) ?: return null // l10n: not text (the recall's search words)
+            return MemoryCommand.Recall(about, "en", parking = true)
+        }
+        FR_IS.find(q)?.let { m -> return thing(m.groupValues[1], m.groupValues[2])?.let { MemoryCommand.Recall(it, "fr") } }
+        FR_DID.find(q)?.let { m ->
+            val about = if (m.groupValues[3].isBlank()) "l'endroit où tu t'es " + m.groupValues[1] else thing(m.groupValues[2], m.groupValues[3]) ?: return null // l10n: not text (the recall's search words)
+            return MemoryCommand.Recall(about, "fr", parking = true)
+        }
+        return null
     }
 }
 
@@ -128,10 +179,12 @@ object MemoryReplies {
      * "What do you remember about Julie?": the [found] items (not secret: [private] counts those left out), or that none
      * matches, as words without a language yet, made for [fr]'s reply ([spokenText]).
      */
-    fun recallText(about: String, found: List<MemoryItem>, private: Int, fr: Boolean): Phrase {
+    fun recallText(about: String, found: List<MemoryItem>, private: Int, fr: Boolean, parking: Boolean = false): Phrase {
         val more = if (private == 0) null else MemoryStrings.privateMore(private, "page" to page)
         val first = if (found.isEmpty()) MemoryStrings.recallNone("about" to about) else MemoryStrings.recall("about" to about, "list" to list(found, fr))
-        return Phrase.Join(listOfNotNull(first, more))
+        // fix-124-recall-b: "where did I park" with nothing saved says how to save it.
+        val how = if (found.isEmpty() && private == 0 && parking) MemoryStrings.parkedHow() else null
+        return Phrase.Join(listOfNotNull(first, more, how), " ")
     }
 
     /**

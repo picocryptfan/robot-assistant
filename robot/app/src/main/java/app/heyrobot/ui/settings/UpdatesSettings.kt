@@ -24,10 +24,13 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -47,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.SecureFlagPolicy
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import app.heyrobot.R
@@ -148,7 +152,9 @@ fun UpdatesScreen(ui: UpdatesUi, a: UpdatesActions, onBack: () -> Unit) {
     val releaseTitle = ui.offer?.let { if (it.testBuild) stringResource(R.string.update_test_build, it.version) else "Robot ${it.version}" } // l10n: not text (the app's name and version)
     val automatic = stringResource(R.string.update_automatic)
     val advanced = UiStrings.advanced().str()
-    val footer = stringResource(R.string.update_footer)
+    // Android asks only when the switch is on and no other app store keeps Robot's updates (the switch shows it off then).
+    val asks = !(s.installWithoutAsking && ui.otherOwner == null)
+    val footer = stringResource(R.string.update_footer, stringResource(if (asks) R.string.update_footer_confirm else R.string.update_footer_silent))
     PreferenceScreen(UiStrings.updates().str(), onBack) {
         preferenceGroup(null, "version") {
             PreferenceItem("Robot ${ui.installed}", stringResource(R.string.update_installed_detail), RIcons.Info) // l10n: not text (the app's name and version)
@@ -331,6 +337,24 @@ private fun TokenDialog(onDismiss: () -> Unit, onSave: (String) -> Unit) {
     )
 }
 
+/**
+ * Opens one of Android's pages from this page and calls [onReturn] each time you come back to it: on each resume, and when
+ * the page opened here closes, which also covers split screen, where Robot stays resumed the whole time. The function it
+ * returns says whether the page opened.
+ */
+@Composable
+internal fun rememberOpenAndReread(onReturn: () -> Unit): (Intent) -> Boolean {
+    val latest by rememberUpdatedState(onReturn)
+    val owner = LocalLifecycleOwner.current
+    DisposableEffect(owner) {
+        val watch = LifecycleEventObserver { _, e -> if (e == Lifecycle.Event.ON_RESUME) latest() }
+        owner.lifecycle.addObserver(watch)
+        onDispose { owner.lifecycle.removeObserver(watch) }
+    }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { latest() }
+    return remember(launcher) { { page: Intent -> try { launcher.launch(page); true } catch (_: Exception) { false } } }
+}
+
 /** The page, wired to the updater (SettingsNav's "updates" route). */
 @Composable
 internal fun UpdatesRoute(snackbar: SnackbarHostState, onBack: () -> Unit, onReport: () -> Unit = {}) {
@@ -348,11 +372,11 @@ internal fun UpdatesRoute(snackbar: SnackbarHostState, onBack: () -> Unit, onRep
     val state by UpdateStore.state
     val work by Updater.work
     val message by Updater.message
-    val lifecycle = LocalLifecycleOwner.current.lifecycle
-    val lstate by lifecycle.currentStateFlow.collectAsState()
+    var returns by remember { mutableIntStateOf(0) }
+    val open = rememberOpenAndReread { returns++ }
     var facts by remember { mutableStateOf(RouteFacts()) }
     // Read again when the page comes back (from Android's install access page) and after each change.
-    LaunchedEffect(lstate.isAtLeast(Lifecycle.State.RESUMED), state, settings, work) {
+    LaunchedEffect(returns, state, settings, work) {
         facts = withContext(Dispatchers.IO) {
             RouteFacts(
                 repo = UpdateStore.repo(app), defaultRepo = UpdateStore.defaultRepo(app), ready = Updater.isReady(app),
@@ -389,7 +413,7 @@ internal fun UpdatesRoute(snackbar: SnackbarHostState, onBack: () -> Unit, onRep
         stop = { Updater.cancel() },
         install = {
             if (!UpdateInstaller.allowed(app)) {
-                try { ctx.startActivity(UpdateInstaller.allowIntent(app)) } catch (_: Exception) { say(openInstall) }
+                if (!open(UpdateInstaller.allowIntent(app))) say(openInstall)
             } else Updater.installNow(app)
         },
         skip = { offer?.let { Updater.skip(app, it.version) } },
@@ -400,9 +424,7 @@ internal fun UpdatesRoute(snackbar: SnackbarHostState, onBack: () -> Unit, onRep
                 ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(r.releasePage(offer.tag))).addCategory(Intent.CATEGORY_BROWSABLE))
             } catch (_: Exception) { say(noBrowser) }
         },
-        allowInstalls = {
-            try { ctx.startActivity(UpdateInstaller.allowIntent(app)) } catch (_: Exception) { say(openInstall) }
-        },
+        allowInstalls = { if (!open(UpdateInstaller.allowIntent(app))) say(openInstall) },
         change = { Updater.setSettings(app, it) },
         saveToken = { t ->
             scope.launch {

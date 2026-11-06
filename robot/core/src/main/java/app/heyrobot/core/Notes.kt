@@ -86,19 +86,25 @@ object NoteSearch {
      * (a word matches the same word, a longer one starting with it, or its singular: "filter" finds "filters"). A query
      * with nothing but words like "my notes" lists the newest notes.
      */
-    fun find(query: String, notes: List<Note>, limit: Int = MAX_RESULTS): List<Note> {
+    fun find(query: String, notes: List<Note>, limit: Int = MAX_RESULTS): List<Note> = ranked(query, notes, limit).map { it.first }.take(limit)
+
+    /**
+     * [find]'s notes with their scores, best first (fix-note-delete: which ones fit equally well). A query naming no
+     * subject gives the newest notes, all at score 0: one for "my last note", else [limit].
+     */
+    fun ranked(query: String, notes: List<Note>, limit: Int = MAX_RESULTS): List<Pair<Note, Int>> {
         val all = words(query).filter { it !in STOP }.distinct()
         val last = all.any { it in LAST }
         val q = if (last) all.filter { it !in LAST && it !in MOST } else all
         // "My last note": the newest one; "my notes": the newest few.
-        if (q.isEmpty()) return notes.sortedByDescending { it.updated }.take(if (last) 1 else limit)
+        if (q.isEmpty()) return notes.sortedByDescending { it.updated }.take(if (last) 1 else limit).map { it to 0 }
         return notes.mapNotNull { n ->
             val title = words(n.title)
             val text = words(n.text)
             val score = q.sumOf { w -> (if (title.any { matches(it, w) }) 2 else 0) + (if (text.any { matches(it, w) }) 1 else 0) }
             val all = q.all { w -> title.any { matches(it, w) } || text.any { matches(it, w) } }
             if (score == 0) null else Triple(n, score + if (all) 10 else 0, n.updated)
-        }.sortedWith(compareByDescending<Triple<Note, Int, Long>> { it.second }.thenByDescending { it.third }).take(limit).map { it.first }
+        }.sortedWith(compareByDescending<Triple<Note, Int, Long>> { it.second }.thenByDescending { it.third }).map { it.first to it.second }
     }
 
     private fun matches(word: String, q: String): Boolean =

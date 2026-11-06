@@ -627,7 +627,7 @@ vi=$(for f in $(unzip -Z1 "$APK" 'res/*.xml'); do "$BT/aapt2" dump xmltree --fil
 has '"app.heyrobot.assistant.RobotSessionService"' "$vi" "voice-interaction sessionService"
 # Launcher shortcuts: the application ID as targetPackage (a resource can't take the placeholder), never 0.9's.
 shortcut_pkgs=$(grep -o 'targetPackage([^)]*)="[^"]*"' <<<"$vi" | sed 's/.*="//; s/"$//' | sort | uniq -c | awk '{ print $2 "x" $1 }' | tr '\n' ' ')
-[ "$shortcut_pkgs" = "ai.robot_appx2 " ] && pass "both shortcuts target ai.robot_app" || fail "shortcut targetPackage: $shortcut_pkgs"
+[ "$shortcut_pkgs" = "ai.robot_appx3 " ] && pass "the three shortcuts target ai.robot_app" || fail "shortcut targetPackage: $shortcut_pkgs"
 has '"app.heyrobot.assistant.RobotRecognitionService"' "$vi" "voice-interaction recognitionService"
 hasnt 'selectableAsDefault' "$vi" "recognizer selectableAsDefault left at its default (true)"
 has 'supportsAssist(0x010104f0)=true' "$vi" "supportsAssist"

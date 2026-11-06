@@ -187,6 +187,11 @@ temporary one when you return, at screen-off or after 15 minutes, and at the nex
 memory regions between Robot and `:files` aren't sealed against resizing yet, so a compromised `:files` could crash the
 app or the panel; that's a denial of service, not a leak, and a phone check decides the fix.
 
+Notes, People and History: they're kept in Robot's private storage, which Android's file-based encryption protects,
+but not yet sealed by a key of Robot's own as memory, Lists and Robot Files are, because Robot writes them while the phone
+is locked too (a note or a conversation over the lock screen, a person learned from a notification). The Notes screens
+are `FLAG_SECURE`: kept out of screenshots, screen recordings, casting and Recents.
+
 Skills connections' known limits: its checks have run on a Pixel 8 against stand-in Home Assistant and ntfy servers, but
 not every step has been run by a person: a real routing server, a connection over mobile data and the Termux step are
 still to do. A plain http address on your
@@ -218,7 +223,10 @@ paste are checked word by word, so a line can't add any other Tor setting.
 Robot to Robot's push app: the app you choose in Settings › Robot to Robot › Push app carries each push to Robot, and it
 sees only ciphertext. But an app you chose can still forge a push event of its own or hand Robot's connector to another push
 app, so choose one you trust; only your tap saves the choice. Robot refuses a push address that points at a local network or
-at your own phone, and treats one it can't accept as no address. Each pairing takes at most two connections coming in: a new one closes the
+at your own phone, by its text and, before each direct post, by every address its name looks up to, and treats one it can't
+accept as no address. Each post to a push server is a TLS session of its own, never resumed from another post, so the push
+server can't tie an Anonymous post to a direct one, or two pairings to each other; a post that takes more than a minute is
+dropped and tried again later. Each pairing takes at most two connections coming in: a new one closes the
 ones that haven't proven themselves first, then the oldest, so someone who only saw a token on the network can't push out
 your newest proven one.
 

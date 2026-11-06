@@ -72,7 +72,12 @@ class TorRuntime(
     private val hours: TorHours? = null,
 ) : TorNet {
     private val lock = Any()
-    private var process: Process? = null
+    @Volatile private var process: Process? = null
+    /** fix-push-tls: :link sleeps; [up] starts nothing until [wake]. */
+    @Volatile private var held = false
+    @Volatile private var started = 0
+    /** review-1.2.4 finding 6: Tor's deaths after it was up, so one that keeps dying isn't started every pump. */
+    private val restarts = RestartCap()
     @Volatile private var control: TorControl? = null
     private var controlStream: Duplex? = null
     private val servers = HashMap<Int, Pair<UnixServer, PublishedOnion>>()
@@ -82,10 +87,19 @@ class TorRuntime(
     /** The route that last bootstrapped (Automatic tries it first), in memory only. */
     private var worked: TorRoute? = null
 
-    override val running: Boolean get() = ready
+    override val running: Boolean get() = ready && process?.isAlive == true
+    override val starts: Int get() = started
+    override val exited: Boolean get() = process?.isAlive == false
 
     override fun up(): Boolean = synchronized(lock) {
-        if (ready) return true
+        if (held) return false
+        if (ready) {
+            if (process?.isAlive == true) return true
+            // fix-push-tls: Tor ended on its own (a crash, Android's process limits): cleared, then started again below.
+            died()
+            restarts.died(System.nanoTime() / 1_000_000)
+        }
+        if (!restarts.allows(System.nanoTime() / 1_000_000)) return false
         try {
             val p = plan()
             // A route whose transport lyrebird carries is tried only when lyrebird is there.
@@ -103,6 +117,7 @@ class TorRuntime(
                     c.networkOn(true)
                     if (bootstrapped(c, if (r.bridged) stallBridgeMs else stallPlainMs, more)) {
                         ready = true
+                        started++
                         worked = r
                         try { onReady(r) } catch (_: Exception) {}
                         return true
@@ -142,6 +157,14 @@ class TorRuntime(
         sample()
         for (slot in servers.keys.toList()) unpublishLocked(slot)
         try { control?.shutdown() } catch (_: TorException) {}
+        stopProcess()
+    }
+
+    /** Tor's process is gone: nothing is asked of its control socket; its onions and listeners are dropped. */
+    private fun died() {
+        sample()
+        control = null
+        for (slot in servers.keys.toList()) unpublishLocked(slot)
         stopProcess()
     }
 
@@ -266,6 +289,13 @@ class TorRuntime(
         stopProcess()
     }
 
+    override fun sleep() = synchronized(lock) {
+        held = true
+        down()
+    }
+
+    override fun wake() { held = false }
+
     private fun stopProcess() {
         ready = false
         route = null
@@ -283,4 +313,21 @@ class TorRuntime(
         const val COOKIE_SECONDS = 10L
         const val DIAL_MS = 120_000
     }
+}
+
+/**
+ * review-1.2.4 finding 6: Tor that dies after it started is started again at most [max] times in [windowMs]; then [allows]
+ * says no (sends wait their backoff) until the oldest death is an hour old. Times are monotonic milliseconds.
+ */
+internal class RestartCap(private val max: Int = MAX_PER_HOUR, private val windowMs: Long = 3_600_000) {
+    private val deaths = ArrayDeque<Long>()
+
+    @Synchronized fun died(now: Long) { deaths.addLast(now) }
+
+    @Synchronized fun allows(now: Long): Boolean {
+        while (deaths.isNotEmpty() && now - deaths.first() >= windowMs) deaths.removeFirst()
+        return deaths.size <= max
+    }
+
+    companion object { const val MAX_PER_HOUR = 3 }
 }

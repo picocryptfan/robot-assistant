@@ -90,6 +90,18 @@ class RoutineSpeakingService : Service() {
                 }
                 VoiceHub.main.post { CarNotices.cancelStart(this); if (CarModeController.state.phase == CarPhase.OFF) CarModeController.start(); CarModeController.serviceStarted() }
             }
+            // 1.2.4: the app's Car mode button and shortcut. Car mode by hand first, so the notification is car mode's; on
+            // already, its screen again.
+            ACTION_CAR_OPEN -> {
+                VoiceHub.init(this)
+                if (CarModeController.state.phase == CarPhase.OFF) CarModeController.startByHand()
+                if (!goForeground()) {
+                    CarModeController.serviceRefused()
+                    if (!carHolds()) stopSelf()
+                    return START_NOT_STICKY
+                }
+                VoiceHub.main.post { CarNotices.cancelStart(this); CarModeController.serviceStarted(); if (CarModeController.on) CarModeController.openScreen() }
+            }
             ACTION_CAR_END -> VoiceHub.main.post { CarModeController.end() }
             else -> if (!RoutineVoice.active && !CarModeController.on) stopSelf()
         }
@@ -133,6 +145,7 @@ class RoutineSpeakingService : Service() {
         /** 0.8, car mode: in the foreground for the drive, and its notification's End. */
         const val ACTION_CAR = "app.heyrobot.car.START"
         const val ACTION_CAR_END = app.heyrobot.core.car.CarNotice.ACTION_END
+        const val ACTION_CAR_OPEN = app.heyrobot.core.car.CarNotice.ACTION_OPEN
 
         /** Car mode is starting or on: the service stays for it. */
         private fun carHolds(): Boolean = CarModeController.state.phase != CarPhase.OFF

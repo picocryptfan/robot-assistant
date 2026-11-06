@@ -23,6 +23,7 @@ import app.heyrobot.core.VoiceLogText
 import app.heyrobot.core.toPromptTurns
 import app.heyrobot.core.i18n.Lang
 import app.heyrobot.core.i18n.Langs
+import app.heyrobot.core.i18n.ListsStrings
 import app.heyrobot.core.lists.ItemBy
 import app.heyrobot.core.lists.ItemHow
 import app.heyrobot.core.lists.ListQuote
@@ -127,6 +128,22 @@ class PanelListsTest {
         assertEquals("Nothing to undo.", PanelLists.undo(ctx, card.undo!!, Langs.EN))
     }
 
+    /** lists-undo-fix: a card's Undo tapped while locked (or the key locked under it) keeps its button; unlocked, it works. */
+    @Test fun undoWhileLockedKeepsItsButton() {
+        val key = say("add oat milk to the shopping list")!!.card!!.undo!!
+        val unlock = ListsStrings.unlockToUndo().render(Langs.EN)
+        lock(true)
+        assertEquals(unlock, PanelLists.undo(ctx, key, Langs.EN))
+        assertTrue(PanelLists.canUndo(key))
+        lockedNow = false
+        assertEquals(unlock, PanelLists.undo(ctx, key, Langs.EN))
+        assertTrue(PanelLists.canUndo(key))
+        lock(false)
+        assertNull(PanelLists.undo(ctx, key, Langs.EN))
+        assertFalse(PanelLists.canUndo(key))
+        assertEquals(emptyList<String>(), shopping().open.map { it.text })
+    }
+
     @Test fun severalItemsSomeAlreadyThereAndFrench() {
         assertEquals("Added eggs, bread and milk (2 L) to Shopping.", say("add eggs, bread and 2 litres of milk to the grocery list")!!.en())
         assertEquals("Already on Shopping: eggs.", say("add eggs to the shopping list")!!.en())
@@ -216,6 +233,52 @@ class PanelListsTest {
      * looked only at the list in focus. With several lists, "my list" means any of them unless you name one (§3.6): a check
      * that names no list looks at every list, and "what lists do I have" ends the focus. In English and French.
      */
+    /**
+     * fix-list-it (1.2.4's known limits; LT3 on the Pixel 8): after a list turn, "take the milk off it" and "milk is done"
+     * tick off the list in focus, with Undo, and "is milk on it" checks only that list, while "is milk on my list" looks at
+     * every list. With none in focus, or the item only on another list, Robot asks which list: never a guess. English and French.
+     */
+    @Test fun itIsTheListInFocusAndATickOnItNeverGuesses() {
+        say("add milk and bread to the shopping list")
+        assertEquals("Made a new list, Pharmacy, with aspirin.", say("add aspirin to the pharmacy list")!!.en())
+        assertEquals("No, Pharmacy doesn't have milk.", say("is milk on it")!!.en())
+        // Milk is only on Shopping: asked, not ticked.
+        assertEquals("Shopping?", say("take the milk off it")!!.en())
+        assertTrue(shopping().open.any { it.text == "milk" })
+        assertEquals("Yes, Shopping has milk.", say("is milk on my list")!!.en())
+        val t = say("take the milk off it")!!
+        assertEquals("Ticked off milk.", t.en())
+        assertTrue(shopping().done.any { it.text == "milk" })
+        assertEquals("Undone.", say("undo that")!!.en())
+        assertTrue(shopping().open.any { it.text == "milk" })
+        assertEquals("Ticked off milk.", say("milk is done")!!.en())
+        assertEquals("Ticked off bread.", say("bread's done")!!.en())
+        assertEquals("No, Shopping doesn't have aspirin.", say("is aspirin on it")!!.en())
+        assertNull(say("dinner is done"))
+        // list-it-fix: after a turn that wasn't Lists' (PanelController calls otherTurn), the list in focus isn't "it".
+        PanelLists.otherTurn()
+        assertNull(say("is bread on it"))
+        assertNull(say("bread's done"))
+        // A new conversation: no list turn yet, so "it" isn't a list at all.
+        PanelLists.forget()
+        PanelLists.refresh(ctx) // the panel's show
+        assertNull(say("take the aspirin off it"))
+        assertTrue(file().lists.any { l -> l.open.any { it.text == "aspirin" } })
+        assertNull(say("is aspirin on it"))
+        assertNull(say("take the lid off it"))
+
+        val fr = Langs.of(Lang.FR)
+        fun fr(t: String) = plain(say(t, fr)!!.text.render(fr))
+        PanelLists.forget()
+        say("ajoute du fromage et des œufs à ma liste d'épicerie", fr)
+        assertEquals("Oui, c’est sur la liste Épicerie : fromage.", fr("le fromage est-tu dessus"))
+        assertEquals("Non, ce n’est pas sur la liste Épicerie : aspirin.", fr("l'aspirin est-tu dessus"))
+        fr("enlève le fromage de celle-là")
+        assertTrue(shopping().done.any { it.text == "fromage" })
+        fr("les œufs, c'est fait")
+        assertTrue(shopping().done.any { it.text == "œufs" })
+    }
+
     @Test fun aCheckThatNamesNoListLooksAtEveryListInOneConversation() {
         say("add 3 litres of milk to the shopping list")
         assertEquals("Made a new list, Pharmacy, with milk thistle.", say("add milk thistle to the pharmacy list")!!.en())

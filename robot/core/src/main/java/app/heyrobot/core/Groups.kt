@@ -349,6 +349,30 @@ object ToolRouter {
             (t != ToolName.BROWSER_SEARCH || browser) && (t.group != ToolGroup.FILES || files) && (t.group != ToolGroup.LISTS || lists) && (t.group != ToolGroup.LINK || link)
     }
 
+    /**
+     * fix-everyday-c ("and tomorrow?" after "what's the weather", Pixel 8, 5 Nov 2026): a short follow-up names no tool of its
+     * own, so the model's weather call counted as unasked and, with the forecast in the conversation, waited on a card. A
+     * follow-up takes its subject from the turn before: its read tools ([ToolName.reads]: the weather, a search of your
+     * notes) count as asked again. Nothing that writes or leaves for someone carries over: those need this turn's words.
+     */
+    fun asked(question: String, before: String?, lists: Boolean = false): Set<ToolName> {
+        val now = asked(question, lists)
+        if (before.isNullOrBlank() || !followUp(question)) return now
+        return now + asked(before, lists).filter { it.reads }
+    }
+
+    /** "and tomorrow?", "what about Paris", « et demain ? », « pis pour samedi »: a few words that lean on the turn before. */
+    fun followUp(question: String): Boolean {
+        val w = words(question)
+        if (w.isEmpty() || w.size > FOLLOW_MAX) return false
+        val lead = w.take(2).joinToString(" ")
+        return w[0] in FOLLOW_ONE || lead in FOLLOW_TWO
+    }
+
+    private const val FOLLOW_MAX = 6
+    private val FOLLOW_ONE = setOf("and", "et", "pis", "puis")
+    private val FOLLOW_TWO = setOf("what about", "how about", "what of", "same for", "and for", "quen est", "qu en", "pour demain", "et pour")
+
     /** "core.people" for the logs (a fixed identifier, never the question). */
     fun label(tools: Collection<ToolName>): String =
         ToolGroup.entries.filter { g -> tools.any { it.group == g } }.joinToString(".") { it.name.lowercase(Locale.ROOT) }.ifEmpty { "none" }

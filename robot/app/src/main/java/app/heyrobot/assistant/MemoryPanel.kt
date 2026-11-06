@@ -237,7 +237,10 @@ object MemoryPanel {
     // ------------------------------------------------------------------ the router
 
     /** The router's route for what you said ([locked]: the phone now), or null: not memory's. */
-    fun route(q: String, locked: Boolean): MemoryRoute? = MemoryRouting.route(q, settings(), locked)
+    fun route(q: String, locked: Boolean): MemoryRoute? = MemoryRouting.route(q, settings(), locked) { c ->
+        // fix-124-recall-b: "where's my …" is memory's only when a saved item answers it.
+        (load() as? MemoryLoad.Loaded)?.file?.let { MemorySearch.find(c.about, it.items, clock()).isNotEmpty() } == true
+    }
 
     /**
      * What History keeps of the question: a secret is never in it ("Remember: [a code, kept in Memory]"), nor a remember
@@ -315,7 +318,7 @@ object MemoryPanel {
             is MemoryCommand.Recall -> {
                 val found = MemorySearch.find(c.about, f.items, now)
                 val said = sayable(found)
-                MemoryAnswer(MemoryReplies.recallText(c.about, said, private = found.size - said.size, fr = fr).of(fr), fr = fr, ids = said.map { it.id })
+                MemoryAnswer(MemoryReplies.recallText(c.about, said, private = found.size - said.size, fr = fr, parking = c.parking).of(fr), fr = fr, ids = said.map { it.id })
                     .also { remember(used = said.map { it.id }) }
             }
             is MemoryCommand.AboutMe -> {
@@ -566,6 +569,9 @@ object MemoryPanel {
      * Undo on a memory card (background thread): a saved item forgotten again, forgotten ones put back. The card's new line,
      * in [langs] (1.1: the turn's languages; English by default).
      */
+    /** lists-undo-fix: the Undo under [key] can still be tried (one that failed for now, locked, keeps its button). */
+    fun canUndo(key: String): Boolean = synchronized(this) { key in undos }
+
     fun undo(key: String, langs: Langs = Langs.EN): String {
         if (!MemoryAccess.writes(lockedNow())) return MemoryAccess.unlockToChange().render(langs)
         val items = synchronized(this) { undos.remove(key) } ?: return PanelStrings.nothingToUndo().render(langs)
