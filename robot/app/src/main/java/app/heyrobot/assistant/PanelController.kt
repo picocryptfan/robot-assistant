@@ -220,6 +220,7 @@ object PanelController {
     /** For the voice log: when the panel was shown, and whether the turn under way began as a spoken question. */
     private var shownAtE = 0L
     private var spokenTurn = false
+    private val quiet = PanelQuiet(_state) { notify(it) }
     /** Robot asked what a text should say ("text mom"): the name, until the next question answers it. */
     private var askingTextFor: String? = null
     /** That question was asked aloud: listen for the answer once Robot has said it. */
@@ -442,8 +443,8 @@ object PanelController {
     /** Robot's screens' languages now (the menus', the phone's): a notice, a button, a status line. */
     private fun screenLangs(): Langs = AppLanguage.langs(VoiceHub.app)
 
-    /** A button's words: the menus' language, whatever the reply language. */
-    private val buttonLangs: Langs get() = turnLangs.let { Langs(it.ui, it.ui, it.system, pseudo = it.pseudo) }
+    /** A card's question and buttons: the conversation's language, as its title (fix-124c, CardWords). */
+    private val buttonLangs: Langs get() = CardWords.langs(turnLangs)
 
     /**
      * 1.1: the reply language of a question ([q]; [router]: a router matched it in its French or English words), once per turn
@@ -566,6 +567,7 @@ object PanelController {
         }
         // Continued unlocked: never lock-screen safe again (physical-locked-conversation-carryover).
         startedLocked = PanelContinuity.stillLocked(startedLocked, locked)
+        quiet.listen(VoiceHub.app) { VoiceHub.stopVoice(TtsStop.MUTED) }
         val returning = back && (open == PanelContinuity.Open.CONTINUE || open == PanelContinuity.Open.CONTINUE_QUOTED)
         screenShare.show(ignore = source == RobotVoiceService.SRC_APP || source == RobotVoiceService.SRC_SHARE || returning, returning = returning)
         if (!returning) {
@@ -577,6 +579,7 @@ object PanelController {
             }
             // focusRequest restarts at 0 so a new panel's first composition does not pop the keyboard.
             _state.update { it.copy(speak = speak, notice = null, draft = null, focusRequest = 0) }
+            quiet.reset()
             // 0.8: a headset's button or car mode (assistant/handsfree PanelHandsFree): a session routes the microphone first.
             handsFree = PanelHandsFree.onShow(source, args, locked)?.also { hf -> _state.update { it.copy(speak = hf.speak) } }
             wokeBy = source == RobotVoiceService.SRC_WAKE
@@ -633,6 +636,7 @@ object PanelController {
 
     fun onHide() {
         shown = false
+        quiet.unlisten(VoiceHub.app)
         // 0.7: what was decrypted of memory goes with the panel.
         MemoryPanel.drop()
         // 0.8: a headset or car session ends with the panel, and lets go of the headset; a message that came meanwhile is announced.
@@ -896,6 +900,7 @@ object PanelController {
     fun toggleSpeak() {
         val on = !_state.value.speak
         if (!on) VoiceHub.stopVoice(TtsStop.MUTED)
+        quiet.tapped(on)
         _state.update { it.copy(speak = on) }
     }
 
@@ -1205,8 +1210,10 @@ object PanelController {
         val st = _state.value
         val q = text.trim()
         if (q.isEmpty() && st.draft == null) return false
+        // A typed "yes" to a card or an offer is a typed turn too (review-quiet-when-silent, 5); never during a running turn.
+        if (!(st.busy || slot.running) || st.phase == Phase.CONFIRMING) quiet.turn(VoiceHub.app, fromVoice)
         // A card waits: a typed or spoken "yes" or "no" answers it (Settings › Safety & privacy).
-        if (st.phase == Phase.CONFIRMING && st.draft == null && cardVoice.answer(q, fromVoice)) return true
+        if (st.phase == Phase.CONFIRMING && st.draft == null && cardVoice.answer(q, fromVoice)) { quiet.tell(); return true }
         // 0.7: a reply card waiting: "yes" (where allowed), "no", or "stop" in its 3 seconds.
         if (st.draft == null && PanelMessages.answerCard(q, fromVoice)) return true
         // 0.8: "next", "skip", "repeat" or "stop" while a routine or the brief speaks (or just paused for "hey robot").
@@ -1231,12 +1238,13 @@ object PanelController {
         // An offer under the last reply waits for a tap or a short yes (a yes never sends anything personal).
         if (st.draft == null) offers.waiting { k -> st.turns.lastOrNull { it.role == TurnRole.ASSISTANT }?.id == k }?.takeIf { HelperRouter.isYes(q, offers.namesFor(it, names)) }?.let {
             acceptOffer(it, tapped = false)
+            quiet.tell()
             return true
         }
         // "The helper" or "here", when an offer waits: hands free, as a yes or its X.
         if (st.draft == null) offers.waiting { k -> st.turns.lastOrNull { it.role == TurnRole.ASSISTANT }?.id == k }?.let { id ->
             when (app.heyrobot.core.helpers.HelperChoice.answer(q, names, offers.helperOf(id))) {
-                app.heyrobot.core.helpers.HelperChoice.Picked.HELPER -> if (!offers.isKeep(id)) { acceptOffer(id, tapped = false); return true }
+                app.heyrobot.core.helpers.HelperChoice.Picked.HELPER -> if (!offers.isKeep(id)) { acceptOffer(id, tapped = false); quiet.tell(); return true }
                 app.heyrobot.core.helpers.HelperChoice.Picked.HERE -> { offers.dismiss(id); return true }
                 null -> {}
             }
@@ -1425,6 +1433,7 @@ object PanelController {
                 helperStatus = if (api) words(turnHelper!!).thinkingText.render(screenLangs()) else null,
             )
         }
+        quiet.tell()
         draftJpeg = null
         if (attachment == Attachment.FILE) PanelFiles.sentWith(user.id)
         turnShared = sharedNow != null
@@ -2251,10 +2260,10 @@ object PanelController {
             // What a read tool finds goes to the helper only after this tap: the button says so.
             val confirm = c.confirm ?: if (c.remote && c.tool?.reads == true) PanelStrings.shareWith("name" to helper).render(buttonLangs)
                 else c.action?.confirmText?.render(buttonLangs)
-            replies.upsertAction(replyId, TermuxPanel.dress(UiAction(c.id, c.tool, c.summary, c.status, c.detail, icon, c.body, c.choices.map { it.label }, confirm, c.undo,
+            replies.upsertAction(replyId, CardWords.dress(TermuxPanel.dress(UiAction(c.id, c.tool, c.summary, c.status, c.detail, icon, c.body, c.choices.map { it.label }, confirm, c.undo,
                 c.content, c.more, c.cancel, c.handOff, remember = c.remember, allowContacts = c.allowContacts,
                 // What it finds goes to the helper: a read, or an online lookup around where you are (the nearest place).
-                personal = c.remote && (c.tool?.reads == true || c.action?.online == true), tapFor = c.tapFor, chips = c.chips, located = c.located), c))
+                personal = c.remote && (c.tool?.reads == true || c.action?.online == true), tapFor = c.tapFor, chips = c.chips, located = c.located), c), buttonLangs))
             // 1.1: what this conversation did, for "save that as a skill" (D12).
             PanelSkills.seen(c)
         }
@@ -2622,6 +2631,8 @@ object PanelController {
         // 1.4 Lists: a list read aloud carries its content record (PanelLists, core ListQuote): framed for the model, and saved
         // in History as its placeholder only (D17).
         chat[chat.lastIndex] = PanelLists.followUp(PanelLists.forHistory(chat.last(), turnLangs), chat.dropLast(1), turnLangs)
+        // Today fix: private event titles the reply said are kept as "a private event" (PanelPrivateEvents).
+        chat[chat.lastIndex] = PanelPrivateEvents.forHistory(chat.last(), turnLangs)
         _state.update { st ->
             st.copy(
                 // Only the turn's phases end here: "hey robot" during the answer is already listening.

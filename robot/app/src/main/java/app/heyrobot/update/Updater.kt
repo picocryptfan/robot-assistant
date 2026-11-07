@@ -109,7 +109,7 @@ object Updater {
             val st = UpdateStore.state(ctx)
             val found = UpdateDecision.offered(st, UpdateStore.repo(ctx), installed(), UpdateStore.settings(ctx).testBuilds) ?: return
             val v = found.parsedVersion ?: return
-            val plan = UpdateDecision.afterAutoCheck(s, v, ready(ctx, st) != null, st.notified, st.firstSeen, System.currentTimeMillis(),
+            val plan = UpdateDecision.afterAutoCheck(s, v, ready(ctx, st) != null, st.notified,
                 refused = st.refusedApk == found.apk.id)
             RLog.i("update_auto", "notify" to plan.notify, "wifi" to plan.downloadOnWifi)
             if (plan.downloadOnWifi) UpdateJobs.downloadOnWifi(ctx, found.apk.size)
@@ -138,7 +138,7 @@ object Updater {
             } else if (st.refusedApk == found.apk.id && st.refusedWhy?.let(UpdateDecision::bars) != true) {
                 // Its file failed a check: say there is an update; the page says what was wrong. Not for a file Android's
                 // checks refused: it can never be installed, and the next check passes it over for an older one that can.
-                UpdateDecision.afterAutoCheck(s, v, false, st.notified, st.firstSeen, System.currentTimeMillis(), refused = true).notify?.let { notify(ctx, found, it) }
+                UpdateDecision.afterAutoCheck(s, v, false, st.notified, refused = true).notify?.let { notify(ctx, found, it) }
             }
             return false
         } finally {
@@ -362,6 +362,8 @@ object Updater {
         TermuxUpdateCheck.ensure(ctx)
         // 1.1: and the backup reminder, while it is on.
         UpdateJobs.ensureBackupReminder(ctx, app.heyrobot.sys.BackupFiles.prefs(ctx).remind)
+        // Today H7: and the news's daily fetch, while Today is on with feeds and "once a day" (today-h7-fix 1).
+        UpdateJobs.ensureNews(ctx, app.heyrobot.sys.NewsStore.dailyNews(app.heyrobot.sys.HomeSettingsStore.current(ctx)))
     }
 
     /**

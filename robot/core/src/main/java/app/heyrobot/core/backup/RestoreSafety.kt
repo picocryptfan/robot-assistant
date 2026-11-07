@@ -226,6 +226,16 @@ enum class SaferField(val file: String, val field: String) {
     HAND_OFF_SIGNER("connections.json", "signer"),
     /** L12, D14: "Answer while my phone is locked" comes back off, whoever's backup it is: you turn it on again on this phone. */
     LINK_WHILE_LOCKED("link_settings.json", "whileLocked"),
+    /** Today H6: the weather line, the page's one part that goes online, stays off unless the backup is yours. */
+    HOME_WEATHER("home_settings.json", "weather"),
+    /** Today H7: feeds a backup from somewhere else would add (connections you didn't start here) aren't added. */
+    HOME_FEEDS("home_settings.json", "feeds"),
+    /** H7: fetching more by itself (once a day, or at each open) than this phone does. */
+    HOME_NEWS_MODE("home_settings.json", "mode"),
+    /** H7: direct where this phone has Tor. */
+    HOME_NEWS_VIA("home_settings.json", "via"),
+    /** fix-today-review 2: mobile data for news, off here, stays off unless the backup is yours. */
+    HOME_NEWS_MOBILE("home_settings.json", "mobileData"),
 }
 
 /** A file's value after the restore's rules, with the guarded settings kept at this phone's value. */
@@ -315,7 +325,7 @@ object RestoreSafety {
             T to listOf("layout"),
         ),
         RoutineSettings::class.java to rules(
-            A to listOf("finishOnUnlock", "briefLang", "briefPrepare", "clockSilenceMinutes", "clockApp", "alarmWindow"),
+            A to listOf("finishOnUnlock", "briefLang", "briefPrepare", "clockSilenceMinutes", "clockApp", "alarmWindow", "briefTriggerBefore"),
             G to listOf("briefItems", "briefTrigger", "briefOutput", "briefOnline", "runLocked", "online", "briefEnabled", "briefLock"),
         ),
         app.heyrobot.core.skills.SkillSettings::class.java to rules(G to listOf("modelPicks")),
@@ -346,6 +356,18 @@ object RestoreSafety {
             A to listOf("music"),
             G to listOf("listen", "voices", "askRobot", "online", "onlineDays"),
             T to listOf("musicApp", "podcastApp", "mapsApp"),
+        ),
+        // Today (home_settings.json, the HOME category): the page as you arranged it; H6's weather line guarded, since it
+        // is the part that goes online (home-design §3: a backup from somewhere else shouldn't start connections). H9's lock
+        // screen summary (counts and times only) as is: HOME comes only from your own backup (today-fix-b, ONLY_YOURS).
+        app.heyrobot.core.HomeSettings::class.java to rules(
+            A to listOf("today", "offer", "note", "order", "lockSummary"),
+            G to listOf("weather", "news"),
+        ),
+        // Today H7: your feeds, how often and through what (home_settings.json's "news"): a backup that isn't yours adds no
+        // feed and never fetches more often or by a weaker route (HOME_FEEDS, HOME_NEWS_MODE, HOME_NEWS_VIA).
+        app.heyrobot.core.news.NewsSettings::class.java to rules(
+            G to listOf("feeds", "mode", "via", "mobileData"),
         ),
         // C10, Skills connections (connections.json): what a connection reaches comes as the file has it; what trusts it
         // (first-use answers, a spoken yes, Test's facts, the requests a minute, a hand-off's signer) is kept safer, and so
@@ -782,6 +804,20 @@ object RestoreSafety {
 
     /** The unknown keys files_settings.json keeps after a restore: the file's from your own backup, this phone's otherwise. */
     fun filesSettingsExtra(phone: Map<String, Any?>, file: Map<String, Any?>, mine: Boolean): Map<String, Any?> = if (mine) file else phone
+
+    /**
+     * Today H6: [file]'s page over [phone]'s (HomeSettings.restored); unless [mine], a weather line off here stays off.
+     */
+    fun home(phone: app.heyrobot.core.HomeSettings, file: app.heyrobot.core.HomeSettings, mine: Boolean): Guarded<app.heyrobot.core.HomeSettings> {
+        val k = Keep(mine)
+        val pn = phone.news
+        val fn = file.news
+        val feeds = k.pick(pn.feeds, fn.feeds, !pn.feeds.map { it.url }.containsAll(fn.feeds.map { it.url }), SaferField.HOME_FEEDS)
+        val mode = k.rank(pn.mode, fn.mode, listOf(app.heyrobot.core.news.NewsMode.ASKED, app.heyrobot.core.news.NewsMode.DAILY, app.heyrobot.core.news.NewsMode.OPEN), SaferField.HOME_NEWS_MODE)
+        val via = k.rank(pn.via, fn.via, listOf(app.heyrobot.core.news.NewsVia.TOR, app.heyrobot.core.news.NewsVia.DIRECT), SaferField.HOME_NEWS_VIA)
+        return k.done(phone.restored(file).copy(weather = k.flag(phone.weather, file.weather, SaferField.HOME_WEATHER), news = app.heyrobot.core.news.NewsSettings(feeds, mode, via,
+            k.flag(pn.mobileData, fn.mobileData, SaferField.HOME_NEWS_MOBILE))))
+    }
 
     /**
      * The everyday set's switches (everyday-set-plan.md §2.4). Unless [mine], a door closed here for other apps (listening,

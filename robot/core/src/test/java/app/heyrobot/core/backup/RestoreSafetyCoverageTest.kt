@@ -62,7 +62,9 @@ class RestoreSafetyCoverageTest {
         // The helpers' own switches are named once, as HELPERS, and so is where a helper sends your questions (its
         // company, its model and providers that keep nothing), which a backup that isn't yours never changes.
         // C12's L2: a connection's name is kept with its operations, as CONN_OPS ("ops").
-        val named = SaferField.entries.map { it.field }.toSet() + setOf("enabled", "trust", "locked", "baseUrl", "budgetCents", "preset", "model", "zdr", "name", "aliases", "search", "actions")
+        val named = SaferField.entries.map { it.field }.toSet() + setOf("enabled", "trust", "locked", "baseUrl", "budgetCents", "preset", "model", "zdr", "name", "aliases", "search", "actions",
+            // Today H7: "news" holds HOME_FEEDS, HOME_NEWS_MODE and HOME_NEWS_VIA.
+            "news")
         assertEquals(emptySet<String>(), guarded - named)
     }
 }

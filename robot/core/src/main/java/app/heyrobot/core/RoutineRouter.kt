@@ -31,6 +31,14 @@ import java.util.UUID
 sealed class RoutineCommand {
     /** "morning brief", "what's my day", "mon résumé du matin", "bon matin" (as a whole utterance). */
     data object BriefNow : RoutineCommand()
+    /** "How's my day", « comment est ma journée »: Today's day line (core Today), said and shown. */
+    data object Today : RoutineCommand()
+    /** H3: "show my history", "show my calendar" (and French): the main app at that page, on an unlocked phone. */
+    data class Show(val page: ShowPage) : RoutineCommand()
+    /** H4: "put my calendar first" and its kin (TodayArrange): the Today page's order, on an unlocked phone. */
+    data class Arrange(val part: TodayPart, val move: TodayMove) : RoutineCommand()
+    /** H7b: "read me the news" (as a whole utterance): Today's headlines, said and shown, on an unlocked phone. */
+    data object News : RoutineCommand()
 
     /** A routine to show on its card ([RoutineDraft.card]); saved only by your answer. */
     data class Create(val draft: RoutineDraft) : RoutineCommand()
@@ -256,6 +264,27 @@ object RoutineRouter {
         "mon resume du matin", "mon resume", "le resume du matin", "resume du matin", "donne moi mon resume", "donne moi mon resume du matin",
         "lis moi mon resume", "lis moi mon resume du matin", "c est quoi ma journee", "quest ce que j ai aujourdhui", "qu est ce que j ai aujourdhui",
         "qu est ce que j ai de prevu aujourdhui", "c est quoi mon programme aujourdhui", "bon matin")
+    // Today (home-design H0): the day line, not the brief. Before BRIEF_NOW, which keeps "what's my day" and its kin.
+    /** H7b: the news, as a whole utterance only ("read me the news about …" is a question, not this). */
+    private val NEWS_NOW = listOf("read me the news", "read the news", "read me my news", "read my news", "read me the headlines",
+        "read the headlines", "whats in the news", "what is in the news", "whats the news", "what is the news", "tell me the news",
+        "the news", "my news", "the headlines", "lis moi les nouvelles", "lis les nouvelles", "lis moi mes nouvelles", "lis moi les manchettes",
+        "c est quoi les nouvelles", "quelles sont les nouvelles", "quoi de neuf dans les nouvelles", "les nouvelles", "mes nouvelles")
+
+    private val DAY_NOW = listOf("hows my day", "how is my day", "hows my day looking", "how is my day looking", "how does my day look",
+        "how does my day look today", "hows my day going", "how is my day going", "hows today", "how is today", "hows today looking",
+        "how is today looking", "whats left today", "what is left today", "whats left for today", "whats next today", "what is next today",
+        "comment est ma journee", "comment va ma journee", "comment se presente ma journee", "comment s annonce ma journee",
+        "c est quoi le reste de ma journee", "qu est ce qu il me reste aujourdhui", "quest ce qu il me reste aujourdhui", "il me reste quoi aujourdhui",
+        "quoi d autre aujourdhui", "ma journee")
+    // H3: the pages behind the clock icon and the Calendar tab, as a whole utterance.
+    private val SHOW_HISTORY = listOf("show my history", "show me my history", "open my history", "show history", "open history",
+        "show my conversations", "show me my conversations", "show my past conversations", "open my conversations",
+        "montre moi mon historique", "montre mon historique", "ouvre mon historique", "affiche mon historique", "ouvre l historique",
+        "montre moi mes conversations", "ouvre mes conversations", "affiche mes conversations")
+    private val SHOW_CALENDAR = listOf("show my calendar", "show me my calendar", "open my calendar", "show calendar", "open calendar",
+        "show my agenda", "open my agenda", "montre moi mon agenda", "montre mon agenda", "ouvre mon agenda", "affiche mon agenda",
+        "montre moi mon calendrier", "ouvre mon calendrier", "affiche mon calendrier")
     private val LIST = listOf("list my routines", "list routines", "list the routines", "what are my routines", "what routines do i have",
         "which routines do i have", "show my routines", "show me my routines", "my routines", "tell me my routines", "liste mes routines",
         "quelles sont mes routines", "c est quoi mes routines", "montre moi mes routines", "mes routines", "quelles routines j ai")
@@ -284,8 +313,13 @@ object RoutineRouter {
         remind(p, i)?.let { return it }
         remindOn(p, i, now)?.let { return it }
         if (remindWhat(p, i)) return RoutineCommand.RemindWhat
+        if (whole(p, i, DAY_NOW)) return RoutineCommand.Today
         if (whole(p, i, BRIEF_NOW)) return RoutineCommand.BriefNow
+        if (whole(p, i, NEWS_NOW)) return RoutineCommand.News
         if (whole(p, i, LIST)) return RoutineCommand.ListAll
+        if (whole(p, i, SHOW_HISTORY)) return RoutineCommand.Show(ShowPage.HISTORY)
+        if (whole(p, i, SHOW_CALENDAR)) return RoutineCommand.Show(ShowPage.CALENDAR)
+        TodayArrange.PHRASES.firstOrNull { whole(p, i, listOf(it.first)) }?.let { (_, a) -> return RoutineCommand.Arrange(a.first, a.second) }
         deleteNote(p, i)?.let { return it }
         named(p, i, DELETE, names)?.let { return RoutineCommand.Delete(it) }
         named(p, i, RUN, names)?.let { return RoutineCommand.Run(it) }
@@ -298,7 +332,12 @@ object RoutineRouter {
     /** The French phrases a command other than a new routine starts with (a new routine's draft has its own language). */
     private val FRENCH_LEAD = listOf("liste mes routines", "quelles sont mes routines", "c est quoi mes routines", "montre moi mes routines",
         "mes routines", "quelles routines j ai", "supprime", "efface", "enleve", "retire", "lance", "demarre", "fais", "execute", "part", "roule",
-        "rappelle moi", "ajoute", "mets", "fais moi penser")
+        "rappelle moi", "ajoute", "mets", "fais moi penser", "comment est ma journee", "comment va ma journee", "comment se presente ma journee",
+        "comment s annonce ma journee", "c est quoi le reste de ma journee", "qu est ce qu il me reste", "quest ce qu il me reste", "il me reste quoi",
+        "quoi d autre aujourdhui", "ma journee", "montre moi mon", "montre mon", "ouvre mon", "affiche mon", "ouvre l historique",
+        "montre moi mes conversations", "ouvre mes conversations", "affiche mes conversations", "lis moi les nouvelles", "lis les nouvelles",
+        "lis moi mes nouvelles", "lis moi les manchettes", "c est quoi les nouvelles", "quelles sont les nouvelles", "quoi de neuf dans les nouvelles",
+        "les nouvelles", "mes nouvelles") + TodayArrange.FRENCH_LEAD
 
     /**
      * 1.0: [cmd], routed from [text], was said in French, so Robot answers it in French (the locked phone's "Unlock first"
@@ -988,8 +1027,15 @@ object RoutineLockedPhone {
         is RoutineCommand.RemindOn -> RoutineStrings.unlockRemindOn()
         is RoutineCommand.DeleteNote -> app.heyrobot.core.i18n.ToolStrings.noteDeleteUnlock()
         RoutineCommand.ListAll -> RoutineStrings.unlockList()
+        is RoutineCommand.Show -> RoutineStrings.unlockShow()
+        is RoutineCommand.Arrange -> RoutineStrings.unlockArrange()
+        // H7b: which feeds you read is personal, as the brief's news waits for the unlock.
+        RoutineCommand.News -> RoutineStrings.unlockNews()
         // 1.1: Robot only asks what and when.
-        RoutineCommand.BriefNow, is RoutineCommand.Run, RoutineCommand.RemindWhat, is RoutineCommand.CantCancel, is RoutineCommand.TimerLeft,
+        RoutineCommand.BriefNow, RoutineCommand.Today, is RoutineCommand.Run, RoutineCommand.RemindWhat, is RoutineCommand.CantCancel, is RoutineCommand.TimerLeft,
         is RoutineCommand.NextAlarm -> null
     }
 }
+
+/** H3: a page "show my …" opens. */
+enum class ShowPage { HISTORY, CALENDAR }

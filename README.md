@@ -5,10 +5,12 @@ I made Robot because I couldn't find a complete voice assistant that doesn't com
 Robot is a private voice assistant for GrapheneOS on Google Pixel phones. I start with Pixels because GrapheneOS runs
 on them, and the point is to keep Google off the phone. Robot's AI model runs on the phone, so what you say and what it
 answers stay there. Robot goes online for what you ask: the weather, a web search you set up, a question you hand to
-an online helper with your own key, a skill that uses a connection you added, or a download. It also checks for its own updates once a day and downloads them on
-Wi-Fi, checks for Termux updates once a week after you set Termux up, and lets routines go online if you allow it.
+an online helper with your own key, a skill that uses a connection you added, or a download. It also checks for its own updates once a day, says at once when there is one, and downloads it on
+Wi-Fi, checks for Termux updates once a week after you set Termux up, fetches the news feeds you add to Today, and lets
+routines go online if you allow it.
 Each can be turned off: Settings › About › Updates (Check for updates automatically, Download updates on Wi-Fi),
-Settings › Termux (Check for Termux updates), Settings › Routines (Routines may go online by themselves).
+Settings › Termux (Check for Termux updates), Settings › Display › News on Today (Only when I ask, or remove your feeds),
+Settings › Routines (Routines may go online by themselves).
 Say "hey robot", or swipe up from a bottom corner, and ask.
 The first word of an answer comes after about 0.25 s (measured on a Pixel 10 Pro). What the all-day wake word costs in
 battery depends on the phone and I haven't measured a full day yet: "Only while charging" turns the microphone off, and
@@ -76,6 +78,19 @@ Coming from 0.9? Robot 1.0 installs beside it under a new app ID, and you move y
 
 - Robot answers by voice or text, on the phone, and about a photo or the screen you're on (once the phone is
   unlocked). You can choose a smarter, slower model, or your own `.litertlm` or `.gguf` file.
+- Today is a home page that shows your day: what's on now and next, your lists, reminders and a note, in an order you
+  choose. It is off until you turn it on, in Settings › Display. Ask "how's my day" and Robot says it. A Calendar tab
+  shows the next 14 days, and private events live only in Robot, encrypted on the phone and never in your calendar
+  app. Robot reads the calendar on the phone and sends nothing online. A weather line on Today is off until you turn it
+  on, and asks Open-Meteo for the forecast only when you tap it. A Today widget for the home screen shows your day (a
+  private event reads "a private event"), and a quiet summary on the lock screen, off until you turn it on, holds only
+  counts and times. News on Today is off until you add a feed (RSS or Atom, up to five; Robot suggests none), your own
+  server's included. Robot fetches them once a day from 5:30 in the morning (a morning it misses is caught up once, when
+  it can), when you open Today, or only when you ask, directly or only through Tor, and reads them in a process with no
+  network access. It waits for Wi-Fi unless you turn on "Use mobile data for news". A feed address carrying a token stays
+  encrypted on the phone and goes only over https with a valid certificate, except to a server on the phone itself,
+  which the setting marks "Not encrypted (on this phone)". "Read me the news" says the headlines once the phone is
+  unlocked.
 - It sets timers and alarms, and says how much time is left on a timer it set (it can't see timers set in your clock
   app, and Android lets no app cancel a running one). It drafts texts and emails: it writes the text, you press Send.
   It also handles notes,
@@ -94,7 +109,9 @@ Coming from 0.9? Robot 1.0 installs beside it under a new app ID, and you move y
   Then ask "how much did I spend on gas in August" or "what bills are due this week". Travel mode hides the drawers you
   choose until you confirm with your PIN. It's a privacy screen, not encryption.
 - It reads, summarizes, translates and answers your messages from the apps you choose. A reply
-  goes only after you tap Send.
+  goes only after you tap Send. A work profile's copy of an app you chose is never read.
+- On a phone on silent or in Do Not Disturb, a typed question is answered on the screen only, and routines and the
+  morning brief show their words in a notification instead of speaking, unless the sound goes to headphones or the car.
 - Conversation mode transcribes a conversation in English and French, on the phone, translates it (also face to
   face, aloud) and summarizes it.
 - Robot works in English and Québec French. It can also write down and read other languages. What Robot says itself
@@ -135,7 +152,7 @@ My development notes, with the design, the checks and the history, are in [`robo
 - Nothing about you is collected. I receive nothing from your phone.
 - Robot goes online for what you start (a download, the weather, the nearest place, a web search, a helper, a skill
   that uses one of your connections), for the daily update check and its download on Wi-Fi, for the weekly Termux check
-  once Termux is set up, and for routines you allow to; each of those can be turned off. Robot to
+  once Termux is set up, for the news feeds you add to Today, and for routines you allow to; each of those can be turned off. Robot to
   Robot is off until you turn it on: while it's on, it stays connected to the Robots you've paired with. You can turn off Robot's Network permission in GrapheneOS and
   everything on the phone keeps working.
 - The nearest-place search uses OpenStreetMap's Nominatim server unless you pick another one in Settings › Actions ›
@@ -143,7 +160,7 @@ My development notes, with the design, the checks and the history, are in [`robo
 - A helper's or web search key only ever goes over https.
 - Robot Files, backups, Phone lock and skills without a connection never go online. A file leaves the phone only when you share it, open it
   with another app or export it (exports aren't encrypted), or when you tap a card that sends what Robot read from it to a
-  helper. Settings › About › Support Robot makes no network call until you tap its Ko-fi link.
+  helper. Settings › About › Support Robot makes no network call.
 - [`PRIVACY.md`](PRIVACY.md) lists every permission and why. 1.1 adds two. USE_BIOMETRIC lets travel mode ask for your PIN, pattern or
   password on Android's own confirm screen (never a fingerprint or face). ACCESS_NETWORK_STATE lets the daily update
   check, the download on Wi-Fi and Termux's weekly check wait for the network: Android requires it for that, and
@@ -209,10 +226,9 @@ and how a release is made, are in [`robot/README.md`](robot/README.md) ("Buildin
 
 ## Support Robot
 
-Robot is free, and I make it alone. If it's useful to you, you can support it on Ko-fi, once or monthly, or with one
-of the addresses below. Either way, you get the same app as everyone else.
+Robot is free, and I make it alone. If it's useful to you, you can support it with one of the
+addresses below. Either way, you get the same app as everyone else.
 
-- Ko-fi: https://ko-fi.com/picocryptfan
 - Bitcoin: `bc1qq9qe5ckwju6dkjddmf2vpfrcu7cakjw7ld2gtk`
 - Bitcoin: `sp1qqf85ltcy8al2flnwm2v8kszm2rplcs8a6xa6uw5rpfqmy7sa7srr6qafj6jwd3jj2fcmq8agna23syl6vjwzpjjg5yhwalyqm7d7ydxjhvqtgt0v`
 - Lightning: `dopeycheese1839@cake.cash`

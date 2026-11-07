@@ -110,6 +110,15 @@ class LinkClient(private val ctx: Context) {
         LinkStatus(vault, on, net, pairings, sent, outbox, codes)
     }
 
+    /** Today H7b: whether Tor can carry a feed now (:link starts it, waiting a bounded time): LinkIpcProtocol.FEED_TOR_*, DOWN for any failure. */
+    fun feedTor(): Int = call(LinkIpcProtocol.FEED_TOR, {}) { r -> r.readInt().takeIf { it in LinkIpcProtocol.FEED_TOR_DOWN..LinkIpcProtocol.FEED_TOR_STARTING } }
+        ?: LinkIpcProtocol.FEED_TOR_DOWN
+
+    /** Today H7b: a stream to a feed's [host] through Tor (its own circuit), or null. The caller owns and closes it. */
+    fun feedStream(host: String, port: Int): android.os.ParcelFileDescriptor? = call(LinkIpcProtocol.FEED_STREAM, { writeString(host); writeInt(port) }) { r ->
+        if (r.readInt() != 1) null else android.os.ParcelFileDescriptor.CREATOR.createFromParcel(r)
+    }
+
     /** Turning Robot to Robot on: the keys and your identity (link_settings.json must already say on). */
     fun setUp(): Boolean = flag(LinkIpcProtocol.SET_UP) {}
 

@@ -206,6 +206,18 @@ for a in 'permission(0x01010006)' allowSharedIsolatedProcess useAppZygote extern
 done
 hasnt 'intent-filter' "$(subtree app.heyrobot.linkparse.LinkParseService)" "LinkParseService has no intent filter"
 [ "$(grep -c 'process(0x01010011)=":linkparse"' <<<"$mf")" = 1 ] && pass "nothing else runs in :linkparse" || fail "components in :linkparse: $(grep -c 'process(0x01010011)=":linkparse"' <<<"$mf")"
+# Today H7b (home-design §6.1): the isolated reader of news feeds, :feedparse, set up as :linkparse is: bound only by a round of
+# news fetching (FeedParseLink, a fresh isolated instance a round), not exported, no permission, no intent filter, alone.
+fps=$(elem app.heyrobot.feedparse.FeedParseService)
+has '"app.heyrobot.feedparse.FeedParseService"' "$mf" "manifest has feedparse.FeedParseService"
+has 'process(0x01010011)=":feedparse"' "$fps" "FeedParseService in :feedparse"
+has 'isolatedProcess(0x010103a9)=true' "$fps" "FeedParseService runs in an isolated process"
+has 'exported(0x01010010)=false' "$fps" "FeedParseService not exported"
+for a in 'permission(0x01010006)' allowSharedIsolatedProcess useAppZygote externalService foregroundServiceType directBootAware; do
+  hasnt "$a" "$fps" "FeedParseService has no $a"
+done
+hasnt 'intent-filter' "$(subtree app.heyrobot.feedparse.FeedParseService)" "FeedParseService has no intent filter"
+[ "$(grep -c 'process(0x01010011)=":feedparse"' <<<"$mf")" = 1 ] && pass "nothing else runs in :feedparse" || fail "components in :feedparse: $(grep -c 'process(0x01010011)=":feedparse"' <<<"$mf")"
 # 1.5, Robot to Robot (robot-to-robot-plan.md §5.1, §5.3; job L3): ":link". LinkService, bound by name from main and :voice
 # only (not exported, Robot's signature permission, no filter); the push job's service (only the system binds it); Robot's
 # push receiver, exported with exactly the connector's five actions and nothing else in its filter; the connector's own
@@ -337,7 +349,7 @@ lws=$(subtree app.heyrobot.ui.lists.ListsWidgetProvider)
 has '"app.heyrobot.ui.lists.ListsWidgetProvider"' "$mf" "manifest has ui.lists.ListsWidgetProvider"
 hasnt 'process(0x01010011)' "$lwp" "ListsWidgetProvider in the main process"
 has 'exported(0x01010010)=true' "$lwp" "ListsWidgetProvider exported (a widget provider)"
-hasnt 'permission(0x01010006)' "$lwp" "ListsWidgetProvider has no permission"
+has 'permission(0x01010006)="android.permission.BIND_APPWIDGET"' "$lwp" "ListsWidgetProvider takes only the system's broadcasts"
 [ "$(grep -c 'E: intent-filter' <<<"$lws")" = 1 ] && pass "ListsWidgetProvider has one intent filter" || fail "ListsWidgetProvider filters: $(grep -c 'E: intent-filter' <<<"$lws")"
 lwacts=$(grep -A1 'E: action' <<<"$lws" | grep -o 'name(0x01010003)="[^"]*"' | sed 's/.*="//; s/"$//' | sort | tr '\n' ' ')
 [ "$lwacts" = "android.appwidget.action.APPWIDGET_UPDATE " ] && pass "ListsWidgetProvider takes exactly APPWIDGET_UPDATE" || fail "ListsWidgetProvider actions: $lwacts"
@@ -348,6 +360,24 @@ has '"app.heyrobot.ui.lists.ListsTickReceiver"' "$mf" "manifest has ui.lists.Lis
 hasnt 'process(0x01010011)' "$ltr" "ListsTickReceiver in the main process"
 has 'exported(0x01010010)=false' "$ltr" "ListsTickReceiver not exported"
 hasnt 'intent-filter' "$(subtree app.heyrobot.ui.lists.ListsTickReceiver)" "ListsTickReceiver has no intent filter"
+# Today H9: the home-screen widget's provider (main, exported with exactly APPWIDGET_UPDATE and its meta-data, no
+# permission) and its refresh receiver (main, not exported, no filter).
+twp=$(elem app.heyrobot.ui.today.TodayWidgetProvider)
+tws=$(subtree app.heyrobot.ui.today.TodayWidgetProvider)
+has '"app.heyrobot.ui.today.TodayWidgetProvider"' "$mf" "manifest has ui.today.TodayWidgetProvider"
+hasnt 'process(0x01010011)' "$twp" "TodayWidgetProvider in the main process"
+has 'exported(0x01010010)=true' "$twp" "TodayWidgetProvider exported (a widget provider)"
+has 'permission(0x01010006)="android.permission.BIND_APPWIDGET"' "$twp" "TodayWidgetProvider takes only the system's broadcasts"
+[ "$(grep -c 'E: intent-filter' <<<"$tws")" = 1 ] && pass "TodayWidgetProvider has one intent filter" || fail "TodayWidgetProvider filters: $(grep -c 'E: intent-filter' <<<"$tws")"
+twacts=$(grep -A1 'E: action' <<<"$tws" | grep -o 'name(0x01010003)="[^"]*"' | sed 's/.*="//; s/"$//' | sort | tr '\n' ' ')
+[ "$twacts" = "android.appwidget.action.APPWIDGET_UPDATE " ] && pass "TodayWidgetProvider takes exactly APPWIDGET_UPDATE" || fail "TodayWidgetProvider actions: $twacts"
+hasnt 'E: data' "$tws" "TodayWidgetProvider's filter takes no data"
+has '"android.appwidget.provider"' "$tws" "TodayWidgetProvider has its widget meta-data"
+trr=$(elem app.heyrobot.ui.today.TodayRefresh)
+has '"app.heyrobot.ui.today.TodayRefresh"' "$mf" "manifest has ui.today.TodayRefresh"
+hasnt 'process(0x01010011)' "$trr" "TodayRefresh in the main process"
+has 'exported(0x01010010)=false' "$trr" "TodayRefresh not exported"
+hasnt 'intent-filter' "$(subtree app.heyrobot.ui.today.TodayRefresh)" "TodayRefresh has no intent filter"
 lsa=$(elem app.heyrobot.ui.lists.ListsWidgetSetup)
 lss=$(subtree app.heyrobot.ui.lists.ListsWidgetSetup)
 has '"app.heyrobot.ui.lists.ListsWidgetSetup"' "$mf" "manifest has ui.lists.ListsWidgetSetup"
@@ -366,9 +396,9 @@ scp=$(elem app.heyrobot.sys.ScanProvider)
 has '"app.heyrobot.sys.ScanProvider"' "$mf" "manifest has sys.ScanProvider"
 hasnt 'process(0x01010011)' "$scp" "ScanProvider in the main process"
 has 'exported(0x01010010)=false' "$scp" "ScanProvider not exported"
-# The three isolated services, and no other isolated component (1.4: FileParseService joined LlamaService; 1.5 L4,
-# deliberately: LinkParseService).
-[ "$(grep -c 'isolatedProcess(0x010103a9)=true' <<<"$mf")" = 3 ] && pass "LlamaService, FileParseService and LinkParseService are the only isolated components" || fail "isolated components: $(grep -c 'isolatedProcess(0x010103a9)=true' <<<"$mf")"
+# The four isolated services, and no other isolated component (1.4: FileParseService joined LlamaService; 1.5 L4,
+# deliberately: LinkParseService; Today H7b: FeedParseService).
+[ "$(grep -c 'isolatedProcess(0x010103a9)=true' <<<"$mf")" = 4 ] && pass "LlamaService, FileParseService, LinkParseService and FeedParseService are the only isolated components" || fail "isolated components: $(grep -c 'isolatedProcess(0x010103a9)=true' <<<"$mf")"
 # 0.4.7: LiteRT-LM's GPU backend uses the phone's own OpenCL (a Pixel 9a's Mali), the TPU the phone's own Tensor libraries:
 # each declared, and every declaration optional (required defaults to true), so a phone without one still installs Robot
 # (the native library allowlist below keeps them out of the APK).
@@ -510,7 +540,8 @@ exported=$(echo "$mf" | awk '
   END { if (n != "" && ex) print n }' | sort | tr '\n' ' ')
 # 1.5 L3: Robot to Robot's push receiver (a distributor app must reach it; it checks the connector's token) and the
 # connector's raise-to-foreground service (a distributor binds it for 5 seconds), both in :link.
-allow="androidx.profileinstaller.ProfileInstallReceiver app.heyrobot.assistant.RobotRecognitionService app.heyrobot.assistant.RobotSessionService app.heyrobot.assistant.RobotVoiceService app.heyrobot.assistant.ask.AskRobotActivity app.heyrobot.assistant.conversation.ConversationTileService app.heyrobot.assistant.headset.HeadsetEntryActivity app.heyrobot.assistant.listen.ListenSheetActivity app.heyrobot.lock.LockAccessibilityService app.heyrobot.people.CheogramListener app.heyrobot.r2r.LinkPushReceiver app.heyrobot.tts.RobotTtsService app.heyrobot.ui.FilesLauncher app.heyrobot.ui.MainActivity app.heyrobot.ui.NotesLauncher app.heyrobot.ui.files.FilesShareActivity app.heyrobot.ui.lists.ListsWidgetProvider app.heyrobot.ui.lists.ListsWidgetSetup app.heyrobot.ui.tts.TtsCheckDataActivity app.heyrobot.ui.tts.TtsInstallDataActivity app.heyrobot.ui.tts.TtsSampleTextActivity "
+# Today: the home-screen widget's provider, exported as a widget provider must be, taking only the system's broadcasts (BIND_APPWIDGET).
+allow="androidx.profileinstaller.ProfileInstallReceiver app.heyrobot.assistant.RobotRecognitionService app.heyrobot.assistant.RobotSessionService app.heyrobot.assistant.RobotVoiceService app.heyrobot.assistant.ask.AskRobotActivity app.heyrobot.assistant.conversation.ConversationTileService app.heyrobot.assistant.headset.HeadsetEntryActivity app.heyrobot.assistant.listen.ListenSheetActivity app.heyrobot.lock.LockAccessibilityService app.heyrobot.people.CheogramListener app.heyrobot.r2r.LinkPushReceiver app.heyrobot.tts.RobotTtsService app.heyrobot.ui.FilesLauncher app.heyrobot.ui.MainActivity app.heyrobot.ui.NotesLauncher app.heyrobot.ui.files.FilesShareActivity app.heyrobot.ui.lists.ListsWidgetProvider app.heyrobot.ui.lists.ListsWidgetSetup app.heyrobot.ui.today.TodayWidgetProvider app.heyrobot.ui.tts.TtsCheckDataActivity app.heyrobot.ui.tts.TtsInstallDataActivity app.heyrobot.ui.tts.TtsSampleTextActivity "
 [ "$exported" = "$allow" ] && pass "exported components are the allowlist" || fail "exported components: $exported"
 # The updater: Robot installs only its own updates (Install unknown apps, a special access you turn on), and asks Android to
 # skip its confirmation only with "Install updates without asking". It never installs or deletes other apps.
@@ -835,14 +866,29 @@ lp_bad=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" -d "$d" 2>/dev/null; 
 [ "$lp_bad" = "0" ] && pass ":linkparse's classes refer to no network, log, file path, provider, key, store or :link class (dex)" || fail ":linkparse's classes refer to forbidden classes: $lp_bad"
 lp_classes=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" "$d" 2>/dev/null | grep -cE "Class descriptor  : 'Lapp/heyrobot/linkparse/(LinkParseService|LinkParser);'"; done | awk '{ s += $1 } END { print s + 0 }')
 [ "$lp_classes" = "2" ] && pass ":linkparse's service and parser in the dex" || fail ":linkparse's classes in the dex: $lp_classes"
+# Today H7b: nothing outside app/heyrobot/feedparse refers to :feedparse's service (bound by its name), and it reaches no
+# socket, connection, log, file by name, provider, key, store, nor any of the assistant's or :link's classes.
+fp_refs=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" -d "$d" 2>/dev/null; done |
+  awk '/^Class #/{ on=0 } /Class descriptor  : .L/{ on = ($0 !~ /Class descriptor  : .Lapp\/heyrobot\/feedparse\//) } on' |
+  grep -c 'Lapp/heyrobot/feedparse/')
+[ "$fp_refs" = "0" ] && pass "no class outside app/heyrobot/feedparse refers to :feedparse's classes (dex)" || fail "classes outside feedparse refer to it: $fp_refs"
+fp_bad=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" -d "$d" 2>/dev/null; done |
+  awk '/^Class #/{ on=0 } /Class descriptor  : .Lapp\/heyrobot\/feedparse\//{ on=1 } on' |
+  grep -cE 'Ljava/net/(Socket|URL;|URLConnection|HttpURLConnection|InetAddress)|Ljavax/net/|Lokhttp3/|Landroid/webkit/|Landroid/util/Log;|Lapp/heyrobot/core/RLog;|Ljava/io/File;|Ljava/io/File(Input|Output)Stream;|Ljava/io/RandomAccessFile;|Landroid/content/ContentResolver;|Lapp/heyrobot/(sys|assistant|ui|link|r2r|parse|linkparse)/|Lapp/heyrobot/core/(files|memory|backup|seal)/|Landroid/security/keystore/|Ljava/security/KeyStore;')
+[ "$fp_bad" = "0" ] && pass ":feedparse's classes refer to no socket, log, file path, provider, key, store or other process's class (dex)" || fail ":feedparse's classes refer to forbidden classes: $fp_bad"
+fp_classes=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" "$d" 2>/dev/null | grep -cE "Class descriptor  : 'Lapp/heyrobot/feedparse/FeedParseService;'"; done | awk '{ s += $1 } END { print s + 0 }')
+[ "$fp_classes" = "1" ] && pass ":feedparse's service in the dex" || fail ":feedparse's classes in the dex: $fp_classes"
 # Only the :mt module's JNI class loads the fast translation engine (its library name appears in no other class's code).
 mt_loaders=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" -d "$d" 2>/dev/null; done |
   awk '/Class descriptor  :/{ c = $4 } /const-string/ && /"robotmt"/ { print c }' | sort -u | tr '\n' ' ')
 [ "$mt_loaders" = "'Lapp/heyrobot/mt/Slimt;' " ] && pass "only app.heyrobot.mt.Slimt loads librobotmt (dex)" || fail "classes that name librobotmt: $mt_loaders"
 # The updater: of Robot's own classes, only core's update package writes GitHub's addresses (the hosts, the API's and a
 # release page's URLs), and no class of the voice, model, helper or translation processes refers to the updater.
+# Today H7, allowed by exact address: Today's classes write the public list of news feeds (TodayNews.kt FEED_LIST), which
+# only ever opens in your browser on a tap and is never fetched by Robot (FeedListLinkTest pins both).
 gh_refs=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" -d "$d" 2>/dev/null; done |
-  awk '/^Class #/{ on=0 } /Class descriptor  : .Lapp\/heyrobot\//{ on = ($0 !~ /Class descriptor  : .Lapp\/heyrobot\/core\/update\//) } on' |
+  awk '/^Class #/{ on=0; td=0 } /Class descriptor  : .Lapp\/heyrobot\//{ on = ($0 !~ /Class descriptor  : .Lapp\/heyrobot\/core\/update\//); td = ($0 ~ /Class descriptor  : .Lapp\/heyrobot\/ui\/today\//) }
+    on && !(td && index($0, "\"https://github.com/plenaryapp/awesome-rss-feeds\""))' |
   grep -cE 'const-string.*(https://(api\.)?github\.com|githubusercontent\.com)')
 [ "$gh_refs" = "0" ] && pass "GitHub's addresses only in core's update package (dex)" || fail "other Robot classes write GitHub's addresses: $gh_refs"
 upd_refs=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" -d "$d" 2>/dev/null; done |

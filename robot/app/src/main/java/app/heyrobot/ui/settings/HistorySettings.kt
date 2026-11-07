@@ -32,6 +32,8 @@ fun HistorySettingsScreen(s: RobotSettings, update: (RobotSettings) -> Unit, a: 
     PreferenceScreen(UiStrings.history().str(), onBack, snackbar = snackbar) {
         item(key = "main") { MainSwitchBar(stringResource(R.string.history_save), s.saveHistory) { update(s.copy(saveHistory = it)) } }
         preferenceGroup(null, "rows") {
+            // H3: your conversations themselves, since History left the tab bar.
+            PreferenceItem(stringResource(R.string.history_open), stringResource(R.string.history_open_detail), RIcons.History, onClick = { a.openPage(Page.History) })
             PreferenceItem(stringResource(R.string.history_media),
                 stringResource(if (s.keepMedia) R.string.history_media_kept else R.string.history_media_not_kept), RIcons.Image,
                 enabled = s.saveHistory, onClick = { a.openPage(Page.Safety) })

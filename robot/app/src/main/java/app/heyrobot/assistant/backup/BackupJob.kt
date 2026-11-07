@@ -58,7 +58,7 @@ internal class BackupJob(private val ctx: Context, private val chosen: Set<Backu
         /** Saved and checked: [bytes] long, [categories] in it; [unreadableKeys]: helpers whose key couldn't be read now. */
         class Done(val bytes: Long, val categories: Set<BackupCategory>, val unreadableKeys: List<String>, val linksLeftOut: Boolean = false,
                    /** R4: files of Robot Files that couldn't be read, and private codes left out because Memory couldn't be. */
-                   val filesLeftOut: Int = 0, val codesLeftOut: Boolean = false) : Outcome()
+                   val filesLeftOut: Int = 0, val codesLeftOut: Boolean = false, val privateLeftOut: Boolean = false) : Outcome()
         class Failed(val code: BackupCode) : Outcome()
         data object Cancelled : Outcome()
     }
@@ -91,6 +91,8 @@ internal class BackupJob(private val ctx: Context, private val chosen: Set<Backu
             return failed(BackupCode.FILES_UNREADABLE, uri)
         } catch (_: BackupSources.ListsUnreadable) {
             return failed(BackupCode.LISTS_UNREADABLE, uri)
+        } catch (_: BackupSources.PrivateUnreadable) {
+            return failed(BackupCode.CALENDAR_UNREADABLE, uri)
         } catch (t: Throwable) {
             RLog.w("backup_gather", t)
             return failed(BackupCode.FAILED, uri)
@@ -186,7 +188,7 @@ internal class BackupJob(private val ctx: Context, private val chosen: Set<Backu
                 BackupFiles.saveState(ctx, BackupFiles.state(ctx).after(now, wrote, bytes, checked = true)
                     .copy(chosen = remember, recordings = recordings, pictures = pictures, videos = videos))
                 log(BackupCode.DONE_CHECKED, wrote, bytes)
-                Outcome.Done(bytes, wrote, gathered.unreadableKeys, gathered.linksLeftOut, gathered.filesLeftOut(), gathered.codesLeftOut)
+                Outcome.Done(bytes, wrote, gathered.unreadableKeys, gathered.linksLeftOut, gathered.filesLeftOut(), gathered.codesLeftOut, gathered.privateLeftOut)
             }
         } finally {
             gathered.secrets.forEach { it.close() }

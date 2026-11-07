@@ -778,7 +778,7 @@ fun ClassicActionCard(a: ActionView, onConfirm: ((String, Boolean) -> Unit)?, mo
                                 color = MaterialTheme.colorScheme.onSecondaryContainer)
                         }
                         OutlinedButton(onClick = { onConfirm(a.id, false) }, modifier = Modifier.align(Alignment.End).heightIn(min = 48.dp)) {
-                            Text(stringResource(R.string.card_cancel))
+                            Text(a.cancel ?: stringResource(R.string.card_cancel))
                         }
                     }
                 } else {
@@ -795,7 +795,7 @@ fun ClassicActionCard(a: ActionView, onConfirm: ((String, Boolean) -> Unit)?, mo
                     Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
                         verticalAlignment = Alignment.CenterVertically) {
                         OutlinedButton(onClick = { onConfirm(a.id, false) }, modifier = Modifier.heightIn(min = 48.dp)) { Text(a.cancel ?: stringResource(R.string.card_cancel)) }
-                        Button(onClick = { onConfirm(a.id, true) }, modifier = Modifier.weight(1f, fill = false).heightIn(min = 48.dp)) { Text(a.confirm ?: stringResource(R.string.card_do_it)) }
+                        Button(onClick = { onConfirm(a.id, true) }, modifier = Modifier.weight(1f, fill = false).heightIn(min = 48.dp)) { Text(a.confirm ?: a.doIt ?: stringResource(R.string.card_do_it)) }
                     }
                 }
             }

@@ -4,21 +4,22 @@ I built it because there wasn't one. My phone runs GrapheneOS with no Google acc
 
 WHAT IT DOES
 • Timers and alarms, also from the lock screen, and your calendar
+• Today: a home page for your day (off until you turn it on), a Calendar tab, a widget, news feeds you add, and private events that stay in Robot, encrypted
 • Drafts texts and emails in the apps you choose; you press Send
 • Opens your maps app with a search or route ready
 • Keeps notes and finds them
 • Answers questions about what's on your screen, or a photo, once the phone is unlocked
-• Answers everyday questions with Gemma, Google's open model, running on the phone
-• The weather from Open-Meteo, only when you ask
+• Answers everyday questions with Gemma, Google's open model, on the phone
+• The weather from Open-Meteo, only when you ask or tap it
 • Checks battery, storage and memory; helps free space
 • Conversation mode: transcripts with speaker names, live French and English translation, summaries
 • Your own wake words, voice speed, and a People list for the names you use
 • Skills: teach it a short routine by voice, then say its name
 • Lists by voice, files in a question, car screen, Robot to Robot
 • Phone lock: covers other apps for times you set, by voice or in Settings. Off until you set it up
-• Robot Files: receipts, bills and documents filed on the phone, each one encrypted. Ask what you spent or what's due
-• An encrypted backup in one file you keep, your files included; Robot never uploads it
-• Checks GitHub for updates once a day; you install them yourself, unless you turn on "Install updates without asking" (off)
+• Robot Files: receipts, bills and documents filed on the phone, encrypted. Ask what you spent or what's due
+• An encrypted backup in one file you keep, files included; never uploaded
+• Checks GitHub for updates daily; you install them, unless you turn on automatic installs
 
 LANGUAGES
 Understands and speaks English and Québec French. Reads other languages and answers in English or French.
@@ -26,29 +27,29 @@ Understands and speaks English and Québec French. Reads other languages and ans
 PRIVATE BY DEFAULT
 • Wake word, speech recognition, the AI model and the voice all run on the phone
 • Works offline once its model files are downloaded
-• Goes online only for what you ask (the weather, a search, a download), for the daily update check and its download on Wi-Fi, for the weekly Termux check once Termux is set up, and for routines you allow to. Each can be turned off in Settings
+• Goes online only for what you ask (the weather, a search, a download), the daily update check and its download on Wi-Fi, the weekly Termux check once Termux is set up, news feeds you add, and routines you allow to. Each can be turned off in Settings
 • Each action can be set to Just do it, Ask first, or Off
 • No analytics, no crash reporting, no ads, no account, no Google Play services
 • Audio is never saved; message and screen content is never logged
-• Phone lock's one accessibility service sees only which app is in front, never what's on screen
+• Phone lock's accessibility service sees only which app is in front
 
 OPTIONAL: HELPERS
-For a question that needs a bigger model, Robot can pass that one question to an AI you choose: a paid AI service with your own API key, another AI's app on your phone (you press Send there), or your own server. None is set up until you add one, and a helper only gets what you ask or allow it to.
+For a question that needs a bigger model, Robot can pass that one question to an AI you choose: a paid service with your API key, another AI's app on your phone (you press Send there), or your own server. Nothing is set up until you add one.
 
 REQUIREMENTS
 • Pixel 10, 10 Pro, 10 Pro XL and 10 Pro Fold run the model on the TPU (tested on the Pixel 10 Pro)
 • Pixel 6 to 9, their a models including the 10a, Fold and Tablet work more slowly on the GPU or CPU
 • Pixel 11 in beta. Galaxy and other Android 14 phones should run; untested so far
-• Pixels come first because GrapheneOS runs on them, and keeping Google off the phone is the point
+• Pixels come first because GrapheneOS runs on them: keeping Google off the phone is the point
 • Android 14 or newer; built and tested on GrapheneOS
 • 3.6 to 4.3 GB free for model and voice files, depending on the phone, downloaded once and checked by SHA-256
 • The model uses about 2 GB of memory while it's loaded
 
 SETUP
-Robot becomes your default digital assistant (Settings › Apps › Default apps). Its setup screen checks everything and explains an optional one-time step that keeps Robot set as the assistant after a restart.
+Robot becomes your default digital assistant (Settings › Apps › Default apps). Its setup screen checks everything and explains an optional step that keeps Robot the assistant after a restart.
 
 FREE AND OPEN SOURCE
-Robot is GPL-3.0 and I make it alone. Nothing is locked. If it's useful to you, you can donate on Ko-fi (https://ko-fi.com/picocryptfan), once or monthly, or in Bitcoin, Lightning, Monero or Ethereum: https://robot-app.ai/#donate
+Robot is GPL-3.0 and I make it alone. Nothing is locked. If it's useful to you, you can donate in Bitcoin, Lightning, Monero or Ethereum: https://robot-app.ai/#donate
 
-Source code, issue tracker and model hashes: https://github.com/picocryptfan/robot-assistant
+Source code, issues and model hashes: https://github.com/picocryptfan/robot-assistant
 Contact: hey@robot-app.ai

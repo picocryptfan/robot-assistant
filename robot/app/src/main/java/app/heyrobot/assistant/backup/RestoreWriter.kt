@@ -270,6 +270,8 @@ internal class RestoreSession(private val ctx: Context,
             BackupCategory.VOICEPRINT to if (VoiceprintFiles.saved(ctx)) 1 else 0,
             BackupCategory.EVERYDAY to if (EverydaySettingsStore.file(ctx).isFile) 1 else 0,
             BackupCategory.LINKS to if (app.heyrobot.sys.LinkSettingsStore.file(ctx).isFile) 1 else 0,
+            BackupCategory.CALENDAR to app.heyrobot.sys.PrivateEventsFiles.events(ctx).size,
+            BackupCategory.HOME to if (app.heyrobot.sys.HomeSettingsStore.file(ctx).isFile) 1 else 0,
         )
         // 1.4, Robot Files: its files (counted from their sealed sizes when the list can't be read: no key needed), and
         // whether it can take a restore (its key gone: Replace only; its list unreadable: left out until Start over).
@@ -347,7 +349,9 @@ internal class RestoreSession(private val ctx: Context,
             }
             // L12: "Answer while locked" comes back off.
             val links = of(BackupCategory.LINKS) { if (mine) v.linkSettings?.let { RestoreSafety.link(app.heyrobot.sys.LinkSettingsStore.current(ctx), it.read).kept.size } else 0 }
-            settings + files + lists + everyday + conns + links + keptSaferVoice(v, plan, restoring)
+            // Today H6: the weather line stays off.
+            val home = of(BackupCategory.HOME) { v.home?.let { RestoreSafety.home(app.heyrobot.sys.HomeSettingsStore.current(ctx), it, mine).kept.size } }
+            settings + files + lists + everyday + conns + links + home + keptSaferVoice(v, plan, restoring)
         } catch (t: Throwable) {
             RLog.w("restore_kept", t)
             null
@@ -768,6 +772,34 @@ internal class RestoreSession(private val ctx: Context,
         }
         // The everyday set: staged for the main app, which merges it over its own file as it is then (RestoreApply,
         // EverydaySettingsStore.restore); the backup's pin of a music app, if an older file had one, is never taken.
+        // H3: private events (yours only, RestorePlan), merged into this phone's vault under its own key: Add keeps both
+        // (the newer change wins for the same event), Replace takes the backup's. Can't be opened here: left as they are.
+        step(BackupCategory.CALENDAR) {
+            j.begin(BackupCategory.CALENDAR, RestoreProcess.VOICE)
+            val file = v.privateEvents
+            if (file != null) {
+                val replace = mode(BackupCategory.CALENDAR) == RestoreMode.REPLACE
+                when (app.heyrobot.sys.PrivateEventsFiles.vault(ctx).restore { have -> app.heyrobot.core.calendar.PrivateMerge.merge(have, file, replace) }) {
+                    is app.heyrobot.sys.PrivateLoad.Loaded -> {}
+                    app.heyrobot.sys.PrivateLoad.Locked -> return@step CategoryOutcome.Locked
+                    app.heyrobot.sys.PrivateLoad.Unreadable, is app.heyrobot.sys.PrivateLoad.TooNew -> return@step CategoryOutcome.Skipped(PlanSkip.CALENDAR_UNREADABLE)
+                }
+            }
+            j.done(BackupCategory.CALENDAR)
+            CategoryOutcome.Done
+        }
+
+        // H5: the Today page's settings, merged over this phone's under the lock both processes share (HomeSettingsStore).
+        step(BackupCategory.HOME) {
+            val h = v.home ?: return@step CategoryOutcome.Failed
+            j.begin(BackupCategory.HOME, RestoreProcess.VOICE)
+            var guarded = 0
+            app.heyrobot.sys.HomeSettingsStore.update(ctx) { RestoreSafety.home(it, h, mine).also { g -> guarded = g.kept.size }.value } ?: return@step CategoryOutcome.Failed
+            kept += guarded
+            j.done(BackupCategory.HOME)
+            CategoryOutcome.Done
+        }
+
         step(BackupCategory.EVERYDAY) {
             val e = v.everyday ?: return@step CategoryOutcome.Failed
             kept += RestoreSafety.everyday(EverydaySettingsStore.current(ctx), e.read, mine).kept.size

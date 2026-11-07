@@ -352,4 +352,23 @@ class UpdatesSettingsTest {
         rule.onNode(hasScrollAction()).performScrollToNode(hasText("Automatic updates can't run"))
         rule.onNodeWithText("Automatic updates can't run").assertExists()
     }
+
+    @Test fun notificationsOffSaySoAndOpenAndroidsPage() {
+        var taps = 0
+        rule.show { UpdatesScreen(upToDate.copy(noticesOff = true), UpdatesActions(turnOnNotices = { taps++ }), onBack = {}) }
+        rule.onNode(hasScrollAction()).performScrollToNode(hasText("Update notifications are off"))
+        rule.onNodeWithText("Robot can't tell you when an update is available", substring = true).assertExists()
+        rule.onNodeWithText("Open").performClick()
+        assertEquals(1, taps)
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
+    }
+
+    @Test fun notificationsOnOrNoDailyCheckSayNothing() {
+        var ui by mutableStateOf(upToDate)
+        rule.show { UpdatesScreen(ui, UpdatesActions(), onBack = {}) }
+        rule.onNodeWithText("Update notifications are off").assertDoesNotExist()
+        ui = upToDate.copy(noticesOff = true, settings = UpdateSettings(autoCheck = false))
+        rule.waitForIdle()
+        rule.onNodeWithText("Update notifications are off").assertDoesNotExist()
+    }
 }

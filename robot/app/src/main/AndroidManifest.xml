@@ -724,6 +724,7 @@
         <receiver
             android:name=".ui.lists.ListsWidgetProvider"
             android:exported="true"
+            android:permission="android.permission.BIND_APPWIDGET"
             android:label="@string/lists_widget_label">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
@@ -732,6 +733,24 @@
         </receiver>
         <receiver
             android:name=".ui.lists.ListsTickReceiver"
+            android:exported="false" />
+        <!-- Today H9: the home-screen widget's provider, exported as a widget provider must be, with exactly the
+             APPWIDGET_UPDATE filter and its meta-data, the system's broadcasts only (BIND_APPWIDGET, as the lists' widget;
+             Robot's own redraws go through TodayRefresh, today-fix-c 8); it reads nothing from what it is sent and only redraws. Its refresh
+             receiver isn't exported and has no filter: only Robot's own inexact alarm reaches it (ProcessIsolationTest's
+             todayOutsideTheApp, verify_apk.sh). -->
+        <receiver
+            android:name=".ui.today.TodayWidgetProvider"
+            android:exported="true"
+            android:permission="android.permission.BIND_APPWIDGET"
+            android:label="@string/today_widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/today_widget_info" />
+        </receiver>
+        <receiver
+            android:name=".ui.today.TodayRefresh"
             android:exported="false" />
         <activity
             android:name=".ui.lists.ListsWidgetSetup"
@@ -868,6 +887,15 @@
         <service
             android:name=".linkparse.LinkParseService"
             android:process=":linkparse"
+            android:isolatedProcess="true"
+            android:exported="false" />
+        <!-- Today H7b (home-design §6.1, "Limits and cost"): ":feedparse", the one place a news feed's bytes are read, in an
+             isolated process as :linkparse is: a uid of its own with no permissions, no network and none of Robot's files.
+             Bound only by a round of news fetching (FeedParseLink, in main or :voice), a fresh instance a round
+             (bindIsolatedService); never exported, no permission, no intent filter, never shared nor from the app zygote. -->
+        <service
+            android:name=".feedparse.FeedParseService"
+            android:process=":feedparse"
             android:isolatedProcess="true"
             android:exported="false" />
     </application>

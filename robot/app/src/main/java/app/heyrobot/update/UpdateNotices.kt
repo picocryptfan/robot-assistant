@@ -8,6 +8,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.provider.Settings
 import app.heyrobot.R
 import app.heyrobot.core.RLog
 import app.heyrobot.core.update.UpdateText
@@ -78,6 +79,24 @@ object UpdateNotices {
     /** Android's confirmation window, when Robot couldn't open it itself (not on screen). */
     fun confirm(ctx: Context, confirm: Intent) = post(ctx, UpdateStrings.confirmTitle(), UpdateStrings.confirmText(),
         PendingIntent.getActivity(ctx, REQ_CONFIRM, confirm, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
+
+    /** Robot can post its update notices: the permission granted, its notifications on and the Updates channel not off. */
+    fun canPost(ctx: Context): Boolean = try {
+        val nm = manager(ctx)
+        nm != null && appOn(ctx, nm) && nm.getNotificationChannel(CHANNEL)?.importance != NotificationManager.IMPORTANCE_NONE
+    } catch (_: Throwable) { false }
+
+    private fun appOn(ctx: Context, nm: NotificationManager): Boolean =
+        Assistant.granted(ctx, Manifest.permission.POST_NOTIFICATIONS) && nm.areNotificationsEnabled()
+
+    /** Android's page that turns them on: the Updates channel's when only it is off, else Robot's notifications. */
+    fun settings(ctx: Context): Intent {
+        val nm = manager(ctx)
+        val channelOnly = try { nm != null && appOn(ctx, nm) && nm.getNotificationChannel(CHANNEL) != null } catch (_: Throwable) { false }
+        return if (channelOnly) Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+            .putExtra(Settings.EXTRA_APP_PACKAGE, ctx.packageName).putExtra(Settings.EXTRA_CHANNEL_ID, CHANNEL)
+        else Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, ctx.packageName)
+    }
 
     fun cancel(ctx: Context) {
         try { manager(ctx)?.cancel(ID) } catch (_: Throwable) {}

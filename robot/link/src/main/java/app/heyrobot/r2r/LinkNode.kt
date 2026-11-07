@@ -1774,6 +1774,25 @@ class LinkNode(
     /** [due]: outbox requests a carrier hasn't taken yet and that may go now, or are on their way. */
     class Status(val pairings: Int, val sent: Int, val outbox: Int, val due: Int, val codes: Int, val connections: Int, val listening: Boolean, val torRunning: Boolean, val awake: Boolean)
 
+    /**
+     * Today H7b, news through Tor: true once Tor can carry a stream, starting it when it isn't (TorNet.up, bounded) and only
+     * on the network you allow. Blocks: called from a Binder thread, never the node's.
+     */
+    fun feedTor(): FeedTorGate.State {
+        val g = feedGate ?: return FeedTorGate.State.DOWN
+        if (!env.networkAllowed()) return FeedTorGate.State.DOWN
+        return g.state()
+    }
+
+    /** fix-today-tor: a feed waits for Tor's start at most FeedTorGate.WAIT_MS; Tor goes on starting after. */
+    private val feedGate: FeedTorGate? by lazy { tor?.let { t -> FeedTorGate({ t.up() }) } }
+
+    /** A stream to a feed's [host]:[port] through Tor, its own circuit per host ("feed:" and the host), or null. Never direct. */
+    fun feedStream(host: String, port: Int): Duplex? {
+        if (!FEED_HOST.matches(host) || host.length > 253 || host.substringAfterLast('.').none { it in 'a'..'z' } || port !in 1..65535 || feedTor() != FeedTorGate.State.UP) return null
+        return try { tor!!.dialHost(host, port, "feed:$host") } catch (_: Exception) { null } // l10n: not text (a SOCKS isolation key)
+    }
+
     fun status(): CompletableFuture<Status> = call {
         val now = nowS()
         Status(st.pairings.values.count { it.state == PairingState.ACTIVE }, st.pairings.values.count { it.state == PairingState.SENT },
@@ -1944,3 +1963,6 @@ fun <T> CompletableFuture<T>.within(seconds: Long): T = try {
     cancel(false)
     throw x
 }
+
+/** A feed's host, as core FeedHttp takes it: a DNS name of two labels or more, no address literal, no port. */
+private val FEED_HOST = Regex("[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?)+") // l10n: not text (a DNS name)

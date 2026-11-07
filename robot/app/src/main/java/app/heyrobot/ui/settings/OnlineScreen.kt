@@ -84,6 +84,7 @@ fun onlinePage(p: NetPurpose): Page = when (p.group) {
     NetGroup.UPDATES -> if (p == NetPurpose.TERMUX_CHECK) Page.Settings(SettingsRoutes.TERMUX) else Page.Settings(SettingsRoutes.UPDATES)
     NetGroup.SKILLS -> Page.Settings(SettingsRoutes.SKILLS)
     NetGroup.LINK -> Page.Settings(SettingsRoutes.LINK)
+    NetGroup.NEWS -> Page.Settings(SettingsRoutes.DISPLAY)
 }
 
 @Composable
@@ -96,6 +97,7 @@ private fun groupName(g: NetGroup): String = stringResource(when (g) {
     NetGroup.UPDATES -> R.string.everyday_online_g_updates
     NetGroup.SKILLS -> R.string.everyday_online_g_skills
     NetGroup.LINK -> R.string.everyday_online_g_link
+    NetGroup.NEWS -> R.string.everyday_online_g_news
 })
 
 @Composable

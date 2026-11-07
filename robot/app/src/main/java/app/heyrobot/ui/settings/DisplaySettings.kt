@@ -26,6 +26,7 @@ import app.heyrobot.ui.pref.preferenceGroup
 fun DisplaySettingsScreen(look: LookSettings, onChange: (LookSettings) -> Unit, onBack: () -> Unit) {
     val colours = stringResource(R.string.display_colours)
     val footer = stringResource(R.string.display_footer)
+    val today = stringResource(R.string.today_name)
     PreferenceScreen(UiStrings.display().str(), onBack) {
         preferenceGroup(colours, "colours") {
             SwitchPreference(stringResource(R.string.display_wallpaper),
@@ -33,6 +34,8 @@ fun DisplaySettingsScreen(look: LookSettings, onChange: (LookSettings) -> Unit, 
                 onChange(look.copy(wallpaperColors = it))
             }
         }
+        // Today (home-design H2): which page Home opens on; the offer's way back in after Not now.
+        preferenceGroup(today, "today") { app.heyrobot.ui.today.TodayHomeSetting() }
         preferenceFooter(footer)
     }
 }

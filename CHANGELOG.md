@@ -4,6 +4,55 @@ What changed in each version of Robot, newest first. Each version's full notes, 
 [`robot/README.md`](robot/README.md) ("What's new in …" and the feature sections). Versions before 1.0 were test
 builds.
 
+## 1.2.6
+
+- Today, a home page that shows your day instead of Getting started: what's on now and next, your lists, reminders,
+  loose ends in Robot Files and requests from other Robots, and a note you can add to. You turn it on from a one-time
+  offer or in Settings › Display, and order its middle parts by dragging or by voice ("put my calendar first").
+- "How's my day" says it. The morning brief, with Today on, follows the same order.
+- A Calendar tab replaces History on the tab bar and shows the next 14 days, read only from the phone's calendars. The
+  clock icon at the top of Today opens History, as "show my history" does. "Show my history" and "show my calendar" now
+  open the page and the panel closes behind it. Before, they answered and opened nothing.
+- Private events live only in Robot, sealed on the phone under a key that needs it unlocked, and never go into your
+  calendar app or Android's backups. Add an event asks where it goes. Start over keeps an unreadable file aside.
+- Today and the Calendar tab read the calendar once on opening and again on a change, not on a timer; a minute tick only
+  updates "now" and when to leave.
+- With Today off, "show my calendar" goes to the model with the calendar tools, as in 1.2. By voice alone, with Today
+  on, it says your day and opens nothing.
+- Say "put my calendar first" or « mets ma note en premier » and Today follows within a second, without leaving the tab.
+- Today's page and private events come back from a backup only when you mark it as your own.
+- A weather line on Today, off until you turn it on in Settings › Display. It asks Open-Meteo for the forecast only when
+  you tap Get today's forecast or Updated: never when Today opens or on a timer. The forecast is kept on the phone, outside
+  backups, and deleted when you turn the line or Today off.
+- A Robot today widget for the home screen, and a quiet summary on the lock screen (counts and times, off until you turn it
+  on in Settings › Display). A private event shows as "a private event" on the widget, and is never counted or timed on the
+  lock screen. Both go away with Today off. Read my day after my morning alarm is the morning brief, started by an alarm.
+- History keeps "a private event" in place of a private title a reply said. The brief never says your lists or note
+  while the phone is locked.
+- News on Today, off until you add a feed in Settings › Display › News on Today (RSS or Atom, up to five; Robot suggests
+  none). By default Robot fetches them once a day from 5:30 in the morning, on Wi-Fi and not in Battery Saver; a morning
+  it can't fetch is caught up once, when it can (back on Wi-Fi, or when you open Today), never before 5:30. You can choose
+  when you open Today (at most once an hour) or only when you ask, and directly or only through Tor (with Robot to Robot
+  on; nothing goes out without it). Neither the daily fetch nor an open uses mobile data unless you turn on "Use mobile
+  data for news"; tapping the line's time fetches them then, on any network. Feeds are read in a separate process with no network access, and the headlines are
+  kept 7 days, outside backups. The morning brief says them (on a locked phone only at Everything), "read me the news"
+  says them once the phone is unlocked, and each fetch is listed in What went online, under News.
+- A feed on your own server: plain http only on your own network, and a feed address carrying a token kept encrypted,
+  shown masked, left out of logs, History and backups, and sent only over https with a valid certificate, except to a
+  server on the phone itself, which the setting marks "Not encrypted (on this phone)". With Tor chosen, a feed on your own network goes directly, and the setting says so.
+- A confirm card is in the language you spoke: say « annule mon alarme » with English menus and its question and buttons
+  are in French. Before, they were in the menus' language.
+- A typed question on a phone on silent or in Do Not Disturb is answered on screen only, with a notice once; vibrate still
+  speaks, and so do Speak replies on Always, headphones, the car, asking by voice and your own tap on the speaker button.
+- Routines and the morning brief stay quiet on silent or in Do Not Disturb and show their words in a notification
+  instead, unless the sound goes to headphones or the car. A brief started by turning off your alarm still speaks.
+- When the daily check finds a new version, Robot says so at once, on Wi-Fi or mobile data, instead of waiting up to two
+  days for Wi-Fi; once the download on Wi-Fi is checked, the same notification says it's ready to install. Settings ›
+  About › Updates says when Robot can't post notifications and opens the switch.
+- Messages: a work profile's copy of a messaging app you allowed is never read, counted or announced, and Robot learns
+  no names from a work profile's Cheogram.
+- Settings › About › Support Robot lists the crypto addresses only; the Ko-fi card and its browser button are gone.
+
 ## 1.2.5
 
 - After Robot answers, a reply above a tall card (a list of three items, say) shows from its first line; before, the

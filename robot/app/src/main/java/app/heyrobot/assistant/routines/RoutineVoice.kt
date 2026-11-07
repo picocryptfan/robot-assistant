@@ -33,6 +33,10 @@ import app.heyrobot.core.output.DeviceFile
 import app.heyrobot.core.output.DeviceMemory
 import app.heyrobot.core.output.OutputDecision
 import app.heyrobot.core.output.PhoneState
+import app.heyrobot.core.output.QuietAnswer
+import app.heyrobot.assistant.PanelQuiet
+import app.heyrobot.core.RoutineOutput
+import app.heyrobot.core.TriggerKind
 import app.heyrobot.core.output.RouteType
 import app.heyrobot.core.output.SeenDevice
 import app.heyrobot.core.output.Trust
@@ -332,6 +336,19 @@ object RoutineVoice {
     }
 
     // ------------------------------------------------------------------ what OutputGuard needs
+
+    /**
+     * review-quiet-when-silent, 4: an unattended run of [output] stays quiet now (core QuietAnswer.routine): the phone is
+     * on silent or in Do Not Disturb and its voice would go to the room, unless you just turned off your alarm ([kind]
+     * ALARM with its occurrence's [key]). The route is read only on a silenced phone.
+     */
+    fun quiet(kind: TriggerKind, key: String?, output: RoutineOutput): Boolean {
+        if (output == RoutineOutput.SILENT) return false
+        val ringer = PanelQuiet.ringer(app)
+        val dnd = PanelQuiet.dnd(app)
+        if (!QuietAnswer.silenced(ringer, dnd)) return false
+        return QuietAnswer.routine(kind, output, ringer, dnd, route(), key)
+    }
 
     private fun phone(): PhoneState {
         val am = app.getSystemService(AudioManager::class.java)

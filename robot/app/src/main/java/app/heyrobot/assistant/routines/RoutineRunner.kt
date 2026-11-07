@@ -50,6 +50,7 @@ import app.heyrobot.core.VoiceLog
 import app.heyrobot.core.WeatherAsk
 import app.heyrobot.core.i18n.Langs
 import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.RoutineStrings
 import app.heyrobot.core.i18n.ReplyLang
 import app.heyrobot.sys.AppLanguage
 import app.heyrobot.sys.Assistant
@@ -122,7 +123,15 @@ object BriefSource {
         val items = rs.briefItems
         val weather = if (withWeather && missing == null && BriefItem.WEATHER in items) weather(ctx, s) else null
         val day = now.toLocalDate()
-        val events = if (BriefItem.CALENDAR in items && Calendars.readGranted(ctx)) {
+        // Today H5: with Today your home page, the brief follows it: its order, its private events with the phone's, and its
+        // lists and note, those two read only while the phone is unlocked and no phone lock is on (BriefPrivacy never says
+        // them locked either; today-fix-b: Assistant.locked, as PanelRoutines.today, so a phone lock doesn't read them into memory).
+        val home = try { app.heyrobot.sys.HomeSettingsStore.current(ctx).takeIf { it.today } } catch (t: Throwable) { RLog.w("brief_home", t); null }
+        val open = withWeather && home != null && !Assistant.locked(ctx)
+        var privateLocked = false
+        val events = if (home != null && BriefItem.CALENDAR in items) {
+            app.heyrobot.sys.TodaySource.day(ctx, now, DayRange(day.atStartOfDay(now.zone), day.plusDays(1).atStartOfDay(now.zone))).also { privateLocked = it.privateLocked }.events
+        } else if (BriefItem.CALENDAR in items && Calendars.readGranted(ctx)) {
             try { Calendars.events(ctx, DayRange(day.atStartOfDay(now.zone), day.plusDays(1).atStartOfDay(now.zone))) } catch (t: Throwable) { RLog.w("brief_calendar", t); null }
         } else null
         val reminders = BriefReminders.due(RoutineFiles.store(ctx).reminders(), day, now.zone).map { it.text }
@@ -139,9 +148,27 @@ object BriefSource {
         val files = if (withWeather) files(ctx, now) else null
         // 1.5 L6: Robot to Robot's part, as Files': read only while the phone is unlocked, when its "Show in morning brief" says so.
         val link = if (withWeather) link(ctx, now) else null
+        // today-h7-fix 5: read on a locked phone too (BriefPrivacy says it at "Everything" and holds it otherwise), never under
+        // someone else's phone lock.
+        val news = if (withWeather && home != null && home.news.on && !app.heyrobot.lock.PhoneLockNow.on(ctx)) app.heyrobot.sys.NewsStore.current(ctx).let { st ->
+            val ms = System.currentTimeMillis()
+            st.pick(home.news, ms) to st.updated(home.news, ms)
+        } else null
         val all = items.filter { it != BriefItem.FILES && it != BriefItem.LINK } + listOfNotNull(BriefItem.FILES.takeIf { files != null }, BriefItem.LINK.takeIf { link != null })
         return BriefInput(now, lang(rs, langs), all, weather, if (withWeather) missing ?: (if (weather == null) BriefWeatherMissing.UNAVAILABLE else null) else missing,
-            events, reminders, if (BriefItem.MESSAGES in items && withWeather) unread.unread() else null, phoneOpens = opens, files = files, link = link)
+            events, reminders, if (BriefItem.MESSAGES in items && withWeather) unread.unread() else null, phoneOpens = opens, files = files, link = link,
+            page = home?.order, lists = if (open) app.heyrobot.sys.TodaySource.glances(ctx, lang(rs, langs)) else emptyList(),
+            note = if (open && home != null) app.heyrobot.sys.TodaySource.note(ctx, home) else null, privateLocked = privateLocked,
+            // H7: the headlines already fetched, never fetched for the brief.
+            news = news?.first.orEmpty(), newsAt = news?.second)
+    }
+
+    /** Today fix: the calendar part after an unlock ([RoutineRunner.CALENDAR_LATER]), private events read now. */
+    fun calendarNow(ctx: Context, lang: Lang): List<SpokenPart> {
+        val now = ZonedDateTime.now()
+        val day = now.toLocalDate()
+        val d = app.heyrobot.sys.TodaySource.day(ctx, now, DayRange(day.atStartOfDay(now.zone), day.plusDays(1).atStartOfDay(now.zone)))
+        return BriefParts.of(BriefComposer.lines(BriefItem.CALENDAR, BriefInput(now, lang, listOf(BriefItem.CALENDAR), events = d.events, privateLocked = d.privateLocked), place = true))
     }
 
     /**
@@ -245,7 +272,11 @@ object RoutineRunner {
         val briefLang = BriefSource.lang(rs, langs)
         val routine = r.copy(steps = steps, lock = if (someoneElse) RoutineLock.FOLLOW else r.lock)
         val plan = RoutinePlan.plan(routine, RunOrigin.UNATTENDED, locked, s, rs)
-        val speaks = r.output != RoutineOutput.SILENT
+        // review-quiet-when-silent, 4: on a silenced phone a run whose voice would go to the room is shown, not said; a run
+        // started by turning off your alarm still speaks (fix-126-review 2: only then, with the alarm's key; a missed alarm's
+        // run at the unlock and a brief's held rest come with none).
+        val quiet = r.output != RoutineOutput.SILENT && RoutineVoice.quiet(kind, key, r.output)
+        val speaks = r.output != RoutineOutput.SILENT && !quiet
         val silent = StringBuilder()
         val session = if (speaks) RoutineVoice.open(r, RoutineVoice.Surface.SERVICE, rs.briefLock == BriefLock.EVERYTHING, locked) { end ->
             RoutineHub.spoken(ctx, r, kind, end)
@@ -257,7 +288,7 @@ object RoutineRunner {
             else parts.forEach { silent.append(it.shownText).append(' ') }
         }
         // 1.4 F10: the files part a locked brief left for the unlock, read now that the phone is unlocked (or dropped).
-        say(before.flatMap { if (it.item == BriefItem.FILES && it.lines.isEmpty()) BriefSource.filesNow(ctx, briefLang) else listOf(it) })
+        say(before.flatMap { if (it.item == BriefItem.FILES && it.lines.isEmpty()) BriefSource.filesNow(ctx, briefLang) else if (it.item == BriefItem.CALENDAR && it.lines.isEmpty()) BriefSource.calendarNow(ctx, briefLang) else listOf(it) })
         val now = ZonedDateTime.now()
         var ready = 0
         var failed = 0
@@ -292,6 +323,7 @@ object RoutineRunner {
             if (fail) failed++ else if (RoutinePlan.runs(p.go)) done++
         }
         say(RoutinePlan.closingText(ready, waiting.size).map { part(it, langs, false, StepCode.SAY) })
+        if (quiet && silent.isNotBlank()) silent.insert(0, ' ').insert(0, RoutineStrings.stayedQuiet().render(langs))
         if (session != null) RoutineVoice.close(session) else RoutineNotices.silent(ctx, r, silent.toString().trim())
         if (waiting.isNotEmpty() || heldParts.isNotEmpty()) RoutineHub.waitForUnlock(Waiting(r, kind, waiting, heldParts, ZonedDateTime.now()))
         // The rest after the unlock isn't a run of its own: the last run stays the one that started it.
@@ -316,16 +348,18 @@ object RoutineRunner {
      * at the lock level (BriefComposer). Returns what was said now and what waits for the unlock.
      */
     fun brief(ctx: Context, s: RobotSettings, rs: RoutineSettings, routine: Routine, locked: Boolean, say: (List<SpokenPart>) -> Unit,
-        origin: RunOrigin = RunOrigin.UNATTENDED, langs: Langs = BriefSource.langs(ctx, s)): Pair<List<SpokenPart>, List<SpokenPart>> {
+        origin: RunOrigin = RunOrigin.UNATTENDED, langs: Langs = BriefSource.langs(ctx, s),
+        read: (List<app.heyrobot.core.CalendarEvent>?) -> Unit = {}): Pair<List<SpokenPart>, List<SpokenPart>> {
         val missing = RoutineGate.briefWeather(routine, origin, rs)
         val first = BriefSource.input(ctx, s, rs, missing, withWeather = false, langs = langs)
         val greeting = if (BriefItem.GREETING in rs.briefItems && !(locked && rs.briefLock == BriefLock.NOTHING))
             BriefParts.of(BriefComposer.lines(BriefItem.GREETING, first, place = false)) else emptyList()
         say(greeting)
-        val b: Brief = BriefComposer.compose(BriefSource.input(ctx, s, rs, missing, langs = langs), locked, rs.briefLock)
+        val input = BriefSource.input(ctx, s, rs, missing, langs = langs).also { read(it.events) }
+        val b: Brief = BriefComposer.compose(input, locked, rs.briefLock)
         val rest = BriefParts.of(b.spoken).filter { greeting.isEmpty() || it.item != BriefItem.GREETING }
         say(rest)
-        val held = BriefParts.of(b.held)
+        val held = calendarLater(BriefParts.of(b.held), locked && input.privateLocked)
         // 1.4 F10: locked, the files part can't be read (its key needs the unlock): its place waits for it, before the closing,
         // only when the brief already holds parts for the unlock (at "Everything" nothing waits, and the files part is skipped).
         if (!locked || held.isEmpty() || !BriefSource.filesWanted(ctx)) return (greeting + rest) to held
@@ -335,6 +369,16 @@ object RoutineRunner {
 
     /** 1.4 F10: where a locked brief's files part goes once the phone is unlocked ([run] reads it then). */
     val FILES_LATER = SpokenPart(emptyList(), true, StepCode.BRIEF, BriefItem.FILES)
+
+    /** Today fix: where a locked brief's calendar part goes while private events are locked; read again after the unlock. */
+    val CALENDAR_LATER = SpokenPart(emptyList(), true, StepCode.BRIEF, BriefItem.CALENDAR)
+
+    /** [held] with its calendar part left as [CALENDAR_LATER] when [later] (it was read without the private events). */
+    fun calendarLater(held: List<SpokenPart>, later: Boolean): List<SpokenPart> {
+        val at = held.indexOfFirst { it.item == BriefItem.CALENDAR }
+        if (!later || at < 0) return held
+        return held.filterIndexed { i, p -> i == at || p.item != BriefItem.CALENDAR }.map { if (it.item == BriefItem.CALENDAR) CALENDAR_LATER else it }
+    }
 
     /**
      * A tool step: prepared and run as the panel would, never launching anything (those steps are Ready cards). The

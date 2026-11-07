@@ -43,7 +43,15 @@ object CalendarPick {
 }
 
 /** One event (an instance of it) as CalendarContract.Instances has it. All-day events are midnight to midnight UTC. */
-data class CalendarEvent(val begin: Long, val end: Long, val allDay: Boolean, val title: String, val location: String?)
+/**
+ * An event as the day views read it. H3: [id], the provider's event id (0: none, a private event); [calendar], its
+ * calendar's name; [kind], whose it is; [key], a private event's id.
+ */
+data class CalendarEvent(val begin: Long, val end: Long, val allDay: Boolean, val title: String, val location: String?,
+    val id: Long = 0, val calendar: String? = null, val kind: EventKind = EventKind.PHONE, val key: String? = null)
+
+/** H3: an event of the phone's calendar provider, or a private one only Robot knows (core calendar PrivateEvents). */
+enum class EventKind { PHONE, PRIVATE }
 
 object Events {
     /** add_event for a time already gone ("today at 8" said at 9, "Friday this week" on a Saturday). */

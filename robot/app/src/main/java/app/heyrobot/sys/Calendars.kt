@@ -78,14 +78,37 @@ object Calendars {
         val from = range.from.minusDays(1).toInstant().toEpochMilli()
         val to = range.to.plusDays(1).toInstant().toEpochMilli()
         val uri = Instances.CONTENT_URI.buildUpon().also { ContentUris.appendId(it, from); ContentUris.appendId(it, to) }.build()
-        val projection = arrayOf(Instances.BEGIN, Instances.END, Instances.ALL_DAY, Instances.TITLE, Instances.EVENT_LOCATION)
+        val projection = arrayOf(Instances.BEGIN, Instances.END, Instances.ALL_DAY, Instances.TITLE, Instances.EVENT_LOCATION, Instances.EVENT_ID, Instances.CALENDAR_DISPLAY_NAME)
         val out = mutableListOf<CalendarEvent>()
         ctx.contentResolver.query(uri, projection, "${Instances.VISIBLE} = 1", null, "${Instances.BEGIN} ASC")?.use { c ->
             while (c.moveToNext()) {
-                out += CalendarEvent(c.getLong(0), c.getLong(1), !c.isNull(2) && c.getInt(2) == 1, c.getString(3).orEmpty(), c.getString(4))
+                out += CalendarEvent(c.getLong(0), c.getLong(1), !c.isNull(2) && c.getInt(2) == 1, c.getString(3).orEmpty(), c.getString(4), c.getLong(5), c.getString(6))
             }
         }
         return out
+    }
+
+    /**
+     * H3: an event Robot added (PrivateEventsFiles.added), changed in place from the Calendar tab's form; any other id is
+     * refused here too, as LinkCalendar keeps the rule. False when nothing changed.
+     */
+    fun update(ctx: Context, id: Long, title: String, place: String, begin: Long, end: Long, allDay: Boolean, zone: java.time.ZoneId): Boolean {
+        if (id !in PrivateEventsFiles.added(ctx) || !writeGranted(ctx)) return false
+        val v = ContentValues().apply {
+            put(Events.TITLE, title)
+            put(Events.EVENT_LOCATION, place)
+            put(Events.DTSTART, begin)
+            put(Events.DTEND, end)
+            put(Events.ALL_DAY, if (allDay) 1 else 0)
+            put(Events.EVENT_TIMEZONE, if (allDay) "UTC" else zone.id) // l10n: not text (a zone id)
+        }
+        return try { ctx.contentResolver.update(ContentUris.withAppendedId(Events.CONTENT_URI, id), v, null, null) > 0 } catch (t: Exception) { app.heyrobot.core.RLog.w("calendar_update", t); false }
+    }
+
+    /** H3: an event Robot added, deleted from the Calendar tab's form; any other id is refused. */
+    fun delete(ctx: Context, id: Long): Boolean {
+        if (id !in PrivateEventsFiles.added(ctx) || !writeGranted(ctx)) return false
+        return try { ctx.contentResolver.delete(ContentUris.withAppendedId(Events.CONTENT_URI, id), null, null) > 0 } catch (t: Exception) { app.heyrobot.core.RLog.w("calendar_delete", t); false }
     }
 
     /** An event Robot added: its [id], and whether its alert ([EventPlan.alertAt]) was written too. */

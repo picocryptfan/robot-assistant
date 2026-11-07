@@ -62,7 +62,7 @@ class RestorePlanTest {
         val fresh = RestorePlanner.plan(v, PhoneHas(emptyMap()), RestorePlanner.defaults(v), mine = false)
         // The fixture has no voiceprint (1.1's optional category), deliberately no everyday set (BackupDowngradeTest has its own),
         // and no connections (C10's own tests have them).
-        assertEquals(BackupCategory.entries - BackupCategory.SENSITIVE - BackupCategory.EVERYDAY - BackupCategory.CONNECTIONS - BackupCategory.LINKS, fresh.restoring)
+        assertEquals(BackupCategory.entries - BackupCategory.SENSITIVE - BackupCategory.EVERYDAY - BackupCategory.CONNECTIONS - BackupCategory.LINKS - BackupCategory.CALENDAR - BackupCategory.HOME, fresh.restoring)
         assertEquals(PlanSkip.NOT_IN_BACKUP, fresh.of(BackupCategory.EVERYDAY).skip)
         assertEquals(PlanSkip.NOT_IN_BACKUP, fresh.of(BackupCategory.VOICEPRINT).skip)
         assertEquals(PlanSkip.NOT_CHOSEN, fresh.of(BackupCategory.KEYS).skip)
@@ -74,7 +74,9 @@ class RestorePlanTest {
         assertEquals(RestoreMode.REPLACE, add.of(BackupCategory.SETTINGS).mode)
         // The everyday set's one settings file is merged over this phone's as Settings' are (RestoreSafety.everydayFile).
         assertEquals(RestoreMode.REPLACE, add.of(BackupCategory.EVERYDAY).mode)
-        for (c in BackupCategory.entries - BackupCategory.SETTINGS - BackupCategory.VOICEPRINT - BackupCategory.EVERYDAY) assertEquals(c.id, RestoreMode.ADD, add.of(c).mode)
+        // H5: the Today page's one file is merged over this phone's too (HomeSettings.restored).
+        assertEquals(RestoreMode.REPLACE, add.of(BackupCategory.HOME).mode)
+        for (c in BackupCategory.entries - BackupCategory.SETTINGS - BackupCategory.VOICEPRINT - BackupCategory.EVERYDAY - BackupCategory.HOME) assertEquals(c.id, RestoreMode.ADD, add.of(c).mode)
         val replace = RestorePlanner.plan(v, has, BackupCategory.entries.associateWith { CategoryChoice(replace = true) }, mine = true)
         for (c in BackupCategory.entries - BackupCategory.SENSITIVE - BackupCategory.LINKS) assertEquals(c.id, RestoreMode.REPLACE, replace.of(c).mode)
         // L12: a pairing here is never replaced by one from a file, whatever the choice says.

@@ -78,6 +78,9 @@ data class ActionView(
     val files: Boolean = false,
     /** 1.4 Lists (LS12): a list card: the checklist's symbol. */
     val lists: Boolean = false,
+    /** fix-124c: the waiting card's question and its "Do it" in the conversation's language (assistant CardWords); null: the menus'. */
+    val ask: String? = null,
+    val doIt: String? = null,
 )
 
 /** What a card can ask the panel for besides "Do it" and "Cancel". */
@@ -156,7 +159,7 @@ fun bubbleText(text: String, actions: List<ActionView>): String {
 /** The line under a card's summary: what it waits for, or how it went (its state in the menus' language, its line as the turn said it). */
 @Composable
 fun cardStatusLine(a: ActionView): String = when (a.status) {
-    ActionStatus.PENDING -> a.detail ?: stringResource(if (a.choices.isNotEmpty()) R.string.card_which_one else R.string.card_do_you_want)
+    ActionStatus.PENDING -> a.detail ?: a.ask ?: stringResource(if (a.choices.isNotEmpty()) R.string.card_which_one else R.string.card_do_you_want)
     ActionStatus.DONE, ActionStatus.DRAFT_OPENED -> a.detail ?: a.status.text.str()
     else -> listOfNotNull(a.status.text.str(), a.detail).joinToString(". ")
 }

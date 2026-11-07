@@ -175,7 +175,7 @@ demande à Claude ce qu'il y a sur mon écran	-	-	-	-	-	-	-	-	-	-	-	-	Ask(questi
 read Claude's answer	-	-	-	-	-	-	-	-	-	-	-	-	ReadAnswer	[CORE]	-
 Hey robot, read Claude's answer	-	-	-	-	-	-	-	-	-	-	-	-	ReadAnswer	[CORE]	-
 read cloud's reply	-	-	-	-	-	-	-	-	-	-	-	-	ReadAnswer	[CORE, PEOPLE, WEATHER]	-
-read me the news	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, WEB]	-
+read me the news	-	-	-	-	-	News	-	-	-	-	-	-	-	[CORE, WEB]	-
 Yes please	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
 sure, go ahead	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
 yes, check with Claude	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
@@ -741,7 +741,7 @@ translate this message	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, PEOPLE]	-
 Text Mom I'm on my way	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, PEOPLE]	-
 What's the weather?	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, WEATHER]	-
 Remember that my sister's birthday is May 3	-	-	-	-	-	-	-	-	-	-	Run(command=Remember(kind=FACT, secret=false, until=null, language=en, chars=29))	-	-	[CORE, NOTES, CALENDAR, MEMORY]	-
-Read the news	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, WEB]	-
+Read the news	-	-	-	-	-	News	-	-	-	-	-	-	-	[CORE, WEB]	-
 car mode	-	-	-	-	-	-	-	CarModeOn	-	-	-	-	-	[CORE]	-
 Car mode.	-	-	-	-	-	-	-	CarModeOn	-	-	-	-	-	[CORE]	-
 turn on car mode	-	-	-	-	-	-	-	CarModeOn	-	-	-	-	-	[CORE]	-
@@ -1711,7 +1711,7 @@ find my phone	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, PEOPLE]	-
 find my keys	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
 find the nearest gas station	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
 find me a recipe for pasta	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
-show my calendar	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, CALENDAR]	-
+show my calendar	-	-	-	-	-	Show(page=CALENDAR)	-	-	-	-	-	-	-	[CORE, CALENDAR]	-
 show my notes	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, NOTES]	-
 show me the weather	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, WEATHER]	-
 where's my car	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-

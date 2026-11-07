@@ -41,16 +41,40 @@ enum class BriefItem(val id: String) {
      * from other Robots wait. Appended (an id an older Robot reads as none). Settings › Robot to Robot's "Show in morning
      * brief" adds it, and it is said only while the phone is unlocked ([BriefPrivacy]), as Files' part is.
      */
-    LINK("link");
+    LINK("link"),
+    /**
+     * Today H5: your lists and your note, as the Today page shows them. Never one of Settings › Routines' switches: said only
+     * while Today is your home page ([BriefInput.page]) and the phone is unlocked ([BriefPrivacy]).
+     */
+    LISTS("lists"), NOTE("note"),
+    /** Today H7: three of your feeds' headlines, as the page shows them, from the last fetch (never fetched for the brief). */
+    NEWS("news");
 
     companion object {
-        /** Settings › Routines' parts, all on by default (Files' part is Settings › Files', Robot to Robot's its own). */
-        val DEFAULTS: List<BriefItem> = entries.filter { it != FILES && it != LINK }
+        /** Settings › Routines' parts, all on by default (Files' part is Settings › Files', Robot to Robot's its own, the page's its own). */
+        val DEFAULTS: List<BriefItem> = entries.filter { it != FILES && it != LINK && it != LISTS && it != NOTE && it != NEWS }
+
+        /** H5: the page's parts as brief items: its lists part holds your reminders, Files' loose ends and word from other Robots. */
+        val PAGE_PARTS: List<BriefItem> = listOf(LISTS, NOTE, NEWS)
 
         /** The order they are said in: Files' part after your reminders, then Robot to Robot's, before the messages and the closing. */
         val ORDER: List<BriefItem> = listOf(GREETING, WEATHER, CALENDAR, REMINDERS, FILES, LINK, MESSAGES, CLOSING)
 
         fun of(id: String?): BriefItem? = entries.firstOrNull { it.id == id }
+
+        /**
+         * H5: the order the brief is said in. Today off ([page] null): [ORDER]. On: the greeting and the weather, then the page's
+         * parts in its order (the calendar; the lists, your reminders, Files' loose ends and word from other Robots; the note),
+         * then the messages and the closing.
+         */
+        fun order(page: List<TodayPart>?): List<BriefItem> = if (page == null) ORDER else listOf(GREETING, WEATHER) +
+            TodayOrder.of(page.map { it.key }).flatMap { p ->
+                when (p) {
+                    TodayPart.CALENDAR -> listOf(CALENDAR)
+                    TodayPart.LISTS -> listOf(LISTS, REMINDERS, FILES, LINK)
+                    TodayPart.NOTE -> listOf(NOTE)
+                }
+            } + listOf(NEWS, MESSAGES, CLOSING)
     }
 }
 
@@ -95,6 +119,16 @@ data class BriefInput(
     val files: app.heyrobot.core.files.FilesBrief? = null,
     /** 1.5 L6, Robot to Robot's part, read only while the phone is unlocked; null: nothing about it. */
     val link: LinkBrief? = null,
+    /** Today H5: the page's order while Today is your home page; null: Today is off and the brief is as before. */
+    val page: List<TodayPart>? = null,
+    /** H5: the page's lists and its note, read only while the phone is unlocked and Today is on. */
+    val lists: List<ListGlance> = emptyList(),
+    val note: NoteGlance? = null,
+    /** Private events wait for the unlock (the phone is locked and some are sealed): the calendar part says so. */
+    val privateLocked: Boolean = false,
+    /** H7: the headlines the page shows (StoredNews.pick) and when they came; read only while unlocked and Today is on. */
+    val news: List<app.heyrobot.core.news.NewsHeadline> = emptyList(),
+    val newsAt: Long? = null,
 )
 
 /** 1.5 L6: Robot to Robot's part of the brief: requests waiting for you, and what Robot handled on its own since yesterday. Counts only. */
@@ -127,6 +161,11 @@ object BriefComposer {
     const val SENDER = 40
     /** A chance of rain or snow below this isn't mentioned. */
     const val MIN_CHANCE = 20
+    /** H5: a list's name and the note's title or line, cut here (the design's guess at what is comfortable to hear). */
+    const val LIST_NAME = 40
+    const val NOTE = 80
+    /** H7: a headline said aloud (home-design §4: 80 characters, a guess to tune by ear). */
+    const val NEWS = 80
 
     /**
      * 1.1: [p] as the voice says it in [lang]: English as written, French without its typography (core VoiceForm). The
@@ -145,7 +184,10 @@ object BriefComposer {
      * At "Nothing until I unlock" nothing is said until then.
      */
     fun compose(input: BriefInput, locked: Boolean = false, level: BriefLock = BriefLock.TIME_WEATHER): Brief {
-        val plan = BriefPrivacy.plan(input.items.sortedBy { BriefItem.ORDER.indexOf(it) }, locked, level)
+        // H5: with Today on, its order, and its lists and note joining the parts your switches leave on.
+        val order = BriefItem.order(input.page)
+        val items = input.items.filter { it !in BriefItem.PAGE_PARTS } + if (input.page != null) BriefItem.PAGE_PARTS else emptyList()
+        val plan = BriefPrivacy.plan(items.sortedBy { order.indexOf(it) }, locked, level)
         val now = plan.spoken.flatMap { lines(it, input, plan.placeName) }
         val spoken = if (plan.unlockLine && now.isNotEmpty()) now + line(null, BriefStrings.unlockToHear(), input.lang, false) else now
         return Brief(bound(spoken), bound(plan.held.flatMap { lines(it, input, place = true) }))
@@ -167,7 +209,7 @@ object BriefComposer {
                 val town = if (place) input.weather?.place?.substringBefore(',')?.let { BriefText.clean(it, PLACE) }?.takeIf { it.isNotEmpty() } else null
                 listOf(line(item, weatherText(input.weather, input.weatherMissing, lang, town), lang, town != null && input.weather != null && input.weatherMissing == null))
             }
-            BriefItem.CALENDAR -> listOf(line(item, calendarText(input.events, input.now, lang), lang, true))
+            BriefItem.CALENDAR -> listOf(line(item, calendarText(input.events, input.now, lang, input.privateLocked), lang, true))
             BriefItem.REMINDERS -> remindersText(input.reminders, lang)?.let { listOf(line(item, it, lang, true)) } ?: emptyList()
             BriefItem.MESSAGES -> input.unread?.let { u -> listOf(line(item, messagesText(u), lang, false)) } ?: emptyList()
             // 1.4: shown without a merchant (the screen, a notification, History), said with one unless the file is private.
@@ -180,6 +222,41 @@ object BriefComposer {
                     l.handled.takeIf { it > 0 }?.let { line(item, app.heyrobot.core.i18n.LinkStrings.briefHandled(it), lang, true) })
             } ?: emptyList()
             BriefItem.CLOSING -> listOf(line(item, closingText(input.now), lang, false))
+            // H5: a line a list, as the page shows them ("Groceries, 3 left."): names only, never what is on them.
+            BriefItem.LISTS -> input.lists.filter { it.left > 0 }.take(TodayPage.LISTS).mapNotNull { l ->
+                BriefText.clean(l.name, LIST_NAME).takeIf { it.isNotEmpty() }?.let { line(item, BriefStrings.listLeft("name" to it, "n" to l.left), lang, true) }
+            }
+            BriefItem.NOTE -> input.note?.let(::noteText)?.let { listOf(line(item, it, lang, true)) } ?: emptyList()
+            // H7: which feeds you read says something about you: personal, so it waits for the unlock (BriefPrivacy).
+            BriefItem.NEWS -> newsText(input.news, input.newsAt, input.now, lang)?.let { listOf(line(item, it, lang, true)) } ?: emptyList()
+        }
+    }
+
+    /**
+     * H7: "In the news: Title one. Title two. Title three." Each title cut at [NEWS]. Not today's, it says which day:
+     * "In the news from Tuesday: …". Null when there's nothing.
+     */
+    fun newsText(news: List<app.heyrobot.core.news.NewsHeadline>, at: Long?, now: ZonedDateTime, lang: Lang): Phrase? {
+        val titles = news.map { BriefText.clean(it.title, NEWS).trimEnd('.', ' ') }.filter { it.isNotEmpty() }
+        if (titles.isEmpty()) return null
+        val joined = titles.joinToString(". ")
+        val ms = now.toInstant().toEpochMilli()
+        // fix-today-review 1: not today's (a missed morning), it says which day, however few hours old.
+        if (at == null || ms <= at || !java.time.Instant.ofEpochMilli(at).atZone(now.zone).toLocalDate().isBefore(now.toLocalDate()))
+            return BriefStrings.news("titles" to joined)
+        val day = java.time.Instant.ofEpochMilli(at).atZone(now.zone).dayOfWeek
+            .getDisplayName(java.time.format.TextStyle.FULL, if (lang == Lang.EN) java.util.Locale.ENGLISH else java.util.Locale.CANADA_FRENCH)
+        return BriefStrings.newsFrom("day" to day, "titles" to joined)
+    }
+
+    /** H5: "Your note: Parking, level 3, row F." The title and its first line, each cut at [NOTE]; null when it says nothing. */
+    fun noteText(n: NoteGlance): Phrase? {
+        val title = BriefText.clean(n.title, NOTE)
+        val first = n.lines.firstOrNull()?.let { BriefText.clean(it, NOTE) }.orEmpty()
+        return when {
+            title.isNotEmpty() && first.isNotEmpty() -> BriefStrings.noteLine("title" to title, "line" to first)
+            title.isNotEmpty() || first.isNotEmpty() -> BriefStrings.note("title" to title.ifEmpty { first })
+            else -> null
         }
     }
 
@@ -301,7 +378,13 @@ object BriefComposer {
     fun calendar(events: List<CalendarEvent>?, now: ZonedDateTime, lang: Lang): String = shown(calendarText(events, now, lang), lang)
 
     /** [calendar] as a phrase; the events' times in [lang]'s spoken words. */
-    fun calendarText(events: List<CalendarEvent>?, now: ZonedDateTime, lang: Lang): Phrase {
+    fun calendarText(events: List<CalendarEvent>?, now: ZonedDateTime, lang: Lang, privateLocked: Boolean = false): Phrase {
+        if (privateLocked) {
+            // Private events locked away: never "Nothing on your calendar today."
+            val phone = events?.let { todays(it, now) }
+            return if (phone != null && phone.isEmpty()) BriefStrings.privateLocked()
+            else Phrase.Join(listOf(calendarText(events, now, lang), BriefStrings.privateLocked()))
+        }
         if (events == null) return BriefStrings.calendarUnreadable()
         val list = todays(events, now)
         val n = list.size

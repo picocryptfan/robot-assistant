@@ -11,8 +11,8 @@ import java.io.File
 import java.security.MessageDigest
 
 /**
- * The donation links (1.0's README "Support Robot", the fastlane description, 1.1's Settings › About › Support Robot) match
- * support-addresses.txt character for character: Ko-fi first, the bc1q address before the sp1 one, and no other address
+ * The donation links (1.0's README "Support Robot", 1.1's Settings › About › Support Robot) match
+ * support-addresses.txt character for character: the bc1q address before the sp1 one, and no other address
  * in the README or the app.
  */
 class SupportAddressesTest {
@@ -25,21 +25,18 @@ class SupportAddressesTest {
     private val support by lazy { readme.substringAfter("## Support Robot\n").substringBefore("\n## ") }
 
     @Test fun theListIsComplete() {
-        assertEquals(listOf("ETH", "BTC", "BTC", "BTC Lightning", "XMR", "Ko-fi"), entries.map { it.first })
+        assertEquals(listOf("ETH", "BTC", "BTC", "BTC Lightning", "XMR"), entries.map { it.first })
         assertTrue(entries.all { it.second.length >= 20 && it.second.none(Char::isWhitespace) })
     }
 
     @Test fun theReadmeListsEveryOneExactly() {
         for ((what, value) in entries) {
-            val line = if (what == "Ko-fi") "- Ko-fi: $value\n" else "`$value`\n"
+            val line = "`$value`\n"
             assertTrue("$what is not in the README's Support Robot section as $value", support.contains(line))
         }
     }
 
-    @Test fun koFiFirstAndBc1qBeforeSp1() {
-        val at = entries.map { (_, v) -> support.indexOf(v) }
-        val kofi = support.indexOf(entries.single { it.first == "Ko-fi" }.second)
-        assertTrue(at.all { it >= kofi })
+    @Test fun bc1qBeforeSp1() {
         val btc = entries.filter { it.first == "BTC" }.map { it.second }
         assertTrue(support.indexOf(btc.single { it.startsWith("bc1q") }) < support.indexOf(btc.single { it.startsWith("sp1") }))
     }
@@ -52,26 +49,25 @@ class SupportAddressesTest {
 
     /** 1.1: the app's page shows every line of the file, and nothing else, each value exactly as the file has it. */
     @Test fun theAppListsEveryOneExactly() {
-        val kind = mapOf("Ko-fi" to SupportKind.KOFI, "BTC" to SupportKind.BITCOIN, "BTC Lightning" to SupportKind.LIGHTNING,
+        val kind = mapOf("BTC" to SupportKind.BITCOIN, "BTC Lightning" to SupportKind.LIGHTNING,
             "XMR" to SupportKind.MONERO, "ETH" to SupportKind.ETHEREUM)
-        val app = SupportLinks.ALL.map { it.kind to it.value }
+        val app = SupportLinks.ADDRESSES.map { it.kind to it.value }
         assertEquals(entries.map { (what, v) -> kind.getValue(what) to v }.sortedBy { it.second }, app.sortedBy { it.second })
         assertEquals(app.size, app.map { it.second }.toSet().size)
     }
 
-    /** The page's order (the user, 14 Oct 2026): Ko-fi, the bc1q address, the sp1 one, Lightning, Monero, Ethereum. */
-    @Test fun theAppShowsKoFiFirstAndBc1qBeforeSp1() {
-        assertEquals(listOf(SupportKind.KOFI, SupportKind.BITCOIN, SupportKind.BITCOIN, SupportKind.LIGHTNING, SupportKind.MONERO, SupportKind.ETHEREUM),
-            SupportLinks.ALL.map { it.kind })
-        assertTrue(SupportLinks.ALL[1].value.startsWith("bc1q"))
-        assertTrue(SupportLinks.ALL[2].value.startsWith("sp1"))
-        assertEquals(SupportLinks.KOFI, SupportLinks.ALL.first())
+    /** The page's order (the user, 14 Oct 2026): the bc1q address, the sp1 one, Lightning, Monero, Ethereum. */
+    @Test fun theAppShowsBc1qBeforeSp1() {
+        assertEquals(listOf(SupportKind.BITCOIN, SupportKind.BITCOIN, SupportKind.LIGHTNING, SupportKind.MONERO, SupportKind.ETHEREUM),
+            SupportLinks.ADDRESSES.map { it.kind })
+        assertTrue(SupportLinks.ADDRESSES[0].value.startsWith("bc1q"))
+        assertTrue(SupportLinks.ADDRESSES[1].value.startsWith("sp1"))
     }
 
     /** No other address-shaped value in the page's source: an address there comes from the file, or the test above fails. */
     @Test fun noOtherAddressInTheApp() {
         val known = entries.map { it.second }.toSet()
-        val shaped = Regex("""\b(bc1[0-9a-z]{20,}|sp1[0-9a-z]{20,}|0x[0-9a-fA-F]{40}|4[0-9A-Za-z]{94}|[\w.]+@[\w.]+\.cash|https://ko-fi\.com/\w+)\b""")
+        val shaped = Regex("""\b(bc1[0-9a-z]{20,}|sp1[0-9a-z]{20,}|0x[0-9a-fA-F]{40}|4[0-9A-Za-z]{94}|[\w.]+@[\w.]+\.cash)\b""")
         val page = File(root, "app/src/main/java/app/heyrobot/ui/settings/SupportSettings.kt").readText()
         assertEquals(emptyList<String>(), shaped.findAll(page).map { it.value }.filter { it !in known }.toList())
     }
@@ -110,7 +106,7 @@ class SupportAddressesTest {
             val rows = (0 until q.size).joinToString("\n") { y -> (0 until q.size).joinToString("") { x -> if (q.dark(x, y)) "1" else "0" } }
             return MessageDigest.getInstance("SHA-256").digest(rows.toByteArray()).joinToString("") { "%02x".format(it) }
         }
-        val codes = entries.filter { it.first != "Ko-fi" }.map { (what, v) -> what to sha(QrCode.encode(v)!!) }
+        val codes = entries.map { (what, v) -> what to sha(QrCode.encode(v)!!) }
         assertEquals(listOf(
             "ETH" to "6839037b28e9144bf62d6ba0ef60accca545b00d5496efad14b4235392c35b48",
             "BTC" to "e5727afd9a743e7dd9ea7e0820c990a3ad4bc5ed12701805c9def761995c3430",
@@ -118,11 +114,6 @@ class SupportAddressesTest {
             "BTC Lightning" to "a7ffa8de433cfa32e6b7cd7b1e7172b038d4c892fe18a554d50d3172c0a69ee5",
             "XMR" to "5b9e9a84654da4007e02a9b0a6a434f544b09fab23c9cc76a7bbab471b7cda01",
         ), codes)
-    }
-
-    @Test fun theStoreDescriptionUsesTheSameKoFi() {
-        val text = File(root.parentFile, "fastlane/metadata/android/en-US/full_description.txt").readText()
-        assertTrue(text.contains(entries.single { it.first == "Ko-fi" }.second))
     }
 
     private companion object {

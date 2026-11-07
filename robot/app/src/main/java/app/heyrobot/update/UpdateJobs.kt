@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.update
 
+import app.heyrobot.sys.NewsStore
 import android.app.job.JobInfo
 import android.app.job.JobParameters
 import android.app.job.JobScheduler
@@ -24,6 +25,8 @@ object UpdateJobs {
     const val TERMUX = 4_803
     /** 1.1: "Remind me to back up every month" (BackupReminders), daily while it is on. */
     const val BACKUP_REMINDER = 4_804
+    /** Today H7: the news, once a day about 5:30 to 7:00, on Wi-Fi (NewsStore.daily). */
+    const val NEWS = 4_805
     private const val DAY_MS = 24L * 3600 * 1000
     private const val FLEX_MS = 6L * 3600 * 1000
 
@@ -100,6 +103,33 @@ object UpdateJobs {
         }
     }
 
+    /**
+     * Today H7: the news's daily job while you have feeds and "once a day": one run after the next 5:30 (core
+     * NewsPolicy.nextDaily), on an unmetered network, rescheduled by each run. [again]: the run itself, so tomorrow's.
+     */
+    fun ensureNews(ctx: Context, s: app.heyrobot.core.news.NewsSettings, again: Boolean = false) {
+        val js = scheduler(ctx) ?: return
+        try {
+            if (!s.on || s.mode != app.heyrobot.core.news.NewsMode.DAILY) {
+                js.cancel(NEWS)
+                return
+            }
+            // fix-today-review 2: a job set for the other network choice is set again.
+            if (!again && js.getPendingJob(NEWS)?.extras?.getBoolean("mobile", false) == s.mobileData) return
+            val now = System.currentTimeMillis()
+            val at = app.heyrobot.core.news.NewsPolicy.nextDaily(now, java.time.ZoneId.systemDefault())
+            js.schedule(JobInfo.Builder(NEWS, ComponentName(ctx, UpdateJobService::class.java))
+                .setRequiredNetworkType(if (s.mobileData) JobInfo.NETWORK_TYPE_ANY else JobInfo.NETWORK_TYPE_UNMETERED)
+                .setExtras(android.os.PersistableBundle().apply { putBoolean("mobile", s.mobileData) })
+                .setMinimumLatency(at - now)
+                .setPersisted(true)
+                .setEstimatedNetworkBytes(300L * 1024, 1024)
+                .build())
+        } catch (t: Throwable) {
+            RLog.w("news_job", t)
+        }
+    }
+
     /** 1.1: the backup reminder's daily job, while [on]; no network, persisted across restarts. */
     fun ensureBackupReminder(ctx: Context, on: Boolean) {
         val js = scheduler(ctx) ?: return
@@ -161,6 +191,7 @@ class UpdateJobService : JobService() {
                     UpdateJobs.DOWNLOAD -> Updater.autoDownload(app, a, params.network)
                     UpdateJobs.TERMUX -> { TermuxUpdateCheck.autoCheck(app, a, params.network); false }
                     UpdateJobs.BACKUP_REMINDER -> { BackupReminders.run(app); false }
+                    UpdateJobs.NEWS -> { NewsStore.daily(app); false }
                     else -> false
                 }
             } catch (t: Throwable) {

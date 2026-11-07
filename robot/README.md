@@ -43,9 +43,12 @@ Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `
 ## What's new in 1.2
 
 Robot 1.2.0 is everything built since 1.1.1, from `release/1.2`: Lists, files in a question, the rebuilt car screen with
-music and maps, Skills connections, Robot to Robot, and the fixes from the reviews and phone runs. Settings stay at schema
-13. 1.2.1 carries the fixes for what was reported after 1.2.0. CHANGELOG.md has the list, the sections below the
+music and maps, Skills connections, Robot to Robot, and the fixes from the reviews and phone runs. Settings stay at
+schema 13. 1.2.1 carries the fixes for what was reported after 1.2.0. CHANGELOG.md has the list, the sections below the
 details, and the release notes what is still open.
+
+Robot 1.2.6 adds Today, a home page for your day, with the Calendar tab, a widget, a lock-screen summary, weather and
+news you choose; quiet answers and routines on silent; and an update notice at once.
 
 ## What's new in 1.1
 
@@ -210,8 +213,8 @@ Robot are being built on their own branches and are not in 1.1.
   category whole or not at all; it then restarts Robot. A file you don't mark as your own restores more carefully:
   memories show as imported, routines and skills arrive off, keys and the voiceprint are left out. A monthly reminder
   (off by default) is only a notification, because Robot can't back up by itself. Android's own backup stays off.
-- **Settings › About › Support Robot.** Ko-fi first, then five crypto addresses, each with Copy and a QR code Robot draws
-  itself. The page makes no network call: a tap on Ko-fi opens your browser, and nothing else leaves the phone. It
+- **Settings › About › Support Robot.** Five crypto addresses, each with Copy and a QR code Robot draws
+  itself. The page makes no network call, and nothing leaves the phone. It
   never reminds you.
 - **Automatic help answers from Robot's own notes first.** With a helper set to Automatic, Robot answers from what it
   remembers and its tools, and asks the helper only when that answer is missing, failed or unsure (a refusal, "I'm not

@@ -31,6 +31,8 @@
     <!-- Settings › History. -->
     <string name="history_save">Enregistrer les conversations</string>
     <string name="history_media">Captures d’écran et photos</string>
+    <string name="history_open">Tes conversations</string>
+    <string name="history_open_detail">Ce que Robot et toi avez dit, les plus récentes d’abord</string>
     <string name="history_media_kept">Gardées avec les conversations</string>
     <string name="history_media_not_kept">Pas gardées</string>
     <string name="history_delete_all">Supprimer toutes les conversations</string>
@@ -231,8 +233,8 @@
     <string name="about_licences_no_part">La liste des licences de Robot n’a pas ce composant.</string>
     <string name="about_licences_page">Sa page</string>
     <string name="about_support_title">Soutenir Robot</string>
-    <string name="about_support_detail">Ko-fi, une fois ou chaque mois, ou une adresse crypto</string>
-    <string name="about_support_intro">Robot est gratuit, et je le développe sans équipe. S’il t’est utile, tu peux le soutenir sur Ko-fi, une fois ou chaque mois, ou avec une des adresses ci-dessous. Dans tous les cas, tu as la même appli que tout le monde.</string>
+    <string name="about_support_detail">Bitcoin, Lightning, Monero ou Ethereum</string>
+    <string name="about_support_intro">Robot est gratuit, et je le développe sans équipe. S’il t’est utile, tu peux le soutenir avec une des adresses ci-dessous. Dans tous les cas, tu as la même appli que tout le monde.</string>
     <string name="about_support_addresses">Adresses</string>
     <string name="about_support_copy">Copier</string>
     <string name="about_support_copy_label">Copier l’adresse %1$s</string>
@@ -241,7 +243,6 @@
     <string name="about_support_qr_label">Code QR de l’adresse %1$s</string>
     <string name="about_support_close">Fermer</string>
     <string name="about_support_copied">Copiée. Colle-la dans ton appli de portefeuille.</string>
-    <string name="about_support_no_browser">Aucun navigateur sur ce téléphone.</string>
     <string name="about_licences_licence">La licence</string>
     <string name="about_licences_its">Sa licence</string>
     <string name="about_licences_no_text">Aucun texte de licence n’est fourni pour ce composant&#160;: vois sa page et le lien de la licence ci-dessus.</string>

@@ -825,6 +825,22 @@
   [
    "settings",
    "^app/src/main/java/app/heyrobot/ui/"
+  ],
+  [
+   "today",
+   "^app/src/main/java/app/heyrobot/ui/today/"
+  ],
+  [
+   "today",
+   "^core/src/main/java/app/heyrobot/core/TodayPage\\.kt$"
+  ],
+  [
+   "today",
+   "^core/src/main/java/app/heyrobot/core/news/[A-Za-z]+\\.kt$"
+  ],
+  [
+   "today",
+   "^app/src/main/java/app/heyrobot/sys/(TodaySource|HomeSettingsStore)\\.kt$"
   ]
  ],
  "area_names": [
@@ -854,7 +870,8 @@
   "connections",
   "lists",
   "everyday",
-  "link"
+  "link",
+  "today"
  ],
  "resource_prefixes": {
   "language": [
@@ -955,6 +972,9 @@
   ],
   "link": [
    "link_"
+  ],
+  "today": [
+   "today_"
   ]
  }
 }

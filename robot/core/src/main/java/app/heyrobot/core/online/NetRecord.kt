@@ -41,6 +41,8 @@ enum class NetGroup(val code: String) {
     SKILLS("skills"),
     /** E4: Robot to Robot's carriers. */
     LINK("link"),
+    /** Today H7: your news feeds. */
+    NEWS("news"),
 }
 
 /** What a connection was for (§5.2). [code] is what the record keeps: never renamed. */
@@ -78,6 +80,8 @@ enum class NetPurpose(val code: String, val group: NetGroup) {
     LINK_PUSH("link_push", NetGroup.LINK),
     /** Tor's traffic for an hour, by Tor's own counters (core TorHours): never a relay's address. */
     LINK_TOR("link_tor", NetGroup.LINK),
+    /** Today H7: a feed you added, or the page you pasted to find one. */
+    FEED("feed", NetGroup.NEWS),
     ;
 
     /** Downloaded by Android's download service: left out of the comparison with Android's own count (§5.4). */

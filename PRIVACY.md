@@ -1,13 +1,14 @@
 # Robot's privacy policy
 
-This policy applies to Robot 1.0.0 and later. Last changed 5 Nov 2026 (the timers record, 1.2.3; every permission and notice now listed, and the alarms for routines and temporary copies; 1.1: the car screen's message panels, Robot Files and travel mode, files in backups, the speeds and GPU check kept on the phone, the chip in reports, Phone lock, backups, skills and what Robot's model is told about them, the Support page, the two new permissions, the date and country a helper's first message carries, up to 5 result pages for a web search, when GitHub receives a feedback issue, and the Phone permission during a phone lock; since then: Lists, the journal of what you add while the phone is locked, the list widget and what your home-screen app sees, and what History keeps of a list; Skills connections, what each kind sends and when, the first-use card, connections and their keys in backups, and the network type Robot reads for them; Robot to Robot; what "What went online" keeps of a web search; files you attach that hold something private; and what History keeps after a list is read).
+This policy applies to Robot 1.0.0 and later. Last changed 5 Nov 2026 (the timers record, 1.2.3; every permission and notice now listed, and the alarms for routines and temporary copies; 1.1: the car screen's message panels, Robot Files and travel mode, files in backups, the speeds and GPU check kept on the phone, the chip in reports, Phone lock, backups, skills and what Robot's model is told about them, the Support page, the two new permissions, the date and country a helper's first message carries, up to 5 result pages for a web search, when GitHub receives a feedback issue, and the Phone permission during a phone lock; since then: Lists, the journal of what you add while the phone is locked, the list widget and what your home-screen app sees, and what History keeps of a list; Skills connections, what each kind sends and when, the first-use card, connections and their keys in backups, and the network type Robot reads for them; Robot to Robot; what "What went online" keeps of a web search; files you attach that hold something private; and what History keeps after a list is read; Today, the Calendar tab and private events, what the calendar is read for, and what the morning brief says of your lists and note; Today and private events restore only from your own backup; Today's weather card, which goes online when you tap it, the Robot today widget and the day summary on the lock screen; news on Today, feeds on your own server and token feed addresses).
 
 ## The short version
 
 Robot does not collect anything about you. There is no account, no analytics, no ads, no crash reporting and no tracking.
 I receive nothing from your phone. Robot goes online only for the things listed below, and only
 when you start them (a skill you run that uses one of your connections counts), except the daily check for updates and, on Wi-Fi, the download of an update it found, and, once
-you set up Termux, a weekly check for a newer Termux, which you can each turn off, and, once you turn on Robot to Robot, the
+you set up Termux, a weekly check for a newer Termux, once you add a news feed to Today, a fetch of your feeds once a
+day (12, below), which you can each turn off, and, once you turn on Robot to Robot, the
 connections it keeps with the Robots you've paired with (below).
 
 ## What stays on your phone
@@ -21,9 +22,20 @@ connections it keeps with the Robots you've paired with (below).
   the people you add or let Robot learn, and your settings. They are kept in Robot's private storage on the phone. Robot
   turns off Android backup and device-to-device transfer, so nothing is copied to a cloud, and uninstalling Robot deletes
   them. You can delete conversations in Settings › History.
+- Private events (Calendar tab › Add an event › Private event). A private event is kept only in Robot, never in the
+  phone's calendar or in Android's backups. It is sealed on the phone with a key in Android's Keystore that
+  works only while the phone is unlocked, so Robot reads and writes the file only then. Robot never writes
+  over a file it can't read: if that happens, the Calendar tab offers Start over, which keeps the old file aside on the
+  phone (events.enc.bad) and starts with no private events; nothing is deleted. Robot may change only your private
+  events and the events it added itself (it keeps those event ids on the phone, outside any backup); another app's
+  event opens in your calendar app. Today's order, whether it is your home page and the note it shows are kept in a
+  small file in Robot's private storage.
 - What Robot reads for you. Your contacts and calendar (to text "Mom" or say what's on tomorrow), the screen when you
   ask about it, a photo you attach, your largest photos and videos when you ask it to free space: read on the phone, for
-  the question you asked.
+  the question you asked. The exception is the calendar when Today or the Calendar tab is on screen: Robot reads it
+  there when the page opens and again when something it shows has changed (it checks about once a minute whether
+  anything did; an unchanged page is not read again), to draw the page, and for the morning brief, with the phone's calendars (read only) and
+  your private events together. Nothing read this way is saved or sent.
 - What's playing, when you ask. Robot asks the music app you picked, and no other, for the title and artist through that
   app's own media service (this doesn't use notification access), then shows and says them. History and the rest of the
   conversation keep a placeholder instead, the voice log keeps a code, and they're never saved or sent. Which app you
@@ -56,7 +68,9 @@ connections it keeps with the Robots you've paired with (below).
   speakers apart" and "Your voice" keep voice fingerprints (lists of numbers, not audio) on the phone.
 - Routines, headset and car mode (off until you set them up): your routines, the morning brief's settings, and the
   headsets and cars you add (their Bluetooth name and address, kept so Robot knows them again) stay in Robot's private
-  storage. If you pick a messages panel for the car screen (off by default), new messages show there from memory, as
+  storage. With Today on and the phone unlocked, the brief (and "how's my day") also says your lists' names and how many
+  items are left on each, your reminders, and your note's title and first line; they come from memory and are not kept
+  anywhere new. On a locked phone the lists and the note are never said, and your private events wait until you unlock. If you pick a messages panel for the car screen (off by default), new messages show there from memory, as
   Settings › Messages allows; they're never saved, and the panel can't send anything. New messages you ask Robot to announce in the headset or the car are read aloud there, from memory, never
   stored.
 - Termux (off until you set it up): your scripts' names and settings stay in Robot's settings, with the Termux you
@@ -97,7 +111,8 @@ connections it keeps with the Robots you've paired with (below).
   picker. The file is encrypted with a passphrase you choose or Robot generates (Argon2id, then AES-256-GCM). Robot
   never keeps the passphrase and never uploads the file: nobody can open it without the passphrase, Robot included. You
   choose what goes in. It can hold your settings (without keys), People, Memory, headset and car mode settings,
-  routines, Phone lock's locks (not the lock code), skills, notes, History, transcripts, Robot Files (each file as it is,
+  your Today page's order and pinned note, whether the weather line and the lock screen summary are on (the forecast itself is never in a backup), private events (these come back only from a backup you mark as your own: from anyone else's file a restore skips them; they sit inside the backup's encryption, and a vault Robot can't
+  open is left out and the backup says so), routines, Phone lock's locks (not the lock code), skills, notes, History, transcripts, Robot Files (each file as it is,
   with the list of your files and Settings › Files; videos have their own row), your lists (with what waits in the
   journal, and Settings › Lists), your connections (addresses, operations and first-use answers, never a
   key) and, only if you tick them,
@@ -150,6 +165,39 @@ connections it keeps with the Robots you've paired with (below).
   Robot takes the items off the widget when the screen goes off and puts them back when you unlock, unless "Hear and
   tick on the lock screen" is on; if no Robot process is running when the screen goes off, they stay until Robot next
   runs. Robot keeps which list each widget shows by ids only, never a name.
+- Today outside the app (the Robot today widget, only if you add it to your home screen; the day summary on the lock
+  screen, off until you turn on Settings › Display › "Day summary on the lock screen"; both need Today on). With the
+  phone unlocked and the screen on, the widget shows your day in a line: the titles and places of the events in your
+  phone's calendars, reminders, timers and to-do count, as Today says it. Your home-screen app draws it, so that app and
+  Android's widget service receive that text. A private event is never in it by name: it reads "a private event" and
+  its time, with no place. With the screen off or the phone locked (and on a lock screen that holds widgets) the widget
+  shows the summary if you turned it on, and "Unlock to see your day." if not. During a phone lock it says "Robot is
+  locked." With Today off, it says how to turn Today on and nothing else. The summary is a quiet notice (no sound or
+  vibration, shown on the lock screen at every lock level, since it holds only this): counts and times, such as "3
+  events today, next at 2:30. 1 reminder today. 2 things on your to-do list." It never holds a title, a place, the words
+  of a reminder, a list's name or your note. Private events are not counted or timed in it, however long your phone's
+  screen lock waits: if you have any, it says "Private events wait for your unlock." Android, and any app you gave
+  notification access, can see a notice. The notice is taken away when you turn the switch or Today off and during a
+  phone lock. If Robot's notifications are off, turning the switch on asks Android; if you refuse, the switch stays off
+  and says why. Robot redraws them when the screen goes on or off, you unlock, the date, time or time zone changes,
+  something Today shows changes, a phone lock starts or ends, and at the day's next event or timer, by an inexact alarm
+  that doesn't wake the phone; it doesn't wake your phone every so often to do it. Only Android can ask the widget to
+  redraw. With Today off, a screen event costs Robot a look at one file.
+- The weather card on Today (off until you turn on Settings › Display › "Weather on Today", with Today on). The
+  forecast is fetched only when you tap "Get today's forecast" or "Updated" on Today: never when Today opens, on a
+  timer, from the widget or the notice, and never with Today or the weather line off. The request is described in 2
+  under "When Robot goes online". Robot keeps the answer, with the name and coordinates of your Home for weather and the
+  time it was fetched, in one file in Robot's private storage, outside both kinds of backup Robot makes. Today shows
+  it only for today, your Home as it is now and your units; "right now" is said for an hour after the fetch, then
+  "Today:". A failed fetch (offline, say) keeps the last forecast. Robot deletes the file when you turn the weather
+  line or Today off; changing or clearing your Home leaves it until the next fetch replaces it, and it is never shown for
+  another place. Uninstalling Robot deletes it. Your Home for weather itself is in your settings, which a backup can hold
+  (the weather line comes back only from a backup you mark as your own).
+- Read my day after my morning alarm (Settings › Display, with Today on; off until you turn it on). This is the
+  morning brief, started when you turn off an alarm in its hours; turning the switch on keeps the time the brief had,
+  and turning it off gives that time back. The brief's rules apply (see the morning brief in 8 under "When Robot goes
+  online"): if its card has not been agreed, it shows first. With the phone locked it reads nothing of your day: it
+  says "Unlock to hear your day." It goes online by itself only for the weather, only as that card says.
 - Robot to Robot (off until you turn it on). Your keys, your pairings and each person's permissions are kept in Robot's
   private storage, encrypted with a key in your phone's secure hardware (Android Keystore). A request waiting for you
   is sealed until you answer it or it runs out, and can be read only while the phone is unlocked. The list of what you
@@ -169,11 +217,16 @@ connections it keeps with the Robots you've paired with (below).
   in it is kept as that second line too, because Robot's model may repeat the items in its own words. Something that looks like a PIN, a code or a card number is
   never added to a list, and the question that held it is kept as a private placeholder, in the panel and in History,
   never as you said it.
-- Timers Robot sets (1.2.3). When Robot sets a timer in your clock app, it keeps when the timer ends and how long it
-  was, with no label, in `robot_timers.json` in its private storage (up to 20), to answer "how much time is left on my
-  timer". It never leaves the phone and is not in a backup, Robot's or Android's. It goes 12 hours after the last timer
-  ends, and with Settings › History › Delete all, Settings › Memory › Delete all, Start over, and a restore's Replace
-  of History. Robot can't see timers set in your clock app.
+- Timers Robot sets. When Robot sets a timer in your clock app, it keeps when the timer ends, with no label, in two small
+  files in its private storage: `robot_timers.json` (since 1.2.3, with how long it was, up to 20), to answer "how much
+  time is left on my timer", and `today_timers.json` (up to 10), for Today and its widget. They never leave the phone
+  and are not in a backup, Robot's or Android's. The first goes 12 hours after the last timer ends; Today's goes the
+  next time Today is shown after its last timer ends, or when "Cancel the timer" reaches your clock app. Both go with
+  Settings › History › Delete all, Settings › Memory › Delete all, Start over, and a restore's Replace of History.
+  Robot can't see timers set in your clock app.
+- What History keeps of your private events. When "how's my day" or the morning brief says a private event's title, History
+  (and so its backups and the model's later context) keeps "a private event" in place of that title. The panel shows
+  and says the title at the time. Entries saved before this change are not rewritten.
 - Measured speeds and the GPU check (1.1). To show how fast answers start on your phone, Robot keeps numbers only in
   `speeds.txt` (the reading and writing speeds of the last 20 answers per model, with the model file, where it ran and
   the Android build), and the result of its three-question check of the GPU in `gpu_check.txt`, in Robot's private
@@ -221,10 +274,13 @@ connections it keeps with the Robots you've paired with (below).
    User-Agent names only Robot and its version ("Robot/1.1.0"). Nothing you say or type is sent. Before a download over
    200 MB Robot asks whether to wait for Wi-Fi or download anyway. Robot checks every file against a fingerprint
    (SHA-256) before using it.
-2. The weather, when you ask about it. Robot sends the place you named, or your approximate position (rounded to two
+2. The weather, when you ask about it, or tap Today's weather card. Robot sends the place you named, or your approximate position (rounded to two
    decimals, about 1 km), to Open-Meteo (api.open-meteo.com and geocoding-api.open-meteo.com). Saving a "Home for
    weather" in Settings sends the place name you typed, once, to look it up. Open-Meteo says it keeps server logs, which
-   can include coordinates, for up to 90 days. Robot never uses your precise or background location.
+   can include coordinates, for up to 90 days. Robot never uses your precise or background location. Today's weather
+   card sends the Home for weather you saved in Settings (two decimals), once per tap, to api.open-meteo.com over
+   https, with no location permission and "Robot" as the User-Agent; each request is a "weather" row, marked tap, in
+   What went online.
 3. The nearest place ("directions to the nearest pharmacy"), only if you allow it: Robot asks the first time by
    default (Settings › Actions › Find the nearest place online). It sends the kind of place (a few words, never an
    address, a phone number or an email) and your area (about 1 km) to OpenStreetMap's Nominatim server
@@ -325,8 +381,7 @@ connections it keeps with the Robots you've paired with (below).
    their own policies. Turn the switch off and Robot doesn't ask. In 1.0.x, Android refused to schedule this weekly
    check, so it ran only when you tapped Check now; 1.1 fixes that.
 
-10. The Support page (Settings › About › Support Robot, 1.1). Opening it makes no network call. Tapping Ko-fi opens your
-    browser at Ko-fi's page, where Ko-fi and your browser handle your visit under their own policies. The crypto
+10. The Support page (Settings › About › Support Robot, 1.1). Opening it makes no network call. The crypto
     addresses are text on the page, with Copy and a QR code Robot draws on the phone; Robot never sends anything about
     a payment and never learns whether you paid.
 11. Skills connections, only after you set one up in Settings › Skills › Connections, and then
@@ -387,6 +442,38 @@ With a bridge in use, its helper program (lyrebird) listens on a network port th
 app on your phone that's allowed the network could find that port, and so learn that you use a Tor bridge, and could send
 its own traffic out through the bridge, which Android would then count as Robot's. It never sees what Robot sends.
 
+12. News on Today, only after you add a feed (there are none to start, and Today's News setting shows how to find
+    feeds you'd like). Robot then fetches the feeds you added, at most five, once a day by default: from 5:30 in the
+    morning, on Wi-Fi, not in Battery Saver. A morning the phone can't fetch is caught up once, when it can (back on
+    Wi-Fi, or when you open Today), never before 5:30. You can choose "When I open Today" (at most once an hour) or
+    "Only when I ask" instead, and tapping the line's time fetches them then, on any network. Neither the daily fetch
+    nor an open uses mobile data unless you turn on "Use mobile data for news" in Today's News setting (off to start). With Today off, or with no feeds, nothing is fetched. Adding a feed fetches the address
+    you typed, and the feed its page names if it's a page. Each feed's server sees your IP address, the time and the
+    request: https (plain http only to your own network; an address carrying a token goes only over https with a valid
+    certificate, so the token is never sent in the clear, except to a server on the phone itself, which Today's News
+    setting marks "Not encrypted (on this phone)"), no cookies, no referrer, and the same user agent a common phone browser sends (Chrome on
+    Android's), which doesn't name Robot. Sent directly, a request also carries the tags that server gave last time
+    (If-None-Match, If-Modified-Since) so an unchanged feed isn't sent again; they never go to another server, or
+    through Tor. At most 512 KB and 15 seconds a feed, all of it. A feed on your own server (a feed reader there, so the
+    publishers see your server and not your phone) may be on your own network. That means a private address on
+    whichever Wi-Fi you're on: on someone else's, a plain http address can be another device, and Today's News setting
+    says so under such a feed. A feed's request goes either all to your network or all to the internet, never from
+    one to the other; an address on the internet typed as a number isn't taken; and adding a site's page follows the
+    feed it names only if that feed is of the page's kind, so a page on the internet can't send the phone to your
+    network. A feed address carrying a token (in its query, or a random-looking part of its path) is kept encrypted on
+    the phone, shown masked, and left out of logs, History, the backup and anything Robot's model reads; a headline
+    whose link holds it is dropped (after a restore, Today's News setting asks you to add it again). With "Only through Tor" chosen, every feed goes through Tor,
+    each server on its own circuit, so the servers see a Tor exit instead of your IP address, except a feed on your
+    own network, which Tor can't reach: it goes directly, and Today's News setting says so. Tor runs only while
+    Robot to Robot is on; while it can't connect, nothing is fetched, never directly instead. The feeds are read on
+    the phone in a separate process with no network access and none of your data. The headlines are kept for 7 days
+    in storage that's never backed up, and a removed feed's headlines are deleted at once; tapping one opens it in
+    your browser. The spoken brief says them on a locked phone only at "Everything", otherwise once you unlock, and
+    never during someone else's phone lock. A brief or an answer that read the headlines is kept in History like any
+    other, and History is in Robot's backup. Your feeds and how often they're fetched go in a backup with Today's
+    settings; restoring someone else's backup adds no feeds and never fetches more often. Each fetch is listed in
+    What went online, under News.
+
 Nothing else goes online. You can turn off Robot's Network permission in GrapheneOS: everything on the phone keeps
 working, and the online features above say they can't connect.
 
@@ -420,11 +507,11 @@ network permissions are granted at install; GrapheneOS lets you turn the network
   warning before a lock starts and a quiet notice while one is on. With car mode: a notice while it's on, and "Car
   connected" when Android didn't let it start by itself. With Robot Files: what was filed in the background, or a batch
   waiting for you to say yes. With a skill: its next step after an app opens. With Robot to Robot: what's waiting from
-  the people you've paired with.
+  the people you've paired with. With Today's lock screen switch on: the quiet day summary (counts and times only).
 - Exact alarms (at install): one alarm 3 minutes after the phone restarts (or Robot updates), and one a minute after
   Robot's assistant service stops, to check that Robot is still your digital assistant and tell you if Android turned it
   off; with Phone lock, one alarm for the next lock's
-  warning, start or end; with routines, one alarm for the next routine's time; and, while a temporary copy of a file you
+  warning, start or end; with routines, one alarm for the next routine's time; with Today's widget or summary showing, one inexact alarm, that doesn't wake the phone, at the day's next event, timer or midnight (not an exact alarm); and, while a temporary copy of a file you
   shared is out, one alarm to delete it after 15 minutes. The timers and alarms you ask for are set by your
   Clock app, which Robot only asks (the "set an alarm" permission); Robot keeps no alarm of its own for them.
 - Audio settings (at install, no prompt): to route Robot's listening and speaking to your headset or your car.

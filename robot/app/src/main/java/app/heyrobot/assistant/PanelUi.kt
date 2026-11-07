@@ -348,7 +348,7 @@ internal fun UiTurn.toTurnUi(l: Langs = Langs.EN) = TurnUi(
     actions = actions.map {
         ActionView(it.id, it.tool, it.summary, it.status, it.detail, it.icon, it.body, it.choices, it.confirm, it.undo != null, it.more,
             cancel = it.cancel, openApp = it.handOff?.let { h -> (PanelFiles.label(h) ?: PanelLists.label(h) ?: SettingsPage.labelText(h) ?: PanelStrings.openCheogram()).render(l) }, picture = it.picture, remember = it.remember,
-            allowContacts = it.allowContacts, termux = it.termux, chips = it.chips, files = it.files, lists = it.lists)
+            allowContacts = it.allowContacts, termux = it.termux, chips = it.chips, files = it.files, lists = it.lists, ask = it.ask, doIt = it.doIt)
     },
     streaming = streaming, stopped = stopped, error = error, helper = fromHelper, readBack = readBack, by = by, home = home,
     footer = if (role == TurnRole.USER) emptyList() else replyFooterText(sources, cost, by).map { it.render(l) },

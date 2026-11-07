@@ -106,7 +106,7 @@ class NetRecordTest {
     @Test fun codesNeverChange() {
         // The record outlives this version: a renamed code would make 30 days of rows unreadable.
         assertEquals(listOf("weather", "weather_place", "nearest", "search", "encyclopedia", "page", "helper", "helper_test", "model", "voice", "translation",
-            "update_check", "update_download", "termux_check", "connection", "link_direct", "link_push", "link_tor"), NetPurpose.entries.map { it.code })
+            "update_check", "update_download", "termux_check", "connection", "link_direct", "link_push", "link_tor", "feed"), NetPurpose.entries.map { it.code })
         assertEquals(listOf("asked", "routine", "tap", "switch", "skill"), NetCause.entries.map { it.code })
         assertEquals(listOf("done", "failed", "stopped", "started"), NetResult.entries.map { it.code })
     }

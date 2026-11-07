@@ -202,7 +202,9 @@ object MessageTap {
 
     private fun parse(ctx: Context, sbn: StatusBarNotification): MessageThread? = try {
         val allow = file(ctx).settings.allowlist
-        if (allow.allows(sbn.packageName) == null || !trusted(ctx, sbn.packageName)) null
+        // A work profile's copy of an allowed app is that profile's: never read, counted or announced here.
+        if (sbn.user != android.os.Process.myUserHandle()) null
+        else if (allow.allows(sbn.packageName) == null || !trusted(ctx, sbn.packageName)) null
         else (NotificationParsing.parse(snapshot(sbn), allow) as? Parsed.Thread)?.thread
     } catch (_: Throwable) {
         // Never the notification in a log: only that one couldn't be read.

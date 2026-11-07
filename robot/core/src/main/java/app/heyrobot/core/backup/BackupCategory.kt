@@ -124,7 +124,22 @@ enum class BackupCategory(
      * drop to Ask me first and "Answer while locked" comes back off (RestoreSafety.link, linkLevels). Staged by :voice; the
      * main app merges the settings and leaves links.json for :link (RestoreApply).
      */
-    LINKS("links", true, RestoreProcess.MAIN, 2);
+    LINKS("links", true, RestoreProcess.MAIN, 2),
+    /**
+     * Today H3 (home-design §6.3): private events, the ones only Robot knows ("private_events.json", core
+     * PrivateEventsCodec, in plain JSON inside the backup's own encryption, never sealed with the old phone's key). Appended
+     * after the chain's last category: the voice log's category bits follow this order, and a Robot without it skips
+     * "calendar" by name. Restored only from a backup that is yours ([ONLY_YOURS]): someone else's private events would
+     * land in your day. Sealed again under this phone's key by :voice. The phone's own events are never in a backup.
+     */
+    CALENDAR("calendar", true, RestoreProcess.VOICE, 1),
+    /**
+     * Today H5: the Today page's settings ("home_settings.json", core HomeSettings): its parts' order, the pinned note's id
+     * and whether Today is your home page. Appended after the chain's last category: the voice log's category bits follow
+     * this order, and a Robot without it skips "home" by name. Written by :voice through HomeSettingsStore's lock, which
+     * both processes share since H4, merged over this phone's file (HomeSettings.restored).
+     */
+    HOME("home", true, RestoreProcess.VOICE, 1);
 
     /** Whether [name] is one of this category's entry names. */
     fun validName(name: String): Boolean = rule(name) != null
@@ -164,6 +179,8 @@ enum class BackupCategory(
             TRANSCRIPTS -> transcript(name)
             KEYS -> key(name)
             VOICEPRINT -> if (name == VOICEPRINT_FILE) NameRule(BackupCaps.VOICEPRINT, 0) else null
+            CALENDAR -> if (name == CALENDAR_FILE) NameRule(app.heyrobot.core.calendar.PrivateEventsCodec.MAX_FILE, app.heyrobot.core.calendar.PrivateEventsCodec.VERSION) else null
+            HOME -> if (name == HOME_FILE) NameRule(BackupCaps.SMALL_FILE, app.heyrobot.core.HomeSettings.VERSION) else null
             EVERYDAY -> if (name == EVERYDAY_FILE) NameRule(BackupCaps.SMALL_FILE, app.heyrobot.core.everyday.EverydaySettingsCodec.VERSION) else null
             FILES -> when {
                 name == FilesBackup.INDEX -> NameRule(app.heyrobot.core.files.FileLimits.MAX_INDEX, app.heyrobot.core.files.FileIndexCodec.VERSION)
@@ -228,6 +245,10 @@ enum class BackupCategory(
         const val LISTS_SETTINGS = app.heyrobot.core.lists.ListsSettingsCodec.FILE
         /** The everyday set's one entry: files/robot/everyday_settings.json. */
         const val EVERYDAY_FILE = app.heyrobot.core.everyday.EverydaySettingsCodec.FILE
+        /** H3: private events' one entry. */
+        const val CALENDAR_FILE = app.heyrobot.core.calendar.PrivateEventsCodec.FILE
+        /** H5: the Today page's one entry. */
+        const val HOME_FILE = app.heyrobot.core.HomeSettings.FILE
         /** Robot to Robot: what :link hands over (no key is ever in it) and Settings › Robot to Robot. */
         const val LINKS_FILE = app.heyrobot.core.link.LinkBackupCodec.FILE
         const val LINK_SETTINGS = app.heyrobot.core.link.LinkSettingsCodec.FILE
@@ -241,9 +262,10 @@ enum class BackupCategory(
 
         /**
          * What someone else's backup never restores: the sensitive categories, and pairings (D14), which take no tick of
-         * their own and a passphrase of any strength: they hold no key.
+         * their own and a passphrase of any strength: they hold no key. Private events, and (today-fix-b) the Today page: someone
+         * else's backup never turns your Today on or off or pins a note from their phone.
          */
-        val ONLY_YOURS: Set<BackupCategory> get() = SENSITIVE + LINKS
+        val ONLY_YOURS: Set<BackupCategory> get() = SENSITIVE + LINKS + CALENDAR + HOME
 
         /** The categories whose entries are keys, saved as they are read and deleted again when a restore is cut short. */
         val KEY_CATEGORIES: Set<BackupCategory> get() = setOf(KEYS, CONN_KEYS)

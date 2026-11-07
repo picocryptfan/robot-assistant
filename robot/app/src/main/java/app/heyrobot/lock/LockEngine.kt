@@ -167,7 +167,11 @@ object LockEngine {
     private fun redrawWidgets(ctx: Context) = try {
         val widget = ComponentName(ctx.packageName, LockSignals.LIST_WIDGET)
         val ids = AppWidgetManager.getInstance(ctx).getAppWidgetIds(widget)
-        if (ids.isNotEmpty()) ctx.sendBroadcast(Intent(AppWidgetManager.ACTION_APPWIDGET_UPDATE).setComponent(widget).putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, ids))
+        // today-fix-c 8: the providers take only the system's broadcasts (BIND_APPWIDGET), so Robot's own redraws go to the
+        // receivers that aren't exported, in the main process, which draw through AppWidgetManager.
+        if (ids.isNotEmpty()) ctx.sendBroadcast(Intent(LockSignals.LIST_REDRAW_ACTION).setComponent(ComponentName(ctx.packageName, LockSignals.LIST_REDRAW)))
+        // Today H9: always, since its lock screen summary must go at a phone lock's start even with no widget placed.
+        ctx.sendBroadcast(Intent().setComponent(ComponentName(ctx.packageName, LockSignals.TODAY_REFRESH)))
         Unit
     } catch (t: Throwable) { RLog.w("lock_widgets", t) }
 

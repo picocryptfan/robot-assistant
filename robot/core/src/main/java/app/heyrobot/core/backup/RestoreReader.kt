@@ -113,6 +113,10 @@ class VerifiedBackup internal constructor(
     val listsSettings: app.heyrobot.core.lists.ListsSettingsFile.Ok? = null,
     /** The everyday set: everyday_settings.json when the file had it, with the keys this Robot doesn't know. */
     val everyday: app.heyrobot.core.everyday.EverydaySettingsFile.Ok? = null,
+    /** H3: private events when the file had them. */
+    val privateEvents: app.heyrobot.core.calendar.PrivateEventsFile? = null,
+    /** H5: the Today page's settings when the file had them. */
+    val home: app.heyrobot.core.HomeSettings? = null,
     /** L12: links.json as read, whole or refused, or null when the backup has none ([toString] counts). */
     val links: app.heyrobot.core.link.LinkBackupFile? = null,
     /** L12: Settings › Robot to Robot when the file had it, with the keys this Robot doesn't know. */
@@ -241,6 +245,8 @@ object RestoreReader {
         var lists: app.heyrobot.core.lists.ListsFile? = null
         var listsSettings: app.heyrobot.core.lists.ListsSettingsFile.Ok? = null
         var everyday: app.heyrobot.core.everyday.EverydaySettingsFile.Ok? = null
+        var privateEvents: app.heyrobot.core.calendar.PrivateEventsFile? = null
+        var home: app.heyrobot.core.HomeSettings? = null
         var links: app.heyrobot.core.link.LinkBackupFile? = null
         var linkSettings: app.heyrobot.core.link.LinkSettingsFile.Ok? = null
         var connections: List<app.heyrobot.core.connect.Connection>? = null
@@ -353,6 +359,18 @@ object RestoreReader {
                     is app.heyrobot.core.everyday.EverydaySettingsFile.Ok -> { everyday = r; null }
                     is app.heyrobot.core.everyday.EverydaySettingsFile.TooNew -> SkipWhy.NEWER
                     app.heyrobot.core.everyday.EverydaySettingsFile.Damaged -> SkipWhy.REFUSED
+                }
+                // H5: the Today page's settings; newer left for a newer Robot, no version or not JSON refused.
+                BackupCategory.HOME -> when (val n = app.heyrobot.core.HomeSettings.version(text)) {
+                    null -> SkipWhy.REFUSED
+                    else -> if (n > app.heyrobot.core.HomeSettings.VERSION) SkipWhy.NEWER else if (n < app.heyrobot.core.HomeSettings.VERSION) SkipWhy.REFUSED
+                        else { home = app.heyrobot.core.HomeSettings.fromJson(text); null }
+                }
+                // H3: private events by their own codec; newer left for a newer Robot, damaged refused.
+                BackupCategory.CALENDAR -> when (val r = app.heyrobot.core.calendar.PrivateEventsCodec.decode(text)) {
+                    is app.heyrobot.core.calendar.PrivateRead.Ok -> { privateEvents = r.file; null }
+                    is app.heyrobot.core.calendar.PrivateRead.TooNew -> SkipWhy.NEWER
+                    app.heyrobot.core.calendar.PrivateRead.Damaged -> SkipWhy.REFUSED
                 }
             }
             if (why != null) refuse(c, why)
@@ -533,6 +551,8 @@ object RestoreReader {
                 lists = ok(BackupCategory.LISTS, lists),
                 listsSettings = ok(BackupCategory.LISTS, listsSettings),
                 everyday = ok(BackupCategory.EVERYDAY, everyday),
+                privateEvents = ok(BackupCategory.CALENDAR, privateEvents),
+                home = ok(BackupCategory.HOME, home),
                 links = ok(BackupCategory.LINKS, links),
                 linkSettings = ok(BackupCategory.LINKS, linkSettings),
                 connections = ok(BackupCategory.CONNECTIONS, connections),

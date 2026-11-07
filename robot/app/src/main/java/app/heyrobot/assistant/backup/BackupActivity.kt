@@ -190,6 +190,7 @@ class BackupActivity : ComponentActivity() {
         BackupCode.MEMORY_UNREADABLE -> BackupStrings.memoryUnreadable().str()
         BackupCode.FILES_UNREADABLE -> BackupStrings.filesUnreadable().str()
         BackupCode.LISTS_UNREADABLE -> BackupStrings.listsUnreadable().str()
+        BackupCode.CALENDAR_UNREADABLE -> BackupStrings.calendarUnreadable().str()
         BackupCode.TOO_BIG -> BackupWords.tooBigToSave(tooBig).str()
         BackupCode.WRITE_FAILED -> BackupStrings.cantWrite().str()
         BackupCode.CHECK_FAILED -> BackupStrings.readBackFailed().str()
@@ -269,6 +270,7 @@ class BackupActivity : ComponentActivity() {
         if (s.count < 0) return stringResource(when (c) {
             BackupCategory.FILES -> R.string.backup_files_cant
             BackupCategory.LISTS -> R.string.backup_lists_cant
+            BackupCategory.CALENDAR -> R.string.backup_calendar_cant
             // FX3: travel mode keeps History out while it holds Robot Files' answers (BackupSources.historyHidden).
             BackupCategory.HISTORY -> R.string.backup_history_travel
             // C10: connections.json damaged, or a newer Robot's.
@@ -280,6 +282,7 @@ class BackupActivity : ComponentActivity() {
         val what = when (c) {
             BackupCategory.SETTINGS -> stringResource(R.string.backup_sum_settings)
             BackupCategory.EVERYDAY -> stringResource(R.string.backup_sum_everyday)
+            BackupCategory.HOME -> stringResource(R.string.backup_sum_home)
             BackupCategory.LINKS -> pluralStringResource(R.plurals.backup_sum_links, s.count, s.count)
             BackupCategory.PEOPLE -> pluralStringResource(R.plurals.backup_n_people, s.count, s.count)
             BackupCategory.MEMORY -> pluralStringResource(R.plurals.backup_n_items, s.count, s.count).let { items ->
@@ -304,6 +307,7 @@ class BackupActivity : ComponentActivity() {
             BackupCategory.VOICEPRINT -> stringResource(R.string.backup_sum_voiceprint)
             BackupCategory.FILES -> pluralStringResource(R.plurals.backup_n_files, s.count, s.count)
             BackupCategory.LISTS -> pluralStringResource(R.plurals.backup_n_lists, s.count, s.count)
+            BackupCategory.CALENDAR -> pluralStringResource(R.plurals.backup_n_private_events, s.count, s.count)
             BackupCategory.CONNECTIONS -> pluralStringResource(R.plurals.conn_backup_n, s.count, s.count)
             // Shown in Keys and private codes' row, never on its own.
             BackupCategory.CONN_KEYS -> s.names.joinToString(", ")
@@ -437,6 +441,7 @@ class BackupActivity : ComponentActivity() {
                     if (d?.linksLeftOut == true) Text(stringResource(R.string.backup_links_left_out), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                     d?.filesLeftOut?.takeIf { it > 0 }?.let { n -> Text(pluralStringResource(R.plurals.backup_files_left_out, n, n), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
                     if (d?.codesLeftOut == true) Text(stringResource(R.string.backup_codes_left_out), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    if (d?.privateLeftOut == true) Text(stringResource(R.string.backup_private_left_out), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }
             }
         }

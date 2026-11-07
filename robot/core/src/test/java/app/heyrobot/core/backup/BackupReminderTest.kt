@@ -52,7 +52,7 @@ class BackupReminderTest {
         assertEquals(d, BackupState.fromJson("{\"v\":9,\"chosen\":\"all\",\"lastAt\":-5}"))
         // 1.4: a 1.1 file never offered Files, so it starts at its default (on) rather than as one you left out.
         // C10: nor Connections (on); Connection keys stays off, as Keys.
-        assertEquals(setOf(BackupCategory.NOTES, BackupCategory.FILES, BackupCategory.LISTS, BackupCategory.EVERYDAY, BackupCategory.LINKS, BackupCategory.CONNECTIONS), BackupState.fromJson("{\"chosen\":[\"notes\",\"plans\"]}").chosen)
+        assertEquals(setOf(BackupCategory.NOTES, BackupCategory.FILES, BackupCategory.LISTS, BackupCategory.EVERYDAY, BackupCategory.LINKS, BackupCategory.CONNECTIONS, BackupCategory.CALENDAR, BackupCategory.HOME), BackupState.fromJson("{\"chosen\":[\"notes\",\"plans\"]}").chosen)
         // 1.4, Lists (LS7): a file saved before Lists was offered starts it at its default too.
         val beforeLists = "{\"chosen\":[\"notes\"],\"offered\":" + org.json.JSONArray((BackupCategory.entries - BackupCategory.LISTS).map { it.id }) + "}"
         assertEquals(setOf(BackupCategory.NOTES, BackupCategory.LISTS), BackupState.fromJson(beforeLists).chosen)

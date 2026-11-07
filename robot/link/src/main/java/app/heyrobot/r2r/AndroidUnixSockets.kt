@@ -46,7 +46,11 @@ class AndroidUnixSockets : UnixSockets {
         try { Os.chmod(dir.absolutePath, 0x1C0) } catch (_: Exception) { throw IOException() } // 0700
     }
 
-    private class LocalDuplex(private val s: LocalSocket) : Duplex {
+    /** Today H7b: the stream's own descriptor, so :link can hand a feed's stream through Tor to the process that fetches it. */
+    interface Described { val descriptor: java.io.FileDescriptor }
+
+    private class LocalDuplex(private val s: LocalSocket) : Duplex, Described {
+        override val descriptor: java.io.FileDescriptor get() = s.fileDescriptor
         override val input: InputStream = s.inputStream
         override val output: OutputStream = s.outputStream
         override fun readTimeout(ms: Int) { s.soTimeout = ms }

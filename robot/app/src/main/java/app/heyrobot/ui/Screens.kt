@@ -90,10 +90,12 @@ fun HomeScreen(snap: Snapshot, recent: List<StoredConversation>, a: AppActions, 
                 Icon(RIcons.Robot, null, Modifier.size(44.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer)
             }
             Spacer(Modifier.width(16.dp))
-            Column {
+            Column(Modifier.weight(1f)) {
                 Text(stringResource(R.string.home_hi), style = MaterialTheme.typography.headlineMedium)
                 Text(stringResource(R.string.home_runs_here), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            // H3: History, behind the clock icon on both homes.
+            IconButton(onClick = { a.openPage(Page.History) }) { Icon(RIcons.History, UiStrings.history().str()) }
         }
         Button(
             onClick = { a.talk(null) },
@@ -182,7 +184,7 @@ fun HomeScreen(snap: Snapshot, recent: List<StoredConversation>, a: AppActions, 
         if (recent.isNotEmpty()) {
             SectionCard(stringResource(R.string.home_recent)) {
                 for (c in recent) ConversationRow(c) { a.openConversation(c.id) }
-                TextButton(onClick = { a.openTab(Tab.HISTORY) }) { Text(stringResource(R.string.home_all_conversations)) }
+                TextButton(onClick = { a.openPage(Page.History) }) { Text(stringResource(R.string.home_all_conversations)) }
             }
         }
         if (underWay == null) {
@@ -228,10 +230,11 @@ private fun ConversationRow(c: StoredConversation, onClick: () -> Unit) {
 }
 
 @Composable
-fun HistoryScreen(list: List<StoredConversation>, a: AppActions, modifier: Modifier) {
+fun HistoryScreen(list: List<StoredConversation>, a: AppActions, modifier: Modifier, onBack: (() -> Unit)? = null) {
     var confirmAll by remember { mutableStateOf(false) }
     Column(modifier.fillMaxSize().padding(horizontal = 20.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            onBack?.let { IconButton(onClick = it) { Icon(RIcons.Back, stringResource(R.string.today_calendar_back)) } }
             Box(Modifier.weight(1f)) { ScreenTitle(UiStrings.history().str(), stringResource(R.string.home_saved_here)) }
             if (list.isNotEmpty()) TextButton(onClick = { confirmAll = true }) { Text(stringResource(R.string.home_delete_all)) }
         }

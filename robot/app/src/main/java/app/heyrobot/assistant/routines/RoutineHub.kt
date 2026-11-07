@@ -356,7 +356,9 @@ object RoutineHub {
             when {
                 f.waitUnlock -> waitForUnlock(RoutineRunner.Waiting(f.routine, kind, f.routine.steps, emptyList(), now, whole = true))
                 RobotVoiceService.instance == null -> RoutineNotices.notAssistant(app, f.routine)
-                else -> RoutineRunner.run(app, f.routine, kind, null)
+                // fix-126-review 2: the occurrence's key goes with it ("a:<ms>" for your alarm, so its brief may speak on a
+                // silenced phone and knows the alarm); a missed alarm always waits above and runs at the unlock without one.
+                else -> RoutineRunner.run(app, f.routine, kind, f.key)
             }
         }
     }

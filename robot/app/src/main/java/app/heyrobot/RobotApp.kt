@@ -25,6 +25,8 @@ class RobotApp : Application() {
         app.heyrobot.sys.ListsFiles.start(this)
         // 1.4 Lists (LS6): the home-screen widgets redrawn after each change, at screen-off, screen-on and unlock (ui/lists/ListsWidget.kt).
         app.heyrobot.ui.lists.ListsWidgets.start(this)
+        // Today H9: its widget and lock screen summary, in main only (ui/today/TodayWidget.kt).
+        app.heyrobot.ui.today.TodayGlances.start(this)
         // LS13: every window Phone lock covers tells :lock it is in front, whatever task it runs in (lock/LockFrontWatch.kt).
         app.heyrobot.lock.LockFrontWatch.start(this)
         // The everyday set: What went online's writer, in main, :voice and :link only (sys/NetLog.kt).

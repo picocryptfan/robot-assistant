@@ -734,13 +734,23 @@ class ProcessIsolationTest {
         assertEquals("", perm("app.heyrobot.linkparse.LinkParseService"))
         for (a in listOf("allowSharedIsolatedProcess", "useAppZygote", "externalService", "foregroundServiceType", "directBootAware")) assertEquals(a, "", linkParse.getAttributeNS(ns, a))
         assertEquals(0, linkParse.getElementsByTagName("intent-filter").length)
+        // Today H7b (home-design §6.1): the isolated reader of news feeds, :feedparse, set up as :linkparse is
+        // (feedsParseOnlyInIsolation checks its code).
+        val feedParse = c("app.heyrobot.feedparse.FeedParseService")
+        assertEquals(":feedparse", proc("app.heyrobot.feedparse.FeedParseService"))
+        assertEquals("true", feedParse.getAttributeNS(ns, "isolatedProcess"))
+        assertEquals("false", exported("app.heyrobot.feedparse.FeedParseService"))
+        assertEquals("", perm("app.heyrobot.feedparse.FeedParseService"))
+        for (a in listOf("allowSharedIsolatedProcess", "useAppZygote", "externalService", "foregroundServiceType", "directBootAware")) assertEquals(a, "", feedParse.getAttributeNS(ns, a))
+        assertEquals(0, feedParse.getElementsByTagName("intent-filter").length)
         // No other component is isolated (1.4: the two isolated services; 1.5 L4: and :linkparse's, deliberately), nothing
         // else runs in :llama, nothing else in :files, and nothing else in :linkparse.
-        assertEquals(listOf("app.heyrobot.brain.LlamaService", "app.heyrobot.linkparse.LinkParseService", "app.heyrobot.parse.FileParseService"),
-            comps.filter { it.value.getAttributeNS(ns, "isolatedProcess") == "true" }.keys.sorted())
+        assertEquals(listOf("app.heyrobot.brain.LlamaService", "app.heyrobot.feedparse.FeedParseService", "app.heyrobot.linkparse.LinkParseService",
+            "app.heyrobot.parse.FileParseService"), comps.filter { it.value.getAttributeNS(ns, "isolatedProcess") == "true" }.keys.sorted())
         assertEquals(listOf("app.heyrobot.brain.LlamaService"), comps.filter { it.value.getAttributeNS(ns, "process") == ":llama" }.keys.toList())
         assertEquals(listOf("app.heyrobot.parse.FileParseService"), comps.filter { it.value.getAttributeNS(ns, "process") == ":files" }.keys.toList())
         assertEquals(listOf("app.heyrobot.linkparse.LinkParseService"), comps.filter { it.value.getAttributeNS(ns, "process") == ":linkparse" }.keys.toList())
+        assertEquals(listOf("app.heyrobot.feedparse.FeedParseService"), comps.filter { it.value.getAttributeNS(ns, "process") == ":feedparse" }.keys.toList())
         // 0.5.0: the fast translation engine in a process of its own, bound only by Robot's own processes.
         assertEquals(":mt", proc("app.heyrobot.mt.MtService"))
         assertEquals("false", exported("app.heyrobot.mt.MtService"))
@@ -755,6 +765,8 @@ class ProcessIsolationTest {
             "app.heyrobot.ui.files.FilesShareActivity", "app.heyrobot.sys.ScanProvider", "app.heyrobot.sys.FilesOutProvider",
             // 1.4 Lists (LS6): the home-screen widget's provider, its tick receiver and the window that picks its list (theWidgetOnlyTicks).
             "app.heyrobot.ui.lists.ListsWidgetProvider", "app.heyrobot.ui.lists.ListsTickReceiver", "app.heyrobot.ui.lists.ListsWidgetSetup",
+            // Today H9: the home-screen widget's provider and its refresh receiver (todayOutsideTheApp).
+            "app.heyrobot.ui.today.TodayWidgetProvider", "app.heyrobot.ui.today.TodayRefresh",
             // F55: the alarm that ends a copy's 15 minutes (filesHandOutACopyAndTakeItBack).
             "app.heyrobot.sys.FilesOutExpiry",
             // The everyday set, E6: the text-to-speech engine's three small activities (no engine loads there).
@@ -808,7 +820,8 @@ class ProcessIsolationTest {
         val ourComps = comps.keys.filter { it.startsWith("app.heyrobot.") }.toSet()
         assertEquals(main.toSet() + "app.heyrobot.brain.BrainService" + "app.heyrobot.brain.LlamaService" + "app.heyrobot.mt.MtService" +
             voice.filter { it.startsWith("app.heyrobot.") } + lock + "app.heyrobot.parse.FileParseService" +
-            linkProc.filter { it.startsWith("app.heyrobot.") } + "app.heyrobot.linkparse.LinkParseService", ourComps)
+            linkProc.filter { it.startsWith("app.heyrobot.") } + "app.heyrobot.linkparse.LinkParseService" +
+            "app.heyrobot.feedparse.FeedParseService", ourComps)
         // Exported components are guarded: the system-only BIND_VOICE_INTERACTION, or nothing to guard.
         assertEquals("android.permission.BIND_VOICE_INTERACTION", perm("app.heyrobot.assistant.RobotVoiceService"))
         assertEquals("android.permission.BIND_VOICE_INTERACTION", perm("app.heyrobot.assistant.RobotSessionService"))
@@ -828,8 +841,22 @@ class ProcessIsolationTest {
             "app.heyrobot.assistant.car.CarModeActivity", "app.heyrobot.assistant.WebSearchActivity", "app.heyrobot.assistant.TermuxResultReceiver",
             "app.heyrobot.assistant.backup.BackupActivity", "app.heyrobot.assistant.skills.SkillContinueReceiver",
             "app.heyrobot.assistant.GpuCheckService", "app.heyrobot.sys.ScanProvider", "app.heyrobot.sys.FilesOutProvider",
-            "app.heyrobot.ui.lists.ListsTickReceiver", "app.heyrobot.assistant.connect.ConnectionWindow", "app.heyrobot.sys.FilesOutExpiry"))
+            "app.heyrobot.ui.lists.ListsTickReceiver", "app.heyrobot.assistant.connect.ConnectionWindow", "app.heyrobot.sys.FilesOutExpiry",
+            "app.heyrobot.ui.today.TodayRefresh"))
             assertEquals(n, "false", exported(n))
+        // Today H9 (home-design §6.3, deliberately): its widget's provider is exported as a widget provider must be, with
+        // exactly the APPWIDGET_UPDATE filter and its meta-data, the system's broadcasts only (BIND_APPWIDGET, today-fix-c 8);
+        // its refresh receiver isn't exported and has no filter. What they do with what they get is todayOutsideTheApp's.
+        val today = c("app.heyrobot.ui.today.TodayWidgetProvider")
+        assertEquals("true", exported("app.heyrobot.ui.today.TodayWidgetProvider"))
+        assertEquals("android.permission.BIND_APPWIDGET", perm("app.heyrobot.ui.today.TodayWidgetProvider"))
+        assertEquals(1, today.getElementsByTagName("intent-filter").length)
+        assertEquals(listOf("android.appwidget.action.APPWIDGET_UPDATE"), elements(today, "action").map { it.getAttributeNS(ns, "name") })
+        assertEquals(0, elements(today, "category").size + elements(today, "data").size)
+        assertEquals(listOf("android.appwidget.provider" to "@xml/today_widget_info"),
+            elements(today, "meta-data").map { it.getAttributeNS(ns, "name") to it.getAttributeNS(ns, "resource") })
+        assertEquals(0, c("app.heyrobot.ui.today.TodayRefresh").getElementsByTagName("intent-filter").length)
+        assertEquals("", perm("app.heyrobot.ui.today.TodayRefresh"))
         // 1.4 Lists (lists-plan.md §7.6, §7.7, D12; LS6, deliberately): the widget. The provider is exported as a widget
         // provider must be, with exactly the APPWIDGET_UPDATE filter and its meta-data, no permission; the tick receiver
         // isn't exported and has no filter (only the widget's own template reaches it); the setup window is exported for
@@ -837,7 +864,7 @@ class ProcessIsolationTest {
         // they do with what they get is theWidgetOnlyTicks'.
         val widget = c("app.heyrobot.ui.lists.ListsWidgetProvider")
         assertEquals("true", exported("app.heyrobot.ui.lists.ListsWidgetProvider"))
-        assertEquals("", perm("app.heyrobot.ui.lists.ListsWidgetProvider"))
+        assertEquals("android.permission.BIND_APPWIDGET", perm("app.heyrobot.ui.lists.ListsWidgetProvider"))
         assertEquals(1, widget.getElementsByTagName("intent-filter").length)
         assertEquals(listOf("android.appwidget.action.APPWIDGET_UPDATE"), elements(widget, "action").map { it.getAttributeNS(ns, "name") })
         assertEquals(0, elements(widget, "category").size + elements(widget, "data").size)
@@ -1641,7 +1668,8 @@ class ProcessIsolationTest {
     /** Contacts and the calendar are asked for by the main app only: nothing in the voice process requests a permission. */
     @Test fun onlyTheMainAppAsksForPermissions() {
         val askers = usersOf(Regex("""RequestMultiplePermissions|RequestPermission\b|requestPermissions\("""))
-        assertEquals(listOf("app/ui/MainActivity.kt"), askers)
+        // today-fix-c 3: Settings › Display's lock screen summary asks for notifications (main process, ui/today).
+        assertEquals(listOf("app/ui/MainActivity.kt", "app/ui/today/TodaySettings.kt"), askers)
     }
 
     /** The main app opens the panel with Activity.showAssist and plain string keys (it may not import the assistant's constants). */
@@ -1974,8 +2002,9 @@ class ProcessIsolationTest {
         // No cookies: nothing installs a cookie handler for java.net's connections.
         assertEquals(emptyList<String>(), usersOf(Regex("""\bCookieHandler\b|\bjava\.net\.CookieManager\b""")))
         assertEquals(2, client.count("repo.assetUrl(file.id)"))
-        // GitHub's URLs are written in one place, core's GitHub.kt (the Licences list's source link is data, not code).
-        assertEquals(listOf("core/core/update/GitHub.kt"), ours.filter { Regex("""https://[^"\s]*github""").containsMatchIn(withoutComments(it.value)) }.keys.sorted())
+        // GitHub's URLs are written in one place, core's GitHub.kt (the Licences list's source link is data, not code), and
+        // Today H7's link to a public list of news feeds (TodayNews.kt), opened in your browser on your tap: Robot fetches nothing there.
+        assertEquals(listOf("app/ui/today/TodayNews.kt", "core/core/update/GitHub.kt"), ours.filter { Regex("""https://[^"\s]*github""").containsMatchIn(withoutComments(it.value)) }.keys.sorted())
         // Its hosts, and the token only for the API's (core GitHubPolicyTest too).
         val hosts = app.heyrobot.core.update.GitHubHosts
         assertEquals("api.github.com", hosts.API)
@@ -1993,7 +2022,8 @@ class ProcessIsolationTest {
         // 0.9: and the web search services' keys (sys/WebFiles.kt, read only by the :voice process's WebKeys: webSearch… below).
         // Skills connections (C3, deliberately): and each connection's key file (sys/Connections.kt, robot_conn_<id> for a
         // checked connection id, read only by the :voice process's ConnKeys: connectionsStayBehindTheirChecks).
-        assertEquals(listOf("app/sys/Connections.kt", "app/sys/HelperFiles.kt", "app/sys/KeystoreSecret.kt", "app/sys/WebFiles.kt", "app/update/UpdateStore.kt"),
+        // Today H8 (deliberately): and a feed address that carries a token (sys/NewsKeys.kt, robot_feed_<id>, read only in NewsStore's round).
+        assertEquals(listOf("app/sys/Connections.kt", "app/sys/HelperFiles.kt", "app/sys/KeystoreSecret.kt", "app/sys/NewsKeys.kt", "app/sys/WebFiles.kt", "app/update/UpdateStore.kt"),
             usersOf(Regex("""\bKeystoreSecret\(""")))
         assertEquals(listOf("app/update/UpdateStore.kt"), ours.filter { withoutComments(it.value).contains("robot_github_token") || withoutComments(it.value).contains("\"github_token\"") }.keys.sorted())
         assertTrue(listOf("claude", "github_token", "x").none { app.heyrobot.sys.HelperKeyFiles.alias(it) == "robot_github_token" })
@@ -2099,7 +2129,7 @@ class ProcessIsolationTest {
      */
     @Test fun noNetworkNoAudioFilesNoRawLogs() {
         // java.net.IDN only spells a host name in ASCII, like URLEncoder and URI (core web WebUrl).
-        assertEquals(listOf("app/sys/NominatimClient.kt", "app/sys/OpenMeteoClient.kt", "app/update/GitHubClient.kt"),
+        assertEquals(listOf("app/sys/FeedClient.kt", "app/sys/NominatimClient.kt", "app/sys/OpenMeteoClient.kt", "app/update/GitHubClient.kt"),
             usersOf(Regex("""\bjava\.net\.(?!URLEncoder|URI\b|IDN\b)|HttpURLConnection|HttpsURLConnection|\bSocket\b|okhttp|\bWebView\b|\bopenConnection\("""),
             // 1.5 (robot-to-robot-plan.md §5.4; L3): and Robot to Robot's link module, whose carriers linkStaysInItsProcess checks.
             ours.filterKeys { !it.startsWith("helpers/") && !it.startsWith("link/") }))
@@ -2123,7 +2153,12 @@ class ProcessIsolationTest {
         assertHas(meteo, "private val HOSTS = setOf(\"api.open-meteo.com\", \"geocoding-api.open-meteo.com\")")
         assertHas(meteo, "require(u.protocol == \"https\" && u.host in HOSTS)", "c.instanceFollowRedirects = false")
         assertTrue(meteo.has("private fun get(") && meteo.count(Regex("""\bfun get\(""")) == meteo.count(Regex("""\bprivate fun get\(""")))
-        assertEquals(listOf("app/assistant/ToolExecutor.kt", "app/sys/OpenMeteoClient.kt", "app/ui/ToolsSettings.kt"), usersOf(Regex("""\bOpenMeteoClient\b""")))
+        assertEquals(listOf("app/assistant/ToolExecutor.kt", "app/sys/OpenMeteoClient.kt", "app/sys/TodayWeatherStore.kt", "app/ui/ToolsSettings.kt"), usersOf(Regex("""\bOpenMeteoClient\b""")))
+        // Today H6: the weather line's forecast, only on a tap (What went online's row says "tap"), only from Today's page.
+        val todayWeather = code(kt("app", "sys/TodayWeatherStore.kt"))
+        assertEquals(listOf("NetCause.TAP"), Regex("""NetCause\.[A-Z_]+""").findAll(todayWeather).map { it.value }.toList())
+        assertEquals(1, todayWeather.split("OpenMeteoClient.forecast(").size - 1)
+        assertEquals(listOf("app/ui/today/TodayScreen.kt"), usersOf(Regex("""\bTodayWeatherStore\.fetch\(""")))
         // 1.1: one accessibility service, Phone lock's, which sees which app is in front and nothing else: from an event it
         // reads the type, the package, the class and when, never the text, the source node, a description or a window's content,
         // and it never acts on another app (no actions, no global actions, no gestures). Ask Claude still drives no app.
@@ -2155,14 +2190,16 @@ class ProcessIsolationTest {
         // 1.0: DuckDuckGo's Instant Answer API (core web DuckDuckGo.kt), sent like the other services'; and the search engines'
         // own pages and the short list of public SearXNG servers (core web Engines.kt): your browser opens an engine's, Robot
         // fetches none of them, and a public SearXNG is reached only once you pick it at set-up.
-        // 1.1: Robot's Ko-fi page (ui/settings/SupportSettings.kt, from support-addresses.txt), which Settings › About › Support
-        // Robot opens in the browser when you tap it; Robot fetches nothing.
         // 1.5 L-bridges, a deliberate change: Tor Browser's built-in bridge lines (core link TorBridges.kt) name the https
         // fronts of Snowflake's broker and of meek, which lyrebird reaches when Tor starts it in :link; Robot's own code fetches none.
-        assertEquals(listOf("app/ui/HelpersScreens.kt", "app/ui/settings/SupportSettings.kt", "app/ui/settings/WebSearchSettings.kt", "core/core/ClaudeApp.kt", "core/core/Licences.kt",
+        // Today H7: FeedClient checks a feed's address is https, core news Feeds.kt makes "example.com" https://example.com/ and
+        // keeps only https feed links, and TodayNews.kt links the public list of feeds (opened in your browser on your tap).
+        // H7b: core news FeedWire keeps only the https links of what :feedparse answers.
+        assertEquals(listOf("app/sys/FeedClient.kt", "app/ui/HelpersScreens.kt", "app/ui/settings/WebSearchSettings.kt",
+            "app/ui/today/TodayNews.kt", "core/core/ClaudeApp.kt", "core/core/Licences.kt",
             "core/core/ModelState.kt", "core/core/MtBundle.kt", "core/core/Nearby.kt", "core/core/VoiceModels.kt", "core/core/Weather.kt",
-            "core/core/helpers/Helpers.kt", "core/core/link/TorBridges.kt", "core/core/termux/TermuxSetup.kt", "core/core/termux/TermuxUpdates.kt", "core/core/update/GitHub.kt",
-            "core/core/web/DuckDuckGo.kt", "core/core/web/Engines.kt", "core/core/web/OpenLibrary.kt", "core/core/web/SearchWire.kt",
+            "core/core/helpers/Helpers.kt", "core/core/link/TorBridges.kt", "core/core/news/FeedWire.kt", "core/core/news/Feeds.kt", "core/core/termux/TermuxSetup.kt", "core/core/termux/TermuxUpdates.kt",
+            "core/core/update/GitHub.kt", "core/core/web/DuckDuckGo.kt", "core/core/web/Engines.kt", "core/core/web/OpenLibrary.kt", "core/core/web/SearchWire.kt",
             "core/core/web/Wikipedia.kt"),
             ours.filter { withoutComments(it.value).contains("https://") }.keys.sorted())
         val audio = ours.filterKeys { it.startsWith("voice/") || it.startsWith("app/assistant/") }
@@ -2193,7 +2230,7 @@ class ProcessIsolationTest {
     @Test fun everyNetworkPathIsRecorded() {
         // The java.net clients: one request function each, which records each request in its finally block.
         for ((file, fn) in listOf("sys/OpenMeteoClient.kt" to "private fun get(", "sys/NominatimClient.kt" to "private fun get(",
-            "update/GitHubClient.kt" to "private fun <T> request(")) {
+            "update/GitHubClient.kt" to "private fun <T> request(", "sys/FeedClient.kt" to "private fun get(")) {
             val whole = flatCode(kt("app", file))
             val body = whole.body(fn)
             // Every connection the file opens is opened there (GitHubClient's: on the job's network, or the default one).
@@ -2201,8 +2238,37 @@ class ProcessIsolationTest {
             assertEquals(file, whole.count("openConnection("), body.count("openConnection("))
             assertInOrder(body, "openConnection(", "finally {", "NetRecord.record(")
         }
-        assertEquals(listOf("app/sys/NominatimClient.kt", "app/sys/OpenMeteoClient.kt", "app/update/GitHubClient.kt"),
+        assertEquals(listOf("app/sys/FeedClient.kt", "app/sys/NominatimClient.kt", "app/sys/OpenMeteoClient.kt", "app/update/GitHubClient.kt"),
             usersOf(Regex("""\bopenConnection\(""")))
+        // Today H7: the news feeds' one client, https only and to public addresses, recorded as FEED; only NewsStore uses it.
+        // H7b, through Tor: no connection of its own and no lookup on the phone; :link gives the stream (LinkClient.feedStream),
+        // none fails the feed (never direct instead), and the request is recorded in torGet's finally block.
+        val feed = flatCode(kt("app", "sys/FeedClient.kt"))
+        assertHas(feed, "c.instanceFollowRedirects = false", "c.useCaches = false", "NetRecord.record(NetPurpose.FEED, u.host, cause", "OwnFeed.lookup(url, found.map { it.address })",
+            "if (!OwnFeed.sameKind(kind[0], at.where)) throw Failure(NewsFail.SERVER)", "if (at.where == ConnWhere.HOME) return homeGet(")
+        // H8: your own network on a socket of its own at the address its lookup checked, checked again once connected (a token on
+        // plain http only to loopback or Tailscale, today-h8-fix), and recorded.
+        val home = feed.body("private fun homeGet(")
+        assertInOrder(home, "homeSocket(addresses, t.port, deadline, near)", "finally {", "NetRecord.record(NetPurpose.FEED, t.host, cause")
+        assertEquals(0, home.count("openConnection("))
+        assertHas(feed.body("private fun homeSocket("), "if (ConnRules.socket(s.inetAddress.address, ConnWhere.HOME) && (!near || OwnFeed.loopback(s.inetAddress.address))) return s")
+        assertEquals(listOf("app/sys/NewsStore.kt"), usersOf(Regex("""\bNewsKeys\.address\(""")))
+        assertEquals(listOf("app/sys/NewsStore.kt"), usersOf(Regex("""\bFeedClient\.fetch\(""")))
+        val tor = feed.body("private fun torGet(")
+        assertInOrder(tor, "tor.stream(t.host, t.port)", "throw Failure(NewsFail.NO_TOR)", "finally {", "NetRecord.record(NetPurpose.FEED, t.host, cause")
+        assertEquals(0, tor.count("openConnection("))
+        assertEquals(0, tor.count(Regex("""\bInetAddress\b|\bget\(ctx""")))
+        // today-h7-fix 4 and 9: validators only to the first hop's host, one deadline across the hops.
+        assertHas(feed.body("fun fetch("), "val e = etag.takeIf { same }; val m = modified.takeIf { same }",
+            "if (tor != null) torGet(ctx, tor, at, cause, e, m, deadline, page) else get(ctx, at, cause, e, m, deadline, page, kind, secret)")
+        // With Tor chosen a round asks it first and goes only when it can carry one: a client that isn't through Tor is refused.
+        // today-h7-fix 4: through Tor, no validator is sent or kept (an ETag would link one day's fetch to the next).
+        assertHas(flatCode(kt("app", "sys/NewsStore.kt")), "val tor = s.via == NewsVia.TOR", "if (tor && s.feeds.any { !OwnFeed.own(it.url) }) torWhy(ask)?.let { return Fetched.Refused(it) }",
+            "val viaTor = tor && !OwnFeed.own(f.url)", "val (e, m) = if (viaTor) null to null else old.feeds[f.url]?.validatorsFor(f.url) ?: (null to null)",
+            "private fun tor(url: String) = if (viaTor && !OwnFeed.own(url)) FeedClient.Tor",
+            "private fun torWhy(ask: Ask): NewsRefusal? = if (ask is ThroughTor) ask.torWhy() else NewsRefusal.TOR_DOWN",
+            "if (via == NewsVia.TOR && !OwnFeed.own(address)) torWhy(ask)?.let { throw FeedClient.Failure(when (it) { NewsRefusal.TOR_STARTING -> NewsFail.TOR_STARTING; NewsRefusal.TOR_OFF -> NewsFail.TOR_OFF; NewsRefusal.TOR_DOWN -> NewsFail.NO_TOR }) }")
+        assertEquals(listOf("app/assistant/routines/PanelRoutines.kt", "app/ui/today/TodayNews.kt"), usersOf(Regex("""\bNewsStore\.fetch\(""")))
         // Every OkHttp client is built in the :helpers module, in these files, and each builder adds the record's interceptor
         // before it is built (an application interceptor: a request that never connects is recorded too).
         val builders = Regex("""\bOkHttpClient\.Builder\(\)|\bAnthropicOkHttpClient\.builder\(\)|\.newBuilder\(\)\s*\.\s*(addInterceptor|addNetworkInterceptor|dns|proxy)""")
@@ -2496,7 +2562,8 @@ class ProcessIsolationTest {
         assertHas(lockClock, "\"com.android.deskclock.ALARM_ALERT\"", "\"com.android.deskclock.ALARM_DONE\"", "AlarmCheck.admits(", "AlarmWatch.awaitsDone(")
         assertEquals(2, lockClock.count(Regex("""\baddAction\(""")))
         val prot = flatCode(kt("app", "sys/ProtectedBroadcasts.kt"))
-        assertEquals(setOf(android.content.Intent.ACTION_USER_PRESENT, android.content.Intent.ACTION_SCREEN_ON, android.content.Intent.ACTION_SCREEN_OFF),
+        assertEquals(setOf(android.content.Intent.ACTION_USER_PRESENT, android.content.Intent.ACTION_SCREEN_ON, android.content.Intent.ACTION_SCREEN_OFF,
+            android.content.Intent.ACTION_DATE_CHANGED, android.content.Intent.ACTION_TIME_CHANGED, android.content.Intent.ACTION_TIMEZONE_CHANGED),
             app.heyrobot.sys.ProtectedBroadcasts.ACTIONS)
         assertEquals(1, prot.count(Regex("""RECEIVER_EXPORTED""")))
         val present = usersOf(Regex("""\bACTION_USER_PRESENT\b"""))
@@ -2507,9 +2574,10 @@ class ProcessIsolationTest {
         // 1.4 Lists (LS2), deliberately: Lists' vault, which merges the adds said while locked after each unlock, in :voice
         // (listsStayOnThePhone). LS6, deliberately: Lists' widgets, drawn again at unlock (theWidgetOnlyTicks).
         // F68, deliberately: the speaking service, whose notification names the routine again after the unlock.
+        // Today H9, deliberately: its widget, the day line again after the unlock (todayOutsideTheApp).
         assertEquals(listOf("app/assistant/FilingWork.kt", "app/assistant/LinkNotices.kt", "app/assistant/car/CarModeController.kt", "app/assistant/conversation/ConversationActivity.kt",
             "app/assistant/routines/RoutineHub.kt", "app/assistant/routines/RoutineSpeakingService.kt", "app/lock/LockAccessibilityService.kt", "app/sys/FilesVault.kt", "app/sys/ListsVault.kt", "app/sys/ProtectedBroadcasts.kt",
-            "app/ui/lists/ListsWidget.kt"), present)
+            "app/ui/lists/ListsWidget.kt", "app/ui/today/TodayWidget.kt"), present)
         for (f in present) {
             val c = Flat(code(ours.getValue(f)))
             assertTrue(f, !c.text.contains("RECEIVER_NOT_EXPORTED") || c.calls(Regex("""\bregisterReceiver\(""")).none { it.contains("ACTION_USER_PRESENT") })
@@ -2967,7 +3035,8 @@ class ProcessIsolationTest {
             ".setUnlockedDeviceRequired(alias in unlockOnly)", "FileMemoryVault(dir(app), KeystoreMemoryKeys(), lockScreen =", "File(ctx.filesDir, \"memory\")",
             "writeAtomicBytes(file, out)", "if (load != MemoryLoad.Unreadable && load != MemoryLoad.KeyGone) return@locked false")
         assertEquals(1, flatCode(kt("app", "sys/MemoryVault.kt")).count(".setUnlockedDeviceRequired("))
-        assertEquals(listOf("app/sys/ListsVault.kt", "app/sys/MemoryVault.kt"), usersOf(Regex("""\bKeystoreMemoryKeys\(""")))
+        // H3, deliberately: private events' vault passes robot_calendar_v1 as unlock-only, as Lists does (home-design §6.3).
+        assertEquals(listOf("app/sys/ListsVault.kt", "app/sys/MemoryVault.kt", "app/sys/PrivateEventsVault.kt"), usersOf(Regex("""\bKeystoreMemoryKeys\(""")))
         // Two deletes only: Delete all's, and Start over's older memory.enc.bad (the file itself is renamed, never deleted there).
         val vaultCode = flatCode(kt("app", "sys/MemoryVault.kt"))
         assertEquals(2, vaultCode.count(Regex("""\.delete\(\)""")))
@@ -3011,11 +3080,12 @@ class ProcessIsolationTest {
         // LS10, deliberately: the panel's lists use memory's SecretDetector and MemoryHygiene's private placeholder for a secret
         // a list refused (PanelLists.question); they never open memory.
         // F39, deliberately: the restore preview asks MemoryRestore.keepsPrivate about the backup it shows; it never opens memory.
+        // H3, deliberately: private events' vault, as Lists': memory's key class and its exceptions, never memory itself.
         assertEquals(listOf("app/assistant/MemoryPanel.kt", "app/assistant/PanelController.kt", "app/assistant/PanelEscalation.kt", "app/assistant/PanelFiles.kt",
             "app/assistant/PanelHelperChoice.kt", "app/assistant/PanelHelperTurn.kt", "app/assistant/PanelLists.kt",
             "app/assistant/PanelMemoryCommand.kt", "app/assistant/PanelWebSearch.kt",
             "app/assistant/backup/BackupSources.kt", "app/assistant/backup/RestoreFlow.kt",
-            "app/assistant/backup/RestoreWriter.kt", "app/sys/FilingMemory.kt", "app/sys/ListsVault.kt", "app/sys/MemoryVault.kt", "app/sys/RestoreApply.kt",
+            "app/assistant/backup/RestoreWriter.kt", "app/sys/FilingMemory.kt", "app/sys/ListsVault.kt", "app/sys/MemoryVault.kt", "app/sys/PrivateEventsVault.kt", "app/sys/RestoreApply.kt",
             "app/ui/files/FilesPort.kt", "app/ui/files/FilesScreen.kt", "app/ui/guide/GuideStores.kt", "app/ui/settings/FilesSettings.kt",
             "app/ui/settings/MemoryImportScreen.kt", "app/ui/settings/MemorySettings.kt", "app/ui/settings/SettingsRoot.kt"), usersOf(memory, appFiles))
         // Into a model's prompt only from the panel's chat turn: once, in PanelController; never the one-shot client, conversation
@@ -3216,8 +3286,10 @@ class ProcessIsolationTest {
         // the Lists screens (ui/lists, through PhoneListsPort alone); LS6 and LS7 add the widget and the backup here.
         // LS6, deliberately: the widget's renderer and tick (ui/lists/ListsWidget.kt; theWidgetOnlyTicks).
         // LS7, deliberately: the one backup (BackupJob, BackupSources, RestoreWriter), in :voice, in the backup window.
+        // Today (home-design H1, H2), deliberately: TodaySource counts what is left on your lists, read only, never while locked.
         assertEquals(listOf("app/assistant/PanelLists.kt", "app/assistant/backup/BackupJob.kt", "app/assistant/backup/BackupSources.kt",
-            "app/assistant/backup/RestoreWriter.kt", "app/sys/ListShareSync.kt", "app/ui/lists/ListsScreen.kt", "app/ui/lists/ListsWidget.kt", "app/ui/settings/ListsSettings.kt"),
+            "app/assistant/backup/RestoreWriter.kt", "app/sys/ListShareSync.kt", "app/sys/TodaySource.kt", "app/ui/lists/ListsScreen.kt",
+            "app/ui/lists/ListsWidget.kt", "app/ui/settings/ListsSettings.kt"),
             usersOf(Regex("""\bListsFiles\.vault\(""")))
         // LS5: the screens show your items, so they are FLAG_SECURE as Memory's and Files' (their dialogs too); every change
         // they make tells :voice; a card's tap in the panel ticks only through lockedEdit (never while locked, §5), and "Open
@@ -3377,6 +3449,56 @@ class ProcessIsolationTest {
      * lock screen; Settings › Files is FLAG_SECURE. Its settings are never one of the backup's Settings files.
      */
     /**
+     * Today H9 (home-design §6.2, §6.3): the widget's provider and the refresh receiver read nothing from what they are
+     * sent and only redraw, through the coalesced changed(); what is drawn and posted is core TodayGlance's, which reads the
+     * day only when it shows it, and the summary only through TodayGlance.notice (counts and times; gone with Today off or
+     * under a phone lock); the notice is silent and its public version is the same counts; the refresh alarm is inexact and
+     * never wakes the phone; a tap opens MainActivity, which Phone lock covers. The home-screen category only.
+     */
+    @Test fun todayOutsideTheApp() {
+        val w = flatCode(kt("app", "ui/today/TodayWidget.kt"))
+        for (cls in listOf("class TodayWidgetProvider : BroadcastReceiver() {", "class TodayRefresh : BroadcastReceiver() {")) {
+            val r = w.body(cls).body("override fun onReceive(ctx: Context, intent: Intent?)")
+            assertHas(r, "TodayGlances.changed(ctx.applicationContext, goAsync())")
+            assertHasNot(r, "redrawNow(", "getExtra", "intent.")
+        }
+        assertInOrder(w.body("fun changed(ctx: Context, done: BroadcastReceiver.PendingResult? = null)"), "held.add(done)",
+            "if (!pending.compareAndSet(false, true)) return", "pending.set(false)", "held.poll()", "redrawNow(app)", "finally", "waiting.forEach { it.finish() }")
+        val redraw = w.body("fun redrawNow(ctx: Context)")
+        assertHas(redraw, "TodayGlance.widget(now(ctx, host), lang, day), lang, height)", "val notice = TodayGlance.notice(now(ctx), lang, day)",
+            "post(ctx, notice?.let { BriefComposer.shown(it, lang) })")
+        assertHasNot(w, "setExact", "setAlarmClock", "RTC_WAKEUP", "ELAPSED_REALTIME_WAKEUP", "VISIBILITY_PRIVATE", "VISIBILITY_SECRET", "setSound(Uri", "Today.line(")
+        assertHas(w.body("private fun schedule(ctx: Context, at: Long?)"), "am.set(AlarmManager.RTC, at, refresh(ctx))")
+        assertHas(w.body("private fun post(ctx: Context, text: String?)"), "NotificationManager.IMPORTANCE_LOW", "setSound(null, null)", "enableVibration(false)",
+            ".setPublicVersion(public)", "nm.cancel(NOTICE_ID)")
+        // Its one activity: MainActivity, explicit and immutable.
+        assertEquals(1, w.count(Regex("""PendingIntent\.getActivity\(""")))
+        assertHas(flatText(kt("app", "ui/today/TodayWidget.kt")), "PendingIntent.getActivity(ctx, 0,", "Intent().setClassName(ctx.packageName, \"app.heyrobot.ui.MainActivity\")")
+        // Fails closed: a phone lock or the lock state that can't be read counts as on.
+        assertHas(w.body("fun now(ctx: Context, keyguardHost: Boolean = false): GlanceNow"), "PhoneLockNow.on(ctx) } catch (_: Exception) { true }",
+            "PhoneLockNow.someoneElse(ctx) } catch (_: Exception) { true }", "ListsFiles.locked(ctx) } catch (_: Exception) { true }")
+        val info = File(main("app"), "res/xml/today_widget_info.xml").readText()
+        assertTrue(info, info.contains("android:widgetCategory=\"home_screen\"") && !info.contains("keyguard"))
+        // today-fix-c 6: no periodic update, which wakes the phone; the date's change redraws instead.
+        assertTrue(info, info.contains("android:updatePeriodMillis=\"0\""))
+        assertHas(w.body("fun start(app: Context)"), "Intent.ACTION_DATE_CHANGED", "Intent.ACTION_TIME_CHANGED", "Intent.ACTION_TIMEZONE_CHANGED", "screen(app)")
+        // At a phone lock's start and end the summary goes or comes back, with a widget placed or not; today-fix-c 8: through
+        // the receivers that aren't exported, since the providers take the system's broadcasts only.
+        val lockRedraw = flatCode(kt("app", "lock/LockEngine.kt")).body("private fun redrawWidgets(ctx: Context)")
+        assertHas(lockRedraw, "LockSignals.TODAY_REFRESH", "LockSignals.LIST_REDRAW_ACTION")
+        assertHasNot(lockRedraw, "ACTION_APPWIDGET_UPDATE")
+        assertEquals(app.heyrobot.ui.lists.ListsWidgets.REDRAW, app.heyrobot.lock.LockSignals.LIST_REDRAW_ACTION)
+        assertEquals(app.heyrobot.ui.lists.ListsTickReceiver::class.java.name, app.heyrobot.lock.LockSignals.LIST_REDRAW)
+        assertEquals("app.heyrobot.ui.today.TodayRefresh", app.heyrobot.lock.LockSignals.TODAY_REFRESH)
+        // today-fix-c 4: H9's switches only with Today on; 9: TalkBack hears the fetch and the failure.
+        val screen = flatCode(kt("app", "ui/today/TodayScreen.kt"))
+        assertInOrder(screen.body("fun TodayHomeSetting()"), "if (home.today) {", "R.string.today_weather_setting", "TodayOutsideSettings()")
+        assertHasNot(flatCode(kt("app", "ui/settings/DisplaySettings.kt")), "TodayOutsideSettings")
+        assertHas(screen, "if (busy) stringResource(R.string.today_weather_fetching) else stringResource(R.string.today_weather_again, updated)",
+            "liveRegion = LiveRegionMode.Polite")
+    }
+
+    /**
      * 1.4 F10 (files-1.4-plan.md §7.2, D11): nothing about Robot Files writes the calendar. A reminder from a file is a brief
      * reminder kept in the file's own entry, or add_event's card, which the panel's Add to calendar runs with
      * AskWhy.FROM_CONTENT so it shows whatever Settings › Actions and Safety cards say and only a tap answers it; the Files
@@ -3406,10 +3528,36 @@ class ProcessIsolationTest {
         // The brief reads the files part only when unlocked, with no phone lock, and says it only unlocked (core BriefPrivacy).
         val brief = flatCode(kt("app", "assistant/routines/RoutineRunner.kt"))
         assertHas(brief.body("fun files(ctx: Context, now: ZonedDateTime)"), "if (!filesWanted(ctx) || Assistant.keyguard(ctx) || app.heyrobot.sys.RobotFiles.locked(ctx)) null")
-        assertHas(flatCode(kt("core", "core/RoutineGate.kt")).body("fun plan(all: List<BriefItem>"), "val items = if (locked) all.filter { it != BriefItem.FILES && it != BriefItem.LINK } else all")
+        assertHas(flatCode(kt("core", "core/RoutineGate.kt")).body("fun plan(all: List<BriefItem>"), "val items = if (locked) all.filter { it != BriefItem.FILES && it != BriefItem.LINK && it != BriefItem.LISTS && it != BriefItem.NOTE } else all")
         // A brief that ran locked leaves only the files part's place (no words), read once the phone is unlocked, else dropped.
         assertHas(brief.body("fun filesNow(ctx: Context, lang: Lang): List<SpokenPart>"), "val f = files(ctx, now) ?: return emptyList()")
-        assertHas(brief, "say(before.flatMap { if (it.item == BriefItem.FILES && it.lines.isEmpty()) BriefSource.filesNow(ctx, briefLang) else listOf(it) })",
+        // Today fix: private event titles a reply said are kept in History as "a private event".
+        assertHas(flatCode(kt("app", "assistant/PanelController.kt")), "chat[chat.lastIndex] = PanelPrivateEvents.forHistory(")
+        assertHas(flatCode(kt("app", "assistant/routines/PanelRoutines.kt")), "PanelPrivateEvents.read(replyId, events)", "PanelPrivateEvents.read(replyId, it.events)")
+        // today-fix-b: the brief reads lists and the note only with the phone unlocked and no phone lock on (review finding 7).
+        assertHas(brief.body("fun input(ctx: Context, s: RobotSettings"), "val open = withWeather && home != null && !Assistant.locked(ctx)")
+        assertEquals(0, brief.body("fun input(ctx: Context, s: RobotSettings").count("Assistant.keyguard("))
+        // today-fix-b: a part held for the unlock is played by the routine's own voice (the service), never as a panel turn, so
+        // nothing of it reaches History; the routines' code never writes a conversation.
+        assertHas(brief, "RoutineVoice.open(r, RoutineVoice.Surface.SERVICE,")
+        for (f in listOf("RoutineRunner.kt", "RoutineHub.kt", "RoutineVoice.kt")) for (w in listOf("ConversationStore", "PanelController.", "Paths.conversations("))
+            assertEquals("$f: $w", 0, flatCode(kt("app", "assistant/routines/$f")).count(w))
+        // today-fix-b: "show my calendar" goes to the model with Today off, and is the day line hands-free; car mode is hands-free.
+        val routinesPanel = flatCode(kt("app", "assistant/routines/PanelRoutines.kt"))
+        assertHas(routinesPanel.body("fun route(q: String"), "?.let { c -> ShowCalendar.routed(c) { HomeSettingsStore.current(app).today } }")
+        assertInOrder(routinesPanel.body("suspend fun handle(replyId: String"), "val cmd = ShowCalendar.handsFree(asked, host.handsFree)", "RoutineLockedPhone.refuse(cmd, host.locked, langs)")
+        assertHas(flatCode(kt("app", "assistant/PanelController.kt")), "override val handsFree: Boolean get() = wokeBy || PanelHandsFree.active || CarModeController.on")
+        // today-fix-b (review finding 4): Today and the Calendar tab read on open and on a change only (core PageRefresh): the
+        // minute shows the last read at the new time, and :link is asked once per open.
+        val todayUi = flatCode(kt("app", "ui/today/TodayScreen.kt"))
+        assertEquals(0, todayUi.count("TodaySource.page("))
+        assertHas(todayUi.body("private fun TodayHome("), "refresh.get(at, TodaySource.stamp(ctx, now) + listOf(home.note, lang, changes)) { last, fresh ->",
+            "TodaySource.read(ctx, lang, home, now, robots = if (fresh) null else last?.fromRobots, choices = NOTE_CHOICES)", "r.view(now) to r.choices")
+        val calendarUi = flatCode(kt("app", "ui/calendar/CalendarScreen.kt"))
+        assertHas(calendarUi.body("fun CalendarTab("), "refresh.get(at, CalendarSource.stamp(ctx, now) + listOf(from, changes)) { _, _ -> CalendarSource.read(ctx, from, now) }.view(now)")
+        assertEquals(0, calendarUi.body("fun CalendarTab(").count("CalendarSource.view("))
+        assertHas(flatCode(kt("app", "sys/TodaySource.kt")).body("private fun fromRobots("), "if (!s.on || !s.brief || Assistant.locked(ctx)) 0 else kept ?: run {")
+        assertHas(brief, "say(before.flatMap { if (it.item == BriefItem.FILES && it.lines.isEmpty()) BriefSource.filesNow(ctx, briefLang) else if (it.item == BriefItem.CALENDAR && it.lines.isEmpty()) BriefSource.calendarNow(ctx, briefLang) else listOf(it) })",
             "val FILES_LATER = SpokenPart(emptyList(), true, StepCode.BRIEF, BriefItem.FILES)",
             // Only beside parts already held for the unlock: a brief that held nothing never waits for the files part alone.
             "if (!locked || held.isEmpty() || !BriefSource.filesWanted(ctx)) return (greeting + rest) to held")
@@ -3562,7 +3710,7 @@ class ProcessIsolationTest {
             "app/assistant/PanelFileTools.kt", "app/assistant/PanelFiles.kt", "app/assistant/ToolExecutor.kt", "app/assistant/VoiceHub.kt", "app/assistant/ask/AskRobotActivity.kt",
             "app/assistant/backup/BackupJob.kt", "app/assistant/backup/BackupSources.kt", "app/assistant/backup/RestoreWriter.kt", "app/assistant/routines/RoutineRunner.kt",
             "app/sys/FileDeletes.kt", "app/sys/FilesExport.kt", "app/sys/FilesIntake.kt", "app/sys/FilesOut.kt", "app/sys/FilesToRobot.kt", "app/sys/FilesVault.kt", "app/sys/FilingMemory.kt",
-            "app/ui/HistoryWatch.kt", "app/ui/TranscriptsScreen.kt", "app/ui/files/FilesPack.kt", "app/ui/files/FilesPort.kt", "app/ui/files/FilesScreen.kt", "app/ui/files/FilesShare.kt", "app/ui/files/Scan.kt",
+            "app/sys/TodaySource.kt", "app/ui/HistoryWatch.kt", "app/ui/TranscriptsScreen.kt", "app/ui/files/FilesPack.kt", "app/ui/files/FilesPort.kt", "app/ui/files/FilesScreen.kt", "app/ui/files/FilesShare.kt", "app/ui/files/Scan.kt",
             "app/ui/settings/FilesSettings.kt", "app/ui/settings/MemorySettings.kt"),
             usersOf(filesCode, ours.filterKeys { it.startsWith("app/") }))
         // F6: filing runs on its own thread, never the main one; never while locked or during a phone lock (FilingRun asks
@@ -4648,7 +4796,7 @@ class ProcessIsolationTest {
         // The restart after a restore (§7.12): only the main process and :voice itself end, never :lock. (1.4: :files ends
         // only itself, as :llama does: filesAreReadOnlyInTheirProcess. 1.5 L4, deliberately: and :linkparse ends only itself,
         // linkParsesOnlyInIsolation.)
-        assertEquals(listOf("app/assistant/backup/RestoreFlow.kt", "app/linkparse/LinkParseService.kt", "app/parse/FileParseService.kt"),
+        assertEquals(listOf("app/assistant/backup/RestoreFlow.kt", "app/feedparse/FeedParseService.kt", "app/linkparse/LinkParseService.kt", "app/parse/FileParseService.kt"),
             usersOf(Regex("""\bkillProcess\("""), ours.filterKeys { it.startsWith("app/") }))
         assertHas(flatCode(kt("app", "assistant/backup/RestoreFlow.kt")), "filter { it.processName == ctx.packageName }")
         // Phone lock's code is checked by :lock's code pad only: a restore asks it with its own purpose, which does nothing else.
@@ -5035,6 +5183,48 @@ class ProcessIsolationTest {
         val settings = flatCode(kt("app", "ui/settings/RoutinesSettings.kt"))
         assertHas(settings, "R.string.routine_clock_doesnt_tell")
         assertHas(settings, "R.string.routine_clock_use_time")
+    }
+
+    /** Today H7b (home-design §6.1, "Limits and cost"): a feed's bytes are read only in :feedparse, as :linkparse reads Robots'. */
+    @Test fun feedsParseOnlyInIsolation() {
+        val fp = ours.filterKeys { it.startsWith("app/feedparse/") }
+        assertEquals(listOf("app/feedparse/FeedParseService.kt"), fp.keys.sorted())
+        // Core's pure readers run in :feedparse alone (FeedWire.answer, there); the caller keeps only what FeedWire.check reads.
+        assertEquals(listOf("app/feedparse/FeedParseService.kt"), usersOf(Regex("""\bFeedWire\.answer\(""")))
+        assertEquals(listOf("core/core/news/FeedWire.kt"), usersOf(Regex("""\bFeedRead\.read\(|\bFeedFind\.links\(""")))
+        // Isolated first, then Robot's own uid, then the interface: nothing of a call is read before.
+        val service = flatCode(kt("app", "feedparse/FeedParseService.kt"))
+        assertInOrder(service.body("override fun onTransact("), "if (!Process.isIsolated()) {", "val caller = Binder.getCallingUid()",
+            "if (appUid < 0 || caller != appUid) {", "data.enforceInterface(FeedParseIpc.DESCRIPTOR)")
+        assertHas(service.body("override fun onCreate()"), "appUid = applicationInfo.uid")
+        assertInOrder(service.body("private fun read("), "SharedMemory.CREATOR.createFromParcel(data)", "region.mapReadOnly()",
+            "job.get(FeedParseIpc.SERVICE_MS, TimeUnit.MILLISECONDS)", "Process.killProcess(Process.myPid())")
+        // It ends only itself (EXIT, unbinding, its watchdog), never another process.
+        assertEquals(3, service.count("Process.killProcess(Process.myPid())"))
+        assertEquals(3, service.count(Regex("""\bkillProcess\(""")))
+        assertHas(service.body("override fun onUnbind("), "Process.killProcess(Process.myPid())")
+        for ((k, f) in fp) assertTrue(k, !code(f).contains("writeException") && !code(f).contains("writeNoException") && !code(f).contains("readException"))
+        // It names nothing of Robot's other processes, stores, keys or files, opens nothing by name, has no network and no log.
+        val forbidden = Regex("""\bapp\.heyrobot\.(sys|assistant|ui|people|lock|boot|update|voice|brain|mt|helpers|link|r2r|parse|linkparse)\b|\bapp\.heyrobot\.core\.(memory|files|backup|seal|link)\b|""" +
+            """\b(NewsStore|HomeSettingsStore|SettingsStore|KeyStore|KeyGenParameterSpec)\b|""" +
+            """\b(filesDir|cacheDir|dataDir|noBackupFilesDir|openFileInput|openFileOutput|getExternalFilesDir|getSharedPreferences|getDatabasePath|openOrCreateDatabase)\b|""" +
+            """\b(ContentResolver|contentResolver)\b|\bjava\.io\.File\b|\b(FileInputStream|FileOutputStream|RandomAccessFile|FileReader|FileWriter)\b|\bParcelFileDescriptor\.open\b|\bOs\.open\b""")
+        assertEquals(emptyList<String>(), usersOf(forbidden, fp))
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bjava\.net\b|\bjavax\.net\b|HttpURLConnection|okhttp|\bSocket\b|\bLocalSocket\b|\bWebView\b|DownloadManager|""" +
+            """\bRLog\b|\bVoiceLog\b|\bandroid\.util\.Log\b|\bLog\.[diwev]\(|\bprintln\(|printStackTrace\("""), fp))
+        // Named by nothing but itself, bound by its name (core FeedParseIpc) from FeedParseLink alone, which NewsStore holds a round.
+        assertEquals(listOf("app/feedparse/FeedParseService.kt"), usersOf(Regex("""\bFeedParseService\b""")))
+        assertHas(flatText(kt("core", "core/news/FeedWire.kt")), "const val SERVICE_CLASS = \"app.heyrobot.feedparse.FeedParseService\"")
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bapp\.heyrobot\.feedparse\b"""), ours.filterKeys { !it.startsWith("app/feedparse/") }))
+        assertEquals(listOf("app/sys/FeedParseLink.kt", "app/sys/NewsStore.kt"), usersOf(Regex("""\bFeedParseLink\b""")))
+        // A fresh isolated instance a round, by name, its isolated uid proven before it is sent anything; its answer checked.
+        val link = flatCode(kt("app", "sys/FeedParseLink.kt"))
+        assertEquals(1, link.count("bindIsolatedService("))
+        assertEquals(0, link.count(Regex("""\bbindService\(""")))
+        assertHas(link, "Binding { i, f, n, e, c -> ctx.bindIsolatedService(i, f, n, e, c) }",
+            "binding.bind(Intent().setClassName(ctx.packageName, FeedParseIpc.SERVICE_CLASS), Context.BIND_AUTO_CREATE or Context.BIND_IMPORTANT,",
+            "val ok = IsolatedUid.of(from) && uid == -1", "proven = accepted == true && IsolatedUid.of(uid)",
+            "val isAlive: Boolean get() = gone.count > 0 && !ending && proven", "FeedWire.check(it, now)")
     }
 
     @Test fun linkParsesOnlyInIsolation() {

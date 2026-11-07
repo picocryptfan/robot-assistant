@@ -18,6 +18,11 @@ object LockSignals {
     const val RECEIVER = "app.heyrobot.lock.LockAlarmReceiver"
     const val COVER = "app.heyrobot.lock.LockCoverActivity"
     const val LIST_WIDGET = "app.heyrobot.ui.lists.ListsWidgetProvider"
+    /** today-fix-c 8: the lists widget's redraw, through its tick receiver (not exported; the provider takes only the system's). */
+    const val LIST_REDRAW = "app.heyrobot.ui.lists.ListsTickReceiver"
+    const val LIST_REDRAW_ACTION = "app.heyrobot.lists.WIDGET_REDRAW" // l10n: not text (an intent action)
+    /** Today H9: its widget and summary, redrawn with the lists' at a phone lock's start and end, through TodayRefresh. */
+    const val TODAY_REFRESH = "app.heyrobot.ui.today.TodayRefresh"
     const val CODE = "app.heyrobot.lock.LockCodeActivity"
 
     /** The emergency dialer's action, exported by the phone app with no permission. */

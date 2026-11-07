@@ -186,6 +186,7 @@ object RoutineSettingsCodec {
         put("brief", JSONObject().apply {
             put("enabled", s.briefEnabled)
             put("trigger", RoutineCodec.trigger(s.briefTrigger))
+            s.briefTriggerBefore?.let { put("trigger_before", RoutineCodec.trigger(it)) }
             put("items", JSONArray().apply { for (i in s.briefItems) put(i.id) })
             put("lock", s.briefLock.id)
             put("finish_on_unlock", s.finishOnUnlock)
@@ -220,6 +221,7 @@ object RoutineSettingsCodec {
             clockApp = (o.opt("clock_app") as? String)?.takeIf { it.length <= 255 && Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+").matches(it) },
             alarmWindow = window,
             briefTrigger = trigger,
+            briefTriggerBefore = b.optJSONObject("trigger_before")?.let(RoutineCodec::trigger)?.takeIf { briefTriggerOk(it) && it !is RoutineTrigger.AlarmDismissed },
             briefOutput = RoutineOutput.of(RoutineCodec.str(b, "output")) ?: d.briefOutput,
             briefOnline = RoutineCodec.bool(b, "online") ?: d.briefOnline,
         )

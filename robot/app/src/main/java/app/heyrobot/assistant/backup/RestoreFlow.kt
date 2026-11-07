@@ -275,6 +275,7 @@ private fun count(v: VerifiedBackup, c: BackupCategory): Int? = when (c) {
     BackupCategory.LISTS -> v.lists?.lists?.size
     BackupCategory.CONNECTIONS -> v.connections?.size
     BackupCategory.LINKS -> v.links?.pairings?.size
+    BackupCategory.CALENDAR -> v.privateEvents?.events?.size
     else -> null
 }
 
@@ -292,6 +293,7 @@ private fun countText(c: BackupCategory, n: Int): String? = when (c) {
     BackupCategory.LISTS -> pluralStringResource(R.plurals.backup_n_lists, n, n)
     BackupCategory.CONNECTIONS -> pluralStringResource(R.plurals.conn_backup_n, n, n)
     BackupCategory.LINKS -> pluralStringResource(R.plurals.backup_n_links, n, n)
+    BackupCategory.CALENDAR -> pluralStringResource(R.plurals.backup_n_private_events, n, n)
     else -> null
 }
 
@@ -342,7 +344,7 @@ private fun Preview(v: VerifiedBackup, phone: PhoneHas, choices: Map<BackupCateg
             else -> what
         }
         Row5(c, BackupWords.category(c)().str(), summary, choice, line.restores || line.skip == PlanSkip.NEEDS_CODE,
-            canReplace = choice.restore && !phone.empty(c) && c !in setOf(BackupCategory.SETTINGS, BackupCategory.KEYS, BackupCategory.VOICEPRINT, BackupCategory.EVERYDAY, BackupCategory.LINKS) &&
+            canReplace = choice.restore && !phone.empty(c) && c !in setOf(BackupCategory.SETTINGS, BackupCategory.KEYS, BackupCategory.VOICEPRINT, BackupCategory.EVERYDAY, BackupCategory.HOME, BackupCategory.LINKS) &&
                 !(c == BackupCategory.FILES && phone.files != FilesHere.OK) && !(c == BackupCategory.LISTS && phone.lists != ListsHere.OK),
             needsCode = c == BackupCategory.PHONE_LOCK && phone.lockCode && choice.restore && !choice.codeOk,
             selectable = BackupCategory.covers(c).any(v::has))

@@ -26,6 +26,10 @@ object BackupStrings : Strings("backup", area = "backup") {
     /** Robot to Robot (L12): pairings without keys, permissions, what passed between Robots. */
     val links = s("cat_links", en = "Robot to Robot", fr = "Robot à Robot")
     /** The everyday set (everyday-set-plan.md §2.4): everyday_settings.json, music and what other apps may use. */
+    /** H3: private events. */
+    val calendar = s("cat_calendar", en = "Private events", fr = "Événements privés")
+    /** H5: the Today page's order and whether it is your home page. */
+    val home = s("cat_home", en = "Today page", fr = "Page Aujourd’hui")
     val everyday = s("cat_everyday", en = "Music and other apps", fr = "Musique et autres applis")
 
     // Opening a file (§9.4).
@@ -90,6 +94,11 @@ object BackupStrings : Strings("backup", area = "backup") {
             "La clé des fichiers de Robot n’existe plus, alors {n} fichiers ici ne peuvent pas être lus : ils seront supprimés.",
             "La clé des fichiers de Robot n’existe plus, alors {n} de fichiers ici ne peuvent pas être lus : ils seront supprimés."))
     /** 1.4, Lists: this phone's lists can't be read (damaged, a newer Robot's), and a restore never writes over them. */
+    /** H3: private events (the Calendar tab). */
+    val calendarUnreadable = s("calendar_unreadable", en = "Robot couldn't open your private events just now. Back up without them, or unlock and try again.",
+        fr = "Robot n’a pas pu ouvrir tes événements privés pour l’instant. Sauvegarde sans eux, ou déverrouille et réessaie.")
+    val calendarUnreadableHere = s("calendar_unreadable_here", en = "Robot can't read the private events on this phone, so it leaves them as they are.",
+        fr = "Robot ne peut pas lire les événements privés de ce téléphone : il les laisse tels quels.")
     val listsUnreadableHere = s("lists_unreadable_here", en = "Robot can't read the lists on this phone, so it leaves Lists out. {page} can start over; then restore again.",
         fr = "Robot ne peut pas lire les listes de ce téléphone : il laisse les Listes de côté. {page} permet de recommencer; restaure ensuite de nouveau.")
     /** 1.4, Lists with Replace on: how many of this phone's lists go (the preview, before your tap). */

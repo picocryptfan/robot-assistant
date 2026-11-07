@@ -177,7 +177,19 @@ object LinkIpcProtocol {
     /** Out: the chosen package (empty: none), pairings waiting for an address, the count, then each app's package and name. */
     const val PUSH_APPS = FIRST + 66
 
-    const val LAST = PUSH_APPS
+    /** Today H7b, news through Tor: Tor up for a feed (started when it isn't, bounded). Out: 1 it can carry a stream, 0 not. */
+    const val FEED_TOR = FIRST + 67
+    /** fix-today-tor: FEED_TOR's answers; STARTING when Tor didn't finish starting within :link's FeedTorGate.WAIT_MS. */
+    const val FEED_TOR_DOWN = 0
+    const val FEED_TOR_UP = 1
+    const val FEED_TOR_STARTING = 2
+    /**
+     * In: a feed's host (a DNS name, at most [MAX_FEED_HOST]) and port. Out: 1 and a stream to it through Tor's SOCKS, its own
+     * circuit per host (isolation), as a file descriptor; 0 when Tor couldn't carry it. Nothing ever goes direct instead.
+     */
+    const val FEED_STREAM = FIRST + 68
+
+    const val LAST = FEED_STREAM
 
     const val VAULT_OFF = 0
     const val VAULT_READY = 1
@@ -198,6 +210,7 @@ object LinkIpcProtocol {
     const val MAX_TRANSFER = 4 * 1024
     /** A block's label at most (core BlockedView.BLOCK_LABEL), in characters. */
     const val MAX_LABEL = 200
+    const val MAX_FEED_HOST = 253
     /** L7: a plan's words at most, in UTF-16 characters (twice each field's cap in code points). */
     const val MAX_TITLE = 2 * app.heyrobot.core.link.requests.RequestCaps.TITLE
     const val MAX_PLACE = 2 * app.heyrobot.core.link.requests.RequestCaps.PLACE

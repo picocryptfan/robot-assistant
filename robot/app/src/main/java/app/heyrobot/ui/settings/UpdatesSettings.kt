@@ -85,6 +85,7 @@ import app.heyrobot.update.UpdateInstaller
 import app.heyrobot.update.UpdateStore
 import app.heyrobot.update.UpdateToken
 import app.heyrobot.update.UpdateJobs
+import app.heyrobot.update.UpdateNotices
 import app.heyrobot.update.Updater
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -124,6 +125,8 @@ data class UpdatesUi(
     val failed: Boolean = false,
     /** F10: Android wouldn't schedule the daily check or a Wi-Fi download. */
     val scheduleFailed: Boolean = false,
+    /** Robot can't post its update notices (permission refused, its notifications or the Updates channel off). */
+    val noticesOff: Boolean = false,
 )
 
 /** What the page's taps do. */
@@ -140,6 +143,7 @@ class UpdatesActions(
     val saveToken: (String) -> Unit = {},
     val removeToken: () -> Unit = {},
     val report: () -> Unit = {},
+    val turnOnNotices: () -> Unit = {},
 )
 
 @Composable
@@ -191,6 +195,11 @@ fun UpdatesScreen(ui: UpdatesUi, a: UpdatesActions, onBack: () -> Unit) {
             SwitchPreference(stringResource(R.string.update_auto_check),
                 stringResource(if (s.autoCheck) R.string.update_auto_check_on else R.string.update_auto_check_off), s.autoCheck) {
                 a.change(s.copy(autoCheck = it))
+            }
+            if (s.autoCheck && ui.noticesOff) {
+                StatusPreference(stringResource(R.string.update_notices_off),
+                    stringResource(R.string.update_notices_off_detail, AndroidPath.APP_NOTIFICATIONS.render(langs.system)), Mark.TODO,
+                    action = { TextButton(onClick = a.turnOnNotices, modifier = Modifier.heightIn(min = 48.dp)) { Text(UiStrings.open().str()) } })
             }
             SwitchPreference(stringResource(R.string.update_wifi), stringResource(R.string.update_wifi_detail),
                 s.wifiDownload, enabled = s.autoCheck) { a.change(s.copy(wifiDownload = it)) }
@@ -383,6 +392,7 @@ internal fun UpdatesRoute(snackbar: SnackbarHostState, onBack: () -> Unit, onRep
                 canInstall = UpdateInstaller.allowed(app), otherOwner = UpdateInstaller.otherUpdateOwner(app),
                 token = UpdateToken.masked(app), tokenUnreadable = UpdateToken.unreadable(app), loaded = true,
                 scheduleFailed = !UpdateJobs.ensure(app, settings) || UpdateJobs.downloadRefused,
+                noticesOff = !UpdateNotices.canPost(app),
             )
         }
     }
@@ -402,6 +412,7 @@ internal fun UpdatesRoute(snackbar: SnackbarHostState, onBack: () -> Unit, onRep
         canInstall = facts.canInstall,
         otherOwner = facts.otherOwner,
         scheduleFailed = facts.scheduleFailed,
+        noticesOff = facts.noticesOff,
         token = facts.token,
         tokenUnreadable = facts.tokenUnreadable,
         failed = FeedbackDiagnostics.updaterFailed(state),
@@ -442,12 +453,14 @@ internal fun UpdatesRoute(snackbar: SnackbarHostState, onBack: () -> Unit, onRep
             }
         },
         report = onReport,
+        turnOnNotices = { open(UpdateNotices.settings(app)) },
     ), onBack)
 }
 
 /** What the page reads from files and Android, off the main thread. */
 private data class RouteFacts(
     val scheduleFailed: Boolean = false,
+    val noticesOff: Boolean = false,
     val repo: GitHubRepo? = null,
     val defaultRepo: GitHubRepo? = null,
     val ready: Boolean = false,

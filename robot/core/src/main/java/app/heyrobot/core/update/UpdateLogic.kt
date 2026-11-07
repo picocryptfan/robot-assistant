@@ -49,8 +49,6 @@ enum class Notice(val id: String) { AVAILABLE("available"), READY("ready") }
 data class AutoPlan(val notify: Notice?, val downloadOnWifi: Boolean)
 
 object UpdateDecision {
-    /** A download waiting this long for Wi-Fi: the update is announced anyway. */
-    const val WIFI_WAIT_MS = 48L * 3600 * 1000
 
     /** The daily job only asks GitHub while "Check for updates automatically" is on. */
     fun autoCheckRuns(s: UpdateSettings): Boolean = s.autoCheck
@@ -61,20 +59,19 @@ object UpdateDecision {
 
     /**
      * After the daily check found [found] (null: nothing newer to offer). [downloaded]: that version is already downloaded
-     * and checked. [notified]: the last notice posted ([noticeKey]); each is posted once. [firstSeen]: when it was first
-     * found. A skipped version is never announced; with "Download updates on Wi-Fi" the notice waits until the file is
-     * checked and ready, unless Wi-Fi hasn't come for [WIFI_WAIT_MS]. [refused]: its file failed a check before.
+     * and checked. [notified]: the last notice posted ([noticeKey]); each is posted once. A skipped version is never
+     * announced. "Available" is said at once, Wi-Fi or not (1.2.6: on mobile data you heard nothing for two days); with
+     * "Download updates on Wi-Fi" the same notification turns into "ready to install" once the file is checked
+     * ([afterAutoDownload]). [refused]: its file failed a check before.
      */
-    fun afterAutoCheck(s: UpdateSettings, found: RobotVersion?, downloaded: Boolean, notified: String?, firstSeen: Long, now: Long,
-                       refused: Boolean = false): AutoPlan {
+    fun afterAutoCheck(s: UpdateSettings, found: RobotVersion?, downloaded: Boolean, notified: String?, refused: Boolean = false): AutoPlan {
         if (found == null || skipped(s, found)) return AutoPlan(null, false)
         fun once(n: Notice) = n.takeIf { noticeKey(found, it) != notified }
         if (downloaded) return AutoPlan(once(Notice.READY), false)
         // Its file failed a check before: not downloaded again by itself (the page says why when you try).
         if (!s.wifiDownload || refused) return AutoPlan(once(Notice.AVAILABLE), false)
-        val waited = firstSeen > 0 && now - firstSeen >= WIFI_WAIT_MS
         // "Ready" may already have been said for a file that was since deleted: then "available" is new information.
-        return AutoPlan(if (waited) once(Notice.AVAILABLE) else null, true)
+        return AutoPlan(once(Notice.AVAILABLE), true)
     }
 
     /**

@@ -96,7 +96,7 @@ data class VerifiedDownload(val version: String, val file: String, val sha256: S
 
 /**
  * What the updater last found and did. [notified]: the notice last posted ("0.4.6 available", "0.4.6 ready"), so each is
- * posted once. [firstSeen]: when [found] was first offered (a download waiting for Wi-Fi says so after two days).
+ * posted once. [firstSeen]: when [found] was first offered.
  * [updatedTo]: Robot was just updated to that version, to say once. [install]: the last install's outcome.
  * [refusedApk]: a release file that failed its checks, and why ([refusedWhy]). [barred]: release files Android's checks
  * refused (another signer, package or version), never offered again while GitHub lists them ([UpdateDecision.bars]).

@@ -277,11 +277,19 @@ object AppRoutes {
         // 0.7: Send feedback from a feedback phrase in the panel, with its kind only (the words come in a file of Robot's own).
         i.getStringExtra(AppPages.EXTRA) == AppPages.FEEDBACK ->
             AppPages.FEEDBACK + (FeedbackKind.of(i.getStringExtra(AppPages.EXTRA_FEEDBACK_KIND))?.let { ":" + it.name.lowercase() } ?: "")
-        else -> i.getStringExtra(AppPages.EXTRA)?.takeIf { it == AppPages.NOTES || it == AppPages.PERMISSIONS || it == AppPages.CONVERSATION_SETTINGS ||
-            it == AppPages.MODEL || it == AppPages.HELPERS || it == AppPages.ROUTINES || it == AppPages.CAR_SETTINGS || it == AppPages.MESSAGES_SETTINGS || it == AppPages.UPDATES ||
-            it == AppPages.MEMORY || it == AppPages.SETTINGS || it == AppPages.PHONE_LOCK || it == AppPages.BACKUP || it == AppPages.FILES ||
-            it == AppPages.VOICE || it == AppPages.SETUP || it == AppPages.LINK_REQUESTS }
+        else -> byExtra(i.getStringExtra(AppPages.EXTRA))
     }
+
+    /**
+     * The plain pages an intent's [AppPages.EXTRA] may open: [r] if it's one, else null. today-fix-d: with History and the
+     * Calendar tab ("show my history", "show my calendar"), which were missing, so the panel's hand-off opened nothing.
+     */
+    fun byExtra(r: String?): String? = r?.takeIf { it in BY_EXTRA }
+
+    private val BY_EXTRA = setOf(AppPages.NOTES, AppPages.PERMISSIONS, AppPages.CONVERSATION_SETTINGS, AppPages.MODEL, AppPages.HELPERS,
+        AppPages.ROUTINES, AppPages.CAR_SETTINGS, AppPages.MESSAGES_SETTINGS, AppPages.UPDATES, AppPages.MEMORY, AppPages.SETTINGS,
+        AppPages.PHONE_LOCK, AppPages.BACKUP, AppPages.FILES, AppPages.VOICE, AppPages.SETUP, AppPages.LINK_REQUESTS,
+        AppPages.HISTORY, AppPages.CALENDAR)
 
     /**
      * What a route opens: a [tab] (every page closed), or a [page] over the one showing; [notesIcon]: from Robot Notes'
@@ -308,6 +316,8 @@ object AppRoutes {
         r == AppPages.MESSAGES_SETTINGS -> Target(page = Page.Settings(SettingsRoutes.MESSAGES))
         r == AppPages.UPDATES -> Target(page = Page.Settings(SettingsRoutes.UPDATES))
         r == AppPages.SETTINGS -> Target(tab = Tab.SETTINGS)
+        r == AppPages.HISTORY -> Target(page = Page.History)
+        r == AppPages.CALENDAR -> Target(tab = Tab.CALENDAR)
         r == AppPages.MEMORY -> Target(page = Page.Settings(SettingsRoutes.MEMORY))
         r == AppPages.PHONE_LOCK -> Target(page = Page.Settings(SettingsRoutes.PHONE_LOCK))
         r == AppPages.BACKUP -> Target(page = Page.Settings(SettingsRoutes.BACKUP))

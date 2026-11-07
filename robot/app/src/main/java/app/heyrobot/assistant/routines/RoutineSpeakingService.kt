@@ -198,7 +198,6 @@ object RoutineNotices {
     private const val PLAY_ID = LockShade.PLAY
     private const val CONTINUE_ID = LockShade.CONTINUE
     private const val NOT_ASSISTANT_ID = 8_415
-    private const val SILENT_ID = LockShade.SILENT
     private const val CHANNEL_SPEAKING = "routine_speaking"
     private const val CHANNEL = "routines"
 
@@ -369,7 +368,13 @@ object RoutineNotices {
         val l = langs(ctx)
         channels(ctx)
         VoiceLog.add(VoiceEvent.ROUTINE_SPEECH, SpeechWay.SILENT)
-        notify(ctx, SILENT_ID, Notification.Builder(ctx, CHANNEL)
+        // fix-126-review 1: under an id of its own. A quiet brief's first notice stays when the rest, held for the unlock,
+        // comes in a second one, and two routines in one quiet stretch both stay; the oldest goes only past 16.
+        val shown = try {
+            nm(ctx).activeNotifications.filter { it.id in LockShade.SILENT_BASE until LockShade.SILENT_BASE + LockShade.SILENT_SLOTS }
+                .associate { it.id to it.postTime }
+        } catch (_: Throwable) { emptyMap() }
+        notify(ctx, LockShade.silentId(shown), Notification.Builder(ctx, CHANNEL)
             .setSmallIcon(R.drawable.ic_robot)
             .setContentTitle(RoutineTexts.silentTitleText(r).render(l))
             .setContentText(text)

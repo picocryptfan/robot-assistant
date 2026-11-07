@@ -35,6 +35,8 @@ object UiStrings : Strings("ui", area = "language") {
     val home = s("home", "Home", "Accueil")
     val notes = s("notes", "Notes", "Notes")
     val history = s("history", "History", "Historique")
+    /** H3: the Calendar tab, where History was (« Agenda », the glossary). */
+    val calendar = s("calendar", "Calendar", "Agenda")
     val model = s("model", "Model", "Modèle")
     val people = s("people", "People", "Personnes")
     val transcripts = s("transcripts", "Transcripts", "Transcriptions")
@@ -101,6 +103,9 @@ object UiStrings : Strings("ui", area = "language") {
 
     // Buttons a reply or a card tells you to tap.
     val doIt = s("do_it", "Do it", "Fais-le")
+    /** fix-124c: a waiting card's question, in the conversation's language. */
+    val doYouWant = s("do_you_want", "Do you want Robot to do this?", "Veux-tu que Robot fasse ceci ?")
+    val whichOne = s("which_one", "Which one?", "Lequel ?")
     val cancel = s("cancel", "Cancel", "Annuler")
     val send = s("send", "Send", "Envoyer")
     val open = s("open", "Open", "Ouvrir")

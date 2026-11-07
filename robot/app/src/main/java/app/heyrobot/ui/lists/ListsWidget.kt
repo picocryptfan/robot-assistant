@@ -79,6 +79,8 @@ class ListsWidgetProvider : BroadcastReceiver() {
 class ListsTickReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent?) {
         val i = intent ?: return
+        // today-fix-c 8: Robot's own redraw (LockEngine), since the provider takes only the system's broadcasts.
+        if (i.action == ListsWidgets.REDRAW) { ListsWidgets.sent(ctx.applicationContext, goAsync()); return }
         if (i.action != ListsWidgets.TICK) return
         // Typed reads: a bad extra is nothing.
         val sent = try {
@@ -103,6 +105,8 @@ class ListsTickReceiver : BroadcastReceiver() {
 object ListsWidgets {
     /** The tick template's action (explicit to ListsTickReceiver; set, so a fill-in can't supply one). */
     const val TICK = "app.heyrobot.lists.WIDGET_TICK" // l10n: not text (an intent action)
+    /** Robot's own redraw of every lists widget (LockSignals.LIST_REDRAW_ACTION). */
+    const val REDRAW = "app.heyrobot.lists.WIDGET_REDRAW" // l10n: not text (an intent action)
     const val EXTRA_WIDGET = "w" // l10n: not text (an extra's key)
     const val EXTRA_ITEM = "i" // l10n: not text (an extra's key)
 

@@ -19,9 +19,11 @@
     <string name="backup_memory_cant">Ne peut pas être ouverte pour l’instant&#160;: déverrouille ton téléphone, ou laisse la Mémoire de côté</string>
     <string name="backup_files_cant">Ne peuvent pas être lus pour l’instant&#160;: Réglages › Fichiers dit pourquoi</string>
     <string name="backup_lists_cant">Ne peuvent pas être lues pour l’instant&#160;: Réglages › Listes dit pourquoi</string>
+    <string name="backup_calendar_cant">Illisible pour l’instant : déverrouille ton téléphone, ou ouvre l’onglet Agenda pour savoir pourquoi</string>
     <string name="backup_history_travel">Laissé de côté pendant que le mode voyage est activé&#160;: il contient des réponses des Fichiers de Robot</string>
     <string name="backup_sum_settings">Voix, mots d’éveil, actions, sécurité, IA externes (sans les clés), recherche Web, Termux, affichage, mises à jour</string>
     <string name="backup_sum_voiceprint">Faite sur ce téléphone</string>
+    <string name="backup_sum_home">L’ordre de ta page Aujourd’hui et si c’est ta page d’accueil</string>
     <string name="backup_sum_everyday">Musique à la voix, écoute et voix de Robot pour les autres applis, Demander à Robot, Ce qui est allé en ligne</string>
     <string name="backup_vp_warning">Biométrique&#160;: elle demande une phrase de passe forte et revient seulement d’une sauvegarde que tu marques comme la tienne.</string>
     <string name="backup_pictures">Captures d’écran et photos gardées</string>
@@ -120,6 +122,7 @@
         <item quantity="many">Fichiers&#160;: %1$d de fichiers n’ont pas pu être lus, donc ils ne sont pas dans cette sauvegarde.</item>
         <item quantity="other">Fichiers&#160;: %1$d fichiers n’ont pas pu être lus, donc ils ne sont pas dans cette sauvegarde.</item>
     </plurals>
+    <string name="backup_private_left_out">Robot ne peut pas ouvrir les événements privés de ce téléphone, donc ils ne sont pas dans cette sauvegarde. Le reste y est.</string>
     <string name="backup_codes_left_out">La Mémoire n’a pas pu être lue, donc tes codes privés ne sont pas dans cette sauvegarde. Déverrouille ton téléphone et refais-la.</string>
     <string name="backup_restore_result_close">Fermer ceci</string>
     <string name="backup_restore_kept_unknown">Gardés plus sûrs&#160;: Robot n’a pas pu les compter pour l’instant. Les réglages qui laisseraient Robot agir avec moins de questions gardent quand même les valeurs de ce téléphone.</string>
@@ -142,6 +145,11 @@
         <item quantity="one">dont %1$d privé</item>
         <item quantity="many">dont %1$d privés</item>
         <item quantity="other">dont %1$d privés</item>
+    </plurals>
+    <plurals name="backup_n_private_events">
+        <item quantity="one">%1$d événement privé</item>
+        <item quantity="many">%1$d événements privés</item>
+        <item quantity="other">%1$d événements privés</item>
     </plurals>
     <plurals name="backup_n_notes">
         <item quantity="one">%1$d note</item>

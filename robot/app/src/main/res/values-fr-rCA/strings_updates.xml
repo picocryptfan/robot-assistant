@@ -111,4 +111,6 @@
     <string name="feedback_number_removed">Le numéro a été retiré.</string>
     <string name="feedback_number_saved">Texter ouvre maintenant ton appli SMS avec le %1$s.</string>
     <string name="feedback_share_with">Envoyer le commentaire avec</string>
+    <string name="update_notices_off">Les notifications de mise à jour sont désactivées</string>
+    <string name="update_notices_off_detail">Robot ne peut pas te dire quand une mise à jour est disponible. Active-les dans %1$s.</string>
 </resources>

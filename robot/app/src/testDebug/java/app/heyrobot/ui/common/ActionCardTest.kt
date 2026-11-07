@@ -13,8 +13,10 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
@@ -65,6 +67,24 @@ class ActionCardTest {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             for (a in listOfNotNull(text, pick.takeIf { all }, done, note, noContacts, include)) ClassicActionCard(a, onConfirm, actions)
         }
+    }
+
+    /**
+     * fix-124c (phone-1.2.4-c): with the menus in English, a card from a French turn asks and answers in French
+     * (assistant CardWords fills its question and buttons); « annule mon alarme » showed "Do you want Robot to do this?",
+     * "Cancel" and "Turn off" under its French title.
+     */
+    @Test fun aFrenchTurnsCardAsksInFrench() {
+        val alarm = ActionView("f1", ToolName.SET_ALARM, "Désactiver ton alarme de 12 h 31", ActionStatus.PENDING, null, confirm = "Désactiver",
+            cancel = "Annuler", ask = "Veux-tu que Robot fasse ceci\u202F?")
+        val plain = ActionView("f2", ToolName.SET_TIMER, "Régler une minuterie de 10 minutes", ActionStatus.PENDING, null, cancel = "Annuler", ask = "Veux-tu que Robot fasse ceci\u202F?", doIt = "Fais-le")
+        rule.show(classic = true) { Column(Modifier.padding(16.dp)) { ClassicActionCard(alarm, confirm, more); ClassicActionCard(plain, confirm, more) } }
+        rule.onAllNodesWithText("Veux-tu que Robot fasse ceci\u202F?").assertCountEquals(2)
+        rule.onAllNodesWithText("Annuler").assertCountEquals(2)
+        rule.onNodeWithText("Désactiver").assertExists()
+        rule.onNodeWithText("Fais-le").assertExists()
+        rule.onAllNodesWithText("Do you want Robot to do this?").assertCountEquals(0)
+        rule.onAllNodesWithText("Cancel").assertCountEquals(0)
     }
 
     @Test fun choicesAreButtonsAndTheButtonsAnswer() {

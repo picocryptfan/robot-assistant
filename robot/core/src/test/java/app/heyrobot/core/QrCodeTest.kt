@@ -13,7 +13,7 @@ import kotlin.random.Random
  * QrCode, read back the way a scanner does: the format information from both copies, the version information (7 and
  * up), the mask taken off, the codewords de-interleaved, every block's Reed-Solomon syndromes zero (computed here, not
  * with the encoder's divisor), then the byte-mode text. The codes pinned at the end are ones zbarimg 0.23.93 decoded to
- * exactly their text on 19 Oct 2026 (Ko-fi's link, version 2, and full codes of versions 6, 7 and 10); the donation
+ * exactly their text on 19 Oct 2026 (a short link, version 2, and full codes of versions 6, 7 and 10); the donation
  * addresses' codes are pinned in app's SupportAddressesTest.
  */
 class QrCodeTest {
@@ -126,7 +126,7 @@ class QrCodeTest {
     }
 
     @Test fun shortTextsAndUtf8ReadBack() {
-        for (t in listOf("", "a", "https://ko-fi.com/picocryptfan", "Café ☕ à Montréal", "0123456789".repeat(5))) assertEquals(t, read(encode(t)).text)
+        for (t in listOf("", "a", "https://robot-app.ai/#donate", "Café ☕ à Montréal", "0123456789".repeat(5))) assertEquals(t, read(encode(t)).text)
     }
 
     @Test fun eachMaskIsUsedSomewhereAndReadsBack() {

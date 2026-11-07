@@ -9,6 +9,7 @@ import android.content.Intent
 import android.os.Binder
 import android.os.IBinder
 import android.os.Parcel
+import android.os.ParcelFileDescriptor
 import android.os.Process
 import app.heyrobot.lock.PhoneLockNow
 import app.heyrobot.core.link.BlockedView
@@ -182,6 +183,30 @@ class LinkService : Service() {
                 val ok = (pkg.isEmpty() || connector.apps().any { it.pkg == pkg }) &&
                     try { n.choosePush(pkg.isNotEmpty()) { connector.use(pkg) }.get(CODE_WAIT_S, TimeUnit.SECONDS) } catch (_: Exception) { false }
                 out.writeInt(LinkIpcProtocol.REPLY_OK); out.writeInt(if (ok) 1 else 0)
+            }
+            LinkIpcProtocol.FEED_TOR -> {
+                f.end()
+                val n = node() ?: return refused(out)
+                val up = when (n.feedTor()) {
+                    app.heyrobot.r2r.FeedTorGate.State.UP -> LinkIpcProtocol.FEED_TOR_UP
+                    app.heyrobot.r2r.FeedTorGate.State.STARTING -> LinkIpcProtocol.FEED_TOR_STARTING
+                    app.heyrobot.r2r.FeedTorGate.State.DOWN -> LinkIpcProtocol.FEED_TOR_DOWN
+                }
+                out.writeInt(LinkIpcProtocol.REPLY_OK); out.writeInt(up)
+            }
+            LinkIpcProtocol.FEED_STREAM -> {
+                val host = f.string(LinkIpcProtocol.MAX_FEED_HOST); val port = f.int(); f.end()
+                // Today H7b: :link dials and hands the stream over; the TLS, the request and the bytes are the fetching process's.
+                val n = node() ?: return refused(out)
+                val d = n.feedStream(host, port)
+                val fd = (d as? app.heyrobot.r2r.AndroidUnixSockets.Described)?.descriptor
+                try {
+                    out.writeInt(LinkIpcProtocol.REPLY_OK)
+                    if (fd == null) out.writeInt(0)
+                    else ParcelFileDescriptor.dup(fd).use { p -> out.writeInt(1); p.writeToParcel(out, 0) }
+                } finally {
+                    d?.close()
+                }
             }
             LinkIpcProtocol.PUSH_APPS -> {
                 f.end()

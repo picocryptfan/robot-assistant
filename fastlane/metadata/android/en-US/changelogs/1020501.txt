@@ -1,0 +1,1 @@
+Test build of Today: a home page with your day, your lists, reminders and the news you choose, and "How's my day". It has 1.2.4's fixes. With news only through Tor and Robot to Robot off, Find now says to turn Robot to Robot on or choose Direct.

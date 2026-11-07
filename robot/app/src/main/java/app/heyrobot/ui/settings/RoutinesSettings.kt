@@ -336,6 +336,10 @@ private fun itemTitle(i: BriefItem): Int = when (i) {
     BriefItem.FILES -> R.string.brief_item_reminders
     // 1.5 L6: never listed here either; Settings › Robot to Robot's "Show in morning brief" names it.
     BriefItem.LINK -> R.string.brief_item_reminders
+    // Today H5: never listed here; they come with Today's page.
+    BriefItem.LISTS -> R.string.today_part_lists
+    BriefItem.NOTE -> R.string.today_part_note
+    BriefItem.NEWS -> R.string.today_news_title
 }
 
 private fun lockDetail(l: BriefLock): Int = when (l) {

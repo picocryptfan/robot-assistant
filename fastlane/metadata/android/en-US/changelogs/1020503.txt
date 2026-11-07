@@ -1,0 +1,1 @@
+Test build of Today: a home page with your day, your lists, reminders and the news you choose, and "How's my day". It has 1.2.4's fixes, among them "take the milk off it" right after a list. "Read me the news" now says why there are no headlines: no feeds, Tor off or starting, or no feed answered.

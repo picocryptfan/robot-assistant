@@ -1,11 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.ui.settings
 
-import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.ClipboardManager
-import android.content.Intent
-import android.net.Uri
 import androidx.annotation.StringRes
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
@@ -54,13 +51,12 @@ import app.heyrobot.ui.theme.RobotTokens
 import kotlinx.coroutines.launch
 
 // MAIN PROCESS. Settings › About › Support Robot (1.1; the user's decision of 14 Oct 2026, docs/pm/handoff-support-page.md):
-// one line, then Ko-fi, then the addresses, each shown in full with Copy and a QR code (core QrCode, drawn here: no
-// library). The page makes no network call: Ko-fi opens in the browser only when you tap it. Nothing here asks again,
+// one line, then the addresses, each shown in full with Copy and a QR code (core QrCode, drawn here: no
+// library). The page makes no network call and opens nothing. Nothing here asks again,
 // reminds you or shows anywhere else, and Settings never shows over the lock screen.
 
-/** What a way to support Robot is called: names of a platform and of currencies, the same in every language. */
+/** What a way to support Robot is called: names of currencies, the same in every language. */
 enum class SupportKind(@param:StringRes val label: Int) {
-    KOFI(R.string.about_support_kofi),
     BITCOIN(R.string.about_support_bitcoin),
     LIGHTNING(R.string.about_support_lightning),
     MONERO(R.string.about_support_monero),
@@ -71,12 +67,11 @@ enum class SupportKind(@param:StringRes val label: Int) {
 data class SupportLink(val kind: SupportKind, val value: String)
 
 /**
- * The page's links, in the order it shows them: Ko-fi, then the bc1q address before the sp1 one, Lightning, Monero and
+ * The page's links, in the order it shows them: the bc1q address before the sp1 one, Lightning, Monero and
  * Ethereum. The values were copied from robot/support-addresses.txt by a script, never typed, and SupportAddressesTest
  * fails if one of them differs from that file by a character.
  */
 object SupportLinks {
-    val KOFI = SupportLink(SupportKind.KOFI, "https://ko-fi.com/picocryptfan")
     val ADDRESSES = listOf(
         SupportLink(SupportKind.BITCOIN, "bc1qq9qe5ckwju6dkjddmf2vpfrcu7cakjw7ld2gtk"),
         SupportLink(SupportKind.BITCOIN, "sp1qqf85ltcy8al2flnwm2v8kszm2rplcs8a6xa6uw5rpfqmy7sa7srr6qafj6jwd3jj2fcmq8agna23syl6vjwzpjjg5yhwalyqm7d7ydxjhvqtgt0v"),
@@ -84,24 +79,15 @@ object SupportLinks {
         SupportLink(SupportKind.MONERO, "46t4rJYd7XgXeCPG24izVW3FwKPgrmhg74E6GMuT8VUG68ZJvCnDQLHaMsHGzT6YTJiVwUqA1Qd9yMKkWw96jDXXTHaBaQm"), // l10n: not text (a payment address)
         SupportLink(SupportKind.ETHEREUM, "0x8245306C33c92630Af30aCFc542307dbD17f47D1"),
     )
-    val ALL = listOf(KOFI) + ADDRESSES
 }
 
-/** The page, wired to the phone: Copy puts the address on the clipboard, Ko-fi opens in the browser. */
+/** The page, wired to the phone: Copy puts the address on the clipboard. */
 @Composable
 internal fun SupportRoute(snackbar: SnackbarHostState, onBack: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val copied = stringResource(R.string.about_support_copied)
-    val noBrowser = stringResource(R.string.about_support_no_browser)
     SupportScreen(
-        onOpen = { url ->
-            try {
-                ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE))
-            } catch (_: ActivityNotFoundException) {
-                scope.launch { snackbar.showSnackbar(noBrowser) }
-            }
-        },
         onCopy = { link ->
             // A plain clip, not marked sensitive and never cleared: it's public, and you paste it in your wallet app.
             ctx.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText(ctx.getString(link.kind.label), link.value))
@@ -112,22 +98,15 @@ internal fun SupportRoute(snackbar: SnackbarHostState, onBack: () -> Unit) {
     )
 }
 
-/** Support Robot: [onOpen] gets Ko-fi's link when it's tapped, [onCopy] the address whose Copy was tapped. */
+/** Support Robot: [onCopy] gets the address whose Copy was tapped. */
 @Composable
-fun SupportScreen(onOpen: (String) -> Unit, onCopy: (SupportLink) -> Unit, onBack: () -> Unit, snackbar: SnackbarHostState? = null) {
+fun SupportScreen(onCopy: (SupportLink) -> Unit, onBack: () -> Unit, snackbar: SnackbarHostState? = null) {
     val intro = stringResource(R.string.about_support_intro)
     val addresses = stringResource(R.string.about_support_addresses)
     var qr by remember { mutableStateOf<SupportLink?>(null) }
     PreferenceScreen(stringResource(R.string.about_support_title), onBack, snackbar = snackbar) {
         item(key = "intro", contentType = "intro") {
             Text(intro, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(horizontal = RobotTokens.prefPaddingH, vertical = 8.dp))
-        }
-        preferenceGroup(null, "kofi") {
-            LinkBlock(SupportLinks.KOFI) {
-                TextButton(onClick = { onOpen(SupportLinks.KOFI.value) }, modifier = Modifier.heightIn(min = 48.dp)) {
-                    Text(stringResource(R.string.about_licences_open))
-                }
-            }
         }
         preferenceGroup(addresses, "addresses") {
             for (link in SupportLinks.ADDRESSES) AddressBlock(link, onCopy, onQr = { qr = link })

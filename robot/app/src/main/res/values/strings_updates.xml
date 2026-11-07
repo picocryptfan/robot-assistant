@@ -110,4 +110,6 @@
     <string name="feedback_number_removed">The number was removed.</string>
     <string name="feedback_number_saved">Text it now opens your SMS app with %1$s.</string>
     <string name="feedback_share_with">Send feedback with</string>
+    <string name="update_notices_off">Update notifications are off</string>
+    <string name="update_notices_off_detail">Robot can\'t tell you when an update is available. Turn them on in %1$s.</string>
 </resources>

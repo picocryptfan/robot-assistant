@@ -417,4 +417,22 @@ class BackupDowngradeTest {
             assertEquals(name, listOf("conn/c-ha1234", "conn/c-ntfy01", "conn/c-disc01"), k.save)
         }
     }
+
+    /**
+     * Today H7: home_settings.json with "news" (additive, still v1). A Robot before H7 reads the file and never sees the key;
+     * this one reads a newer Robot's news block for what it understands (feeds it would accept, at most five; a mode or a
+     * route it doesn't know is the default), and a file from before H7 has no feeds: nothing is fetched.
+     */
+    @Test fun aNewerRobotsNewsSettingsRestoreWhatThisOneUnderstands() {
+        val feeds = (1..7).joinToString(",") { """{"url":"https://f$it.example.org/rss","name":"F$it","colour":"red"}""" }
+        val newer = """{"v":1,"today":true,"news":{"mode":"hourly","via":"onion","fetchBy":"later","feeds":[
+            {"url":"http://8.8.8.8/rss","name":"Plain"},{"url":"https://203.0.113.9/rss","name":"Router"},$feeds]}}"""
+        val n = app.heyrobot.core.HomeSettings.fromJson(newer).news
+        assertEquals((1..5).map { "https://f$it.example.org/rss" }, n.feeds.map { it.url })
+        assertEquals(app.heyrobot.core.news.NewsMode.DAILY, n.mode)
+        assertEquals(app.heyrobot.core.news.NewsVia.DIRECT, n.via)
+        val before = app.heyrobot.core.HomeSettings.fromJson("""{"v":1,"today":true}""")
+        assertFalse(before.news.on)
+        assertTrue(before.today)
+    }
 }

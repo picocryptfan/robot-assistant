@@ -102,6 +102,9 @@ data class UiAction(
     val lists: Boolean = false,
     /** C6: where you are went to your routing server (core Card.located). */
     val located: Boolean = false,
+    /** fix-124c: a waiting card's question and its default buttons in the conversation's language (CardWords), not the menus'. */
+    val ask: String? = null,
+    val doIt: String? = null,
 ) {
     /** What a spoken or typed answer needs to know about it (core CardAnswer). */
     val waiting: CardAnswer.Waiting get() = CardAnswer.Waiting(choices.size, tapFor, personal, confirm, say = detail.takeIf { termux != null && tapFor != null })

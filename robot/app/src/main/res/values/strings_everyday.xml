@@ -64,6 +64,7 @@
     <string name="everyday_online_g_updates">Updates</string>
     <string name="everyday_online_g_skills">Skills</string>
     <string name="everyday_online_g_link">Robot to Robot</string>
+    <string name="everyday_online_g_news">News</string>
     <plurals name="everyday_online_empty">
         <item quantity="one">Robot hasn\'t gone online in the last %1$d day.</item>
         <item quantity="other">Robot hasn\'t gone online in the last %1$d days.</item>

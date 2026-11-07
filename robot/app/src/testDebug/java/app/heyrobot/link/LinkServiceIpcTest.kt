@@ -165,6 +165,8 @@ class LinkServiceIpcTest {
             LinkIpcProtocol.LIST_SEND to { writeByteArray(id); writeByteArray(ByteArray(8)); writeByteArray(ByteArray(8)) },
             LinkIpcProtocol.LIST_LEAVE to { writeByteArray(id); writeByteArray(id) }, LinkIpcProtocol.LIST_LOST_SEEN to { writeByteArray(id); writeByteArray(id) },
             LinkIpcProtocol.LIST_PENDING to {}, LinkIpcProtocol.LIST_APPLIED to { writeInt(1); writeByteArray(id) }, LinkIpcProtocol.LIST_SHARES to {}, LinkIpcProtocol.PUSH_APPS to {},
+            // Today H7b: news through Tor, refused while Robot to Robot is off (nothing then goes direct either).
+            LinkIpcProtocol.FEED_TOR to {}, LinkIpcProtocol.FEED_STREAM to { writeString("news.example.org"); writeInt(443) },
         )
         assertEquals(((LinkIpcProtocol.CODE_STATE..LinkIpcProtocol.SEND_MOVED) + (LinkIpcProtocol.FOLDER_INVITE..LinkIpcProtocol.GROUPS) + (LinkIpcProtocol.LIST_SEND..LinkIpcProtocol.LAST)).toSet(), good.keys)
         for ((code, w) in good) {

@@ -100,32 +100,35 @@ class UpdateDecisionTest {
     @Test fun theDailyCheckDecisionTable() {
         val v6 = v("0.4.6")
         // Nothing newer: nothing to say or do.
-        assertEquals(AutoPlan(null, false), UpdateDecision.afterAutoCheck(on, null, false, null, 0, now))
-        // Download on Wi-Fi (the default): no notice until the file is downloaded and checked...
-        assertEquals(AutoPlan(null, true), UpdateDecision.afterAutoCheck(on, v6, false, null, now, now))
-        // ... then "ready to install", once.
+        assertEquals(AutoPlan(null, false), UpdateDecision.afterAutoCheck(on, null, false, null))
+        // Download on Wi-Fi (the default): "available" at once, Wi-Fi or not, and the download waits for Wi-Fi...
+        assertEquals(AutoPlan(Notice.AVAILABLE, true), UpdateDecision.afterAutoCheck(on, v6, false, null))
+        // ... said once: the next daily checks only keep the download waiting...
+        assertEquals(AutoPlan(null, true), UpdateDecision.afterAutoCheck(on, v6, false, "0.4.6 available"))
+        // ... then the same notice turns into "ready to install" when the file is downloaded and checked, once.
+        assertEquals(Notice.READY, UpdateDecision.afterAutoDownload(on, v6, "0.4.6 available"))
         assertEquals(Notice.READY, UpdateDecision.afterAutoDownload(on, v6, null))
         assertNull(UpdateDecision.afterAutoDownload(on, v6, "0.4.6 ready"))
-        assertEquals(AutoPlan(Notice.READY, false), UpdateDecision.afterAutoCheck(on, v6, true, null, now, now))
-        assertEquals(AutoPlan(null, false), UpdateDecision.afterAutoCheck(on, v6, true, "0.4.6 ready", now, now))
-        // Two days without Wi-Fi: announced anyway (still downloading when Wi-Fi comes), once.
-        assertEquals(AutoPlan(Notice.AVAILABLE, true), UpdateDecision.afterAutoCheck(on, v6, false, null, now - UpdateDecision.WIFI_WAIT_MS, now))
-        assertEquals(AutoPlan(null, true), UpdateDecision.afterAutoCheck(on, v6, false, "0.4.6 available", now - UpdateDecision.WIFI_WAIT_MS, now))
-        assertEquals(AutoPlan(null, true), UpdateDecision.afterAutoCheck(on, v6, false, null, now - UpdateDecision.WIFI_WAIT_MS + 1, now))
+        assertEquals(AutoPlan(Notice.READY, false), UpdateDecision.afterAutoCheck(on, v6, true, "0.4.6 available"))
+        assertEquals(AutoPlan(null, false), UpdateDecision.afterAutoCheck(on, v6, true, "0.4.6 ready"))
+        // "Ready" was said for a file since deleted: "available" is new information.
+        assertEquals(AutoPlan(Notice.AVAILABLE, true), UpdateDecision.afterAutoCheck(on, v6, false, "0.4.6 ready"))
         // Without "Download updates on Wi-Fi": "available" at once, once, and no download.
-        assertEquals(AutoPlan(Notice.AVAILABLE, false), UpdateDecision.afterAutoCheck(noWifiDownload, v6, false, null, now, now))
-        assertEquals(AutoPlan(null, false), UpdateDecision.afterAutoCheck(noWifiDownload, v6, false, "0.4.6 available", now, now))
-        // A newer version is new news.
-        assertEquals(AutoPlan(Notice.AVAILABLE, false), UpdateDecision.afterAutoCheck(noWifiDownload, v("0.4.7"), false, "0.4.6 available", now, now))
+        assertEquals(AutoPlan(Notice.AVAILABLE, false), UpdateDecision.afterAutoCheck(noWifiDownload, v6, false, null))
+        assertEquals(AutoPlan(null, false), UpdateDecision.afterAutoCheck(noWifiDownload, v6, false, "0.4.6 available"))
+        // A newer version is new news, with or without the download.
+        assertEquals(AutoPlan(Notice.AVAILABLE, false), UpdateDecision.afterAutoCheck(noWifiDownload, v("0.4.7"), false, "0.4.6 available"))
+        assertEquals(AutoPlan(Notice.AVAILABLE, true), UpdateDecision.afterAutoCheck(on, v("0.4.7"), false, "0.4.6 ready"))
         // A skipped version: never announced or downloaded; the next one is.
         val skip6 = on.copy(skipped = "0.4.6")
-        for (downloaded in listOf(true, false)) assertEquals(AutoPlan(null, false), UpdateDecision.afterAutoCheck(skip6, v6, downloaded, null, 0, now))
+        for (downloaded in listOf(true, false)) assertEquals(AutoPlan(null, false), UpdateDecision.afterAutoCheck(skip6, v6, downloaded, null))
         assertNull(UpdateDecision.afterAutoDownload(skip6, v6, null))
-        assertEquals(AutoPlan(null, true), UpdateDecision.afterAutoCheck(skip6, v("0.4.7"), false, null, now, now))
-        assertEquals(AutoPlan(Notice.AVAILABLE, false), UpdateDecision.afterAutoCheck(skip6.copy(wifiDownload = false), v("0.4.7"), false, null, now, now))
+        assertNull(UpdateDecision.afterAutoDownload(skip6, v6, "0.4.6 available"))
+        assertEquals(AutoPlan(Notice.AVAILABLE, true), UpdateDecision.afterAutoCheck(skip6, v("0.4.7"), false, null))
+        assertEquals(AutoPlan(Notice.AVAILABLE, false), UpdateDecision.afterAutoCheck(skip6.copy(wifiDownload = false), v("0.4.7"), false, null))
         // A file that failed its checks (a wrong sum, another signer) isn't downloaded again by itself: announced instead.
-        assertEquals(AutoPlan(Notice.AVAILABLE, false), UpdateDecision.afterAutoCheck(on, v6, false, null, now, now, refused = true))
-        assertEquals(AutoPlan(null, false), UpdateDecision.afterAutoCheck(on, v6, false, "0.4.6 available", now, now, refused = true))
+        assertEquals(AutoPlan(Notice.AVAILABLE, false), UpdateDecision.afterAutoCheck(on, v6, false, null, refused = true))
+        assertEquals(AutoPlan(null, false), UpdateDecision.afterAutoCheck(on, v6, false, "0.4.6 available", refused = true))
         // "v0.4.6" skipped is the same as "0.4.6".
         assertTrue(UpdateDecision.skipped(UpdateSettings(skipped = "0.4.6"), v("v0.4.6")))
         assertFalse(UpdateDecision.skipped(UpdateSettings(), v6))

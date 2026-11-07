@@ -31,6 +31,7 @@ enum class OnlineKind(val msg: Msg) {
     TERMUX(EverydayStrings.onlineKTermux),
     CONNECTION(EverydayStrings.onlineKConnection),
     LINK(EverydayStrings.onlineKLink),
+    NEWS(EverydayStrings.onlineKNews),
 }
 
 /** One time Robot went online: the connections it took, in order. */
@@ -66,6 +67,7 @@ object OnlineSummary {
         NetPurpose.TERMUX_CHECK -> OnlineKind.TERMUX
         NetPurpose.CONNECTION -> OnlineKind.CONNECTION
         NetPurpose.LINK_DIRECT, NetPurpose.LINK_PUSH, NetPurpose.LINK_TOR -> OnlineKind.LINK
+        NetPurpose.FEED -> OnlineKind.NEWS
     }
 
     /** The connections: every row but a download's end (its bytes belong to the download it ends). */
@@ -158,6 +160,7 @@ object OnlineSummary {
         NetPurpose.LINK_DIRECT -> EverydayStrings.onlinePLinkDirect()
         NetPurpose.LINK_PUSH -> EverydayStrings.onlinePLinkPush()
         NetPurpose.LINK_TOR -> EverydayStrings.onlinePLinkTor()
+        NetPurpose.FEED -> EverydayStrings.onlinePFeed()
     }
 
     /** The Settings page that controls [p] (a row's details, with a button to open it). */
@@ -174,6 +177,7 @@ object OnlineSummary {
         NetGroup.UPDATES -> if (p == NetPurpose.TERMUX_CHECK) UiLabel(UiStrings.settings, UiStrings.termux) else UiLabel(UiStrings.settings, UiStrings.about, UiStrings.updates)
         NetGroup.SKILLS -> UiLabel(UiStrings.settings, UiStrings.skills)
         NetGroup.LINK -> UiLabel(UiStrings.settings, EverydayStrings.onlineKLink)
+        NetGroup.NEWS -> UiLabel(UiStrings.settings, UiStrings.display)
     }
 
     /** What allowed it: "You asked", "Runs by itself · Settings › About › Updates". */

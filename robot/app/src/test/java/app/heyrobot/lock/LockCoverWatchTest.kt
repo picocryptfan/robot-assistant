@@ -56,7 +56,7 @@ class LockCoverWatchTest {
 
     @Test fun theListWidgetIsDrawnAgainWhenALockStartsOrEnds() {
         assertInOrder(flat("lock/LockEngine.kt").body("fun refresh("), "snapshot = snap", "if (snap.active != widgetsActive)", "redrawWidgets(ctx)")
-        assertHas(flat("lock/LockEngine.kt").body("private fun redrawWidgets("), "AppWidgetManager.ACTION_APPWIDGET_UPDATE", ".setComponent(widget)")
+        assertHas(flat("lock/LockEngine.kt").body("private fun redrawWidgets("), "LockSignals.LIST_REDRAW_ACTION", "LockSignals.TODAY_REFRESH")
     }
 
     @Test fun aRoutineDuringSomeoneElsesLockDropsWhatWouldWait() {

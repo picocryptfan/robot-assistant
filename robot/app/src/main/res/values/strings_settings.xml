@@ -31,6 +31,8 @@
     <!-- Settings › History. -->
     <string name="history_save">Save conversations</string>
     <string name="history_media">Screenshots and photos</string>
+    <string name="history_open">Your conversations</string>
+    <string name="history_open_detail">What you and Robot said, newest first</string>
     <string name="history_media_kept">Kept with the conversations</string>
     <string name="history_media_not_kept">Not kept</string>
     <string name="history_delete_all">Delete all conversations</string>
@@ -229,8 +231,8 @@
     <string name="about_licences_page">Its page</string>
     <!-- 1.1: Settings › About › Support Robot (ui/settings/SupportSettings.kt). The addresses are data, not text. -->
     <string name="about_support_title">Support Robot</string>
-    <string name="about_support_detail">Ko-fi, once or monthly, or a crypto address</string>
-    <string name="about_support_intro">Robot is free, and I make it alone. If it\'s useful to you, you can support it on Ko-fi, once or monthly, or with one of the addresses below. Either way, you get the same app as everyone else.</string>
+    <string name="about_support_detail">Bitcoin, Lightning, Monero or Ethereum</string>
+    <string name="about_support_intro">Robot is free, and I make it alone. If it\'s useful to you, you can support it with one of the addresses below. Either way, you get the same app as everyone else.</string>
     <string name="about_support_addresses">Addresses</string>
     <string name="about_support_copy">Copy</string>
     <string name="about_support_copy_label">Copy the %1$s address</string>
@@ -239,9 +241,7 @@
     <string name="about_support_qr_label">QR code of the %1$s address</string>
     <string name="about_support_close">Close</string>
     <string name="about_support_copied">Copied. Paste it in your wallet app.</string>
-    <string name="about_support_no_browser">No browser on this phone.</string>
-    <!-- Names of a platform and of currencies, the same in every language. -->
-    <string name="about_support_kofi" translatable="false">Ko-fi</string>
+    <!-- Names of currencies, the same in every language. -->
     <string name="about_support_bitcoin" translatable="false">Bitcoin</string>
     <string name="about_support_lightning" translatable="false">Lightning</string>
     <string name="about_support_monero" translatable="false">Monero</string>

@@ -27,6 +27,8 @@ object BackupWords {
         BackupCategory.LISTS -> BackupStrings.lists
         BackupCategory.EVERYDAY -> BackupStrings.everyday
         BackupCategory.LINKS -> BackupStrings.links
+        BackupCategory.CALENDAR -> BackupStrings.calendar
+        BackupCategory.HOME -> BackupStrings.home
         // C10: English until C11's French (the connections area); Connection keys is shown in Keys and private codes' row.
         BackupCategory.CONNECTIONS -> app.heyrobot.core.i18n.ConnStrings.title
         BackupCategory.CONN_KEYS -> app.heyrobot.core.i18n.ConnStrings.backupKeys
@@ -65,6 +67,7 @@ object BackupWords {
             PlanSkip.FILES_TRAVEL -> BackupStrings.filesTravelHere("page" to Arg.Ui(app.heyrobot.core.i18n.UiStrings.inSettings(app.heyrobot.core.i18n.UiStrings.files)))
             PlanSkip.LISTS_UNREADABLE -> BackupStrings.listsUnreadableHere("page" to Arg.Ui(app.heyrobot.core.i18n.UiStrings.inSettings(app.heyrobot.core.i18n.UiStrings.lists)))
             PlanSkip.CONNECTIONS_UNREADABLE -> app.heyrobot.core.i18n.ConnStrings.backupUnreadableHere()
+            PlanSkip.CALENDAR_UNREADABLE -> BackupStrings.calendarUnreadableHere()
         }
     }
 

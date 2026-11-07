@@ -21,9 +21,11 @@
     <string name="backup_files_cant">Can\'t be read now: Settings › Files says why</string>
     <!-- 1.4: Lists that can't be opened now (their key gone, damaged, a newer Robot's). -->
     <string name="backup_lists_cant">Can\'t be read now: Settings › Lists says why</string>
+    <string name="backup_calendar_cant">Can\'t be read now: unlock your phone, or open the Calendar tab to see why</string>
     <string name="backup_history_travel">Left out while travel mode is on: it holds answers from Robot Files</string>
     <string name="backup_sum_settings">Voice, wake phrases, actions, safety, helpers (without keys), web search, Termux, display, updates</string>
     <string name="backup_sum_voiceprint">Made on this phone</string>
+    <string name="backup_sum_home">Your Today page\'s order and whether it\'s your home page</string>
     <string name="backup_sum_everyday">Music by voice, Robot\'s listening and voices for other apps, Ask Robot, What went online</string>
     <string name="backup_vp_warning">Biometric: it needs a strong passphrase, and comes back only from a backup you mark as your own.</string>
     <string name="backup_pictures">Saved screenshots and photos</string>
@@ -120,6 +122,7 @@
         <item quantity="one">Files: %1$d file couldn\'t be read, so it isn\'t in this backup.</item>
         <item quantity="other">Files: %1$d files couldn\'t be read, so they aren\'t in this backup.</item>
     </plurals>
+    <string name="backup_private_left_out">Robot can\'t open the private events on this phone, so they aren\'t in this backup. The rest is.</string>
     <string name="backup_codes_left_out">Memory couldn\'t be read, so your private codes aren\'t in this backup. Unlock your phone and make it again.</string>
     <string name="backup_restore_result_close">Close this</string>
     <string name="backup_restore_kept_unknown">Kept safer: Robot couldn\'t count these just now. Settings that let Robot act with fewer questions still keep this phone\'s values.</string>
@@ -138,6 +141,10 @@
     <plurals name="backup_n_private">
         <item quantity="one">%1$d private</item>
         <item quantity="other">%1$d private</item>
+    </plurals>
+    <plurals name="backup_n_private_events">
+        <item quantity="one">%1$d private event</item>
+        <item quantity="other">%1$d private events</item>
     </plurals>
     <plurals name="backup_n_notes">
         <item quantity="one">%1$d note</item>

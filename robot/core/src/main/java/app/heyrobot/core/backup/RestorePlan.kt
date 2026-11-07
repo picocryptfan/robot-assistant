@@ -82,6 +82,8 @@ enum class PlanSkip {
      * never writes over: Connections and Connection keys are left out.
      */
     CONNECTIONS_UNREADABLE,
+    /** H3: Robot can't read the private events on this phone (their key gone, damaged, a newer Robot's): never written over. */
+    CALENDAR_UNREADABLE,
 }
 
 /**
@@ -159,7 +161,7 @@ object RestorePlanner {
                 // A pairing here is never replaced by one from a file (LinkBackupStore.restore).
                 c == BackupCategory.LINKS -> RestoreMode.ADD
                 // The everyday set's one settings file is merged field by field over this phone's, as Settings' are.
-                c == BackupCategory.SETTINGS || c == BackupCategory.EVERYDAY || choice.replace -> RestoreMode.REPLACE
+                c == BackupCategory.SETTINGS || c == BackupCategory.EVERYDAY || c == BackupCategory.HOME || choice.replace -> RestoreMode.REPLACE
                 // Files whose key is gone can't take anything added to them: Replace is the only way.
                 c == BackupCategory.FILES && phone.files == FilesHere.KEY_GONE -> RestoreMode.REPLACE
                 // Lists whose key is gone: the same; the file here is kept aside.

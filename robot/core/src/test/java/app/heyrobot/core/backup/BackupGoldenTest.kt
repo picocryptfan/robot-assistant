@@ -66,7 +66,7 @@ class BackupGoldenTest {
         // Deliberately, the everyday set's EVERYDAY category too (BackupDowngradeTest has its own fixture), and L12's LINKS.
         // And C10's Connections and Connection keys (BackupConnectionsTest, BackupDowngradeTest's connections fixtures).
         assertEquals(BackupCategory.entries.toSet() - BackupCategory.PHONE_LOCK - BackupCategory.SKILLS - BackupCategory.VOICEPRINT - BackupCategory.FILES -
-            BackupCategory.LISTS - BackupCategory.EVERYDAY - BackupCategory.CONNECTIONS - BackupCategory.CONN_KEYS - BackupCategory.LINKS, v.found.keys)
+            BackupCategory.LISTS - BackupCategory.EVERYDAY - BackupCategory.CONNECTIONS - BackupCategory.CONN_KEYS - BackupCategory.LINKS - BackupCategory.CALENDAR - BackupCategory.HOME, v.found.keys)
         assertEquals(emptyList<CategorySkip>(), v.skipped)
         assertEquals("1.1.0", v.manifest.robot)
         assertTrue(v.manifest.keys)
@@ -92,7 +92,7 @@ class BackupGoldenTest {
         val plan = RestorePlanner.plan(v, PhoneHas(emptyMap()), choices, mine = true)
         // Deliberately, the everyday set's EVERYDAY too: the 1.1 fixture has none.
         assertEquals(BackupCategory.entries.toList() - BackupCategory.PHONE_LOCK - BackupCategory.SKILLS - BackupCategory.VOICEPRINT - BackupCategory.FILES -
-            BackupCategory.LISTS - BackupCategory.EVERYDAY - BackupCategory.CONNECTIONS - BackupCategory.CONN_KEYS - BackupCategory.LINKS, plan.restoring)
+            BackupCategory.LISTS - BackupCategory.EVERYDAY - BackupCategory.CONNECTIONS - BackupCategory.CONN_KEYS - BackupCategory.LINKS - BackupCategory.CALENDAR - BackupCategory.HOME, plan.restoring)
         assertTrue(plan.categories.all { it.mode == RestoreMode.FRESH || it.category in BackupCategory.KEY_CATEGORIES })
 
         val people = RestoreMerge.people(emptyList(), v.people!!.people, RestoreMode.FRESH, mine = true, now = BackupKit.T0)

@@ -41,6 +41,8 @@ object PanelStrings : Strings("panel", area = "panel") {
     val cheogramNotInstalled = s("cheogram_not_installed", "Your messaging app isn't installed.", "Ton appli de messagerie n'est pas installée.")
     val cardHint = s("card_hint", "A card is waiting: say yes or no, or tap a button on it.",
         "Une carte attend : dis oui ou non, ou touche un de ses boutons.")
+    val quietSilenced = s("quiet_silenced", "Your phone is on silent or Do Not Disturb, so answers to typed questions are shown, not read aloud. To hear the next ones, tap the speaker button or ask by voice.",
+        "Ton téléphone est en mode silencieux ou en mode Ne pas déranger, alors les réponses aux questions écrites s'affichent sans être lues à voix haute. Pour entendre les prochaines, touche le bouton du haut-parleur ou pose ta question de vive voix.")
     val cardTypeHint = s("card_type_hint", "A card is waiting: tap a button on it, or type yes or no.",
         "Une carte attend : touche un de ses boutons, ou écris oui ou non.")
     val cutAtCap = s("cut_at_cap", "You spoke past the 30-second limit, so Robot stopped there. Your words are in the text box. Check them, then send.",

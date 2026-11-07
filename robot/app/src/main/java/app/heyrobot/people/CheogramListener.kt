@@ -6,6 +6,7 @@ import android.app.Person
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.Parcelable
+import android.os.Process
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import app.heyrobot.core.CheogramNotices
@@ -52,7 +53,7 @@ class CheogramListener : NotificationListenerService() {
         val n = sbn ?: return
         // 0.7: an app turned on in Settings › Messages, into RAM; every other package is dropped there at once.
         MessageTap.posted(applicationContext, n)
-        if (n.packageName != HandOffApps.CHEOGRAM && n.packageName != HandOffApps.CHEOGRAM_PLAY) return
+        if (!learnsFrom(n)) return
         worker.execute {
             if (!on()) return@execute unbindIfIdle()
             val opPkg = try { n.opPkg } catch (_: Throwable) { null }
@@ -130,7 +131,12 @@ class CheogramListener : NotificationListenerService() {
         null
     }
 
-    private companion object {
+    internal companion object {
+        /** Cheogram's own notifications, and only this profile's: a work profile's copy teaches People nothing (review-126-final 2). */
+        fun learnsFrom(sbn: StatusBarNotification): Boolean =
+            (sbn.packageName == HandOffApps.CHEOGRAM || sbn.packageName == HandOffApps.CHEOGRAM_PLAY) &&
+                sbn.user == Process.myUserHandle()
+
         /** Notification.MessagingStyle.Message's bundle key for its sender (API 28+). */
         const val KEY_SENDER_PERSON = "sender_person"
         /** Seconds after connecting before a switch that is off unbinds the listener. */

@@ -16,7 +16,9 @@ import android.os.Handler
  */
 object ProtectedBroadcasts {
     /** System-only (protected) broadcasts, as Android's own manifest declares them. */
-    val ACTIONS = setOf(Intent.ACTION_USER_PRESENT, Intent.ACTION_SCREEN_ON, Intent.ACTION_SCREEN_OFF)
+    val ACTIONS = setOf(Intent.ACTION_USER_PRESENT, Intent.ACTION_SCREEN_ON, Intent.ACTION_SCREEN_OFF,
+        // today-fix-c 6: Today's widget redraws at the date's change instead of waking the phone on a period.
+        Intent.ACTION_DATE_CHANGED, Intent.ACTION_TIME_CHANGED, Intent.ACTION_TIMEZONE_CHANGED)
 
     fun filter(vararg actions: String): IntentFilter {
         require(actions.isNotEmpty() && actions.all { it in ACTIONS }) { "not a protected system broadcast" } // l10n: not text (a developer's error)

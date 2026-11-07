@@ -40,8 +40,14 @@ object RobotTimers {
     /** "Cancel the timer" now: the running ones are marked (whether you cancelled them in the clock, Robot can't see). */
     fun cancelAsked(ctx: Context, now: Long = System.currentTimeMillis()) = update(ctx) { TimerAsk.cancelAsked(it, now) }
 
-    /** With your data: History's Delete all, Memory's Delete all and Start over, a restore's Replace of History. */
-    fun clear(ctx: Context) = synchronized(lock) { try { file(ctx).delete() } catch (_: Exception) {} }
+    /**
+     * With your data: History's Delete all, Memory's Delete all and Start over, a restore's Replace of History.
+     * fix-today-timers: Today's record of the same timers (TodaySource, today_timers.json) goes with it.
+     */
+    fun clear(ctx: Context) {
+        synchronized(lock) { try { file(ctx).delete() } catch (_: Exception) {} }
+        TodaySource.timersStopped(ctx)
+    }
 
     private fun update(ctx: Context, change: (List<RobotTimer>) -> List<RobotTimer>) = synchronized(lock) {
         val f = file(ctx)

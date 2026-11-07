@@ -285,8 +285,10 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
             .putExtra(AlarmClock.EXTRA_SKIP_UI, true)
             .putExtra(AlarmClock.EXTRA_MESSAGE, "Robot")
         // fix-everyday-e: Android can't tell Robot about a clock's timers, so Robot keeps its own record (sys RobotTimers).
-        return if (start(app.heyrobot.sys.RoutineFacts.toChosenClock(ctx, i)).also { if (it) app.heyrobot.sys.RobotTimers.set(ctx, seconds) })
+        return if (start(app.heyrobot.sys.RoutineFacts.toChosenClock(ctx, i)).also { if (it) app.heyrobot.sys.RobotTimers.set(ctx, seconds) }) {
+            app.heyrobot.sys.TodaySource.timerSet(ctx, seconds)
             Executed(ActionStatus.DONE, ToolStrings.timerSet("duration" to app.heyrobot.core.i18n.Arg.Seconds(seconds)))
+        }
         else Executed(ActionStatus.FAILED, ToolStrings.noClockTimers())
     }
 
@@ -653,6 +655,9 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
             val added = try { Calendars.insert(ctx, a.title, p) } catch (t: Exception) { RLog.w("calendar_insert", t); null }
             // Fixed wording: a shared calendar's name is not the model's business (the card shows it). 1.1: what Robot says
             // is the card's own words (EventText.added), with the alert only when its row went in.
+            // H3: its id, so the Calendar tab lets you change this one (and only the ones Robot added).
+            if (added != null) app.heyrobot.sys.PrivateEventsFiles.recordAdded(ctx, added.id)
+            if (added != null) app.heyrobot.sys.TodaySource.changed(ctx) // fix-today-review 3: the widget shows it now
             if (added != null) return Executed(ActionStatus.DONE, ToolStrings.addedToCalendar(), spoken = EventText.added(a.title, p, added.alert))
         }
         val opened = if (p.alertAt != null) ToolStrings.calendarAppOpenedAlert() else ToolStrings.calendarAppOpened()

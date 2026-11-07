@@ -204,6 +204,7 @@ object EverydayStrings : Strings("everyday", area = "everyday") {
     val onlineKTermux = s("online_k_termux", "Termux's update check", "la vérification des mises à jour de Termux")
     val onlineKConnection = s("online_k_connection", "one of your connections", "une de tes connexions")
     val onlineKLink = s("online_k_link", "Robot to Robot", "Robot à Robot")
+    val onlineKNews = s("online_k_news", "the news", "les nouvelles")
     // What a row was for (NetPurpose), on the page.
     val onlinePWeather = s("online_p_weather", "Weather forecast", "Prévisions météo")
     val onlinePWeatherPlace = s("online_p_weather_place", "Finding the place you named, for the weather", "Trouver le lieu nommé, pour la météo")
@@ -222,6 +223,7 @@ object EverydayStrings : Strings("everyday", area = "everyday") {
     val onlinePConnection = s("online_p_connection", "One of your connections", "Une de tes connexions")
     val onlinePLinkDirect = s("online_p_link_direct", "Another phone on your network (Robot to Robot)", "Un autre téléphone sur ton réseau (Robot à Robot)")
     val onlinePLinkPush = s("online_p_link_push", "A push server (Robot to Robot)", "Un serveur push (Robot à Robot)")
+    val onlinePFeed = s("online_p_feed", "A news feed you added", "Un fil de nouvelles que tu as ajouté")
     val onlinePLinkTor = s("online_p_link_tor", "Tor network (Robot to Robot)", "Réseau Tor (Robot à Robot)")
     // What allowed it (NetCause).
     val onlineCAsked = s("online_c_asked", "You asked", "Tu l'as demandé")

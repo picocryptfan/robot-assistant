@@ -354,14 +354,26 @@ enum class RoutineCommandCode(override val id: Int, override val title: String) 
     CANT_CANCEL(9, "an alarm or timer to cancel"),
     /** fix-everyday-e: "how much time is left on my timer", from the timers Robot set. */
     TIMER_LEFT(10, "time left on a timer"),
-    /** fix-note-delete: "delete the note about …", with a card naming it and Undo. */
+    /** fix-note-delete: "delete the note about …", with a card naming it and Undo. 1.2.4 shipped it as 11. */
     NOTE_DELETE(11, "a note to delete"),
-    /** fix-cancel-alarm: "what alarms do I have", the next alarm in words. */
-    NEXT_ALARM(12, "the next alarm");
+    /** fix-cancel-alarm: "what alarms do I have", the next alarm in words. 1.2.4 shipped it as 12. */
+    NEXT_ALARM(12, "the next alarm"),
+    /** Today (H0): "how's my day", the day line. 13: 1.2.3 shipped TIMER_LEFT as 10, 1.2.4 NOTE_DELETE as 11 and NEXT_ALARM as 12. */
+    TODAY(13, "the day line"),
+    /** H3: "show my history", "show my calendar". */
+    SHOW(14, "a page opened"),
+    /** H4: "put my calendar first", the Today page's order. */
+    ARRANGE(15, "Today arranged"),
+    /** H7b: "read me the news". */
+    NEWS(16, "the news read");
 
     companion object {
         fun of(c: RoutineCommand): RoutineCommandCode = when (c) {
             RoutineCommand.BriefNow -> BRIEF_NOW
+            RoutineCommand.Today -> TODAY
+            is RoutineCommand.Show -> SHOW
+            is RoutineCommand.Arrange -> ARRANGE
+            RoutineCommand.News -> NEWS
             is RoutineCommand.Create -> CREATE
             is RoutineCommand.Run -> RUN
             RoutineCommand.ListAll -> LIST

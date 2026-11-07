@@ -595,6 +595,39 @@ class RestoreSafetyTest {
     }
 
     /** Every guarded field of the [SaferField] list has a case above. */
+    // Today H6: the weather line is the page's one part that goes online.
+    @Test fun someoneElsesBackupDoesntPutTheWeatherOnYourPage() {
+        val here = app.heyrobot.core.HomeSettings(order = listOf(app.heyrobot.core.TodayPart.NOTE, app.heyrobot.core.TodayPart.CALENDAR, app.heyrobot.core.TodayPart.LISTS))
+        val file = app.heyrobot.core.HomeSettings(weather = true).turnedOn()
+        val theirs = RestoreSafety.home(here, file, mine = false)
+        assertFalse(theirs.value.weather)
+        assertTrue(theirs.value.today)
+        assertEquals(app.heyrobot.core.TodayPart.DEFAULT, theirs.value.order)
+        assertEquals(SaferField.HOME_WEATHER, theirs.kept.single())
+        val yours = RestoreSafety.home(here, file, mine = true)
+        assertTrue(yours.value.weather)
+        assertEquals(emptyList<SaferField>(), yours.kept)
+        // Off in the file always comes back off, and nothing is counted.
+        val off = RestoreSafety.home(here.copy(weather = true), app.heyrobot.core.HomeSettings(), mine = false)
+        assertFalse(off.value.weather)
+        assertEquals(emptyList<SaferField>(), off.kept)
+    }
+
+    private val feedA = app.heyrobot.core.news.NewsFeed("https://a.example.org/feed", "A")
+    private val feedB = app.heyrobot.core.news.NewsFeed("https://b.example.org/rss", "B")
+
+    @Test fun someoneElsesBackupAddsNoFeedsAndFetchesNoMore() {
+        val here = app.heyrobot.core.HomeSettings(today = true, news = app.heyrobot.core.news.NewsSettings(listOf(feedA), app.heyrobot.core.news.NewsMode.ASKED, app.heyrobot.core.news.NewsVia.TOR))
+        val file = app.heyrobot.core.HomeSettings(today = true, news = app.heyrobot.core.news.NewsSettings(listOf(feedA, feedB), app.heyrobot.core.news.NewsMode.OPEN, app.heyrobot.core.news.NewsVia.DIRECT, mobileData = true))
+        val theirs = RestoreSafety.home(here, file, mine = false)
+        assertEquals(here.news, theirs.value.news)
+        assertTrue(theirs.kept.containsAll(listOf(SaferField.HOME_FEEDS, SaferField.HOME_NEWS_MODE,
+            SaferField.HOME_NEWS_VIA, SaferField.HOME_NEWS_MOBILE, )))
+        assertEquals(file.news, RestoreSafety.home(here, file, mine = true).value.news)
+        // Fewer feeds and a stricter way come back from anyone's.
+        val stricter = app.heyrobot.core.HomeSettings(news = app.heyrobot.core.news.NewsSettings(emptyList(), app.heyrobot.core.news.NewsMode.ASKED, app.heyrobot.core.news.NewsVia.TOR))
+        assertEquals(stricter.news, RestoreSafety.home(file, stricter, mine = false).value.news)
+    }
     @Test fun everySaferFieldIsCovered() {
         val src = java.io.File("src/test/java/app/heyrobot/core/backup/RestoreSafetyTest.kt").readText() +
             java.io.File("src/test/java/app/heyrobot/core/backup/RestoreHostileFieldsTest.kt").readText()

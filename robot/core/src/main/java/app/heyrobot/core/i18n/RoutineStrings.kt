@@ -146,6 +146,41 @@ object RoutineStrings : Strings("routine", area = "routines") {
     // The locked phone (RoutineLockedPhone).
     val unlockChange = s("unlock_change", "Unlock first: routines are only changed with the phone unlocked.",
         "Déverrouille d'abord : les routines ne se changent que téléphone déverrouillé.")
+    /** H3: "show my history" or "show my calendar" said on a locked phone. */
+    val unlockShow = s("unlock_show", "Unlock first: that page opens with the phone unlocked.",
+        "Déverrouille d’abord : cette page s’ouvre quand le téléphone est déverrouillé.")
+    /** H3: what Robot says as it opens the page. */
+    val showHistory = s("show_history", "Here's your history.", "Voici ton historique.")
+    val showCalendar = s("show_calendar", "Here's your calendar.", "Voici ton agenda.")
+    /** H4: "put my calendar first" said on a locked phone, and what Robot says once the part has moved. */
+    val unlockNews = s("unlock_news", "Unlock first: the news is read with the phone unlocked.",
+        "Déverrouille d’abord : les nouvelles se lisent quand le téléphone est déverrouillé.")
+    val newsNothing = s("news_nothing", "No headlines yet. Ask me again later.", "Pas encore de manchettes. Redemande-moi plus tard.")
+    /** fix-today-tor: news only through Tor, asked while Tor is still starting (nothing went online). */
+    val newsTorStarting = s("news_tor_starting", "Tor is still starting. Ask me again in a minute.", "Tor démarre encore. Redemande-moi dans une minute.")
+    /** today-news-off: no headlines to say, and why, as the page and Settings › Display say it (strings_today.xml). */
+    val newsNoFeeds = s("news_no_feeds", "You have no news feeds. Add one in Settings › Display.",
+        "Tu n’as aucun fil de nouvelles. Ajoutes-en un dans Réglages › Affichage.")
+    val newsTorOff = s("news_tor_off", "No headlines: news goes only through Tor, and Tor runs only while Robot to Robot is on. Turn it on, or choose Direct.",
+        "Pas de manchettes : les nouvelles passent seulement par Tor, et Tor ne tourne que si Robot à Robot est activé. Active-le, ou choisis Direct.")
+    val newsTorDown = s("news_tor_down", "No headlines: Tor couldn't connect, and nothing went out without it. Ask me again later.",
+        "Pas de manchettes : Tor n’a pas pu se connecter, et rien n’est parti sans lui. Redemande-moi plus tard.")
+    val newsFeedsFailed = s("news_feeds_failed", "None of your feeds answered. Ask me again later.", "Aucun de tes fils n’a répondu. Redemande-moi plus tard.")
+    val unlockArrange = s("unlock_arrange", "Unlock first: your Today page changes with the phone unlocked.",
+        "Déverrouille d’abord : ta page Aujourd’hui change quand le téléphone est déverrouillé.")
+    val arrangedCalendarFirst = s("arranged_calendar_first", "Your calendar's first now.", "Ton agenda est en premier maintenant.")
+    val arrangedListsFirst = s("arranged_lists_first", "Your lists are first now.", "Tes listes sont en premier maintenant.")
+    val arrangedNoteFirst = s("arranged_note_first", "Your note's first now.", "Ta note est en premier maintenant.")
+    val arrangedCalendarLast = s("arranged_calendar_last", "Your calendar's last now.", "Ton agenda est en dernier maintenant.")
+    val arrangedListsLast = s("arranged_lists_last", "Your lists are last now.", "Tes listes sont en dernier maintenant.")
+    val arrangedNoteLast = s("arranged_note_last", "Your note's last now.", "Ta note est en dernier maintenant.")
+    val arrangedCalendarUp = s("arranged_calendar_up", "Your calendar moved up.", "Ton agenda est monté d’un cran.")
+    val arrangedListsUp = s("arranged_lists_up", "Your lists moved up.", "Tes listes sont montées d’un cran.")
+    val arrangedNoteUp = s("arranged_note_up", "Your note moved up.", "Ta note est montée d’un cran.")
+    val arrangedCalendarDown = s("arranged_calendar_down", "Your calendar moved down.", "Ton agenda est descendu d’un cran.")
+    val arrangedListsDown = s("arranged_lists_down", "Your lists moved down.", "Tes listes sont descendues d’un cran.")
+    val arrangeFailed = s("arrange_failed", "I couldn't change your Today page.", "Je n’ai pas pu changer ta page Aujourd’hui.")
+    val arrangedNoteDown = s("arranged_note_down", "Your note moved down.", "Ta note est descendue d’un cran.")
     val unlockList = s("unlock_list", "Unlock first: your routines are only listed with the phone unlocked.",
         "Déverrouille d'abord : la liste de tes routines n'est donnée que téléphone déverrouillé.")
     val unlockRemind = s("unlock_remind", "Unlock first: reminders for your brief are only added with the phone unlocked.",
@@ -168,6 +203,9 @@ object RoutineStrings : Strings("routine", area = "routines") {
     val readyOnPhone = plural("ready_on_phone", "n", Plural(one = "{n} thing is ready for you on the phone.", other = "{n} things are ready for you on the phone."),
         Plural(one = "{n} chose t'attend sur le téléphone.", other = "{n} choses t'attendent sur le téléphone."))
     val unlockRest = s("unlock_rest", "Unlock to hear the rest.", "Déverrouille pour entendre le reste.")
+    // review-quiet-when-silent, 4: first in the notification of a routine that stayed quiet.
+    val stayedQuiet = s("stayed_quiet", "Your phone is on silent or Do Not Disturb, so I didn't read this aloud.",
+        "Ton téléphone est en mode silencieux ou en mode Ne pas déranger, alors je ne l'ai pas lu à voix haute.")
 
     // The editor's steps (StepChoice): titles, the field each asks for, its hint, what is wrong with it.
     val chooseSay = s("choose_say", "Say a sentence", "Dire une phrase")

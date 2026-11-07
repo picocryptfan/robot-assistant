@@ -13,6 +13,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -234,9 +238,11 @@ class MainActivity : ComponentActivity() {
 /**
  * The tabs; [label]: their names, core UiStrings', as replies name them (1.1). 1.4 (files-1.4-plan.md Q1, the user's
  * default): Files takes the Model tab's place, and Model is a page of Settings (SettingsRoutes.MODEL), with nothing lost.
+ * Today H3 (the user's answer of 3 Nov 2026): Calendar takes History's place; History is a page behind the clock icon at
+ * the top of both homes, "show my history" and Settings › History. A saved HISTORY tab comes back as Home (Saver).
  */
 enum class Tab(val label: Msg) {
-    HOME(UiStrings.home), NOTES(UiStrings.notes), HISTORY(UiStrings.history), FILES(UiStrings.files), SETTINGS(UiStrings.settings);
+    HOME(UiStrings.home), CALENDAR(UiStrings.calendar), NOTES(UiStrings.notes), FILES(UiStrings.files), SETTINGS(UiStrings.settings);
 
     /** The name in English. */
     val title: String get() = label().en()
@@ -251,6 +257,8 @@ sealed class Page {
     /** [people]: opened for a permission ("People, notes and calendar" first). */
     data class Setup(val people: Boolean = false) : Page()
     data class Conversation(val id: String) : Page()
+    /** H3: your conversations, from the clock icon, "show my history" and Settings › History (a tab until H3). */
+    data object History : Page()
     /** [id] null: a new note (until its first save gives it one). */
     data class NoteEdit(val id: String?) : Page()
     /** 1.4 Lists (LS5): a list's page, by the list's id. */
@@ -297,6 +305,7 @@ sealed class Page {
                     VoiceLog -> "voicelog"
                     AdbFixes -> "adbfixes"
                     People -> "people"
+                    History -> "history"
                     is PersonEdit -> "person:${p.id.orEmpty()}" // l10n: not text (saved route)
                     Safety -> "safety"
                     Licences -> "licences"
@@ -322,6 +331,7 @@ sealed class Page {
                     v == "voicelog" -> VoiceLog
                     v == "adbfixes" -> AdbFixes
                     v == "people" -> People
+                    v == "history" -> History
                     v.startsWith("person:") -> PersonEdit(v.removePrefix("person:").ifEmpty { null })
                     v == "safety" -> Safety
                     v == "licences" -> Licences
@@ -976,6 +986,7 @@ fun RobotAppUi(activity: MainActivity) {
         // Back from a notice goes to its part's licence, from a licence to the list.
         is Page.Licence -> LicenceScreen(p.id, p.file, onOpen = { page = it }, onBack = nav::back)
         is Page.Settings -> SettingsNav(p.route, settings, snap, calendars, ::updateSettings, actions, snackbar, onBack = nav::back, busy = busy)
+        Page.History -> HistoryScreen(history, actions, Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing), onBack = nav::back)
         Page.Transcripts -> TranscriptsScreen(snackbar, onOpen = { id, line -> page = Page.Transcript(id, line) }, onBack = nav::back)
         is Page.Transcript -> TranscriptScreen(p.id, p.line, snackbar, onBack = nav::back)
         Page.ConversationSettings -> ConversationSettingsScreen(settings, snap, ::updateSettings, actions, snackbar, onBack = nav::back)
@@ -990,7 +1001,7 @@ fun RobotAppUi(activity: MainActivity) {
                     for (t in Tab.entries) {
                         NavigationBarItem(
                             selected = tab == t, onClick = { tab = t; fromNotesIcon = false; fromFilesIcon = false },
-                            icon = { Icon(when (t) { Tab.HOME -> RIcons.Home; Tab.NOTES -> RIcons.Note; Tab.HISTORY -> RIcons.History; Tab.FILES -> RIcons.Folder; Tab.SETTINGS -> RIcons.Settings }, null) },
+                            icon = { Icon(when (t) { Tab.HOME -> RIcons.Home; Tab.CALENDAR -> RIcons.Event; Tab.NOTES -> RIcons.Note; Tab.FILES -> RIcons.Folder; Tab.SETTINGS -> RIcons.Settings }, null) },
                             label = { Text(t.label().str()) },
                         )
                     }
@@ -1009,10 +1020,10 @@ fun RobotAppUi(activity: MainActivity) {
                 if (tab == Tab.HOME || tab == Tab.SETTINGS) HandsFreeNoticeLine(onOpen = { page = Page.Settings(SettingsRoutes.HEADSET) })
                 val m = Modifier.weight(1f)
                 when (tab) {
-                    Tab.HOME -> HomeScreen(snap, history.take(3), actions, m, guide = guideState)
+                    Tab.HOME -> app.heyrobot.ui.today.HomeTab(snap, history.take(3), actions, m, guide = guideState)
                     Tab.NOTES -> app.heyrobot.ui.lists.NotesTab(notesSection, { notesSection = it }, actions, snackbar, m,
                         port = { app.heyrobot.ui.lists.PhoneListsPort(ctx) }) { mod -> NotesScreen(notes, actions, mod) }
-                    Tab.HISTORY -> HistoryScreen(history, actions, m)
+                    Tab.CALENDAR -> app.heyrobot.ui.calendar.CalendarTab(actions, m)
                     // 1.4: Robot Files (ui/files), its index read off the main thread only once this tab shows.
                     Tab.FILES -> app.heyrobot.ui.files.FilesRoute(actions, snackbar, m)
                     Tab.SETTINGS -> SettingsRoot(settings, snap, actions, m)

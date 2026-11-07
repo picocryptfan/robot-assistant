@@ -71,4 +71,6 @@ enum class BackupCode(override val id: Int, override val title: String) : LogCod
     CHECK_REFUSED(11, "a restore would refuse a part, deleted"),
     /** F20: a category over what a restore takes, refused before anything was written. */
     OVER_CAP(12, "a part over what a restore takes"),
+    /** H3: private events were chosen and couldn't be opened (locked, their key gone, damaged, a newer Robot's). */
+    CALENDAR_UNREADABLE(13, "private events couldn't be opened"),
 }

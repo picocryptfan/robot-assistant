@@ -1,6 +1,19 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.assistant.routines
 
+import app.heyrobot.assistant.PanelPrivateEvents
+import android.content.Intent
+import app.heyrobot.core.ShowPage
+import app.heyrobot.core.TodayArrange
+import app.heyrobot.core.news.NewsAsk
+import app.heyrobot.core.news.NewsMode
+import app.heyrobot.core.news.NewsMoment
+import app.heyrobot.core.news.NewsRefusal
+import app.heyrobot.sys.NewsStore
+import app.heyrobot.ui.today.torOff
+import app.heyrobot.sys.AppPages
+import app.heyrobot.sys.HomeSettingsStore
+import app.heyrobot.sys.TodaySource
 import app.heyrobot.core.Choice
 import app.heyrobot.core.Confirmations
 import app.heyrobot.core.NoteDelete
@@ -19,6 +32,8 @@ import app.heyrobot.core.ActionOutcome
 import app.heyrobot.core.ActionStatus
 import app.heyrobot.core.BriefItem
 import app.heyrobot.core.BriefLock
+import app.heyrobot.core.i18n.BriefStrings
+import app.heyrobot.core.Today
 import app.heyrobot.core.BriefReminders
 import app.heyrobot.core.BriefRoutine
 import app.heyrobot.core.Card
@@ -29,6 +44,7 @@ import app.heyrobot.core.ReadyCards
 import app.heyrobot.core.Routine
 import app.heyrobot.core.RoutineCards
 import app.heyrobot.core.RoutineCommand
+import app.heyrobot.core.ShowCalendar
 import app.heyrobot.core.RoutineLockedPhone
 import app.heyrobot.core.RoutineCommandCode
 import app.heyrobot.core.TimerAsk
@@ -145,13 +161,17 @@ object PanelRoutines {
         val s = store()
         RoutineRouter.route(q, ZonedDateTime.now(), s.all().map { it.name }, fromContent = fromContent, alarmWindow = s.settings().alarmWindow)
             ?.takeIf { fresh || it != RoutineCommand.RemindWhat }
+            ?.let { c -> ShowCalendar.routed(c) { HomeSettingsStore.current(app).today } }
+            ?.let { c -> NewsAsk.routed(c) { HomeSettingsStore.current(app).let { it.today && it.news.on } } }
     } catch (t: Throwable) {
         RLog.w("routine_route", t)
         null
     }
 
     /** [cmd] as routed from [said], your words this turn (their language is the answer's). */
-    suspend fun handle(replyId: String, cmd: RoutineCommand, host: Host, said: String = "") {
+    suspend fun handle(replyId: String, asked: RoutineCommand, host: Host, said: String = "") {
+        // today-fix-b: hands-free, "show my calendar" is said as the day line and opens nothing (core ShowCalendar).
+        val cmd = ShowCalendar.handsFree(asked, host.handsFree)
         // 1.0 (physical-routines-writable-locked): nothing is created, deleted, reminded or listed on the locked phone; said in
         // French, the refusal is French too (core RoutineRouter.french).
         val langs = host.langs(said, RoutineRouter.lang(said, cmd))
@@ -163,6 +183,10 @@ object PanelRoutines {
         }
         val done = when (cmd) {
             RoutineCommand.BriefNow -> brief(replyId, host, RunOrigin.ASKED, langs)
+            RoutineCommand.Today -> today(replyId, host, langs)
+            is RoutineCommand.Show -> show(replyId, cmd.page, host, langs)
+            is RoutineCommand.Arrange -> arrange(replyId, cmd, host, langs)
+            RoutineCommand.News -> news(replyId, host, langs)
             is RoutineCommand.Create -> create(replyId, cmd.draft, host, langs)
             is RoutineCommand.Run -> run(replyId, cmd.name, host, langs)
             RoutineCommand.ListAll -> reply(replyId, host, RoutineCards.listText(store().all().filter { it.id != BriefRoutine.ID || it.enabled }), langs)
@@ -213,7 +237,7 @@ object PanelRoutines {
                     parts.forEach { p -> shown.append(if (shown.isEmpty()) "" else " ").append(p.shownText) }
                     host.text(replyId, shown.toString())
                 }
-            }, origin, langs)
+            }, origin, langs) { events -> PanelPrivateEvents.read(replyId, events) }
         }
         session?.let(RoutineVoice::close)
         // The whole of what was said, in the bubble and the saved conversation (the parts above came while it was read).
@@ -224,6 +248,82 @@ object PanelRoutines {
         if (held.isNotEmpty() && !someoneElse) RoutineHub.waitForUnlock(RoutineRunner.Waiting(r, TriggerKind.ASKED, emptyList(), held, ZonedDateTime.now()))
         VoiceLog.add(VoiceEvent.BRIEF_SPOKEN, spoken.sumOf { it.lines.size }, held.sumOf { it.lines.size }, spoken.sumOf { it.chars })
         return true
+    }
+
+    /**
+     * Today (H0): "how's my day", the day line (core Today) and nothing else, as written in your calendar and reminders, so
+     * quoted and personal. Locked, it is said only at "Everything"; during someone else's lock, never.
+     */
+    private suspend fun today(replyId: String, host: Host, l: Langs): Boolean {
+        val someoneElse = PhoneLockNow.someoneElse(app)
+        val rs = SomeoneElseLock.routines(store().settings(), someoneElse)
+        if (someoneElse || (host.locked && rs.briefLock != BriefLock.EVERYTHING)) return reply(replyId, host, BriefStrings.unlockToHear(), l)
+        host.quoted(replyId)
+        // H5: with Today your home page, its parts in its order, its note among them (read only while unlocked).
+        val line = withContext(Dispatchers.IO) {
+            val home = HomeSettingsStore.current(app).takeIf { it.today }
+            val input = TodaySource.input(app).also { PanelPrivateEvents.read(replyId, it.events) }
+            Today.line(Today.picture(input), l.say, home?.order, if (home != null && !host.locked) TodaySource.note(app, home) else null)
+        }
+        host.text(replyId, line.shown(l))
+        host.say(line.said(l), personal = true)
+        return true
+    }
+
+    /**
+     * H7b: "read me the news", the headlines Today shows, said as the brief says them (BriefComposer.newsText) and shown;
+     * hands-free too. Which feeds you read is personal: the locked phone was refused before this, as the brief holds its
+     * news, and during someone else's lock it's never said. With "Only when I ask", asking fetches first (your ask, TAP).
+     */
+    private suspend fun news(replyId: String, host: Host, l: Langs): Boolean {
+        if (PhoneLockNow.someoneElse(app)) return reply(replyId, host, RoutineStrings.unlockNews(), l)
+        var instead: Phrase? = null
+        val said = withContext(Dispatchers.IO) {
+            val home = HomeSettingsStore.current(app)
+            // Routed only with Today on and a feed (NewsAsk); Today turned off since, there's nothing to say.
+            if (!home.today) return@withContext null
+            // fix-today-tor: Tor still starting is said as such, not as old headlines or none.
+            var refused: NewsRefusal? = null
+            var failedAll = false
+            if (home.news.on && home.news.mode == NewsMode.ASKED) when (val r = NewsStore.fetch(app, NewsMoment.TAP, home.news)) {
+                is NewsStore.Fetched.Refused -> refused = r.why
+                is NewsStore.Fetched.Done -> failedAll = r.failed == home.news.feeds.size
+                NewsStore.Fetched.Waited -> Unit
+            }
+            instead = NewsAsk.instead(refused)
+            if (instead != null) return@withContext null
+            val ms = System.currentTimeMillis()
+            val st = NewsStore.current(app)
+            // today-news-off: no headlines, and the reason the page gives (no feeds, Tor off, Tor down, no feed answered).
+            BriefComposer.newsText(st.pick(home.news, ms), st.updated(home.news, ms), ZonedDateTime.now(), l.say)
+                ?: null.also { instead = NewsAsk.nothing(home.news, torOff(app, home.news), refused, failedAll) }
+        } ?: return reply(replyId, host, instead ?: RoutineStrings.newsNothing(), l)
+        host.quoted(replyId)
+        host.text(replyId, said.shown(l))
+        host.say(said.said(l), personal = true)
+        return true
+    }
+
+    /**
+     * H4: the Today page's order (the locked phone was refused before this). No card: it's undoable and touches nothing
+     * outside the page, so Robot does it and says so. The page redraws at once (ui/today TodayWatch).
+     */
+    private fun arrange(replyId: String, cmd: RoutineCommand.Arrange, host: Host, l: Langs): Boolean {
+        val ok = HomeSettingsStore.update(app) { it.with(cmd.part, cmd.move) } != null
+        reply(replyId, host, if (ok) TodayArrange.reply(cmd.part, cmd.move) else RoutineStrings.arrangeFailed(), l)
+        return ok
+    }
+
+    /**
+     * H3: the main app at History or the Calendar tab (the locked phone was refused before this). today-fix-d: the panel then
+     * leaves, as for any app it opens, so the page is in front without a touch.
+     */
+    private suspend fun show(replyId: String, page: ShowPage, host: Host, l: Langs): Boolean {
+        val history = page == ShowPage.HISTORY
+        val i = Intent().setClassName(app.packageName, "app.heyrobot.ui.MainActivity") // l10n: not text (a class name)
+            .putExtra(AppPages.EXTRA, if (history) AppPages.HISTORY else AppPages.CALENDAR).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        reply(replyId, host, if (history) RoutineStrings.showHistory() else RoutineStrings.showCalendar(), l)
+        return host.launch(i).also { if (it) host.leave() }
     }
 
     // ------------------------------------------------------------------ a routine made by voice
@@ -562,6 +662,7 @@ object PanelRoutines {
         if (known.isNotEmpty()) RobotTimers.cancelAsked(app, now)
         val dismissed = (known.isEmpty() || TimerAsk.mayRing(mine, now)) &&
             host.launch(RoutineFacts.toChosenClock(app, android.content.Intent(android.provider.AlarmClock.ACTION_DISMISS_TIMER)))
+        if (dismissed) TodaySource.timersStopped(app)
         if (host.handsFree) {
             val line = if (dismissed) ToolStrings.timerHandsFree() else if (known.isNotEmpty()) ToolStrings.timerRunningClock() else ToolStrings.cantCancelTimers()
             host.text(replyId, (known + line).joinToString(" ") { it.shown(l) })

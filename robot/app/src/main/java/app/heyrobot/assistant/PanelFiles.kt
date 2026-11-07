@@ -698,6 +698,7 @@ internal object PanelFiles {
         continued = TravelMode.Continued.NONE
         PanelFileTools.forget()
         PanelFileAnswer.forget()
+        PanelPrivateEvents.forget()
         original = null
         originalTooBig = false
         originalName = null

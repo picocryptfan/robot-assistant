@@ -121,6 +121,8 @@ data class RoutineSettings(
     val alarmWindow: TimeWindow = TimeWindow.ALARM,
     /** `briefTrigger`: when the built-in brief runs once you turn it on (BriefRoutine); its alarm hours are [alarmWindow]. */
     val briefTrigger: RoutineTrigger = RoutineTrigger.AlarmDismissed(),
+    /** `briefTriggerBefore`: the trigger "Read my day after my morning alarm" replaced, back when it is turned off (TodayAlarm). */
+    val briefTriggerBefore: RoutineTrigger? = null,
     /** `briefOutput`: where the brief speaks. */
     val briefOutput: RoutineOutput = RoutineOutput.HEADSET_OR_SPEAKER,
     /** The brief's card listed Open-Meteo when you turned it on: its weather may go online by itself ([Routine.online]). */
@@ -269,7 +271,10 @@ object BriefPrivacy {
         // 1.4: Robot Files' part is never said on a locked phone, whatever the level (files-1.4-plan.md §5.3), nor held for the
         // unlock here: its key needs the phone unlocked, so the routine reads it again then (RoutineRunner).
         // 1.5 L6: nor Robot to Robot's (its view needs the phone unlocked, §4.4).
-        val items = if (locked) all.filter { it != BriefItem.FILES && it != BriefItem.LINK } else all
+        // Today H5: nor the page's lists and note, which the page itself shows only unlocked. today-h7-fix 5: the news follows
+        // the level as the day line does (said at "Everything", else held for the unlock); under someone else's phone lock
+        // RoutineRunner never reads it.
+        val items = if (locked) all.filter { it != BriefItem.FILES && it != BriefItem.LINK && it != BriefItem.LISTS && it != BriefItem.NOTE } else all
         return planOf(items, locked, level)
     }
 

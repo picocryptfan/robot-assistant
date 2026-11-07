@@ -19,12 +19,22 @@ object LockShade {
     const val SILENT = 8_416
     const val SKILL_BASE = 8_700
     const val SKILL_SLOTS = 32
+    /** fix-126-review 1: a quiet run's words, each run under its own id so the next run's notice doesn't replace them. */
+    const val SILENT_BASE = 8_740
+    const val SILENT_SLOTS = 16
+
+    /** The id for a quiet run's notice: a free one, else the oldest of [shown] (Robot's quiet notices: id to post time). */
+    fun silentId(shown: Map<Int, Long>): Int {
+        val ids = (0 until SILENT_SLOTS).map { SILENT_BASE + it }
+        return ids.firstOrNull { it !in shown } ?: ids.minBy { shown.getValue(it) }
+    }
 
     fun hide(ctx: Context) {
         try {
             val nm = ctx.getSystemService(NotificationManager::class.java)
             for (id in listOf(READY, SUMMARY, PLAY, CONTINUE, SILENT)) nm.cancel(id)
             for (slot in 0 until SKILL_SLOTS) nm.cancel(SKILL_BASE + slot)
+            for (slot in 0 until SILENT_SLOTS) nm.cancel(SILENT_BASE + slot)
         } catch (t: Throwable) {
             RLog.w("lock_shade", t)
         }

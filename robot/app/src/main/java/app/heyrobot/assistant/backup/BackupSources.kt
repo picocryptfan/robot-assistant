@@ -189,6 +189,11 @@ internal object BackupSources {
         out[BackupCategory.FILES] = if (app.heyrobot.core.files.TravelMode.active(FilesSettingsStore.current(ctx))) Summary(-1, 0) else filesSummary(files())
         // 1.4, Lists: how many lists (null-count when they can't be opened now).
         out[BackupCategory.LISTS] = lists(lists())?.let { f -> Summary(f.lists.size, if (f.lists.isEmpty()) 0 else BackupExport.lists(f).size.toLong()) } ?: Summary(-1, 0)
+        // H3: how many private events (null-count when they can't be opened now).
+        out[BackupCategory.CALENDAR] = privateEvents(ctx)?.let { f -> Summary(f.events.size, if (f.events.isEmpty()) 0 else app.heyrobot.core.calendar.PrivateEventsCodec.encode(f).length.toLong()) } ?: Summary(-1, 0)
+        // H5: the Today page's home_settings.json, once Today was offered, turned on or arranged.
+        val home = app.heyrobot.sys.HomeSettingsStore.file(ctx)
+        out[BackupCategory.HOME] = Summary(if (home.isFile) 1 else 0, if (home.isFile) home.length() else 0)
         // The everyday set: everyday_settings.json, once you changed one of its switches.
         val everyday = EverydaySettingsStore.file(ctx)
         out[BackupCategory.EVERYDAY] = Summary(if (everyday.isFile) 1 else 0, if (everyday.isFile) everyday.length() else 0)
@@ -232,7 +237,9 @@ internal object BackupSources {
     /** What [gather] found: the entries in restore order, and the helpers whose key couldn't be read just now (by name). */
     class Gathered(val sources: List<Source>, val secrets: List<BackupSecrets.Secret>, val unreadableKeys: List<String>, val linksLeftOut: Boolean = false,
                    /** R4: asked once the entries are written: how many of Robot Files' files couldn't be read. */
-                   val filesLeftOut: () -> Int = { 0 }, val codesLeftOut: Boolean = false)
+                   val filesLeftOut: () -> Int = { 0 }, val codesLeftOut: Boolean = false,
+                   /** Today fix: private events Robot can't open on this phone (key gone, damaged): left out, and Done says so. */
+                   val privateLeftOut: Boolean = false)
 
     /** Memory couldn't be opened now while Memory was chosen ("Back up without Memory, or unlock and try again"). */
     class MemoryUnreadable : Exception()
@@ -242,6 +249,13 @@ internal object BackupSources {
 
     /** 1.4: the lists couldn't be opened now while Lists was chosen ("Back up without Lists, or unlock and try again"). */
     class ListsUnreadable : Exception()
+
+    /** H3: private events couldn't be opened now while they were chosen ("Back up without them, or unlock and try again"). */
+    class PrivateUnreadable : Exception()
+
+    /** H3: private events as they are now (an empty file when there are none), or null when they can't be opened now. */
+    fun privateEvents(ctx: Context): app.heyrobot.core.calendar.PrivateEventsFile? =
+        (app.heyrobot.sys.PrivateEventsFiles.vault(ctx).load() as? app.heyrobot.sys.PrivateLoad.Loaded)?.file
 
     /**
      * 1.4, Robot Files (files-1.4-plan.md §2.8, core FilesBackup): each carried file's plain bytes, streamed through this
@@ -356,6 +370,7 @@ internal object BackupSources {
         var linksLeftOut = false
         var filesLeft: () -> Int = { 0 }
         var codesLeftOut = false
+        var privateLeftOut = false
         var codes: MemoryFile? = null
         fun small(c: BackupCategory, f: File, name: String = f.name, change: ((String) -> String?)? = null) {
             if (!f.isFile) return
@@ -422,8 +437,21 @@ internal object BackupSources {
                 }
                 small(c, ListsSettingsStore.file(ctx), BackupCategory.LISTS_SETTINGS)
             }
+            // H3: private_events.json, the plain events (never the sealed file); none yet: nothing.
+            // Locked: not now (unlock and try again); can't be opened at all: left out, so the rest still goes in.
+            BackupCategory.CALENDAR -> when (val l = app.heyrobot.sys.PrivateEventsFiles.vault(ctx).load()) {
+                app.heyrobot.sys.PrivateLoad.Unreadable, is app.heyrobot.sys.PrivateLoad.TooNew -> privateLeftOut = true
+                app.heyrobot.sys.PrivateLoad.Locked -> throw PrivateUnreadable()
+                is app.heyrobot.sys.PrivateLoad.Loaded -> if (l.file.events.isNotEmpty()) {
+                    val f = l.file
+                    val json = app.heyrobot.core.calendar.PrivateEventsCodec.encode(f).toByteArray(Charsets.UTF_8)
+                    out += Source.bytes(c, BackupCategory.CALENDAR_FILE, json.size.toLong()) { json }
+                }
+            }
             // Your music app's pin stays on this phone (trust is never in a backup).
             BackupCategory.EVERYDAY -> small(c, EverydaySettingsStore.file(ctx), BackupCategory.EVERYDAY_FILE, BackupExport::everyday)
+            // H5: the Today page's order, pinned note and whether it is your home page, as written.
+            BackupCategory.HOME -> small(c, app.heyrobot.sys.HomeSettingsStore.file(ctx), BackupCategory.HOME_FILE)
             // L12: what :link hands over (never a key: core LinkBackupCodec), then Settings › Robot to Robot. Off, none of the first.
             // U1: on, but :link wouldn't say (the export refused or timed out): the whole category stays out and Done says so.
             BackupCategory.LINKS -> {
@@ -444,6 +472,6 @@ internal object BackupSources {
                 unreadable += k.unreadable
             }
         }
-        return Gathered(out, secrets, unreadable, linksLeftOut, filesLeft, codesLeftOut)
+        return Gathered(out, secrets, unreadable, linksLeftOut, filesLeft, codesLeftOut, privateLeftOut)
     }
 }

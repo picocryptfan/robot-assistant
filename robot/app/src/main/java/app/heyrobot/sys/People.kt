@@ -372,6 +372,9 @@ object AppPages {
     /** The everyday set (E7): Assistant setup from its top, from Ask Robot's "Make Robot your assistant" line. */
     const val SETUP = "setup"
     const val NOTES = "notes"
+    /** H3: History (behind the clock icon) and the Calendar tab, from "show my history" and "show my calendar". */
+    const val HISTORY = "history"
+    const val CALENDAR = "calendar"
     /** 0.5.0: the Transcripts library, or one transcript ([EXTRA_TRANSCRIPT]); Settings › Conversation (the tile's long press). */
     const val TRANSCRIPTS = "transcripts"
     const val CONVERSATION_SETTINGS = "conversation_settings"
