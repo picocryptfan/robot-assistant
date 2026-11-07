@@ -1,0 +1,1 @@
+1.2.5: a reply above a tall card, such as a list of three items, now shows from its first line. "Clear ticked items from shopping" also clears checked, done and crossed-off items, with or without the word "list", in English and French. Notes: https://github.com/picocryptfan/robot-assistant/releases/tag/v1.2.5

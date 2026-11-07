@@ -396,6 +396,21 @@ private fun Messages(st: PanelState, actions: PanelActions, modifier: Modifier) 
         if (newest.role == TurnRole.USER) follow = true
         if (follow) list.animateScrollToItem(0)
     }
+    // fix-124c (phone-1.2.4-c): once a turn has ended, one taller than the list (its reply above a three-item list card,
+    // the keyboard up) shows its top, the reply's first line; the newest item's foot alone hid "Yes, Shopping has Test_q.".
+    // fix-125-scroll (review-125): only a list card's turn with no card waiting for a tap, and once per turn, so a later
+    // phase, a confirm tap or a long reply alone never moves the list away from where the person is.
+    val showTop = showsTurnTop(newest, st.phase)
+    var topped by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(newest.id, showTop) {
+        if (!showTop || !follow || topped == newest.id) return@LaunchedEffect
+        androidx.compose.runtime.withFrameNanos { }
+        val info = list.layoutInfo
+        val item = info.visibleItemsInfo.firstOrNull { it.index == 0 } ?: return@LaunchedEffect
+        val offset = newestTopOffset(item.size, info.viewportEndOffset - info.viewportStartOffset - info.beforeContentPadding - info.afterContentPadding)
+        topped = newest.id
+        if (offset > 0) list.animateScrollToItem(0, offset)
+    }
     LazyColumn(
         state = list,
         modifier = modifier.fillMaxWidth().pointerInput(st.phase, st.speak) {
@@ -420,6 +435,23 @@ private fun Messages(st: PanelState, actions: PanelActions, modifier: Modifier) 
         }
     }
 }
+
+/** The phases while a turn is still being heard or written: the list follows its foot. */
+private val TURN_BUSY = setOf(Phase.LISTENING, Phase.TRANSCRIBING, Phase.THINKING, Phase.ANSWERING)
+
+/**
+ * fix-124c: how far into the newest turn the list scrolls (reverse layout: from its foot) so its top is at the list's top,
+ * when the turn ([itemSize]) is taller than the list's room ([viewport]); 0 when it fits, so its foot stays in view.
+ */
+internal fun newestTopOffset(itemSize: Int, viewport: Int): Int = if (viewport <= 0) 0 else (itemSize - viewport).coerceAtLeast(0)
+
+/**
+ * fix-125-scroll: whether the newest turn [t] scrolls to its first line in [phase]: a reply over a list card, once it
+ * has been heard and written, with no card of Robot's own (one waiting for a tap keeps Cancel and Do it in view, then its
+ * result and Undo), so a long reply alone keeps its foot where the person was reading.
+ */
+internal fun showsTurnTop(t: UiTurn, phase: Phase): Boolean =
+    t.role != TurnRole.USER && phase !in TURN_BUSY && t.list != null && t.actions.isEmpty()
 
 /** While listening: the pulsing mic, the words so far, and "Done". */
 @Composable

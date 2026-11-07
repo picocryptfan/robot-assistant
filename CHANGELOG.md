@@ -4,6 +4,13 @@ What changed in each version of Robot, newest first. Each version's full notes, 
 [`robot/README.md`](robot/README.md) ("What's new in …" and the feature sections). Versions before 1.0 were test
 builds.
 
+## 1.2.5
+
+- After Robot answers, a reply above a tall card (a list of three items, say) shows from its first line; before, the
+  panel showed the card's foot and left the reply out of sight above it.
+- "Clear ticked items from shopping" clears them: ticked, checked, done and crossed-off items all clear, with or without
+  the word "list", in English and French (« efface les éléments cochés de l'épicerie »).
+
 ## 1.2.4 (2026-11-06)
 
 - A Car mode button on the home screen, and a Car mode shortcut when you long-press Robot's icon, open car mode with no

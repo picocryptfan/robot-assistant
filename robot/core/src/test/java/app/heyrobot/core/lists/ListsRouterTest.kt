@@ -251,6 +251,30 @@ class ListsRouterTest {
         add("add Sam to the guest list").let { assertEquals("Sam", it.words); assertEquals(ListRef.Named("guest"), it.list) }
     }
 
+    /** fix-124c (phone-1.2.4-c): "clear ticked items from shopping" went to the model; every done word clears, with or without "list". */
+    @Test fun clearsTickedCheckedDoneAndCrossedOffItems() {
+        val missed = ArrayList<String>()
+        for (t in listOf("clear ticked items from shopping", "clear the ticked items from shopping", "clear checked items from shopping",
+            "clear done items from shopping", "clear the crossed off items from shopping", "clear crossed-off items from the shopping list",
+            "clear the checked off items on my shopping list", "remove the ticked items from shopping", "clear completed items from shopping",
+            "clear ticked items from the shopping list", "clear the done items on the shopping list", "clear the ticked off stuff from shopping",
+            "clear ticked items from groceries", "clear my ticked items from shopping", "clear all the ticked items from shopping",
+            "clear all ticked items from shopping", "clear ticked shopping items", "clear the ticked shopping list items")) {
+            if (r(t) != ListsCommand.ClearDone(shopping, Lang.EN)) missed += t
+        }
+        for (t in listOf("efface les éléments cochés de l'épicerie", "efface ce qui est coché sur la liste d'épicerie", "efface les items cochés de ma liste d'épicerie",
+            "efface ce qui est rayé de l'épicerie", "enlève les éléments faits de la liste d'épicerie", "efface les cochés de la liste d'épicerie",
+            "efface ce qui est fait sur l'épicerie", "efface les éléments rayés de la liste d'épicerie", "efface les choses cochées de l'épicerie",
+            "efface tout ce qui est coché sur la liste d'épicerie", "enlève ce que j'ai coché de la liste d'épicerie")) {
+            if (r(t) != ListsCommand.ClearDone(shopping, Lang.FR)) missed += t
+        }
+        val focus = ListsHeard(focus = true)
+        for (t in listOf("clear ticked items", "clear the checked items", "clear the crossed off ones", "clear done items")) if (r(t, focus) != ListsCommand.ClearDone(ListRef.Unnamed, Lang.EN)) missed += t
+        for (t in listOf("efface les éléments cochés", "efface ce qui est rayé")) if (r(t, focus) != ListsCommand.ClearDone(ListRef.Unnamed, Lang.FR)) missed += t
+        assertEquals(emptyList<String>(), missed)
+        for (t in listOf("clear ticked items from shopping cart", "clear checked bags", "clear done", "remove the checked luggage")) assertNull(t, r(t))
+    }
+
     @Test fun yourListsNamesWithoutTheWordList() {
         val heard = ListsHeard(names = listOf("Costco", "Chalet"))
         assertEquals(ListsCommand.Add("paper towels", ListRef.Named("Costco"), "Costco", Lang.EN), r("add paper towels to Costco", heard))

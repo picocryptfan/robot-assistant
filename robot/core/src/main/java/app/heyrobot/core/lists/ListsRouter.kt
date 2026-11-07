@@ -394,7 +394,16 @@ object ListsRouter {
     private val TICK_VERB_EN = listOf("take", "cross", "tick", "check", "scratch", "strike", "knock", "mark") // l10n: not text (words Robot hears)
     private val REMOVE_EN = listOf("remove", "delete", "take") // l10n: not text (words Robot hears)
     private val MAKE_EN = listOf("make", "make me", "start", "create", "begin", "set up", "new", "start me", "create me") // l10n: not text (words Robot hears)
-    private val DONE_EN = setOf("done", "ticked", "checked", "crossed off", "checked off", "ticked off", "completed", "finished", "bought") // l10n: not text (words Robot hears)
+    private val DONE_EN = setOf("done", "ticked", "checked", "crossed off", "checked off", "ticked off", "completed", "finished", "bought", // l10n: not text (words Robot hears)
+        "crossed-off", "checked-off", "ticked-off", "crossed out", "crossed") // l10n: not text (words Robot hears)
+    private val ITEMS_EN = setOf("items", "things", "ones", "stuff", "entries") // l10n: not text (words Robot hears)
+
+    /** fix-124c: a default list by its bare name after "clear the ticked items from" ("shopping", "the to-do"), where "list" is often left out. */
+    private fun bareRole(s: Said, from: Int, det: Set<String>, roles: Map<String, ListRole>): Ref? {
+        if (from >= s.folded.size) return null
+        val at = if (s.folded[from] in det && from + 1 < s.folded.size) from + 1 else from
+        return roles[s.folded.subList(at, s.folded.size).joinToString(" ")]?.let { Ref(ListRef.Role(it), s.words.subList(at, s.words.size).joinToString(" ")) }
+    }
     private val UNDO_EN = setOf("undo", "undo that", "undo it", "undo the last one", "undo the last change", "take that back", "scratch that", "never mind that") // l10n: not text (words Robot hears)
 
     private fun english(s: Said, heard: ListsHeard): ListsCommand? {
@@ -601,10 +610,16 @@ object ListsRouter {
         val d = DONE_EN.sortedByDescending { it.length }.firstOrNull { d -> val w = d.split(' '); i + w.size <= f.size && f.subList(i, i + w.size) == w }
         if (d != null) {
             i += d.split(' ').size
-            if (i < f.size && f[i] in setOf("items", "things", "ones", "stuff", "entries")) i++ // l10n: not text (words Robot hears)
+            // fix-124c: "clear the ticked shopping items", "clear the done to-do list items"
+            if (f.size - i >= 2 && f.last() in ITEMS_EN) {
+                val mid = f.subList(i, f.size - 1).let { if (it.size > 1 && it.last() == "list") it.dropLast(1) else it }
+                ROLE_EN[mid.joinToString(" ")]?.let { return ListsCommand.ClearDone(ListRef.Role(it), en) }
+            }
+            if (i < f.size && f[i] in ITEMS_EN) i++
             if (i == f.size) return if (heard.focus) ListsCommand.ClearDone(ListRef.Unnamed, en) else null
             if (f[i] !in setOf("on", "from", "in", "off", "of")) return null // l10n: not text (words Robot hears)
-            return whole(s, i + 1, fr = false, heard)?.takeIf { it.ref != ListRef.Unnamed || heard.focus }?.let { ListsCommand.ClearDone(it.ref, en) }
+            return (whole(s, i + 1, fr = false, heard) ?: bareRole(s, i + 1, DET_EN, ROLE_EN))
+                ?.takeIf { it.ref != ListRef.Unnamed || heard.focus }?.let { ListsCommand.ClearDone(it.ref, en) }
         }
         // "clear the shopping list": its ticked items only, with Undo.
         if (f[0] != "clear") return null
@@ -713,7 +728,10 @@ object ListsRouter {
     private val MAKE_FR = listOf("fais", "fais-moi", "fait", "faire", "cree", "creer", "cree-moi", "commence", "commencer", "demarre", "part", "nouvelle", "fais moi") // l10n: not text (words Robot hears)
     private val UNDO_FR = setOf("annule", "annule ca", "annule-le", "annule le", "defais ca", "defais", "annule la derniere") // l10n: not text (words Robot hears)
     private val DONE_FR = listOf("ce qui est coche", "ce qui est fait", "ce que j'ai coche", "les elements coches", "les elements faits", "les choses cochees", // l10n: not text (words Robot hears)
-        "les items coches", "ce qui est raye", "les cochees", "les coches") // l10n: not text (words Robot hears)
+        "les items coches", "ce qui est raye", "les cochees", "les coches", // l10n: not text (words Robot hears)
+        // fix-124c: crossed off (« rayé ») and done, as the English has them.
+        "les elements rayes", "les items rayes", "les choses rayees", "les choses faites", "les items faits", "les rayes", "ce que j'ai raye", // l10n: not text (words Robot hears)
+        "ce qui est barre", "les elements barres") // l10n: not text (words Robot hears)
 
     private fun french(s: Said, heard: ListsHeard): ListsCommand? {
         val t = s.text
@@ -837,12 +855,15 @@ object ListsRouter {
         if (e > 0) return whole(s, e, fr = true, heard)?.takeIf { it.ref != ListRef.Unnamed || heard.focus }?.let { ListsCommand.Empty(it.ref, fr) }
         val c = startsAny(s, listOf("efface", "effacer", "enleve", "retire", "supprime", "vide")) // l10n: not text (words Robot hears)
         if (c <= 0) return null
-        val d = DONE_FR.sortedByDescending { it.length }.firstOrNull { d -> val w = d.split(' '); c + w.size <= f.size && f.subList(c, c + w.size) == w }
+        // fix-124c: « efface tout ce qui est coché »
+        val at = if (c + 1 < f.size && f[c] == "tout" && f[c + 1] == "ce") c + 1 else c
+        val d = DONE_FR.sortedByDescending { it.length }.firstOrNull { d -> val w = d.split(' '); at + w.size <= f.size && f.subList(at, at + w.size) == w }
         if (d != null) {
-            val i = c + d.split(' ').size
+            val i = at + d.split(' ').size
             if (i == f.size) return if (heard.focus) ListsCommand.ClearDone(ListRef.Unnamed, fr) else null
             if (f[i] !in OFF_FR) return null
-            return whole(s, i + 1, fr = true, heard)?.takeIf { it.ref != ListRef.Unnamed || heard.focus }?.let { ListsCommand.ClearDone(it.ref, fr) }
+            return (whole(s, i + 1, fr = true, heard) ?: bareRole(s, i + 1, DET_FR + setOf("les", "mes"), ROLE_FR))
+                ?.takeIf { it.ref != ListRef.Unnamed || heard.focus }?.let { ListsCommand.ClearDone(it.ref, fr) }
         }
         // « efface la liste d'épicerie »: its ticked items only, with Undo.
         if (f[0] !in setOf("efface", "effacer")) return null
