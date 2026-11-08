@@ -24,8 +24,10 @@ import app.heyrobot.sys.BackupFiles
 
 object BackupReminders {
     const val CHANNEL = "backup_reminders"
-    private const val ID = 8_701
-    private const val REQ_OPEN = 8_702
+    /** fix-notice-ids: 8,701 sat in the skills' slots (LockShade.SKILL_BASE), whose hide cancelled it. NoticeIdsTest. */
+    private const val ID = 8_800
+    private const val REQ_OPEN = ID
+    private const val OLD_ID = 8_701
 
     /** The job's run (background thread). */
     fun run(ctx: Context, now: Long = System.currentTimeMillis()) {
@@ -40,6 +42,21 @@ object BackupReminders {
         val p = BackupFiles.prefs(ctx)
         BackupFiles.savePrefs(ctx, p.copy(remind = on, remindSince = if (on && !p.remind) now else p.remindSince))
         UpdateJobs.ensureBackupReminder(ctx, on)
+    }
+
+    /**
+     * After an update: a reminder still up under the old id (1.2's and 1.3.0's) moves to [ID], so it stays until you open
+     * or swipe it, not a week until it's due again. Only ours: its channel, so a skill's notice there stays.
+     */
+    fun dropOld(ctx: Context, now: Long = System.currentTimeMillis()) {
+        try {
+            val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
+            if (nm.activeNotifications.none { it.id == OLD_ID && it.notification.channelId == CHANNEL }) return
+            nm.cancel(OLD_ID)
+            post(ctx, BackupReminder.daysSince(now, BackupFiles.state(ctx).lastAt))
+        } catch (t: Throwable) {
+            RLog.w("backup_remind_old", t)
+        }
     }
 
     private fun post(ctx: Context, days: Int?): Boolean {

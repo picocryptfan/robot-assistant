@@ -73,8 +73,12 @@ object LinkNotices {
     /** Notification ids, and their PendingIntents' request codes: after Files' (8,760) and away from routines' and skills'. */
     private const val CARDS_ID = LinkShade.CARDS_ID
     private const val HANDLED_ID = 8_781
-    /** One per kind of pairing news: 8,782 + its code (up to 8,793 for REPLIED, which has its own). */
+    /** One per kind of pairing news: 8,782 + its code up to FILES (12); later kinds from MORE_NEWS_ID (fix-notice-ids:
+     *  FILE_FAILED and FOLDER_ENDED took REPLIED_ID's and LIST_ENDED_ID's). They time out in a day, so none stays stuck. */
     private const val NEWS_ID = 8_782
+    private const val LAST_NEWS_CODE = 12
+    private const val MORE_NEWS_ID = 8_810
+    private const val MORE_NEWS_SLOTS = 10
     /** L7: their Robots' answers to what you asked, when the panel isn't open. */
     private const val REPLIED_ID = LinkShade.REPLIED_ID
     private const val LIST_ENDED_ID = 8_796
@@ -156,7 +160,7 @@ object LinkNotices {
             for (x in now.filter { it.kind != DeskNoticeKind.HANDLED && it.kind != DeskNoticeKind.CARDS && it.kind != DeskNoticeKind.REPLIED }) {
                 log(x)
                 val text = news(x, name(x.pairing)) ?: continue
-                post(ctx, NEWS_ID + x.kind.code, text.render(l), null, emptyList())
+                post(ctx, newsId(x.kind), text.render(l), null, emptyList())
             }
             // L7: their Robots' answers: in the panel when it's open (PanelLink), else one notification, then said.
             if (owed || now.any { it.kind == DeskNoticeKind.REPLIED }) {
@@ -303,6 +307,11 @@ object LinkNotices {
         if ((id == CARDS_ID || id == REPLIED_ID) && PhoneLockNow.on(ctx)) { cancel(ctx, id); return false }
         return true
     }
+
+    /** Each kind's own id (NoticeIdsTest checks they meet no other notice). */
+    internal fun newsId(kind: DeskNoticeKind): Int =
+        if (kind.code <= LAST_NEWS_CODE) NEWS_ID + kind.code
+        else (MORE_NEWS_ID + kind.code - LAST_NEWS_CODE - 1).also { require(kind.code - LAST_NEWS_CODE <= MORE_NEWS_SLOTS) }
 
     private fun cancel(ctx: Context, id: Int) {
         try { ctx.getSystemService(NotificationManager::class.java).cancel(id) } catch (_: Throwable) {}

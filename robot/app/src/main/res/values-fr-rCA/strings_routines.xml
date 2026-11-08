@@ -138,6 +138,9 @@
     <string name="routine_once_a_day">Au plus une fois par jour</string>
     <string name="routine_once_a_day_detail">Un déclencheur qui revient le même jour est ignoré</string>
     <string name="routine_do">Faire</string>
+    <string name="routine_skill">Compétence</string>
+    <string name="routine_values">Valeurs pour cette routine</string>
+    <string name="routine_values_none">Sa compétence ne demande rien : elle s’exécute telle quelle</string>
     <string name="routine_move_up">Monter l’étape %1$d</string>
     <string name="routine_remove_step">Retirer l’étape %1$d</string>
     <string name="routine_add_step">Ajouter une étape</string>

@@ -60,7 +60,19 @@ data class SkillDraft(
     val notes: List<Phrase> = emptyList(),
     /** D8: the steps came after a pause. */
     val paused: Boolean = false,
+    /** 1.3 (design §10.3): a model's draft made after content, and where that content came from (its banner). */
+    val source: DraftSource? = null,
 ) {
+    /** A model wrote it (design §10): only a tap saves it. */
+    val drafted: Boolean get() = made == SkillMade.DRAFT_DEVICE || made == SkillMade.DRAFT_HELPER
+
+    /** What a spoken yes gets instead of a save, or null when a yes saves (D13, design §10.2). */
+    val tapLine: Phrase? get() = when {
+        drafted -> SkillStrings.tapDraft("save" to UiLabel(UiStrings.save))
+        fromContent -> SkillStrings.tapToSave("save" to UiLabel(UiStrings.save))
+        else -> null
+    }
+
     /** The skill this card saves. */
     fun skill(): Skill {
         val params = mutableListOf<SkillParam>()
@@ -78,7 +90,7 @@ data class SkillDraft(
         }
         val key = otherName(name)
         return Skill(id, 1, displayName(name), if (lang == Lang.EN) listOfNotNull(key) else emptyList(), if (lang == Lang.FR) listOfNotNull(key) else emptyList(),
-            params, steps, if (fromContent && level == SkillLevel.JUST_DO_IT) SkillLevel.ASK_FIRST else level,
+            params, steps, if ((fromContent || drafted) && level == SkillLevel.JUST_DO_IT) SkillLevel.ASK_FIRST else level,
             SkillProvenance(made, fromContent, now, now))
     }
 
@@ -86,7 +98,7 @@ data class SkillDraft(
     val problems: List<Phrase> get() = if (steps.isEmpty()) listOf(SkillStrings.noSteps()) else SkillCheck.problems(skill())
 
     /** A spoken yes may save it: it can be saved and it didn't come from content (D13). */
-    val yesSaves: Boolean get() = !fromContent && problems.isEmpty()
+    val yesSaves: Boolean get() = tapLine == null && problems.isEmpty()
 
     /** [slot] made asked each time, or fixed again; at most [SkillCheck.MAX_PARAMS] asked. */
     fun toggle(slot: Slot): SkillDraft = when {

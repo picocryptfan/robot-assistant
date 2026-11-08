@@ -2,11 +2,13 @@
 package app.heyrobot.assistant.skills
 
 import app.heyrobot.assistant.VoiceHub
+import app.heyrobot.assistant.routines.PanelRoutines
 import app.heyrobot.assistant.routines.RoutineRunner
 import app.heyrobot.core.RLog
 import app.heyrobot.core.connect.ConnLimits
 import app.heyrobot.core.i18n.Langs
 import app.heyrobot.core.i18n.SkillStrings
+import app.heyrobot.core.skills.RoutineSteps
 import app.heyrobot.core.skills.Skill
 import app.heyrobot.core.skills.SkillOutcome
 import app.heyrobot.core.skills.SkillRun
@@ -65,7 +67,9 @@ object SkillRunner {
         }
         val out = SkillRun(s, values, named, ports.actions, ports.view, ports.confirmations, untrusted || host.untrusted, ports.messages, ports.langs,
             ports.newId, canWait, say = { t -> host.append(replyId, t); host.say(t, personal = true) }, done = done, sources = sources, outputs = outputs,
-            links = withContext(Dispatchers.IO) { PanelSkills.links() }).run(from)
+            links = withContext(Dispatchers.IO) { PanelSkills.links() },
+            // S3.2: a routine's own steps (the brief, your reminders, the messages count) as an asked routine runs them.
+            routineSteps = RoutineSteps { st -> PanelRoutines.skillStep(replyId, s, st, host, l) }).run(from)
         // Settings › Skills' "Today 17:32 · 2 of 2 done": counts and a time only.
         withContext(Dispatchers.IO) {
             try {

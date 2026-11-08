@@ -92,6 +92,7 @@ object OldConnectionCodec {
         put("marks", ConnOp.MARKS.filterKeys { it in op.marks }.values.toList())
         op.check?.let { put("check", linkedMapOf("pointer" to it.pointer, "equals" to it.equals)) }
         when (val s = op.spec) {
+            is OpSpec.McpCall -> {}
             is OpSpec.HaCall -> {
                 put("domain", s.domain)
                 put("service", s.service)

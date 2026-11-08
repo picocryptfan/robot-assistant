@@ -1,6 +1,6 @@
 # Robot's privacy policy
 
-This policy applies to Robot 1.0.0 and later. Last changed 5 Nov 2026 (the timers record, 1.2.3; every permission and notice now listed, and the alarms for routines and temporary copies; 1.1: the car screen's message panels, Robot Files and travel mode, files in backups, the speeds and GPU check kept on the phone, the chip in reports, Phone lock, backups, skills and what Robot's model is told about them, the Support page, the two new permissions, the date and country a helper's first message carries, up to 5 result pages for a web search, when GitHub receives a feedback issue, and the Phone permission during a phone lock; since then: Lists, the journal of what you add while the phone is locked, the list widget and what your home-screen app sees, and what History keeps of a list; Skills connections, what each kind sends and when, the first-use card, connections and their keys in backups, and the network type Robot reads for them; Robot to Robot; what "What went online" keeps of a web search; files you attach that hold something private; and what History keeps after a list is read; Today, the Calendar tab and private events, what the calendar is read for, and what the morning brief says of your lists and note; Today and private events restore only from your own backup; Today's weather card, which goes online when you tap it, the Robot today widget and the day summary on the lock screen; news on Today, feeds on your own server and token feed addresses).
+This policy applies to Robot 1.0.0 and later. Last changed 8 Nov 2026 (the timers record, 1.2.3; every permission and notice now listed, and the alarms for routines and temporary copies; 1.1: the car screen's message panels, Robot Files and travel mode, files in backups, the speeds and GPU check kept on the phone, the chip in reports, Phone lock, backups, skills and what Robot's model is told about them, the Support page, the two new permissions, the date and country a helper's first message carries, up to 5 result pages for a web search, when GitHub receives a feedback issue, and the Phone permission during a phone lock; since then: Lists, the journal of what you add while the phone is locked, the list widget and what your home-screen app sees, and what History keeps of a list; Skills connections, what each kind sends and when, the first-use card, connections and their keys in backups, and the network type Robot reads for them; Robot to Robot; what "What went online" keeps of a web search; files you attach that hold something private; and what History keeps after a list is read; Today, the Calendar tab and private events, what the calendar is read for, and what the morning brief says of your lists and note; Today and private events restore only from your own backup; Today's weather card, which goes online when you tap it, the Robot today widget and the day summary on the lock screen; news on Today, feeds on your own server and token feed addresses; 1.3: MCP servers, plans and drafts with a helper, and what stays on the phone when you export, import or sign a skill).
 
 ## The short version
 
@@ -90,6 +90,15 @@ connections it keeps with the Robots you've paired with (below).
   to a helper. How often each model filled each skill right (the last 10 fills, right or wrong) is kept in
   `skills_state.json` too: on the phone, never backed up, logged or sent, and it starts over after a restore. The switch
   itself is kept in `skill_settings.json` and goes into a backup with your skills.
+- Skills 1.3 (plans, drafts, sharing, routines as skills). A plan or a skill Robot's model drafts is made on the phone,
+  and nothing about it goes online unless you tap a helper's card (13 below). Your routines are also kept as skills in
+  `skills.json`, with the routine's steps and its name; `routines.json` stays as it was, so an older Robot still reads
+  it. A skill you export is signed with a key made on this phone in Android's Keystore (`robot_skill_signing`, P-256),
+  which can sign but can't be copied out of the phone. Its fingerprint is what you show someone to trust. The keys you
+  trust, with the names you gave them, are kept in `skill_keys.json`. An exported `.robotskill` file holds the skill's
+  steps and your fixed values (Export shows the ones that look personal first), never a connection's address, key or
+  token, your helpers, the skill's history or its level; you choose where it is saved, and sharing it is yours. Import
+  reads only a file you pick or share to Robot, shows it, and saves each skill off.
 - Skills connections (Settings › Skills › Connections, none until you add one). Each connection's
   name, address, operations, your answers to its first-use cards and its switches are kept in `connections.json` in
   Robot's private storage. Its key (a token, a password, a header's value, an ntfy topic or a webhook address that holds
@@ -112,7 +121,7 @@ connections it keeps with the Robots you've paired with (below).
   never keeps the passphrase and never uploads the file: nobody can open it without the passphrase, Robot included. You
   choose what goes in. It can hold your settings (without keys), People, Memory, headset and car mode settings,
   your Today page's order and pinned note, whether the weather line and the lock screen summary are on (the forecast itself is never in a backup), private events (these come back only from a backup you mark as your own: from anyone else's file a restore skips them; they sit inside the backup's encryption, and a vault Robot can't
-  open is left out and the backup says so), routines, Phone lock's locks (not the lock code), skills, notes, History, transcripts, Robot Files (each file as it is,
+  open is left out and the backup says so), routines, Phone lock's locks (not the lock code), skills (with them, the public keys you trust for shared skills, and for each MCP server its tool list, your tool choices and pins; no token or key, and these come back only from a backup you mark as your own), notes, History, transcripts, Robot Files (each file as it is,
   with the list of your files and Settings › Files; videos have their own row), your lists (with what waits in the
   journal, and Settings › Lists), your connections (addresses, operations and first-use answers, never a
   key) and, only if you tick them,
@@ -405,6 +414,62 @@ connections it keeps with the Robots you've paired with (below).
     for; plain http is only for your own network with nothing secret. Each request names Robot ("Robot") and nothing
     about you; your server sees your IP address. Robot never follows a redirect. What your server, your ntfy server or
     your webhook's service does with a request is under its own terms, or yours if you run it.
+12. News on Today, only after you add a feed (there are none to start, and Today's News setting shows how to find
+    feeds you'd like). Robot then fetches the feeds you added, at most five, once a day by default: from 5:30 in the
+    morning, on Wi-Fi, not in Battery Saver. A morning the phone can't fetch is caught up once, when it can (back on
+    Wi-Fi, or when you open Today), never before 5:30. You can choose "When I open Today" (at most once an hour) or
+    "Only when I ask" instead, and tapping the line's time fetches them then, on any network. Neither the daily fetch
+    nor an open uses mobile data unless you turn on "Use mobile data for news" in Today's News setting (off to start). With Today off, or with no feeds, nothing is fetched. Adding a feed fetches the address
+    you typed, and the feed its page names if it's a page. Each feed's server sees your IP address, the time and the
+    request: https (plain http only to your own network; an address carrying a token goes only over https with a valid
+    certificate, so the token is never sent in the clear, except to a server on the phone itself, which Today's News
+    setting marks "Not encrypted (on this phone)"), no cookies, no referrer, and the same user agent a common phone browser sends (Chrome on
+    Android's), which doesn't name Robot. Sent directly, a request also carries the tags that server gave last time
+    (If-None-Match, If-Modified-Since) so an unchanged feed isn't sent again; they never go to another server, or
+    through Tor. At most 512 KB and 15 seconds a feed, all of it. A feed on your own server (a feed reader there, so the
+    publishers see your server and not your phone) may be on your own network. That means a private address on
+    whichever Wi-Fi you're on: on someone else's, a plain http address can be another device, and Today's News setting
+    says so under such a feed. A feed's request goes either all to your network or all to the internet, never from
+    one to the other; an address on the internet typed as a number isn't taken; and adding a site's page follows the
+    feed it names only if that feed is of the page's kind, so a page on the internet can't send the phone to your
+    network. A feed address carrying a token (in its query, or a random-looking part of its path) is kept encrypted on
+    the phone, shown masked, and left out of logs, History, the backup and anything Robot's model reads; a headline
+    whose link holds it is dropped (after a restore, Today's News setting asks you to add it again). With "Only through Tor" chosen, every feed goes through Tor,
+    each server on its own circuit, so the servers see a Tor exit instead of your IP address, except a feed on your
+    own network, which Tor can't reach: it goes directly, and Today's News setting says so. Tor runs only while
+    Robot to Robot is on; while it can't connect, nothing is fetched, never directly instead. The feeds are read on
+    the phone in a separate process with no network access and none of your data. The headlines are kept for 7 days
+    in storage that's never backed up, and a removed feed's headlines are deleted at once; tapping one opens it in
+    your browser. The spoken brief says them on a locked phone only at "Everything", otherwise once you unlock, and
+    never during someone else's phone lock. A brief or an answer that read the headlines is kept in History like any
+    other, and History is in Robot's backup. Your feeds and how often they're fetched go in a backup with Today's
+    settings; restoring someone else's backup adds no feeds and never fetches more often. Each fetch is listed in
+    What went online, under News.
+
+13. MCP servers (1.3), only ones you add in Settings › Skills › Connections › MCP server, and only on your home network,
+    at a Tailscale address, or on this phone with a token. Robot refuses a public internet address when you add it, on
+    every call and on the connection itself, even https, and never reaches one. Robot asks the server for its list of
+    tools when you tap Test, and sends a tool's call when a skill or a card you answered runs it: the tool's name and
+    the arguments the card showed (at most 1,200 characters; longer is refused, not cut), with your token as a bearer
+    key if you set one, and Robot's name and nothing about you. A token is kept encrypted and goes only to that
+    server's address, and only over https with a valid certificate; the one exception is a server on this phone,
+    which the page marks "Not encrypted (on this phone)" and which needs a token. The server's reply is kept as information, cut to 1,500 characters, and never
+    becomes an instruction; a link in it is never followed; a broken connection is never resent by itself. The server's
+    descriptions of its tools are shown to you in a grey box and are never given to a model. A tool stays off until you
+    turn it on, and turns off again if the server changes it. Never on a locked phone and never from a routine. What
+    your server does with a request is yours, or its maker's terms. Robot's backup holds the connection without its
+    token, which goes in only if you tick Keys and private codes. Your tools' choices and the keys you trust go in with
+    your skills and come back only from a backup you mark as your own; a server's tool choices come back with that server.
+14. Planning or drafting with a helper (1.3), only when you tap "Let <helper> plan it" or "Draft with <helper>" on a
+    card, or accept Robot's offer when the phone's model can't do it. A card shows exactly what would go, the helper's
+    name and its cost against today's budget; nothing goes until you tap Send, a spoken yes is told to tap, and in car
+    mode the card waits until you stop. What goes: one fixed instruction, Robot's list of tools that are on (names,
+    one-line descriptions and parameters, the same for everyone), today's date and time and your language, and your
+    words this turn. Your connections' operation titles go only if the helper is trusted with personal content, and
+    never for a draft made after a web page, a message or your screen. Never your contacts, calendar, notes, other
+    skills' steps, the conversation or what Robot read. The helper's reply is checked on the phone and runs only behind
+    the plan card or the draft card, after your tap. It counts against the helpers' daily budget, and the helper's own
+    policy applies to what it receives. Never sent on a locked phone: Robot asks you to unlock first.
 
 Robot to Robot, off until you turn it on (Settings › Robot to Robot). Your Robot and the Robots of people you pair with
 can ask each other things, end-to-end encrypted, with no Robot server in between. While it's on, Robot stays reachable and
@@ -441,38 +506,6 @@ None of them sees whom you reach or what your Robot sends: that stays inside Tor
 With a bridge in use, its helper program (lyrebird) listens on a network port that only apps on your phone can reach. Another
 app on your phone that's allowed the network could find that port, and so learn that you use a Tor bridge, and could send
 its own traffic out through the bridge, which Android would then count as Robot's. It never sees what Robot sends.
-
-12. News on Today, only after you add a feed (there are none to start, and Today's News setting shows how to find
-    feeds you'd like). Robot then fetches the feeds you added, at most five, once a day by default: from 5:30 in the
-    morning, on Wi-Fi, not in Battery Saver. A morning the phone can't fetch is caught up once, when it can (back on
-    Wi-Fi, or when you open Today), never before 5:30. You can choose "When I open Today" (at most once an hour) or
-    "Only when I ask" instead, and tapping the line's time fetches them then, on any network. Neither the daily fetch
-    nor an open uses mobile data unless you turn on "Use mobile data for news" in Today's News setting (off to start). With Today off, or with no feeds, nothing is fetched. Adding a feed fetches the address
-    you typed, and the feed its page names if it's a page. Each feed's server sees your IP address, the time and the
-    request: https (plain http only to your own network; an address carrying a token goes only over https with a valid
-    certificate, so the token is never sent in the clear, except to a server on the phone itself, which Today's News
-    setting marks "Not encrypted (on this phone)"), no cookies, no referrer, and the same user agent a common phone browser sends (Chrome on
-    Android's), which doesn't name Robot. Sent directly, a request also carries the tags that server gave last time
-    (If-None-Match, If-Modified-Since) so an unchanged feed isn't sent again; they never go to another server, or
-    through Tor. At most 512 KB and 15 seconds a feed, all of it. A feed on your own server (a feed reader there, so the
-    publishers see your server and not your phone) may be on your own network. That means a private address on
-    whichever Wi-Fi you're on: on someone else's, a plain http address can be another device, and Today's News setting
-    says so under such a feed. A feed's request goes either all to your network or all to the internet, never from
-    one to the other; an address on the internet typed as a number isn't taken; and adding a site's page follows the
-    feed it names only if that feed is of the page's kind, so a page on the internet can't send the phone to your
-    network. A feed address carrying a token (in its query, or a random-looking part of its path) is kept encrypted on
-    the phone, shown masked, and left out of logs, History, the backup and anything Robot's model reads; a headline
-    whose link holds it is dropped (after a restore, Today's News setting asks you to add it again). With "Only through Tor" chosen, every feed goes through Tor,
-    each server on its own circuit, so the servers see a Tor exit instead of your IP address, except a feed on your
-    own network, which Tor can't reach: it goes directly, and Today's News setting says so. Tor runs only while
-    Robot to Robot is on; while it can't connect, nothing is fetched, never directly instead. The feeds are read on
-    the phone in a separate process with no network access and none of your data. The headlines are kept for 7 days
-    in storage that's never backed up, and a removed feed's headlines are deleted at once; tapping one opens it in
-    your browser. The spoken brief says them on a locked phone only at "Everything", otherwise once you unlock, and
-    never during someone else's phone lock. A brief or an answer that read the headlines is kept in History like any
-    other, and History is in Robot's backup. Your feeds and how often they're fetched go in a backup with Today's
-    settings; restoring someone else's backup adds no feeds and never fetches more often. Each fetch is listed in
-    What went online, under News.
 
 Nothing else goes online. You can turn off Robot's Network permission in GrapheneOS: everything on the phone keeps
 working, and the online features above say they can't connect.

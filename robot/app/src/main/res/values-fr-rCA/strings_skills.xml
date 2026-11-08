@@ -41,6 +41,7 @@
     <string name="skill_remove_step">Retirer l’étape %1$d</string>
     <string name="skill_last_run">Dernière fois</string>
     <string name="skill_made">Création</string>
+    <string name="skill_starts">Démarre toute seule</string>
     <string name="skill_mine">Ces étapes sont les miennes</string>
     <string name="skill_mine_detail">Faire sans demander peut alors être choisi</string>
     <string name="skill_delete">Supprimer la compétence</string>
@@ -52,4 +53,59 @@
     <string name="skill_model_picks">Laisser le modèle de Robot choisir des compétences</string>
     <string name="skill_model_picks_summary">Jusqu’à 3 de tes compétences sont décrites au modèle de Robot quand tes mots leur correspondent. Désactivé&#160;: seuls leurs noms les lancent.</string>
     <string name="skill_fills">Valeurs remplies par le modèle de Robot</string>
+    <!-- 1.3, Partage (plan des compétences S3.4, conception §11) : Réglages › Compétences › Partage et l’écran d’importation. -->
+    <string name="skill_sharing">Partage</string>
+    <string name="skill_sharing_summary">Exporter et importer des compétences, gérer les clés auxquelles tu fais confiance</string>
+    <string name="skill_sharing_intro">Une compétence que tu exportes est signée avec la clé de ce téléphone, alors la personne qui l’importe peut voir qu’elle vient de toi. Une compétence que tu importes est toujours désactivée au départ, peu importe qui l’a signée.</string>
+    <string name="skill_key_this">La clé de ce téléphone</string>
+    <string name="skill_key_making">Création de la clé de ce téléphone…</string>
+    <string name="skill_key_none">Robot ne peut pas utiliser la clé de ce téléphone pour l’instant, alors il ne peut pas exporter de compétences.</string>
+    <string name="skill_key_copied">Empreinte copiée</string>
+    <string name="skill_keys_trusted">Clés auxquelles tu fais confiance</string>
+    <string name="skill_keys_none">Aucune pour l’instant. Ajoute l’empreinte de ton autre téléphone pour voir son nom sur les compétences qu’il signe.</string>
+    <string name="skill_key_add">Ajouter une clé</string>
+    <string name="skill_key_fingerprint">Empreinte</string>
+    <string name="skill_key_fingerprint_supporting">Les 64 chiffres et lettres, dans Réglages › Compétences › Partage sur l’autre téléphone</string>
+    <string name="skill_key_next">Suivant</string>
+    <string name="skill_key_name">Nom</string>
+    <string name="skill_key_name_supporting">Par exemple Tablette</string>
+    <string name="skill_key_remove">Retirer</string>
+    <string name="skill_key_remove_title">Ne plus faire confiance à «&#160;%1$s&#160;»&#8239;?</string>
+    <string name="skill_key_remove_text">Les compétences qu’elle signe montreront son empreinte au lieu de son nom.</string>
+    <string name="skill_export">Exporter une compétence</string>
+    <string name="skill_export_summary">Un fichier .robotskill signé que tu peux partager</string>
+    <string name="skill_export_pick">Quelle compétence&#8239;?</string>
+    <string name="skill_export_title">Exporter «&#160;%1$s&#160;»&#8239;?</string>
+    <string name="skill_export_clean">Rien dedans n’a l’air personnel. Les adresses et les clés de tes connexions, son historique et son niveau restent sur ce téléphone.</string>
+    <string name="skill_export_flags">Ces valeurs sont dans ses étapes et seront dans le fichier&#160;:</string>
+    <string name="skill_export_save">Enregistrer le fichier</string>
+    <string name="skill_exported">Compétence exportée</string>
+    <string name="skill_export_failed">Robot n’a pas pu écrire le fichier.</string>
+    <string name="skill_sharing_footer">Tes clés de confiance changent seulement le nom affiché pour la personne qui a signé un fichier. Elles n’activent jamais une compétence.</string>
+    <string name="skill_import">Importer une compétence</string>
+    <string name="skill_import_summary">À partir d’un fichier .robotskill</string>
+    <string name="skill_import_title">Importer des compétences</string>
+    <string name="skill_import_unreadable">Robot n’a pas pu lire le fichier.</string>
+    <string name="skill_import_starts_off">Chaque compétence est désactivée au départ. Active-la dans sa page une fois que tu as lu ses étapes.</string>
+    <plurals name="skill_import_left_out">
+        <item quantity="one">%d compétence du fichier a été laissée de côté&#160;: elle ne passe pas les vérifications de Robot.</item>
+        <item quantity="many">%d compétences du fichier ont été laissées de côté&#160;: elles ne passent pas les vérifications de Robot.</item>
+        <item quantity="other">%d compétences du fichier ont été laissées de côté&#160;: elles ne passent pas les vérifications de Robot.</item>
+    </plurals>
+    <string name="skill_import_renamed">Renommée&#160;: une de tes compétences ou une des phrases de Robot a déjà ce nom. Ses autres noms restent vides jusqu’à ce que tu les choisisses.</string>
+    <string name="skill_import_needs_title">Connexions dont elle a besoin</string>
+    <string name="skill_import_needs">Il lui faut une connexion %1$s</string>
+    <string name="skill_import_pick">Choisis une de tes connexions</string>
+    <string name="skill_import_none_fits">Aucune de tes connexions de ce type ne peut faire ses étapes. La compétence reste désactivée et ses étapes demandent ton attention jusqu’à ce que tu les modifies.</string>
+    <string name="skill_import_reaches">Joint %1$s, une fois que tu l’auras permis la première fois</string>
+    <string name="skill_import_missing">Des connexions ne sont pas choisies&#160;: leurs étapes demandent ton attention, alors ces compétences ne peuvent pas s’exécuter avant que tu les modifies.</string>
+    <string name="skill_import_do">Importer</string>
+    <string name="skill_import_footer">Rien dans le fichier ne s’exécute tout seul. Robot garde l’empreinte du fichier et son signataire avec chaque compétence.</string>
+    <!-- 1.3 (S3.7) : plans -->
+    <string name="skill_plans_title">Plans</string>
+    <string name="skill_plan_all">Approuver un plan d’un coup</string>
+    <string name="skill_plan_all_summary">Une touche sur la carte du plan lance le reste. Une étape que tes mots n’ont pas demandée montre quand même sa carte.</string>
+    <string name="skill_plan_step">Approuver un plan étape par étape</string>
+    <string name="skill_plan_step_summary">Chaque action d’un plan attend sa propre carte.</string>
+    <string name="skill_plan_cap">Nombre maximal d’étapes dans un plan</string>
 </resources>

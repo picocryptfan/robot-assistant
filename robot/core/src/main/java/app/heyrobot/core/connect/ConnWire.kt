@@ -25,12 +25,13 @@ object ConnWire {
     }
 
     /** [r] with [secrets] in their places, or why not. */
-    fun assemble(r: HttpRequest, secrets: ConnSecrets): Result {
+    fun assemble(r: HttpRequest, secrets: ConnSecrets, phoneToken: Boolean = false): Result {
         val need = r.secrets
         if (need.any { secrets[it] == null }) return Result.Refused(ConnFailure.NO_KEY)
         if (need.any { !ConnSecrets.valid(it, secrets[it]!!) }) return Result.Refused(ConnFailure.NO_KEY)
         // D2: any secret goes only over https, whatever else said so before.
-        if (need.isNotEmpty() && !r.base.https) return Result.Refused(ConnFailure.KEY_OVER_HTTP)
+        // [phoneToken]: an MCP server on this phone, whose token may go over plain http (ConnRules.mcpUnencrypted).
+        if (need.isNotEmpty() && !r.base.https && !(phoneToken && need == setOf(SecretPart.TOKEN))) return Result.Refused(ConnFailure.KEY_OVER_HTTP)
         val url = if (r.secretAddress) {
             val key = ConnUrl.parse(secrets.address!!, whole = true) ?: return Result.Refused(ConnFailure.NO_KEY)
             if (!key.https) return Result.Refused(ConnFailure.KEY_OVER_HTTP)

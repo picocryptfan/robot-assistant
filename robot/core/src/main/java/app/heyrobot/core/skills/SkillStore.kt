@@ -136,6 +136,15 @@ class SkillStore(private val dir: File) {
     // Shared with ConnStore (connections.json): one monitor and one file lock for both (SkillsLock).
     private fun <T> locked(block: () -> T): T = SkillsLock.locked(dir, block)
 
+    /** [block] under skills.lock (RoutineSkills, inside routines.lock). */
+    internal fun <T> underLock(block: () -> T): T = locked(block)
+
+    /** skills.json's text now, or null when there is none (RoutineSkills puts it back when its routines can't be written). */
+    internal fun text(): String? = read(skillsFile)
+
+    /** skills.json back as [text] was ([text] null: no file), inside [underLock]. */
+    internal fun restore(text: String?) { if (text == null) skillsFile.delete() else writeAtomic(skillsFile, text) }
+
     companion object {
         const val SKILLS = "skills.json"
         const val STATE = "skills_state.json"

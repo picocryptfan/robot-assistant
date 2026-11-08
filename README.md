@@ -125,6 +125,14 @@ Coming from 0.9? Robot 1.0 installs beside it under a new app ID, and you move y
   in front.
 - Skills are short routines you teach Robot by voice ("teach a skill called heading home: text Sam I'm on my way, then
   open the route home"). You say a skill's name to run it, and each step still shows its own card.
+- Skills in 1.3 do more, and none of it starts by itself or runs on a locked phone. Ask for several things at once ("text
+  Sam I'm late, then set a timer for 10 minutes and tell me the weather") and Robot shows a plan: reads run at once,
+  and anything that writes, spends or messages waits for your tap. Say "make a skill that turns off the lights when I say
+  good night" and Robot's model writes a draft you save with a tap. A helper can plan or draft too, but only after a card
+  shows exactly what would go and you tap Send. A skill can use the tools of an MCP server, such as a home-automation
+  server's, at an address on your home network, a Tailscale address, or on this phone with a token; a public address is
+  refused. You can export a skill as a signed file and import one: an import shows who signed it and always starts off.
+  Your routines are kept as skills too, and still run as before.
 - Back up and restore saves what you choose, your files included, into one encrypted file, protected by a passphrase
   only you have, to a place you pick. Robot never uploads it.
 - Routines and a morning brief. Headset mode, where your headset's button opens Robot.
@@ -151,14 +159,18 @@ My development notes, with the design, the checks and the history, are in [`robo
 - Your voice is turned into text on the phone and never recorded. Answers are made on the phone.
 - Nothing about you is collected. I receive nothing from your phone.
 - Robot goes online for what you start (a download, the weather, the nearest place, a web search, a helper, a skill
-  that uses one of your connections), for the daily update check and its download on Wi-Fi, for the weekly Termux check
+  that uses one of your connections, an MCP server included), for the daily update check and its download on Wi-Fi, for the weekly Termux check
   once Termux is set up, for the news feeds you add to Today, and for routines you allow to; each of those can be turned off. Robot to
   Robot is off until you turn it on: while it's on, it stays connected to the Robots you've paired with. You can turn off Robot's Network permission in GrapheneOS and
   everything on the phone keeps working.
 - The nearest-place search uses OpenStreetMap's Nominatim server unless you pick another one in Settings › Actions ›
   Search server. You can switch servers there at any time without an update, or choose Never.
-- A helper's or web search key only ever goes over https.
-- Robot Files, backups, Phone lock and skills without a connection never go online. A file leaves the phone only when you share it, open it
+- A helper's or web search key only ever goes over https. An MCP server's token and a feed's token go only over https with a valid certificate,
+  except to a server on this phone, which the page marks "Not encrypted (on this phone)".
+- A helper plans or drafts a skill only after a card shows what would go and you tap Send. The phone's own model plans and
+  drafts without going online.
+- Robot Files, backups, Phone lock and skills without a connection (making, planning, signing and sharing them
+  included) never go online. A file leaves the phone only when you share it, open it
   with another app or export it (exports aren't encrypted), or when you tap a card that sends what Robot read from it to a
   helper. Settings › About › Support Robot makes no network call.
 - [`PRIVACY.md`](PRIVACY.md) lists every permission and why. 1.1 adds two. USE_BIOMETRIC lets travel mode ask for your PIN, pattern or

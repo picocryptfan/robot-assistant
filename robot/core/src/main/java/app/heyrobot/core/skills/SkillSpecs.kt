@@ -143,6 +143,9 @@ object SkillSpecs {
         StepKind.PHONE_STATUS -> "checks the phone" // l10n: not text (the model's prompt)
         StepKind.LOOKUP_CONTACT -> "looks up a contact" // l10n: not text (the model's prompt)
         StepKind.SAY -> "says a sentence" // l10n: not text (the model's prompt)
+        StepKind.BRIEF -> "gives the morning brief" // l10n: not text (the model's prompt)
+        StepKind.REMINDERS -> "reads today's reminders" // l10n: not text (the model's prompt)
+        StepKind.MESSAGES -> "counts unread messages" // l10n: not text (the model's prompt)
         // Connections plan D19: the kind only, never a host, a path, an entity, a topic or a script's name (a connection's
         // operation is said by what it does when its link is known: does(step, links)).
         StepKind.CONN -> "uses one of your connections" // l10n: not text (the model's prompt)

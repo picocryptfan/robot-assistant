@@ -55,6 +55,10 @@ object SkillCards {
         StepKind.APP -> SkillStrings.stepHandOff()
         StepKind.TRAVEL_TIME -> SkillStrings.stepTravel()
         StepKind.TERMUX_SCRIPT -> SkillStrings.stepScript("name" to (step.args["script"] as? String).orEmpty())
+        // A routine's own steps (1.3): the routine's words for them.
+        StepKind.BRIEF -> app.heyrobot.core.RoutineStep.Brief.summary()
+        StepKind.REMINDERS -> app.heyrobot.core.RoutineStep.Reminders.summary()
+        StepKind.MESSAGES -> app.heyrobot.core.RoutineStep.Messages.summary()
         else -> step.kind.tool!!.titleText
     }
 
@@ -68,15 +72,28 @@ object SkillCards {
      */
     fun save(d: SkillDraft, nameProblem: Phrase?): SaveCard {
         val s = d.skill()
-        val title = (if (d.made == SkillMade.DEMO) SkillStrings.cardSave else SkillStrings.cardNew)("name" to s.name)
+        val title = when {
+            d.drafted -> SkillStrings.cardDraft("name" to s.name)
+            d.made == SkillMade.DEMO -> SkillStrings.cardSave("name" to s.name)
+            else -> SkillStrings.cardNew("name" to s.name)
+        }
         val chips = d.slots.map { slot ->
             SkillStrings.stepLine("i" to (slot.step + 1).toString(), "step" to slot.chip(slot in d.asked))
         }.toMutableList()
         // D13: made from content, it stays at Ask first; otherwise Just do it takes a tap (D14).
-        val levelChip = !d.fromContent
+        val levelChip = !d.fromContent && !d.drafted
         if (levelChip) chips += SkillStrings.level("level" to level(d.level))
         chips += SkillStrings.rename()
         val lines = buildList {
+            // 1.3 (design §10): a model's draft says so first, and where the content it came after was from.
+            if (d.drafted) add(if (d.made == SkillMade.DRAFT_HELPER) SkillStrings.draftCheckHelper() else SkillStrings.draftCheck())
+            when (d.source) {
+                DraftSource.MESSAGE -> add(SkillStrings.draftFromMessage())
+                DraftSource.WEB -> add(SkillStrings.draftFromWeb())
+                DraftSource.SCREEN -> add(SkillStrings.draftFromScreen())
+                DraftSource.CONTENT -> add(SkillStrings.draftFromContent())
+                null -> {}
+            }
             for (slot in d.asked) {
                 val q = s.params.firstOrNull { p -> s.steps[slot.step].args[slot.arg] == SkillTemplate.of(p.name) }
                 if (q != null) add(SkillStrings.askedLine("ask" to SkillDraft.ASK.getValue(q.type)(), "value" to slot.shown))
@@ -93,7 +110,7 @@ object SkillCards {
         }
         val footer = when {
             d.problems.isNotEmpty() -> null
-            d.fromContent -> SkillStrings.tapToSave("save" to UiLabel(UiStrings.save))
+            d.tapLine != null -> d.tapLine
             else -> SkillStrings.sayYesOrSave("save" to UiLabel(UiStrings.save))
         }
         return SaveCard(title, steps(s), chips, lines, footer, levelChip, nameProblem)
@@ -125,6 +142,10 @@ object SkillCards {
             s.provenance.fromContent -> SkillStrings.madeContent()
             s.provenance.made == SkillMade.VOICE -> SkillStrings.madeVoice("date" to created)
             s.provenance.made == SkillMade.DEMO -> SkillStrings.madeDemo("date" to created)
+            s.provenance.made == SkillMade.ROUTINE -> SkillStrings.madeRoutine("date" to created)
+            s.provenance.made == SkillMade.DRAFT_DEVICE -> SkillStrings.madeDraftDevice("date" to created)
+            s.provenance.made == SkillMade.DRAFT_HELPER -> SkillStrings.madeDraftHelper("date" to created)
+            s.provenance.made == SkillMade.IMPORT -> SkillStrings.madeImport("date" to created)
             else -> SkillStrings.madeSettings("date" to created)
         }
         return if (edited != created) Phrase.Join(listOf(how, SkillStrings.edited("date" to edited)), " · ") else how

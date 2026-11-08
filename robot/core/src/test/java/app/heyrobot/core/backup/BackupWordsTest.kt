@@ -45,7 +45,9 @@ class BackupWordsTest {
         for (c in BackupCategory.entries) for ((l, n) in BackupWords.names(c)) assertEquals("$c $l", n, CategoryNames.clean(n))
         assertEquals("Headset, car and places in this backup is damaged, so Robot leaves it out.",
             BackupWords.skipped(CategorySkip("handsfree", BackupCategory.HANDSFREE, SkipWhy.REFUSED), "1.1.0").render(en))
-        assertEquals(BackupCategory.entries.size, BackupCategory.entries.map { BackupWords.category(it).id }.distinct().size)
+        // Every row its own word; the keys you trust are said as Skills, whose row they are shown in (skills-backup-b).
+        assertEquals(BackupCategory.entries.size - 1, BackupCategory.entries.map { BackupWords.category(it).id }.distinct().size)
+        assertEquals(BackupWords.category(BackupCategory.SKILLS).id, BackupWords.category(BackupCategory.SKILL_TRUST).id)
         assertTrue(BackupWords.noSpace(1_200_000_000).render(en).startsWith("There isn't enough free space: Robot needs about 1"))
     }
 }

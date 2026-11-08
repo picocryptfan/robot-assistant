@@ -26,7 +26,7 @@ enum class ConnState { TESTED, NEEDS_KEY, NOT_TESTED, APP_MISSING, APP_REPLACED,
 
 object ConnSetup {
     /** The kinds Add a connection offers, in its order (plan §6.2). */
-    val KINDS: List<ConnKind> = listOf(ConnKind.HOME_ASSISTANT, ConnKind.NTFY, ConnKind.WEBHOOK, ConnKind.ROUTING, ConnKind.HAND_OFF)
+    val KINDS: List<ConnKind> = listOf(ConnKind.HOME_ASSISTANT, ConnKind.NTFY, ConnKind.WEBHOOK, ConnKind.ROUTING, ConnKind.HAND_OFF, ConnKind.MCP)
 
     /** The one operation an ntfy connection is made with ("publish"), its words from the `message` argument. */
     const val NTFY_OP = "publish" // l10n: not text (an operation id)
@@ -48,6 +48,7 @@ object ConnSetup {
         ConnKind.WEBHOOK -> ConnStrings.kindWebhook()
         ConnKind.ROUTING -> ConnStrings.kindRouting()
         ConnKind.HAND_OFF -> ConnStrings.kindHandOff()
+        ConnKind.MCP -> ConnStrings.kindMcp()
     }
 
     /** What the kind does and what leaves the phone (Add a connection's line, plan §6.2). */
@@ -57,6 +58,7 @@ object ConnSetup {
         ConnKind.WEBHOOK -> ConnStrings.kindWebhookLine()
         ConnKind.ROUTING -> ConnStrings.kindRoutingLine()
         ConnKind.HAND_OFF -> ConnStrings.kindHandOffLine()
+        ConnKind.MCP -> ConnStrings.kindMcpLine()
     }
 
     /**
@@ -78,6 +80,7 @@ object ConnSetup {
             ConnKind.WEBHOOK -> Connection(id, kind, n, url, auth = auth)
             ConnKind.ROUTING -> Connection(id, kind, n, url, auth = if (auth == ConnAuth.Basic) ConnAuth.None else auth, routing = routing ?: RoutingKind.OSRM)
             ConnKind.HAND_OFF -> return null to ConnProblem.COULDNT_SAVE
+            ConnKind.MCP -> Connection(id, kind, n, url, auth = if (auth == ConnAuth.Bearer) ConnAuth.Bearer else ConnAuth.None)
         }
         return problem(c)
     }

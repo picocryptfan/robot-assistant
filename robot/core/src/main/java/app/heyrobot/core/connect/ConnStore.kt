@@ -29,7 +29,7 @@ class ConnStore(private val dir: File) {
     }
 
     /** Your connections (none while the file can't be read or is from a newer Robot: none is used then). */
-    fun connections(): List<Connection> = (file() as? ConnFile.Ok)?.connections.orEmpty()
+    fun connections(): List<Connection> = (file() as? ConnFile.Ok)?.connections.orEmpty().map { McpStore(dir).attach(it) }
 
     fun get(id: String): Connection? = connections().firstOrNull { it.id == id }
 

@@ -47,14 +47,25 @@ Only the latest release is supported. There is no bug bounty.
   plain http; a request reaching a host of the other kind (home or internet) than its lookup allowed, or following a
   redirect; a connection step running on a locked phone, from a routine, a helper, a server's answer or the model
   alone, or without the card its effects call for; a step sending something other than what its card showed; a
-  hand-off opening an app signed by someone else, or carrying anything but plain words, numbers and switches.
+  hand-off opening an app signed by someone else, or carrying anything but plain words, numbers and switches;
+- Today: a private event read or written while the phone is locked, or reaching the phone's calendar or Android's
+  backups; a news feed's bytes read anywhere but the `:feedparse` process, or that process reaching the network or your
+  data; a feed fetched more often or by a weaker route than its setting allows, or a request going from your network to
+  the internet or back; a feed address that holds a token sent anywhere but over https with a valid certificate (or to a
+  server on this phone), or showing up in a log, History, a backup or what the model reads;
+- Skills 1.3: an MCP server reached through a public address, or a token sent anywhere but its own server; a server's
+  words (a tool's title or description) reaching a model as instructions; a tool that changed staying on, or a call whose
+  arguments don't match the tool as you turned it on; a plan, a draft or an imported skill running, or saved turned on,
+  without the card its steps call for; a helper receiving anything a plan's or draft's card didn't show, or without your
+  tap; a signature accepted that doesn't match, or a skill file or trusted key restored from a backup you didn't mark as
+  your own.
 
 **Out of scope:** someone who knows your PIN showing travel mode's hidden drawers (it's a privacy screen, not
 encryption), the ways around Phone lock that Settings › Phone lock › "What a lock can't stop" already lists (safe
 mode, a computer with USB debugging, uninstalling Robot and the like: at Standard strength it is a habit, not a wall),
 the models' answers themselves (what a model says, or refuses to say, is not a vulnerability unless it
 gets past Robot's cards), what your own Termux scripts do, and third-party services and apps (Hugging Face, Mozilla's
-model storage, Open-Meteo, OpenStreetMap's Nominatim, the search services, the helpers' providers,
+model storage, Open-Meteo, OpenStreetMap's Nominatim, the search services, the news feeds you add, the helpers' providers,
 Termux, your messaging, email and maps apps, GitHub): report those to them. A problem in a library Robot ships
 (sherpa-onnx, ONNX Runtime, LiteRT-LM, llama.cpp, slimt, the helper's Java SDK, OkHttp, Jackson, jsoup, and for Robot
 to Robot Tor, lyrebird, libsignal, Tink and the UnifiedPush connector) is welcome here
@@ -128,6 +139,21 @@ too, so Robot can update it; please also tell its maintainers.
   template, explicit and with its action set, reaches it, and it takes a tick or untick of an item on that widget's own
   list, never during a phone lock, while locked only with "Hear and tick on the lock screen" on. Every other
   PendingIntent the widget uses is immutable and has an identity of its own.
+- Private events (Today's Calendar tab) are sealed in one file by `robot_calendar_v1`, an AES-256-GCM Android Keystore
+  key made with `setUnlockedDeviceRequired`, so Robot reads and writes them only while the phone is unlocked. The file
+  names its key, which is checked and bound in as additional data. They never go into the phone's calendar or Android's
+  backups, and come back from Robot's backup only when you mark it as your own. A file Robot can't read is never
+  written over: Start over keeps it aside (`events.enc.bad`). Robot changes only private events and the calendar events
+  it added itself.
+- News feeds on Today are read in `:feedparse`, an `android:isolatedProcess` service with no permissions, no network and
+  none of Robot's files, not exported, bound with `bindIsolatedService`: a fresh instance for each round of fetching and
+  after any failure, so a crash or a hostile feed takes down only that feed. It proves an isolated uid before it's sent
+  anything, gets each feed's bytes in a read-only shared memory region of exactly their size, and answers in one frame
+  that Robot checks and cleans. The fetch itself (the main app or `:voice`) is https, plain http only on your own
+  network, at most 512 KB and 15 seconds a feed, each request all on your network or all on the internet. A feed
+  address that holds a token is kept encrypted under a Keystore key of its own (`robot_feed_<id>`), shown masked, and
+  left out of logs, History, backups and what the model reads. With "Only through Tor" every feed goes through Tor,
+  each server on its own circuit, and nothing is fetched while Tor can't connect.
 - Travel mode's Off, Unhide and Show take the PIN, pattern or password only, through `BiometricPrompt` with
   `DEVICE_CREDENTIAL` alone (hence `USE_BIOMETRIC`, a normal permission); if that screen can't be shown, nothing changes.
   A damaged or newer Files settings file fails closed: travel mode on, every drawer hidden.
@@ -152,12 +178,45 @@ too, so Robot can update it; please also tell its maintainers.
   http may reach only home addresses, on every call, so a name that starts pointing outside your network is refused.
   https may be either, since TLS's name check stops a rebinding. Any connection that holds a secret (a token, a
   password, a header's value, an ntfy topic, a webhook address that is itself the key) is https only, checked when you
-  type it, before a client exists and again when the secret is added, last, by the client. Keys are encrypted per
+  type it, before a client exists and again when the secret is added, last, by the client. A token (an MCP
+  server's bearer token, a feed's) goes only over https with a valid certificate, even on your own network or at a
+  Tailscale address. The one exception is a server on this phone, which the page marks "Not encrypted (on this phone)". Keys are encrypted per
   connection with their own non-exportable Android Keystore key, decrypted only in `:voice` just before a request,
   pasted only in a `FLAG_SECURE` window, never logged, never in an intent, History or a preview, deleted when you change
   the address or remove the connection, and in a backup only with Keys and private codes and a strong passphrase,
   restored only from your own backup to a connection with the same address. Tests pin where the client and the keys may
   be named.
+- MCP servers (1.3) are connections of a kind that is never on the internet. The address must be on your home network,
+  a Tailscale address (100.64/10) or this phone's loopback, checked when you type it and again on every lookup and on
+  the socket really connected, https or not; a server on the phone needs a token, since any app on the phone can reach
+  loopback. Same client as above: no redirects, a 10 s limit on a tool list and 30 s on a call, answers cut at 1,500
+  characters. Every tool starts off. Turning one on pins a SHA-256 of each part of it (title, description, input and
+  output schemas, annotations); on every list a tool that differs is turned off and says what changed, and a server that
+  reports another name at the same address turns all of them off. Arguments are checked against the pinned input
+  schema before they are sent, never the one a later list gives, and a call whose card can't show them in 1,200 characters
+  is refused. A server's words are shown in Settings and never given to a model. A tool's own claim that it only
+  reads counts only when you also tick that it does; a tool that spends money, touches security or tells people always
+  takes a tap.
+- Plans and drafts (1.3). Robot's model proposes a plan or a drafted skill, and Robot's code checks every step before
+  you see it: a drafted skill's step that doesn't exist or isn't one of your connections is left out and named, a plan
+  that can't be checked is refused whole, and a step that messages, spends or touches security always gets its own
+  card. A plan or draft made after untrusted content (a web page, a message, your screen) takes a tap, never a spoken yes,
+  and a drafted skill is saved at Ask first with no trigger. Only a helper you picked is asked, after a card shows exactly
+  what would go (a fixed instruction, the tools that are on, the date, time and language, your words this turn; not your
+  contacts, notes, calendar, conversation or other skills) and you tap Send; its answer is checked like the model's. In
+  car mode the card waits until you have stopped, and gives up after 30 minutes.
+- Sharing skills (1.3). A skill file is signed ES256 (ECDSA on P-256 with SHA-256, one low-s form) by a key in the Android
+  Keystore (`robot_skill_signing`), never exportable; the phone's own fingerprint is the SHA-256 of its public key. The
+  file is at most 512 KiB, and a connection's address and key, a skill's history and its level never go in it. Keys you
+  trust are a name and a fingerprint, at most 20 (`skill_keys.json`), and change only the words on an import: whoever
+  signed it, an imported skill always starts off, and a file changed after it was signed, newer, unsigned or holding a
+  key-shaped value is refused or marked.
+- What a backup holds of this (1.3). Your skills, your routines' skills and your plan settings go in with the Skills tick,
+  and your connections without their tokens with Connections. Connection tokens and helper keys go in only with Keys and
+  private codes and a strong passphrase. Trusted keys and each MCP tool file (`skill_trust`, on the Skills row) are never
+  restored from a backup that isn't marked as yours, and a tool file only for a connection that restore brought back. Your
+  signing key is never in a backup: it cannot leave the Keystore, so a restored phone signs with a new key. The helper
+  budget's spend, helper facts and `skills_state.json` are not in it.
 - A connection step is a typed call through the same approval gate as every action, on two internal tools no model is
   ever told about. It never runs on a locked phone or from a routine, and only a skill you run can start one. The first
   request to a new host, anything that locks, unlocks or opens, deletes, can spend money or runs code Robot can't see,
@@ -186,6 +245,13 @@ Robot's private storage without Robot's own encryption. Share, Open and Export w
 temporary one when you return, at screen-off or after 15 minutes, and at the next start after a crash. The shared
 memory regions between Robot and `:files` aren't sealed against resizing yet, so a compromised `:files` could crash the
 app or the panel; that's a denial of service, not a leak, and a phone check decides the fix.
+
+MCP servers' known limits: Robot's client is tested against stand-in servers; a run on a phone against a real Home
+Assistant is still to do. A tool's description, its read-only claim and its schemas are the server's own words: Robot pins
+them and shows them, but cannot tell whether a tool does what it says, so a tool that spends money, touches security or
+tells people is marked by you. A token is never sent over plain http, except to a server on this phone, where nothing crosses a network. A server's
+self-reported name is a pin, not proof of who it is. A skill signature shows which key signed a file, not that the
+skill is safe: that is why an import always starts off and shows its steps.
 
 Notes, People and History: they're kept in Robot's private storage, which Android's file-based encryption protects,
 but not yet sealed by a key of Robot's own as memory, Lists and Robot Files are, because Robot writes them while the phone

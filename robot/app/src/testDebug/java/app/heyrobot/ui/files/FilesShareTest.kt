@@ -131,6 +131,7 @@ class FilesShareTest {
         override fun changed() { changed++ }
         override fun langs(): Langs = Langs.EN
         override fun now(): Long = 1_792_000_000_000L
+        override fun skill(f: SharedFile): Boolean = app.heyrobot.sys.SkillShareFiles.read(source, f.uri)?.also(app.heyrobot.sys.SkillShareFiles::hold) != null
     }
 
     private fun model(uris: List<Uri>, text: String? = null, subject: String? = null, sender: Pair<String, String?>? = null) =
@@ -156,6 +157,27 @@ class FilesShareTest {
     private fun lines(d: ShareUi.Done) = d.lines.map { it.render(Langs.EN) }
     private fun entries(): List<FileEntry> = (vault.load() as? IndexLoad.Loaded)?.index?.entries.orEmpty()
     private fun incoming(): List<String> = File(dir, "incoming").walk().filter { it.isFile }.map { it.name }.toList()
+
+    /** 1.3 S3.4: one `.robotskill` is read and held for Settings › Skills' import screen; nothing reaches Robot Files. */
+    @Test fun aSkillFileGoesToImportAndNeverToInbox() {
+        val skill = "{\"format\":\"robot.skill.export\"}".toByteArray()
+        val u = file("content://org.example.mail.files/att/9", "Pasta.robotskill", skill, type = "application/json")
+        try {
+            assertEquals(ShareUi.Skill, waitUi(model(listOf(u)).also { it.start() }) { it !is ShareUi.Reading })
+            assertTrue(app.heyrobot.sys.SkillShareFiles.held()!!.contentEquals(skill))
+            assertTrue(entries().isEmpty() && incoming().isEmpty())
+            app.heyrobot.sys.SkillShareFiles.clear()
+            // With another file, or during a phone lock, it's an ordinary share (or refused), and nothing is held.
+            val p = file("content://org.example.mail.files/att/1", "receipt.pdf", pdf)
+            assertTrue(waitUi(model(listOf(u, p)).also { it.start() }) { it !is ShareUi.Reading } is ShareUi.Review)
+            gate = app.heyrobot.core.i18n.FilesStrings.notAllowed()
+            assertTrue(waitUi(model(listOf(u)).also { it.start() }) { it !is ShareUi.Reading } is ShareUi.Refused)
+            assertNull(app.heyrobot.sys.SkillShareFiles.held())
+        } finally {
+            gate = null
+            app.heyrobot.sys.SkillShareFiles.clear()
+        }
+    }
 
     @Test fun aReceiptFromAnotherAppLandsInInboxOnlyAfterTheTap() {
         val u = file("content://org.example.mail.files/att/1", "receipt.pdf", pdf)

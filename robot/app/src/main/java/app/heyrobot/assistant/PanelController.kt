@@ -1367,7 +1367,7 @@ object PanelController {
             else -> freeAsk?.let { if (it) Lang.FR else Lang.EN } ?: ReplyLang.commandLang(q)
         })
         lastRouter = listOf(msgCmd to "MessagesRouter", convCmd to "ConversationRouter", fbCmd to "FeedbackRouter", lockCmd to "LockRouter", // l10n: not text
-            routineCmd to "RoutineRouter", skillCmd to "SkillRouter", fileCmd to "FilesRouter", listCmd to "ListsRouter", linkCmd to "LinkRouter", musicCmd to "MusicRouter", // l10n: not text
+            routineCmd to "RoutineRouter", skillCmd to if (skillCmd is PanelSkills.Routed.Plan) "PlanRouter" else "SkillRouter", fileCmd to "FilesRouter", listCmd to "ListsRouter", linkCmd to "LinkRouter", musicCmd to "MusicRouter", // l10n: not text
             sumsCmd to "SumsRouter", onlineCmd to "OnlineRouter", handsFreeCmd to "HandsFreeRouter", termux to "TermuxRouter", cmd to "HelperRouter", choiceRoute to "HelperRouter", // l10n: not text
             webQuery to if (webQuery is WebRoute.Browser) "BrowserRouter" else "WebRouter").firstOrNull { it.first != null }?.second ?: "model" // l10n: not text
         // Your own words about the screen, with no other router's claim on them: the screen goes with them, on any tab (core ScreenQuestion).
@@ -1464,7 +1464,7 @@ object PanelController {
                 convCmd != null -> conversationMode.run(replyId, convCmd)
                 fbCmd != null -> feedback.run(replyId, fbCmd)
                 lockCmd != null -> PanelLock.handle(replyId, lockCmd, routineHost, said = q)
-                routineCmd != null -> PanelRoutines.handle(replyId, routineCmd, routineHost, said = q)
+                routineCmd != null -> PanelRoutines.handle(replyId, routineCmd, skillHost, said = q)
                 skillCmd != null -> {
                     PanelSkills.handle(replyId, skillCmd, skillHost, said = q)
                     // D8: Robot asked for the steps or a name; asked by voice, the answer comes by voice too.
@@ -1811,6 +1811,8 @@ object PanelController {
             return escalation.afterLocal(replyId, question, history, attachment, screen, image, voiceAsked, guard, EscalationTrigger.LOCAL_TOOL,
                 ownAnswer = { gemma(askHelper = false) }, helper = before.helper, hold = before.hold)
         }
+        // 1.3 (S3.7): calls past the turn's limit didn't run: "Make that a plan?"
+        if (result.skipped.isNotEmpty() && !result.launchedApp) app.heyrobot.assistant.skills.PanelPlans.offer(replyId, result.skipped, question, skillHost, null)
         finishReply(replyId, result.reason ?: DoneReason.END)
         if (result.launchedApp) return leaveForApp()
         // Escalation trigger c: the reply hedged ("I don't know", "I can't browse", nothing at all). One that says it has no
@@ -2761,6 +2763,9 @@ object PanelController {
     private val skillHost = object : PanelSkills.Host, PanelRoutines.Host by routineHost {
         override fun ports(replyId: String) = PanelSkills.SkillPorts(PanelActions, PanelView(replyId), slot.confirmations, PanelMessages.taint(chat), turnLangs, ::newId)
         override val untrusted: Boolean get() = TurnRules.untrusted(chat)
+        override val oneShots: app.heyrobot.core.OneShotTransport get() = BrainOneShots
+        override val source get() = app.heyrobot.core.skills.SkillDrafter.source(chat)
+        override val helpers get() = SkillHelperLink
         override val phoneLock: Boolean get() = app.heyrobot.lock.PhoneLockNow.on(VoiceHub.app)
         override val messages get() = PanelMessages.taint(chat)
     }
@@ -2785,6 +2790,6 @@ object PanelController {
         }
         lastActivity = System.currentTimeMillis()
         voice.start(replyId)
-        startTurn(replyId) { work(replyId, routineHost) }
+        startTurn(replyId) { work(replyId, skillHost) }
     }
 }

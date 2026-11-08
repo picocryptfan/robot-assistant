@@ -111,18 +111,72 @@ object ConnRules {
     }
 
     /** D2: [c] holds a secret and its address isn't https (an address that is itself the key is checked again in ConnWire). */
-    fun secretOverHttp(c: Connection): Boolean = c.secrets.isNotEmpty() && c.address?.https != true
+    fun secretOverHttp(c: Connection): Boolean = c.secrets.isNotEmpty() && c.address?.https != true && !mcpUnencrypted(c)
+
+    /** Loopback, or Tailscale's 100.64.0.0/10 ([nearOnly]) or fd7a:115c:a1e0::/48: the phone itself or your tailnet. */
+    fun near(a: ByteArray): Boolean = nearOnly(a) || (a.size == 16 && TAILNET6.indices.all { a[it] == TAILNET6[it] })
+
+    private val TAILNET6 = byteArrayOf(0xfd.toByte(), 0x7a, 0x11, 0x5c, 0xa1.toByte(), 0xe0.toByte())
+
+    /**
+     * Question 35 (your answers of 6 and 7 Nov 2026: "The MCP server needs to be encrypted regardless"): every connection of
+     * [kind] is https with a certificate Android trusts, token or none, at home or on a Tailscale address alike (100.64/10 is
+     * carrier and hotel space too). The one exception is a server on this phone ([onPhone]): plain http, said as not
+     * encrypted, and only to a loopback address. Decided at save ([refusal], ConnCheck), and at the lookup and the socket
+     * (ConnHttp's CallPlace: a name that leads off loopback is refused; redirects are never followed).
+     */
+    fun httpsOnly(kind: ConnKind): Boolean = kind == ConnKind.MCP
+
+    /** [url] is typed as this phone: a loopback number (127/8, ::1) or the name localhost. */
+    fun onPhone(url: ConnUrl): Boolean = url.host.lowercase(java.util.Locale.ROOT).trimEnd('.') == LOCALHOST || url.literal?.let(::loopback) == true
+
+    /** [c] is an [httpsOnly] connection typed with a plain http address that isn't [onPhone]. */
+    fun mcpOverHttp(c: Connection): Boolean = httpsOnly(c.kind) && c.address?.let { !it.https && !onPhone(it) } == true
+
+    /** [c] is an MCP server on this phone over plain http: allowed, and said as not encrypted wherever it shows. */
+    fun mcpUnencrypted(c: Connection): Boolean = httpsOnly(c.kind) && c.address?.let { !it.https && onPhone(it) } == true
+
+    /** [a] is a loopback address (127/8, ::1, or an IPv4-mapped 127/8). */
+    fun loopback(a: ByteArray): Boolean = (a.size == 4 || a.size == 16) && LanRule.classify(a) == LanRule.Range.LOOPBACK
+
+    /**
+     * §8.5: an MCP server on the phone needs a token, since any app on the phone can reach loopback. True for one without
+     * a token typed as loopback or named localhost; the client refuses a loopback socket without one too (ConnHttp).
+     */
+    fun mcpLoopbackWithoutToken(c: Connection): Boolean {
+        val url = c.address ?: return false
+        if (c.kind != ConnKind.MCP || c.auth != ConnAuth.None) return false
+        val h = url.host.lowercase(java.util.Locale.ROOT).trimEnd('.')
+        return h == LOCALHOST || h.endsWith(".$LOCALHOST") || url.literal?.let(::loopback) == true
+    }
+
+    /**
+     * Your answer of 4 Nov 2026 (plan §6, question 2): a connection of [kind] is never on the public internet: in 1.3, an MCP
+     * server, which is only at home, on this phone or reached by its Tailscale address (100.64/10 is home, LanRule). A home
+     * server reached through a public address is the public internet too. Decided for a typed address here ([mcpPublic],
+     * [refusal]), and on every lookup and the socket really connected in the client (ConnHttp's CallPlace).
+     */
+    fun homeOnly(kind: ConnKind): Boolean = kind == ConnKind.MCP
+
+    /** [c] is a [homeOnly] connection typed as a public address (ConnCheck refuses it when you type it). */
+    fun mcpPublic(c: Connection): Boolean =
+        homeOnly(c.kind) && c.address?.let { (literal(it) as? Lookup.Ok)?.where == ConnWhere.INTERNET } == true
+
+    private const val LOCALHOST = "localhost" // l10n: not text (a host name)
 
     /**
      * Why no client may be built for [c] (null: one may): its address is missing or Robot won't use it, a secret over
-     * http (D2), where you are over http to anything but loopback or Tailscale (C6), or http to a typed address that isn't on your network (D1). Nothing is connected to find out; a name's
+     * http (D2), where you are over http to anything but loopback or Tailscale (C6), an MCP server on the internet ([homeOnly]), or http to a typed address that isn't on your network (D1). Nothing is connected to find out; a name's
      * lookup is decided by [lookup] when it happens.
      */
     fun refusal(c: Connection): ConnFailure? {
         if (c.kind == ConnKind.HAND_OFF) return ConnFailure.NOWHERE
         val url = c.address ?: return ConnFailure.NOWHERE
+        if (mcpOverHttp(c)) return ConnFailure.MCP_HTTP
+        if (mcpLoopbackWithoutToken(c)) return ConnFailure.LOOPBACK_NO_KEY
         if (secretOverHttp(c)) return ConnFailure.KEY_OVER_HTTP
         (literal(url) as? Lookup.Refused)?.let { return it.why }
+        if (mcpPublic(c) || (homeOnly(c.kind) && c.where == ConnWhere.INTERNET)) return ConnFailure.MCP_PUBLIC
         return if (locationOverHttp(c)) ConnFailure.LOCATION_OVER_HTTP else null
     }
 }

@@ -328,7 +328,7 @@ object RestoreSafety {
             A to listOf("finishOnUnlock", "briefLang", "briefPrepare", "clockSilenceMinutes", "clockApp", "alarmWindow", "briefTriggerBefore"),
             G to listOf("briefItems", "briefTrigger", "briefOutput", "briefOnline", "runLocked", "online", "briefEnabled", "briefLock"),
         ),
-        app.heyrobot.core.skills.SkillSettings::class.java to rules(G to listOf("modelPicks")),
+        app.heyrobot.core.skills.SkillSettings::class.java to rules(G to listOf("modelPicks"), P to listOf("planWith", "planApprove", "planCap")),
         // 1.4, Settings › Files (files_settings.json, the FILES category): clean-up suggestions (a list for your tap, never a
         // delete) as the file has them; the filing levels, reminders on their own and location stripping kept safer. FX3
         // (files-1.4-review.md, FX2's note): Robot Files on, reading text in images and the brief's lines are kept safer too,
@@ -713,7 +713,10 @@ object RestoreSafety {
     /** 1.1, Skills phase B: skill_settings.json. The model picking skills is the looser side (it may then show a card for one). */
     fun skillSettings(phone: app.heyrobot.core.skills.SkillSettings, file: app.heyrobot.core.skills.SkillSettings, mine: Boolean): Guarded<app.heyrobot.core.skills.SkillSettings> {
         val k = Keep(mine)
-        return k.done(file.copy(modelPicks = k.flag(phone.modelPicks, file.modelPicks, SaferField.SKILLS_MODEL_PICKS)))
+        val ps = file.copy(modelPicks = k.flag(phone.modelPicks, file.modelPicks, SaferField.SKILLS_MODEL_PICKS))
+        // 1.3: the plan rows (who plans, how Do the rest approves, the cap) come back from your own backup; someone else's never
+        // changes them, so it can't name a helper to plan with or loosen the approval.
+        return k.done(if (mine) ps else ps.copy(planWith = phone.planWith, planApprove = phone.planApprove, planCap = phone.planCap))
     }
 
     /**

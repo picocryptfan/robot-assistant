@@ -31,6 +31,8 @@ class RobotApp : Application() {
         app.heyrobot.lock.LockFrontWatch.start(this)
         // The everyday set: What went online's writer, in main, :voice and :link only (sys/NetLog.kt).
         app.heyrobot.sys.NetLog.start(this)
+        // Skills 1.3 (S3.2): routines become skills, once, in main and :voice, whichever starts first (sys/Routines.kt).
+        app.heyrobot.sys.RoutineSkillsStart.start(this, p)
         strictMode()
     }
 

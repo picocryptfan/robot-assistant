@@ -1,0 +1,23 @@
+[
+ {
+  "body": "{\"jsonrpc\": \"2.0\", \"id\": 1, \"result\": {\"supportedVersions\": [\"2026-07-28\"], \"capabilities\": {\"tools\": {}}, \"resultType\": \"complete\", \"_meta\": {\"io.modelcontextprotocol/serverInfo\": {\"name\": \"fake-mcp\", \"version\": \"1\"}}}}",
+  "method": "server/discover",
+  "session": null,
+  "status": 200,
+  "type": "application/json"
+ },
+ {
+  "body": "{\"jsonrpc\": \"2.0\", \"id\": 2, \"result\": {\"tools\": [{\"name\": \"HassTurnOn\", \"description\": \"Turns on/opens a device or entity\", \"inputSchema\": {\"type\": \"object\", \"properties\": {\"name\": {\"type\": \"string\", \"description\": \"Name of a device or entity\"}, \"area\": {\"type\": \"string\", \"description\": \"Name of an area\"}}}}, {\"name\": \"HassTurnOff\", \"description\": \"Turns off/closes a device or entity, by name, area or floor\", \"inputSchema\": {\"type\": \"object\", \"properties\": {\"name\": {\"type\": \"string\", \"description\": \"Name of a device or entity\"}, \"area\": {\"type\": \"string\", \"description\": \"Name of an area\"}, \"floor\": {\"type\": \"string\", \"description\": \"Name of a floor\"}}}}, {\"name\": \"GetLiveContext\", \"description\": \"Provides real-time information about the state of the home\", \"inputSchema\": {\"type\": \"object\", \"properties\": {}}, \"annotations\": {\"readOnlyHint\": true}}], \"resultType\": \"complete\"}}",
+  "method": "tools/list",
+  "session": null,
+  "status": 200,
+  "type": "application/json"
+ },
+ {
+  "body": "{\"jsonrpc\": \"2.0\", \"id\": 3, \"result\": {\"content\": [{\"type\": \"text\", \"text\": \"Turned off kitchen.\"}], \"isError\": false, \"resultType\": \"complete\"}}",
+  "method": "tools/call",
+  "session": null,
+  "status": 200,
+  "type": "application/json"
+ }
+]

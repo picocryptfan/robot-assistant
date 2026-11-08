@@ -43,6 +43,7 @@
     <string name="skill_remove_step">Remove step %1$d</string>
     <string name="skill_last_run">Last run</string>
     <string name="skill_made">Made</string>
+    <string name="skill_starts">Starts by itself</string>
     <string name="skill_mine">These steps are mine</string>
     <string name="skill_mine_detail">Then Just do it can be chosen</string>
     <string name="skill_delete">Delete skill</string>
@@ -54,4 +55,58 @@
     <string name="skill_model_picks">Let Robot\'s model pick skills</string>
     <string name="skill_model_picks_summary">Up to 3 of your skills are described to Robot\'s model when your words fit them. Off: only their names run them.</string>
     <string name="skill_fills">Fills by Robot\'s model</string>
+    <!-- 1.3, Sharing (skills plan S3.4, design §11): Settings › Skills › Sharing and the import screen. -->
+    <string name="skill_sharing">Sharing</string>
+    <string name="skill_sharing_summary">Export a skill, import one, and the keys you trust</string>
+    <string name="skill_sharing_intro">A skill you export is signed with this phone\'s key, so whoever imports it can see it came from you. A skill you import always starts off, whoever signed it.</string>
+    <string name="skill_key_this">This phone\'s key</string>
+    <string name="skill_key_making">Making this phone\'s key…</string>
+    <string name="skill_key_none">Robot can\'t use this phone\'s key now, so it can\'t export skills.</string>
+    <string name="skill_key_copied">Fingerprint copied</string>
+    <string name="skill_keys_trusted">Keys you trust</string>
+    <string name="skill_keys_none">None yet. Add your other phone\'s fingerprint to see its name on the skills it signs.</string>
+    <string name="skill_key_add">Add a key</string>
+    <string name="skill_key_fingerprint">Fingerprint</string>
+    <string name="skill_key_fingerprint_supporting">All 64 digits and letters, from Settings › Skills › Sharing on the other phone</string>
+    <string name="skill_key_next">Next</string>
+    <string name="skill_key_name">Name</string>
+    <string name="skill_key_name_supporting">Such as Tablet</string>
+    <string name="skill_key_remove">Remove</string>
+    <string name="skill_key_remove_title">Stop trusting “%1$s”?</string>
+    <string name="skill_key_remove_text">Skills it signs will show its fingerprint instead of its name.</string>
+    <string name="skill_export">Export a skill</string>
+    <string name="skill_export_summary">A signed .robotskill file you can share</string>
+    <string name="skill_export_pick">Which skill?</string>
+    <string name="skill_export_title">Export “%1$s”?</string>
+    <string name="skill_export_clean">Nothing in it looks personal. Your connections\' addresses and keys, its history and its level stay on this phone.</string>
+    <string name="skill_export_flags">These values are in its steps and will be in the file:</string>
+    <string name="skill_export_save">Save the file</string>
+    <string name="skill_exported">Skill exported</string>
+    <string name="skill_export_failed">Robot couldn\'t write the file.</string>
+    <string name="skill_sharing_footer">Your trusted keys only change the name shown for whoever signed a file. They never turn a skill on.</string>
+    <string name="skill_import">Import a skill</string>
+    <string name="skill_import_summary">From a .robotskill file</string>
+    <string name="skill_import_title">Import skills</string>
+    <string name="skill_import_unreadable">Robot couldn\'t read the file.</string>
+    <string name="skill_import_starts_off">Each skill starts off. Turn it on in its page once you\'ve read its steps.</string>
+    <plurals name="skill_import_left_out">
+        <item quantity="one">%d skill in the file was left out: it doesn\'t pass Robot\'s checks.</item>
+        <item quantity="other">%d skills in the file were left out: they don\'t pass Robot\'s checks.</item>
+    </plurals>
+    <string name="skill_import_renamed">Renamed: one of your skills or one of Robot\'s phrases has its name. Its other names are left empty until you set them.</string>
+    <string name="skill_import_needs_title">Connections it needs</string>
+    <string name="skill_import_needs">Needs a %1$s connection</string>
+    <string name="skill_import_pick">Pick one of your connections</string>
+    <string name="skill_import_none_fits">None of your connections of this kind can do its steps. The skill stays off and its steps need attention until you edit them.</string>
+    <string name="skill_import_reaches">Reaches %1$s, after you allow it the first time</string>
+    <string name="skill_import_missing">Some connections aren\'t picked: their steps need attention, so those skills can\'t run until you edit them.</string>
+    <string name="skill_import_do">Import</string>
+    <string name="skill_import_footer">Nothing in the file runs on its own. Robot keeps its file\'s fingerprint and its signer with each skill.</string>
+    <!-- 1.3 (S3.7): plans -->
+    <string name="skill_plans_title">Plans</string>
+    <string name="skill_plan_all">Approve a plan all at once</string>
+    <string name="skill_plan_all_summary">One tap on the plan card runs the rest. A step your words didn\'t ask for still shows its own card.</string>
+    <string name="skill_plan_step">Approve a plan step by step</string>
+    <string name="skill_plan_step_summary">Each action in a plan waits for its own card.</string>
+    <string name="skill_plan_cap">Most steps in a plan</string>
 </resources>

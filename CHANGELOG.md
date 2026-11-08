@@ -4,6 +4,43 @@ What changed in each version of Robot, newest first. Each version's full notes, 
 [`robot/README.md`](robot/README.md) ("What's new in …" and the feature sections). Versions before 1.0 were test
 builds.
 
+## 1.3.0 (2026-11-08)
+
+Skills 1.3. Nothing new runs by itself and no new permission is asked.
+
+- MCP servers as connections (Settings › Skills › Connections › MCP server). Home Assistant's, or one you run in Termux
+  on this phone. The address must be on your home network, a Tailscale address, or on the phone with a token; Robot
+  refuses a public address, even https. Its token goes only over https with a certificate Android trusts, at home too;
+  only a server on this phone may use plain http, and it is marked Not encrypted (on this phone). Each tool it lists starts off, and you turn it on with your own label, a level
+  (Ask first, or Just do it for a tool that only reads and that the server says only reads) and marks for money,
+  security and telling people. A tool the server changes turns itself off with what changed. A call's arguments are
+  checked before they're sent, and one longer than its card can show is refused. The server's descriptions are shown to
+  you and never reach a model.
+- Plans. "Text Sam I'm late, then set a timer for 10 minutes and tell me the weather", or "plan this: …": a card lists
+  the steps; reads run at once, writes wait. Do the rest answers the plan's cards; Step by step shows each. A message,
+  money or security step always gets its own card. A step that fails ends the plan and says what didn't run. Settings ›
+  Skills › Plans: all at once or step by step, and most steps (3 to 8, 5 by default). "Make that a plan?" is offered
+  after a question with too many actions at once.
+- Drafts. "Make a skill that turns off the lights when I say good night": Robot's model writes a draft card; a step it
+  can't check is left out and named. Saving is a tap, at Ask first, with no trigger. A draft made after a web page, a
+  message or your screen says so, can't be Just do it and gets no trigger until you edit it in Settings.
+- Let a helper plan or draft. A card shows exactly what would go, the helper and its cost; nothing goes until you tap
+  Send. In car mode it waits until you've stopped, and gives up after 30 minutes.
+- Sharing (Settings › Skills › Sharing). Export a skill as a signed `.robotskill` file with this phone's key; import one
+  from a file or share it to Robot. An import shows who signed it, its steps and the connections it needs, and always
+  starts off. A changed file is refused. Keys you trust only show their name.
+- Your routines are skills too (Settings › Skills shows "Starts by itself"). They look the same in Settings ›
+  Routines and fire as before; going back to 1.2 keeps them. A routine you changed in 1.2 changes its own skill when you
+  come back; one you deleted there turns its skill off.
+- Back up and restore. Your skills (your routines' too), your plan settings, the keys you trust and your MCP tools'
+  choices go in with the Skills tick; the last two come back only from a backup you mark as your own, and a server's
+  tool choices only with that server. Connections go in without their tokens, and helper keys and tokens only if you
+  tick Keys and private codes. Your signing key never leaves the phone.
+- French for all of it.
+- The monthly backup reminder no longer goes away when you start a phone lock for someone else, and a pairing's "a file
+  didn't arrive" or "a folder is no longer shared" notice no longer replaces their answer or a list notice: each had a
+  number another notice used.
+
 ## 1.2.7 (2026-11-08)
 
 - A question typed right after an answer with a list card (say, "Yes, Shopping has milk." and the list, or « Oui, le lait

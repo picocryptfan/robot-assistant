@@ -212,6 +212,8 @@ object ConnStep {
         if (a.call.kind != StepKind.CONN) return refused(ConnFailure.NOT_YET, "")
         val c = x.connection?.takeIf { it.id == a.call.conn } ?: return refused(ConnFailure.GONE, "")
         val op = a.call.op?.let(c::op) ?: return refused(ConnFailure.GONE, c.name)
+        // 1.3: a tool of an MCP server of yours (McpStep).
+        (op.spec as? OpSpec.McpCall)?.let { return McpStep.prepare(a, x, c, op, it) }
         if (ConnOps.http(c, op) == null) return refused(ConnFailure.GONE, c.name)
         if (c.tested == null) return refused(ConnFailure.NOT_TESTED, c.name)
         ConnRules.refusal(c)?.let { return refused(it, c.name) }
@@ -387,7 +389,7 @@ enum class SkillLimitCode(override val id: Int, override val title: String) : Lo
 /** The voice log's numbers for a connection's call (CONN_CALL, D21): its kind, how it ended, how long it took and how much came back. Never a host, a path, a value or a reply. */
 object ConnLog {
     /** The connection's kind: 1 Home Assistant, 2 ntfy, 3 webhook, 4 routing, 5 hand-off. */
-    fun kind(k: ConnKind): Int = k.ordinal + 1
+    fun kind(k: ConnKind): Int = k.ordinal + 1 // 6: an MCP server (1.3)
 
     /** 0 sent and answered 2xx; else the HTTP status's hundreds when one came (400, 500) plus ConnFailure's code. */
     fun result(end: CallEnd): Int = when (end) {

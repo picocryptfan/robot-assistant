@@ -226,7 +226,7 @@ class BrainProtocolTest {
      */
     @Test fun fileOneShotsCrossAndOnlyAFileReadCarriesAPicture() {
         // LS4, deliberately: LIST_SPLIT appended (lists-plan.md §8.3), the others unchanged and in their order.
-        assertEquals(listOf("TRANSLATE", "SUMMARY_MAP", "SUMMARY_REDUCE", "WEB_ANSWER", "FILE_READ", "FILE_ANSWER", "LIST_SPLIT"), OneShotKind.entries.map { it.name })
+        assertEquals(listOf("TRANSLATE", "SUMMARY_MAP", "SUMMARY_REDUCE", "WEB_ANSWER", "FILE_READ", "FILE_ANSWER", "LIST_SPLIT", "PLAN", "DRAFT"), OneShotKind.entries.map { it.name })
         val keys = setOf("kind", "priority", "system", "text", "maxChunks")
         val translate = BrainMsg.OneShot(OneShotKind.TRANSLATE, Priority.INTERPRETER, Prompt.TRANSLATE_FR_EN, "Salut", 120)
         assertEquals(keys, translate.toJson().keys().asSequence().toSet())

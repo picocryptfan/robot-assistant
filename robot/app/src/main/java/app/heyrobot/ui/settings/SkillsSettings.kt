@@ -24,6 +24,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.heyrobot.R
+import app.heyrobot.core.RoutineCards
 import app.heyrobot.core.i18n.Lang
 import app.heyrobot.core.i18n.SkillStrings
 import app.heyrobot.core.i18n.UiStrings
@@ -41,11 +42,14 @@ import app.heyrobot.core.skills.SkillState
 import app.heyrobot.core.skills.SkillStats
 import app.heyrobot.core.skills.Slot
 import app.heyrobot.sys.SkillContext
+import app.heyrobot.sys.RoutineFiles
 import app.heyrobot.sys.SkillFiles
 import app.heyrobot.ui.AppActions
 import app.heyrobot.ui.Mark
 import app.heyrobot.ui.Page
 import app.heyrobot.ui.common.RIcons
+import app.heyrobot.ui.pref.RadioPreference
+import app.heyrobot.ui.pref.SliderPreference
 import app.heyrobot.ui.pref.ConfirmDialog
 import app.heyrobot.ui.pref.EditDialog
 import app.heyrobot.ui.pref.IntroPreference
@@ -87,7 +91,13 @@ data class SkillsData(
     val connections: List<app.heyrobot.core.connect.Connection> = emptyList(),
     val scripts: List<app.heyrobot.core.termux.TermuxScriptInfo> = emptyList(),
     val masks: Map<String, Map<app.heyrobot.core.connect.SecretPart, String>> = emptyMap(),
+    /** S3.2: your routines, for a routine's skill's "Starts by itself". */
+    val routines: List<app.heyrobot.core.Routine> = emptyList(),
 ) {
+    /** The routine [s] starts by itself as, if any (the morning brief's, for the built-in brief). */
+    fun routineOf(s: Skill): app.heyrobot.core.Routine? = if (app.heyrobot.core.skills.RoutineMigration.builtIn(s)) routines.firstOrNull { it.id == app.heyrobot.core.BriefRoutine.ID }
+        else app.heyrobot.core.skills.RoutineSkills.routineOf(s, routines)
+
     /** What a skill's steps link to (C9: ConnLinks over your connections and typed scripts). */
     val links: app.heyrobot.core.connect.ConnLinks get() = app.heyrobot.core.connect.ConnLinks(connections, app.heyrobot.core.termux.ScriptLinks(scripts))
 
@@ -100,7 +110,8 @@ data class SkillsData(
             val conns = app.heyrobot.sys.ConnFiles.store(ctx).connections()
             return SkillsData(skills, file.takeIf { it !is SkillFile.Ok }, (file as? SkillFile.Ok)?.dropped ?: 0, state.lastRun, SkillContext.of(ctx, skills),
                 state, store.settings(), conns, try { app.heyrobot.sys.TermuxStore.status(ctx).scripts } catch (_: Throwable) { emptyList() },
-                conns.associate { it.id to app.heyrobot.sys.ConnKeyFiles.masks(ctx, it.id) })
+                conns.associate { it.id to app.heyrobot.sys.ConnKeyFiles.masks(ctx, it.id) },
+                try { RoutineFiles.store(ctx).all() } catch (_: Exception) { emptyList() })
         }
     }
 }
@@ -116,6 +127,8 @@ class SkillActions(
     val startOver: () -> Unit = {},
     /** Phase B: "Let Robot's model pick skills". */
     val setModelPicks: (Boolean) -> Unit = {},
+    /** 1.3 (S3.7): a plan's rows (Approve a plan's actions, Most steps). */
+    val setPlans: ((app.heyrobot.core.skills.SkillSettings) -> app.heyrobot.core.skills.SkillSettings) -> Unit = {},
 )
 
 object SkillRoutes {
@@ -150,12 +163,15 @@ fun SkillsRoute(route: String, a: AppActions, snackbar: SnackbarHostState, onBac
     fun changed() { SkillFiles.changed(ctx); tick++ }
     val act = SkillActions(
         open = { a.openPage(Page.Settings(it)) },
-        save = { s -> store.save(s).also { changed() } },
-        delete = { id -> store.delete(id); changed() },
+        save = { s -> app.heyrobot.core.skills.RoutineSkills.saveSkill(RoutineFiles.store(ctx), store, s).also { changed(); RoutineFiles.changed(ctx) } },
+        delete = { id -> app.heyrobot.core.skills.RoutineSkills.deleteSkill(RoutineFiles.store(ctx), store, id); changed() },
         startOver = { store.reset(); changed() },
         setModelPicks = { on -> store.saveSettings(store.settings().copy(modelPicks = on)); changed() },
+        setPlans = { f -> store.saveSettings(f(store.settings())); changed() },
     )
     if (route == SettingsRoutes.SKILLS) return SkillsScreen(data, act, snackbar, onBack)
+    // 1.3 S3.4: Sharing and the import screen.
+    if (SkillShareRoutes.of(route)) return SkillsSharingRoute(route, data, act, snackbar, onBack)
     // C9: a step's page.
     SkillStepRoutes.of(route)?.let { (id, i) ->
         val k = data.skills.firstOrNull { it.id == id }
@@ -174,6 +190,7 @@ fun SkillsScreen(d: SkillsData, act: SkillActions, snackbar: SnackbarHostState, 
     val langs = LocalLangs.current
     val tYours = stringResource(R.string.skill_yours)
     val footer = stringResource(R.string.skill_footer)
+    val plansTitle = stringResource(R.string.skill_plans_title)
     PreferenceScreen(UiStrings.skills().str(), onBack, snackbar = snackbar) {
         item(key = "intro") { IntroPreference(stringResource(R.string.skill_intro)) }
         if (d.problem != null || d.dropped > 0) {
@@ -189,7 +206,8 @@ fun SkillsScreen(d: SkillsData, act: SkillActions, snackbar: SnackbarHostState, 
         }
         preferenceGroup(tYours, "mine") {
             if (d.skills.isEmpty()) PreferenceItem(stringResource(R.string.skill_none_yet), null, RIcons.Robot)
-            for (s in d.skills) PreferenceItem(s.name, SkillCards.row(s, d.runs[s.id], now).str(), RIcons.Robot, onClick = { act.open(SkillRoutes.skill(s.id)) })
+            for (s in d.skills) PreferenceItem(s.name, (listOf(SkillCards.row(s, d.runs[s.id], now)) + listOfNotNull(d.routineOf(s)?.let { r ->
+                SkillStrings.startsByItself("when" to RoutineCards.whenPhrase(r)) })).map { it.str() }.joinToString("\n"), RIcons.Robot, onClick = { act.open(SkillRoutes.skill(s.id)) })
             // C9 (plan §6.1): a name, then the first step from Add a step's sheet.
             if (d.problem == null && d.skills.size < app.heyrobot.core.skills.SkillCheck.MAX_SKILLS)
                 PreferenceItem(stringResource(R.string.conn_add_skill), stringResource(R.string.conn_add_skill_summary), RIcons.Add, onClick = { naming = true })
@@ -200,10 +218,26 @@ fun SkillsScreen(d: SkillsData, act: SkillActions, snackbar: SnackbarHostState, 
             PreferenceItem(app.heyrobot.core.i18n.ConnStrings.title().str(), app.heyrobot.core.connect.ConnSetup.summary(d.connections, attention).str(), RIcons.Settings,
                 onClick = { act.open(ConnRoutes.LIST) })
         }
+        preferenceGroup(null, "sharing") {
+            PreferenceItem(stringResource(R.string.skill_sharing), stringResource(R.string.skill_sharing_summary), RIcons.Share, onClick = { act.open(SkillShareRoutes.SHARING) })
+        }
         preferenceGroup(null, "model") {
             SwitchPreference(stringResource(R.string.skill_model_picks), stringResource(R.string.skill_model_picks_summary), d.settings.modelPicks) {
                 act.setModelPicks(it)
             }
+        }
+        // 1.3 (S3.7): how a plan's writes are approved, and its most steps (skill_settings.json).
+        preferenceGroup(plansTitle, "plans") {
+            for (a in app.heyrobot.core.skills.PlanApprove.entries) {
+                val all = a == app.heyrobot.core.skills.PlanApprove.ALL_AT_ONCE
+                RadioPreference(stringResource(if (all) R.string.skill_plan_all else R.string.skill_plan_step),
+                    stringResource(if (all) R.string.skill_plan_all_summary else R.string.skill_plan_step_summary), selected = d.settings.planApprove == a) {
+                    act.setPlans { it.copy(planApprove = a) }
+                }
+            }
+            val caps = app.heyrobot.core.skills.SkillPlans.CAPS
+            SliderPreference(stringResource(R.string.skill_plan_cap), d.settings.planCap.toFloat(), caps.first.toFloat()..caps.last.toFloat(), caps.last - caps.first - 1,
+                { it.toInt().toString() }) { v -> act.setPlans { it.copy(planCap = v.toInt().coerceIn(caps)) } }
         }
         preferenceFooter(footer)
     }
@@ -332,7 +366,11 @@ fun SkillPageScreen(s: Skill, d: SkillsData, act: SkillActions, snackbar: Snackb
             // Phase B: "On Fast: 9 of the last 10 right", once a model has 5 samples.
             val fills = SkillStats.lines(d.state, s)
             if (fills.isNotEmpty()) PreferenceItem(stringResource(R.string.skill_fills), fills.joinToString("\n") { it.render(langs) }, RIcons.Robot)
-            PreferenceItem(stringResource(R.string.skill_delete), null, RIcons.Delete, onClick = { deleting = true })
+            // S3.2: a routine's skill goes only with its routine (its page says when it starts); the brief's never.
+            val routine = d.routineOf(s)
+            if (routine != null) PreferenceItem(stringResource(R.string.skill_starts), RoutineCards.whenPhrase(routine).str().replaceFirstChar { it.uppercase() },
+                RIcons.Alarm, onClick = { act.open(if (routine.id == app.heyrobot.core.BriefRoutine.ID) RoutineRoutes.BRIEF else RoutineRoutes.routine(routine.id)) })
+            else PreferenceItem(stringResource(R.string.skill_delete), null, RIcons.Delete, onClick = { deleting = true })
         }
     }
     adding?.let { which ->

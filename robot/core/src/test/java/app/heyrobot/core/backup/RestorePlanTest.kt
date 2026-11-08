@@ -62,7 +62,7 @@ class RestorePlanTest {
         val fresh = RestorePlanner.plan(v, PhoneHas(emptyMap()), RestorePlanner.defaults(v), mine = false)
         // The fixture has no voiceprint (1.1's optional category), deliberately no everyday set (BackupDowngradeTest has its own),
         // and no connections (C10's own tests have them).
-        assertEquals(BackupCategory.entries - BackupCategory.SENSITIVE - BackupCategory.EVERYDAY - BackupCategory.CONNECTIONS - BackupCategory.LINKS - BackupCategory.CALENDAR - BackupCategory.HOME, fresh.restoring)
+        assertEquals(BackupCategory.entries - BackupCategory.SENSITIVE - BackupCategory.EVERYDAY - BackupCategory.CONNECTIONS - BackupCategory.LINKS - BackupCategory.CALENDAR - BackupCategory.HOME - BackupCategory.SKILL_TRUST, fresh.restoring)
         assertEquals(PlanSkip.NOT_IN_BACKUP, fresh.of(BackupCategory.EVERYDAY).skip)
         assertEquals(PlanSkip.NOT_IN_BACKUP, fresh.of(BackupCategory.VOICEPRINT).skip)
         assertEquals(PlanSkip.NOT_CHOSEN, fresh.of(BackupCategory.KEYS).skip)

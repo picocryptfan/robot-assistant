@@ -16,7 +16,9 @@ import org.json.JSONObject
 // output or sitting inside words, or a `conn:`, `app:`, `travel_time` or `termux_script` step). So a 1.1 Robot reads a v1
 // file whole, and leaves a v2 file alone ("Your skills are from a newer Robot") instead of dropping the skills it can't
 // read and writing the file over without them. A v1 file is read with 1.1's rules exactly: a skill in it that needs v2 is
-// dropped, as 1.1 drops it. The backup writer records the file's own v (BackupCategory.schemaOf), not [VERSION].
+// dropped, as 1.1 drops it. 1.3's v3 (skills 1.3 plan S3.1) is the same rule once more: a routine's skill, a draft, an
+// import (provenance `import`) or a routine's own step (`brief`, `reminders`, `messages`) makes the file v3, which 1.2 leaves
+// alone; a file without them is written byte for byte as 1.2 writes it. The backup writer records the file's own v (BackupCategory.schemaOf), not [VERSION].
 
 /** What a skills file held. */
 sealed class SkillFile {
@@ -28,7 +30,7 @@ sealed class SkillFile {
 
 object SkillCodec {
     /** The newest file this Robot reads; it writes [version]'s, the lowest that holds what it saves. */
-    const val VERSION = 2
+    const val VERSION = 3
 
     private val TOP = setOf("v", "skills")
     private val SKILL = setOf("id", "rev", "name", "names", "params", "steps", "level", "provenance")
@@ -42,6 +44,9 @@ object SkillCodec {
     private val PARAM_2 = setOf("options", "min", "max", "unit")
     private val STEP_2 = setOf("id", "if", "check", "on_fail")
     private val LIMITS = setOf("per_hour")
+    // v3's (1.3): a provenance's `import`, and SkillMade's and StepKind's since-3 values.
+    private val PROVENANCE_3 = setOf("import")
+    private val IMPORT = setOf("file_sha256", "signer")
     private const val IS = "is" // l10n: not text (a key in the skills file)
     private const val LESS = "less_than" // l10n: not text (a key in the skills file)
     private const val MORE = "more_than" // l10n: not text (a key in the skills file)
@@ -53,6 +58,8 @@ object SkillCodec {
 
     /** The lowest file version that holds [s]: 2 when it uses anything 1.1 doesn't read. */
     fun needs(s: Skill): Int {
+        // 3: a routine's skill, a draft or an import (1.3), or a routine's own step. Nothing else changes from v2.
+        if (s.provenance.made.since > 2 || s.provenance.imported != null || s.steps.any { it.kind.since > 2 }) return 3
         if (s.perHour != null || s.params.any { it.type.since > 1 || it.options.isNotEmpty() || it.min != null || it.max != null || it.unit != null }) return 2
         for (st in s.steps) {
             if (st.kind.since > 1 || st.id != null || st.cond != null || st.check != null || st.onFail != OnFail.STOP || st.conn != null || st.op != null) return 2
@@ -114,6 +121,7 @@ object SkillCodec {
             put("from_content", s.provenance.fromContent)
             put("created", s.provenance.created)
             put("edited", s.provenance.edited)
+            s.provenance.imported?.let { put("import", JSONObject().put("file_sha256", it.fileSha256).put("signer", it.signer ?: JSONObject.NULL)) }
         })
         s.perHour?.let { put("limits", JSONObject().put("per_hour", it)) }
     }
@@ -166,7 +174,7 @@ object SkillCodec {
         val v2 = version >= 2
         within(o, SKILL, if (v2) SKILL_2 else emptySet())
         val names = langs(o, "names")
-        val prov = obj(o, "provenance", PROVENANCE)
+        val prov = (o.get("provenance") as JSONObject).also { within(it, PROVENANCE, if (version >= 3) PROVENANCE_3 else emptySet()) }
         val s = Skill(
             id = str(o, "id"),
             rev = int(o, "rev"),
@@ -176,12 +184,16 @@ object SkillCodec {
             params = arr(o, "params").map { param(it, v2) },
             steps = arr(o, "steps").map { step(it, v2) },
             level = SkillLevel.of(str(o, "level"))!!,
-            provenance = SkillProvenance(SkillMade.of(str(prov, "made"))!!, bool(prov, "from_content"), long(prov, "created"), long(prov, "edited")),
+            provenance = SkillProvenance(SkillMade.of(str(prov, "made"))!!, bool(prov, "from_content"), long(prov, "created"), long(prov, "edited"),
+                if (prov.has("import")) imported(obj(prov, "import", IMPORT)) else null),
             namesMore = (keys(names) - LANGS).associateWith { strings(names, it) },
             perHour = if (o.has("limits")) int(obj(o, "limits", LIMITS), "per_hour") else null,
         )
         s.takeIf { needs(it) <= version && SkillCheck.valid(it) }
     } catch (_: Exception) { null }
+
+    private fun imported(o: JSONObject): SkillImport =
+        SkillImport(str(o, "file_sha256"), when (val g = o.get("signer")) { JSONObject.NULL -> null; is String -> g; else -> throw IllegalArgumentException() })
 
     private fun param(x: Any?, v2: Boolean): SkillParam {
         val o = x as JSONObject

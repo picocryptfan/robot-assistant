@@ -79,7 +79,7 @@ enum class SkillRunCode(override val id: Int, override val title: String) : LogC
 /** The voice log's codes for a skill made or changed (SKILL_EDIT's a). Stable numbers. */
 enum class SkillEditCode(override val id: Int, override val title: String) : LogCode {
     TAUGHT(1, "taught by voice"), SAVED_THAT(2, "saved from what Robot did"), NOT_SAVED(3, "not saved"), DELETED(4, "deleted"), KEPT(5, "kept"),
-    CHANGED(6, "changed in Settings"), MADE(7, "made in Settings"),
+    CHANGED(6, "changed in Settings"), MADE(7, "made in Settings"), DRAFTED(8, "drafted by Robot's model"),
 }
 
 /** A step's call: the app's own, from your words naming the skill (never a model's). */
@@ -116,6 +116,8 @@ class SkillRun(
     outputs: Map<String, Map<String, SkillValue>> = emptyMap(),
     /** Your connections: whether a connection's step only reads (go on is honoured only after a read). */
     private val links: SkillLinks = SkillLinks.NONE,
+    /** S3.2: how a routine's own steps run here (the brief, your reminders, the messages count); none: they fail. */
+    private val routineSteps: RoutineSteps? = null,
 ) {
     private var taint = SkillPolicy.untrusted(skill, untrusted)
 
@@ -201,6 +203,13 @@ class SkillRun(
             // `say`: Robot's words of yours (its templates filled, an earlier step's output among them), shown and spoken.
             say((skill.withValues(step, values, ::typed)["text"] as? String).orEmpty())
             return StepResult(i, step.kind, ActionStatus.DONE, null, launched = false, content = false)
+        }
+        if (step.kind.routineOnly) {
+            // S3.2: a routine's own step runs by the routine's code (its gate and lock rules), never as a tool call. What it
+            // said (your calendar, your reminders, who wrote) is content for every later step.
+            val st = RoutineMigration.routineStep(skill, step)?.let { routineSteps?.run(it) } ?: ActionStatus.FAILED
+            if (st.succeeded) taint = true
+            return StepResult(i, step.kind, st, null, launched = false, content = st.succeeded)
         }
         val tool = step.kind.runsAs ?: return StepResult(i, step.kind, ActionStatus.FAILED, null, launched = false, content = false)
         var ran: Executed? = null

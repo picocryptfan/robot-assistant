@@ -40,6 +40,32 @@ The design documents linked under `docs/` in this file (and `docs/plans/`) are p
 
 Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `THIRD_PARTY.md`.
 
+## What's new in 1.3
+
+Robot 1.3.0 (8 Nov 2026), Skills, from `release/1.3`. Settings stay at schema 13: each part keeps its own file. No new permission; the
+INTERNET comment in the manifest names every use by process. CHANGELOG.md has the list, PRIVACY.md and SECURITY.md what
+goes online and how it is guarded.
+
+- **MCP servers as connections.** A new kind of connection (`ConnKind.MCP`, `McpClient` in `:helpers`, run
+  from `:voice`). Only an address on your home network, a Tailscale address (100.64/10) or this phone's loopback, checked
+  when you type it and on every lookup and socket (`ConnRules.homeOnly`, `ConnHttp`'s CallPlace); loopback needs a token;
+  a bearer token goes only over https with a valid certificate, or to a server on this phone. Each tool starts off. The
+  tool's title, description and schemas are pinned by SHA-256 when you turn it on; a change turns it off with what changed,
+  and another self-reported server name at the same address turns all off. Arguments are checked against the pinned input
+  schema before they are sent (more than 1,200 characters on a card: refused), an answer is cut at 1,500 characters, a list
+  has 10 s and a call 30 s, and the server's words are shown, never given to a model.
+- **Plans and drafts.** `PlanRouter`, `SkillPlan`, `SkillDrafter`: at most 3 to 8 steps (5 by default, Settings › Skills ›
+  Plans), a drafted skill is saved at Ask first with no trigger, 10 drafts an hour, a draft made after untrusted content is
+  quarantined. A helper plans or drafts only after the card (`SkillHelp`), waiting up to 30 minutes in car mode.
+- **Routines as skills.** Migrated at every start (`routines.json` stays version 1 with a `skill` field).
+- **Sharing.** `.robotskill` files signed ES256 (P-256, SHA-256, low-s) with a Keystore key (`robot_skill_signing`, never
+  exportable); a trusted key is a name and a fingerprint (at most 20, `skill_keys.json`), and changes only the words on an
+  import, which always starts off. Files are at most 512 KiB.
+- **Backup.** `skills.json` and the plan rows go in the Skills tick; connections without tokens in Connections; tokens and
+  helper keys only with Keys and private codes. The category `skill_trust` (trusted keys and each MCP tool file, on the
+  Skills row) is restored only from a backup you mark as your own, and a tool file only for a connection that restore
+  brought back. An older Robot skips that category and restores the rest.
+
 ## What's new in 1.2
 
 Robot 1.2.0 is everything built since 1.1.1, from `release/1.2`: Lists, files in a question, the rebuilt car screen with

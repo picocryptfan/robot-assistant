@@ -64,6 +64,7 @@ object SkillCheck {
     val UNITS: Set<String> = setOf("minutes", "hours", "days", "degrees", "percent", "km")
 
     private val ID = Regex("^s-[a-z0-9]{6}$")
+    private val HEX64 = Regex("^[0-9a-f]{64}$")
     private val PARAM = Regex("^[a-z][a-z0-9_]{0,15}$")
     private val ARG = Regex("^[a-z][a-z0-9_]{0,${MAX_ARG - 1}}$")
     private val CONTROL = Regex("[\\p{Cc}\\p{Cf}\\u2028\\u2029]")
@@ -135,6 +136,10 @@ object SkillCheck {
     fun problems(s: Skill): List<Phrase> = buildList {
         if (!validId(s.id) || s.rev < 1 || s.provenance.created < 0 || s.provenance.edited < 0) add(SkillStrings.couldntSave())
         if (s.perHour != null && s.perHour !in 1..MAX_PER_HOUR) add(SkillStrings.couldntSave())
+        // Design §3.7: an import, and only an import, says which file it came from and who signed it.
+        val imp = s.provenance.imported
+        if ((s.provenance.made == SkillMade.IMPORT) != (imp != null) || imp != null && (!HEX64.matches(imp.fileSha256) || imp.signer?.let(HEX64::matches) == false))
+            add(SkillStrings.couldntSave())
         if (!validName(s.name)) add(SkillStrings.nameRules())
         if (s.namesEn.size > MAX_OTHER_NAMES || s.namesFr.size > MAX_OTHER_NAMES || s.namesMore.values.any { it.size > MAX_OTHER_NAMES })
             add(SkillStrings.tooManyNames())
@@ -227,6 +232,8 @@ object SkillCheck {
                 v is String && secret(v) -> out += SkillStrings.secret()
             }
         }
+        // A routine's own step (1.3) takes no arguments (the check above refuses any).
+        if (step.kind.routineOnly) return out
         if (step.kind == StepKind.SAY) {
             val text = step.args["text"] as? String
             if (text == null || text.isBlank() || text.length > RoutineCheck.MAX_SAY || CONTROL.containsMatchIn(text)) out += unusable

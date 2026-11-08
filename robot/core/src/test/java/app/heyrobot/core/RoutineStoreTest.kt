@@ -70,6 +70,20 @@ class RoutineStoreTest {
         assertEquals(emptyList<String>(), dir.list()!!.filter { it.endsWith(".tmp") })
     }
 
+    /** Skills 1.3 S3.1: a routine's skill link is kept in routines.json v1, and a file without links is written as before. */
+    @Test fun theSkillLinkIsKeptAndTheFileStaysV1() {
+        val r = routine()
+        assertEquals(listOf(r), store.edit { listOf(r) })
+        val before = java.io.File(dir, RoutineStore.ROUTINES).readText()
+        assertEquals(RoutineCodec.encode(listOf(r)), before)
+        assertFalse(before.contains("\"skill\""))
+        assertEquals(listOf(r.copy(skill = "s-abc123")), store.edit { rs -> rs.map { it.copy(skill = "s-abc123") } })
+        assertEquals(listOf(r.copy(skill = "s-abc123")), store.routines())
+        val o = org.json.JSONObject(java.io.File(dir, RoutineStore.ROUTINES).readText())
+        assertEquals(1, o.getInt("v"))
+        assertEquals("s-abc123", o.getJSONArray("routines").getJSONObject(0).getString("skill"))
+    }
+
     @Test fun aRoutineThatCantBeSavedIsRefused() {
         assertFalse(store.save(routine(steps = emptyList())))
         assertFalse(store.save(routine(steps = listOf(RoutineStep.Say("")))))

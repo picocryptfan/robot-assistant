@@ -153,6 +153,25 @@ object HelperLink {
         return session
     }
 
+    /**
+     * 1.3 (S3.9): a session with [h]'s API for one plan or one draft (core SkillHelp), after your Send on its card: its own
+     * fixed instruction ([system]), no tools, no web search, one question. Null without a key. Background thread.
+     */
+    @Synchronized
+    fun skillSession(ctx: Context, h: HelperConfig, system: String): HelperSession? {
+        val facts = HelperFactsStore.load(ctx, h.id)
+        if (held(ctx, h, facts) is Made.Not) return null
+        val held = current.getValue(h.id)
+        held.users++
+        val session: HelperSession = if (h.presetOf.protocol == Protocol.ANTHROPIC) {
+            AnthropicSession(held.anthropic!!, AnthropicModel.of(h.model), emptyList(), search = false, conversation = false, system = system)
+        } else {
+            OpenAiSession(held.http!!, h.copy(search = false), emptyList(), conversation = false, vision = false, dropped = facts.dropped(h.model), system = system)
+        }
+        sessions[session] = held
+        return session
+    }
+
     /** Robot's actions for [h]: none when you turned them off for it, or its model can't take them (the server said so). */
     fun tools(s: RobotSettings, h: HelperConfig, facts: HelperFacts): List<ToolSpec> = when {
         !h.actions -> emptyList()

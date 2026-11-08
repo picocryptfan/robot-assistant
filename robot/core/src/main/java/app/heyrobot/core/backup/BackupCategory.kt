@@ -139,7 +139,16 @@ enum class BackupCategory(
      * this order, and a Robot without it skips "home" by name. Written by :voice through HomeSettingsStore's lock, which
      * both processes share since H4, merged over this phone's file (HomeSettings.restored).
      */
-    HOME("home", true, RestoreProcess.VOICE, 1);
+    HOME("home", true, RestoreProcess.VOICE, 1),
+    /**
+     * Skills 1.3 (skills-backup-b): the public keys you trust ("skill_keys.json", SkillShare) and each MCP connection's tool
+     * choices and pins ("mcp/<id>.json", McpToolsCodec). Shown in Skills' row ([coveredBy]), so one tick covers both. Its own
+     * category, not inside Skills or Connections: a 1.2 Robot refuses a whole known category at an entry name it doesn't know,
+     * and skips "skill_trust" by name (each entry far under BackupCaps.UNKNOWN_ENTRY). Restored only from a backup that is
+     * yours ([ONLY_YOURS]): someone else's trusted key is never trusted here. A tools file comes back only for a connection
+     * the same restore brought (RestoreMerge.skillTrust). Appended last: the voice log's category bits follow this order.
+     */
+    SKILL_TRUST("skill_trust", true, RestoreProcess.VOICE, 1 + app.heyrobot.core.connect.ConnCheck.MAX_CONNECTIONS);
 
     /** Whether [name] is one of this category's entry names. */
     fun validName(name: String): Boolean = rule(name) != null
@@ -157,6 +166,9 @@ enum class BackupCategory(
      */
     fun schemaOf(name: String, data: ByteArray): Int? {
         val known = schema(name) ?: return null
+        // 1.3: skill_settings.json as its file says (v1 while the plan rows are at their defaults), so 1.2 restores it.
+        if (this == SKILLS && name == SkillStore.SETTINGS) return app.heyrobot.core.skills.SkillSettingsCodec.versionOf(String(data, Charsets.UTF_8))
+            ?.takeIf { it in 1..known } ?: known
         if (this != SKILLS || name != SkillStore.SKILLS) return known
         return SkillCodec.versionOf(String(data, Charsets.UTF_8))?.takeIf { it in 1..known } ?: known
     }
@@ -200,6 +212,8 @@ enum class BackupCategory(
             }
             CONNECTIONS -> if (name == CONNECTIONS_FILE) NameRule(app.heyrobot.core.connect.ConnectionCodec.MAX_BYTES.toLong(),
                 app.heyrobot.core.connect.ConnectionCodec.VERSION) else null
+            SKILL_TRUST -> if (name == SKILL_KEYS_FILE) NameRule(BackupCaps.KEY_LIST, app.heyrobot.core.skills.SkillShare.VERSION)
+                else mcpOf(name)?.let { NameRule(app.heyrobot.core.connect.McpToolsCodec.MAX_BYTES.toLong(), app.heyrobot.core.connect.McpToolsCodec.VERSION) }
             CONN_KEYS -> connOf(name)?.let { NameRule(app.heyrobot.core.connect.ConnSecretsCodec.MAX_BYTES.toLong(), app.heyrobot.core.connect.ConnSecretsCodec.VERSION) }
         }
     }
@@ -265,7 +279,7 @@ enum class BackupCategory(
          * their own and a passphrase of any strength: they hold no key. Private events, and (today-fix-b) the Today page: someone
          * else's backup never turns your Today on or off or pins a note from their phone.
          */
-        val ONLY_YOURS: Set<BackupCategory> get() = SENSITIVE + LINKS + CALENDAR + HOME
+        val ONLY_YOURS: Set<BackupCategory> get() = SENSITIVE + LINKS + CALENDAR + HOME + SKILL_TRUST
 
         /** The categories whose entries are keys, saved as they are read and deleted again when a restore is cut short. */
         val KEY_CATEGORIES: Set<BackupCategory> get() = setOf(KEYS, CONN_KEYS)
@@ -274,7 +288,11 @@ enum class BackupCategory(
          * D7: the row on Back up now's list and the restore preview that a category is shown in: Connection keys in Keys and
          * private codes', so one tick covers both; every other category in its own.
          */
-        fun coveredBy(c: BackupCategory): BackupCategory = if (c == CONN_KEYS) KEYS else c
+        fun coveredBy(c: BackupCategory): BackupCategory = when (c) {
+            CONN_KEYS -> KEYS
+            SKILL_TRUST -> SKILLS
+            else -> c
+        }
 
         /** The rows the lists show, in order: every category but those another row covers. */
         val ROWS: List<BackupCategory> get() = entries.filter { coveredBy(it) == it }
@@ -287,6 +305,16 @@ enum class BackupCategory(
             name.takeIf { it.startsWith(CONN_KEY) }?.removePrefix(CONN_KEY)?.takeIf { app.heyrobot.core.skills.SkillStep.validConnId(it) }
 
         fun connKey(id: String): String = CONN_KEY + id
+
+        /** skills-backup-b: the trusted keys' entry, and each MCP connection's tools file ("mcp/<id>.json"). */
+        const val SKILL_KEYS_FILE = app.heyrobot.core.skills.SkillShare.FILE
+        const val MCP_TOOLS = "mcp/"
+
+        /** An MCP tools entry name → its connection id ("mcp/c-ha0001.json" → "c-ha0001"), or null. */
+        fun mcpOf(name: String): String? = name.takeIf { it.startsWith(MCP_TOOLS) && it.endsWith(".json") }
+            ?.removePrefix(MCP_TOOLS)?.removeSuffix(".json")?.takeIf { app.heyrobot.core.skills.SkillStep.validConnId(it) }
+
+        fun mcpName(id: String): String = "$MCP_TOOLS$id.json"
 
         /**
          * The updater's settings file. A restore stages the backup's copy as it is ([UPDATES_STAGED], with [MINE_STAGED]
@@ -369,6 +397,8 @@ object BackupCaps {
     const val TRANSCRIPT_TEXT = 64 * MIB
     const val RECORDING = 1 * GIB
     const val KEY = 4 * KIB
+    /** skill_keys.json: at most 20 trusted keys (SkillShare.MAX_TRUSTED), a few KB. */
+    const val KEY_LIST = 64 * KIB
     /** The voiceprint's plain form: a model id and at most VoiceprintCodec.MAX_DIM floats (a few KB). */
     const val VOICEPRINT = 64 * KIB
     /** An entry of a category this Robot doesn't know is read through (and skipped) up to this size. */

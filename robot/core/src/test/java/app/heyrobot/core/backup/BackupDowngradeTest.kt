@@ -69,8 +69,8 @@ class BackupDowngradeTest {
     /** Skills from a newer Robot wait for it; a skills.json this Robot reads only in part is refused whole (plan §4). */
     @Test fun skillsNewerOrDroppedAreNotRestored() {
         fun verify(text: String) = BackupKit.verify(BackupKit.encrypt(RawRecords().manifest().entry("skills", "skills.json", BackupKit.text(text)).end().bytes()))
-        // C1 (connections plan D6) moved this pin from 2 to 3 on purpose: this Robot reads v2 (aV2SkillsFileRecordsItsOwnVersion).
-        assertEquals(listOf(CategorySkip("skills", BackupCategory.SKILLS, SkipWhy.NEWER)), verify("{\"v\":3,\"skills\":[]}").skipped)
+        // C1 (connections plan D6) moved this pin from 2 to 3 on purpose, and skills 1.3's S3.1 from 3 to 4: this Robot reads v3.
+        assertEquals(listOf(CategorySkip("skills", BackupCategory.SKILLS, SkipWhy.NEWER)), verify("{\"v\":4,\"skills\":[]}").skipped)
         val home = app.heyrobot.core.skills.SkillCodec.toJson(app.heyrobot.core.skills.SkillFixtures.headingHome()).put("color", "red")
         assertEquals(listOf(CategorySkip("skills", BackupCategory.SKILLS, SkipWhy.REFUSED)), verify("{\"v\":1,\"skills\":[$home]}").skipped)
         assertEquals(listOf(CategorySkip("skills", BackupCategory.SKILLS, SkipWhy.REFUSED)), verify("{\"v\":1}").skipped)
@@ -326,7 +326,9 @@ class BackupDowngradeTest {
         assertEquals(2, BackupCategory.SKILLS.schemaOf("skills.json", v2.toByteArray()))
         // Unreadable: the newest this Robot reads (its restore refuses the file anyway); other files: their own schema.
         assertEquals(app.heyrobot.core.skills.SkillCodec.VERSION, BackupCategory.SKILLS.schemaOf("skills.json", "{broken".toByteArray()))
-        assertEquals(app.heyrobot.core.skills.SkillSettingsCodec.VERSION, BackupCategory.SKILLS.schemaOf("skill_settings.json", "{\"v\":1}".toByteArray()))
+        // 1.3: skill_settings.json as its file says, so a v1 file (plan rows at their defaults) still restores on 1.2.
+        assertEquals(1, BackupCategory.SKILLS.schemaOf("skill_settings.json", "{\"v\":1}".toByteArray()))
+        assertEquals(2, BackupCategory.SKILLS.schemaOf("skill_settings.json", "{\"v\":2,\"planCap\":4}".toByteArray()))
         // Read here: both restore.
         fun verify(text: String) = BackupKit.verify(BackupKit.encrypt(RawRecords().manifest().entry("skills", "skills.json", BackupKit.text(text), v = recorded(text)).end().bytes()))
         assertEquals(emptyList<CategorySkip>(), verify(v1).skipped)

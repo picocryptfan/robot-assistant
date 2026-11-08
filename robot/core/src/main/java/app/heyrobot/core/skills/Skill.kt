@@ -54,9 +54,14 @@ enum class ParamType(val id: String, val since: Int = 1) {
 /** A choice question's value: [value] as the file and the steps hold it, [en] and [fr] as you hear and see it. [more]: a later Robot's languages, kept. */
 data class SkillOption(val value: String, val en: String, val fr: String, val more: Map<String, String> = emptyMap())
 
-/** How the skill was made: taught by voice, "save that" (`demo`), or in Settings. */
-enum class SkillMade(val id: String) {
-    VOICE("voice"), DEMO("demo"), SETTINGS("settings");
+/**
+ * How the skill was made: taught by voice, "save that" (`demo`), or in Settings; 1.3 (format v3, [since] 3): a routine you
+ * had ([ROUTINE], RoutineMigration), a draft made on the phone or by a helper ([DRAFT_DEVICE], [DRAFT_HELPER]), or a file
+ * you imported ([IMPORT], with [SkillProvenance.imported]). [since]: the skills file version that holds it (D6).
+ */
+enum class SkillMade(val id: String, val since: Int = 1) {
+    VOICE("voice"), DEMO("demo"), SETTINGS("settings"),
+    ROUTINE("routine", since = 3), DRAFT_DEVICE("draft_device", since = 3), DRAFT_HELPER("draft_helper", since = 3), IMPORT("import", since = 3);
 
     companion object {
         fun of(id: String?): SkillMade? = entries.firstOrNull { it.id == id }
@@ -99,7 +104,17 @@ enum class StepKind(val id: String, val tool: ToolName?, val args: Map<String, P
     /** The travel time home or to work, from your routing server: `to` is "home" or "work", `conn` names the server when you have two. */
     TRAVEL_TIME("travel_time", null, mapOf("to" to null, "conn" to null), since = 2),
     /** One of your typed Termux scripts: `script` (its name) and its declared parameters, one argument each (D18). */
-    TERMUX_SCRIPT("termux_script", null, emptyMap(), since = 2);
+    TERMUX_SCRIPT("termux_script", null, emptyMap(), since = 2),
+    // 1.3, routines as skills (design §14.4): a routine's own steps, as RoutineStep has them. No arguments, no tool.
+    /** The morning brief (RoutineStep.Brief): time, weather, today's calendar, brief reminders. */
+    BRIEF("brief", null, emptyMap(), since = 3),
+    /** Today's brief reminders (RoutineStep.Reminders). */
+    REMINDERS("reminders", null, emptyMap(), since = 3),
+    /** How many unread messages you have (RoutineStep.Messages). */
+    MESSAGES("messages", null, emptyMap(), since = 3);
+
+    /** A routine's own step (1.3): it runs as the routine's step does, never as a tool. */
+    val routineOnly: Boolean get() = this == BRIEF || this == REMINDERS || this == MESSAGES
 
     /** Its arguments come from what it links to (SkillLinks), not from [args]. */
     val linked: Boolean get() = this == CONN || this == APP || this == TERMUX_SCRIPT
@@ -261,7 +276,11 @@ data class SkillStep(val kind: StepKind, val args: Map<String, Any?>, val id: St
     }
 }
 
-data class SkillProvenance(val made: SkillMade, val fromContent: Boolean, val created: Long, val edited: Long)
+/** [imported]: what an imported skill came from (design §3.7, format v3); only with [SkillMade.IMPORT] (SkillCheck). Editing never changes it. */
+data class SkillProvenance(val made: SkillMade, val fromContent: Boolean, val created: Long, val edited: Long, val imported: SkillImport? = null)
+
+/** An import's file: [fileSha256], its SHA-256 in lowercase hex; [signer], its signing key's fingerprint (64 lowercase hex), or null when unsigned. */
+data class SkillImport(val fileSha256: String, val signer: String?)
 
 /**
  * A skill (plan §3). [namesEn] and [namesFr]: what you say to run it, the name you said included in its language's list.

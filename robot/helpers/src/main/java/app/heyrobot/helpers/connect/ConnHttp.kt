@@ -2,6 +2,7 @@
 package app.heyrobot.helpers.connect
 
 import app.heyrobot.core.Abort
+import app.heyrobot.core.connect.ConnAuth
 import app.heyrobot.core.connect.ConnFailure
 import app.heyrobot.core.connect.ConnKind
 import app.heyrobot.core.connect.ConnReply
@@ -13,6 +14,7 @@ import app.heyrobot.core.connect.Connection
 import app.heyrobot.core.connect.HttpMethod
 import app.heyrobot.core.connect.HttpRequest
 import app.heyrobot.core.connect.ReplyRead
+import app.heyrobot.core.connect.SecretPart
 import app.heyrobot.core.connect.Wire
 import app.heyrobot.core.helpers.LanRule
 import app.heyrobot.helpers.http.HelperHttp
@@ -35,6 +37,7 @@ import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import okio.Buffer
 import java.io.IOException
 import java.io.InterruptedIOException
 import java.net.InetAddress
@@ -97,6 +100,16 @@ sealed class ConnCall {
     }
 }
 
+/** One exchange for MCP ([ConnHttp.exchange]): the reply as it came ([Got]: any status, its body read up to the limit), or how it [Ended]. */
+sealed class ConnExchange {
+    class Got(val status: Int, val contentType: String?, val bytes: ByteArray, val over: Boolean, val where: ConnWhere, val session: String?, val ms: Long) : ConnExchange() {
+        override fun toString(): String = "Got($status)" // l10n: not text (toString, for the logs; never the body or the session)
+    }
+
+    /** [call]: a [ConnCall.Failed] or a [ConnCall.Stopped]. */
+    class Ended(val call: ConnCall) : ConnExchange()
+}
+
 class ConnHttp internal constructor(
     /** The resolver; tests give a fake (the app never does: the constructor is internal to this module). */
     private val dns: Dns,
@@ -114,26 +127,52 @@ class ConnHttp internal constructor(
      */
     fun call(c: Connection, r: HttpRequest, secrets: ConnSecrets, abort: Abort = Abort(), max: Int = ConnReply.MAX_BYTES, cause: NetCause = NetCause.SKILL): ConnCall {
         require(max in 1..PICKER_MAX_BYTES)
+        return when (val x = send(c, r, secrets, abort, max, cause, callMs, all = false, enough = null)) {
+            is ConnExchange.Got -> ConnCall.Answered(ConnReply.read(x.status, x.contentType, x.bytes, x.over, r.json, max), x.where, x.bytes.size, x.ms)
+            is ConnExchange.Ended -> x.call
+        }
+    }
+
+    /**
+     * One MCP exchange (McpClient, in :voice): [call]'s rules, the same checks in the same order, with three changes. Every
+     * status's body is read (at most [max] bytes: McpWire reads only JSON-RPC from it, never shows the server's words), the
+     * Mcp-Session-Id header is kept, and the call has [ms] (10 s to list, 30 s for a tool). [enough]: read so far, the reply
+     * is whole (a stream's answer came), so the rest isn't read and closing the stream ends it.
+     */
+    fun exchange(c: Connection, r: HttpRequest, secrets: ConnSecrets, abort: Abort, ms: Long, max: Int = ConnReply.MAX_BYTES, cause: NetCause = NetCause.SKILL,
+        enough: ((String?, ByteArray) -> Boolean)? = null): ConnExchange {
+        require(max in 1..ConnReply.MAX_BYTES && c.kind == ConnKind.MCP)
+        return send(c, r, secrets, abort, max, cause, ms.coerceAtLeast(1), all = true, enough = enough)
+    }
+
+    private fun send(c: Connection, r: HttpRequest, secrets: ConnSecrets, abort: Abort, max: Int, cause: NetCause, callMs: Long, all: Boolean,
+        enough: ((String?, ByteArray) -> Boolean)?): ConnExchange {
         val t0 = System.nanoTime()
         fun ms() = (System.nanoTime() - t0) / 1_000_000
-        fun no(why: ConnFailure) = ConnCall.Failed(why, sent = false, ms = ms())
-        if (abort.cancelled) return ConnCall.Stopped(sent = false, ms = 0)
+        fun end(call: ConnCall) = ConnExchange.Ended(call)
+        fun no(why: ConnFailure) = end(ConnCall.Failed(why, sent = false, ms = ms()))
+        if (abort.cancelled) return end(ConnCall.Stopped(sent = false, ms = 0))
         if (abort.expired) return no(ConnFailure.TIMEOUT)
         // 1. No client for a connection Robot won't use; and the request must be this connection's own.
         ConnRules.refusal(c)?.let { return no(it) }
         val base = c.address ?: return no(ConnFailure.NOWHERE)
         if (r.base != base || r.secretAddress != c.secretAddress || r.auth != c.auth) return no(ConnFailure.NOWHERE)
         // 2. The secrets, last; then the address parsed again, which must be the connection's own origin.
-        val wire = when (val w = ConnWire.assemble(r, secrets)) {
+        // Question 35's one exception (ConnRules.mcpUnencrypted): an MCP server on this phone, its token over plain http.
+        val phone = ConnRules.mcpUnencrypted(c)
+        val wire = when (val w = ConnWire.assemble(r, secrets, phone)) {
             is ConnWire.Result.Ok -> w.wire
             is ConnWire.Result.Refused -> return no(w.why)
         }
         val url = wire.url.toHttpUrlOrNull() ?: return no(ConnFailure.BAD_VALUE)
         if (!sameOrigin(url, base.https, base.host, base.port)) return no(ConnFailure.NOWHERE)
         // D2, once more where it is sent: nothing secret over http.
-        if (!url.isHttps && r.secrets.isNotEmpty()) return no(ConnFailure.KEY_OVER_HTTP)
+        // Question 35: an MCP server only over https, token or none, but for one typed as this phone (ConnRules.httpsOnly).
+        if (!url.isHttps && ConnRules.mcpOverHttp(c)) return no(ConnFailure.MCP_HTTP)
+        if (!url.isHttps && r.secrets.isNotEmpty() && !(phone && r.secrets == setOf(SecretPart.TOKEN))) return no(ConnFailure.KEY_OVER_HTTP)
         // 3. D1: a typed address is never looked up, so its kind is decided now.
-        val place = CallPlace(url.isHttps, nearOnly = !url.isHttps && c.kind == ConnKind.ROUTING)
+        val place = CallPlace(url.isHttps, nearOnly = !url.isHttps && c.kind == ConnKind.ROUTING, keyless = c.kind == ConnKind.MCP && c.auth == ConnAuth.None,
+            phoneOnly = !url.isHttps && ConnRules.httpsOnly(c.kind), homeOnly = ConnRules.homeOnly(c.kind))
         base.literal?.let { a ->
             when (val l = ConnRules.lookupHomeWins(url.isHttps, listOf(a))) {
                 is ConnRules.Lookup.Refused -> return no(l.why)
@@ -155,21 +194,31 @@ class ConnHttp internal constructor(
             call.execute().use { resp ->
                 val where = place.where ?: return no(ConnFailure.NOWHERE)
                 val status = resp.code
+                val type = resp.header(CONTENT_TYPE)
                 var bytes = ByteArray(0)
                 var over = false
-                // Only a 2xx is read (ConnReply never reads another: a server's own error text is never used).
-                if (status in 200..299) {
-                    val source = resp.body?.source() ?: return ConnCall.Failed(ConnFailure.UNREACHABLE, sent = true, ms = ms())
-                    over = source.request(max + 1L)
-                    bytes = source.buffer.readByteArray(minOf(source.buffer.size, max.toLong()))
+                // Only a 2xx is read for a connection (ConnReply never reads another: a server's own error text is never used).
+                if (all || status in 200..299) {
+                    val source = resp.body?.source() ?: return end(ConnCall.Failed(ConnFailure.UNREACHABLE, sent = true, ms = ms()))
+                    if (enough == null) {
+                        over = source.request(max + 1L)
+                        bytes = source.buffer.readByteArray(minOf(source.buffer.size, max.toLong()))
+                    } else {
+                        val got = Buffer()
+                        while (source.read(got, CHUNK) != -1L) {
+                            if (got.size > max) { over = true; break }
+                            if (enough(type, got.copy().readByteArray())) break
+                        }
+                        bytes = got.readByteArray(minOf(got.size, max.toLong()))
+                    }
                 }
-                return ConnCall.Answered(ConnReply.read(status, resp.header(CONTENT_TYPE), bytes, over, r.json, max), where, bytes.size, ms())
+                return ConnExchange.Got(status, type, bytes, over, where, resp.header(SESSION), ms())
             }
         } catch (e: IOException) {
-            return failed(e, events.sent, stopped.get(), ms())
+            return end(failed(e, events.sent, stopped.get(), ms()))
         } catch (e: RuntimeException) {
             // OkHttp's own checks (a header it won't send, say): nothing was sent.
-            return if (stopped.get()) ConnCall.Stopped(events.sent, ms()) else ConnCall.Failed(ConnFailure.UNREACHABLE, events.sent, ms())
+            return end(if (stopped.get()) ConnCall.Stopped(events.sent, ms()) else ConnCall.Failed(ConnFailure.UNREACHABLE, events.sent, ms()))
         } finally {
             forget()
             client.connectionPool.evictAll()
@@ -236,6 +285,8 @@ class ConnHttp internal constructor(
     companion object {
         /** The whole call, connecting included (D15, EST). */
         const val CALL_MS = 10_000L
+        private const val CHUNK = 8_192L
+        private const val SESSION = "Mcp-Session-Id" // l10n: not text (a header)
         /** Test's picker reads only (Home Assistant's /api/states and /api/services can be far over a step's 256 KiB: C5; EST). */
         const val PICKER_MAX_BYTES = 4 * 1024 * 1024
         private const val USER_AGENT = "User-Agent" // l10n: not text (a header name)
@@ -261,7 +312,7 @@ internal class ConnRefused(val why: ConnFailure) : IOException("refused") // l10
  * The kind of address one call uses (D1): decided by its first lookup (or, for a typed address, before the call), and
  * every later lookup in the call must agree.
  */
-internal class CallPlace(val https: Boolean, val nearOnly: Boolean = false) {
+internal class CallPlace(val https: Boolean, val nearOnly: Boolean = false, val keyless: Boolean = false, val homeOnly: Boolean = false, val phoneOnly: Boolean = false) {
     @Volatile var where: ConnWhere? = null
         private set
 
@@ -278,6 +329,12 @@ internal class CallPlace(val https: Boolean, val nearOnly: Boolean = false) {
         is ConnRules.Lookup.Ok -> {
             // C6: where you are, over http, only to loopback or Tailscale.
             if (nearOnly && l.addresses.any { !ConnRules.nearOnly(it) }) throw ConnRefused(ConnFailure.LOCATION_OVER_HTTP)
+            // D2 for MCP: a server on this phone without a token is refused, whatever name led there (any app can reach it).
+            if (keyless && l.addresses.any(ConnRules::loopback)) throw ConnRefused(ConnFailure.LOOPBACK_NO_KEY)
+            // Question 35: an MCP server over plain http only on this phone, whatever name led there.
+            if (phoneOnly && l.addresses.any { !ConnRules.loopback(it) }) throw ConnRefused(ConnFailure.MCP_HTTP)
+            // Never the public internet for an MCP server (ConnRules.homeOnly), whatever name led there.
+            if (homeOnly && l.where != ConnWhere.HOME) throw ConnRefused(ConnFailure.MCP_PUBLIC)
             decide(l)
             l.addresses
         }
@@ -287,6 +344,9 @@ internal class CallPlace(val https: Boolean, val nearOnly: Boolean = false) {
     fun socket(a: ByteArray): ConnFailure? {
         val w = where ?: return ConnFailure.NOWHERE
         if (nearOnly && !ConnRules.nearOnly(a)) return ConnFailure.LOCATION_OVER_HTTP
+        if (keyless && ConnRules.loopback(a)) return ConnFailure.LOOPBACK_NO_KEY
+        if (phoneOnly && !ConnRules.loopback(a)) return ConnFailure.MCP_HTTP
+        if (homeOnly && w != ConnWhere.HOME) return ConnFailure.MCP_PUBLIC
         return if (ConnRules.socket(a, w)) null else if (w == ConnWhere.HOME) ConnFailure.MOVED else ConnFailure.NOWHERE
     }
 }

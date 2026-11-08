@@ -281,8 +281,15 @@ enum class KeySkip { NOT_YOURS, NO_SUCH_HELPER, ALREADY_HERE,
  * this phone must go first (Replace: gone, or now reaching another address), and the guarded fields kept safer.
  */
 class ConnectionsRestored(val connections: List<app.heyrobot.core.connect.Connection>, val added: Int, val dropKeys: Set<String>,
-                          val kept: List<SaferField>) {
+                          val kept: List<SaferField>,
+                          /** skills-backup-b: the ids whose connection came from the backup (added, or the whole list replaced). */
+                          val restored: Set<String> = emptySet()) {
     override fun toString(): String = "ConnectionsRestored(connections=${connections.size}, added=$added, dropKeys=${dropKeys.size})"  // l10n: not text (toString for logs and tests)
+}
+
+/** skills-backup-b: the trusted keys to write (null: leave skill_keys.json), and each MCP tools file to write, by connection id. */
+class SkillTrustRestored(val keys: List<app.heyrobot.core.skills.TrustedKey>?, val mcp: Map<String, String>) {
+    override fun toString(): String = "SkillTrustRestored(keys=${keys?.size}, mcp=${mcp.size})" // l10n: not text (toString for logs and tests)
 }
 
 data class KeysPlan(val save: List<String>, val skipped: Map<String, KeySkip>) {
@@ -615,17 +622,34 @@ object RestoreMerge {
             val byId = have.associateBy { it.id }
             val list = file.distinctBy { it.id }.take(max).map { f -> prepared(f, byId[f.id]?.takeIf { sameOrigin(it, f) }) }
             val keep = if (mine) list.filter { l -> byId[l.id]?.let { sameOrigin(it, l) } == true }.map { it.id }.toSet() else emptySet()
-            return ConnectionsRestored(list, list.size, have.map { it.id }.toSet() - keep + strays, kept.toList())
+            return ConnectionsRestored(list, list.size, have.map { it.id }.toSet() - keep + strays, kept.toList(), list.mapTo(LinkedHashSet()) { it.id })
         }
         val out = ArrayList(have)
-        var added = 0
+        val brought = LinkedHashSet<String>()
         for (f in file) {
             if (out.size >= max) break
             if (out.any { it.id == f.id }) continue
             out += prepared(f, null)
-            added++
+            brought += f.id
         }
-        return ConnectionsRestored(out, added, strays, kept.toList())
+        return ConnectionsRestored(out, brought.size, strays, kept.toList(), brought)
+    }
+
+    /**
+     * skills-backup-b: the keys you trust and the MCP tool choices, only from a backup that is yours (null and none
+     * otherwise, whatever the plan said). Keys: this phone's first, then the file's it doesn't have, at most
+     * SkillShare.MAX_TRUSTED; null when the file has none (skill_keys.json left as it is). A tools file only for a connection
+     * this restore brought ([restoredConns], ConnectionsRestored.restored), never for one kept as it was here.
+     */
+    fun skillTrust(have: List<app.heyrobot.core.skills.TrustedKey>, file: List<app.heyrobot.core.skills.TrustedKey>?, mcp: Map<String, String>,
+                   restoredConns: Set<String>, mine: Boolean): SkillTrustRestored {
+        if (!mine) return SkillTrustRestored(null, emptyMap())
+        val keys = file?.let { f ->
+            val out = LinkedHashMap<String, app.heyrobot.core.skills.TrustedKey>()
+            for (k in have + f) if (out.size < app.heyrobot.core.skills.SkillShare.MAX_TRUSTED) out.putIfAbsent(k.fingerprint, k)
+            out.values.toList()
+        }
+        return SkillTrustRestored(keys, mcp.filterKeys { it in restoredConns })
     }
 
     /**

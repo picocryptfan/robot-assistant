@@ -33,6 +33,31 @@ object RoutineFiles {
     }
 }
 
+/**
+ * Skills 1.3 (S3.2, design §14.4): your routines become skills on the first start of 1.3, in whichever of main and :voice
+ * starts first, off the main thread. Core RoutineSkills holds routines.lock then skills.lock and does it once per process;
+ * the other process finds nothing left to do. When it changed something, :voice reads skills and routines again.
+ */
+object RoutineSkillsStart {
+    /** [process] (Application.getProcessName) is one that writes routines and skills: main and :voice. */
+    fun runsIn(process: String): Boolean = !process.contains(':') || process.substringAfter(':') == "voice"
+
+    fun start(ctx: Context, process: String) {
+        // Not under Robolectric (the JVM tests), whose app starts fresh for each test: they make their own files.
+        if (!runsIn(process) || android.os.Build.FINGERPRINT == "robolectric") return
+        val app = ctx.applicationContext
+        Thread({ run(app) }, "routine-skills").start()
+    }
+
+    /** The migration itself (the thread's work; JVM tests call it from each process's side). */
+    fun run(ctx: Context): app.heyrobot.core.skills.RoutineMigrated? = try {
+        app.heyrobot.core.skills.RoutineSkills.once(Paths.dir(ctx))?.also { if (it.changed) { Cmd.send(ctx, Cmd.SKILLS); Cmd.send(ctx, Cmd.ROUTINES) } }
+    } catch (t: Throwable) {
+        RLog.w("routine_skills", t)
+        null
+    }
+}
+
 /** Names and extras shared by the two processes (string keys, as MainActivity's showAssist arguments are). */
 object RoutineIntents {
     /** :voice's manifest receiver: the exact alarm, boot, time and time zone changes, an update, a Ready notification's tap. */

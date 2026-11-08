@@ -148,13 +148,25 @@ class RoutineStore(private val dir: File) {
     /** For an edit: a file there that can't be read now throws, so [update] answers null and writes nothing over it. */
     private fun forUpdate(f: File): String? = readTextForUpdate(f)
 
+    // Reentrant on one thread (S3.2: RoutineSkills holds it, then skills.lock, while it saves through this store): a second
+    // FileChannel.lock on the same file in one JVM throws instead of waiting.
     private fun <T> locked(block: () -> T): T = synchronized(LOCK) {
+        val mine = HELD.get()
+        val key = File(dir, LOCK_FILE).absolutePath
+        if (key in mine) return@synchronized block()
         dir.mkdirs()
         FileChannel.open(File(dir, LOCK_FILE).toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE).use { ch ->
             val l = ch.lock()
-            try { block() } finally { l.release() }
+            mine += key
+            try { block() } finally { mine -= key; l.release() }
         }
     }
+
+    /** [block] under routines.lock (RoutineSkills takes it first, then skills.lock). */
+    internal fun <T> underLock(block: () -> T): T = locked(block)
+
+    /** routines.json as [list] (the brief left out), inside [underLock]: RoutineSkills' links. */
+    internal fun write(list: List<Routine>) = writeAtomic(routinesFile, RoutineCodec.encode(list.filter { it.id != BriefRoutine.ID }))
 
     companion object {
         const val ROUTINES = "routines.json"
@@ -164,6 +176,7 @@ class RoutineStore(private val dir: File) {
         const val STATE = "state.json"
         const val LOCK_FILE = "routines.lock"
         private val LOCK = Any()
+        private val HELD = ThreadLocal.withInitial { HashSet<String>() }
     }
 }
 

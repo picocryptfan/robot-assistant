@@ -18,7 +18,7 @@ class SkillSettingsTest {
         // None, or no key: on (the default).
         assertTrue(SkillSettingsCodec.decode(null).settings.modelPicks)
         assertTrue(SkillSettingsCodec.decode("""{"v":1}""").settings.modelPicks)
-        assertEquals(SkillSettingsFile.TooNew(2), SkillSettingsCodec.decode("""{"v":2,"modelPicks":false,"more":1}"""))
+        assertEquals(SkillSettingsFile.TooNew(3), SkillSettingsCodec.decode("""{"v":3,"modelPicks":false,"more":1}"""))
         for (bad in listOf("{", """{"v":1,"modelPicks":"no"}""", """{"v":1,"other":true}""", """{"modelPicks":false}""", """{"v":0}"""))
             assertEquals(bad, SkillSettingsFile.Damaged, SkillSettingsCodec.decode(bad))
         // What can't be read keeps the defaults.
@@ -31,9 +31,9 @@ class SkillSettingsTest {
         assertTrue(st.saveSettings(SkillSettings(false)))
         assertFalse(st.settings().modelPicks)
         // Never over a file from a newer Robot.
-        java.io.File(tmp.root, SkillStore.SETTINGS).writeText("""{"v":2,"modelPicks":false}""")
+        java.io.File(tmp.root, SkillStore.SETTINGS).writeText("""{"v":3,"modelPicks":false}""")
         assertFalse(st.saveSettings(SkillSettings(true)))
-        assertEquals("""{"v":2,"modelPicks":false}""", java.io.File(tmp.root, SkillStore.SETTINGS).readText())
+        assertEquals("""{"v":3,"modelPicks":false}""", java.io.File(tmp.root, SkillStore.SETTINGS).readText())
         assertTrue(st.settings().modelPicks)
     }
 }

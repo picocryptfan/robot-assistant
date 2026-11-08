@@ -91,7 +91,15 @@ enum class ConnFailure(val code: Int) {
     APP_UNPINNED(37),
     // C13: a step checked again at its run (C12's L3).
     /** The operation or hand-off changed after its card showed (another service, entity, app or intent): nothing was sent. */
-    CHANGED(38);
+    CHANGED(38),
+    /** An MCP server on the phone without a token (design §8.5): any app on the phone can reach it. */
+    LOOPBACK_NO_KEY(39),
+    /** An MCP server reached through a public address (your answer of 4 Nov 2026: never the public internet in 1.3). */
+    MCP_PUBLIC(40),
+    /** An MCP call whose arguments are longer than its card can show (ConnStep.PREVIEW_BODY): nothing is sent unseen. */
+    MCP_TOO_LONG(41),
+    /** Question 35: an MCP server over plain http, token or none, wherever it is (ConnRules.httpsOnly). */
+    MCP_HTTP(42);
 
     /**
      * What Robot says, for the connection called [name]. [status]: the HTTP status for [SAID_NO]; [limit]: the number for
@@ -111,6 +119,10 @@ enum class ConnFailure(val code: Int) {
             NOWHERE -> ConnStrings.nowhere(n, page)
             CERTIFICATE -> ConnStrings.certificate(n, page)
             KEY_OVER_HTTP -> ConnStrings.keyOverHttp(n)
+            LOOPBACK_NO_KEY -> ConnStrings.mcpLoopbackKey()
+            MCP_PUBLIC -> ConnStrings.mcpPublic(n)
+            MCP_TOO_LONG -> ConnStrings.mcpTooLong(n)
+            MCP_HTTP -> ConnStrings.mcpHttp(n)
             KEY_REFUSED -> ConnStrings.keyRefused(n, page)
             NOT_ALLOWED -> ConnStrings.notAllowed(n)
             SAID_NO -> ConnStrings.saidNo(n, "code" to (status ?: 0).toString())

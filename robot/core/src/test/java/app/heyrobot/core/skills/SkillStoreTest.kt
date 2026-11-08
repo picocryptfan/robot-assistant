@@ -70,9 +70,10 @@ class SkillStoreTest {
 
     @Test fun aNewerOrDamagedFileIsNeverWrittenOver() {
         // C1 (connections plan D6) moved this pin from 2 to 3 on purpose: this Robot reads and writes v2 (savesAV2FileAndBackToV1).
-        val newer = """{"v":3,"skills":[]}"""
+        // S3.1 moved it from 3 to 4: this Robot reads v3.
+        val newer = """{"v":4,"skills":[]}"""
         file.writeText(newer)
-        assertEquals(SkillFile.TooNew(3), store.file())
+        assertEquals(SkillFile.TooNew(4), store.file())
         assertFalse(store.save(SkillFixtures.pasta()))
         assertFalse(store.delete("s-pasta1"))
         assertEquals(newer, file.readText())

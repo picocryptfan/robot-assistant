@@ -413,6 +413,8 @@ object AppPages {
     const val FILES_PACK = "files_pack"
     /** 1.5 L6: Settings › Robot to Robot › Requests (a card's notification, the panel's Open Requests). */
     const val LINK_REQUESTS = "link_requests"
+    /** 1.3 S3.4: the import screen, for a `.robotskill` Robot Files' share target read and holds (sys SkillShareFiles). */
+    const val SKILL_IMPORT = "skill_import"
 
     /** [r]'s pack ("tax" or "expenses") and year when it is a [FILES_PACK] route, else null. */
     fun filesPack(r: String): Pair<String, Int>? {

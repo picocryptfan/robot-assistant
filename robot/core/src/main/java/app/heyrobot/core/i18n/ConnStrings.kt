@@ -363,6 +363,42 @@ object ConnStrings : Strings("conn", area = "connections") {
     val scriptRangeWide = s("script_range_wide", "This question allows {min} to {max}, but the script takes {smin} to {smax}.",
         "Cette question permet de {min} à {max}, mais le script accepte de {smin} à {smax}.")
 
+    val mcpEra = s("mcp_era", "Your {name} uses a version of MCP that Robot can't use.",
+        "Ta connexion {name} utilise une version de MCP que Robot ne peut pas utiliser.")
+    val mcpNoTools = s("mcp_no_tools", "Your {name} has no tools Robot can use.", "Ta connexion {name} n'a aucun outil que Robot peut utiliser.")
+    val mcpMoreInput = s("mcp_more_input", "The server asked for more information, which Robot can't give yet.",
+        "Le serveur a demandé plus d'informations, ce que Robot ne peut pas encore donner.")
+    val mcpToolFailed = s("mcp_tool_failed", "Your {name} couldn't do that.", "Ta connexion {name} n'a pas pu faire ça.")
+    val mcpChanged = s("mcp_changed", "“{tool}” changed on your {name}. Robot turned it off until you look at it.",
+        "« {tool} » a changé sur ta connexion {name}. Robot l'a désactivé jusqu'à ce que tu le regardes.")
+    val mcpChangedInputs = s("mcp_changed_inputs", "What it takes changed: {names}.", "Ce qu'il accepte a changé : {names}.")
+    val mcpChangedOutputs = s("mcp_changed_outputs", "What it gives back changed.", "Ce qu'il renvoie a changé.")
+    val mcpChangedClaims = s("mcp_changed_claims", "What it says about itself changed, like whether it only reads.",
+        "Ce qu'il dit de lui-même a changé, comme s'il ne fait que lire.")
+    val mcpChangedDescription = s("mcp_changed_description", "Its description changed.", "Sa description a changé.")
+    val mcpChangedTitle = s("mcp_changed_title", "Its title changed.", "Son titre a changé.")
+    val mcpServerChanged = s("mcp_server_changed", "Your {name} is now a different server. Robot turned its tools off until you look at them.",
+        "Ta connexion {name} est maintenant un autre serveur. Robot a désactivé ses outils jusqu'à ce que tu les regardes.")
+    val mcpGone = s("mcp_gone", "“{tool}” is gone from your {name}. Robot turned it off.",
+        "« {tool} » n'est plus sur ta connexion {name}. Robot l'a désactivé.")
+
+    // 1.3, S3.6: the MCP client.
+    val mcpLoopbackKey = s("mcp_loopback_key", "A server on this phone needs a token: any app on the phone can reach it.",
+        "Un serveur sur ce téléphone a besoin d'un jeton : n'importe quelle appli du téléphone peut le joindre.")
+    val mcpPublic = s("mcp_public", "Robot won't reach your {name} over the internet: an MCP server must be on your home network or on this phone, or reached by its Tailscale address.",
+        "Robot ne joindra pas {name} par Internet : un serveur MCP doit être sur ton réseau domestique ou sur ce téléphone, ou joint par son adresse Tailscale.")
+    val mcpTooLong = s("mcp_too_long", "This is too long for its card to show in full, so Robot won't send it to your {name}.",
+        "C'est trop long pour que la carte le montre en entier, alors Robot ne l'enverra pas à {name}.")
+    val mcpHttp = s("mcp_http", "Robot reaches your {name} only over https, with a certificate Android trusts: plain http isn't encrypted, even at home. Only a server on this phone may use plain http.",
+        "Robot joint {name} seulement par https, avec un certificat auquel Android fait confiance : le http simple n'est pas chiffré, même à la maison. Seul un serveur sur ce téléphone peut utiliser le http simple.")
+    val kindMcp = s("kind_mcp", "MCP server", "Serveur MCP")
+    val kindMcpLine = s("kind_mcp_line", "Uses the tools of an MCP server you run at home or on this phone. Each tool stays off until you turn it on.",
+        "Utilise les outils d'un serveur MCP que tu fais tourner à la maison ou sur ce téléphone. Chaque outil reste désactivé jusqu'à ce que tu l'actives.")
+    val mcpCardTool = s("mcp_card_tool", "Tool: {tool}", "Outil : {tool}")
+    val mcpCardArgs = s("mcp_card_args", "What it gets: {args}", "Ce qu'il reçoit : {args}")
+    val mcpListed = s("mcp_listed", "Found {count} tools. Each stays off until you turn it on.",
+        "{count} outils trouvés. Chacun reste désactivé jusqu'à ce que tu l'actives.")
+
     /** "Settings › Skills › Connections", for {page}. */
     val page: UiLabel get() = UiLabel(UiStrings.settings, UiStrings.skills, title)
 

@@ -50,6 +50,7 @@ import app.heyrobot.core.RoutineCommandCode
 import app.heyrobot.core.TimerAsk
 import app.heyrobot.core.RoutineDraft
 import app.heyrobot.core.RoutineGate
+import app.heyrobot.core.RoutineSettings
 import app.heyrobot.core.RoutineRouter
 import app.heyrobot.core.RoutineStep
 import app.heyrobot.core.RunOrigin
@@ -72,6 +73,13 @@ import app.heyrobot.sys.RoutineFacts
 import app.heyrobot.sys.RobotTimers
 import app.heyrobot.sys.RoutineFiles
 import app.heyrobot.sys.RoutineIntents
+import app.heyrobot.assistant.skills.PanelSkills
+import app.heyrobot.core.i18n.SkillStrings
+import app.heyrobot.core.skills.RoutineSkills
+import app.heyrobot.core.skills.Skill
+import app.heyrobot.core.skills.SkillCards
+import app.heyrobot.core.skills.SkillGo
+import app.heyrobot.sys.SkillFiles
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.time.ZonedDateTime
@@ -364,7 +372,7 @@ object PanelRoutines {
             return false
         }
         val saved = draft.save(System.currentTimeMillis())
-        val ok = saved != null && withContext(Dispatchers.IO) { store().save(saved) }
+        val ok = saved != null && withContext(Dispatchers.IO) { RoutineSkills.save(store(), SkillFiles.store(app), saved) }
         if (!ok) {
             host.show(replyId, Card(id, null, card.title, ActionStatus.FAILED, RoutineStrings.couldntSave("page" to settingsPage).shown(l), body = body))
             return false
@@ -432,6 +440,7 @@ object PanelRoutines {
         val someoneElse = PhoneLockNow.someoneElse(app)
         val rs = SomeoneElseLock.routines(store().settings(), someoneElse)
         val locked = host.locked || someoneElse
+        if (origin == RunOrigin.ASKED && !skillGo(replyId, r, host, l)) return
         host.text(replyId, RoutineStrings.runningNow("name" to RoutineTexts.name(r)).shown(l))
         for (step in r.steps) {
             val go = RoutineGate.decide(step, origin, locked, r, s, rs)
@@ -440,34 +449,87 @@ object PanelRoutines {
                 StepGo.NEVER -> host.append(replyId, RoutineStrings.cantDo("step" to step.summary()).shown(l))
                 StepGo.DISABLED -> host.append(replyId, RoutineStrings.offIn("page" to UiStrings.inSettings(UiStrings.actions), "step" to step.summary()).shown(l))
                 StepGo.WAIT_UNLOCK -> host.append(replyId, RoutineStrings.unlockFor("step" to step.summary()).shown(l))
-                else -> {
-                    // The routine's own sentence and your brief reminders go in the reply as written (by you, or by whoever
-                    // made the backup it came from): content, and personal from then on (core Quoted), as the brief's are.
-                    if (step is RoutineStep.Say || step == RoutineStep.Reminders) host.quoted(replyId)
-                    when (step) {
-                        RoutineStep.Brief -> brief(replyId, host, origin, l, r, append = r.steps.size > 1)
-                        is RoutineStep.Say -> { host.append(replyId, step.text); host.say(step.text, personal = true) }
-                        RoutineStep.Reminders -> {
-                            val now = ZonedDateTime.now()
-                            val due = BriefReminders.due(store().reminders(), now.toLocalDate(), now.zone).map { it.text }
-                            val bl = l.copy(say = BriefSource.lang(rs, l))
-                            // The bubble in the screen's form, like the other steps' (« 14 h 30 »); the voice gets its own (« 14 heures
-                            // 30 », core VoiceForm).
-                            val line = BriefComposer.remindersText(due, bl.say) ?: RoutineStrings.noReminders()
-                            host.append(replyId, line.shown(bl))
-                            host.say(line.said(bl), personal = true)
-                        }
-                        RoutineStep.Messages -> {}
-                        is RoutineStep.Tool -> {
-                            val e = host.tool(replyId, step) ?: continue
-                            if (e.launchedApp && e.status.succeeded) return host.leave()
-                            // 1.1: the result's words in the turn's reply language when it has them (core Executed's phrases).
-                            val words = e.spoken?.let { en -> e.spokenText?.takeIf { it.en() == en } ?: Phrase.plain(en) }
-                                ?: e.text?.takeIf { it.en() == e.detail } ?: Phrase.plain(e.detail)
-                            host.say(words.said(l))
-                        }
-                    }
+                else -> if (step is RoutineStep.Tool) {
+                    val e = host.tool(replyId, step) ?: continue
+                    if (e.launchedApp && e.status.succeeded) return host.leave()
+                    // 1.1: the result's words in the turn's reply language when it has them (core Executed's phrases).
+                    val words = e.spoken?.let { en -> e.spokenText?.takeIf { it.en() == en } ?: Phrase.plain(en) }
+                        ?: e.text?.takeIf { it.en() == e.detail } ?: Phrase.plain(e.detail)
+                    host.say(words.said(l))
+                } else own(replyId, r, step, host, origin, l, rs, append = r.steps.size > 1)
+            }
+        }
+    }
+
+    /** A routine's own step (the brief, a sentence, your reminders, the messages count) that its gate let run. */
+    private suspend fun own(replyId: String, r: Routine, step: RoutineStep, host: Host, origin: RunOrigin, l: Langs, rs: RoutineSettings, append: Boolean) {
+        // The routine's own sentence and your brief reminders go in the reply as written (by you, or by whoever
+        // made the backup it came from): content, and personal from then on (core Quoted), as the brief's are.
+        if (step is RoutineStep.Say || step == RoutineStep.Reminders) host.quoted(replyId)
+        when (step) {
+            RoutineStep.Brief -> brief(replyId, host, origin, l, r, append = append)
+            is RoutineStep.Say -> { host.append(replyId, step.text); host.say(step.text, personal = true) }
+            RoutineStep.Reminders -> {
+                val now = ZonedDateTime.now()
+                val due = BriefReminders.due(store().reminders(), now.toLocalDate(), now.zone).map { it.text }
+                val bl = l.copy(say = BriefSource.lang(rs, l))
+                // The bubble in the screen's form, like the other steps' (« 14 h 30 »); the voice gets its own (« 14 heures
+                // 30 », core VoiceForm).
+                val line = BriefComposer.remindersText(due, bl.say) ?: RoutineStrings.noReminders()
+                host.append(replyId, line.shown(bl))
+                host.say(line.said(bl), personal = true)
+            }
+            RoutineStep.Messages, is RoutineStep.Tool -> {}
+        }
+    }
+
+    /**
+     * S3.2: a routine's own step in a skill's run (the brief, your reminders, the messages count): through RoutineGate as an
+     * asked routine's step, with the routine the skill starts by itself as (the morning brief's for the built-in brief), and
+     * run by the same code. What isn't run says why, as in an asked routine.
+     */
+    suspend fun skillStep(replyId: String, s: Skill, step: RoutineStep, host: Host, l: Langs): ActionStatus {
+        val someoneElse = PhoneLockNow.someoneElse(app)
+        val rs = SomeoneElseLock.routines(withContext(Dispatchers.IO) { store().settings() }, someoneElse)
+        val r = withContext(Dispatchers.IO) { store().routines() }.firstOrNull { it.skill == s.id } ?: BriefRoutine.of(rs)
+        val go = RoutineGate.decide(step, RunOrigin.ASKED, host.locked || someoneElse, r, VoiceHub.settings, rs)
+        VoiceLog.add(VoiceEvent.ROUTINE_STEP, step.code, go)
+        return when (go) {
+            StepGo.NEVER -> { host.append(replyId, RoutineStrings.cantDo("step" to step.summary()).shown(l)); ActionStatus.FAILED }
+            StepGo.DISABLED -> { host.append(replyId, RoutineStrings.offIn("page" to UiStrings.inSettings(UiStrings.actions), "step" to step.summary()).shown(l)); ActionStatus.FAILED }
+            StepGo.WAIT_UNLOCK -> { host.append(replyId, RoutineStrings.unlockFor("step" to step.summary()).shown(l)); ActionStatus.NEEDS_UNLOCK }
+            else -> { own(replyId, r, step, host, RunOrigin.ASKED, l, rs, append = true); ActionStatus.DONE }
+        }
+    }
+
+    /** S3.2: an asked run of a routine with a skill takes the skill's own rule first (off, Ask first's card). True: go on. */
+    private suspend fun skillGo(replyId: String, r: Routine, host: Host, l: Langs): Boolean {
+        if (r.skill == null) return true
+        val skills = withContext(Dispatchers.IO) { try { SkillFiles.store(app).skills() } catch (_: Exception) { emptyList() } }
+        val s = skills.firstOrNull { it.id == r.skill } ?: return true
+        // The conversation's messages: known in the panel's turn (PanelSkills.Host); otherwise a tap is the only yes.
+        val messages = (host as? PanelSkills.Host)?.messages?.active ?: true
+        val links = withContext(Dispatchers.IO) { PanelSkills.links() }
+        return when (val go = RoutineSkills.go(r, skills, RunOrigin.ASKED, messages, links)) {
+            null, SkillGo.Run -> true
+            is SkillGo.Refused -> { reply(replyId, host, go.why, l); false }
+            is SkillGo.Card -> {
+                val id = id()
+                val title = SkillStrings.runTitle("name" to s.name).shown(l)
+                val run = UiLabel(UiStrings.run)
+                val footer = when {
+                    s.provenance.fromContent -> SkillStrings.runTapContent("run" to run)
+                    go.tapOnly -> SkillStrings.runTapMessage("run" to run)
+                    else -> SkillStrings.runSayYes("run" to run)
                 }
+                val body = SkillCards.run(s, emptyMap(), links).joinToString("\n") { it.shown(l) }
+                host.text(replyId, footer.shown(l))
+                host.say(footer.said(l))
+                val yes = host.ask(replyId, Card(id, null, title, ActionStatus.PENDING, footer.shown(l), body = body, confirm = UiStrings.run().button(l),
+                    cancel = UiStrings.cancel().button(l)), tapOnly = if (go.tapOnly) footer.said(l) else null)
+                host.show(replyId, Card(id, null, title, if (yes) ActionStatus.DONE else ActionStatus.DECLINED,
+                    if (yes) null else SkillStrings.notRun("name" to s.name).shown(l), body = body))
+                yes
             }
         }
     }
@@ -491,7 +553,7 @@ object PanelRoutines {
             host.show(replyId, Card(id, null, title, ActionStatus.NEEDS_UNLOCK, RoutineStrings.unlockChange().shown(l)))
             return false
         }
-        val ok = withContext(Dispatchers.IO) { store().delete(r.id) }
+        val ok = withContext(Dispatchers.IO) { RoutineSkills.delete(store(), SkillFiles.store(app), r.id) }
         RoutineHub.reload()
         host.show(replyId, Card(id, null, RoutineStrings.deletedTitle("name" to r.name).shown(l), if (ok) ActionStatus.DONE else ActionStatus.FAILED,
             if (ok) null else RoutineStrings.couldntChange().shown(l)))

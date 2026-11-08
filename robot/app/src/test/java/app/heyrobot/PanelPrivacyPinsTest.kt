@@ -48,8 +48,12 @@ class PanelPrivacyPinsTest {
     @Test fun aRoutinesOwnLinesAreQuotedAndAnOffRoutineWaitsForATap() {
         val panel = flat("assistant/routines/PanelRoutines.kt")
         // The Say step's sentence and the reminders, as written: the reply carries the content record before either is shown.
-        assertInOrder(panel.body("suspend fun runAsked("), "if (step is RoutineStep.Say || step == RoutineStep.Reminders) host.quoted(replyId)",
+        // S3.2: in own(), which an asked routine and a skill's run both use for these steps.
+        assertInOrder(panel.body("private suspend fun own("), "if (step is RoutineStep.Say || step == RoutineStep.Reminders) host.quoted(replyId)",
             "is RoutineStep.Say -> { host.append(replyId, step.text)", "RoutineStep.Reminders -> {")
+        assertInOrder(panel.body("suspend fun runAsked("), "if (origin == RunOrigin.ASKED && !skillGo(replyId, r, host, l)) return",
+            "} else own(replyId, r, step, host, origin, l, rs, append = r.steps.size > 1)")
+        assertInOrder(panel.body("suspend fun skillStep("), "val go = RoutineGate.decide(step, RunOrigin.ASKED,", "else -> { own(replyId, r, step, host, RunOrigin.ASKED, l, rs, append = true)")
         // Asked by name, a routine that's off shows its card first (not the built-in brief), and runs only when tapped.
         assertInOrder(panel.body("private suspend fun run("), "if (!r.enabled && r.id != BriefRoutine.ID && !offTapped(replyId, r, host, l)) return false",
             "runAsked(replyId, r, host, RunOrigin.ASKED, l)")

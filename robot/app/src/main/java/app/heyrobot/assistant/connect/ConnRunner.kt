@@ -44,6 +44,13 @@ import app.heyrobot.core.i18n.ConnStrings
 import app.heyrobot.core.i18n.Phrase
 import app.heyrobot.helpers.connect.ConnCall
 import app.heyrobot.helpers.connect.ConnHttp
+import app.heyrobot.helpers.connect.McpClient
+import app.heyrobot.core.connect.McpLog
+import app.heyrobot.core.connect.McpOps
+import app.heyrobot.core.connect.McpStep
+import app.heyrobot.core.connect.McpStore
+import app.heyrobot.core.connect.McpWire
+import app.heyrobot.sys.Paths
 import app.heyrobot.sys.ConnFiles
 import app.heyrobot.sys.ConnKeyFiles
 import app.heyrobot.sys.SkillFiles
@@ -77,6 +84,9 @@ object ConnRunner {
 
     /** The whole step at most: the call's 10 s, a read-back, and a little for its files (EST). */
     const val DEADLINE_MS = ConnHttp.CALL_MS + READ_BACK_PHASE_MS + 2_000L
+
+    /** An MCP tool's step at most: McpClient's 30 s, a legacy session's DELETE, and a little for its files. */
+    const val MCP_DEADLINE_MS = McpWire.CALL_MS + McpClient.END_MS + 2_000L
 
     /** Tests only: the client's call, and the network's kind (the app always uses ConnHttp and ConnNetwork). */
     @Volatile internal var send: ConnSend? = null
@@ -112,9 +122,33 @@ object ConnRunner {
         if (a is HandOffStepAction) return HandOffRunner.run(ctx, a, launch)
         val step = a as? ConnStepAction ?: return Executed(ActionStatus.FAILED, ConnFailure.NOT_YET.text(""))
         val p = step.prepared ?: return Executed(ActionStatus.FAILED, ConnFailure.GONE.text(""))
-        return OnlineRun.run(Abort(DEADLINE_MS), DEADLINE_MS) { abort -> call(ctx, step, abort) }
+        val ms = if (mcp(ctx, step)) MCP_DEADLINE_MS else DEADLINE_MS
+        return OnlineRun.run(Abort(ms), ms) { abort -> call(ctx, step, abort) }
             // The deadline passed: whatever was sent may have arrived.
             ?: Executed(ActionStatus.FAILED, failedText(ConnFailure.TIMEOUT, p.name, !p.read)).copy(conn = ConnRan(sent = true))
+    }
+
+    private fun mcp(ctx: Context, a: ConnStepAction): Boolean = a.call.kind == StepKind.CONN &&
+        a.call.conn?.let { ConnFiles.store(ctx).get(it) }?.let { c -> a.call.op?.let(c::op) }?.spec is OpSpec.McpCall
+
+    /** An MCP tool's call (S3.6): what its card showed, its pin, the key, the limits, then McpClient; never sent twice. */
+    private fun mcp(ctx: Context, a: ConnStepAction, p: app.heyrobot.core.connect.ConnPrepared, c: app.heyrobot.core.connect.Connection,
+        op: app.heyrobot.core.connect.ConnOp, spec: OpSpec.McpCall, values: Map<String, app.heyrobot.core.skills.SkillValue>,
+        now: app.heyrobot.core.connect.NetNow?, abort: Abort): Executed {
+        if (!McpStep.asShown(p, c, op, spec, values)) return no(ConnFailure.CHANGED, c.name)
+        val pin = McpStore(Paths.dir(ctx)).read(c.id)?.pins?.firstOrNull { it.name == spec.tool } ?: return no(ConnFailure.GONE, c.name)
+        val secrets = if (c.secrets.isEmpty()) ConnSecrets() else when (val k = ConnKeys.read(ctx, c.id)) {
+            is ConnKeyRead.Present -> k.secrets
+            ConnKeyRead.Absent -> return no(ConnFailure.NO_KEY, c.name)
+            is ConnKeyRead.Unavailable -> return no(ConnFailure.KEY_UNAVAILABLE, c.name)
+            is ConnKeyRead.Invalidated -> return no(ConnFailure.KEY_UNREADABLE, c.name)
+            is ConnKeyRead.TooNew -> return no(ConnFailure.KEY_NEWER, c.name)
+        }
+        limited(ctx, c)?.let { return no(it, c.name, c) }
+        a.consent?.let { ConnFiles.store(ctx).answer(c.id, p.origin, it) }
+        val end = McpClient().call(c, pin, McpOps.arguments(op, values), secrets, abort, app.heyrobot.BuildConfig.VERSION_NAME, reads = spec.reads)
+        VoiceLog.add(VoiceEvent.MCP_CALL, McpLog.era(end.era), McpLog.result(end.out), McpLog.CALL)
+        return McpStep.result(a, c, op, end, now)
     }
 
     /** One step's call (OnlineRun's thread; blocks). */
@@ -135,6 +169,7 @@ object ConnRunner {
             is ConnStep.Values.Ok -> v.values
             is ConnStep.Values.Refused -> return no(v.why, c.name)
         }
+        (op.spec as? OpSpec.McpCall)?.let { return mcp(ctx, a, p, c, op, it, values, now, abort) }
         val built = when (val b = ConnOps.build(c, op.id, values)) {
             is Built.Ok -> b.request
             is Built.Refused -> return no(b.why, c.name)

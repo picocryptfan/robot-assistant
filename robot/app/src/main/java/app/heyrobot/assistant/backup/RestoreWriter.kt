@@ -550,11 +550,13 @@ internal class RestoreSession(private val ctx: Context,
         // repeatable step. Someone else's arrive untrusted (RestoreSafety.connection). C12's L1: a key folder without a
         // connection here goes too (read before the connections, so one saved meanwhile is never taken for a stray).
         val connStore = ConnFiles.store(ctx)
+        var connsRestored: Set<String> = emptySet()
         step(BackupCategory.CONNECTIONS) {
             if (connStore.file() !is ConnFile.Ok) return@step CategoryOutcome.Skipped(PlanSkip.CONNECTIONS_UNREADABLE)
             val keyIds = ConnKeyFiles.ids(ctx)
             val m = RestoreMerge.connections(connStore.connections(), v.connections.orEmpty(), mode(BackupCategory.CONNECTIONS), mine, keyIds)
             kept += m.kept.size
+            connsRestored = m.restored
             j.begin(BackupCategory.CONNECTIONS, RestoreProcess.VOICE)
             val st = j.staging(BackupCategory.CONNECTIONS).apply { mkdirs() }
             writeAtomic(File(st, BackupCategory.CONNECTIONS_FILE), ConnectionCodec.encode(m.connections))
@@ -562,6 +564,22 @@ internal class RestoreSession(private val ctx: Context,
             j.commit(BackupCategory.CONNECTIONS, RestoreProcess.VOICE)
             finishVoice(ctx, BackupCategory.CONNECTIONS, st)
             j.done(BackupCategory.CONNECTIONS)
+            CategoryOutcome.Done
+        }
+
+        // skills-backup-b: the keys you trust and the MCP tool choices, after Connections and only for a connection it brought,
+        // only from your own backup (the plan and RestoreMerge.skillTrust both say so). Each file written whole, as Settings writes it.
+        step(BackupCategory.SKILL_TRUST) {
+            val m = RestoreMerge.skillTrust(app.heyrobot.sys.SkillShareFiles.trusted(ctx), v.skillKeys, v.mcpTools, connsRestored, mine)
+            j.begin(BackupCategory.SKILL_TRUST, RestoreProcess.VOICE)
+            m.keys?.let { if (!app.heyrobot.sys.SkillShareFiles.saveTrusted(ctx, it)) return@step CategoryOutcome.Failed }
+            val mcp = app.heyrobot.core.connect.McpStore(Paths.dir(ctx))
+            for ((id, text) in m.mcp) {
+                val f = app.heyrobot.core.connect.McpToolsCodec.decode(text.toByteArray(Charsets.UTF_8)) ?: continue
+                mcp.edit(id) { f } ?: return@step CategoryOutcome.Failed
+            }
+            if (m.mcp.isNotEmpty()) SkillFiles.changed(ctx)
+            j.done(BackupCategory.SKILL_TRUST)
             CategoryOutcome.Done
         }
 

@@ -125,7 +125,7 @@ internal class BackupJob(private val ctx: Context, private val chosen: Set<Backu
                 }
                 // LS12: each category's name in words too, so a Robot that doesn't know one can say which part it leaves out.
                 val manifest = BackupManifest(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE.toLong(), System.currentTimeMillis(), counts,
-                    keys = categories.any { it in BackupCategory.KEY_CATEGORIES }, names = categories.associate { it.id to app.heyrobot.core.backup.BackupWords.names(it) })
+                    keys = categories.any { it in BackupCategory.KEY_CATEGORIES }, names = categories.filter { it != BackupCategory.SKILL_TRUST }.associate { it.id to app.heyrobot.core.backup.BackupWords.names(it) })
                 val total = gathered.sources.size + gathered.secrets.size
                 var written = 0
                 val wrote = HashSet<BackupCategory>()

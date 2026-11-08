@@ -9,15 +9,21 @@
         android:protectionLevel="signature" />
     <uses-permission android:name="${applicationId}.permission.INTERNAL" />
 
-    <!-- Six uses only: the model downloads (DownloadManager: huggingface.co, and since 0.5.0 the fast translation
-         engine's files from Mozilla's storage.googleapis.com bucket); when you ask, a helper (the :voice process: the company you
-         added, api.anthropic.com for Claude, 0.6.0); your own AI server, if you add one (0.6.0, the :voice process,
-         only addresses on your own network or https); when you ask for the weather or the nearest place (0.4.0),
-         Open-Meteo and a Nominatim server (the :voice process, and the main app once to look up your Home for weather);
-         Settings › Updates (the main app, GitHub: api.github.com and its download servers); and, 0.9, when you set up web
-         search and ask, the search service you chose (your own SearXNG, Brave, Kagi, Mojeek, a public SearXNG, Wikipedia,
-         Open Library) and up to 3 of its result pages (the :voice process). Everything else runs on the phone; the :mt
-         process never goes online. The only network permission. -->
+    <!-- Every use, by process (1.3). Downloads: the model files (DownloadManager: huggingface.co, and since 0.5.0 the fast
+         translation engine's files from Mozilla's storage.googleapis.com bucket). The :voice process, only when you ask or
+         tap: a helper (the company you added, api.anthropic.com for Claude, 0.6.0; since 1.3 also the one request a plan or
+         a drafted skill sends, after the card showing it); your own AI server, if you add one (0.6.0, only addresses on
+         your own network or https); the weather and the nearest place (0.4.0: Open-Meteo and a Nominatim server, and the
+         main app once to look up your Home for weather); web search once you set it up (0.9: the search service you
+         chose, your own SearXNG, Brave, Kagi, Mojeek, a public SearXNG, Wikipedia, Open Library, and up to 3 of its result
+         pages); your skills' connections (1.2.0: your Home Assistant, ntfy topic, webhook or routing server, after a card);
+         and MCP servers you add as connections (1.3: tools/list at Test, tools/call when a skill or a card runs one; only
+         an address on your home network, a Tailscale address, or a server on this phone with a token, never a public
+         address). The main app: Settings › Updates (GitHub: api.github.com and its download servers) and, once Termux is
+         set up, its weekly update check (GitHub, F-Droid). The main app or :voice, once you add a news feed to Today: your feeds
+         (Today H7; read in :feedparse, which never goes online). The :link process, only once you turn on Robot to Robot: the Robots you paired
+         with, over Tor or directly on your network. Signing, importing and exporting skills, plans and drafts made on the
+         phone, and routines never go online. The :mt process never goes online. The only network permission. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- 1.1 (phone, 22 Oct): Android 14 and later refuse a job with a network constraint (setRequiredNetworkType) from an app
          targeting 34 or later without this permission, with a SecurityException: the daily update check, the Wi-Fi download

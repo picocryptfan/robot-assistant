@@ -235,8 +235,9 @@ fun ConnectionsScreen(d: ConnData, act: ConnSettingsActions, snackbar: SnackbarH
             if (d.connections.isEmpty()) PreferenceItem(app.heyrobot.core.i18n.ConnStrings.noneYet().str(), null)
             for (c in d.connections) {
                 val st = d.state(c)
-                if (ConnSetup.needsYou(st)) StatusPreference(c.name, ConnSetup.row(c, st, now).str(), Mark.TODO, onClick = { act.open(ConnRoutes.page(c.id)) })
-                else PreferenceItem(c.name, ConnSetup.row(c, st, now).str(), onClick = { act.open(ConnRoutes.page(c.id)) })
+                val line = ConnSetup.row(c, st, now).str().let { if (app.heyrobot.core.connect.ConnRules.mcpUnencrypted(c)) res.getString(R.string.conn_row_not_encrypted, it) else it }
+                if (ConnSetup.needsYou(st)) StatusPreference(c.name, line, Mark.TODO, onClick = { act.open(ConnRoutes.page(c.id)) })
+                else PreferenceItem(c.name, line, onClick = { act.open(ConnRoutes.page(c.id)) })
             }
         }
         if (d.problem == null) preferenceGroup(res.getString(R.string.conn_add), "add") {
@@ -276,7 +277,7 @@ fun AddConnectionScreen(kind: ConnKind, d: ConnData, act: ConnSettingsActions, s
     var name by rememberSaveable { mutableStateOf(kindName) }
     var address by rememberSaveable { mutableStateOf("") }
     var secretAddress by rememberSaveable { mutableStateOf(false) }
-    var auth by rememberSaveable { mutableStateOf(if (kind == ConnKind.HOME_ASSISTANT) AuthChoice.TOKEN else AuthChoice.NONE) }
+    var auth by rememberSaveable { mutableStateOf(if (kind == ConnKind.HOME_ASSISTANT || kind == ConnKind.MCP) AuthChoice.TOKEN else AuthChoice.NONE) }
     var header by rememberSaveable { mutableStateOf("") }
     var routing by rememberSaveable { mutableStateOf(RoutingKind.OSRM) }
     var onlyMine by rememberSaveable { mutableStateOf(false) }
@@ -286,6 +287,7 @@ fun AddConnectionScreen(kind: ConnKind, d: ConnData, act: ConnSettingsActions, s
         ConnKind.HOME_ASSISTANT -> listOf(AuthChoice.TOKEN)
         ConnKind.NTFY -> listOf(AuthChoice.NONE, AuthChoice.TOKEN)
         ConnKind.ROUTING -> listOf(AuthChoice.NONE, AuthChoice.TOKEN, AuthChoice.HEADER)
+        ConnKind.MCP -> listOf(AuthChoice.TOKEN, AuthChoice.NONE)
         else -> AuthChoice.entries
     }
     fun connAuth(): ConnAuth = when (auth) {
@@ -311,12 +313,20 @@ fun AddConnectionScreen(kind: ConnKind, d: ConnData, act: ConnSettingsActions, s
                     Field(label, address, supporting = stringResource(when (kind) {
                         ConnKind.ROUTING -> R.string.conn_routing_help
                         ConnKind.WEBHOOK -> R.string.conn_hook_address_help
+                        ConnKind.MCP -> R.string.conn_mcp_address_help
                         else -> R.string.conn_https_help
                     }), error = problem?.text(name.trim())?.str(), keyboard = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false)) {
                         address = it.trim(); problem = null
                     }
                 } else IntroPreference(stringResource(R.string.conn_hook_secret_next))
                 if (showAuth && auths.size > 1) ListPreference(stringResource(R.string.conn_auth), auth, auths, { authLabel(res, it) }) { auth = it; problem = null }
+                // Question 35 (ConnRules.httpsOnly): an MCP server only over https but on this phone, said here before you save.
+                app.heyrobot.core.connect.ConnUrl.parse(address)?.takeIf { kind == ConnKind.MCP && !it.https }?.let { u ->
+                    Text(stringResource(if (app.heyrobot.core.connect.ConnRules.onPhone(u)) R.string.conn_mcp_not_encrypted else R.string.conn_mcp_https_only), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                // fix-skills13-security 4: a server on this phone can be stood in for by another app while it is stopped.
+                if (kind == ConnKind.MCP && app.heyrobot.core.connect.ConnUrl.parse(address)?.let { u ->
+                        u.host.equals("localhost", ignoreCase = true) || u.literal?.let(app.heyrobot.core.connect.ConnRules::loopback) == true } == true) // l10n: not text (a host name)
+                    Text(stringResource(R.string.conn_mcp_on_phone), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (showAuth && auth == AuthChoice.HEADER) Field(stringResource(R.string.conn_header_name), header, supporting = stringResource(R.string.conn_header_name_help)) { header = it.trim() }
                 if (kind == ConnKind.NTFY) SwitchPreference(stringResource(R.string.conn_ntfy_only_mine), stringResource(R.string.conn_ntfy_only_mine_summary), onlyMine) { onlyMine = it }
                 if (kind == ConnKind.HOME_ASSISTANT || kind == ConnKind.NTFY || (showAuth && auth != AuthChoice.NONE))
@@ -376,6 +386,8 @@ fun ConnectionPageScreen(c: Connection, d: ConnData, act: ConnSettingsActions, s
                 val shown = if (c.secretAddress) (c.address?.origin.orEmpty() + "/" + (masks[SecretPart.ADDRESS] ?: "…")) else c.address?.text.orEmpty()
                 if (c.secretAddress) PreferenceItem(stringResource(R.string.conn_address), shown, onClick = { act.window(c.id, ConnWindow.MODE_KEY, null) })
                 else PreferenceItem(stringResource(R.string.conn_address), shown, onClick = { moving = c.address?.text.orEmpty() })
+                // Question 35: a server on this phone over plain http is said as not encrypted.
+                if (app.heyrobot.core.connect.ConnRules.mcpUnencrypted(c)) IntroPreference(stringResource(R.string.conn_mcp_not_encrypted))
             }
         }
         if (c.kind != ConnKind.HAND_OFF) preferenceGroup(null, "key") {
@@ -429,6 +441,7 @@ fun ConnectionPageScreen(c: Connection, d: ConnData, act: ConnSettingsActions, s
                         TextButton(onClick = act.askLocation, modifier = Modifier.heightIn(min = 48.dp)) { Text(UiStrings.allow().str()) }
                     }))
             }
+            ConnKind.MCP -> mcpTools(c)
             ConnKind.HAND_OFF -> preferenceGroup(res.getString(R.string.conn_hand_off_app), "app") {
                 val h = c.handOff!!
                 PreferenceItem(c.name, h.pkg, RIcons.Apps)

@@ -289,7 +289,7 @@ object AppRoutes {
     private val BY_EXTRA = setOf(AppPages.NOTES, AppPages.PERMISSIONS, AppPages.CONVERSATION_SETTINGS, AppPages.MODEL, AppPages.HELPERS,
         AppPages.ROUTINES, AppPages.CAR_SETTINGS, AppPages.MESSAGES_SETTINGS, AppPages.UPDATES, AppPages.MEMORY, AppPages.SETTINGS,
         AppPages.PHONE_LOCK, AppPages.BACKUP, AppPages.FILES, AppPages.VOICE, AppPages.SETUP, AppPages.LINK_REQUESTS,
-        AppPages.HISTORY, AppPages.CALENDAR)
+        AppPages.HISTORY, AppPages.CALENDAR, AppPages.SKILL_IMPORT)
 
     /**
      * What a route opens: a [tab] (every page closed), or a [page] over the one showing; [notesIcon]: from Robot Notes'
@@ -324,6 +324,7 @@ object AppRoutes {
         // Everyday set, E6: from Android's text-to-speech settings (Robot's engine's settings, its voice download).
         r == AppPages.VOICE -> Target(tab = Tab.SETTINGS, page = Page.Settings(SettingsRoutes.VOICE))
         // 1.5 L6: Requests, from a Robot to Robot notification or the panel's Open Requests.
+        r == AppPages.SKILL_IMPORT -> Target(page = Page.Settings(SkillShareRoutes.IMPORT))
         r == AppPages.LINK_REQUESTS -> Target(page = Page.Settings(app.heyrobot.ui.link.LinkRoutes.REQUESTS))
         // 1.4: the Files tab (a filing notification's tap opens your Inbox there), and from the "Robot Files" icon.
         r == AppPages.FILES -> Target(tab = Tab.FILES)

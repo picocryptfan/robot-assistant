@@ -243,4 +243,33 @@
     <string name="conn_hand_off_signer_body">%1$s is signed differently from when you picked it. Trust it from now on, or save your changes and keep the warning?</string>
     <string name="conn_hand_off_signer_trust">Trust it</string>
     <string name="conn_hand_off_signer_keep">Keep the warning</string>
+    <!-- 1.3, S3.6: MCP servers -->
+    <string name="conn_mcp_address_help">The server\'s https address, ending in /api/mcp for Home Assistant.</string>
+    <string name="conn_mcp_https_only">Robot reaches an MCP server only over https with a valid certificate, even at home: plain http isn\'t encrypted. Only a server on this phone may use plain http.</string>
+    <string name="conn_mcp_not_encrypted">Not encrypted (on this phone): plain http, which other apps on the phone could read.</string>
+    <string name="conn_row_not_encrypted">%1$s · Not encrypted (on this phone)</string>
+    <string name="conn_mcp_on_phone">This server is on this phone. While it\'s stopped, another app could listen in its place and receive your token.</string>
+    <string name="conn_mcp_tools">Tools</string>
+    <string name="conn_mcp_none">No tools listed yet</string>
+    <string name="conn_mcp_none_summary">Test lists this server\'s tools. Each stays off until you turn it on.</string>
+    <string name="conn_mcp_unreadable">Robot can\'t read this server\'s tools file. Test lists them again.</string>
+    <string name="conn_mcp_other_server">Another server answers at this address, so every tool is off. Check the address, then turn the tools on again.</string>
+    <string name="conn_mcp_off">Off</string>
+    <string name="conn_mcp_on">%1$s · %2$s</string>
+    <string name="conn_mcp_level_off">Off</string>
+    <string name="conn_mcp_level_ask">Ask first</string>
+    <string name="conn_mcp_level_just">Just do it</string>
+    <string name="conn_mcp_server_words">The server\'s words</string>
+    <string name="conn_mcp_label">Your label</string>
+    <string name="conn_mcp_label_help">What Robot and its cards call this tool, such as Turn something off.</string>
+    <string name="conn_mcp_only_reads">This tool only reads</string>
+    <string name="conn_mcp_mark_money">It spends money</string>
+    <string name="conn_mcp_mark_security">It touches security (locks, alarms, cameras)</string>
+    <string name="conn_mcp_mark_people">It tells people</string>
+    <string name="conn_mcp_unusable">Robot can\'t use this tool: it wants more than Robot can ask for.</string>
+    <string name="conn_mcp_label_rules">Give it a label of one line.</string>
+    <string name="conn_mcp_not_only_reads">The server doesn\'t say this tool only reads, so it can\'t be marked that way.</string>
+    <string name="conn_mcp_not_just_do">Just do it is only for a tool that only reads and has no marks.</string>
+    <string name="conn_mcp_save">Save</string>
+    <string name="conn_mcp_cancel">Cancel</string>
 </resources>

@@ -78,7 +78,7 @@ object ConnectionCodec {
         c.routing?.let { put("routing", it.id) }
         // C10: a hand-off not pinned on this phone has no "signer" (from a backup that isn't yours: pick it again).
         c.handOff?.let { put("package", it.pkg); it.signer?.let { s -> put("signer", s) }; put("intent", intentJson(it.intent)) }
-        put("ops", c.ops.map(::opJson))
+        put("ops", c.ops.filter { it.spec !is OpSpec.McpCall }.map(::opJson)) // an MCP tool lives in its mcp_tools.json
         put("answers", LinkedHashMap(c.answers.mapValues { it.value.id }))
         put("spoken_yes", c.spokenYes)
         put("per_minute", c.perMinute.toLong())
@@ -104,7 +104,7 @@ object ConnectionCodec {
                 put("returns", s.returns)
                 put("classes", LinkedHashMap(s.classes))
             }
-            OpSpec.HaRead, OpSpec.HaScript -> {}
+            OpSpec.HaRead, OpSpec.HaScript, is OpSpec.McpCall -> {}
             is OpSpec.NtfyPublish -> {
                 put("message", s.message)
                 // Its own key: "title" is the operation's (yours), this is the notification's.

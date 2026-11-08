@@ -1812,8 +1812,9 @@ class ProcessIsolationTest {
     @Test fun theLockedPhoneChangesNoRoutine() {
         val panel = flatCode(kt("app", "assistant/routines/PanelRoutines.kt"))
         assertInOrder(panel.body("suspend fun handle("), "RoutineLockedPhone.refuse(cmd, host.locked", "val done = when (cmd)")
-        assertInOrder(panel.body("private suspend fun create("), "if (host.locked) {", "store().save(saved)")
-        assertInOrder(panel.body("private suspend fun delete("), "if (host.locked) {", "store().delete(r.id)")
+        // S3.2: with its skill, under both locks (core RoutineSkills).
+        assertInOrder(panel.body("private suspend fun create("), "if (host.locked) {", "RoutineSkills.save(store(), SkillFiles.store(app), saved)")
+        assertInOrder(panel.body("private suspend fun delete("), "if (host.locked) {", "RoutineSkills.delete(store(), SkillFiles.store(app), r.id)")
         assertInOrder(panel.body("private suspend fun remind("), "if (host.locked) return", "store().editReminders")
     }
 
@@ -2641,11 +2642,14 @@ class ProcessIsolationTest {
         assertEquals(emptyList<String>(), skills.filter { (_, f) -> Flat(code(f)).calls(Regex("""\bRLog\.[iw]\(""")).any { leaky.containsMatchIn(it) } }.keys.toList())
         // Saved by voice only after the card's answer; deleted only after a tap on its card.
         val panel = flatCode(kt("app", "assistant/skills/PanelSkills.kt"))
-        assertEquals(1, panel.count("store().save("))
-        assertInOrder(panel, "val pick = host.pick(", "store().save(skill)")
-        assertEquals(1, panel.count("store().delete("))
+        // S3.2: through core RoutineSkills, so a routine's skill and its routine change together, under both locks.
+        assertEquals(0, panel.count("store().save("))
+        assertEquals(1, panel.count("RoutineSkills.saveSkill("))
+        assertInOrder(panel, "val pick = host.pick(", "RoutineSkills.saveSkill(RoutineFiles.store(app), store(), skill)")
+        assertEquals(0, panel.count("store().delete("))
+        assertEquals(1, panel.count("RoutineSkills.deleteSkill("))
         assertInOrder(panel, "val yes = host.ask(replyId, Card(id, null, title, ActionStatus.PENDING, null, body = body, confirm = UiStrings.delete()",
-            "tapOnly = SkillStrings.tapDelete(", "store().delete(s.id)")
+            "tapOnly = SkillStrings.tapDelete(", "RoutineSkills.deleteSkill(RoutineFiles.store(app), store(), s.id)")
         // Each step goes through a TurnRunner with the conversation's taint (core SkillRun), never straight to the executor.
         val run = flatCode(kt("core", "core/skills/SkillRun.kt"))
         assertHas(run, "TurnRunner(StepCall(raw), a, v, confirmations, taint, asked = SkillPolicy.asked(tool, named), messages = messages")
@@ -2771,12 +2775,18 @@ class ProcessIsolationTest {
         // A call's order: the refusal before any client, the secrets last (then the address parsed again and compared), a
         // typed address decided before the call, then the capped read and ConnReply.
         val call = http.body("fun call(c: Connection, r: HttpRequest, secrets: ConnSecrets, abort: Abort = Abort(), max: Int = ConnReply.MAX_BYTES, cause: NetCause = NetCause.SKILL): ConnCall {")
-        assertInOrder(call, "require(max in 1..PICKER_MAX_BYTES)", "ConnRules.refusal(c)?.let { return no(it) }",
-            "if (r.base != base || r.secretAddress != c.secretAddress || r.auth != c.auth) return no(ConnFailure.NOWHERE)", "ConnWire.assemble(r, secrets)",
+        assertInOrder(call, "require(max in 1..PICKER_MAX_BYTES)", "send(c, r, secrets, abort, max, cause, callMs, all = false, enough = null)",
+            "ConnReply.read(x.status, x.contentType, x.bytes, x.over, r.json, max)")
+        // S3.6: MCP's exchange is the same send, for MCP servers only, every status's body capped at 256 KiB.
+        assertHas(http.body("enough: ((String?, ByteArray) -> Boolean)? = null): ConnExchange {"), "require(max in 1..ConnReply.MAX_BYTES && c.kind == ConnKind.MCP)")
+        val send = http.body("enough: ((String?, ByteArray) -> Boolean)?): ConnExchange {")
+        assertInOrder(send, "ConnRules.refusal(c)?.let { return no(it) }",
+            "if (r.base != base || r.secretAddress != c.secretAddress || r.auth != c.auth) return no(ConnFailure.NOWHERE)", "ConnWire.assemble(r, secrets, phone)",
             "wire.url.toHttpUrlOrNull()", "if (!sameOrigin(url, base.https, base.host, base.port)) return no(ConnFailure.NOWHERE)",
-            "if (!url.isHttps && r.secrets.isNotEmpty()) return no(ConnFailure.KEY_OVER_HTTP)", "ConnRules.lookupHomeWins(url.isHttps, listOf(a))",
-            "client.newCall(request)", "abort.onCancel { stopped.set(true); call.cancel() }", "call.execute()", "if (status in 200..299)",
-            "over = source.request(max + 1L)", "ConnReply.read(status, resp.header(CONTENT_TYPE), bytes, over, r.json, max)", "client.connectionPool.evictAll()")
+            "if (!url.isHttps && r.secrets.isNotEmpty() && !(phone && r.secrets == setOf(SecretPart.TOKEN))) return no(ConnFailure.KEY_OVER_HTTP)",
+            "ConnRules.lookupHomeWins(url.isHttps, listOf(a))",
+            "client.newCall(request)", "abort.onCancel { stopped.set(true); call.cancel() }", "call.execute()", "if (all || status in 200..299)",
+            "over = source.request(max + 1L)", "ConnExchange.Got(status, type, bytes, over, where, resp.header(SESSION), ms())", "client.connectionPool.evictAll()")
         // D1 on every lookup and on the socket, for both schemes: the guard has no scheme in it, and no kind means no socket.
         assertHas(http, "fun lookup(resolved: List<ByteArray>): List<ByteArray> = when (val l = ConnRules.lookupHomeWins(https, resolved))")
         assertHas(http.body("fun socket(a: ByteArray): ConnFailure? {"), "val w = where ?: return ConnFailure.NOWHERE", "ConnRules.socket(a, w)")
@@ -2827,10 +2837,19 @@ class ProcessIsolationTest {
             "locate(ctx, wait, abort)", "RoutingPreset.request(c, fix.lat, fix.lon, place)", "limited(ctx, c)?.let { return no(it, c.name, c) }",
             "a.consent?.let { ConnFiles.store(ctx).answer(c.id, p.origin, it) }", "ConnHttp().call(", "TravelStep.result(a, c, end, now)")
         // C6: a routing server over http reaches only loopback or Tailscale, at the lookup and at the socket (ConnRules.nearOnly).
-        assertHas(http, "val place = CallPlace(url.isHttps, nearOnly = !url.isHttps && c.kind == ConnKind.ROUTING)",
-            "if (nearOnly && l.addresses.any { !ConnRules.nearOnly(it) }) throw ConnRefused(ConnFailure.LOCATION_OVER_HTTP)")
+        // S3.6: an MCP server without a token is never one on this phone (D2), at the lookup and at the socket.
+        // 1.3: an MCP server is never on the public internet (ConnRules.homeOnly), at the lookup and at the socket.
+        assertHas(http, "val place = CallPlace(url.isHttps, nearOnly = !url.isHttps && c.kind == ConnKind.ROUTING, keyless = c.kind == ConnKind.MCP && c.auth == ConnAuth.None,",
+            "homeOnly = ConnRules.homeOnly(c.kind))", "if (homeOnly && l.where != ConnWhere.HOME) throw ConnRefused(ConnFailure.MCP_PUBLIC)",
+            "if (nearOnly && l.addresses.any { !ConnRules.nearOnly(it) }) throw ConnRefused(ConnFailure.LOCATION_OVER_HTTP)",
+            "if (keyless && l.addresses.any(ConnRules::loopback)) throw ConnRefused(ConnFailure.LOOPBACK_NO_KEY)",
+            // Question 35: an MCP server only over https, before the call, at the lookup and at the socket.
+            "if (!url.isHttps && ConnRules.mcpOverHttp(c)) return no(ConnFailure.MCP_HTTP)", "phoneOnly = !url.isHttps && ConnRules.httpsOnly(c.kind), homeOnly",
+            "if (phoneOnly && l.addresses.any { !ConnRules.loopback(it) }) throw ConnRefused(ConnFailure.MCP_HTTP)")
         assertInOrder(http.body("fun socket(a: ByteArray): ConnFailure? {"), "val w = where ?: return ConnFailure.NOWHERE",
-            "if (nearOnly && !ConnRules.nearOnly(a)) return ConnFailure.LOCATION_OVER_HTTP", "ConnRules.socket(a, w)")
+            "if (nearOnly && !ConnRules.nearOnly(a)) return ConnFailure.LOCATION_OVER_HTTP", "if (keyless && ConnRules.loopback(a)) return ConnFailure.LOOPBACK_NO_KEY",
+            "if (phoneOnly && !ConnRules.loopback(a)) return ConnFailure.MCP_HTTP",
+            "if (homeOnly && w != ConnWhere.HOME) return ConnFailure.MCP_PUBLIC", "ConnRules.socket(a, w)")
         // C5: Home Assistant's read-back goes through the same client and key, within the step's time, and changes nothing.
         val back = runner.body("private fun readBack(c: Connection, entities: List<String>, secrets: ConnSecrets, abort: Abort, http: ConnSend): Map<String, String?> {")
         assertInOrder(back, "val budget = minOf(READ_BACK_PHASE_MS, abort.remainingMs() - MARGIN_MS)", "abort.onCancel { phase.cancel() }",
@@ -2839,8 +2858,11 @@ class ProcessIsolationTest {
         assertEquals(listOf("app/assistant/connect/ConnTest.kt", "app/assistant/connect/ConnectionWindow.kt", "app/assistant/connect/HaPickerHold.kt"),
             usersOf(Regex("""\bHaPickerHold\b""")))
         assertHasNot(flatCode(kt("app", "assistant/connect/HaPickerHold.kt")), "File", "putExtra", "RLog", "Intent", "writeText")
-        assertHas(runner.body("suspend fun run(ctx: Context, a: Action, launch: (android.content.Intent) -> Boolean = { false }): Executed {"),
-            "OnlineRun.run(Abort(DEADLINE_MS), DEADLINE_MS)")
+        // Every step runs under a deadline: an MCP tool's (S3.6) or the others', both bounded.
+        assertInOrder(runner.body("suspend fun run(ctx: Context, a: Action, launch: (android.content.Intent) -> Boolean = { false }): Executed {"),
+            "val ms = if (mcp(ctx, step)) MCP_DEADLINE_MS else DEADLINE_MS", "OnlineRun.run(Abort(ms), ms)")
+        assertTrue(app.heyrobot.assistant.connect.ConnRunner.MCP_DEADLINE_MS <= 40_000L)
+        assertTrue(app.heyrobot.assistant.connect.ConnRunner.DEADLINE_MS <= 40_000L)
         // The panel's actions send a connection's step only through it, and Stop reaches it (its online path, never NonCancellable).
         val panelActions = flatCode(kt("app", "assistant/PanelController.kt")).body("private object PanelActions : TurnActions {")
         assertHas(panelActions, "if (action.tool.group == ToolGroup.CONNECTIONS) app.heyrobot.assistant.connect.ConnRunner.prepare(VoiceHub.app, action)",

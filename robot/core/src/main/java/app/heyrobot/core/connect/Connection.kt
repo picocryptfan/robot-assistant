@@ -16,7 +16,9 @@ import app.heyrobot.core.skills.StepCheck
 
 /** What a connection reaches (plan §5.2's `kind`). */
 enum class ConnKind(val id: String) {
-    HOME_ASSISTANT("home_assistant"), NTFY("ntfy"), WEBHOOK("webhook"), ROUTING("routing"), HAND_OFF("hand_off");
+    HOME_ASSISTANT("home_assistant"), NTFY("ntfy"), WEBHOOK("webhook"), ROUTING("routing"), HAND_OFF("hand_off"),
+    /** An MCP server you run (1.3, design §8.5): its tools live in its mcp_tools.json (McpOps). */
+    MCP("mcp");
 
     companion object {
         fun of(id: String?): ConnKind? = entries.firstOrNull { it.id == id }
@@ -192,6 +194,17 @@ sealed interface OpSpec {
         val headers: List<Pair<String, String>> = emptyList(), val body: OpBody? = null) : OpSpec {
         override val id: String get() = "webhook" // l10n: not text (an operation kind in connections.json)
         override fun toString(): String = "Webhook(${method.id})" // l10n: not text (toString, for the logs)
+    }
+
+    /**
+     * An MCP server's tool you turned on (1.3, design §8.5). Never written to connections.json: McpOps makes it from the
+     * server's mcp_tools.json each time connections are read. [tool]: its name; [input]: its inputSchema as pinned when you
+     * turned it on (a call's arguments are checked against it, never a later list's); [effects]: what it does as you set it
+     * (McpPolicy.effects); [reads]: you ticked "This tool only reads" and the server says so too.
+     */
+    data class McpCall(val tool: String, val input: Map<String, Any?>, val effects: Set<SkillEffect>, val reads: Boolean) : OpSpec {
+        override val id: String get() = "mcp_call" // l10n: not text (an operation kind, never in connections.json)
+        override fun toString(): String = "McpCall(…)" // l10n: not text (toString, for the logs)
     }
 }
 

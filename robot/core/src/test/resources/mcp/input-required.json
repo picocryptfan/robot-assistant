@@ -1,0 +1,1 @@
+{"result":{"resultType":"input_required","inputRequests":{"r1":{"method":"elicitation/create","params":{"mode":"form","message":"Which city?","requestedSchema":{"type":"object","properties":{"city":{"type":"string"}}}}}},"requestState":"s1","_meta":{"io.modelcontextprotocol/serverInfo":{"name":"weather-demo","version":"1.0.0"}}},"jsonrpc":"2.0","id":3}

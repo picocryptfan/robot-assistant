@@ -2,6 +2,7 @@
 package app.heyrobot.ui.files
 
 import android.content.Intent
+import androidx.compose.runtime.LaunchedEffect
 import android.net.Uri
 import android.os.Bundle
 import android.view.WindowManager
@@ -54,7 +55,11 @@ import app.heyrobot.core.i18n.Langs
 import app.heyrobot.core.i18n.Phrase
 import app.heyrobot.core.i18n.UiStrings
 import app.heyrobot.core.parse.FileGroup
+import app.heyrobot.core.skills.SkillExport
 import app.heyrobot.sys.AppLanguage
+import app.heyrobot.sys.AppPages
+import app.heyrobot.sys.ResolverSource
+import app.heyrobot.sys.SkillShareFiles
 import app.heyrobot.sys.Cmd
 import app.heyrobot.sys.FilesIntake
 import app.heyrobot.sys.IntakeStep
@@ -103,7 +108,15 @@ class FilesShareActivity : ComponentActivity() {
         val request = ShareRequest.of(i, sender())
         val m = ShareModel(PhonePort(app), request).also { model = it }
         m.start()
-        setContent { RobotTheme { ShareWindow(m.ui, m, onClose = { finish() }) } }
+        setContent {
+            RobotTheme {
+                // 1.3 S3.4: one `.robotskill`, read and held, opens Settings › Skills' import screen (nothing runs from it).
+                if (m.ui == ShareUi.Skill) LaunchedEffect(Unit) {
+                    startActivity(Intent().setClassName(packageName, MAIN).putExtra(AppPages.EXTRA, AppPages.SKILL_IMPORT).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    finish()
+                } else ShareWindow(m.ui, m, onClose = { finish() })
+            }
+        }
     }
 
     /** The sending app, only as Android confirms it (the sender opted in to sharing its identity); null otherwise. */
@@ -129,6 +142,7 @@ class FilesShareActivity : ComponentActivity() {
 
     private companion object {
         val CHOOSERS = setOf("android", "com.android.intentresolver")  // l10n: not text (package names)
+        const val MAIN = "app.heyrobot.ui.MainActivity" // l10n: not text (a class name)
     }
 
     /** The phone's: this process's intake and lock state. */
@@ -144,6 +158,7 @@ class FilesShareActivity : ComponentActivity() {
         override fun changed() = Cmd.send(app, Cmd.FILES)
         override fun langs(): Langs = AppLanguage.langs(app)
         override fun now(): Long = System.currentTimeMillis()
+        override fun skill(f: SharedFile): Boolean = SkillShareFiles.read(ResolverSource(app), f.uri)?.also(SkillShareFiles::hold) != null
     }
 }
 
@@ -188,6 +203,8 @@ sealed class ShareUi {
     /** A duplicate: [where] it is already. */
     class Asking(val name: String, val where: Phrase) : ShareUi()
     class Done(val lines: List<Phrase>) : ShareUi()
+    /** 1.3 S3.4: a skill file, held for Settings › Skills' import screen. */
+    data object Skill : ShareUi()
 }
 
 /**
@@ -211,6 +228,8 @@ class ShareModel(private val port: Port, private val request: ShareRequest, priv
         /** The menus' languages, for the names Robot gives. */
         fun langs(): Langs
         fun now(): Long
+        /** 1.3 S3.4: reads [f], a `.robotskill`, and holds it for the import screen; false when it can't be read. */
+        fun skill(f: SharedFile): Boolean = false
     }
 
     var ui: ShareUi by mutableStateOf(ShareUi.Reading)
@@ -236,10 +255,15 @@ class ShareModel(private val port: Port, private val request: ShareRequest, priv
             leftOut = left
             items = if (taken.isNotEmpty()) taken.map { u -> ShareItem(port.describe(u, port.refusal(u)), null) }
                 else listOfNotNull(ShareRules.textBytes(request.text)?.let { ShareItem(null, it) })
+            val one = items.singleOrNull()?.file
+            if (one != null && one.refusal == null && left == 0 && isSkillFile(one.name) && port.skill(one)) { ui = ShareUi.Skill; return@execute }
             ui = if (items.none { !it.refused }) ShareUi.Refused(if (items.isEmpty()) FilesStrings.nothingShared() else FilesStrings.notAllowed())
                 else ShareUi.Review(items, sender, leftOut)
         }
     }
+
+    /** A skill file by its name (Robot's exports end in ".robotskill"). */
+    private fun isSkillFile(name: String?): Boolean = name?.endsWith("." + SkillExport.EXTENSION, ignoreCase = true) == true
 
     /** Your tap on Add: the lock checked again, then each file copied in, one at a time. */
     fun add() {
@@ -344,7 +368,7 @@ fun ShareWindow(ui: ShareUi, m: ShareModel?, onClose: () -> Unit) {
             Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(stringResource(R.string.files_share_title), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
                 when (ui) {
-                    ShareUi.Reading -> {
+                    ShareUi.Reading, ShareUi.Skill -> {
                         LinearProgressIndicator(Modifier.fillMaxWidth())
                         // A sender that doesn't answer about its files: you needn't wait for it.
                         Buttons { TextButton(onClick = { m?.close(); onClose() }, modifier = Modifier.heightIn(min = 48.dp)) { Text(UiStrings.cancel().str()) } }

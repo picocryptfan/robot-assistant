@@ -1,0 +1,1 @@
+{"result":{"content":[{"type":"text","text":"It is 12 degrees and cloudy in Halifax."}],"structuredContent":{"temperature":"warm","conditions":"cloudy"},"resultType":"complete","_meta":{"io.modelcontextprotocol/serverInfo":{"name":"weather-demo","version":"1.0.0"}}},"jsonrpc":"2.0","id":3}

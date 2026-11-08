@@ -204,7 +204,9 @@ object OneShotRules {
     const val TEMPLATE_TOKENS = 40
 
     /** The conversation a one-shot gets: [system] its own, no [history], no [tools], [constrained] decoding off. */
-    data class Conv(val system: String, val history: List<PromptTurn>, val mode: ToolMode, val tools: List<ToolName>, val constrained: Boolean)
+    data class Conv(val system: String, val history: List<PromptTurn>, val mode: ToolMode, val tools: List<ToolName>, val constrained: Boolean,
+        /** 1.3: a PLAN's one tool (make_plan's description, SkillPlans.TOOL_JSON), the only one it is given; null for every other kind. */
+        val forced: String? = null)
 
     /**
      * Its own system prompt and nothing else: no turn of anyone's conversation, no tool (whatever the engine's tool level
@@ -212,12 +214,31 @@ object OneShotRules {
      */
     fun conversation(req: BrainMsg.OneShot): Conv = Conv(req.system, emptyList(), ToolMode.CHAT_ONLY, emptyList(), constrained = false)
 
+    /**
+     * 1.3 (design §9): a PLAN on an engine whose tool level is [engine] gets make_plan, and only it, at that level, with
+     * constrained decoding where the level has it. A level without the tool API (text calls, chat only, llama.cpp's)
+     * keeps [spec] as it is: the plan comes as text, read leniently, then checked as strictly (SkillPlans.read).
+     */
+    fun withPlanTool(spec: Conv, req: BrainMsg.OneShot, engine: ToolMode): Conv {
+        val tool = forcedTool(req.kind)
+        return if (tool == null || (engine != ToolMode.TOOLS && engine != ToolMode.TOOLS_CONSTRAINED)) spec
+            else spec.copy(mode = engine, constrained = engine == ToolMode.TOOLS_CONSTRAINED, forced = tool)
+    }
+
+    /** The one tool a kind is given: PLAN's make_plan, and 1.3's DRAFT's make_skill (design §10, SkillDrafter.TOOL_JSON); null for the rest. */
+    fun forcedTool(kind: OneShotKind): String? = when (kind) {
+        OneShotKind.PLAN -> app.heyrobot.core.skills.SkillPlans.TOOL_JSON
+        OneShotKind.DRAFT -> app.heyrobot.core.skills.SkillDrafter.TOOL_JSON
+        else -> null
+    }
+
     /** The reply's cap in a context of [maxTokens]: what [req] asked, never past the reply's room (a quarter of a short context). */
     fun maxChunks(req: BrainMsg.OneShot, maxTokens: Int): Int = minOf(req.maxChunks, Limits.MAX_REPLY_CHUNKS, ContextWindow.replyReserve(maxTokens)).coerceAtLeast(1)
 
     /** The estimate of what [req] sends: its system prompt, the template and its one turn (with its picture, 1.4's FILE_READ). */
     fun tokens(req: BrainMsg.OneShot): Int =
-        TokenEstimate.text(req.system) + TEMPLATE_TOKENS + TokenEstimate.turn(PromptTurn(PromptRole.USER, req.text, req.hasImage))
+        TokenEstimate.text(req.system) + TEMPLATE_TOKENS + TokenEstimate.turn(PromptTurn(PromptRole.USER, req.text, req.hasImage)) +
+            (forcedTool(req.kind)?.let(TokenEstimate::text) ?: 0)
 
     /**
      * 1.4 (Robot Files, plan §4.2): the largest picture a one-shot takes. `:files` sends a page as a JPEG of at most 1,024

@@ -371,6 +371,7 @@ object Updater {
      * forgotten, the daily check is scheduled again, and "Robot updated to …" is said once (a notification, or in the app).
      */
     fun afterUpdate(ctx: Context) {
+        BackupReminders.dropOld(ctx) // first: a throw below, caught in afterRestart, would leave the old one at 8,701
         val v = installed()
         UpdateStore.downloads(ctx).listFiles()?.forEach { it.delete() }
         UpdateStore.update(ctx) { st ->

@@ -56,6 +56,25 @@ object SkillRisk {
         (st.refs + listOfNotNull(st.cond?.value)).count { r -> r.output != null && SkillCheck.outputType(r, s.steps.take(i), links)?.type == ParamType.TEXT }
     }
 
+    /**
+     * 1.3 (design §5.2, §9): a plan's points. The model chose every step and wrote every value: +1 for each step past 2,
+     * +2 for each text value and +1 for each other, each step's effects, and +2 for the plan, plus +1 per step.
+     */
+    fun planPoints(s: Skill, links: SkillLinks): Int {
+        val steps = maxOf(0, s.steps.size - 2)
+        val values = s.steps.sumOf { st -> st.args.entries.sumOf { (k, v) -> if (v == null) 0 else if (st.kind.args[k] == ParamType.TEXT) 2 else 1 }.toInt() }
+        val effects = s.steps.sumOf { st -> SkillEffects.step(s, st, links).sumOf { EFFECT_POINTS[it] ?: 0 } }
+        return steps + values + effects + 2 + s.steps.size
+    }
+
+    /** A plan's tier: its points, and Risky whatever they are when a step deletes, locks or unlocks, or spends money. */
+    fun planTier(s: Skill, links: SkillLinks): SkillTier = when {
+        SkillEffects.of(s, links).any { it in SkillEffect.RISKY } -> SkillTier.RISKY
+        planPoints(s, links) >= RISKY -> SkillTier.RISKY
+        planPoints(s, links) >= CAREFUL -> SkillTier.CAREFUL
+        else -> SkillTier.SIMPLE
+    }
+
     fun tier(s: Skill, given: Set<String>, links: SkillLinks): SkillTier = when {
         SkillEffects.of(s, links).any { it in SkillEffect.RISKY } -> SkillTier.RISKY
         given.isEmpty() -> SkillTier.SIMPLE

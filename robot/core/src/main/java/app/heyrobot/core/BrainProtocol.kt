@@ -85,8 +85,11 @@ enum class Priority { PANEL, INTERPRETER, TRANSCRIPT, SUMMARY }
  * FilePrompt), and is the only kind that may carry a picture; FILE_ANSWER answers a question from one file's text.
  * 1.4 (Robot Lists, lists-plan.md §8.3): LIST_SPLIT splits a run of your words with no separators into items (core lists
  * ListSplit), at the panel's priority; code keeps its answer only when every item is a run of your words.
+ * Skills 1.3 (design §9): PLAN writes a plan as a call to its one tool, make_plan (core skills SkillPlans), at the panel's
+ * priority; code checks it strictly before the plan card shows, and nothing in it runs without that card. DRAFT (design §10)
+ * writes a skill as a call to its one tool, make_skill (SkillDrafter); only a tap on its save card keeps it.
  */
-enum class OneShotKind { TRANSLATE, SUMMARY_MAP, SUMMARY_REDUCE, WEB_ANSWER, FILE_READ, FILE_ANSWER, LIST_SPLIT }
+enum class OneShotKind { TRANSLATE, SUMMARY_MAP, SUMMARY_REDUCE, WEB_ANSWER, FILE_READ, FILE_ANSWER, LIST_SPLIT, PLAN, DRAFT }
 
 enum class BrainError {
     NOT_LOADED, NO_VISION, BAD_REQUEST, ENGINE, BUSY,

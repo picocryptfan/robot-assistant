@@ -311,6 +311,8 @@ class BackupActivity : ComponentActivity() {
             BackupCategory.CONNECTIONS -> pluralStringResource(R.plurals.conn_backup_n, s.count, s.count)
             // Shown in Keys and private codes' row, never on its own.
             BackupCategory.CONN_KEYS -> s.names.joinToString(", ")
+            // skills-backup-b: shown in Skills' row, never on its own.
+            BackupCategory.SKILL_TRUST -> s.count.toString()
         }
         return if (s.bytes > 0 && c != BackupCategory.KEYS && c != BackupCategory.VOICEPRINT) stringResource(R.string.backup_line, what, size(ctx, s.bytes)) else what
     }

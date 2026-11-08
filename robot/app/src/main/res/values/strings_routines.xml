@@ -141,6 +141,9 @@
     <string name="routine_once_a_day">At most once a day</string>
     <string name="routine_once_a_day_detail">A trigger that comes again the same day is ignored</string>
     <string name="routine_do">Do</string>
+    <string name="routine_skill">Skill</string>
+    <string name="routine_values">Values for this routine</string>
+    <string name="routine_values_none">Its skill asks nothing: it runs as it is</string>
     <string name="routine_move_up">Move step %1$d up</string>
     <string name="routine_remove_step">Remove step %1$d</string>
     <string name="routine_add_step">Add a step</string>

@@ -110,12 +110,12 @@ object QueryCheck {
     private val SPACE = Regex("\\s+")
     // Every brace and bracket escaped: Android's regex engine (ICU) refuses a bare "}", and this object's first use would
     // throw (1.1's web search, ExceptionInInitializerError). RegexPortabilityTest checks every regex Robot builds at start.
-    private val EMAIL_WORDS = Regex(
+    internal val EMAIL_WORDS = Regex(
         "\\b[\\p{L}\\p{N}._%+-]+\\s*(?:\\(at\\)|\\[at\\]|\\{at\\}|\\s(?:at|arobase|chez)\\s)\\s*[\\p{L}\\p{N}-]+\\s*(?:\\(dot\\)|\\[dot\\]|\\{dot\\}|\\s(?:dot|point)\\s|\\.)\\s*" +
             "(?:com|org|net|ca|fr|io|me|info|edu|gov|uk|de|be|ch|qc|eu|co|us|app|dev)\\b",
     )
     private val LINK_DATA = Regex("(?:[\\p{L}\\p{N}-]+\\.)+[a-z]{2,}(?::\\d+)?/\\S*[?=&#]|[\\p{L}_][\\p{L}\\p{N}_]*=\\S")
-    private val STREET = Regex(
+    internal val STREET = Regex(
         "\\b\\d{1,6}[a-z]?(?:\\s*,)?\\s+(?:[\\p{L}'.-]+\\s+){0,3}?(?:street|st|avenue|ave|av|road|rd|boulevard|blvd|boul|bd|drive|dr|lane|ln|court|ct|" +
             "crescent|cres|terrace|highway|hwy|way|place|pl|parkway|pkwy|rue|chemin|ch|rang|route|allee|impasse|quai|cours|montee|cote)\\b",
     )

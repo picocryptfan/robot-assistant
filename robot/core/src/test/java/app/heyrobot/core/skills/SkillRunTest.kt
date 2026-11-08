@@ -228,4 +228,20 @@ class SkillRunTest {
         assertEquals(listOf("prepare connection", "run connection"), conn.log)
         assertEquals(3, ran.done)
     }
+
+    /** S3.2: a migrated routine's brief, reminders and messages count run by the routine's code; with none given, they fail. */
+    @Test fun aRoutinesOwnStepsRunByTheRoutinesCode() = runBlocking {
+        val r = app.heyrobot.core.Routine("night", "Good night", app.heyrobot.core.RoutineTrigger.Asked,
+            listOf(app.heyrobot.core.RoutineStep.Brief, app.heyrobot.core.RoutineStep.Reminders, app.heyrobot.core.RoutineStep.Messages), created = 1, edited = 1)
+        val s = RoutineMigration.migrate(listOf(r), emptyList()).skills.first { it.id != RoutineMigration.BRIEF_SKILL }
+        val ran = mutableListOf<app.heyrobot.core.RoutineStep>()
+        val out = SkillRun(s, emptyMap(), true, Phone(auto), View(), Confirmations(), false, MessageTaint.NONE, Langs.EN, { "r${++ids}" }, true, {},
+            routineSteps = RoutineSteps { ran += it; ActionStatus.DONE }).run()
+        assertEquals(r.steps, ran)
+        assertEquals(3, out.done)
+        // What they said is content for what comes after.
+        assertTrue(out.untrusted)
+        val none = run(s, Phone(auto), View()).run()
+        assertEquals(0, none.done)
+    }
 }

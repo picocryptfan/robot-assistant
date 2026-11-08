@@ -201,6 +201,8 @@ data class Routine(
     val lock: RoutineLock = RoutineLock.FOLLOW,
     /** The online services the save card listed: what its online steps may reach without you (RoutineGate). */
     val online: Set<OnlineUse> = emptySet(),
+    /** 1.3: the skill it runs as (RoutineMigration), or null before the migration. routines.json keeps v1 with it (1.2 reads past it). */
+    val skill: String? = null,
 ) {
     /** The online services its steps reach. */
     val needsOnline: Set<OnlineUse> get() = steps.mapNotNull { it.online }.toSet()
@@ -342,7 +344,8 @@ sealed class RoutineFile {
 }
 
 /**
- * routines.json, schema 1: `{"v":1,"routines":[…]}`. A routine whose trigger, a step or a value can't be read, or which
+ * routines.json, schema 1: `{"v":1,"routines":[…]}`. 1.3 keeps schema 1 and adds `skill` to a migrated routine (skills 1.3
+ * plan §5 item 3): 1.2's decoder reads past a key it doesn't know (RoutineDowngradeTest), so a downgrade still runs them. A routine whose trigger, a step or a value can't be read, or which
  * fails [RoutineCheck], is dropped whole: running the steps that could be read would be a routine you never saved.
  * Tool steps keep the tool's id and its arguments, and are read back through ToolCalls.parse (the tool's own limits).
  */
@@ -385,6 +388,7 @@ object RoutineCodec {
         put("output", r.output.id)
         put("lock", r.lock.id)
         put("online", JSONArray().apply { for (u in OnlineUse.entries) if (u in r.online) put(u.id) })
+        r.skill?.let { put("skill", it) }
     }
 
     /** One routine, or null when anything in it can't be read or it fails [RoutineCheck]. */
@@ -407,6 +411,8 @@ object RoutineCodec {
             output = if (o.has("output")) RoutineOutput.of(str(o, "output"))!! else RoutineOutput.HEADSET_OR_SPEAKER,
             lock = if (o.has("lock")) RoutineLock.of(str(o, "lock"))!! else RoutineLock.FOLLOW,
             online = o.optJSONArray("online")?.let { a -> (0 until a.length()).map { OnlineUse.of(a.opt(it) as? String)!! }.toSet() } ?: emptySet(),
+            // 1.3: a link that isn't a skill's id is a routine that can't be read, like any other value.
+            skill = if (o.has("skill")) str(o, "skill")!!.also { require(app.heyrobot.core.skills.SkillCheck.validId(it)) } else null,
         )
         r.takeIf { RoutineCheck.valid(it) }
     } catch (_: Exception) { null }

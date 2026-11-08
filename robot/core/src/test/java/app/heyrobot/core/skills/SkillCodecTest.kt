@@ -5,6 +5,7 @@ import app.heyrobot.core.Action
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -115,9 +116,10 @@ class SkillCodecTest {
     @Test fun aNewerFileIsLeftAlone() {
         // C1 (connections plan D6) moved this pin from 2 to 3 on purpose: this Robot reads v2; 1.1's answer to a v2 file is
         // in a11RobotReadsV1WholeAndLeavesV2Alone.
-        assertEquals(SkillFile.TooNew(3), SkillCodec.decode(file(json(home), v = 3)))
+        // S3.1 moved it from 3 to 4 on purpose: this Robot reads v3 (v3RoundTripsAndOnlyItsSkillsNeedIt).
+        assertEquals(SkillFile.TooNew(4), SkillCodec.decode(file(json(home), v = 4)))
         // Even with fields this version doesn't know.
-        assertEquals(SkillFile.TooNew(3), SkillCodec.decode("""{"v":3,"skills":[],"model_picks":true}"""))
+        assertEquals(SkillFile.TooNew(4), SkillCodec.decode("""{"v":4,"skills":[],"model_picks":true}"""))
     }
 
     @Test fun duplicateIdsAndNamesDropTheSecond() {
@@ -258,6 +260,78 @@ class SkillCodecTest {
             assertEquals("change $i (1.1)", SkillFile.Ok(listOf(pasta), 1), SkillCodec11.decode(text))
             assertEquals("change $i", SkillFile.Ok(listOf(pasta), 1), SkillCodec.decode(text))
         }
+    }
+
+    private val sha = "0123456789abcdef".repeat(4)
+    private fun imported(signer: String? = "fedcba9876543210".repeat(4)) =
+        home.copy(id = "s-imp001", provenance = SkillProvenance(SkillMade.IMPORT, false, 5L, 5L, SkillImport(sha, signer)))
+
+    /** Skills 1.3 plan S3.1: v3 holds a routine's skill, a draft, an import and a routine's own steps; nothing else needs it. */
+    @Test fun v3RoundTripsAndOnlyItsSkillsNeedIt() {
+        val brief = SkillFixtures.simple("s-brief1", "Wake up").let { s ->
+            s.copy(steps = listOf(SkillStep.of(StepKind.BRIEF, emptyMap()), SkillStep.of(StepKind.REMINDERS, emptyMap()),
+                SkillStep.of(StepKind.MESSAGES, emptyMap())) + s.steps)
+        }
+        val three = listOf(
+            home.copy(provenance = home.provenance.copy(made = SkillMade.ROUTINE)),
+            home.copy(provenance = home.provenance.copy(made = SkillMade.DRAFT_DEVICE)),
+            home.copy(provenance = home.provenance.copy(made = SkillMade.DRAFT_HELPER)),
+            imported(), imported(signer = null), brief,
+        )
+        for ((i, s) in three.withIndex()) {
+            assertEquals("skill $i", 3, SkillCodec.needs(s))
+            assertTrue("skill $i", SkillCheck.valid(s))
+            val text = SkillCodec.encode(listOf(s, pasta))
+            assertEquals("skill $i", 3, JSONObject(text).getInt("v"))
+            assertEquals("skill $i", SkillFile.Ok(listOf(s, pasta)), SkillCodec.decode(text))
+            // 1.2 leaves the whole file alone (plan §4 "Downgrade").
+            assertEquals("skill $i", SkillFile.TooNew(3), SkillCodec12.decode(text))
+            assertEquals("skill $i", SkillFile.TooNew(3), SkillCodec11.decode(text))
+            // Written as a v2 file (as 1.2 would never write it), the skill is dropped whole.
+            val two = file(json(s), json(pasta), v = 2)
+            assertEquals("skill $i", SkillFile.Ok(listOf(pasta), 1), SkillCodec.decode(two))
+        }
+        val o = json(imported(signer = null)).getJSONObject("provenance").getJSONObject("import")
+        assertEquals(sha, o.getString("file_sha256"))
+        assertTrue(o.isNull("signer"))
+        assertEquals(setOf("file_sha256", "signer"), o.keys().asSequence().toSet())
+        // A routine's own step gives its category: the brief reads online and the phone.
+        assertEquals(setOf(SkillEffect.READS_ONLINE, SkillEffect.READS_PHONE, SkillEffect.CHANGES_PHONE), SkillEffects.of(brief, SkillLinks.NONE))
+    }
+
+    /** 1.1's and 1.2's files: a file without v3's content is written byte for byte as 1.2 writes it, and read as 1.2 reads it. */
+    @Test fun a12RobotsFilesAreWrittenAsBefore() {
+        val lists = listOf(listOf(home, pasta), emptyList(), listOf(home, SkillFixtures.goodNight()), listOf(SkillFixtures.headingHomeV2(), pasta),
+            listOf(SkillFixtures.headingHomeMore()))
+        for ((i, l) in lists.withIndex()) {
+            val text = SkillCodec.encode(l)
+            assertEquals("list $i", SkillCodec12.encode(l), text)
+            assertEquals("list $i", SkillCodec12.decode(text), SkillCodec.decode(text))
+            assertTrue("list $i", JSONObject(text).getInt("v") <= 2)
+        }
+    }
+
+    /** Design §3.7: only an import says which file it came from, in its shape; anything else drops the skill whole. */
+    @Test fun anImportsProvenanceIsStrict() {
+        assertFalse(SkillCheck.valid(home.copy(provenance = home.provenance.copy(made = SkillMade.IMPORT))))
+        assertFalse(SkillCheck.valid(home.copy(provenance = home.provenance.copy(imported = SkillImport(sha, null)))))
+        assertFalse(SkillCheck.valid(imported(signer = "AB12")))
+        assertFalse(SkillCheck.valid(imported().copy(provenance = imported().provenance.copy(imported = SkillImport(sha.uppercase(), null)))))
+        val bad = listOf<(JSONObject) -> Unit>(
+            { it.getJSONObject("provenance").getJSONObject("import").put("at", 5) },
+            { it.getJSONObject("provenance").getJSONObject("import").remove("signer") },
+            { it.getJSONObject("provenance").getJSONObject("import").put("signer", 7) },
+            { it.getJSONObject("provenance").getJSONObject("import").put("file_sha256", "x") },
+            { it.getJSONObject("provenance").remove("import") },
+            { it.getJSONObject("provenance").put("extra", 1) },
+        )
+        for ((i, change) in bad.withIndex()) {
+            val text = file(json(imported()).also(change), json(pasta), v = 3)
+            assertEquals("change $i", SkillFile.Ok(listOf(pasta), 1), SkillCodec.decode(text))
+        }
+        // A routine's own step takes no arguments.
+        val withArg = SkillFixtures.simple("s-brief2", "Wake").copy(steps = listOf(SkillStep.of(StepKind.BRIEF, mapOf("text" to "x"))))
+        assertFalse(SkillCheck.valid(withArg))
     }
 
     /** §5.1's limits: every new field out of its limits, or in a place it doesn't fit, drops its skill whole. */

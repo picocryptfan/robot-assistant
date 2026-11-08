@@ -313,16 +313,23 @@ data class TurnResult(val reason: DoneReason?, val failure: String? = null, val 
     /** The everyday set (E2): the model called calculate: its turn ended there, and this, code's reply, is the answer. */
     val calc: Phrase? = null,
     /** 1.1, Skills phase B: "Did you mean" answered no (D18): the model answers again, without skills, for this turn. */
-    val withoutSkills: Boolean = false)
+    val withoutSkills: Boolean = false,
+    /** 1.3: the calls past [TurnRules.MAX_CALLS] that didn't run, in order: the panel offers "Make that a plan?" (design §9). */
+    val skipped: List<RawToolCall> = emptyList())
 
 /** The person's answers to confirmation cards. Thread-safe. */
 class Confirmations {
     private val pending = LinkedHashMap<String, CompletableDeferred<Int>>()
+    /** 1.3 (plans, design §9): cards the plan card's Do the rest answered before they were asked (core skills PlanRun). */
+    private val early = HashSet<String>()
 
     /** Waits for "Do it" ([YES]), a choice (its index) or "Cancel" ([NO]). */
     suspend fun ask(id: String): Int {
         val d = CompletableDeferred<Int>()
-        synchronized(pending) { pending[id] = d }
+        synchronized(pending) {
+            if (early.remove(id)) return YES
+            pending[id] = d
+        }
         try {
             return d.await()
         } finally {
@@ -336,7 +343,16 @@ class Confirmations {
     fun choose(id: String, index: Int, remember: Boolean = false): Boolean =
         synchronized(pending) { pending[id] }?.complete(if (remember && index >= 0) index + REMEMBER else index) ?: false
 
+    /**
+     * 1.3: card [id] (its PENDING card just shown) is answered yes before it is asked: a plan's write that Do the rest
+     * approved (PlanRun decides which; never a tap-only card, a choice or a step you didn't ask for).
+     */
+    fun answerFirst(id: String) {
+        synchronized(pending) { pending[id]?.complete(YES) ?: early.add(id) }
+    }
+
     fun declineAll() {
+        synchronized(pending) { early.clear() }
         synchronized(pending) { pending.values.toList() }.forEach { it.complete(NO) }
     }
 
@@ -517,7 +533,14 @@ class TurnRunner(
     /** 1.1: actions Robot offered in place of one asked for (a dated reminder for an alarm on another day): as asked. */
     private val offeredInstead = mutableSetOf<ToolName>()
 
-    suspend fun run(): TurnResult {
+    /** 1.3: what didn't run past the limit of calls ([TurnResult.skipped]). */
+    private val skipped = mutableListOf<RawToolCall>()
+    /** The calls that went through the limit this turn: one asked again (a model in a loop) isn't offered as a plan. */
+    private val tried = HashSet<RawToolCall>()
+
+    suspend fun run(): TurnResult = turn().let { if (skipped.isEmpty()) it else it.copy(skipped = skipped.toList()) }
+
+    private suspend fun turn(): TurnResult {
         var outcome = model.ask()
         var rounds = 0
         while (outcome is ModelOutcome.Calls && rounds < maxRounds) {
@@ -739,10 +762,12 @@ class TurnRunner(
                 continue
             }
             if (budget <= 0) {
+                if (raw !in tried) skipped += raw
                 out += notRun(parsed, ActionStatus.SKIPPED, TurnStrings.maxCalls(TurnRules.MAX_CALLS), raw)
                 continue
             }
             budget--
+            tried += raw
             when (parsed) {
                 is ParsedCall.Invalid -> {
                     // The card in the reply language; the model reads the reason as it was written, English.

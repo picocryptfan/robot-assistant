@@ -128,6 +128,10 @@ class VerifiedBackup internal constructor(
     val connections: List<app.heyrobot.core.connect.Connection>? = null,
     /** C10: each connection key in the file, by connection id, with the parts it holds; never a key. */
     val connKeys: Map<String, Set<app.heyrobot.core.connect.SecretPart>> = emptyMap(),
+    /** skills-backup-b: skill_keys.json's keys as read, or null when the backup has none. */
+    val skillKeys: List<app.heyrobot.core.skills.TrustedKey>? = null,
+    /** skills-backup-b: each MCP connection's tools file, by connection id, as text (read whole by McpToolsCodec). */
+    val mcpTools: Map<String, String> = emptyMap(),
 ) {
     fun has(c: BackupCategory): Boolean = c in found
 
@@ -251,6 +255,8 @@ object RestoreReader {
         var linkSettings: app.heyrobot.core.link.LinkSettingsFile.Ok? = null
         var connections: List<app.heyrobot.core.connect.Connection>? = null
         val connKeys = LinkedHashMap<String, Set<app.heyrobot.core.connect.SecretPart>>()
+        var skillKeys: List<app.heyrobot.core.skills.TrustedKey>? = null
+        val mcpTools = LinkedHashMap<String, String>()
         /** Each file's bytes in the backup: the size and SHA-256 counted here. */
         val fileBlobs = HashMap<app.heyrobot.core.files.FileId, FilesBackup.Streamed>()
 
@@ -365,6 +371,13 @@ object RestoreReader {
                     null -> SkipWhy.REFUSED
                     else -> if (n > app.heyrobot.core.HomeSettings.VERSION) SkipWhy.NEWER else if (n < app.heyrobot.core.HomeSettings.VERSION) SkipWhy.REFUSED
                         else { home = app.heyrobot.core.HomeSettings.fromJson(text); null }
+                }
+                // skills-backup-b: the keys you trust (an older file refused); an MCP tools file read whole, or the category refused.
+                BackupCategory.SKILL_TRUST -> if (e.name == BackupCategory.SKILL_KEYS_FILE) {
+                    if (own < app.heyrobot.core.skills.SkillShare.VERSION) SkipWhy.REFUSED else { skillKeys = app.heyrobot.core.skills.SkillShare.readTrusted(text); null }
+                } else when (val id = BackupCategory.mcpOf(e.name)) {
+                    null -> SkipWhy.REFUSED
+                    else -> if (app.heyrobot.core.connect.McpToolsCodec.decode(bytes) == null) SkipWhy.REFUSED else { mcpTools[id] = text; null }
                 }
                 // H3: private events by their own codec; newer left for a newer Robot, damaged refused.
                 BackupCategory.CALENDAR -> when (val r = app.heyrobot.core.calendar.PrivateEventsCodec.decode(text)) {
@@ -557,6 +570,8 @@ object RestoreReader {
                 linkSettings = ok(BackupCategory.LINKS, linkSettings),
                 connections = ok(BackupCategory.CONNECTIONS, connections),
                 connKeys = ok(BackupCategory.CONN_KEYS, connKeys).orEmpty(),
+                skillKeys = ok(BackupCategory.SKILL_TRUST, skillKeys),
+                mcpTools = ok(BackupCategory.SKILL_TRUST, mcpTools).orEmpty(),
             )
         }
     }

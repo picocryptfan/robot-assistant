@@ -110,8 +110,8 @@ class PrivateEventsTest {
 
     @Test fun backupCategoryIsYoursOnlyAndTakesOnlyItsFile() {
         val c = BackupCategory.CALENDAR
-        // Appended after Robot to Robot's; H5's Today page comes after it.
-        assertEquals(listOf(BackupCategory.LINKS, c, BackupCategory.HOME), BackupCategory.entries.takeLast(3))
+        // Appended after Robot to Robot's; H5's Today page comes after it, then Skills' trusted keys (skills-backup-b).
+        assertEquals(listOf(BackupCategory.LINKS, c, BackupCategory.HOME, BackupCategory.SKILL_TRUST), BackupCategory.entries.takeLast(4))
         assertTrue(c in BackupCategory.ONLY_YOURS)
         assertFalse(c in BackupCategory.SENSITIVE)
         assertTrue(c.validName(PrivateEventsCodec.FILE))

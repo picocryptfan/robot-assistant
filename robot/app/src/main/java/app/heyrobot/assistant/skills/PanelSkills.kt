@@ -30,7 +30,9 @@ import app.heyrobot.core.skills.Skill
 import app.heyrobot.core.skills.SkillCards
 import app.heyrobot.core.skills.SkillCheck
 import app.heyrobot.core.skills.SkillCommand
+import app.heyrobot.core.skills.DraftSource
 import app.heyrobot.core.skills.SkillDraft
+import app.heyrobot.core.skills.SkillDrafter
 import app.heyrobot.core.skills.SkillEditCode
 import app.heyrobot.core.skills.SkillFromActions
 import app.heyrobot.core.skills.SkillGo
@@ -61,17 +63,24 @@ import app.heyrobot.core.skills.SkillWarnCode
 import app.heyrobot.core.BrainModel
 import app.heyrobot.core.connect.ConnLimits
 import app.heyrobot.core.connect.ConnLinks
+import app.heyrobot.core.skills.PlanRouter
 import app.heyrobot.core.termux.ScriptLinks
 import app.heyrobot.core.connect.SkillLimitCode
 import app.heyrobot.core.i18n.ConnStrings
 import app.heyrobot.core.skills.SkillLinks
 import app.heyrobot.core.skills.ValueSource
 import app.heyrobot.sys.ConnFiles
+import app.heyrobot.sys.Paths
+import app.heyrobot.core.connect.McpSkills
+import app.heyrobot.core.connect.McpStore
 import app.heyrobot.sys.PeopleFiles
 import app.heyrobot.sys.SkillContext
 import app.heyrobot.sys.SkillFiles
 import app.heyrobot.sys.SkillIntents
 import app.heyrobot.sys.TermuxStore
+import app.heyrobot.core.skills.RoutineSkills
+import app.heyrobot.core.skills.RoutineMigration
+import app.heyrobot.sys.RoutineFiles
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.security.SecureRandom
@@ -100,7 +109,16 @@ object PanelSkills {
         val phoneLock: Boolean
         /** The messages other people wrote that are in this conversation (MessageQuarantine). */
         val messages: MessageTaint
+        /** 1.3 (S3.7): the on-phone model's one-shots, for a plan (the panel gives BrainOneShots; skills never name the brain). */
+        val oneShots: app.heyrobot.core.OneShotTransport
+        /** 1.3 (S3.8): where the content in this conversation came from, for a draft's banner (core SkillDrafter.source); null: none. */
+        val source: DraftSource?
+        /** 1.3 (S3.9): the helpers a plan or a draft may go to (the panel gives SkillHelperLink); null: none. */
+        val helpers: SkillHelpers? get() = null
     }
+
+    /** 1.3 (S3.9): a chip after the save card's own ([chip]); its tap closes the card ([instead]) and runs [go]. */
+    class Alt(val chip: Phrase, val instead: Phrase, val go: suspend () -> Unit)
 
     /** The ports of [Host.ports] (core SkillRun's). */
     class SkillPorts(val actions: TurnActions, val view: TurnView, val confirmations: Confirmations, val messages: MessageTaint, val langs: Langs,
@@ -114,6 +132,10 @@ object PanelSkills {
         data class Rename(val draft: SkillDraft, val name: String) : Routed() { override val lang get() = draft.lang }
         /** Phase B: your words after "Change: {ask}" on a model fill's card: the new value. */
         data class Value(val edit: Edit, val words: String) : Routed() { override val lang get() = edit.lang }
+        /** 1.3 (S3.7): your words asked for two or more actions, or "plan this" (core PlanRouter): PanelPlans. */
+        data class Plan(val ask: PlanRouter.Ask) : Routed() { override val lang get() = ask.lang }
+        /** 1.3 (S3.8): "make a skill that …" (core SkillDrafter): PanelDrafts. */
+        data class Draft(val ask: SkillDrafter.Ask) : Routed() { override val lang get() = ask.lang }
     }
 
     /**
@@ -130,7 +152,13 @@ object PanelSkills {
     /** Your skills as last read (the router reads them at every question); null: read again. */
     @Volatile private var cache: List<Skill>? = null
 
-    private fun skills(): List<Skill> = cache ?: store().skills().also { cache = it }
+    private fun skills(): List<Skill> = cache ?: store().skills().let { it + mcpSkills(it) }.also { cache = it }
+
+    /** Turned-on MCP tools (S3.6): each a one-step skill named by your label, offered to the model like any skill. */
+    private fun mcpSkills(own: List<Skill>): List<Skill> {
+        val mcp = McpStore(Paths.dir(app))
+        return McpSkills.of(connections(), own.flatMap { it.allNames }.toSet()) { c, op -> mcp.read(c.id)?.setting(op.id)?.level ?: SkillLevel.ASK_FIRST }
+    }
 
     /** Your connections as connections.json holds them now (a small file). Background thread. */
     private fun connections(): List<app.heyrobot.core.connect.Connection> = try {
@@ -224,7 +252,9 @@ object PanelSkills {
                 Waits.VALUE -> if (CardAnswer.of(q) == null && w.isNotBlank()) return Routed.Value(p.edit!!, w)
             }
         }
-        SkillRouter.route(q, skills(), people(), emptyList())?.let { Routed.Command(it) }
+        SkillDrafter.route(SkillRouter.withoutLead(q))?.let { Routed.Draft(it) }
+            ?: SkillRouter.route(q, skills(), people(), emptyList())?.let { Routed.Command(it) }
+            ?: PlanRouter.route(q)?.let { Routed.Plan(it) }
     } catch (t: Throwable) {
         RLog.w("skill_route", t)
         null
@@ -262,6 +292,8 @@ object PanelSkills {
                 is Routed.Rename -> if (lockedOut(replyId, host, l, change = true)) Unit else save(replyId, r.draft.renamed(r.name), host, l)
                 is Routed.Value -> edited(replyId, r, host, l)
                 is Routed.Command -> command(replyId, r.cmd, host, l)
+                is Routed.Plan -> PanelPlans.handle(replyId, r.ask, host, said, l)
+                is Routed.Draft -> PanelDrafts.handle(replyId, r.ask, host, l, newSkillId())
             }
         } finally {
             host.finish(replyId)
@@ -331,7 +363,10 @@ object PanelSkills {
      * level's chip offers Just do it, "Change the name" waits for your next words. A spoken yes saves, except a skill made
      * from content (D13). True when it was saved.
      */
-    private suspend fun save(replyId: String, draft0: SkillDraft, host: Host, l: Langs): Boolean {
+    /** 1.3 (S3.8): a model's draft on the save card (PanelDrafts). */
+    internal suspend fun saveDraft(replyId: String, draft: SkillDraft, host: Host, l: Langs, alt: Alt? = null): Boolean = save(replyId, draft, host, l, alt)
+
+    private suspend fun save(replyId: String, draft0: SkillDraft, host: Host, l: Langs, alt: Alt? = null): Boolean {
         var draft = draft0
         val id = "skill-card-" + random.nextLong().toString(16)
         val ctx = nameContext()
@@ -352,9 +387,9 @@ object PanelSkills {
             host.text(replyId, (footer ?: c.title).shown(l))
             if (draft === draft0) host.say((footer ?: c.title).said(l))
             val confirm = if (nameProblem != null) SkillStrings.rename().button(l) else UiStrings.save().button(l)
-            val tapOnly = if (draft.fromContent) SkillStrings.tapToSave("save" to UiLabel(UiStrings.save)).said(l) else null
+            val tapOnly = draft.tapLine?.said(l)
             val pick = host.pick(replyId, Card(id, null, c.title.shown(l), ActionStatus.PENDING, footer?.shown(l), body = body, confirm = confirm,
-                cancel = UiStrings.cancel().button(l), chips = c.chips.map { it.button(l) }), tapOnly)
+                cancel = UiStrings.cancel().button(l), chips = (c.chips + listOfNotNull(alt?.chip)).map { it.button(l) }), tapOnly)
             when {
                 pick < 0 -> {
                     host.show(replyId, Card(id, null, c.title.shown(l), ActionStatus.DECLINED, SkillStrings.notSaved().shown(l), body = body))
@@ -363,6 +398,12 @@ object PanelSkills {
                 }
                 pick == Confirmations.YES && nameProblem == null -> break
                 pick == Confirmations.YES -> return rename(replyId, id, draft, c.title, host, l)
+                alt != null && pick == Card.CHIP + c.chips.size -> {
+                    host.show(replyId, Card(id, null, c.title.shown(l), ActionStatus.DECLINED, alt.instead.shown(l), body = body))
+                    VoiceLog.add(VoiceEvent.SKILL_EDIT, SkillEditCode.NOT_SAVED.id, skill.steps.size, skill.params.size)
+                    alt.go()
+                    return false
+                }
                 pick >= Card.CHIP -> {
                     val i = pick - Card.CHIP
                     draft = when {
@@ -384,14 +425,14 @@ object PanelSkills {
             host.show(replyId, Card(id, null, title, ActionStatus.FAILED, SkillStrings.tooMany("max" to SkillCheck.MAX_SKILLS.toString()).shown(l)))
             return false
         }
-        val ok = withContext(Dispatchers.IO) { store().save(skill) }
+        val ok = withContext(Dispatchers.IO) { RoutineSkills.saveSkill(RoutineFiles.store(app), store(), skill) }
         if (!ok) {
             host.show(replyId, Card(id, null, title, ActionStatus.FAILED, SkillStrings.couldntSave().shown(l)))
             return false
         }
         reload()
         SkillFiles.changed(app)
-        VoiceLog.add(VoiceEvent.SKILL_EDIT, (if (draft.made == SkillMade.DEMO) SkillEditCode.SAVED_THAT else SkillEditCode.TAUGHT).id,
+        VoiceLog.add(VoiceEvent.SKILL_EDIT, (if (draft.made == SkillMade.DEMO) SkillEditCode.SAVED_THAT else if (draft.drafted) SkillEditCode.DRAFTED else SkillEditCode.TAUGHT).id,
             skill.steps.size, skill.params.size)
         val saved = SkillStrings.saved("name" to skill.name, "key" to (skill.namesEn + skill.namesFr).firstOrNull().orEmpty().ifEmpty { skill.name })
         host.show(replyId, Card(id, null, title, ActionStatus.DONE, SkillCards.level(skill.level).shown(l), body = SkillCards.steps(skill).joinToString("\n") { it.shown(l) }))
@@ -451,6 +492,9 @@ object PanelSkills {
 
     private suspend fun delete(replyId: String, s: Skill?, said: String, host: Host, l: Langs) {
         if (s == null) return reply(replyId, host, SkillStrings.noSuch("name" to said), l)
+        // S3.2: a routine's skill goes only with its routine; the brief's never.
+        if (RoutineMigration.builtIn(s) || withContext(Dispatchers.IO) { RoutineSkills.routineOf(s, RoutineFiles.store(app).routines()) } != null)
+            return reply(replyId, host, SkillStrings.routinesSkill("name" to s.name, "page" to UiStrings.inSettings(UiStrings.routines)), l)
         val id = "skill-delete-" + random.nextLong().toString(16)
         val delete = UiLabel(UiStrings.delete)
         val title = SkillStrings.deleteCard("name" to s.name).shown(l)
@@ -468,7 +512,7 @@ object PanelSkills {
             host.show(replyId, Card(id, null, title, ActionStatus.NEEDS_UNLOCK, SkillPolicy.lockedLine(true, host.phoneLock).shown(l)))
             return
         }
-        val ok = withContext(Dispatchers.IO) { store().delete(s.id) }
+        val ok = withContext(Dispatchers.IO) { RoutineSkills.deleteSkill(RoutineFiles.store(app), store(), s.id) }
         reload()
         if (ok) SkillFiles.changed(app)
         VoiceLog.add(VoiceEvent.SKILL_EDIT, if (ok) SkillEditCode.DELETED.id else SkillEditCode.KEPT.id, s.steps.size, s.params.size)

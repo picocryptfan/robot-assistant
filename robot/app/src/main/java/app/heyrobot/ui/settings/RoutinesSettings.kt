@@ -75,6 +75,7 @@ import app.heyrobot.sys.AssistantFacts
 import app.heyrobot.sys.Paths
 import app.heyrobot.sys.RoutineFacts
 import app.heyrobot.sys.RoutineFiles
+import app.heyrobot.sys.SkillFiles
 import app.heyrobot.ui.AppActions
 import app.heyrobot.ui.Mark
 import app.heyrobot.ui.Page
@@ -179,8 +180,8 @@ fun RoutinesRoute(route: String, s: RobotSettings, snap: Snapshot, a: AppActions
     fun changed() { RoutineFiles.changed(ctx); tick++ }
     val act = RoutineActions(
         open = { a.openPage(Page.Settings(it)) },
-        save = { r -> store.save(r).also { changed() } },
-        delete = { id -> store.delete(id); changed() },
+        save = { r -> app.heyrobot.core.skills.RoutineSkills.save(store, SkillFiles.store(ctx), r).also { changed(); SkillFiles.changed(ctx) } },
+        delete = { id -> app.heyrobot.core.skills.RoutineSkills.delete(store, SkillFiles.store(ctx), id); changed(); SkillFiles.changed(ctx) },
         setEnabled = { id, on -> store.setEnabled(id, on, System.currentTimeMillis()); changed() },
         settings = { rs -> store.editSettings { rs }; changed() },
         runNow = a.runRoutine,
@@ -536,6 +537,9 @@ fun RoutineEditScreen(initial: Routine, isNew: Boolean, d: RoutinesData, act: Ro
     val langs = LocalLangs.current
     val tWhen = stringResource(R.string.routine_when)
     val tDo = stringResource(R.string.routine_do)
+    // S3.2: a routine is When + Do; its Do is a skill's steps (the same ones: core RoutineSkills keeps them together).
+    val skill = remember(initial.skill) { initial.skill?.let { id -> try { SkillFiles.store(ctx).get(id) } catch (_: Exception) { null } } }
+    val tValues = stringResource(R.string.routine_values)
     val tSpeak = stringResource(R.string.routine_speak_group)
     val save = stringResource(R.string.routine_save)
     val problems = RoutineCheck.problemTexts(r).map { it.render(langs) }
@@ -597,6 +601,7 @@ fun RoutineEditScreen(initial: Routine, isNew: Boolean, d: RoutinesData, act: Ro
             }
         }
         preferenceGroup(tDo, "steps") {
+            if (skill != null) PreferenceItem(stringResource(R.string.routine_skill), skill.name, RIcons.Robot, onClick = { act.open(SkillRoutes.skill(skill.id)) })
             r.steps.forEachIndexed { i, step ->
                 PreferenceItem("${i + 1}. ${step.summary().str()}", RoutineCards.badgeText(step).str(), trailing = {
                     Row {
@@ -611,6 +616,10 @@ fun RoutineEditScreen(initial: Routine, isNew: Boolean, d: RoutinesData, act: Ro
             }
             PreferenceItem(stringResource(R.string.routine_add_step), if (r.steps.isEmpty()) stringResource(R.string.routine_add_step_hint) else null, RIcons.Add,
                 enabled = r.steps.size < RoutineCheck.MAX_STEPS, onClick = { adding = true })
+        }
+        if (skill != null) preferenceGroup(tValues, "values") {
+            if (skill.params.isEmpty()) PreferenceItem(stringResource(R.string.routine_values_none), null)
+            else for (p in skill.params) PreferenceItem(if (langs.ui == Lang.FR) p.askFr else p.askEn, p.default.orEmpty())
         }
         preferenceGroup(tSpeak, "output") {
             ListPreference(stringResource(R.string.routine_speak), r.output, RoutineOutput.entries, { it.text.render(langs) }, icon = RIcons.VolumeUp) {

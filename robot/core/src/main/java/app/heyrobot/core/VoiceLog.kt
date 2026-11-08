@@ -253,7 +253,7 @@ enum class VoiceEvent(val id: Int) {
      * fill's tier (0 none, 1 Simple, 2 Careful, 3 Risky), c = 0. Never the skill's name, its tool's name or a value.
      */
     SKILL_WARN(252),
-    // 253 stays reserved for Run with's SKILL_FALLBACK and 256 to 259 for 1.3 (MCP, plans, drafts, sharing): connections
+    // 253 stays reserved for Run with's SKILL_FALLBACK and 256 to 258 for 1.3 (MCP, plans, drafts; 259 is sharing's): connections
     // plan D21.
     /** Skills connections (C4): a step's check. a = [app.heyrobot.core.connect.SkillCheckCode], b = the step (from 1), c = 0. */
     SKILL_CHECK(254),
@@ -263,6 +263,13 @@ enum class VoiceEvent(val id: Int) {
      * host, a path, a value or a reply.
      */
     CONN_CALL(255),
+    /**
+     * 1.3, S3.6: one MCP request of a step or a list (core connect McpLog). a = the era (0 none found, 1 modern, 2 legacy),
+     * b = how it ended (McpLog.result), c = 1 a list, 2 a call. Never a host, a tool, a value or a reply.
+     */
+    MCP_CALL(351),
+    /** 1.3, S3.6: a list changed your tools. a = tools turned off as changed or unusable, b = gone, c = 1 another server. */
+    MCP_CHANGED(352),
     /**
      * Skills connections (C7, D21): a hand-off to an app you picked. a = its action (core connect HandOffStep.logAction), b =
      * 0 when the app opened, else ConnFailure's code, c = 1 when the intent named the app's one matching activity. Never the
@@ -283,6 +290,11 @@ enum class VoiceEvent(val id: Int) {
      * fill's tier (a call), c = 1 when your words named the skill. Counts and codes only.
      */
     SKILL_PICK(261),
+    /**
+     * 1.3, skills sharing (plan S3.4): a = [app.heyrobot.core.skills.SkillShareCode], b = 0 unsigned, 1 signed, 2 signed by
+     * this phone or a key you trust, c = 0 done, else the why (ExportProblem or ExportRefusal, from 1). Never a name or a key.
+     */
+    SKILL_SHARE(259),
     // 1.4, Robot Files (files-1.4-plan.md D16): 270 to 279. Codes and counts only, never a file's name, words or fields.
     /** Files came in: a = [app.heyrobot.core.files.FileInCode], b = files added, c = of them dangerous (held in Inbox). */
     FILE_IN(270),
@@ -1223,6 +1235,12 @@ object VoiceLogText {
             VoiceEvent.SKILL_STEP -> "Skill step: " + code(StepCode.entries, a) + (if (b == 1) " · done" else " · didn't happen") + (if (c == 1) " · an app opened" else "")
             VoiceEvent.SKILL_WARN -> "Skill call: " + code(app.heyrobot.core.skills.SkillWarnCode.entries, a) + (if (b > 0) " · tier $b" else "")
             VoiceEvent.SKILL_CHECK -> "Skill step $b's check: " + code(app.heyrobot.core.connect.SkillCheckCode.entries, a)
+            VoiceEvent.MCP_CALL -> "MCP " + (if (c == app.heyrobot.core.connect.McpLog.LIST) "list" else "call") + ": " +
+                (when (a) { 1 -> "modern"; 2 -> "legacy"; else -> "no era" }) + " · " + when {
+                    b == 0 -> "done"; b == 1 -> "the tool failed"; b == 300 -> "stopped"
+                    b > 200 -> "failure #${b - 200}"; b > 100 -> "refused #${b - 100}"; else -> "#$b"
+                }
+            VoiceEvent.MCP_CHANGED -> "MCP list: $a turned off as changed, $b gone" + if (c == 1) ", another server" else ""
             VoiceEvent.CONN_CALL -> "Connection call: " + (app.heyrobot.core.connect.ConnKind.entries.getOrNull(a - 1)?.id ?: "kind $a") + " · " +
                 (if (b == 0) "answered" else (if (b >= 100) "HTTP ${b / 100}xx · " else "") + (app.heyrobot.core.connect.ConnFailure.of(b % 100)?.name?.lowercase(Locale.ROOT)
                     ?.replace('_', ' ') ?: "code ${b % 100}")) + " · time bucket ${c / 10} · size bucket ${c % 10}"
@@ -1289,6 +1307,8 @@ object VoiceLogText {
             VoiceEvent.ASK_REFUSED -> "Ask Robot took nothing: " + code(app.heyrobot.core.ask.AskRefusal.entries, a) +
                 (if (b > 0) " · " + code(app.heyrobot.core.ask.SharedKind.entries, b) else "")
             VoiceEvent.SKILL_PICK -> "Skills and the model: " + code(app.heyrobot.core.skills.SkillPickCode.entries, a) + " · $b" + (if (c == 1) " · named" else "")
+            VoiceEvent.SKILL_SHARE -> "Skill file " + code(app.heyrobot.core.skills.SkillShareCode.entries, a) + " · " +
+                (if (b == 0) "not signed" else if (b == 1) "signed" else "signed, trusted") + (if (c != 0) " · why $c" else "")
             VoiceEvent.SKILL_EDIT -> "Skill " + code(app.heyrobot.core.skills.SkillEditCode.entries, a) + ": " + count(b, "step") + ", " + count(c, "question")
             VoiceEvent.RESTORE -> "Restore: " + (if (a == 1) "done" else "partly") + " · " + cats(b) + (if (c != 0) " · not " + cats(c) else "")
             VoiceEvent.MEM_IMPORT -> "Memory import: " + (if (b <= 2) count(a, "item") + " " + code(app.heyrobot.core.memory.MemImportCode.entries, b) +

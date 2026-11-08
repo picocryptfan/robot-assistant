@@ -55,7 +55,7 @@ object ConnOps {
         ConnKind.HOME_ASSISTANT -> HaPreset.op(op)
         ConnKind.NTFY -> NtfyPreset.op(op)
         ConnKind.WEBHOOK -> WebhookPreset.op(op)
-        ConnKind.ROUTING, ConnKind.HAND_OFF -> null
+        ConnKind.ROUTING, ConnKind.HAND_OFF, ConnKind.MCP -> null
     }
 
     /**
@@ -96,6 +96,7 @@ object ConnOps {
         is OpSpec.HaCall, OpSpec.HaScript -> emptySet()
         is OpSpec.NtfyPublish -> SkillEffects.ntfy(s.onlyMine)
         is OpSpec.Webhook -> SkillEffects.webhook(s.method.id, c.address?.path.orEmpty() + s.path)
+        is OpSpec.McpCall -> s.effects
     }
 
     /** The Home Assistant service [op] calls, for SkillEffects (a script runs through `script.turn_on`). */
@@ -106,7 +107,7 @@ object ConnOps {
     }
 
     /** It only reads: "go on" may follow it when it fails (plan §5.1). */
-    fun reads(op: ConnOp): Boolean = op.spec == OpSpec.HaRead || (op.spec as? OpSpec.Webhook)?.method == HttpMethod.GET
+    fun reads(op: ConnOp): Boolean = op.spec == OpSpec.HaRead || (op.spec as? OpSpec.Webhook)?.method == HttpMethod.GET || (op.spec as? OpSpec.McpCall)?.reads == true
 
     /** [op] of [c] as a skill's checks see it (C1's SkillLinks). */
     fun linked(c: Connection, op: ConnOp): LinkedOp = LinkedOp(
@@ -153,6 +154,6 @@ class ConnLinks(private val connections: List<Connection>, private val others: S
     }
 
     private companion object {
-        val HTTP = setOf(ConnKind.HOME_ASSISTANT, ConnKind.NTFY, ConnKind.WEBHOOK)
+        val HTTP = setOf(ConnKind.HOME_ASSISTANT, ConnKind.NTFY, ConnKind.WEBHOOK, ConnKind.MCP)
     }
 }

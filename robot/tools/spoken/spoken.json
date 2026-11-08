@@ -40,7 +40,7 @@
   "settings": {"speakReplies": ["VOICE", "ALWAYS", "NEVER"], "voiceCards": "boolean", "wakeWord": "boolean", "livePartials": "boolean",
     "directAnswers": "boolean", "saveHistory": "boolean", "speechRate": "number", "voice": "string"},
   "routers": ["BrowserRouter", "ConversationRouter", "FeedbackRouter", "FilesRouter", "HandsFreeRouter", "HelperRouter", "LinkRouter", "ListsRouter",
-    "LockRouter", "MessagesRouter", "MusicRouter", "OnlineRouter", "PreRouter", "RoutineRouter", "SkillRouter", "SumsRouter",
+    "LockRouter", "MessagesRouter", "MusicRouter", "OnlineRouter", "PlanRouter", "PreRouter", "RoutineRouter", "SkillRouter", "SumsRouter",
     "TermuxRouter", "ToolRouter", "WebRouter", "model"],
   "routersOff": ["MusicRouter"],
   "routersNoTurn": ["PreRouter", "ToolRouter"]

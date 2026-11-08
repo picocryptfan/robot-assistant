@@ -52,6 +52,9 @@ object SkillEffects {
         StepKind.WEATHER -> setOf(SkillEffect.READS_ONLINE)
         StepKind.READ_CALENDAR, StepKind.FIND_NOTES, StepKind.PHONE_STATUS, StepKind.LOOKUP_CONTACT -> setOf(SkillEffect.READS_PHONE)
         StepKind.SAY -> emptySet()
+        // A routine's own steps (1.3): the brief reads the weather online and your calendar and reminders; the others read the phone.
+        StepKind.BRIEF -> setOf(SkillEffect.READS_ONLINE, SkillEffect.READS_PHONE)
+        StepKind.REMINDERS, StepKind.MESSAGES -> setOf(SkillEffect.READS_PHONE)
         StepKind.TRAVEL_TIME -> setOf(SkillEffect.READS_ONLINE)
         StepKind.TERMUX_SCRIPT -> setOf(SkillEffect.RUNS_CODE) + ((step.args["script"] as? String)?.let(links::script)?.effects.orEmpty())
         StepKind.APP -> setOf(SkillEffect.OPENS_APP) + (step.conn?.let(links::handOff)?.effects.orEmpty())

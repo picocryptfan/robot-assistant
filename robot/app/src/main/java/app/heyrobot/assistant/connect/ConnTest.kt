@@ -32,6 +32,14 @@ import app.heyrobot.core.i18n.ConnStrings
 import app.heyrobot.helpers.connect.ConnCall
 import app.heyrobot.core.online.NetCause
 import app.heyrobot.helpers.connect.ConnHttp
+import app.heyrobot.helpers.connect.McpClient
+import app.heyrobot.core.connect.McpListResult
+import app.heyrobot.core.connect.McpLog
+import app.heyrobot.core.connect.McpOps
+import app.heyrobot.core.connect.McpOut
+import app.heyrobot.core.connect.McpStore
+import app.heyrobot.assistant.skills.PanelSkills
+import app.heyrobot.sys.Paths
 import app.heyrobot.sys.AppLanguage
 import app.heyrobot.sys.ConnFiles
 
@@ -78,6 +86,7 @@ object ConnTest {
         // GrapheneOS's Network toggle is off for Robot: say so rather than "can't reach" (nothing could be sent).
         if (!HelperLink.networkAllowed(ctx)) return failed(ctx, c, ConnFailure.NETWORK_OFF)
         if (c.kind == ConnKind.WEBHOOK) return webhook(ctx, c, abort, send)
+        if (c.kind == ConnKind.MCP) return mcp(ctx, c, abort)
         val request = if (c.kind == ConnKind.ROUTING) {
             val home = HandsFreeFiles.store(ctx).places().home ?: return failed(ctx, c, ConnFailure.NO_HOME)
             when (val b = RoutingPreset.test(c, home)) {
@@ -115,6 +124,34 @@ object ConnTest {
         ConnKind.NTFY -> NtfyPreset.healthy(json)
         ConnKind.ROUTING -> c.routing?.let { RoutingPreset.read(it, json) } != null
         else -> false
+    }
+
+    /** An MCP server's Test (S3.6): its tools listed and kept (mcp_tools.json), each off until you turn it on. */
+    private fun mcp(ctx: Context, c: Connection, abort: Abort): ConnTestResult? {
+        val secrets = if (c.secrets.isEmpty()) ConnSecrets() else when (val k = ConnKeys.read(ctx, c.id)) {
+            is ConnKeyRead.Present -> k.secrets
+            ConnKeyRead.Absent -> return failed(ctx, c, ConnFailure.NO_KEY, needsKey = true)
+            is ConnKeyRead.Unavailable -> return said(ctx, c, R.string.conn_window_key_unavailable)
+            is ConnKeyRead.Invalidated -> return said(ctx, c, R.string.conn_window_key_unreadable, needsKey = true)
+            is ConnKeyRead.TooNew -> return said(ctx, c, R.string.conn_window_key_newer)
+        }
+        val end = McpClient().list(c, secrets, abort, app.heyrobot.BuildConfig.VERSION_NAME)
+        VoiceLog.add(VoiceEvent.MCP_CALL, McpLog.era(end.era), McpLog.result(end.out), McpLog.LIST)
+        val l = when (val o = end.out) {
+            null -> return null
+            is McpOut.Failed -> return failed(ctx, c, o.why, o.status)
+            is McpOut.Refused -> {
+                log(c, false, null)
+                return ConnTestResult(false, o.why.text(c.name, o.rpc).render(AppLanguage.langs(ctx)), null, needsKey = false)
+            }
+            is McpOut.Ok -> o.value
+        }
+        var r: McpListResult? = null
+        val saved = McpStore(Paths.dir(ctx)).edit(c.id) { f -> McpOps.afterList(f, l.server, l.tools, l.listed).also { r = it }.file }
+        r?.let { if (it.off > 0 || it.gone > 0 || it.otherServer) VoiceLog.add(VoiceEvent.MCP_CHANGED, it.off, it.gone, if (it.otherServer) 1 else 0) }
+        PanelSkills.reload()
+        val where = end.where ?: return failed(ctx, c, ConnFailure.NOWHERE)
+        return passed(ctx, c, where, extra = if (saved == null) ConnStrings.couldntSave() else ConnStrings.mcpListed("count" to l.listed.tools.size.toString()))
     }
 
     /** A webhook's Test: one GET to its origin, with no key; any HTTP answer passes (WebhookPreset.test). */

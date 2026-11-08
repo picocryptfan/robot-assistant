@@ -318,3 +318,19 @@ bridge (Tor's)	pont		-	L13: « Ponts Tor », « ligne de pont », as the Tor Pro
 proxy, broker, relay (Tor's)	serveur mandataire, courtier, relais		-	L13: OQLF's « serveur mandataire »; « courtier » UNVERIFIED against the Tor Project's French for Snowflake's broker
 your address (seen by a bridge)	ton adresse IP		-	L13: « ton adresse » alone reads as where you live, so the French says IP where the English says address
 cloud service	service infonuagique		-	L13: OQLF
+plan (Skills', several actions shown first)	plan		-	Skills 1.3 (S3.7): « Plan · 3 étapes », « On en fait un plan ? »; a plan's risk takes the masculine, « Délicat · planifié par le modèle de Robot », where a skill's is feminine (the Simple / Careful / Risky row)
+Do the rest / Step by step (the plan card's buttons)	Fais le reste / Étape par étape		-	S3.7: imperative, as Do it « Fais-le »
+draft (a skill Robot's model or a helper wrote), to draft	brouillon (le), écrire		-	S3.8, S3.9: « Nouvelle compétence (brouillon) : {name} », « Le modèle de Robot a écrit ce brouillon »; the chip Draft with {name} is « Laisse {name} l'écrire », as « Laisse {name} planifier »
+quarantined (a draft made from content)	—		-	S3.8: never shown as a word; the card says what it means, « Elle reste à Demander d'abord, sans déclencheur »; « quarantaine » stays the messages' word (MessageQuarantine)
+What would go to {name} (a helper's card)	Ce qui irait à {name}		-	S3.9: as « Rien ne va à {name} tant que tu ne touches pas {button} »; « Rien n'est allé à {name} » after a Cancel
+today's budget (helpers')	budget du jour		-	S3.9: in a sentence, as HelperStrings; the setting stays « budget quotidien » (« pas de budget quotidien pour les IA externes »)
+sharing (Skills')	partage		-	S3.4: « Réglages › Compétences › Partage »
+export, import (a skill)	exporter, importer		-	S3.4: « Exporter une compétence », « un fichier .robotskill »; an imported skill's name takes the feminine, « Pasta (importée) »
+fingerprint (a key's)	empreinte		-	S3.4: « Les 64 chiffres et lettres », « Empreinte copiée »
+key (a phone's, that signs skills)	clé (la clé de ce téléphone)		-	S3.4: feminine, « Les compétences qu'elle signe »; « signé par ta clé « Tablette » », « non signé »
+trusted keys, trust a key	clés auxquelles tu fais confiance, clés de confiance, faire confiance		-	S3.4: the list's title in full, « clés de confiance » where it's short; as the trust row (Termux)
+MCP server	serveur MCP		-	S3.5, S3.6: « Serveur MCP » as a connection's kind
+tool (an MCP server's)	outil (le)		-	S3.6: masculine, « Robot l'a désactivé »; « Cet outil ne fait que lire »
+label (your name for a tool)	nom (« Ton nom pour l'outil »)		-	S3.6: « Donne-lui un nom d'une ligne »
+mark (a tool's: spends money, touches security, tells people)	marque		-	S3.6: « n'a aucune marque »
+Test (a connection's button, in a sentence)	Touche Tester		-	S3.6: « Touche Tester pour lister les outils de ce serveur », never « le test » for the button

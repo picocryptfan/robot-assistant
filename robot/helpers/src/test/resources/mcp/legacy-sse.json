@@ -1,0 +1,58 @@
+[
+ {
+  "body": "{\"jsonrpc\": \"2.0\", \"id\": \"server-error\", \"error\": {\"code\": -32600, \"message\": \"Bad Request: Missing session ID\"}}",
+  "method": "server/discover",
+  "session": null,
+  "status": 400,
+  "type": "application/json"
+ },
+ {
+  "body": "event: message\ndata: {\"jsonrpc\": \"2.0\", \"method\": \"notifications/message\", \"params\": {\"level\": \"info\", \"data\": \"working\"}}\n\nevent: message\ndata: {\"jsonrpc\": \"2.0\", \"id\": 2, \"result\": {\"protocolVersion\": \"2025-06-18\", \"capabilities\": {\"tools\": {\"listChanged\": false}}, \"serverInfo\": {\"name\": \"fake-mcp\", \"version\": \"1\"}}}\n\n",
+  "method": "initialize",
+  "session": "b935338a552a42daa9071eaa3ea2440f",
+  "status": 200,
+  "type": "text/event-stream"
+ },
+ {
+  "body": "",
+  "method": "notifications/initialized",
+  "session": null,
+  "status": 202,
+  "type": null
+ },
+ {
+  "body": "event: message\ndata: {\"jsonrpc\": \"2.0\", \"method\": \"notifications/message\", \"params\": {\"level\": \"info\", \"data\": \"working\"}}\n\nevent: message\ndata: {\"jsonrpc\": \"2.0\", \"id\": 3, \"result\": {\"tools\": [{\"name\": \"HassTurnOn\", \"description\": \"Turns on/opens a device or entity\", \"inputSchema\": {\"type\": \"object\", \"properties\": {\"name\": {\"type\": \"string\", \"description\": \"Name of a device or entity\"}, \"area\": {\"type\": \"string\", \"description\": \"Name of an area\"}}}}, {\"name\": \"HassTurnOff\", \"description\": \"Turns off/closes a device or entity\", \"inputSchema\": {\"type\": \"object\", \"properties\": {\"name\": {\"type\": \"string\", \"description\": \"Name of a device or entity\"}, \"area\": {\"type\": \"string\", \"description\": \"Name of an area\"}}}}, {\"name\": \"GetLiveContext\", \"description\": \"Provides real-time information about the state of the home\", \"inputSchema\": {\"type\": \"object\", \"properties\": {}}, \"annotations\": {\"readOnlyHint\": true}}]}}\n\n",
+  "method": "tools/list",
+  "session": null,
+  "status": 200,
+  "type": "text/event-stream"
+ },
+ {
+  "body": "event: message\ndata: {\"jsonrpc\": \"2.0\", \"method\": \"notifications/message\", \"params\": {\"level\": \"info\", \"data\": \"working\"}}\n\nevent: message\ndata: {\"jsonrpc\": \"2.0\", \"id\": 4, \"result\": {\"content\": [{\"type\": \"text\", \"text\": \"Turned off kitchen.\"}], \"isError\": false}}\n\n",
+  "method": "tools/call",
+  "session": null,
+  "status": 200,
+  "type": "text/event-stream"
+ },
+ {
+  "body": "",
+  "method": "DELETE",
+  "session": null,
+  "status": 200,
+  "type": null
+ },
+ {
+  "body": "{\"jsonrpc\": \"2.0\", \"id\": \"server-error\", \"error\": {\"code\": -32001, \"message\": \"Session not found\"}}",
+  "method": "tools/list after DELETE",
+  "session": null,
+  "status": 404,
+  "type": "application/json"
+ },
+ {
+  "body": "",
+  "method": "tools/list without the token",
+  "session": null,
+  "status": 401,
+  "type": null
+ }
+]

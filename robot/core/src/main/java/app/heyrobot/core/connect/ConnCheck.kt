@@ -32,7 +32,12 @@ enum class ConnProblem {
     /** C6: a routing server over plain http to anything but a typed loopback or Tailscale address. */
     LOCATION_OVER_HTTP,
     /** C12's M1: a Content-Type that doesn't fit the body (the webhook form shows it under Headers). */
-    CONTENT_TYPE;
+    CONTENT_TYPE,
+    /** 1.3: an MCP server on the phone without a token (design §8.5). */
+    LOOPBACK_NO_KEY,
+    /** 1.3: an MCP server typed as a public address (never the public internet in 1.3). */
+    MCP_PUBLIC,
+    MCP_HTTP;
 
     fun text(name: String): Phrase = when (this) {
         COULDNT_SAVE -> ConnStrings.couldntSave()
@@ -41,6 +46,9 @@ enum class ConnProblem {
         SECRET_VALUE -> ConnStrings.secretValue()
         LOCATION_OVER_HTTP -> ConnStrings.locationOverHttp("name" to name)
         CONTENT_TYPE -> ConnStrings.contentTypeBody()
+        LOOPBACK_NO_KEY -> ConnStrings.mcpLoopbackKey()
+        MCP_PUBLIC -> ConnStrings.mcpPublic("name" to name)
+        MCP_HTTP -> ConnStrings.mcpHttp("name" to name)
     }
 }
 
@@ -120,9 +128,12 @@ object ConnCheck {
         if (!kindFits(c)) out += ConnProblem.COULDNT_SAVE
         c.address?.let { a ->
             if (ConnUrl.parse(a.text) != a) out += ConnProblem.ADDRESS
-            if (ConnRules.secretOverHttp(c)) out += ConnProblem.KEY_OVER_HTTP
+            if (ConnRules.mcpLoopbackWithoutToken(c)) out += ConnProblem.LOOPBACK_NO_KEY
+            if (ConnRules.mcpOverHttp(c)) out += ConnProblem.MCP_HTTP
+            else if (ConnRules.secretOverHttp(c)) out += ConnProblem.KEY_OVER_HTTP
             else if (ConnRules.literal(a) is ConnRules.Lookup.Refused) out += ConnProblem.ADDRESS
             else if (ConnRules.locationOverHttp(c)) out += ConnProblem.LOCATION_OVER_HTTP
+            if (ConnRules.mcpPublic(c)) out += ConnProblem.MCP_PUBLIC
             // An address typed with a key in it, not marked as one ("…/hooks/3f2a9c1e7b4d4e2a…").
             if (!c.secretAddress && secret(a.path)) out += ConnProblem.SECRET_VALUE
         }
@@ -130,7 +141,7 @@ object ConnCheck {
         if (c.answers.size > MAX_ANSWERS || c.answers.keys.any { k -> ConnUrl.parse(k)?.let { it.path.isEmpty() && it.origin == k } != true })
             out += ConnProblem.COULDNT_SAVE
         if (c.ops.map { it.id }.distinct().size != c.ops.size) out += ConnProblem.COULDNT_SAVE
-        for (op in c.ops) out += opProblems(c, op)
+        for (op in c.ops) if (op.spec !is OpSpec.McpCall) out += opProblems(c, op)
         // C7: a hand-off's words, as an operation's, never hold a key.
         if (c.handOff?.let { IntentSpecs.secret(it.intent) } == true) out += ConnProblem.SECRET_VALUE
         return out.toList()
@@ -142,13 +153,15 @@ object ConnCheck {
         if (auth is ConnAuth.Header && !secretHeaderName(auth.name)) return false
         if ((c.kind == ConnKind.ROUTING) != (c.routing != null) || (c.kind == ConnKind.HAND_OFF) != (c.handOff != null)) return false
         if (c.secretAddress && (c.kind != ConnKind.WEBHOOK || c.address?.path?.isEmpty() != true)) return false
-        if (c.ops.size > MAX_OPS) return false
+        if (c.ops.count { it.spec !is OpSpec.McpCall } > MAX_OPS) return false
         return when (c.kind) {
             ConnKind.HOME_ASSISTANT -> c.address != null && auth == ConnAuth.Bearer &&
                 c.ops.all { it.spec is OpSpec.HaCall || it.spec == OpSpec.HaRead || it.spec == OpSpec.HaScript }
             ConnKind.NTFY -> c.address != null && (auth == ConnAuth.None || auth == ConnAuth.Bearer) && c.ops.all { it.spec is OpSpec.NtfyPublish }
             ConnKind.WEBHOOK -> c.address != null && c.ops.size <= 1 && c.ops.all { it.spec is OpSpec.Webhook }
             ConnKind.ROUTING -> c.address != null && auth != ConnAuth.Basic && c.ops.isEmpty()
+            // 1.3: its tools are in its mcp_tools.json (McpOps), never in connections.json.
+            ConnKind.MCP -> c.address != null && (auth == ConnAuth.None || auth == ConnAuth.Bearer) && c.ops.all { it.spec is OpSpec.McpCall }
             ConnKind.HAND_OFF -> c.address == null && auth == ConnAuth.None && c.ops.isEmpty() && c.where == null && c.answers.isEmpty() &&
                 c.handOff!!.let { h -> h.pkg.length <= 255 && PACKAGE.matches(h.pkg) && (h.signer == null || SIGNER.matches(h.signer)) && IntentSpecs.valid(h.intent, ::paramFits) }
         }
@@ -213,6 +226,7 @@ object ConnCheck {
             OpSpec.HaRead, OpSpec.HaScript -> haEntity(op, script = s == OpSpec.HaScript, all = false).also { used += ConnOp.ENTITY }
             is OpSpec.NtfyPublish -> ntfy(op, s, used, texts)
             is OpSpec.Webhook -> webhook(op, s, used, texts)
+            is OpSpec.McpCall -> false // never in connections.json (McpOps)
         }
         if (!shaped) return bad
         // Every template names an argument, and every argument is used.

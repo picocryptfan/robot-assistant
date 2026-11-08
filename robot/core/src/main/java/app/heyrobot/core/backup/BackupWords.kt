@@ -29,6 +29,8 @@ object BackupWords {
         BackupCategory.LINKS -> BackupStrings.links
         BackupCategory.CALENDAR -> BackupStrings.calendar
         BackupCategory.HOME -> BackupStrings.home
+        // skills-backup-b: shown in Skills' row, never on its own.
+        BackupCategory.SKILL_TRUST -> BackupStrings.skills
         // C10: English until C11's French (the connections area); Connection keys is shown in Keys and private codes' row.
         BackupCategory.CONNECTIONS -> app.heyrobot.core.i18n.ConnStrings.title
         BackupCategory.CONN_KEYS -> app.heyrobot.core.i18n.ConnStrings.backupKeys

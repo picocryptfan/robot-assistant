@@ -91,6 +91,14 @@ internal object BackupSources {
     }
 
     private fun dir(ctx: Context) = Paths.dir(ctx)
+
+    /** skills-backup-b: the trusted keys' file and each MCP connection's tools file (only while connections.json reads whole), by entry name. */
+    private fun skillTrustFiles(ctx: Context): List<Pair<String, File>> {
+        val mcp = app.heyrobot.core.connect.McpStore(dir(ctx))
+        val conns = (ConnFiles.store(ctx).file() as? ConnFile.Ok)?.connections.orEmpty().filter { it.kind == app.heyrobot.core.connect.ConnKind.MCP }
+        return (listOf(BackupCategory.SKILL_KEYS_FILE to File(dir(ctx), BackupCategory.SKILL_KEYS_FILE)) +
+            conns.map { BackupCategory.mcpName(it.id) to mcp.file(it.id) }).filter { it.second.isFile }
+    }
     private fun transcriptsDir(ctx: Context) = File(ctx.filesDir, TranscriptFiles.DIR)
 
     private fun settingsFiles(ctx: Context): List<File> = BackupCategory.SETTINGS_FILES.keys.map { File(dir(ctx), it) }.filter { it.isFile }
@@ -209,6 +217,9 @@ internal object BackupSources {
             else -> Summary(-1, 0)
         }
         out[BackupCategory.CONN_KEYS] = Summary(connKeys.size, 0, names = connKeys)
+        // skills-backup-b: skill_keys.json and each MCP connection's tools file (shown in Skills' row).
+        val trust = skillTrustFiles(ctx).map { it.second }
+        out[BackupCategory.SKILL_TRUST] = Summary(trust.size, trust.sumOf { it.length() })
         return out
     }
 
@@ -466,6 +477,7 @@ internal object BackupSources {
             // C10: connections.json as saved (no key is ever in it), only while it reads whole; a restore decides what comes back.
             BackupCategory.CONNECTIONS -> if (ConnFiles.store(ctx).file() is ConnFile.Ok) small(c, connectionsFile(ctx), BackupCategory.CONNECTIONS_FILE)
             // C10: each connection's key, decrypted here, in :voice, straight into the backup's encryption (BackupSecrets).
+            BackupCategory.SKILL_TRUST -> for ((name, f) in skillTrustFiles(ctx)) small(c, f, name)
             BackupCategory.CONN_KEYS -> {
                 val k = BackupSecrets.connectionKeys(ctx)
                 secrets += k.secrets

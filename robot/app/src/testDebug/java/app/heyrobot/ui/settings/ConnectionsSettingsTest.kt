@@ -6,6 +6,8 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
@@ -116,6 +118,17 @@ class ConnectionsSettingsTest {
         assertEquals("open skills/connections/add/webhook", calls.last())
     }
 
+    /** fix-skills13-security-c 2 (the user, 7 Nov: "Make sure its known it's not encrypted"): the list row says it too. */
+    @Test fun anMcpServerOnThisPhoneOverPlainHttpSaysNotEncryptedOnItsListRow() {
+        val local = Connection("c-mc0001", ConnKind.MCP, "Phone tools", ConnUrl.parse("http://127.0.0.1:8080/mcp")!!, auth = ConnAuth.Bearer)
+        val tls = Connection("c-mc0002", ConnKind.MCP, "Tailnet tools", ConnUrl.parse("https://tools.tail1234.ts.net/mcp")!!, auth = ConnAuth.Bearer)
+        rule.show { ConnectionsScreen(data(listOf(local, tls)), actions(), SnackbarHostState(), onBack = {}, now = now) }
+        val label = " · Not encrypted (on this phone)"
+        assertEquals(1, rule.onAllNodesWithText(label, substring = true).fetchSemanticsNodes().size)
+        rule.onNodeWithText(label, substring = true).assertTextContains("Phone tools")
+        rule.onNodeWithText("Tailnet tools").assertExists()
+    }
+
     @Test fun aTokenIsRefusedOverHttpAndTheKeyIsPastedInTheWindow() {
         rule.show { AddConnectionScreen(ConnKind.HOME_ASSISTANT, data(emptyList()), actions(), SnackbarHostState(), onBack = {}) }
         rule.onNodeWithText("Robot needs https with a certificate Android trusts: Tailscale HTTPS, your own domain, or Home Assistant Cloud.").assertExists()
@@ -130,6 +143,28 @@ class ConnectionsSettingsTest {
         assertEquals("https://home.tail1234.ts.net", c.address!!.text)
         assertEquals(ConnAuth.Bearer, c.auth)
         assertEquals(listOf("save Home Assistant", "open skills/connections/${c.id}", "window ${ConnWindow.MODE_KEY} ${c.id}"), calls)
+    }
+
+    /** fix-skills13-security 1 and 4: an MCP token over http only to this phone or Tailscale; a server on this phone can be stood in for. */
+    @Test fun anMcpServerSaysWhereItsTokenGoesAndThatOneOnThisPhoneCanBeStoodInFor() {
+        rule.show { AddConnectionScreen(ConnKind.MCP, data(emptyList()), actions(), SnackbarHostState(), onBack = {}) }
+        val address = hasText("Address") and SemanticsMatcher.keyIsDefined(SemanticsProperties.EditableText)
+        val plain = "Robot reaches an MCP server only over https with a valid certificate, even at home: plain http isn't encrypted. Only a server on this phone may use plain http."
+        val clear = "Not encrypted (on this phone): plain http, which other apps on the phone could read."
+        val phone = "This server is on this phone. While it's stopped, another app could listen in its place and receive your token."
+        rule.onNode(address).performTextReplacement("http://192.168.1.5:8123/api/mcp")
+        rule.onNodeWithText(plain).assertExists()
+        rule.onNodeWithText(phone).assertDoesNotExist()
+        rule.onRow("Save").performClick()
+        assertTrue(saved.isEmpty())
+        rule.onNode(address).performTextReplacement("http://127.0.0.1:8080/mcp")
+        rule.onNodeWithText(phone).assertExists()
+        rule.onNodeWithText(plain).assertDoesNotExist()
+        rule.onNodeWithText(clear).assertExists()
+        rule.onNode(address).performTextReplacement("https://127.0.0.1:8080/mcp")
+        rule.onNodeWithText(phone).assertExists()
+        rule.onNodeWithText(plain).assertDoesNotExist()
+        rule.onNodeWithText(clear).assertDoesNotExist()
     }
 
     @Test fun aSecretWebhookAddressIsTypedOnlyInTheWindow() {

@@ -19,7 +19,9 @@ data class OneShotBudget(val startWithinMs: Long?, val totalMs: Long, val waitFo
 /** How a one-shot ended for its client. */
 sealed class OneShotResult {
     /** The reply ([reason] END, or LENGTH when its cap cut it), after waiting [waitedMs] in line; [ms] from the request to the end. */
-    data class Done(val text: String, val reason: DoneReason, val waitedMs: Long = 0, val ms: Long = 0) : OneShotResult()
+    data class Done(val text: String, val reason: DoneReason, val waitedMs: Long = 0, val ms: Long = 0,
+        /** 1.3: a PLAN's calls ([reason] TOOL_CALLS); empty for every other kind, whose calls :brain drops. */
+        val calls: List<RawToolCall> = emptyList()) : OneShotResult()
 
     /** It hadn't started on the model by its start deadline, and was cancelled (the fast engine answers instead). */
     data object NotStarted : OneShotResult()
@@ -85,6 +87,7 @@ class OneShotFold(private val t0: Long) {
     var restarts = 0
         private set
     private val text = StringBuilder()
+    private var calls: List<RawToolCall> = emptyList()
     /** When it last started (the clock of [event]'s calls), -1 before. */
     @Volatile var startedAt = -1L
         private set
@@ -108,6 +111,7 @@ class OneShotFold(private val t0: Long) {
                 if (had) restarts++
                 started = false
                 text.setLength(0)
+                calls = emptyList()
                 return had
             }
             is BrainMsg.Chunk -> if (m.text.isNotEmpty()) {
@@ -122,8 +126,11 @@ class OneShotFold(private val t0: Long) {
                 DoneReason.CANCELLED -> OneShotResult.Cancelled
                 // :brain stopped a broken reply (pad tokens, one character over and over): no translation or note comes of it.
                 DoneReason.GARBAGE -> OneShotResult.Failed(BrainError.ENGINE)
-                else -> OneShotResult.Done(text.toString(), m.reason, waitedMs = if (startedAt >= 0) startedAt - t0 else 0, ms = now - t0)
+                else -> OneShotResult.Done(text.toString(), m.reason, waitedMs = if (startedAt >= 0) startedAt - t0 else 0, ms = now - t0,
+                    calls = if (m.reason == DoneReason.TOOL_CALLS) calls else emptyList())
             }
+            // 1.3: a PLAN's make_plan call comes just before its Done (TOOL_CALLS).
+            is BrainMsg.ToolCallsMsg -> calls = m.calls
             is BrainMsg.Error -> result = OneShotResult.Failed(m.code, unavailable = m.code == BrainError.NOT_LOADED)
             else -> {}
         }

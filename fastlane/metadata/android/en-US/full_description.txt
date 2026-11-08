@@ -4,7 +4,7 @@ I built it because there wasn't one. My phone runs GrapheneOS with no Google acc
 
 WHAT IT DOES
 • Timers and alarms, also from the lock screen, and your calendar
-• Today: a home page for your day (off until you turn it on), a Calendar tab, a widget, news feeds you add, and private events that stay in Robot, encrypted
+• Today: a home page for your day (off until you turn it on), a Calendar tab, a widget, news feeds you add, and encrypted private events kept in Robot
 • Drafts texts and emails in the apps you choose; you press Send
 • Opens your maps app with a search or route ready
 • Keeps notes and finds them
@@ -14,7 +14,7 @@ WHAT IT DOES
 • Checks battery, storage and memory; helps free space
 • Conversation mode: transcripts with speaker names, live French and English translation, summaries
 • Your own wake words, voice speed, and a People list for the names you use
-• Skills: teach it a short routine by voice, then say its name
+• Skills: teach routines by voice, plan many things at once, share them signed
 • Lists by voice, files in a question, car screen, Robot to Robot
 • Phone lock: covers other apps for times you set, by voice or in Settings. Off until you set it up
 • Robot Files: receipts, bills and documents filed on the phone, encrypted. Ask what you spent or what's due
@@ -43,10 +43,10 @@ REQUIREMENTS
 • Pixels come first because GrapheneOS runs on them: keeping Google off the phone is the point
 • Android 14 or newer; built and tested on GrapheneOS
 • 3.6 to 4.3 GB free for model and voice files, depending on the phone, downloaded once and checked by SHA-256
-• The model uses about 2 GB of memory while it's loaded
+• The model uses about 2 GB of memory while loaded
 
 SETUP
-Robot becomes your default digital assistant (Settings › Apps › Default apps). Its setup screen checks everything and explains an optional step that keeps Robot the assistant after a restart.
+Robot becomes your default digital assistant (Settings › Apps › Default apps). Its setup screen checks everything and explains an optional step that keeps it the assistant after a restart.
 
 FREE AND OPEN SOURCE
 Robot is GPL-3.0 and I make it alone. Nothing is locked. If it's useful to you, you can donate in Bitcoin, Lightning, Monero or Ethereum: https://robot-app.ai/#donate

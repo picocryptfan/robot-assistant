@@ -46,3 +46,4 @@ Plan
 Snowflake
 Robot
 Permissions
+Plans

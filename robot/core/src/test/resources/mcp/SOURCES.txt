@@ -1,0 +1,11 @@
+Recorded on 4 Nov 2026 from the MCP TypeScript SDK 2.0.0's own server (@modelcontextprotocol/server's createMcpHandler,
+served by @modelcontextprotocol/node's toNodeHandler on 127.0.0.1), with two tools: get_weather (readOnlyHint,
+openWorldHint, an outputSchema) and add_note (no annotations; its result holds an image block). Replies as sent:
+discover.json, discover-unsupported.json (Robot asked for 2099-01-01; HTTP 400), list.json, list-changed.json (the same
+server with get_weather taking a required "days"), call-weather.json, call-note.json, call-invalid.json (no city:
+isError), legacy-initialize.sse and legacy-list.sse (the same handler on initialize, 2025-11-25).
+legacy-probe-400.json: the SDK's legacy NodeStreamableHTTPServerTransport answering server/discover (HTTP 400).
+
+Written by hand in the same shapes, for what that server can't be made to send: old-transport.sse (the 2024-11-05
+transport's endpoint event), sampling.sse, elicitation.sse, progress-then-result.sse, input-required.json, task.json
+(2025-11-25's task result), output-mismatch.json (call-weather.json with a temperature that isn't a number).

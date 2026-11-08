@@ -1,0 +1,6 @@
+event: message
+data: {"jsonrpc":"2.0","method":"notifications/progress","params":{"progressToken":1,"progress":50}}
+
+event: message
+data: {"result":{"content":[{"type":"text","text":"It is 12 degrees and cloudy in Halifax."}],"structuredContent":{"temperature":12,"conditions":"cloudy"}},"jsonrpc":"2.0","id":3}
+

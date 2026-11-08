@@ -95,6 +95,33 @@ class RoutineGateTest {
         }
     }
 
+    /**
+     * Skills 1.3 S3.1 (design §14.4): a migrated routine's steps, given back as the routine runs them, get the same class as
+     * before, for every kind of step a routine has; one skills have no step for stays a routine as it was. Triggered runs
+     * don't change.
+     */
+    @Test fun aMigratedRoutinesStepsKeepTheirClass() {
+        val all = steps.values + listOf(RoutineStep.Tool(Action.MapsSearch("gas", nearest = true)), tool("web_search", "query" to "news"),
+            tool("add_event", "title" to "Gym", "when" to "tomorrow 6pm", "alert" to true))
+        var linked = 0
+        for (st in all) {
+            val r = routine(st)
+            val m = app.heyrobot.core.skills.RoutineMigration.migrate(listOf(r), emptyList())
+            val id = m.routines.single().skill
+            if (id == null) {
+                assertEquals("$st", listOf(r), m.routines)
+                continue
+            }
+            linked++
+            val s = m.skills.single { it.id == id }
+            val back = s.steps.map { app.heyrobot.core.skills.RoutineMigration.routineStep(s, it) }
+            assertEquals("$st", listOf(st), back)
+            assertEquals("$st", RoutineGate.classOf(st), RoutineGate.classOf(back.single()!!))
+        }
+        // Every kind but the tools skills never use (and the nearest place, which no skill argument holds).
+        assertEquals(all.size - 6, linked)
+    }
+
     @Test fun stepClasses() {
         val expected = mapOf(
             StepClass.SPEAK to listOf("brief", "say"),

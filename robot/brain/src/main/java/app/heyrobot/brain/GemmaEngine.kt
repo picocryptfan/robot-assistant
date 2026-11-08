@@ -527,6 +527,12 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
         }
     }
 
+    /** 1.3: a PLAN's make_plan (its description is core SkillPlans.TOOL_JSON, fixed): the app checks and runs the plan, never :brain. */
+    private fun forcedProvider(json: String): ToolProvider = tool(object : OpenApiTool {
+        override fun getToolDescriptionJsonString(): String = json
+        override fun execute(paramsJsonString: String): String = "{\"status\":\"failed\",\"detail\":\"tools run in the app\"}" // l10n: not text (a tool result for the model)
+    })
+
     private fun providers(tools: List<ToolName>, compact: Boolean): List<ToolProvider> = tools.map { t ->
         (if (compact) compactProviders else providers).getOrPut(t) {
             // 1.2: a slow path's compact form (core PrefillBudget): shorter parameter texts, the same tool.
@@ -543,7 +549,7 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
     private fun thinking(think: Boolean): ThinkingPlan = Thinking.liteRt(loaded?.model ?: BrainModel.FAST, ownModelType, think)
 
     private fun newConversation(system: String, history: List<PromptTurn>, mode: ToolMode, tools: List<ToolName>, plan: ThinkingPlan,
-        skills: List<SkillToolSpec> = emptyList(), compact: Boolean = false): Conversation {
+        skills: List<SkillToolSpec> = emptyList(), compact: Boolean = false, forced: String? = null): Conversation {
         val e = engine ?: throw IllegalStateException("not loaded")
         val cfg = ConversationConfig(
             systemInstruction = Contents.of(plan.system(if (mode == ToolMode.TEXT_CALLS) system + Prompt.textCallHint(tools, skills) else system)),
@@ -551,7 +557,9 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
             // replies) without the file's special tokens.
             initialMessages = history.map { if (it.role == PromptRole.USER) Message.user(controls.defuse(it.text)) else Message.model(controls.defuse(it.text)) },
             // Only the tool API's levels describe tools: never chat only (its list is empty anyway, BrainPolicy.toolsFor).
-            tools = if (mode == ToolMode.TOOLS || mode == ToolMode.TOOLS_CONSTRAINED) providers(tools, compact) + skillProviders(skills) else emptyList(),
+            // 1.3: a PLAN one-shot's make_plan is its only tool (OneShotRules.withPlanTool).
+            tools = if (mode == ToolMode.TOOLS || mode == ToolMode.TOOLS_CONSTRAINED) providers(tools, compact) + skillProviders(skills) + listOfNotNull(forced?.let(::forcedProvider))
+                else emptyList(),
             samplerConfig = sampler(),
             automaticToolCalling = false,
             // Your own MiniCPM 5 file's template (LiteRT-LM 0.18 passes both on); nothing for any other model.
@@ -834,11 +842,11 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
         }
         convs.clear()
         syncHold()
-        val spec = OneShotRules.conversation(req)
+        val spec = OneShotRules.withPlanTool(OneShotRules.conversation(req), req, mode())
         // Thinking off (your own Qwen3 or MiniCPM file is told so), and a <think> block it writes anyway is never the answer.
         val plan = thinking(false)
         val conv = try {
-            newConversation(spec.system, spec.history, spec.mode, spec.tools, plan)
+            newConversation(spec.system, spec.history, spec.mode, spec.tools, plan, forced = spec.forced)
         } catch (ex: Exception) {
             val code = (OneShotRules.afterError(ex.message, hadOutput = false) as? BrainPolicy.Next.Fail)?.code ?: BrainError.ENGINE
             RLog.w("brain_one_shot", ex, "kind" to req.kind, "code" to code)
