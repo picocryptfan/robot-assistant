@@ -1205,20 +1205,28 @@ object PanelController {
      * "thanks Jarvis" and the rest; in a helper's conversation every other question goes to the helper. The local model
      * never decides.
      */
+    /** fix-french-turn-c: which way [send] took a turn ([path]), with the words' language, never the words. */
+    private fun sendPath(path: SendPath, q: String, fromVoice: Boolean) =
+        RLog.i("send_path", "path" to path, "lang" to ReplyLang.commandLang(q), "voice" to fromVoice)
+
+    /** fix-french-turn-c: the ways [send] can take or refuse a turn. */
+    private enum class SendPath { EMPTY, CONFIRM_CARD, REPLY_CARD, ROUTINE_CONTROL, BUSY_CARD, BUSY, OFFER_YES, OFFER_HELPER, OFFER_HERE, SCREEN_QUESTION, TURN }
+
     fun send(text: String, fromVoice: Boolean = false): Boolean {
         newLockedTurn()
         val st = _state.value
         val q = text.trim()
-        if (q.isEmpty() && st.draft == null) return false
+        if (q.isEmpty() && st.draft == null) { sendPath(SendPath.EMPTY, q, fromVoice); return false }
         // A typed "yes" to a card or an offer is a typed turn too (review-quiet-when-silent, 5); never during a running turn.
         if (!(st.busy || slot.running) || st.phase == Phase.CONFIRMING) quiet.turn(VoiceHub.app, fromVoice)
         // A card waits: a typed or spoken "yes" or "no" answers it (Settings › Safety & privacy).
-        if (st.phase == Phase.CONFIRMING && st.draft == null && cardVoice.answer(q, fromVoice)) { quiet.tell(); return true }
+        if (st.phase == Phase.CONFIRMING && st.draft == null && cardVoice.answer(q, fromVoice)) { sendPath(SendPath.CONFIRM_CARD, q, fromVoice); quiet.tell(); return true }
         // 0.7: a reply card waiting: "yes" (where allowed), "no", or "stop" in its 3 seconds.
-        if (st.draft == null && PanelMessages.answerCard(q, fromVoice)) return true
+        if (st.draft == null && PanelMessages.answerCard(q, fromVoice)) { sendPath(SendPath.REPLY_CARD, q, fromVoice); return true }
         // 0.8: "next", "skip", "repeat" or "stop" while a routine or the brief speaks (or just paused for "hey robot").
-        if (q.isNotEmpty() && st.draft == null && RoutineVoice.control(q)) return true
+        if (q.isNotEmpty() && st.draft == null && RoutineVoice.control(q)) { sendPath(SendPath.ROUTINE_CONTROL, q, fromVoice); return true }
         if (st.busy || slot.running) {
+            sendPath(if (st.phase == Phase.CONFIRMING) SendPath.BUSY_CARD else SendPath.BUSY, q, fromVoice)
             if (st.phase == Phase.CONFIRMING) {
                 notify(if (fromVoice && !VoiceHub.settings.voiceCards) PanelStrings.cardTypeHint() else PanelStrings.cardHint())
                 if (fromVoice) cue(Cue.CHIME)
@@ -1237,6 +1245,7 @@ object PanelController {
         val names = names()
         // An offer under the last reply waits for a tap or a short yes (a yes never sends anything personal).
         if (st.draft == null) offers.waiting { k -> st.turns.lastOrNull { it.role == TurnRole.ASSISTANT }?.id == k }?.takeIf { HelperRouter.isYes(q, offers.namesFor(it, names)) }?.let {
+            sendPath(SendPath.OFFER_YES, q, fromVoice)
             acceptOffer(it, tapped = false)
             quiet.tell()
             return true
@@ -1244,8 +1253,8 @@ object PanelController {
         // "The helper" or "here", when an offer waits: hands free, as a yes or its X.
         if (st.draft == null) offers.waiting { k -> st.turns.lastOrNull { it.role == TurnRole.ASSISTANT }?.id == k }?.let { id ->
             when (app.heyrobot.core.helpers.HelperChoice.answer(q, names, offers.helperOf(id))) {
-                app.heyrobot.core.helpers.HelperChoice.Picked.HELPER -> if (!offers.isKeep(id)) { acceptOffer(id, tapped = false); quiet.tell(); return true }
-                app.heyrobot.core.helpers.HelperChoice.Picked.HERE -> { offers.dismiss(id); return true }
+                app.heyrobot.core.helpers.HelperChoice.Picked.HELPER -> if (!offers.isKeep(id)) { sendPath(SendPath.OFFER_HELPER, q, fromVoice); acceptOffer(id, tapped = false); quiet.tell(); return true }
+                app.heyrobot.core.helpers.HelperChoice.Picked.HERE -> { sendPath(SendPath.OFFER_HERE, q, fromVoice); offers.dismiss(id); return true }
                 null -> {}
             }
         }
@@ -1364,6 +1373,7 @@ object PanelController {
         // Your own words about the screen, with no other router's claim on them: the screen goes with them, on any tab (core ScreenQuestion).
         if (app.heyrobot.core.ScreenQuestion.asks(q) && st.draft == null && !_state.value.inHelperMode && textingFor == null && !PanelSkills.waitsForWords &&
             listOf(msgCmd, convCmd, fbCmd, lockCmd, routineCmd, skillCmd, fileCmd, listCmd, linkCmd, musicCmd, sumsCmd, onlineCmd, handsFreeCmd, termux, memRoute, freeAsk, cmd, webQuery).all { it == null }) {
+            sendPath(SendPath.SCREEN_QUESTION, q, fromVoice)
             if (screenShare.attachAsked()) return send(text, fromVoice)
             if (fromVoice) cue(Cue.CHIME)
             return false
@@ -1434,6 +1444,7 @@ object PanelController {
             )
         }
         quiet.tell()
+        RLog.i("send_path", "path" to SendPath.TURN, "lang" to turnLangs.say, "voice" to fromVoice)
         draftJpeg = null
         if (attachment == Attachment.FILE) PanelFiles.sentWith(user.id)
         turnShared = sharedNow != null

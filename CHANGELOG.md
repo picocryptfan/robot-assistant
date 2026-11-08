@@ -4,7 +4,16 @@ What changed in each version of Robot, newest first. Each version's full notes, 
 [`robot/README.md`](robot/README.md) ("What's new in …" and the feature sections). Versions before 1.0 were test
 builds.
 
-## 1.2.6
+## 1.2.7 (2026-11-08)
+
+- A question typed right after an answer with a list card (say, "Yes, Shopping has milk." and the list, or « Oui, le lait
+  est sur la liste. ») now shows, with its reply, in English and French. Before, the panel stayed on the card and both
+  landed below it, out of sight.
+- A file shared to Robot from another app is no longer left out as "stopped sending" when it's Robot that is slow to
+  start the copy (a slow or busy phone, or your first file). The wait for the sending app now starts when Robot first
+  asks it for bytes.
+
+## 1.2.6 (2026-11-07)
 
 - Today, a home page that shows your day instead of Getting started: what's on now and next, your lists, reminders,
   loose ends in Robot Files and requests from other Robots, and a note you can add to. You turn it on from a one-time
@@ -53,7 +62,7 @@ builds.
   no names from a work profile's Cheogram.
 - Settings › About › Support Robot lists the crypto addresses only; the Ko-fi card and its browser button are gone.
 
-## 1.2.5
+## 1.2.5 (2026-11-07)
 
 - After Robot answers, a reply above a tall card (a list of three items, say) shows from its first line; before, the
   panel showed the card's foot and left the reply out of sight above it.

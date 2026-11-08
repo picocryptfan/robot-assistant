@@ -48,6 +48,14 @@ import java.util.concurrent.TimeUnit
  * answered at the unlock; "Robot handled" notices; Matt's Sent list following each ack; Robot's proposal after three yeses.
  */
 class LinkDeskHarnessTest {
+    private companion object {
+        /**
+         * Every wait here is for an event (a future, a card appearing), so this is only the ceiling that tells a real hang from
+         * a slow machine: the one link thread does real crypto and the PC runs other builds (a 10 s ceiling failed under load 12).
+         */
+        const val HANG_S = 120L
+    }
+
     @get:Rule val tmp = TemporaryFolder(File("build/tmp").apply { mkdirs() })
 
     private val t0 = 1_790_000_000_000L
@@ -66,14 +74,14 @@ class LinkDeskHarnessTest {
     private fun robot(name: String, push: FakePushServer, env: TestDeskEnv, handlers: List<DeskHandler> = listOf(EtaHandler)): TestRobot =
         TestRobot(tmp.newFolder(), FakeEnv(t0), null, 0, null, push, name, deskEnv = env, handlers = handlers).also { robots += it; it.n().start(); it.n().wake() }
 
-    private fun until(what: String, timeoutMs: Long = 15_000, check: () -> Boolean) {
+    private fun until(what: String, timeoutMs: Long = HANG_S * 1000, check: () -> Boolean) {
         val end = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < end) { if (check()) return; Thread.sleep(20) }
         throw AssertionError("timed out: $what")
     }
 
     private fun idle(vararg rs: TestRobot) {
-        repeat(3) { for (r in rs) { r.n().pump().get(10, TimeUnit.SECONDS); r.n().settle().get(10, TimeUnit.SECONDS) }; Thread.sleep(50) }
+        repeat(3) { for (r in rs) { r.n().pump().get(HANG_S, TimeUnit.SECONDS); r.n().settle().get(HANG_S, TimeUnit.SECONDS) }; Thread.sleep(50) }
     }
 
     private fun active(r: TestRobot): String {
@@ -82,23 +90,23 @@ class LinkDeskHarnessTest {
     }
 
     private fun pair(a: TestRobot, b: TestRobot): Pair<String, String> {
-        val code = a.n().makeCode(LinkMode.PRIVATE, false).get(20, TimeUnit.SECONDS).code!!
-        assertEquals(UseCodeResult.SENT, b.n().useCode(code.text(), PairCodeForm.PASTED, LinkMode.PRIVATE).get(30, TimeUnit.SECONDS).result)
+        val code = a.n().makeCode(LinkMode.PRIVATE, false).get(HANG_S, TimeUnit.SECONDS).code!!
+        assertEquals(UseCodeResult.SENT, b.n().useCode(code.text(), PairCodeForm.PASTED, LinkMode.PRIVATE).get(HANG_S, TimeUnit.SECONDS).result)
         return active(a) to active(b)
     }
 
     private fun send(from: TestRobot, pairing: String, body: LinkBody): LinkRequest {
         val r = LinkRequest.of(body, from.env.now() / 1000, "en", LinkRequests.DEFAULT_TTL)
-        assertNull(from.n().queue(pairing, body.type.code, r.id, r.at, r.ttl, LinkRequests.encode(r)!!).get(10, TimeUnit.SECONDS))
+        assertNull(from.n().queue(pairing, body.type.code, r.id, r.at, r.ttl, LinkRequests.encode(r)!!).get(HANG_S, TimeUnit.SECONDS))
         return r
     }
 
-    private fun <T> on(r: TestRobot, block: (LinkDesk) -> T): T = r.n().onLinkThread { block(r.desk!!) }.get(10, TimeUnit.SECONDS)
+    private fun <T> on(r: TestRobot, block: (LinkDesk) -> T): T = r.n().onLinkThread { block(r.desk!!) }.get(HANG_S, TimeUnit.SECONDS)
 
     private fun sent(r: TestRobot, id: String): DeskState? = on(r) { it.view()!!.lines.firstOrNull { l -> l.entry.id == id && l.entry.way == DeskWay.OUT }?.entry?.state }
 
     private fun level(r: TestRobot, pairing: String, cap: LinkCapability, level: LinkLevel) =
-        assertTrue(r.n().setLevel(pairing, cap, level).get(10, TimeUnit.SECONDS))
+        assertTrue(r.n().setLevel(pairing, cap, level).get(HANG_S, TimeUnit.SECONDS))
 
     /** L16: splits wait for L9. A peer that sends them anyway (a later build, or one that ignores `caps`) gets `unsupported`, no card, no entry. */
     @Test fun splitsAreAnsweredUnsupported_noCard() {
@@ -108,15 +116,15 @@ class LinkDeskHarnessTest {
         val (samOnMatt, mattOnSam) = pair(a, b)
         idle(a, b)
         // Not a row, so not a level to set.
-        assertFalse(b.n().setLevel(mattOnSam, LinkCapability.SPLITS, LinkLevel.ASK).get(10, TimeUnit.SECONDS))
+        assertFalse(b.n().setLevel(mattOnSam, LinkCapability.SPLITS, LinkLevel.ASK).get(HANG_S, TimeUnit.SECONDS))
         // Neither side says it reads them.
         for (t in listOf(RequestType.SP_REQUEST, RequestType.SP_REPLY, RequestType.SP_SETTLE)) {
             assertTrue(t !in LinkCaps.fromBitmap(LinkCaps.bitmap(LinkCaps.SUPPORTED)))
         }
         val request = LinkRequest.of(SpRequest(LinkIds.newId(), 1, "CAD", 10_000, 3_450, listOf(SplitItem("Salad", 1_500, 1_500), SplitItem("Wine", 3_000, 1_000)), 450, 500, 3), a.env.now() / 1000, "en", LinkRequests.DEFAULT_TTL)
-        assertEquals(QueueProblem.NOT_READ, a.n().queue(samOnMatt, RequestType.SP_REQUEST.code, request.id, request.at, request.ttl, LinkRequests.encode(request)!!).get(10, TimeUnit.SECONDS))
+        assertEquals(QueueProblem.NOT_READ, a.n().queue(samOnMatt, RequestType.SP_REQUEST.code, request.id, request.at, request.ttl, LinkRequests.encode(request)!!).get(HANG_S, TimeUnit.SECONDS))
         // A Robot that sends them anyway.
-        a.n().onLinkThread { a.state.pairings[samOnMatt]!!.caps = LinkCaps.bitmap(RequestType.entries.toSet()) }.get(10, TimeUnit.SECONDS)
+        a.n().onLinkThread { a.state.pairings[samOnMatt]!!.caps = LinkCaps.bitmap(RequestType.entries.toSet()) }.get(HANG_S, TimeUnit.SECONDS)
         val all = listOf(send(a, samOnMatt, request.body), send(a, samOnMatt, SpReply(LinkIds.newId(), 1, true)), send(a, samOnMatt, SpSettle(LinkIds.newId(), 2, SettleHow.CASH, 3_450, "CAD")))
         for (r in all) until("Matt's Sent says Sam's Robot can't read it") { sent(a, r.id) == DeskState.COULDNT_REACH }
         idle(a, b)
@@ -131,14 +139,14 @@ class LinkDeskHarnessTest {
         val b = robot("Sam", push, TestDeskEnv())
         val (samOnMatt, _) = pair(a, b)
         idle(a, b)
-        a.n().onLinkThread { a.state.pairings[samOnMatt]!!.caps = LinkCaps.bitmap(RequestType.entries.toSet()) }.get(10, TimeUnit.SECONDS)
+        a.n().onLinkThread { a.state.pairings[samOnMatt]!!.caps = LinkCaps.bitmap(RequestType.entries.toSet()) }.get(HANG_S, TimeUnit.SECONDS)
         // Sam's Robot can't send: its answers stay queued.
         b.env.network.set(false)
-        val before = b.n().status().get(10, TimeUnit.SECONDS).outbox
+        val before = b.n().status().get(HANG_S, TimeUnit.SECONDS).outbox
         repeat(LinkLimits.REFUSALS_QUEUED + 15) { send(a, samOnMatt, SpReply(LinkIds.newId(), 1, true)) }
         until("every request read") { b.log.snapshot().count { it.event == LinkEvent.REQUEST_REFUSED } >= LinkLimits.REFUSALS_QUEUED + 15 }
         idle(b)
-        assertEquals(before + LinkLimits.REFUSALS_QUEUED, b.n().status().get(10, TimeUnit.SECONDS).outbox)
+        assertEquals(before + LinkLimits.REFUSALS_QUEUED, b.n().status().get(HANG_S, TimeUnit.SECONDS).outbox)
     }
 
     /** L16, finding 12: a crash after a card was saved but before the replay window was brings the same request again: one card. */
@@ -163,9 +171,9 @@ class LinkDeskHarnessTest {
         val (samOnMatt, mattOnSam) = pair(a, b)
         idle(a, b)
         b.parseAway.set(1)
-        assertTrue(a.n().unpair(samOnMatt).get(10, TimeUnit.SECONDS))
+        assertTrue(a.n().unpair(samOnMatt).get(HANG_S, TimeUnit.SECONDS))
         until("the parser was asked and away") { b.parseAway.get() == 0 }
-        until("Sam's Robot read the unpair on a later try") { b.n().pairings().get(10, TimeUnit.SECONDS)[mattOnSam] == PairingState.ENDED }
+        until("Sam's Robot read the unpair on a later try") { b.n().pairings().get(HANG_S, TimeUnit.SECONDS)[mattOnSam] == PairingState.ENDED }
     }
 
     private fun waitingCard(): Pair<TestRobot, String> {
@@ -241,7 +249,7 @@ class LinkDeskHarnessTest {
         val late = r.n().onLinkThread { ran.set(true) }
         org.junit.Assert.assertThrows(java.util.concurrent.TimeoutException::class.java) { late.within(0) }
         gate.countDown()
-        r.n().onLinkThread { }.get(10, TimeUnit.SECONDS)
+        r.n().onLinkThread { }.get(HANG_S, TimeUnit.SECONDS)
         assertFalse(ran.get())
     }
 
@@ -407,7 +415,7 @@ class LinkDeskHarnessTest {
         idle(a, b)
         level(b, mattOnSam, LinkCapability.ETA, LinkLevel.ASK)
         val r = LinkRequest.of(EtaTell(9), a.env.now() / 1000, "en", 3_600)
-        assertNull(a.n().queue(samOnMatt, RequestType.ETA_TELL.code, r.id, r.at, r.ttl, LinkRequests.encode(r)!!).get(10, TimeUnit.SECONDS))
+        assertNull(a.n().queue(samOnMatt, RequestType.ETA_TELL.code, r.id, r.at, r.ttl, LinkRequests.encode(r)!!).get(HANG_S, TimeUnit.SECONDS))
         until("its card") { b.box.count() == 1 }
         b.env.clock.addAndGet(3_600_000)
         val v = on(b) { it.view()!! }

@@ -143,8 +143,10 @@ class IntakeCopy(
                 return ready(staged, watched)
             } catch (_: TimeoutException) {
                 val t = now()
-                // Idle counts only while bytes are awaited: once the sender's stream ended, the seal's last chunk and fsync remain.
-                if (t - watched.started >= times.totalMs || (!watched.ended && t - watched.last >= times.idleMs)) break
+                // Idle counts only while bytes are awaited: not before the copy first asks (the lock, the index and a new
+                // cabinet's key are Robot's own time, long on a slow phone), and not once the sender's stream ended (the
+                // seal's last chunk and fsync remain).
+                if (t - watched.started >= times.totalMs || (watched.asked && !watched.ended && t - watched.last >= times.idleMs)) break
             } catch (x: ExecutionException) {
                 closeQuietly(input)
                 return failed(x.cause, watched)
@@ -225,6 +227,9 @@ private class Watched(private val input: InputStream, private val now: () -> Lon
     val started: Long = now()
     @Volatile var last: Long = started
         private set
+    /** The copy asked for its first bytes: the idle clock starts then, from [last]. */
+    @Volatile var asked = false
+        private set
     @Volatile var count = 0L
         private set
     @Volatile var failed = false
@@ -252,6 +257,7 @@ private class Watched(private val input: InputStream, private val now: () -> Lon
 
     override fun read(b: ByteArray, off: Int, len: Int): Int {
         if (gaveUp) throw IOException()
+        if (!asked) { last = now(); asked = true }
         if (len == 0) return 0
         val k = try {
             input.read(b, off, len)

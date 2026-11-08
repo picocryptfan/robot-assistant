@@ -1,0 +1,1 @@
+1.2.7: a question you type under a list card now shows with its reply, in English and French. Before, the panel stayed on the card and both landed below it, out of sight. It updates 1.2.6 in place: Settings › About › Updates › Check now, or install it over 1.2.6 (or 1.2.5). Notes: https://github.com/picocryptfan/robot-assistant/releases/tag/v1.2.7

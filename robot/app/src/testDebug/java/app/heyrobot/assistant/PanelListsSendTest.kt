@@ -142,4 +142,46 @@ class PanelListsSendTest {
         assertEquals("Ajouté à la liste Invités : Sam.", ask("ajoute Sam à la liste des invités").replace('\u00A0', ' ').replace('\u202F', ' '))
         assertEquals(listOf("Sam"), (vault.load() as app.heyrobot.core.lists.ListsLoad.Loaded).value.lists.single { it.name == "Invités" }.open.map { it.text })
     }
+    /**
+     * fix-french-turn-b (phone-lists-fr on 1.2.5: no bubble, no reply): after an English check, each French one typed through
+     * send() is taken, gets its bubble and « Oui, … ».
+     */
+    @Test fun aFrenchCheckAfterAnEnglishOneGetsItsTurn() {
+        ask("add Test_m, Test_o and Test_q to the shopping list")
+        assertEquals("Yes, Shopping has Test_q.", ask("is Test_q on my list"))
+        for (q in listOf("Test_q est-tu dessus", "Test_q est-il dessus", "Est-ce que Test_q est sur ma liste")) {
+            assertEquals(q, "Oui, c\u2019est sur la liste \u00c9picerie : Test_q.", ask(q).replace('\u00A0', ' ').replace('\u202F', ' '))
+            assertEquals(q, PanelController.state.value.turns.let { it[it.size - 2].text })
+        }
+    }
+
+    /**
+     * fix-french-turn-c (phone-1.2.6, lists3 step 4: the field emptied, no bubble, no reply in sight): the panel as the phone
+     * had it. "Yes, Shopping has Test_q." and its card, scrolled to its first line (fix-124c), the keyboard up then hidden
+     * (the list doesn't move); then each French check and an English one is taken, gets its bubble and its reply, and the
+     * list follows it. Before, the list's own scroll to the card's top turned following off: the new turn landed below.
+     */
+    @Test fun aTurnTypedUnderAListCardScrolledToItsTopIsFollowed() {
+        val follow = PanelFollow()
+        ask("add Test_m, Test_o and Test_q to the shopping list")
+        follow.newest(PanelController.state.value.turns)
+        assertEquals("Yes, Shopping has Test_q.", ask("is Test_q on my list"))
+        PanelController.state.value.let { s ->
+            assertTrue(follow.newest(s.turns))
+            assertTrue(showsTurnTop(s.turns.last(), s.phase))
+        }
+        follow.topped(240)
+        follow.scrolled(0, 240)
+        follow.scrolled(0, 240)
+        val oui = "Oui, c\u2019est sur la liste \u00c9picerie : Test_q."
+        for ((q, reply) in listOf("Test_q est-tu dessus" to oui, "Test_q est-il dessus" to oui, "Est-ce que Test_q est sur ma liste" to oui,
+            "is Test_m on my list" to "Yes, Shopping has Test_m.")) {
+            assertEquals(q, reply, ask(q).replace('\u00A0', ' ').replace('\u202F', ' '))
+            val turns = PanelController.state.value.turns
+            assertEquals(q, turns[turns.size - 2].text)
+            assertTrue(q, follow.newest(turns))
+            follow.topped(240)
+            follow.scrolled(0, 240)
+        }
+    }
 }

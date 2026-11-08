@@ -146,6 +146,22 @@ class IntakeCopyTest {
         assertTrue(waitFor { leftovers().isEmpty() })
     }
 
+    /** Robot's own time before it asks for the first byte (the lock, the index, a new cabinet's key) on a slow phone. */
+    private fun slowCopier(ms: Long) =
+        IntakeCopy({ input, declared -> Thread.sleep(ms); store.stage(input, declared) }, { discarded.incrementAndGet(); store.discard(it) }, short)
+
+    @Test fun robotsOwnSlowStartIsNeverTheSendersSilence() {
+        val r = slowCopier(2 * short.idleMs).copy(ByteArrayInputStream(pdf), declared = pdf.size.toLong())
+        assertEquals(FileType.PDF, (r as Intake.Ready).type)
+        assertEquals(pdf.size.toLong(), r.staged.size)
+    }
+
+    @Test fun aSilentSenderAfterASlowStartIsStillGivenUp() {
+        val s = Stalled()
+        assertEquals(IntakeProblem.TIMED_OUT, (slowCopier(2 * short.idleMs).copy(s, declared = null) as Intake.Failed).problem)
+        assertTrue(waitFor { leftovers().isEmpty() })
+    }
+
     @Test fun aSenderThatSendsNothingIsGivenUp() {
         val s = Stalled()
         assertEquals(IntakeProblem.TIMED_OUT, (copier().copy(s, declared = null) as Intake.Failed).problem)

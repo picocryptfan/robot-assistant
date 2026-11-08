@@ -49,6 +49,7 @@ details, and the release notes what is still open.
 
 Robot 1.2.6 adds Today, a home page for your day, with the Calendar tab, a widget, a lock-screen summary, weather and
 news you choose; quiet answers and routines on silent; and an update notice at once.
+1.2.7 fixes a question typed under a list card: it now shows, with its reply.
 
 ## What's new in 1.1
 

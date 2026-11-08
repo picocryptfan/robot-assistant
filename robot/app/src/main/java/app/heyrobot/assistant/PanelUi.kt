@@ -383,18 +383,17 @@ private fun Messages(st: PanelState, actions: PanelActions, modifier: Modifier) 
     val savable by PanelFiles.savable.collectAsState()
     val list = rememberLazyListState()
     // Follow the newest message. A LazyColumn keeps the item on screen in place when one is added below it, so a
-    // new message would land out of sight; jump to it unless the person has scrolled up to read.
-    var follow by remember { mutableStateOf(true) }
+    // new message would land out of sight; jump to it unless the person has scrolled up to read (PanelFollow).
+    val follow = remember { PanelFollow() }
     LaunchedEffect(list) {
         snapshotFlow { list.isScrollInProgress }.collect { scrolling ->
-            if (!scrolling) follow = list.firstVisibleItemIndex == 0 && list.firstVisibleItemScrollOffset == 0
+            if (!scrolling) follow.scrolled(list.firstVisibleItemIndex, list.firstVisibleItemScrollOffset)
         }
     }
     val newest = st.turns.last()
     val stopSpeaking = androidx.compose.ui.res.stringResource(app.heyrobot.R.string.panel_stop_speaking)
     LaunchedEffect(newest.id) {
-        if (newest.role == TurnRole.USER) follow = true
-        if (follow) list.animateScrollToItem(0)
+        if (follow.newest(st.turns)) list.animateScrollToItem(0)
     }
     // fix-124c (phone-1.2.4-c): once a turn has ended, one taller than the list (its reply above a three-item list card,
     // the keyboard up) shows its top, the reply's first line; the newest item's foot alone hid "Yes, Shopping has Test_q.".
@@ -403,12 +402,13 @@ private fun Messages(st: PanelState, actions: PanelActions, modifier: Modifier) 
     val showTop = showsTurnTop(newest, st.phase)
     var topped by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(newest.id, showTop) {
-        if (!showTop || !follow || topped == newest.id) return@LaunchedEffect
+        if (!showTop || !follow.follow || topped == newest.id) return@LaunchedEffect
         androidx.compose.runtime.withFrameNanos { }
         val info = list.layoutInfo
         val item = info.visibleItemsInfo.firstOrNull { it.index == 0 } ?: return@LaunchedEffect
         val offset = newestTopOffset(item.size, info.viewportEndOffset - info.viewportStartOffset - info.beforeContentPadding - info.afterContentPadding)
         topped = newest.id
+        follow.topped(offset)
         if (offset > 0) list.animateScrollToItem(0, offset)
     }
     LazyColumn(
@@ -444,6 +444,38 @@ private val TURN_BUSY = setOf(Phase.LISTENING, Phase.TRANSCRIBING, Phase.THINKIN
  * when the turn ([itemSize]) is taller than the list's room ([viewport]); 0 when it fits, so its foot stays in view.
  */
 internal fun newestTopOffset(itemSize: Int, viewport: Int): Int = if (viewport <= 0) 0 else (itemSize - viewport).coerceAtLeast(0)
+
+/**
+ * fix-french-turn-c (phone-1.2.6, lists3 step 4): whether the conversation follows its newest turn. Off once you scroll up
+ * to read, back on with each turn of yours. The list's own scroll to a list card's first line (fix-124c) isn't yours:
+ * before, it turned following off, so a question typed after "Yes, Shopping has Test_q." and its card, and its reply,
+ * landed below the card, out of sight (the reverse layout keeps the item on screen in place).
+ */
+internal class PanelFollow {
+    var follow = true
+        private set
+    private var lastUser: String? = null
+    private var toppedAt = 0
+
+    /** The newest turn changed ([turns]): true when the list goes to it. A new turn of yours always does. */
+    fun newest(turns: List<UiTurn>): Boolean {
+        toppedAt = 0
+        val you = turns.lastOrNull { it.role == TurnRole.USER }?.id
+        if (you != lastUser) {
+            lastUser = you
+            if (you != null) follow = true
+        }
+        return follow
+    }
+
+    /** The list scrolled itself [offset] into the newest turn, to its first line. */
+    fun topped(offset: Int) { toppedAt = offset }
+
+    /** A scroll ended at [index], [offset] (reverse layout: 0, 0 is the newest turn's foot at the bottom). */
+    fun scrolled(index: Int, offset: Int) {
+        follow = index == 0 && (offset == 0 || offset == toppedAt)
+    }
+}
 
 /**
  * fix-125-scroll: whether the newest turn [t] scrolls to its first line in [phase]: a reply over a list card, once it
