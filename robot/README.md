@@ -42,11 +42,11 @@ Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `
 
 ## What's new in 1.3
 
-Robot 1.3.0 (8 Nov 2026), Skills, from `release/1.3`. Settings stay at schema 13: each part keeps its own file. No new permission; the
+Robot 1.3.0 (8 Nov 2026) and 1.3.1 (10 Nov 2026), Skills, from `release/1.3`. Settings stay at schema 13: each part keeps its own file. No new permission; the
 INTERNET comment in the manifest names every use by process. CHANGELOG.md has the list, PRIVACY.md and SECURITY.md what
 goes online and how it is guarded.
 
-1.3.1 (not yet released) fixes the page of a connection you have just added (Remove and Back land on the list of connections)
+1.3.1 (10 Nov 2026) fixes the page of a connection you have just added (Remove and Back land on the list of connections)
 and Car mode: a message reply survives a tap into an app in its 3 seconds and says when it didn't go (naming no one aloud while you are in that app), no panel over the car
 screen, long cards stay on it, the music tile's hold and "use ... in the car" pick the music app again, the Maps button
 swaps between your map and your music app (`CarBeside.swap`), and Today's Car mode button sits beside Talk.

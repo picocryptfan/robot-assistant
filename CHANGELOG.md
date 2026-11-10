@@ -4,7 +4,7 @@ What changed in each version of Robot, newest first. Each version's full notes, 
 [`robot/README.md`](robot/README.md) ("What's new in …" and the feature sections). Versions before 1.0 were test
 builds.
 
-## 1.3.1 (unreleased)
+## 1.3.1 (2026-11-10)
 
 - Settings › Skills › Connections: after you add a connection, its page opens in the form's place, so Remove and Back
   take you to the list of connections, not back to an empty form.
