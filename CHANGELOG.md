@@ -4,6 +4,17 @@ What changed in each version of Robot, newest first. Each version's full notes, 
 [`robot/README.md`](robot/README.md) ("What's new in …" and the feature sections). Versions before 1.0 were test
 builds.
 
+## 1.3.2 (2026-11-10)
+
+- Car mode's Yes and the summary's Send also refuse a tap while another app's window covers part of the screen, even
+  when the button itself is clear, and say why on the card. Cancel and No still work.
+- In car mode, a Yes refused that way is said aloud too. Where car mode already takes a spoken yes for that card, you can
+  answer it by voice, so a map in picture-in-picture over the car screen doesn't leave you stuck; where it needs a tap,
+  Robot says so, and a no still works. The spoken yes has car mode's usual checks, nothing more.
+- Settings › Skills › Connections: an address on your home network (a connection, a helper, a feed, Robot to Robot) is
+  used only over Wi-Fi or Ethernet, or a VPN that reaches it, never over mobile data; on mobile data Robot sends nothing
+  there and says why. SECURITY.md has the details and the three https paths not yet held to this.
+
 ## 1.3.1 (2026-11-10)
 
 - Settings › Skills › Connections: after you add a connection, its page opens in the form's place, so Remove and Back

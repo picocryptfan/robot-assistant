@@ -42,7 +42,7 @@ Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `
 
 ## What's new in 1.3
 
-Robot 1.3.0 (8 Nov 2026) and 1.3.1 (10 Nov 2026), Skills, from `release/1.3`. Settings stay at schema 13: each part keeps its own file. No new permission; the
+Robot 1.3.0 (8 Nov 2026), 1.3.1 and 1.3.2 (both 10 Nov 2026), Skills, from `release/1.3`. Settings stay at schema 13: each part keeps its own file. No new permission; the
 INTERNET comment in the manifest names every use by process. CHANGELOG.md has the list, PRIVACY.md and SECURITY.md what
 goes online and how it is guarded.
 
@@ -50,6 +50,10 @@ goes online and how it is guarded.
 and Car mode: a message reply survives a tap into an app in its 3 seconds and says when it didn't go (naming no one aloud while you are in that app), no panel over the car
 screen, long cards stay on it, the music tile's hold and "use ... in the car" pick the music app again, the Maps button
 swaps between your map and your music app (`CarBeside.swap`), and Today's Car mode button sits beside Talk.
+
+1.3.2 (10 Nov 2026): on the car screen, and in a summary, a Yes is refused while another app's window partly covers it, and in car mode
+it can be said aloud where car mode takes a spoken yes for that card. An address on your home network (connections, helpers, feeds, Robot to Robot)
+is reached only over Wi-Fi or Ethernet, or a VPN that reaches it, on a socket bound to that network, never over mobile data (SECURITY.md).
 
 - **MCP servers as connections.** A new kind of connection (`ConnKind.MCP`, `McpClient` in `:helpers`, run
   from `:voice`). Only an address on your home network, a Tailscale address (100.64/10) or this phone's loopback, checked

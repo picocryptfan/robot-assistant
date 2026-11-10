@@ -14,6 +14,8 @@ class RobotApp : Application() {
     override fun onCreate() {
         super.onCreate()
         app.heyrobot.core.AppId.bind(BuildConfig.APPLICATION_ID)
+        // review-link-net M1: home addresses only over the network that holds them, in every process (core net/HomeNet.kt).
+        app.heyrobot.core.net.HomeNets.start(this)
         val p = getProcessName()
         RLog.i("proc_start", "proc" to RLog.Code(if (p.contains(':')) p.substringAfter(':') else "main"))
         // 1.1: a restore's settings files and locks.json, staged by :voice, written by their one writer (sys/RestoreApply).

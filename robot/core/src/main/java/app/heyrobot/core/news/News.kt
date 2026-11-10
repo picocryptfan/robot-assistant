@@ -106,7 +106,9 @@ object NewsAsk {
  * key file isn't on this phone (a restored backup); [UNSAVED], Add couldn't keep a secret address in its key file.
  * merge-today-124: [TOR_OFF], Find with Tor chosen and Robot to Robot (which runs it) off: Tor won't start, so it says to turn it on.
  */
-enum class NewsFail { NO_PERMISSION, NO_INTERNET, SERVER, TOO_BIG, NOT_A_FEED, BAD_ADDRESS, FULL, NO_TOR, NOT_HOME, TOKEN_OVER_HTTP, NO_KEY, UNSAVED, TOR_STARTING, TOR_OFF }
+enum class NewsFail { NO_PERMISSION, NO_INTERNET, SERVER, TOO_BIG, NOT_A_FEED, BAD_ADDRESS, FULL, NO_TOR, NOT_HOME, TOKEN_OVER_HTTP, NO_KEY, UNSAVED, TOR_STARTING, TOR_OFF,
+    /** review-link-net M1: a feed on your network while the phone isn't on a network that holds it: nothing was sent. */
+    OFF_NETWORK }
 
 /** Why news wasn't fetched though it was due: Tor chosen and couldn't connect, or Tor chosen with Robot to Robot (which runs it) off. */
 enum class NewsRefusal { TOR_DOWN, TOR_OFF, TOR_STARTING }

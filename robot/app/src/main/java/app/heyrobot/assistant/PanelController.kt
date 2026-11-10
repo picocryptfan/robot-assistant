@@ -2414,6 +2414,20 @@ object PanelController {
         }
     }
 
+    /**
+     * fix-covered-partial M2: car mode's Yes was refused for another app's window over it: said aloud, then one listen.
+     * fix-covered-partial-b M1: a reply's line follows PanelMessages' own spoken-yes gate, as an action card's follows its own.
+     */
+    fun coveredYes(actionId: String?, replyId: String?): app.heyrobot.assistant.car.CoveredLine {
+        stopListeningQuietly() // fix-covered-partial-b M2: an open listen never takes Robot's own line as a question.
+        if (actionId != null) return cardVoice.covered(actionId)
+        if (replyId == null) return app.heyrobot.assistant.car.CoveredLine.TAP
+        val line = PanelMessages.coveredVoice(replyId, VoiceHub.stt.available)
+        speakRobot(line.phrase.said)
+        if (line != app.heyrobot.assistant.car.CoveredLine.TAP) messagesListen(false)
+        return line
+    }
+
     /** The person tapped "Do it" (true) or "Cancel" on a confirmation card. */
     fun confirm(actionId: String, yes: Boolean) {
         // 1.5 L6: a Robot to Robot card (PanelLink): a spoken yes reaches here only for the cards §4.2 allows (no tapFor).

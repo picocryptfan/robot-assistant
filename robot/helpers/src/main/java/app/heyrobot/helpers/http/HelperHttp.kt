@@ -3,6 +3,7 @@ package app.heyrobot.helpers.http
 
 import app.heyrobot.core.HelperFailure
 import app.heyrobot.core.helpers.LanRule
+import app.heyrobot.core.net.HomeNets
 import app.heyrobot.core.online.NetPurpose
 import okhttp3.Call
 import okhttp3.ConnectionSpec
@@ -116,8 +117,16 @@ class HelperHttp private constructor(val client: OkHttpClient, val base: HttpUrl
                 // What went online: each request, a question or a connection test ([record]).
                 .addInterceptor(record)
             when {
-                https -> b.connectionSpecs(listOf(ConnectionSpec.MODERN_TLS))
-                home -> b.connectionSpecs(listOf(ConnectionSpec.CLEARTEXT)).dns(LanDns(dns)).addNetworkInterceptor(LanGuard).proxy(Proxy.NO_PROXY)
+                https -> {
+                    b.connectionSpecs(listOf(ConnectionSpec.MODERN_TLS))
+                    // review-link-net M1: a home helper over https too, only over the network that holds its address (core HomeNets).
+                    if (home) b.dns(dns).socketFactory(HomeNets.Factory())
+                }
+                home -> {
+                    // review-link-net M1: only over the network that holds the address, its socket bound there (core HomeNets).
+                    b.connectionSpecs(listOf(ConnectionSpec.CLEARTEXT)).dns(LanDns(dns)).addNetworkInterceptor(LanGuard).proxy(Proxy.NO_PROXY)
+                        .socketFactory(HomeNets.Factory())
+                }
                 // A company over http: never. (OkHttp would refuse anyway with only TLS specs; refused here first.)
                 else -> return null
             }

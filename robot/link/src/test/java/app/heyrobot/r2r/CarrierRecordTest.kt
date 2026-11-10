@@ -27,12 +27,35 @@ class CarrierRecordTest {
     private val phone = LocalAddress(byteArrayOf(10, 0, 0, 2), 4_000)
     private val loopback = InetAddress.getLoopbackAddress()
 
+    /** review-link-net L1: the phone's networks (core HomeNets); [bound] keeps each socket's network. */
+    private class Nets(private val cellularOnly: Boolean) : app.heyrobot.core.net.HomeNets.Source {
+        val bound = Collections.synchronizedList(mutableListOf<Long>())
+        override fun nets() = listOf(app.heyrobot.core.net.HomeRoute.Net(1, !cellularOnly, false, false, cellularOnly, listOf(app.heyrobot.core.net.HomeRoute.Prefix(ByteArray(4), 0))))
+        override fun bind(s: java.net.Socket, id: Long) { bound += id }
+    }
+
+    /** L1: a peer's private address is dialled only over a network that holds it, bound to it; on mobile data only, never. */
+    @Test fun aDirectDialGoesOnlyOverANetworkThatHoldsTheAddress() {
+        ServerSocket(0, 1, loopback).use { server ->
+            server.soTimeout = 300
+            app.heyrobot.core.net.HomeNets.use(Nets(cellularOnly = true))
+            assertTrue(runCatching { SocketDirectNet({ emptyList() }, 2_000, { InetSocketAddress(loopback, server.localPort) }).dial(phone) }.isFailure)
+            assertTrue(runCatching { server.accept() }.isFailure)
+            val wifi = Nets(cellularOnly = false)
+            app.heyrobot.core.net.HomeNets.use(wifi)
+            SocketDirectNet({ emptyList() }, 2_000, { InetSocketAddress(loopback, server.localPort) }).dial(phone).close()
+            assertEquals(listOf(1L), wifi.bound)
+        }
+    }
+
     @Before fun capture() {
+        app.heyrobot.core.net.HomeNets.use(Nets(cellularOnly = false))
         NetRecord.sink = NetSink { rows += it }
     }
 
     @After fun reset() {
         NetRecord.sink = null
+        app.heyrobot.core.net.HomeNets.use(null)
     }
 
     @Test fun aDialIsOneRowWhenItClosesWithItsBytesAndNoAddress() {

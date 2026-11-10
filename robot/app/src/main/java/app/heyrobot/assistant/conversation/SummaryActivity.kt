@@ -85,6 +85,7 @@ import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZonedDateTime
+import app.heyrobot.ui.common.CoveredTouches
 import app.heyrobot.ui.common.filterObscuredTouches
 
 // VOICE PROCESS (Robot's model and the helpers' keys are reached from here only). The summary screen (docs/conversation-mode.md
@@ -107,6 +108,15 @@ class SummaryActivity : ComponentActivity() {
     /** Bumped when the screen comes back: it reads the transcript and its summaries again (they may have been deleted meanwhile). */
     private val reread = mutableIntStateOf(0)
 
+    /** M1: a touch another app's window hid part of this screen for; Send asks it. */
+    private val covered = CoveredTouches()
+    private val toastNote = mutableStateOf<String?>(null)
+
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
+        covered.see(ev.actionMasked, ev.flags)
+        return super.dispatchTouchEvent(ev)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -128,6 +138,13 @@ class SummaryActivity : ComponentActivity() {
         super.onResume()
         lockedNow.value = Assistant.locked(this)
         reread.intValue++
+        // L2: Robot's own messages show as the note: a toast over this screen would refuse its Send.
+        app.heyrobot.ui.common.RobotToast.up(this) { toastNote.value = it }
+    }
+
+    override fun onPause() {
+        app.heyrobot.ui.common.RobotToast.down(this)
+        super.onPause()
     }
 
     /** The transcript is still there (deleted from Robot › Transcripts meanwhile, it isn't sent, and the screen reads it again). */
@@ -190,6 +207,8 @@ class SummaryActivity : ComponentActivity() {
         var saved by remember { mutableStateOf<List<Pair<Int, SummaryRecord>>>(emptyList()) }
         var ask by remember { mutableStateOf<Ask?>(null) }
         var note by remember { mutableStateOf<String?>(null) }
+        val toast by toastNote
+        LaunchedEffect(toast) { toast?.let { note = it; toastNote.value = null } }
         val tick by reread
         val zone = ZoneId.systemDefault()
         val locked by lockedNow
@@ -250,8 +269,11 @@ class SummaryActivity : ComponentActivity() {
                     }
                     ask is Ask.Card -> item {
                         val c = ask as Ask.Card
-                        if (s.helper(c.helper) == null) ask = null else ConsentCardView(c.card, c.toApp, c.config, onNames = { ask = c.copy(card = c.card.withNames(it)) }, onCancel = { ask = null },
+                        if (s.helper(c.helper) == null) ask = null else ConsentCardView(c.card, c.toApp, c.config, onNames = { ask = c.copy(card = c.card.withNames(it)) }, onCancel = { note = null; ask = null },
                             onSend = {
+                                // M1: the card stays and says why; Cancel still acts.
+                                if (covered.now) { note = getString(R.string.card_covered_tap); return@ConsentCardView }
+                                note = null
                                 ask = null
                                 if (!unlocked()) return@ConsentCardView
                                 if (!stillThere(c.card.transcriptId)) {
@@ -274,14 +296,14 @@ class SummaryActivity : ComponentActivity() {
                                 }
                             })
                         // Several helpers could summarize: the others, a tap away (each opens its own card, with its own price).
-                        if (!c.toApp) for (o in c.others) TextButton(onClick = { if (unlocked()) ask = cardFor(meta, tr, o) }) { Text(stringResource(R.string.conv_send_to_instead, o.name)) }
+                        if (!c.toApp) for (o in c.others) TextButton(onClick = { if (unlocked()) { note = null; ask = cardFor(meta, tr, o) } }) { Text(stringResource(R.string.conv_send_to_instead, o.name)) }
                     }
                     ask == Ask.Offer -> item {
                         Card {
                             Text(SummaryOffer.card.str(), style = MaterialTheme.typography.bodyLarge)
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 val first = summarizers(s).firstOrNull()
-                                Button(onClick = { if (unlocked()) ask = cardFor(meta, tr) ?: Ask.Offer.also { note = noHelper } }) {
+                                Button(onClick = { if (unlocked()) { note = null; ask = cardFor(meta, tr) ?: Ask.Offer.also { note = noHelper } } }) {
                                     Text(first?.let { stringResource(R.string.conv_summarize_with, it.name) } ?: stringResource(R.string.conv_summarize_stronger))
                                 }
                                 OutlinedButton(onClick = { ask = null; if (unlocked()) SummaryJobs.local(this@SummaryActivity, t) }) { Text(stringResource(R.string.conv_robot_summary_anyway)) }

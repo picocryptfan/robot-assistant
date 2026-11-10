@@ -470,6 +470,7 @@ class OpenAiSession(
          * answered, so a failure now is a dropped connection or silence, not an unreachable server.
          */
         fun failure(t: Throwable, home: Boolean, opened: Boolean = false): HelperFailure = when (t) {
+            is app.heyrobot.core.net.OffNetworkException -> HelperFailure.OFF_NETWORK
             is NotLocalException -> HelperFailure.NOT_LOCAL
             is app.heyrobot.helpers.http.KeyOverHttpException -> HelperFailure.KEY_OVER_HTTP
             // OkHttp: http:// to a client that only speaks TLS.

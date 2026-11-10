@@ -62,6 +62,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
+import app.heyrobot.ui.common.CoveredTouches
 import app.heyrobot.ui.common.filterObscuredTouches
 
 // VOICE PROCESS (0.8). The car screen, not exported, in :voice where car mode is: big buttons, and what Robot has to say in
@@ -81,6 +82,9 @@ class CarModeActivity : ComponentActivity() {
             if (v.isNotEmpty()) saidGoes = lifecycleScope.launch { delay(SAID_MS); said = ""; refresh() }
         }
     private var saidGoes: Job? = null
+    /** M1: a touch another app's window hid part of this screen for, and the line a refused Yes leaves on its own card. */
+    private val covered = CoveredTouches()
+    private val refusal = CarCoveredLine(SAID_MS)
     /** Your podcast app, while it's still yours. */
     private var podcast: MusicApp? = null
     @Volatile private var mapsPkg: String? = null
@@ -171,13 +175,22 @@ class CarModeActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        // L2: Robot's own messages show as the car screen's line: a toast over it would refuse its Yes.
+        app.heyrobot.ui.common.RobotToast.up(this) { said = it; refresh() }
         if (CarModeController.takeRefusedSplit()) said = getString(R.string.car_split_refused)
         refresh()
         loadMusic()
         lifecycleScope.launch { showMessages() }
     }
 
+    override fun onPause() {
+        // fix-covered-partial-b L4: paused under another window (the panel, a dialog-style screen), Robot's messages are toasts again.
+        app.heyrobot.ui.common.RobotToast.down(this)
+        super.onPause()
+    }
+
     override fun onStop() {
+        app.heyrobot.ui.common.RobotToast.down(this)
         CarModeController.screenUp = false
         CarModeController.besideOpener = null
         val since = SystemClock.elapsedRealtime() - besideAt
@@ -273,9 +286,22 @@ class CarModeActivity : ComponentActivity() {
         refresh()
     }
 
-    /** The big Yes or Cancel of a card in a turn with no panel. */
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
+        covered.see(ev.actionMasked, ev.flags)
+        return super.dispatchTouchEvent(ev)
+    }
+
+    /** The big Yes or Cancel of a card in a turn with no panel. Yes refuses a tap another app's window hid part of (M1). */
     private fun answer(yes: Boolean) {
         val n = turnNow ?: return
+        if (yes && covered.now) {
+            // M2: said aloud too, and the card takes a spoken answer where it can (a map in picture-in-picture over the car screen).
+            val line = PanelController.coveredYes(n.actionId, n.replyId)
+            refusal.refused(n.actionId ?: n.replyId, line.res, SystemClock.elapsedRealtime())
+            lifecycleScope.launch { delay(SAID_MS); refresh() }
+            return refresh()
+        }
+        refusal.answered()
         n.actionId?.let { PanelController.confirm(it, yes) }
         n.replyId?.let { PanelController.reply(it, if (yes) ReplyOp.Send else ReplyOp.Cancel) }
     }
@@ -437,10 +463,17 @@ class CarModeActivity : ComponentActivity() {
     private fun turnLines(): CarTurnUi? {
         val now = if (CarModeController.quietTurn) CarTurnLines.of(PanelController.state.value) else null
         turnNow = now
-        val shown = turnHold.next(now?.ui, CarTurnLines.kept(now), SystemClock.elapsedRealtime())
+        val shown = turnHold.next(now?.ui?.let(::refusedShown), CarTurnLines.kept(now), SystemClock.elapsedRealtime())
         turnGoes?.cancel()
         if (now == null && shown != null) turnGoes = lifecycleScope.launch { delay(TURN_LINE_MS); refresh() }
         return shown
+    }
+
+    /** M1: for a few seconds after a refused Yes, that card's words say why (the screen's own place for them); no other card's. */
+    private fun refusedShown(t: CarTurnUi): CarTurnUi {
+        val ask = t.ask ?: return t
+        val res = refusal.line(turnNow?.let { it.actionId ?: it.replyId }, SystemClock.elapsedRealtime()) ?: return t
+        return t.copy(ask = ask.copy(text = getString(res)))
     }
 
     private fun refresh() {

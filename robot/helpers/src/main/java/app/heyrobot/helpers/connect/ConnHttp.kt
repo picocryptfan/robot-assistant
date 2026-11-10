@@ -17,6 +17,8 @@ import app.heyrobot.core.connect.ReplyRead
 import app.heyrobot.core.connect.SecretPart
 import app.heyrobot.core.connect.Wire
 import app.heyrobot.core.helpers.LanRule
+import app.heyrobot.core.net.HomeNets
+import app.heyrobot.core.net.OffNetworkException
 import app.heyrobot.helpers.http.HelperHttp
 import app.heyrobot.core.online.NetCause
 import app.heyrobot.core.online.NetPurpose
@@ -116,6 +118,8 @@ class ConnHttp internal constructor(
     /** Tests only: a local server's sockets and its test CA. Applied before every rule below, so it can't change one. */
     private val setup: OkHttpClient.Builder.() -> Unit,
     private val callMs: Long,
+    /** Tests only: where sockets connect (a local server); every socket is still bound or refused by core HomeNets. */
+    private val toward: (java.net.InetSocketAddress) -> java.net.SocketAddress = { it },
 ) {
     constructor() : this(Dns.SYSTEM, {}, CALL_MS)
 
@@ -235,6 +239,8 @@ class ConnHttp internal constructor(
         .cookieJar(CookieJar.NO_COOKIES)
         .cache(null)
         .proxy(Proxy.NO_PROXY)
+        // review-link-net M1, M2: a home address only over the network that holds it, its socket bound there (core HomeNets).
+        .socketFactory(HomeNets.Factory(toward))
         .connectionSpecs(listOf(if (place.https) ConnectionSpec.MODERN_TLS else ConnectionSpec.CLEARTEXT))
         .dns(ConnDns(dns, place))
         .addInterceptor(NetCount(NetPurpose.CONNECTION))
@@ -265,6 +271,7 @@ class ConnHttp internal constructor(
     /** Why a call that threw failed: a refusal of D1's, Stop, a certificate Android doesn't trust, no answer in time, or no connection. */
     private fun failed(e: IOException, sent: Boolean, stopped: Boolean, ms: Long): ConnCall {
         causes(e).firstNotNullOfOrNull { (it as? ConnRefused)?.why }?.let { return ConnCall.Failed(it, sent, ms) }
+        if (causes(e).any { it is OffNetworkException }) return ConnCall.Failed(ConnFailure.OFF_NETWORK, sent, ms)
         // Stop, told apart from the call's own timeout (which cancels the call too) by the hook Stop ran.
         if (stopped) return ConnCall.Stopped(sent, ms)
         // Only a certificate's path or the name in it: any other handshake failure is "can't reach".

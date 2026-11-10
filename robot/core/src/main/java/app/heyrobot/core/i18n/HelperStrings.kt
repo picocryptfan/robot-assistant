@@ -137,6 +137,8 @@ object HelperStrings : Strings("helper", area = "helpers") {
     val unreachable = s("unreachable", "{name} can't be reached right now.", "Impossible de joindre {name} en ce moment.")
     val notLocal = s("not_local", "That address isn't on your home network, so Robot won't send to it without https.",
         "Cette adresse n'est pas sur ton réseau domestique, alors Robot n'y enverra rien sans https.")
+    val offNetwork = s("off_network", "Robot sent nothing: that address is on your own network, and the phone isn't on it right now. Connect to its Wi-Fi, or turn on the VPN that reaches it.",
+        "Robot n'a rien envoyé : cette adresse est sur ton propre réseau, et le téléphone n'y est pas en ce moment. Connecte-toi à son Wi-Fi, ou active le VPN qui y mène.")
     val certificate = s("certificate",
         "{name}'s certificate isn't one Robot can trust. Use https with a real certificate (Tailscale's HTTPS gives one), or http on your home network.",
         "Le certificat de {name} n'est pas un certificat auquel Robot peut se fier. Utilise https avec un vrai certificat (le HTTPS de Tailscale en donne un), ou http sur ton réseau domestique.")

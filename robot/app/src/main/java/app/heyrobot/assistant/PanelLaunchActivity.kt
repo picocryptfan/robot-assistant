@@ -3,7 +3,6 @@ package app.heyrobot.assistant
 
 import android.app.Activity
 import android.os.Bundle
-import android.widget.Toast
 import app.heyrobot.sys.RoutineIntents
 
 /**
@@ -23,7 +22,7 @@ class PanelLaunchActivity : Activity() {
             VoiceHub.init(this)
             val source = if (extras.containsKey(RobotVoiceService.ARG_SHARED)) RobotVoiceService.SRC_SHARE else RobotVoiceService.SRC_APP
             val shown = RobotVoiceService.instance?.show(source, extras) == true
-            if (!shown) Toast.makeText(this, getString(app.heyrobot.R.string.panel_couldnt_open_assistant), Toast.LENGTH_SHORT).show()
+            if (!shown) app.heyrobot.ui.common.RobotToast.show(this, getString(app.heyrobot.R.string.panel_couldnt_open_assistant))
         }
         finish()
     }

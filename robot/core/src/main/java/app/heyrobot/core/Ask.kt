@@ -116,6 +116,8 @@ enum class HelperFailure(val retry: Boolean = false) {
     UNREACHABLE,
     /** 0.6.0: an http:// address that isn't on your home network (core LanRule): nothing was sent. */
     NOT_LOCAL,
+    /** review-link-net M1: a home address while the phone isn't on a network that holds it (core HomeRoute): nothing was sent. */
+    OFF_NETWORK,
     /** 0.6.0: the server's certificate isn't one Robot trusts (self-signed, or not for that name). */
     CERTIFICATE,
     /** 0.6.0: your server's address names no single place yet (a bare IP: Test connection finds the port). */
@@ -150,6 +152,7 @@ enum class HelperFailure(val retry: Boolean = false) {
             UNKNOWN -> HelperStrings.unknown(n)
             UNREACHABLE -> if (w.home) HelperStrings.homeUnreachable(n) else HelperStrings.unreachable(n)
             NOT_LOCAL -> HelperStrings.notLocal()
+            OFF_NETWORK -> HelperStrings.offNetwork()
             CERTIFICATE -> HelperStrings.certificate(n)
             NO_ADDRESS -> HelperStrings.noAddress(n, "button" to UiLabel(UiStrings.testConnection))
             KEY_OVER_HTTP -> HelperStrings.keyOverHttp(n)

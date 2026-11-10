@@ -178,7 +178,13 @@ internal class TlsStream(
 
     fun write(b: ByteArray) {
         val src = ByteBuffer.wrap(b)
-        while (src.hasRemaining()) wrap(src)
+        // review-link-net L3: a wrap on a closed engine, or one that neither takes nor writes anything, fails the write
+        // instead of looping. review-home-net-bind L2: one that writes a record and takes nothing (a post-handshake
+        // message, say) goes on.
+        while (src.hasRemaining()) {
+            val r = wrap(src)
+            if (r.status == SSLEngineResult.Status.CLOSED || (r.bytesConsumed() == 0 && r.bytesProduced() == 0)) throw SSLException("write") // l10n: not text (never shown or logged)
+        }
     }
 
     /** The answer's HTTP status code, from its status line (at most [PushHttp.MAX_STATUS_LINE] bytes). */
@@ -202,7 +208,7 @@ internal class TlsStream(
         } catch (_: Exception) {}
     }
 
-    private fun wrap(src: ByteBuffer) {
+    private fun wrap(src: ByteBuffer): SSLEngineResult {
         netOut.clear()
         val r = engine.wrap(src, netOut)
         if (r.status != SSLEngineResult.Status.OK && r.status != SSLEngineResult.Status.CLOSED) throw SSLException("wrap") // l10n: not text (never shown or logged)
@@ -212,6 +218,7 @@ internal class TlsStream(
             output.flush()
         }
         runTasks()
+        return r
     }
 
     /** Unwraps until the engine produced something or needs no more input; reads from the stream when it does. */

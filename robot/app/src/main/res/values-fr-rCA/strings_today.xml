@@ -170,6 +170,7 @@
     <string name="today_news_via_tor_note">Plus lent. Les sites voient une adresse Tor, pas la tienne. Il faut que Robot à Robot soit activé. Si Tor ne peut pas se connecter, rien n’est obtenu.</string>
     <string name="today_news_secret">Adresse gardée secrète : %1$s</string>
     <string name="today_news_own_direct">Sur ton propre réseau : obtenu directement, car Tor ne peut pas l’atteindre.</string>
+    <string name="today_news_fail_off_network">Ce fil est sur ton propre réseau, et le téléphone n’y est pas en ce moment, alors rien n’a été envoyé. Connecte-toi à son Wi-Fi, ou active le VPN qui y mène.</string>
     <string name="today_news_fail_not_home">Cette adresse n’est pas sur ton propre réseau, et le http simple ne va que là. Utilise son adresse https.</string>
     <string name="today_news_fail_token_http">Cette adresse contient une clé, donc elle ne passe que par https avec un certificat valide, ou en http simple vers un serveur sur ce téléphone. Utilise son adresse https.</string>
     <string name="today_news_no_key">Sa clé n’est pas sur ce téléphone (une sauvegarde la laisse de côté). Ajoute ce fil de nouveau.</string>

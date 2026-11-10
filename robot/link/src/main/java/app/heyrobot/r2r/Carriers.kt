@@ -237,11 +237,17 @@ class SocketDirectNet(
     override fun localAddresses(port: Int): List<LocalAddress> = bound.filter { it.port == port }
 
     override fun dial(address: LocalAddress): Duplex {
-        val s = Socket()
+        // review-link-net L1: a peer's private address only over the network that holds it (Wi-Fi, Ethernet or a VPN, as
+        // DirectPlaces listens), the socket bound there (core HomeNets); otherwise no dial, nothing sent.
+        val s = try { app.heyrobot.core.net.HomeNets.socket(address.address) } catch (_: IOException) { throw IOException() }
         try {
             s.connect(socketAddress(address), connectTimeoutMs)
             s.tcpNoDelay = true
             return DirectRecord.dialled(SocketDuplex(s))
+        } catch (_: app.heyrobot.core.net.OffNetworkException) {
+            // review-home-net-bind-b N2: it left off the network that holds it, closed before anything was written: no dial.
+            try { s.close() } catch (_: IOException) {}
+            throw IOException()
         } catch (x: IOException) {
             try { s.close() } catch (_: IOException) {}
             DirectRecord.failed()

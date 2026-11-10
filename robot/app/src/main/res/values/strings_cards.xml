@@ -36,4 +36,5 @@
     <!-- What Robot hands to another app (ToolExecutor): the email chooser's title, a route's start in Organic Maps. -->
     <string name="card_write_email_with">Write the email with</string>
     <string name="card_your_position">Your position (approximate)</string>
+    <string name="card_covered_tap">Another app is showing over this screen, so Robot did nothing. Close it and tap again.</string>
 </resources>

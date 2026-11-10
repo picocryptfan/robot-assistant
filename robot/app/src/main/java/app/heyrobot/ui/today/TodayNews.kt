@@ -183,6 +183,7 @@ internal fun failText(f: NewsFail): Int = when (f) {
     NewsFail.NO_TOR -> R.string.today_news_fail_tor
     NewsFail.TOR_STARTING -> R.string.today_news_tor_starting
     NewsFail.TOR_OFF -> R.string.today_news_tor_off
+    NewsFail.OFF_NETWORK -> R.string.today_news_fail_off_network
     NewsFail.BAD_ADDRESS -> R.string.today_news_fail_address
     NewsFail.NOT_A_FEED -> R.string.today_news_fail_not_feed
     NewsFail.SERVER -> R.string.today_news_fail_server

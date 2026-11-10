@@ -57,6 +57,17 @@ import javax.net.SocketFactory
  * (core ConnRules) judge the real addresses. https runs against TlsFixture's own CA, trusted only where a test says so.
  */
 class ConnHttpTest {
+    /** The phone's networks for review-link-net M1 (core HomeNets): [bound] keeps the network each socket was bound to. */
+    private class Nets(vararg val list: app.heyrobot.core.net.HomeRoute.Net) : app.heyrobot.core.net.HomeNets.Source {
+        val bound = Collections.synchronizedList(mutableListOf<Long>())
+        override fun nets() = list.toList()
+        override fun bind(s: Socket, id: Long) { bound += id }
+    }
+
+    private fun net(id: Long, wifi: Boolean = false, vpn: Boolean = false, cellular: Boolean = false, routes: List<String>) =
+        app.heyrobot.core.net.HomeRoute.Net(id, wifi, false, vpn, cellular,
+            routes.map { r -> app.heyrobot.core.net.HomeRoute.Prefix(app.heyrobot.core.helpers.LanRule.literal(r.substringBefore('/'))!!, r.substringAfter('/').toInt()) })
+
     private lateinit var server: MockWebServer
     private val logged = Collections.synchronizedList(mutableListOf<String>())
     private val token = "ROBOTTESTTOKEN-0123456789abcdefghijklmnop"
@@ -73,25 +84,18 @@ class ConnHttpTest {
     }
 
     /** Every socket connects to the local server; [asked] keeps the addresses OkHttp meant (the route's). */
-    private class ToServer(private val port: () -> Int) : SocketFactory() {
+    private class ToServer(private val port: () -> Int) : (InetSocketAddress) -> SocketAddress {
         val asked = Collections.synchronizedList(mutableListOf<String>())
-        override fun createSocket(): Socket = object : Socket() {
-            override fun connect(endpoint: SocketAddress, timeout: Int) {
-                asked += (endpoint as InetSocketAddress).address.hostAddress
-                super.connect(InetSocketAddress(InetAddress.getLoopbackAddress(), port()), timeout)
-            }
+        override fun invoke(endpoint: InetSocketAddress): SocketAddress {
+            asked += endpoint.address.hostAddress
+            return InetSocketAddress(InetAddress.getLoopbackAddress(), port())
         }
-        override fun createSocket(host: String?, port: Int): Socket = throw UnsupportedOperationException()
-        override fun createSocket(host: String?, port: Int, localHost: InetAddress?, localPort: Int): Socket = throw UnsupportedOperationException()
-        override fun createSocket(host: InetAddress?, port: Int): Socket = throw UnsupportedOperationException()
-        override fun createSocket(address: InetAddress?, port: Int, localAddress: InetAddress?, localPort: Int): Socket = throw UnsupportedOperationException()
     }
 
-    private fun http(dns: Dns = Dns.SYSTEM, trusted: Boolean = false, sockets: SocketFactory? = null, callMs: Long = ConnHttp.CALL_MS) =
+    private fun http(dns: Dns = Dns.SYSTEM, trusted: Boolean = false, sockets: ToServer? = null, callMs: Long = ConnHttp.CALL_MS) =
         ConnHttp(dns, {
             if (trusted) sslSocketFactory(TlsFixture.trusting.socketFactory, TlsFixture.trust)
-            sockets?.let { socketFactory(it) }
-        }, callMs)
+        }, callMs, sockets ?: { it })
 
     private fun conn(address: String, auth: ConnAuth = ConnAuth.None, kind: ConnKind = ConnKind.WEBHOOK, where: ConnWhere? = null) =
         Connection("c-test01", kind, "Test server", ConnUrl.parse(address)!!, auth = auth, where = where)
@@ -105,12 +109,14 @@ class ConnHttpTest {
     private val port get() = server.port
 
     @Before fun up() {
+        app.heyrobot.core.net.HomeNets.use(Nets(net(1, wifi = true, routes = listOf("0.0.0.0/0", "::/0"))))
         server = MockWebServer()
         server.start(InetAddress.getByName("127.0.0.1"), 0)
         RLog.sink = { logged += it }
     }
 
     @After fun down() {
+        app.heyrobot.core.net.HomeNets.use(null)
         RLog.sink = null
         server.shutdown()
         for (l in logged) assertFalse(l, l.contains(token) || l.contains("127.0.0.1") || l.contains(".test") || l.contains("/api"))
@@ -193,6 +199,55 @@ class ConnHttpTest {
         assertEquals(ConnWhere.HOME, answered(http(FakeDns(listOf("192.168.178.20", "8.8.8.8", "0.0.0.0")), sockets = sockets).call(c, get(c), ConnSecrets())).where)
         assertEquals(listOf("192.168.178.20", "192.168.178.20"), sockets.asked)
         assertEquals(2, server.requestCount)
+    }
+
+    /** review-link-net M1: on mobile data only, a home address is refused before any socket; on Wi-Fi its socket is bound to the Wi-Fi. */
+    /** review-home-net-bind M1: a refusal sent nothing, so What went online has no row for it (not a failed request). */
+    @Test fun aRefusalIsNotRecordedInWhatWentOnline() {
+        val rows = java.util.Collections.synchronizedList(mutableListOf<app.heyrobot.core.online.NetEntry>())
+        app.heyrobot.core.online.NetRecord.sink = app.heyrobot.core.online.NetSink { rows += it }
+        try {
+            app.heyrobot.core.net.HomeNets.use(Nets(net(7, cellular = true, routes = listOf("0.0.0.0/0"))))
+            val c = conn("http://192.168.178.20:$port")
+            val r = http(FakeDns(), sockets = ToServer { port }).call(c, get(c), ConnSecrets()) as ConnCall.Failed
+            assertEquals(ConnFailure.OFF_NETWORK, r.why)
+            assertEquals(emptyList<app.heyrobot.core.online.NetEntry>(), rows.toList())
+        } finally {
+            app.heyrobot.core.online.NetRecord.sink = null
+        }
+    }
+
+    @Test fun aHomeAddressOnMobileDataIsRefusedUnsent() {
+        server.enqueue(ok())
+        val sockets = ToServer { port }
+        val c = conn("http://192.168.178.20:$port")
+        for (named in listOf(false, true)) {
+            app.heyrobot.core.net.HomeNets.use(Nets(net(7, cellular = true, routes = listOf("0.0.0.0/0", "192.168.178.0/24"))))
+            val cc = if (named) conn("http://home.test:$port") else c
+            val r = http(FakeDns(listOf("192.168.178.20")), sockets = sockets).call(cc, get(cc), ConnSecrets()) as ConnCall.Failed
+            assertEquals(ConnFailure.OFF_NETWORK, r.why)
+            assertFalse(r.sent)
+        }
+        assertEquals(0, server.requestCount)
+        assertEquals(emptyList<String>(), sockets.asked)
+        val wifi = Nets(net(7, cellular = true, routes = listOf("0.0.0.0/0")), net(9, wifi = true, routes = listOf("0.0.0.0/0", "192.168.178.0/24")))
+        app.heyrobot.core.net.HomeNets.use(wifi)
+        answered(http(sockets = sockets).call(c, get(c), ConnSecrets()))
+        assertEquals(listOf(9L), wifi.bound)
+    }
+
+    /** review-link-net M2: a routing server at 100.64/10 over http only through an up VPN that routes it, never Wi-Fi alone. */
+    @Test fun aRoutingServerAt100_64GoesOnlyThroughAVpnThatRoutesIt() {
+        server.enqueue(ok())
+        val sockets = ToServer { port }
+        val c = conn("http://100.100.1.1:$port", kind = ConnKind.ROUTING).copy(routing = app.heyrobot.core.connect.RoutingKind.OSRM)
+        app.heyrobot.core.net.HomeNets.use(Nets(net(9, wifi = true, routes = listOf("0.0.0.0/0", "100.64.0.0/10")), net(4, vpn = true, routes = listOf("10.8.0.0/24"))))
+        assertEquals(ConnFailure.OFF_NETWORK, (http(sockets = sockets).call(c, get(c), ConnSecrets()) as ConnCall.Failed).why)
+        assertEquals(0, server.requestCount)
+        val vpn = Nets(net(9, wifi = true, routes = listOf("0.0.0.0/0")), net(4, vpn = true, routes = listOf("100.64.0.0/10")))
+        app.heyrobot.core.net.HomeNets.use(vpn)
+        answered(http(sockets = sockets).call(c, get(c), ConnSecrets()))
+        assertEquals(listOf(4L), vpn.bound)
     }
 
     /** D2: a key over http is refused before a request exists; the server hears nothing. */

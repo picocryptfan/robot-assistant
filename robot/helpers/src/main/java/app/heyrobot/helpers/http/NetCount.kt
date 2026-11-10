@@ -64,11 +64,14 @@ class NetCount(private val cause: NetCause = NetCause.ASKED, private val purpose
             return try { Buffer().also { b.writeTo(it) }.size } catch (_: IOException) { 0 }
         }
 
-        /** The Network switch off (the socket refused with EACCES): nothing went online, so no row. */
+        /**
+         * The Network switch off (the socket refused with EACCES), or a home address off your network (core HomeNets,
+         * refused before any socket connects): nothing went online, so no row.
+         */
         fun refused(e: Throwable): Boolean {
             var t: Throwable? = e
             while (t != null) {
-                if (t is SecurityException) return true
+                if (t is SecurityException || t is app.heyrobot.core.net.OffNetworkException) return true
                 val m = t.message ?: ""
                 if (m.contains("EACCES") || m.contains("Permission denied")) return true // l10n: not text (the system's error message, matched)
                 t = t.cause

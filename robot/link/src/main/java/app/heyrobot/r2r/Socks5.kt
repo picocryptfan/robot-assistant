@@ -35,12 +35,22 @@ class SocksException(val problem: SocksProblem) : IOException() {
 
 object Socks5 {
     /**
+     * review-link-net L4: [key] as a SOCKS isolation key, which is at most 255 bytes: a longer one (a feed's long host name)
+     * becomes its prefix and its SHA-256, so it still keeps its own circuits and never fails unsaid.
+     */
+    fun isolationKey(key: String): String {
+        if (key.toByteArray(Charsets.US_ASCII).size <= 255 && key.all { it.code in 0x21..0x7e }) return key
+        val hash = java.security.MessageDigest.getInstance("SHA-256").digest(key.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) } // l10n: not text (a SOCKS isolation key)
+        return key.substringBefore(':', "").take(16) + ":" + hash // l10n: not text (a SOCKS isolation key)
+    }
+
+    /**
      * Asks for a stream to [host]:[port] on an open connection to Tor's SOCKS socket; [isolation], when given, keeps this
      * stream's circuits apart from other values' (a pairing's id). On return the stream is open and carries the bytes.
      */
     fun connect(input: InputStream, output: OutputStream, host: String, port: Int, isolation: String? = null) {
         val h = host.toByteArray(Charsets.US_ASCII)
-        require(h.size in 1..255 && port in 1..65535 && host.all { it.isLetterOrDigit() || it == '.' || it == '-' })
+        require(h.size in 1..255 && port in 1..65535 && host.all { it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' || it == '.' || it == '-' })
         try {
             output.write(if (isolation == null) byteArrayOf(5, 1, 0) else byteArrayOf(5, 1, 2))
             output.flush()

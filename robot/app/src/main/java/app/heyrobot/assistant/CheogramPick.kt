@@ -5,7 +5,6 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -167,14 +166,14 @@ class CheogramPickActivity : ComponentActivity() {
         )
         val i = routes.indexOfFirst { start(it.second) }
         if (i >= 0) VoiceLog.add(VoiceEvent.CHEOGRAM_HANDOFF, routes[i].first, if (i > 0) 1 else 0)
-        else Toast.makeText(this, getString(R.string.panel_cheogram_didnt_open), Toast.LENGTH_LONG).show()
+        else app.heyrobot.ui.common.RobotToast.show(this, getString(R.string.panel_cheogram_didnt_open), long = true)
         finish()
     }
 
     private fun shareInstead() {
         val p = pkg
         if (p != null && start(CheogramIntents.share(p, message))) VoiceLog.add(VoiceEvent.CHEOGRAM_HANDOFF, CheogramRoute.SHARE, 1)
-        else Toast.makeText(this, getString(R.string.panel_cheogram_didnt_open), Toast.LENGTH_LONG).show()
+        else app.heyrobot.ui.common.RobotToast.show(this, getString(R.string.panel_cheogram_didnt_open), long = true)
         finish()
     }
 

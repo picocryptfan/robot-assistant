@@ -182,6 +182,25 @@ too, so Robot can update it; please also tell its maintainers.
   256 KiB cap on answers. Every lookup and the socket actually connected are classed as your home network (private,
   loopback, link-local, Tailscale's 100.64/10, unique-local IPv6) or the internet, and anything else is dropped; plain
   http may reach only home addresses, on every call, so a name that starts pointing outside your network is refused.
+  Since 1.3.2 a home address (other than this phone's own) goes only over Wi-Fi or Ethernet, or over a VPN that is up
+  and whose routes cover it, on a socket bound to that network so it can't fall back to mobile data; a 100.64/10
+  address only through such a VPN, and only by a route at least as long as /10 (a VPN that carries everything doesn't
+  count for 100.64/10, even written as shorter routes such as 0.0.0.0/1 and 128.0.0.0/1, so a full tunnel on mobile
+  data doesn't take plain http to the VPN provider's network). Only the VPN that applies to Robot counts, not a work
+  profile's or one that leaves Robot out. When that VPN doesn't route a home address and Wi-Fi or Ethernet holds it,
+  the call goes unbound and the phone sends it outside the VPN, as before 1.3.2 (most VPN apps can't be bypassed, so a
+  bound call would fail); once it connects, Robot checks it left from that Wi-Fi or Ethernet network's own address,
+  and if it didn't (the phone sent it on mobile data, as it can when that Wi-Fi has no internet, whatever networks the
+  VPN declares) closes it before anything is written, so only the connection's opening and closing packets went out,
+  no data. When the VPN rides on mobile data alone, or blocks the address (an unreachable route), the call is refused
+  before that. A refused call gets a line saying why and sends nothing, so What went online shows no
+  row for it. A VPN that carries everything and doesn't leave your home network out also carries home addresses:
+  plain http to a 192.168.x address goes into the VPN, as it did before 1.3.2. The same holds for helpers on your
+  network, feeds on your network and Robot to Robot's direct connections.
+  Three https paths aren't held to this yet and rely on TLS alone: your own nearby-search server, a feed's https
+  address, and a cloud helper whose name resolves to a home address; on mobile data a stranger could see the attempt
+  and the host name, never what's sent. Nor is a Tor bridge of your own at a home address: Tor dials it itself, so on
+  mobile data its connection and Tor's encrypted handshake go to whatever holds that address there.
   https may be either, since TLS's name check stops a rebinding. Any connection that holds a secret (a token, a
   password, a header's value, an ntfy topic, a webhook address that is itself the key) is https only, checked when you
   type it, before a client exists and again when the secret is added, last, by the client. A token (an MCP
@@ -268,7 +287,10 @@ Skills connections' known limits: its checks have run on a Pixel 8 against stand
 not every step has been run by a person: a real routing server, a connection over mobile data and the Termux step are
 still to do. A plain http address on your
 own network can't be told apart from the same address on someone else's Wi-Fi, so a webhook without a secret could
-send its request to whatever that network answers: use https or your server's Tailscale address. Robot can't see what
+send its request to whatever that network answers: use https or your server's Tailscale address. On mobile data Robot
+sends no plain http request to a home address (1.3.2): at most a connection's opening and closing packets, no data,
+when a VPN that doesn't route the address is on, your Wi-Fi or Ethernet holds the address, and the phone sends on
+mobile data anyway (Wi-Fi without internet, say), whatever networks the VPN declares. Robot can't see what
 a Home Assistant switch or button is wired to, or what a webhook does on the server: a switch that opens a garage door
 counts as a change at home, and a GET webhook as a read, unless you make it a cover or a lock in Home Assistant, or
 mark the webhook "It locks, unlocks or opens something". Anyone who can make your Home Assistant's devices' names can

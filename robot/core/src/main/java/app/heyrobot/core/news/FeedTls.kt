@@ -36,7 +36,13 @@ class FeedTls(private val engine: SSLEngine, private val input: InputStream, pri
 
     fun write(b: ByteArray) {
         val src = ByteBuffer.wrap(b)
-        while (src.hasRemaining()) wrap(src)
+        // review-link-net L3: a wrap on a closed engine, or one that neither takes nor writes anything, fails the write
+        // instead of looping. review-home-net-bind L2: one that writes a record and takes nothing (a post-handshake
+        // message, say) goes on.
+        while (src.hasRemaining()) {
+            val r = wrap(src)
+            if (r.status == SSLEngineResult.Status.CLOSED || (r.bytesConsumed() == 0 && r.bytesProduced() == 0)) throw SSLException("write") // l10n: not text (never shown or logged)
+        }
     }
 
     /** The answer's plain bytes. */
@@ -62,7 +68,7 @@ class FeedTls(private val engine: SSLEngine, private val input: InputStream, pri
         } catch (_: Exception) {}
     }
 
-    private fun wrap(src: ByteBuffer) {
+    private fun wrap(src: ByteBuffer): SSLEngineResult {
         netOut.clear()
         val r = engine.wrap(src, netOut)
         if (r.status != SSLEngineResult.Status.OK && r.status != SSLEngineResult.Status.CLOSED) throw SSLException("wrap") // l10n: not text (never shown or logged)
@@ -72,6 +78,7 @@ class FeedTls(private val engine: SSLEngine, private val input: InputStream, pri
             output.flush()
         }
         runTasks()
+        return r
     }
 
     /** Unwraps until the engine produced something or needs no more input; false at the peer's close or the stream's end. */

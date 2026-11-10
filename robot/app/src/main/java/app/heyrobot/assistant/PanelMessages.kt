@@ -1116,6 +1116,18 @@ object PanelMessages {
         PanelController.state.value.turns.lastOrNull { it.role == app.heyrobot.core.TurnRole.ASSISTANT }?.id == p.replyId &&
             !app.heyrobot.assistant.handsfree.HandsFreeMessages.waiting && !app.heyrobot.assistant.handsfree.PanelHandsFree.asking
 
+    /**
+     * fix-covered-partial-b M1: car mode's Yes on reply [replyId] was refused for another app's window. Its line follows
+     * [answerCard]'s own spoken-yes gate with the car screen up (the plan's voiceYesCounts, "Answer cards by voice",
+     * CarCardVoice.replyYes); [hears]: a listen follows the line.
+     */
+    fun coveredVoice(replyId: String, hears: Boolean): app.heyrobot.assistant.car.CoveredLine {
+        sync()
+        val p = card?.takeIf { it.replyId == replyId && it.state == ReplyCardState.WAITING }
+        return app.heyrobot.assistant.car.CoveredLine.reply(hears, app.heyrobot.assistant.car.CarModeController.trusted,
+            VoiceHub.settings.voiceCards, p?.plan?.voiceYesCounts == true, p?.readOut, p?.sendText ?: "")
+    }
+
     // ------------------------------------------------------------------ saying
 
     /** A reply in Robot's own words (no message in it), in [lang] (its screens named in the menus' language). */

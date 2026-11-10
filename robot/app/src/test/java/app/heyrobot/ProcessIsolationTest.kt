@@ -2133,7 +2133,9 @@ class ProcessIsolationTest {
      */
     @Test fun noNetworkNoAudioFilesNoRawLogs() {
         // java.net.IDN only spells a host name in ASCII, like URLEncoder and URI (core web WebUrl).
-        assertEquals(listOf("app/sys/FeedClient.kt", "app/sys/NominatimClient.kt", "app/sys/OpenMeteoClient.kt", "app/update/GitHubClient.kt"),
+        assertEquals(listOf("app/sys/FeedClient.kt", "app/sys/NominatimClient.kt", "app/sys/OpenMeteoClient.kt", "app/update/GitHubClient.kt",
+            // review-link-net M1: makes the unconnected sockets home addresses use, bound to their network; sends nothing itself.
+            "core/core/net/HomeNet.kt"),
             usersOf(Regex("""\bjava\.net\.(?!URLEncoder|URI\b|IDN\b)|HttpURLConnection|HttpsURLConnection|\bSocket\b|okhttp|\bWebView\b|\bopenConnection\("""),
             // 1.5 (robot-to-robot-plan.md §5.4; L3): and Robot to Robot's link module, whose carriers linkStaysInItsProcess checks.
             ours.filterKeys { !it.startsWith("helpers/") && !it.startsWith("link/") }))
@@ -2252,7 +2254,7 @@ class ProcessIsolationTest {
             "if (!OwnFeed.sameKind(kind[0], at.where)) throw Failure(NewsFail.SERVER)", "if (at.where == ConnWhere.HOME) return homeGet(")
         // H8: your own network on a socket of its own at the address its lookup checked, checked again once connected (a token on
         // plain http only to loopback or Tailscale, today-h8-fix), and recorded.
-        val home = feed.body("private fun homeGet(")
+        val home = feed.body("internal fun homeGet(")
         assertInOrder(home, "homeSocket(addresses, t.port, deadline, near)", "finally {", "NetRecord.record(NetPurpose.FEED, t.host, cause")
         assertEquals(0, home.count("openConnection("))
         assertHas(feed.body("private fun homeSocket("), "if (ConnRules.socket(s.inetAddress.address, ConnWhere.HOME) && (!near || OwnFeed.loopback(s.inetAddress.address))) return s")
@@ -2315,9 +2317,12 @@ class ProcessIsolationTest {
         val dialBody = carriers.body("override fun dial(")
         val listenBody = carriers.body("override fun listen(")
         val posterSend = carriers.body("private fun send(")
-        assertEquals(1, dialBody.count("Socket()"))
+        // review-link-net L1: dial's socket comes from core HomeNets (bound to the network that holds the address), the
+        // poster's is a plain Socket(); no other :link code takes one from HomeNets.
+        assertEquals(1, dialBody.count("HomeNets.socket("))
         assertEquals(1, posterSend.count("Socket()"))
-        assertEquals("a socket outside the carriers' recorded functions", 2, carriers.count("Socket()") - carriers.count("ServerSocket()"))
+        assertEquals("a socket outside the carriers' recorded functions", 1 + 1, carriers.count("Socket()") - carriers.count("ServerSocket()") + carriers.count("HomeNets.socket("))
+        assertEquals(listOf("link/r2r/Carriers.kt"), usersOf(Regex("""\bHomeNets\b"""), ours.filterKeys { it.startsWith("link/") || it.startsWith("app/link/") }))
         assertEquals("a listener outside the recorded function", carriers.count("ServerSocket("), listenBody.count("ServerSocket("))
         assertHas(dialBody, "DirectRecord.dialled(SocketDuplex(s))", "DirectRecord.failed()")
         assertHas(listenBody, "accept(DirectRecord.accepted(SocketDuplex(c)))")

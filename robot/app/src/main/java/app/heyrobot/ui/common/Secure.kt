@@ -4,11 +4,13 @@ package app.heyrobot.ui.common
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import android.view.MotionEvent
 import android.view.View
 import android.view.Window
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
+import app.heyrobot.core.everyday.SheetMic
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.material3.AlertDialog as Material3AlertDialog
 import androidx.compose.material3.DropdownMenu as Material3DropdownMenu
@@ -60,6 +62,23 @@ fun Window.filterObscuredTouches() {
     val content = decorView.findViewById<View>(android.R.id.content) ?: return
     content.setAccessibilityDataSensitive(View.ACCESSIBILITY_DATA_SENSITIVE_YES)
     decorView.setAccessibilityDataSensitive(View.ACCESSIBILITY_DATA_SENSITIVE_NO)
+}
+
+/**
+ * M1 (review-panel-covered): [filterObscuredTouches] refuses only a touch on a spot another app's window covers, so a window
+ * that hides a card's words but leaves its button clear still gets the tap through, marked FLAG_WINDOW_IS_PARTIALLY_OBSCURED.
+ * The activity feeds each touch here before its views see it ([see], from dispatchTouchEvent); a button that sends or says
+ * yes asks [now] and refuses while this gesture was so marked, with a line in the screen's own words (never a Toast: an
+ * app's toast is another app's window and may set the flag). Cleared on the next touch down.
+ */
+class CoveredTouches {
+    var now = false
+        private set
+
+    fun see(action: Int, flags: Int) {
+        if (action == MotionEvent.ACTION_DOWN) now = false
+        if (SheetMic.covered(flags)) now = true
+    }
 }
 
 /**

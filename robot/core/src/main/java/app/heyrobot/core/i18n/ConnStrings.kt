@@ -207,6 +207,8 @@ object ConnStrings : Strings("conn", area = "connections") {
     // Travel time (C6, plan §3.4): where you are goes to your routing server, rounded to about 1 km, only when a step runs.
     val locationOverHttp = s("location_over_http", "Robot won't send where you are to your {name} over plain http: use an https address, or your server's Tailscale address.",
         "Robot n'enverra pas ta position à {name} en http non chiffré : utilise une adresse https, ou l'adresse Tailscale de ton serveur.")
+    val offNetwork = s("off_network", "Robot sent nothing: that address is on your own network, and the phone isn't on it right now. Connect to its Wi-Fi, or turn on the VPN that reaches it.",
+        "Robot n'a rien envoyé : cette adresse est sur ton propre réseau, et le téléphone n'y est pas en ce moment. Connecte-toi à son Wi-Fi, ou active le VPN qui y mène.")
     val locationNotAllowed = s("location_not_allowed", "Robot isn't allowed to see where you are. Allow location for Robot in Android's settings.",
         "Robot n'a pas le droit de voir ta position. Autorise la position pour Robot dans les paramètres d'Android.")
     val locationOff = s("location_off", "Location is off on this phone. Turn it on to get a travel time.",

@@ -199,4 +199,7 @@
     <string name="car_apps_summary_none">None yet. Keep up to %1$d, then tap Apps on the car screen to open one beside Robot.</string>
     <string name="car_shortcut">Car mode</string>
     <string name="car_split_refused">Couldn\'t open that app beside the car screen</string>
+    <string name="car_covered_voice">Another app is showing over this screen, so Robot did nothing. Answer by voice, or move its window and tap again.</string>
+    <string name="car_covered_move">Another app is showing over this screen, so Robot did nothing. This one needs a tap. Move its window and tap again, or say no.</string>
+    <string name="car_covered_tap">Another app is showing over this screen, so Robot did nothing. This one needs a tap. Move its window and tap again.</string>
 </resources>

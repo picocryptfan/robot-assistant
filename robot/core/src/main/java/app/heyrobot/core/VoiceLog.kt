@@ -837,13 +837,15 @@ enum class HelperFail(override val id: Int, override val title: String) : LogCod
     UNREACHABLE(16, "server not answering"), NOT_LOCAL(17, "address not on your network"), CERTIFICATE(18, "certificate not trusted"),
     NO_ADDRESS(19, "server's port not found yet"),
     // 1.0.1.
-    KEY_OVER_HTTP(20, "key not sent over http");
+    KEY_OVER_HTTP(20, "key not sent over http"),
+    // 1.3.2 (review-link-net M1).
+    OFF_NETWORK(21, "not on that network now");
 
     companion object {
         fun of(f: HelperFailure): HelperFail = entries.firstOrNull { it.name == f.name } ?: UNKNOWN
 
         /** 1.0.2: the ids of refusals made before anything was sent (no session could be made: PanelController.noKey). */
-        val NOT_ASKED: Set<Int> = setOf(NO_KEY.id, NOT_LOCAL.id, NO_ADDRESS.id, KEY_OVER_HTTP.id)
+        val NOT_ASKED: Set<Int> = setOf(NO_KEY.id, NOT_LOCAL.id, NO_ADDRESS.id, KEY_OVER_HTTP.id, OFF_NETWORK.id)
     }
 }
 

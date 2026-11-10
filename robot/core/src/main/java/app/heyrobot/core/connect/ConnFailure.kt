@@ -99,7 +99,9 @@ enum class ConnFailure(val code: Int) {
     /** An MCP call whose arguments are longer than its card can show (ConnStep.PREVIEW_BODY): nothing is sent unseen. */
     MCP_TOO_LONG(41),
     /** Question 35: an MCP server over plain http, token or none, wherever it is (ConnRules.httpsOnly). */
-    MCP_HTTP(42);
+    MCP_HTTP(42),
+    /** review-link-net M1: a home address while the phone isn't on a network that holds it (core HomeRoute): nothing was sent. */
+    OFF_NETWORK(43);
 
     /**
      * What Robot says, for the connection called [name]. [status]: the HTTP status for [SAID_NO]; [limit]: the number for
@@ -151,6 +153,7 @@ enum class ConnFailure(val code: Int) {
             APP_CANT_OPEN -> ConnStrings.appCantOpen(n, page)
             APP_UNPINNED -> ConnStrings.appUnpinned(n, page)
             CHANGED -> ConnStrings.changed()
+            OFF_NETWORK -> ConnStrings.offNetwork()
         }
     }
 

@@ -2,6 +2,7 @@
 package app.heyrobot.assistant
 
 import app.heyrobot.assistant.car.CarCardVoice
+import app.heyrobot.assistant.car.CoveredLine
 import android.os.Handler
 import app.heyrobot.core.CardAnswer
 import app.heyrobot.core.Cue
@@ -184,6 +185,24 @@ internal class PanelCardVoice(
             reading = card.id
         }
         listenAfterSpeech = true
+    }
+
+    /**
+     * fix-covered-partial M2: car mode's Yes for card [id] was refused for another app's window over the screen. The line
+     * aloud, then one listen: a spoken yes where the card takes one (read out, trusted, not a tap-only card), else the line
+     * says it needs a tap, and a no still declines it; with nothing listening, only that it needs a tap (fix-covered-partial-b L2).
+     */
+    fun covered(id: String): CoveredLine {
+        val card = replies.pendingCard()?.takeIf { it.id == id } ?: return CoveredLine.TAP
+        // fix-covered-partial-b M2: Robot's own line never goes into a listen still open (echo cancellation runs in calls only).
+        if (state.value.cardHearing != null) { listening++; port.stt.cancel(); endListening() }
+        val hears = port.settings.voiceCards && port.stt.available
+        val line = CoveredLine.of(hears, port.carTrusted && !card.carTap && !CarCardVoice.tapOnly(card) && (readWhole == id || reading == id))
+        port.speakRobot(port.said(line.phrase))
+        // The line's listen is once only: a non-answer gets the tap hint, never a reminder and a second listen.
+        retry = 1
+        if (hears) listenAfterSpeech = true
+        return line
     }
 
     /** Listens for the waiting card's answer; the phase stays CONFIRMING (the turn is still waiting on the card). */

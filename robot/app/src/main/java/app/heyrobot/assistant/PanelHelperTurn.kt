@@ -575,6 +575,6 @@ internal class PanelHelperTurn(
          * question Robot sent by itself, before its own model ran, comes back to Robot instead.
          */
         val FALLS_BACK = setOf(HelperFailure.NO_INTERNET, HelperFailure.UNREACHABLE, HelperFailure.TIMEOUT, HelperFailure.SERVER,
-            HelperFailure.OVERLOADED, HelperFailure.NO_ADDRESS, HelperFailure.NOT_LOCAL, HelperFailure.CERTIFICATE)
+            HelperFailure.OVERLOADED, HelperFailure.NO_ADDRESS, HelperFailure.NOT_LOCAL, HelperFailure.CERTIFICATE, HelperFailure.OFF_NETWORK)
     }
 }

@@ -168,6 +168,7 @@
     <string name="today_news_via_tor_note">Slower. The sites see a Tor address, not yours. Needs Robot to Robot on. If Tor can\'t connect, nothing is fetched.</string>
     <string name="today_news_secret">Address kept as a secret: %1$s</string>
     <string name="today_news_own_direct">On your own network: fetched directly, since Tor can\'t reach it.</string>
+    <string name="today_news_fail_off_network">That feed is on your own network, and the phone isn\'t on it right now, so nothing was sent. Connect to its Wi-Fi, or turn on the VPN that reaches it.</string>
     <string name="today_news_fail_not_home">That address isn\'t on your own network, and plain http goes only there. Use its https address.</string>
     <string name="today_news_fail_token_http">This address carries a key, so it goes only over https with a valid certificate, or over plain http to a server on this phone. Use its https address.</string>
     <string name="today_news_no_key">Its key isn\'t on this phone (a backup leaves it out). Add this feed again.</string>

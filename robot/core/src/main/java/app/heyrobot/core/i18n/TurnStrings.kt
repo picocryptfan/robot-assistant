@@ -90,6 +90,14 @@ object TurnStrings : Strings("turn", area = "cards") {
         "Cette commande a des avertissements : vérifie la carte, puis touche {run}.")
     val orSayNo = s("or_say_no", "{why} Or say no.", "{why} Ou dis non.")
     val carTap = s("car_tap", "That one needs a tap. It's on the car screen.", "Celle-là se confirme d'une touche. Elle est sur l'écran de l'auto.")
+    /** fix-covered-partial M2: car mode's Yes refused while another app's window is over the screen. */
+    val coveredSay = s("covered_say", "Another app is over the screen, so that tap didn't count. Say yes or no.",
+        "Une autre appli est par-dessus l'écran, alors cette touche n'a pas compté. Dis oui ou non.")
+    val coveredMove = s("covered_move", "Another app is over the screen, so that tap didn't count. That one needs a tap. Move the other app's window, or say no.",
+        "Une autre appli est par-dessus l'écran, alors cette touche n'a pas compté. Celle-là se confirme d'une touche. Déplace la fenêtre de l'autre appli, ou dis non.")
+    /** fix-covered-partial-b L2: the same, with nothing listening after it. */
+    val coveredTap = s("covered_tap", "Another app is over the screen, so that tap didn't count. That one needs a tap. Move the other app's window and tap again.",
+        "Une autre appli est par-dessus l'écran, alors cette touche n'a pas compté. Celle-là se confirme d'une touche. Déplace la fenêtre de l'autre appli et touche de nouveau.")
     /** fix-car-long-card-c: a card marked for the car screen, shown on the panel instead. */
     val cardTap = s("card_tap", "That one needs a tap on the card.", "Celle-là se confirme d'une touche sur la carte.")
     val tapOneOrNo = s("tap_one_or_no", "Tap the one you mean on the card, or say no.", "Touche ton choix sur la carte, ou dis non.")

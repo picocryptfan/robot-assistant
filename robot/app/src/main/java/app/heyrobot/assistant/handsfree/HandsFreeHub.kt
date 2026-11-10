@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.assistant.handsfree
 
+import app.heyrobot.ui.common.RobotToast
 import app.heyrobot.core.i18n.Langs
 import app.heyrobot.core.i18n.ReplyLang
 import app.heyrobot.sys.AppLanguage
@@ -165,7 +166,7 @@ object HandsFreeHub {
         when (d) {
             EntryDecision.Ignore, EntryDecision.NotTrusted -> return
             EntryDecision.NotAssistant -> {
-                android.widget.Toast.makeText(ctx, HeadsetEntry.notAssistant.render(AppLanguage.langs(ctx)), android.widget.Toast.LENGTH_SHORT).show()
+                RobotToast.show(ctx, HeadsetEntry.notAssistant.render(AppLanguage.langs(ctx)))
                 return
             }
             is EntryDecision.Show -> {

@@ -1789,8 +1789,9 @@ class LinkNode(
 
     /** A stream to a feed's [host]:[port] through Tor, its own circuit per host ("feed:" and the host), or null. Never direct. */
     fun feedStream(host: String, port: Int): Duplex? {
-        if (!FEED_HOST.matches(host) || host.length > 253 || host.substringAfterLast('.').none { it in 'a'..'z' } || port !in 1..65535 || feedTor() != FeedTorGate.State.UP) return null
-        return try { tor!!.dialHost(host, port, "feed:$host") } catch (_: Exception) { null } // l10n: not text (a SOCKS isolation key)
+        val h = feedHost(host) ?: return null
+        if (port !in 1..65535 || feedTor() != FeedTorGate.State.UP) return null
+        return try { tor!!.dialHost(h, port, Socks5.isolationKey("feed:$h")) } catch (_: Exception) { null } // l10n: not text (a SOCKS isolation key)
     }
 
     fun status(): CompletableFuture<Status> = call {
@@ -1965,4 +1966,8 @@ fun <T> CompletableFuture<T>.within(seconds: Long): T = try {
 }
 
 /** A feed's host, as core FeedHttp takes it: a DNS name of two labels or more, no address literal, no port. */
+/** A feed's host as Tor dials it, or null: a DNS name with a letter in its last label, a non-ASCII one as its punycode (review-home-net-bind L3). */
+internal fun feedHost(host: String): String? =
+    (try { java.net.IDN.toASCII(host).lowercase() } catch (_: IllegalArgumentException) { null })?.takeIf { FEED_HOST.matches(it) && it.length <= 253 && it.substringAfterLast('.').any { c -> c in 'a'..'z' } }
+
 private val FEED_HOST = Regex("[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?)+") // l10n: not text (a DNS name)

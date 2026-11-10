@@ -3,6 +3,7 @@ package app.heyrobot.helpers.web
 
 import app.heyrobot.core.Abort
 import app.heyrobot.core.helpers.LanRule
+import app.heyrobot.core.net.HomeNets
 import app.heyrobot.core.online.NetCause
 import app.heyrobot.core.online.NetPurpose
 import app.heyrobot.core.web.SearchRequest
@@ -15,6 +16,7 @@ import app.heyrobot.helpers.http.NotLocalException
 import app.heyrobot.helpers.http.textUpTo
 import okhttp3.ConnectionSpec
 import okhttp3.Dns
+import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -70,9 +72,14 @@ class WebTransport(private val dns: Dns = Dns.SYSTEM, private val connectMs: Lon
         .addInterceptor(record)
 
     private val cloud: OkHttpClient by lazy { builder().connectionSpecs(listOf(ConnectionSpec.MODERN_TLS)).dns(dns).build() }
-    private val homeTls: OkHttpClient by lazy { builder().connectionSpecs(listOf(ConnectionSpec.MODERN_TLS)).dns(dns).proxy(Proxy.NO_PROXY).build() }
+    // review-link-net M1: your SearXNG only over the network that holds its address, each socket bound there for where it
+    // connects (core HomeNets, review-home-net-bind L1), else refused unsent.
+    private val homeTls: OkHttpClient by lazy {
+        builder().connectionSpecs(listOf(ConnectionSpec.MODERN_TLS)).dns(dns).proxy(Proxy.NO_PROXY).socketFactory(HomeNets.Factory()).build()
+    }
     private val homeClear: OkHttpClient by lazy {
-        builder().connectionSpecs(listOf(ConnectionSpec.CLEARTEXT)).dns(LanDns(dns)).addNetworkInterceptor(LanGuard).proxy(Proxy.NO_PROXY).build()
+        builder().connectionSpecs(listOf(ConnectionSpec.CLEARTEXT)).dns(LanDns(dns)).addNetworkInterceptor(LanGuard).proxy(Proxy.NO_PROXY)
+            .socketFactory(HomeNets.Factory()).build()
     }
 
     /**
@@ -121,6 +128,7 @@ class WebTransport(private val dns: Dns = Dns.SYSTEM, private val connectMs: Lon
         fun why(e: IOException, route: Route): WebFail = when (e) {
             is WebFailure -> e.why
             is NotLocalException -> WebFail.NOT_HOME
+            is app.heyrobot.core.net.OffNetworkException -> WebFail.NOT_HOME
             is app.heyrobot.helpers.http.KeyOverHttpException -> WebFail.KEY_OVER_HTTP
             is UnknownHostException -> if (route == Route.HOME) WebFail.NOT_HOME else WebFail.NO_INTERNET
             is ConnectException -> if (route == Route.HOME) WebFail.NOT_ANSWERING else WebFail.NO_INTERNET

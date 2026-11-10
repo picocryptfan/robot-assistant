@@ -134,7 +134,7 @@ object FeedClient {
         kind[0] = at.where
         val near = secret && u.protocol != "https"
         if (OwnFeed.tokenRefused(url, secret)) throw Failure(NewsFail.TOKEN_OVER_HTTP)
-        if (at.where == ConnWhere.HOME) return homeGet(ctx, url, at.addresses, cause, etag, modified, deadline, page, near)
+        if (at.where == ConnWhere.HOME) return homeGet(url, at.addresses, cause, etag, modified, deadline, page, near)
         if (u.protocol != "https") throw Failure(NewsFail.NOT_HOME)
         val c = u.openConnection() as HttpURLConnection
         val got = longArrayOf(0)
@@ -191,7 +191,8 @@ object FeedClient {
      * A redirect may go only to an address Robot would keep as a feed's (the next hop's lookup keeps it home). Recorded in
      * its finally block, as [get] is.
      */
-    private fun homeGet(ctx: Context, url: String, addresses: List<ByteArray>, cause: NetCause, etag: String?, modified: String?, deadline: Long, page: Boolean, near: Boolean = false): Reply {
+    /** Internal for tests (FeedOffNetworkTest). */
+    internal fun homeGet(url: String, addresses: List<ByteArray>, cause: NetCause, etag: String?, modified: String?, deadline: Long, page: Boolean, near: Boolean = false): Reply {
         val t = FeedHttp.target(url, home = true) ?: throw Failure(NewsFail.SERVER)
         val got = longArrayOf(0)
         var outcome: NetResult? = NetResult.FAILED
@@ -234,6 +235,8 @@ object FeedClient {
                 }
             }
         } catch (f: Failure) {
+            // review-home-net-bind M1: refused off your network, nothing sent: no row in What went online.
+            if (f.why == NewsFail.OFF_NETWORK) outcome = null
             throw f
         } catch (b: FeedHttp.Bad) {
             throw Failure(if (b.tooBig) NewsFail.TOO_BIG else NewsFail.SERVER)
@@ -250,19 +253,28 @@ object FeedClient {
 
     /** The first of [addresses] that answers on [port] by [deadline], connected and checked again to be on your network. */
     private fun homeSocket(addresses: List<ByteArray>, port: Int, deadline: Long, near: Boolean): java.net.Socket {
+        var off = false
+        var tried = false
         for (a in addresses) {
-            val s = java.net.Socket()
+            // review-link-net M1: only over the network that holds the address, bound there (core HomeNets).
+            val s = try { app.heyrobot.core.net.HomeNets.socket(a) } catch (_: app.heyrobot.core.net.OffNetworkException) { off = true; continue }
+            val was = tried
+            tried = true
             try {
                 s.connect(java.net.InetSocketAddress(InetAddress.getByAddress(a), port), left(deadline).toInt())
                 if (ConnRules.socket(s.inetAddress.address, ConnWhere.HOME) && (!near || OwnFeed.loopback(s.inetAddress.address))) return s
                 s.close()
+            } catch (_: app.heyrobot.core.net.OffNetworkException) {
+                // review-home-net-bind-b N2: it left off the network that holds it, closed before anything was written.
+                s.close(); off = true; tried = was
             } catch (f: Failure) {
                 s.close(); throw f
             } catch (_: IOException) {
                 s.close()
             }
         }
-        throw Failure(NewsFail.NO_INTERNET)
+        // Off your network only when no address was tried: one that was is a request that failed.
+        throw Failure(if (off && !tried) NewsFail.OFF_NETWORK else NewsFail.NO_INTERNET)
     }
 
     /** One request through Tor; a redirect comes back as in [get]. Recorded in its finally block, once Tor gave a stream. */

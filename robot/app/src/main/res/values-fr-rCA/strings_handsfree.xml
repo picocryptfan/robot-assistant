@@ -199,4 +199,7 @@
     <string name="car_apps_summary_none">Aucune pour l’instant. Garde-en jusqu’à %1$d, puis touche Applis sur l’écran de l’auto pour en ouvrir une à côté de Robot.</string>
     <string name="car_shortcut">Mode auto</string>
     <string name="car_split_refused">Impossible d’ouvrir cette appli à côté de l’écran de l’auto</string>
+    <string name="car_covered_voice">Une autre appli s’affiche par-dessus cet écran, alors Robot n’a rien fait. Réponds de vive voix, ou déplace sa fenêtre et touche de nouveau.</string>
+    <string name="car_covered_move">Une autre appli s’affiche par-dessus cet écran, alors Robot n’a rien fait. Celle-là se confirme d’une touche. Déplace sa fenêtre et touche de nouveau, ou dis non.</string>
+    <string name="car_covered_tap">Une autre appli s’affiche par-dessus cet écran, alors Robot n’a rien fait. Celle-là se confirme d’une touche. Déplace sa fenêtre et touche de nouveau.</string>
 </resources>

@@ -131,7 +131,8 @@ Coming from 0.9? Robot 1.0 installs beside it under a new app ID, and you move y
   good night" and Robot's model writes a draft you save with a tap. A helper can plan or draft too, but only after a card
   shows exactly what would go and you tap Send. A skill can use the tools of an MCP server, such as a home-automation
   server's, at an address on your home network, a Tailscale address, or on this phone with a token; a public address is
-  refused. You can export a skill as a signed file and import one: an import shows who signed it and always starts off.
+  refused. An address on your home network is used only over Wi-Fi or Ethernet, or a VPN that reaches it, never over
+  mobile data. You can export a skill as a signed file and import one: an import shows who signed it and always starts off.
   Your routines are kept as skills too, and still run as before.
 - Back up and restore saves what you choose, your files included, into one encrypted file, protected by a passphrase
   only you have, to a place you pick. Robot never uploads it.
