@@ -79,6 +79,27 @@ object CarBeside {
     sealed class Last {
         data object Map : Last()
         data class App(val pkg: String) : Last()
+        /** An app Robot put beside itself that it can't name (an open with no package): the Maps button brings the map back. */
+        data object Unknown : Last()
+    }
+
+    /**
+     * fix-car-132: what a tap's open of your app beside Robot records: the app once it opened; [Last.Unknown] when it didn't
+     * open, so the Maps button stops offering a swap Robot can't be sure of; nothing when a lock refused it ([blocked]).
+     */
+    fun appOpen(pkg: String, opened: Boolean, blocked: Boolean, last: Last?): Last? = when {
+        opened -> Last.App(pkg)
+        blocked -> null
+        // fix-car-133: only the map was beside, and Robot can't be sure it still is; another app beside stays recorded.
+        last == Last.Map -> Last.Unknown
+        else -> null
+    }
+
+    /** What an open beside Robot records: your maps app as [Last.Map], an app by its package, or [Last.Unknown] with none. */
+    fun opened(pkg: String?, mapsPkg: String?): Last = when {
+        pkg == null -> Last.Unknown
+        pkg == mapsPkg -> Last.Map
+        else -> Last.App(pkg)
     }
 
     /** [FOURTH]: the fourth button becomes Map, while it's set to your music app. [INFO]: a Map button joins the information area. */
@@ -95,6 +116,49 @@ object CarBeside {
         !beside && large == CarLarge.MAP -> Back.NONE
         fourth == CarFourth.Action(CarAction.MUSIC_APP) -> Back.FOURTH
         else -> Back.INFO
+    }
+
+    /** What a tap on the fourth button does: bring your map back, navigate home, or open what [Follow] names (a sheet for Ask). */
+    sealed class Tap {
+        data object Maps : Tap()
+        data object Home : Tap()
+        data class Follow(val choice: CarMusicChoice) : Tap()
+    }
+
+    /** The fourth button's tap, from what it shows: [back] and [swap] as the screen has them, [music] from CarMusicChoice.of. */
+    fun tap(fourth: CarFourth, back: Back, swap: CarMusicChoice?, music: CarMusicChoice): Tap = when (fourth) {
+        is CarFourth.App -> Tap.Follow(CarMusicChoice.Open(fourth.app))
+        is CarFourth.Action -> when (fourth.action) {
+            CarAction.MUSIC_APP -> if (back == Back.FOURTH) Tap.Maps else Tap.Follow(music)
+            CarAction.MAPS -> swap?.let { Tap.Follow(it) } ?: Tap.Maps
+            CarAction.NAVIGATE_HOME -> Tap.Home
+        }
+    }
+
+    /**
+     * Both your music and podcast apps set ([music] is Ask): the swap opens the one on the media tile, playing or paused
+     * ([tile]), else the one Robot last put beside itself this drive ([recent], oldest first). It asks only when neither
+     * was used this drive: a swap is one tap while driving.
+     */
+    fun pick(music: CarMusicChoice, tile: String?, recent: List<String>): CarMusicChoice {
+        if (music !is CarMusicChoice.Ask) return music
+        val two = listOf(music.music, music.podcast)
+        val used = two.firstOrNull { it.pkg == tile } ?: recent.lastOrNull { r -> two.any { it.pkg == r } }?.let { r -> two.first { it.pkg == r } }
+        return used?.let { CarMusicChoice.Open(it) } ?: music
+    }
+
+    /**
+     * The swap on the Maps button beside the mic (the fourth button set to Maps): while your map is the app beside Robot,
+     * the button opens your music app there instead ([music], from CarMusicChoice.of), and while your music app or any
+     * other app is there, it brings the map back (null). Null too whenever Robot doesn't know your map is there (nothing
+     * opened this drive, or an app it can't name), while Robot isn't beside an app, with no maps app, or with no music app
+     * set: the button does what it always did, so a tap always has a sure result.
+     */
+    fun swap(last: Last?, mapsPkg: String?, fourth: CarFourth, beside: Boolean, music: CarMusicChoice): CarMusicChoice? = when {
+        fourth != CarFourth.Action(CarAction.MAPS) || mapsPkg == null || !beside -> null
+        last != Last.Map && !(last is Last.App && last.pkg == mapsPkg) -> null
+        music == CarMusicChoice.ChooseOne -> null
+        else -> music
     }
 }
 
@@ -122,7 +186,22 @@ class CarLineHold<T : Any>(private val holdMs: Long) {
 
 object CarTurn {
     /** Whether a show opens no panel: car mode on, the car screen in front or split, opened by Talk, the car's button or "hey robot" ([fromCar]), and Android has let this work this drive. */
-    fun quiet(on: Boolean, screenUp: Boolean, fromCar: Boolean, windowNeeded: Boolean, route: Boolean = true): Boolean = on && screenUp && fromCar && !windowNeeded && route
+    /**
+     * fix-car-stay: with the car screen in front or split, every show you or Robot started has no panel, and the car screen's
+     * Robot pane shows the turn: the assist gesture, the power button, Talk, the car's button, "hey robot", a reminder or an
+     * answer arriving, a message read out. [trusted]: Robot's own show or the system's, never another app's showAssist (that
+     * one always opens the panel, so nothing listens unseen). [windowNeeded]: Android refused a show with no window this drive.
+     */
+    fun quiet(on: Boolean, screenUp: Boolean, trusted: Boolean, windowNeeded: Boolean): Boolean = on && screenUp && trusted && !windowNeeded
+
+    /**
+     * fix-car-stay-c: whether a [trusted] show may go without a panel: not the system's own ([systemShow]: the power button,
+     * the assist gesture) on a [locked] phone, which never listens without a tap, so its panel shows and waits for one.
+     */
+    fun quietAllowed(trusted: Boolean, systemShow: Boolean, locked: Boolean): Boolean = trusted && !(systemShow && locked)
+
+    /** A show with no panel that no headset session hears ([handsFree] false), from a voice way in ([voice]): the phone's microphone listens. */
+    fun listensQuietly(quiet: Boolean, handsFree: Boolean, voice: Boolean): Boolean = quiet && !handsFree && voice
 
     /**
      * Car mode is on, with no car and no headset connected ([decision]), and Talk, the car's button or "hey robot" asked ([fromCar]):
@@ -133,6 +212,38 @@ object CarTurn {
 }
 
 object CarTurnEnd {
+    /**
+     * A show with no panel is over when no headset session holds it, the panel is idle, nothing is being said and Robot waits for
+     * nothing ([waits]: a card for a yes, a question asked, a listen due after Robot speaks): it closes, and the mic with it.
+     */
+    fun quietDone(quietTurn: Boolean, handsFree: Boolean, idle: Boolean, speaking: Boolean, waits: Boolean): Boolean =
+        quietTurn && !handsFree && idle && !speaking && !waits
+
+    /** fix-car-stay-d: a session's end waits for Robot's words and for a reply in its 3 seconds or on its way, [tries] polls at most. */
+    fun closeWaits(speaking: Boolean, sending: Boolean, tries: Int): Boolean = (speaking || sending) && tries > 0
+
+    /**
+     * fix-car-stay-f: Robot's own close of a turn waits one more poll? [words]: for Robot's words too (not the car screen's
+     * talk, which stops them); [replyHeld]: a reply held this close, so a question said in its 3 seconds (the turn [busy]) is
+     * answered before the panel goes. fix-car-stay-g: once a reply held it, the car screen's talk too waits for the reply's
+     * answer line ("Sent." or "Didn't send…") to be said. fix-car-132: not an answer to a question said in its 3 seconds
+     * (the turn [busy]): the talk stops that one.
+     */
+    fun hideWaits(words: Boolean, speaking: Boolean, sending: Boolean, busy: Boolean, replyHeld: Boolean, tries: Int): Boolean =
+        closeWaits((words || (replyHeld && !busy)) && speaking, sending || (words && replyHeld && busy), tries)
+
+    /** fix-car-stay-c: 2 polls, 4 s: a listen comes 350 ms after Robot stops talking. EST. */
+    const val LISTEN_HOLD_MAX = 2
+
+    /**
+     * fix-car-stay-c: the polls in a row [held] only by a listen Robot said would come ([coming]): only polls that would
+     * otherwise close count (idle, nothing said), so a long answer read aloud doesn't use them up before its listen.
+     */
+    fun listenHeld(held: Int, coming: Boolean, idle: Boolean, speaking: Boolean): Int = if (coming && idle && !speaking) held + 1 else 0
+
+    /** The listen to come still holds the turn; by the third idle poll it isn't coming (a flag left set). */
+    fun listenHolds(held: Int): Boolean = held in 1..LISTEN_HOLD_MAX
+
     /** The question is over: a turn with no window always closes (else new messages wait for it all drive); with the car screen up, any panel does too. */
     fun closes(quietTurn: Boolean, on: Boolean, screenUp: Boolean): Boolean = quietTurn || (on && screenUp)
 
@@ -165,4 +276,13 @@ object CarRecents {
      * session over the lock screen, so a glance at Recents never shows them.
      */
     fun picture(showsMessage: Boolean, showsTurn: Boolean, trusted: Boolean): Boolean = !showsMessage && !showsTurn && !trusted
+}
+
+/** fix-car-stay: an app Robot opens goes beside the car screen; when Android puts it over the car screen instead, the car screen comes back. */
+object CarSplit {
+    /** How soon after an app opened beside it the car screen going out of sight means Android didn't split. EST. */
+    const val CHECK_MS = 3_000L
+
+    /** The car screen stopped, not in split screen and not closing, [sinceOpen] ms after it opened an app beside itself. */
+    fun covered(multiWindow: Boolean, finishing: Boolean, sinceOpen: Long): Boolean = !multiWindow && !finishing && sinceOpen in 0 until CHECK_MS
 }

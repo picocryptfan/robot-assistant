@@ -215,6 +215,9 @@ object SpeechText {
         .trim()
         .let(::sayable)
 
+    /** fix-car-132: [s] said aloud is heard: false when it cleans to nothing ([clean] drops emoji), so it isn't counted as read. */
+    fun heardWhole(s: String): Boolean = s.isBlank() || clean(s).isNotEmpty()
+
     /**
      * Chinese, Japanese and Korean script (Han, kana, Hangul, Bopomofo, Yi, CJK symbols, punctuation and
      * compatibility forms, the supplementary ideograph planes).

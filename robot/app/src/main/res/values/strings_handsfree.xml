@@ -186,6 +186,7 @@
     <string name="car_listening">Listening…</string>
     <string name="car_yes">Yes</string>
     <string name="car_cancel">Cancel</string>
+    <string name="car_approve">Approve</string>
     <string name="car_map">Map</string>
     <string name="car_close">Close</string>
     <string name="car_apps">Apps</string>
@@ -197,4 +198,5 @@
     <string name="car_apps_title">Apps for the car</string>
     <string name="car_apps_summary_none">None yet. Keep up to %1$d, then tap Apps on the car screen to open one beside Robot.</string>
     <string name="car_shortcut">Car mode</string>
+    <string name="car_split_refused">Couldn\'t open that app beside the car screen</string>
 </resources>

@@ -89,6 +89,9 @@ object TurnStrings : Strings("turn", area = "cards") {
     val tapCommand = s("tap_command", "This command has warnings: check the card, then tap {run}.",
         "Cette commande a des avertissements : vérifie la carte, puis touche {run}.")
     val orSayNo = s("or_say_no", "{why} Or say no.", "{why} Ou dis non.")
+    val carTap = s("car_tap", "That one needs a tap. It's on the car screen.", "Celle-là se confirme d'une touche. Elle est sur l'écran de l'auto.")
+    /** fix-car-long-card-c: a card marked for the car screen, shown on the panel instead. */
+    val cardTap = s("card_tap", "That one needs a tap on the card.", "Celle-là se confirme d'une touche sur la carte.")
     val tapOneOrNo = s("tap_one_or_no", "Tap the one you mean on the card, or say no.", "Touche ton choix sur la carte, ou dis non.")
     val tapToShare = s("tap_to_share", "Tap {button} to share it.", "Touche {button} pour le partager.")
     val tapButtonToShare = s("tap_button_to_share", "Tap the button to share it.", "Touche le bouton pour le partager.")

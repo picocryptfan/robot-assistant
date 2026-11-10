@@ -22,7 +22,6 @@ import app.heyrobot.assistant.handsfree.HandsFreeHub
 import app.heyrobot.assistant.music.PanelMusic
 import app.heyrobot.core.Abort
 import app.heyrobot.core.car.AppPin
-import app.heyrobot.core.car.CarAction
 import app.heyrobot.core.car.CarArtHold
 import app.heyrobot.core.car.CarBeside
 import app.heyrobot.core.car.CarLineHold
@@ -63,6 +62,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
+import app.heyrobot.ui.common.filterObscuredTouches
 
 // VOICE PROCESS (0.8). The car screen, not exported, in :voice where car mode is: big buttons, and what Robot has to say in
 // the information panel. Its own card in Recents, "Car mode" with Robot's icon, gone when car mode ends; swiping the card only
@@ -83,7 +83,7 @@ class CarModeActivity : ComponentActivity() {
     private var saidGoes: Job? = null
     /** Your podcast app, while it's still yours. */
     private var podcast: MusicApp? = null
-    private var mapsPkg: String? = null
+    @Volatile private var mapsPkg: String? = null
     private var sheet: CarSheet? = null
     /** What "Choose your music app" listed, for its pick to pin. */
     private var foundMusic: List<MusicApps.Found> = emptyList()
@@ -99,6 +99,8 @@ class CarModeActivity : ComponentActivity() {
     /** The app the tile's name opens, and whether the tile shows a session Android told us of. */
     private var opens: String? = null
     private var fromSessions = false
+    /** The app whose session the tile shows, playing or paused: the Maps button's swap opens it when both your apps are set. */
+    private var onTile: String? = null
     private var secureNow = false
     private var messages = CarMessagesNow()
     private var link: MessagesLink? = null
@@ -109,6 +111,8 @@ class CarModeActivity : ComponentActivity() {
         app.heyrobot.assistant.VoiceHub.init(this)
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        // Its Yes or Send acts at once: a tap through another app's window is refused (review-panel-covered).
+        window.filterObscuredTouches()
         CarModeController.watch(watcher)
         setTaskDescription(ActivityManager.TaskDescription.Builder().setLabel(HandsFreeStrings.carMode().render(HandsFreeHub.screen)).setIcon(R.mipmap.ic_launcher).build())
         refresh()
@@ -126,8 +130,9 @@ class CarModeActivity : ComponentActivity() {
         setContent {
             RobotTheme {
                 CarModeScreen(ui.value, CarScreenActions(
-                    // Talk again in a turn with no panel ends the turn, as closing the panel would.
-                    talk = { if (CarModeController.quietTurn) PanelController.hideAfterAnnouncement() else CarModeController.talk() },
+                    // Talk again in a turn with no panel ends the turn and Robot's words, as closing the panel would; a reply in
+                    // its 3 seconds or on its way still goes first (fix-car-stay-f).
+                    talk = { if (CarModeController.quietTurn) PanelController.hideAfterAnnouncement(words = false) else CarModeController.talk() },
                     settings = { openSettings(AppPages.CAR_SETTINGS) },
                     messageSettings = { openSettings(AppPages.MESSAGES_SETTINGS) },
                     fourth = { fourth() },
@@ -136,6 +141,7 @@ class CarModeActivity : ComponentActivity() {
                     next = { key(MusicAction.NEXT) },
                     previous = { key(MusicAction.PREVIOUS) },
                     openMusic = { openMusic() },
+                    chooseMusic = { chooseMusic() },
                     apps = { showApps() },
                     yes = { answer(true) },
                     cancel = { answer(false) },
@@ -150,10 +156,22 @@ class CarModeActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         CarModeController.screenUp = true
+        CarModeController.besideOpener = { i -> CarSplitOpen.start(this, i).also { if (it) openedBeside(i) } }
     }
+
+    /** An app opened by voice is recorded as the buttons record theirs (review-car-maps-swap, Medium). */
+    private fun openedBeside(i: Intent) {
+        CarModeController.besideOpened(CarBeside.opened(i.`package` ?: i.component?.packageName, mapsPkg))
+        SystemClock.elapsedRealtime().let { t -> runOnUiThread { besideAt = t } }
+    }
+
+    /** When this screen last opened an app beside itself (fix-car-stay: if it goes out of sight right after, Android didn't split). */
+    /** fix-car-stay-b: written and read on the main thread only (a route by voice opens from Dispatchers.IO), and read once. */
+    @Volatile private var besideAt = Long.MIN_VALUE / 2
 
     override fun onResume() {
         super.onResume()
+        if (CarModeController.takeRefusedSplit()) said = getString(R.string.car_split_refused)
         refresh()
         loadMusic()
         lifecycleScope.launch { showMessages() }
@@ -161,6 +179,10 @@ class CarModeActivity : ComponentActivity() {
 
     override fun onStop() {
         CarModeController.screenUp = false
+        CarModeController.besideOpener = null
+        val since = SystemClock.elapsedRealtime() - besideAt
+        besideAt = Long.MIN_VALUE / 2
+        if (app.heyrobot.core.car.CarSplit.covered(isInMultiWindowMode, isFinishing, since)) CarModeController.splitRefused()
         sheet = null
         messages = CarMessagesNow()
         forgetPictures()
@@ -260,13 +282,10 @@ class CarModeActivity : ComponentActivity() {
 
     /** The fourth button, as you chose it in Settings › Car mode. */
     private fun fourth() {
-        when (val f = layout().fourth) {
-            is CarFourth.Action -> when (f.action) {
-                CarAction.MUSIC_APP -> if (ui.value.back == CarBeside.Back.FOURTH) maps() else follow(CarMusicChoice.of(pinned, podcast))
-                CarAction.MAPS -> maps()
-                CarAction.NAVIGATE_HOME -> navigateHome()
-            }
-            is CarFourth.App -> openApp(f.app)
+        when (val t = CarBeside.tap(layout().fourth, ui.value.back, ui.value.swap, CarMusicChoice.of(pinned, podcast))) {
+            CarBeside.Tap.Maps -> maps()
+            CarBeside.Tap.Home -> navigateHome()
+            is CarBeside.Tap.Follow -> follow(t.choice)
         }
     }
 
@@ -277,7 +296,7 @@ class CarModeActivity : ComponentActivity() {
         val i = if (no == null && MusicApps.check(this, app) == MusicApps.PinNow.OK) packageManager.getLaunchIntentForPackage(app.pkg) else null
         val opened = i != null && CarSplitOpen.start(this, i)
         said = no ?: if (opened) "" else getString(R.string.car_fourth_gone, app.label)
-        if (opened) CarModeController.besideOpened(CarBeside.Last.App(app.pkg))
+        CarBeside.appOpen(app.pkg, opened, no != null, CarModeController.lastBeside)?.let { CarModeController.besideOpened(it) }
         refresh()
     }
 
@@ -395,6 +414,8 @@ class CarModeActivity : ComponentActivity() {
         val iconOf = session ?: shown.opens
         val icon = iconOf?.let { iconFor(it) }
         fourthIcon = (layout().fourth as? CarFourth.App)?.let { iconFor(it.app.pkg) }
+        onTile = session
+        listOfNotNull(pinned, podcast).forEach { iconFor(it.pkg) }
         music = shown.ui.copy(playing = shown.ui.playing || asked, art = art, icon = icon)
         refresh()
     }
@@ -416,7 +437,6 @@ class CarModeActivity : ComponentActivity() {
     private fun turnLines(): CarTurnUi? {
         val now = if (CarModeController.quietTurn) CarTurnLines.of(PanelController.state.value) else null
         turnNow = now
-        if (now?.needsWindow == true) CarModeController.openWindow()
         val shown = turnHold.next(now?.ui, CarTurnLines.kept(now), SystemClock.elapsedRealtime())
         turnGoes?.cancel()
         if (now == null && shown != null) turnGoes = lifecycleScope.launch { delay(TURN_LINE_MS); refresh() }
@@ -438,9 +458,10 @@ class CarModeActivity : ComponentActivity() {
         setRecentsScreenshotEnabled(CarRecents.picture(messages.lines.isNotEmpty(), turn != null, trusted))
         val directions = CarDirections.tile(c.routeThisDrive, ongoing = false) == CarDirections.Tile.BACK_TO_DIRECTIONS
         val back = if (mapsPkg == null) CarBeside.Back.NONE else CarBeside.back(c.lastBeside, mapsPkg, layout().fourth, layout().large, isInMultiWindowMode)
+        val swap = CarBeside.swap(c.lastBeside, mapsPkg, layout().fourth, isInMultiWindowMode, CarBeside.pick(CarMusicChoice.of(pinned, podcast), onTile, c.besideThisDrive))
         ui.value = CarScreenState(CarScreen.titleText(trusted).render(l), trusted, said,
             music.copy(playing = PanelMusic.carPlaying(music.playing)), directions, layout(), isInMultiWindowMode, messages,
-            turn = turn, sheet = sheet, back = back, fourthIcon = fourthIcon)
+            turn = turn, sheet = sheet, back = back, fourthIcon = fourthIcon, swap = swap, swapIcon = (swap as? CarMusicChoice.Open)?.let { icons[it.app.pkg] })
     }
 
     private companion object {

@@ -63,7 +63,16 @@ class CarWiringTest {
     @Test fun theSessionTellsTheCarScreen() {
         val session = code("assistant/RobotSession.kt")
         has(session.substringAfter("override fun secure(on: Boolean)"), "CarModeController.secure(on)")
-        has(session, "CarModeController.windowOpener = { setUiEnabled(true) }")
-        has(screen, "if (now?.needsWindow == true) CarModeController.openWindow()")
+        // fix-car-long-card: no card opens the panel's window over the car screen any more.
+        assertFalse(session.contains("windowOpener") || screen.contains("openWindow"))
+        has(code("assistant/PanelController.kt"), "override val carQuiet get() = CarModeController.quietTurn")
+        has(code("assistant/PanelController.kt"), "override val carTrusted get() = CarModeController.trusted")
+        has(code("assistant/PanelMessages.kt"), "!app.heyrobot.assistant.car.CarCardVoice.replyYes(app.heyrobot.assistant.car.CarModeController.trusted, p.readOut, p.sendText)")
+        has(code("assistant/PanelMessages.kt"), "p.readOut = if (speak(")
+        has(code("assistant/PanelMessages.kt"), "card?.readOut = null")
+        // fix-car-long-card-d: askToShare's own words only where a card may be read out.
+        has(code("assistant/PanelHelperTurn.kt"), "if (state.value.speak && cardVoice.ownWordsAloud) {")
+        has(code("assistant/PanelCardVoice.kt"), "val ownWordsAloud: Boolean get() = !port.carQuiet || port.carTrusted")
+        has(code("assistant/VoiceHub.kt"), "if (tts.isSpeaking) { PanelController.voiceStopped(); PanelMessages.voiceStopped() }")
     }
 }

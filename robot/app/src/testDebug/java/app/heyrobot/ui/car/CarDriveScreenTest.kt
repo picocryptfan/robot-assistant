@@ -18,6 +18,8 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import app.heyrobot.core.car.CarBeside
+import app.heyrobot.core.car.CarMusicChoice
+import app.heyrobot.core.car.CarAction
 import app.heyrobot.core.car.CarFourth
 import app.heyrobot.core.car.CarInfo
 import app.heyrobot.core.car.CarLarge
@@ -28,6 +30,7 @@ import app.heyrobot.ui.testing.shot
 import app.heyrobot.ui.testing.show
 import app.heyrobot.ui.testing.touchTargetProblems
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -200,6 +203,9 @@ class CarDriveScreenTest {
         rule.onAllNodesWithContentDescription("Yes").assertCountEquals(0)
         rule.onNodeWithContentDescription("Cancel").assertExists()
     }
+    // fix-car-long-card: a long card scrolls in the pane, whole; one only a tap answers says Approve.
+    @Test fun aLongCardThatTakesATapShowsWholeWithApprove() { draw(askNow.copy(turn = CarTurnUi(ask = CarAskUi("Run in Termux?\n" + "ls -la ".repeat(40), whole = false, tapOnly = true)))); rule.onNodeWithContentDescription("Approve").assertExists(); rule.onNodeWithContentDescription("Cancel").assertExists(); noProblems() }
+    @Test @Config(qualifiers = FR) fun aLongCardThatTakesATapFrench() { draw(askNow.copy(turn = CarTurnUi(ask = CarAskUi("Lancer dans Termux ?\n" + "ls -la ".repeat(40), whole = false, tapOnly = true)))); rule.onNodeWithContentDescription("Approuver").assertExists(); noProblems() }
     @Test @Config(qualifiers = FR) fun yesAndCancelFrench() { draw(askNow.copy(turn = CarTurnUi(ask = CarAskUi("Appeler Marie Martin ?")))); rule.onNodeWithContentDescription("Oui").assertExists(); rule.shot("car_ask_fr"); noProblems() }
     @Test @Config(qualifiers = HALF) fun yesAndCancelBesideTheMap() { draw(askNow.copy(beside = true)); rule.shot("car_ask_split"); noProblems() }
     @Test @Config(qualifiers = WIDE) fun yesAndCancelOnItsSide() { draw(askNow); rule.shot("car_ask_landscape"); noProblems() }
@@ -300,6 +306,42 @@ class CarDriveScreenTest {
         draw(CarScreenState(music = song, beside = true, back = CarBeside.Back.NONE))
         rule.onAllNodesWithContentDescription("Map").assertCountEquals(0)
         rule.onNodeWithContentDescription("Music").assertExists()
+    }
+
+    // The Maps button beside the mic, while your map is beside this screen: it names your music app and opens it there.
+    private val radio = MusicApp("org.example.radio", "b".repeat(64), "Harbour Radio")
+    private val mapsFourth = CarLayout(fourth = CarFourth.Action(CarAction.MAPS))
+    @Test @Config(qualifiers = HALF) fun theMapsButtonNamesYourMusicAppWhileTheMapIsBeside() {
+        draw(CarScreenState(music = song, beside = true, layout = mapsFourth, swap = CarMusicChoice.Open(radio), swapIcon = art))
+        rule.onNodeWithContentDescription("Harbour Radio").performClick()
+        assertEquals(listOf("fourth"), calls)
+        rule.onAllNodesWithContentDescription("Maps").assertCountEquals(0)
+        rule.onAllNodesWithText("Harbour Radio").assertCountEquals(0)
+        rule.shot("car_maps_swap_music")
+    }
+    @Test @Config(qualifiers = HALF_FR) fun theMapsButtonNamesYourMusicAppWhileTheMapIsBesideFrench() {
+        draw(CarScreenState(music = song, beside = true, layout = mapsFourth, swap = CarMusicChoice.Open(radio)))
+        rule.onNodeWithContentDescription("Harbour Radio").assertExists()
+        rule.onAllNodesWithContentDescription("Cartes").assertCountEquals(0)
+    }
+    @Test @Config(qualifiers = HALF) fun beforeItsIconLoadsTheSwapNamesTheAppWithNoPlayIcon() {
+        // First frame, no icon yet: TalkBack already says the app's name, and the stand-in icon isn't Play.
+        draw(CarScreenState(music = song, beside = true, layout = mapsFourth, swap = CarMusicChoice.Open(radio), swapIcon = null))
+        rule.onNodeWithContentDescription("Harbour Radio").assertExists()
+        rule.onAllNodesWithContentDescription("Play").assertCountEquals(0)
+        assertEquals(app.heyrobot.ui.common.RIcons.Apps, swapPlaceholder)
+        assertNotEquals(app.heyrobot.ui.common.RIcons.Play, swapPlaceholder)
+    }
+    @Test @Config(qualifiers = HALF) fun theMapsButtonIsMapsWhileYourMusicAppIsBeside() {
+        draw(CarScreenState(music = song, beside = true, layout = mapsFourth, swap = null))
+        rule.onNodeWithContentDescription("Maps").performClick()
+        assertEquals(listOf("fourth"), calls)
+        rule.onAllNodesWithContentDescription("Harbour Radio").assertCountEquals(0)
+    }
+    @Test @Config(qualifiers = HALF) fun theMapsButtonAsksWithBothAppsSet() {
+        draw(CarScreenState(music = song, beside = true, layout = mapsFourth, swap = CarMusicChoice.Ask(radio, MusicApp("org.example.casts", "c".repeat(64), "Casts"))))
+        rule.onNodeWithContentDescription("Music").assertExists()
+        rule.onAllNodesWithContentDescription("Maps").assertCountEquals(0)
     }
 
     // Icons only, each with its spoken name in both languages.

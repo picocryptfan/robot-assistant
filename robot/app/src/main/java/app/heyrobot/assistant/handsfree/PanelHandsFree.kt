@@ -487,7 +487,8 @@ object PanelHandsFree {
                 val to = if (dest == NavDestination.Home) car.home else car.work
                 if (plan is NavPlan.Route && to != null) {
                     // Your maps app (Settings › Actions › Maps): its own route link, else the place.
-                    val opened = withContext(Dispatchers.IO) { MapsApps.open(app, MapsApps.route(app, here, CarNavigate.HERE.get(lang), to.lat to to.lon, to.label)) }
+                    val opened = withContext(Dispatchers.IO) { MapsApps.open(app, MapsApps.route(app, here, CarNavigate.HERE.get(lang), to.lat to to.lon, to.label),
+                        launch = { i -> CarModeController.openBeside(i) ?: run { app.startActivity(i); true } }) }
                     if (opened is MapsApps.Opened.Repick) return reply(replyId, host, said(MapsApps.replacedText()))
                     if (opened != MapsApps.Opened.Done) return reply(replyId, host, said(HandsFreeStrings.noOrganicMaps()))
                     CarModeController.routeOpened()

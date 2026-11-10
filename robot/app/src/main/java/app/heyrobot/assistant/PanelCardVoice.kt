@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.assistant
 
+import app.heyrobot.assistant.car.CarCardVoice
 import android.os.Handler
 import app.heyrobot.core.CardAnswer
 import app.heyrobot.core.Cue
@@ -62,6 +63,10 @@ internal class PanelCardVoice(
         fun confirm(actionId: String, yes: Boolean)
         /** As a tap on a card's choice [index]. */
         fun choose(actionId: String, index: Int)
+        /** fix-car-long-card: a turn with no panel, the car screen up (CarModeController.quietTurn). */
+        val carQuiet: Boolean get() = false
+        /** The car screen may show and say private words (CarModeController.trusted). */
+        val carTrusted: Boolean get() = false
     }
 
     /**
@@ -72,7 +77,8 @@ internal class PanelCardVoice(
     private var listening = 0
     private var retry = 0
     /** PanelHelperTurn's askToShare said its own words about the card: no "Say yes or no." on top. */
-    private var promptSaid = false
+    /** fix-car-133: the card whose own words were said ([saidPrompt]): honoured for that card only. */
+    private var promptSaid: String? = null
 
     /** "Try it here or ask" waits: its card's id, the names heard as "the helper", and what silence does. */
     private var choiceCard: String? = null
@@ -92,19 +98,40 @@ internal class PanelCardVoice(
         choiceSilent = {}
     }
 
+    /** Robot's voice was stopped while talking (VoiceHub.stopVoice: muted, a new question, any stop): a read-out under way isn't whole. */
+    fun voiceStopped() {
+        reading = null
+    }
+
+    /**
+     * fix-car-long-card-d: askToShare may say its own words (the helper's name, the app on screen, the kinds of personal
+     * content in the conversation): not with the car screen up while it isn't trusted, where a card gets only the tap line
+     * ([carWaiting]'s rule, as CarMessages.announce skips a message while locked and untrusted).
+     */
+    val ownWordsAloud: Boolean get() = !port.carQuiet || port.carTrusted
+
     /** PanelHelperTurn's askToShare said its own words about the card that is about to wait. */
-    fun saidPrompt() {
-        promptSaid = true
+    fun saidPrompt(id: String) {
+        promptSaid = id
     }
 
     /** Robot's voice stopped (a sentence ends between two): listen only once it has really stopped talking. */
     fun speakingStopped() {
-        if (listenAfterSpeech) port.main.postDelayed({ if (listenAfterSpeech && !port.speaking) listen() }, 350)
+        if (listenAfterSpeech) port.main.postDelayed({
+            if (listenAfterSpeech && !port.speaking) {
+                // The read-out ran to its end (a stop or the Stop button ends the wait first, in stop()).
+                readWhole = reading ?: readWhole
+                reading = null
+                listen()
+            }
+        }, 350)
     }
 
     /** The mic was pressed while a card waits, with "Answer cards by voice" on: listen for its answer, with a retry again. */
     fun micPressed() {
         retry = 0
+        // fix-car-long-card-b: it stops the voice, so a read-out under way never ends whole (a yes then takes a tap, said aloud).
+        reading = null
         listen()
     }
 
@@ -115,18 +142,48 @@ internal class PanelCardVoice(
     fun waiting() {
         val st = state.value
         val s = port.settings
-        val said = promptSaid
-        promptSaid = false
+        val saidFor = promptSaid
+        promptSaid = null
         retry = 0
+        // fix-car-long-card-b: a card made with the car screen up that can't be read out well keeps that mark (UiAction.carTap):
+        // no later show of it (the lock screen's button, a capture, trust lapsing) takes a voice yes for it.
+        replies.pendingCard()?.takeIf { port.carQuiet && !it.carTap && CarCardVoice.tapOnly(it) }?.let { c -> replies.updateCard(c.id) { it.copy(carTap = true) } }
         if (!s.voiceCards || !port.shown || !port.stt.available || !(st.speak || port.spokenTurn || screenShare.from == ShowSource.WAKE)) return
         val card = replies.pendingCard() ?: return
+        val said = saidFor == card.id
+        if (port.carQuiet) return carWaiting(card, st.speak, said)
         if (st.speak) {
             // "Say yes or no.", or why it needs a tap (a learned name, not sure who, online the first time) and that "no" works.
-            if (!said) port.speakRobot(port.said(CardAnswer.promptText(card.waiting)))
+            // A card marked in the car (UiAction.carTap) shown on the panel: its tap line, not "Say yes or no.".
+            if (!said) port.speakRobot(port.said(if (card.carTap) TurnStrings.cardTap() else CardAnswer.promptText(card.waiting)))
             listenAfterSpeech = true
         } else {
             listen()
         }
+    }
+
+    /** The card Robot is reading out with the car screen up, and the one it has read out whole (fix-car-long-card). */
+    private var reading: String? = null
+    private var readWhole: String? = null
+
+    /**
+     * A card waits with the car screen up and no panel: Robot reads it out whole (what it does, who to, the words) and
+     * listens only after; a card it can't read out well, or any while the phone isn't trusted, gets one line: it needs a
+     * tap, on the car screen. A no still declines it. [said]: askToShare or the choice card said its own words about it
+     * (fix-car-long-card-c): they are its read-out, whole once Robot has said them to the end, and never said twice.
+     */
+    private fun carWaiting(card: UiAction, speak: Boolean, said: Boolean) {
+        reading = null
+        readWhole = null
+        if (!speak) return listen()
+        // fix-car-134: the choice card's own words were its read-out ("here", or nothing, works by voice): no tap line after them.
+        val choiceSaid = said && card.id == choiceCard
+        if (!choiceSaid && (card.carTap || CarCardVoice.tapOnly(card) || !port.carTrusted)) port.speakRobot(port.said(TurnStrings.carTap()))
+        else {
+            if (!said) port.speakRobot(CarCardVoice.text(card) + "\n" + port.said(CardAnswer.promptText(card.waiting)))
+            reading = card.id
+        }
+        listenAfterSpeech = true
     }
 
     /** Listens for the waiting card's answer; the phase stays CONFIRMING (the turn is still waiting on the card). */
@@ -186,6 +243,7 @@ internal class PanelCardVoice(
     /** The card was answered or the turn stopped: no more listening for it. */
     fun stop() {
         listenAfterSpeech = false
+        reading = null
         if (state.value.cardHearing == null) return
         listening++
         port.stt.cancel()
@@ -227,7 +285,10 @@ internal class PanelCardVoice(
         if (card.id == choiceCard) {
             if (spoken && !s.voiceCards) return false
             val picked = app.heyrobot.core.helpers.HelperChoice.answer(text, choiceNames, choiceHelper) ?: return false
-            port.confirm(card.id, picked == app.heyrobot.core.helpers.HelperChoice.Picked.HELPER)
+            val helper = picked == app.heyrobot.core.helpers.HelperChoice.Picked.HELPER
+            // fix-car-long-card-c: asking the helper is its yes, through the same car gate; "here" is its no and always works.
+            if (helper && spoken && carHeld(card)) return true
+            port.confirm(card.id, helper)
             return true
         }
         // 0.8: a routine from the screen's text, or deleting one: only a tap (a "no" still declines).
@@ -240,6 +301,7 @@ internal class PanelCardVoice(
         }
         val r = CardAnswer.reply(text, card.waiting, s.voiceCards, s.voiceYesPersonal, spoken, s.wakePhrases.filter { it.enabled }.map { it.text })
             ?: return false
+        if (spoken && (r.does == CardAnswer.Does.CONFIRM || r.does == CardAnswer.Does.CHOOSE_ONLY) && carHeld(card)) return true
         RLog.i("card_answer", "yes" to (r.does != CardAnswer.Does.DECLINE), "spoken" to spoken)
         when (r.does) {
             CardAnswer.Does.DECLINE -> port.confirm(card.id, false)
@@ -251,6 +313,24 @@ internal class PanelCardVoice(
                 if (state.value.speak) port.speakRobot(port.said(words))
             }
         }
+        return true
+    }
+
+    /**
+     * The car gate (fix-car-long-card) for a spoken yes, in a car quiet turn or on a card marked there: true if it holds
+     * the yes back (nothing is approved). It counts only once Robot has read the card out whole, trusted, and not tap-only.
+     */
+    private fun carHeld(card: UiAction): Boolean {
+        if (!port.carQuiet && !card.carTap) return false
+        val yes = CarCardVoice.yes(card.carTap || CarCardVoice.tapOnly(card), port.carTrusted, reading == card.id, readWhole == card.id)
+        // Robot is still reading it out: nothing is approved; it listens once the read-out is over.
+        if (yes == CarCardVoice.Yes.NOT_YET && port.speaking) return true
+        if (yes == CarCardVoice.Yes.COUNTS) return false
+        // Not read out whole, or a tap-only card: never silence, the one line that says why.
+        // fix-car-long-card-c: off the car screen (a marked card on the panel) the line doesn't send you to it.
+        val line = if (port.carQuiet) TurnStrings.carTap() else TurnStrings.cardTap()
+        port.notify(line.render(port.turnLangs))
+        if (state.value.speak) port.speakRobot(port.said(line))
         return true
     }
 }

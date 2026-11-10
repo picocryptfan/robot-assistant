@@ -38,6 +38,9 @@ object HelperStrings : Strings("helper", area = "helpers") {
     val kindCurrent = s("kind_current", "questions about current information", "les questions d'actualité")
     val kindBig = s("kind_big", "long or many-part questions", "les questions longues ou en plusieurs parties")
     val choiceAsk = s("choice_ask", "That's a lot for me to do well on my own. Try it here, or ask {name}?", "C'est beaucoup pour moi tout seul. J'essaie ici, ou je demande à {name} ?")
+    /** fix-car-133: the choice card on a car screen that isn't trusted: no helper's name, and "here" works by voice; fix-car-134: the helper once parked, no tap asked for. */
+    val choiceAskCar = s("choice_ask_car", "That's a lot for me to do well on my own. Say \"here\" and I'll try it. To ask your helper, ask me again once you're parked.",
+        "C'est beaucoup pour moi tout seul. Dis « ici » et j'essaie. Pour demander à ton IA externe, redemande-moi une fois l'auto stationnée.")
     val choiceDetail = s("choice_detail", "Only your question goes to {name}, and only if you choose it. Say nothing and Robot tries.",
         "Seule ta question va à {name}, et seulement si tu le choisis. Si tu ne dis rien, Robot essaie.")
     val choiceWasBig = s("choice_was_big", "That was a lot for me on my own.", "C'était beaucoup pour moi tout seul.")

@@ -15,7 +15,7 @@ class CarListensOnPhoneTest {
     private fun code(path: String) = Source.strip(File(root, "app/src/main/java/app/heyrobot/assistant/$path").readText(), keepStrings = false)
 
     @Test fun thePanelListensWhenTheShowAsksIt() {
-        assertTrue(code("PanelController.kt").contains("handsFree?.listenNow == true) startListening()"))
+        assertTrue(code("PanelController.kt").contains("handsFree?.listenNow == true ||") && code("PanelController.kt").contains("CarTurn.listensQuietly("))
     }
 
     @Test fun noRouteAsksForListeningInsteadOfASession() {
@@ -23,8 +23,9 @@ class CarListensOnPhoneTest {
         assertTrue(onShow.contains("CarTurn.listensOnPhone(") && onShow.contains("listenNow = "))
     }
 
-    @Test fun noRouteOpensAWindow() {
+    /** fix-car-stay: with the car screen up, no route no longer opens the panel over it; the phone's mic hears the turn with none. */
+    @Test fun noRouteKeepsTheCarScreen() {
         val prepare = code("car/CarModeController.kt").substringAfter("fun prepareShow(").substringBefore("notifyWatchers()")
-        assertTrue(prepare.contains("CarTurn.listensOnPhone(") && prepare.contains("route = !phone"))
+        assertTrue(prepare.contains("CarTurn.quiet(on, screenUp, trusted") && !prepare.contains("route = !phone"))
     }
 }

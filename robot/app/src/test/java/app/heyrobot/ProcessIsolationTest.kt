@@ -507,7 +507,10 @@ class ProcessIsolationTest {
         assertHas(source, "ShowTrust.from(fromApp, args.getString(ShowTrust.ARG_VIS), RobotVoiceService.TOKEN, null) { false }", "ShowTrust.source(from,")
         assertHasNot(source, "ShowNonces")
         val c = flatCode(kt("app", "assistant/car/CarModeController.kt")).body("fun prepareShow(")
-        assertHas(c, "RobotVoiceService.SRC_HEADSET", "RobotVoiceService.SRC_WAKE", "CarTurn.quiet(on, screenUp, fromCar, windowNeeded, route = !phone)")
+        // fix-car-stay: Robot's own show or the system's (the assist gesture, the power button), never another app's showAssist.
+        assertHas(c, "CarTurn.quiet(on, screenUp, trusted && source != RobotVoiceService.SRC_CAPTURE && source != RobotVoiceService.SRC_KEYGUARD, windowNeeded)")
+        assertInOrder(flatCode(kt("app", "assistant/RobotSession.kt")).body("override fun onPrepareShow("), "setUiEnabled(", "ShowGate.userShow(args, showFlags)")
+        assertHas(flatCode(kt("app", "assistant/ShowGate.kt")), "source(args, showFlags) != null || showFlags and (VoiceInteractionSession.SHOW_SOURCE_APPLICATION or VoiceInteractionSession.SHOW_SOURCE_ACTIVITY) == 0")
     }
 
     /** Car mode's button shows what the app reports and does what it shows (the stream alone left a driver with no Pause). */
@@ -4650,7 +4653,7 @@ class ProcessIsolationTest {
         val pm = flatCode(kt("app", "assistant/PanelMessages.kt"))
         assertInOrder(pm, "if (MessageQuarantine.originOf(q, heard(now), now) == ActionOrigin.INCOMING_TEXT) return Routed.Echo(",
             "if (app.heyrobot.assistant.handsfree.HandsFreeMessages.waiting) return null")
-        assertHas(pm, "if (!guarded && !app.heyrobot.assistant.handsfree.PanelHandsFree.allow(clean) { true }) continue")
+        assertHas(pm, "if (!guarded && !app.heyrobot.assistant.handsfree.PanelHandsFree.allow(clean) { true }) { all = false; continue }")
         assertEquals(1, pm.count(Regex("""speak\([^)]*guarded=true\)""")))
         // 1.0 (the user, 13 Oct 2026: no driving restrictions): in the car a card only a tap sends, or a chat Robot would
         // open, comes now, exactly as outside the car; nothing in 0.7's reply looks at car mode.

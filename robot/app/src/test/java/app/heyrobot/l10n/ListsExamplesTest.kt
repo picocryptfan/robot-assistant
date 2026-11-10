@@ -43,4 +43,18 @@ class ListsExamplesTest {
             assertEquals(dir, Phrase.M(UiStrings.lists).render(Langs.of(lang)), title)
         }
     }
+
+    @Test fun frenchListsTooNewNamesTheNewerRobotNotThisOne() {
+        val fr = L10nFiles.entries("values-fr-rCA", "strings_lists.xml").single { it.name == "lists_too_new" }.values.getValue("")
+        assertEquals("Tes listes ont été enregistrées par un Robot plus récent et ne peuvent pas être lues ni changées ici. Mets Robot à jour, ou recommence.", fr)
+        assertTrue(fr, !fr.contains("celle-ci") && !fr.contains("celui-ci"))
+    }
+
+    @Test fun frenchFilesAndMemoryTooNewNameTheNewerRobotNotThisOne() {
+        val files = L10nFiles.entries("values-fr-rCA", "strings_files.xml").single { it.name == "files_too_new" }.values.getValue("")
+        assertEquals("La liste de tes fichiers a été enregistrée par un Robot plus récent et ne peut pas être lue ni changée ici. Mets Robot à jour, ou recommence.", files)
+        val memory = L10nFiles.entries("values-fr-rCA", "strings_memory.xml").single { it.name == "memory_problem_too_new" }.values.getValue("")
+        assertEquals("Une version plus récente de Robot a enregistré ta mémoire, et elle ne peut pas être lue ni changée ici.", memory)
+        for (fr in listOf(files, memory)) assertTrue(fr, !fr.contains("celle-ci") && !fr.contains("celui-ci"))
+    }
 }

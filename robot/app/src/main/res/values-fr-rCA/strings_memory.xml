@@ -136,7 +136,7 @@
     <string name="memory_problem_locked">Robot n’a pas pu ouvrir sa mémoire pour l’instant. Réessaie dans un instant.</string>
     <string name="memory_problem_key_gone">La clé de la mémoire de Robot n’existe plus (le verrouillage de l’écran a été retiré, ou le téléphone l’a réinitialisée)&#160;: sa mémoire ne peut donc pas être lue. Recommencer met le fichier de côté&#8239;; Supprimer l’efface.</string>
     <string name="memory_problem_unreadable">Robot ne peut pas lire sa mémoire&#160;: le fichier est endommagé. Recommencer le met de côté et commence une mémoire vide.</string>
-    <string name="memory_problem_too_new">Une version plus récente de Robot a enregistré ta mémoire&#160;: celle-ci ne peut donc ni la lire ni la changer.</string>
+    <string name="memory_problem_too_new">Une version plus récente de Robot a enregistré ta mémoire, et elle ne peut pas être lue ni changée ici.</string>
     <string name="memory_suggested">Suggéré à partir de tes propres mots</string>
     <string name="memory_keep">Garder</string>
     <string name="memory_keep_named">Garder&#160;: %1$s</string>

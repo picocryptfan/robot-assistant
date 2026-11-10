@@ -150,6 +150,7 @@ object PanelMusic {
                 is MusicCommand.Key -> key(replyId, cmd.action, host, l)
                 is MusicCommand.ByName -> byName(replyId, cmd.request, host, l)
                 is MusicCommand.NowPlaying -> nowPlaying(replyId, host, l)
+                is MusicCommand.UseApp -> useApp(replyId, cmd.name, host, l)
             }
         } catch (e: CancellationException) {
             throw e
@@ -293,6 +294,29 @@ object PanelMusic {
             MusicPlayCode.REPLACED -> problem(replyId, host, l, replaced())
             else -> problem(replyId, host, l, EverydayStrings.didntAnswer())
         }
+    }
+
+    /** "Use Spotify in the car": the same pin as the card, by name; with no app by that name, the card. */
+    private suspend fun useApp(replyId: String, name: String, host: PanelRoutines.Host, l: Langs) {
+        if (host.locked) {
+            VoiceLog.add(VoiceEvent.MUSIC_APP, MusicAppCode.LOCKED)
+            return problem(replyId, host, l, EverydayStrings.pickLocked())
+        }
+        if (port.phoneLockOn) {
+            VoiceLog.add(VoiceEvent.MUSIC_APP, MusicAppCode.PHONE_LOCK)
+            return problem(replyId, host, l, EverydayStrings.pickDuringLock())
+        }
+        val had = port.settings().musicApp != null
+        val apps = withContext(Dispatchers.IO) { port.apps() }
+        val f = apps.getOrNull(MusicRouter.matchApp(name, apps.map { it.label }))
+        if (f == null) {
+            pick(replyId, host, l, changed = had)
+            return
+        }
+        val pin = withContext(Dispatchers.IO) { port.pin(f) } ?: return problem(replyId, host, l, EverydayStrings.didntAnswer())
+        withContext(Dispatchers.IO) { port.save(pin) }
+        VoiceLog.add(VoiceEvent.MUSIC_APP, if (had) MusicAppCode.CHANGED else MusicAppCode.PICKED, apps.size)
+        line(replyId, host, l, EverydayStrings.picked("label" to pin.label))
     }
 
     /**

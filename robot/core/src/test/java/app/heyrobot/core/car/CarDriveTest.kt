@@ -123,6 +123,91 @@ class CarDriveTest {
         assertEquals(CarBeside.Back.NONE, CarBeside.back(other, null, fourthMusic, CarLarge.MAP, beside = false))
     }
 
+    // The Maps button beside the mic swaps the app beside Robot between your map and your music app.
+    private val fourthMaps = CarFourth.Action(CarAction.MAPS)
+    private val maps = "org.example.maps"
+
+    @Test fun mapsButtonOpensYourMusicAppWhileTheMapIsBeside() {
+        val one = CarMusicChoice.of(music, null)
+        assertEquals(CarMusicChoice.Open(music), CarBeside.swap(CarBeside.Last.Map, maps, fourthMaps, beside = true, one))
+        assertEquals(CarMusicChoice.Open(music), CarBeside.swap(CarBeside.Last.App(maps), maps, fourthMaps, beside = true, one))
+        // Both set: it asks which, as the fourth button set to your music app does.
+        assertEquals(CarMusicChoice.Ask(music, podcast), CarBeside.swap(CarBeside.Last.Map, maps, fourthMaps, beside = true, CarMusicChoice.of(music, podcast)))
+    }
+
+    @Test fun mapsButtonWithBothAppsOpensTheOneUsedThisDrive() {
+        val both = CarMusicChoice.of(music, podcast)
+        // Playing or paused on the tile wins, then the one Robot last put on top this drive.
+        assertEquals(CarMusicChoice.Open(podcast), CarBeside.pick(both, podcast.pkg, listOf(music.pkg)))
+        assertEquals(CarMusicChoice.Open(music), CarBeside.pick(both, music.pkg, listOf(podcast.pkg)))
+        assertEquals(CarMusicChoice.Open(podcast), CarBeside.pick(both, null, listOf(music.pkg, podcast.pkg, "org.example.bus")))
+        assertEquals(CarMusicChoice.Open(music), CarBeside.pick(both, "org.example.radio2", listOf(podcast.pkg, music.pkg)))
+        assertEquals(CarMusicChoice.Open(podcast), CarBeside.swap(CarBeside.Last.Map, maps, fourthMaps, beside = true, CarBeside.pick(both, null, listOf(podcast.pkg))))
+        // Neither used this drive: it asks.
+        assertEquals(both, CarBeside.pick(both, null, listOf("org.example.bus")))
+        assertEquals(both, CarBeside.pick(both, "org.example.radio2", emptyList()))
+        // One app set: nothing to pick.
+        assertEquals(CarMusicChoice.Open(music), CarBeside.pick(CarMusicChoice.of(music, null), podcast.pkg, listOf(podcast.pkg)))
+    }
+
+    @Test fun mapsButtonBringsTheMapBackWhileAnotherAppIsBeside() {
+        val one = CarMusicChoice.of(music, null)
+        assertNull(CarBeside.swap(other, maps, fourthMaps, beside = true, one))
+        assertNull(CarBeside.swap(CarBeside.Last.App("org.example.bus"), maps, fourthMaps, beside = true, one))
+    }
+
+    @Test fun mapsButtonShowsMapsWhenRobotDoesNotKnowWhatIsBeside() {
+        val one = CarMusicChoice.of(music, null)
+        // Nothing put beside this drive, or an app opened by voice with no package: a tap brings the map back, a sure result.
+        assertNull(CarBeside.swap(null, maps, fourthMaps, beside = true, one))
+        assertNull(CarBeside.swap(CarBeside.Last.Unknown, maps, fourthMaps, beside = true, one))
+        assertEquals(CarBeside.Back.NONE, CarBeside.back(CarBeside.Last.Unknown, maps, fourthMusic, CarLarge.MAP, beside = true))
+    }
+
+    @Test fun anAppOpenedByVoiceIsRecordedAsTheButtonsAre() {
+        assertEquals(CarBeside.Last.Map, CarBeside.opened(maps, maps))
+        assertEquals(CarBeside.Last.App(music.pkg), CarBeside.opened(music.pkg, maps))
+        assertEquals(CarBeside.Last.Unknown, CarBeside.opened(null, maps))
+        assertEquals(CarBeside.Last.App(music.pkg), CarBeside.opened(music.pkg, null))
+        // After "open <music app>" by voice the button shows Maps, not the app that's already on top.
+        assertNull(CarBeside.swap(CarBeside.opened(music.pkg, maps), maps, fourthMaps, beside = true, CarMusicChoice.of(music, null)))
+    }
+
+    @Test fun mapsButtonIsAsBeforeWithNoMusicAppOrNothingBeside() {
+        assertNull(CarBeside.swap(CarBeside.Last.Map, maps, fourthMaps, beside = true, CarMusicChoice.of(null, null)))
+        assertNull(CarBeside.swap(CarBeside.Last.Map, maps, fourthMaps, beside = false, CarMusicChoice.of(music, null)))
+        assertNull(CarBeside.swap(CarBeside.Last.Map, null, fourthMaps, beside = true, CarMusicChoice.of(music, null)))
+        // Only the button set to Maps swaps; the one set to your music app already becomes Map (Back.FOURTH).
+        assertNull(CarBeside.swap(CarBeside.Last.Map, maps, fourthMusic, beside = true, CarMusicChoice.of(music, null)))
+        assertNull(CarBeside.swap(CarBeside.Last.Map, maps, fourthHome, beside = true, CarMusicChoice.of(music, null)))
+    }
+
+    @Test fun theFourthButtonsTapDoesWhatItShows() {
+        val one = CarMusicChoice.of(music, null)
+        val none = CarBeside.Back.NONE
+        assertEquals(CarBeside.Tap.Maps, CarBeside.tap(fourthMaps, none, null, one))
+        assertEquals(CarBeside.Tap.Follow(CarMusicChoice.Open(music)), CarBeside.tap(fourthMaps, none, CarMusicChoice.Open(music), one))
+        assertEquals(CarBeside.Tap.Follow(CarMusicChoice.Ask(music, podcast)), CarBeside.tap(fourthMaps, none, CarMusicChoice.Ask(music, podcast), one))
+        assertEquals(CarBeside.Tap.Maps, CarBeside.tap(fourthMusic, CarBeside.Back.FOURTH, null, one))
+        assertEquals(CarBeside.Tap.Follow(one), CarBeside.tap(fourthMusic, CarBeside.Back.INFO, null, one))
+        assertEquals(CarBeside.Tap.Home, CarBeside.tap(fourthHome, none, null, one))
+        assertEquals(CarBeside.Tap.Follow(CarMusicChoice.Open(podcast)), CarBeside.tap(CarFourth.App(podcast), none, null, one))
+    }
+
+    @Test fun lockedTheMapsButtonsTapReachesTheLocksBeforeAnythingOpens() {
+        // From what's beside Robot to the gate: the swap names your music app, the tap opens it, and the open meets CarOpen.app.
+        val one = CarMusicChoice.of(music, null)
+        val tap = CarBeside.tap(fourthMaps, CarBeside.Back.NONE, CarBeside.swap(CarBeside.Last.Map, maps, fourthMaps, beside = true, one), one)
+        val pkg = (((tap as CarBeside.Tap.Follow).choice) as CarMusicChoice.Open).app.pkg
+        assertEquals(music.pkg, pkg)
+        assertEquals(CarOpen.Gate.UNLOCK, CarOpen.app(pkg, keyguard = true, trusted = false, phoneLock = false, lockApps = emptySet()))
+        assertEquals(CarOpen.Gate.PHONE_LOCK, CarOpen.app(pkg, keyguard = false, trusted = false, phoneLock = true, lockApps = emptySet()))
+        // An app Phone lock leaves open in the car opens.
+        assertEquals(CarOpen.Gate.OPEN, CarOpen.app(pkg, keyguard = false, trusted = false, phoneLock = true, lockApps = setOf(pkg)))
+        // A voice open on the lock screen records the app, so the next tap is Maps (CarOpen.maps' own gate).
+        assertEquals(CarBeside.Tap.Maps, CarBeside.tap(fourthMaps, CarBeside.Back.NONE, CarBeside.swap(CarBeside.opened(pkg, maps), maps, fourthMaps, beside = true, one), one))
+    }
+
     @Test fun recentsShowNoPictureOfWordsOrOverTheLockScreen() {
         assertTrue(CarRecents.picture(showsMessage = false, showsTurn = false, trusted = false))
         assertFalse(CarRecents.picture(showsMessage = true, showsTurn = false, trusted = false))
@@ -185,11 +270,108 @@ class CarDriveTest {
     }
 
     @Test fun onlyTheCarsOwnShowsWithTheScreenUpHaveNoPanel() {
-        assertEquals(true, CarTurn.quiet(on = true, screenUp = true, fromCar = true, windowNeeded = false))
-        assertEquals(false, CarTurn.quiet(on = false, screenUp = true, fromCar = true, windowNeeded = false))
-        assertEquals(false, CarTurn.quiet(on = true, screenUp = false, fromCar = true, windowNeeded = false))
-        assertEquals(false, CarTurn.quiet(on = true, screenUp = true, fromCar = false, windowNeeded = false))
-        assertEquals(false, CarTurn.quiet(on = true, screenUp = true, fromCar = true, windowNeeded = true))
-        assertEquals(false, CarTurn.quiet(on = true, screenUp = true, fromCar = true, windowNeeded = false, route = false))
+        assertEquals(true, CarTurn.quiet(on = true, screenUp = true, trusted = true, windowNeeded = false))
+        assertEquals(false, CarTurn.quiet(on = false, screenUp = true, trusted = true, windowNeeded = false))
+        assertEquals(false, CarTurn.quiet(on = true, screenUp = false, trusted = true, windowNeeded = false))
+        // Another app's showAssist always opens the panel: nothing listens unseen.
+        assertEquals(false, CarTurn.quiet(on = true, screenUp = true, trusted = false, windowNeeded = false))
+        assertEquals(false, CarTurn.quiet(on = true, screenUp = true, trusted = true, windowNeeded = true))
+    }
+
+    /** fix-car-stay: the assist gesture or the power button with the car screen up: no panel, and the phone's mic listens. */
+    @Test fun aQuietShowFromAVoiceWayInListensOnThePhone() {
+        assertEquals(true, CarTurn.listensQuietly(quiet = true, handsFree = false, voice = true))
+        assertEquals(false, CarTurn.listensQuietly(quiet = true, handsFree = true, voice = true))
+        assertEquals(false, CarTurn.listensQuietly(quiet = true, handsFree = false, voice = false))
+        assertEquals(false, CarTurn.listensQuietly(quiet = false, handsFree = false, voice = true))
+    }
+
+    /** fix-car-stay: a turn with no panel the phone's mic hears closes only once nothing listens, thinks, asks or speaks. */
+    @Test fun aQuietTurnClosesOnlyWhenIdle() {
+        assertEquals(true, CarTurnEnd.quietDone(quietTurn = true, handsFree = false, idle = true, speaking = false, waits = false))
+        assertEquals(false, CarTurnEnd.quietDone(quietTurn = true, handsFree = false, idle = false, speaking = false, waits = false))
+        assertEquals(false, CarTurnEnd.quietDone(quietTurn = true, handsFree = false, idle = true, speaking = true, waits = false))
+        assertEquals(false, CarTurnEnd.quietDone(quietTurn = true, handsFree = true, idle = true, speaking = false, waits = false))
+        assertEquals(false, CarTurnEnd.quietDone(quietTurn = false, handsFree = false, idle = true, speaking = false, waits = false))
+        // fix-car-stay-b: a card waiting for a yes, or a listen due 350 ms after Robot asks, holds the turn while it's idle.
+        assertEquals(false, CarTurnEnd.quietDone(quietTurn = true, handsFree = false, idle = true, speaking = false, waits = true))
+    }
+
+    /** The quiet check's polls as CarModeController runs them, each (a listen coming, idle, speaking): the poll the turn closes on, or -1. */
+    private fun closesOn(polls: List<Triple<Boolean, Boolean, Boolean>>, sending: (Int) -> Boolean = { false }): Int {
+        var held = 0
+        polls.forEachIndexed { i, (coming, idle, speaking) ->
+            held = CarTurnEnd.listenHeld(held, coming, idle, speaking)
+            if (CarTurnEnd.quietDone(true, false, idle, speaking, CarTurnEnd.listenHolds(held) || sending(i))) return i
+        }
+        return -1
+    }
+    private val speech = Triple(true, false, true)
+    private val gap = Triple(true, true, false)
+    private val listening = Triple(false, false, false)
+    private val idleNow = Triple(false, true, false)
+
+    /** fix-car-stay-c: an answer read aloud for 2 to 8 polls, then the 350 ms before its listen: the turn holds (it closed as Robot asked). */
+    @Test fun aLongAnswerThenTheGapBeforeItsListenHolds() {
+        for (n in 1..8) assertEquals("speech over $n polls", -1, closesOn(List(n) { speech } + gap + listening))
+    }
+
+    /** fix-car-stay-c: a listen flag left set closes the turn by the third idle poll, after speech as without it. */
+    @Test fun aStuckListenFlagClosesByTheThirdIdlePoll() {
+        assertEquals(2, closesOn(List(5) { gap }))
+        assertEquals(6, closesOn(List(4) { speech } + List(5) { gap }))
+        assertEquals(0, closesOn(listOf(idleNow)))
+    }
+
+    /** fix-car-stay-d: a session's end waits while Robot speaks or a reply is in its 3 seconds (or on its way), then closes; never past its tries. */
+    @Test fun aSessionEndWaitsForAReplyInItsWindow() {
+        assertEquals(true, CarTurnEnd.closeWaits(speaking = false, sending = true, tries = 5))
+        assertEquals(true, CarTurnEnd.closeWaits(speaking = true, sending = false, tries = 5))
+        assertEquals(false, CarTurnEnd.closeWaits(speaking = false, sending = false, tries = 5))
+        assertEquals(false, CarTurnEnd.closeWaits(speaking = true, sending = true, tries = 0))
+    }
+
+    /** fix-car-stay-c: the power button or the assist gesture on a locked phone keeps its panel, which waits for a tap. */
+    @Test fun aSystemShowOnALockedPhoneKeepsItsPanel() {
+        assertEquals(false, CarTurn.quietAllowed(trusted = true, systemShow = true, locked = true))
+        assertEquals(true, CarTurn.quietAllowed(trusted = true, systemShow = true, locked = false))
+        assertEquals(true, CarTurn.quietAllowed(trusted = true, systemShow = false, locked = true))
+        assertEquals(false, CarTurn.quietAllowed(trusted = false, systemShow = false, locked = false))
+    }
+
+    /** fix-car-stay: the car screen out of sight just after it opened an app beside itself means Android put the app over it. */
+    @Test fun theCarScreenCoveredRightAfterAnOpenComesBack() {
+        assertEquals(true, CarSplit.covered(multiWindow = false, finishing = false, sinceOpen = 400))
+        assertEquals(false, CarSplit.covered(multiWindow = true, finishing = false, sinceOpen = 400))
+        assertEquals(false, CarSplit.covered(multiWindow = false, finishing = true, sinceOpen = 400))
+        assertEquals(false, CarSplit.covered(multiWindow = false, finishing = false, sinceOpen = CarSplit.CHECK_MS))
+        assertEquals(false, CarSplit.covered(multiWindow = false, finishing = false, sinceOpen = Long.MAX_VALUE / 2))
+    }
+
+    /** fix-car-stay-f: Robot's own close of a turn: the car screen's talk stops Robot's words; a question said in a reply's 3 seconds is answered first. */
+    @Test fun hideWaitsForAReplyAndTheQuestionItStopped() {
+        assertEquals(false, CarTurnEnd.hideWaits(words = false, speaking = true, sending = false, busy = false, replyHeld = false, tries = 5))
+        assertEquals(true, CarTurnEnd.hideWaits(words = false, speaking = true, sending = true, busy = false, replyHeld = false, tries = 5))
+        assertEquals(true, CarTurnEnd.hideWaits(words = true, speaking = true, sending = false, busy = false, replyHeld = false, tries = 5))
+        assertEquals(true, CarTurnEnd.hideWaits(words = true, speaking = false, sending = false, busy = true, replyHeld = true, tries = 5))
+        assertEquals(false, CarTurnEnd.hideWaits(words = true, speaking = false, sending = false, busy = true, replyHeld = false, tries = 5))
+        assertEquals(false, CarTurnEnd.hideWaits(words = false, speaking = false, sending = false, busy = true, replyHeld = true, tries = 5))
+        // fix-car-stay-g: the car screen's talk waits for the reply's answer line ("Sent.") once a reply held it.
+        assertEquals(true, CarTurnEnd.hideWaits(words = false, speaking = true, sending = false, busy = false, replyHeld = true, tries = 5))
+        assertEquals(false, CarTurnEnd.hideWaits(words = true, speaking = true, sending = true, busy = true, replyHeld = true, tries = 0))
+    }
+
+    /** fix-car-132 (review-131 Low 6): the car screen's talk stops the answer to a question said in the reply's 3 seconds. */
+    @Test fun theCarScreensTalkStopsAnAnswerAfterAReply() {
+        assertEquals(false, CarTurnEnd.hideWaits(words = false, speaking = true, sending = false, busy = true, replyHeld = true, tries = 5))
+        assertEquals(true, CarTurnEnd.hideWaits(words = false, speaking = true, sending = false, busy = false, replyHeld = true, tries = 5))
+        assertEquals(true, CarTurnEnd.hideWaits(words = true, speaking = true, sending = false, busy = true, replyHeld = true, tries = 5))
+    }
+
+    /** fix-car-132: a failed open of your app beside Robot drops the swap; a lock's refusal changes nothing. */
+    @Test fun aFailedOpenDropsTheSwap() {
+        assertEquals(CarBeside.Last.App("a.music"), CarBeside.appOpen("a.music", opened = true, blocked = false, CarBeside.Last.Map))
+        assertEquals(CarBeside.Last.Unknown, CarBeside.appOpen("a.music", opened = false, blocked = false, CarBeside.Last.Map))
+        assertEquals(null, CarBeside.appOpen("a.music", opened = false, blocked = true, CarBeside.Last.Map))
     }
 }

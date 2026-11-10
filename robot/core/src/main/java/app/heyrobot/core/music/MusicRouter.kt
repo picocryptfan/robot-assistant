@@ -63,6 +63,9 @@ sealed interface MusicCommand {
 
     /** "What's playing": your music app's media service says, or Robot says it can't see. */
     data class NowPlaying(override val lang: Lang?) : MusicCommand
+
+    /** "Use Spotify in the car": [name] becomes your music app, the pin Settings › Actions › Music and the car screen share. */
+    data class UseApp(val name: String, override val lang: Lang?) : MusicCommand
 }
 
 /** The kind of search your music app is asked for (MediaStore.EXTRA_MEDIA_FOCUS, §3.4). */
@@ -311,8 +314,38 @@ object MusicRouter {
         "de la bonne musique")
 
     /** What [text] asks of the music, or null (it goes on to hands-free and the model as before). */
+    // "Use Spotify in the car", « utilise Spotify dans l'auto »: your music app changed by voice (fix-car-media-pick), on
+    // HelperRouter.plain text (no accents, no apostrophes). A name of more than four words is not a name.
+    private val USE_APP = listOf(
+        Regex("^(?:please )?(?:use|switch to|pick|choose) (.+?) (?:for (?:my |the )?music|as (?:my |the )?music app|in the car|for the car|in car mode)$") to Lang.EN,
+        Regex("^(?:please )?(?:make|set) (.+?) (?:my|the) music app$") to Lang.EN,
+        Regex("^(?:please )?(?:set|change|switch) (?:my |the )?music app to (.+)$") to Lang.EN,
+        Regex("^(?:utilise|prends|choisis) (.+?) (?:pour (?:la |ma )?musique|comme (?:mon )?appli(?:cation)? de musique|dans lauto|dans la voiture|dans le char|en auto|en voiture|en mode auto)$") to Lang.FR,
+        Regex("^(?:mets|change|choisis) (?:mon |l)?(?:appli|application) de musique (?:pour|a|en) (.+)$") to Lang.FR,
+    )
+
+    private fun useApp(text: String): MusicCommand.UseApp? {
+        val t = WORD.findAll(HelperRouter.plain(text)).joinToString(" ") { it.value }
+        for ((re, lang) in USE_APP) {
+            val name = re.find(t)?.groupValues?.get(1) ?: continue
+            return if (name.split(' ').size <= 4) MusicCommand.UseApp(name, lang) else null
+        }
+        return null
+    }
+
+    /** Which of [labels] the spoken [name] means, or -1: the same name first, then a label that starts with it ("Spotify: Music and Podcasts"). */
+    fun matchApp(name: String, labels: List<String>): Int {
+        fun k(s: String) = WORD.findAll(HelperRouter.plain(s)).map { it.value }.toList()
+        val n = k(name).let { if (it.size > 1 && it[0] in setOf("the", "le", "la")) it.drop(1) else it }
+        if (n.isEmpty()) return -1
+        val ks = labels.map(::k)
+        ks.indexOfFirst { it == n }.takeIf { it >= 0 }?.let { return it }
+        return ks.indexOfFirst { it.size > n.size && it.subList(0, n.size) == n }
+    }
+
     fun route(text: String, ctx: MusicContext = MusicContext()): MusicCommand? {
         val stripped = TextCommand.stripWake(text, ctx.wakePhrases, loose = true)
+        useApp(stripped)?.let { return it }
         val said = tokens(stripped)
         val heard = said.map { it.w }
         var i = 0

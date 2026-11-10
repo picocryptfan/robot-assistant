@@ -482,7 +482,8 @@ internal class PanelHelperTurn(
         replies.upsertAction(replyId, UiAction(id, ToolName.ASK_HELPER, summary, ActionStatus.PENDING,
             (detail ?: PanelStrings.nothingGoesUntil("name" to name, "button" to confirm)).render(port.turnLangs), body = body,
             confirm = confirm, cancel = cancel, picture = picture, personal = personal, tapFor = tapFor))
-        if (state.value.speak) {
+        // fix-car-long-card-d: on a car screen that isn't trusted, only the card's tap line (PanelCardVoice.carWaiting).
+        if (state.value.speak && cardVoice.ownWordsAloud) {
             val s = port.settings
             // A spoken yes sends personal content only with "Voice yes can send personal content" on; a no always works.
             port.speakRobot(port.said(when {
@@ -490,7 +491,7 @@ internal class PanelHelperTurn(
                 tapFor == null && (!personal || s.voiceYesPersonal) -> PanelStrings.shareSayYesOrNo("summary" to summaryText)
                 else -> PanelStrings.shareTapOrNo("summary" to summaryText, "confirm" to confirm)
             }))
-            cardVoice.saidPrompt()
+            cardVoice.saidPrompt(id)
         }
         view.phase(TurnPhase.CONFIRMING)
         val pick = try {
@@ -519,8 +520,9 @@ internal class PanelHelperTurn(
             cancel = HelperStrings.choiceHereButton().render(port.turnLangs), personal = false)) // rc4: its buttons in the question's language, as its words
         cardVoice.choiceWaits(id, HelperName.all(port.settings), h.id) { port.confirmations.choose(id, NO_ANSWER) }
         if (state.value.speak) {
-            port.speakRobot(port.said(ask))
-            cardVoice.saidPrompt()
+            // fix-car-133: on a car screen that isn't trusted, no helper's name ("here" works by voice; the helper takes the tap line).
+            port.speakRobot(port.said(if (cardVoice.ownWordsAloud) ask else HelperStrings.choiceAskCar()))
+            cardVoice.saidPrompt(id)
         }
         view.phase(TurnPhase.CONFIRMING)
         val pick = try {

@@ -21,6 +21,8 @@ import app.heyrobot.core.Priority
 import app.heyrobot.core.RLog
 import app.heyrobot.core.SpeechLang
 import app.heyrobot.core.SpeechText
+import app.heyrobot.assistant.car.CarModeController
+import app.heyrobot.core.i18n.TurnStrings
 import app.heyrobot.core.TranslatePolicy
 import app.heyrobot.core.TranslateUse
 import app.heyrobot.core.VoiceEvent
@@ -219,6 +221,8 @@ object PanelMessages {
         taint = MessageTaint.NONE
         readAloud.clear()
         kept.clear()
+        // fix-car-stay-d: a reply in its 3 seconds stays a card that waits for Send, not a window left to hold the turn.
+        stopWindow(CardEnd.CLOSED)
         card = null
         window?.cancel()
     }
@@ -227,13 +231,19 @@ object PanelMessages {
 
     /** The panel opened: Settings › Messages again (the main app may have changed it), and People and the conversations for the router. */
     fun onShow() {
+        hold.shown()?.let { PanelController.notify(it) }
         val f = try { MessagesStore.reload(ctx) } catch (_: Throwable) { MessagesFile() }
         if (!f.settings.on) return
         scope.launch { refresh() }
     }
 
-    /** The panel closed: a reply in its 3 seconds is not sent, your messages' words go from this process, and the bridge is let go. */
-    fun onHide() {
+    /**
+     * The panel closed: a reply in its 3 seconds is not sent, your messages' words go from this process, and the bridge is let
+     * go. fix-car-stay-f: hidden for an app a tap opened ([forApp]), a reply in its 3 seconds sends when they end, as at a
+     * session's end (you've moved on, and the mic is gone), and the rest waits for that ([afterWindow]).
+     */
+    fun onHide(forApp: Boolean = false) {
+        if (!hold.hide(forApp, inWindow(), link?.busy == true || card?.state == ReplyCardState.SENDING)) return
         stopWindow(CardEnd.CLOSED)
         dropText()
         // Not while a reply is on its way: its answer says whether it went.
@@ -242,9 +252,17 @@ object PanelMessages {
         link = null
     }
 
+    /** fix-car-stay-f: a reply's 3 seconds ended behind a panel hidden for an app: what onHide left, now it has gone or stopped. */
+    private fun afterWindow() {
+        if (hold.windowEnded()) onHide()
+    }
+
+    private fun inWindow() = card?.state == ReplyCardState.STOP_WINDOW && window?.isActive == true
+
     /** Stop (the button, the word, a tap): a reply in its 3 seconds stays a card, and the reading ends. */
-    fun stop() {
-        stopWindow(CardEnd.STOPPED)
+    fun stop(forApp: Boolean = false) {
+        // fix-car-stay-g: a tap that opens an app (forApp) leaves a reply in its 3 seconds to onHide(forApp), which sends it.
+        if (hold.stopStops(forApp, inWindow())) stopWindow(CardEnd.STOPPED)
         queue.clear()
     }
 
@@ -579,6 +597,8 @@ object PanelMessages {
     /** The reply card waiting (one at a time), and its 3 seconds. */
     private var card: Pending? = null
     private var window: Job? = null
+    /** fix-car-stay-f: the panel hid for an app while [window] ran: onHide's work waits for its end ([afterWindow]); fix-car-132: core ReplyHold. */
+    private val hold = app.heyrobot.core.messages.ReplyHold()
 
     /**
      * A reply on its card. [text]: your words (or Robot's draft, [source]); [translation]: them in [toLang], sent when
@@ -596,6 +616,8 @@ object PanelMessages {
         var person: Person? = null
         var translation: String? = null
         var toLang: Lang? = null
+        // fix-car-stay-f: its 3 seconds began in a headset or car session.
+        var inSession = false
         var translate = false
         var always = false
         var plan: ReplyPlan.Send? = null
@@ -608,6 +630,8 @@ object PanelMessages {
          * "without a card" says (core ReplyPlanner.stopped), so only a tap, or a yes where cards take one, sends it.
          */
         var stopped = false
+        /** fix-car-long-card-b: the words Robot read out on this card ([speakCard]), cleared when its voice is cut off. */
+        var readOut: String? = null
         var state = ReplyCardState.WAITING
         var line: String? = null
 
@@ -766,15 +790,22 @@ object PanelMessages {
         )
     }
 
-    private fun update(p: Pending) = PanelController.messagesCard(p.replyId, view(p))
+    private fun update(p: Pending) {
+        hold.card(p.replyId, p.state)
+        PanelController.messagesCard(p.replyId, view(p))
+    }
 
     /** The card read aloud: who, your words in their own language's voice, and how to send it. */
     private fun speakCard(p: Pending) {
         val lang = p.lang
-        val yes = p.plan?.voiceYesCounts == true && VoiceHub.settings.voiceCards
+        // fix-car-133: a car quiet turn on a screen that isn't trusted, in a session or not: the tap line only (PanelCardVoice.carWaiting).
+        if (CarModeController.quietTurn && !CarModeController.trusted) return run { p.readOut = null; speak(listOf(spoken(TurnStrings.carTap(), lang))) }
+        // fix-car-133: words a voice can't say (emoji only) aren't heard, so their yes takes a tap: no "Send it?".
+        val yes = p.plan?.voiceYesCounts == true && VoiceHub.settings.voiceCards && SpeechText.heardWhole(p.sendText)
         val head = MessageStrings.replyToHead("name" to p.thread.name)
         val tail = if (yes) MessageStrings.sendIt() else MessageStrings.tapSend("send" to send)
-        speak(listOf(spoken(head, lang), Spoken(p.sendText, MessageLanguage.frenchLine(langId)(p.sendText)), spoken(tail, lang)))
+        val words = p.sendText
+        p.readOut = if (speak(listOf(spoken(head, lang), Spoken(words, MessageLanguage.frenchLine(langId)(words)), spoken(tail, lang)))) words else null
         // A draft is Robot's model's words from the chat's messages: heard back, it is theirs too.
         if (p.sendSource == ReplySource.MODEL_DRAFT) saidAloud(p.sendText)
     }
@@ -783,27 +814,30 @@ object PanelMessages {
     private fun startWindow(p: Pending) {
         val lang = p.lang
         p.state = ReplyCardState.STOP_WINDOW
+        p.inSession = app.heyrobot.assistant.handsfree.PanelHandsFree.active
         p.line = MessageStrings.sendingIn("stop" to UiLabel(UiStrings.stop)).render(langs(lang))
         update(p)
         speak(listOf(spoken(MessageStrings.sendingTo("name" to p.thread.name), lang),
             Spoken(p.sendText, MessageLanguage.frenchLine(langId)(p.sendText))))
         window?.cancel()
         window = scope.launch {
-            // A read-out too long to wait for leaves no microphone for "stop": the reply waits for Send.
-            if (windowWait { app.heyrobot.core.messages.ReplyWindow.afterReadOut(VoiceHub.tts.isSpeaking, it) } == app.heyrobot.core.messages.WindowStep.STOP) {
-                if (card === p) stopWindow(CardEnd.STOPPED)
-                return@launch
-            }
-            if (PanelController.state.value.speak) PanelController.messagesListen(now = true)
-            delay(ReplyPlanner.STOP_WINDOW_MS)
-            // You began saying something ("stop"): wait for its words, even before any is on screen.
-            val end = windowWait { waited ->
-                val phase = PanelController.state.value.phase
-                app.heyrobot.core.messages.ReplyWindow.afterThreeSeconds(phase == Phase.TRANSCRIBING, phase == Phase.LISTENING, VoiceHub.stt.hearing, waited)
-            }
-            if (card === p && p.state == ReplyCardState.STOP_WINDOW) {
-                if (end == app.heyrobot.core.messages.WindowStep.STOP) stopWindow(CardEnd.STOPPED) else fire(p, CardEnd.NO_CARD)
-            }
+            try {
+                // A read-out too long to wait for leaves no microphone for "stop": the reply waits for Send.
+                if (windowWait { app.heyrobot.core.messages.ReplyWindow.afterReadOut(VoiceHub.tts.isSpeaking, it) } == app.heyrobot.core.messages.WindowStep.STOP) {
+                    if (card === p) stopWindow(CardEnd.STOPPED)
+                    return@launch
+                }
+                if (PanelController.state.value.speak) PanelController.messagesListen(now = true)
+                delay(ReplyPlanner.STOP_WINDOW_MS)
+                // You began saying something ("stop"): wait for its words, even before any is on screen.
+                val end = windowWait { waited ->
+                    val phase = PanelController.state.value.phase
+                    app.heyrobot.core.messages.ReplyWindow.afterThreeSeconds(phase == Phase.TRANSCRIBING, phase == Phase.LISTENING, VoiceHub.stt.hearing, waited)
+                }
+                if (card === p && p.state == ReplyCardState.STOP_WINDOW) {
+                    if (end == app.heyrobot.core.messages.WindowStep.STOP) stopWindow(CardEnd.STOPPED) else fire(p, CardEnd.NO_CARD)
+                }
+            } finally { afterWindow() }
         }
     }
 
@@ -820,7 +854,7 @@ object PanelMessages {
      * A reply in its 3 seconds becomes a card that waits for Send ([why]: the stop, or the panel closing): planned again as
      * a card ([Pending.stopped]), so a later yes or ok, perhaps to another question, doesn't send it.
      */
-    private fun stopWindow(why: CardEnd) {
+    private fun stopWindow(why: CardEnd, aloud: Boolean = false) {
         val p = card ?: return
         if (p.state != ReplyCardState.STOP_WINDOW) return
         window?.cancel()
@@ -831,6 +865,8 @@ object PanelMessages {
         p.line = MessageStrings.stoppedNothingSent("send" to send).render(langs(p.lang))
         update(p)
         VoiceLog.add(VoiceEvent.MSG_REPLY_CARD, why, if (p.translate) 1 else 0, if (p.thread.isGroup) 1 else 0)
+        // fix-car-stay-d: a stop said out loud is answered out loud, so a driver knows nothing went.
+        if (aloud) speak(listOf(spoken(MessageStrings.stoppedSaid(), p.lang)))
     }
 
     private fun cancel(p: Pending, quiet: Boolean = false) {
@@ -849,6 +885,8 @@ object PanelMessages {
         // Once per card: a tap and a spoken yes (or two taps) both launched before it left send it once (this runs on the
         // main thread up to the bridge, so the first one here marks it SENDING before any other can look).
         if (p.state != ReplyCardState.WAITING && p.state != ReplyCardState.STOP_WINDOW) return
+        // fix-car-stay-g: sent by a tap or a spoken yes in a session, its result after the headset went names no one aloud.
+        p.inSession = p.inSession || app.heyrobot.assistant.handsfree.PanelHandsFree.active
         val lang = p.lang
         val name = p.thread.name
         p.state = ReplyCardState.SENDING
@@ -856,9 +894,7 @@ object PanelMessages {
         update(p)
         val a = link().reply(ReplyRequest(p.thread.key, plan.text, plan.newestSeen)) ?: run {
             // No answer from the main process: it may have gone. Never sent again by itself.
-            p.state = ReplyCardState.FAILED
-            p.line = MessageStrings.unknownSent().render(langs(lang))
-            update(p)
+            failed(p, MessageStrings.unknownSent())
             return
         }
         when (a.outcome) {
@@ -885,21 +921,26 @@ object PanelMessages {
                 p.line = MessageStrings.wroteAgainLine("name" to name, "said" to said).render(langs(lang))
                 p.lineHasMessage = true
                 update(p)
-                speak(listOf(spoken(MessageStrings.wroteAgain("name" to name), lang),
-                    Spoken(said, MessageLanguage.frenchLine(langId)(said)), spoken(MessageStrings.tapSendAnyway("send" to send), lang)))
-                saidAloud(said)
+                if (aloud(p)) speak(listOf(spoken(MessageStrings.wroteAgain("name" to name), lang),
+                    Spoken(said, MessageLanguage.frenchLine(langId)(said)), spoken(MessageStrings.tapSendAnyway("send" to send), lang))) else notSentNoName(p)
+                if (aloud(p)) saidAloud(said)
             }
             ReplyOutcome.GONE, ReplyOutcome.CANCELED_PI, ReplyOutcome.CHANGED -> {
                 if (a.outcome == ReplyOutcome.CHANGED) VoiceLog.add(VoiceEvent.MSG_GUARD, GuardCode.RECIPIENT_MISMATCH)
                 p.state = ReplyCardState.GONE
                 p.line = MessageStrings.goneOpenChat("name" to name).render(langs(lang))
                 update(p)
-                speak(listOf(spoken(MessageStrings.goneOpenChat("name" to name), lang)))
+                if (aloud(p)) speak(listOf(spoken(MessageStrings.goneOpenChat("name" to name), lang))) else notSentNoName(p)
             }
             ReplyOutcome.LOCKED, ReplyOutcome.AUTH_REQUIRED -> {
                 p.state = ReplyCardState.WAITING
                 p.line = MessageStrings.unlockThenSend("send" to send).render(langs(lang))
                 update(p)
+                // fix-car-132: behind an app you opened, said and shown as a notice: nobody sees the card waiting.
+                if (hold.away) {
+                    notice(p, MessageStrings.unlockThenSend("send" to send).render(langs(lang)))
+                    speak(listOf(spoken(MessageStrings.unlockThenSend("send" to send), lang)))
+                }
             }
             ReplyOutcome.OPEN_CHAT -> openChat(p)
             ReplyOutcome.OFF -> {
@@ -907,12 +948,38 @@ object PanelMessages {
                 p.line = MessageAccess.offText().render(langs(lang))
                 update(p)
             }
-            ReplyOutcome.FAILED -> {
-                p.state = ReplyCardState.FAILED
-                p.line = MessageStrings.notSentOpenChat().render(langs(lang))
-                update(p)
-            }
+            ReplyOutcome.FAILED -> failed(p, MessageStrings.notSentOpenChat())
         }
+    }
+
+    /** fix-car-stay-c: a reply that didn't go (or may not have) says so on its card, on the car screen and out loud. */
+    private fun failed(p: Pending, why: Phrase) {
+        p.state = ReplyCardState.FAILED
+        val line = why.render(langs(p.lang))
+        p.line = line
+        update(p)
+        notice(p, line)
+        speak(listOf(spoken(why, p.lang)))
+    }
+
+    /**
+     * fix-car-stay-f: a reply whose 3 seconds began in a headset or car session that has ended since (the headset went): a
+     * result that names someone or holds a message shows on its card and the car screen only; "Sent" and a failure are said.
+     * fix-car-134: so does one on a car quiet turn with a screen that isn't trusted, session or not (PanelHandsFree.allow lets
+     * every line through with no session): "wrote again" and "gone" fall back to notSentNoName.
+     */
+    private fun aloud(p: Pending): Boolean = hold.aloud(p.inSession, app.heyrobot.assistant.handsfree.PanelHandsFree.active) && !(CarModeController.quietTurn && !CarModeController.trusted)
+
+    /** fix-car-132: a notice made behind an app a tap opened is shown again when the panel opens (its show clears the last one); fix-car-133: while its card stays so. */
+    private fun notice(p: Pending, text: String) {
+        PanelController.notify(text)
+        hold.notice(p.replyId, p.state, text)
+    }
+
+    /** fix-car-stay-g: the headset gone, a reply that didn't go says so, aloud and as a notice, naming no one. */
+    private fun notSentNoName(p: Pending) {
+        notice(p, MessageStrings.notSentOpenChat().render(langs(p.lang)))
+        speak(listOf(spoken(MessageStrings.notSentOpenChat(), p.lang)))
     }
 
     /** The app's chat with your words as a draft: Cheogram's own chat by its shortcut; another app gets them shared. */
@@ -1000,8 +1067,8 @@ object PanelMessages {
             // Anything said in its 3 seconds but a yes stops it (core ReplyWindow): "no, no, don't send it" as well as "stop".
             return when (app.heyrobot.core.messages.ReplyWindow.answer(q, wakes)) {
                 app.heyrobot.core.messages.WindowAnswer.YES -> true
-                app.heyrobot.core.messages.WindowAnswer.STOP -> { stopWindow(CardEnd.STOPPED); true }
-                app.heyrobot.core.messages.WindowAnswer.OTHER -> { stopWindow(CardEnd.STOPPED); false }
+                app.heyrobot.core.messages.WindowAnswer.STOP -> { stopWindow(CardEnd.STOPPED, aloud = true); true }
+                app.heyrobot.core.messages.WindowAnswer.OTHER -> { stopWindow(CardEnd.STOPPED, aloud = true); false }
             }
         }
         if (p.state != ReplyCardState.WAITING || p.plan == null) return false
@@ -1016,6 +1083,15 @@ object PanelMessages {
         val yesCounts = p.plan!!.voiceYesCounts && (!fromVoice || VoiceHub.settings.voiceCards)
         if (!yesCounts) {
             val words = MessageStrings.tapSendOnCard("send" to send)
+            PanelController.notify(words.render(langs(p.lang)))
+            speak(listOf(spoken(words, p.lang)))
+            return true
+        }
+        // fix-car-long-card-b: with the car screen up and no panel, a voice yes sends only words Robot read out in full
+        // (CarCardVoice.replyYes): Speak replies off, cut off, changed since, untrusted or over about a minute aloud take a tap.
+        if (fromVoice && app.heyrobot.assistant.car.CarModeController.quietTurn &&
+            !app.heyrobot.assistant.car.CarCardVoice.replyYes(app.heyrobot.assistant.car.CarModeController.trusted, p.readOut, p.sendText)) {
+            val words = app.heyrobot.core.i18n.TurnStrings.carTap()
             PanelController.notify(words.render(langs(p.lang)))
             speak(listOf(spoken(words, p.lang)))
             return true
@@ -1053,16 +1129,25 @@ object PanelMessages {
      * each piece passes OutputGuard first as personal (PanelHandsFree.allow: private headphones only, the car's two
      * sentences), unless [guarded] says the caller already asked it (HandsFreeMessages).
      */
-    private fun speak(pieces: List<Spoken>, guarded: Boolean = false) {
-        if (!PanelController.state.value.speak) return
+    /** True when every piece with words was said (Speak replies on, none held back by the hands-free guard). */
+    private fun speak(pieces: List<Spoken>, guarded: Boolean = false): Boolean {
+        if (!PanelController.state.value.speak) return false
         VoiceHub.tts.prewarm()
         val frVoice = MessageVoices.french(VoiceHub.settings.voiceChoice)
+        var all = true
         for (p in pieces) {
             val clean = SpeechText.clean(p.text)
-            if (clean.isEmpty()) continue
-            if (!guarded && !app.heyrobot.assistant.handsfree.PanelHandsFree.allow(clean) { true }) continue
+            // fix-car-132: words that clean to nothing (emoji only) weren't heard, so a voice yes can't send them.
+            if (clean.isEmpty()) { if (!SpeechText.heardWhole(p.text)) all = false; continue }
+            if (!guarded && !app.heyrobot.assistant.handsfree.PanelHandsFree.allow(clean) { true }) { all = false; continue }
             if (p.french && frVoice != null) VoiceHub.tts.speakOther(clean, frVoice.first, frVoice.second) else VoiceHub.tts.speak(clean)
         }
+        return all
+    }
+
+    /** VoiceHub.stopVoice while Robot talks: a reply card's read-out under way is cut off, so not read out in full. */
+    internal fun voiceStopped() {
+        card?.readOut = null
     }
 
     // ------------------------------------------------------------------ 0.8: headset and car (assistant/handsfree HandsFreeMessages)

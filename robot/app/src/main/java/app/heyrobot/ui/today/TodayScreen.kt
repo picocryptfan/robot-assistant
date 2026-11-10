@@ -8,6 +8,10 @@ import android.provider.CalendarContract
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -138,6 +142,8 @@ class TodayActions(
     /** H6: fetch today's forecast (the one way the page goes online), and Settings › Weather to save a town. */
     val fetchWeather: () -> Unit = {},
     val weatherTown: () -> Unit = {},
+    /** HS1: car mode by hand, beside Talk (ui/car/CarButton, as Getting started's Car mode button). */
+    val carMode: () -> Unit = {},
 )
 
 /** The Home tab: Today when you turned it on, else the getting-started home (with the one offer, once). */
@@ -214,6 +220,7 @@ private fun TodayHome(home: HomeSettings, ready: Boolean, a: AppActions, modifie
     val v = view ?: return Box(modifier.fillMaxSize())
     TodayScreen(v, ready, lang, notes, order = home.order, weatherBusy = weatherBusy, weatherProblem = weatherProblem?.str(), t = TodayActions(
         talk = { a.talk(null) },
+        carMode = a.carMode,
         openTime = { ms -> app.heyrobot.ui.calendar.CalendarJump.at = ms; a.openTab(Tab.CALENDAR) },
         allowCalendar = a.askCalendar,
         openList = { a.openPage(Page.ListPage(it)) },
@@ -282,6 +289,7 @@ fun TodayScreen(v: TodayView, ready: Boolean, lang: Lang, notes: List<Pair<Strin
         val column = minOf(maxWidth, WIDEST)
         val strip = fontScale < 1.99f && maxWidth.value / fontScale >= 320f && (column - STRIP_EDGES) / 7 >= 48.dp
         val pinned = maxHeight >= SHORT
+        val stacked = TalkRow.stacked(maxWidth.value, fontScale)
         Column(Modifier.widthIn(max = WIDEST).fillMaxWidth().fillMaxSize()) {
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
                 Spacer(Modifier.height(4.dp))
@@ -304,10 +312,10 @@ fun TodayScreen(v: TodayView, ready: Boolean, lang: Lang, notes: List<Pair<Strin
                     Text(stringResource(R.string.today_done), style = MaterialTheme.typography.bodyLarge)
                     TextButton(onClick = t.gettingStarted, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.today_getting_started)) }
                 }
-                if (!pinned) Talk(t.talk)
+                if (!pinned) Talk(t.talk, t.carMode, stacked)
                 Spacer(Modifier.height(8.dp))
             }
-            if (pinned) Box(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) { Talk(t.talk) }
+            if (pinned) Box(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) { Talk(t.talk, t.carMode, stacked) }
         }
     }
 }
@@ -477,12 +485,42 @@ private fun Tap(text: String, go: () -> Unit) {
     Text(text, Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(onClick = go).padding(vertical = 12.dp), style = MaterialTheme.typography.bodyLarge)
 }
 
+/** HS1: Talk and Car mode side by side (2 to 1), or stacked when the screen is narrow or the text large. */
+internal object TalkRow {
+    /** Below this width (dp) the two don't fit side by side. */
+    const val NARROW = 360f
+    /** From this font scale the labels need the whole width. */
+    const val LARGE_FONT = 1.5f
+    fun stacked(widthDp: Float, fontScale: Float): Boolean = widthDp < NARROW || fontScale >= LARGE_FONT
+}
+
+/** Talk first in both forms, so TalkBack reads it first. */
 @Composable
-private fun Talk(talk: () -> Unit) {
-    Button(onClick = talk, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp), shape = RoundedCornerShape(20.dp)) {
+private fun Talk(talk: () -> Unit, car: () -> Unit, stacked: Boolean) {
+    if (stacked) Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        TalkButton(talk, Modifier.fillMaxWidth())
+        CarModeButton(car, Modifier.fillMaxWidth())
+    } else Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        TalkButton(talk, Modifier.weight(2f).fillMaxHeight())
+        CarModeButton(car, Modifier.weight(1f).fillMaxHeight())
+    }
+}
+
+@Composable
+private fun TalkButton(talk: () -> Unit, modifier: Modifier) {
+    Button(onClick = talk, modifier = modifier.heightIn(min = 56.dp), shape = RoundedCornerShape(20.dp)) {
         Icon(RIcons.Mic, null)
         Spacer(Modifier.width(10.dp))
         Text(stringResource(R.string.home_talk_to_robot), style = MaterialTheme.typography.titleMedium)
+    }
+}
+
+@Composable
+private fun CarModeButton(car: () -> Unit, modifier: Modifier) {
+    FilledTonalButton(onClick = car, modifier = modifier.heightIn(min = 56.dp), shape = RoundedCornerShape(20.dp), contentPadding = PaddingValues(horizontal = 10.dp)) {
+        Icon(RIcons.Car, null)
+        Spacer(Modifier.width(6.dp))
+        Text(stringResource(R.string.home_car_mode), style = MaterialTheme.typography.titleMedium, maxLines = 2, textAlign = TextAlign.Center)
     }
 }
 

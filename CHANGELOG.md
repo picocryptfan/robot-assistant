@@ -4,6 +4,38 @@ What changed in each version of Robot, newest first. Each version's full notes, 
 [`robot/README.md`](robot/README.md) ("What's new in …" and the feature sections). Versions before 1.0 were test
 builds.
 
+## 1.3.1 (unreleased)
+
+- Settings › Skills › Connections: after you add a connection, its page opens in the form's place, so Remove and Back
+  take you to the list of connections, not back to an empty form.
+- Car mode, messages: a reply you dictate now sends when its 3 seconds end even if you tap into another app in that time;
+  before, it was dropped without a word. When a reply didn't go, Robot says "Didn't send. Open the chat with your
+  reply?" on the card, on the car screen and in a notification. Once your headset has gone, nothing about who it was for
+  is said from the speaker, and the same holds while you are in an app you tapped into; with the phone locked there, Robot
+  says to unlock it and tap send, and shows that as a notice that is still there when you come back. A reply that is only
+  emoji isn't counted as read out, so a yes can't send it. The car screen's Talk stops an answer to a question you asked in
+  a reply's 3 seconds, instead of waiting for it. While Car mode isn't trusted on a locked phone, no reply card is read
+  out: Robot says it needs a tap, and nothing it says about a reply you tapped send on names anyone. Closing Robot while a
+  reply is sending names no one aloud either, and its notice is shown when you come back.
+- Car mode, the panel: Talk, the car button, "hey robot" and the power button no longer put Robot's panel over the car
+  screen, and an app or a map you ask for opens beside it. If Android won't, Robot says "Couldn't open that app beside
+  the car screen" and the car screen comes back.
+- Car mode, long replies: a long card (a long reminder, a picture, a reply over 900 characters) stays on the car screen,
+  whole and scrolling, instead of opening Robot's window over it. Robot reads it out, then asks for a yes; a yes said
+  before it finishes approves nothing. A card that needs a tap says "That one needs a tap. It's on the car screen."
+- Car mode, a question that's a lot for Robot: while Car mode isn't trusted on a locked phone, the card that offers your
+  helper names no helper and doesn't ask for a tap. Say "here", or nothing, and Robot tries it; to ask your helper, ask
+  again once you're parked.
+- Car mode, music: you can pick another music app again. Hold the music tile for the list, or say "use ... in the car"
+  (« utilise ... dans l'auto »). Before, the list came up only while none was set.
+- Car mode, the Maps button: with your music app set, one tap shows it beside Robot and the next brings the map back.
+  With a music and a podcast app set, it opens the one on the music tile or last used this drive, and asks only when
+  neither was. After you open an app by voice, the button shows Maps. An app you put there by hand Robot can't see. If your music app can't open beside Robot, the button shows Maps again.
+- Today: Car mode now sits beside Talk to Robot, or under it on a narrow screen or with large text.
+- French: the messages for lists, files and memory saved by a newer Robot name that newer Robot, not this one.
+- Car mode's Yes and the conversation summary's Send no longer take a tap that comes through another app's window
+  drawn over Robot's, so an app that draws over others can't make you send a message, place a call or send a transcript.
+
 ## 1.3.0 (2026-11-08)
 
 Skills 1.3. Nothing new runs by itself and no new permission is asked.

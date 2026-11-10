@@ -171,6 +171,7 @@ object MessageStrings : Strings("msg", area = "messages") {
     val sendingTo = s("sending_to", "Sending to {name}:", "J'envoie à {name} :")
     val stoppedNothingSent = s("stopped_nothing_sent", "Stopped. Nothing was sent; tap {send} to send it anyway.",
         "Arrêté. Rien n'est envoyé; touche {send} pour l'envoyer quand même.")
+    val stoppedSaid = s("stopped_said", "Stopped. Nothing was sent.", "Arrêté. Rien n'a été envoyé.")
     val cancelledNothingSent = s("cancelled_nothing_sent", "Cancelled. Nothing was sent.", "Annulé. Rien n'a été envoyé.")
     val sending = s("sending", "Sending…", "Envoi…")
     val unknownSent = s("unknown_sent", "Robot can't tell whether it went. Check the chat before sending it again.",

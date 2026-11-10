@@ -36,7 +36,7 @@
     <string name="lists_not_now">Robot n’a pas pu ouvrir tes listes pour l’instant. Réessaie dans un instant.</string>
     <string name="lists_key_gone">La clé des listes de Robot n’existe plus&#160;: tes listes ne peuvent donc pas être lues.</string>
     <string name="lists_unreadable">Robot n’a pas pu lire tes listes. Le fichier est endommagé.</string>
-    <string name="lists_too_new">Tes listes viennent d’une version plus récente de Robot&#160;: celle-ci ne peut donc ni les lire ni les changer. Mets Robot à jour, ou recommence.</string>
+    <string name="lists_too_new">Tes listes ont été enregistrées par un Robot plus récent et ne peuvent pas être lues ni changées ici. Mets Robot à jour, ou recommence.</string>
     <string name="lists_restore">Restaurer à partir d’une sauvegarde</string>
     <string name="lists_restore_detail">Dans %s</string>
     <string name="lists_start_over">Recommencer</string>

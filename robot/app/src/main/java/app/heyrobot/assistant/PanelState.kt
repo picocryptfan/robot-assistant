@@ -105,6 +105,8 @@ data class UiAction(
     /** fix-124c: a waiting card's question and its default buttons in the conversation's language (CardWords), not the menus'. */
     val ask: String? = null,
     val doIt: String? = null,
+    /** fix-car-long-card-b: made with the car screen up and not one to read out (CarCardVoice.tapOnly): only a tap approves it, wherever it shows. */
+    val carTap: Boolean = false,
 ) {
     /** What a spoken or typed answer needs to know about it (core CardAnswer). */
     val waiting: CardAnswer.Waiting get() = CardAnswer.Waiting(choices.size, tapFor, personal, confirm, say = detail.takeIf { termux != null && tapFor != null })

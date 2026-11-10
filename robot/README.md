@@ -46,6 +46,11 @@ Robot 1.3.0 (8 Nov 2026), Skills, from `release/1.3`. Settings stay at schema 13
 INTERNET comment in the manifest names every use by process. CHANGELOG.md has the list, PRIVACY.md and SECURITY.md what
 goes online and how it is guarded.
 
+1.3.1 (not yet released) fixes the page of a connection you have just added (Remove and Back land on the list of connections)
+and Car mode: a message reply survives a tap into an app in its 3 seconds and says when it didn't go (naming no one aloud while you are in that app), no panel over the car
+screen, long cards stay on it, the music tile's hold and "use ... in the car" pick the music app again, the Maps button
+swaps between your map and your music app (`CarBeside.swap`), and Today's Car mode button sits beside Talk.
+
 - **MCP servers as connections.** A new kind of connection (`ConnKind.MCP`, `McpClient` in `:helpers`, run
   from `:voice`). Only an address on your home network, a Tailscale address (100.64/10) or this phone's loopback, checked
   when you type it and on every lookup and socket (`ConnRules.homeOnly`, `ConnHttp`'s CallPlace); loopback needs a token;
@@ -848,7 +853,8 @@ Files keeps the files and offers Restore from a backup or Delete them all.
 
 ### Reading and filing
 
-- `:files` (`.parse.FileParseService`) is the only place a file's bytes are decoded: an isolated process with no
+- `:files` (`.parse.FileParseService`) is the only place a Robot Files file's bytes are decoded (audio you share with Ask
+  Robot, or import for the Transcription check, is the exception: see below): an isolated process with no
   permissions, a fresh instance per link, a HELLO that proves it runs under an isolated uid before anything is sent,
   hand-written big-endian frames decoded strictly (20,000 mutations fuzzed), its answer header read as a plain int. Input
   is at most 64 MiB, 32,768 px a side and 260 MP; 3 pages are rendered for reading, 10 for text; text is capped at 64 KiB;
@@ -857,6 +863,11 @@ Files keeps the files and offers Restore from a backup or Delete them all.
   picture.
 - The type comes from the first bytes, never the name or the sender's claim. ZIP, HTML, SVG and scripts, a ZIP appended
   to a picture or a PDF, and markup deep in a text are `DANGEROUS`: held in Inbox, never parsed, never quoted to the model.
+- The exception is audio (`SharedAudio`, D20): a voice message shared with Ask Robot or a clip imported for the
+  Transcription check is not decoded in `:files`, since an isolated process can't reach Android's media services. It is read
+  into memory in `:voice` (at most 25 MB), its type checked from the first bytes in Robot's own code (`AudioSniff`), then
+  parsed and decoded by Android's `media.extractor` and `media.swcodec`, in memory only. Robot reads the format's two
+  numbers and the sound, both capped.
 - `FilingRun` (`:voice`, nothing while locked or during a phone lock): `FileRules` and `FileFields` on the text layer
   first; the model only when needed, through `:brain`'s `FILE_READ` one-shot (a JPEG of at most 4 MiB, checked) or
   `READ_TEXT`, its kind taken only when the words agree. `FileFields` re-reads every amount, date, currency, tax and
@@ -2435,7 +2446,7 @@ helpers, the engine hardening and the built-in updater; each has its section bel
   isolated process" below).
 - Phone lock (1.1) has a small process of its own, `:lock` (`lock/`): the accessibility service, the cover, the code pad and
   the exact-alarm receiver. It never loads the model, and it outlives the panel and Settings. See [What's new in 1.1](#whats-new-in-11).
-- Robot Files (1.1) decodes every file in `:files` (`.parse.FileParseService`): an `android:isolatedProcess` service, not
+- Robot Files (1.1) decodes every file you add to it inside `:files` (`.parse.FileParseService`): an `android:isolatedProcess` service, not
   exported, no permissions, bound with `bindIsolatedService` and a fresh instance per link; it gets bytes in a read-only
   shared memory region and writes into one the caller made. The sealed store (`core/files/FileStore.kt`) is used by the
   main app and `:voice`, each behind the vault's lock gate (`app/sys/FilesVault.kt`). See [Robot Files (1.1)](#robot-files-11).
@@ -7455,6 +7466,9 @@ one asking. Design: `../docs/plans/routines-headset-car-design.md` §1 and §4; 
   map links; a picked app opens every route Robot opens (Google Maps through its navigation link, others through a
   geo: link, without your position). A picked app now signed by someone else opens nothing until you pick it again. In
   split screen, below 520 dp, the music tile and Talk come first and the four buttons share one row.
+  Since 1.3.1: a hold on the music tile (or "use ... in the car") picks the music app; a fourth button set to Maps names
+  your music app while Robot's map is beside the car screen and brings the map back on the next tap, and shows Maps again
+  when Robot can't name the app beside it or couldn't open it.
 - **No driving restrictions** (1.0, the user's decision of 13 Oct 2026: "I do not want any driving related
   restrictions. Period."). In the car every request behaves as it would outside the car with the phone in the same lock
   state; the trusted session still loosens car functions on the lock screen. 0.8 to 0.9 held some things for when you

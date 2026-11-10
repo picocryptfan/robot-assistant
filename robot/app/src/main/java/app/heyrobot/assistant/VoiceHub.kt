@@ -263,6 +263,8 @@ object VoiceHub {
     fun stopVoice(why: TtsStop) {
         // A routine speaking (0.8) ends, or waits for "next" or "repeat" after "hey robot".
         RoutineVoice.onVoiceStopped(why)
+        // fix-car-long-card-b: a card or reply read out in the car and cut off isn't read out whole.
+        if (tts.isSpeaking) { PanelController.voiceStopped(); PanelMessages.voiceStopped() }
         if (tts.isSpeaking && !stopLogged) {
             stopLogged = true
             VoiceLog.add(VoiceEvent.TTS_STOP, why, (SystemClock.elapsedRealtime() - speakStartE).toInt())

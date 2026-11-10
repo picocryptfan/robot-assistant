@@ -121,7 +121,8 @@ class RobotSession(ctx: Context) : VoiceInteractionSession(ctx), LifecycleOwner,
     /** Car mode: with the car screen up, Talk, the car's button and "hey robot" open no window; the screen shows the lines. UNVERIFIED on the phone. */
     override fun onPrepareShow(args: Bundle?, showFlags: Int) {
         super.onPrepareShow(args, showFlags)
-        setUiEnabled(!CarModeController.prepareShow(ShowGate.source(args, showFlags)))
+        setUiEnabled(!CarModeController.prepareShow(ShowGate.source(args, showFlags), app.heyrobot.core.car.CarTurn.quietAllowed(
+            ShowGate.userShow(args, showFlags), ShowGate.source(args, showFlags) == null, Assistant.locked(context))))
     }
 
     override fun onShow(args: Bundle?, showFlags: Int) {
@@ -131,7 +132,6 @@ class RobotSession(ctx: Context) : VoiceInteractionSession(ctx), LifecycleOwner,
         LookStore.reload(context)
         registry.currentState = Lifecycle.State.RESUMED
         PanelController.attach(this)
-        CarModeController.windowOpener = { setUiEnabled(true) }
         // 1.0 (ipc-1, ipc-2): only what Robot itself asked for counts; another app's showAssist opens the plain panel.
         PanelController.onShow(ShowGate.args(context, args, showFlags), Assistant.locked(context), showFlags)
         CarModeController.quietShown()
@@ -145,7 +145,6 @@ class RobotSession(ctx: Context) : VoiceInteractionSession(ctx), LifecycleOwner,
     }
 
     override fun onDestroy() {
-        CarModeController.windowOpener = null
         PanelController.detach(this)
         registry.currentState = Lifecycle.State.DESTROYED
         super.onDestroy()
@@ -211,8 +210,8 @@ class RobotSession(ctx: Context) : VoiceInteractionSession(ctx), LifecycleOwner,
     override fun hidePanel() = hide()
 
     override fun launch(intent: Intent): Boolean = try {
-        context.startActivity(intent)
-        true
+        // fix-car-stay: with the car screen up, an app (your maps app's search or route, an app by name) opens beside it, never over it.
+        CarModeController.openBeside(intent) ?: run { context.startActivity(intent); true }
     } catch (t: Throwable) {
         RLog.w("panel_launch", t)
         false

@@ -88,6 +88,15 @@ class CarTurnLinesTest {
         assertTrue(n.ui.ask!!.canYes)
     }
 
+    /** fix-car-stay-c: a reply in its 3 seconds, or on its way, holds a turn with no panel (CarModeController.quietCheck). */
+    @Test fun aReplyInItsStopWindowOrOnItsWayIsSending() {
+        fun with(st: ReplyCardState) = state(listOf(said("").copy(reply = ReplyCardView("Reply to Marie", st, text = "On my way"))))
+        assertTrue(CarTurnLines.sending(with(ReplyCardState.STOP_WINDOW)))
+        assertTrue(CarTurnLines.sending(with(ReplyCardState.SENDING)))
+        for (st in listOf(ReplyCardState.WAITING, ReplyCardState.SENT, ReplyCardState.FAILED)) assertFalse(CarTurnLines.sending(with(st)))
+        assertFalse(CarTurnLines.sending(state()))
+    }
+
     @Test fun aNoticeShows() {
         assertEquals("Not ready", CarTurnLines.of(state(notice = Notice("Not ready")))!!.ui.words)
     }
@@ -96,40 +105,58 @@ class CarTurnLinesTest {
         assertNull(CarTurnLines.of(state()))
     }
 
-    // The 1.1.2 audit: a Yes approves only what the panel showed whole; anything else goes to the panel's window.
+    // fix-car-long-card: every card stays on the car screen, whole (it scrolls), never the panel over it; what Robot
+    // can't read out well takes a tap (Approve). The 1.1.2 audit's rule holds: a Yes approves only what the pane shows whole.
     private fun pending(a: UiAction) = CarTurnLines.of(state(turns = listOf(said("", a))))!!
     private val plain = card(ActionStatus.PENDING)
 
-    @Test fun aPlainCardKeepsItsYesAndNoWindow() {
+    @Test fun aPlainCardKeepsItsLookAndItsYes() {
         val n = pending(plain)
         assertTrue(n.ui.ask!!.canYes)
-        assertFalse(n.needsWindow)
+        assertTrue(n.ui.ask!!.whole)
+        assertFalse(n.tapOnly)
         assertEquals("Call Marie?", n.ui.ask!!.text)
     }
 
-    @Test fun noYesWithABody() {
-        val n = pending(plain.copy(body = "The words"))
-        assertFalse(n.ui.ask!!.canYes)
-        assertTrue(n.needsWindow)
-        assertTrue(n.ui.ask!!.text.contains("The words"))
+    @Test fun aMessagesWordsShowWholeInThePaneWithItsYes() {
+        val n = pending(plain.copy(body = "The words\non three\nlines"))
+        assertTrue(n.ui.ask!!.canYes)
+        assertFalse(n.ui.ask!!.whole)
+        assertFalse(n.tapOnly)
+        assertEquals("Call Marie?\nThe words\non three\nlines", n.ui.ask!!.text)
     }
 
-    @Test fun noYesForTermux() {
+    @Test fun termuxShowsItsCommandAndTakesATap() {
         val n = pending(plain.copy(termux = app.heyrobot.ui.common.TermuxCardView("k", "rm -r x")))
-        assertFalse(n.ui.ask!!.canYes)
-        assertTrue(n.needsWindow)
+        assertTrue(n.tapOnly)
+        assertTrue(n.ui.ask!!.tapOnly)
+        assertTrue(n.ui.ask!!.canYes)
+        assertTrue(n.ui.ask!!.text.contains("rm -r x"))
     }
 
-    @Test fun noYesForATapOnlyCard() {
+    @Test fun aCardThatNeedsATapShowsItsApprove() {
         val n = pending(plain.copy(tapFor = app.heyrobot.core.AskWhy.WHO))
-        assertFalse(n.ui.ask!!.canYes)
-        assertTrue(n.needsWindow)
+        assertTrue(n.tapOnly)
+        assertTrue(n.ui.ask!!.canYes)
     }
 
-    @Test fun noYesWhenTheWordsDontFitOrChoicesOverflow() {
-        assertTrue(pending(plain.copy(summary = "x".repeat(61))).needsWindow)
-        assertFalse(pending(plain.copy(detail = "y".repeat(80))).ui.ask!!.canYes)
-        assertTrue(pending(plain.copy(choices = listOf("a"), more = 2)).needsWindow)
+    @Test fun aLongReminderStaysInThePaneAndOverAMinuteAloudTakesATap() {
+        val long = pending(plain.copy(detail = "word ".repeat(100)))
+        assertFalse(long.ui.ask!!.whole)
+        assertFalse(long.tapOnly)
+        assertTrue(pending(plain.copy(detail = "word ".repeat(200))).tapOnly)
+    }
+
+    @Test fun choicesShowInThePaneAndAreAnsweredAloud() {
+        val n = pending(plain.copy(choices = listOf("Marie Martin", "Marie Roy"), more = 2))
+        assertFalse(n.ui.ask!!.canYes)
+        assertTrue(n.ui.ask!!.text.endsWith("Marie Martin\nMarie Roy"))
+    }
+
+    @Test fun aButtonWordTooLongForItsButtonGivesWayToTheCarScreensOwn() {
+        val a = pending(plain.copy(confirm = "Send to the whole group", cancel = "Keep")).ui.ask!!
+        assertEquals(null, a.yes)
+        assertEquals("Keep", a.no)
     }
 
     @Test fun theReasonAndTheButtonsOwnWordsShow() {

@@ -146,6 +146,29 @@ class ConnectionsSettingsTest {
     }
 
     /** fix-skills13-security 1 and 4: an MCP token over http only to this phone or Tailscale; a server on this phone can be stood in for. */
+    /** fix-mcp-remove-back: a server just added opens its page in place of the form, so Remove (and Back) land on the list. */
+    @Test fun removingAServerJustAddedLandsOnTheListNotTheForm() {
+        val list = app.heyrobot.ui.Page.Settings(ConnRoutes.LIST)
+        val nav = PageStack(listOf(app.heyrobot.ui.Page.Settings(SettingsRoutes.SKILLS), list, app.heyrobot.ui.Page.Settings(ConnRoutes.add(ConnKind.MCP))))
+        val act = ConnSettingsActions(open = { nav.open(app.heyrobot.ui.Page.Settings(it)) }, instead = { nav.replace(app.heyrobot.ui.Page.Settings(it)) }, save = { saved += it; true }, remove = { calls += "remove $it" })
+        rule.show {
+            val route = (nav.top as app.heyrobot.ui.Page.Settings).route
+            if (route == ConnRoutes.add(ConnKind.MCP)) AddConnectionScreen(ConnKind.MCP, data(emptyList()), act, SnackbarHostState(), onBack = nav::back)
+            else if (route != ConnRoutes.LIST) ConnectionPageScreen(saved.single(), data(saved.toList()), act, SnackbarHostState(), onBack = nav::back)
+        }
+        rule.onNode(hasText("Address") and SemanticsMatcher.keyIsDefined(SemanticsProperties.EditableText)).performTextReplacement("https://mcp.example.org/mcp")
+        rule.onRow("Save").performClick()
+        val c = saved.single()
+        assertEquals(listOf(app.heyrobot.ui.Page.Settings(SettingsRoutes.SKILLS), list, app.heyrobot.ui.Page.Settings(ConnRoutes.page(c.id))), nav.pages)
+        rule.scrollToText("Remove connection")
+        rule.onRow("Remove connection").performClick()
+        rule.inDialog("Remove connection").performClick()
+        assertEquals(listOf("remove ${c.id}"), calls)
+        assertEquals(listOf(app.heyrobot.ui.Page.Settings(SettingsRoutes.SKILLS), list), nav.pages)
+        nav.back()
+        assertEquals(listOf(app.heyrobot.ui.Page.Settings(SettingsRoutes.SKILLS)), nav.pages)
+    }
+
     @Test fun anMcpServerSaysWhereItsTokenGoesAndThatOneOnThisPhoneCanBeStoodInFor() {
         rule.show { AddConnectionScreen(ConnKind.MCP, data(emptyList()), actions(), SnackbarHostState(), onBack = {}) }
         val address = hasText("Address") and SemanticsMatcher.keyIsDefined(SemanticsProperties.EditableText)

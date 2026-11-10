@@ -838,6 +838,7 @@ fun RobotAppUi(activity: MainActivity) {
             }
         },
         openPage = { page = it },
+        replacePage = { nav.replace(it) },
         bargeTest = { run ->
             if (snap.facts?.active != true) tell(R.string.home_make_assistant_test)
             else Cmd.send(ctx, Cmd.BARGE_TEST, Bundle().apply { putString(Cmd.EXTRA_RUN, run.name) })
@@ -1081,6 +1082,8 @@ class AppActions(
     val deleteHelperKey: (String) -> Unit = {},
     val removeHelper: (String) -> Unit = {},
     val openPage: (Page) -> Unit,
+    /** [Page] in place of the one showing ([app.heyrobot.ui.settings.PageStack.replace]). */
+    val replacePage: (Page) -> Unit = openPage,
     val bargeTest: (BargeRun) -> Unit,
     /** 0.4.0: approximate location for the weather (asked here only), and Android's Usage access page for Robot. */
     val askLocation: () -> Unit = {},

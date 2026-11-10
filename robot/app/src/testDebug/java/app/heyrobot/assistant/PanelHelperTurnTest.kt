@@ -132,6 +132,8 @@ class PanelHelperTurnTest {
         override val turnLangs = Langs.EN
         override fun screenLangs() = Langs.EN
         override val routineTapOnly: Pair<String, String>? = null
+        override val carQuiet get() = this@PanelHelperTurnTest.carQuiet
+        override val carTrusted get() = this@PanelHelperTurnTest.carTrusted
         override fun wakePaused(paused: Boolean) {}
         override fun notify(text: String) {}
         override fun speakRobot(text: String) {}
@@ -165,6 +167,8 @@ class PanelHelperTurnTest {
     /** The price each finished reply was given, in millionths of a dollar. */
     private val costs = mutableListOf<Long>()
     private var keySaved = false
+    private var carQuiet = false
+    private var carTrusted = false
     private var lastImage: ByteArray? = null
     private var lastThumb: Bitmap? = null
 
@@ -295,6 +299,40 @@ class PanelHelperTurnTest {
         assertEquals("Essayer ici", card.cancel)
         confirmations.answer(card.id, false)
         assertEquals(HelperChoice.Picked.HERE, got.await())
+    }
+
+    /** fix-car-133: on a car screen that isn't trusted the choice card names no helper aloud, and says "here" works by voice. */
+    @Test fun car_theChoiceCardOnAnUntrustedCarScreenSaysHereWorksByVoice() = runBlocking {
+        state.update { it.copy(speak = true) }
+        carQuiet = true
+        for (trusted in listOf(false, true)) {
+            carTrusted = trusted
+            spoken.clear()
+            val got = async { helperTurn.askChoice("r1", server) }
+            withTimeout(5_000) { while (!confirmations.waiting) delay(5) }
+            val said = spoken.single()
+            assertEquals(said, trusted, said.contains("My server"))
+            assertTrue(said, said.contains(if (trusted) "Try it here" else "here"))
+            confirmations.answer(replies.pendingCard()!!.id, false)
+            assertEquals(HelperChoice.Picked.HERE, got.await())
+        }
+    }
+
+    /** fix-car-133 (long-card-b Low 12): askToShare itself, on a car screen that isn't trusted, says nothing of its own. */
+    @Test fun car_askToShareSaysNothingOfItsOwnOnAnUntrustedCarScreen() = runBlocking {
+        state.update { it.copy(speak = true) }
+        carQuiet = true
+        for (trusted in listOf(false, true)) {
+            carTrusted = trusted
+            spoken.clear()
+            val job = launch { helperTurn.run("r1", HelperCommand.Ask("what is this", extra = Attachment.SCREEN, helper = server.id), server, "ask my server about my screen",
+                Attachment.NONE, "Balance 4471", null, null, emptyList(), voiceAsked = false) }
+            withTimeout(5_000) { while (!confirmations.waiting) delay(5) }
+            val before = spoken.toList()
+            confirmations.answer(replies.pendingCard()!!.id, false)
+            job.join()
+            assertEquals(before.toString(), trusted, before.any { it.contains("My server") })
+        }
     }
 
     /** The real card, on the reply before anything else writes to it; a question typed or spoken, replies read aloud or not. */

@@ -4,7 +4,9 @@ package app.heyrobot.ui.car
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -61,6 +63,7 @@ import androidx.compose.ui.unit.sp
 import app.heyrobot.R
 import app.heyrobot.core.car.CarAction
 import app.heyrobot.core.car.CarBeside
+import app.heyrobot.core.car.CarMusicChoice
 import app.heyrobot.core.car.CarFourth
 import app.heyrobot.core.car.CarInfo
 import app.heyrobot.core.car.CarLarge
@@ -86,8 +89,12 @@ import app.heyrobot.ui.theme.RobotTokens
  */
 data class CarMusicUi(val app: String? = null, val song: String? = null, val playing: Boolean = false, val artist: String? = null, val art: Bitmap? = null, val icon: Bitmap? = null)
 
-/** A question in the information panel: [text], Yes when [canYes] (a list of choices is answered aloud) and Cancel. */
-data class CarAskUi(val text: String, val canYes: Boolean = true, val yes: String? = null, val no: String? = null)
+/**
+ * A question in the information panel: [text], Yes when [canYes] (a list of choices is answered aloud) and Cancel; not
+ * [whole] in two lines, it scrolls; [picture] the one it sends; [tapOnly]: only a tap answers it, its Yes says Approve.
+ */
+data class CarAskUi(val text: String, val canYes: Boolean = true, val yes: String? = null, val no: String? = null, val whole: Boolean = true,
+    val tapOnly: Boolean = false, val picture: Bitmap? = null)
 
 /** Robot at work with no panel: [listening], and the live words or the reply in [words]; [ask] when a card waits. */
 data class CarTurnUi(val listening: Boolean = false, val words: String? = null, val ask: CarAskUi? = null)
@@ -125,6 +132,10 @@ data class CarScreenState(
     val back: CarBeside.Back = CarBeside.Back.NONE,
     /** The fourth button's app's own icon, when it's set to an app. */
     val fourthIcon: Bitmap? = null,
+    /** The Maps button's swap (CarBeside.swap): your music app, while your map is beside this screen; null: Maps. */
+    val swap: CarMusicChoice? = null,
+    /** The icon of the app [swap] opens. */
+    val swapIcon: Bitmap? = null,
 )
 
 class CarScreenActions(
@@ -138,6 +149,8 @@ class CarScreenActions(
     val next: () -> Unit = {},
     val previous: () -> Unit = {},
     val openMusic: () -> Unit = {},
+    /** A hold on the music tile: the list of music apps, also once one is yours. */
+    val chooseMusic: () -> Unit = {},
     val apps: () -> Unit = {},
     val yes: () -> Unit = {},
     val cancel: () -> Unit = {},
@@ -279,19 +292,30 @@ private fun TurnLines(t: CarTurnUi, a: CarScreenActions) {
         return WholeWords(words, c.onSurface, BodySize, BodyLine, 2, Modifier.fillMaxWidth(), FontWeight.Medium)
     }
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val yes = ask.yes ?: stringResource(R.string.car_yes)
+        val yes = ask.yes ?: stringResource(if (ask.tapOnly) R.string.car_approve else R.string.car_yes)
         val no = ask.no ?: stringResource(R.string.car_cancel)
         if (maxHeight >= PanelStacks) Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            WholeWords(ask.text, c.onSurface, BodySize, BodyLine, 2, Modifier.weight(1f).fillMaxWidth(), FontWeight.Medium)
+            AskWords(ask, Modifier.weight(1f).fillMaxWidth())
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Gap)) {
                 if (ask.canYes) PanelButton(yes, a.yes, Modifier.weight(1f).height(Target))
                 PanelButton(no, a.cancel, Modifier.weight(1f).height(Target))
             }
         } else Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(Gap), verticalAlignment = Alignment.CenterVertically) {
-            WholeWords(ask.text, c.onSurface, BodySize, BodyLine, 2, Modifier.weight(1f), FontWeight.Medium)
+            AskWords(ask, Modifier.weight(1f).fillMaxHeight())
             if (ask.canYes) PanelButton(yes, a.yes, Modifier.width(96.dp).height(Target))
             PanelButton(no, a.cancel, Modifier.width(112.dp).height(Target))
         }
+    }
+}
+
+/** A card's words: two lines as before, or the whole card, its picture first, scrolled in the pane (fix-car-long-card). */
+@Composable
+private fun AskWords(ask: CarAskUi, modifier: Modifier) {
+    val c = MaterialTheme.colorScheme
+    if (ask.whole && ask.picture == null) return WholeWords(ask.text, c.onSurface, BodySize, BodyLine, 2, modifier, FontWeight.Medium)
+    Column(modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        ask.picture?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxWidth().heightIn(max = 160.dp), contentScale = ContentScale.Fit) }
+        Text(ask.text, color = c.onSurface, fontSize = BodySize, lineHeight = BodyLine, fontWeight = FontWeight.Medium)
     }
 }
 
@@ -399,13 +423,15 @@ private fun cutToFit(measurer: TextMeasurer, text: String, style: TextStyle, spa
  * The song is what you came for, so it's the big line, then the artist on its own line, then the app's name above them; what
  * the height doesn't hold goes, in the other order. The name opens the app when there is one.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun NowPlaying(m: CarMusicUi, a: CarScreenActions, modifier: Modifier, songSize: TextUnit, songLines: Int, fit: Boolean = false) {
     val c = MaterialTheme.colorScheme
     val ink = if (m.art != null) Color.White else c.onSurface
     val soft = if (m.art != null) ArtSoft else c.onSurfaceVariant
     val open = m.app?.let { stringResource(R.string.car_music_open, it) } ?: stringResource(R.string.car_music_choose)
-    val tap = Modifier.clickable(onClickLabel = open, onClick = a.openMusic)
+    // A hold opens the list of music apps, also once one is yours (fix-car-media-pick).
+    val tap = Modifier.combinedClickable(onClickLabel = open, onClick = a.openMusic, onLongClickLabel = stringResource(R.string.car_music_choose), onLongClick = a.chooseMusic)
     val songLine = songSize * 1.25f
     BoxWithConstraints(modifier.heightIn(min = RobotTokens.minTouch).then(tap).semantics(mergeDescendants = true) { contentDescription = open },
         contentAlignment = Alignment.CenterStart) {
@@ -669,13 +695,20 @@ private fun MessagesList(n: CarMessagesNow, a: CarScreenActions) {
 @Composable
 private fun FixedRow(s: CarScreenState, a: CarScreenActions) {
     val c = MaterialTheme.colorScheme
-    val (fourthText, fourthIcon) = if (s.back == CarBeside.Back.FOURTH) mapLabel(s) to RIcons.Maps else fourthLook(s.layout.fourth, s.directions)
+    val swap = s.swap
+    val (fourthText, fourthIcon) = when {
+        s.back == CarBeside.Back.FOURTH -> mapLabel(s) to RIcons.Maps
+        swap is CarMusicChoice.Open -> swap.app.label to swapPlaceholder
+        swap is CarMusicChoice.Ask -> stringResource(R.string.car_fourth_music_short) to RIcons.Play
+        else -> fourthLook(s.layout.fourth, s.directions)
+    }
+    val picture = if (swap != null) s.swapIcon.takeIf { swap is CarMusicChoice.Open } else s.fourthIcon.takeIf { s.back != CarBeside.Back.FOURTH && s.layout.fourth is CarFourth.App }
     val talk = stringResource(if (s.turn?.listening == true) R.string.car_listening else R.string.car_talk)
     Row(Modifier.fillMaxWidth().height(Target), horizontalArrangement = Arrangement.spacedBy(Gap)) {
         Tile(talk, RIcons.Mic, a.talk, Modifier.weight(TalkWeight), accent = true) {
             if (s.trusted) Icon(RIcons.Key, stringResource(R.string.car_unlocked_on), tint = c.onPrimary, modifier = Modifier.align(Alignment.TopEnd).padding(top = 6.dp).size(20.dp))
         }
-        Tile(fourthText, fourthIcon, a.fourth, Modifier.weight(1f), picture = s.fourthIcon.takeIf { s.back != CarBeside.Back.FOURTH && s.layout.fourth is CarFourth.App })
+        Tile(fourthText, fourthIcon, a.fourth, Modifier.weight(1f), picture = picture)
         Tile(stringResource(R.string.car_apps), RIcons.Apps, a.apps, Modifier.weight(1f))
         Tile(stringResource(R.string.car_settings), RIcons.Settings, a.settings, Modifier.weight(1f))
     }
@@ -694,6 +727,9 @@ private fun fourthLook(f: CarFourth, directions: Boolean): Pair<String, ImageVec
         CarAction.NAVIGATE_HOME -> stringResource(R.string.car_navigate_home) to RIcons.Navigate
     }
 }
+
+/** Before your music app's icon loads, the Maps button's swap shows the apps icon, as the button set to an app does: Play would read as "play". */
+internal val swapPlaceholder: ImageVector get() = RIcons.Apps
 
 /** A button that's only an icon, or an app's own [picture]; [text] is what a screen reader says. */
 @Composable

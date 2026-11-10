@@ -225,6 +225,10 @@ object PanelController {
     private var askingTextFor: String? = null
     /** That question was asked aloud: listen for the answer once Robot has said it. */
     private var listenAfterSpeech = false
+    /** fix-car-stay-b: a listen is posted for 350 ms after Robot stopped talking (onSpeakingChanged). */
+    private var listenDue = false
+    /** fix-car-stay-b: Robot will listen for an answer once it stops talking, or in a moment (CarModeController.quietCheck). */
+    val listenComing: Boolean get() = listenAfterSpeech || msgListenAfterSpeech || listenDue
     /** Which three tips the next panel shows: counts panel opens, from a random start so a new process doesn't repeat itself. */
     private var tipRound = kotlin.random.Random.nextInt(0, 1_000)
 
@@ -249,7 +253,12 @@ object PanelController {
      * "Answer cards by voice" (0.4.0, PanelCardVoice): once a card waits, listen for its yes or no once Robot has stopped
      * talking; the microphone, the voice, the settings and the card buttons stay here.
      */
+    /** VoiceHub.stopVoice while Robot talks: a card's read-out under way ends unread (fix-car-long-card-b). */
+    internal fun voiceStopped() = cardVoice.voiceStopped()
+
     private val cardVoice = PanelCardVoice(_state, replies, screenShare, object : PanelCardVoice.Port {
+        override val carQuiet get() = CarModeController.quietTurn
+        override val carTrusted get() = CarModeController.trusted
         override val main get() = VoiceHub.main
         override val stt get() = VoiceHub.stt
         override val settings get() = VoiceHub.settings
@@ -506,15 +515,18 @@ object PanelController {
         if (!speaking && listenAfterSpeech) {
             listenAfterSpeech = false
             // "What should the text to Mom say?" was said aloud: the answer comes by voice too.
-            if (shown && (askingTextFor != null || PanelSkills.waitsForWords))
-                VoiceHub.main.postDelayed({ if (shown && !VoiceHub.tts.isSpeaking && (askingTextFor != null || PanelSkills.waitsForWords) && _state.value.phase == Phase.IDLE) startListening() }, 350)
+            if (shown && (askingTextFor != null || PanelSkills.waitsForWords)) {
+                listenDue = true
+                VoiceHub.main.postDelayed({ listenDue = false; if (shown && !VoiceHub.tts.isSpeaking && (askingTextFor != null || PanelSkills.waitsForWords) && _state.value.phase == Phase.IDLE) startListening() }, 350)
+            }
         }
         // 0.7: after a conversation read aloud ("Reply, next, or stop?") or a reply card, one listen; and what Robot read
         // of a message counts as heard back for 15 s from now.
         if (!speaking) PanelMessages.quiet()
         if (!speaking && msgListenAfterSpeech) {
             msgListenAfterSpeech = false
-            VoiceHub.main.postDelayed({ if (shown && !VoiceHub.tts.isSpeaking && _state.value.phase == Phase.IDLE) startListening() }, 350)
+            listenDue = true
+            VoiceHub.main.postDelayed({ listenDue = false; if (shown && !VoiceHub.tts.isSpeaking && _state.value.phase == Phase.IDLE) startListening() }, 350)
         }
         _state.update {
             when {
@@ -612,7 +624,8 @@ object PanelController {
         VoiceLog.add(VoiceEvent.SESSION_SHOWN, from)
         screenShare.start(from, showFlags)
         // The question first: once it is attached, the capture mode can't switch under it ("Always echo cancellation").
-        if ((source == RobotVoiceService.SRC_WAKE && handsFree == null) || handsFree?.listenNow == true) startListening()
+        if ((source == RobotVoiceService.SRC_WAKE && handsFree == null) || handsFree?.listenNow == true ||
+            app.heyrobot.core.car.CarTurn.listensQuietly(CarModeController.quietTurn, handsFree != null, voice = source == null && !locked)) startListening()
         // E7 (Q4): with what was shared on screen, Robot listens right away; without the speech model, the keyboard comes up.
         else if (shared != null && handsFree == null) if (VoiceHub.stt.available) startListening() else _state.update { it.copy(focusRequest = it.focusRequest + 1) }
         // 0.8: opened by Settings' Run now or a Ready card's tap.
@@ -654,12 +667,13 @@ object PanelController {
         VoiceHub.listener?.wakePaused = false
         listenAfterSpeech = false
         msgListenAfterSpeech = false
-        PanelMessages.onHide()
+        PanelMessages.onHide(forApp = hidingFor == "action")
         PanelLink.onHide()
         if (hidingFor == null) askingTextFor = null
         val forCapture = hidingFor == "capture"
         // A turn never goes on behind a hidden panel: closing stops it, and a card nobody can tap any more is declined.
-        if (hidingFor == null || slot.confirmations.waiting) stopGenerating(TtsStop.CLOSED)
+        // fix-car-132: hidden for an app, a reply in its 3 seconds still goes (PanelMessages.stop(forApp)).
+        if (hidingFor == null || slot.confirmations.waiting) stopGenerating(TtsStop.CLOSED, forApp = hidingFor == "action")
         if (hidingFor == null) VoiceHub.stopVoice(TtsStop.CLOSED)
         mediaPause.hidden()
         VoiceHub.updateCapture()
@@ -919,7 +933,7 @@ object PanelController {
      * nobody sees it, a "Just do it" action) behind the app.
      */
     private fun leaveForRobot(h: PanelHost, i: Intent) {
-        stopGenerating(TtsStop.OTHER)
+        stopGenerating(TtsStop.OTHER, forApp = true)
         VoiceHub.stopVoice(TtsStop.OTHER)
         if (h.launch(i)) {
             hidingFor = "action"
@@ -1950,10 +1964,27 @@ object PanelController {
         else if (shown && !VoiceHub.tts.isSpeaking && _state.value.phase == Phase.IDLE) startListening()
     }
 
-    /** 0.8: an announced message's session ended ("no", or nothing more to say): the panel it opened goes. */
-    internal fun hideAfterAnnouncement() {
-        if (shown) host?.hidePanel()
+    /**
+     * 0.8: an announced message's session ended ("no", or nothing more to say): the panel it opened goes. fix-car-stay-e:
+     * every close of a turn Robot makes on its own (a session's end, a quiet turn done, the car screen's talk) comes here,
+     * and waits for Robot's words and for a reply in its 3 seconds or on its way (onHide would stop it unsent), this show only.
+     * fix-car-stay-f: the car screen's talk ([words] false) stops Robot's words at once and waits only for a reply.
+     */
+    internal fun hideAfterAnnouncement(words: Boolean = true, held: Boolean = false) = hideWhenSaid(shownAtE, HIDE_TRIES, words, held)
+
+    private fun hideWhenSaid(at: Long, tries: Int, words: Boolean, held: Boolean = false) {
+        if (!shown || shownAtE != at) return
+        val s = _state.value
+        val sending = app.heyrobot.assistant.car.CarTurnLines.sending(s)
+        // fix-car-stay-f: once a reply held it, a question said in its 3 seconds (the turn busy) is answered before the panel goes.
+        if (app.heyrobot.core.car.CarTurnEnd.hideWaits(words, VoiceHub.tts.isSpeaking, sending, s.busy, held, tries)) {
+            VoiceHub.main.postDelayed({ hideWhenSaid(at, tries - 1, words, held || sending) }, HIDE_STEP_MS)
+        } else host?.hidePanel()
     }
+
+    // fix-car-stay-e: 300 ms a poll, a minute at most, as CarModeController's own close.
+    private const val HIDE_STEP_MS = 300L
+    private const val HIDE_TRIES = 200
 
     /** Ends [replyId] with [text] shown; PanelMessages speaks it in each piece's own voice. */
     internal fun messagesReply(replyId: String, text: String) {
@@ -2019,7 +2050,7 @@ object PanelController {
     private fun openList(id: String) {
         if (Assistant.locked(VoiceHub.app)) return notify(unlockFirst(app.heyrobot.core.i18n.ListsStrings.unlockToSee()))
         val h = host ?: return
-        stopGenerating(TtsStop.OTHER)
+        stopGenerating(TtsStop.OTHER, forApp = true)
         if (h.launch(PanelLists.openIntent(VoiceHub.app, id))) {
             hidingFor = "action"
             h.hidePanel()
@@ -2171,7 +2202,7 @@ object PanelController {
         val tries = if (PanelFiles.isOpen(pkg)) listOf(PanelFiles.openIntent(VoiceHub.app, pkg)) else if (page) SettingsIntents.of(VoiceHub.app, pkg)
         else listOfNotNull(VoiceHub.app.packageManager.getLaunchIntentForPackage(pkg)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         if (tries.isEmpty()) return notify(if (page) PanelStrings.settingsDidntOpen("settings" to AndroidPath.SETTINGS) else PanelStrings.cheogramNotInstalled())
-        stopGenerating(TtsStop.OTHER)
+        stopGenerating(TtsStop.OTHER, forApp = true)
         if (tries.any { h.launch(it) }) {
             hidingFor = "action"
             h.hidePanel()
@@ -2549,11 +2580,14 @@ object PanelController {
 
     // ------------------------------------------------------------------ ending a reply
 
-    /** Stop button: stops the reply (or the model load) and its voice; a waiting card is declined. */
-    fun stopGenerating(why: TtsStop = TtsStop.BUTTON) {
+    /**
+     * Stop button: stops the reply (or the model load) and its voice; a waiting card is declined. [forApp]
+     * (fix-car-stay-g): a tap that opens an app leaves a reply in its 3 seconds to send when they end.
+     */
+    fun stopGenerating(why: TtsStop = TtsStop.BUTTON, forApp: Boolean = false) {
         cardVoice.stop()
         msgListenAfterSpeech = false
-        PanelMessages.stop()
+        PanelMessages.stop(forApp)
         PanelSkills.drop()
         val id = reqId
         if (id != 0) client?.post(BrainProtocol.REQ_CANCEL, BrainMsg.Cancel(id))

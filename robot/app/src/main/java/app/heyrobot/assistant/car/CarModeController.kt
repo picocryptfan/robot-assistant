@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.assistant.car
 
+import app.heyrobot.assistant.Phase
 import app.heyrobot.assistant.PanelController
 import app.heyrobot.core.car.CarGate
 import app.heyrobot.core.car.CarTurnEnd
@@ -179,9 +180,13 @@ object CarModeController {
     /** Apps car mode saw playing this drive: only these and your music app may take the tile with a paused song. */
     val playedThisDrive: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
 
+    /** Apps Robot put beside the car screen this drive, oldest first: the Maps button's swap picks the one last used. */
+    val besideThisDrive: MutableList<String> = java.util.concurrent.CopyOnWriteArrayList()
+
     fun besideOpened(last: CarBeside.Last) {
         if (!on) return
         lastBeside = last
+        if (last is CarBeside.Last.App) { besideThisDrive.remove(last.pkg); besideThisDrive.add(last.pkg) }
         main.post { watchers.toList().forEach { it() } }
     }
 
@@ -192,36 +197,62 @@ object CarModeController {
     /** Android didn't take a show without a window this drive: the panel opens, and closes when the reply has been spoken. */
     @Volatile private var windowNeeded = false
 
-    /** Asked as the session prepares a show from [source] (null for anything not Robot's own): whether it has no panel. */
-    fun prepareShow(source: String?): Boolean {
-        val fromCar = source == RobotVoiceService.SRC_HEADSET || source == RobotVoiceService.SRC_WAKE
-        // With no car and no headset connected, the turn is the panel's, on the phone (CarTurn.listensOnPhone).
-        val phone = CarTurn.listensOnPhone(on, fromCar, HandsFreeHub.route(EntryKind.BVRA, source == RobotVoiceService.SRC_WAKE, carSeen()))
-        quietTurn = CarTurn.quiet(on, screenUp, fromCar, windowNeeded, route = !phone)
+    /**
+     * Asked as the session prepares a show from [source] (null for anything not Robot's own): whether it has no panel.
+     * [trusted]: Robot's own show or the system's (ShowGate.userShow). fix-car-stay: with the car screen up, any of them, the
+     * screen capture's aside (its crop needs the panel) and the lock screen's button (fix-car-stay-b: its panel
+     * waits for a tap on the mic, as in 1.3.0); with no car or headset the phone's mic hears it (CarTurn.listensOnPhone).
+     */
+    fun prepareShow(source: String?, trusted: Boolean): Boolean {
+        quietTurn = CarTurn.quiet(on, screenUp, trusted && source != RobotVoiceService.SRC_CAPTURE && source != RobotVoiceService.SRC_KEYGUARD, windowNeeded)
         notifyWatchers()
         return quietTurn
     }
 
     /** The session opened with no panel but no question came of it (nothing to wait for): it closes, and the mic with it. */
     fun quietShown() {
-        if (quietTurn) main.postDelayed({ if (quietTurn && !PanelHandsFree.active) PanelController.hideAfterAnnouncement() }, QUIET_CHECK_MS)
+        listenHeld = 0
+        if (quietTurn) main.postDelayed({ quietCheck() }, QUIET_CHECK_MS)
     }
+
+    /** fix-car-stay-b: idle polls in a row held only for a listen Robot said would come (CarTurnEnd.listenHeld). */
+    private var listenHeld = 0
+
+    /** fix-car-stay: a turn with no panel the phone's mic hears stays while it listens, thinks, asks or speaks (CarTurnEnd.quietDone). */
+    private fun quietCheck() {
+        if (!quietTurn) return
+        val s = PanelController.state.value
+        // fix-car-stay-b: idle isn't done while a card waits for a yes or Robot is about to listen for an answer; fix-car-stay-c:
+        // nor while a reply waits out its 3 seconds or is on its way (closing would leave it unsent).
+        val idle = s.phase == Phase.IDLE
+        val speaking = VoiceHub.tts.isSpeaking
+        listenHeld = CarTurnEnd.listenHeld(listenHeld, PanelController.listenComing, idle, speaking)
+        val waits = CarTurnLines.of(s)?.ui?.ask != null || CarTurnEnd.listenHolds(listenHeld) || CarTurnLines.sending(s)
+        if (CarTurnEnd.quietDone(quietTurn, PanelHandsFree.active, idle, speaking, waits)) PanelController.hideAfterAnnouncement()
+        else main.postDelayed({ quietCheck() }, QUIET_CHECK_MS)
+    }
+
+    /** fix-car-stay: the car screen's own opener while it's started (CarModeActivity): an app Robot opens goes beside it. */
+    @Volatile var besideOpener: ((Intent) -> Boolean)? = null
+
+    /** Opens [i] beside the car screen while it's up (CarSplitOpen); null when it isn't, and the caller opens it as before. */
+    fun openBeside(i: Intent): Boolean? = if (on && screenUp) besideOpener?.invoke(i) else null
+
+    @Volatile private var refusedSplit = false
+
+    /** Android put the app over the car screen, not beside it (core CarSplit.covered): the car screen comes back and says so. */
+    fun splitRefused() {
+        refusedSplit = true
+        main.post { openScreen() }
+    }
+
+    /** Whether the car screen has that to say (once). */
+    fun takeRefusedSplit(): Boolean = refusedSplit.also { refusedSplit = false }
 
     fun sessionHidden() {
         privateTurn = false
         if (!quietTurn) return
         quietTurn = false
-        notifyWatchers()
-    }
-
-    /** The session, while it's there: gives a show with no window its window. */
-    @Volatile var windowOpener: (() -> Unit)? = null
-
-    /** A card the car screen can't show whole or answer: this turn goes on in the panel's window, its card's whole text and buttons there. UNVERIFIED on the phone. */
-    fun openWindow() {
-        if (!quietTurn) return
-        quietTurn = false
-        try { windowOpener?.invoke() } catch (t: Throwable) { RLog.w("car_window", t) }
         notifyWatchers()
     }
 
@@ -250,9 +281,12 @@ object CarModeController {
     /** Whether a question heard through a session ([session]) or not leaves a text box that stays (CarTurnEnd.boxStays). */
     fun boxStays(session: Boolean): Boolean = CarTurnEnd.boxStays(quietTurn, on, screenUp, session)
 
-    private fun closeWhenSaid(tries: Int) {
-        if (VoiceHub.tts.isSpeaking && tries > 0) main.postDelayed({ closeWhenSaid(tries - 1) }, CLOSE_STEP_MS)
-        else if (!PanelHandsFree.active) PanelController.hideAfterAnnouncement()
+    private fun closeWhenSaid(tries: Int, held: Boolean = false) {
+        // fix-car-stay-d: closing in a reply's 3 seconds would leave it unsent and nothing said (onHide, stopWindow).
+        // fix-car-stay-g: what held it goes on (held), so a question said in the reply's 3 seconds is answered first.
+        val sending = CarTurnLines.sending(PanelController.state.value)
+        if (CarTurnEnd.closeWaits(VoiceHub.tts.isSpeaking, sending, tries)) main.postDelayed({ closeWhenSaid(tries - 1, held || sending) }, CLOSE_STEP_MS)
+        else if (!PanelHandsFree.active) PanelController.hideAfterAnnouncement(held = held)
     }
 
     private fun notifyWatchers() { main.post { watchers.toList().forEach { it() } } }
@@ -262,7 +296,7 @@ object CarModeController {
     fun input(i: CarInput) {
         val (next, fx) = CarModeMachine.on(state, i, settings)
         state = next
-        if (!next.on) { routeThisDrive = false; lastBeside = null; playedThisDrive.clear(); windowNeeded = false }
+        if (!next.on) { routeThisDrive = false; lastBeside = null; playedThisDrive.clear(); besideThisDrive.clear(); windowNeeded = false }
         for (e in fx) try { apply(e) } catch (t: Throwable) { RLog.w("car_effect", t, "effect" to RLog.Code(e.javaClass.simpleName.lowercase())) }
         reconcile()
         HandsFreeHub.reconcile()

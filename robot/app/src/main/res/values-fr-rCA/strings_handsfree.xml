@@ -186,6 +186,7 @@
     <string name="car_listening">À l’écoute…</string>
     <string name="car_yes">Oui</string>
     <string name="car_cancel">Annuler</string>
+    <string name="car_approve">Approuver</string>
     <string name="car_map">Carte</string>
     <string name="car_close">Fermer</string>
     <string name="car_apps">Applis</string>
@@ -197,4 +198,5 @@
     <string name="car_apps_title">Applis pour l’auto</string>
     <string name="car_apps_summary_none">Aucune pour l’instant. Garde-en jusqu’à %1$d, puis touche Applis sur l’écran de l’auto pour en ouvrir une à côté de Robot.</string>
     <string name="car_shortcut">Mode auto</string>
+    <string name="car_split_refused">Impossible d’ouvrir cette appli à côté de l’écran de l’auto</string>
 </resources>

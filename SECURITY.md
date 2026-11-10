@@ -100,7 +100,7 @@ too, so Robot can update it; please also tell its maintainers.
   process drops its open store at every screen-off and reopens it only after an unlock; the Files screens are
   `FLAG_SECURE`, and nothing of Robot Files is shown, said or searched on a locked phone or during a phone lock. Deleting
   overwrites a file's wrapped key before the file is unlinked.
-- Every file is decoded in `:files`, an `android:isolatedProcess` service with no permissions, not exported, bound with
+- Every file in Robot Files is decoded in `:files`, an `android:isolatedProcess` service with no permissions, not exported, bound with
   `bindIsolatedService` and a fresh instance per link. It proves it runs under an isolated uid before anything is sent,
   speaks a small fixed binary format that Robot decodes strictly (fuzzed with 20,000 mutations), and gets the bytes in
   a read-only shared memory region. Inputs are capped (64 MiB, 32,768 px a side, 260 MP, 3 pages rendered) and each call
@@ -108,6 +108,12 @@ too, so Robot can update it; please also tell its maintainers.
   HTML, SVG, scripts, a ZIP appended to a picture or a PDF, and markup deep in a text are held as dangerous: never
   parsed, never quoted to the model. A file's text reaches the model framed as information, never instructions, and
   amounts, dates and taxes are read again by code.
+- The one exception is audio you share with Ask Robot (a voice message) or import for the Transcription check. It is not
+  decoded in `:files`, because an isolated process can't reach Android's media services (an isolated app may talk to
+  only three system services, a rule Android's own build enforces). It is read into memory in `:voice`, at most 25 MB,
+  and Robot checks its type from the first bytes. Android's own media services (`media.extractor` and `media.swcodec`,
+  each in a sandbox of its own) then parse and decode it, in memory, with no file or link kept. Robot itself reads only
+  the format's two numbers and the sound, both capped.
 - The share target (`FilesShareActivity`) reads nothing before you tap Add. It refuses `file:` URIs, other users' and
   Robot's own providers, and any share while the phone is locked or a phone lock is on, checked when it opens and again
   at the tap; it ignores touches while another app draws over it, and names the sending app only when Android confirms

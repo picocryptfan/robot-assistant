@@ -39,7 +39,7 @@ internal class PanelReplies(private val state: MutableStateFlow<PanelState>) {
     fun upsertAction(replyId: String, a: UiAction) = state.update { st ->
         st.copy(turns = st.turns.map { t ->
             if (t.id != replyId) t
-            else if (t.actions.any { it.id == a.id }) t.copy(actions = t.actions.map { if (it.id == a.id) a else it })
+            else if (t.actions.any { it.id == a.id }) t.copy(actions = t.actions.map { if (it.id == a.id) a.copy(carTap = a.carTap || it.carTap) else it })
             else t.copy(actions = t.actions + a)
         })
     }

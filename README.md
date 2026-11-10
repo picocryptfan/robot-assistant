@@ -138,7 +138,8 @@ Coming from 0.9? Robot 1.0 installs beside it under a new app ID, and you move y
 - Routines and a morning brief. Headset mode, where your headset's button opens Robot.
 - Car mode gives you a screen of big buttons with your map, your messages or the song playing beside it, in Android's
   split screen. The song's title, artist and art are read from the phone and only shown: never saved or sent. Talk and
-  "hey robot" answer in a panel on the car screen without covering the map.
+  "hey robot" answer in a panel on the car screen without covering the map. While Car mode isn't trusted on a locked
+  phone, Robot reads out no one's name or message: such a card says it needs a tap on the car screen.
 - Robot to Robot lets your Robot talk to a friend's: ask when they're free, plan something, share a list or a folder,
   send a file or a reminder, encrypted end to end. You pair in person with a photo of each other's code, or at a
   distance with a code you send. It is off until you turn it on.

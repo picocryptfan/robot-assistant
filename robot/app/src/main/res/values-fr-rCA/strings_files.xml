@@ -27,7 +27,7 @@
     <string name="files_restore">Restaurer à partir d’une sauvegarde</string>
     <string name="files_restore_detail">Dans %s</string>
     <string name="files_unreadable">Robot n’a pas pu lire la liste de tes fichiers. Recommencer en fait une nouvelle à partir de tes fichiers.</string>
-    <string name="files_too_new">La liste de tes fichiers vient d’une version plus récente de Robot&#160;: celle-ci ne peut donc ni la lire ni la changer. Mets Robot à jour, ou recommence.</string>
+    <string name="files_too_new">La liste de tes fichiers a été enregistrée par un Robot plus récent et ne peut pas être lue ni changée ici. Mets Robot à jour, ou recommence.</string>
     <string name="files_start_over">Recommencer</string>
     <string name="files_start_over_detail">Tes fichiers reviennent dans la boîte de réception, sans leur nom</string>
     <string name="files_start_over_title">Recommencer&#8239;?</string>

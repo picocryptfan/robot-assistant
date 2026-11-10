@@ -66,6 +66,9 @@ class PanelCardVoiceTest {
     private var spokenTurn = true
     private var tapOnly: Pair<String, String>? = null
     private var wakePaused: Boolean? = null
+    private var carQuiet = false
+    private var carTrusted = true
+    private var sayIn = Langs.EN
     /** What the card buttons were given, as "confirm <id> <yes>" or "choose <id> <index>". */
     private val answers = mutableListOf<String>()
     private val notices = mutableListOf<String>()
@@ -89,11 +92,13 @@ class PanelCardVoiceTest {
             state.update { it.copy(notice = Notice(text)) }
         }
         override fun speakRobot(text: String) { said += text }
-        override fun said(p: Phrase) = p.render(Langs.EN)
+        override fun said(p: Phrase) = p.render(sayIn)
         override fun speak(text: String) { plain += text }
         override fun cue(c: Cue) { cues += c }
         override fun confirm(actionId: String, yes: Boolean) { answers += "confirm $actionId $yes" }
         override fun choose(actionId: String, index: Int) { answers += "choose $actionId $index" }
+        override val carQuiet get() = this@PanelCardVoiceTest.carQuiet
+        override val carTrusted get() = this@PanelCardVoiceTest.carTrusted
     })
 
     @After fun end() = scope.cancel()
@@ -253,7 +258,7 @@ class PanelCardVoiceTest {
 
     @Test fun aPromptAlreadySaidIsNotSaidAgainButStillListens() {
         wait(listOf(card("a")), speak = true)
-        voice.saidPrompt()
+        voice.saidPrompt("a")
         voice.waiting()
         assertEquals(emptyList<String>(), said)
         voice.speakingStopped()
@@ -382,5 +387,268 @@ class PanelCardVoiceTest {
         // No card waits: nothing to answer.
         wait(listOf(card("one", ActionStatus.DONE)))
         assertFalse(voice.answer("yes", spoken = true))
+    }
+
+    // fix-car-long-card: the car screen up and no panel. A spoken yes approves only what Robot has read out whole, the mic
+    // waiting while it reads; a picture, a Termux command or over a minute aloud takes a tap; locked, nothing private is said.
+    private val carTapLine = TurnStrings.carTap().render(Langs.EN)
+    private fun message(id: String = "m") = UiAction(id, null, "Text Mom", ActionStatus.PENDING, null, body = "See you at six")
+    private fun inTheCar(a: UiAction) {
+        carQuiet = true
+        wait(listOf(a), speak = true)
+        voice.waiting()
+        speaking = true
+    }
+    private fun readOutEnds() {
+        speaking = false
+        voice.speakingStopped()
+        looper.idleFor(Duration.ofMillis(350))
+    }
+
+    @Test fun car_RobotReadsTheCardWholeAndAYesCountsOnlyAfter() {
+        inTheCar(message())
+        assertEquals(listOf("Text Mom\nSee you at six\n" + TurnStrings.sayYesOrNo().render(Langs.EN)), said)
+        assertEquals("the mic waits while Robot reads", 0, stt.starts.size)
+        // A yes heard another way while it reads (the car's button, the wake word) approves nothing and says nothing.
+        assertTrue(voice.answer("yes", spoken = true))
+        assertEquals(emptyList<String>(), answers)
+        assertEquals(1, said.size)
+        readOutEnds()
+        assertEquals(1, stt.starts.size)
+        stt.last.onFinal("yes")
+        idle()
+        assertEquals(listOf("confirm m true"), answers)
+    }
+
+    @Test fun car_cancelOrStopWhileItReadsDoesNothing() {
+        inTheCar(message())
+        assertTrue(voice.answer("cancel", spoken = true))
+        assertEquals(listOf("confirm m false"), answers)
+        answers.clear()
+        // Stop (PanelController.stopGenerating declines the card): the read-out never counts as whole.
+        inTheCar(message("n"))
+        voice.stop()
+        readOutEnds()
+        assertEquals(0, stt.starts.size)
+        assertTrue(voice.answer("yes", spoken = true))
+        assertEquals(emptyList<String>(), answers)
+        assertEquals(carTapLine, notices.last())
+    }
+
+    @Test fun car_aPictureTermuxOrOverAMinuteTakesATapNotAVoiceYes() {
+        val kinds = listOf(
+            message("pic").copy(picture = android.graphics.Bitmap.createBitmap(1, 1, android.graphics.Bitmap.Config.ARGB_8888)),
+            message("cmd").copy(termux = app.heyrobot.ui.common.TermuxCardView("k", "rm -r x")),
+            UiAction("rem", null, "Remind you at 5 pm", ActionStatus.PENDING, "word ".repeat(200)))
+        for (a in kinds) {
+            said.clear(); answers.clear(); notices.clear()
+            inTheCar(a)
+            assertEquals(a.id, listOf(carTapLine), said)
+            val car = app.heyrobot.assistant.car.CarTurnLines.of(state.value)!!
+            assertTrue(a.id, car.tapOnly && car.ui.ask!!.canYes)
+            readOutEnds()
+            stt.last.onFinal("yes")
+            idle()
+            assertEquals(a.id, emptyList<String>(), answers)
+            assertEquals(a.id, carTapLine, notices.last())
+            assertTrue(voice.answer("no", spoken = true))
+            assertEquals(a.id, listOf("confirm ${a.id} false"), answers)
+        }
+    }
+
+    @Test fun car_lockedNothingPrivateIsSaidAndAYesTakesATap() {
+        carTrusted = false
+        inTheCar(message())
+        assertEquals(listOf(carTapLine), said)
+        readOutEnds()
+        stt.last.onFinal("yes")
+        idle()
+        assertEquals(emptyList<String>(), answers)
+        assertFalse(said.any { "See you at six" in it })
+    }
+
+    @Test fun car_withoutTheCarScreenNothingChanges() {
+        wait(listOf(message()), speak = true)
+        voice.waiting()
+        assertEquals(listOf(TurnStrings.sayYesOrNo().render(Langs.EN)), said)
+    }
+
+    @Test fun car_theMicPressedWhileItReadsLeavesNoSilentYes() {
+        inTheCar(message())
+        // The mic stops the voice (PanelController.micPressed) and listens at once: the card wasn't read out whole.
+        speaking = false
+        voice.micPressed()
+        stt.last.onFinal("yes")
+        idle()
+        assertEquals(emptyList<String>(), answers)
+        assertEquals(carTapLine, notices.last())
+        assertEquals(carTapLine, said.last())
+        // And every later yes says it too, never nothing.
+        said.clear()
+        assertTrue(voice.answer("yes", spoken = true))
+        assertEquals(listOf(carTapLine), said)
+        assertEquals(emptyList<String>(), answers)
+    }
+
+    @Test fun car_theMicPressedMidReadThenAnotherTryStillTakesATap() {
+        // fix-car-long-card-c: words it can't use, then "Say yes or no." said to its end: the card still wasn't read out whole.
+        inTheCar(message())
+        speaking = false
+        voice.micPressed()
+        stt.last.onFinal("um")
+        idle()
+        speaking = true
+        readOutEnds()
+        stt.last.onFinal("yes")
+        idle()
+        assertEquals(emptyList<String>(), answers)
+        assertEquals(carTapLine, notices.last())
+    }
+
+    @Test fun car_aYesJustAfterTheReadOutStopsIsNeverSilent() {
+        // fix-car-long-card-c: Robot has stopped talking, the 350 ms before it listens not yet over: a yes then says the tap line.
+        inTheCar(message())
+        speaking = false
+        assertTrue(voice.answer("yes", spoken = true))
+        assertEquals(emptyList<String>(), answers)
+        assertEquals(carTapLine, notices.last())
+    }
+
+    @Test fun car_theVoiceCutOffMidReadIsNotReadWhole() {
+        inTheCar(message())
+        voice.voiceStopped()
+        readOutEnds()
+        stt.last.onFinal("yes")
+        idle()
+        assertEquals(emptyList<String>(), answers)
+        assertEquals(carTapLine, notices.last())
+    }
+
+    @Test fun car_aTapOnlyCardKeepsItsMarkWhateverShowsItLater() {
+        val pic = message("pic").copy(picture = android.graphics.Bitmap.createBitmap(1, 1, android.graphics.Bitmap.Config.ARGB_8888))
+        inTheCar(pic)
+        speaking = false
+        assertTrue(replies.pendingCard()!!.carTap)
+        // The lock screen's button, a capture or trust lapsing: the same card shows in a turn that isn't the car's quiet one.
+        carQuiet = false
+        said.clear()
+        voice.waiting()
+        // fix-car-long-card-c: on the panel, its tap line doesn't say "car screen", and never "Say yes or no.".
+        val panelLine = TurnStrings.cardTap().render(Langs.EN)
+        assertEquals(listOf(panelLine), said)
+        assertTrue(voice.answer("yes", spoken = true))
+        assertEquals(emptyList<String>(), answers)
+        assertEquals(panelLine, notices.last())
+        assertEquals(panelLine, said.last())
+        assertFalse(said.any { "car screen" in it })
+        // The mark survives the card being shown again, and a no still declines it.
+        replies.upsertAction("r0", pic)
+        assertTrue(replies.pendingCard()!!.carTap)
+        assertTrue(voice.answer("no", spoken = true))
+        assertEquals(listOf("confirm pic false"), answers)
+    }
+
+    @Test fun car_aCardMadeOutsideTheCarIsNotMarked() {
+        wait(listOf(message("pic").copy(picture = android.graphics.Bitmap.createBitmap(1, 1, android.graphics.Bitmap.Config.ARGB_8888))), speak = true)
+        voice.waiting()
+        assertFalse(replies.pendingCard()!!.carTap)
+    }
+
+    // fix-car-long-card-c: askToShare and "Try it here or ask" say their own words; in the car those are the read-out.
+    private fun askedInTheCar(a: UiAction, choice: Boolean) {
+        carQuiet = true
+        wait(listOf(a), speak = true)
+        if (choice) voice.choiceWaits(a.id, names, "claude") { silent++ }
+        voice.saidPrompt(a.id)
+        voice.waiting()
+        speaking = true
+    }
+
+    /** fix-car-133: words said about another card aren't this one's read-out: it is read out whole. */
+    @Test fun car_aPromptSaidForAnotherCardDoesNotCountForThisOne() {
+        carQuiet = true
+        wait(listOf(message("m")), speak = true)
+        voice.saidPrompt("other")
+        voice.waiting()
+        assertEquals(1, said.size)
+    }
+
+    @Test fun car_theChoiceCardIsAskedOnceAndAskingTheHelperCountsOnlyOnceItIsSaid() {
+        for ((words, id) in listOf("ask Claude" to "c", "demande à Claude" to "f")) {
+            said.clear(); answers.clear()
+            askedInTheCar(card(id), choice = true)
+            assertEquals(words, emptyList<String>(), said)
+            assertEquals(words, 0, stt.starts.size - (if (id == "f") 1 else 0))
+            // Still asking (heard by the car's button or the wake word): nothing is picked, nothing said.
+            assertTrue(voice.answer(words, spoken = true))
+            assertEquals(words, emptyList<String>(), answers)
+            assertEquals(words, emptyList<String>(), said)
+            readOutEnds()
+            stt.last.onFinal(words)
+            idle()
+            assertEquals(words, listOf("confirm $id true"), answers)
+            voice.choiceDone()
+        }
+    }
+
+    @Test fun car_theChoiceCardCutOffTakesATapToAskTheHelperButHereStillWorks() {
+        for ((words, here) in listOf("ask Claude" to "here", "demande à Claude" to "ici")) {
+            answers.clear(); notices.clear()
+            askedInTheCar(card("c"), choice = true)
+            voice.voiceStopped()
+            readOutEnds()
+            stt.last.onFinal(words)
+            idle()
+            assertEquals(words, emptyList<String>(), answers)
+            assertEquals(words, carTapLine, notices.last())
+            assertTrue(voice.answer(here, spoken = true))
+            assertEquals(words, listOf("confirm c false"), answers)
+            voice.choiceDone()
+        }
+    }
+
+    @Test fun car_askToSharesOwnWordsAreItsReadOutNeverSaidTwice() {
+        for ((words, id) in listOf("yes" to "m", "oui" to "n")) {
+            said.clear(); answers.clear()
+            askedInTheCar(message(id), choice = false)
+            assertEquals(words, emptyList<String>(), said)
+            assertTrue(voice.answer(words, spoken = true))
+            assertEquals(words, emptyList<String>(), answers)
+            readOutEnds()
+            stt.last.onFinal(words)
+            idle()
+            assertEquals(words, listOf("confirm $id true"), answers)
+        }
+    }
+
+    // fix-car-long-card-d: askToShare names the helper, the app on screen and the kinds of personal content: on a car screen
+    // that isn't trusted it says none of it, and the card gets the tap line every other card gets there, in English and French.
+    @Test fun car_askToShareSaysNothingOfItsOwnOnAnUntrustedCarScreen() {
+        for (langs in listOf(Langs.EN, Langs.of(app.heyrobot.core.i18n.Lang.FR))) {
+            sayIn = langs; said.clear(); answers.clear()
+            carQuiet = true; carTrusted = false
+            assertFalse(voice.ownWordsAloud)
+            wait(listOf(message("s")), speak = true)
+            voice.waiting()
+            assertEquals(listOf(TurnStrings.carTap().render(langs)), said)
+            readOutEnds()
+            stt.last.onFinal(if (langs == Langs.EN) "yes" else "oui")
+            idle()
+            assertEquals(emptyList<String>(), answers)
+        }
+        sayIn = Langs.EN
+        carTrusted = true
+        assertTrue(voice.ownWordsAloud)
+        carQuiet = false; carTrusted = false
+        assertTrue(voice.ownWordsAloud)
+    }
+
+    @Test fun car_thePanelTapLineInFrench() {
+        assertEquals("Celle-là se confirme d’une touche sur la carte.", TurnStrings.cardTap().render(Langs.of(app.heyrobot.core.i18n.Lang.FR)))
+    }
+
+    @Test fun car_theTapLineInFrench() {
+        assertEquals("Celle-là se confirme d’une touche. Elle est sur l’écran de l’auto.",
+            TurnStrings.carTap().render(Langs.of(app.heyrobot.core.i18n.Lang.FR)))
     }
 }

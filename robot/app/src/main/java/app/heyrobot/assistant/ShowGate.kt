@@ -25,6 +25,10 @@ object ShowGate {
         return ShowTrust.source(from, args.getString(ShowTrust.ARG_SOURCE))
     }
 
+    /** fix-car-stay: a show Robot asked for, or the system's own (the assist gesture, the power button); never another app's showAssist or voice interaction. */
+    fun userShow(args: Bundle?, showFlags: Int): Boolean =
+        source(args, showFlags) != null || showFlags and (VoiceInteractionSession.SHOW_SOURCE_APPLICATION or VoiceInteractionSession.SHOW_SOURCE_ACTIVITY) == 0
+
     fun args(ctx: Context, args: Bundle?, showFlags: Int): Bundle? {
         if (args == null) return null
         val fromApp = showFlags and VoiceInteractionSession.SHOW_SOURCE_APPLICATION != 0

@@ -85,6 +85,7 @@ import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZonedDateTime
+import app.heyrobot.ui.common.filterObscuredTouches
 
 // VOICE PROCESS (Robot's model and the helpers' keys are reached from here only). The summary screen (docs/conversation-mode.md
 // 7, phase 5.6), for one transcript, unlocked only: Robot's own summary, made on this phone part by part with a progress
@@ -109,6 +110,8 @@ class SummaryActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        // Its Yes or Send acts at once: a tap through another app's window is refused (review-panel-covered).
+        window.filterObscuredTouches()
         // Other people's words: Recents keeps no picture of them (one would outlive the transcript's deletion).
         setRecentsScreenshotEnabled(false)
         lockedNow.value = Assistant.locked(this)

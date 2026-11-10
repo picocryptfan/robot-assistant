@@ -146,6 +146,8 @@ data class ConnData(
 class ConnSettingsActions(
     /** A Settings page by route. */
     val open: (String) -> Unit = {},
+    /** A Settings page by route in place of the one showing: a connection just added opens its page where its form was, so Back and Remove land on the list. */
+    val instead: (String) -> Unit = open,
     /** Saves [Connection] (ConnCheck first); false when it couldn't. */
     val save: (Connection) -> Boolean = { true },
     /** A changed address: its key is deleted first, then it is saved. */
@@ -177,6 +179,7 @@ fun ConnectionsRoute(route: String, a: AppActions, snackbar: SnackbarHostState, 
     fun changed() { SkillFiles.changed(ctx); tick++ }
     val act = ConnSettingsActions(
         open = { a.openPage(Page.Settings(it)) },
+        instead = { a.replacePage(Page.Settings(it)) },
         save = { c -> store.save(c).also { changed() } },
         // C12's L1: the key goes and the connection changes in one hold of the store's lock (the window checks its key inside it too).
         readdress = { c -> store.locked { ConnKeyFiles.delete(ctx, c.id); store.save(c) }.also { changed() } },
@@ -341,7 +344,7 @@ fun AddConnectionScreen(kind: ConnKind, d: ConnData, act: ConnSettingsActions, s
                         }
                         val (c, why) = ConnSetup.create(id, kind, name, address, connAuth(), routing, ntfyTitle, onlyMine)
                         if (c == null || !act.save(c)) { problem = why ?: ConnProblem.COULDNT_SAVE; return@Button }
-                        act.open(ConnRoutes.page(c.id))
+                        act.instead(ConnRoutes.page(c.id))
                         act.window(c.id, if (c.secrets.isNotEmpty()) ConnWindow.MODE_KEY else ConnWindow.MODE_TEST, null)
                     }, enabled = name.isNotBlank() && (address.isNotBlank() || (kind == ConnKind.WEBHOOK && secretAddress)) &&
                         (!showAuth || auth != AuthChoice.HEADER || ConnCheck.secretHeaderName(header)), modifier = Modifier.heightIn(min = 48.dp)) {
@@ -674,7 +677,7 @@ fun HandOffScreen(existing: Connection?, d: ConnData, act: ConnSettingsActions, 
             problem = why?.let { w -> HandOffPicker.text(w, name.trim()) }?.render(langs).takeIf { why != PickProblem.NOT_VALID } ?: notValid
             return
         }
-        if (existing == null) act.open(ConnRoutes.page(keep.id)) else onBack()
+        if (existing == null) act.instead(ConnRoutes.page(keep.id)) else onBack()
     }
     PreferenceScreen(stringResource(R.string.conn_hand_off_title), onBack, snackbar = snackbar) {
         val pkg = picked
