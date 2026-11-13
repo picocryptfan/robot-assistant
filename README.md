@@ -236,10 +236,11 @@ echo "sdk.dir=/path/to/android-sdk" > local.properties
 tools/fetch_third_party.sh --install    # sherpa-onnx libraries, wake-word and VAD models, espeak-ng data, each checked by SHA-256
 tools/build_sherpa.sh                   # libsherpa-onnx-jni.so with Robot's patch to espeak-ng (about 15 minutes): the APK needs this one
 tools/build_robotmt.sh                  # librobotmt.so, the fast translation engine, from pinned sources
+tools/build_libzim.sh                   # librobotzim.so, the offline Wikipedia reader, from pinned sources (about 20 minutes)
 tools/fetch_libsignal.sh                # libsignal, for Robot to Robot, checked by SHA-256 (about 375 MB)
 tools/fetch_link_deps.sh                # Tor, the UnifiedPush connector and Tink, for Robot to Robot, checked by SHA-256
 tools/build_lyrebird.sh                 # liblyrebird.so from pinned source (needs Go, downloaded if missing, and the NDK)
-tools/build_llama.sh                    # optional: librobot_llama.so, for your own GGUF files
+tools/build_llama.sh                    # optional: librobot_llama.so, for your own GGUF files (without it, add --without-llama to verify_apk.sh)
 ./gradlew :core:testReleaseUnitTest :voice:testReleaseUnitTest :helpers:testReleaseUnitTest :link:testReleaseUnitTest :app:testReleaseUnitTest
 ./gradlew :app:testDebugUnitTest        # Compose UI tests and screenshots (Robolectric, offline)
 ./gradlew :app:assembleRelease          # unsigned without a key: see robot/README.md, "Building"

@@ -146,7 +146,12 @@ object WebWords {
 
     /**
      * Plurals, a few English endings and a final "e": "stations" → "station", "chevaux" → "cheval", "bateaux" →
-     * "bateau", "descaling" and "descale" → "descal", "machines" → "machin". The same on both sides of every comparison.
+     * "bateau", "descaling" and "descale" → "descal", "machines" → "machin"; a final "ee" goes whole, so a French
+     * feminine past participle meets its masculine ("fondée" and "fondé" → "fond") and an English -ee word its verb
+     * ("employee" → "employ", "committee" and "committed" → "committ"). Some -ee joins differ in meaning (année/Anne,
+     * musée/muse); BM25 weighs the question's other terms too (WikiStemJoinTest). The same on both sides of every
+     * comparison: Passages' ranking, and QueryCheck, which counts a query word as yours when it shares a stem with
+     * something you said.
      */
     fun stem(w: String): String {
         if (w.length <= 3 || w.any { it.isDigit() }) return w
@@ -161,7 +166,11 @@ object WebWords {
             w.endsWith("s") || w.endsWith("x") -> w.dropLast(1)
             else -> w
         }
-        return if (s.length >= 4 && s.endsWith("e")) s.dropLast(1) else s
+        return when {
+            s.length >= 5 && s.endsWith("ee") -> s.dropLast(2)
+            s.length >= 4 && s.endsWith("e") -> s.dropLast(1)
+            else -> s
+        }
     }
 
     /** English and French words that say nothing about the subject (folded, without accents). */

@@ -1,0 +1,1 @@
+1.4.1: Wikipedia on this phone shows an article only when its own sentence answers you, and finds died, sank and formed. Phone questions like "what's using so much battery?" stay with your phone. Robot to Robot stops Tor when Robot's network access is off. It updates 1.4.0 in place. Notes: https://github.com/picocryptfan/robot-assistant/releases/tag/v1.4.1

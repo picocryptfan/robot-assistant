@@ -2535,7 +2535,10 @@ class ProcessIsolationTest {
         assertEquals("a socket outside the carriers' recorded functions", 1 + 1, carriers.count("Socket()") - carriers.count("ServerSocket()") + carriers.count("HomeNets.socket("))
         val relay = flatCode(kt("link", "r2r/BridgeRelay.kt"))
         assertEquals(1, relay.count("ServerSocket(")); assertHas(relay, "ServerSocket(0, BACKLOG, InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1)))", "MessageDigest.isEqual(u, auth.user",
-            "if (!ok) return", "if (!BridgeRelayPlan.allows(targets, host, port)) { reply(o, NOT_ALLOWED); return }", "val s = HomeNets.socket(a)", "SecureRandom()")
+            "if (!ok) return", "if (!BridgeRelayPlan.allows(targets, host, port)) { reply(o, NOT_ALLOWED); return }", "SecureRandom()")
+        // review-fix-tor-lows-141 L: every bridge socket is HomeNets' for the address it checked, and that is where it connects.
+        assertHas(relay, "socketFor: (ByteArray) -> Socket = ::homeSocket", "reach: (Socket, InetSocketAddress) -> Unit = { s, to -> s.connect(to, CONNECT_MS) }",
+            "private fun homeSocket(a: ByteArray): Socket = HomeNets.socket(a)", "val s = try { socketFor(a) }", "reach(s, InetSocketAddress(InetAddress.getByAddress(a), port))")
         assertEquals(1, relay.count("HomeNets.socket(")); assertHasNot(relay, "= Socket(", "Socket()")
         assertEquals(listOf("link/r2r/BridgeRelay.kt", "link/r2r/Carriers.kt"), usersOf(Regex("""\bHomeNets\b"""), ours.filterKeys { it.startsWith("link/") || it.startsWith("app/link/") }))
         assertEquals("a listener outside the recorded function", carriers.count("ServerSocket("), listenBody.count("ServerSocket("))

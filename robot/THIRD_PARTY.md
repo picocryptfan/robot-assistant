@@ -771,6 +771,9 @@ rounded log-probabilities only, no sentence. `tools/make_langid.py` builds it fr
 The test resource `core/src/test/resources/langid/heldout-fr-en.tsv` holds 369 more sentences of the same CC0 export,
 with their Tatoeba ids, that the table never saw. `langid/colloquial.tsv` (62 short lines) was written for Robot.
 
+The test resource `core/src/test/resources/wiki/recorded-hits.tsv` quotes 37 sentences of Wikipedia, CC BY-SA 4.0,
+credited in its header.
+
 ## Every process (Apache-2.0)
 
 | dependency | version |

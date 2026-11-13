@@ -136,7 +136,9 @@ class LinkNode(
     private val io: ExecutorService = Executors.newCachedThreadPool { r -> Thread(r, "robot-link-io").apply { isDaemon = true } } // l10n: not text (a thread's name)
     /** Tor's starts, stops and publications, one at a time. */
     // fix-bridges-lows-b (review L1): Tor's own starts over your new lines check Robot's network access too, on any thread.
-    init { (tor as? TorRuntime)?.mayStart = { env.networkAllowed() } }
+    // fix-bridges-lows-d (review-c L2): a start refused for it marks network access as off, so your onions are published
+    // again once it's back, however quickly (a post can't throw after close).
+    init { tor?.checkBeforeStart { env.networkAllowed().also { if (!it) post { networkWasOff = true } } } }
     private val torThread: ExecutorService = Executors.newSingleThreadExecutor { r -> Thread(r, "robot-link-tor").apply { isDaemon = true } } // l10n: not text (a thread's name)
 
     // The link thread's own state.
@@ -225,6 +227,15 @@ class LinkNode(
         exec.shutdown()
         try { exec.awaitTermination(5, TimeUnit.SECONDS) } catch (_: InterruptedException) {}
         io.shutdownNow(); torThread.shutdownNow()
+        // fix-tor-lows-141-c: shutdownNow drops the stop sleep() queued behind a running Tor task (a start reaching 100%, a
+        // publish), so it runs here once that task lets go of Tor's lock; held, no later up() starts it again.
+        val t = tor ?: return
+        val stopper = Thread({ try { t.sleep() } catch (_: Exception) {} }, "robot-link-tor-stop").apply { isDaemon = true } // l10n: not text (a thread's name)
+        stopper.start()
+        // fix-tor-lows-141-d (review-c L1): Start over deletes Tor's folder once close() returns, so wait for the stop. It waits
+        // for Tor's lock (an interrupted task's control read, normally under a second), then asks Tor to stop and gives it 5 s
+        // before killing it (stopProcess): 10 s covers both; past that the thread finishes on its own.
+        try { stopper.join(10_000) } catch (_: InterruptedException) { Thread.currentThread().interrupt() }
     }
 
     /** Runs the outbox now (the IPC's nudge, and the tests' injected clock). */
@@ -317,6 +328,9 @@ class LinkNode(
         if (!env.networkAllowed()) {
             if (st.outbox.isNotEmpty()) log.add(LinkEvent.NO_NETWORK)
             networkWasOff = true
+            // fix-bridges-lows-c (review L1): Tor fails closed: a running Tor stops, stale or not, as no start begins with
+            // network access off; it starts again through the usual paths once it's back. -d M1: still connecting too.
+            tor?.let { t -> torThread.execute { try { if (t.live && !env.networkAllowed()) t.down() } catch (_: Exception) {} } }
             return
         }
         // fix-bridges-and-wording-d L3: network access back on: your onion and open codes' onions are published again now

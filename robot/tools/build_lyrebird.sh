@@ -15,6 +15,19 @@
 #   ANDROID_NDK_HOME (default $ANDROID_HOME/ndk/27.1.12297006); ROBOT_LYREBIRD_NOPIN=1 prints the hash without stopping,
 #   only for moving to a new version.
 set -euo pipefail
+# A copy goes to a new file renamed into place, never written into the old one: a hard link to the old file elsewhere
+# (a worktree made by wt-local.sh) keeps its bytes, and a failed copy leaves the old file. cp_new SRC... DEST (a file, or
+# a folder that exists).
+cp_new() {
+  local d="${!#}" s t tmp
+  for s in "${@:1:$#-1}"; do
+    t=$d; [ -d "$d" ] && t="$d/${s##*/}"
+    # A hidden name (.NAME.new.PID): one left by a run cut short is never packaged (AGP skips dotfiles).
+    [[ $t == */* ]] && tmp="${t%/*}/.${t##*/}.new.$$" || tmp=".$t.new.$$"
+    cp -- "$s" "$tmp" || { rm -f -- "$tmp"; return 1; }
+    mv -f -- "$tmp" "$t" || return 1
+  done
+}
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROBOT=$(dirname "$HERE")
@@ -94,5 +107,5 @@ if [ "$got" != "$pin" ]; then
   echo "unpinned: $got"
 fi
 mkdir -p "$(dirname "$OUT")"
-cp "$WORK/liblyrebird.so" "$OUT"
+cp_new "$WORK/liblyrebird.so" "$OUT"
 echo "ok  $OUT $got $(stat -c %s "$OUT") bytes"

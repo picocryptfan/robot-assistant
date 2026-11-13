@@ -8,6 +8,7 @@ import app.heyrobot.core.i18n.WikiStrings
 import app.heyrobot.core.PromptRole
 import app.heyrobot.core.PromptTurn
 import app.heyrobot.core.TokenEstimate
+import app.heyrobot.core.web.PageBlock
 import app.heyrobot.core.web.PageContent
 import app.heyrobot.core.web.PageText
 import app.heyrobot.core.web.Entities
@@ -78,6 +79,8 @@ object WikiAnswer {
 
     /** A title fits the subject: the same words (a qualifier in brackets aside), or all the subject's and at most two more. */
     fun fits(title: String, subject: String): Boolean {
+        // L3 (review-wiki-which-pick): a disambiguation page lists articles, it answers nothing.
+        if (DISAMBIGUATION.containsMatchIn(title)) return false
         val t = WebWords.words(QUALIFIER.replace(title, ""))
         val s = WebWords.words(subject)
         if (s.isEmpty()) return false
@@ -90,23 +93,85 @@ object WikiAnswer {
     /** The title is the subject itself before a comma or bracket ("Halifax, Nova Scotia" for "Halifax"). */
     fun exact(title: String, subject: String): Boolean = WebWords.words(title.split(Regex("\\s*[(,]"))[0]) == WebWords.words(subject)
 
+    /** A disambiguation page's title, in either language. */
+    private val DISAMBIGUATION = Regex("\\((?:disambiguation|homonymie)\\)\\s*$", RegexOption.IGNORE_CASE) // l10n: not text (titles matched)
+
     /**
-     * Title first: the hits that fit, an exact one first; else full text, the hits that share a word with the subject
-     * outside a title's brackets. wiki-article-pick: a title hit is often a redirect ("Halifax, England" to Halifax, West
-     * Yorkshire, "Halifax NS" to Halifax, Nova Scotia), so each is judged by the article it leads to, and two that lead to
-     * one article take one place (exact when either title is); a word shared only in brackets ("Vénus (planète)" for the
-     * largest planet) isn't a match.
+     * Title first: the hits that fit, an exact one first; else full text, the first hit whose article [answers] the subject.
+     * wiki-article-pick: a title hit is often a redirect ("Halifax, England" to Halifax, West Yorkshire, "Halifax NS" to
+     * Halifax, Nova Scotia), so each is judged by the article it leads to, and two that lead to one article take one place
+     * (exact when either title is). L2 (review-wiki-which-pick): each article is read once, here, and [answer] uses these
+     * pages; one that can't be read is left out.
      */
-    fun find(subject: String, copy: WikiCopy): Pair<List<WikiCopy.Hit>, Boolean> {
+    fun articles(subject: String, copy: WikiCopy): Pair<List<WikiCopy.Page>, Boolean> {
         val fitting = copy.titles(subject, ASK).filter { fits(it.title, subject) }.distinctBy { it.title }
-            .map { h -> h to (copy.article(h.path)?.let { WikiCopy.Hit(it.path, it.title) } ?: h) }.groupBy { it.second.path }.values
+            .mapNotNull { h -> copy.article(h.path)?.takeUnless { DISAMBIGUATION.containsMatchIn(it.title) }?.let { h to it } }.groupBy { it.second.path }.values
             // L1 (review-wiki-which-pick): hits that lead to one article take one place, exact when any of them is.
             .map { g -> g.first().second to g.any { (h, to) -> exact(h.title, subject) || exact(to.title, subject) } }
         if (fitting.isNotEmpty()) return fitting.sortedByDescending { it.second }.map { it.first }.take(MAX_ARTICLES) to true
-        val words = content(WebWords.words(subject)).toSet()
-        val shared = copy.search(subject, ASK).filter { h -> content(WebWords.words(QUALIFIER.replace(h.title, ""))).any { it in words } }.distinctBy { it.title }
-        return shared.take(MAX_ARTICLES) to false
+        // M1 (fix-wiki-pick-141): full text ranks articles that use the words, not ones about them (Planet Nine for the planet
+        // closest to the Sun), so one article at most, and only one that says it: else none, and the model answers alone.
+        // H1 (review-fix-wiki-pick-141-b): one that [answers] wins at any rank (Samuel de Champlain's lead says « mort », so it
+        // beats Mort ranked above it). High (review-fix-wiki-pick-141-c): a page that only names the subject gives none, since
+        // a namesake that opens like a band's page (Cream, Heart, Oasis) can't be told from it.
+        for (h in copy.search(subject, ASK).distinctBy { it.path }) {
+            if (DISAMBIGUATION.containsMatchIn(h.title)) continue
+            val page = copy.article(h.path) ?: continue
+            if (DISAMBIGUATION.containsMatchIn(page.title)) continue
+            if (answers(page, subject, copy.lang)) return listOf(page) to false
+        }
+        return emptyList<WikiCopy.Page>() to false
     }
+
+    /** [articles]' paths and titles. */
+    fun find(subject: String, copy: WikiCopy): Pair<List<WikiCopy.Hit>, Boolean> =
+        articles(subject, copy).let { (pages, byTitle) -> pages.map { WikiCopy.Hit(it.path, it.title) } to byTitle }
+
+    /** Words a question puts between its subject's words that an article's sentence needn't repeat. */
+    private val FILL = setOf("is", "are", "was", "were", "has", "have", "had", "does", "did", "est", "sont", "etait", "ont", "qui", "que") // l10n: not text (words matched)
+    /** "second", "6th", « sixième » (folded): before a superlative, the sentence names another one ("the second largest"). */
+    private val ORDINAL = Regex("second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|\\d+(?:st|nd|rd|th|e|er|re)|premiere?|\\p{L}+ieme") // l10n: not text (words matched)
+    private val SENTENCE = Regex("(?<=[.!?])\\s+")
+
+    /**
+     * M1: one sentence of [page] names its own title (outside brackets) and every content word of [subject] ("Mercury is a
+     * chemical element; it has symbol Hg"), and a superlative in the subject isn't one with an ordinal just before it
+     * (« la sixième plus grosse » in Vénus for the largest planet). Measured on the starters' hits for 24 questions
+     * (core/src/test/resources/wiki/recorded-hits.tsv). M1 (review-fix-wiki-pick-141): the sentence is about the article,
+     * as a lead sentence is: its first content word is the title's ("Jupiter is ...", not Saturn's "Titan, Saturn's largest moon").
+     * fix-wiki-answers-forms: in English, a word matches its other forms ("died" for die, "sank" for sink: [WordForms]).
+     * M1 (review-fix-wiki-answers-forms): a title that opens with a word of the subject names all of it ("Prince Henry" isn't
+     * Prince). L2: [lang] is the copy's, never a default, so a French copy never gets English forms.
+     */
+    fun answers(page: WikiCopy.Page, subject: String, lang: String): Boolean {
+        val same: (String, String, Boolean) -> Boolean = if (lang.startsWith("en")) WordForms::same else { x, n, _ -> x == n }
+        val s = WebWords.words(subject)
+        val need = content(s).filter { it !in FILL }.toSet()
+        val most = s.filterIndexed { i, w -> (w.length > 4 && w.endsWith("est")) || (i > 0 && s[i - 1] in MORE) }.toSet()
+        val name = named(page)
+        if (need.isEmpty() || name.isEmpty() || (name.first() in s && !s.containsAll(name))) return false
+        return opening(page).any { w ->
+            about(w, name) && need.all { n -> w.indices.any { i -> (w[i] == n || w.getOrNull(i - 1) !in setOf("is", "are")) && same(w[i], n, w.getOrNull(i - 1) == "the" && w.getOrNull(i + 1) == "of" && w[i] in name) && (n !in most || (maxOf(0, i - 2) until i).none { ORDINAL.matches(w[it]) }) } }
+        }
+    }
+
+    /** [page]'s title words outside brackets, content words first ("Samuel de Champlain" to samuel, champlain). */
+    private fun named(page: WikiCopy.Page) =
+        content(WebWords.words(QUALIFIER.replace(page.title, ""))).ifEmpty { WebWords.words(QUALIFIER.replace(page.title, "")) }
+
+    /** A sentence about the article, as a lead sentence is: its first content word is the title's, and it holds every title word. */
+    private fun about(w: List<String>, name: List<String>) = content(w).firstOrNull() == name.first() && w.containsAll(name)
+
+    /**
+     * L4 (review-fix-wiki-pick-141-b): the words of each sentence of [page]'s lead, the blocks before its first section heading,
+     * so a body sentence that starts with the title ("Saturn's largest moon, Titan, ...") is never read as what the page is.
+     */
+    private fun opening(page: WikiCopy.Page): List<List<String>> =
+        text(page.html).blocks.takeWhile { it.kind != PageBlock.Kind.HEADING || it.level < 2 }
+            .flatMap { b -> SENTENCE.split(b.text).map { WebWords.words(it) } }
+
+    /** L3 (review-fix-wiki-pick-141): the word after one of these is a superlative too ("the most moons"). */
+    private val MORE = setOf("plus", "moins", "most", "least", "more") // l10n: not text (words matched)
 
     /** "September 2026" or « septembre 2026 » from the copy's date; null when it can't be read. */
     fun month(date: String?, lang: String): String? = runCatching {
@@ -207,8 +272,7 @@ object WikiAnswer {
         val lang = WikiRoute.lang(question)
         val subject = WikiRoute.subject(question, lang) ?: return null
         val copy = pick(lang, copies) ?: return null
-        val (hits, byTitle) = find(subject, copy)
-        val pages = hits.mapNotNull { copy.article(it.path) }.distinctBy { it.title }.take(MAX_ARTICLES)
+        val (pages, byTitle) = articles(subject, copy)
         if (pages.isEmpty()) return null
         val contents = pages.mapIndexed { i, p -> i + 1 to text(p.html) }
         val passages = passages("$subject $question", contents)

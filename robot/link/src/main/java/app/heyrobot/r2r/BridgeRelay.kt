@@ -35,7 +35,12 @@ class RelayAuth(val host: String, val port: Int, val user: String, val pass: Str
     override fun toString(): String = "RelayAuth" // l10n: not text (toString for logs and tests; never the password)
 }
 
-class BridgeRelay private constructor(private val server: ServerSocket, private val targets: List<BridgeTarget>, private val dial: (ByteArray, Int) -> Socket) : Closeable {
+class BridgeRelay private constructor(
+    private val server: ServerSocket,
+    private val targets: List<BridgeTarget>,
+    private val socketFor: (ByteArray) -> Socket,
+    private val reach: (Socket, InetSocketAddress) -> Unit,
+) : Closeable {
     val auth = RelayAuth(server.inetAddress.hostAddress ?: throw IOException(), server.localPort, token(), token())
     private val open = HashSet<Socket>()
     private var closed = false
@@ -90,7 +95,6 @@ class BridgeRelay private constructor(private val server: ServerSocket, private 
             val (s, failure) = connect(host, port)
             if (s == null) { reply(o, failure); return }
             far = s
-            if (!track(s)) return
             reply(o, 0)
             c.soTimeout = 0
             // review-tor-bridge-relay-b L3: every stream taken here, inside the try (a close() from Tor stopping makes them throw).
@@ -110,12 +114,21 @@ class BridgeRelay private constructor(private val server: ServerSocket, private 
     /**
      * A literal as it is, a name looked up; each address under core HomeNets' rule (a home one off its network is refused unsent).
      * The socket, or none and this connection's own reply code (tor-bridge-relay-c L2: never another connection's).
+     * fix-tor-lows-141 (review-141-relay-native L3): each socket is tracked before it connects, so [close] stops a dial in
+     * progress, and one that ends after [close] is already closed; nothing opens once Tor has stopped.
      */
     private fun connect(host: String, port: Int): Pair<Socket?, Int> {
         val addrs = LanRule.literal(host)?.let { listOf(it) } ?: try { InetAddress.getAllByName(host).map { it.address } } catch (_: Exception) { return null to HOST_UNREACHABLE }
         var off = false
         for (a in addrs) {
-            try { return dial(a, port) to 0 } catch (_: OffNetworkException) { off = true } catch (_: Exception) {}
+            val s = try { socketFor(a) } catch (_: OffNetworkException) { off = true; continue } catch (_: Exception) { continue }
+            if (!track(s)) return null to HOST_UNREACHABLE
+            try {
+                reach(s, InetSocketAddress(InetAddress.getByAddress(a), port))
+                return s to 0
+            } catch (_: OffNetworkException) { off = true } catch (_: Exception) {}
+            quiet(s)
+            synchronized(open) { open.remove(s) }
         }
         return null to if (off) NETWORK_UNREACHABLE else HOST_UNREACHABLE
     }
@@ -147,6 +160,9 @@ class BridgeRelay private constructor(private val server: ServerSocket, private 
 
     private fun reply(o: OutputStream, code: Int) = o.write(byteArrayOf(5, code.toByte(), 0, 1, 0, 0, 0, 0, 0, 0))
 
+    /** Tests only: the sockets tracked now (each connection's near one and its far one or its dial). */
+    internal fun tracked(): List<Socket> = synchronized(open) { open.toList() }
+
     private fun track(s: Socket): Boolean {
         val ok = synchronized(open) { !closed && open.add(s) }
         if (!ok) quiet(s)
@@ -159,8 +175,24 @@ class BridgeRelay private constructor(private val server: ServerSocket, private 
         quiet(server)
         // fix-relay-port-test: the JDK frees a port that a thread is blocked accepting on only when that thread wakes, so
         // until then a connection could still be taken. Wait for the accept loop to end: the port is shut on return.
-        if (Thread.currentThread() !== loop) loop.join(CLOSE_MS)
+        // fix-relay-join-interrupt: the connections first, so nothing that happens to the wait can leave them open.
         all.forEach(::quiet)
+        if (Thread.currentThread() !== loop) awaitLoop()
+    }
+
+    /**
+     * fix-relay-join-interrupt: waits up to [CLOSE_MS] for the accept loop to end, through an interrupt too (so the port
+     * is shut on return whatever happens), and leaves the thread marked interrupted again if it was.
+     */
+    private fun awaitLoop() {
+        val end = System.nanoTime() + CLOSE_MS * 1_000_000L
+        var interrupted = false
+        while (loop.isAlive) {
+            val left = (end - System.nanoTime()) / 1_000_000L
+            if (left <= 0) break
+            try { loop.join(left) } catch (_: InterruptedException) { interrupted = true }
+        }
+        if (interrupted) Thread.currentThread().interrupt()
     }
 
     companion object {
@@ -175,18 +207,22 @@ class BridgeRelay private constructor(private val server: ServerSocket, private 
         private const val COMMAND = 7
         private const val ADDRESS_TYPE = 8
 
-        /** Listening at once on a loopback port (127.0.0.1 itself: Android's loopback address is ::1, which the torrc refuses); [dial]: tests only. */
-        fun start(targets: List<BridgeTarget>, dial: (ByteArray, Int) -> Socket = ::homeDial): BridgeRelay {
-            val r = BridgeRelay(ServerSocket(0, BACKLOG, InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1))), targets, dial)
+        /**
+         * Listening at once on a loopback port (127.0.0.1 itself: Android's loopback address is ::1, which the torrc refuses).
+         * [socketFor] (an unconnected socket under core HomeNets' rule) and [reach] (its connect): tests only.
+         */
+        fun start(
+            targets: List<BridgeTarget>,
+            socketFor: (ByteArray) -> Socket = ::homeSocket,
+            reach: (Socket, InetSocketAddress) -> Unit = { s, to -> s.connect(to, CONNECT_MS) },
+        ): BridgeRelay {
+            val r = BridgeRelay(ServerSocket(0, BACKLOG, InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1))), targets, socketFor, reach)
             r.loop.start()
             return r
         }
 
-        private fun homeDial(a: ByteArray, port: Int): Socket {
-            val s = HomeNets.socket(a)
-            try { s.connect(InetSocketAddress(InetAddress.getByAddress(a), port), CONNECT_MS) } catch (x: Exception) { quiet(s); throw x }
-            return s
-        }
+        /** An unconnected socket under core HomeNets' rule (bound to the network that holds a home address, or refused). */
+        private fun homeSocket(a: ByteArray): Socket = HomeNets.socket(a)
 
         private fun token(): String = ByteArray(16).also { SecureRandom().nextBytes(it) }.joinToString("") { "%02x".format(it) } // l10n: not text (a format)
 

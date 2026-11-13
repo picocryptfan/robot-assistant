@@ -107,10 +107,27 @@ class BridgeRelayTest {
         } finally { done.set(true); busy.forEach { it.join(5_000) } }
     }
 
+    /** fix-relay-join-interrupt: an interrupted thread's close() still closes every connection and leaves the thread marked. */
+    @Test fun anInterruptedCloseStillClosesEveryConnection() {
+        val relay = BridgeRelay.start(emptyList())
+        Socket(lo, relay.auth.port).use { s ->
+            s.soTimeout = 3_000
+            s.getOutputStream().write(byteArrayOf(5, 1, 2))
+            val i = DataInputStream(s.getInputStream())
+            assertEquals(5, i.readUnsignedByte()); assertEquals(2, i.readUnsignedByte()) // serve() has it: the relay holds it open
+            Thread.currentThread().interrupt()
+            val marked = try { relay.close(); Thread.currentThread().isInterrupted } finally { Thread.interrupted() }
+            assertTrue(marked)
+            val end = try { i.read() } catch (_: SocketTimeoutException) { -2 } catch (_: java.io.IOException) { -1 }
+            assertEquals(-1, end)
+            assertTrue(portShut(relay.auth.port))
+        }
+    }
+
     /** tor-bridge-relay-c L2: connections failing at once each get their own code (off the home network 3, unreachable 4). */
     @Test fun eachConnectionKeepsItsOwnFailure() {
         val lines = listOf(BridgeLine.parse("10.0.0.5:443 $fp")!!, BridgeLine.parse("10.0.0.6:443 $fp")!!)
-        val relay = BridgeRelay.start(BridgeRelayPlan.targets(lines)) { a, _ -> Thread.sleep(5); if (a[3].toInt() == 5) throw app.heyrobot.core.net.OffNetworkException() else throw java.io.IOException() }
+        val relay = BridgeRelay.start(BridgeRelayPlan.targets(lines), { a -> Thread.sleep(5); if (a[3].toInt() == 5) throw app.heyrobot.core.net.OffNetworkException() else throw java.io.IOException() })
         try {
             val wrong = java.util.concurrent.atomic.AtomicInteger()
             (0 until 12).map { n ->
@@ -122,6 +139,29 @@ class BridgeRelayTest {
                 }.apply { start() }
             }.forEach { it.join(30_000) }
             assertEquals(0, wrong.get())
+        } finally { relay.close() }
+    }
+
+    /**
+     * fix-tor-lows-141-b (review-fix-tor-lows-141 L): a dial that fails is closed and no longer tracked, so Tor retrying a
+     * bridge it can't reach leaves nothing open until the relay stops.
+     */
+    @Test fun aFailedDialLeavesNothingTracked() {
+        val made = java.util.Collections.synchronizedList(ArrayList<Socket>())
+        val relay = BridgeRelay.start(BridgeRelayPlan.targets(listOf(BridgeLine.parse("10.0.0.5:443 $fp")!!)), { Socket().also { made += it } }) { _, _ ->
+            throw java.io.IOException()
+        }
+        try {
+            repeat(3) { n ->
+                val (s, _) = hello(relay, relay.auth.user, relay.auth.pass)
+                s.use {
+                    assertEquals(4, ask(it, "10.0.0.5", 443))
+                    assertEquals(n + 1, made.size)
+                    assertTrue("the failed dial is closed", made[n].isClosed)
+                    val left = relay.tracked()
+                    assertTrue("a failed dial still tracked", made.none { f -> left.any { o -> o === f } })
+                }
+            }
         } finally { relay.close() }
     }
 
@@ -159,9 +199,9 @@ class BridgeRelayTest {
     @Test fun torsOwnSlowConnectionsHoldNoSlot() {
         val dialling = java.util.concurrent.CountDownLatch(16)
         val release = java.util.concurrent.CountDownLatch(1)
-        val relay = BridgeRelay.start(BridgeRelayPlan.targets(listOf(BridgeLine.parse("10.0.0.5:443 $fp")!!))) { _, _ ->
+        val relay = BridgeRelay.start(BridgeRelayPlan.targets(listOf(BridgeLine.parse("10.0.0.5:443 $fp")!!)), { _ ->
             dialling.countDown(); release.await(20, java.util.concurrent.TimeUnit.SECONDS); throw java.io.IOException()
-        }
+        })
         val slow = ArrayList<Socket>()
         try {
             repeat(16) {
@@ -181,7 +221,7 @@ class BridgeRelayTest {
         val before = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { _, _ -> crashed.countDown() }
         // An unconnected socket: its streams throw SocketException, as a closed one's do.
-        val relay = BridgeRelay.start(BridgeRelayPlan.targets(listOf(BridgeLine.parse("10.0.0.5:443 $fp")!!))) { _, _ -> Socket() }
+        val relay = BridgeRelay.start(BridgeRelayPlan.targets(listOf(BridgeLine.parse("10.0.0.5:443 $fp")!!)), { Socket() }) { _, _ -> }
         try {
             val (s, _) = hello(relay, relay.auth.user, relay.auth.pass)
             s.use {
@@ -190,6 +230,28 @@ class BridgeRelayTest {
             }
             assertTrue("an uncaught exception", !crashed.await(1, java.util.concurrent.TimeUnit.SECONDS))
         } finally { relay.close(); Thread.setDefaultUncaughtExceptionHandler(before) }
+    }
+
+    /**
+     * fix-tor-lows-141 (review-141-relay-native L3): a dial still in progress when Tor stops is closed by the relay's close(),
+     * and a connect that ends after it leaves nothing open (the far socket is tracked before it connects).
+     */
+    @Test fun closeStopsADialInProgress() {
+        val dialling = java.util.concurrent.CountDownLatch(1)
+        val shut = java.util.concurrent.CountDownLatch(1)
+        val far = object : Socket() { override fun close() { shut.countDown(); super.close() } }
+        // A connect that hangs until its socket is closed, then ends as if it had connected just then.
+        val relay = BridgeRelay.start(BridgeRelayPlan.targets(listOf(BridgeLine.parse("10.0.0.5:443 $fp")!!)), { far }) { _, _ ->
+            dialling.countDown(); shut.await(20, java.util.concurrent.TimeUnit.SECONDS)
+        }
+        val (s, _) = hello(relay, relay.auth.user, relay.auth.pass)
+        try {
+            Thread { runCatching { ask(s, "10.0.0.5", 443) } }.apply { isDaemon = true }.start()
+            assertTrue("dialling", dialling.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            relay.close()
+            assertTrue("the dial in progress is closed by close()", shut.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            assertTrue(far.isClosed)
+        } finally { s.close(); relay.close() }
     }
 
     /**

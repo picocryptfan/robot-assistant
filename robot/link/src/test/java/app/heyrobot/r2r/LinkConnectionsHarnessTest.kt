@@ -230,6 +230,44 @@ class LinkConnectionsHarnessTest {
     }
 
     /**
+     * fix-tor-lows-141-c (review-fix-tor-lows-141-b L): close() while Tor's thread is busy with a start that ignores the
+     * interrupt (its last poll reaching 100%, then the code's publish) still leaves Tor stopped once that start returns.
+     */
+    @Test fun closeWhileTorStartsLeavesItStopped() {
+        val tor = FakeTorNetwork()
+        val a = robot("Robin", null, 4, tor, null)
+        idle(a)
+        val at = a.tor!!
+        val gate = java.util.concurrent.CountDownLatch(1)
+        tor.deaf = true
+        tor.holds[at] = gate
+        val ups = tor.ups(at)
+        val downs = tor.downs(at)
+        a.n().makeCode(LinkMode.PRIVATE, false)
+        until("Robin's start under way") { at in tor.entered }
+        val closer = Thread { a.n().close() }
+        // fix-link-unbind-141-b (review-fix-link-unbind-141 L2): only a stop thread this close() starts counts, not one an
+        // earlier test left behind.
+        fun stops() = Thread.getAllStackTraces().keys.filter { it.name == "robot-link-tor-stop" && it.isAlive }.toSet()
+        val earlier = stops()
+        closer.start()
+        // fix-tor-lows-141-d (review-c L1, L2): close() waits for its Tor stop, so the start goes on while close() runs,
+        // Tor comes up, and it is stopped by the time close() returns.
+        until("close()'s Tor stop waiting") { (stops() - earlier).isNotEmpty() }
+        // fix-link-unbind-141 (review-fix-tor-lows-141-d F2): close() still runs while the start is held, so a close() that
+        // does not wait for its stop fails here every time, not only when the start loses the race.
+        closer.join(500)
+        assertTrue("close() waits for its Tor stop", closer.isAlive)
+        gate.countDown()
+        closer.join(15_000)
+        assertFalse("close() returned", closer.isAlive)
+        robots -= a
+        assertTrue("Tor came up before the stop", tor.ups(at) > ups)
+        assertTrue("Tor stopped by close()", tor.downs(at) > downs)
+        assertFalse("Tor stopped after close", at.running)
+    }
+
+    /**
      * fix-bridges-and-wording-c L1, L2: a stale Tor (your own bridge lines changed) is dealt with on the pump while :link is
      * awake: started again once when your onion is published and Robot's network access is allowed, otherwise stopped
      * (never plain Tor with nothing to carry); asleep (the screens closed), the pump leaves it to the next use.
@@ -393,6 +431,94 @@ class LinkConnectionsHarnessTest {
         gate.countDown()
         until("stopped with network access off") { tor.downs(at) > d }
         assertFalse("Alex's Tor not running", at.running)
+    }
+
+    /** review-fix-bridges-lows-b L1, Tor fails closed: network access off stops a running Tor that isn't stale too. */
+    @Test fun networkAccessOffStopsATorThatIsNotStale() {
+        val tor = FakeTorNetwork()
+        val a = robot("Alex", null, 3, tor, null)
+        idle(a)
+        val at = a.tor!!
+        assertTrue(at.up())
+        val d = tor.downs(at)
+        a.env.network.set(false)
+        a.n().pump().get(10, TimeUnit.SECONDS)
+        until("stopped with network access off") { tor.downs(at) > d && !at.running }
+    }
+
+    /**
+     * review-fix-bridges-lows-b L2: the pump's start over your new lines is stopped by network access going off, back on
+     * before any pump saw it off: your onion is published again on the next pumps, not only at the next send or wake.
+     */
+    @Test fun aStartStoppedByNetworkAccessOffPublishesYourOnionOnceItsBack() {
+        val tor = FakeTorNetwork()
+        val a = robot("Matt", null, 1, tor, null)
+        val b = robot("Sam", null, 2, tor, null)
+        val made = a.n().makeCode(LinkMode.PRIVATE, false).get(20, TimeUnit.SECONDS)
+        assertEquals(UseCodeResult.SENT, b.n().useCode(made.code!!.text(), PairCodeForm.PASTED, LinkMode.PRIVATE).get(30, TimeUnit.SECONDS).result)
+        active(a)
+        until("Sam's side active") { views(b).any { it.phase == PairingPhase.ACTIVE } }
+        idle(a, b)
+        until("Matt's onion answers") { a.state.tor?.let { tor.serving(it.onion) } == true }
+        val at = a.tor!!
+        val gate = java.util.concurrent.CountDownLatch(1)
+        tor.holds[at] = gate
+        val k = a.env.torChecks.get()
+        tor.staleOnes += at
+        a.n().pump().get(10, TimeUnit.SECONDS)
+        until("the pump's start under way") { at in tor.entered }
+        a.env.network.set(false)
+        gate.countDown()
+        // One check before that start, one after it (read while network access was still off).
+        until("the stopped start's check") { a.env.torChecks.get() > k + 1 }
+        assertFalse("Matt's onion went with that start", a.state.tor?.let { tor.serving(it.onion) } == true)
+        tor.holds.remove(at)
+        a.env.network.set(true)
+        until("Matt's onion answers again") { a.n().pump().get(10, TimeUnit.SECONDS); a.state.tor?.let { tor.serving(it.onion) } == true }
+    }
+
+    /** review-fix-bridges-lows-c M1: network access off stops a Tor still connecting (a start that gave up), not only a ready one. */
+    @Test fun networkAccessOffStopsATorStillConnecting() {
+        val tor = FakeTorNetwork()
+        val a = robot("Alex", null, 3, tor, null)
+        idle(a)
+        val at = a.tor!!
+        tor.connecting += at
+        val d = tor.downs(at)
+        a.env.network.set(false)
+        a.n().pump().get(10, TimeUnit.SECONDS)
+        until("stopped with network access off") { tor.downs(at) > d && !at.live }
+    }
+
+    /**
+     * review-fix-bridges-lows-c L2: the start network access stopped, with it back on before that start returned: your onion
+     * is still published again on the next pumps (the refusal itself marks it).
+     */
+    @Test fun aStartStoppedByAQuickOffAndOnPublishesYourOnionAgain() {
+        val tor = FakeTorNetwork()
+        val a = robot("Matt", null, 1, tor, null)
+        val b = robot("Sam", null, 2, tor, null)
+        val made = a.n().makeCode(LinkMode.PRIVATE, false).get(20, TimeUnit.SECONDS)
+        assertEquals(UseCodeResult.SENT, b.n().useCode(made.code!!.text(), PairCodeForm.PASTED, LinkMode.PRIVATE).get(30, TimeUnit.SECONDS).result)
+        active(a)
+        until("Sam's side active") { views(b).any { it.phase == PairingPhase.ACTIVE } }
+        idle(a, b)
+        until("Matt's onion answers") { a.state.tor?.let { tor.serving(it.onion) } == true }
+        val at = a.tor!!
+        val node = tor.mayStart.getValue(at)
+        // Network access back on as soon as that start is refused, before its up() returns.
+        tor.mayStart[at] = { node().also { if (!it) a.env.network.set(true) } }
+        val gate = java.util.concurrent.CountDownLatch(1)
+        tor.holds[at] = gate
+        tor.staleOnes += at
+        a.n().pump().get(10, TimeUnit.SECONDS)
+        until("the pump's start under way") { at in tor.entered }
+        a.env.network.set(false)
+        gate.countDown()
+        until("refused, and network access back on") { at !in tor.staleOnes && a.env.network.get() }
+        assertFalse("Matt's onion went with that start", a.state.tor?.let { tor.serving(it.onion) } == true)
+        tor.holds.remove(at)
+        until("Matt's onion answers again") { a.n().pump().get(10, TimeUnit.SECONDS); a.state.tor?.let { tor.serving(it.onion) } == true }
     }
 
     @Test fun aCodesOneTimeOnionTakesOnlyAPairingHello() {

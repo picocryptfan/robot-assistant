@@ -44,7 +44,10 @@ import app.heyrobot.r2r.ListsShareHandler
 import app.heyrobot.r2r.LinkNode
 import app.heyrobot.r2r.PushEvent
 import app.heyrobot.r2r.within
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 
 // THE :link PROCESS (android:process=":link", not exported, Robot's signature permission, no intent filter). 1.5, Robot to
 // Robot (robot-to-robot-plan.md §5.1, §5.3; job L3): how Robot's other processes reach :link. Bound by name (core
@@ -92,15 +95,45 @@ class LinkService : Service() {
 
     private var held = false
 
+    // fix-link-unbind-141 (review-fix-tor-lows-141-d F1): onUnbind runs on :link's main thread and never takes this
+    // service's lock or LinkRuntime's (a call's node() can hold both while a turn-off's close() runs, up to 15 s): the
+    // release goes to [releaser]. Each unbind is counted; a hold taken before the latest unbind ([heldAt] below it) is that
+    // unbind's to release, so a bind landing before the release runs takes a hold of its own and lets the old one go.
+    private val unbinds = AtomicLong()
+    private var heldAt = 0L
+
+    // fix-link-unbind-141-b (review-fix-link-unbind-141 L1): once destroyed, no call takes a hold (a stale one, sent
+    // before its client unbound, is refused), and a hold such a call took after the last unbind is dropped here.
+    @Volatile private var gone = false
+
     override fun onBind(intent: Intent?): IBinder = stub
 
     override fun onUnbind(intent: Intent?): Boolean {
-        synchronized(this) { if (held) { held = false; LinkRuntime.release() } }
+        val at = unbinds.incrementAndGet()
+        releaser.execute { synchronized(this) { if (held && heldAt < at) { held = false; LinkRuntime.release() } } }
         return false
     }
 
+    override fun onDestroy() {
+        // No lock here either (main thread): [gone] first, so a node() after the queued release finds it and holds nothing.
+        gone = true
+        releaser.execute { synchronized(this) { if (held) { held = false; LinkRuntime.release() } } }
+        super.onDestroy()
+    }
+
     private fun node(): LinkNode? = synchronized(this) {
-        if (!held) LinkRuntime.hold(this)?.also { held = true } ?: return null
+        if (gone) return null
+        val now = unbinds.get()
+        if (held && heldAt < now) {
+            // Unbound since this hold, and bound again before its release ran: hold for the new client first, so :link
+            // stays awake, then let the old hold go here (the queued release finds it newer and leaves it).
+            val again = LinkRuntime.hold(this)
+            LinkRuntime.release()
+            held = again != null
+            if (!held) return null
+            heldAt = now
+        }
+        if (!held) LinkRuntime.hold(this)?.also { held = true; heldAt = now } ?: return null
         LinkRuntime.node(this)
     }
 
@@ -561,6 +594,17 @@ class LinkService : Service() {
     }
 
     internal companion object {
+        /** One daemon thread for every unbind's release, in order; never :link's main thread. */
+        private val releaser: ExecutorService = Executors.newSingleThreadExecutor { r -> Thread(r, "robot-link-unbind").apply { isDaemon = true } }
+
+        /** Tests only: true once every release queued so far has run, within [seconds]. */
+        @androidx.annotation.VisibleForTesting
+        internal fun released(seconds: Long): Boolean = try { releaser.submit {}.get(seconds, TimeUnit.SECONDS); true } catch (_: Exception) { false }
+
+        /** Tests only: [block] runs on the release thread first, so a release queued after it waits for it. */
+        @androidx.annotation.VisibleForTesting
+        internal fun onReleaser(block: () -> Unit) { releaser.execute(block) }
+
         /** L5-fix: refused whole while the phone is locked (the lock rules, §4.4). */
         /**
          * L5-fix: answered while Robot to Robot is off: its state, turning it on (SET_UP) and Start over; and RP5's

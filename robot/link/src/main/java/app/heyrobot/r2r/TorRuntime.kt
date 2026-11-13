@@ -115,11 +115,16 @@ class TorRuntime(
     override val stale: Boolean get() = process?.isAlive == true && ownLinesChanged()
 
     override val running: Boolean get() = ready && process?.isAlive == true
+    override val live: Boolean get() = process?.isAlive == true
+    override fun checkBeforeStart(check: () -> Boolean) { mayStart = check }
     override val starts: Int get() = started
     override val exited: Boolean get() = process?.isAlive == false
 
     override fun up(): Boolean = synchronized(lock) {
         if (held) return false
+        // fix-bridges-lows-d (review-c M1): network access off stops any Tor at once, ready or still connecting after a start
+        // that gave up (its network stays on so the next up() can carry on), as every refusal below does.
+        if (!mayStart()) { restart(); return false }
         if (ready) {
             if (process?.isAlive == true && !ownLinesChanged()) return true
             if (process?.isAlive == true) restart() else {
@@ -131,8 +136,10 @@ class TorRuntime(
         if (!restarts.allows(System.nanoTime() / 1_000_000)) return false
         // fix-bridges-and-wording-d M1: your own lines changed while a start connected over them: a new start over the new
         // ones, a few times at most (no recursion); after that the next use tries again.
-        // fix-bridges-lows-b (review L1): each new start over your new lines only with Robot's network access allowed.
-        repeat(LINE_CHANGES) { n -> if (n > 0 && !mayStart()) return false; attempt()?.let { return it } }
+        // fix-bridges-lows-b (review L1), -c L1: every start only with Robot's network access allowed, the first one too (the
+        // caller checked before it waited on Tor's lock), and giving up as well.
+        repeat(LINE_CHANGES) { if (!mayStart()) { restart(); return false }; attempt()?.let { return it } }
+        if (!mayStart()) { restart(); return false }
         // fix-bridges-lows (review-d L4): giving up says why, as every other start that fails does (the link log's TOR row 5).
         failed(TorProblem.START)
         false
@@ -151,10 +158,14 @@ class TorRuntime(
             val order = usable.order(route, worked)
             for ((n, r) in order.withIndex()) {
                 val more = n < order.size - 1
+                // fix-bridges-lows-c (review L1): the next route only with network access still allowed.
+                if (!mayStart()) { restart(); return false }
                 try {
                     // fix-bridges-and-wording-c M1: still connecting over your own lines since edited: over the new ones.
                     if (control == null || route != r || (r == TorRoute.OWN && usable.lines(r) != startedLines)) { restart(); start(r, usable) }
                     val c = control ?: return false
+                    // fix-bridges-lows-d (review-c L1): a start network access went off during never turns Tor's network on.
+                    if (!mayStart()) { restart(); return false }
                     c.networkOn(true)
                     val b = bootstrapped(c, if (r.bridged) stallBridgeMs else stallPlainMs, more)
                     // fix-bridges-and-wording-b L2, -d M1: your own lines removed or edited while this start connected: Tor
@@ -173,7 +184,14 @@ class TorRuntime(
             }
             false
         } catch (_: InterruptedException) {
+            // fix-tor-lows-141 (review-141-relay-native L2): the thread stays marked, and the start that didn't finish says why.
+            // fix-tor-lows-141-b (review-fix-tor-lows-141 M): an interrupt while Tor bootstraps (Robot to Robot off, Start
+            // over) stops it; marked first, so stopProcess destroys it without waiting, and again after, as a control
+            // read the mark ends (an interruptible stream) clears it.
             Thread.currentThread().interrupt()
+            restart()
+            Thread.currentThread().interrupt()
+            failed(TorProblem.START)
             false
         } catch (x: TorException) {
             failed(x.problem)
@@ -192,14 +210,16 @@ class TorRuntime(
 
     /**
      * Waits for Tor's bootstrap: true at 100%; false once it stalls (when [fallback]: another route waits) or times out; null
-     * as soon as your own lines it connects over are removed or edited (fix-bridges-and-wording-d M1).
+     * as soon as your own lines it connects over are removed or edited (fix-bridges-and-wording-d M1), or Robot's network
+     * access goes off (fix-bridges-lows-c L1: never up after that).
      */
     private fun bootstrapped(c: TorControl, stallMs: Long, fallback: Boolean): Boolean? {
         val w = BootstrapWatch(nowMs(), stallMs, bootstrapTimeoutMs, fallback)
         while (true) {
-            if (ownLinesChanged()) return null
+            if (ownLinesChanged() || !mayStart()) return null
             when (w.see(c.bootstrap(), nowMs())) {
-                BootstrapWatch.Verdict.DONE -> return true
+                // fix-bridges-lows-d (review-c L1): network access off since this poll's check: never up.
+                BootstrapWatch.Verdict.DONE -> return if (mayStart()) true else null
                 BootstrapWatch.Verdict.STALLED, BootstrapWatch.Verdict.TIMED_OUT -> return false
                 BootstrapWatch.Verdict.WAIT -> Thread.sleep(pollMs)
             }
@@ -273,8 +293,11 @@ class TorRuntime(
             c.authenticate(paths.cookie.readBytes().copyOf(32))
             control = c
         } catch (x: Exception) {
+            // fix-tor-lows-141 (review-141-relay-native L2): an interrupt goes through as itself, the thread marked again, so
+            // stopProcess ends Tor at once rather than wait for it, and up() keeps the mark.
+            if (x is InterruptedException) Thread.currentThread().interrupt()
             stopProcess()
-            throw if (x is TorException) x else TorException(TorProblem.START)
+            throw if (x is TorException || x is InterruptedException) x else TorException(TorProblem.START)
         }
     }
 
@@ -383,11 +406,12 @@ class TorRuntime(
         control = null
         controlStream?.close(); controlStream = null
         process?.let { p ->
-            try { if (!p.waitFor(5, TimeUnit.SECONDS)) p.destroy() } catch (_: InterruptedException) { p.destroy() }
+            try { if (!p.waitFor(5, TimeUnit.SECONDS)) p.destroy() } catch (_: InterruptedException) { p.destroy(); Thread.currentThread().interrupt() }
+            // fix-tor-lows-141-d (review-c L1): only this Tor's sockets; without a process they may be a newer node's Tor's.
+            paths.control.delete(); paths.socks.delete()
         }
         process = null
         relay?.close(); relay = null
-        paths.control.delete(); paths.socks.delete()
     }
 
     private companion object {

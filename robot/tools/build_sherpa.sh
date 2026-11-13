@@ -20,6 +20,19 @@
 #        tools/build_sherpa.sh --source   stop after unpacking: voice/native/src/espeak-ng (patched) and espeak-ng-orig
 #        tools/build_sherpa.sh --clean    delete voice/native/
 set -euo pipefail
+# A copy goes to a new file renamed into place, never written into the old one: a hard link to the old file elsewhere
+# (a worktree made by wt-local.sh) keeps its bytes, and a failed copy leaves the old file. cp_new SRC... DEST (a file, or
+# a folder that exists).
+cp_new() {
+  local d="${!#}" s t tmp
+  for s in "${@:1:$#-1}"; do
+    t=$d; [ -d "$d" ] && t="$d/${s##*/}"
+    # A hidden name (.NAME.new.PID): one left by a run cut short is never packaged (AGP skips dotfiles).
+    [[ $t == */* ]] && tmp="${t%/*}/.${t##*/}.new.$$" || tmp=".$t.new.$$"
+    cp -- "$s" "$tmp" || { rm -f -- "$tmp"; return 1; }
+    mv -f -- "$tmp" "$t" || return 1
+  done
+}
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="${SHERPA_WORK:-$HERE/voice/native}"
 OUT="$HERE/voice/src/main/jniLibs/arm64-v8a"
@@ -118,7 +131,7 @@ needed=$("$RE" -d "$LIB" | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p' | sort | tr '\
 
 mkdir -p "$OUT"
 rm -f "$OUT/libsherpa-onnx-jni.so" # never write through a hard link to another worktree's copy
-cp "$LIB" "$OUT/libsherpa-onnx-jni.so"
+cp_new "$LIB" "$OUT/libsherpa-onnx-jni.so"
 got=$(sha "$OUT/libsherpa-onnx-jni.so")
 echo "installed $OUT/libsherpa-onnx-jni.so"
 echo "sha256 $got"

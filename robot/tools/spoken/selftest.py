@@ -42,7 +42,9 @@ st = json.loads((root / "state.json").read_text())
 phone = root / "phone"
 pkg = st["pkg"]
 def save():
-    (root / "state.json").write_text(json.dumps(st))
+    t = root / f"state.json.{os.getpid()}"  # whole file or nothing: the test reads it while this runs
+    t.write_text(json.dumps(st))
+    os.replace(t, root / "state.json")
 def results_add(x):
     p = phone / "files/spoken/results.jsonl"
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -367,7 +369,9 @@ class Phone(unittest.TestCase):
         self.tmp.cleanup()
 
     def save(self):
-        (self.root / "state.json").write_text(json.dumps(self.state))
+        t = self.root / "state.json.test"  # whole file or nothing: a fake adb may read it while this runs
+        t.write_text(json.dumps(self.state))
+        os.replace(t, self.root / "state.json")
 
     def now(self) -> dict:
         return json.loads((self.root / "state.json").read_text())

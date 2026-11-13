@@ -10,6 +10,19 @@
 #
 # Needs curl (to download), sha256sum and find.
 set -euo pipefail
+# A copy goes to a new file renamed into place, never written into the old one: a hard link to the old file elsewhere
+# (a worktree made by wt-local.sh) keeps its bytes, and a failed copy leaves the old file. cp_new SRC... DEST (a file, or
+# a folder that exists).
+cp_new() {
+  local d="${!#}" s t tmp
+  for s in "${@:1:$#-1}"; do
+    t=$d; [ -d "$d" ] && t="$d/${s##*/}"
+    # A hidden name (.NAME.new.PID): one left by a run cut short is never packaged (AGP skips dotfiles).
+    [[ $t == */* ]] && tmp="${t%/*}/.${t##*/}.new.$$" || tmp=".$t.new.$$"
+    cp -- "$s" "$tmp" || { rm -f -- "$tmp"; return 1; }
+    mv -f -- "$tmp" "$t" || return 1
+  done
+}
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 PINS="$HERE/third_party/libsignal-0.105.2.sha256"
 REPO="$HERE/third_party/maven-local"
@@ -58,8 +71,8 @@ done
 for line in "${LINES[@]}"; do
   rel="${line#*  }"
   mkdir -p "$REPO/$(dirname "$rel")"
-  cp "$TMP/$rel" "$REPO/$rel"
-  [ -f "$TMP/$rel.sha256" ] && cp "$TMP/$rel.sha256" "$REPO/$rel.sha256"
+  cp_new "$TMP/$rel" "$REPO/$rel"
+  [ -f "$TMP/$rel.sha256" ] && cp_new "$TMP/$rel.sha256" "$REPO/$rel.sha256"
 done
 (cd "$REPO" && grep -E '^[0-9a-f]{64}  org/' "$PINS" | sha256sum -c --quiet)
 echo "libsignal 0.105.2 installed in third_party/maven-local and checked"

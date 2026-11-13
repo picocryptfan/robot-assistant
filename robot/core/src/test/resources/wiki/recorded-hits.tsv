@@ -1,0 +1,105 @@
+# fix-wiki-pick-141: the hits the starters on the Pixel 8 give (wikipedia_en_top_mini_2026-09.zim, wikipedia_fr_top_mini_2026-10.zim,
+# SHA-256 as WikiSets pins), queried with python-libzim for each question's subject (WikiRoute.subject), 13 Nov 2026.
+# Q: id, question, subject. t: title index hit (path, title, the article it leads to). f: full-text hit, with the one
+# sentence of the article that answers the subject (all its words and the title) or, when none does, the one that comes closest.
+# Full-text hits are kept only for the rows that reach full text (W1, W2, W3h, x55, x56, x57); the others take the title path.
+# Column 6 quotes Wikipedia (en.wikipedia.org and fr.wikipedia.org, the article in column 5, as in the copies above) by its contributors, under CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/): one sentence cut from each, markup removed. This file is under that licence.
+Q	W1	Which planet is the largest?	planet is the largest
+f	Dwarf_planet	Dwarf planet	Dwarf_planet	Dwarf planet	A considerable uncertainty remains over the tenth largest candidate Salacia, which may thus be considered a borderline case.
+f	Galilean_moons	Galilean moons	Galilean_moons	Galilean moons	The largest, Ganymede, is the largest moon in the Solar System and surpasses the planet Mercury in size (though not mass).
+f	Eris_(dwarf_planet)	Eris (dwarf planet)	Eris_(dwarf_planet)	Eris (dwarf planet)	Eris (minor-planet number 136199) is the most massive and second-largest-known dwarf planet in the Solar System.
+f	Pluto	Pluto	Pluto	Pluto	Dwarf planet
+f	Solar_System	Solar System	Solar_System	Solar System	The largest two moons (Ganymede of Jupiter and Titan of Saturn) are larger (though less massive) than the smallest planet (Mercury), while the seven most massive, which includes Earth's Moon, are more massive and larger than any of the dwarf planets.
+f	Jupiter	Jupiter	Jupiter	Jupiter	Jupiter is the fifth planet from the Sun, and the largest in the Solar System.
+f	Saturn	Saturn	Saturn	Saturn	Titan, Saturn's largest moon and the second largest in the Solar System, is larger (but less massive) than the planet Mercury and is the only moon in the Solar System that has a substantial atmosphere.
+f	Asteroid_belt	Asteroid belt	Asteroid_belt	Asteroid belt	Its total mass is estimated to be 3% that of the Moon, with about 60% contained in the four largest asteroids: Ceres, Vesta, Pallas, and Hygiea.
+f	Planets_beyond_Neptune	Planets beyond Neptune	Planets_beyond_Neptune	Planets beyond Neptune	Although a number of the larger members of this group were initially described as planets, in 2006 the International Astronomical Union (IAU) reclassified Pluto and its largest neighbours as dwarf planets, leaving Neptune the farthest known planet in the Solar System.
+f	List_of_natural_satellites	List of natural satellites	List_of_natural_satellites	List of natural satellites	Several of the largest ones are in hydrostatic equilibrium and would therefore be considered dwarf planets or planets if they were in direct orbit around the Sun and not in their current states (orbiting planets or dwarf planets).
+Q	W2	Which planet is closest to the Sun?	planet is closest to the Sun
+f	Solar_System	Solar System	Solar_System	Solar System	Closest to the Sun in order of increasing distance are the terrestrial planets – Mercury, Venus, Earth and Mars.
+f	Exoplanet	Exoplanet	Exoplanet	Exoplanet	About 1 in 5 Sun-like stars are estimated to have an "Earth-sized" planet in the habitable zone.
+f	Alpha_Centauri	Alpha Centauri	Alpha_Centauri	Alpha Centauri	Though not visible to the naked eye, Proxima Centauri is the closest star to the Sun at a distance of 4.24 ly (1.30 pc), slightly closer than α Centauri AB.
+f	Voyager_2	Voyager 2	Voyager_2	Voyager 2	Voyager 2 has left the Sun's heliosphere and is traveling through the interstellar medium, though still inside the Solar System, joining Voyager 1, which reached the interstellar medium in 2012.
+f	Planet_Nine	Planet Nine	Planet_Nine	Planet Nine	These ETNOs tend to make their closest approaches to the Sun in one sector, and their orbits are similarly tilted.
+f	Terrestrial_planet	Terrestrial planet	Terrestrial_planet	Terrestrial planet	Within the Solar System, the terrestrial planets accepted by the International Astronomical Union are the inner planets closest to the Sun: Mercury, Venus, Earth and Mars.
+f	Epsilon_Eridani	Epsilon Eridani	Epsilon_Eridani	Epsilon Eridani	Located at a distance of 10.5 light-years (3.2 parsecs) from the Sun, it has an apparent magnitude of 3.73, making it the third-closest individual star (or star system) visible to the naked eye.
+f	Tau_Ceti	Tau Ceti	Tau_Ceti	Tau Ceti	Spectrally, this star is similar to the Sun, although it has only about 78% of the Sun's mass.
+f	Mercury_(planet)	Mercury (planet)	Mercury_(planet)	Mercury (planet)	Despite being the closest planet to the sun, it is the second hottest after Venus, lacking an atmosphere to trap heat.
+f	Scattered_disc	Scattered disc	Scattered_disc	Scattered disc	Although the closest scattered-disc objects approach the Sun at about 30–35 AU, their orbits can extend well beyond 100 AU.
+Q	W3h	Which element has the symbol Hg?	element has the symbol Hg
+f	Mercury_(element)	Mercury (element)	Mercury_(element)	Mercury (element)	Mercury is a chemical element; it has symbol Hg (from Latin hydrargyrum) and atomic number 80.
+f	Copernicium	Copernicium	Copernicium	Copernicium	Copernicium is a synthetic chemical element; it has symbol Cn and atomic number 112.
+f	Cadmium	Cadmium	Cadmium	Cadmium	Cadmium is a chemical element; it has symbol Cd and atomic number 48.
+Q	W4	Where is Halifax?	Halifax
+t	Halifax_Disaster	Halifax Disaster	Halifax_Explosion	Halifax Explosion	
+t	Halifax_NS	Halifax NS	Halifax,_Nova_Scotia	Halifax, Nova Scotia	
+t	Halifax,_England	Halifax, England	Halifax,_West_Yorkshire	Halifax, West Yorkshire	
+t	Edward_Halifax	Edward Halifax	Edward_Wood,_1st_Earl_of_Halifax	Edward Wood, 1st Earl of Halifax	
+Q	W5	Who was Louis Riel?	Louis Riel
+t	Louis_Riel	Louis Riel	Louis_Riel	Louis Riel	
+Q	31	Qui était Louis Riel?	Louis Riel
+t	Louis_Riel	Louis Riel	Louis_Riel	Louis Riel	
+Q	32	C'est quoi la photosynthèse?	photosynthèse
+t	Photosynthese	Photosynthese	Photosynthèse	Photosynthèse	
+Q	33	Où se trouve Chicoutimi?	Chicoutimi
+t	Chicoutimi	Chicoutimi	Chicoutimi	Chicoutimi	
+Q	34	Qui était René Lévesque?	René Lévesque
+t	Rene_Levesque	Rene Levesque	René_Lévesque	René Lévesque	
+t	Parti_de_René_Lévesque	Parti de René Lévesque	Parti_québécois	Parti québécois	
+Q	35	Parle-moi de la Révolution tranquille	Révolution tranquille
+t	Revolution_tranquille	Revolution tranquille	Révolution_tranquille	Révolution tranquille	
+Q	36	C'est quoi la poutine?	poutine
+t	Poutine_(cuisine)	Poutine (cuisine)	Poutine_(plat)	Poutine (plat)	
+t	Vladimir_Poutine	Vladimir Poutine	Vladimir_Poutine	Vladimir Poutine	
+Q	37	Qui a fondé Québec?	Québec
+t	Québec,_Québec	Québec, Québec	Québec_(ville)	Québec (ville)	
+t	QUÉBEC	QUÉBEC	Québec	Québec	
+t	Quebec_Nordiques	Quebec Nordiques	Nordiques_de_Québec	Nordiques de Québec	
+t	Quebec_Patois	Quebec Patois	Français_québécois	Français québécois	
+t	Quebec_solidaire	Quebec solidaire	Québec_solidaire	Québec solidaire	
+t	Québec_septentrional	Québec septentrional	Nord-du-Québec	Nord-du-Québec	
+t	Alma_(Quebec)	Alma (Quebec)	Alma_(Québec)	Alma (Québec)	
+t	Boucherville_(Québec)	Boucherville (Québec)	Boucherville	Boucherville	
+t	Cassonade_(Quebec)	Cassonade (Quebec)	Vergeoise	Vergeoise	
+t	Chicoutimi_(Québec)	Chicoutimi (Québec)	Chicoutimi	Chicoutimi	
+Q	38	Qu'est-ce que le sirop d'érable?	sirop d'érable
+t	Sirop_d'erable	Sirop d'erable	Sirop_d'érable	Sirop d'érable	
+Q	39	Qui était Maurice Richard?	Maurice Richard
+t	Maurice_Richard	Maurice Richard	Maurice_Richard	Maurice Richard	
+Q	41	Quand a eu lieu la bataille des plaines d'Abraham?	bataille des plaines d'Abraham
+t	Bataille_des_Plaines_d'Abraham	Bataille des Plaines d'Abraham	Bataille_des_Plaines_d'Abraham	Bataille des Plaines d'Abraham	
+Q	42	C'est quoi un trou noir?	trou noir
+t	Trou_noir	Trou noir	Trou_noir	Trou noir	
+t	Trou_noir_hypermassif	Trou noir hypermassif	Trou_noir_supermassif	Trou noir supermassif	
+t	Trou_noir_évaporation	Trou noir évaporation	Évaporation_des_trous_noirs	Évaporation des trous noirs	
+Q	43	Qui est Céline Dion?	Céline Dion
+t	Celine_Dion	Celine Dion	Céline_Dion	Céline Dion	
+Q	44	Parle-moi du fleuve Saint-Laurent	fleuve Saint-Laurent
+t	Fleuve_Saint-Laurent	Fleuve Saint-Laurent	Fleuve_Saint-Laurent	Fleuve Saint-Laurent	
+Q	45	C'est quoi la Nouvelle-France?	Nouvelle-France
+t	Nouvelle-France	Nouvelle-France	Nouvelle-France	Nouvelle-France	
+t	Canada_(Nouvelle-France)	Canada (Nouvelle-France)	Canada_(Nouvelle-France)	Canada (Nouvelle-France)	
+t	Commune_nouvelle_(France)	Commune nouvelle (France)	Commune_nouvelle	Commune nouvelle	
+t	Louisiane_(Nouvelle-France)	Louisiane (Nouvelle-France)	Louisiane_(Nouvelle-France)	Louisiane (Nouvelle-France)	
+t	Royaume_de_Nouvelle-France	Royaume de Nouvelle-France	Royaume_d'Araucanie_et_de_Patagonie	Royaume d'Araucanie et de Patagonie	
+Q	46	Qui était Jacques Cartier?	Jacques Cartier
+t	Jacques_Cartier	Jacques Cartier	Jacques_Cartier	Jacques Cartier	
+Q	x54	Quelle est la capitale du Canada?	capitale du Canada
+t	Capitale_du_Canada	Capitale du Canada	Ottawa	Ottawa	
+Q	x55	Quelle planète est la plus grosse du système solaire?	planète est la plus grosse du système solaire
+f	Vénus_(planète)	Vénus (planète)	Vénus_(planète)	Vénus (planète)	Vénus est la deuxième planète du Système solaire par ordre d'éloignement au Soleil, et la sixième plus grosse aussi bien par la masse que par le diamètre.
+f	Satellite_naturel	Satellite naturel	Satellite_naturel	Satellite naturel	Un satellite naturel est un objet céleste en orbite autour d'une planète ou d'un autre objet plus massif que lui-même et qui n'est pas d'origine humaine, par opposition aux satellites artificiels.
+f	Fusée_(astronautique)	Fusée (astronautique)	Fusée_(astronautique)	Fusée (astronautique)	Les fusées constituent progressivement un vecteur essentiel pour de nombreuses applications spatiales tant militaires que civiles : télécommunications, études scientifiques de la Terre et du système solaire, navigation, reconnaissance militaire.
+Q	x56	Quel explorateur a fondé la ville de Québec?	explorateur a fondé la ville de Québec
+f	Samuel_de_Champlain	Samuel de Champlain	Samuel_de_Champlain	Samuel de Champlain	Il fonde la ville de Québec le 3 juillet 1608.
+Q	x57	Quelle planète est la plus proche du Soleil?	planète est la plus proche du Soleil
+f	Alpha_Centauri	Alpha Centauri	Alpha_Centauri	Alpha Centauri	Bien que non visible à l'œil nu, elle est l'étoile la plus proche du Soleil à une distance de 4,24 années-lumière (1,30 pc) et légèrement plus proche de nous qu'Alpha Centauri AB.
+f	Système_solaire	Système solaire	Système_solaire	Système solaire	Tous ont une orbite proche du cercle et sont concentrés près de l'écliptique, soit le plan de révolution de la Terre autour du Soleil.
+f	Vénus_(planète)	Vénus (planète)	Vénus_(planète)	Vénus (planète)	Elle est la planète la plus chaude du Système solaire — même si Mercure est plus proche du Soleil — avec une température de surface moyenne de 462 °C (735 K).
+f	Mercure_(planète)	Mercure (planète)	Mercure_(planète)	Mercure (planète)	Mercure est la planète la plus proche du Soleil et la moins massive du Système solaire.
+f	Planète	Planète	Planète	Planète	Une planète est un corps céleste orbitant autour du Soleil ou d'une autre étoile, possédant une masse suffisante pour que sa gravité la maintienne en équilibre hydrostatique, c'est-à-dire sous une forme presque sphérique, et ayant « nettoyé le voisinage de son orbite », c'est-à-dire éliminé tout obj
+f	Périhélie	Périhélie	Périhélie	Périhélie	Le périhélie est le point de la trajectoire d'un objet céleste en orbite héliocentrique qui est le plus proche du Soleil.
+f	Solstice	Solstice	Solstice	Solstice	Le solstice est un événement astronomique qui se produit deux fois par an, lorsque la position apparente du Soleil atteint sa plus grande inclinaison vers le nord ou vers le sud, par rapport à l'équateur céleste.
+f	Planète_naine	Planète naine	Planète_naine	Planète naine	Plus précisément, l'UAI définit une planète naine comme « un corps céleste qui (a) est en orbite autour du Soleil, (b) a une masse suffisante pour que sa gravité l’emporte sur les forces de cohésion du corps solide et le maintienne en équilibre hydrostatique, sous une forme presque sphérique, (c) n’a pas éliminé tout corps susceptible de se déplacer sur une orbite proche, (d) n’est pas un satellite ».
+f	Nuage_de_Oort	Nuage de Oort	Nuage_de_Oort	Nuage de Oort	La limite externe du nuage de Oort, qui formerait la frontière gravitationnelle du système planétaire, se situerait à plus d'un millier de fois la distance séparant le Soleil de Neptune, entre une et deux années-lumière du Soleil et plus du quart de la distance à Proxima Centauri, l'étoile la plus p
+f	Proxima_Centauri	Proxima Centauri	Proxima_Centauri	Proxima Centauri	L'objet primaire du système est l'étoile centrale, nommée Proxima Centauri (latin pour « [l'étoile] du Centaure la plus proche »), en français Proxima du Centaure, ou encore simplement Proxima, car il s'agit de l'étoile la plus proche de la Terre après le Soleil.

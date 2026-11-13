@@ -24,6 +24,19 @@
 # Needs: curl, git, tar, gzip, sha256sum, md5sum, and the Android SDK's NDK and CMake (with its ninja) at the versions
 # below (ANDROID_HOME, default /opt/android-sdk; ANDROID_NDK_HOME may point at the same NDK elsewhere).
 set -euo pipefail
+# A copy goes to a new file renamed into place, never written into the old one: a hard link to the old file elsewhere
+# (a worktree made by wt-local.sh) keeps its bytes, and a failed copy leaves the old file. cp_new SRC... DEST (a file, or
+# a folder that exists).
+cp_new() {
+  local d="${!#}" s t tmp
+  for s in "${@:1:$#-1}"; do
+    t=$d; [ -d "$d" ] && t="$d/${s##*/}"
+    # A hidden name (.NAME.new.PID): one left by a run cut short is never packaged (AGP skips dotfiles).
+    [[ $t == */* ]] && tmp="${t%/*}/.${t##*/}.new.$$" || tmp=".$t.new.$$"
+    cp -- "$s" "$tmp" || { rm -f -- "$tmp"; return 1; }
+    mv -f -- "$tmp" "$t" || return 1
+  done
+}
 
 LLAMA_TAG=b11200
 LLAMA_COMMIT=81bc6b83f827df746eb129235488d325c49cae52
@@ -112,7 +125,7 @@ if [ "$(cat "$LLAMA_DIR/.robot-checked" 2>/dev/null)" != "$LLAMA_TAR_SHA256" ]; 
     git_tar llama "$LLAMA_GIT" "$LLAMA_TAG" "$LLAMA_COMMIT" "llama.cpp-$LLAMA_TAG" "$LLAMA_TAR_SHA256"
   fi
   tar xf "$TMP/llama.tar" -C "$SRC"
-  echo "$LLAMA_TAR_SHA256" > "$LLAMA_DIR/.robot-checked"
+  echo "$LLAMA_TAR_SHA256" > "$LLAMA_DIR/.robot-checked.new.$$"; mv -f -- "$LLAMA_DIR/.robot-checked.new.$$" "$LLAMA_DIR/.robot-checked"
   echo "ok  llama.cpp $LLAMA_TAG ($LLAMA_COMMIT), source tar $LLAMA_TAR_SHA256"
 else
   echo "ok  llama.cpp $LLAMA_TAG already checked in $LLAMA_DIR"
@@ -134,7 +147,7 @@ if [ "$(cat "$KLEIDIAI_DIR/.robot-checked" 2>/dev/null)" != "$KLEIDIAI_COMMIT" ]
   fi
   tar xf "$TMP/kleidiai.tar" -C "$SRC"
   [ -f "$KLEIDIAI_DIR/CMakeLists.txt" ] || { echo "KleidiAI's source isn't where expected: $KLEIDIAI_DIR"; exit 1; }
-  echo "$KLEIDIAI_COMMIT" > "$KLEIDIAI_DIR/.robot-checked"
+  echo "$KLEIDIAI_COMMIT" > "$KLEIDIAI_DIR/.robot-checked.new.$$"; mv -f -- "$KLEIDIAI_DIR/.robot-checked.new.$$" "$KLEIDIAI_DIR/.robot-checked"
   echo "ok  KleidiAI $KLEIDIAI_TAG ($KLEIDIAI_COMMIT)"
 else
   echo "ok  KleidiAI $KLEIDIAI_TAG already checked in $KLEIDIAI_DIR"
@@ -184,12 +197,12 @@ net=$(grep -xE 'socket|connect|getaddrinfo|gethostbyname|bind|listen|accept4?|se
 [ "$fails" = 0 ] || { echo "$fails check(s) failed: $LIB not installed"; exit 1; }
 
 mkdir -p "$OUT"
-cp "$stripped" "$OUT/$LIB"
+cp_new "$stripped" "$OUT/$LIB"
 echo "ok  $LIB: exports $(wc -l <<<"$exports") JNI symbols, needs $needed"
 echo "    $(stat -c %s "$OUT/$LIB") bytes, SHA-256 $(sha < "$OUT/$LIB")"
 echo "    installed at ${OUT#"$HERE/"}/$LIB (gitignored)"
 if [ $clean = 1 ]; then
-  cp "$built" "$WORK/$LIB.unstripped"
+  cp_new "$built" "$WORK/$LIB.unstripped"
   rm -rf "$BUILD"
   echo "    build folder removed; the unstripped copy (for a crash's symbols) is at ${WORK#"$HERE/"}/$LIB.unstripped"
 else

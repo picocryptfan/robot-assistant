@@ -78,7 +78,9 @@ class FakeEnv(start: Long) : LinkEnv {
     val clock = AtomicLong(start)
     val network = AtomicBoolean(true)
     override fun now(): Long = clock.get()
-    override fun networkAllowed(): Boolean = network.get()
+    /** review-fix-bridges-lows-b L2: checks made on Link's Tor thread, each counted once its answer is read. */
+    val torChecks = AtomicInteger()
+    override fun networkAllowed(): Boolean = network.get().also { if (Thread.currentThread().name == "robot-link-tor") torChecks.incrementAndGet() } // l10n: not text (a thread's name)
 }
 
 /** What a node handed on. */
@@ -198,6 +200,12 @@ class FakeTorNetwork {
      */
     val holds = ConcurrentHashMap<TorNet, java.util.concurrent.CountDownLatch>()
     val entered: MutableSet<TorNet> = ConcurrentHashMap.newKeySet()
+    /** review-fix-bridges-lows-b L2: a carrier's check before a start, as TorRuntime.mayStart is (Robot's network access). */
+    val mayStart = ConcurrentHashMap<TorNet, () -> Boolean>()
+    /** review-fix-bridges-lows-c M1: carriers whose Tor process is alive but not ready (a start that gave up) until a stop. */
+    val connecting: MutableSet<TorNet> = ConcurrentHashMap.newKeySet()
+    /** fix-tor-lows-141-c: a held up() ignores interrupts and marks the thread again after, as a start whose last poll reaches 100% does. */
+    @Volatile var deaf = false
     private val asks = ConcurrentHashMap<TorNet, AtomicInteger>()
     /** Calls to down() or letGo(), counted before they take the carrier's lock. */
     fun asks(t: TorNet): Int = asks[t]?.get() ?: 0
@@ -212,7 +220,18 @@ class FakeTorNetwork {
         @Volatile private var up = false
         private val lock = Any()
         override fun up(): Boolean = synchronized(lock) {
-            holds[this]?.let { entered += this; it.await(20, java.util.concurrent.TimeUnit.SECONDS) }
+            holds[this]?.let { g ->
+                entered += this
+                if (!deaf) g.await(20, java.util.concurrent.TimeUnit.SECONDS)
+                else {
+                    var hit = false
+                    val end = System.nanoTime() + 20_000_000_000L
+                    while (g.count > 0 && System.nanoTime() < end) try { g.await(end - System.nanoTime(), java.util.concurrent.TimeUnit.NANOSECONDS) } catch (_: InterruptedException) { hit = true }
+                    if (hit) Thread.currentThread().interrupt()
+                }
+            }
+            // A start that check stops: not up, its onions dropped (as restart() drops them), no stop counted.
+            if ((!up || this in staleOnes) && mayStart[this]?.invoke() == false) { staleOnes.remove(this); up = false; for (o in mine.values) services.remove(o); mine.clear(); return false }
             // fix-bridges-lows (review-d L6): a stale Tor that's up starts again, and drops the onions it carried, as restart() does.
             if (up && staleOnes.remove(this)) { for (o in mine.values) services.remove(o); mine.clear() }
             staleOnes.remove(this); ups.getOrPut(this) { AtomicInteger() }.incrementAndGet(); up = true; true
@@ -221,9 +240,11 @@ class FakeTorNetwork {
         override fun letGo() { asks.getOrPut(this) { AtomicInteger() }.incrementAndGet(); synchronized(lock) { if (this in staleOnes) stop() } }
         private fun stop() {
             staleOnes.remove(this); downs.getOrPut(this) { AtomicInteger() }.incrementAndGet()
-            up = false; for (o in mine.values) services.remove(o); mine.clear()
+            connecting.remove(this); up = false; for (o in mine.values) services.remove(o); mine.clear()
         }
         override val running: Boolean get() = up
+        override val live: Boolean get() = up || this in connecting
+        override fun checkBeforeStart(check: () -> Boolean) { mayStart[this] = check }
         override val stale: Boolean get() = this in staleOnes
         override fun publish(slot: Int, keyBlob: String?, clients: List<ByteArray>, accept: (Duplex) -> Unit): PublishedOnion {
             if (!up) throw TorException(TorProblem.NOT_READY)
@@ -338,6 +359,8 @@ class TestRobot(
     handlers: List<DeskHandler> = listOf(EtaHandler),
     /** L7: handlers over this Robot's own state (free/busy and plans keep theirs there). */
     more: (LinkStateStore) -> List<DeskHandler> = { emptyList() },
+    /** review-fix-bridges-lows-b L3: a real Tor runtime in place of the fake network's carrier. */
+    realTor: TorNet? = null,
 ) {
     val key = SoftLinkKey()
     val records = LinkRecords(File(dir, "state"), key)
@@ -347,7 +370,7 @@ class TestRobot(
     val state = LinkStateStore(records).also { it.load(emptyMap()) }
     @Volatile var node: LinkNode? = null
     val direct = lan?.carrier(lanIndex)
-    val tor = torNet?.carrier()
+    val tor: TorNet? = realTor ?: torNet?.carrier()
     val push = pushServer?.net { node }
     /** L16: this many reads find :linkparse unreachable, as LinkParseLink.decode's null. */
     val parseAway = java.util.concurrent.atomic.AtomicInteger(0)

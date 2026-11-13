@@ -9,6 +9,19 @@
 # The libsherpa-onnx-jni.so it installs is sherpa-onnx's own release, for the unit tests: an APK needs tools/build_sherpa.sh.
 # Usage: tools/fetch_third_party.sh [--install]
 set -euo pipefail
+# A copy goes to a new file renamed into place, never written into the old one: a hard link to the old file elsewhere
+# (a worktree made by wt-local.sh) keeps its bytes, and a failed copy leaves the old file. cp_new SRC... DEST (a file, or
+# a folder that exists).
+cp_new() {
+  local d="${!#}" s t tmp
+  for s in "${@:1:$#-1}"; do
+    t=$d; [ -d "$d" ] && t="$d/${s##*/}"
+    # A hidden name (.NAME.new.PID): one left by a run cut short is never packaged (AGP skips dotfiles).
+    [[ $t == */* ]] && tmp="${t%/*}/.${t##*/}.new.$$" || tmp=".$t.new.$$"
+    cp -- "$s" "$tmp" || { rm -f -- "$tmp"; return 1; }
+    mv -f -- "$tmp" "$t" || return 1
+  done
+}
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 VOICE="$HERE/voice/src/main"
 TMP="$(mktemp -d)"
@@ -72,15 +85,15 @@ while read -r f sha; do check "$TMP/espeak/espeak-ng-data/$f" "$sha"; done <<<"$
 
 if [ "${1:-}" = "--install" ]; then
   mkdir -p "$VOICE/jniLibs/arm64-v8a" "$VOICE/assets/kws" "$VOICE/assets/vad" "$HERE/tools/kws-build"
-  cp "$TMP"/jni/jniLibs/arm64-v8a/*.so "$VOICE/jniLibs/arm64-v8a/"
-  for p in encoder decoder joiner; do cp "$TMP/kws/$M/$p-epoch-12-avg-2-chunk-16-left-64.onnx" "$VOICE/assets/kws/"; done
-  cp "$TMP/kws/$M/tokens.txt" "$TMP/kws/$M/bpe.model" "$VOICE/assets/kws/"
-  cp "$TMP/kws/$M/bpe.model" "$TMP/kws/$M/tokens.txt" "$HERE/tools/kws-build/"
-  cp "$TMP/vad/silero_vad.onnx" "$VOICE/assets/vad/"
+  cp_new "$TMP"/jni/jniLibs/arm64-v8a/*.so "$VOICE/jniLibs/arm64-v8a/"
+  for p in encoder decoder joiner; do cp_new "$TMP/kws/$M/$p-epoch-12-avg-2-chunk-16-left-64.onnx" "$VOICE/assets/kws/"; done
+  cp_new "$TMP/kws/$M/tokens.txt" "$TMP/kws/$M/bpe.model" "$VOICE/assets/kws/"
+  cp_new "$TMP/kws/$M/bpe.model" "$TMP/kws/$M/tokens.txt" "$HERE/tools/kws-build/"
+  cp_new "$TMP/vad/silero_vad.onnx" "$VOICE/assets/vad/"
   rm -rf "$VOICE/assets/espeak-ng-data"
   while read -r f sha; do
     mkdir -p "$(dirname "$VOICE/assets/espeak-ng-data/$f")"
-    cp "$TMP/espeak/espeak-ng-data/$f" "$VOICE/assets/espeak-ng-data/$f"
+    cp_new "$TMP/espeak/espeak-ng-data/$f" "$VOICE/assets/espeak-ng-data/$f"
   done <<<"$ESPEAK_FILES"
   echo "installed (keywords.txt and stop.txt are in git; to regenerate them: python3 tools/make_keywords.py .)"
   echo "for an APK, tools/build_sherpa.sh replaces libsherpa-onnx-jni.so with the patched build tools/verify_apk.sh wants"

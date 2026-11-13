@@ -22,6 +22,19 @@
 # Usage: tools/build_libzim.sh          fetch, check and build
 #        tools/build_libzim.sh --clean  delete wiki/native/
 set -euo pipefail
+# A copy goes to a new file renamed into place, never written into the old one: a hard link to the old file elsewhere
+# (a worktree made by wt-local.sh) keeps its bytes, and a failed copy leaves the old file. cp_new SRC... DEST (a file, or
+# a folder that exists).
+cp_new() {
+  local d="${!#}" s t tmp
+  for s in "${@:1:$#-1}"; do
+    t=$d; [ -d "$d" ] && t="$d/${s##*/}"
+    # A hidden name (.NAME.new.PID): one left by a run cut short is never packaged (AGP skips dotfiles).
+    [[ $t == */* ]] && tmp="${t%/*}/.${t##*/}.new.$$" || tmp=".$t.new.$$"
+    cp -- "$s" "$tmp" || { rm -f -- "$tmp"; return 1; }
+    mv -f -- "$tmp" "$t" || return 1
+  done
+}
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="${LIBZIM_WORK:-$HERE/wiki/native}"
 OUT="$HERE/wiki/src/main/jniLibs/arm64-v8a"
@@ -143,7 +156,7 @@ step librobotzim.so
   -Wl,-z,max-page-size=16384 -Wl,--build-id=none -Wl,-z,noexecstack -Wl,--no-undefined -Wl,--hash-style=gnu
 "$STRIP" --strip-unneeded "$B/librobotzim.so"
 mkdir -p "$OUT"
-cp "$B/librobotzim.so" "$OUT/librobotzim.so"
+cp_new "$B/librobotzim.so" "$OUT/librobotzim.so"
 got=$(sha "$OUT/librobotzim.so")
 echo "librobotzim.so $(stat -c %s "$OUT/librobotzim.so") bytes, sha256 $got"
 [ "$got" = "$BUILT_SHA" ] && echo "ok  the pinned build" || echo "NOT the pinned build ($BUILT_SHA): a source, flag or tool changed"

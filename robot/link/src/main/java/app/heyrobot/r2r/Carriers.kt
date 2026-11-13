@@ -156,6 +156,10 @@ interface TorNet {
      * to your new lines meanwhile keeps running.
      */
     fun letGo() { if (stale) down() }
+    /** fix-bridges-lows-d (review M1): Tor's process is alive, ready or still connecting; network access off stops it. */
+    val live: Boolean get() = running
+    /** fix-bridges-lows-d (review L2): [check] is asked before every start (Robot's network access); false, none begins. */
+    fun checkBeforeStart(check: () -> Boolean) {}
     /** :link sleeps: Tor stops, and no [up] starts it again until [wake]. */
     fun sleep() = down()
     fun wake() {}

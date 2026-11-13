@@ -25,6 +25,19 @@
 # ROBOTMT_NEON=ON also turns on slimt's NEON float code: maybe faster on the phone, but some translations then differ
 # from the build machine's reference (mt/src/main/cpp/CMakeLists.txt), so Test translation speed counts them as different.
 set -euo pipefail
+# A copy goes to a new file renamed into place, never written into the old one: a hard link to the old file elsewhere
+# (a worktree made by wt-local.sh) keeps its bytes, and a failed copy leaves the old file. cp_new SRC... DEST (a file, or
+# a folder that exists).
+cp_new() {
+  local d="${!#}" s t tmp
+  for s in "${@:1:$#-1}"; do
+    t=$d; [ -d "$d" ] && t="$d/${s##*/}"
+    # A hidden name (.NAME.new.PID): one left by a run cut short is never packaged (AGP skips dotfiles).
+    [[ $t == */* ]] && tmp="${t%/*}/.${t##*/}.new.$$" || tmp=".$t.new.$$"
+    cp -- "$s" "$tmp" || { rm -f -- "$tmp"; return 1; }
+    mv -f -- "$tmp" "$t" || return 1
+  done
+}
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 MT="$HERE/mt"
 WORK="${ROBOTMT_WORK:-$MT/native}"
@@ -127,7 +140,7 @@ build_android() {
     || { echo "unexpected exports: $exports" >&2; exit 1; }
   "$re" -l "$so" | awk '$1 == "LOAD" { if ($NF != "0x4000") bad = 1 } END { exit bad }' || { echo "LOAD segments not 16 KB aligned" >&2; exit 1; }
   mkdir -p "$OUT"
-  cp "$so" "$OUT/librobotmt.so"
+  cp_new "$so" "$OUT/librobotmt.so"
   rm -rf "$b"
   echo "built $OUT/librobotmt.so $(stat -c %s "$OUT/librobotmt.so") bytes sha256 $(sha "$OUT/librobotmt.so")"
   echo "needs: $needed"

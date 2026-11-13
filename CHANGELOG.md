@@ -4,6 +4,29 @@ What changed in each version of Robot, newest first. Each version's full notes, 
 [`robot/README.md`](robot/README.md) ("What's new in …" and the feature sections). Versions before 1.0 were test
 builds.
 
+## 1.4.1 (2026-11-13)
+
+- Wikipedia on this phone: the card shows an article only when its own opening sentence answers your question. A question
+  like "which planet is the largest?" no longer lands on a neighbouring article ("Dwarf planet" on my test phone): Robot
+  gives you Jupiter, or no card and an answer from the model alone.
+- Wikipedia on this phone, English copy: "When did Louis Riel die?", "When did the Titanic sink?" and "When was Nirvana
+  formed?" find the sentence that says "died", "sank" or "formed". A film, a namesake or a page that only names the
+  subject gets no card, and "found" is not taken for "founded".
+- Wikipedia on this phone, French: « Qui a fondé Québec ? » now hands the model the sentence about the founding
+  (fondé, fondée, fondés and fondées count as one word). Web search passages use the same rule.
+- Questions about your phone and your things, like what's using so much battery, what's on the grocery list or which bill
+  is the biggest, are answered from your phone, not from Wikipedia.
+- Robot to Robot: turning Robot's network access off in Android's settings now stops Tor, even one that is up, and keeps
+  one that is starting from coming up. When you turn it back on, Robot publishes your onion address again.
+- Robot to Robot: stopping Tor, or closing Robot to Robot while Tor is starting, stops it at once. A bridge connection
+  still being dialled is closed, and a late stop leaves a newer Tor's files alone. The small relay for a bridge on your
+  home network always closes its port, even when it is stopped in a hurry.
+- Robot to Robot's own process no longer waits behind a closing Tor when the last part of Robot lets go of it, and a call
+  that arrives after it has shut down holds nothing awake.
+- Building from source: the native build scripts replace each library file instead of writing through a hard link, so a
+  copy in another checkout isn't changed, and `tools/verify_apk.sh --without-llama` checks a build made without that
+  library.
+
 ## 1.4.0 (2026-11-13)
 
 - History, Notes, People and conversation transcripts are sealed on the phone with keys of Robot's own, as Memory and Lists are. The first unlock

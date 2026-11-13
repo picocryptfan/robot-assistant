@@ -35,6 +35,19 @@
 # --native's builds need about 3 GB). Uncommitted changes are left out of the second build, so commit first: the script
 # stops when the tree isn't clean.
 set -euo pipefail
+# A copy goes to a new file renamed into place, never written into the old one: a hard link to the old file elsewhere
+# (a worktree made by wt-local.sh) keeps its bytes, and a failed copy leaves the old file. cp_new SRC... DEST (a file, or
+# a folder that exists).
+cp_new() {
+  local d="${!#}" s t tmp
+  for s in "${@:1:$#-1}"; do
+    t=$d; [ -d "$d" ] && t="$d/${s##*/}"
+    # A hidden name (.NAME.new.PID): one left by a run cut short is never packaged (AGP skips dotfiles).
+    [[ $t == */* ]] && tmp="${t%/*}/.${t##*/}.new.$$" || tmp=".$t.new.$$"
+    cp -- "$s" "$tmp" || { rm -f -- "$tmp"; return 1; }
+    mv -f -- "$tmp" "$t" || return 1
+  done
+}
 
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 KEEP=0
@@ -74,7 +87,7 @@ build() { # dir out.apk
   local apk="$1/$APK_REL"
   [ -f "$apk" ] || apk="$1/app/build/outputs/apk/release/app-release.apk"
   [ -f "$apk" ] || { echo "no release APK in $1/app/build/outputs/apk/release" >&2; exit 1; }
-  cp "$apk" "$2"
+  cp_new "$apk" "$2"
 }
 
 LIBS="brain/src/main/jniLibs/arm64-v8a/librobot_llama.so mt/src/main/jniLibs/arm64-v8a/librobotmt.so

@@ -12,6 +12,19 @@
 #
 # Needs curl (to download), sha256sum, unzip and find.
 set -euo pipefail
+# A copy goes to a new file renamed into place, never written into the old one: a hard link to the old file elsewhere
+# (a worktree made by wt-local.sh) keeps its bytes, and a failed copy leaves the old file. cp_new SRC... DEST (a file, or
+# a folder that exists).
+cp_new() {
+  local d="${!#}" s t tmp
+  for s in "${@:1:$#-1}"; do
+    t=$d; [ -d "$d" ] && t="$d/${s##*/}"
+    # A hidden name (.NAME.new.PID): one left by a run cut short is never packaged (AGP skips dotfiles).
+    [[ $t == */* ]] && tmp="${t%/*}/.${t##*/}.new.$$" || tmp=".$t.new.$$"
+    cp -- "$s" "$tmp" || { rm -f -- "$tmp"; return 1; }
+    mv -f -- "$tmp" "$t" || return 1
+  done
+}
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 PINS="$HERE/third_party/link-carriers.sha256"
 REPO="$HERE/third_party/maven-link"
@@ -70,7 +83,7 @@ rm -rf "$REPO/org/briarproject/lyrebird-android"
 for line in "${LINES[@]}"; do
   rel="${line#*  }"
   mkdir -p "$REPO/$(dirname "$rel")"
-  cp "$TMP/$rel" "$REPO/$rel"
+  cp_new "$TMP/$rel" "$REPO/$rel"
 done
 (cd "$REPO" && grep -E '^[0-9a-f]{64}  (org|com)/' "$PINS" | sha256sum -c --quiet)
 echo "Tor 0.4.9.14, the UnifiedPush connector 3.3.5 and Tink 1.23.0 installed in third_party/maven-link and checked"

@@ -16,6 +16,7 @@ import java.io.IOException
 import java.net.InetAddress
 import java.net.Socket
 import java.util.Collections
+import java.util.concurrent.TimeUnit
 
 /**
  * L-bridges: TorRuntime's routes through a real child process. A stand-in for libtor.so (a shell script: it says its
@@ -38,10 +39,19 @@ class TorRuntimeBridgesTest {
     private val torrcs: MutableList<String> = Collections.synchronizedList(ArrayList())
     /** The routes whose bootstrap reaches 100%; every other one stays at 5% (a network that blocks it). */
     @Volatile private var works: Set<String> = emptySet()
+    /** fix-bridges-lows-d: run as Tor's control connection opens, and as a bootstrap is asked for (before its answer). */
+    @Volatile private var onConnect: () -> Unit = {}
+    @Volatile private var onBootstrap: () -> Unit = {}
+    /** Every control command each fake Tor was sent. */
+    private val commands: MutableList<String> = Collections.synchronizedList(ArrayList())
     private val runtimes = ArrayList<TorRuntime>()
     /** E4: Tor's own counters, as the control socket gives them. */
     @Volatile private var read = 0L
     @Volatile private var written = 0L
+    /** Counted down at each bootstrap poll. */
+    @Volatile private var polled = java.util.concurrent.CountDownLatch(0)
+    /** How long the fake waits after counting a bootstrap poll before it answers (a slow Tor, or a loaded machine). */
+    @Volatile private var replyDelayMs = 0L
 
     private fun routeOf(torrc: String): String = when {
         torrc.contains("\nBridge snowflake ") -> "snowflake"
@@ -58,9 +68,11 @@ class TorRuntimeBridgesTest {
             val route = routeOf(torrc)
             starts += route
             torrcs += torrc
+            onConnect()
             val (mine, theirs) = PipeDuplex.pair()
             Thread({ serve(theirs, route) }, "fake-tor-control").apply { isDaemon = true }.start()
             return object : Duplex by mine {
+                override val input: java.io.InputStream = PhoneInput(mine.input)
                 override fun close() { mine.close(); File(paths.dir, "alive").delete() }
             }
         }
@@ -68,14 +80,37 @@ class TorRuntimeBridgesTest {
         override fun makePrivate(dir: File) {}
     }
 
+    /**
+     * review-fix-tor-lows-141-b: the control socket's input as the phone's LocalSocket gives it: a read goes on through an
+     * interrupt and leaves the thread marked (a pipe would throw InterruptedIOException and clear the mark).
+     */
+    private class PhoneInput(private val s: java.io.InputStream) : java.io.InputStream() {
+        private inline fun <T> deaf(read: () -> T): T {
+            var hit = false
+            try {
+                // fix-tor-lows-141-d (review-c L3): a read timeout throws, as on the phone; only an interrupt is read through.
+                while (true) try { return read() } catch (e: java.io.InterruptedIOException) { if (e is java.net.SocketTimeoutException) throw e; hit = true }
+            } finally { if (hit) Thread.currentThread().interrupt() }
+        }
+        override fun read(): Int = deaf { s.read() }
+        override fun read(b: ByteArray, off: Int, len: Int): Int = deaf { s.read(b, off, len) }
+        override fun available(): Int = s.available()
+        override fun close() = s.close()
+    }
+
     private fun serve(d: Duplex, route: String) {
         try {
             val r = d.input.bufferedReader(Charsets.US_ASCII)
             while (true) {
                 val cmd = r.readLine() ?: break
+                commands += cmd
+                if (cmd.startsWith("GETINFO status/bootstrap-phase")) onBootstrap()
                 val reply = if (cmd.startsWith("GETINFO traffic/read")) "250-traffic/read=$read\r\n250-traffic/written=$written\r\n250 OK\r\n"
-                else if (cmd.startsWith("GETINFO status/bootstrap-phase"))
+                else if (cmd.startsWith("GETINFO status/bootstrap-phase")) {
+                    polled.countDown()
+                    if (replyDelayMs > 0) Thread.sleep(replyDelayMs)
                     "250-status/bootstrap-phase=NOTICE BOOTSTRAP PROGRESS=${if (route in works) 100 else 5} TAG=x SUMMARY=\"x\"\r\n250 OK\r\n"
+                }
                 else "250 OK\r\n"
                 d.output.write(reply.toByteArray(Charsets.US_ASCII))
                 d.output.flush()
@@ -140,6 +175,25 @@ class TorRuntimeBridgesTest {
         assertEquals(listOf("plain", "plain"), starts)
         assertEquals(2, t.starts)
         assertFalse(t.exited)
+    }
+
+    /**
+     * fix-tor-lows-141-d (review-fix-tor-lows-141-c L1): a late stop from an old node's TorRuntime, which has no process,
+     * leaves the control and SOCKS socket files of the newer node's Tor (the same paths) alone.
+     */
+    @Test fun aLateStopWithoutAProcessLeavesANewerTorsSocketsAlone() {
+        works = setOf("plain")
+        val old = tor({ plan(BridgeChoice.OFF) })
+        val newer = tor({ plan(BridgeChoice.OFF) })
+        assertTrue(newer.up())
+        // The newer Tor's sockets, as Tor makes them on the phone (the fake answers by path alone).
+        for (f in listOf(paths.control, paths.socks)) if (!f.exists()) assertTrue(f.createNewFile())
+        val done = java.util.concurrent.CountDownLatch(1)
+        Thread({ try { old.sleep() } finally { done.countDown() } }, "late-stop").apply { isDaemon = true }.start()
+        assertTrue("the late stop ended", done.await(10, java.util.concurrent.TimeUnit.SECONDS))
+        assertTrue("the newer Tor's control socket", paths.control.exists())
+        assertTrue("the newer Tor's SOCKS socket", paths.socks.exists())
+        assertTrue(newer.running)
     }
 
     /** fix-push-tls: after sleep(), nothing starts Tor again (a send already under way) until wake(). */
@@ -269,6 +323,64 @@ class TorRuntimeBridgesTest {
             assertEquals(listOf(TorProblem.RELAY), why)
         }
         assertTrue(torrcs.isEmpty())
+    }
+
+    /**
+     * fix-tor-lows-141 (review-141-relay-native L2): an interrupt while Tor starts (here, waiting for its control socket)
+     * stops it, says why, and leaves the thread marked interrupted.
+     */
+    @Test fun anInterruptWhileTorStartsKeepsTheThreadMarked() {
+        val hang = File(root, "tor-hang.sh").also { it.writeText("#!/bin/sh\nwhile :; do sleep 0.02; done\n"); it.setExecutable(true) } // l10n: not text (a test script)
+        val asked = java.util.concurrent.CountDownLatch(1)
+        val done = java.util.concurrent.CountDownLatch(1)
+        val why = Collections.synchronizedList(ArrayList<TorProblem>())
+        val t = TorRuntime(hang, paths, FakeSockets(), 1, bootstrapTimeoutMs = 3_000, lyrebird = lyrebird, stallPlainMs = 300, stallBridgeMs = 300, pollMs = 20,
+            plan = { asked.countDown(); plan(BridgeChoice.OFF) }, onFailed = { why += it })
+        runtimes += t
+        var up: Boolean? = null
+        var marked = false
+        val th = Thread { up = t.up(); marked = Thread.currentThread().isInterrupted; done.countDown() }
+        th.start()
+        assertTrue(asked.await(5, TimeUnit.SECONDS))
+        th.interrupt()
+        // fix-tor-lows-141-b (review-fix-tor-lows-141 L): at once, well inside the 5 s a stop waits for Tor to exit unmarked.
+        assertTrue("up() returned at once", done.await(3, TimeUnit.SECONDS))
+        assertEquals(false, up)
+        assertTrue("the thread is still marked interrupted", marked)
+        assertTrue(why.toString(), TorProblem.START in why)
+        // Tor stopped: the thread reading its output ends once the process has (a bounded join, no sleep).
+        val readers = Thread.getAllStackTraces().keys.filter { it.name == "robot-link-tor-out" }
+        for (r in readers) r.join(5_000)
+        assertTrue("Tor still running", readers.none { it.isAlive })
+    }
+
+    /**
+     * fix-tor-lows-141-b (review-fix-tor-lows-141 M): an interrupt while Tor bootstraps (Robot to Robot off or Start over
+     * during a start) stops Tor at once, says why, and leaves the thread marked; nothing is left connecting.
+     */
+    @Test fun anInterruptWhileTorBootstrapsStopsIt() {
+        works = emptySet()
+        polled = java.util.concurrent.CountDownLatch(1)
+        // review-fix-tor-lows-141-b: the interrupt lands while up() waits in the poll's read, not its sleep.
+        replyDelayMs = 50
+        val done = java.util.concurrent.CountDownLatch(1)
+        val why = Collections.synchronizedList(ArrayList<TorProblem>())
+        val t = TorRuntime(exe, paths, FakeSockets(), 1, bootstrapTimeoutMs = 20_000, lyrebird = lyrebird, stallPlainMs = 20_000, stallBridgeMs = 20_000,
+            pollMs = 20, plan = { plan(BridgeChoice.OFF) }, onFailed = { why += it }).also { runtimes += it }
+        var up: Boolean? = null
+        var marked = false
+        val th = Thread { up = t.up(); marked = Thread.currentThread().isInterrupted; done.countDown() }
+        th.start()
+        assertTrue("bootstrap polled", polled.await(5, TimeUnit.SECONDS))
+        th.interrupt()
+        assertTrue("up() returned at once", done.await(3, TimeUnit.SECONDS))
+        assertEquals(false, up)
+        assertTrue("the thread is still marked interrupted", marked)
+        assertTrue(why.toString(), TorProblem.START in why)
+        // Tor stopped: the thread reading its output ends once the process has (a bounded join, no sleep).
+        val readers = Thread.getAllStackTraces().keys.filter { it.name == "robot-link-tor-out" }
+        for (r in readers) r.join(3_000)
+        assertTrue("Tor still running", readers.none { it.isAlive })
     }
 
     /** review-tor-bridge-relay-b L4: Tor that can't start (here, no executable) leaves no relay open. */
@@ -472,6 +584,91 @@ class TorRuntimeBridgesTest {
         assertFalse("letGo returned", stop.isAlive)
         assertEquals(listOf("own", "obfs4"), starts)
         assertTrue("the new Tor still running", t.running)
+    }
+
+    /** review-fix-bridges-lows-b L1: with Robot's network access off, nothing starts, the first attempt included. */
+    @Test fun noStartAtAllWithNetworkAccessOff() {
+        works = setOf("plain")
+        val t = tor({ plan(BridgeChoice.OFF) })
+        t.mayStart = { false }
+        assertFalse(t.up())
+        assertTrue("nothing started", starts.isEmpty())
+        assertFalse(t.running)
+    }
+
+    /** review-fix-bridges-lows-b L1: network access turned off while a start connects: it never comes up, and Tor stops. */
+    @Test fun aStartThatWouldComeUpAfterNetworkAccessGoesOffStops() {
+        works = emptySet()
+        val net = java.util.concurrent.atomic.AtomicBoolean(true)
+        val t = TorRuntime(exe, paths, FakeSockets(), 1, bootstrapTimeoutMs = 20_000, lyrebird = lyrebird, plan = { plan(BridgeChoice.OFF) },
+            stallPlainMs = 20_000, stallBridgeMs = 20_000, pollMs = 20).also { runtimes += it }
+        t.mayStart = { net.get() }
+        val result = java.util.concurrent.CompletableFuture.supplyAsync { t.up() }
+        val until = System.nanoTime() + 5_000_000_000L
+        while (starts.isEmpty() && System.nanoTime() < until) Thread.sleep(20)
+        assertEquals(listOf("plain"), starts)
+        net.set(false)
+        works = setOf("plain")
+        assertFalse("never up with network access off", result.get(5, java.util.concurrent.TimeUnit.SECONDS))
+        assertEquals(listOf("plain"), starts)
+        assertFalse(t.running)
+    }
+
+    /** review-fix-bridges-lows-c M1: a start that gave up (still connecting) stops at the next up() with network access off. */
+    @Test fun aTorThatGaveUpStopsOnceNetworkAccessIsOff() {
+        works = emptySet()
+        val net = java.util.concurrent.atomic.AtomicBoolean(true)
+        val t = TorRuntime(exe, paths, FakeSockets(), 1, bootstrapTimeoutMs = 300, lyrebird = lyrebird, plan = { plan(BridgeChoice.OFF) },
+            stallPlainMs = 300, stallBridgeMs = 300, pollMs = 20).also { runtimes += it }
+        t.mayStart = { net.get() }
+        assertFalse(t.up())
+        assertTrue("still connecting after giving up", t.live)
+        net.set(false)
+        assertFalse(t.up())
+        assertFalse("Tor's process stopped", t.live)
+        assertFalse("the fake Tor ended", File(paths.dir, "alive").exists())
+        assertEquals(listOf("plain"), starts)
+    }
+
+    /** review-fix-bridges-lows-c L1: network access off as Tor reaches 100%: it never comes up, and it stops. */
+    @Test fun networkAccessOffAsTorBootstrapsNeverComesUp() {
+        works = setOf("plain")
+        val net = java.util.concurrent.atomic.AtomicBoolean(true)
+        val t = tor({ plan(BridgeChoice.OFF) })
+        t.mayStart = { net.get() }
+        onBootstrap = { net.set(false) }
+        assertFalse("never up with network access off", t.up())
+        assertFalse(t.running)
+        assertFalse("Tor's process stopped", t.live)
+    }
+
+    /** review-fix-bridges-lows-c L1: network access off while Tor's process starts: its network is never turned on. */
+    @Test fun networkAccessOffAsTorStartsNeverTurnsItsNetworkOn() {
+        works = setOf("plain")
+        val net = java.util.concurrent.atomic.AtomicBoolean(true)
+        val t = tor({ plan(BridgeChoice.OFF) })
+        t.mayStart = { net.get() }
+        onConnect = { net.set(false) }
+        assertFalse(t.up())
+        assertEquals(listOf("plain"), starts)
+        assertFalse(commands.toString(), commands.any { it.startsWith("SETCONF DisableNetwork=0") })
+        assertFalse("Tor's process stopped", t.live)
+    }
+
+    /** review-fix-bridges-lows-b L3: a LinkNode over a TorRuntime gives it Robot's network access as its check before a start. */
+    @Test fun aLinkNodeGivesItsTorRuntimeRobotsNetworkAccess() {
+        val t = tor({ plan(BridgeChoice.OFF) })
+        val env = FakeEnv(1_790_000_000_000L)
+        val r = TestRobot(File(root, "node").apply { mkdirs() }, env, null, 0, null, null, "Alex", realTor = t)
+        try {
+            assertTrue(t.mayStart())
+            env.network.set(false)
+            assertFalse(t.mayStart())
+            assertFalse("no start with network access off", t.up())
+            assertTrue("nothing started", starts.isEmpty())
+            env.network.set(true)
+            assertTrue(t.mayStart())
+        } finally { r.node?.close() }
     }
 
     @Test fun aChangeWhileTorIsStillConnectingStartsItAgain() {

@@ -39,11 +39,21 @@
 # executable liblyrebird.so pinned by the same file, arm64 only, Tor's bridges. L4: :linkparse, the
 # isolated reader of what other Robots send (isolated, not exported, no permission, no filter, nothing else in its process),
 # its classes referred to by nothing else and reaching no network, log, file, key or store.
-# Usage: tools/verify_apk.sh <apk>
+# Usage: tools/verify_apk.sh [--without-llama] <apk>
+#   --without-llama  for a build made without tools/build_llama.sh: librobot_llama.so must then be absent (without the
+#                    flag it must be there)
 set -u -o pipefail
 # Byte order for every sort (the allowlists below are written in it), whatever the shell's locale.
 unset LC_ALL; export LC_COLLATE=C
-APK="$1"
+WITHOUT_LLAMA=0 APK=
+for a in "$@"; do
+  case "$a" in
+    --without-llama) WITHOUT_LLAMA=1 ;;
+    -*) echo "unknown option: $a" >&2; exit 2 ;;
+    *) APK="$a" ;;
+  esac
+done
+[ -n "$APK" ] || { echo "Usage: tools/verify_apk.sh [--without-llama] <apk>" >&2; exit 2; }
 ROBOT="$(cd "$(dirname "$0")/.." && pwd)"
 # The build tools the build itself uses (build.gradle's robotBuildTools).
 BT="${ANDROID_HOME:-/opt/android-sdk}/build-tools/$(sed -n "s/^ *robotBuildTools = '\([^']*\)'.*/\1/p" "$ROBOT/build.gradle")"
@@ -734,7 +744,7 @@ stored=$(unzip -v "$APK" | awk '$2 == "Stored" && ($8 ~ /^lib\/.*\.so$/ || $8 ~ 
 has 'extractNativeLibs(0x010104ea)=true' "$mf" "extractNativeLibs is true (the libraries unpacked at install)"
 size=$(stat -c %s "$APK")
 [ "$size" -lt 100000000 ] && pass "APK is $size bytes (under GitHub's 100 MB)" || fail "APK is $size bytes (GitHub refuses files over 100 MB)"
-for l in libsherpa-onnx-jni.so libonnxruntime.so liblitertlm_jni.so libLiteRtDispatch_GoogleTensor.so; do has "lib/arm64-v8a/$l" "$libs" "packages $l"; done
+for l in libsherpa-onnx-jni.so libonnxruntime.so liblitertlm_jni.so libLiteRtDispatch_GoogleTensor.so librobotmt.so librobotzim.so; do has "lib/arm64-v8a/$l" "$libs" "packages $l"; done
 # sherpa-onnx's library with Robot's bounds in its espeak-ng, not sherpa-onnx's own release (tools/build_sherpa.sh).
 sherpa_pin=$(sed -n 's/^BUILT_SHA=\([0-9a-f]\{64\}\).*/\1/p' "$(dirname "$0")/build_sherpa.sh")
 sherpa_got=$(unzip -p "$APK" lib/arm64-v8a/libsherpa-onnx-jni.so | sha256sum | cut -d' ' -f1)
@@ -744,8 +754,8 @@ other_abis=$(grep -v '^lib/arm64-v8a/' <<<"$libs")
 [ -z "$other_abis" ] && pass "no other ABIs" || fail "non-arm64 libraries: $other_abis"
 # Every packaged library by its exact name: sherpa-onnx's two (:voice), LiteRT-LM's and the TPU dispatch library (:brain),
 # Compose's graphics-path helper (androidx.graphics:graphics-path, every process), librobot_llama.so (0.4.5: Robot's
-# llama.cpp for your own GGUF file, built by tools/build_llama.sh and loaded by :brain only; a build without it is fine,
-# Settings › Model then says GGUF files can't run) and librobotmt.so (0.5.0: the fast translation engine, :mt only).
+# llama.cpp for your own GGUF file, built by tools/build_llama.sh and loaded by :brain only; the app copes without it,
+# Settings › Model then says GGUF files can't run, but a release must ship it: the presence loop above checks) and librobotmt.so (0.5.0: the fast translation engine, :mt only).
 # 1.5 (robot-to-robot-r0.md §2.6, job L2): and libsignal_jni.so, Robot to Robot's sessions (:link only); L3: libtor.so, Tor's
 # executable (:link starts it as its child process); L-bridges: liblyrebird.so, Tor's bridges (Tor starts it, only while a
 # bridge is in use).
@@ -795,7 +805,8 @@ lyrestrays=$(unzip -Z1 "$APK" | grep -E '(^|/)liblyrebird\.so$' | grep -vx 'lib/
 llama=0
 if grep -qx 'lib/arm64-v8a/librobot_llama.so' <<<"$libs"; then
   llama=1
-  pass "packages librobot_llama.so (GGUF files can run)"
+  if [ "$WITHOUT_LLAMA" = 1 ]; then fail "packages librobot_llama.so, but --without-llama says this build has none"
+  else pass "packages librobot_llama.so (GGUF files can run)"; fi
   if [ -x "$NDK_BIN/llvm-nm" ]; then
     so=$(mktemp)
     unzip -p "$APK" lib/arm64-v8a/librobot_llama.so > "$so"
@@ -810,8 +821,10 @@ if grep -qx 'lib/arm64-v8a/librobot_llama.so' <<<"$libs"; then
   else
     echo "NOTE  no NDK at $NDK_BIN: librobot_llama.so's symbols not checked"
   fi
+elif [ "$WITHOUT_LLAMA" = 1 ]; then
+  pass "no librobot_llama.so, as --without-llama says (this build can't run GGUF files; Settings › Model says so)"
 else
-  pass "no librobot_llama.so (this build can't run GGUF files; Settings › Model says so)"
+  fail "packages librobot_llama.so (missing: tools/build_llama.sh builds it; --without-llama checks a build without it)"
 fi
 # 0.6.0 ships the fast translation engine: a build without librobotmt.so (tools/build_robotmt.sh) is not this release.
 if grep -qx 'lib/arm64-v8a/librobotmt.so' <<<"$libs"; then

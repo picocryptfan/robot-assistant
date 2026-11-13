@@ -51,19 +51,65 @@ object WikiRoute {
         "(?<![\\p{L}])(?:the|le|la|l')\\s*(?:timer|alarm|reminder|battery|storage|ram|wi-?fi|bluetooth|volume|brightness|flashlight|" +
             "calendar|schedule|agenda|calendrier|horaire|minuterie|alarme|rappel|batterie|stockage|luminosit[ée]|lampe de poche|" +
             // review-wikipedia-p4-b: one word may name it ("the dentist appointment"); « La Réunion » with its capital is the island.
-            "(?:\\p{L}+\\s+)?(?:meeting|appointment|(?-i:r[ée]union)|rendez-vous))(?![\\p{L}])",
+            "(?:\\p{L}+\\s+)?(?:meeting|appointment|(?-i:r[ée]union)|rendez-vous))(?![\\p{L}])|" +
+            // L2 (review-fix-wiki-phone-nouns): « le mot de passe du wifi », as "the Wi-Fi password"; not every « du »: L1
+            // (review-fix-wiki-phone-nouns-b) « l'histoire du Bluetooth » or « la portée du Bluetooth » is a question of fact.
+            "(?<![\\p{L}])(?:mot\\s+de\\s+passe|code|nom|r[ée]seau|signal|connexion)\\s+du\\s+(?:wi-?fi|bluetooth)(?![\\p{L}])",
         RegexOption.IGNORE_CASE)
 
     /**
      * H1 (review-wiki-which-pick): which, what or « quel(le)(s) » right before one of the things Robot's tools keep or read
      * (ToolRouter's notes, lists, people, calendar, phone and file words, the clock's, and apps' use) asks about yours:
      * "Which app uses the most battery?", « Quelle note a le code? ». Event and document only in the plural, as OWN has
-     * them, so "What event started the war?" stays a question of fact.
+     * them, so "What event started the war?" stays a question of fact. L2 (review-fix-wiki-which-route): one text or SMS
+     * (the messages tools), bill or screenshot (Robot Files reads both).
      */
-    private val PHONE_THING = Regex(
-        "^(?:which|what|quel(?:le)?s?)\\s+(?:apps?|appli(?:cation)?s?|notes?|lists?|checklists?|alarms?|timers?|reminders?|contacts?|files?|" +
-            "documents|receipts?|events|appointments?|meetings?|messages?|emails?|settings?|playlists?|wi-?fi|bluetooth|" +
-            "alarmes?|minuteries?|minuteurs?|rappels?|listes?|fichiers?|re[çc]us?|[ée]v[ée]nements|rendez-vous|courriels?|r[ée]glages?|param[èe]tres?)(?![\\p{L}])",
+    private const val THINGS = "apps?|appli(?:cation)?s?|notes?|lists?|checklists?|alarms?|timers?|reminders?|contacts?|files?|" +
+        "receipts?|appointments?|meetings?|messages?|emails?|settings?|playlists?|wi-?fi|bluetooth|texts?|sms|bills?|screenshots?|" +
+        "alarmes?|minuteries?|minuteurs?|rappels?|listes?|fichiers?|re[çc]us?|rendez-vous|courriels?|r[ée]glages?|param[èe]tres?|" +
+        "textos?|factures?|captures? d'[ée]cran"
+    private val PHONE_THING = Regex("^(?:which|what|quel(?:le)?s?)\\s+(?:$THINGS|documents|events|[ée]v[ée]nements)(?![\\p{L}])",
+        RegexOption.IGNORE_CASE)
+
+    /**
+     * M1 (review-fix-wiki-which-route): the same things a few words after the lead ("Which of the apps ...", "What's the app
+     * that ...", "Which grocery list ...", « Quelle est l'appli qui ... »), never one on its own ("What is Bluetooth?") or a
+     * list "of" something ("What is the list of prime ministers?"). A or an starts a definition ("What is a file system?").
+     * L1 (review-fix-wiki-phone-nouns): a name or a compound after the thing ("What is the App Store?", "the first text
+     * message", « les paramètres d'une loi », "contact lens", "Bill 21") stays a question of fact. H1 (review-fix-wiki-phone-
+     * nouns-b): only those are kept out, so a time or any verb may follow ("the phone bill last month", "the apps crashed").
+     */
+    private val PHONE_THING_IN = Regex(
+        "^(?!(?:$THINGS)(?![\\p{L}]))(?:(?:one\\s+)?of\\s+)?(?:(?:the|les|la|le|des)\\s+|l')?(?:(?!(?:a|an|un|une)\\s)\\p{L}+\\s+)?" +
+            "(?:$THINGS)(?![\\p{L}])" +
+            "(?!\\s+(?:(?:of|des?|du|and|et|ever|store|system|message|lens|lenses)(?![\\p{L}])|\\d+(?!\\d|\\s*(?:minutes?|min|hours?|h|days?|weeks?|months?|years?|jours?|semaines?|mois|ans?)(?![\\p{L}]))|d'une?\\s|" +
+            "in\\s+(?!(?i:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?|keep|gmail|whatsapp|signal|messenger|outlook|telegram)(?![\\p{L}]))(?-i:\\p{Lu})))",
+        RegexOption.IGNORE_CASE)
+
+    /**
+     * M1 (review-fix-wiki-phone-nouns): a thing on, in or from one of yours ("What's on the grocery list?", "the total on the
+     * receipt", « le code dans la note »), never a list "of" something or one after "a" ("What's in a black hole?"). M1 and L2
+     * (review-fix-wiki-phone-nouns-b): « la facture de cellulaire » is yours, « la liste de Schindler », « la liste rouge »
+     * and "the dollar bill" or "the endangered list" are not.
+     */
+    private val PHONE_THING_ON = Regex(
+        "(?<![\\p{L}])(?:on|in|from|inside|sur|dans)\\s+(?:(?:the|la|le|les)\\s+|l')(?:(?!(?:dollar|endangered|grey|gray|red|black|sanctions|farm)\\s)\\p{L}+\\s+)?(?:$THINGS)(?![\\p{L}])" +
+            "(?!\\s+(?:(?:of|des|du|rouge|noire|grise|verte|secr[eè]te?)(?![\\p{L}])|de\\s+(?:l'|la\\s+)?(?-i:\\p{Lu})))",
+        RegexOption.IGNORE_CASE)
+
+    /**
+     * M2 (review-fix-wiki-which-route): what uses, takes up or drains the battery, the space or the data is the phone's.
+     * review-fix-wiki-phone-nouns: "so much" or "a lot of" it, and French « place »; not space in a cell (L1). M1 and L3
+     * (review-fix-wiki-phone-nouns-b): « autant de batterie »; not space in the universe or « place dans le corps humain ».
+     */
+    private val DRAIN = Regex(
+        "(?<![\\p{L}])(?:using|uses|draining|drains|eating|eats|hogging|hogs|taking|takes)\\s+(?:up\\s+)?(?:the\\s+|all\\s+(?:the\\s+)?|my\\s+|" +
+            "so\\s+much\\s+|too\\s+much\\s+|a\\s+lot\\s+of\\s+|lots\\s+of\\s+)?(?:most\\s+)?" +
+            "(?:battery|storage|space(?!\\s+(?:in\\s+(?:a|an)\\s|and\\s|in\\s+the\\s+(?!(?:phone|device|storage|memory|gallery|camera|cell|pixel|downloads?|photos?|videos?|files?|drive|cloud)(?![\\p{L}])|\\p{L}+\\s+(?:folder|app|card|storage|gallery|phone)(?![\\p{L}]))))|memory|ram|data)(?![\\p{L}])|" +
+            "(?<![\\p{L}])(?:prennent|prend|occupent|occupe|bouffent|bouffe|grugent|gruge)\\s+" +
+            "(?:le\\s+plus\\s+de|autant\\s+de|tant\\s+de|trop\\s+de|beaucoup\\s+de|toute\\s+la|de\\s+la)\\s+place(?![\\p{L}])(?!\\s+(?:dans\\s+(?:une?\\s|(?:le|la|les)\\s+(?!(?:t[ée]l(?:[ée]phone)?|cell(?:ulaire)?|appareil|m[ée]moire|stockage|galerie|t[ée]l[ée]chargements?|fichiers?|dossiers?|photos?|vid[ée]os?|pixel|nuage|carte)(?![\\p{L}]))|l'(?!appareil|espace\\s+de\\s+stockage|appli))|aux?\\s+(?!total)|en\\s+(?!m[ée]moire|ce\\s+moment)))|" +
+            "(?<![\\p{L}])(?:utilisent|utilise|consomment|consomme|vident|vide|drainent|draine|prennent|prend|occupent|occupe|bouffent|bouffe|grugent|gruge)\\s+" +
+            "(?:le\\s+plus\\s+|tout(?:e)?\\s+|autant\\s+|tant\\s+|trop\\s+|beaucoup\\s+)?(?:de\\s+(?:la\\s+|l')?|d'|la\\s+|le\\s+|l'|les\\s+)?(?:batterie|stockage|espace|m[ée]moire|ram|donn[ée]es)(?![\\p{L}])",
         RegexOption.IGNORE_CASE)
 
     /** Low (review-wikipedia-p4-b): who invented or found a thing asks about the thing in general ("Who invented the battery?"). */
@@ -137,7 +183,8 @@ object WikiRoute {
         if (q.isEmpty()) return Verdict.OTHER
         if (COMMAND.containsMatchIn(q) || WebRouter.explicit(question) != null) return Verdict.COMMAND
         val rest = stripLead(q).replace(TIMES, " ")
-        if (PERSONAL.containsMatchIn(rest) || I.containsMatchIn(rest) || OWN.containsMatchIn(rest) || PHONE_THING.containsMatchIn(q)) return Verdict.PERSONAL
+        if (PERSONAL.containsMatchIn(rest) || I.containsMatchIn(rest) || OWN.containsMatchIn(rest) || PHONE_THING.containsMatchIn(q) ||
+            PHONE_THING_IN.containsMatchIn(rest) || DRAIN.containsMatchIn(q) || PHONE_THING_ON.containsMatchIn(rest)) return Verdict.PERSONAL
         // H1 (review-wikipedia-p4): your things one at a time, and what memory and Robot links answer.
         if (YOURS.containsMatchIn(rest) && !INVENTED.containsMatchIn(q) || CONTACT_FOR.containsMatchIn(rest) || CONTACT_EN.containsMatchIn(rest) || CONTACT_FR.containsMatchIn(rest) ||
             ToolRouter.route(q).any { it == ToolGroup.MEMORY || it == ToolGroup.LINK }) return Verdict.PERSONAL

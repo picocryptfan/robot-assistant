@@ -42,7 +42,7 @@ Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `
 
 ## What's new in 1.4
 
-Robot 1.4.0 (13 Nov 2026); the notes in docs/release-notes-1.4.0.md are the full list.
+Robot 1.4.1 (13 Nov 2026) fixes 1.4.0; the notes in docs/release-notes-1.4.1.md are its list, and docs/release-notes-1.4.0.md is the full list of 1.4.
 
 - Answers: Ready answers (core `messages/ReadyAnswers`), Wikipedia on this phone (`wiki/`), When did I last (`lasttime/`), summarize a web page (`web/PageSummary`), a helper's web search, Search by meaning (`memory/MeaningSearch`, model pinned in `SearchModel`).
 - Hands busy: questions kept for when there's signal (`online/Later`), Read it to me (`read/`), Step by step (`steps/`, its words in `StepWords`), reminders for a moment (`MomentReminders`), Undo and change (`CorrectRouter`), earbud buttons (`headset/EarbudButtons`), Heads-up before events (`headsup/`).
@@ -2522,8 +2522,9 @@ tools/build_sherpa.sh                         # libsherpa-onnx-jni.so with Robot
 tools/fetch_libsignal.sh                      # 1.5: libsignal 0.105.2 into third_party/maven-local, SHA-256 checked (below)
 tools/fetch_link_deps.sh                      # 1.5: Tor, the UnifiedPush connector and Tink into third_party/maven-link, SHA-256 checked (below)
 tools/build_lyrebird.sh                       # 1.5: liblyrebird.so from source into third_party/lyrebird, pinned (Go and the NDK; Go is downloaded if missing)
-tools/build_llama.sh                          # optional (0.4.5): llama.cpp b11200 from its checked source, for GGUF files
+tools/build_llama.sh                          # optional (0.4.5): llama.cpp b11200 from its checked source, for GGUF files; without it, run verify_apk.sh --without-llama
 tools/build_robotmt.sh                        # 0.5.0: librobotmt.so, the fast translation engine (NDK 27.1.12297006, CMake 3.22.1; a 0.6.0 release needs it)
+tools/build_libzim.sh                         # 1.4: librobotzim.so, the offline Wikipedia reader, from pinned sources (about 20 minutes); verify_apk.sh fails without it
 ./gradlew :core:testReleaseUnitTest :voice:testReleaseUnitTest :helpers:testReleaseUnitTest :link:testReleaseUnitTest :app:testReleaseUnitTest
 ./gradlew :app:testDebugUnitTest               # also the Compose UI tests and screenshots (Robolectric, offline)
 ./gradlew :app:assembleRelease -Probot.keystore=/path/outside/repo/robot-release.p12 \

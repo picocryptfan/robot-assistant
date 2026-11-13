@@ -33,6 +33,8 @@ import app.heyrobot.core.link.Verified
 import app.heyrobot.sys.LinkSettingsStore
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import java.util.concurrent.CountDownLatch
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -340,6 +342,7 @@ class LinkServiceIpcTest {
             assertEquals(listOf(one), test.state.pairings.keys.toList())
         } finally {
             svc.onUnbind(null)
+            LinkService.released(5)
             keyguard.setIsDeviceLocked(false)
             LinkSettingsStore.update(ctx) { it.copy(on = false) }
             LinkRuntime.node(ctx)
@@ -389,7 +392,137 @@ class LinkServiceIpcTest {
             assertEquals(1, call(b, LinkIpcProtocol.DESK_NOT_NOW, { writeByteArray(LinkBytes.unhex(sam, 16)!!); writeInt(LinkLevels.code(LinkCapability.ETA)) }).let { it.readInt(); it.readInt() })
         } finally {
             svc.onUnbind(null)
+            LinkService.released(5)
             keyguard.setIsDeviceLocked(false)
+            LinkSettingsStore.update(ctx) { it.copy(on = false) }
+            LinkRuntime.node(ctx)
+            LinkRuntime.opener = null
+        }
+    }
+
+    /**
+     * fix-link-unbind-141 (review-fix-tor-lows-141-d F1): onUnbind runs on :link's main thread, so it never waits for the
+     * service's lock, which a call's node() holds while a turn-off's close() runs (up to 15 s): it returns at once, and
+     * the release follows once the lock is free.
+     */
+    @Test fun onUnbindNeverWaitsBehindClose() {
+        val ctx = RuntimeEnvironment.getApplication()
+        shadowOf(ctx.getSystemService(UserManager::class.java)).setUserUnlocked(true)
+        shadowOf(ctx.getSystemService(KeyguardManager::class.java)).setIsDeviceLocked(false)
+        val test = TestLinkNode(tmp.newFolder())
+        LinkRuntime.opener = { test.node }
+        assertTrue(LinkSettingsStore.update(ctx) { it.copy(on = true) })
+        val svc = Robolectric.buildService(LinkService::class.java).create().get()
+        val entered = CountDownLatch(1)
+        val gate = CountDownLatch(1)
+        val closing = Thread { synchronized(svc) { entered.countDown(); gate.await(10, TimeUnit.SECONDS) } }
+        fun awake() = test.node.status().get(5, TimeUnit.SECONDS).awake
+        try {
+            val b = svc.onBind(null)
+            val r = call(b, LinkIpcProtocol.MAKE_CODE, { writeInt(LinkMode.PRIVATE.code); writeInt(0) })
+            assertEquals(LinkIpcProtocol.REPLY_OK, r.readInt())
+            assertTrue("a call holds :link awake", awake())
+            closing.start()
+            assertTrue(entered.await(5, TimeUnit.SECONDS))
+            val unbind = Thread { svc.onUnbind(null) }
+            unbind.start()
+            unbind.join(2_000)
+            assertFalse("onUnbind returns while close() holds the service's lock", unbind.isAlive)
+            gate.countDown()
+            closing.join(5_000)
+            assertTrue(LinkService.released(5))
+            assertFalse("released once the lock is free", awake())
+        } finally {
+            gate.countDown()
+            LinkService.released(5)
+            LinkSettingsStore.update(ctx) { it.copy(on = false) }
+            LinkRuntime.node(ctx)
+            LinkRuntime.opener = null
+        }
+    }
+
+    /**
+     * fix-link-unbind-141 (review F1): a client binding again before the last unbind's release has run keeps :link awake:
+     * its call takes a hold of its own, the queued release leaves that hold alone, and only its own unbind lets :link sleep.
+     */
+    @Test fun aBindLandingBeforeTheReleaseKeepsLinkAwake() {
+        val ctx = RuntimeEnvironment.getApplication()
+        shadowOf(ctx.getSystemService(UserManager::class.java)).setUserUnlocked(true)
+        shadowOf(ctx.getSystemService(KeyguardManager::class.java)).setIsDeviceLocked(false)
+        val test = TestLinkNode(tmp.newFolder())
+        LinkRuntime.opener = { test.node }
+        assertTrue(LinkSettingsStore.update(ctx) { it.copy(on = true) })
+        val svc = Robolectric.buildService(LinkService::class.java).create().get()
+        val started = CountDownLatch(1)
+        val gate = CountDownLatch(1)
+        fun awake() = test.node.status().get(5, TimeUnit.SECONDS).awake
+        try {
+            val b = svc.onBind(null)
+            fun make() = call(b, LinkIpcProtocol.MAKE_CODE, { writeInt(LinkMode.PRIVATE.code); writeInt(0) }).readInt()
+            assertEquals(LinkIpcProtocol.REPLY_OK, make())
+            assertTrue(awake())
+            LinkService.onReleaser { started.countDown(); gate.await(10, TimeUnit.SECONDS) }
+            assertTrue(started.await(5, TimeUnit.SECONDS))
+            svc.onUnbind(null) // its release waits behind the block above
+            assertEquals(LinkIpcProtocol.REPLY_OK, make()) // a new client's call lands first
+            gate.countDown()
+            assertTrue(LinkService.released(5))
+            assertTrue("the new client keeps :link awake", awake())
+            svc.onUnbind(null)
+            assertTrue(LinkService.released(5))
+            assertFalse("its own unbind lets :link sleep", awake())
+        } finally {
+            gate.countDown()
+            LinkService.released(5)
+            LinkSettingsStore.update(ctx) { it.copy(on = false) }
+            LinkRuntime.node(ctx)
+            LinkRuntime.opener = null
+        }
+    }
+
+    /**
+     * fix-link-unbind-141-b (review-fix-link-unbind-141 L1): a stale call (sent before its client unbound) that takes a
+     * hold after the unbind's release is let go at destroy, and one reaching a destroyed service is refused and holds
+     * nothing, even while a release is still queued.
+     */
+    @Test fun aStaleCallLeavesNoHoldPastDestroy() {
+        val ctx = RuntimeEnvironment.getApplication()
+        shadowOf(ctx.getSystemService(UserManager::class.java)).setUserUnlocked(true)
+        shadowOf(ctx.getSystemService(KeyguardManager::class.java)).setIsDeviceLocked(false)
+        val test = TestLinkNode(tmp.newFolder())
+        LinkRuntime.opener = { test.node }
+        assertTrue(LinkSettingsStore.update(ctx) { it.copy(on = true) })
+        val started = CountDownLatch(1)
+        val gate = CountDownLatch(1)
+        fun awake() = test.node.status().get(5, TimeUnit.SECONDS).awake
+        try {
+            val svc = Robolectric.buildService(LinkService::class.java).create().get()
+            val b = svc.onBind(null)
+            fun make(on: IBinder) = call(on, LinkIpcProtocol.MAKE_CODE, { writeInt(LinkMode.PRIVATE.code); writeInt(0) }).readInt()
+            assertEquals(LinkIpcProtocol.REPLY_OK, make(b))
+            svc.onUnbind(null)
+            assertTrue(LinkService.released(5))
+            assertFalse(awake())
+            assertEquals(LinkIpcProtocol.REPLY_OK, make(b)) // the stale call lands after the release
+            assertTrue(awake())
+            svc.onDestroy()
+            assertTrue(LinkService.released(5))
+            assertFalse("destroy lets the stale call's hold go", awake())
+            // A second service: a stale call after its destroy, while the destroy's release still waits behind a block.
+            val svc2 = Robolectric.buildService(LinkService::class.java).create().get()
+            val b2 = svc2.onBind(null)
+            assertEquals(LinkIpcProtocol.REPLY_OK, make(b2))
+            LinkService.onReleaser { started.countDown(); gate.await(10, TimeUnit.SECONDS) }
+            assertTrue(started.await(5, TimeUnit.SECONDS))
+            svc2.onUnbind(null)
+            svc2.onDestroy()
+            assertEquals("a destroyed service refuses", LinkIpcProtocol.REPLY_REFUSED, make(b2))
+            gate.countDown()
+            assertTrue(LinkService.released(5))
+            assertFalse("nothing holds :link after destroy", awake())
+        } finally {
+            gate.countDown()
+            LinkService.released(5)
             LinkSettingsStore.update(ctx) { it.copy(on = false) }
             LinkRuntime.node(ctx)
             LinkRuntime.opener = null
