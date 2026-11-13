@@ -34,6 +34,7 @@
     <string name="panel_listening_state">À l’écoute</string>
     <string name="panel_unlock_for_your_photos">Déverrouille pour utiliser l’appareil photo, tes photos ou tes fichiers.</string>
     <string name="panel_camera">Appareil photo</string>
+    <string name="panel_read_aloud">Lire à voix haute</string>
     <string name="panel_photos">Photos</string>
     <string name="panel_yes_or_no">Oui ou non…</string>
     <string name="panel_ask_about_it">Pose une question là-dessus…</string>

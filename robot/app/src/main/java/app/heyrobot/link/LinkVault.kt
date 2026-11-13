@@ -312,6 +312,8 @@ internal fun problemOf(t: Throwable): KeyProblem {
             is KeyException -> return c.problem
             is KeyPermanentlyInvalidatedException -> return KeyProblem.GONE
             is AEADBadTagException, is BadPaddingException -> return KeyProblem.BAD_DATA
+            // seal-history-fix-b 2: Android 15's getKey rethrows an invalidated key as this, with no cause.
+            is java.security.UnrecoverableKeyException -> if (c.cause == null) return KeyProblem.GONE
         }
         c = c.cause
     }

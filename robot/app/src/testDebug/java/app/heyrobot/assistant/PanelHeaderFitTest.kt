@@ -2,6 +2,9 @@
 package app.heyrobot.assistant
 
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -21,6 +24,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.junit.rules.TestRule
+import org.robolectric.internal.TimeLimitedStatement
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
@@ -34,6 +39,8 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35], qualifiers = PHONE)
 class PanelHeaderFitTest {
+    // Review M3: a hang fails this test after 60 s; the Gradle timeout (build.gradle) is the backstop.
+    @get:Rule(order = -2) val timeout = TestRule { base, _ -> TimeLimitedStatement(60_000, base) }
     @get:Rule val rule = createComposeRule()
 
     /** A screen question not kept yet: the header offers Keep. */
@@ -74,6 +81,28 @@ class PanelHeaderFitTest {
         lockedWithKeep()
         rule.shot("panel_classic_locked_keep_font200")
     }
+
+    /**
+     * RP3: the panel doesn't grow for the bug report. Its header with a turn (the report there) is as tall as it was
+     * before (68 dp on a 411 dp phone, "Robot" and the buttons one row; 96 dp at 360 dp, where "Robot" already had a
+     * row of its own), every target 48 dp. A sixth button made them 96 and 144.
+     */
+    private fun headerHeight(): Float {
+        show(PanelState("c1", turns = screenTurns.take(1) + UiTurn("r1", TurnRole.ASSISTANT, "Hello.")))
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
+        val b = rule.onNodeWithTag("classic-header").getBoundsInRoot()
+        return (b.bottom - b.top).value
+    }
+
+    @Test fun theHeaderKeepsItsHeightWithTheReport() {
+        assertEquals(68f, headerHeight(), 0.5f)
+        val title = rule.onNodeWithText("Robot").getBoundsInRoot()
+        val close = rule.onNodeWithContentDescription("Close").getBoundsInRoot()
+        assertEquals("'Robot' shares the buttons' row", close.top.value, title.top.value - 10f, 12f)
+    }
+
+    @Test @Config(qualifiers = "w360dp-h800dp-xhdpi")
+    fun theHeaderKeepsItsHeightWithTheReportOnANarrowPhone() = assertEquals(96f, headerHeight(), 0.5f)
 
     /** 1.2 (design Step 2): the self-test's line before the first question after an Android update, whole, in both languages. */
     private fun checking(langs: app.heyrobot.core.i18n.Langs) {

@@ -43,8 +43,11 @@ internal object FocusPlan {
      * plays. [pause]: OutputGuard asked this speaking run to pause other sound (VolumePolicy.PAUSE_OTHERS). [mayTake]: the
      * phone is in no call ([mayTake]).
      */
-    fun gain(turn: Boolean, speaking: Boolean, pause: Boolean, mayTake: Boolean): Int = when {
+    fun gain(turn: Boolean, speaking: Boolean, pause: Boolean, mayTake: Boolean, reading: Boolean = false): Int = when {
         turn && mayTake -> EXCLUSIVE
+        // Read it to me (read-it-to-me-plan.md §5): a reading pauses other sound from its first piece to its pause or end,
+        // between pieces too, and never during a call.
+        reading && mayTake -> TRANSIENT
         speaking -> if (pause && mayTake) TRANSIENT else MAY_DUCK
         else -> NONE
     }
@@ -96,6 +99,8 @@ internal class FocusKeeper(private val port: Port) {
     private var lost = false
     /** Media was playing as this turn first listened (§3.3), before its focus paused it. */
     private var playingAtStart = false
+    /** Read it to me: a reading is on (not paused). */
+    private var reading = false
 
     private val release = Runnable { synchronized(this) { if (turn && ending && speakers.isEmpty()) finish("focus_ended") } }
     private val safety = Runnable {
@@ -172,6 +177,14 @@ internal class FocusKeeper(private val port: Port) {
         apply()
     }
 
+    /** Read it to me: a reading starts or resumes ([on]), or pauses or ends. */
+    @Synchronized
+    fun reading(on: Boolean) {
+        if (reading == on) return
+        reading = on
+        apply()
+    }
+
     /**
      * Android: another app took the focus for good (you asked for music, or started a video). Nothing is asked again until
      * the turn and the voice are over, so a follow-up listen in the same turn doesn't pause what you just started.
@@ -216,8 +229,8 @@ internal class FocusKeeper(private val port: Port) {
 
     private fun apply() {
         val may = port.mayTake()
-        val g = FocusPlan.gain(turn, speakers.isNotEmpty(), pause, may)
-        val want = if (g == FocusPlan.NONE) null else Want(g, if (turn && may) Playback.ASSISTANT else speakers.values.first())
+        val g = FocusPlan.gain(turn, speakers.isNotEmpty(), pause, may, reading)
+        val want = if (g == FocusPlan.NONE) null else Want(g, if (turn && may) Playback.ASSISTANT else speakers.values.firstOrNull() ?: Playback.ASSISTANT)
         if (want == null) {
             // Nothing wanted: the turn and the voice are over, so a loss (or a yield to the player) is forgotten too.
             lost = false
@@ -250,6 +263,8 @@ object TurnFocus {
     private val changes: AudioManager.OnAudioFocusChangeListener = AudioManager.OnAudioFocusChangeListener { change ->
         // A transient loss (a call ringing, another assistant) gives the focus back by itself; only a lasting loss counts.
         if (change == AudioManager.AUDIOFOCUS_LOSS) keeper.lostForGood()
+        // Read it to me: every change goes to the reading too (a short loss pauses it, a gain resumes it).
+        readingFocus?.invoke(change)
     }
 
     private val keeper: FocusKeeper = FocusKeeper(object : FocusKeeper.Port {
@@ -312,6 +327,16 @@ object TurnFocus {
 
     private fun init(ctx: Context) {
         if (audio == null) audio = ctx.applicationContext.getSystemService(AudioManager::class.java)
+    }
+
+    /** Read it to me's listener for focus changes, set while a reading holds the session (main thread). */
+    @Volatile private var readingFocus: ((Int) -> Unit)? = null
+
+    /** Read it to me (ReadingVoice): a reading plays ([on]) or not; [onChange] hears the focus changes while it is on. */
+    fun reading(ctx: Context, on: Boolean, onChange: ((Int) -> Unit)? = null) {
+        init(ctx)
+        readingFocus = if (on) onChange else null
+        keeper.reading(on)
     }
 
     /** SherpaSpeechToText: a question starts listening (before its first frame is read). */

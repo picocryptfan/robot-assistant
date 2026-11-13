@@ -14,6 +14,21 @@ class LockCoverWatchTest {
     private fun flat(p: String) = Flat(Source.strip(File(root, p).readText(), keepStrings = true))
     private val service get() = flat("lock/LockAccessibilityService.kt")
 
+    /** review-develop-14 M1: car mode, whoever started it and whatever the lock's settings, keeps App pause out of the way. */
+    @Test fun carModeKeepsAppPauseAway() {
+        assertInOrder(service.body("private fun pause("), "busy = s.active || f.inCall || f.carOwnLock || s.state.carModeOn(System.currentTimeMillis()) || keyguard()")
+        assertInOrder(flat("lock/LockEngine.kt").body("fun car("), "LockStore.editState(ctx) { it.withCar(on, byCar, now) }", "refresh(ctx)")
+    }
+
+    /** review-develop-14 L1: someone else's lock starting hides a ringing timer's name and the hold-over line's app names too. */
+    @Test fun someoneElsesLockHidesTimerNamesAndHeldApps() {
+        assertInOrder(flat("sys/LockShade.kt").body("fun hide("), "nm.cancel(n.tag, n.id)", "OwnTimerRing.onScreen(ctx, off = true)", "app.heyrobot.people.HoldTap.countsOnly(ctx)")
+        val hold = flat("people/HoldTap.kt")
+        assertInOrder(hold.body("private fun over("), "putInt(EXTRA_TOTAL, counts.filter { it.n > 0 }.sumOf { it.n })")
+        assertInOrder(hold.body("fun countsOnly("), "it.id == ID", "n.extras.getInt(EXTRA_TOTAL, -1)", "HoldLine.over(listOf(HeldCount(\"\", it)), countsOnly = true)",
+            "HoldLine.overPublic()", "nm.notify(ID, Notification.Builder.recoverBuilder(ctx, n).setContentText(line)")
+    }
+
     @Test fun onConnectWithALockOnTheCoverComesBack() {
         assertInOrder(service.body("override fun onServiceConnected("), "LockEngine.refresh(applicationContext)", "if (s.active) onEngine(s, startedNow = !emergency)")
     }

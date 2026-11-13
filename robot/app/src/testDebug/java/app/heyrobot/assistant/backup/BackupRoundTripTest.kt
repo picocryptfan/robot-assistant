@@ -51,15 +51,18 @@ import java.io.File
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class BackupRoundTripTest {
+    init { app.heyrobot.sys.HistoryFiles.testKeys(app.heyrobot.sys.SoftHistoryKeys()); NotesFiles.testKeys(app.heyrobot.sys.SoftHistoryKeys()); app.heyrobot.sys.PeopleFiles.testKeys(app.heyrobot.sys.SoftHistoryKeys()) }
     private val ctx: Context = ApplicationProvider.getApplicationContext()
     private val pass = "correct-horse-battery-staple-orbit"
     private val t0 = 1_760_270_000_000L
-    private val chosen = setOf(BackupCategory.SETTINGS, BackupCategory.PEOPLE, BackupCategory.NOTES, BackupCategory.HISTORY)
+    private val chosen = BackupCategory.covers(BackupCategory.SETTINGS) + setOf(BackupCategory.PEOPLE, BackupCategory.NOTES, BackupCategory.HISTORY)
 
     @Before fun setUp() {
         VoiceLog.resetForTests()
         ShadowStatFs.registerStats(ctx.filesDir, 1_000_000, 1_000_000, 1_000_000)
         File(Paths.dir(ctx), "settings.json").writeText(RobotSettings(saveHistory = true).toJson().toString())
+        // auto-open-plan §4: open_apps.json is on the phone too, in its own category (never a ninth Settings entry).
+        app.heyrobot.sys.OpenAppsStore.set(ctx, true)
         PeopleFiles.store(ctx).save(Person("6f0c2a3e-0000-4000-8000-000000000001", "Marie Tremblay",
             phones = listOf(ContactPhone("+15145550101", PhoneKind.MOBILE, "Mobile")), updatedAt = t0))
         File(NotesFiles.dir(ctx), "note-0001.json").writeText(NoteCodec.toJson(Note("note-0001", "Groceries", "milk, eggs", t0, t0 + 1_000)))
@@ -86,6 +89,7 @@ class BackupRoundTripTest {
     }
 
     @Test fun backUpThenRestoreOnTheSamePhone() {
+        app.heyrobot.sys.OpenAppsStore.set(ctx, false)
         val file = backup()
         val st = BackupFiles.state(ctx)
         assertTrue(st.lastChecked && st.lastAt != null && st.lastCategories == chosen && !st.lastKeys)
@@ -93,6 +97,8 @@ class BackupRoundTripTest {
         assertFalse(String(file.readBytes(), Charsets.ISO_8859_1).contains(pass))
         assertFalse(readOrNull(BackupFiles.stateFile(ctx))!!.contains(pass))
         wipe()
+        File(Paths.dir(ctx), app.heyrobot.core.OpenAppsFile.NAME).delete()
+        assertTrue(app.heyrobot.sys.OpenAppsStore.named(ctx))
 
         val s = RestoreSession(ctx)
         assertNull(s.copyIn(Uri.fromFile(file)) {})
@@ -102,7 +108,7 @@ class BackupRoundTripTest {
         val v = s.verified!!
         val phone = s.phone()
         val plan = RestorePlanner.plan(v, phone, RestorePlanner.defaults(v), mine = false)
-        assertEquals(listOf(BackupCategory.SETTINGS, BackupCategory.PEOPLE, BackupCategory.NOTES, BackupCategory.HISTORY), plan.restoring)
+        assertEquals(listOf(BackupCategory.SETTINGS, BackupCategory.PEOPLE, BackupCategory.NOTES, BackupCategory.HISTORY, BackupCategory.OPEN_APPS), plan.restoring)
         val r = s.apply(plan) {}
         s.close()
         for (c in chosen) assertEquals(c.id, CategoryOutcome.Done, r.outcomes[c])
@@ -112,14 +118,25 @@ class BackupRoundTripTest {
         val people = PeopleFiles.store(ctx).list()
         assertEquals(listOf("Marie Tremblay"), people.map { it.name })
         assertFalse(people.single().confirmed)
-        assertNotNull(File(NotesFiles.dir(ctx), "note-0001.json").takeIf { it.isFile })
-        val conv = ConversationCodec.fromJson(File(Paths.conversations(ctx), "conv-0001.json").readText())!!
+        // seal-people: People comes back sealed through its store; nothing in its folder holds a name in the clear.
+        PeopleFiles.dir(ctx).listFiles()!!.forEach { assertFalse(it.name, String(it.readBytes(), Charsets.ISO_8859_1).contains("Tremblay")) }
+        assertNotNull(File(PeopleFiles.dir(ctx), "people.enc").takeIf { it.isFile })
+        // seal-notes: the note comes back sealed; nothing in its folder holds its words in the clear.
+        assertNotNull(File(NotesFiles.dir(ctx), "note-0001.enc").takeIf { it.isFile })
+        assertNotNull(NotesFiles.store(ctx).get("note-0001"))
+        assertEquals(listOf("note-0001.enc"), NotesFiles.dir(ctx).list()!!.sorted())
+        val conv = app.heyrobot.sys.ConversationStore.load(ctx, "conv-0001")!!
+        // seal-history: History comes back sealed; nothing in its folder holds the words in the clear.
+        assertTrue(Paths.conversations(ctx).listFiles()!!.none { it.name.endsWith(".json") || String(it.readBytes(), Charsets.ISO_8859_1).contains("Jasmine") })
+        assertTrue(Paths.conversations(ctx).listFiles()!!.any { it.name == "conv-0001.enc" })
         assertTrue(TurnRules.untrusted(conv.turns))
         // The settings wait, staged, for the main app's start; then the journal goes.
         assertEquals(app.heyrobot.core.backup.JournalState.COMMIT, RestoreFiles.journal(ctx).state(BackupCategory.SETTINGS))
         RestoreApply.recover(ctx)
         assertTrue(RestoreFiles.journal(ctx).read().isEmpty())
         assertEquals(r, RestoreFiles.result(ctx))
+        // auto-open-plan §4: "Open apps you name without a card" came back off, as backed up.
+        assertFalse(app.heyrobot.sys.OpenAppsStore.named(ctx))
         // Nothing of the passphrase anywhere in the restore's files.
         RestoreFiles.dir(ctx).walkTopDown().filter { it.isFile }.forEach { f -> assertFalse(f.name, f.readText().contains(pass)) }
     }
@@ -839,6 +856,49 @@ class BackupRoundTripTest {
         assertFalse(app.heyrobot.sys.ListsSettingsStore.current(ctx).lockScreen)
     }
 
+    /** seal-history-fix-b 1: History that can't be opened whole stops the backup with History's own words, not "backup failed". */
+    @Test fun historyThatCantBeOpenedStopsTheBackupWithItsWords() {
+        val k = app.heyrobot.sys.SoftHistoryKeys()
+        app.heyrobot.sys.HistoryFiles.testKeys(k)
+        assertTrue(app.heyrobot.sys.ConversationStore.save(ctx, app.heyrobot.core.StoredConversation("h1", 1_000L, 2_000L, listOf(app.heyrobot.core.ChatTurn("u", app.heyrobot.core.TurnRole.USER, "hi", 1_000L)))))
+        val out = File(ctx.cacheDir, "no-history.robotbackup")
+        fun code() = (BackupJob(ctx, setOf(BackupCategory.HISTORY), recordings = false, pictures = true).run(Uri.fromFile(out), pass) {} as BackupJob.Outcome.Failed).code
+        k.locked = true
+        assertEquals(app.heyrobot.core.backup.BackupCode.HISTORY_UNREADABLE, code())
+        k.locked = false
+        val f = File(app.heyrobot.sys.Paths.conversations(ctx), "h1.enc")
+        f.writeBytes(f.readBytes().also { it[4] = 99; it[it.size - 1] = (it[it.size - 1] + 1).toByte() }) // a newer layout this one can't check
+        app.heyrobot.sys.HistoryFiles.drop()
+        assertEquals(app.heyrobot.core.backup.BackupCode.HISTORY_TOO_NEW, code())
+    }
+
+    /** seal-history-fix-c 1: a restore over History that can't be opened whole says why (13 or 14's words), not "the phone locked". */
+    @Test fun historyThatCantBeOpenedTellsTheRestoreWhy() {
+        val k = app.heyrobot.sys.SoftHistoryKeys()
+        app.heyrobot.sys.HistoryFiles.testKeys(k)
+        assertTrue(app.heyrobot.sys.ConversationStore.save(ctx, app.heyrobot.core.StoredConversation("h1", 1_000L, 2_000L, listOf(app.heyrobot.core.ChatTurn("u", app.heyrobot.core.TurnRole.USER, "hi", 1_000L)))))
+        val out = File(ctx.cacheDir, "history.robotbackup")
+        assertTrue(BackupJob(ctx, setOf(BackupCategory.HISTORY), recordings = false, pictures = true).run(Uri.fromFile(out), pass) {} is BackupJob.Outcome.Done)
+        fun history(): CategoryOutcome? {
+            val s = RestoreSession(ctx)
+            assertNull(s.copyIn(Uri.fromFile(out)) {})
+            assertNull(s.unlock(pass))
+            assertNull(s.verify {})
+            val v = s.verified!!
+            val r = s.apply(RestorePlanner.plan(v, s.phone(), RestorePlanner.defaults(v), mine = true)) {}
+            s.close()
+            return r.outcomes[BackupCategory.HISTORY]
+        }
+        k.locked = true
+        app.heyrobot.sys.HistoryFiles.drop()
+        assertEquals(CategoryOutcome.HistoryUnreadable(tooNew = false), history())
+        k.locked = false
+        val f = File(app.heyrobot.sys.Paths.conversations(ctx), "h1.enc")
+        f.writeBytes(f.readBytes().also { it[4] = 99; it[it.size - 1] = (it[it.size - 1] + 1).toByte() })
+        app.heyrobot.sys.HistoryFiles.drop()
+        assertEquals(CategoryOutcome.HistoryUnreadable(tooNew = true), history())
+    }
+
     /** Lists that can't be opened now never go half: Back up now says so, and leaves the file unwritten. */
     @Test fun listsThatCantBeOpenedStopTheBackupWithTheirWords() {
         app.heyrobot.sys.ListsFiles.onChange = null
@@ -856,5 +916,44 @@ class BackupRoundTripTest {
         assertEquals(app.heyrobot.core.backup.ListsHere.KEY_GONE, s.phone().lists)
         s.close()
     }
-}
 
+    /**
+     * spoken-log: the Logbook goes in a backup opened through its vault (never the sealed file), and a Replace restore puts
+     * the backup's entries back in place of what's there; a log that can't be opened now stops the backup with its words.
+     */
+    @Test fun theLogbookGoesInABackupAndComesBackOnReplace() {
+        val keys = app.heyrobot.sys.SoftMemoryKeys()
+        app.heyrobot.sys.LogbookFiles.testKeys(keys)
+        val vault = app.heyrobot.sys.LogbookFiles.store(ctx)
+        assertEquals(app.heyrobot.sys.LogbookAdd.ADDED, vault.add(app.heyrobot.core.logbook.LogEntry("a1", 1_000L, "took my pills"), whileLocked = false))
+        assertTrue(app.heyrobot.sys.LogbookFiles.saveSettings(ctx, app.heyrobot.core.logbook.LogbookSettings(on = true, addLocked = false)))
+        assertEquals(1, BackupSources.survey(ctx, RobotSettings()).getValue(BackupCategory.LOGBOOK).count)
+        val out = File(ctx.cacheDir, "logbook.robotbackup")
+        val job = BackupJob(ctx, setOf(BackupCategory.LOGBOOK), recordings = false, pictures = true)
+        val done = job.run(Uri.fromFile(out), pass) {}
+        assertTrue("${(done as? BackupJob.Outcome.Failed)?.code} ${job.refused}", done is BackupJob.Outcome.Done)
+        assertEquals(setOf(BackupCategory.LOGBOOK), (done as BackupJob.Outcome.Done).categories)
+        assertFalse(String(out.readBytes(), Charsets.ISO_8859_1).contains("pills"))
+
+        // Replace: what's here now goes, the backup's entries come back, sealed again here.
+        assertTrue(vault.deleteAll())
+        assertEquals(app.heyrobot.sys.LogbookAdd.ADDED, vault.add(app.heyrobot.core.logbook.LogEntry("b2", 2_000L, "ran 5 km"), whileLocked = false))
+        val s = RestoreSession(ctx)
+        assertNull(s.copyIn(Uri.fromFile(out)) {})
+        assertNull(s.unlock(pass))
+        assertNull(s.verify {})
+        assertEquals(listOf("a1"), s.verified!!.logbook!!.map { it.id })
+        val r = s.apply(RestorePlanner.plan(s.verified!!, s.phone(), mapOf(BackupCategory.LOGBOOK to CategoryChoice(replace = true)), true)) {}
+        s.close()
+        assertEquals(CategoryOutcome.Done, r.outcomes[BackupCategory.LOGBOOK])
+        assertEquals(listOf("a1"), (vault.read() as app.heyrobot.sys.LogbookRead.Ok).entries.map { it.id })
+        assertFalse(String(File(app.heyrobot.sys.LogbookFiles.dir(ctx), "log.enc").readBytes(), Charsets.ISO_8859_1).contains("pills"))
+
+        // A log that can't be opened now (its key busy): not offered, and chosen anyway the backup stops with the Logbook's words.
+        keys.busy = true
+        assertEquals(-1, BackupSources.survey(ctx, RobotSettings()).getValue(BackupCategory.LOGBOOK).count)
+        val r2 = BackupJob(ctx, setOf(BackupCategory.LOGBOOK), recordings = false, pictures = true).run(Uri.fromFile(File(ctx.cacheDir, "no-logbook.robotbackup")), pass) {}
+        assertEquals(app.heyrobot.core.backup.BackupCode.LOGBOOK_UNREADABLE, (r2 as BackupJob.Outcome.Failed).code)
+        keys.busy = false
+    }
+}

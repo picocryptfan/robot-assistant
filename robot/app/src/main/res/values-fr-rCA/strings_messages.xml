@@ -69,4 +69,26 @@
     <string name="messages_no_card_detail">Tes propres mots, en tête-à-tête, téléphone déverrouillé&#160;: Robot les dit et envoie après 3 secondes, à moins que tu dises «&#160;arrête&#160;».</string>
     <string name="messages_announce_from">Annoncer les messages de %1$s</string>
     <string name="messages_announce_from_detail">Dans des écouteurs privés, et dans l’auto en mode auto, quand «&#160;Annoncer de&#160;» est «&#160;Les personnes que tu choisis&#160;».</string>
+    <!-- 1.3, Paramètres › Messages › Qu’est-ce que j’ai manqué ? -->
+    <string name="messages_missed_title">Qu’est-ce que j’ai manqué&#8239;?</string>
+    <string name="messages_missed_switch">Dire ce qui est arrivé</string>
+    <string name="messages_missed_switch_detail">Demande «&#160;Qu’est-ce que j’ai manqué&#8239;?&#160;» et Robot dit combien de notifications sont arrivées des applis que tu choisis depuis la dernière fois que tu as demandé. Il garde leur appli, leur titre et leur type en mémoire seulement, jamais leur texte, et l’historique garde seulement le nombre et le nom des applis de ses réponses. Quand le téléphone est verrouillé, le nombre seulement.</string>
+    <string name="messages_missed_apps">Applis</string>
+    <string name="messages_missed_apps_none">Aucune appli choisie</string>
+    <string name="messages_missed_apps_some">Applis choisies&#160;: %1$d</string>
+    <string name="messages_missed_types">Notifications des autres applis</string>
+    <string name="messages_missed_types_detail">Android montre seulement les conversations à Robot, à moins que tu autorises aussi «&#160;Notifications&#160;» dans la page d’accès aux notifications de Robot. Touche pour l’ouvrir.</string>
+    <string name="messages_missed_pick_title">Applis pour Qu’est-ce que j’ai manqué&#8239;?</string>
+    <string name="messages_missed_pick_text">Robot note les notifications des applis que tu coches ici.</string>
+    <string name="messages_missed_pick_done">OK</string>
+    <string name="messages_hold_title">Notifications en attente</string>
+    <string name="messages_hold_switch">Mettre en attente les notifications des applis choisies</string>
+    <string name="messages_hold_switch_detail">Demande à Robot de mettre tes notifications en attente jusqu’à une heure donnée, comme midi, 12 heures au plus. Robot met en attente les applis que tu choisis, puis te montre en une ligne ce qui est arrivé, et ne la dit qu’une fois, seulement dans des écouteurs privés ou une voiture de confiance qui lit à voix haute, jamais sur le haut-parleur du téléphone. Les messages, les appels, les alarmes, les rappels, les minuteries et les personnes de Personnes ne sont jamais mis en attente.</string>
+    <string name="messages_hold_apps">Applis à mettre en attente</string>
+    <string name="messages_hold_pick_text">Robot met en attente seulement les notifications des applis cochées ici.</string>
+    <string name="messages_hold_buzz">Les applis en attente peuvent quand même sonner</string>
+    <string name="messages_hold_buzz_detail">Une notification d’une appli en attente peut quand même sonner en arrivant, avant que Robot la mette en attente. Pour l’éviter, rends cette appli silencieuse dans les paramètres de notifications d’Android. Robot ne change aucun paramètre du téléphone. Touche pour les ouvrir.</string>
+    <string name="messages_ready_title">Réponses prêtes</string>
+    <string name="messages_ready">Proposer des réponses prêtes</string>
+    <string name="messages_ready_detail">Quand quelqu’un de Personnes demande quand ton vol atterrit ou part, ou à quelle heure est un rendez-vous ou une réservation, Robot lit ton agenda et tes Fichiers et propose une réponse dans une notification. Jamais la Mémoire, les notes, l’Historique ni d’autres messages. Rien n’est envoyé avant que tu touches Envoyer, et seulement quand ton téléphone est déverrouillé. Les questions d’argent, de codes ou de mots de passe ne reçoivent jamais de réponse. La réponse cite les titres et les noms tels qu’ils sont écrits dans ton agenda ou tes Fichiers.</string>
 </resources>

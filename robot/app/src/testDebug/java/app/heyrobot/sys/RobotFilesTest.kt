@@ -28,6 +28,7 @@ import java.io.File
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class RobotFilesTest {
+    init { app.heyrobot.sys.HistoryFiles.testKeys(app.heyrobot.sys.SoftHistoryKeys()) }
     private val ctx: Context = ApplicationProvider.getApplicationContext()
 
     @Test fun theMainProcesssVaultMakesNothingUntilAFileComes() {

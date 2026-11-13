@@ -91,6 +91,8 @@ fun MessagesSettingsScreen(
     fun set(change: (MessageSettings) -> MessageSettings) = onEdit { it.copy(settings = change(it.settings)) }
     fun turn(app: MessageApp, on: Boolean) = onEdit { it.withApp(app, on, if (on) pinsNow(app) else emptyMap()) }
     val granted = facts?.notificationAccess == true
+    var missedOn by remember { mutableStateOf(app.heyrobot.sys.MissedStore.current(ctx).on) }
+    val row = AccessRow.of(s.on, missedOn, granted)
     val untrusted = remember(file) { if (s.on) problems(file) else emptyList() }
     val langs = LocalLangs.current
     val routeDetails = ReplyRoute.entries.associateWith { routeDetail(it) }
@@ -102,6 +104,9 @@ fun MessagesSettingsScreen(
     val replies = stringResource(R.string.messages_replies)
     val reading = stringResource(R.string.messages_reading)
     val announcements = stringResource(R.string.messages_announcements)
+    val missed = stringResource(R.string.messages_missed_title)
+    val holdTitle = stringResource(R.string.messages_hold_title)
+    val readyTitle = stringResource(R.string.messages_ready_title)
     PreferenceScreen(UiStrings.messages().str(), onBack) {
         item(key = "intro") {
             IntroPreference(stringResource(R.string.messages_intro))
@@ -116,7 +121,7 @@ fun MessagesSettingsScreen(
             }
         }
         // Off with access still allowed (name learning may use it): how to take it back.
-        if (!s.on && granted) {
+        if (row == AccessRow.STILL_ALLOWED) {
             preferenceGroup(null, "still") {
                 StatusPreference(stringResource(R.string.messages_still_allowed), stringResource(R.string.messages_still_allowed_detail), Mark.TODO,
                     action = { TextButton(onClick = { app.heyrobot.ui.openFirst(ctx, NotificationAccess.settings(ctx), a) }) { Text(stringResource(R.string.messages_open)) } })
@@ -185,6 +190,12 @@ fun MessagesSettingsScreen(
                     onClick = { a.openPage(Page.Settings(SettingsRoutes.CAR)) })
             }
         }
+        // 1.3: "What did I miss?", its own switch and apps (missed.json).
+        preferenceGroup(missed, "missed") { MissedSection(a, row == AccessRow.NEEDED_FOR_MISSED) { missedOn = it } }
+        // 1.3: notifications held until a time, their own switch and apps (hold.json).
+        preferenceGroup(holdTitle, "hold") { HoldSection(a) }
+        // Ready answers (idea 18): its own switch (ready-answers.json).
+        preferenceGroup(readyTitle, "ready") { ReadyAnswersSection(s.on) }
         preferenceFooter(footer)
     }
     if (setup) {

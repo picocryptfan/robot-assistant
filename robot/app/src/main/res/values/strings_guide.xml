@@ -51,7 +51,7 @@
     <string name="guide_path_web">Settings › Web search, and Settings › Termux</string>
     <string name="guide_path_web_only">Settings › Web search</string>
     <string name="guide_path_termux">Settings › Termux</string>
-    <string name="guide_path_updates">Settings › About › Updates, and Settings › About › Send feedback</string>
+    <string name="guide_path_updates">Settings › About › Updates, and Settings › About › Report a problem or send an idea</string>
     <string name="guide_path_updates_only">Settings › About › Updates</string>
     <string name="guide_welcome_restore">Moving from another phone? Restore from a backup</string>
     <string name="guide_welcome_restore_detail">A file you made with Back up now on your other phone</string>
@@ -292,7 +292,7 @@
     <string name="guide_updates_test">Include test builds</string>
     <string name="guide_updates_test_detail">Pre-releases, to try new things early. They may have problems.</string>
     <string name="guide_feedback">Feedback</string>
-    <string name="guide_feedback_row">Send feedback</string>
+    <string name="guide_feedback_row">Report a problem or send an idea</string>
     <string name="guide_feedback_detail">A bug or an idea, sent with the app you choose. Or write to %1$s</string>
     <string name="guide_updates_privacy">The update check asks GitHub for Robot\'s releases: GitHub sees your IP address and Robot\'s version, nothing else. Feedback leaves the phone only when you send it yourself.</string>
     <string name="guide_summary_title">You\'re set up</string>

@@ -19,6 +19,8 @@ import app.heyrobot.core.memory.MemoryKeyException
 import app.heyrobot.core.memory.MemoryLoad
 import app.heyrobot.core.memory.MemorySettings
 import app.heyrobot.core.memory.MemoryVault
+import app.heyrobot.core.memory.MeaningIndex
+import app.heyrobot.core.memory.VectorCodec
 import app.heyrobot.core.readForUpdate
 import app.heyrobot.core.readOrNull
 import app.heyrobot.core.writeAtomic
@@ -150,7 +152,7 @@ class FileMemoryVault(
     /** The key the file is sealed with now ([MemoryKeyAliases]), or null without a file. */
     fun alias(): String? = try { MemoryEnvelope.alias(readBytes()) } catch (_: Exception) { null }
 
-    override fun load(): MemoryLoad = locked { try { open(readBytes()) } catch (_: Exception) { MemoryLoad.Locked } }
+    override fun load(): MemoryLoad = locked { try { open(readBytes()) } catch (e: Exception) { gone(e) } }
 
     /**
      * One change under the lock: open, apply [change] (and the day-after sweep of items that ended), seal with the key the
@@ -163,7 +165,7 @@ class FileMemoryVault(
         val seal = try {
             if (existing) MemoryEnvelope.alias(bytes)?.let { keys.cipher(it, create = false) } else keys.cipher(defaultAlias(), create = true)
         } catch (t: Throwable) {
-            return@locked MemoryLoad.Locked
+            return@locked gone(t)
         } ?: return@locked open(bytes)
         var changed = false
         try {
@@ -178,6 +180,23 @@ class FileMemoryVault(
     }
 
     /** Settings › Memory › Delete all (after its confirm): the file, the one kept aside and the index; the keys stay. */
+    /** Search by meaning's vectors (index.enc), opened with the key memory.enc is sealed with; null when none, locked or stale. */
+    fun readIndex(): MeaningIndex? = locked {
+        try {
+            val f = File(dir, INDEX)
+            val c = MemoryEnvelope.alias(readBytes())?.let { keys.cipher(it, create = false) }
+            if (!f.isFile || c == null) null else VectorCodec.decode(c.open(f.readBytes(), INDEX_AAD))
+        } catch (_: Exception) { null }
+    }
+
+    /** Seals [index] with memory.enc's key into index.enc; false when memory can't be opened now (locked, no file). */
+    fun writeIndex(index: MeaningIndex): Boolean = locked {
+        try {
+            val c = MemoryEnvelope.alias(readBytes())?.let { keys.cipher(it, create = false) }
+            if (c == null) false else { writeAtomicBytes(File(dir, INDEX), c.seal(VectorCodec.encode(index), INDEX_AAD)); true }
+        } catch (_: Exception) { false }
+    }
+
     override fun deleteAll(): Boolean = locked {
         listOf(MemoryEnvelope.FILE, BAD, INDEX).map { File(dir, it) }.all { !it.exists() || it.delete() }
     }
@@ -230,9 +249,12 @@ class FileMemoryVault(
     private fun open(bytes: ByteArray?): MemoryLoad {
         if (bytes == null || bytes.isEmpty()) return MemoryLoad.Empty
         val alias = MemoryEnvelope.alias(bytes)
-        val cipher = try { alias?.let { keys.cipher(it, create = false) } } catch (t: Throwable) { return MemoryLoad.Locked }
+        val cipher = try { alias?.let { keys.cipher(it, create = false) } } catch (t: Throwable) { return gone(t) }
         return MemoryEnvelope.open(bytes, { a -> if (a == alias) cipher else null })
     }
+
+    /** seal-history-fix-b 2: Android's invalidated key (also getKey's causeless UnrecoverableKeyException) is gone, as Lists reads it; anything else not now. */
+    private fun gone(t: Throwable): MemoryLoad = if (ListsVault.problemOf(t) == KeyProblem.GONE) MemoryLoad.KeyGone else MemoryLoad.Locked
 
     private fun readBytes(): ByteArray? = readForUpdate(file, readFile)
 
@@ -249,6 +271,7 @@ class FileMemoryVault(
         const val BAD = "memory.enc.bad"
         /** The search model's vectors (phase 7.4), sealed with the same key; deleted with everything else. */
         const val INDEX = "index.enc"
+        private val INDEX_AAD = "robot-memory-index-v1".toByteArray() // l10n: not text (cipher context)
         private val LOCK = Any()
     }
 }

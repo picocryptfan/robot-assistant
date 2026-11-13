@@ -73,7 +73,8 @@ data class Person(
  * What files/people/people.json holds: everyone, and [ignored], the XMPP addresses (lower case) never to learn from a
  * notification again because you removed the person learned from them.
  */
-data class PeopleFile(val people: List<Person> = emptyList(), val ignored: Set<String> = emptySet())
+/** [skipped]: entries in the file that didn't parse and were left out (fix-seal-14 L4), so a reader that needs everyone can tell. */
+data class PeopleFile(val people: List<Person> = emptyList(), val ignored: Set<String> = emptySet(), val skipped: Int = 0)
 
 object PeopleCodec {
     const val VERSION = 1
@@ -107,14 +108,16 @@ object PeopleCodec {
 
     /**
      * The whole file, or null when [text] isn't a People file at all (damaged: cut short, or something else). No text is
-     * an empty file. A damaged entry inside a good file is dropped.
+     * an empty file. A damaged entry inside a good file, or a second one with the same id, is left out and counted in [PeopleFile.skipped].
      */
     fun read(text: String?): PeopleFile? {
         if (text.isNullOrBlank()) return PeopleFile()
         val o = try { JSONObject(text) } catch (_: Exception) { return null }
         val arr = o.optJSONArray("people") ?: return null
-        val people = (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.let(::person) }.distinctBy { it.id }
-        return PeopleFile(people, strings(o.optJSONArray("ignored")).map { it.trim().lowercase(Locale.ROOT) }.toSet())
+        val read = (0 until arr.length()).map { i -> arr.optJSONObject(i)?.let(::person) }
+        val people = read.filterNotNull().distinctBy { it.id }
+        // fix-seal-14-d 4: a second entry with the same id is left out and counted too, so a file holding one is kept aside whole.
+        return PeopleFile(people, strings(o.optJSONArray("ignored")).map { it.trim().lowercase(Locale.ROOT) }.toSet(), read.size - people.size)
     }
 
     private fun strings(a: JSONArray?): List<String> = if (a == null) emptyList() else (0 until a.length()).mapNotNull { a.optString(it).takeIf { s -> s.isNotBlank() } }
@@ -154,63 +157,148 @@ object PeopleCodec {
     }
 }
 
-/**
- * files/people/people.json. Reads need no lock (the file is replaced atomically); every change goes through [edit],
- * which holds a lock on files/people/.lock (between the app's processes) and a lock in this process (between threads).
- * A file that is there but can't be read as a People file (damaged, or unreadable right now) is never written over:
- * changes are refused, and readers see nobody, until [reset] (Settings › People's "Start over") keeps it aside as
- * people.json.bad.
- */
-class PeopleStore(private val dir: File) {
+/** What People's file gave (seal-people): [Ok] (an empty one when there is none), or why it can't be read. */
+sealed class PeopleLoad {
+    data class Ok(val file: PeopleFile) : PeopleLoad()
+    /** Not now (the phone is locked, or the key or the file busy): never a reason to write over it, move it or call People empty. */
+    data object NotNow : PeopleLoad()
+    /** Damaged, or sealed under a key that is gone: changes refused, and readers see nobody, until [PeopleStore.reset]. */
+    data object Unreadable : PeopleLoad()
+    /** Saved by a newer Robot: left as it is (changes refused) until [PeopleStore.reset] keeps it aside. */
+    data class TooNew(val version: Int) : PeopleLoad()
+}
+
+/** seal-people: a change made while People can't be opened (the phone locked), kept for the next unlock. Each is safe made twice. */
+sealed class PeopleOp {
+    /** A sender seen in a Cheogram notification ([PeopleStore.learn]). */
+    data class Learn(val sender: CheogramSender, val at: Long) : PeopleOp()
+    /** [person] added unless someone has its id ([PeopleStore.add]). */
+    data class Add(val person: Person) : PeopleOp()
+}
+
+/** From [PeopleStore.whole]: People can't be read whole now; [load] says why (never Ok). */
+class PeopleNotWhole(val load: PeopleLoad) : Exception()
+
+/** Where People's file is kept and how (seal-people): [PlainPeopleIo] here, sealed in the app (sys/PeopleVault). */
+interface PeopleIo {
+    /** Names this store's file in this process's cache. */
+    val id: String
+    /** The file as it is now. */
+    fun load(): PeopleLoad
+    /** The file's identity for the cache (inode, time and size); null when it mustn't be cached now. */
+    fun stamp(): String?
+    /** [f] written whole, under [locked]; throws when it can't be. */
+    fun write(f: PeopleFile)
+    /** [op] kept for the next unlock, under [locked], while [load] is NotNow; false when it can't be. */
+    fun journal(op: PeopleOp): Boolean = false
+    /** [block] holding People's lock (this process's threads and both app processes). */
+    fun <T> locked(block: () -> T): T
+    /** Under [locked]: a file that can't be read kept aside (never deleted). True when People can be used after. */
+    fun reset(): Boolean
+    /** Under [locked]: everything of People removed (Delete all). False when People can't be opened now. */
+    fun deleteAll(): Boolean
+}
+
+/** files/people/people.json, as Robot 1.2 and earlier kept it (and core's tests). Reads need no lock (replaced atomically). */
+class PlainPeopleIo(private val dir: File) : PeopleIo {
     private val file get() = File(dir, "people.json")
+    override val id: String get() = file.path
+
+    override fun load(): PeopleLoad {
+        val f = file
+        if (!f.exists()) return PeopleLoad.Ok(PeopleFile())
+        val text = try { f.readText(Charsets.UTF_8) } catch (_: Exception) { return PeopleLoad.Unreadable }
+        return PeopleCodec.read(text)?.let { PeopleLoad.Ok(it) } ?: PeopleLoad.Unreadable
+    }
+
+    override fun stamp(): String? = PeopleStore.stampOf(file)
+
+    override fun write(f: PeopleFile) = writeAtomic(file, PeopleCodec.toJson(f.people, f.ignored))
+
+    override fun <T> locked(block: () -> T): T = synchronized(LOCK) {
+        dir.mkdirs()
+        FileChannel.open(File(dir, ".lock").toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE).use { ch ->
+            val l = ch.lock()
+            try { block() } finally { l.release() }
+        }
+    }
+
+    override fun reset(): Boolean {
+        if (file.exists() && load() !is PeopleLoad.Ok) {
+            val bad = File(dir, "people.json.bad")
+            bad.delete()
+            return file.renameTo(bad)
+        }
+        return true
+    }
+
+    override fun deleteAll(): Boolean = (load() is PeopleLoad.Ok).also { if (it) write(PeopleFile()) }
+
+    private companion object {
+        val LOCK = Any()
+    }
+}
+
+/**
+ * Robot's People, kept by [io]: sealed in the app (sys/PeopleVault, seal-people), plain people.json in core's tests. Every
+ * change goes through [edit], which holds People's lock (between the app's processes, and this process's threads). A file
+ * that is there but can't be read (damaged, a key gone, a newer Robot's) is never written over: changes are refused, and
+ * readers see nobody, until [reset] (Settings › People's "Start over") keeps it aside. While it can't be opened just now
+ * (the phone locked) readers see nobody too, nothing is written over it, and only [learn] and [add] are kept, for the next
+ * unlock.
+ */
+class PeopleStore(private val io: PeopleIo) {
+    constructor(dir: File) : this(PlainPeopleIo(dir))
 
     /**
-     * Everyone, as the file holds them now (nobody when it is [damaged]). Kept in this process until the file changes (a
-     * write replaces it: a new file, time and size), so a text doesn't parse thousands of people again.
+     * Everyone, as the file holds them now (nobody when it can't be read). Kept in this process until the file changes (a
+     * write replaces it: a new file, time and size), so a text doesn't open thousands of people again.
      */
     fun list(): List<Person> = cached()?.people.orEmpty()
 
     /** The addresses never to learn again. */
     fun ignored(): Set<String> = cached()?.ignored.orEmpty()
 
-    /** The file is there but isn't a People file Robot can read: nothing is written to it until [reset]. */
-    fun damaged(): Boolean = file.exists() && read() == null
+    /** The file as it opens now; NotNow when reading it failed (never a reason to move it). */
+    fun load(): PeopleLoad = try { io.load() } catch (_: Exception) { PeopleLoad.NotNow }
+
+    /** The file is there but isn't a People file Robot can read (damaged, its key gone, a newer Robot's): nothing is written to it until [reset]. */
+    fun damaged(): Boolean = load().let { it is PeopleLoad.Unreadable || it is PeopleLoad.TooNew }
+
+    /** People can't be opened just now (the phone locked): nobody is listed, and that isn't "nobody". */
+    fun notNow(): Boolean = load() == PeopleLoad.NotNow
+
+    /** Everyone and the ignored addresses, or [PeopleNotWhole] (a backup or a restore never takes "can't open" as "empty"). */
+    fun whole(): PeopleFile = when (val l = io.load()) {
+        is PeopleLoad.Ok -> l.file
+        else -> throw PeopleNotWhole(l)
+    }
+
+    /** This process forgets what it opened (screen off). */
+    fun drop() { synchronized(CACHE) { CACHE.remove(io.id) } }
 
     private fun cached(): PeopleFile? {
-        val f = file
-        val stamp = stamp(f) ?: return read()
-        synchronized(CACHE) { CACHE[f.path]?.let { (s, l) -> if (s == stamp) return l } }
+        val stamp = try { io.stamp() } catch (_: Exception) { null } ?: return read()
+        synchronized(CACHE) { CACHE[io.id]?.let { (s, l) -> if (s == stamp) return l } }
         val l = read() ?: return null
-        if (stamp(f) == stamp) synchronized(CACHE) { CACHE[f.path] = stamp to l }
+        if ((try { io.stamp() } catch (_: Exception) { null }) == stamp) synchronized(CACHE) { CACHE[io.id] = stamp to l }
         return l
     }
 
-    /** The file as it is now; an empty one when there is none; null when it can't be read or isn't a People file. */
-    private fun read(): PeopleFile? {
-        val f = file
-        if (!f.exists()) return PeopleFile()
-        val text = try { f.readText(Charsets.UTF_8) } catch (_: Exception) { return null }
-        return PeopleCodec.read(text)
-    }
-
-    /** The file's identity (its inode where the system has one), time and size; null when it can't be told. */
-    private fun stamp(f: File): String? = try {
-        val a = Files.readAttributes(f.toPath(), BasicFileAttributes::class.java)
-        a.fileKey()?.let { "$it:${a.lastModifiedTime().toMillis()}:${a.size()}" }
-    } catch (_: Exception) { null }
+    private fun read(): PeopleFile? = (load() as? PeopleLoad.Ok)?.file
 
     fun get(id: String): Person? = list().firstOrNull { it.id == id }
 
     /**
      * Reads, changes and writes the file under the lock. [change] gets it as it is now; returning the same object writes
-     * nothing. Null if it couldn't be read (damaged: nothing is written) or written.
+     * nothing. Null if it couldn't be read (damaged or not now: nothing is written) or written.
      */
     fun edit(change: (PeopleFile) -> PeopleFile): PeopleFile? = try {
-        locked {
+        io.locked {
             // Under the lock always from the file itself.
-            val now = read() ?: return@locked null
+            val now = (io.load() as? PeopleLoad.Ok)?.file ?: return@locked null
             val next = change(now)
-            if (next !== now) writeAtomic(file, PeopleCodec.toJson(next.people.map(People::clean).take(People.MAX_PEOPLE), next.ignored))
+            if (next !== now) io.write(tidy(next))
             next
         }
     } catch (_: Exception) {
@@ -221,11 +309,24 @@ class PeopleStore(private val dir: File) {
     fun update(change: (List<Person>) -> List<Person>): List<Person>? =
         edit { f -> change(f.people).let { if (it === f.people) f else f.copy(people = it) } }?.people
 
+    /** [op] made now, or, while People can't be opened just now, kept for the next unlock (seal-people). */
+    private fun change(op: PeopleOp): Boolean = try {
+        io.locked {
+            when (val l = io.load()) {
+                is PeopleLoad.Ok -> { val next = apply(l.file, op); if (next !== l.file) io.write(tidy(next)); true }
+                PeopleLoad.NotNow -> io.journal(op)
+                else -> false
+            }
+        }
+    } catch (_: Exception) {
+        false
+    }
+
     /** A sender seen in a Cheogram notification ([PeopleEdit.learn]), unless you removed someone with that address. */
-    fun learn(s: CheogramSender, now: Long): Boolean = edit { f ->
-        if (s.jid.trim().lowercase(Locale.ROOT) in f.ignored) f
-        else PeopleEdit.learn(f.people, s.name, s.jid, s.account, now).let { if (it === f.people) f else f.copy(people = it) }
-    } != null
+    fun learn(s: CheogramSender, now: Long): Boolean = change(PeopleOp.Learn(s, now))
+
+    /** [p] added unless someone already has its id or one of its numbers or addresses (a Link desk's card). */
+    fun add(p: Person): Boolean = change(PeopleOp.Add(p))
 
     /**
      * Removes [id]; with [ignore] (Remove on someone learned from a notification) their XMPP addresses are never learned
@@ -236,18 +337,8 @@ class PeopleStore(private val dir: File) {
         f.copy(people = f.people.filter { it.id != id }, ignored = if (ignore) f.ignored + p.xmpp.map { it.jid.trim().lowercase(Locale.ROOT) } else f.ignored)
     } != null
 
-    /** Starts over after a damaged file: it is kept aside as people.json.bad, and People is empty. */
-    fun reset(): Boolean = try {
-        locked {
-            if (file.exists() && read() == null) {
-                val bad = File(dir, "people.json.bad")
-                bad.delete()
-                file.renameTo(bad)
-            } else true
-        }
-    } catch (_: Exception) {
-        false
-    }
+    /** Starts over after a file that can't be read: it is kept aside (people.json.bad, or people.enc.bad sealed), and People is empty. */
+    fun reset(): Boolean = try { io.locked { io.reset() } } catch (_: Exception) { false }.also { drop() }
 
     /**
      * Writes [after], worked out from [before] outside the lock (an import's merge), if the file still holds [before];
@@ -261,23 +352,94 @@ class PeopleStore(private val dir: File) {
 
     fun delete(id: String): Boolean = update { list -> list.filter { it.id != id } } != null
 
-    /** Everyone, and the addresses not to learn again. */
-    fun deleteAll(): Boolean = edit { PeopleFile() } != null
-
-    private fun <T> locked(block: () -> T): T = synchronized(LOCK) {
-        dir.mkdirs()
-        FileChannel.open(File(dir, ".lock").toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE).use { ch ->
-            val l = ch.lock()
-            try { block() } finally { l.release() }
-        }
-    }
+    /** Everyone, and the addresses not to learn again; false while People can't be opened (Start over then). */
+    fun deleteAll(): Boolean = try { io.locked { io.deleteAll() } } catch (_: Exception) { false }.also { drop() }
 
     companion object {
-        private val LOCK = Any()
         private val CACHE = HashMap<String, Pair<String, PeopleFile>>()
         private val ID = Regex("^[A-Za-z0-9-]{1,64}$")
         fun validId(id: String?): Boolean = id != null && ID.matches(id)
         fun newId(): String = UUID.randomUUID().toString()
+
+        /** [op] made on [f]: the same object when it changes nothing. Made again on the result, it changes nothing more. */
+        fun apply(f: PeopleFile, op: PeopleOp): PeopleFile = when (op) {
+            is PeopleOp.Learn -> if (op.sender.jid.trim().lowercase(Locale.ROOT) in f.ignored) f
+                else PeopleEdit.learn(f.people, op.sender.name, op.sender.jid, op.sender.account, op.at).let { if (it === f.people) f else f.copy(people = it) }
+            // seal-people-fix 4: a card added while People was sealed adds nobody you have (LinkRest's rule: a number or address).
+            is PeopleOp.Add -> if (f.people.any { it.id == op.person.id || sameAddress(it, op.person) }) f else f.copy(people = f.people + op.person)
+        }
+
+        /** seal-people-fix 4: [a] and [b] share a phone number, an email or an XMPP address (LinkRest.known's rule, names aside). */
+        fun sameAddress(a: Person, b: Person): Boolean {
+            fun digits(p: Person) = p.phones.map { it.number.filter(Char::isDigit) }.filter { it.isNotEmpty() }.toSet()
+            fun addresses(p: Person) = (p.emails + p.xmpp.map { it.jid }).map { it.trim().lowercase(java.util.Locale.ROOT) }.filter { it.isNotEmpty() }.toSet()
+            return digits(a).any { it in digits(b) } || addresses(a).any { it in addresses(b) }
+        }
+
+        /** As every write keeps it: each person tidied, at most [People.MAX_PEOPLE]. */
+        fun tidy(f: PeopleFile): PeopleFile = PeopleFile(f.people.map(People::clean).take(People.MAX_PEOPLE), f.ignored)
+
+        /** [f]'s identity (its inode where the system has one), time and size; null when it can't be told. */
+        fun stampOf(f: File): String? = try {
+            val a = Files.readAttributes(f.toPath(), BasicFileAttributes::class.java)
+            a.fileKey()?.let { "$it:${a.lastModifiedTime().toMillis()}:${a.size()}" }
+        } catch (_: Exception) { null }
+    }
+}
+
+/**
+ * seal-people: people/people.enc (People sealed whole) and people/people.locked.enc (the changes kept while the phone was
+ * locked), in core's one framing (SealedEnvelope): magic RPPL, kind "people", the file name and header in the additional data.
+ */
+object PeopleEnvelope {
+    const val VERSION = 1
+    const val FILE = "people.enc" // l10n: not text (a file name)
+    const val JOURNAL = "people.locked.enc" // l10n: not text (a file name)
+    const val PLAIN = "people.json" // l10n: not text (a file name)
+    /** Changes kept while locked at most; the same sender's learn is kept once (its latest). */
+    const val MAX_JOURNAL = 500
+    val frame = SealedEnvelope("RPPL", "people", VERSION) // l10n: not text (the file's magic and the additional data's kind)
+
+    fun bytes(f: PeopleFile): ByteArray = PeopleCodec.toJson(f.people, f.ignored).toByteArray(Charsets.UTF_8)
+
+    fun seal(f: PeopleFile, cipher: app.heyrobot.core.memory.MemoryCipher, fileName: String): ByteArray = frame.seal(bytes(f), cipher, fileName)
+
+    fun open(bytes: ByteArray?, cipherFor: (String) -> app.heyrobot.core.memory.MemoryCipher?, fileName: String): SealedOpen<PeopleFile> =
+        frame.open(bytes, cipherFor, fileName) { PeopleCodec.read(String(it, Charsets.UTF_8)) }
+
+    fun sealJournal(ops: List<PeopleOp>, cipher: app.heyrobot.core.memory.MemoryCipher): ByteArray =
+        frame.seal(journalJson(ops).toByteArray(Charsets.UTF_8), cipher, JOURNAL)
+
+    fun openJournal(bytes: ByteArray?, cipherFor: (String) -> app.heyrobot.core.memory.MemoryCipher?): SealedOpen<List<PeopleOp>> =
+        frame.open(bytes, cipherFor, JOURNAL) { journalOf(String(it, Charsets.UTF_8)) }
+
+    /** [ops] with [op] at the end: a learn of a sender already kept replaces it; null when the journal is full. */
+    fun appended(ops: List<PeopleOp>, op: PeopleOp): List<PeopleOp>? {
+        val key = (op as? PeopleOp.Learn)?.sender?.jid?.trim()?.lowercase(Locale.ROOT)
+        val rest = if (key == null) ops else ops.filterNot { it is PeopleOp.Learn && it.sender.jid.trim().lowercase(Locale.ROOT) == key }
+        return (rest + op).takeIf { it.size <= MAX_JOURNAL }
+    }
+
+    fun journalJson(ops: List<PeopleOp>): String = JSONObject().put("v", VERSION).put("ops", JSONArray().apply { // l10n: not text (JSON keys)
+        for (op in ops) put(when (op) {
+            is PeopleOp.Learn -> JSONObject().put("op", "learn").put("name", op.sender.name).put("jid", op.sender.jid) // l10n: not text (JSON keys)
+                .put("account", op.sender.account).put("at", op.at) // l10n: not text (JSON keys)
+            is PeopleOp.Add -> JSONObject().put("op", "add").put("people", PeopleCodec.toJson(listOf(op.person))) // l10n: not text (JSON keys)
+        })
+    }).toString()
+
+    /** The journal's changes; null when it isn't one. A change this Robot doesn't know is left out. */
+    fun journalOf(text: String): List<PeopleOp>? {
+        val o = try { JSONObject(text) } catch (_: Exception) { return null }
+        val arr = o.optJSONArray("ops") ?: return null // l10n: not text (a JSON key)
+        return (0 until arr.length()).mapNotNull { i ->
+            val x = arr.optJSONObject(i) ?: return@mapNotNull null
+            when (x.optString("op")) { // l10n: not text (a JSON key)
+                "learn" -> x.optString("jid").takeIf { it.isNotBlank() }?.let { PeopleOp.Learn(CheogramSender(x.optString("name"), it, x.optString("account")), x.optLong("at")) } // l10n: not text (JSON keys)
+                "add" -> PeopleCodec.fromJson(x.optString("people")).singleOrNull()?.let { PeopleOp.Add(it) } // l10n: not text (JSON keys)
+                else -> null
+            }
+        }
     }
 }
 

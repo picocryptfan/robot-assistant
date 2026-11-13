@@ -102,6 +102,8 @@ class KeystoreFileKeysTest {
             KeyPermanentlyInvalidatedException() to FileKeyProblem.GONE,
             UnrecoverableKeyException("x").apply { initCause(KeyPermanentlyInvalidatedException()) } to FileKeyProblem.GONE,
             IllegalStateException(RuntimeException(KeyPermanentlyInvalidatedException())) to FileKeyProblem.GONE,
+            UnrecoverableKeyException("Key algorithm unknown") to FileKeyProblem.GONE,
+            UnrecoverableKeyException("x").apply { initCause(KeyStoreException("busy")) } to FileKeyProblem.LOCKED,
             AEADBadTagException() to FileKeyProblem.BAD_DATA,
             IllegalBlockSizeException().apply { initCause(AEADBadTagException()) } to FileKeyProblem.BAD_DATA,
             UserNotAuthenticatedException() to FileKeyProblem.LOCKED,

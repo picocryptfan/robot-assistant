@@ -57,7 +57,7 @@ class PanelLookTest {
         assertTrue(rule.onAllNodes(hasTestTag("classic-bubble")).fetchSemanticsNodes().size >= 2)
         noProblems()
         // 0.6.0's words: the round mic is "Talk to Robot" (its TalkBack action "Talk").
-        for (label in listOf("Talk to Robot", "Close", "New conversation", "Settings", "Speak replies")) rule.onNode(hasContentDescription(label)).assertExists()
+        for (label in listOf("Talk to Robot", "Close", "New conversation", "More options", "Speak replies")) rule.onNode(hasContentDescription(label)).assertExists()
         rule.onNodeWithText("Do it").assertExists()
         rule.onNodeWithText("Cancel").assertExists()
     }
@@ -129,8 +129,9 @@ class PanelLookTest {
         rule.onNodeWithText("Cancel").performClick()
         rule.onNodeWithContentDescription("Speak replies").performClick()
         rule.onNodeWithContentDescription("New conversation").performClick()
-        // 0.7.0: a Settings button in the header (the tester's 0.6.0 report).
-        rule.onNodeWithContentDescription("Settings").performClick()
+        // 0.7.0: Settings in the header (the tester's 0.6.0 report); RP3: in its menu, with the bug report.
+        rule.onNodeWithContentDescription("More options").performClick()
+        rule.onNodeWithText("Settings").performClick()
         rule.onNodeWithContentDescription("Close").performClick()
         assertEquals(listOf("confirm a1 true", "confirm a1 false", "toggleSpeak", "newConversation", "openSettings"), a.calls)
         assertEquals(1, closed)

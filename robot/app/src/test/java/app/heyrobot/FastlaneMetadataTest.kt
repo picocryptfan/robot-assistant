@@ -22,7 +22,11 @@ class FastlaneMetadataTest {
     }
 
     @Test fun aChangelogForTheCurrentVersion() {
-        val code = Regex("""versionCode\s+(\d+)""").find(File(root, "app/build.gradle").readText())!!.groupValues[1]
+        val gradle = File(root, "app/build.gradle").readText()
+        val code = Regex("""versionCode\s+(\d+)""").find(gradle)!!.groupValues[1]
+        val name = Regex("""versionName\s+'([^']+)'""").find(gradle)!!.groupValues[1]
+        // A test build between releases (x.y.z-dev.n) is never published, so it has no changelog; every release has one.
+        if (Regex("""-dev\.\d+$""").containsMatchIn(name)) return
         assertTrue(text("changelogs/$code.txt").length in 1..500)
     }
 

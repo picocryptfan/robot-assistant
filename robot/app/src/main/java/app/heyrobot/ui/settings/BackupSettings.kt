@@ -102,6 +102,9 @@ private fun outcomeLine(c: BackupCategory, o: CategoryOutcome, madeBy: String): 
         is CategoryOutcome.KeysNoPlace -> pluralStringResource(R.plurals.backup_restore_result_keys_no_place, o.count, o.count)
         CategoryOutcome.Cut -> stringResource(R.string.backup_restore_result_cut)
         CategoryOutcome.Refused -> stringResource(R.string.backup_restore_result_refused)
+        is CategoryOutcome.HistoryUnreadable -> stringResource(if (o.tooNew) R.string.backup_restore_result_history_too_new else R.string.backup_restore_result_history_not_now)
+        CategoryOutcome.NotesTooNew -> stringResource(R.string.backup_restore_result_notes_too_new)
+        CategoryOutcome.PeopleTooNew -> stringResource(R.string.backup_restore_result_people_too_new)
         is CategoryOutcome.Skipped -> BackupWords.skip(CategoryPlan(c, RestoreMode.FRESH, o.why, 0), madeBy)?.str() ?: return BackupWords.category(c)().str()
     }
     return stringResource(R.string.backup_restore_result_line, BackupWords.category(c)().str(), what)

@@ -128,4 +128,8 @@
     <string name="voice_saver_channel">Mot d’activation en pause</string>
     <string name="voice_saver_paused">Mot d’activation en pause&#160;: économiseur de batterie</string>
     <string name="voice_saver_paused_detail">Robot n’écoute pas sa phrase d’activation pendant que l’économiseur de batterie est activé. Il recommence quand l’économiseur s’arrête. Le balayage depuis un coin du bas ouvre toujours Robot.</string>
+    <!-- Idée 7 : le panneau continue d’écouter après une réponse (KeepListeningSettings.kt). -->
+    <string name="voice_keep_listening">Continuer d’écouter après une réponse</string>
+    <string name="voice_keep_listening_on">Après une question dite à voix haute, un bip et 5 secondes pour commencer la suivante, 3 de plus au maximum d’affilée. Arrêter une réponse, un appel, «&#160;c’est tout&#160;» ou ne rien dire y met fin.</string>
+    <string name="voice_keep_listening_off">Désactivé. Robot ne distingue pas ta voix des autres&#160;: il pourrait répondre à la télé ou à quelqu’un près de toi.</string>
 </resources>

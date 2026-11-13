@@ -96,26 +96,33 @@ object ConversationStore {
 
     fun validId(id: String?): Boolean = id != null && ID.matches(id)
 
-    private fun file(ctx: Context, id: String): File? = if (validId(id)) File(Paths.conversations(ctx), "$id.json") else null
+    /** Newest first (seal-history: through History's vault, sealed with Robot's own keys). */
+    fun list(ctx: Context): List<StoredConversation> = HistoryFiles.vault(ctx).read().conversations
 
-    /** Newest first. */
-    fun list(ctx: Context): List<StoredConversation> =
-        Paths.conversations(ctx).listFiles { f -> f.name.endsWith(".json") }.orEmpty()
-            .mapNotNull { f -> readOrNull(f)?.let(ConversationCodec::fromJson) }
-            .sortedByDescending { it.updated }
+    /** History as it opens now, with how many conversations are kept aside (their key is gone). */
+    fun read(ctx: Context): HistoryRead = HistoryFiles.vault(ctx).read()
 
-    fun load(ctx: Context, id: String): StoredConversation? = file(ctx, id)?.let(::readOrNull)?.let(ConversationCodec::fromJson)
+    /** Every conversation for a backup or a restore; throws HistoryNotWhole while one can't be opened (HistoryVault.whole). */
+    fun whole(ctx: Context): List<StoredConversation> = HistoryFiles.vault(ctx).whole()
+
+    fun load(ctx: Context, id: String): StoredConversation? = HistoryFiles.vault(ctx).load(id)
 
     /**
      * [VOICE] The panel saves after each reply: pictures and screen text only as "Keep screenshots and photos in history"
      * kept them (ChatTurn.picture and screenText). False: not saved (storage full, most likely), and the panel says so.
      */
-    fun save(ctx: Context, c: StoredConversation): Boolean {
-        val f = file(ctx, c.id) ?: return false
-        return try { writeAtomic(f, ConversationCodec.toJson(c)); true } catch (t: Throwable) { RLog.w("history_save", t); false }
-    }
+    fun save(ctx: Context, c: StoredConversation): Boolean = HistoryFiles.vault(ctx).save(c)
 
-    fun delete(ctx: Context, id: String) { file(ctx, id)?.delete() }
+    fun delete(ctx: Context, id: String) = HistoryFiles.vault(ctx).delete(id)
+
+    /** How many conversations are kept aside because Android removed their key (History says so; Delete all removes them). */
+    fun keptAside(ctx: Context): Int = HistoryFiles.vault(ctx).aside()
+
+    /** History's card, Delete these: only the conversations kept aside and a newer Robot's. */
+    fun deleteAside(ctx: Context) = HistoryFiles.vault(ctx).deleteAside()
+
+    /** Nothing in History's folder: no conversation, sealed or not, and none kept aside. */
+    fun none(ctx: Context): Boolean = Paths.conversations(ctx).list().isNullOrEmpty()
 
     /**
      * 0.7.0: a number that changes when a conversation is saved, added or deleted, by either process (each save renames a
@@ -135,7 +142,7 @@ object ConversationStore {
 
     /** History's Delete all: the record of the timers you asked for goes with it (fix-timers-store). */
     fun deleteAll(ctx: Context) {
-        Paths.conversations(ctx).listFiles().orEmpty().forEach { it.delete() }
+        HistoryFiles.vault(ctx).deleteAll()
         RobotTimers.clear(ctx)
     }
 }

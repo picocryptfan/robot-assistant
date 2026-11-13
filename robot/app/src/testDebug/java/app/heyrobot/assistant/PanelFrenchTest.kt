@@ -41,7 +41,7 @@ class PanelFrenchTest {
     @Test fun aWaitingCardKeepsItsWordsAndGetsFrenchButtons() {
         val a = RecordingActions()
         rule.showPanel(PanelFixtures.answerWithCard, a)
-        for (label in listOf("Parler à Robot", "Fermer", "Nouvelle conversation", "Réglages", "Lire les réponses à voix haute")) rule.onNode(hasContentDescription(label)).assertExists()
+        for (label in listOf("Parler à Robot", "Fermer", "Nouvelle conversation", "Plus d’options", "Lire les réponses à voix haute")) rule.onNode(hasContentDescription(label)).assertExists()
         rule.onNodeWithText("Annuler").assertExists()
         rule.onNodeWithText("Fais-le").performClick()
         assertEquals(listOf("confirm a1 true"), a.calls)

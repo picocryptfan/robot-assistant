@@ -26,7 +26,7 @@ import app.heyrobot.ui.pref.preferenceGroup
 fun DisplaySettingsScreen(look: LookSettings, onChange: (LookSettings) -> Unit, onBack: () -> Unit) {
     val colours = stringResource(R.string.display_colours)
     val footer = stringResource(R.string.display_footer)
-    val today = stringResource(R.string.today_name)
+    val today = stringResource(R.string.today_quick_home_screen)
     PreferenceScreen(UiStrings.display().str(), onBack) {
         preferenceGroup(colours, "colours") {
             SwitchPreference(stringResource(R.string.display_wallpaper),

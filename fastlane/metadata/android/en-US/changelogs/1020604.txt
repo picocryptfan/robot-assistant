@@ -1,0 +1,1 @@
+Test build of Read it to me, with Skills and Today, now 1.2.6. It has 1.2.5's fixes: a reply above a tall card shows from its first line, and "clear ticked items" also clears checked, done and crossed-off items.

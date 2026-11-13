@@ -54,6 +54,20 @@ class MemoryVaultTest {
         assertTrue((vault.load() as MemoryLoad.Loaded).file.items.single { it.id == door.id }.secret)
     }
 
+    // seal-history-fix-b 2: Android 15's invalidated key (getKey's causeless UnrecoverableKeyException) is gone, so Start over shows; nothing deleted.
+    @Test fun androidsInvalidatedKeyReadsAsGoneAndNothingIsDeleted() {
+        add(julie)
+        val before = vault.file.readBytes()
+        keys.refuse = java.security.UnrecoverableKeyException("Key algorithm unknown")
+        assertEquals(MemoryLoad.KeyGone, vault.load())
+        assertEquals(MemoryLoad.KeyGone, add(door))
+        assertArrayEquals(before, vault.file.readBytes())
+        keys.refuse = java.security.UnrecoverableKeyException("x").apply { initCause(java.security.KeyStoreException("busy")) }
+        assertEquals(MemoryLoad.Locked, vault.load())
+        keys.refuse = null
+        assertArrayEquals(before, vault.file.readBytes())
+    }
+
     @Test fun lockedReadsAsLockedAndWritesNothing() {
         add(julie)
         val before = vault.file.readBytes()

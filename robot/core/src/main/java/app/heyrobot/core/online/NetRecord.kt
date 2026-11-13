@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.online
 
+import app.heyrobot.core.feedback.FeedbackKind
 import app.heyrobot.core.web.PublicAddress
 import app.heyrobot.core.web.WebUrl
 import org.json.JSONObject
@@ -43,6 +44,8 @@ enum class NetGroup(val code: String) {
     LINK("link"),
     /** Today H7: your news feeds. */
     NEWS("news"),
+    /** RP6: a report handed to another app with Send (the chooser's answer; not a connection of Robot's own). */
+    REPORTS("reports"),
 }
 
 /** What a connection was for (§5.2). [code] is what the record keeps: never renamed. */
@@ -82,13 +85,30 @@ enum class NetPurpose(val code: String, val group: NetGroup) {
     LINK_TOR("link_tor", NetGroup.LINK),
     /** Today H7: a feed you added, or the page you pasted to find one. */
     FEED("feed", NetGroup.NEWS),
+    /** RP6: a report you sent, by its kind, handed to the app you picked (which app is never kept). */
+    REPORT_BUG("report_bug", NetGroup.REPORTS),
+    REPORT_IDEA("report_idea", NetGroup.REPORTS),
+    REPORT_OTHER("report_other", NetGroup.REPORTS),
+    /** Wikipedia P3: a copy of Wikipedia you chose, from Kiwix (download.kiwix.org and its mirrors), Wi-Fi only.
+     * At the end: a code's place never changes. */
+    WIKI_DOWNLOAD("wikipedia", NetGroup.DOWNLOADS),
     ;
+
+    /** Handed to another app on the phone, not sent by Robot: left out of the comparison with Android's own count. */
+    val handed: Boolean get() = group == NetGroup.REPORTS
 
     /** Downloaded by Android's download service: left out of the comparison with Android's own count (§5.4). */
     val download: Boolean get() = group == NetGroup.DOWNLOADS
 
     companion object {
         fun of(code: String?): NetPurpose? = entries.firstOrNull { it.code == code }
+
+        /** A report of [kind] handed to another app. */
+        fun report(kind: FeedbackKind): NetPurpose = when (kind) {
+            FeedbackKind.BUG -> REPORT_BUG
+            FeedbackKind.IDEA -> REPORT_IDEA
+            FeedbackKind.OTHER -> REPORT_OTHER
+        }
 
         /** A web search's request: an encyclopedia lookup when it goes to Wikipedia or Open Library, else the search. */
         fun search(host: String): NetPurpose {
@@ -159,8 +179,10 @@ object NetHost {
     const val UNKNOWN = "~?"
     /** The Tor network, as a whole: its relays are never named. */
     const val TOR_NETWORK = "~tor"
+    /** RP6: the app you picked for a report (which app is never kept). */
+    const val ANOTHER_APP = "~app"
 
-    private val MARKERS = setOf(YOUR_NETWORK, AN_ADDRESS, UNKNOWN, TOR_NETWORK)
+    private val MARKERS = setOf(YOUR_NETWORK, AN_ADDRESS, UNKNOWN, TOR_NETWORK, ANOTHER_APP)
     private val NAME = Regex("[a-z0-9]([a-z0-9-]{0,62})?(\\.[a-z0-9_]([a-z0-9_-]{0,62})?)*")
 
     /** [raw] (a URL's host) as the record keeps it: lower case, ASCII, no port or user; a marker for an address. */
@@ -217,6 +239,10 @@ object NetRecord {
     /** Robot to Robot's direct carrier: "another phone on your network", so no address is ever passed in. */
     fun linkDirect(out: Long, inBytes: Long, result: NetResult) =
         add(NetPurpose.LINK_DIRECT, NetCause.SWITCH, out, inBytes, result) { NetHost.YOUR_NETWORK }
+
+    /** RP6: a sealed report of [kind] and [size] bytes handed to the app you picked in Send's chooser. */
+    fun handed(kind: FeedbackKind, size: Long) =
+        add(NetPurpose.report(kind), NetCause.TAP, size, 0, NetResult.DONE) { NetHost.ANOTHER_APP }
 
     /** One hour of Tor's traffic, by its own counters. */
     fun torHour(out: Long, inBytes: Long) =

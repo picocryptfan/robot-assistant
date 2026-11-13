@@ -21,6 +21,7 @@ import app.heyrobot.core.lock.LockGate
 import app.heyrobot.core.lock.LockRule
 import app.heyrobot.core.lock.LockSettings
 import app.heyrobot.core.lock.PhoneLock
+import app.heyrobot.assistant.RobotSession
 import app.heyrobot.assistant.ask.AskRobotActivity
 import app.heyrobot.ui.files.FilesShareActivity
 import app.heyrobot.ui.lists.ListsWidgetSetup
@@ -162,6 +163,23 @@ class CoveredWindowsTest {
             assertFalse("$name's window event is hidden from Phone lock", sensitive(windowEvent(w)))
             assertTrue("$name's content isn't marked", decor.findViewById<View>(android.R.id.content).isAccessibilityDataSensitive)
         }
+    }
+
+    /**
+     * fix-panel-filter: the panel's own window (the voice session's dialog, which no activity's filter reaches) refuses a tap
+     * another window covers, as its popups do, and Android still tells Phone lock it came up. The system makes the window
+     * (ensureWindowCreated, package-private) before it asks for the content view, so the test does the same.
+     */
+    @Test fun thePanelsWindowRefusesCoveredTapsAndStillReachesPhoneLock() {
+        val session = RobotSession(ApplicationProvider.getApplicationContext<Context>())
+        android.service.voice.VoiceInteractionSession::class.java.getDeclaredMethod("ensureWindowCreated").apply { isAccessible = true }.invoke(session)
+        session.onCreateContentView()
+        val decor = session.window.window!!.decorView
+        assertTrue("the panel's window lets a covered tap through", decor.filterTouchesWhenObscured)
+        assertFalse("the panel's window is hidden from Phone lock", decor.isAccessibilityDataSensitive)
+        val e = AccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED).also { decor.onInitializeAccessibilityEvent(it) }
+        assertFalse("the panel's window event is hidden from Phone lock", sensitive(e))
+        assertTrue("the panel's content isn't marked", decor.findViewById<View>(android.R.id.content).isAccessibilityDataSensitive)
     }
 
     /**

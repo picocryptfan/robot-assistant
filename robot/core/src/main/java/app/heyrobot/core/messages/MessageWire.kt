@@ -30,6 +30,10 @@ object MessagesProtocol {
     const val REQ_REPLY_LANG = 6
     /** 0.8, the brief: how many messages Robot hasn't read to you, by app (counts only, [MessageUnread]). */
     const val REQ_UNREAD = 7
+    /** 1.3, "What did I miss?": counts by app, and unlocked the newest's kind and title ([MissedSummary]). */
+    const val REQ_MISSED = 8
+    /** 1.3, a hold asked for (core messages/Hold.kt): HoldPlan's ask in, its result out. */
+    const val REQ_HOLD = 9
     /** Every answer. */
     const val ANSWER = 100
 

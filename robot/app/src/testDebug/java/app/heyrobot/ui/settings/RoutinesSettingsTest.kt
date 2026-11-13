@@ -193,6 +193,18 @@ class RoutinesSettingsTest {
         assertEquals(false, rs.briefEnabled)
     }
 
+    /** moment-reminders: a reminder for a moment is listed with the brief's, with when it goes off, and deleted from there. */
+    @Test @Config(qualifiers = "w320dp-h640dp-mdpi")
+    fun aReminderForAMomentIsListedAndDeleted() {
+        val m = app.heyrobot.core.MomentReminder("m-1", "take the groceries in", app.heyrobot.core.Moment.CAR_OFF, 1)
+        val act = RoutineActions(removeMoment = { calls += "moment ${it.id}" })
+        rule.show { BriefSettingsScreen(data(RoutineSettings(briefEnabled = true)).copy(moments = listOf(m)), act, SnackbarHostState(), onBack = {}) }
+        rule.scrollToText("take the groceries in")
+        rule.onNodeWithText("When you get out of the car").assertExists()
+        rule.onNodeWithContentDescription("Remove “take the groceries in”").performClick()
+        assertEquals("moment m-1", calls.last())
+    }
+
     /** 1.2 (every-android-phone, Step 6): no GrapheneOS Clock on this phone, so a start after an alarm says so where it is picked. */
     private val noClock = allFacts.copy(clock = false)
     private val wakeUp = Routine("r-3", "Wake up", RoutineTrigger.AlarmDismissed(), listOf(tool("weather")), created = 1)

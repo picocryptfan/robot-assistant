@@ -112,6 +112,8 @@ object WebStrings : Strings("web", area = "web") {
     val sentence = s("sentence", "{text}.", "{text}.")
 
     // The gate's refusals.
+    val helpersOff = s("helpers_off", "Robot's search is off for helpers: turn it on in Robot's {path}.",
+        "La recherche de Robot est désactivée pour les IA externes : active-la dans {path}.")
     val offTurnOn = s("off_turn_on", "Web search is off: turn it on in Robot's {path}.", "La recherche web est désactivée : active-la dans {path}.")
     val dailyCapRaise = s("daily_cap_raise", "That's today's limit of web searches ({n}). {path} can raise it.",
         "C'est la limite de recherches web pour aujourd'hui ({n}). Tu peux l'augmenter dans {path}.")
@@ -183,4 +185,44 @@ object WebStrings : Strings("web", area = "web") {
     val testLine = plural("test_line", "n", Plural("JSON on · {n} result", "JSON on · {n} results"), Plural("JSON activé · {n} résultat", "JSON activé · {n} résultats"))
     val testLineEngines = plural("test_line_engines", "n", Plural("JSON on · {n} result · engines: {engines}", "JSON on · {n} results · engines: {engines}"),
         Plural("JSON activé · {n} résultat · moteurs : {engines}", "JSON activé · {n} résultats · moteurs : {engines}"))
+
+    // "Summarize this page" (W4, core PageSummary): which page, why it wasn't read, the progress line and the card's label.
+    val pageWhich = s("page_sum_which", "Which page? Share a link with me, or ask while the page is on your screen.",
+        "Quelle page ? Partage-moi un lien, ou demande-le pendant que la page est à l’écran.")
+    val pageWebOff = s("page_sum_web_off", "To read a page, set up web search first, in Settings › Web search.",
+        "Pour lire une page, configure d’abord la recherche web dans Réglages › Recherche web.")
+    val pageNotFromPhone = s("page_sum_not_from_phone", "Your web search settings don't let me open pages from this phone, so I didn't read it.",
+        "Tes réglages de recherche web ne me laissent pas ouvrir de pages depuis ce téléphone, alors je ne l’ai pas lue.")
+    val pageShortAnswers = s("page_sum_short_answers", "Your search service only gives short answers, so I can't open pages with it. To summarize pages, pick another service in Settings › Web search.",
+        "Ton service de recherche ne donne que de courtes réponses, alors je ne peux pas ouvrir de pages avec lui. Pour résumer des pages, choisis un autre service dans Réglages › Recherche web.")
+    val pageHelpOffer = s("page_sum_help_offer", "I couldn't summarize this page on the phone. {name} can try.",
+        "Je n’ai pas pu résumer cette page sur le téléphone. {name} peut essayer.")
+    // fix-batch-15 L4: over 40,000 characters only the page's start goes to the helper.
+    val pageHelpStart = s("page_sum_help_start", "I couldn't summarize this page on the phone. It's long, so {name} can try with its first part.",
+        "Je n’ai pas pu résumer cette page sur le téléphone. Elle est longue, alors {name} peut essayer avec son début.")
+    val pageHelpLabel = s("page_sum_help_label", "{name}'s summary", "Résumé de {name}")
+    val pageReading = s("page_sum_reading", "Reading {domain}…", "Je lis {domain}…")
+    val pagePart = s("page_sum_part", "Summarizing part {n} of {of}…", "Je résume la partie {n} sur {of}…")
+    val pageMerging = s("page_sum_merging", "Putting the summary together…", "J’assemble le résumé…")
+    val pageCouldnt = s("page_sum_couldnt", "I couldn't read {domain} ({why}).", "Je n’ai pas pu lire {domain} ({why}).")
+    val pageNothing = s("page_sum_nothing", "I found almost no text to summarize on {domain}.", "Je n’ai presque pas trouvé de texte à résumer sur {domain}.")
+    val pageSignIn = s("page_sum_sign_in", "{domain} shows a sign-in or subscription page, so I can't read the article.",
+        "{domain} affiche une page de connexion ou d’abonnement, alors je ne peux pas lire l’article.")
+    val pageOtherLanguage = s("page_sum_other_lang", "This page isn't in English or French, so my summary may miss things.",
+        "Cette page n’est ni en français ni en anglais, alors mon résumé peut manquer des choses.")
+    val pageFirstParts = s("page_sum_first_parts", "I read the first {n} parts of {of}.", "J’ai lu les {n} premières parties sur {of}.")
+    val pageUnlock = s("page_sum_unlock", "Unlock your phone, then ask again.", "Déverrouille ton téléphone, puis redemande-le.")
+    val pageLabel = s("page_sum_label", "Robot's summary · {domain}", "Résumé de Robot · {domain}")
+    // fix-routing-1.4: a link taken from the screen's text waits for a tap on its card; hands-free, not opened.
+    val pageScreenCard = s("page_sum_screen_card", "Read the page at {domain}? The link came from your screen.",
+        "Lire la page sur {domain} ? Le lien vient de ton écran.")
+    val pageScreenTap = s("page_sum_screen_tap", "That link came from your screen, so check the card, then tap {open}.",
+        "Ce lien vient de ton écran, alors vérifie la carte, puis touche {open}.")
+    val pageScreenLook = s("page_sum_screen_look", "That link came from your screen, so I open it only after a tap. Look at your phone and ask me again when you can tap.",
+        "Ce lien vient de ton écran, alors je l’ouvre seulement après que tu as touché l’écran. Regarde ton téléphone et redemande-le-moi quand tu pourras toucher l’écran.")
+    // review-batch-17-18 M2: said aloud in Car mode, so it never sends the driver's eyes to the phone.
+    val pageScreenParked = s("page_sum_screen_parked", "That link came from your screen, so it needs a tap. Ask me again once you're parked.",
+        "Ce lien vient de ton écran, alors il faut toucher l’écran pour l’ouvrir. Redemande-le-moi quand tu seras stationné.")
+    val pageScreenNo = s("page_sum_screen_no", "I didn't open {domain}.", "Je n’ai pas ouvert {domain}.")
+    val pageLabelNone = s("page_sum_label_none", "Robot's summary · a web page", "Résumé de Robot · une page web")
 }

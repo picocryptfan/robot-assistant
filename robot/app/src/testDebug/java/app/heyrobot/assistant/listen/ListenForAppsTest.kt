@@ -111,6 +111,23 @@ class ListenForAppsTest {
         assertNotNull(listening.open(AppListening.From.RECOGNIZER, plain, Heard()))
     }
 
+    /** 1.3 (tidy-reword, review-after13-b): an app gets your words with fillers out and every correction as said. */
+    @Test fun anAppGetsWordsWithoutFillersOnly() {
+        for ((said, got) in listOf(
+            "I'll be uh ten no fifteen minutes late" to "I'll be ten no fifteen minutes late",
+            "I can't make it Friday, actually Saturday works" to "I can't make it Friday, actually Saturday works",
+            "Thanks Sam, sorry Jim couldn't come" to "Thanks Sam, sorry Jim couldn't come",
+            "I'm at the ER" to "I'm at the ER",
+            "je serai là à euh cinq non six heures" to "je serai là à cinq non six heures",
+        )) {
+            val (_, heard) = open()
+            idle()
+            stt.last.onFinal(said)
+            idle()
+            assertEquals("words $got", heard.got.last())
+        }
+    }
+
     @Test fun wordsAsTheyComeOnlyWhenTheAppAskedForThem() {
         val (_, heard) = open(app = AppListen(pauseMs = 1_000, partials = true))
         idle()

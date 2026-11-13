@@ -49,6 +49,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -60,6 +61,7 @@ import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import app.heyrobot.ui.common.CoveredTouches
 import app.heyrobot.core.KeyboardPad
 import app.heyrobot.core.LockScreen
 import app.heyrobot.core.SettingsPage
@@ -285,6 +287,7 @@ private fun PanelTop(st: PanelState, actions: PanelActions, onClose: () -> Unit)
         onKeep = actions::keepConversation, onToggleSpeak = actions::toggleSpeak, onNew = actions::newConversation, onClose = onClose,
         onSettings = actions::openSettings, face = st.face,
         onConversation = { actions.send(startConversation) }, conversationEnabled = !st.busy && st.draft == null,
+        onReport = if (st.turns.isNotEmpty() && !st.busy) ({ actions.report(null) }) else null,
     )
 }
 
@@ -319,10 +322,11 @@ private fun checkingLine(st: PanelState): app.heyrobot.core.i18n.Phrase? =
         ?.let { PanelStrings.checkingDevice("device" to it, "seconds" to app.heyrobot.core.GpuCheck.EST_SECONDS) }
 
 /** A notice's button: its words and what it does, or null. */
-internal fun noticeAction(a: NoticeAction, actions: PanelActions, l: Langs = Langs.EN): Pair<String, () -> Unit>? = when (a) {
+internal fun noticeAction(a: NoticeAction, actions: PanelActions, l: Langs = Langs.EN, replyId: String? = null, covered: CoveredTouches? = null): Pair<String, () -> Unit>? = when (a) {
     NoticeAction.OPEN_APP -> PanelStrings.openRobot().render(l) to actions::openRobotApp
     NoticeAction.OPEN_ASSIST_SETTINGS -> PanelStrings.openSettings().render(l) to actions::openAssistSettings
     NoticeAction.OPEN_MODEL -> PanelStrings.openModel().render(l) to actions::openModelSettings
+    NoticeAction.REPORT -> PanelStrings.reportIt().render(l) to { if (covered?.now != true) actions.report(replyId) }
     NoticeAction.NONE -> null
 }
 
@@ -331,8 +335,12 @@ internal fun noticeAction(a: NoticeAction, actions: PanelActions, l: Langs = Lan
 private fun ColumnScope.PanelNotices(st: PanelState, actions: PanelActions) {
     AnimatedVisibility(st.notice != null, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
         st.notice?.let { n ->
-            val a = noticeAction(n.action, actions, LocalLangs.current)
-            ClassicNoticeBar(n.text, a?.first, onAction = a?.second ?: {}, onDismiss = actions::dismissNotice)
+            // Review L3: Report it refuses a tap another app's window hid part of the panel for (the notice stays), as Car mode's Yes.
+            val covered = remember { CoveredTouches() }
+            val a = noticeAction(n.action, actions, LocalLangs.current, n.replyId, covered)
+            Box(Modifier.pointerInput(covered) {
+                awaitPointerEventScope { while (true) awaitPointerEvent(PointerEventPass.Initial).motionEvent?.let { covered.see(it.actionMasked, it.flags) } }
+            }) { ClassicNoticeBar(n.text, a?.first, onAction = a?.second ?: {}, onDismiss = actions::dismissNotice) }
         }
     }
     val b = st.brain
@@ -355,6 +363,7 @@ internal fun UiTurn.toTurnUi(l: Langs = Langs.EN) = TurnUi(
     offer = offer?.let { OfferView(it.api, it.text, it.sends, it.preview, it.asWell, it.name, it.app, it.keep, it.note) },
     reply = reply,
     web = web,
+    wiki = wiki,
     list = list,
 )
 
@@ -375,6 +384,7 @@ private fun Messages(st: PanelState, actions: PanelActions, modifier: Modifier) 
             openSource = actions::openSource,
             list = actions::listCard,
             saveFile = { l -> actions.send(PanelStrings.fileThisWords().render(l)) },
+            report = { id -> actions.report(id) },
         )
     }
     val reversed = remember(st.turns) { st.turns.asReversed() }
@@ -505,13 +515,14 @@ private fun ColumnScope.PanelInputArea(
 ) {
     // E7: what another app shared, with its buttons (assistant/ask AskChip); else the screen or photo as before.
     val shared = st.draft?.shared
-    if (shared != null) app.heyrobot.assistant.ask.AskChip(shared, st.busy, onRemove = actions::removeDraft, onAsk = actions::askShared)
+    if (shared != null) app.heyrobot.assistant.ask.AskChip(shared, st.busy, onRemove = actions::removeDraft, onAsk = actions::askShared,
+        onRead = actions::readShared)
     else ClassicContextRow(st.draft?.kind, st.draft?.thumb, name = st.draft?.name, readClaude = st.claudeScreen && !st.busy, onRemove = actions::removeDraft,
         onReadClaude = actions::readClaudeAnswer)
     AnimatedVisibility(attachOpen && st.draft == null && !st.busy) {
         ClassicAttachRow(st.locked, onDone = { onAttachOpen(false) },
             onCamera = { actions.openCapture(CaptureActivity.MODE_CAMERA) }, onPhotos = { actions.openCapture(CaptureActivity.MODE_PHOTOS) },
-            onFile = { actions.openCapture(CaptureActivity.MODE_FILE) })
+            onFile = { actions.openCapture(CaptureActivity.MODE_FILE) }, onRead = { actions.openCapture(CaptureActivity.MODE_READ) })
     }
     val state = ClassicInputState(
         busy = st.busy, confirming = st.phase == Phase.CONFIRMING, speaking = st.phase == Phase.SPEAKING,

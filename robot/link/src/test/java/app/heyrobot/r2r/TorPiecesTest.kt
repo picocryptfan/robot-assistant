@@ -123,6 +123,25 @@ class TorPiecesTest {
             assertTrue(bad, runCatching { TorConfig.torrc(paths, TorBuiltInBridges.obfs4, File(bad)) }.isFailure)
     }
 
+    /** tor-bridge-relay: a bridge at a home address; Tor and lyrebird through the relay, Snowflake's lines left out. */
+    @Test fun theTorrcThroughTheRelay() {
+        val lyrebird = File("/data/app/x/lib/arm64/liblyrebird.so")
+        val fp = "0123456789ABCDEF0123456789ABCDEF01234567"
+        val home = listOf(BridgeLine.parse("obfs4 10.0.0.5:443 $fp cert=x iat-mode=0")!!, BridgeLine.parse("[fd00::5]:9001 $fp")!!) + TorBuiltInBridges.snowflake
+        val lo = java.net.InetAddress.getLoopbackAddress().hostAddress!!
+        val auth = RelayAuth(lo, 40_001, "0a".repeat(16), "b1".repeat(16))
+        assertEquals(TorConfig.torrc(paths) + "Socks5Proxy $lo:40001\nSocks5ProxyUsername ${"0a".repeat(16)}\nSocks5ProxyPassword ${"b1".repeat(16)}\n" +
+            "UseBridges 1\nClientTransportPlugin obfs4 exec ${lyrebird.path}\nBridge obfs4 10.0.0.5:443 $fp cert=x iat-mode=0\nBridge [fd00::5]:9001 $fp\n",
+            TorConfig.torrc(paths, home, lyrebird, auth))
+        // Without the relay, the same lines as before it.
+        assertEquals(TorConfig.torrc(paths, home, lyrebird, null).replace("ClientTransportPlugin meek_lite,obfs4,snowflake,webtunnel", "x"),
+            TorConfig.torrc(paths) + "UseBridges 1\nx exec ${lyrebird.path}\n" + home.joinToString("") { "Bridge ${it.text}\n" })
+        // What Tor would read as something else is refused.
+        for (bad in listOf(RelayAuth(lo, 0, auth.user, auth.pass), RelayAuth("10.0.0.1", 40_001, auth.user, auth.pass), RelayAuth(lo, 40_001, "a b", auth.pass),
+            RelayAuth(lo, 40_001, auth.user, "x\nControlPort 9051"), RelayAuth("localhost", 40_001, auth.user, auth.pass)))
+            assertTrue(runCatching { TorConfig.torrc(paths, home, lyrebird, bad) }.isFailure)
+    }
+
     @Test fun theControlCommandsAreTheOnesTorReads() {
         val target = paths.service(0)
         val k1 = ByteArray(32) { 1 }

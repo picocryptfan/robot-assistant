@@ -7,7 +7,8 @@
 #
 # The texts: the ones Robot's patch adds (b-*, ph-* and many-words, made here), and espeak-ng's own crash vectors for what it backports, read
 # from its repository at a pinned commit. Needs what tools/build_sherpa.sh needs, cmake, ninja, clang with ASan
-# and python3. About 3 minutes; everything goes into voice/native/check/ (delete it with build_sherpa.sh --clean).
+# and python3. About 3 minutes; everything goes into voice/native/check/ (delete it with build_sherpa.sh --clean). A build
+# folder there whose CMake cache names another source path (copied from another worktree) is removed and rebuilt.
 #
 # Usage: tools/espeak_bounds_check.sh
 set -uo pipefail
@@ -57,6 +58,12 @@ done <<<"$TEXTS"
 
 build() { # source build-dir targets...
   local s=$1 b=$2; shift 2
+  # A build folder configured from another source path (copied from another worktree, or the worktree moved) makes CMake
+  # stop: removed and configured again, never reused.
+  if [ -f "$b/CMakeCache.txt" ] && ! grep -qxF "CMAKE_HOME_DIRECTORY:INTERNAL=$s" "$b/CMakeCache.txt"; then
+    echo "removing $b: its CMake cache was made from another source path" >&2
+    rm -rf "${b:?}"
+  fi
   cmake -S "$s" -B "$b" -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_FLAGS='-fsanitize=address -fno-omit-frame-pointer -g -O1' \
     -DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address -DUSE_ASYNC=OFF -DUSE_MBROLA=OFF -DUSE_LIBSONIC=OFF -DUSE_LIBPCAUDIO=OFF \
     -DUSE_KLATT=OFF -DUSE_SPEECHPLAYER=OFF -DBUILD_SHARED_LIBS=OFF > "$b.log" 2>&1 \

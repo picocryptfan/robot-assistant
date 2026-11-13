@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.assistant.routines
 
+import app.heyrobot.core.MomentReminder
+import app.heyrobot.core.MomentReminders
 import android.app.KeyguardManager
 import android.app.Notification
 import android.app.NotificationChannel
@@ -228,10 +230,10 @@ object RoutineNotices {
 
     private fun nm(ctx: Context) = ctx.getSystemService(NotificationManager::class.java)
 
-    private fun notify(ctx: Context, id: Int, n: Notification) {
+    private fun notify(ctx: Context, id: Int, n: Notification, tag: String? = null) {
         // review-lock 10: a routine's words aren't left in the shade during a lock for someone else.
         if (id != SPEAKING_ID && id != NOT_ASSISTANT_ID && PhoneLockNow.someoneElse(ctx)) return
-        try { nm(ctx).notify(id, n) } catch (t: Throwable) { RLog.w("routine_notify", t) }
+        try { nm(ctx).notify(tag, id, n) } catch (t: Throwable) { RLog.w("routine_notify", t) }
     }
 
     private fun publicVersion(ctx: Context, channel: String, title: String) =
@@ -383,6 +385,49 @@ object RoutineNotices {
             .setPublicVersion(publicVersion(ctx, CHANNEL, ctx.getString(R.string.routine_ran_public)))
             .setAutoCancel(true)
             .build())
+    }
+
+    /**
+     * moment-reminders: a reminder for a moment went off. The channel has no sound of its own, so a phone on silent or Do
+     * Not Disturb stays quiet; nothing is spoken. Your words are secret: PRIVATE showed them on the lock screen under
+     * Android's default "Show sensitive content when locked" (review-develop-14-b M1). So it isn't unseen until the next
+     * unlock (review-develop-14 L2), a locked phone also gets [lockedMoment]'s generic line.
+     */
+    fun moment(ctx: Context, r: MomentReminder) {
+        val l = langs(ctx)
+        channels(ctx)
+        notify(ctx, LockShade.MOMENT_ID, Notification.Builder(ctx, CHANNEL)
+            .setSmallIcon(R.drawable.ic_robot)
+            .setContentTitle(app.heyrobot.core.i18n.RoutineStrings.momentTitle().render(l))
+            .setContentText(r.text)
+            .setStyle(Notification.BigTextStyle().bigText(r.text))
+            .setVisibility(Notification.VISIBILITY_SECRET)
+            .setPublicVersion(publicVersion(ctx, CHANNEL, app.heyrobot.core.i18n.RoutineStrings.momentPublic().render(l)))
+            .setAutoCancel(true)
+            .build(), MomentReminders.noticeTag(r))
+        if (!unlocked(ctx)) lockedMoment(ctx, l)
+    }
+
+    /** The lock screen's "Reminder": no words, no person; cancelled at the unlock, when the secret one shows in the shade. */
+    private fun lockedMoment(ctx: Context, l: Langs) {
+        notify(ctx, LockShade.MOMENT_LOCKED, Notification.Builder(ctx, CHANNEL)
+            .setSmallIcon(R.drawable.ic_robot)
+            .setContentTitle(app.heyrobot.core.i18n.RoutineStrings.momentPublic().render(l))
+            .setVisibility(Notification.VISIBILITY_PUBLIC)
+            .setAutoCancel(true)
+            .build())
+        try {
+            val app = ctx.applicationContext
+            ProtectedBroadcasts.register(app, object : BroadcastReceiver() {
+                override fun onReceive(c: Context, i: Intent) {
+                    if (i.action != Intent.ACTION_USER_PRESENT) return
+                    cancel(app, LockShade.MOMENT_LOCKED)
+                    try { app.unregisterReceiver(this) } catch (_: Throwable) {}
+                }
+            }, ProtectedBroadcasts.filter(Intent.ACTION_USER_PRESENT))
+        } catch (t: Throwable) {
+            RLog.w("moment_unlock_hook", t)
+        }
     }
 
     private fun cancel(ctx: Context, id: Int) {

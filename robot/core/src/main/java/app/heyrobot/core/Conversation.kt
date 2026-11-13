@@ -77,6 +77,14 @@ data class ChatTurn(
      * ([Quoted.LOCKED]), and content (every action you didn't ask for asks first).
      */
     val locked: Boolean = false,
+    /** 1.4: an answer from the copy of Wikipedia on this phone (PanelWiki): content Robot didn't write, so every later action asks first. */
+    val content: Boolean = false,
+    /**
+     * summarize-page-c (review L3): a page read off the web went into this reply ("Summarize this page"): content, and unlike
+     * [content] it keeps the copy of Wikipedia's next answer untrusted too (TurnRules.untrustedForCopy). Saved with "content"
+     * as well, so an older Robot still treats it as content.
+     */
+    val page: Boolean = false,
     /**
      * 1.0.2: holds text the loaded model treats as one of its control tokens, which llama.cpp refused (core
      * ControlRefusal): never given to the model again ([toPromptTurns]), still shown and saved as it is. Not saved itself:
@@ -242,6 +250,8 @@ object ConversationCodec {
         if (t.memoryIds.isNotEmpty()) put("memory", JSONArray(t.memoryIds))
         if (t.readBack) put("readBack", true)
         if (t.locked) put("locked", true)
+        if (t.content) put("content", true)
+        if (t.page) put("page", true).put("content", true)
         if (t.files) put("files", true)
         t.fileName?.let { put("fileName", it) }
         if (t.shared) put("shared", true)
@@ -290,6 +300,8 @@ object ConversationCodec {
             memoryIds = o.optJSONArray("memory")?.let { a -> (0 until a.length()).mapNotNull { a.optString(it).takeIf(app.heyrobot.core.memory.MemoryIds::valid) } }.orEmpty(),
             readBack = o.optBoolean("readBack", false),
             locked = o.optBoolean("locked", false),
+            content = o.optBoolean("content", false),
+            page = o.optBoolean("page", false),
             files = o.optBoolean("files", false),
             fileName = app.heyrobot.core.files.ChatFiles.cleanName(o.optString("fileName").takeIf { it.isNotEmpty() }),
             shared = o.optBoolean("shared", false),

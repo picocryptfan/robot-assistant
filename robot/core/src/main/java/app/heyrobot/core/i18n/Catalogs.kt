@@ -14,13 +14,13 @@ object Catalogs {
         // WP2: the panel and Home (WP2a), the helpers (WP2b).
         PanelStrings, HelperStrings,
         // WP3: messages, memory, people and notes.
-        MessageStrings, MemoryStrings, PeopleStrings,
+        MessageStrings, MemoryStrings, PeopleStrings, ScamStrings,
         // WP4: routines and the brief (WP4a), headset and car (WP4b).
-        RoutineStrings, BriefStrings, HandsFreeStrings,
+        RoutineStrings, BriefStrings, HandsFreeStrings, TimerStrings,
         // WP5: conversation mode and translation.
         ConversationStrings,
         // WP6: web search and Termux.
-        WebStrings, TermuxStrings,
+        WebStrings, WikiStrings, TermuxStrings, ShotStrings,
         // WP7: the model pages and model state (WP7a), the engines and the voice (WP7b).
         ModelStrings, VoiceStrings,
         // WP8: Settings, the setup guide, updates, feedback.
@@ -35,12 +35,24 @@ object Catalogs {
         FilesStrings,
         // 1.4: Lists.
         ListsStrings,
+        // Correct the last action ("undo that", "no, 6:45").
+        CorrectStrings,
         // The everyday set: music, sums, What went online, Ask Robot.
         EverydayStrings,
         // Skills connections.
         ConnStrings,
         // 1.5: Robot to Robot.
         LinkStrings,
+        // 1.3: point and read.
+        ReadStrings,
+        // Ready answers (idea 18).
+        ReadyStrings,
+        // Caller name (idea 13).
+        CallerStrings,
+        // When did I last, from everything.
+        LastTimeStrings,
+        // Spoken log: the logbook.
+        LogbookStrings,
     )
 
     private val byId: Map<String, Msg> by lazy { all.flatMap { it.all }.associateBy { it.id } }

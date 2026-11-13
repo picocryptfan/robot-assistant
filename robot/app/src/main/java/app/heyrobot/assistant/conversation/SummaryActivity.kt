@@ -55,6 +55,7 @@ import app.heyrobot.R
 import app.heyrobot.assistant.HelperLink
 import app.heyrobot.assistant.VoiceHub
 import app.heyrobot.core.ConsentCard
+import app.heyrobot.core.HelperCost
 import app.heyrobot.core.ConversationSettings
 import app.heyrobot.core.Disclosure
 import app.heyrobot.core.SummaryCheckFor
@@ -291,7 +292,7 @@ class SummaryActivity : ComponentActivity() {
                                 }
                                 val h = c.config
                                 if (c.toApp) shareToApp(c.card, h).let { note = it } else {
-                                    val chars = c.card.blocks.sumOf { b -> b.text.length }
+                                    val chars = HelperCost.charsOf(c.card.blocks)
                                     SummaryJobs.send(this@SummaryActivity, c.card, ApiHelper(applicationContext, h, chars, budgetUsed(s, h)))
                                 }
                             })
@@ -338,7 +339,7 @@ class SummaryActivity : ComponentActivity() {
                 // The summary just made, with its check; then the ones kept before.
                 val fresh = job.record?.takeIf { job.id == t && !busy }
                 if (fresh != null) item {
-                    SummaryView(fresh, meta, tr, job.misses, zone, onLine = { openLine(t, it) })
+                    SummaryView(fresh, meta, tr, job.misses, zone, todos = true, onLine = { openLine(t, it) })
                     // The cost line as under a helper's reply in the panel: "≈ 9¢", "cost unknown", nothing for a free server.
                     val by = s.helpers.firstOrNull { it.name == fresh.helperName }
                     val cost = if (!job.costKnown) stringResource(R.string.conv_cost_unknown)
@@ -351,7 +352,8 @@ class SummaryActivity : ComponentActivity() {
                 }
                 val older = saved.filter { (n, _) -> n != job.number || job.id != t }.asReversed()
                 if (older.isNotEmpty()) item { Text(stringResource(R.string.conv_kept_with), style = MaterialTheme.typography.titleSmall) }
-                for ((_, r) in older) item { SummaryView(r, meta, tr, emptyList(), zone, onLine = { openLine(t, it) }) }
+                // summary-todos: the to-dos' cards under the newest summary only.
+                for ((i, e) in older.withIndex()) { val (_, r) = e; item { SummaryView(r, meta, tr, emptyList(), zone, todos = fresh == null && i == 0, onLine = { openLine(t, it) }) } }
                 item {
                     TextButton(onClick = { openLine(t, null) }) { Text(stringResource(R.string.conv_open_transcript)) }
                 }
@@ -391,7 +393,7 @@ class SummaryActivity : ComponentActivity() {
         val id = ApiHelper.idFor(h)
         // The price on the card is estimated from the very text it would send, at the helper's own price.
         val first = ConsentCard.build(id, h.name, Disclosure(h.presetOf.companyText.en(), null, ""), meta, tr, ZonedDateTime.now(zone), region, lang, zone)
-        val chars = first.blocks.sumOf { it.text.length }
+        val chars = HelperCost.charsOf(first.blocks)
         val card = ConsentCard.build(id, h.name, ApiHelper(this, h, chars, budgetUsed(s, h)).disclosure, meta, tr, ZonedDateTime.now(zone), region, lang, zone)
         return Ask.Card(card, false, h.id, h, all.filter { it.id != h.id })
     }
@@ -468,7 +470,8 @@ class SummaryActivity : ComponentActivity() {
 
     /** A summary with its label; its [14:03] references open their lines; what the check couldn't find, under it. */
     @Composable
-    private fun SummaryView(r: SummaryRecord, meta: TranscriptMeta, tr: Transcript, misses: List<app.heyrobot.core.SummaryMiss>, zone: ZoneId, onLine: (Int) -> Unit) {
+    private fun SummaryView(r: SummaryRecord, meta: TranscriptMeta, tr: Transcript, misses: List<app.heyrobot.core.SummaryMiss>, zone: ZoneId, todos: Boolean = false,
+        onLine: (Int) -> Unit) {
         Card {
             Text(r.label(zone, LocalLangs.current), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             val links = SummaryCheckFor.links(r.text, meta, tr, zone)
@@ -484,7 +487,37 @@ class SummaryActivity : ComponentActivity() {
             }
             Text(text, style = MaterialTheme.typography.bodyLarge)
             for (m in misses) Text(m.messageText.str(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            if (todos) TodoRows(r, meta, zone)
         }
+    }
+
+    /**
+     * summary-todos: the summary's dated or timed to-dos still ahead (core SummaryTodos, each day read from the conversation's
+     * start, a guess said as one), each with Add to calendar: the panel's add_event card, which only a tap adds.
+     */
+    @Composable
+    private fun TodoRows(r: SummaryRecord, meta: TranscriptMeta, zone: ZoneId) {
+        val langs = LocalLangs.current
+        val said = remember(meta.createdAt, zone) { java.time.Instant.ofEpochMilli(meta.createdAt).atZone(zone) }
+        val todos = remember(r.text, said) { app.heyrobot.core.SummaryTodos.of(r.text, said, java.time.ZonedDateTime.now(zone), langs.ui).filter { it.card } }
+        if (todos.isEmpty()) return
+        Text(ConversationStrings.todosHeading().str(), style = MaterialTheme.typography.titleSmall)
+        for (t in todos) {
+            Text(t.title, style = MaterialTheme.typography.bodyMedium)
+            t.line(said)?.let { Text(it.str(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            OutlinedButton(onClick = { if (unlocked()) addTodo(t) }, modifier = Modifier.heightIn(min = 48.dp)) {
+                Text(app.heyrobot.core.i18n.FilesStrings.addToCalendar().str())
+            }
+        }
+    }
+
+    /** Add to calendar: the to-do waits in memory under a one-time id and the panel opens with the id alone (SummaryTodoPanel). */
+    private fun addTodo(t: app.heyrobot.core.SummaryTodo) {
+        val w = t.whenArg ?: return
+        val id = SummaryTodoPanel.offer(SummaryTodoPanel.Ask(t.title, w), android.os.SystemClock.elapsedRealtime())
+        val args = Bundle().apply { putString(SummaryTodoPanel.ARG, id) }
+        val shown = app.heyrobot.assistant.RobotVoiceService.instance?.show(app.heyrobot.assistant.RobotVoiceService.SRC_APP, args) == true
+        if (!shown) app.heyrobot.ui.common.RobotToast.show(this, getString(R.string.panel_couldnt_open_assistant))
     }
 
 }

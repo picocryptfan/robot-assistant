@@ -28,8 +28,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 // signed by the key you picked it with, and asks its session's TransportControls.playFromSearch with the strings code
 // built (core PlayRequest). No screen opens, so it works on the lock screen. The same connection answers "what's
 // playing" from the session's metadata: tags written by whoever tagged the song, shown and said as text, never
-// instructions (the panel marks the reply quoted). Robot holds no MediaSession of its own, so your headset's button stays
-// your music app's (the car design's rule). Many apps accept only the system and car apps as clients (UNVERIFIED per
+// instructions (the panel marks the reply quoted). Robot's one media session is EarbudSession's, held only while she
+// speaks, so your headset's button is your music app's whenever she is quiet. Many apps accept only the system and car apps as clients (UNVERIFIED per
 // app): then Robot says so, and door 2 (C7's play-from-search screen) is where it would try next.
 
 object MusicDoor {

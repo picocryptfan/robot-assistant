@@ -24,6 +24,7 @@ import app.heyrobot.core.Addresses
 import app.heyrobot.core.AskWhy
 import app.heyrobot.core.AppEntry
 import app.heyrobot.core.AppMatcher
+import app.heyrobot.core.AppWords
 import app.heyrobot.core.BrainModel
 import app.heyrobot.core.CalendarFormat
 import app.heyrobot.core.AppHandOff
@@ -135,7 +136,9 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
     private val webStep: (WebStep, String) -> Unit = { _, _ -> },
     /** 1.1: the turn's reply language, whose date and time words add_event and read_calendar read first (core WhenParser). */
     private val lang: Lang = Lang.EN,
-    private val launch: (Intent) -> Boolean) {
+    /** correct-last: the panel's executor records Robot's last action (PanelCorrect); a routine's doesn't (review Medium 3). */
+    private val records: Boolean = false,
+    private val launch: (Intent) -> Boolean) : PanelCorrect.Hands {
     private val web by lazy { WebTool(ctx, settings, abort, said, webContext, webStep) }
 
     /**
@@ -150,8 +153,8 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
      */
     private fun lockCalls(p: Prepared): Prepared {
         if (!PhoneLockNow.on(ctx)) return p
-        val numbers = PhoneLockNow.callKeys(ctx)
-        fun ok(a: Action) = a is Action.Call && (a.emergency || a.number?.let { PhoneLockNow.callKey(it) in numbers } == true)
+        val allows = PhoneLockNow.calls(ctx)
+        fun ok(a: Action) = a is Action.Call && (a.emergency || a.number?.let(allows) == true)
         val closed = Prepared.Refused(ActionStatus.NEEDS_UNLOCK, LockStrings.callClosed())
         if (p !is Prepared.Ready) return p
         if (p.choices.isEmpty()) return if (ok(p.action)) p else closed
@@ -163,19 +166,38 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         }
     }
 
+    /** A helper's web_search (W4): WebTool's prepare with no town and the helpers switch read now. */
+    fun prepareForHelper(action: Action.WebSearch): Prepared = try {
+        web.prepare(action, helper = true)
+    } catch (t: Throwable) {
+        RLog.w("tool_prepare", t, "tool" to action.tool)
+        Prepared.Refused(ActionStatus.FAILED, ToolStrings.somethingWrong())
+    }
+
     fun prepare(action: Action): Prepared = try {
         when (action) {
             is Action.OpenApp -> {
-                val m = AppMatcher.match(action.name, launcherApps())
+                val apps = launcherApps()
+                val m = AppMatcher.match(action.name, apps)
+                val lockOn = PhoneLockNow.on(ctx)
+                val open = if (lockOn) PhoneLockNow.apps(ctx) else emptySet()
                 if (m == null) Prepared.Refused(ActionStatus.NOT_FOUND, ToolStrings.noAppCalled("name" to action.name))
                 // 1.1, Phone lock (§6): only the apps the active locks leave open.
-                else if (PhoneLockNow.on(ctx) && m.app.key.substringBefore('/') !in PhoneLockNow.apps(ctx))
+                else if (lockOn && m.app.key.substringBefore('/') !in open)
                     Prepared.Refused(ActionStatus.NEEDS_UNLOCK, LockStrings.appClosed())
-                else Prepared.Ready(Action.OpenApp(m.app.label, m.app.key), why = unsure(m.loose))
+                else {
+                    // auto-open-plan §2: two close matches ("maps": Organic Maps and Here Maps) ask which, never the shorter by itself.
+                    val rivals = AppMatcher.rivals(action.name, apps).filter { !lockOn || it.key.substringBefore('/') in open }
+                        // review-auto-open 3: and on your own words, when a word of them fits two apps ("maps" sent as "Organic Maps").
+                        .ifEmpty { said?.let { AppWords.crowded(it, m.app.label, apps.filter { a -> !lockOn || a.key.substringBefore('/') in open }) } ?: emptyList() }
+                    if (rivals.size >= 2) Prepared.Ready(Action.OpenApp(m.app.label, m.app.key), why = unsure(m.loose) + AskWhy.PICK,
+                        choices = rivals.map { app.heyrobot.core.Choice(it.label, Action.OpenApp(it.label, it.key)) })
+                    else Prepared.Ready(Action.OpenApp(m.app.label, m.app.key), why = unsure(m.loose))
+                }
             }
             is Action.SendText -> prepareText(action)
             is Action.DraftEmail -> prepareEmail(action)
-            is Action.LookupContact -> if (Contacts.granted(ctx) || PeopleFiles.store(ctx).list().isNotEmpty()) Prepared.Ready(action) else needContacts()
+            is Action.LookupContact -> if (Contacts.granted(ctx) || PeopleFiles.store(ctx).list().isNotEmpty()) Prepared.Ready(action) else notFound(action.name, false)
             // 0.8: who to call (People and the contacts, numbers only) and whether it is an emergency number.
             is Action.Call -> lockCalls(app.heyrobot.assistant.car.CallPlacer.prepare(ctx, action, settings))
             is Action.AddEvent -> prepareEvent(action)
@@ -205,7 +227,10 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         Prepared.Refused(ActionStatus.FAILED, ToolStrings.somethingWrong())
     }
 
-    fun run(action: Action): Executed {
+    override fun run(action: Action): Executed {
+        val mark = PanelCorrect.held()
+        // review Medium 6: with an alarm already set for that time (the next one), the clock can't tell yours from Robot's.
+        val shared = records && action is Action.SetAlarm && sharedAlarm(action.hour, action.minute)
         val r = try {
             when (action) {
                 is Action.SetTimer -> timer(action.seconds)
@@ -263,6 +288,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
             Executed(ActionStatus.FAILED, ToolStrings.somethingWrong())
         }
         RLog.i("tool_run", "tool" to action.tool, "status" to r.status)
+        if (records) PanelCorrect.ran(action, r, mark, shared) // correct-last: "undo that", "no, 6:45"
         return r
     }
 
@@ -280,6 +306,8 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
     }
 
     private fun timer(seconds: Long): Executed {
+        // named-timers: Robot keeps it itself while Settings › Routines says so and it can ring (routines OwnTimerPanel).
+        app.heyrobot.assistant.routines.OwnTimerPanel.forTool(ctx, seconds)?.let { (ok, said) -> return Executed(if (ok) ActionStatus.DONE else ActionStatus.FAILED, said) }
         val i = Intent(AlarmClock.ACTION_SET_TIMER)
             .putExtra(AlarmClock.EXTRA_LENGTH, seconds.toInt())
             .putExtra(AlarmClock.EXTRA_SKIP_UI, true)
@@ -292,11 +320,37 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         else Executed(ActionStatus.FAILED, ToolStrings.noClockTimers())
     }
 
+    /** correct-last (PanelCorrect.Hands): AlarmManager's next alarm clock, null if none. */
+    override fun nextAlarm(): Long? = ctx.getSystemService(android.app.AlarmManager::class.java)?.nextAlarmClock?.triggerTime
+
+    /**
+     * correct-last (PanelCorrect.Hands): your clock asked to turn off the alarm at exactly [hour]:[minute], as the runners'
+     * proven delete sends it (24-hour HOUR, no EXTRA_IS_PM, which AOSP's clock refuses with an hour past 12: review High 1);
+     * false: no clock took it. PanelCorrect.turnOff decides whether to send it at all (review High A) and waits.
+     */
+    override fun sendDismiss(hour: Int, minute: Int): Boolean = start(app.heyrobot.sys.RoutineFacts.toChosenClock(ctx, Intent(AlarmClock.ACTION_DISMISS_ALARM)
+        .putExtra(AlarmClock.EXTRA_ALARM_SEARCH_MODE, AlarmClock.ALARM_SEARCH_MODE_TIME)
+        .putExtra(AlarmClock.EXTRA_HOUR, hour).putExtra(AlarmClock.EXTRA_MINUTES, minute)))
+
+    /** fix-alarm-moved: the alarm [setMoved] sets goes through your clock's page; any other is set without it (SKIP_UI). */
+    private val shown = ThreadLocal.withInitial { false }
+
+    override fun setMoved(hour: Int, minute: Int): Executed {
+        shown.set(true)
+        try { return run(Action.SetAlarm(hour, minute)) } finally { shown.set(false) }
+    }
+
+    /** Whether the next alarm is already at [hour]:[minute] (fails closed: an error counts as one). */
+    private fun sharedAlarm(hour: Int, minute: Int): Boolean = try {
+        app.heyrobot.core.CorrectRouter.isNext(hour, minute, ctx.getSystemService(android.app.AlarmManager::class.java)?.nextAlarmClock?.triggerTime,
+            java.time.ZoneId.systemDefault())
+    } catch (_: Exception) { true }
+
     private fun alarm(hour: Int, minute: Int): Executed {
         val i = Intent(AlarmClock.ACTION_SET_ALARM)
             .putExtra(AlarmClock.EXTRA_HOUR, hour)
             .putExtra(AlarmClock.EXTRA_MINUTES, minute)
-            .putExtra(AlarmClock.EXTRA_SKIP_UI, true)
+            .putExtra(AlarmClock.EXTRA_SKIP_UI, !shown.get())
             .putExtra(AlarmClock.EXTRA_MESSAGE, "Robot")
         return if (start(app.heyrobot.sys.RoutineFacts.toChosenClock(ctx, i))) Executed(ActionStatus.DONE, ToolStrings.alarmSet("time" to app.heyrobot.core.EventText.clock(hour, minute)))
         else Executed(ActionStatus.FAILED, ToolStrings.noClockAlarms())
@@ -428,6 +482,9 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
 
     private fun needContacts() = Prepared.Refused(ActionStatus.NEEDS_PERMISSION, ToolStrings.allowContacts())
 
+    /** seal-people-fix-b 3: nobody matches [to]: People opens once you unlock (asked over the lock screen), else ask for the contacts. */
+    private fun notFound(to: String, granted: Boolean) = PeopleFiles.notFound(ctx, to, granted)?.let { Prepared.Refused(ActionStatus.NOT_FOUND, it) } ?: needContacts()
+
     private val region by lazy { settings.regionFor(Phones.deviceRegion(ctx)) }
 
     /** A name that matched an installed app only loosely: not certain which app. */
@@ -485,10 +542,10 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         val all = book.best(to, max = Int.MAX_VALUE, reach = Reachable.text(xmppOk = via == TextVia.CHEOGRAM))
         if (all.isEmpty()) {
             val granted = Contacts.granted(ctx)
-            if (!granted && via != TextVia.CHEOGRAM) return needContacts()
+            if (!granted && via != TextVia.CHEOGRAM) return notFound(to, false)
             // Not in the contacts: with Cheogram, the person may be in its own roster (the card offers its list, which
             // needs no permission). Contacts Robot may not read: the card also offers to allow them.
-            val why = if (granted) InfoStrings.noContact("name" to to) else ToolStrings.noOneInPeople("people" to UiLabel(UiStrings.people), "name" to to)
+            val why = PeopleFiles.notFound(ctx, to, granted) ?: ToolStrings.noOneInPeople("people" to UiLabel(UiStrings.people), "name" to to)
             return Recipients.notFound(a, why.en(), why, via, pick = canPick(cheogram), allowContacts = !granted)
         }
         val matches = all.take(Recipients.MAX_PEOPLE)
@@ -518,7 +575,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         if (Addresses.isAddress(to)) return Prepared.Ready(a.copy(target = MailTarget(null, to, appName)), why = setOf(AskWhy.WHO))
         val book = PeopleFiles.book(ctx)
         val all = book.best(to, max = Int.MAX_VALUE, reach = Reachable.email)
-        if (all.isEmpty()) return if (Contacts.granted(ctx)) Prepared.Refused(ActionStatus.NOT_FOUND, InfoStrings.noContact("name" to to)) else needContacts()
+        if (all.isEmpty()) return notFound(to, Contacts.granted(ctx))
         val matches = all.take(Recipients.MAX_PEOPLE)
         val options = Recipients.forEmail(book.cards(matches) { Contacts.cards(ctx, it) }).map { r ->
             val t = MailTarget(r.name, r.address, appName, from = r)
@@ -613,11 +670,15 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
     private fun addNote(a: Action.AddNote): Executed {
         val n = NotesFiles.store(ctx).add(a.text, a.title, System.currentTimeMillis())
             ?: return Executed(ActionStatus.FAILED, ToolStrings.noteNotSaved())
+        if (records) PanelCorrect.note(n)
         return Executed(ActionStatus.DONE, ToolStrings.savedToNotes(), undo = n.id)
     }
 
     private fun findNotes(a: Action.FindNotes): Executed {
-        val found = NoteSearch.find(a.query, NotesFiles.store(ctx).list())
+        val read = NotesFiles.store(ctx).read()
+        val found = NoteSearch.find(a.query, read.notes)
+        // seal-notes: while locked the notes can't be opened; say so rather than "no note matches".
+        if (found.isEmpty() && read.notNow > 0) return Executed(ActionStatus.NOT_FOUND, ToolStrings.notesLocked(), results = emptyList())
         if (found.isEmpty()) return Executed(ActionStatus.NOT_FOUND, ToolStrings.noNoteMatches("query" to a.query), results = emptyList())
         val results = NoteSearch.results(found)
         val titles = found.joinToString(", ") { it.displayTitle }
@@ -657,6 +718,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
             // is the card's own words (EventText.added), with the alert only when its row went in.
             // H3: its id, so the Calendar tab lets you change this one (and only the ones Robot added).
             if (added != null) app.heyrobot.sys.PrivateEventsFiles.recordAdded(ctx, added.id)
+            if (added != null && records) Calendars.row(ctx, added.id)?.let { PanelCorrect.event(it) } // correct-last: as written
             if (added != null) app.heyrobot.sys.TodaySource.changed(ctx) // fix-today-review 3: the widget shows it now
             if (added != null) return Executed(ActionStatus.DONE, ToolStrings.addedToCalendar(), spoken = EventText.added(a.title, p, added.alert))
         }
@@ -813,7 +875,8 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         if (results.isEmpty()) return Executed(ActionStatus.FAILED, ToolStrings.couldntReadPhone())
         val units = WeatherUnits.of(region)
         val storage = a.part == PhonePart.STORAGE || a.part == PhonePart.ALL
-        val page = if (!storage) null else if (f.usageAccess) SettingsPage.STORAGE else SettingsPage.USAGE_ACCESS
+        val page = if (a.part == PhonePart.PICKUPS && !f.usageAccess) SettingsPage.USAGE_ACCESS
+            else if (!storage) null else if (f.usageAccess) SettingsPage.STORAGE else SettingsPage.USAGE_ACCESS
         return Executed(ActionStatus.DONE, ToolStrings.readOnPhone(), results = results, body = PhoneStatus.linesText(f, a.part, units),
             spoken = PhoneStatus.linesText(f, a.part, units, sep = ". "), handOff = page)
     }

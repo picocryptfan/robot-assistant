@@ -117,9 +117,9 @@ class SkillCodecTest {
         // C1 (connections plan D6) moved this pin from 2 to 3 on purpose: this Robot reads v2; 1.1's answer to a v2 file is
         // in a11RobotReadsV1WholeAndLeavesV2Alone.
         // S3.1 moved it from 3 to 4 on purpose: this Robot reads v3 (v3RoundTripsAndOnlyItsSkillsNeedIt).
-        assertEquals(SkillFile.TooNew(4), SkillCodec.decode(file(json(home), v = 4)))
+        assertEquals(SkillFile.TooNew(5), SkillCodec.decode(file(json(home), v = 5)))
         // Even with fields this version doesn't know.
-        assertEquals(SkillFile.TooNew(4), SkillCodec.decode("""{"v":4,"skills":[],"model_picks":true}"""))
+        assertEquals(SkillFile.TooNew(5), SkillCodec.decode("""{"v":5,"skills":[],"model_picks":true}"""))
     }
 
     @Test fun duplicateIdsAndNamesDropTheSecond() {

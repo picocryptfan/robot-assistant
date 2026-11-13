@@ -426,11 +426,18 @@ object Download {
     const val STATUS_SUCCESSFUL = 8
     const val STATUS_FAILED = 16
 
+    /** DownloadManager.PAUSED_WAITING_FOR_NETWORK. */
+    const val PAUSED_NETWORK = 2
+
+    /** Robot's own paused reason (not Android's): waiting for a network while the phone roams, which Robot never downloads over. */
+    const val PAUSED_ROAMING = -2
+
     /** Reasons in plain words (and HTTP codes for a failure); null for a status that has none. */
     fun reasonPhrase(status: Int, reason: Int): Phrase? = when (status) {
         STATUS_PAUSED -> when (reason) {
             1 -> ModelStrings.reasonRetry()
-            2 -> ModelStrings.reasonNetwork()
+            PAUSED_NETWORK -> ModelStrings.reasonNetwork()
+            PAUSED_ROAMING -> ModelStrings.reasonRoaming()
             3 -> ModelStrings.reasonWifi()
             else -> ModelStrings.reasonPaused()
         }

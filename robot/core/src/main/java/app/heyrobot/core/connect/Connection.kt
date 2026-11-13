@@ -227,7 +227,7 @@ data class ConnOp(
     companion object {
         /** The effects you may add to an operation. */
         val MARKS: Map<SkillEffect, String> = linkedMapOf(SkillEffect.MONEY to "money", SkillEffect.SECURITY to "security", // l10n: not text (ids in connections.json)
-            SkillEffect.MESSAGES_SOMEONE to "tells_people") // l10n: not text (an id in connections.json)
+            SkillEffect.MESSAGES_SOMEONE to "tells_people", SkillEffect.DELETES to "deletes") // l10n: not text (ids in connections.json)
 
         /** The argument that holds a Home Assistant operation's entity (SkillLinks' HaCall.entityArg). */
         const val ENTITY = "entity"

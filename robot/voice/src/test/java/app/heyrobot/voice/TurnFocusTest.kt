@@ -89,6 +89,22 @@ class TurnFocusTest {
         for (v in listOf(VolumePolicy.NORMAL, VolumePolicy.DUCK_OTHERS, VolumePolicy.CALL)) assertFalse(v.name, FocusPlan.pauses(v))
     }
 
+    @Test fun aReadingHoldsTheFocusBetweenItsPieces() {
+        k.reading(true)
+        speak(true)
+        speak(false)
+        // Between two pieces nothing is given back, so the music doesn't come in for a moment.
+        assertEquals(listOf("take transient"), port.asked)
+        k.reading(false)
+        assertEquals(listOf("take transient", "give"), port.asked)
+    }
+
+    @Test fun aReadingTakesNoFocusDuringACall() {
+        port.mode = AudioManager.MODE_IN_CALL
+        k.reading(true)
+        assertEquals(emptyList<String>(), port.asked)
+    }
+
     @Test fun listeningTakesExclusiveFocusBeforeAnything() {
         assertTrue(k.listen())
         assertEquals(listOf("take exclusive"), port.asked)

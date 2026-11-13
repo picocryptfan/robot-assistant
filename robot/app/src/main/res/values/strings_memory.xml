@@ -150,4 +150,17 @@
     <string name="memory_save">Save</string>
     <string name="memory_delete">Delete</string>
     <string name="memory_cancel">Cancel</string>
+    <string name="memory_search_group">Better search</string>
+    <string name="memory_search_title">Search by meaning</string>
+    <string name="memory_search_off">Off. Download the search model (165 MB) and I find things by what you mean, in English or French, not only by matching words.</string>
+    <string name="memory_search_downloading">Downloading: %1$d%%</string>
+    <string name="memory_search_wifi">Waiting for Wi-Fi. Tap to cancel.</string>
+    <string name="memory_search_roaming">Waiting until your phone isn\'t roaming. Tap to cancel.</string>
+    <string name="memory_search_checking">Checking the download: %1$d%%</string>
+    <string name="memory_search_ready">On. I search your memory by meaning. Tap to delete the model (165 MB) and its search data.</string>
+    <string name="memory_search_failed">The download didn\'t work. Tap to try again.</string>
+    <string name="memory_search_no_room">Not enough space for the search model (165 MB).</string>
+    <string name="memory_search_deleted">Deleted the search model and its search data.</string>
+    <string name="memory_search_mobile">Download on mobile data</string>
+    <string name="memory_search_mobile_detail">Off: the search model downloads only on Wi-Fi.</string>
 </resources>

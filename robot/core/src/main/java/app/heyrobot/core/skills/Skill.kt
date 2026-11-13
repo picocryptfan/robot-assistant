@@ -301,6 +301,8 @@ data class Skill(
     val namesMore: Map<String, List<String>> = emptyMap(),
     /** `limits.per_hour` (connections plan D16, 1 to 60); null: not in the file, [DEFAULT_PER_HOUR] applies. */
     val perHour: Int? = null,
+    /** auto-open-plan §3: packages its save card ticked to open without asking (`opens`, file v4); never kept on import. */
+    val opens: Set<String> = emptySet(),
 ) {
     /** Every name it answers to, the name included, as said. */
     val allNames: List<String> get() = (listOf(name) + namesEn + namesFr).distinctBy { SkillKey.of(it) }

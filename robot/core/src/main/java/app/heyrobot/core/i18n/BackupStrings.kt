@@ -23,6 +23,7 @@ object BackupStrings : Strings("backup", area = "backup") {
     val files = s("cat_files", en = "Files", fr = "Fichiers")
     /** 1.4, Robot Lists (LS7): your lists and Settings › Lists, in the backup's own encryption. */
     val lists = s("cat_lists", en = "Lists", fr = "Listes")
+    val logbook = s("cat_logbook", en = "Logbook", fr = "Carnet")
     /** Robot to Robot (L12): pairings without keys, permissions, what passed between Robots. */
     val links = s("cat_links", en = "Robot to Robot", fr = "Robot à Robot")
     /** The everyday set (everyday-set-plan.md §2.4): everyday_settings.json, music and what other apps may use. */
@@ -30,6 +31,8 @@ object BackupStrings : Strings("backup", area = "backup") {
     val calendar = s("cat_calendar", en = "Private events", fr = "Événements privés")
     /** H5: the Today page's order and whether it is your home page. */
     val home = s("cat_home", en = "Today page", fr = "Page Aujourd’hui")
+    /** earbud-headsup-c: the calendar heads-up in earbuds (Settings › Headset). */
+    val headsUp = s("cat_headsup", en = "Calendar heads-up", fr = "Rappels d’agenda")
     val everyday = s("cat_everyday", en = "Music and other apps", fr = "Musique et autres applis")
 
     // Opening a file (§9.4).
@@ -57,6 +60,33 @@ object BackupStrings : Strings("backup", area = "backup") {
     /** 1.4, Lists: Lists was chosen and the lists can't be opened now (locked, their key gone, damaged). */
     val listsUnreadable = s("lists_unreadable", en = "Robot couldn't open your lists just now. Back up without Lists, or unlock and try again.",
         fr = "Robot n’a pas pu ouvrir tes listes pour l’instant. Sauvegarde sans les Listes, ou déverrouille et réessaie.")
+    /** spoken-log: the Logbook was chosen and can't be opened now. */
+    val logbookUnreadable = s("logbook_unreadable", en = "Robot couldn't open your logbook just now. Back up without Logbook, or unlock and try again.",
+        fr = "Robot n’a pas pu ouvrir ton carnet pour l’instant. Sauvegarde sans le Carnet, ou déverrouille et réessaie.")
+    /** seal-history-fix-b: History was chosen and a conversation can't be opened now. */
+    val historyNotNow = s("history_not_now", en = "Robot couldn't open part of your History just now. Unlock, wait a minute and try again, or back up without History.",
+        fr = "Robot n’a pas pu ouvrir une partie de ton historique pour l’instant. Déverrouille, attends une minute et réessaie, ou sauvegarde sans l’Historique.")
+    /** fix-seal-transcripts 6: a transcript sealed under the unlock key met while the phone is locked. */
+    val transcriptsLocked = s("transcripts_locked", en = "Robot can't open your transcripts while the phone is locked. Unlock it and try again, or back up without Transcripts.",
+        fr = "Robot ne peut pas ouvrir tes transcriptions pendant que le téléphone est verrouillé. Déverrouille-le et réessaie, ou sauvegarde sans les Transcriptions.")
+    /** fix-seal-transcripts-b, Medium 1: the phone is unlocked and Robot's key for transcripts still failed (logged). */
+    val transcriptsUnreadable = s("transcripts_unreadable", en = "Robot couldn't open your transcripts, though the phone is unlocked. Restart the phone and try again, or back up without Transcripts.",
+        fr = "Robot n’a pas pu ouvrir tes transcriptions, même si le téléphone est déverrouillé. Redémarre le téléphone et réessaie, ou sauvegarde sans les Transcriptions.")
+    /** seal-history-fix-b: History holds a newer Robot's file, which this one can't read. */
+    val historyTooNew = s("history_too_new", en = "Part of your History was saved by a newer Robot, and this one can't read it. Update Robot, or delete those conversations with Delete these in History, then try again. Or back up without History.",
+        fr = "Une partie de ton historique a été enregistrée par un Robot plus récent et ne peut pas être lue ici. Mets Robot à jour, ou supprime ces conversations avec Supprimer celles-ci dans Historique, puis réessaie. Ou sauvegarde sans l’Historique.")
+    /** seal-notes-b: Notes holds a newer Robot's note, which this one can't read (the Notes card counts them, with Delete these). */
+    val notesTooNew = s("notes_too_new", en = "Some of your notes were saved by a newer Robot, and this one can't read them. Update Robot, or delete those notes with Delete these in Notes, then try again. Or back up without Notes.",
+        fr = "Certaines de tes notes ont été enregistrées par un Robot plus récent et ne peuvent pas être lues ici. Mets Robot à jour, ou supprime ces notes avec Supprimer celles-ci dans Notes, puis réessaie. Ou sauvegarde sans les Notes.")
+    /** seal-people: People was chosen and can't be opened now. */
+    val peopleUnreadable = s("people_unreadable", en = "Robot couldn't open People just now. Unlock, wait a minute and try again, or back up without People.",
+        fr = "Robot n’a pas pu ouvrir tes Personnes pour l’instant. Déverrouille, attends une minute et réessaie, ou sauvegarde sans les Personnes.")
+    /** seal-people: People's file is a newer Robot's, or can't be read (its card in People offers Start over). */
+    val peopleTooNew = s("people_too_new", en = "Robot can't read your People file: a newer Robot saved it, or it is damaged. Update Robot, or use Start over in People, then try again. Or back up without People.",
+        fr = "Robot ne peut pas lire ton fichier de Personnes : un Robot plus récent l’a enregistré, ou il est endommagé. Mets Robot à jour, ou utilise Recommencer dans les Personnes, puis réessaie. Ou sauvegarde sans les Personnes.")
+    /** seal-notes: Notes was chosen and a note can't be opened now. */
+    val notesUnreadable = s("notes_unreadable", en = "Robot couldn't open part of your notes just now. Unlock, wait a minute and try again, or back up without Notes.",
+        fr = "Robot n’a pas pu ouvrir une partie de tes notes pour l’instant. Déverrouille, attends une minute et réessaie, ou sauvegarde sans les Notes.")
     /** 1.4: refused before anything is written, with the size (BackupCaps.MAX_TOTAL). */
     val tooBigToSave = s("too_big_to_save", en = "This backup would be about {size}, more than the {max} a backup can hold. Leave out videos, recordings or another part.",
         fr = "Cette sauvegarde ferait environ {size}, plus que les {max} qu’une sauvegarde peut contenir. Laisse de côté les vidéos, les enregistrements ou une autre partie.")
@@ -93,15 +123,27 @@ object BackupStrings : Strings("backup", area = "backup") {
         Plural("La clé des fichiers de Robot n’existe plus, alors {n} fichier ici ne peut pas être lu : il sera supprimé.",
             "La clé des fichiers de Robot n’existe plus, alors {n} fichiers ici ne peuvent pas être lus : ils seront supprimés.",
             "La clé des fichiers de Robot n’existe plus, alors {n} de fichiers ici ne peuvent pas être lus : ils seront supprimés."))
-    /** 1.4, Lists: this phone's lists can't be read (damaged, a newer Robot's), and a restore never writes over them. */
     /** H3: private events (the Calendar tab). */
     val calendarUnreadable = s("calendar_unreadable", en = "Robot couldn't open your private events just now. Back up without them, or unlock and try again.",
         fr = "Robot n’a pas pu ouvrir tes événements privés pour l’instant. Sauvegarde sans eux, ou déverrouille et réessaie.")
     val calendarUnreadableHere = s("calendar_unreadable_here", en = "Robot can't read the private events on this phone, so it leaves them as they are.",
         fr = "Robot ne peut pas lire les événements privés de ce téléphone : il les laisse tels quels.")
+    /** 1.4, Lists: this phone's lists can't be read (damaged, a newer Robot's), and a restore never writes over them. */
     val listsUnreadableHere = s("lists_unreadable_here", en = "Robot can't read the lists on this phone, so it leaves Lists out. {page} can start over; then restore again.",
         fr = "Robot ne peut pas lire les listes de ce téléphone : il laisse les Listes de côté. {page} permet de recommencer; restaure ensuite de nouveau.")
+    /** seal-people-fix 1: this phone's People can't be opened just now, and a restore leaves it as it is. */
+    val peopleNotNowHere = s("people_not_now_here", en = "Robot can't open People on this phone just now, so it leaves People out. Unlock, wait a minute and restore again.",
+        fr = "Robot ne peut pas ouvrir les Personnes de ce téléphone pour l’instant : il les laisse de côté. Déverrouille, attends une minute et restaure de nouveau.")
+    /** seal-people-fix 1: this phone's People is damaged or a newer Robot's, and a restore never writes over it. */
+    val peopleUnreadableHere = s("people_unreadable_here", en = "Robot can't read People on this phone: a newer Robot saved it, or it is damaged. It leaves People out. Update Robot, or use Start over in People, then restore again.",
+        fr = "Robot ne peut pas lire les Personnes de ce téléphone : un Robot plus récent les a enregistrées, ou elles sont endommagées. Il les laisse de côté. Mets Robot à jour, ou utilise Recommencer dans les Personnes, puis restaure de nouveau.")
     /** 1.4, Lists with Replace on: how many of this phone's lists go (the preview, before your tap). */
+    // fix-seal-14-e 1: People's entries the backup holds that don't read; the rest restore, these stay in the file.
+    val peopleSetAside = plural("people_set_aside", "n", Plural("{n} entry in People can't be read and won't come back. The backup still has it.",
+        "{n} entries in People can't be read and won't come back. The backup still has them."),
+        Plural("{n} entrée dans Personnes ne peut pas être lue et ne reviendra pas. La sauvegarde la garde.",
+            "{n} entrées dans Personnes ne peuvent pas être lues et ne reviendront pas. La sauvegarde les garde.",
+            "{n} d’entrées dans Personnes ne peuvent pas être lues et ne reviendront pas. La sauvegarde les garde."))
     val listsReplaced = plural("lists_replaced", "n", Plural("{n} list here will be replaced.", "{n} lists here will be replaced."),
         Plural("{n} liste ici sera remplacée.", "{n} listes ici seront remplacées.", "{n} de listes ici seront remplacées."))
     /** 1.4, Lists when their key is gone: the lists here can't be read, so a restore keeps them aside and brings the backup's. */

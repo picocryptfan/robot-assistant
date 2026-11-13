@@ -27,7 +27,6 @@ import app.heyrobot.core.car.EmergencyNumbers
 import app.heyrobot.core.car.PhoneCandidate
 import app.heyrobot.core.car.PhoneLabel
 import app.heyrobot.core.i18n.HandsFreeStrings
-import app.heyrobot.core.i18n.InfoStrings
 import app.heyrobot.core.i18n.ToolStrings
 import app.heyrobot.lock.LockSignals
 import app.heyrobot.sys.SettingsStore
@@ -104,8 +103,8 @@ object CallPlacer {
         }
         val all = candidates(ctx, to, settings)
         if (all.isEmpty()) {
-            return if (!Contacts.granted(ctx)) Prepared.Refused(ActionStatus.NEEDS_PERMISSION, ToolStrings.allowContacts())
-            else Prepared.Refused(ActionStatus.NOT_FOUND, InfoStrings.noContact("name" to to))
+            return app.heyrobot.sys.PeopleFiles.notFound(ctx, to, Contacts.granted(ctx))?.let { Prepared.Refused(ActionStatus.NOT_FOUND, it) }
+                ?: Prepared.Refused(ActionStatus.NEEDS_PERMISSION, ToolStrings.allowContacts())
         }
         val phones = all.filter { !it.xmpp }
         if (phones.isEmpty()) return Prepared.Refused(ActionStatus.FAILED, HandsFreeStrings.noXmpp())
@@ -129,11 +128,11 @@ object CallPlacer {
      */
     private fun lockDirect(ctx: Context, number: String, emergency: Boolean, settings: RobotSettings): Boolean =
         !emergency && settings.approval(ToolName.CALL) == Approval.ASK && Assistant.granted(ctx, Manifest.permission.CALL_PHONE) &&
-            PhoneLockNow.on(ctx) && !Assistant.keyguard(ctx) && PhoneLockNow.callKey(number) in PhoneLockNow.callKeys(ctx)
+            PhoneLockNow.on(ctx) && !Assistant.keyguard(ctx) && PhoneLockNow.calls(ctx)(number)
 
     /** During a phone lock, only the numbers of the People the locks let you call (checked again as the call starts); any number outside one. */
     private fun lockAllows(ctx: Context, number: String): Boolean =
-        !PhoneLockNow.on(ctx) || PhoneLockNow.callKey(number) in PhoneLockNow.callKeys(ctx)
+        !PhoneLockNow.on(ctx) || PhoneLockNow.calls(ctx)(number)
 
     /** A lock lets the phone app itself be used only when it is one of the lock's chosen apps, or in car mode your car started during your own lock, which covers nothing. */
     private fun dialerAllowed(ctx: Context): Boolean = PhoneLockNow.carOwn(ctx) || try {
@@ -160,7 +159,7 @@ object CallPlacer {
         val way = if (a.direct && !a.emergency && Assistant.granted(ctx, Manifest.permission.CALL_PHONE) && lockAllows(ctx, number)) CallWay.CALL else CallWay.DIAL
         // F126: during a lock the dialer is covered, so it isn't opened behind the cover: Robot says why there's no call.
         if (way == CallWay.DIAL && !a.emergency && PhoneLockNow.on(ctx) && !Assistant.keyguard(ctx) && !dialerAllowed(ctx)) {
-            return lockRefusal(PhoneLockNow.callKey(number) in PhoneLockNow.callKeys(ctx), Assistant.granted(ctx, Manifest.permission.CALL_PHONE), SettingsStore.load(ctx).approval(ToolName.CALL) == Approval.ASK)
+            return lockRefusal(PhoneLockNow.calls(ctx)(number), Assistant.granted(ctx, Manifest.permission.CALL_PHONE), SettingsStore.load(ctx).approval(ToolName.CALL) == Approval.ASK)
         }
         // On Android's lock screen too: its emergency dialer shows over the lock, where the dialer would ask for an unlock.
         val locked = a.emergency && PhoneLockNow.on(ctx)

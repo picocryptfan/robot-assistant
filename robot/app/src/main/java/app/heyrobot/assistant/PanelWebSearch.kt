@@ -93,6 +93,11 @@ internal class PanelWebSearch(
     suspend fun direct(replyId: String, route: WebRoute, question: String, history: List<ChatTurn>, untrusted: Boolean) {
         RLog.i("web_direct")
         val call = withContext(Dispatchers.IO) { BrowserSearchTool.directCall(port.ctx, route) } ?: RawToolCall(ToolName.WEB_SEARCH.id, mapOf("query" to route.query))
+        // Signal later (signal-later-plan.md): your own search with no validated connection is kept for when there's one.
+        if (call.name == ToolName.WEB_SEARCH.id) withContext(Dispatchers.IO) {
+            app.heyrobot.assistant.later.PanelLater.keepOffline(question, route.query, if (app.heyrobot.core.web.WebRouter.lang(question) == "fr") app.heyrobot.core.i18n.Lang.FR else app.heyrobot.core.i18n.Lang.EN, // l10n: not text (a language code)
+                untrusted, app.heyrobot.sys.Assistant.locked(port.ctx))
+        }?.let { port.sayInto(replyId, it); return port.finishReply(replyId, DoneReason.END) }
         val result = port.runDirect(replyId, call, untrusted)
         result.failure?.let { return port.failReply(replyId, it) }
         result.web?.let { return answer(replyId, question, history, it) }

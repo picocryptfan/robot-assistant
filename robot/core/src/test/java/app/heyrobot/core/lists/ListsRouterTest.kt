@@ -21,6 +21,41 @@ class ListsRouterTest {
 
     private fun add(t: String, heard: ListsHeard = ListsHeard()): ListsCommand.Add = r(t, heard) as ListsCommand.Add
 
+    // fix-skill-step-voice-lows-b: "add to <list>: items", the list first and the items after a colon (Low 7's words).
+    @Test fun addToAListThenAColonTakesTheItems() {
+        add("add to groceries: milk, eggs").let { assertEquals("milk, eggs", it.words); assertEquals(shopping, it.list) }
+        add("add to my packing list: socks").let { assertEquals("socks", it.words); assertEquals(ListRef.Named("packing"), it.list) }
+        add("add to Costco: paper towels", ListsHeard(names = listOf("Costco"))).let { assertEquals("paper towels", it.words); assertEquals(ListRef.Named("Costco"), it.list) }
+        add("ajoute à épicerie : lait, œufs").let { assertEquals("lait, œufs", it.words); assertEquals(shopping, it.list) }
+        add("ajoute à ma liste de bagages : chaussettes").let { assertEquals("chaussettes", it.words); assertEquals(ListRef.Named("bagages"), it.list) }
+        add("ajoute à Chalet: bois", ListsHeard(names = listOf("Chalet"))).let { assertEquals("bois", it.words); assertEquals(ListRef.Named("Chalet"), it.list) }
+        // No list by that name, nothing after the colon, or no colon: not this form.
+        assertNull(r("add to the skill groceries: milk"))
+        assertNull(r("add to Costco: paper towels"))
+        assertNull(r("add to groceries:"))
+        assertNull(r("add to groceries milk"))
+    }
+
+    // Review Low 4: speech gives a comma or no punctuation at all.
+    @Test fun addToAListTakesACommaOrNoPunctuation() {
+        add("add to groceries, milk, eggs").let { assertEquals("milk, eggs", it.words); assertEquals(shopping, it.list) }
+        add("ajoute à épicerie, lait").let { assertEquals("lait", it.words); assertEquals(shopping, it.list) }
+        val costco = ListsHeard(names = listOf("Costco", "Costco run"))
+        add("add to costco paper towels", costco).let { assertEquals("paper towels", it.words); assertEquals(ListRef.Named("costco"), it.list) }
+        add("add to costco milk, eggs", costco).let { assertEquals("milk, eggs", it.words); assertEquals(ListRef.Named("costco"), it.list) }
+        add("add to costco run eggs", costco).let { assertEquals("eggs", it.words); assertEquals(ListRef.Named("costco run"), it.list) }
+        add("ajoute à Costco des œufs", costco).let { assertEquals("des œufs", it.words); assertEquals(ListRef.Named("Costco"), it.list) }
+    }
+
+    // Review Low 3: your own list of a name beats Shopping's or To-do's built-in name.
+    @Test fun yourListOfThatNameBeatsTheBuiltInOne() {
+        val mine = ListsHeard(names = listOf("Groceries"))
+        assertEquals(ListRef.Named("groceries"), add("add to groceries: milk", mine).list)
+        assertEquals(ListRef.Named("épicerie"), add("ajoute à épicerie : lait", ListsHeard(names = listOf("Épicerie"))).list)
+        // None of yours called that: Shopping, as before.
+        assertEquals(shopping, add("add to groceries: milk").list)
+    }
+
     @Test fun addsInEnglish() {
         add("add oat milk to the shopping list").let { assertEquals("oat milk", it.words); assertEquals(shopping, it.list); assertEquals("shopping list", it.said); assertEquals(Lang.EN, it.lang) }
         add("put eggs on my grocery list").let { assertEquals("eggs", it.words); assertEquals(shopping, it.list) }

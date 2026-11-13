@@ -276,4 +276,9 @@ class FeedbackReportTest {
         assertTrue(p.fresh(t + 60_000) && !p.fresh(t + 121_000) && !p.fresh(t - 1))
         assertNull(FeedbackPrefill.fromJson("{\"kind\":\"NOPE\",\"text\":\"x\",\"at\":1}"))
     }
+
+    @Test fun theCardsGitHubLinkHasTheTitleOnly() {
+        val url = FeedbackReport.cardIssue(GitHubRepo("picocryptfan", "robot-assistant"), "RFB-ABCD2345")
+        assertEquals("https://github.com/picocryptfan/robot-assistant/issues/new?title=Bug%20report%3A%20RFB-ABCD2345&template=bug_report.yml&labels=bug", url)
+    }
 }

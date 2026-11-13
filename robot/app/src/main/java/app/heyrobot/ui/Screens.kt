@@ -230,15 +230,36 @@ private fun ConversationRow(c: StoredConversation, onClick: () -> Unit) {
 }
 
 @Composable
-fun HistoryScreen(list: List<StoredConversation>, a: AppActions, modifier: Modifier, onBack: (() -> Unit)? = null) {
+fun HistoryScreen(list: List<StoredConversation>, a: AppActions, modifier: Modifier, loading: Boolean = false, onBack: (() -> Unit)? = null) {
     var confirmAll by remember { mutableStateOf(false) }
+    var confirmAside by remember { mutableStateOf(false) }
+    // seal-history: conversations kept aside because Android removed their key (sys/HistoryVault), counted again with each list.
+    val ctx = LocalContext.current
+    // seal-history-fix-b: with a newer Robot's (Delete these reaches them) and those not openable now, so a backup's refusal has its why here.
+    val opened by androidx.compose.runtime.produceState(app.heyrobot.sys.HistoryRead(emptyList()), list) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { app.heyrobot.sys.ConversationStore.read(ctx) }
+    }
+    val aside = opened.aside
+    val newer = opened.tooNew
+    val notNow = opened.notNow
     Column(modifier.fillMaxSize().padding(horizontal = 20.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             onBack?.let { IconButton(onClick = it) { Icon(RIcons.Back, stringResource(R.string.today_calendar_back)) } }
             Box(Modifier.weight(1f)) { ScreenTitle(UiStrings.history().str(), stringResource(R.string.home_saved_here)) }
-            if (list.isNotEmpty()) TextButton(onClick = { confirmAll = true }) { Text(stringResource(R.string.home_delete_all)) }
+            if (list.isNotEmpty() || aside + newer + notNow > 0) TextButton(onClick = { confirmAll = true }) { Text(stringResource(R.string.home_delete_all)) }
         }
-        if (list.isEmpty()) {
+        if (aside + newer + notNow > 0) Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+            Column(Modifier.padding(16.dp)) {
+                if (aside > 0) {
+                    Text(androidx.compose.ui.res.pluralStringResource(R.plurals.home_history_aside, aside, aside), style = MaterialTheme.typography.titleSmall)
+                    Text(stringResource(R.string.home_history_aside_detail), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (newer > 0) Text(androidx.compose.ui.res.pluralStringResource(R.plurals.home_history_too_new, newer, newer), style = MaterialTheme.typography.bodyMedium)
+                if (notNow > 0) Text(androidx.compose.ui.res.pluralStringResource(R.plurals.home_history_not_now, notNow, notNow), style = MaterialTheme.typography.bodyMedium)
+                if (aside + newer > 0) TextButton(onClick = { confirmAside = true }, modifier = Modifier.align(Alignment.End)) { Text(stringResource(R.string.home_delete_these)) }
+            }
+        }
+        if (list.isEmpty() && !loading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(RIcons.History, null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -256,6 +277,16 @@ fun HistoryScreen(list: List<StoredConversation>, a: AppActions, modifier: Modif
                 }
             }
         }
+    }
+    if (confirmAside) {
+        AlertDialog(
+            onDismissRequest = { confirmAside = false },
+            title = { Text(stringResource(R.string.home_delete_aside_title)) },
+            // seal-history-fix-c 5: a newer Robot's conversations go too (an update would open them), and the confirm says so.
+            text = { Text(if (newer > 0) androidx.compose.ui.res.pluralStringResource(R.plurals.home_delete_aside_detail_newer, newer, newer) else stringResource(R.string.home_delete_aside_detail)) },
+            confirmButton = { TextButton(onClick = { confirmAside = false; a.deleteUnopenable() }) { Text(stringResource(R.string.home_delete_these)) } },
+            dismissButton = { TextButton(onClick = { confirmAside = false }) { Text(stringResource(R.string.home_cancel)) } },
+        )
     }
     if (confirmAll) {
         AlertDialog(
@@ -312,7 +343,7 @@ fun ConversationScreen(c: StoredConversation?, a: AppActions, snackbar: Snackbar
                     actions = t.actions.mapIndexed { i, x -> ActionView("$i", x.tool, x.summary, x.status, x.detail) },
                     stopped = t.stopped, error = t.error, helper = t.fromHelper, readBack = t.readBack, by = t.by, home = t.home,
                     footer = if (user) emptyList() else replyFooterText(t.sources, t.costMicros.takeIf { showCost && it > 0 }?.let { CostText.line(it / 1e6) }, t.by).map { it.render(langs) }),
-                    TurnActions.None)
+                    if (user) TurnActions.None else TurnActions(report = { id -> a.reportTurn(c.turns, id, c.id) }))
             }
         }
     }

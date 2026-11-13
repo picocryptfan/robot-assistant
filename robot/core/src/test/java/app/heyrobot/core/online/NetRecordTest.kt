@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.online
 
+import app.heyrobot.core.feedback.FeedbackKind
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -106,7 +107,10 @@ class NetRecordTest {
     @Test fun codesNeverChange() {
         // The record outlives this version: a renamed code would make 30 days of rows unreadable.
         assertEquals(listOf("weather", "weather_place", "nearest", "search", "encyclopedia", "page", "helper", "helper_test", "model", "voice", "translation",
-            "update_check", "update_download", "termux_check", "connection", "link_direct", "link_push", "link_tor", "feed"), NetPurpose.entries.map { it.code })
+            "update_check", "update_download", "termux_check", "connection", "link_direct", "link_push", "link_tor", "feed",
+            "report_bug", "report_idea", "report_other",
+            // Wikipedia P3, at the end, the old codes unchanged.
+            "wikipedia"), NetPurpose.entries.map { it.code })
         assertEquals(listOf("asked", "routine", "tap", "switch", "skill"), NetCause.entries.map { it.code })
         assertEquals(listOf("done", "failed", "stopped", "started"), NetResult.entries.map { it.code })
     }
@@ -154,5 +158,16 @@ class NetRecordTest {
         assertEquals(setOf(NetCause.SWITCH), got.map { it.cause }.toSet())
         // They read back: a marker added since is in the codec's list.
         for (e in got) assertEquals(e, NetRecord.decode(NetRecord.encode(e)))
+    }
+
+    @Test fun aReportHandedToAnotherAppIsARowOfItsOwnNeverRobotsTraffic() {
+        capture()
+        NetRecord.handed(FeedbackKind.IDEA, 12_345)
+        assertEquals(listOf(NetEntry(1_761_220_800_000, "voice", NetPurpose.REPORT_IDEA, NetHost.ANOTHER_APP, NetCause.TAP, 12_345, 0, NetResult.DONE)), got)
+        assertEquals(got[0], NetRecord.decode(NetRecord.encode(got[0])))
+        assertEquals(setOf(NetPurpose.REPORT_BUG, NetPurpose.REPORT_IDEA, NetPurpose.REPORT_OTHER), FeedbackKind.entries.map { NetPurpose.report(it) }.toSet())
+        assertTrue(FeedbackKind.entries.all { NetPurpose.report(it).group == NetGroup.REPORTS })
+        // Not Robot's own traffic: left out of the comparison with Android's count.
+        assertEquals(0L, OnlineSummary.compare(50_000, got)!!.robot)
     }
 }

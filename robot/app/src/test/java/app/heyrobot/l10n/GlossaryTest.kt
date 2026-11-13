@@ -25,6 +25,10 @@ class GlossaryTest {
             Catalogs.all.flatMap { c -> c.all.flatMap { m -> listOfNotNull(m.fr, m.voiceFr).flatMap { it.texts }.map { m.id to it } } }
     }
 
+    private val RENDEZ_VOUS = Regex("""(?i)(?<!\p{L})rendez-vous(?!\p{L})""")
+    private val DETERMINER = Regex("""(?i)(?:^|[^\p{L}])(?:ton|ta|tes|le|les|un|une|des|du|au|aux|ce|cet|ces|mon|ma|mes|son|sa|ses|votre|vos|notre|nos|leur|leurs|de|prochain|prochains|nouveau|nouveaux|chaque|quel|quels|tout|tous|en|pour|sans|par|avec|entre|ou|et)\s+$""")
+    private val LABEL = Regex("""^\s*(?:$|[:.,;!?)»·\n]|(?:à|le)\s*\d)""")
+
     private fun word(w: String, ignoreCase: Boolean): Regex =
         Pattern.compile("(?<![\\p{L}\\p{N}])" + Pattern.quote(w) + "(?![\\p{L}\\p{N}])",
             if (ignoreCase) Pattern.CASE_INSENSITIVE or Pattern.UNICODE_CASE else 0).toRegex()
@@ -39,11 +43,38 @@ class GlossaryTest {
         }
     }
 
+    private val rules by lazy {
+        L10nFiles.glossary.filter { it.check == "word" || it.check == "case" }.flatMap { t -> t.never.map { v -> t to word(v, t.check == "word") } }
+    }
+
+    /**
+     * The text the rules read: brands, a person's Robot and {placeholders} out; « rendez-vous » the noun is a word of its own
+     * (not « vous »): after a determiner, or a label (then the end, a mark, or « à »/« le » and a number). Low E: anything
+     * else reads as the vous imperative (« Rendez-vous à la gare »), which the « you » rule catches.
+     */
+    private fun checked(text: String): String =
+        L10nFiles.withoutBrands(text.replace('’', '\''), keep = setOf("Robot")).replace(PERSONS_ROBOT, "")
+            .replace(Regex("""\{[a-z_]+\}"""), "").let { t -> RENDEZ_VOUS.replace(t) { m ->
+                val noun = DETERMINER.containsMatchIn(t.substring(0, m.range.first)) || LABEL.containsMatchIn(t.substring(m.range.last + 1))
+                if (noun) "rendezvous" else m.value
+            } }
+
+    /** The two exceptions can't hide the words they sit next to. */
+    @Test fun placeholdersAndRendezVousStillLetVousAndAppFail() {
+        fun hits(s: String) = rules.filter { (_, rx) -> rx.containsMatchIn(checked(s)) }.map { it.first.english }
+        assertEquals(emptyList<String>(), hits("Ton rendez-vous dans {app}. Rendez-vous à 14 h."))
+        assertEquals(listOf("you"), hits("Ton rendez-vous, et vous ?"))
+        assertEquals(listOf("app"), hits("Ouvre l'app {app}."))
+        // Low E: the noun after a determiner or as a label passes; « Rendez-vous » as a vous imperative fails.
+        assertEquals(emptyList<String>(), hits("Ton prochain rendez-vous est demain. Rendez-vous : 14 h. Rendez-vous"))
+        assertEquals(listOf("you"), hits("Rendez-vous à la gare."))
+        assertEquals(listOf("you"), hits("Ensuite, rendez-vous dans Réglages."))
+    }
+
     @Test fun noForbiddenVariant() {
-        val rules = L10nFiles.glossary.filter { it.check == "word" || it.check == "case" }.flatMap { t -> t.never.map { v -> t to word(v, t.check == "word") } }
         val problems = mutableListOf<String>()
         for ((where, text) in french) {
-            val t = L10nFiles.withoutBrands(text.replace('’', '\''), keep = setOf("Robot")).replace(PERSONS_ROBOT, "")
+            val t = checked(text)
             for ((term, rx) in rules) rx.find(t)?.let { problems += "$where: « ${it.value} » (${term.english}: « ${term.french} »)" }
         }
         assertEquals(problems.joinToString("\n"), 0, problems.size)

@@ -38,8 +38,10 @@ class CatalogsTest {
         }
         // Every area with words of its own in core has its catalog (Home and ADB fixes have resources only; 1.4's Files has
         // its own since F5, for what Robot says when a file comes in). Today (H2) has resources only: its day line's words are
-        // Brief's.
-        assertEquals(areas.toSet() - setOf("home", "adb", "today"), Catalogs.all.map { it.area }.toSet())
+        // Brief's. Read it to me has resources only too: what it says is Hands-free's (HandsFreeStrings' read_*).
+        // Feedback (the report card) has resources only: its report_ words are the app's; the developer-facing
+        // FeedbackStrings stay in Updates.
+        assertEquals(areas.toSet() - setOf("home", "adb", "today", "feedback", "read"), Catalogs.all.map { it.area }.toSet())
     }
 
     @Test fun idsAreUniqueAndPrefixed() {

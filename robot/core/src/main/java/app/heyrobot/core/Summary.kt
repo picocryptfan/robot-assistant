@@ -186,8 +186,7 @@ object SummaryPlanner {
     }
 
     /** A reduce call over [notes] (each already labelled, "Notes on part 3 (14:20–14:31):\n…"). */
-    fun reduceCall(notes: List<String>, lang: String, maxTokens: Int = ContextWindow.MAX_TOKENS): SummaryCall {
-        val system = Prompt.summaryReduce(lang)
+    fun reduceCall(notes: List<String>, lang: String, maxTokens: Int = ContextWindow.MAX_TOKENS, system: String = Prompt.summaryReduce(lang)): SummaryCall {
         val each = noteRoom(notes.size, budget(system, maxTokens))
         return SummaryCall(system, notes.joinToString("\n\n") { fitNote(it, each) }, REDUCE_TOKENS)
     }
@@ -550,7 +549,7 @@ class ConsentCard private constructor(
         val TOO_LONG_FOR_API: String get() = tooLongForApi.en()
 
         /** A request of [blocks] fits a helper's API that takes at most [maxTokens] in (by the card's estimate, HelperCost). */
-        fun apiFits(blocks: List<HelperBlock.Text>, maxTokens: Int): Boolean = HelperCost.tokens(blocks.sumOf { it.text.length }) <= maxTokens
+        fun apiFits(blocks: List<HelperBlock.Text>, maxTokens: Int): Boolean = HelperCost.tokens(HelperCost.charsOf(blocks)) <= maxTokens /* fix-batch-15-lows e */
     }
 }
 
@@ -625,6 +624,20 @@ object HelperGate {
 
 /** The estimated price on the card: characters ÷ 3.5 in, plus room for thinking and the summary out. */
 object HelperCost {
+    /**
+     * fix-batch-15 L5 (review-batch-15): [text]'s length as the 3.5-a-token count reads it: a Chinese, Japanese or Korean
+     * character is about a token, so it counts 3.5 (the card's estimate was up to about 3x low for such a page).
+     */
+    fun charsOf(text: String): Int = text.length + text.count { wide(it) } * 5 / 2
+
+    /** fix-batch-15-lows e: what a summary sends, by the same count, for its card's price and the API's limit alike. */
+    fun charsOf(blocks: List<HelperBlock.Text>): Int = blocks.sumOf { charsOf(it.text) }
+
+    private fun wide(c: Char): Boolean = when (Character.UnicodeScript.of(c.code)) {
+        Character.UnicodeScript.HAN, Character.UnicodeScript.HIRAGANA, Character.UnicodeScript.KATAKANA, Character.UnicodeScript.HANGUL -> true
+        else -> false
+    }
+
     const val CHARS_PER_TOKEN = 3.5
     const val OUTPUT_TOKENS = 2_500L
 

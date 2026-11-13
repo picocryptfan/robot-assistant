@@ -168,7 +168,7 @@ object LinkRuntime {
         // L-bridges: lyrebird beside Tor, and Settings › Robot to Robot › Tor bridges read at each start of Tor.
         val tor = TorRuntime(File(app.applicationInfo.nativeLibraryDir, "libtor.so"), TorPaths(File(v.dir, "tor")), AndroidUnixSockets(), Process.myPid(), // l10n: not text (file names)
             lyrebird = File(app.applicationInfo.nativeLibraryDir, "liblyrebird.so"), plan = { TorPlan.of(LinkSettingsStore.current(app)) }, // l10n: not text (a file name)
-            onReady = { r -> log.add(LinkEvent.TOR, 2, r.code) },
+            onReady = { r -> log.add(LinkEvent.TOR, 2, r.code) }, onFailed = { p -> log.add(LinkEvent.TOR, 5, p.code) },
             hours = File(v.dir, "tor_hours.json").let { f -> TorHours({ readOrNull(f) }, { writeAtomic(f, it) }) }) // l10n: not text (a file name)
         val poster = HttpPushPoster.platform { tor }
         val decoder = LinkParseLink(app).also { parse = it }

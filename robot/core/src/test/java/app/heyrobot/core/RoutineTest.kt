@@ -13,6 +13,15 @@ import java.time.LocalDate
 import java.time.LocalTime
 
 class RoutineTest {
+    /** review-auto-open 7: routines.json's `opens` is checked per entry with skills.json's package pattern; a bad one drops only itself. */
+    @Test fun aBadOpensEntryDropsOnlyItself() {
+        val o = RoutineCodec.toJson(routine().copy(opens = setOf("app.organicmaps")))
+        o.put("opens", JSONArray().put("app.organicmaps").put("not a package").put(7).put("../x").put("net.osmand"))
+        assertEquals(setOf("app.organicmaps", "net.osmand"), RoutineCodec.fromJson(o)?.opens)
+        o.put("opens", JSONArray().put("bad"))
+        assertEquals(emptySet<String>(), RoutineCodec.fromJson(o)?.opens)
+    }
+
     private val weekdays = setOf(DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY)
 
     private fun routine(

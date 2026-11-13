@@ -88,14 +88,14 @@ class TodayWidgetTest {
         keyguard.setKeyguardLocked(false)
 
         // Today off with the summary on: nothing on the lock screen either.
-        home { it.copy(today = false, lockSummary = true) }
+        home { it.copy(home = app.heyrobot.core.HomeChoice.START, lockSummary = true) }
         TodayGlances.redrawNow(ctx)
         assertNull(notice())
     }
 
     /** today-fix-c 7 (review finding 7): with Today off and drawn so, a screen event does nothing until the settings change. */
     @Test fun todayOffScreenEventsDoNothing() {
-        home { it.copy(today = false) }
+        home { it.copy(home = app.heyrobot.core.HomeChoice.START) }
         TodayGlances.redrawNow(ctx)
         assertFalse(TodayGlances.screen(ctx))
         home { it.turnedOn() }
@@ -124,7 +124,7 @@ class TodayWidgetTest {
     /** today-fix-c 12 (review finding 12): the stored forecast goes when the weather line or Today is turned off. */
     @Test fun theForecastGoesWithTheWeatherLine() {
         val f = app.heyrobot.sys.TodayWeatherStore.file(ctx)
-        for (off in listOf<(HomeSettings) -> HomeSettings>({ it.copy(weather = false) }, { it.copy(today = false) })) {
+        for (off in listOf<(HomeSettings) -> HomeSettings>({ it.copy(weather = false) }, { it.copy(home = app.heyrobot.core.HomeChoice.START) })) {
             home { it.turnedOn().copy(weather = true) }
             f.parentFile?.mkdirs(); f.writeText("{}")
             home { it.copy(weather = true) }

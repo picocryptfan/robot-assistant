@@ -108,13 +108,6 @@ class SentenceSplitter(private val maxChars: Int = 220, private val firstMinWord
         return null
     }
 
-    private fun abbreviation(b: CharSequence, dot: Int): Boolean {
-        var k = dot - 1
-        while (k >= 0 && b[k].isLetter()) k--
-        val word = b.subSequence(k + 1, dot).toString().lowercase()
-        return word in ABBREVIATIONS || (word.length == 1 && word[0].isLetter() && dot >= 2 && b[dot - 2] == '.')
-    }
-
     /** "1. " at the start of a line is a list marker, not the end of a sentence. */
     private fun isNumberedListMarker(b: CharSequence, dot: Int): Boolean {
         var k = dot - 1
@@ -123,7 +116,17 @@ class SentenceSplitter(private val maxChars: Int = 220, private val firstMinWord
     }
 
     companion object {
-        private val ABBREVIATIONS = setOf("e.g", "i.e", "mr", "mrs", "ms", "dr", "st", "vs", "etc", "approx", "no", "min", "sec")
+        // L5 (review-wikipedia-l4): French ones too ("M. Riel", "oct. 1844"), so they don't end a spoken piece.
+        private val ABBREVIATIONS = setOf("e.g", "i.e", "mr", "mrs", "ms", "dr", "st", "vs", "etc", "approx", "no", "min", "sec",
+            "m", "mm", "mme", "mlle", "ste", "env", "janv", "févr", "fév", "avr", "juil", "juill", "sept", "oct", "nov", "déc") // l10n: not text (abbreviations matched before a dot, never said)
+
+        /** The '.' at [dot] in [b] ends an abbreviation ("St.", "e.g.", "M."), not a sentence (WikiSpeech's rule too). */
+        internal fun abbreviation(b: CharSequence, dot: Int): Boolean {
+            var k = dot - 1
+            while (k >= 0 && b[k].isLetter()) k--
+            val word = b.subSequence(k + 1, dot).toString().lowercase()
+            return word in ABBREVIATIONS || (word.length == 1 && word[0].isLetter() && dot >= 2 && b[dot - 2] == '.')
+        }
     }
 }
 

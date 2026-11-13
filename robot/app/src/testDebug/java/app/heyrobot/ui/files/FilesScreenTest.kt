@@ -131,7 +131,8 @@ class FilesScreenTest {
         var settings = FilesSettings()
         val dir = File(tmp.root, "files")
         val vault = FilesVault(dir, KeystoreFileKeys(keystore), "main", space = { 100L shl 30 }, locked = { locked })
-        val events = ArrayList<String>()
+        // The reader's thread adds while the test's waitUntil reads (a ConcurrentModificationException at :1116, 9 Nov 2026).
+        val events = java.util.concurrent.CopyOnWriteArrayList<String>()
         val launched = ArrayList<Intent>()
         var folderList = emptyList<app.heyrobot.core.link.FolderRec>()
         var folderAnswer = app.heyrobot.core.files.PeerSent.OFFERED
@@ -891,6 +892,7 @@ class FilesScreenTest {
         assertEquals(Intent.FLAG_GRANT_READ_URI_PERMISSION, send.flags and (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
             Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or Intent.FLAG_GRANT_PREFIX_URI_PERMISSION))
         // Open with another app asks first, then hands a copy and remembers that you opened it.
+        rule.scrollToText("Open with another app")
         rule.onRow("Open with another app").performClick()
         rule.inDialog("This gives the app a copy of the file. Robot deletes its copy when you come back, but the app may keep one.").assertExists()
         rule.inDialog("Cancel").performClick()

@@ -7,14 +7,21 @@ import kotlinx.coroutines.channels.Channel
 import app.heyrobot.core.i18n.Lang
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.Timeout
 
 class TurnTest {
+    /** auto-open-n: each test gets a minute, then fails with the stuck thread's stack. The waits here are under withTimeout,
+     *  but its timer runs on runBlocking's one thread, so code that spins without suspending would block it for good. */
+    @get:Rule val timeLimit: Timeout = Timeout.builder().withTimeout(60, java.util.concurrent.TimeUnit.SECONDS).withLookingForStuckThread(true).build()
+
     private class FakeModel(private val first: ModelOutcome, private val next: (Int) -> ModelOutcome = { ModelOutcome.Done(DoneReason.END) }) : TurnModel {
         val answers = mutableListOf<List<Pair<String, Map<String, Any?>>>>()
         var closed = 0
@@ -32,6 +39,11 @@ class TurnTest {
 
     private class FakeActions(var settings0: RobotSettings = RobotSettings()) : TurnActions {
         var lockedNow = false
+        var named = false
+        override val openNamed get() = named
+        var firstOpen = false
+        var askedFirst = 0
+        override fun firstOpenWithoutCard(): Boolean { askedFirst++; return firstOpen.also { firstOpen = false } }
         val ran = mutableListOf<Action>()
         val prepared = mutableListOf<Action>()
         var prepare: (Action) -> Prepared = { Prepared.Ready(it) }
@@ -268,10 +280,146 @@ class TurnTest {
 
     @Test fun anAppYouNamedStillJustOpens() = runBlocking {
         val actions = FakeActions(justOpen)
+        actions.named = true
         val view = FakeView()
         heardRunner("Open Signal", FakeModel(ModelOutcome.Calls(listOf(call("open_app", "name" to "Signal")))), actions, view, Confirmations()).run()
         assertEquals(listOf<Action>(Action.OpenApp("Signal")), actions.ran)
         assertEquals(listOf(ActionStatus.DONE), view.statuses())
+    }
+
+    private val signal = Action.OpenApp("Signal", "org.thoughtcrime.securesms/.Main")
+    private val bitwarden = Action.OpenApp("Bitwarden", "com.x8bit.bitwarden/.Main")
+    private fun named(said: String, open: Action.OpenApp, untrusted: Boolean = false, on: Boolean = true, why: Set<AskWhy> = emptySet(),
+        locked: Boolean = false, opens: Set<String> = emptySet(), first: Boolean = false, level: Approval = Approval.AUTO): Pair<FakeActions, FakeView> = runBlocking {
+        val actions = FakeActions(justOpen.copy(approvals = justOpen.approvals + (ToolName.OPEN_APP to level), lockedTools = justOpen.lockedTools + ToolName.OPEN_APP))
+        actions.firstOpen = first
+        actions.named = on
+        actions.lockedNow = locked
+        actions.prepare = { Prepared.Ready(open, why = why) }
+        val view = FakeView()
+        val conf = Confirmations()
+        val turn = async {
+            TurnRunner(FakeModel(ModelOutcome.Calls(listOf(call("open_app", "name" to open.name)))), actions, view, conf, untrusted,
+                asked = ToolRouter.asked(said), newId = { "n${++ids}" }, heard = TurnWords.of(said, java.time.ZonedDateTime.now(), app.heyrobot.core.i18n.Lang.EN),
+                opens = opens).run()
+        }
+        val id = withTimeout(5_000) { select<String?> { view.pending.onReceive { it }; turn.onAwait { null } } }
+        if (id != null) { conf.answer(id, false); turn.await() }
+        actions to view
+    }
+
+    /** review-auto-open-c M1: the switch off, no app opens without a card, an asked "open Signal" at Just do it included
+     *  (Settings, plan §2, the CHANGELOG and the one-time line say so); Ask first is a card either way. */
+    @Test fun theSwitchOffGivesEveryOpenItsCard() {
+        val rows = buildList {
+            for (level in listOf(Approval.AUTO, Approval.ASK)) for (on in listOf(true, false)) for (said in listOf("open Signal", "what's new"))
+                add("$level on=$on '$said': " + if (named(said, signal, on = on, level = level).first.ran.isEmpty()) "card" else "open")
+        }
+        assertEquals(listOf("AUTO on=true 'open Signal': open", "AUTO on=true 'what's new': card", "AUTO on=false 'open Signal': card",
+            "AUTO on=false 'what's new': card", "ASK on=true 'open Signal': card", "ASK on=true 'what's new': card",
+            "ASK on=false 'open Signal': card", "ASK on=false 'what's new': card"), rows)
+    }
+
+    /** auto-open-g: the switch off means no app opens without a card, a save card's tick included; review-auto-open 2. */
+    @Test fun theSwitchOffStopsTicksAndAOneWordGuessKeepsItsCard() {
+        val ticked = setOf("org.thoughtcrime.securesms")
+        assertEquals(listOf<Action>(signal), named("what's new", signal, opens = ticked).first.ran)
+        assertTrue(named("what's new", signal, on = false, opens = ticked).first.ran.isEmpty())
+        val calendar = Action.OpenApp("Calendar", "com.example.calendar/.Main")
+        assertTrue(named("what's on my calendar?", calendar).first.ran.isEmpty())
+        assertEquals(listOf<Action>(calendar), named("open calendar", calendar).first.ran)
+    }
+
+    /** auto-open-l: a skill whose save card ticked Signal, run as the panel runs it (PanelController's ports() hands SkillRun
+     *  PanelActions, whose openNamed is the Actions switch; FakeActions.named here). Whether it ran, and whether a card showed. */
+    private fun tickedSkill(on: Boolean, level: Approval = Approval.AUTO, named: Boolean = true,
+        ticked: Set<String> = setOf("org.thoughtcrime.securesms"), fromContent: Boolean = false): Pair<List<Action>, Boolean> = runBlocking {
+        val skill = app.heyrobot.core.skills.SkillDraft("s1", "chat", Lang.EN,
+            listOf(app.heyrobot.core.skills.SkillStep.of(app.heyrobot.core.skills.StepKind.OPEN_APP, mapOf("name" to "Signal"))),
+            listOf(app.heyrobot.core.skills.Slot(0, "name", app.heyrobot.core.skills.ParamType.APP, "Signal")),
+            app.heyrobot.core.skills.SkillMade.VOICE, fromContent, 1L).copy(opens = ticked).skill().copy(opens = ticked)
+        val actions = FakeActions(RobotSettings().let { it.copy(approvals = it.approvals + (ToolName.OPEN_APP to level)) })
+        actions.named = on
+        actions.prepare = { Prepared.Ready(signal) }
+        val view = FakeView()
+        val conf = Confirmations()
+        val run = async {
+            app.heyrobot.core.skills.SkillRun(skill, emptyMap(), named, actions, view, conf, false, app.heyrobot.core.messages.MessageTaint.NONE,
+                app.heyrobot.core.i18n.Langs.EN, { "k${++ids}" }, true, {}, opens = skill.opens).run()
+        }
+        val id = withTimeout(5_000) { select<String?> { view.pending.onReceive { it }; run.onAwait { null } } }
+        if (id != null) { conf.answer(id, false); withTimeout(5_000) { run.await() } }
+        actions.ran.toList() to (id != null)
+    }
+
+    /** auto-open-l: Open apps at Ask first, a ticked skill's app takes its card, the switch on or off; on and ticked, it opens. */
+    @Test fun aSkillsTickedAppOpensButAskFirstKeepsItsCard() {
+        assertEquals(listOf<Action>(signal) to false, tickedSkill(on = true))
+        assertEquals(emptyList<Action>() to true, tickedSkill(on = true, level = Approval.ASK))
+        assertEquals(emptyList<Action>() to true, tickedSkill(on = false, level = Approval.ASK))
+        assertEquals(emptyList<Action>() to true, tickedSkill(on = true, level = Approval.ASK, named = false))
+    }
+
+    /** auto-open-m: a skill's open step skips its card only for the app you ticked, the switch on, Open apps at Just do it, and
+     *  a skill not made from content (auto-open-plan D and E); every other cell is a card, as a routine's open step is. */
+    @Test fun aSkillOpensWithNoCardOnlyWhenTickedSwitchOnAndJustDoIt() {
+        fun cell(r: Pair<List<Action>, Boolean>) = when { r.second && r.first.isEmpty() -> "card"; !r.second && r.first.isNotEmpty() -> "open"; else -> "?" }
+        val rows = buildList {
+            for (level in listOf(Approval.AUTO, Approval.ASK)) for (tick in listOf(true, false)) for (on in listOf(true, false))
+                add("$level ticked=$tick on=$on: " + cell(tickedSkill(on = on, level = level, ticked = if (tick) setOf("org.thoughtcrime.securesms") else emptySet())))
+            add("AUTO from content ticked on: " + cell(tickedSkill(on = true, fromContent = true)))
+        }
+        println(rows.joinToString("\n"))
+        assertEquals(listOf("AUTO ticked=true on=true: open", "AUTO ticked=true on=false: card", "AUTO ticked=false on=true: card",
+            "AUTO ticked=false on=false: card", "ASK ticked=true on=true: card", "ASK ticked=true on=false: card",
+            "ASK ticked=false on=true: card", "ASK ticked=false on=false: card", "AUTO from content ticked on: card"), rows)
+    }
+
+    /** review-auto-open-b L4: a question that names a two-word app keeps its card; "can you open" it doesn't. */
+    @Test fun aQuestionNamingAnAppKeepsItsCardWhateverTheNamesLength() {
+        val calendar = Action.OpenApp("Google Calendar", "com.google.android.calendar/.Main")
+        assertTrue(named("what's on my Google Calendar?", calendar).first.ran.isEmpty())
+        assertEquals(listOf<Action>(calendar), named("can you open Google Calendar?", calendar).first.ran)
+    }
+
+    /** review-auto-open 6: the first app opened with no card says, once, where that is turned off; an open after a card never asks. */
+    @Test fun theFirstOpenWithoutACardSaysWhereToTurnItOff() {
+        val (a, v) = named("pull up Signal", signal, first = true)
+        assertEquals(listOf<Action>(signal), a.ran)
+        val tip = v.cards.values.last().detail.orEmpty()
+        assertTrue(tip, "Actions" in tip && "card" in tip)
+        assertFalse(named("pull up Signal", signal).second.cards.values.last().detail.orEmpty().contains("Actions"))
+        assertEquals(0, named("pull up Signal", signal, on = false, first = true).first.askedFirst)
+    }
+
+    /** review-auto-open-b L2: "switch to" inside a question keeps the card; at the start of your words it opens. */
+    @Test fun aPhraseInsideAQuestionKeepsItsCard() {
+        assertTrue(named("should I switch to Signal?", signal).first.ran.isEmpty())
+        assertEquals(listOf<Action>(signal), named("please switch to Signal", signal).first.ran)
+    }
+
+    /** review-auto-open-c L2: "can you pull up" and "could you bring up" open like "can you open"; "what did you pull up?" asks. */
+    @Test fun canYouPullUpOpensLikeCanYouOpen() {
+        assertEquals(listOf<Action>(signal), named("can you pull up Signal", signal).first.ran)
+        assertEquals(listOf<Action>(signal), named("could you bring up Signal?", signal).first.ran)
+        assertTrue(named("what did you pull up?", signal).first.ran.isEmpty())
+    }
+
+    /** auto-open-plan §2, A and B: an app in your words opens without a card, unsaid ("pull up") or after a read. */
+    @Test fun anAppYouNamedOpensWithoutTheCardWhenTheSettingIsOn() {
+        assertEquals(listOf<Action>(signal), named("pull up Signal", signal).first.ran)
+        assertEquals(listOf<Action>(signal), named("now open Signal", signal, untrusted = true).first.ran)
+        // Off, as before: the unsaid card, and content's card.
+        assertTrue(named("pull up Signal", signal, on = false).first.ran.isEmpty())
+        assertTrue(named("now open Signal", signal, untrusted = true, on = false).first.ran.isEmpty())
+    }
+
+    /** auto-open-plan §2: a page naming Bitwarden asks, a loose or picked match asks, a locked phone opens nothing. */
+    @Test fun anAppRobotReadOrGuessedStillAsks() {
+        assertTrue(named("read my note", bitwarden, untrusted = true).first.ran.isEmpty())
+        assertTrue(named("open warden", bitwarden, why = setOf(AskWhy.WHO)).first.ran.isEmpty())
+        assertTrue(named("open signal", signal, why = setOf(AskWhy.PICK)).first.ran.isEmpty())
+        assertTrue(named("pull up Signal", signal, locked = true).first.ran.isEmpty())
     }
 
     @Test fun anAppThatCannotBeFoundRunsNothingAndAsksNothing() = runBlocking {

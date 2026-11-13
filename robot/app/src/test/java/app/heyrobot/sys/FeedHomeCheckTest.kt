@@ -29,8 +29,8 @@ import java.util.concurrent.TimeUnit
 
 /**
  * review-home-net-bind-b N2 for the feed (home-net-bind-f): a home feed's unbound socket (Wi-Fi holds the address, a VPN is
- * up) goes ahead only when its local address is that Wi-Fi's; otherwise it is closed before the request is written, and
- * What went online has no row. The server listens on this machine's own private address, so the socket's local address is it.
+ * up) goes ahead only when its local address is that Wi-Fi's; otherwise it is refused before its connect
+ * (review-home-net-bind-c L5), so nothing reaches the server, and What went online has no row. The server listens on this machine's own private address, so the socket's local address is it.
  */
 class FeedHomeCheckTest {
     private val rows = Collections.synchronizedList(mutableListOf<NetEntry>())
@@ -82,11 +82,10 @@ class FeedHomeCheckTest {
         assumeTrue("no private IPv4 address on this machine", at != null)
         NetRecord.sink = NetSink { rows += it }
         ServerSocket(0, 5, InetAddress.getByAddress(at)).use { server ->
-            server.soTimeout = 3_000
+            server.soTimeout = 500
             leftFrom(other)
-            val got = serve(server, answer = false)
             try { get(server.localPort); fail("sent") } catch (f: FeedClient.Failure) { assertEquals(NewsFail.OFF_NETWORK, f.why) }
-            assertEquals(0, got.get(5, TimeUnit.SECONDS)) // it connected, and nothing was written
+            try { server.accept().close(); fail("it connected") } catch (_: SocketTimeoutException) {} // not even a SYN (L5)
         }
         assertEquals(emptyList<NetEntry>(), rows.toList())
     }

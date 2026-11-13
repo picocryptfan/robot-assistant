@@ -23,8 +23,8 @@ android {
         // From 1.0 (a new app ID, so no earlier codes to follow): major*1000000 + minor*10000 + patch*100, plus the release
         // candidate's number (rc1 = 1) or 99 for the release itself. 1.0.0-rc1 = 1000001, 1.0.0 = 1000099, 1.0.1 = 1000199.
         // tools/bump_version.sh sets both, and makes the fastlane changelog; nothing else repeats them.
-        versionCode 1030299
-        versionName '1.3.2'
+        versionCode 1040099
+        versionName '1.4.0'
         ndk { abiFilters 'arm64-v8a' }
     }
     signingConfigs {
@@ -179,6 +179,8 @@ dependencies {
     implementation project(':brain')
     // 0.5.0: the fast translation engine's :mt process (MtService, librobotmt.so when tools/build_robotmt.sh built it).
     implementation project(':mt')
+    // Wikipedia on this phone (wikipedia-offline-plan.md §3, P1): the isolated :wiki process (WikiService, librobotzim.so).
+    implementation project(':wiki')
     // Ask Claude: the Anthropic SDK, used only by the assistant package (the :voice process).
     implementation project(':helpers')
     // 1.5, Robot to Robot: libsignal and (from L3) the carriers, used only by the link package (the :link process).

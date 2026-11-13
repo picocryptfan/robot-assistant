@@ -267,15 +267,31 @@ object CarNotice {
     fun running(channel: String?, ongoing: Boolean): Boolean = channel == CHANNEL && ongoing
 }
 
+/** Whether the bottom screen's widget gives way to the media player, with no swap. */
+object CarWidgetNow {
+    /** Phone lock closes the widget's app: on, and the app on its list. */
+    fun closes(lockOn: Boolean, closed: Set<String>, pkg: String): Boolean = lockOn && pkg in closed
+
+    /** Over the lock screen, while Phone lock closes its app, or when its id no longer holds the widget you picked ([made] false). */
+    fun off(locked: Boolean, closes: Boolean, made: Boolean): Boolean = locked || closes || !made
+}
+
+object CarWidgetSize {
+    /** The slot's [w] by [h] pixels in dp, as a widget's size options want them; null while it has no size yet. */
+    fun dp(w: Int, h: Int, density: Float): Pair<Float, Float>? = if (w <= 0 || h <= 0 || density <= 0f) null else w / density to h / density
+}
+
 object CarRecents {
     /** FLAG_SECURE on the car screen: while a private answer is on show, and until its line has left the screen. */
     fun secure(privateTurn: Boolean, showsTurn: Boolean, was: Boolean): Boolean = privateTurn || (was && showsTurn)
 
     /**
      * No picture of the screen on the card while it shows a message's words or what you and Robot said, or in the trusted
-     * session over the lock screen, so a glance at Recents never shows them.
+     * session over the lock screen, so a glance at Recents never shows them. Nor while the bottom screen shows another app's
+     * widget ([showsWidget]): its mail or calendar would stay on the card after Phone lock closes that app.
      */
-    fun picture(showsMessage: Boolean, showsTurn: Boolean, trusted: Boolean): Boolean = !showsMessage && !showsTurn && !trusted
+    fun picture(showsMessage: Boolean, showsTurn: Boolean, trusted: Boolean, showsWidget: Boolean): Boolean =
+        !showsMessage && !showsTurn && !trusted && !showsWidget
 }
 
 /** fix-car-stay: an app Robot opens goes beside the car screen; when Android puts it over the car screen instead, the car screen comes back. */

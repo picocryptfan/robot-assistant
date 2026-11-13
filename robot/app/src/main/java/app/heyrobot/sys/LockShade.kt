@@ -28,15 +28,29 @@ object LockShade {
         val ids = (0 until SILENT_SLOTS).map { SILENT_BASE + it }
         return ids.firstOrNull { it !in shown } ?: ids.minBy { shown.getValue(it) }
     }
+    /** moment-reminders: a reminder for a moment that went off (RoutineNotices.moment), one per reminder by its tag (8_740 went to SILENT_BASE's slots in the merge). */
+    const val MOMENT_ID = 8_770
+    /** review-develop-14-b M1: the locked phone's generic "Reminder" for a moment, cancelled at the unlock. */
+    const val MOMENT_LOCKED = 8_775
+    /** Ready answers (people ReadyAnswerTap): a draft reply's notices, one id per slot. */
+    const val READY_ANSWER_BASE = 7_400
+    const val READY_ANSWER_SLOTS = 50
 
     fun hide(ctx: Context) {
         try {
             val nm = ctx.getSystemService(NotificationManager::class.java)
-            for (id in listOf(READY, SUMMARY, PLAY, CONTINUE, SILENT)) nm.cancel(id)
+            for (id in listOf(READY, SUMMARY, PLAY, CONTINUE, SILENT, MOMENT_LOCKED)) nm.cancel(id)
             for (slot in 0 until SKILL_SLOTS) nm.cancel(SKILL_BASE + slot)
             for (slot in 0 until SILENT_SLOTS) nm.cancel(SILENT_BASE + slot)
+            for (slot in 0 until READY_ANSWER_SLOTS) nm.cancel(READY_ANSWER_BASE + slot)
+            for (n in nm.activeNotifications) if (n.id == MOMENT_ID) nm.cancel(n.tag, n.id)
         } catch (t: Throwable) {
             RLog.w("lock_shade", t)
         }
+        // Low D: what a draft's Send holds goes too, under the gate its post and Send take (people/ReadyAnswerTap.kt).
+        app.heyrobot.people.ReadyAnswerTap.clear(ctx)
+        // review-develop-14 L1: a ringing timer's name, and the apps the hold-over line names, go too (each catches its own).
+        OwnTimerRing.onScreen(ctx, off = true)
+        app.heyrobot.people.HoldTap.countsOnly(ctx)
     }
 }

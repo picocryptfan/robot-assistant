@@ -36,11 +36,17 @@ object NoteDelete {
     fun isUndo(key: String?): Boolean = key?.startsWith(UNDO) == true
 
     /** The notes deleted in this process, by their card's Undo key, to put back whole; the newest [MAX] only. */
+    /** merge-seal-124: where a deleted note goes from and comes back to (core NoteStore; the app's sealed NotesVault). */
+    interface Store {
+        fun delete(id: String): Boolean
+        fun save(n: Note): Boolean
+    }
+
     class Undos {
         private val kept = LinkedHashMap<String, Note>()
 
         /** Deletes [note] from [store]; its Undo key, or null when it couldn't be deleted. */
-        @Synchronized fun delete(store: NoteStore, note: Note): String? {
+        @Synchronized fun delete(store: Store, note: Note): String? {
             if (!store.delete(note.id)) return null
             val key = UNDO + note.id
             kept.remove(key)
@@ -53,7 +59,7 @@ object NoteDelete {
         @Synchronized fun has(key: String): Boolean = key in kept
 
         /** Puts the note under [key] back as it was; false when there is none or it couldn't be written. */
-        @Synchronized fun restore(store: NoteStore, key: String): Boolean {
+        @Synchronized fun restore(store: Store, key: String): Boolean {
             val n = kept[key] ?: return false
             if (!store.save(n)) return false
             kept.remove(key)

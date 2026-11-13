@@ -152,6 +152,8 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: Assis
     var people by remember { mutableStateOf<List<Person>>(emptyList()) }
     /** The file is there but can't be read: nothing is written until "Start over". */
     var damaged by remember { mutableStateOf(false) }
+    /** fix-seal-14-f 1: People's copies kept aside (PeopleFiles.keptAside), counted for the card; 0 if they can't be counted now. */
+    var aside by remember { mutableIntStateOf(0) }
     var tick by remember { mutableIntStateOf(0) }
     var robots by remember { mutableStateOf<Set<String>>(emptySet()) }
     var query by rememberSaveable { mutableStateOf("") }
@@ -166,6 +168,7 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: Assis
     val resumed = lstate.isAtLeast(Lifecycle.State.RESUMED)
     LaunchedEffect(resumed, tick) {
         if (resumed) withContext(Dispatchers.IO) { People.sorted(store.list()) to store.damaged() }.let { (l, d) -> people = l; damaged = d }
+        if (resumed) aside = withContext(Dispatchers.IO) { try { PeopleFiles.keptAside(ctx) } catch (t: Exception) { RLog.w("people_aside", t); 0 } }
         // 1.5: who has a Robot link (only asked of :link while Robot to Robot is on).
         if (resumed) robots = withContext(Dispatchers.IO) { app.heyrobot.ui.link.linkedPeople(ctx) }
     }
@@ -295,6 +298,7 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: Assis
                 }
             }
         }
+        if (aside > 0) item(key = "aside") { PeopleAsideCard(aside) }
         preferenceGroup(null, "add") {
             PreferenceItem(stringResource(R.string.people_add), stringResource(R.string.people_add_detail), RIcons.Add, onClick = { onOpen(null) })
             PreferenceItem(stringResource(R.string.people_add_contact), stringResource(R.string.people_add_contact_detail), RIcons.Person, onClick = {
@@ -554,6 +558,17 @@ internal fun CheogramPrivacy(canTakeBack: Boolean, openAccess: () -> Unit) {
 }
 
 /** One person in the list: a letter avatar (decoration, hidden from TalkBack), the name, what you call them and how to reach them. */
+/** fix-seal-14-f 1: how many copies of People are kept aside and where, never who is in them. Delete all removes them. */
+@Composable
+private fun PeopleAsideCard(n: Int) {
+    Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(androidx.compose.ui.res.pluralStringResource(R.plurals.people_aside, n, n), style = MaterialTheme.typography.titleSmall)
+            Text(androidx.compose.ui.res.pluralStringResource(R.plurals.people_aside_detail, n), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
 @Composable
 private fun PersonRow(p: Person, robot: Boolean = false, onClick: () -> Unit) {
     val also = (p.aliases + p.nicknames).takeIf { it.isNotEmpty() }?.let { stringResource(R.string.people_also_called, it.joinToString(", ")) }

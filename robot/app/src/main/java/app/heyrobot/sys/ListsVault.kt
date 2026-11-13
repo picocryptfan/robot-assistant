@@ -686,6 +686,9 @@ class ListsVault(
                     is MemoryKeyException -> return c.problem
                     is KeyPermanentlyInvalidatedException -> return KeyProblem.GONE
                     is AEADBadTagException -> return KeyProblem.BAD_DATA
+                    // seal-history-fix: AndroidKeyStoreSpi.engineGetKey (Android 15) rethrows KeyPermanentlyInvalidatedException
+                    // as this with its message and no cause; its other failures keep the KeyStoreException as the cause.
+                    is java.security.UnrecoverableKeyException -> if (c.cause == null) return KeyProblem.GONE
                 }
                 c = c.cause
             }
@@ -739,8 +742,10 @@ object ListsFiles {
             ProtectedBroadcasts.register(app, object : BroadcastReceiver() {
                 override fun onReceive(c: Context, i: Intent) {
                     when (i.action) {
-                        Intent.ACTION_SCREEN_OFF -> vault(app).drop()
-                        Intent.ACTION_USER_PRESENT -> if (voice) worker.execute { open(app) }
+                        Intent.ACTION_SCREEN_OFF -> vault(app).drop().also { HistoryFiles.drop(); NotesFiles.drop(); PeopleFiles.drop(); Transcripts.drop(app) }
+                        // fix-seal-transcripts-b (the first review's 8): the main process settles transcripts at each unlock too,
+                        // so lock-screen records move to the unlock key without the Transcripts screen being opened.
+                        Intent.ACTION_USER_PRESENT -> if (voice) worker.execute { open(app) } else worker.execute { try { Transcripts.store(app).settle() } catch (_: Exception) {} }
                     }
                 }
             }, ProtectedBroadcasts.filter(Intent.ACTION_USER_PRESENT, Intent.ACTION_SCREEN_OFF))
@@ -756,6 +761,12 @@ object ListsFiles {
 
     private fun open(app: Context) {
         try { vault(app).load() } catch (t: Throwable) { RLog.w("lists_unlock", t) }
+        // seal-history: at the same moments, History's plain files are sealed and its lock-screen saves merged (sys/HistoryVault).
+        HistoryFiles.vault(app).open()
+        // seal-notes: and Notes' (sys/NotesVault).
+        NotesFiles.store(app).open()
+        // seal-people: and People's (sys/PeopleVault).
+        try { PeopleFiles.open(app) } catch (t: Throwable) { RLog.w("people_unlock", t) }
     }
 
     private fun userUnlocked(ctx: Context): Boolean = try { ctx.getSystemService(UserManager::class.java).isUserUnlocked } catch (_: Throwable) { false }

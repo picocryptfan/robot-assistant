@@ -152,6 +152,12 @@ data class UiTurn(
     val reply: app.heyrobot.ui.common.ReplyCardView? = null,
     /** 0.9: a web answer's card (WebAnswerCard): shown, never saved (History keeps its saved line). */
     val web: AnswerCard? = null,
+    /** Wikipedia P4b: a reply from the copy on this phone's card (WikiAnswerCard): shown, never saved. */
+    val wiki: app.heyrobot.core.wiki.WikiCard? = null,
+    /** review-wikipedia-p4-c: the copy wrote into it (PanelWiki), card or not: content, however the turn ends. */
+    val content: Boolean = false,
+    /** summarize-page-c (review L3): a page's text went into this reply (PanelPageSummary): ChatTurn.page. */
+    val page: Boolean = false,
     /** 1.0: said while the phone was locked (core ChatTurn.locked): under "Said while the phone was locked". */
     val locked: Boolean = false,
     /** 1.4 Lists (LS5): a list read or checked, with tick boxes (ListCard): shown, never saved (History keeps the read's placeholder). */
@@ -165,9 +171,10 @@ data class Draft(val kind: Attachment, val thumb: Bitmap?, val name: String? = n
  * OPEN_ASSIST_SETTINGS: the Digital assistant app page, where "Use text from screen" and "Use screenshot" are.
  * OPEN_MODEL (0.4.3): Robot's Settings › Model, to choose a model that can do actions.
  */
-enum class NoticeAction { NONE, OPEN_APP, OPEN_ASSIST_SETTINGS, OPEN_MODEL }
+enum class NoticeAction { NONE, OPEN_APP, OPEN_ASSIST_SETTINGS, OPEN_MODEL, REPORT }
 
-data class Notice(val text: String, val action: NoticeAction = NoticeAction.NONE)
+/** [replyId]: the turn a REPORT notice opens the bug report card for (RP3). */
+data class Notice(val text: String, val action: NoticeAction = NoticeAction.NONE, val replyId: String? = null)
 
 data class PanelState(
     val convId: String,

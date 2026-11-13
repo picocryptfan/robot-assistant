@@ -40,6 +40,8 @@ import java.time.ZonedDateTime
  *   knows and answers general knowledge ([Prompt.KNOWN]), and every estimate that holds it. Nothing else changed.
  * - 1.2.3 fix-123-c: [Prompt.KNOWN] asks for the figure and names the "real-time data" disclaimer instead of "noting
  *   figures may be dated", and every estimate that holds it. Nothing else changed.
+ * - app-pause (idea 2): phone_status's "about" names pickups (today's pickup count), and every estimate that holds that
+ *   tool. Nothing else changed.
  */
 class PromptFrozenTest {
     private val now = ZonedDateTime.of(2026, 10, 20, 14, 5, 0, 0, ZoneId.of("America/Halifax"))

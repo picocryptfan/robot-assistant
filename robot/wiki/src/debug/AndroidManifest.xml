@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug build only (P1's phone check): `adb shell am broadcast -n ai.robot_app/app.heyrobot.wiki.WikiCheckReceiver`
+     opens the ZIM file copied into Robot's own folder (Android/data/ai.robot_app/files/wiki/) and answers with what the
+     :wiki process found. Only the shell can send it: it needs android.permission.DUMP, which no app is granted. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <receiver
+            android:name="app.heyrobot.wiki.WikiCheckReceiver"
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
+    </application>
+</manifest>

@@ -141,6 +141,8 @@
     <string name="lists_changed">This list changed meanwhile. Try again.</string>
     <string name="lists_gone">This list isn\'t here any more.</string>
     <string name="lists_card_open">Open %s</string>
+    <!-- recipe-list: the recipe card's button, with how many ingredients are ticked. -->
+    <string name="lists_recipe_add">Add (%d)</string>
     <string name="lists_card_tick">Tick off %s</string>
     <string name="lists_card_untick">Put back %s</string>
     <!-- LS6 (lists-plan.md §7.6, D12): the home-screen widget, "Robot list", and the window that picks its list. -->

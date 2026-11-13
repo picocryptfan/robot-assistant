@@ -16,6 +16,15 @@ object ConversationStrings : Strings("conv", area = "conversation") {
     val hours = s("hours", "{h} h {mm}", "{h} h {mm}")
     val you = s("you", "You", "Moi")
 
+    // summary-todos: a summary's dated to-dos, each with Add to calendar (core SummaryTodos, SummaryActivity).
+    val todosHeading = s("todos_heading", "To-dos with a date", "À faire, avec une date")
+    val todoAllDay = s("todo_all_day", "{day}, all day", "{day}, toute la journée")
+    val todoAt = s("todo_at", "{day} at {time}", "{day} à {time}")
+    val todoGuess = s("todo_guess", "My guess, from the conversation's date ({day}).", "Mon estimation, d'après la date de la conversation ({day}).")
+    val todoGone = s("todo_gone", "That to-do isn't waiting anymore. Open the summary again.", "Cette tâche n'attend plus. Rouvre le résumé.")
+    val todoLocked = s("todo_locked", "Robot can't add a to-do while your phone is locked. Unlock it and open the summary again.",
+        "Robot ne peut pas ajouter une tâche pendant que ton téléphone est verrouillé. Déverrouille-le et rouvre le résumé.")
+
     // An export's header and lines (Markdown or text, in the menus' language when you export it). Times stay as the lines
     // show them ("14:03"), so a summary's [14:03] still points at its line.
     val credit = s("credit", "Transcribed on this phone by Robot (Parakeet v3).", "Transcrit sur ce téléphone par Robot (Parakeet v3).")

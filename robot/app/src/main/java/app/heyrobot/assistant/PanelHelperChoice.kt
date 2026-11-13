@@ -56,7 +56,7 @@ internal class PanelHelperChoice(private val port: Port) {
 
     sealed class Route {
         class Command(val c: HelperChoice.Command) : Route()
-        class Instead(val i: HelperChoice.Instead) : Route()
+        class Instead(val i: HelperChoice.Instead, val wrong: Boolean = false) : Route()
     }
 
     /** What a re-send comes to: words, the question sent ([to]), an offer of that ([ask]), or Robot's model. */
@@ -75,7 +75,7 @@ internal class PanelHelperChoice(private val port: Port) {
 
     /** Words this class answers, or null. */
     fun route(q: String, names: List<HelperName>): Route? = HelperChoice.command(q, names)?.let { Route.Command(it) }
-        ?: HelperChoice.instead(q, names)?.let { Route.Instead(it) }
+        ?: HelperChoice.instead(q, names)?.let { Route.Instead(it, HelperChoice.wrong(q)) }
 
     /** This turn asked no question of a model (a timer, a card, a command): nothing to re-send. */
     fun forget() {
@@ -85,6 +85,10 @@ internal class PanelHelperChoice(private val port: Port) {
     fun asked(a: HelperChoice.Asked) {
         last = a
     }
+
+    /** RP3: "that's wrong" said of the last answer: the Report it line for the reply it corrects, whatever the re-send comes to; else null. */
+    fun reportNotice(route: Route, l: Langs): Notice? =
+        last?.replyId?.takeIf { (route as? Route.Instead)?.wrong == true }?.let { Notice(PanelStrings.reportWrong().render(l), NoticeAction.REPORT, it) }
 
     /**
      * L16: what a turn of these words comes to. A route changes only from your own words in a conversation that holds nothing

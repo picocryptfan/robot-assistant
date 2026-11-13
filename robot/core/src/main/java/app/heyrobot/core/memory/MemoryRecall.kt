@@ -26,13 +26,13 @@ object MemoryRecall {
      */
     fun forTurn(question: String, file: MemoryFile, s: MemorySettings, locked: Boolean, now: Long, alreadyGiven: Set<String> = emptySet(),
         maxTokens: Int = ContextWindow.MAX_TOKENS, retriever: Retriever = Bm25Retriever(), zone: ZoneId = ZoneId.systemDefault(),
-        compact: Boolean = false): Recall {
+        compact: Boolean = false, vector: FloatArray? = null): Recall {
         if (!s.on || !s.useInAnswers || (locked && !s.onLockScreen)) return Recall(PackedMemory.NONE, RecallBy.WORDS)
         // 1.4: filing rules never go into a prompt (§4.5).
         val live = MemoryEdits.forQuestions(file.items, now)
         if (live.isEmpty()) return Recall(PackedMemory.NONE, RecallBy.WORDS)
         val small = budget(maxTokens, compact)
-        val ranked = retriever.retrieve(RecallQuery(question), live, small.maxRetrieved * 2)
+        val ranked = retriever.retrieve(RecallQuery(question, vector), live, small.maxRetrieved * 2)
         // everyday-1.2.2-a bug 1: a small memory taken whole (Bm25Retriever.aboutYou, every score 0) gets room for all of it
         // on a full prompt; a compact or chat-only one keeps its budget, newest first.
         val whole = ranked.isNotEmpty() && ranked.all { it.score == 0.0 } && small == PackBudget()

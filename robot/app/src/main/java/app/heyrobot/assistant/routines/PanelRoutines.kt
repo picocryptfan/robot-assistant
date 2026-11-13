@@ -1,10 +1,25 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.assistant.routines
 
+import app.heyrobot.core.MomentReminder
+import app.heyrobot.core.MomentReminders
+import app.heyrobot.core.output.DeviceFile
+import app.heyrobot.core.output.DeviceMemory
+import app.heyrobot.core.readOrNull
+import app.heyrobot.sys.Paths
+import java.io.File
+import app.heyrobot.core.OpenTicks
+import app.heyrobot.assistant.LauncherApps
 import app.heyrobot.assistant.PanelPrivateEvents
 import android.content.Intent
 import app.heyrobot.core.ShowPage
 import app.heyrobot.core.TodayArrange
+import app.heyrobot.core.QuickArrange
+import app.heyrobot.core.QuickItem
+import app.heyrobot.core.QuickItems
+import app.heyrobot.core.QuickOrder
+import app.heyrobot.core.TodayMove
+import app.heyrobot.sys.QuickFacts
 import app.heyrobot.core.news.NewsAsk
 import app.heyrobot.core.news.NewsMode
 import app.heyrobot.core.news.NewsMoment
@@ -165,7 +180,9 @@ object PanelRoutines {
      * photo. [fresh]: nothing was asked before in this conversation; 1.1, only then does "remind me about it" ask what and when
      * (RoutineCommand.RemindWhat): later, "it" may be something said before, and the model reads it.
      */
-    fun route(q: String, fromContent: Boolean, fresh: Boolean = true): RoutineCommand? = try {
+    // Idea 6: several no-model requests in one sentence are the skills' (PanelMulti), never one routine's phrase.
+    fun route(q: String, fromContent: Boolean, fresh: Boolean = true): RoutineCommand? = if (PanelSkills.multi(q) != null) null else try {
+        OwnTimerPanel.route(app, q)?.let { return RoutineCommand.Timer(it) }
         val s = store()
         RoutineRouter.route(q, ZonedDateTime.now(), s.all().map { it.name }, fromContent = fromContent, alarmWindow = s.settings().alarmWindow)
             ?.takeIf { fresh || it != RoutineCommand.RemindWhat }
@@ -194,17 +211,20 @@ object PanelRoutines {
             RoutineCommand.Today -> today(replyId, host, langs)
             is RoutineCommand.Show -> show(replyId, cmd.page, host, langs)
             is RoutineCommand.Arrange -> arrange(replyId, cmd, host, langs)
+            is RoutineCommand.ArrangeQuick -> arrangeQuick(replyId, cmd.item, cmd.move, host, langs)
             RoutineCommand.News -> news(replyId, host, langs)
             is RoutineCommand.Create -> create(replyId, cmd.draft, host, langs)
             is RoutineCommand.Run -> run(replyId, cmd.name, host, langs)
             RoutineCommand.ListAll -> reply(replyId, host, RoutineCards.listText(store().all().filter { it.id != BriefRoutine.ID || it.enabled }), langs)
             is RoutineCommand.Delete -> delete(replyId, cmd.name, host, langs)
             is RoutineCommand.Remind -> remind(replyId, cmd, host, langs)
+            is RoutineCommand.RemindWhen -> remindWhen(replyId, cmd, host, langs)
             is RoutineCommand.RemindOn -> remindOn(replyId, cmd, host, langs)
             RoutineCommand.RemindWhat -> reply(replyId, host, RoutineStrings.remindWhat(), langs)
             is RoutineCommand.CantCancel -> cantCancel(replyId, cmd, host, langs)
             is RoutineCommand.DeleteNote -> deleteNote(replyId, cmd, host, langs)
             is RoutineCommand.NextAlarm -> nextAlarm(replyId, host, langs)
+            is RoutineCommand.Timer -> reply(replyId, host, OwnTimerPanel.answer(app, cmd.ask) { host.launch(RoutineFacts.toChosenClock(app, it)) }, langs)
             is RoutineCommand.TimerLeft ->
                 reply(replyId, host, TimerAsk.answer(RobotTimers.load(app), System.currentTimeMillis(), java.time.ZoneId.systemDefault()), langs)
         }
@@ -317,8 +337,18 @@ object PanelRoutines {
      * outside the page, so Robot does it and says so. The page redraws at once (ui/today TodayWatch).
      */
     private fun arrange(replyId: String, cmd: RoutineCommand.Arrange, host: Host, l: Langs): Boolean {
+        // HS3: with Quick access as your home, "put my lists first" moves its button (core QuickArrange.onQuick).
+        QuickArrange.onQuick(cmd, HomeSettingsStore.current(app).home)?.let { (i, m) -> return arrangeQuick(replyId, i, m, host, l) }
         val ok = HomeSettingsStore.update(app) { it.with(cmd.part, cmd.move) } != null
         reply(replyId, host, if (ok) TodayArrange.reply(cmd.part, cmd.move) else RoutineStrings.arrangeFailed(), l)
+        return ok
+    }
+
+    /** HS3: Quick access's order; UP and DOWN step past the buttons this phone doesn't show. Undoable, so no card. */
+    private fun arrangeQuick(replyId: String, item: QuickItem, move: TodayMove, host: Host, l: Langs): Boolean {
+        val shown = QuickItems.shown(QuickItem.DEFAULT, QuickFacts.phone(app)).map { it.item }
+        val ok = HomeSettingsStore.update(app) { it.copy(quick = QuickOrder.moved(it.quick, item, move, shown)) } != null
+        reply(replyId, host, if (ok) QuickArrange.reply(item, move) else RoutineStrings.quickFailed(), l)
         return ok
     }
 
@@ -327,10 +357,10 @@ object PanelRoutines {
      * leaves, as for any app it opens, so the page is in front without a touch.
      */
     private suspend fun show(replyId: String, page: ShowPage, host: Host, l: Langs): Boolean {
-        val history = page == ShowPage.HISTORY
         val i = Intent().setClassName(app.packageName, "app.heyrobot.ui.MainActivity") // l10n: not text (a class name)
-            .putExtra(AppPages.EXTRA, if (history) AppPages.HISTORY else AppPages.CALENDAR).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        reply(replyId, host, if (history) RoutineStrings.showHistory() else RoutineStrings.showCalendar(), l)
+            .putExtra(AppPages.EXTRA, when (page) { ShowPage.HISTORY -> AppPages.HISTORY; ShowPage.CALENDAR -> AppPages.CALENDAR; ShowPage.QUICK -> AppPages.QUICK })
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        reply(replyId, host, when (page) { ShowPage.HISTORY -> RoutineStrings.showHistory(); ShowPage.CALENDAR -> RoutineStrings.showCalendar(); ShowPage.QUICK -> RoutineStrings.showQuick() }, l)
         return host.launch(i).also { if (it) host.leave() }
     }
 
@@ -340,7 +370,8 @@ object PanelRoutines {
      * Its card: what starts it, every step and what it does by itself, where it speaks, what goes online. A yes or Save
      * saves it; never by itself. From the screen's text, only the tap.
      */
-    private suspend fun create(replyId: String, draft: RoutineDraft, host: Host, l: Langs): Boolean {
+    private suspend fun create(replyId: String, draft0: RoutineDraft, host: Host, l: Langs): Boolean {
+        var draft = draft0
         val text = draft.cardText()
         val card = text.render(l)
         val body = card.lines.joinToString("\n")
@@ -360,8 +391,19 @@ object PanelRoutines {
             host.say(RoutineStrings.clockMissing().said(l))
         }
         host.say((if (draft.fromContent) RoutineStrings.heresTapSave("save" to UiLabel(UiStrings.save)) else RoutineStrings.heresSayYes()).said(l))
-        val yes = host.ask(replyId, Card(id, null, card.title, ActionStatus.PENDING, card.footer, body = body, confirm = UiStrings.save().button(l),
-            cancel = UiStrings.cancel().button(l)), tapOnly = if (draft.fromContent) RoutineStrings.tapSaveFromScreen("save" to UiLabel(UiStrings.save)).said(l) else null)
+        // auto-open-plan §1: an unticked box per app its open steps name; a tap ticks or unticks it, the card stays.
+        val ticks = OpenTicks.of(OpenTicks.names(draft.routine),
+            withContext(Dispatchers.IO) { LauncherApps.of(app) }, draft.fromContent)
+        val tapOnly = if (draft.fromContent) RoutineStrings.tapSaveFromScreen("save" to UiLabel(UiStrings.save)).said(l) else null
+        var yes: Boolean
+        while (true) {
+            val chips = ticks.map { OpenTicks.chip(it, it.pkg in draft.routine.opens).button(l) }
+            val pick = host.pick(replyId, Card(id, null, card.title, ActionStatus.PENDING, card.footer, body = body, confirm = UiStrings.save().button(l),
+                cancel = UiStrings.cancel().button(l), chips = chips), tapOnly)
+            val i = pick - Card.CHIP
+            if (ticks.isEmpty() || i !in ticks.indices) { yes = pick == Confirmations.YES; break }
+            draft = draft.copy(routine = draft.routine.copy(opens = OpenTicks.toggle(draft.routine.opens, ticks[i])))
+        }
         if (!yes) {
             host.show(replyId, Card(id, null, card.title, ActionStatus.DECLINED, RoutineStrings.notSaved().shown(l), body = body))
             return false
@@ -560,6 +602,26 @@ object PanelRoutines {
         return ok
     }
 
+    /** moment-reminders: kept with a card that says when it goes off, and when it can't yet (no car remembered). */
+    private suspend fun remindWhen(replyId: String, cmd: RoutineCommand.RemindWhen, host: Host, l: Langs): Boolean {
+        if (host.locked) return !reply(replyId, host, RoutineStrings.unlockMoment(), l)
+        val r = MomentReminder(id(), cmd.text, cmd.moment, System.currentTimeMillis(), cmd.between)
+        val (ok, memory) = withContext(Dispatchers.IO) {
+            (store().editMoments { MomentReminders.add(it, r) } != null) to
+                (DeviceMemory.decode(readOrNull(File(Paths.dir(app), "devices.json"))) as? DeviceFile.Ok)?.memory // l10n: not text (a file name)
+        }
+        if (!ok) {
+            val newer = withContext(Dispatchers.IO) { store().momentsNewer() }
+            return !reply(replyId, host, if (newer) RoutineStrings.momentsNewer() else RoutineStrings.couldntKeepReminder(), l)
+        }
+        RoutineHub.reload()
+        val said = RoutineStrings.momentSet("moment" to MomentReminders.phrase(r), "text" to r.text)
+        val cant = MomentReminders.cantFire(r.moment, memory)
+        host.show(replyId, Card(id(), null, said.shown(l), ActionStatus.DONE, cant?.shown(l)))
+        host.say((if (cant == null) said else Phrase.join(said, cant)).said(l))
+        return true
+    }
+
     private suspend fun remind(replyId: String, cmd: RoutineCommand.Remind, host: Host, l: Langs): Boolean {
         val now = ZonedDateTime.now()
         val day = BriefReminders.dayFor(now, cmd.tomorrow)
@@ -605,6 +667,8 @@ object PanelRoutines {
         val zone = java.time.ZoneId.systemDefault()
         val before = alarms?.nextAlarmClock?.triggerTime
         val nextTime = before?.let { java.time.Instant.ofEpochMilli(it).atZone(zone).toLocalTime().withSecond(0).withNano(0) }
+        var card: Pair<String, String>? = null // fix-alarm-moved: the card's id and title, settled once the read-back is in
+        suspend fun settle(gone: Boolean) = card?.let { (id, title) -> host.show(replyId, Card(id, ToolName.SET_ALARM, title, AlarmCancel.cardStatus(gone), null)) }
         val (time, next) = when (val p = AlarmCancel.plan(cmd, nextTime)) {
             is AlarmCancel.Plan.Open -> return openAlarms(replyId, host, l, if (p.none) ToolStrings.alarmNoneSeen() else ToolStrings.alarmOneAtATime())
             is AlarmCancel.Plan.Dismiss -> p.time to p.next
@@ -613,8 +677,15 @@ object PanelRoutines {
                 val title = ToolStrings.alarmTurnOffTitle("time" to EventText.clock(p.time.hour, p.time.minute)).shown(l)
                 val yes = host.ask(replyId, Card(id, ToolName.SET_ALARM, title, ActionStatus.PENDING, null, confirm = ToolStrings.turnOff().button(l),
                     cancel = UiStrings.cancel().button(l)))
-                host.show(replyId, Card(id, ToolName.SET_ALARM, title, if (yes) ActionStatus.DONE else ActionStatus.DECLINED, null))
+                // fix-batch-15 L1 (review-batch-15): the next alarm moved while the card waited (it rang, or another was set): ask about the one now next.
+                if (yes && alarms?.nextAlarmClock?.triggerTime != before) {
+                    // fix-batch-15-lows d: nothing was sent, so the card is declined, not failed.
+                    host.show(replyId, Card(id, ToolName.SET_ALARM, title, ActionStatus.DECLINED, null))
+                    return cancelAlarm(replyId, cmd, host, l)
+                }
+                host.show(replyId, Card(id, ToolName.SET_ALARM, title, if (yes) ActionStatus.PENDING else ActionStatus.DECLINED, null))
                 if (!yes) return true
+                card = id to title
                 p.time to true
             }
         }
@@ -622,17 +693,13 @@ object PanelRoutines {
         val dismiss = android.content.Intent(android.provider.AlarmClock.ACTION_DISMISS_ALARM)
             .putExtra(android.provider.AlarmClock.EXTRA_ALARM_SEARCH_MODE, android.provider.AlarmClock.ALARM_SEARCH_MODE_TIME)
             .putExtra(android.provider.AlarmClock.EXTRA_HOUR, time.hour).putExtra(android.provider.AlarmClock.EXTRA_MINUTES, time.minute)
-            .putExtra(android.provider.AlarmClock.EXTRA_IS_PM, time.hour >= 12)
-        if (!host.launch(RoutineFacts.toChosenClock(app, dismiss))) return !reply(replyId, host, ToolStrings.noClockAlarms(), l)
-        if (next && before != null) {
-            var after: Long? = before
-            for (i in 0 until 8) {
-                kotlinx.coroutines.delay(250)
-                after = alarms?.nextAlarmClock?.triggerTime
-                if (AlarmCancel.gone(before, after)) return reply(replyId, host, ToolStrings.alarmOff("time" to t), l)
-            }
+        if (!host.launch(RoutineFacts.toChosenClock(app, dismiss))) { settle(false); return !reply(replyId, host, ToolStrings.noClockAlarms(), l) }
+        // fix-batch-15 L2: eight reads 250 ms apart, then one last a second later (a slow clock).
+        if (next && before != null && AlarmCancel.readBack(before, pause = { kotlinx.coroutines.delay(it) }, read = { alarms?.nextAlarmClock?.triggerTime })) {
+            settle(true); return reply(replyId, host, ToolStrings.alarmOff("time" to t), l)
         }
-        return openAlarms(replyId, host, l, if (next) ToolStrings.alarmStillOn("time" to t) else ToolStrings.alarmOffAsked("time" to t))
+        settle(false)
+        return openAlarms(replyId, host, l, if (next) ToolStrings.alarmStillOn("time" to t) else ToolStrings.alarmOffAsked("time" to t), still = time.takeIf { next })
     }
 
     /** fix-cancel-alarm: "what alarms do I have": the next alarm Android shows Robot, in words, with no card to answer. */
@@ -652,10 +719,10 @@ object PanelRoutines {
      */
     private suspend fun deleteNote(replyId: String, cmd: RoutineCommand.DeleteNote, host: Host, l: Langs): Boolean {
         val store = NotesFiles.store(app)
-        val notes = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { store.list() }
+        val read = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { store.read() }
+        val notes = read.notes
         val note = when (val p = NoteDelete.plan(cmd.query, notes)) {
-            NoteDelete.Plan.None -> return !reply(replyId, host, if (notes.isEmpty() || cmd.query == "last") ToolStrings.noteDeleteNoNotes()
-                else ToolStrings.noteDeleteNone("what" to cmd.query), l)
+            NoteDelete.Plan.None -> return !reply(replyId, host, noteDeleteNoneLine(read, cmd.query), l)
             is NoteDelete.Plan.One -> {
                 val id = id()
                 val title = ToolStrings.noteDeleteTitle("title" to p.note.displayTitle).shown(l)
@@ -698,9 +765,9 @@ object PanelRoutines {
         (if (noteUndos.restore(NotesFiles.store(app), key)) ToolStrings.noteRestored() else ToolStrings.noteNotRestored()).render(l)
 
     /** Your clock's alarms, after [why]: opened unlocked and not hands-free (a line says where to look otherwise). */
-    private suspend fun openAlarms(replyId: String, host: Host, l: Langs, why: Phrase): Boolean {
+    private suspend fun openAlarms(replyId: String, host: Host, l: Langs, why: Phrase, still: java.time.LocalTime? = null): Boolean {
         val opened = !host.handsFree && host.launch(RoutineFacts.toChosenClock(app, android.content.Intent(android.provider.AlarmClock.ACTION_SHOW_ALARMS)))
-        val lines = listOf(why, if (opened) ToolStrings.alarmsOpened() else ToolStrings.alarmsInClock())
+        val lines = AlarmCancel.openLines(why, opened, still)
         host.text(replyId, lines.joinToString(" ") { it.shown(l) })
         lines.forEach { host.say(it.said(l)) }
         if (opened) host.leave()
@@ -813,4 +880,13 @@ object PanelRoutines {
         RoutineNotices.ready(app, ReadyCards.live(store().ready(), today))
     }
 
+}
+
+/** fix-seal-lows-c 4, fix-seal-lows-d 1: delete a note, none found. Some locked: they open once unlocked, as findNotes says;
+ *  only a newer Robot's: update Robot or Delete these in Notes; never "no notes" while any is held. */
+internal fun noteDeleteNoneLine(read: app.heyrobot.sys.NotesRead, query: String): Phrase = when {
+    read.notNow > 0 -> ToolStrings.notesLocked()
+    read.notes.isEmpty() && read.tooNew > 0 -> ToolStrings.notesTooNew()
+    read.notes.isEmpty() || query == "last" -> ToolStrings.noteDeleteNoNotes()
+    else -> ToolStrings.noteDeleteNone("what" to query)
 }

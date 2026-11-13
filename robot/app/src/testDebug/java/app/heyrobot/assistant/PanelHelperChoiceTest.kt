@@ -173,4 +173,15 @@ class PanelHelperChoiceTest {
         val none = en(choice.run(HelperChoice.Command(false, robot = true), true))
         assertTrue(none, "off in Settings" !in none)
     }
+
+    /** Review L1: "that's wrong, ask Robot instead" gets its Report it line also when the re-send goes ahead. */
+    @Test fun reportItAlsoWhenTheResendGoesAhead() {
+        choice.asked(HelperChoice.Asked("what's the capital of Peru", "r1", "h2", false, false, false))
+        val wrong = PanelHelperChoice.Route.Instead(HelperChoice.Instead(true), wrong = true)
+        // Review-report-shot L1: the Notice choiceTurn sets, before and whatever the re-send comes to (it takes no Resend).
+        assertEquals(Notice(PanelStrings.reportWrong().render(Langs.EN), NoticeAction.REPORT, "r1"), choice.reportNotice(wrong, Langs.EN))
+        assertNull(choice.reportNotice(PanelHelperChoice.Route.Instead(HelperChoice.Instead(true)), Langs.EN))
+        choice.forget()
+        assertNull(choice.reportNotice(wrong, Langs.EN))
+    }
 }

@@ -136,6 +136,8 @@ class PageSaverTest {
             Page.Settings("voice/barge-in") to Page.Settings("voice"),
             // 1.1: Support Robot sits under About.
             Page.Settings(SettingsRoutes.SUPPORT) to Page.Settings(SettingsRoutes.ABOUT),
+            // RP5: Reports you sent sits under About too.
+            Page.Settings(SettingsRoutes.REPORTS_SENT) to Page.Settings(SettingsRoutes.ABOUT),
             // 0.7: Send feedback goes back to About when it was opened there, else to the tabs (Settings › Model, the panel).
             Page.Settings(SettingsRoutes.feedback(FeedbackEntry.ABOUT)) to Page.Settings(SettingsRoutes.ABOUT),
             Page.Settings(SettingsRoutes.feedback(FeedbackEntry.MODEL_PROBLEM, FeedbackKind.BUG, 1_760_000_000_000L)) to null,
@@ -200,7 +202,7 @@ class PageSaverTest {
         /** Every route ui/settings/SettingsNav.kt opens. */
         val SETTINGS_ROUTES = listOf(SettingsRoutes.VOICE, SettingsRoutes.BARGE_IN, SettingsRoutes.ACTIONS, SettingsRoutes.PEOPLE_NOTES_CALENDAR,
             SettingsRoutes.WEATHER, SettingsRoutes.HISTORY, SettingsRoutes.DISPLAY, SettingsRoutes.ADVANCED, SettingsRoutes.ABOUT,
-            SettingsRoutes.UPDATES, SettingsRoutes.NOTIFICATION_ACCESS, SettingsRoutes.adbFix("recognizer"), SettingsRoutes.SUPPORT,
+            SettingsRoutes.UPDATES, SettingsRoutes.NOTIFICATION_ACCESS, SettingsRoutes.adbFix("recognizer"), SettingsRoutes.SUPPORT, SettingsRoutes.REPORTS_SENT,
             // 0.7: Send feedback, from About, a model problem and the panel.
             SettingsRoutes.feedback(FeedbackEntry.ABOUT), SettingsRoutes.feedback(FeedbackEntry.MODEL_PROBLEM, FeedbackKind.BUG, 1_760_000_000_000L),
             SettingsRoutes.feedback(FeedbackEntry.VOICE, FeedbackKind.IDEA)) +

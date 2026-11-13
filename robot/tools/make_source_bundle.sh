@@ -10,6 +10,8 @@
 #     mt/src/main/cpp), built by tools/build_robotmt.sh from commits it pins;
 #   - librobot_llama.so (since 0.4.5, when built: llama.cpp and KleidiAI, MIT and Apache-2.0, and Robot's own bridge in
 #     brain/src/main/cpp), built by tools/build_llama.sh from the tag and release it pins;
+#   - librobotzim.so (since Wikipedia P1: libzim and Xapian, GPL-2.0-or-later, with Zstandard, liblzma and ICU, and Robot's
+#     own JNI in wiki/src/main/cpp), built by tools/build_libzim.sh from the release archives it pins;
 #   - Robot to Robot's three (1.5), two prebuilt by others and only taken from pinned files: libsignal_jni.so (libsignal,
 #     AGPL-3.0-only, Signal's own build, tools/fetch_libsignal.sh), libtor.so (Tor with OpenSSL, libevent and zlib, Briar's
 #     build, BSD-3-Clause, Apache-2.0, zlib) from tools/fetch_link_deps.sh; and liblyrebird.so (lyrebird and its Go modules,
@@ -37,6 +39,9 @@
 #   - llama/: llama.cpp and KleidiAI exactly as tools/build_llama.sh takes them (llama.cpp's `git archive` tar of the
 #     tag's commit, checked against its pinned SHA-256; KleidiAI's release tarball, or the tag's tar when that can't be
 #     downloaded, each checked against its pin; the pins are read from that script);
+#   - wiki/: libzim, Xapian, Zstandard, XZ Utils (liblzma), ICU and its data, and Meson (which builds libzim), exactly as
+#     tools/build_libzim.sh takes them: their release archives, checked against the SHA-256 that script pins (the pins and
+#     the links are read from it);
 #   - libsignal/: libsignal at the commit of the tag tools/fetch_libsignal.sh's pins name (`git archive`, checked by its
 #     commit id) and everything it builds from, vendored by `cargo vendor --locked` from its own Cargo.lock: crates checked
 #     by cargo and again here against the lock's SHA-256, its two git dependencies (Signal's boring, with BoringSSL, and
@@ -53,7 +58,7 @@
 #   - onionwrapper/: the sources jars of onionwrapper (GPL-3.0-only), from which Robot's TorRuntime.kt adapts Tor's start-up;
 #   - robot/: Robot's own native sources and build scripts at this commit (build.gradle, for the min API; mt/src/main/cpp, brain/src/main/cpp,
 #     tools/build_robotmt.sh, tools/build_llama.sh, tools/fetch_third_party.sh, tools/build_sherpa.sh,
-#     tools/espeak_bounds_check.sh, third_party/patches, and for Robot to Robot link/build.gradle, TorRuntime.kt, the two
+#     tools/espeak_bounds_check.sh, third_party/patches, wiki/src/main/cpp and tools/build_libzim.sh, and for Robot to Robot link/build.gradle, TorRuntime.kt, the two
 #     fetch scripts and their pins), so the archive builds on its own;
 #   - README.md (what it is and how each library is built) and MANIFEST.tsv (every file, where it came from, its pin and
 #     its SHA-256).
@@ -140,6 +145,12 @@ LLAMA_GIT=$(llama_pin LLAMA_GIT)
 KLEIDIAI_TAG=$(llama_pin KLEIDIAI_TAG); KLEIDIAI_COMMIT=$(llama_pin KLEIDIAI_COMMIT); KLEIDIAI_GIT=$(llama_pin KLEIDIAI_GIT)
 KLEIDIAI_TGZ_SHA256=$(llama_pin KLEIDIAI_TGZ_SHA256); KLEIDIAI_TGZ_MD5=$(llama_pin KLEIDIAI_TGZ_MD5); KLEIDIAI_TAR_SHA256=$(llama_pin KLEIDIAI_TAR_SHA256)
 KLEIDIAI_URL="https://github.com/ARM-software/kleidiai/releases/download/$KLEIDIAI_TAG/kleidiai-$KLEIDIAI_TAG-src.tar.gz"
+# librobotzim.so's sources: tools/build_libzim.sh's own pins and its fetch lines (archive, link, SHA-256), read from that
+# script so the two can't drift apart.
+eval "$(grep -E '^(ZSTD|XZ|ICU|XAPIAN|LIBZIM|MESON)_[A-Z_]+=' "$HERE/build_libzim.sh")"
+WIKI_FETCH=$(grep -E '^fetch ' "$HERE/build_libzim.sh")
+[ "$(grep -c . <<<"$WIKI_FETCH")" -ge 7 ] && [ -n "${LIBZIM_V:-}" ] || { echo "couldn't read the pins in tools/build_libzim.sh" >&2; exit 2; }
+ZIM_BUILT_SHA=$(sed -n 's/^BUILT_SHA=//p' "$HERE/build_libzim.sh")
 # Robot's own files the archive carries (its native sources and the scripts that build and fetch the native parts).
 # Robot to Robot's: the versions and the binaries' pins are read from tools/fetch_libsignal.sh and
 # third_party/link-carriers.sha256; below them are only facts those files don't hold (each checked when it's used, so a
@@ -169,7 +180,7 @@ ONIONWRAPPER_ANDROID_SHA256=049ea14bd3329b441a3bd4ae33d67356c8ca70b5eb094e061566
 LITERTLM_VERSION=$(sed -n "s/.*litertlm-android:\([0-9][0-9.]*\).*/\1/p" "$ROBOT/brain/build.gradle" | head -1)
 LITERT_NPU_VERSION=$(sed -n "s/.*litert-npu-runtime-google-tensor:\([0-9][0-9.]*\).*/\1/p" "$ROBOT/brain/build.gradle" | head -1)
 GRAPHICS_PATH_VERSION=$(sed -n 's/.*name="graphics-path" version="\([^"]*\)".*/\1/p' "$ROBOT/gradle/verification-metadata.xml" | head -1)
-ROBOT_FILES="build.gradle mt/src/main/cpp brain/src/main/cpp tools/build_robotmt.sh tools/build_llama.sh tools/fetch_third_party.sh tools/make_source_bundle.sh tools/build_sherpa.sh tools/espeak_bounds_check.sh third_party/patches link/build.gradle link/src/main/java/app/heyrobot/r2r/TorRuntime.kt tools/fetch_libsignal.sh tools/fetch_link_deps.sh tools/build_lyrebird.sh third_party/$LIBSIGNAL_PINS third_party/link-carriers.sha256"
+ROBOT_FILES="build.gradle mt/src/main/cpp brain/src/main/cpp tools/build_robotmt.sh tools/build_llama.sh wiki/src/main/cpp tools/build_libzim.sh tools/fetch_third_party.sh tools/make_source_bundle.sh tools/build_sherpa.sh tools/espeak_bounds_check.sh third_party/patches link/build.gradle link/src/main/java/app/heyrobot/r2r/TorRuntime.kt tools/fetch_libsignal.sh tools/fetch_link_deps.sh tools/build_lyrebird.sh third_party/$LIBSIGNAL_PINS third_party/link-carriers.sha256"
 
 # Every native library the APK may hold and where its source is: file name | licence | a path in this archive (a shell
 # pattern) or "upstream: ..." for one not carried. A new library needs a row here: --check-apk, verify_apk.sh and every run
@@ -179,6 +190,7 @@ libsherpa-onnx-jni.so|Apache-2.0, with espeak-ng GPL-3.0-or-later and others lin
 libonnxruntime.so|MIT|onnxruntime-$ORT_VERSION.tar.gz
 librobotmt.so|GPL-2.0-or-later (slimt), Apache-2.0, BSD-2-Clause|mt/*.tar
 librobot_llama.so|MIT, Apache-2.0|llama/*
+librobotzim.so|GPL-2.0-or-later (libzim, Xapian), with Zstandard BSD-3-Clause, liblzma 0BSD and ICU Unicode-3.0|wiki/*
 libsignal_jni.so|AGPL-3.0-only|libsignal/libsignal-$LIBSIGNAL_VERSION.tar.gz
 libtor.so|BSD-3-Clause, with OpenSSL Apache-2.0, libevent BSD-3-Clause and zlib Zlib|tor/tor-android-$TOR_VERSION-sources.jar
 liblyrebird.so|GPL-3.0-or-later, BSD-2-Clause and BSD-3-Clause, with its Go modules' licences|lyrebird/lyrebird-$LYREBIRD_VERSION-vendored.tar.gz
@@ -216,6 +228,7 @@ if [ "$LIST" = 1 ]; then
     echo "llama/llama.cpp $LLAMA_TAG: $LLAMA_GIT @ $LLAMA_COMMIT (tar sha256 $LLAMA_TAR_SHA256)"
     echo "llama/kleidiai $KLEIDIAI_TAG: $KLEIDIAI_URL (sha256 $KLEIDIAI_TGZ_SHA256), or $KLEIDIAI_GIT @ $KLEIDIAI_COMMIT (tar sha256 $KLEIDIAI_TAR_SHA256)"
   fi
+  while read -r line; do eval "set -- ${line#fetch }"; echo "wiki/$1: $2 (sha256 $3)"; done <<<"$WIKI_FETCH"
   echo "libsignal/ $LIBSIGNAL_VERSION: $LIBSIGNAL_REPO @ $LIBSIGNAL_COMMIT, with its Cargo.lock's crates vendored by cargo $CARGO_VERSION ($CARGO_URL, sha256 $CARGO_TAR_SHA256)"
   echo "tor/ $TOR_VERSION: $MAVEN_CENTRAL/${TOR_JAR%.jar}-sources.jar (sha256 $TOR_SOURCES_SHA256)"
   echo "lyrebird/ $LYREBIRD_VERSION: $LYREBIRD_GIT at $LYREBIRD_COMMIT, with third_party/patches/lyrebird-$LYREBIRD_VERSION-deps.patch and vendor/ from tools/build_lyrebird.sh, with go$GO_VERSION's source (sha256 $GO_SRC_SHA256); its modules come from the pinned liblyrebird.so"
@@ -659,6 +672,20 @@ if [ "$WITH_LLAMA" = 1 ]; then
   fi
 fi
 
+# --- librobotzim.so: libzim and what it links, as tools/build_libzim.sh takes them (its own copy when it has one). ------
+WIKI_TABLE=""
+mkdir -p "$STAGE/wiki"
+while read -r line; do
+  eval "set -- ${line#fetch }"
+  say "wiki/$1"
+  if [ -f "$ROBOT/wiki/native/src/$1" ] && [ "$(sha "$ROBOT/wiki/native/src/$1")" = "$3" ]; then cp "$ROBOT/wiki/native/src/$1" "$STAGE/wiki/$1"
+  else curl -fsSL --retry 2 --connect-timeout 20 --max-time 1800 -o "$STAGE/wiki/$1" "$2"; fi
+  [ "$(sha "$STAGE/wiki/$1")" = "$3" ] || { echo "wiki/$1: sha256 $(sha "$STAGE/wiki/$1"), tools/build_libzim.sh pins $3" >&2; exit 1; }
+  printf '%s\t%s\t%s\t%s\t%s\n' "wiki/$1" "$3" "$2" "release archive (tools/build_libzim.sh)" "sha256 (pinned)" >> "$MANIFEST"
+  WIKI_TABLE="$WIKI_TABLE| ${1%%.t*} | \`wiki/$1\` | its release archive, $2, the one tools/build_libzim.sh checks |
+"
+done <<<"$WIKI_FETCH"
+
 # --- Robot's own native sources and build scripts, at this commit. -------------------------------------------------------
 ROBOT_COMMIT=$(git -C "$ROBOT" rev-parse HEAD 2>/dev/null || echo unknown)
 ROBOT_TGZ="$STAGE/robot/robot-native-${ROBOT_COMMIT:0:12}.tar.gz"
@@ -678,9 +705,9 @@ cat > "$STAGE/README.md" <<EOF
 
 Robot is free software under the GNU GPL version 3. Its own source is in its repository at tag v$VERSION. Robot's APK also
 contains native code from outside it: ONNX Runtime's prebuilt \`libonnxruntime.so\` and 17 compiled espeak-ng data files;
-and three libraries Robot builds from pinned third-party source, \`libsherpa-onnx-jni.so\` (sherpa-onnx, into which
+and four libraries Robot builds from pinned third-party source, \`libsherpa-onnx-jni.so\` (sherpa-onnx, into which
 espeak-ng, GPL-3.0-or-later and changed by Robot's patch, and the libraries below are statically linked), \`librobotmt.so\` (slimt,
-GPL-2.0-or-later, with ruy, cpuinfo and SentencePiece) and, when built, \`librobot_llama.so\` (llama.cpp and KleidiAI).
+GPL-2.0-or-later, with ruy, cpuinfo and SentencePiece) \`librobotzim.so\` (libzim and Xapian, GPL-2.0-or-later, with Zstandard, liblzma and ICU) and, when built, \`librobot_llama.so\` (llama.cpp and KleidiAI).
 For Robot to Robot it holds three more: \`libsignal_jni.so\` (libsignal, AGPL-3.0-only; Signal's build, Robot only strips its
 debug symbols), \`libtor.so\` (Tor with OpenSSL, libevent and zlib; Briar's build, unchanged) and \`liblyrebird.so\` (lyrebird and
 its Go modules, GPL-3.0-or-later, BSD and others; Robot's own build). "Every native library" below says where each one's source is.
@@ -697,6 +724,7 @@ its own source; Robot's Settings › About › Licences lists them all.
 | \`assets/espeak-ng-data/\` (17 files) | listed in Robot's THIRD_PARTY.md | sherpa-onnx's \`tts-models/espeak-ng-data.tar.bz2\` (sha256 \`4135ccf82e1f40613491c0874d4945ae9e9c7840933d8e25a6f9e003d9ebf533\`), unchanged |
 | \`lib/arm64-v8a/librobotmt.so\` | $MT_SHIPPED | built by Robot's \`tools/build_robotmt.sh\` from \`mt/\` and Robot's \`mt/src/main/cpp\` (below) |
 | \`lib/arm64-v8a/librobot_llama.so\` (only in a build that has it) | $LLAMA_SHIPPED | built by Robot's \`tools/build_llama.sh\` from \`llama/\` and Robot's \`brain/src/main/cpp\` (below) |
+| \`lib/arm64-v8a/librobotzim.so\` | \`$ZIM_BUILT_SHA\` (tools/build_libzim.sh's pin, which verify_apk.sh holds every release to) | built by Robot's \`tools/build_libzim.sh\` from \`wiki/\` and Robot's \`wiki/src/main/cpp\` (below) |
 | \`lib/arm64-v8a/libsignal_jni.so\` | \`$LIBSIGNAL_SO_PIN\` | Signal's own build, the arm64 library in \`org.signal:libsignal-android:$LIBSIGNAL_VERSION\`, stripped by Robot's \`link/build.gradle\` (\`llvm-strip --strip-unneeded\`) |
 | \`lib/arm64-v8a/libtor.so\` | \`$(carrier_pin lib/arm64-v8a/libtor.so)\` | Briar's build, \`org.briarproject:tor-android:$TOR_VERSION\`, unchanged |
 | \`lib/arm64-v8a/liblyrebird.so\` | \`$(carrier_pin lib/arm64-v8a/liblyrebird.so)\` | Robot's build of lyrebird $LYREBIRD_VERSION, \`tools/build_lyrebird.sh\`, reproducible |
@@ -710,7 +738,7 @@ in Robot's own repository.
 |---|---|---|
 | sherpa-onnx v$SHERPA_VERSION | \`sherpa-onnx-$SHERPA_VERSION.tar.gz\` | \`git archive\` of commit \`$SHERPA_COMMIT\` (the tag) |
 ${DEPS_TABLE}${ORT_ROW}
-${MT_TABLE}${LLAMA_TABLE}${LINK_TABLE}| Robot's own native code and build scripts | \`robot/$(basename "$ROBOT_TGZ")\` | Robot's repository at commit \`$ROBOT_COMMIT\` ($ROBOT_STATE): $ROBOT_FILES |
+${MT_TABLE}${LLAMA_TABLE}${WIKI_TABLE}${LINK_TABLE}| Robot's own native code and build scripts | \`robot/$(basename "$ROBOT_TGZ")\` | Robot's repository at commit \`$ROBOT_COMMIT\` ($ROBOT_STATE): $ROBOT_FILES |
 
 \`MANIFEST.tsv\` has every file's SHA-256, where it came from and the pin it was checked against.
 
@@ -762,6 +790,15 @@ llama.cpp and ggml are MIT, KleidiAI is Apache-2.0. Run Robot's \`tools/build_ll
 only, KleidiAI kernels on). Without the network, unpack them into \`build-native/src/\` as the script names them
 (\`llama.cpp-$LLAMA_TAG\`, \`kleidiai-$KLEIDIAI_TAG\`) with the \`.robot-checked\` mark it writes, and run it again.
 $( [ "$WITH_LLAMA" = 1 ] || echo "This archive was made with --without-llama: llama.cpp ($LLAMA_GIT, tag $LLAMA_TAG, commit \`$LLAMA_COMMIT\`) and KleidiAI ($KLEIDIAI_GIT, tag $KLEIDIAI_TAG) are not in it." )
+
+## Building librobotzim.so (libzim)
+
+libzim and Xapian are GPL-2.0-or-later (used under GPL-3.0), Zstandard is BSD-3-Clause (or GPL-2.0-only), XZ Utils'
+liblzma is 0BSD and ICU is under the Unicode licence v3; Meson (Apache-2.0) only builds libzim and isn't in the APK. Run
+Robot's \`tools/build_libzim.sh\`: it fetches the archives in \`wiki/\` (the same SHA-256), cuts ICU's data with
+\`wiki/src/main/cpp/icu-filter.json\` and builds Robot's \`wiki/src/main/cpp\` with them, all static (Android NDK
+27.1.12297006, \`ANDROID_PLATFORM=android-34\`). Without the network, copy them into \`wiki/native/src/\` and run it: it
+fetches only what isn't there.
 
 ## Building libsignal
 

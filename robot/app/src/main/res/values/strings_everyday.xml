@@ -11,6 +11,9 @@
     <string name="everyday_music_app">Your music app</string>
     <string name="everyday_music_app_none">None yet. Robot asks the first time you play something by name.</string>
     <string name="everyday_group_other_apps">Other apps</string>
+    <string name="everyday_group_read">Point and read</string>
+    <string name="everyday_read_tiles">Read small print in four parts</string>
+    <string name="everyday_read_tiles_summary">Sends four close-ups of the photo instead of one. Slower, and it may read small print better.</string>
     <string name="everyday_ask">Ask Robot in other apps</string>
     <string name="everyday_ask_summary">In the text-selection menu and the share sheet. Robot reads what you hand it and never writes back.</string>
     <string name="everyday_listen">Listening for other apps</string>
@@ -65,6 +68,7 @@
     <string name="everyday_online_g_skills">Skills</string>
     <string name="everyday_online_g_link">Robot to Robot</string>
     <string name="everyday_online_g_news">News</string>
+    <string name="everyday_online_g_reports">Reports</string>
     <plurals name="everyday_online_empty">
         <item quantity="one">Robot hasn\'t gone online in the last %1$d day.</item>
         <item quantity="other">Robot hasn\'t gone online in the last %1$d days.</item>

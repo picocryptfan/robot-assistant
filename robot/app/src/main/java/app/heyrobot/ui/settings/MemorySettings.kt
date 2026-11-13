@@ -399,6 +399,7 @@ fun MemorySettingsScreen(store: MemoryStore, a: AppActions, snackbar: SnackbarHo
     val yours = stringResource(R.string.memory_yours)
     val answers = stringResource(R.string.memory_answers)
     val privacy = stringResource(R.string.memory_privacy)
+    val betterSearch = stringResource(R.string.memory_search_group)
     val footer = stringResource(if (s.onLockScreen) R.string.memory_footer_lock_screen else R.string.memory_footer_unlocked)
     val langs = LocalLangs.current
     val suggestionLabels = SuggestionStyle.entries.associateWith { suggestionLabel(it) }
@@ -493,6 +494,7 @@ fun MemorySettingsScreen(store: MemoryStore, a: AppActions, snackbar: SnackbarHo
                 saveSettings(s.copy(speakSecrets = it))
             }
         }
+        meaningSearchGroup(betterSearch) { a.say(it) }
         preferenceGroup(privacy, "privacy") {
             SwitchPreference(stringResource(R.string.memory_lock_screen), stringResource(R.string.memory_lock_screen_detail), s.onLockScreen,
                 enabled = s.on) { on ->

@@ -86,6 +86,16 @@ object InfoStrings : Strings("info", area = "cards") {
     val checkStorage = s("check_storage", "Check your phone's storage", "Vérifier le stockage du téléphone")
     val checkBattery = s("check_battery", "Check your phone's battery", "Vérifier la batterie du téléphone")
     val checkMemory = s("check_memory", "Check your phone's memory", "Vérifier la mémoire du téléphone")
+    val checkPickups = s("check_pickups", "Count today's pickups", "Compter les prises en main d'aujourd'hui")
+    val pickups = s("pickups", "Pickups today", "Prises en main aujourd'hui")
+    val pickupsCount = plural("pickups_count", "n", Plural(one = "{n} time", other = "{n} times"), Plural(one = "{n} fois", other = "{n} fois"))
+    val pickupsGlances = plural("pickups_glances", "g", Plural(one = "my guess: {g} of those was only a look at the lock screen, with no unlock",
+        other = "my guess: {g} of those were only a look at the lock screen, with no unlock"),
+        Plural(one = "à mon avis, {g} de ces fois n'était qu'un coup d'œil à l'écran de verrouillage, sans déverrouiller",
+            other = "à mon avis, {g} de ces fois n'étaient qu'un coup d'œil à l'écran de verrouillage, sans déverrouiller"))
+    val pickupsLine = s("pickups_line", "{count}; {glances}", "{count} ; {glances}")
+    val pickupsUnknown = s("pickups_unknown", "unknown: Robot needs Usage access to count them (the card has a button for it)",
+        "inconnu : Robot a besoin de l'accès aux données d'utilisation pour les compter (la carte a un bouton pour ça)")
     val checkAll = s("check_all", "Check your phone's storage, battery and memory", "Vérifier le stockage, la batterie et la mémoire du téléphone")
     val statusLine = s("status_line", "{title}: {value}", "{title} : {value}")
     val storage = s("storage", "Storage", "Stockage")
@@ -337,6 +347,14 @@ object InfoStrings : Strings("info", area = "cards") {
     val noTextTo = s("no_text_to", "Okay, no text to {name}.", "D'accord, pas de texto pour {name}.")
     val noTextToSay = s("no_text_to_say", "Okay, no text to {name}. To send “{message}”, say “text {name} {said}”.",
         "D'accord, pas de texto pour {name}. Pour envoyer « {message} », dis « texte à {name} {said} ».")
+    // 1.3, tidy and reword (docs/plans/tidy-reword-plan.md): the text card's line of what to check, and a reword kept out.
+    val draftCheck = s("draft_check", "Check: {list}", "Vérifie : {list}")
+    val draftChanged = s("draft_changed", "“{now}” (you first said “{was}”)", "« {now} » (tu as d'abord dit « {was} »)")
+    val draftNew = s("draft_new", "“{now}” (new)", "« {now} » (nouveau)")
+    val rewordKept = s("reword_kept", "I couldn't reword it without changing a number or a name, so the text is as it was.",
+        "Je n'ai pas pu le reformuler sans changer un nombre ou un nom, alors le texto reste comme avant.")
+    val rewordFailed = s("reword_failed", "I couldn't reword it just now, so the text is as it was.",
+        "Je n'ai pas pu le reformuler tout de suite, alors le texto reste comme avant.")
     val whatShouldTextSay = s("what_should_text_say", "What should the text to {name} say?", "Qu'est-ce que je mets dans le texto pour {name}?")
     val noContactCheogram = s("no_contact_cheogram", "No contact matches “{name}” on the phone. They may be in Cheogram's own list.",
         "Aucun contact ne correspond à « {name} » sur le téléphone. La personne est peut-être dans la liste de Cheogram.")

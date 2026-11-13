@@ -60,6 +60,8 @@ class LockAccessibilityService : AccessibilityService() {
     private var frontAt = 0L
     /** Window events are on: a lock is on or due within 10 minutes (main thread). */
     private var watching = false
+    /** App pause is on with an app picked, so window events are on for it too (main thread). */
+    private var pausing = false
     /** What the last engine change said of the edit session and of car mode your car started (main thread). */
     private var wasEdit = false
     private var wasCar = false
@@ -71,7 +73,9 @@ class LockAccessibilityService : AccessibilityService() {
     private var coveredPkg: String? = null
     private var coveredCls: String? = null
     private var coveredAt = 0L
-    private val modeChanged = AudioManager.OnModeChangedListener { callMaybeStarted() }
+    private val modeChanged = AudioManager.OnModeChangedListener { pauseFacts.clear(); callMaybeStarted() }
+    /** after13-lows: what app pause reads for each window event, kept [PAUSE_FACTS_MS]; cleared on a lock, settings or call change. */
+    private val pauseFacts = app.heyrobot.core.ShortCache<Pair<LockEngine.Snapshot, GateFacts>>(PAUSE_FACTS_MS) { SystemClock.uptimeMillis() }
     /** Robot's activities by class (an event names an activity-alias's window by its target's class). */
     private val ownActivities: Set<String> by lazy {
         try { packageManager.getPackageInfo(packageName, PackageManager.GET_ACTIVITIES).activities.orEmpty().map { it.name }.toSet() } catch (_: Throwable) { emptySet() }
@@ -79,8 +83,10 @@ class LockAccessibilityService : AccessibilityService() {
 
     private val screen = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
+            pauseFacts.clear()
             when (i.action) {
                 Intent.ACTION_SCREEN_OFF -> Thread({
+                    main.post { AppPauseWatch.screenOff() }
                     // The edit session ends at screen-off (§8.2), whatever is in front: the phone may be handed on now.
                     if (LockStore.readState(applicationContext).edit > 0) try { LockEngine.endEdit(applicationContext) } catch (t: Throwable) { RLog.w("lock_edit_end", t) }
                     LockEngine.refresh(applicationContext, alive = true)
@@ -117,7 +123,7 @@ class LockAccessibilityService : AccessibilityService() {
             val front = try { if (s.active) LockEngine.usageFront(applicationContext)?.first else null } catch (t: Throwable) { RLog.w("lock_usage_front", t); null }
             val emergency = s.active && (LockGate.emergencyInFront(front, LockEngine.facts(applicationContext, s)) ||
                 LockState.emergencyHeld(s.state.emergencyUntil, System.currentTimeMillis()))
-            if (s.active) onEngine(s, startedNow = !emergency)
+            if (s.active) onEngine(s, startedNow = !emergency) else if (AppPauseWatch.wants(applicationContext)) onEngine(s, startedNow = false)
         }, "robot-lock").start()
     }
 
@@ -147,6 +153,15 @@ class LockAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null || event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         decide(event.packageName?.toString(), event.className?.toString(), fromUnlock = false, at = event.eventTime)
+        if (pausing) pause(event.packageName?.toString(), event.eventTime)
+    }
+
+    /** App pause: never during a lock, a call, car mode (whatever started it) or over the lock screen; unreadable: no pause. */
+    private fun pause(pkg: String?, at: Long) = try {
+        val (s, f) = pauseFacts.get { LockEngine.current(applicationContext).let { it to LockEngine.facts(applicationContext, it) } }
+        AppPauseWatch.onFront(applicationContext, pkg, at, busy = s.active || f.inCall || f.carOwnLock || s.state.carModeOn(System.currentTimeMillis()) || keyguard(), f)
+    } catch (t: Throwable) {
+        RLog.w("pause_front", t)
     }
 
     /**
@@ -242,8 +257,11 @@ class LockAccessibilityService : AccessibilityService() {
             // Phase B: Clock's alarm is heard only while a lock may start on it.
             LockClock.sync(applicationContext, s.file, main)
             val want = LockSchedule.wantsEvents(s.file, s.state, s.clocks)
+            // App pause asks for the same events, but the lock's own rules (watching) stay the lock's.
+            pauseFacts.clear()
+            pausing = AppPauseWatch.wants(applicationContext)
             try {
-                serviceInfo = serviceInfo?.apply { eventTypes = if (want) AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED else 0 }
+                serviceInfo = serviceInfo?.apply { eventTypes = if (want || pausing) AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED else 0 }
             } catch (t: Throwable) {
                 RLog.w("lock_events", t)
             }
@@ -347,5 +365,6 @@ class LockAccessibilityService : AccessibilityService() {
         private const val CURTAIN_MS = 1_000L
         private const val COVER_GONE_MS = 1_500L
         private const val CALL_WINDOW_MS = 10_000L
+        private const val PAUSE_FACTS_MS = 3_000L
     }
 }

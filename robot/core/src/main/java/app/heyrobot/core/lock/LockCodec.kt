@@ -163,6 +163,7 @@ object LockCodec {
             .put("missed", s.missed?.let { JSONObject().put("at", it.alarmAt).put("done", it.doneAt) } ?: JSONObject.NULL))
         .put("last", JSONObject().put("alive", s.last.alive).put("shutdown", s.last.shutdown))
         .put("car", s.car)
+        .apply { if (s.carMode != 0L) put("carMode", s.carMode) }
         .put("mapsApp", s.mapsApp ?: JSONObject.NULL)
         .apply { if (s.emergencyUntil != 0L) put("emergencyUntil", s.emergencyUntil); if (s.dialerUntil != 0L) put("dialerUntil", s.dialerUntil) }
         .put("record", JSONArray().apply {
@@ -180,7 +181,7 @@ object LockCodec {
             val o = Obj(root)
             if (o.int("v") != STATE_VERSION) return null
             // Phase B added "car"; a state written before it has none.
-            o.only("v", "active", "skip", "edit", "codeSet", "code", "alarm", "last", "record", "car", "mapsApp", "emergencyUntil", "dialerUntil")
+            o.only("v", "active", "skip", "edit", "codeSet", "code", "alarm", "last", "record", "car", "carMode", "mapsApp", "emergencyUntil", "dialerUntil")
             val active = o.list("active").map { x ->
                 val a = Obj(x as? Map<*, *> ?: bad())
                 a.only("lock", "start", "end", "endElapsed", "boot", "usedMs", "early")
@@ -222,6 +223,7 @@ object LockCodec {
             LockState(active, skip, o.long("edit"), o.bool("codeSet"), CodeTries(c.int("fails"), c.long("nextTry"), if (c.has("nextElapsed")) c.longOrNull("nextElapsed") else null, if (c.has("boot")) c.longOrNull("boot")?.toInt() else null),
                 AlarmWatchState(phase, al.long("ringing"), al.long("first"), al.long("snoozed")), seen = seen, missed = missed, last = LastSeen(last.long("alive"), last.long("shutdown")), record = record,
                 car = if (o.has("car")) o.long("car") else 0,
+                carMode = if (o.has("carMode")) o.long("carMode") else 0,
                 mapsApp = if (o.has("mapsApp")) o.strOrNull("mapsApp")?.also { if (!LockLimits.validPackage(it)) bad() } else null,
                 emergencyUntil = if (o.has("emergencyUntil")) o.long("emergencyUntil") else 0,
                 dialerUntil = if (o.has("dialerUntil")) o.long("dialerUntil") else 0)

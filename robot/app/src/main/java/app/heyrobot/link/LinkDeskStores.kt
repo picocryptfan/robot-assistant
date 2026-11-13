@@ -55,6 +55,6 @@ class LinkDeskReminders(private val app: Context, private val st: LinkStateStore
 /** People for a contact card: a new person added unconfirmed; no one you have is changed (LinkRest.person decides). */
 class LinkDeskPeople(private val app: Context) : DeskPeople {
     override fun list(): List<Person>? = PeopleFiles.store(app).let { if (it.damaged()) null else it.list() }
-    override fun add(p: Person): Boolean = PeopleFiles.store(app).update { all -> if (all.any { it.id == p.id }) all else all + p } != null
+    override fun add(p: Person): Boolean = PeopleFiles.store(app).add(p)
     override fun newId(): String = PeopleStore.newId()
 }

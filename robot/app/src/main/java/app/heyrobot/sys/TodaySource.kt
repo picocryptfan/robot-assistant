@@ -75,10 +75,12 @@ object TodaySource {
         val read = day(ctx, now, TodayPage.range(now.toLocalDate(), now.zone))
         val week = read.events
         val lists = lists(ctx)
-        val notes = try { NotesFiles.store(ctx).list() } catch (t: Throwable) { RLog.w("today_note", t); null }
-        val note = notes?.let { n -> TodayPage.pick(n, home.note)?.let { (n, pinned) -> TodayPage.note(n, pinned) } }
+        val notesRead = try { NotesFiles.store(ctx).read() } catch (t: Throwable) { RLog.w("today_note", t); null }
+        val notes = notesRead?.notes
+        val note = notesRead?.let { r -> notePick(r, home.note)?.let { (n, pinned) -> TodayPage.note(n, pinned) } }
         return TodayRead(input(ctx, now, week, lists, read.privateLocked), week, glances(lists, lang), looseEnds(ctx, now), fromRobots(ctx, robots), note,
-            notes.orEmpty().take(choices).map { it.id to it.displayTitle }, if (home.weather) weather(ctx, lang) else null)
+            notes.orEmpty().take(choices).map { it.id to it.displayTitle }, if (home.weather) weather(ctx, lang) else null,
+            if (notesRead == null) app.heyrobot.core.NoteHeld.NOT_NOW else noteHeld(notesRead, home.note))
     }
 
     /**
@@ -95,9 +97,9 @@ object TodaySource {
 
     /** today-fix-b: what [read] stands on, at [now], with nothing opened (core PageStamp); the page adds its own keys. */
     fun stamp(ctx: Context, now: ZonedDateTime): List<Any?> = listOf(now.toLocalDate(), now.zone, Calendars.readGranted(ctx), Assistant.keyguard(ctx),
-        Assistant.locked(ctx), PageStamp.files(PrivateEventsFiles.dir(ctx), ListsFiles.dir(ctx), NotesFiles.dir(ctx), RobotFiles.dir(ctx),
+        Assistant.locked(ctx), PageStamp.files(PrivateEventsFiles.dir(ctx), ListsFiles.dir(ctx), RobotFiles.dir(ctx),
             File(Paths.dir(ctx), app.heyrobot.core.RoutineStore.ROUTINES), ListsSettingsStore.file(ctx), FilesSettingsStore.file(ctx),
-            LinkSettingsStore.file(ctx), HomeSettingsStore.file(ctx), timersFile(ctx), TodayWeatherStore.file(ctx)))
+            LinkSettingsStore.file(ctx), HomeSettingsStore.file(ctx), timersFile(ctx), TodayWeatherStore.file(ctx)), NotesFiles.stamp(ctx))
 
     /** The lists as the page shows them, shopping and to-do first, named in [lang]. */
     private fun glances(lists: List<ListsList>?, lang: Lang): List<ListGlance> =
@@ -109,7 +111,39 @@ object TodaySource {
 
     /** The page's note: the one you pinned while it exists, else your newest; null when there is none or it can't be read. */
     fun note(ctx: Context, home: HomeSettings): app.heyrobot.core.NoteGlance? =
-        try { TodayPage.pick(NotesFiles.store(ctx).list(), home.note)?.let { (n, pinned) -> TodayPage.note(n, pinned) } } catch (t: Throwable) { RLog.w("today_note", t); null }
+        try { notePick(NotesFiles.store(ctx).read(), home.note)?.let { (n, pinned) -> TodayPage.note(n, pinned) } } catch (t: Throwable) { RLog.w("today_note", t); null }
+
+    /**
+     * merge-seal-130: [TodayPage.pick] over sealed notes. The pinned note when it opens; your newest only when every note
+     * opened, so while some can't be (locked, a newer Robot's) another note never stands in for the pinned one, on the
+     * page or for a quick add.
+     */
+    fun notePick(read: NotesRead, pinned: String?): Pair<app.heyrobot.core.Note, Boolean>? =
+        TodayPage.pick(read.notes, pinned)?.takeIf { it.second || (read.notNow == 0 && read.tooNew == 0) }
+
+    /** fix-seal-lows: why [notePick] has nothing while some notes can't be opened (just now first: it passes on its own). */
+    fun noteHeld(read: NotesRead, pinned: String?): app.heyrobot.core.NoteHeld? = when {
+        notePick(read, pinned) != null -> null
+        read.notNow > 0 -> app.heyrobot.core.NoteHeld.NOT_NOW
+        read.tooNew > 0 -> app.heyrobot.core.NoteHeld.TOO_NEW
+        else -> null
+    }
+
+    /**
+     * fix-seal-lows-b: what a quick add of [text] does over [read]: a line on the note [notePick] gives, else a new note when
+     * none is held; null (nothing written) while held or when there is nothing to add.
+     */
+    fun quickAdd(read: NotesRead, pinned: String?, text: String, now: Long): QuickAdd? {
+        val picked = notePick(read, pinned)?.first
+        return if (picked != null) TodayPage.added(picked, text, now)?.let { QuickAdd.Line(it) }
+        else if (text.isNotBlank() && noteHeld(read, pinned) == null) QuickAdd.New(text.trim().take(TodayPage.QUICK_ADD)) else null
+    }
+
+    /** A quick add's write: [Line] saves the note with the line added, [New] starts a note. */
+    sealed interface QuickAdd {
+        data class Line(val note: app.heyrobot.core.Note) : QuickAdd
+        data class New(val text: String) : QuickAdd
+    }
 
     /** Files' dates due, as the brief's files part counts them (BriefSource.files): Files on, its brief part on, unlocked. */
     private fun looseEnds(ctx: Context, now: ZonedDateTime): Int = try {

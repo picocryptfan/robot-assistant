@@ -137,6 +137,7 @@
     <string name="conn_mark_money">Elle peut dépenser de l’argent</string>
     <string name="conn_mark_security">Elle verrouille, déverrouille ou ouvre quelque chose</string>
     <string name="conn_mark_tells">Elle prévient des gens</string>
+    <string name="conn_mark_deletes">Elle supprime quelque chose</string>
     <string name="conn_field_bad">Robot ne peut pas utiliser ceci tel qu’écrit.</string>
     <!-- A hand-off's app and what it opens (C7's picker). -->
     <string name="conn_hand_off_title">Relais vers une appli</string>

@@ -52,7 +52,11 @@ object LockGate {
      * confirmation and the share target; and 1.4's window that picks a home-screen widget's list (it shows your lists' names).
      */
     val ROBOT_COVERED = setOf("app.heyrobot.ui.MainActivity", "app.heyrobot.ui.NotesLauncher", "app.heyrobot.ui.FilesLauncher",
+        // App pause's cover: its Open opens the paused app, so a lock covers it.
+        "app.heyrobot.lock.PauseCoverActivity",
         "app.heyrobot.assistant.backup.BackupActivity",
+        // Step by step: a page's steps in large text (what you shared, a note or a file).
+        "app.heyrobot.assistant.steps.StepsActivity",
         // Skills connections: a connection's key is pasted here and Test runs here (Settings opens it).
         "app.heyrobot.assistant.connect.ConnectionWindow",
         // A helper's API key and a search service's key are pasted here (Settings opens them by class name).

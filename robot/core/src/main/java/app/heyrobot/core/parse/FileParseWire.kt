@@ -143,12 +143,16 @@ class ParseRequest(
         const val DATE = 8
         /** With PAGES: render a PDF's pages only when it has no text layer (§4.2: text before pictures). */
         const val PAGES_IF_NO_TEXT = 16
+        /** With TEXT: a PDF's pages joined by [PAGE_BREAK] (one per page, a blank one too), so Read it to me gets its pages. */
+        const val PAGE_BREAKS = 32
+        /** What PAGE_BREAKS puts between two pages: a form feed. */
+        const val PAGE_BREAK = '\u000C'
         // PIXELS' flag: a thumbnail's box (320 by 320), else a page's (1,600 by 2,400).
         const val VIEW_THUMB = 1
 
         /** The flags each op may carry. */
         fun allowed(op: ParseOp): Int = when (op) {
-            ParseOp.READ -> TEXT or PAGES or THUMB or DATE or PAGES_IF_NO_TEXT
+            ParseOp.READ -> TEXT or PAGES or THUMB or DATE or PAGES_IF_NO_TEXT or PAGE_BREAKS
             ParseOp.PIXELS -> VIEW_THUMB
             else -> 0
         }

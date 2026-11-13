@@ -220,6 +220,10 @@ object ToolStrings : Strings("tool", area = "cards") {
         "Ta prochaine alarme sonne demain à {time}. Android ne montre à Robot que celle-là. Ton appli d'horloge a les autres.")
     val alarmNextDay = s("alarm_next_day", "Your next alarm is at {time} on {day}. Android shows Robot only that one: your clock app has the others.",
         "Ta prochaine alarme sonne le {day} à {time}. Android ne montre à Robot que celle-là. Ton appli d'horloge a les autres.")
+    // fix-alarm-moved: the clock left the alarm on, so Robot says where to finish.
+    val alarmFinishThere = s("alarm_finish_there", "Your clock's alarms are open. Turn off the {time} alarm there.",
+        "Les alarmes de ton horloge sont ouvertes. Désactive l'alarme de {time} là.")
+    val alarmFinishInClock = s("alarm_finish_in_clock", "Turn it off in your clock app's alarms.", "Désactive-la dans les alarmes de ton appli d'horloge.")
     val alarmsInClock = s("alarms_in_clock", "Check in your clock app.", "Vérifie dans ton appli d'horloge.")
     // fix-note-delete: "delete the note about …" (PanelRoutines' deleteNote, core NoteDelete).
     val noteDeleteUnlock = s("note_delete_unlock", "Unlock to delete a note.", "Déverrouille pour supprimer une note.")
@@ -260,6 +264,9 @@ object ToolStrings : Strings("tool", area = "cards") {
     val badNumber = s("bad_number", "That phone number couldn't be read.", "Ce numéro de téléphone n'a pas pu être lu.")
     val noOneInPeople = s("no_one_in_people", "No one in {people} matches “{name}”, and Robot can't read your contacts.",
         "Personne dans {people} ne correspond à « {name} », et Robot ne peut pas lire tes contacts.")
+    /** seal-people: no contact matches while People can't be opened (the phone locked). */
+    val noContactPeopleLocked = s("no_contact_people_locked", "No contact matches “{name}”, and {people} opens once you unlock.",
+        "Aucun contact ne correspond à « {name} », et Robot ouvre {people} une fois le téléphone déverrouillé.")
     val noNumber = s("no_number", "No matching contact has a phone number.", "Aucun contact correspondant n'a de numéro de téléphone.")
     val noNumberOrXmpp = s("no_number_or_xmpp", "No matching contact has a phone number or XMPP address.",
         "Aucun contact correspondant n'a de numéro de téléphone ni d'adresse XMPP.")
@@ -286,6 +293,11 @@ object ToolStrings : Strings("tool", area = "cards") {
         Plural(one = "{n} contact trouvé.", other = "{n} contacts trouvés."))
     val noteNotSaved = s("note_not_saved", "The note couldn't be saved.", "La note n'a pas pu être enregistrée.")
     val savedToNotes = s("saved_to_notes", "Saved to Robot Notes.", "Enregistré dans Notes de Robot.")
+    /** seal-notes: over the lock screen the notes are sealed under a key that needs the phone unlocked. */
+    val notesLocked = s("notes_locked", "Your notes open once you unlock the phone.", "Tes notes s'ouvrent une fois le téléphone déverrouillé.")
+    /** fix-seal-lows-d 1: every note is a newer Robot's, so unlocking won't open them. */
+    val notesTooNew = s("notes_too_new", "Your notes were saved by a newer Robot, and this one can't read them. Update Robot, or delete them with Delete these in Notes.",
+        "Tes notes ont été enregistrées par un Robot plus récent et ne peuvent pas être lues ici. Mets Robot à jour, ou supprime-les avec Supprimer celles-ci dans Notes.")
     val noNoteMatches = s("no_note_matches", "No note matches “{query}”.", "Aucune note ne correspond à « {query} ».")
     val foundNotes = plural("found_notes", "n", Plural(one = "Found {n} note.", other = "Found {n} notes."),
         Plural(one = "{n} note trouvée.", other = "{n} notes trouvées."))

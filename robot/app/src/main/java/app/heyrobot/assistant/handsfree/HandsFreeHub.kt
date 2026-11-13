@@ -108,9 +108,9 @@ object HandsFreeHub {
 
     // ------------------------------------------------------------------ the phone
 
-    /** Another app's call or a phone call is on (the mode is not Robot's own call audio or session route). */
-    fun callActive(): Boolean {
-        val mode = try { app.getSystemService(AudioManager::class.java).mode } catch (_: Throwable) { AudioManager.MODE_NORMAL }
+    /** Another app's call or a phone call is on (the mode is not Robot's own call audio or session route); [unknownIsCall]: fail closed. */
+    fun callActive(unknownIsCall: Boolean = false): Boolean {
+        val mode = try { app.getSystemService(AudioManager::class.java).mode } catch (_: Throwable) { if (unknownIsCall) -1 else AudioManager.MODE_NORMAL }
         return when (mode) {
             AudioManager.MODE_NORMAL -> false
             AudioManager.MODE_IN_COMMUNICATION -> !SessionRoute.held

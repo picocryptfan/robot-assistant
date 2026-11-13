@@ -30,6 +30,8 @@ interface PanelActions {
     fun readClaudeAnswer()
     /** E7: one of Ask Robot's buttons under what another app shared: [request], sent as if you said it. */
     fun askShared(request: app.heyrobot.core.i18n.Phrase) {}
+    /** 1.3 point and read (P3): Read aloud on Ask Robot's "Shared photo" chip. */
+    fun readShared() {}
 
     fun micPressed()
     fun micReleased()
@@ -53,6 +55,8 @@ interface PanelActions {
 
     /** 0.7: a tap on the reply card under [replyId] (Send, Edit, Open chat, Cancel, the tick boxes, Stop). */
     fun reply(replyId: String, op: app.heyrobot.ui.common.ReplyOp) {}
+    /** RP3: the card for the turn that ends with reply [replyId] (null: the newest, the bug button). */
+    fun report(replyId: String?) {}
 
     /** 0.9: a Termux card's Edit, time limit, Open in Termux or Stop (Run and Cancel are [confirm]). */
     fun termux(actionId: String, change: app.heyrobot.ui.common.TermuxCardChange) {}
@@ -65,6 +69,7 @@ interface PanelActions {
         override fun send(text: String) = PanelController.send(text)
         override fun askAboutScreen(question: String) { PanelController.askAboutScreen(question) }
         override fun askShared(request: app.heyrobot.core.i18n.Phrase) { PanelController.askShared(request) }
+        override fun readShared() { PanelController.readShared() }
         override fun keepConversation() { PanelController.keepConversation() }
         override fun toggleSpeak() { PanelController.toggleSpeak() }
         override fun newConversation() { PanelController.newConversation() }
@@ -92,6 +97,7 @@ interface PanelActions {
         override fun dismissOffer(replyId: String) { PanelController.dismissOffer(replyId) }
         override fun endHelperMode() { PanelController.endHelperMode() }
         override fun reply(replyId: String, op: app.heyrobot.ui.common.ReplyOp) { PanelController.reply(replyId, op) }
+        override fun report(replyId: String?) { PanelController.report(replyId) }
         override fun openSource(replyId: String, url: String) { PanelController.openSource(replyId, url) }
         override fun termux(actionId: String, change: app.heyrobot.ui.common.TermuxCardChange) { TermuxPanel.change(actionId, change) }
         override fun listCard(replyId: String, op: app.heyrobot.ui.common.ListCardOp) { PanelController.listCard(replyId, op) }

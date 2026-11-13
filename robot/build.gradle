@@ -24,6 +24,9 @@ ext {
 def robotModules = ['core', 'brain', 'voice', 'helpers', 'mt', 'link', 'app']
 subprojects {
     tasks.withType(Test).configureEach { t ->
+        // Review M3: a hung test stops its module's tests here (TimeLimitedStatement only interrupts, which a busy loop
+        // or a swallowed interrupt ignores). 40 minutes: a whole suite has taken up to 53 with three builds at once.
+        t.timeout = java.time.Duration.ofMinutes(40)
         t.inputs.files(robotModules.collect { rootProject.file("$it/src/main") })
             .withPropertyName('robotModuleSources').withPathSensitivity(PathSensitivity.RELATIVE)
         if (project.name == 'app') {

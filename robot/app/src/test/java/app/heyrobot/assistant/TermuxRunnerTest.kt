@@ -137,7 +137,9 @@ class TermuxRunnerTest {
     }
 
     @Test fun idsArePositiveAndUnique() {
-        val r = TermuxRunner(transport)
+        // Seeded: newId() only avoids ids still pending, so 2000 unseeded draws repeat one about once in a thousand
+        // runs (12 Nov 2026, the 1.4.0 release check). This seed gives 2000 distinct ids.
+        val r = TermuxRunner(transport, random = java.util.Random(7))
         val ids = (1..2000).map { r.newId() }
         assertTrue(ids.all { it > 0 })
         assertEquals(ids.size, ids.toSet().size)

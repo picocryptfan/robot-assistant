@@ -28,6 +28,12 @@ sealed class CategoryOutcome {
     data object Cut : CategoryOutcome()
     /** R3: the main app couldn't write it over this phone's file (unreadable, a newer Robot's, a failed write). Nothing of it changed. */
     data object Refused : CategoryOutcome()
+    /** seal-history-fix-c: History here can't be opened whole, a newer Robot's file ([tooNew]) or not just now. Nothing of it changed. */
+    data class HistoryUnreadable(val tooNew: Boolean) : CategoryOutcome()
+    /** seal-notes-c: a note here is a newer Robot's, so Notes can't be read whole. Nothing of it changed. */
+    data object NotesTooNew : CategoryOutcome()
+    /** seal-people: People here is a newer Robot's file, or can't be read (Start over in People). Nothing of it changed. */
+    data object PeopleTooNew : CategoryOutcome()
 
     companion object {
         /**
@@ -84,6 +90,9 @@ data class RestoreResult(
                 is CategoryOutcome.KeysNoPlace -> "noplace:" + o.count
                 CategoryOutcome.Cut -> "cut"
                 CategoryOutcome.Refused -> "refused"
+                is CategoryOutcome.HistoryUnreadable -> if (o.tooNew) "history:new" else "history:now"
+                CategoryOutcome.NotesTooNew -> "notes:new"
+                CategoryOutcome.PeopleTooNew -> "people:new"
             })
         }).toString()
 
@@ -108,6 +117,10 @@ data class RestoreResult(
                     s == "earlier" -> CategoryOutcome.EarlierWaits
                     s == "cut" -> CategoryOutcome.Cut
                     s == "refused" -> CategoryOutcome.Refused
+                    s == "history:new" -> CategoryOutcome.HistoryUnreadable(tooNew = true)
+                    s == "history:now" -> CategoryOutcome.HistoryUnreadable(tooNew = false)
+                    s == "notes:new" -> CategoryOutcome.NotesTooNew
+                    s == "people:new" -> CategoryOutcome.PeopleTooNew
                     s.startsWith("noplace:") -> s.removePrefix("noplace:").toIntOrNull()?.takeIf { it > 0 }?.let { CategoryOutcome.KeysNoPlace(it) } ?: continue
                     s.startsWith("missed:") -> s.removePrefix("missed:").toIntOrNull()?.takeIf { it > 0 }?.let { CategoryOutcome.KeysMissed(it) } ?: continue
                     s.startsWith("skip:") -> PlanSkip.entries.firstOrNull { it.name == s.removePrefix("skip:") }?.let { CategoryOutcome.Skipped(it) } ?: continue

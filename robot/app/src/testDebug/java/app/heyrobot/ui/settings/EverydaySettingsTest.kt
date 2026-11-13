@@ -66,9 +66,11 @@ class EverydaySettingsTest {
         rule.onNodeWithText("Music by voice").assertExists()
         for (t in listOf(
             "Keep a record of what went online")) rule.onNodeWithText(t).assertDoesNotExist()
-        rule.onNodeWithText("Robot's voices for other apps").assertExists()
-        rule.onNodeWithText("Listening for other apps").assertExists()
-        rule.onNodeWithText("Ask Robot in other apps").assertExists()
+        // 1.3: point and read's tiles row is on from P2 (off by default); the list is longer, so the rows below are scrolled to.
+        rule.scrollToText("Read small print in four parts")
+        rule.scrollToText("Robot's voices for other apps")
+        rule.scrollToText("Listening for other apps")
+        rule.scrollToText("Ask Robot in other apps")
         rule.scrollToText("See what went online")
     }
 

@@ -63,7 +63,12 @@ class PanelTextingTest {
     private var langs = Langs.EN
     private val calls = java.util.concurrent.CopyOnWriteArrayList<String>() // written from coroutines while the test waits on it
 
-    private val texting = PanelTexting(state, replies, object : PanelTexting.Port {
+    /** 1.3: what the reply's card was to show, what the model is to answer a reword, and a reword said while the card waits. */
+    private val marksAtTurn = mutableListOf<String?>()
+    private var modelSays: String? = null
+    private val rewords = ArrayDeque<String>()
+
+    private val texting: PanelTexting = PanelTexting(state, replies, object : PanelTexting.Port {
         override val ctx get() = this@PanelTextingTest.ctx
         override val settings get() = this@PanelTextingTest.settings
         override val turnLangs get() = this@PanelTextingTest.langs
@@ -83,14 +88,24 @@ class PanelTextingTest {
             sent += call
             textAtTurn = replies.text(replyId)
             untrustedSeen = untrusted
-            card?.let { c -> state.update { st -> st.copy(turns = st.turns.map { if (it.id == replyId) it.copy(actions = listOf(UiAction("a1", ToolName.SEND_TEXT, "Text Mom", c, null))) else it }) } }
+            marksAtTurn += PanelTexting.marks(replyId)
+            val id = "a${sent.size}"
+            fun show(c: ActionStatus) = state.update { st -> st.copy(turns = st.turns.map { if (it.id == replyId) it.copy(actions = it.actions.filter { a -> a.id != id } + UiAction(id, ToolName.SEND_TEXT, "Text Mom", c, null)) else it }) }
+            rewords.removeFirstOrNull()?.let { said ->
+                show(ActionStatus.PENDING)
+                assertTrue(texting.reword(id, said))
+                show(ActionStatus.DECLINED)
+                return turn
+            }
+            card?.let(::show)
             return turn
         }
         override fun finishReply(replyId: String, reason: DoneReason) { calls += "finish $replyId $reason" }
         override fun failReply(replyId: String, message: String) { calls += "fail $replyId $message" }
         override suspend fun leaveForApp() { calls += "leave" }
-    })
+    }, oneShot = { modelSays })
 
+    init { app.heyrobot.sys.PeopleFiles.testKeys(app.heyrobot.sys.SoftHistoryKeys()) }
     @Before fun clean() { PeopleFiles.store(ctx).deleteAll() }
     @After fun cleanAfter() { PeopleFiles.store(ctx).deleteAll() }
 
@@ -195,5 +210,40 @@ class PanelTextingTest {
         assertTrue(run("never mind", textingFor = "mom", fromVoice = true))
         assertEquals(2, sent.size)
         assertTrue(calls.toString(), calls.single().startsWith("reply "))
+    }
+
+    /** 1.3 (tidy-reword): fillers out, the last correction kept and marked on the card; none of it is sent without the card. */
+    @Test fun aDictatedTextIsTidiedAndItsCorrectionMarked() {
+        assertTrue(run("text Mom I'll be, uh, ten, no, fifteen minutes late"))
+        assertEquals("I'll be fifteen minutes late", sent.single().args["message"])
+        assertEquals("Check: “fifteen minutes” (you first said “ten”)", marksAtTurn.single())
+        assertEquals(null, PanelTexting.marks("r1"))
+    }
+
+    /** 1.3: a reword while the card waits writes a new draft and a new card (the old one goes); it never sends. */
+    @Test fun aRewordMakesANewCardWithTheFactsKept() {
+        card = ActionStatus.DECLINED
+        rewords += "warmer, and say I'm bringing dessert"
+        modelSays = "Hi Mom! So sorry, I'll be 15 minutes late. I'm bringing dessert!"
+        assertTrue(run("text Mom I'll be fifteen minutes late"))
+        assertEquals(listOf("I'll be fifteen minutes late", "Hi Mom! So sorry, I'll be 15 minutes late. I'm bringing dessert!"), sent.map { it.args["message"] })
+        assertEquals(listOf("a2"), state.value.turns.single().actions.map { it.id })
+        // One that loses the time is kept out: the same draft comes back on its card, and Robot says why.
+        sent.clear(); calls.clear()
+        state.update { st -> st.copy(turns = st.turns.map { it.copy(actions = emptyList()) }) }
+        rewords += "shorter"
+        modelSays = "Running late, bringing dessert!"
+        speak(true)
+        assertTrue(run("text Mom I'll be fifteen minutes late"))
+        assertEquals(listOf("I'll be fifteen minutes late", "I'll be fifteen minutes late"), sent.map { it.args["message"] })
+        assertTrue(calls.any { it.startsWith("speak said: I couldn't reword it without changing") })
+        // No card waits for this reply: a reword has nothing to change.
+        assertFalse(texting.reword("a2", "warmer"))
+    }
+
+    @Test fun frenchIsTidiedToo() {
+        // The answer to "what should the text say?", as French speech to text writes it.
+        assertTrue(run("je serai là à euh cinq non six heures", textingFor = "mom", fromVoice = true))
+        assertEquals("je serai là à six heures", sent.single().args["message"])
     }
 }

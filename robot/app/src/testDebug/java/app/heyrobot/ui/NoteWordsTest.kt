@@ -23,6 +23,7 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class NoteWordsTest {
+    init { app.heyrobot.sys.NotesFiles.testKeys(app.heyrobot.sys.SoftHistoryKeys()) }
     @get:Rule val rule = createComposeRule()
     private val ctx: Context = ApplicationProvider.getApplicationContext()
     private val scope = SaverScope { true }

@@ -124,16 +124,23 @@ class TodayPageTest {
         assertFalse(s.offerShows(ready = true, guideUnderWay = true))
         assertFalse(s.declined().offerShows(ready = true, guideUnderWay = false))
         assertTrue(s.turnedOn().today)
-        assertFalse(s.turnedOn().copy(today = false).offerShows(ready = true, guideUnderWay = false))
+        assertFalse(s.turnedOn().copy(home = app.heyrobot.core.HomeChoice.START).offerShows(ready = true, guideUnderWay = false))
     }
 
     @Test fun theSettingsFileRoundTripsAndABadOneIsTheDefaults() {
-        val s = HomeSettings(today = true, offer = TodayOffer.TAKEN, note = "abc")
+        val s = HomeSettings(home = app.heyrobot.core.HomeChoice.TODAY, offer = TodayOffer.TAKEN, note = "abc")
         assertEquals(s, HomeSettings.fromJson(s.toJson()))
         assertEquals(HomeSettings(), HomeSettings.fromJson(null))
         assertEquals(HomeSettings(), HomeSettings.fromJson("{not json"))
         assertEquals(HomeSettings(), HomeSettings.fromJson("""{"v":2,"today":true}"""))
         assertEquals(TodayOffer.OPEN, HomeSettings.fromJson("""{"v":1,"today":true,"offer":"later"}""").offer)
         assertNull(HomeSettings.fromJson("""{"v":1,"note":""}""").note)
+    }
+
+    @Test fun aNoteBusyJustNowIsReadOnceMoreSoon() {
+        assertEquals(TodayPage.HELD_RETRY, TodayPage.heldRetry(NoteHeld.NOT_NOW))
+        assertTrue(TodayPage.HELD_RETRY in 1_000L..30_000L)
+        assertNull(TodayPage.heldRetry(NoteHeld.TOO_NEW))
+        assertNull(TodayPage.heldRetry(null))
     }
 }

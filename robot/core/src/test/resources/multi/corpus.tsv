@@ -1,0 +1,47 @@
+# Idea 6 corpus (docs/plans/multi-request-plan.md): sentence, what MultiAsk splits it into ("-": not split, today's
+# path; a note you dictate keeps the rest of the sentence, a misfire left as today), and the old routers' baseline (MultiBaselineTest, recorded before MultiAsk): messages, routine, plan, lists, note, model.
+Add eggs and butter to the shopping list, set a 20-minute timer, and remind me at 6 to call Mom	list,timer,reminder	plan
+add salt and pepper to the shopping list	-	lists
+add salt and pepper	-	model
+text Sam and Kim	-	messages
+text Sam that I'm late and set a timer for 5 minutes	-	messages
+call Mom and set a timer for 5 minutes	-	model
+set a timer for 10 minutes and add milk to the shopping list	timer,list	plan
+set an alarm for 7 am and set a timer for 20 minutes	alarm,timer	plan
+set a 5 minute timer then set a 10 minute timer	timer,timer	plan
+wake me up at 6:30 and add coffee to the shopping list	alarm,list	plan
+take a note that the plumber comes Thursday and set a timer for 3 minutes	-	plan
+what's the weather and set a ten minute timer	-	plan
+pay the rent and add milk to the shopping list	-	model
+remind me to pay the hydro bill on Friday and set a timer for 5 minutes	-	plan
+add bread to the shopping list and remind me tomorrow at 9 am to call the dentist	list,reminder	plan
+set a timer for 20 minutes	-	model
+add peanut butter and jelly to the shopping list and set a timer for 2 minutes	list,timer	plan
+turn on the flashlight and set a timer for 5 minutes	-	plan
+add milk, eggs and bread to the shopping list	-	lists
+set an alarm for 6 and unlock the phone	-	plan
+change my password and set a timer for 5 minutes	-	model
+set a timer for 5 minutes and also set an alarm for 8 pm	timer,alarm	plan
+add tomatoes to the shopping list then add nails to the hardware list	list,list	plan
+remind me at 6 to call Mom	-	model
+set a timer for 1 minute, set a timer for 2 minutes, set a timer for 3 minutes, set a timer for 4 minutes, set a timer for 5 minutes, set a timer for 6 minutes	-	model
+set a timer for 5 minutes and text Kim I'm on my way	-	plan
+remind me to call Sam and Kim at 7	-	model
+add milk to the shopping list and send it to Kim	-	plan
+open the camera and set a timer for 2 minutes	-	plan
+Ajoute des œufs et du beurre à la liste d'épicerie, mets une minuterie de 20 minutes et rappelle-moi à 18 h d'appeler maman	list,timer,reminder	plan
+ajoute du sel et du poivre à la liste d'épicerie	-	lists
+texte Sam et Kim	-	model
+mets une minuterie de 10 minutes et ajoute du lait à la liste d'épicerie	timer,list	plan
+règle un réveil à 7 h et mets une minuterie de 5 minutes	alarm,timer	plan
+mets une minuterie de 5 minutes puis mets une minuterie de 10 minutes	timer,timer	plan
+appelle maman et mets une minuterie de 5 minutes	-	model
+paie le loyer et ajoute du lait à la liste d'épicerie	-	model
+mets une minuterie de 20 minutes	-	model
+ajoute du pain à la liste d'épicerie pis mets une minuterie de 3 minutes	list,timer	plan
+réveille-moi à 6 h 30 et ajoute du café à la liste d'épicerie	alarm,list	plan
+c'est quoi la météo et mets une minuterie de 10 minutes	-	plan
+envoie un texto à Marie et mets une minuterie de 5 minutes	-	plan
+change mon mot de passe et mets une minuterie de 5 minutes	-	model
+ajoute des pommes à la liste d'épicerie ensuite rappelle-moi demain à 9 h d'appeler le dentiste	list,reminder	plan
+allume la lampe de poche et mets une minuterie de 5 minutes	-	plan

@@ -294,6 +294,7 @@ fun SkillPageScreen(s: Skill, d: SkillsData, act: SkillActions, snackbar: Snackb
             TextPreference(stringResource(R.string.skill_name), s.name, "", stringResource(R.string.skill_name), stringResource(R.string.skill_name_supporting),
                 validate = { nameWhy(it.trim(), other = false) }) { edit(SkillEdit.rename(s, it)) }
             ListPreference(stringResource(R.string.skill_level), s.level, SkillEdit.levels(s), { SkillCards.level(it).render(langs) }) { edit(s.copy(level = it)) }
+            OpenTickRows(s.opens) { edit(s.copy(opens = s.opens - it)) }
         }
         preferenceGroup(tOther, "names") {
             for ((lang, list) in listOf(Lang.EN to s.namesEn, Lang.FR to s.namesFr)) {

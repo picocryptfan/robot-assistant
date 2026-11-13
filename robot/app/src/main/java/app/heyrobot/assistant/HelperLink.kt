@@ -23,6 +23,8 @@ import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.HelperFactsStore
 import app.heyrobot.sys.HelperKeyFiles
 import app.heyrobot.sys.HelperSpendStore
+import app.heyrobot.sys.WebAnswers
+import app.heyrobot.sys.WebStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
@@ -120,7 +122,7 @@ object HelperLink {
             else -> current.getValue(h.id)
         }
         held.users++
-        val tools = tools(s, h, facts)
+        val tools = tools(s, h, facts, HelperTools.offersSearch(s, WebStore.load(ctx), WebAnswers.load(ctx), h.searching))
         val session: HelperSession = if (h.presetOf.protocol == Protocol.ANTHROPIC) {
             AnthropicSession(held.anthropic!!, AnthropicModel.of(h.model), tools, h.searching, conversation)
         } else {
@@ -173,11 +175,11 @@ object HelperLink {
     }
 
     /** Robot's actions for [h]: none when you turned them off for it, or its model can't take them (the server said so). */
-    fun tools(s: RobotSettings, h: HelperConfig, facts: HelperFacts): List<ToolSpec> = when {
+    fun tools(s: RobotSettings, h: HelperConfig, facts: HelperFacts, webSearch: Boolean = false): List<ToolSpec> = when {
         !h.actions -> emptyList()
         h.catalogModel?.tools == false -> emptyList()
         facts.noActions(h.model) -> emptyList()
-        else -> HelperTools.tools(s)
+        else -> HelperTools.tools(s, webSearch)
     }
 
     /** The client for [h], made (its key decrypted) when there is none or its key or address changed. */

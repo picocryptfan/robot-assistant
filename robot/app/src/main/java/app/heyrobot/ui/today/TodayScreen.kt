@@ -47,6 +47,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -81,7 +82,6 @@ import app.heyrobot.R
 import app.heyrobot.sys.TodaySource
 import app.heyrobot.core.CalendarEvent
 import app.heyrobot.core.HomeSettings
-import app.heyrobot.core.Note
 import app.heyrobot.core.RLog
 import app.heyrobot.core.StoredConversation
 import app.heyrobot.core.Today
@@ -130,7 +130,8 @@ class TodayActions(
     val openFiles: () -> Unit = {},
     val openRobots: () -> Unit = {},
     val openNote: (String?) -> Unit = {},
-    val add: (String) -> Unit = {},
+    /** A quick add of the text; told afterwards whether it was saved (held or failed: no, and the box keeps it). */
+    val add: (String, (saved: Boolean) -> Unit) -> Unit = { _, _ -> },
     val pick: (String?) -> Unit = {},
     val gettingStarted: () -> Unit = {},
     /** H3: History, behind the clock icon. */
@@ -165,9 +166,17 @@ fun HomeTab(snap: Snapshot, recent: List<StoredConversation>, a: AppActions, mod
             onOrder = { o -> change { it.copy(order = o) } })
         return
     }
+    // HS3: Quick access, in your order (drag, TalkBack's Move up and Move down, or "put car mode first").
+    if (home.home == app.heyrobot.core.HomeChoice.QUICK && !started) {
+        QuickAccess(home.quick, a, modifier, onGettingStarted = { started = true },
+            onMove = { i, to, shown -> change { it.copy(quick = app.heyrobot.core.QuickOrder.placed(it.quick, shown, i, to)) } })
+        return
+    }
     Column(modifier) {
-        if (home.today) {
-            TextButton(onClick = { started = false }, modifier = Modifier.padding(horizontal = 12.dp).heightIn(min = 48.dp)) { Text(stringResource(R.string.today_back)) }
+        if (home.home != app.heyrobot.core.HomeChoice.START) {
+            TextButton(onClick = { started = false }, modifier = Modifier.padding(horizontal = 12.dp).heightIn(min = 48.dp)) {
+                Text(stringResource(if (home.today) R.string.today_back else R.string.today_quick_back))
+            }
         } else if (home.offerShows(ready, guide.at != null && SetupGuide.home(guide) == HomeGuide.CONTINUE)) {
             TodayOffer(onOn = { change { it.turnedOn() } }, onNotNow = { change { it.declined() } })
         }
@@ -206,17 +215,21 @@ private fun TodayHome(home: HomeSettings, ready: Boolean, a: AppActions, modifie
     // lock, the date); once a minute only the clock moves the right-now and leave-by lines (core PageRefresh).
     DisposableEffect(ctx) { val stop = app.heyrobot.sys.CalendarChanges.observe(ctx) { changes++ }; onDispose { stop() } }
     LaunchedEffect(owner) { owner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { open++; while (true) { tick++; delay(60_000) } } }
-    LaunchedEffect(open, tick, changes, home.note, lang) {
+    val landed = TodayQuickAdd.landed.intValue
+    LaunchedEffect(open, tick, changes, landed, home.note, lang) {
         val now = ZonedDateTime.now()
         val at = open
         val (v, n) = withContext(Dispatchers.IO) {
-            val r = refresh.get(at, TodaySource.stamp(ctx, now) + listOf(home.note, lang, changes)) { last, fresh ->
+            val r = refresh.get(at, TodaySource.stamp(ctx, now) + listOf(home.note, lang, changes, landed)) { last, fresh ->
                 TodaySource.read(ctx, lang, home, now, robots = if (fresh) null else last?.fromRobots, choices = NOTE_CHOICES)
             }
             r.view(now) to r.choices
         }
         view = v; notes = n
     }
+    // fix-seal-lows-b: a note busy just now (its key not ready, as just after unlock) changes no file and no lock, so the page
+    // reads once more after a short wait; again only when the hold changes or the page opens again. Not while it is away.
+    HeldRetry(open, view?.noteHeld, owner.lifecycle) { changes++ }
     val v = view ?: return Box(modifier.fillMaxSize())
     TodayScreen(v, ready, lang, notes, order = home.order, weatherBusy = weatherBusy, weatherProblem = weatherProblem?.str(), t = TodayActions(
         talk = { a.talk(null) },
@@ -228,7 +241,8 @@ private fun TodayHome(home: HomeSettings, ready: Boolean, a: AppActions, modifie
         openFiles = { a.openTab(Tab.FILES) },
         openRobots = { a.openPage(Page.Settings(SettingsRoutes.LINK)) },
         openNote = a.openNote,
-        add = { text -> scope.launch { withContext(Dispatchers.IO) { quickAdd(ctx, home, text) }; changes++ } },
+        // fix-seal-lows-d 2: in a scope that outlives the page, so a rotation mid-save still runs done; the page reads the note again on landed.
+        add = ctx.applicationContext.let { app -> TodayQuickAdd.adder { quickAdd(app, home, it) } },
         pick = onPick,
         gettingStarted = onGettingStarted,
         history = { a.openPage(Page.History) },
@@ -257,16 +271,22 @@ private fun TodayHome(home: HomeSettings, ready: Boolean, a: AppActions, modifie
 
 private const val NOTE_CHOICES = 20
 
-/** A line added to the pinned note (or your newest), or a new note when you have none. */
-private fun quickAdd(ctx: Context, home: HomeSettings, text: String) {
-    try {
+/**
+ * A line added to the pinned note (or your newest), or a new note when you have none; nothing while it can't be opened.
+ * fix-seal-lows-b: true only when it was saved, so the box keeps your words otherwise.
+ */
+private fun quickAdd(ctx: Context, home: HomeSettings, text: String): Boolean {
+    return try {
         val store = NotesFiles.store(ctx)
         val now = System.currentTimeMillis()
-        val picked: Note? = TodayPage.pick(store.list(), home.note)?.first
-        if (picked == null) { if (text.isNotBlank()) store.add(text.trim().take(TodayPage.QUICK_ADD), null, now) }
-        else TodayPage.added(picked, text, now)?.let { store.save(it) }
+        when (val q = TodaySource.quickAdd(store.read(), home.note, text, now)) {
+            is TodaySource.QuickAdd.Line -> store.save(q.note)
+            is TodaySource.QuickAdd.New -> store.add(q.text, null, now) != null
+            null -> false
+        }
     } catch (t: Throwable) {
         RLog.w("today_quick_add", t)
+        false
     }
 }
 
@@ -456,11 +476,11 @@ private fun NotePart(v: TodayView, notes: List<Pair<String, String>>, t: TodayAc
                 n.lines.forEach { Text(it, style = MaterialTheme.typography.bodyLarge) }
             }
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(text, { text = it }, Modifier.weight(1f), label = { Text(stringResource(if (n != null) R.string.today_note_add_hint else R.string.today_note_new_hint)) })
-            Spacer(Modifier.width(8.dp))
-            TextButton(onClick = { if (text.isNotBlank()) { t.add(text); text = "" } }, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.today_note_add)) }
-        }
+        val held = v.noteHeld.takeIf { n == null }
+        // fix-seal-lows: while the note can't be opened, Notes' own line says why, and no quick add starts another note.
+        if (held != null) Text(stringResource(if (held == app.heyrobot.core.NoteHeld.TOO_NEW) R.string.notes_too_new_banner else R.string.notes_not_now_banner),
+            style = MaterialTheme.typography.bodyLarge)
+        else QuickAddRow(text, { text = it }, newNote = n == null, t.add)
         if (notes.size > 1) Box {
             TextButton(onClick = { menu = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.today_note_pick)) }
             DropdownMenu(menu, { menu = false }) {
@@ -468,6 +488,27 @@ private fun NotePart(v: TodayView, notes: List<Pair<String, String>>, t: TodayAc
                 notes.forEach { (id, title) -> DropdownMenuItem({ Text(title) }, { menu = false; t.pick(id) }) }
             }
         }
+    }
+}
+
+/** Today's quick add: the box (its words kept by the note card, held or not) and its Add. */
+@Composable
+internal fun QuickAddRow(text: String, setText: (String) -> Unit, newNote: Boolean, add: (String, (saved: Boolean) -> Unit) -> Unit) {
+    val now by rememberUpdatedState(text)
+    // fix-seal-lows-c 2, fix-seal-lows-d 2: one add at a time, held outside the page, so a second tap while the sealed
+    // save runs adds nothing, a rotation included; once it lands, whichever page is open clears the words if saved and unchanged.
+    val sent = TodayQuickAdd.sent.value
+    LaunchedEffect(sent) {
+        if (sent?.saved != null) {
+            if (sent.saved == true && now == sent.words) setText("")
+            TodayQuickAdd.sent.value = null
+        }
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        OutlinedTextField(text, setText, Modifier.weight(1f), label = { Text(stringResource(if (newNote) R.string.today_note_new_hint else R.string.today_note_add_hint)) })
+        Spacer(Modifier.width(8.dp))
+        // fix-seal-lows-b: cleared only once saved; held (or failed), your words stay here under Notes' line.
+        TextButton(onClick = { val words = text; if (TodayQuickAdd.sent.value == null && words.isNotBlank()) { TodayQuickAdd.sent.value = TodayQuickAdd.Sent(words); add(words) { saved -> TodayQuickAdd.sent.value = TodayQuickAdd.Sent(words, saved) } } }, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.today_note_add)) }
     }
 }
 
@@ -524,16 +565,23 @@ private fun CarModeButton(car: () -> Unit, modifier: Modifier) {
     }
 }
 
-/** Settings › Display's row: Today as your home page, on or off. Turning it on answers the offer. */
+/** Settings › Display's row: which home page, of three. Any choice answers Today's offer (HomeSettings.picked). */
 @Composable
 fun TodayHomeSetting() {
     val ctx = LocalContext.current
     var home by remember { mutableStateOf(HomeSettingsStore.current(ctx)) }
     val saves = rememberCoroutineScope()
-    SwitchPreference(stringResource(R.string.today_setting), stringResource(if (home.today) R.string.today_setting_on else R.string.today_setting_off), home.today) { on ->
-        val f: (HomeSettings) -> HomeSettings = { if (on) it.turnedOn() else it.copy(today = false) }
-        home = f(home)
-        TodaySave.save(saves, ctx, f) { r -> r?.let { home = it }; TodayGlances.changed(ctx) }
+    // home-page-b: its own column (the group's gap), so the rows stack wherever it's put; in a Box they lay over each other.
+    Column(verticalArrangement = Arrangement.spacedBy(app.heyrobot.ui.theme.RobotTokens.groupGap)) {
+    // HS3: which page Home opens on, of three; Today's own settings below only with Today picked.
+    for ((c, title, detail) in listOf(Triple(app.heyrobot.core.HomeChoice.START, R.string.today_getting_started, R.string.today_quick_start_detail),
+        Triple(app.heyrobot.core.HomeChoice.TODAY, R.string.today_name, R.string.today_setting_on),
+        Triple(app.heyrobot.core.HomeChoice.QUICK, R.string.today_quick_name, R.string.today_quick_detail))) {
+        app.heyrobot.ui.pref.RadioPreference(stringResource(title), stringResource(detail), home.home == c) {
+            val f: (HomeSettings) -> HomeSettings = { it.picked(c) }
+            home = f(home)
+            TodaySave.save(saves, ctx, f) { r -> r?.let { home = it }; TodayGlances.changed(ctx) }
+        }
     }
     // H6: the weather line, off until you turn it on; it fetches only when you tap it.
     if (home.today) {
@@ -546,6 +594,7 @@ fun TodayHomeSetting() {
     }
     // H7: your news feeds, none to start.
     if (home.today) TodayNewsSetting()
+    }
 }
 
 private fun waiting(v: TodayView): Boolean =
@@ -633,3 +682,13 @@ const val PART = "today_part_" // l10n: not text (a test tag)
 /** The week strip's test tag. */
 const val STRIP = "today_strip" // l10n: not text (a test tag)
 const val DIRECTIONS = "today_directions" // l10n: not text (a test tag)
+
+/** fix-seal-lows-b: once per page opening and hold, after [TodayPage.heldRetry]'s wait, [again] if the page is still STARTED. */
+@Composable
+internal fun HeldRetry(open: Int, held: app.heyrobot.core.NoteHeld?, lifecycle: Lifecycle, again: () -> Unit) {
+    LaunchedEffect(open, held) {
+        val wait = TodayPage.heldRetry(held) ?: return@LaunchedEffect
+        delay(wait)
+        if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) again()
+    }
+}

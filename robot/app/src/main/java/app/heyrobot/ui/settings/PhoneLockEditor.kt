@@ -161,11 +161,18 @@ fun PhoneLockEditScreen(initial: PhoneLock, isNew: Boolean, d: PhoneLockData, ac
                 else -> f.copy(locks = f.locks + l!!)
             }
         }
+        // seal-people-fix 5: the call list follows the lock's People: act.edit rewrites it (PhoneLockSettings).
         if (!ok || full) scope.launch { snackbar.showSnackbar(if (full) tooMany else notSaved) } else onBack()
     }
     val labels = remember(apps, music, app) { (apps + listOfNotNull(music, app.takeIf { it.isNotEmpty() })).associateWith { appLabel(ctx, it) } }
-    val everyone = remember { try { PeopleFiles.store(ctx).list().filter { LockLimits.validPerson(it.id) } } catch (_: Throwable) { emptyList() } }
-    val names = everyone.associate { it.id to it.name }
+    // seal-people: opened off the main thread (People is sealed, and its lock may be held by a merge).
+    // seal-people-fix 3: null until People has opened (and while it can't be): the row waits, so Save never drops anyone.
+    // seal-people-fix-b 1: and why not, when only Start over or an update helps.
+    val opened by androidx.compose.runtime.produceState<LockPeople.Opened?>(null) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { LockPeople.opened { PeopleFiles.store(ctx).load() } }
+    }
+    val everyone = opened?.everyone
+    val names = everyone.orEmpty().associate { it.id to it.name }
     val usage = remember(d) { PhoneInfo.usageAccess(ctx) }
     // Calls to People you choose are placed from the call card during a lock (the lock covers the dialer): that needs the
     // Phone permission, asked by the main app and read again with the page (every 2 s).
@@ -230,8 +237,9 @@ fun PhoneLockEditScreen(initial: PhoneLock, isNew: Boolean, d: PhoneLockData, ac
         }
         preferenceGroup(tOpen, "open") {
             PreferenceItem(stringResource(R.string.lock_always_open), null, RIcons.Phone)
-            PreferenceItem(stringResource(R.string.lock_extra_people), if (people.isEmpty()) none else people.joinToString(", ") { names[it] ?: it }, RIcons.Person,
-                onClick = { picking = PICK_PEOPLE }) // l10n: not text (joins your People's names)
+            PreferenceItem(stringResource(R.string.lock_extra_people), LockPeople.row(people, opened)?.let { stringResource(it) }
+                    ?: people.joinToString(", ") { names[it] ?: it } // l10n: not text (joins your People's names)
+                , RIcons.Person, enabled = everyone != null, onClick = { picking = PICK_PEOPLE })
             if (people.isNotEmpty()) StatusPreference(stringResource(R.string.car_phone_permission), null, if (phone) Mark.OK else Mark.TODO,
                 action = if (phone) null else ({
                     TextButton(onClick = { act.askPermission(Manifest.permission.CALL_PHONE) }, modifier = Modifier.heightIn(min = 48.dp)) { Text(allow) }
@@ -262,8 +270,11 @@ fun PhoneLockEditScreen(initial: PhoneLock, isNew: Boolean, d: PhoneLockData, ac
         PICK_MUSIC -> AppsDialog(stringResource(R.string.lock_extra_music), listOfNotNull(music), 1, music = true, onDismiss = { picking = null }) {
             picking = null; music = it.firstOrNull()
         }
-        PICK_PEOPLE -> PeopleDialog(stringResource(R.string.lock_extra_people), everyone.map { it.id to it.name }, people, onDismiss = { picking = null }) {
-            picking = null; people = it
+        PICK_PEOPLE -> everyone.let { e ->
+            if (e == null) picking = null
+            else PeopleDialog(stringResource(R.string.lock_extra_people), e.map { it.id to it.name }, people, onDismiss = { picking = null }) {
+                picking = null; people = LockPeople.kept(it, e) ?: people
+            }
         }
     }
     if (deleting) ConfirmDialog(stringResource(R.string.lock_delete_title), initial.name, stringResource(R.string.lock_delete), onDismiss = { deleting = false }) {
@@ -302,6 +313,37 @@ private fun PeopleDialog(title: String, all: List<Pair<String, String>>, picked0
         confirmButton = { TextButton(onClick = { onSave(picked.filter { p -> all.any { it.first == p } }) }) { Text(stringResource(R.string.lock_save)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.lock_cancel)) } },
     )
+}
+
+/** seal-people-fix 3: the Phone lock picker's view of People: everyone it can name, or null while People can't be opened. */
+internal object LockPeople {
+    /** seal-people-fix-b 1: what the picker found: everyone it can name (null while People can't be opened), and whether only
+     *  Start over in People or an update helps (damaged, or a newer Robot's file), never unlocking. */
+    data class Opened(val everyone: List<app.heyrobot.core.Person>?, val damaged: Boolean = false)
+
+    fun opened(load: () -> app.heyrobot.core.PeopleLoad): Opened = try {
+        when (val l = load()) {
+            is app.heyrobot.core.PeopleLoad.Ok -> Opened(l.file.people.filter { LockLimits.validPerson(it.id) })
+            app.heyrobot.core.PeopleLoad.Unreadable, is app.heyrobot.core.PeopleLoad.TooNew -> Opened(null, damaged = true)
+            else -> Opened(null)
+        }
+    } catch (_: Throwable) {
+        Opened(null)
+    }
+
+    fun openable(load: () -> app.heyrobot.core.PeopleLoad): List<app.heyrobot.core.Person>? = opened(load).everyone
+
+    /** The row's words (null: the names picked). Why People is closed comes before "None", so a greyed row always says why. */
+    fun row(picked: List<String>, o: Opened?): Int? = when {
+        o?.damaged == true -> R.string.lock_extra_people_damaged
+        o != null && o.everyone == null -> R.string.lock_extra_people_closed
+        picked.isEmpty() -> R.string.lock_none
+        o == null -> R.string.lock_extra_people_closed
+        else -> null
+    }
+
+    /** What Save keeps: the ids ticked that People still has; null (nothing saved) while People isn't open. */
+    fun kept(picked: List<String>, everyone: List<app.heyrobot.core.Person>?): List<String>? = everyone?.let { e -> picked.filter { p -> e.any { it.id == p } } }
 }
 
 private val HM = Regex("([01]?[0-9]|2[0-3]):[0-5][0-9]")

@@ -116,11 +116,11 @@ class TodayGlanceTest {
     }
 
     @Test fun theLockSummarySettingIsKeptAndRestored() {
-        val on = HomeSettings(today = true, lockSummary = true)
+        val on = HomeSettings(home = app.heyrobot.core.HomeChoice.TODAY, lockSummary = true)
         assertTrue(HomeSettings.fromJson(on.toJson()).lockSummary)
         assertFalse(HomeSettings.fromJson("""{"v":1,"today":true}""").lockSummary)
         assertTrue(HomeSettings().restored(on).lockSummary)
-        assertFalse(on.restored(HomeSettings(today = true)).lockSummary)
+        assertFalse(on.restored(HomeSettings(home = app.heyrobot.core.HomeChoice.TODAY)).lockSummary)
     }
 
     @Test fun theAlarmReadIsTheBriefAfterTheAlarmOffUntilTurnedOn() {

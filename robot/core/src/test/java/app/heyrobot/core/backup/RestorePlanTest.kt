@@ -62,7 +62,7 @@ class RestorePlanTest {
         val fresh = RestorePlanner.plan(v, PhoneHas(emptyMap()), RestorePlanner.defaults(v), mine = false)
         // The fixture has no voiceprint (1.1's optional category), deliberately no everyday set (BackupDowngradeTest has its own),
         // and no connections (C10's own tests have them).
-        assertEquals(BackupCategory.entries - BackupCategory.SENSITIVE - BackupCategory.EVERYDAY - BackupCategory.CONNECTIONS - BackupCategory.LINKS - BackupCategory.CALENDAR - BackupCategory.HOME - BackupCategory.SKILL_TRUST, fresh.restoring)
+        assertEquals(BackupCategory.entries - BackupCategory.SENSITIVE - BackupCategory.EVERYDAY - BackupCategory.CONNECTIONS - BackupCategory.LINKS - BackupCategory.CALENDAR - BackupCategory.HOME - BackupCategory.SKILL_TRUST - BackupCategory.OPEN_APPS - BackupCategory.SKILL_OPENS - BackupCategory.HEADSUP /* earbud-headsup-c: newer than this file */ - BackupCategory.MOMENTS /* moments-backup: newer too */ - BackupCategory.LOGBOOK, fresh.restoring)
         assertEquals(PlanSkip.NOT_IN_BACKUP, fresh.of(BackupCategory.EVERYDAY).skip)
         assertEquals(PlanSkip.NOT_IN_BACKUP, fresh.of(BackupCategory.VOICEPRINT).skip)
         assertEquals(PlanSkip.NOT_CHOSEN, fresh.of(BackupCategory.KEYS).skip)
@@ -76,7 +76,11 @@ class RestorePlanTest {
         assertEquals(RestoreMode.REPLACE, add.of(BackupCategory.EVERYDAY).mode)
         // H5: the Today page's one file is merged over this phone's too (HomeSettings.restored).
         assertEquals(RestoreMode.REPLACE, add.of(BackupCategory.HOME).mode)
-        for (c in BackupCategory.entries - BackupCategory.SETTINGS - BackupCategory.VOICEPRINT - BackupCategory.EVERYDAY - BackupCategory.HOME) assertEquals(c.id, RestoreMode.ADD, add.of(c).mode)
+        // earbud-headsup-c: the heads-up's one file is merged over this phone's too (RestoreSafety.headsUp keeps it off).
+        assertEquals(RestoreMode.REPLACE, add.of(BackupCategory.HEADSUP).mode)
+        // auto-open-plan §4: open_apps.json is merged over this phone's switch, as Settings' files are.
+        assertEquals(RestoreMode.REPLACE, add.of(BackupCategory.OPEN_APPS).mode)
+        for (c in BackupCategory.entries - BackupCategory.SETTINGS - BackupCategory.VOICEPRINT - BackupCategory.EVERYDAY - BackupCategory.HOME - BackupCategory.OPEN_APPS - BackupCategory.HEADSUP) assertEquals(c.id, RestoreMode.ADD, add.of(c).mode)
         val replace = RestorePlanner.plan(v, has, BackupCategory.entries.associateWith { CategoryChoice(replace = true) }, mine = true)
         for (c in BackupCategory.entries - BackupCategory.SENSITIVE - BackupCategory.LINKS) assertEquals(c.id, RestoreMode.REPLACE, replace.of(c).mode)
         // L12: a pairing here is never replaced by one from a file, whatever the choice says.
@@ -648,4 +652,14 @@ class RestorePlanTest {
         assertEquals(emptyList<BriefReminder>(), replace(emptyList()))
     }
 
+
+    /** moments-backup-c: Replace keeps the same words for the same moment once, as Add and the store do; two restores, nothing twice. */
+    @Test fun momentsReplaceKeepsTheSameWordsOnce() {
+        val m = app.heyrobot.core.Moment.entries.first()
+        val a = app.heyrobot.core.MomentReminder("a", "buy milk", m, 1L)
+        val b = app.heyrobot.core.MomentReminder("b", "Buy milk", m, 2L)
+        org.junit.Assert.assertEquals(listOf(a), RestoreMerge.moments(emptyList(), listOf(a, b), RestoreMode.REPLACE))
+        val once = RestoreMerge.moments(emptyList(), listOf(a), RestoreMode.FRESH)
+        org.junit.Assert.assertEquals(once, RestoreMerge.moments(once, listOf(a), RestoreMode.ADD))
+    }
 }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.car
 
+import app.heyrobot.core.messages.ScamCheck
 import app.heyrobot.core.i18n.HandsFreeStrings
 import app.heyrobot.core.i18n.Phrase
 import app.heyrobot.core.output.spoken
@@ -116,7 +117,11 @@ object CarMessages {
         n.group?.let { HandsFreeStrings.messageFromIn("name" to n.sender, "group" to it) } ?: HandsFreeStrings.messageFrom("name" to n.sender)
 
     /** "Marie says: I'm on my way." */
-    fun says(n: MessageNotice, lang: Lang): String = spoken(HandsFreeStrings.says("name" to n.sender, "text" to n.text.trim()), lang)
+    fun says(n: MessageNotice, lang: Lang): String {
+        val says = HandsFreeStrings.says("name" to n.sender, "text" to n.text.trim())
+        // Scam texts: the same line as every other reading, before the words (the headset's read-always comes here too).
+        return spoken(ScamCheck.line(n.text)?.let { Phrase.join(it, says) } ?: says, lang)
+    }
 
     /** After reading: offer a reply only where one can be sent by voice. */
     fun offersReply(n: MessageNotice, s: CarSettings, safety: HandsFreeSafety): Boolean = n.replyable && !n.isGroup && s.voiceReplies && safety.replyAfterSpokenYes

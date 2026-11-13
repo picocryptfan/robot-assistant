@@ -1,0 +1,29 @@
+Hold my shopping and news apps till noon.	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, CALENDAR, WEB]	-
+hold my notifications until noon	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, CALENDAR]	-
+pause my apps for an hour	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+snooze my news notifications until 3:30 pm	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, CALENDAR, WEB]	-
+I'm off my phone till three	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, PEOPLE]	-
+I'm away from my phone for 2 hours	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, PEOPLE]	-
+Robot, hold my apps till 6	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+hold all my notifications for 30 minutes	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+Mets mes notifications en attente jusqu'à midi.	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, CALENDAR]	-
+mets mes applis de magasinage et de nouvelles en attente jusqu'à 18 h	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, CALENDAR, WEB]	-
+suspends mes notifications pendant une heure	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+je suis loin de mon téléphone jusqu'à trois heures	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, PEOPLE]	-
+mets mes notifs en pause jusqu’à 14 h 30	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, CALENDAR]	-
+hold on	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+Hold on a second	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+hold the door	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+put a hold on my library book	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+hold my calls till noon	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, CALENDAR]	-
+hold my beer	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+pause the music	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+snooze my alarm for 10 minutes	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+hold my notifications	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+turn off notifications for an hour	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+I'm off work till three	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+attends	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+mets la musique en pause	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE]	-
+retiens ton souffle	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, MEMORY]	-
+je suis loin de chez moi jusqu'à midi	-	-	-	-	-	-	-	-	-	-	-	-	-	[CORE, CALENDAR]	-
+retiens mes applis de magasinage et de nouvelles jusqu'à 18 h	-	-	-	-	-	-	-	-	-	-	Run(command=Remember(kind=FACT, secret=false, until=null, language=fr, chars=53))	-	-	[CORE, CALENDAR, MEMORY, WEB]	-

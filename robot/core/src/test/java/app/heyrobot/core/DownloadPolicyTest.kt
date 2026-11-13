@@ -45,7 +45,7 @@ class DownloadPolicyTest {
     @Test fun theQuestionSaysWhyAndBothWays() {
         assertEquals("Download 3.11 GB?", DownloadPolicy.title(BrainModel.FAST.bytes))
         val text = DownloadPolicy.text(VoiceBundle.STT.bytes)
-        assertTrue(text, text.contains("can't tell whether you're on Wi-Fi or mobile data") && text.contains("670 MB") && text.contains(DownloadPolicy.WAIT))
+        assertTrue(text, text.contains("can move from Wi-Fi to mobile data before it ends") && text.contains("670 MB") && text.contains(DownloadPolicy.WAIT))
         assertEquals("Download anyway", DownloadPolicy.ANYWAY)
     }
 }

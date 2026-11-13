@@ -17,6 +17,7 @@ import java.nio.file.StandardOpenOption
 //   routine_settings.json  Settings › Routines and the morning brief ([RoutineSettingsCodec])
 //   ready.json             steps waiting for you (ReadyCards)
 //   reminders.json         brief reminders (BriefReminders)
+//   moments.json           reminders for a moment (MomentReminders)
 //   state.json             the run ledger, AlarmWatch's state, the last run of each routine ([RoutineStateFile])
 //
 // A routines file that can't be read is never written over: changes are refused and nothing runs until Settings ›
@@ -28,6 +29,7 @@ class RoutineStore(private val dir: File) {
     private val settingsFile get() = File(dir, SETTINGS)
     private val readyFile get() = File(dir, READY)
     private val remindersFile get() = File(dir, REMINDERS)
+    private val momentsFile get() = File(dir, MOMENTS)
     private val stateFile get() = File(dir, STATE)
 
     /** What routines.json holds now: no file is no routines. */
@@ -121,13 +123,21 @@ class RoutineStore(private val dir: File) {
     fun editReminders(change: (List<BriefReminder>) -> List<BriefReminder>): List<BriefReminder>? =
         update({ BriefReminders.decode(forUpdate(remindersFile)) }, change) { writeAtomic(remindersFile, BriefReminders.encode(it)) }
 
+    fun moments(): List<MomentReminder> = MomentReminders.decode(read(momentsFile))
+
+    fun momentsNewer(): Boolean = MomentReminders.newer(read(momentsFile))
+
+    /** Null, nothing written, when moments.json is from a newer Robot (left as it is, as routines.json is). */
+    fun editMoments(change: (List<MomentReminder>) -> List<MomentReminder>): List<MomentReminder>? =
+        update({ forUpdate(momentsFile).let { check(!MomentReminders.newer(it)); MomentReminders.decode(it) } }, change) { writeAtomic(momentsFile, MomentReminders.encode(it)) }
+
     fun state(): RoutineState = RoutineStateFile.decode(read(stateFile))
 
     fun editState(change: (RoutineState) -> RoutineState): RoutineState? = update({ RoutineStateFile.decode(forUpdate(stateFile)) }, change) { writeAtomic(stateFile, RoutineStateFile.encode(it)) }
 
     /** Everything Routines keeps, deleted (Settings › Routines › Delete all routines); the files are gone, not emptied. */
     fun deleteAll(): Boolean = try {
-        locked { listOf(ROUTINES, READY, REMINDERS, STATE).forEach { File(dir, it).delete() }; true }
+        locked { listOf(ROUTINES, READY, REMINDERS, MOMENTS, STATE).forEach { File(dir, it).delete() }; true }
     } catch (_: Exception) {
         false
     }
@@ -173,6 +183,7 @@ class RoutineStore(private val dir: File) {
         const val SETTINGS = "routine_settings.json"
         const val READY = "ready.json"
         const val REMINDERS = "reminders.json"
+        const val MOMENTS = "moments.json"
         const val STATE = "state.json"
         const val LOCK_FILE = "routines.lock"
         private val LOCK = Any()

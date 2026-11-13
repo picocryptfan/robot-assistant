@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.assistant
 
+import app.heyrobot.core.messages.HoldAsk
+import app.heyrobot.core.messages.HoldPlan
+import app.heyrobot.core.messages.HoldResult
+import app.heyrobot.core.messages.MissedAnswer
+import app.heyrobot.core.messages.MissedSummary
 import app.heyrobot.core.messages.MessageUnread
 import app.heyrobot.core.UnreadCount
 import android.content.ComponentName
@@ -117,6 +122,12 @@ class MessagesLink(ctx: Context) : AutoCloseable {
 
     /** 0.8, the brief: how many messages Robot hasn't read to you, by app (counts only); null when off or unreachable. */
     suspend fun unread(): UnreadCount? = ask(MessagesProtocol.REQ_UNREAD, null)?.let(MessageUnread::fromJson)
+
+    /** 1.3, "What did I miss?": the main process's answer (counts only while locked); null when unreachable. */
+    suspend fun missed(): MissedAnswer? = ask(MessagesProtocol.REQ_MISSED, null)?.let(MissedSummary::fromJson)
+
+    /** 1.3, a hold asked for: the main process plans and starts it; null when unreachable. */
+    suspend fun hold(a: HoldAsk): HoldResult? = ask(MessagesProtocol.REQ_HOLD, HoldPlan.askJson(a))?.let(HoldPlan::fromJson)
 
     /** "Always for Mom": the main process keeps it in messages.json. */
     suspend fun replyLang(person: String, lang: app.heyrobot.core.i18n.Lang?): Boolean =

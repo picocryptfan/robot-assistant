@@ -155,4 +155,17 @@
     <string name="memory_save">Enregistrer</string>
     <string name="memory_delete">Supprimer</string>
     <string name="memory_cancel">Annuler</string>
+    <string name="memory_search_group">Meilleure recherche</string>
+    <string name="memory_search_title">Recherche par le sens</string>
+    <string name="memory_search_off">Désactivée. Télécharge le modèle de recherche (165 Mo) et je trouve les choses selon ce que tu veux dire, en français ou en anglais, pas seulement par les mots.</string>
+    <string name="memory_search_downloading">Téléchargement : %1$d %%</string>
+    <string name="memory_search_wifi">En attente du Wi-Fi. Touche pour annuler.</string>
+    <string name="memory_search_roaming">En attente de la fin de l’itinérance. Touche pour annuler.</string>
+    <string name="memory_search_checking">Vérification du téléchargement : %1$d %%</string>
+    <string name="memory_search_ready">Activée. Je cherche dans ta mémoire par le sens. Touche pour effacer le modèle (165 Mo) et ses données de recherche.</string>
+    <string name="memory_search_failed">Le téléchargement n’a pas marché. Touche pour réessayer.</string>
+    <string name="memory_search_no_room">Pas assez d’espace pour le modèle de recherche (165 Mo).</string>
+    <string name="memory_search_deleted">Le modèle de recherche et ses données de recherche sont effacés.</string>
+    <string name="memory_search_mobile">Télécharger avec les données mobiles</string>
+    <string name="memory_search_mobile_detail">Désactivé : le modèle de recherche se télécharge seulement en Wi-Fi.</string>
 </resources>

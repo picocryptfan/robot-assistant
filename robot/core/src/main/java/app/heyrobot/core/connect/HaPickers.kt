@@ -165,6 +165,18 @@ object HaPick {
     fun effects(c: Connection, op: ConnOp): Set<SkillEffect> = ConnStep.effects(c, op, emptyMap()) +
         (ConnOps.haCall(op)?.let { SkillEffects.homeAssistant(it, op.params[ConnOp.ENTITY]?.options.orEmpty()) }.orEmpty())
 
+    /**
+     * [c] with its operation [opId] carrying your [marks] (money, security, tells people: ConnOp.MARKS, as the webhook
+     * form sets them), which only add to what it does (D12). Null when [c] has no such operation.
+     */
+    fun withMarks(c: Connection, opId: String, marks: Set<SkillEffect>): Connection? {
+        if (c.op(opId) == null) return null
+        return c.copy(ops = c.ops.map { if (it.id == opId) marked(it, marks) else it })
+    }
+
+    /** [op] carrying your [marks] (ConnOp.MARKS only): the pick window's switches, set before you save (review's L1). */
+    fun marked(op: ConnOp, marks: Set<SkillEffect>): ConnOp = op.copy(marks = ConnOp.MARKS.keys.filterTo(LinkedHashSet()) { it in marks })
+
     private fun entityParam(entities: List<String>) = OpParam(ParamType.CHOICE, entities, default = entities.singleOrNull())
 
     private const val COVER = "cover" // l10n: not text (Home Assistant's domain)

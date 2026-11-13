@@ -206,7 +206,8 @@ class AppListening(private val port: Port) {
         // Taken over: Robot's own question paused the wake word itself and keeps it paused.
         if (r.started && end != End.TAKEN) port.pauseWake(false)
         log(r, code(r.from, end))
-        if (end == End.DONE && text != null) r.sink.words(text) else r.sink.ended(end, message)
+        // 1.3: fillers out only; corrections stay as said, since another app may act on the words before you see them.
+        if (end == End.DONE && text != null) r.sink.words(app.heyrobot.core.messages.DraftTidy.fillersOnly(text).ifEmpty { text }) else r.sink.ended(end, message)
     }
 
     private fun log(r: Request, code: LogCode) {

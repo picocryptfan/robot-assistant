@@ -97,6 +97,7 @@
     <string name="feedback_share_note_text">Partager ouvre la feuille de partage d’Android&#160;: choisis ton appli SMS ou de messagerie, puis le développeur. Texter ouvre ton appli SMS avec le %1$s déjà rempli&#8239;; c’est toi qui touches Envoyer.</string>
     <string name="feedback_github">Ouvrir un ticket GitHub</string>
     <string name="feedback_github_note">Ouvre un nouveau ticket dans ton navigateur avec le message déjà rempli, coupé à environ 7 000 caractères s’il est plus long. GitHub reçoit le message dès que la page s’ouvre, que tu soumettes le ticket ou non. Pour un dépôt privé, tu dois être connecté à GitHub dans ce navigateur.</string>
+    <string name="feedback_github_card_note">Ouvre un nouveau ticket dans ton navigateur avec son titre seulement, et met le rapport dans ton presse-papiers : colle-le dans le ticket avant de le soumettre.</string>
     <string name="feedback_whole">Tout le message</string>
     <string name="feedback_nothing">Rien à ajouter.</string>
     <string name="feedback_close">Fermer</string>
@@ -107,6 +108,7 @@
     <string name="feedback_no_share">Aucune appli de ce téléphone ne peut partager du texte.</string>
     <string name="feedback_copied">Copié. Robot l’efface du presse-papiers dans une minute si rien d’autre ne l’a remplacé.</string>
     <string name="feedback_no_sms">Aucune appli SMS sur ce téléphone.</string>
+    <string name="feedback_turn_missing">Je n’ai pas pu lire ce tour dans l’Historique, alors il n’est pas dans le rapport.</string>
     <string name="feedback_no_browser">Aucun navigateur sur ce téléphone.</string>
     <string name="feedback_number_removed">Le numéro a été retiré.</string>
     <string name="feedback_number_saved">Texter ouvre maintenant ton appli SMS avec le %1$s.</string>

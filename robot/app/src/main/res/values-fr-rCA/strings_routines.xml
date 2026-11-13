@@ -159,6 +159,8 @@
     <string name="routine_time_problem">Une heure comme 7&#160;h&#160;30.</string>
     <string name="routine_clock_app">Appli d’horloge</string>
     <string name="routine_clock_default">Celle du téléphone&#160;: %1$s</string>
+    <string name="routine_own_timers">Robot garde tes minuteries</string>
+    <string name="routine_own_timers_summary">Donne-leur un nom, demande combien de temps il reste, annules-en une ou dis arrête quand elle sonne. Elles sonnent au volume de l’alarme. Désactivé, les minuteries vont dans ton appli d’horloge.</string>
     <string name="routine_clock_sound">%1$s est ton horloge&#160;: Robot se fie à l’arrêt de la sonnerie de l’alarme</string>
     <string name="routine_clock_doesnt_tell">%1$s n’indique pas aux autres applis quand une alarme se termine</string>
     <string name="routine_clock_sound_detail">Robot se fie à l’arrêt de la sonnerie, sans utiliser le micro. Une alarme qui ne fait que vibrer ne lancera donc rien.</string>

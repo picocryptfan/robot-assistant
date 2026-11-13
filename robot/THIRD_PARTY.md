@@ -3,7 +3,7 @@
 Robot itself is GPL-3.0-only (see `../LICENSE`; Copyright (C) 2026 the Robot authors). Everything below keeps its own
 licence; all of them (Apache-2.0, MIT, BSD-2-Clause, BSD-3-Clause, MPL-2.0, CC-BY-4.0 for model weights and data, CC0 for
 the language ID data, GPL-3.0-or-later for espeak-ng, GPL-2.0-or-later with MPL-2.0 parts for slimt, MPL-2.0 for the
-translation models, AGPL-3.0-only for libsignal, which GPL-3.0's section 13 lets Robot combine with, the zlib licence for
+translation models, GPL-2.0-or-later for libzim and Xapian, 0BSD for liblzma, the Unicode licence v3 for ICU, AGPL-3.0-only for libsignal, which GPL-3.0's section 13 lets Robot combine with, the zlib licence for
 zlib in Tor, and ISC, 0BSD and CC0 for some of lyrebird's Go modules) are compatible with
 GPL-3.0. Native libraries, models and the espeak-ng data are not stored in git:
 `tools/fetch_third_party.sh` downloads the exact files below and checks every SHA-256. The speech recognition and voice models are not in the APK at all: the app
@@ -98,6 +98,11 @@ from the bundle showed. See the README's "Releasing".
 | slimt | DavidVentura/slimt at 2beb403a | GPL-2.0-or-later | in the APK |
 | ruy | google/ruy at c04e5e52 | Apache-2.0 | in the APK |
 | cpuinfo | pytorch/cpuinfo at 082deffc | BSD-2-Clause | in the APK |
+| libzim | 9.3.0 | GPL-2.0-or-later | in the APK |
+| Xapian | 1.4.29 (xapian-core) | GPL-2.0-or-later | in the APK |
+| Zstandard | 1.5.7 | BSD-3-Clause | in the APK |
+| liblzma (XZ Utils) | 5.8.1 | 0BSD | in the APK |
+| ICU | 77.1 | Unicode-3.0 | in the APK |
 | SentencePiece (in the fast translation engine) | browsermt/sentencepiece at 8cbdf137 | Apache-2.0 | in the APK |
 | Protocol Buffers lite (in SentencePiece) | as bundled in browsermt/sentencepiece at 8cbdf137 | BSD-3-Clause | in the APK |
 | Abseil (in SentencePiece) | as bundled in browsermt/sentencepiece at 8cbdf137 | Apache-2.0 | in the APK |
@@ -115,6 +120,7 @@ from the bundle showed. See the README's "Releasing".
 | Gemma 4 E2B | litert-community, b3ca0d2f | Apache-2.0 | downloaded when you ask |
 | Gemma 4 E4B | litert-community, 2eee7ac3 | Apache-2.0 | downloaded when you ask |
 | Gemma 4 E4B abliterated | olekk, a4eecccd | Apache-2.0 | downloaded when you ask |
+| EmbeddingGemma 2 270M | litert-community, 9be6e8b9 | Apache-2.0 | downloaded when you ask |
 | Your own model file | the file you import | LicenseRef-own-file | downloaded when you ask |
 | Parakeet TDT 0.6B v3 | int8, csukuangfj, 2bda32ec | CC-BY-4.0 | downloaded when you ask |
 | Kokoro-82M | 1.0 (csukuangfj, f7b96bb6) | Apache-2.0 | downloaded when you ask |
@@ -457,6 +463,36 @@ current files is still UNVERIFIED (no per-file notice in the bucket).
 
 The test set the speed test runs (`core/src/main/assets/mt/fr-CA-test.tsv`, a copy of `tools/lang/fr-CA/mt-test.tsv`)
 was written for Robot.
+
+## In the `:wiki` process only (P1): Wikipedia on this phone
+
+`librobotzim.so` (arm64-v8a) reads the ZIM files Kiwix publishes Wikipedia in (wikipedia-offline-plan.md §3). It is built
+by `tools/build_libzim.sh` from Robot's own JNI in `wiki/src/main/cpp/` (`robotzim_jni.cpp`: open from a descriptor, title
+suggestions, full-text search, an article's HTML, a metadata value, close) and the five release archives below, all
+statically linked into one library with libc++ (`-static-libstdc++`). It is not stored in git; Gradle packages it when the
+script has built it (`wiki/src/main/jniLibs/`), and only the isolated `:wiki` process loads it (`ProcessIsolationTest`,
+`tools/verify_apk.sh`). Articles are not in the APK: Wikipedia's text is CC BY-SA 4.0, and what Robot shows of it credits
+the article, the licence and its link.
+
+- Toolchain: Android NDK 27.1.12297006, API 34, `-O2 -fPIC`, sections collected, debug paths mapped, no build id; meson
+  1.6.1 (run from its release archive, `1eca49eb…464de`) for libzim, with `USE_MMAP=false` (the isolated process reads
+  through the descriptor it is handed). ICU's data is cut by `wiki/src/main/cpp/icu-filter.json` to the converter aliases,
+  NFC and the transliterator root, and `icu_check.cpp` (a host build, not shipped) proves libzim's accent folding still works.
+- Exports only its `Java_app_heyrobot_wiki_LibZim_*` functions; 16 KB page aligned.
+
+### libzim 9.3.0 (GPL-2.0-or-later), with Xapian, Zstandard, liblzma and ICU
+
+| part | release archive | sha256 | licence |
+|---|---|---|---|
+| libzim | https://download.openzim.org/release/libzim/libzim-9.3.0.tar.xz | `f95f7ce51077ee471f48aa40b4149c4c1c55827bb3527aee687bdb5e9dab671f` | **GPL-2.0-or-later** (its COPYING), used here under GPL-3.0; `licenses/GPL-2.0-libzim-xapian.txt` |
+| Xapian | https://oligarchy.co.uk/xapian/1.4.29/xapian-core-1.4.29.tar.xz | `c55c9bc8613ad3ec2c218eafca088c218ab7cddcba7ef08f3af0e542f4e521bc` | **GPL-2.0-or-later**, used here under GPL-3.0; the same text |
+| Zstandard | https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-1.5.7.tar.gz | `eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3` (its release's .sha256) | BSD-3-Clause (or GPL-2.0), `licenses/BSD-3-Clause-zstd.txt` |
+| liblzma (XZ Utils) | https://github.com/tukaani-project/xz/releases/download/v5.8.1/xz-5.8.1.tar.gz | `507825b599356c10dca1cd720c9d0d0c9d5400b9de300af00e4d1ea150795543` | 0BSD, `licenses/0BSD-xz.txt` |
+| ICU | https://github.com/unicode-org/icu/releases/download/release-77-1/icu4c-77_1-src.tgz and `icu4c-77_1-data.zip` | `588e431f77327c39031ffbb8843c0e3bc122c211374485fa87dc5f3faff24061`, `1e08bfafa442260ccabf9a872d4eab12de813d42b90769df056bab032b37e1d3` (both in its release's SHASUM512.txt) | Unicode-3.0, `licenses/Unicode-3.0-icu.txt` |
+
+Corresponding source: these archives and Robot's `wiki/src/main/cpp/` and `tools/build_libzim.sh`. `tools/make_source_bundle.sh`
+carries them (its `wiki/` folder), each checked against the pin in `tools/build_libzim.sh`. zlib is the phone's own `libz.so`,
+not in the APK; Meson, which builds libzim, is a build tool and ships nothing.
 
 ## In the `:link` process only (1.5): Robot to Robot
 

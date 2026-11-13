@@ -11,12 +11,16 @@ object TurnStrings : Strings("turn", area = "cards") {
     val couldntDo = s("couldnt_do", "Couldn't do “{tool}”", "Impossible de faire « {tool} »")
     val couldntDoThat = s("couldnt_do_that", "Couldn't do that", "Impossible de faire ça")
     val webFirst = s("web_first", "Robot answers from the web search first.", "Robot répond d'abord à partir de la recherche web.")
+    val helperWebCap = s("helper_web_cap", "Robot does at most one web search per answer for a helper.",
+        "Robot fait au plus une recherche web par réponse pour une IA externe.")
     val fileFirst = s("file_first", "Robot answers from the file first.", "Robot répond d'abord à partir du fichier.")
     val maxCalls = plural("max_calls", "n",
         Plural(one = "Robot does at most {n} action per answer.", other = "Robot does at most {n} actions per answer."),
         Plural(one = "Robot fait au plus {n} action par réponse.", other = "Robot fait au plus {n} actions par réponse."))
     val turnedOff = s("turned_off", "{what} are turned off in Robot's settings.", "{what} : action désactivée dans les réglages de Robot.")
     val stopped = s("stopped", "Stopped.", "Arrêté.")
+    /** review-auto-open 6: once, after the first app that opened with no card. */
+    val openNamedTip = s("open_named_tip", "Opened without a card. {page} turns this off.", "Appli ouverte sans carte. {page} désactive ça.")
 
     // ActionOutcome.kt (1.0.2): Robot's own line when an action you asked for didn't happen (or, after a reply that claims
     // one was done, what really happened). Each not-done line says "rien" or "pas", so it never reads as a claim itself.

@@ -182,7 +182,10 @@ object Assistant {
      */
     fun locked(ctx: Context): Boolean = keyguard(ctx) || app.heyrobot.lock.PhoneLockNow.on(ctx)
 
-    fun keyguard(ctx: Context): Boolean = try { ctx.getSystemService(KeyguardManager::class.java).isKeyguardLocked } catch (_: Exception) { false }
+    fun keyguard(ctx: Context): Boolean = failClosed { ctx.getSystemService(KeyguardManager::class.java).isKeyguardLocked }
+
+    /** review-d Low: a lock screen Robot can't read counts as up (fail closed, as Assistant.locked's other half). */
+    internal fun failClosed(read: () -> Boolean): Boolean = try { read() } catch (_: Exception) { true }
 
     /** Settings > Apps > Default apps > Digital assistant app (voice input settings first, as in the probe). */
     fun settingsIntent(ctx: Context): Intent? =

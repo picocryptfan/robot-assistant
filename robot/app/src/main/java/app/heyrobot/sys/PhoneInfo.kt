@@ -70,8 +70,12 @@ object PhoneInfo {
             usageAccess = usage,
             robotModelLoaded = robotModelLoaded,
             robotModelBytes = robotModelBytes,
+            pickups = if (part == PhonePart.PICKUPS && usage) safe { pickups(ctx) } else null,
         )
     }
+
+    /** App pause: today's pickups, counted in :lock (the only process that reads usage events for counts) and never kept. */
+    private fun pickups(ctx: Context): app.heyrobot.core.pause.Pickups? = app.heyrobot.lock.LockSignals.pickups(ctx)
 
     fun storage(): StorageFacts = StatFs(Environment.getDataDirectory().path).let { StorageFacts(it.totalBytes, it.availableBytes) }
 

@@ -40,5 +40,9 @@
         <domain includeSubdomains="true">f-droid.org</domain>
         <!-- 1.0: DuckDuckGo's Instant Answer API (api.duckduckgo.com). A search in your browser is the browser's, not Robot's. -->
         <domain includeSubdomains="true">duckduckgo.com</domain>
+        <!-- Wikipedia P3 (L1): a copy's download at download.kiwix.org and its redirects there (lb.download.kiwix.org).
+             Android's download manager checks this file on every redirect, so a plain-HTTP hop on these fails the download.
+             The mirrors it is sent on to aren't known ahead (all https today); the copy's SHA-256 pin covers what arrives. -->
+        <domain includeSubdomains="true">kiwix.org</domain>
     </domain-config>
 </network-security-config>

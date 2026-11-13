@@ -136,4 +136,36 @@ class CarLayoutTest {
             assertEquals(CarLayout(), app.heyrobot.core.backup.RestoreSafety.car(CarFile(), theirs, mine).value.settings.layout)
     }
 
+
+    private val clock = CarWidget(pin, "org.example.radio.NowPlayingWidget", 7)
+
+    @Test fun aWidgetRoundTripsAndAMissingOneIsTheMediaPlayer() {
+        val l = CarLayout(info = CarInfo.WIDGET, widget = clock)
+        assertEquals(l, CarLayout.fromJson(l.toJson()))
+        assertEquals(CarInfo.MEDIA, CarLayout.fromJson(JSONObject().put("info", "WIDGET")).info)
+        assertEquals(CarInfo.MEDIA, CarLayout.fromJson(JSONObject(l.toJson().toString()).apply { getJSONObject("widget").put("id", 0) }).info)
+        assertEquals(CarInfo.MEDIA, CarLayout.fromJson(JSONObject(l.toJson().toString()).apply { getJSONObject("widget").put("provider", "a b") }).info)
+        assertEquals(CarInfo.MEDIA, CarLayout(info = CarInfo.WIDGET).infoNow(beside = true))
+        assertEquals(CarInfo.MEDIA, CarLayout(info = CarInfo.WIDGET).slotNow(beside = true, locked = false, phoneLockCloses = false))
+    }
+
+    @Test fun theSlotShowsTheWidgetOnlyUnlockedAndOpen() {
+        val l = CarLayout(info = CarInfo.WIDGET, widget = clock)
+        for (beside in listOf(true, false)) {
+            assertEquals(CarInfo.WIDGET, l.slotNow(beside, locked = false, phoneLockCloses = false))
+            assertTrue(l.swapsBottom(beside, locked = false, phoneLockCloses = false))
+            assertEquals(CarInfo.MEDIA, l.slotNow(beside, locked = true, phoneLockCloses = false))
+            assertEquals(CarInfo.MEDIA, l.slotNow(beside, locked = false, phoneLockCloses = true))
+            assertEquals(CarInfo.MEDIA, l.slotNow(beside, locked = false, phoneLockCloses = false, swapped = true))
+            assertFalse(l.swapsBottom(beside, locked = true, phoneLockCloses = false))
+            assertFalse(l.swapsBottom(beside, locked = false, phoneLockCloses = true))
+        }
+        // The large panel shows media already: the swap shows directions; beside, media moves to the slot.
+        val media = l.copy(large = CarLarge.MEDIA)
+        assertEquals(CarInfo.DIRECTIONS, media.slotNow(beside = false, locked = true, phoneLockCloses = false))
+        assertEquals(CarInfo.WIDGET, media.slotNow(beside = true, locked = false, phoneLockCloses = false))
+        assertEquals(CarInfo.MEDIA, media.slotNow(beside = true, locked = false, phoneLockCloses = false, swapped = true))
+        assertFalse(CarLayout().swapsBottom(beside = true, locked = false, phoneLockCloses = false))
+        assertEquals(CarInfo.MEDIA, CarLayout().slotNow(beside = true, locked = false, phoneLockCloses = false, swapped = true))
+    }
 }

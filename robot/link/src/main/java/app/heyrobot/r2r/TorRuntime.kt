@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.r2r
 
+import app.heyrobot.core.link.BridgeRelayPlan
+import app.heyrobot.core.link.BridgeTarget
 import app.heyrobot.core.link.BootstrapWatch
 import app.heyrobot.core.link.OnionKey
 import app.heyrobot.core.link.TorPlan
@@ -32,7 +34,13 @@ import java.util.concurrent.atomic.AtomicBoolean
 // then the built-in obfs4 bridges, then meek, each given 60 s without progress; the one that worked is tried first next
 // time (in memory only). A route chosen on its own is the only one tried: no plain Tor behind your back. A change in
 // Settings applies at Tor's next start, at once while Tor is still connecting; a Tor that is up keeps its route, so the
-// onion services it carries stay up.
+// onion services it carries stay up. Your own bridge lines are the exception: removed, edited or switched away from, Tor
+// starts again without them at its next use, or at the next pump while :link is awake ([stale]; stopped instead when it has
+// nothing to carry or Robot's network access is off, LinkNode); a Tor still connecting over the old lines lets go of them at
+// its next bootstrap check and starts again over the new ones (-d M1), screens open or not.
+//
+// tor-bridge-relay: when a saved bridge leads to a home address (core BridgeRelayPlan), each start opens a BridgeRelay
+// with a new password and names it in the torrc; it closes with Tor (stopProcess). Otherwise the torrc is as before.
 //
 // E4: What went online's row for Tor: [hours] (core TorHours) samples Tor's byte counters every few minutes through
 // [tally], and once more before each stop; one row an hour comes of it, with no relay's address.
@@ -70,11 +78,20 @@ class TorRuntime(
     private val pollMs: Long = 500,
     private val onReady: (TorRoute) -> Unit = {},
     private val hours: TorHours? = null,
+    /** tor-bridge-relay-c H1: why a start failed (the link log's TOR row 5); never a crash out of [up]. */
+    private val onFailed: (TorProblem) -> Unit = {},
+    /** The relay for a home bridge; tests only. */
+    private val relays: (List<BridgeTarget>) -> BridgeRelay = { BridgeRelay.start(it) },
 ) : TorNet {
     private val lock = Any()
     @Volatile private var process: Process? = null
     /** fix-push-tls: :link sleeps; [up] starts nothing until [wake]. */
     @Volatile private var held = false
+    /**
+     * fix-bridges-lows-b (review-fix-bridges-lows L1): Robot's network access (the Network toggle; LinkNode sets it). A
+     * start that moves to your new lines checks it first, for callers on any thread: no new Tor with network access off.
+     */
+    @Volatile var mayStart: () -> Boolean = { true }
     @Volatile private var started = 0
     /** review-1.2.4 finding 6: Tor's deaths after it was up, so one that keeps dying isn't started every pump. */
     private val restarts = RestartCap()
@@ -83,9 +100,19 @@ class TorRuntime(
     private val servers = HashMap<Int, Pair<UnixServer, PublishedOnion>>()
     @Volatile private var ready = false
     /** The route the running Tor was started with. */
-    private var route: TorRoute? = null
+    @Volatile private var route: TorRoute? = null
     /** The route that last bootstrapped (Automatic tries it first), in memory only. */
     private var worked: TorRoute? = null
+    /** tor-bridge-relay: the running Tor's relay, while one of its bridges leads to a home address. */
+    private var relay: BridgeRelay? = null
+    /** The bridge lines the running Tor was started with. */
+    @Volatile private var startedLines: List<app.heyrobot.core.link.BridgeLine> = emptyList()
+
+    /**
+     * fix-bridges-and-wording-b L1: no lock, so the pump never waits on a start; [up] checks again under it. -c M1: a Tor
+     * still connecting (not ready) counts too, so one that can't connect over your old lines doesn't keep them.
+     */
+    override val stale: Boolean get() = process?.isAlive == true && ownLinesChanged()
 
     override val running: Boolean get() = ready && process?.isAlive == true
     override val starts: Int get() = started
@@ -94,13 +121,26 @@ class TorRuntime(
     override fun up(): Boolean = synchronized(lock) {
         if (held) return false
         if (ready) {
-            if (process?.isAlive == true) return true
-            // fix-push-tls: Tor ended on its own (a crash, Android's process limits): cleared, then started again below.
-            died()
-            restarts.died(System.nanoTime() / 1_000_000)
+            if (process?.isAlive == true && !ownLinesChanged()) return true
+            if (process?.isAlive == true) restart() else {
+                // fix-push-tls: Tor ended on its own (a crash, Android's process limits): cleared, then started again below.
+                died()
+                restarts.died(System.nanoTime() / 1_000_000)
+            }
         }
         if (!restarts.allows(System.nanoTime() / 1_000_000)) return false
-        try {
+        // fix-bridges-and-wording-d M1: your own lines changed while a start connected over them: a new start over the new
+        // ones, a few times at most (no recursion); after that the next use tries again.
+        // fix-bridges-lows-b (review L1): each new start over your new lines only with Robot's network access allowed.
+        repeat(LINE_CHANGES) { n -> if (n > 0 && !mayStart()) return false; attempt()?.let { return it } }
+        // fix-bridges-lows (review-d L4): giving up says why, as every other start that fails does (the link log's TOR row 5).
+        failed(TorProblem.START)
+        false
+    }
+
+    /** One start under [lock]: true once up, false when it can't come up, null when your own lines changed while it connected. */
+    private fun attempt(): Boolean? {
+        return try {
             val p = plan()
             // A route whose transport lyrebird carries is tried only when lyrebird is there.
             val usable = TorPlan(p.routes.filter { !p.needsLyrebird(it) || lyrebird?.isFile == true }, p.own)
@@ -112,10 +152,15 @@ class TorRuntime(
             for ((n, r) in order.withIndex()) {
                 val more = n < order.size - 1
                 try {
-                    if (control == null || route != r) { restart(); start(r, usable) }
+                    // fix-bridges-and-wording-c M1: still connecting over your own lines since edited: over the new ones.
+                    if (control == null || route != r || (r == TorRoute.OWN && usable.lines(r) != startedLines)) { restart(); start(r, usable) }
                     val c = control ?: return false
                     c.networkOn(true)
-                    if (bootstrapped(c, if (r.bridged) stallBridgeMs else stallPlainMs, more)) {
+                    val b = bootstrapped(c, if (r.bridged) stallBridgeMs else stallPlainMs, more)
+                    // fix-bridges-and-wording-b L2, -d M1: your own lines removed or edited while this start connected: Tor
+                    // never comes up over them, nor keeps trying them; it starts again with what you have now.
+                    if (b == null || (b && ownLinesChanged())) { restart(); return null }
+                    if (b) {
                         ready = true
                         started++
                         worked = r
@@ -130,17 +175,29 @@ class TorRuntime(
         } catch (_: InterruptedException) {
             Thread.currentThread().interrupt()
             false
-        } catch (_: TorException) {
+        } catch (x: TorException) {
+            failed(x.problem)
             false
         } catch (_: IOException) {
+            failed(TorProblem.START)
+            false
+        } catch (_: RuntimeException) {
+            // tor-bridge-relay-c H1: nothing in a start ends :link; Tor just doesn't start, with its reason logged.
+            failed(TorProblem.START)
             false
         }
     }
 
-    /** Waits for Tor's bootstrap: true at 100%; false once it stalls (when [fallback]: another route waits) or times out. */
-    private fun bootstrapped(c: TorControl, stallMs: Long, fallback: Boolean): Boolean {
+    private fun failed(p: TorProblem) = try { onFailed(p) } catch (_: Exception) {}
+
+    /**
+     * Waits for Tor's bootstrap: true at 100%; false once it stalls (when [fallback]: another route waits) or times out; null
+     * as soon as your own lines it connects over are removed or edited (fix-bridges-and-wording-d M1).
+     */
+    private fun bootstrapped(c: TorControl, stallMs: Long, fallback: Boolean): Boolean? {
         val w = BootstrapWatch(nowMs(), stallMs, bootstrapTimeoutMs, fallback)
         while (true) {
+            if (ownLinesChanged()) return null
             when (w.see(c.bootstrap(), nowMs())) {
                 BootstrapWatch.Verdict.DONE -> return true
                 BootstrapWatch.Verdict.STALLED, BootstrapWatch.Verdict.TIMED_OUT -> return false
@@ -150,6 +207,17 @@ class TorRuntime(
     }
 
     private fun nowMs(): Long = TimeUnit.NANOSECONDS.toMillis(System.nanoTime())
+
+    /**
+     * fix-bridges-and-wording: Tor running over your own lines that you've since removed or changed. It starts again on its
+     * next use rather than keep them (and any relay to a home bridge, which closes with the process); a plan that won't read
+     * counts as changed.
+     */
+    private fun ownLinesChanged(): Boolean {
+        if (route != TorRoute.OWN) return false
+        val p = try { plan() } catch (_: Exception) { return true }
+        return TorRoute.OWN !in p.routes || p.lines(TorRoute.OWN) != startedLines
+    }
 
     /** The running Tor ended (nothing is published while it isn't ready), so the next [start] begins clean. */
     private fun restart() {
@@ -173,14 +241,24 @@ class TorRuntime(
         hours?.started()
         paths.dir.mkdirs(); paths.data.mkdirs()
         sockets.makePrivate(paths.dir); sockets.makePrivate(paths.data)
-        paths.torrc.writeText(TorConfig.torrc(paths, p.lines(r), lyrebird.takeIf { p.needsLyrebird(r) }))
+        val lines = p.lines(r)
+        startedLines = lines
+        relay?.close()
+        relay = if (BridgeRelayPlan.needed(lines)) try { relays(BridgeRelayPlan.targets(lines)) } catch (_: Exception) { throw TorException(TorProblem.RELAY) } else null
+        try {
+            paths.torrc.writeText(TorConfig.torrc(paths, lines, lyrebird.takeIf { p.needsLyrebird(r) }, relay?.auth))
+        } catch (x: Exception) {
+            val bad = relay != null && x !is IOException // the torrc refused the relay's address (TorConfig.relayOk)
+            relay?.close(); relay = null
+            throw if (bad) TorException(TorProblem.RELAY) else x
+        }
         route = r
         paths.cookie.delete(); paths.control.delete(); paths.socks.delete()
         val pb = ProcessBuilder(exe.absolutePath, "-f", paths.torrc.absolutePath, "__OwningControllerProcess", pid.toString()) // l10n: not text (Tor's arguments)
         pb.environment()["HOME"] = paths.dir.absolutePath // l10n: not text (an environment variable)
         pb.directory(paths.dir)
         pb.redirectErrorStream(true)
-        val p = try { pb.start() } catch (_: Exception) { throw TorException(TorProblem.START) }
+        val p = try { pb.start() } catch (_: Exception) { relay?.close(); relay = null; throw TorException(TorProblem.START) } // review-tor-bridge-relay-b L4
         process = p
         try {
             if (!waitForControl(p)) throw TorException(TorProblem.START)
@@ -289,6 +367,9 @@ class TorRuntime(
         stopProcess()
     }
 
+    /** fix-bridges-lows (review-d L5): [stale] read under [lock], so a start that moved to your new lines meanwhile keeps running. */
+    override fun letGo() = synchronized(lock) { if (stale) down() }
+
     override fun sleep() = synchronized(lock) {
         held = true
         down()
@@ -305,10 +386,13 @@ class TorRuntime(
             try { if (!p.waitFor(5, TimeUnit.SECONDS)) p.destroy() } catch (_: InterruptedException) { p.destroy() }
         }
         process = null
+        relay?.close(); relay = null
         paths.control.delete(); paths.socks.delete()
     }
 
     private companion object {
+        /** fix-bridges-and-wording-d M1: new starts in one [up] when your own lines keep changing while it connects. */
+        const val LINE_CHANGES = 3
         const val START_SECONDS = 30L
         const val COOKIE_SECONDS = 10L
         const val DIAL_MS = 120_000

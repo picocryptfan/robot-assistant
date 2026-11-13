@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- Read it to me (docs/plans/read-it-to-me-plan.md): the reading's notification and the share door's button. French in
+     values-fr-rCA/strings_read.xml. -->
+<resources>
+    <string name="read_channel">Reading aloud</string>
+    <string name="read_reading">Reading to you</string>
+    <string name="read_paused">Reading paused</string>
+    <string name="read_pause">Pause</string>
+    <string name="read_resume">Keep reading</string>
+    <string name="read_stop">Stop</string>
+    <string name="read_it_to_me">Read it to me</string>
+    <string name="read_steps_count">Step %1$d of %2$d</string>
+    <string name="read_steps_listening">Say next, back, again or stop</string>
+    <string name="read_steps_timer">Set the timer</string>
+    <string name="read_steps_back">Back</string>
+    <string name="read_steps_again">Again</string>
+    <string name="read_steps_next">Next</string>
+    <string name="read_steps_stop">Stop</string>
+</resources>

@@ -44,11 +44,11 @@ data class GitHubRepo(val owner: String, val name: String) {
      * "bug_report.yml"), its [label] and the id of its [field] that takes the text, the page opens that form with the text in
      * the field; without one, the text is the plain issue body.
      */
-    fun newIssueUrl(title: String, body: String, form: String? = null, field: String = "body", label: String? = null): String =
+    fun newIssueUrl(title: String, body: String?, form: String? = null, field: String = "body", label: String? = null): String =
         "https://github.com/$owner/$name/issues/new?title=" + encode(title) +
             (if (form != null) "&template=" + encode(form) else "") +
             (if (form != null && label != null) "&labels=" + encode(label) else "") +
-            "&" + (if (form != null) field else "body") + "=" + encode(body)
+            (if (body == null) "" else "&" + (if (form != null) field else "body") + "=" + encode(body))
 
     override fun toString(): String = slug
 

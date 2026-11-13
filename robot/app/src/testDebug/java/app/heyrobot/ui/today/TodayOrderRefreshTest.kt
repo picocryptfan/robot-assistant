@@ -33,7 +33,7 @@ class TodayOrderRefreshTest {
     private val ctx: Context = ApplicationProvider.getApplicationContext()
 
     @Test fun aVoiceReorderRedrawsThePageWithoutLeavingIt() {
-        HomeSettingsStore.update(ctx) { HomeSettings(today = true, order = listOf(TodayPart.NOTE, TodayPart.CALENDAR, TodayPart.LISTS)) }
+        HomeSettingsStore.update(ctx) { HomeSettings(home = app.heyrobot.core.HomeChoice.TODAY, order = listOf(TodayPart.NOTE, TodayPart.CALENDAR, TodayPart.LISTS)) }
         val changes = MutableSharedFlow<Long>(extraBufferCapacity = 4)
         rule.show {
             // Resumed the whole time, as behind the panel.
@@ -49,7 +49,7 @@ class TodayOrderRefreshTest {
     }
 
     @Test fun theStampChangesWithEachWrite() {
-        HomeSettingsStore.update(ctx) { HomeSettings(today = true) }
+        HomeSettingsStore.update(ctx) { HomeSettings(home = app.heyrobot.core.HomeChoice.TODAY) }
         val one = HomeSettingsStore.stamp(ctx)
         Thread.sleep(20)
         HomeSettingsStore.update(ctx) { it.with(TodayPart.NOTE, TodayMove.FIRST) }

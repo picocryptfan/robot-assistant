@@ -68,4 +68,26 @@
     <string name="messages_no_card_detail">Your own words, one to one, phone unlocked: Robot says them and sends after 3 seconds unless you say stop.</string>
     <string name="messages_announce_from">Announce messages from %1$s</string>
     <string name="messages_announce_from_detail">In private headphones, and in the car in car mode, when “Announce from” is “People you choose”.</string>
+    <!-- 1.3, Settings › Messages › What did I miss? (ui/settings/MissedSettings.kt). -->
+    <string name="messages_missed_title">What did I miss?</string>
+    <string name="messages_missed_switch">Say what came in</string>
+    <string name="messages_missed_switch_detail">Ask “What did I miss?” and Robot says how many notifications came from the apps you pick since you last asked. It keeps their app, title and kind in memory only, never their text, and History keeps only the counts and app names of its answers. While your phone is locked, counts only.</string>
+    <string name="messages_missed_apps">Apps</string>
+    <string name="messages_missed_apps_none">No app picked</string>
+    <string name="messages_missed_apps_some">Apps picked: %1$d</string>
+    <string name="messages_missed_types">Notifications from other apps</string>
+    <string name="messages_missed_types_detail">Android shows Robot only conversations unless you also allow “Notifications” on Robot’s notification access page. Tap to open it.</string>
+    <string name="messages_missed_pick_title">Apps for What did I miss?</string>
+    <string name="messages_missed_pick_text">Robot notes the notifications of the apps you tick here.</string>
+    <string name="messages_missed_pick_done">Done</string>
+    <string name="messages_hold_title">Hold notifications</string>
+    <string name="messages_hold_switch">Hold notifications from apps you pick</string>
+    <string name="messages_hold_switch_detail">Ask Robot to hold your notifications until a time, such as noon, for 12 hours at most. Robot snoozes the apps you pick and then shows you in one line what came in, and says it once only in private headphones or a trusted car that reads aloud, never on the phone’s speaker. Messages, calls, alarms, reminders, timers and anyone in People are never held.</string>
+    <string name="messages_hold_apps">Apps to hold</string>
+    <string name="messages_hold_pick_text">Robot holds notifications only from the apps you tick here.</string>
+    <string name="messages_hold_buzz">Held apps can still buzz</string>
+    <string name="messages_hold_buzz_detail">A notification from a held app can still make its sound as it arrives, before Robot holds it. To stop that, make that app silent in Android’s notification settings. Robot changes no phone setting. Tap to open them.</string>
+    <string name="messages_ready_title">Ready answers</string>
+    <string name="messages_ready">Offer ready answers</string>
+    <string name="messages_ready_detail">When someone in People asks when your flight lands or leaves, or when an appointment or booking is, Robot reads your calendar and Files and offers an answer in a notification. Never memory, notes, History or other messages. Nothing is sent until you tap Send, and only while your phone is unlocked. Questions about money, codes or passwords are never answered. The answer quotes titles and names as they’re written in your calendar or Files.</string>
 </resources>

@@ -334,3 +334,10 @@ tool (an MCP server's)	outil (le)		-	S3.6: masculine, « Robot l'a désactivé �
 label (your name for a tool)	nom (« Ton nom pour l'outil »)		-	S3.6: « Donne-lui un nom d'une ligne »
 mark (a tool's: spends money, touches security, tells people)	marque		-	S3.6: « n'a aucune marque »
 Test (a connection's button, in a sentence)	Touche Tester		-	S3.6: « Touche Tester pour lister les outils de ce serveur », never « le test » for the button
+Quick access (a home screen)	Accès rapide (l'Accès rapide)		-	HS3: the home of big buttons, as the plan names it
+Home screen (Display's row)	écran d'accueil		-	HS3: Settings › Display, which page Home opens on
+logbook (spoken log)	carnet		-	The Logbook: « Carnet », « inscris » to add; « journal » stays the lock-screen journal
+home network	réseau domestique	réseau local, réseau maison, réseau de la maison, réseau résidentiel, Wi-Fi de la maison	word	Connections, helpers, web: « sur ton réseau domestique », « hors de ton réseau domestique »; the English "your network" / "your own network" (any network you control, not only home) stays « ton réseau » / « ton propre réseau »; « à la maison » still fine in a sentence (« même à la maison »)
+short link	lien court		-	Scam check: the line for a shortened link (ScamWhy.SHORT_LINK)
+scam	arnaque		-	Scam check: every warning opens with it
+Remove	Retirer		-	On buttons that take something off a list or out of a place (a pairing, a shared folder's file, your bridge lines); « Supprimer » is Delete

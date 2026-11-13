@@ -49,6 +49,9 @@ object SkillPolicy {
      */
     fun untrusted(s: Skill, untrusted: Boolean): Boolean = untrusted || s.provenance.fromContent
 
+    /** auto-open-plan §2: the apps a skill's open step may open without asking; none for a skill made from content. */
+    fun opens(s: Skill, ticked: Set<String>): Set<String> = if (s.provenance.fromContent) emptySet() else ticked
+
     fun asked(tool: ToolName?, named: Boolean): Set<ToolName> = if (named && tool != null) setOf(tool) else emptySet()
 
     /** What a locked phone says to teaching, saving or deleting ([change]), or to listing and asking about skills. */

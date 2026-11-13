@@ -285,6 +285,8 @@ fun WebSearchSettingsScreen(
                     RIcons.Cloud, enabled = on) {
                     onChange(web.copy(currentInfo = it))
                 }
+                SwitchPreference(stringResource(R.string.web_helpers_search), stringResource(R.string.web_helpers_search_summary), web.helpersMayUse,
+                    enabled = on, icon = RIcons.Cloud) { onChange(web.copy(helpersMayUse = it)) }
                 ListPreference(stringResource(R.string.web_keep_sources), web.keepSources, KeepSources.entries, { keepLabels.getValue(it) }, { keepDetails.getValue(it) },
                     RIcons.History, enabled = on) {
                     onChange(web.copy(keepSources = it))

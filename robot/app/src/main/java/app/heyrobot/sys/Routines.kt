@@ -64,6 +64,11 @@ object RoutineIntents {
     const val RECEIVER = "app.heyrobot.assistant.routines.RoutineAlarmReceiver"
     const val ACTION_FIRE = "app.heyrobot.routines.FIRE"
     const val ACTION_READY = "app.heyrobot.routines.READY"
+    const val ACTION_MOMENT = "app.heyrobot.routines.MOMENT"
+    /** 1.3 notify-hold: people/HoldTap (main process) hands a hold's end line to :voice to say, if RoutineVoice lets it. */
+    const val ACTION_HOLD_OVER = "app.heyrobot.routines.HOLD_OVER"
+    const val EXTRA_LINE = "line"
+    const val EXTRA_SOMEONE_ELSE = "someone_else"
     /** The local date and time the alarm is for ("2026-10-12T07:00"), and when it was set to ring (ms). */
     const val EXTRA_SLOT = "slot"
     const val EXTRA_AT = "at"
@@ -82,6 +87,7 @@ object RoutineIntents {
  */
 object RoutineAlarms {
     private const val REQ = 8_401
+    private const val MOMENT_REQ = 8_402
 
     /** Exact alarms are allowed (USE_EXACT_ALARM). */
     fun exact(ctx: Context): Boolean = try { ctx.getSystemService(AlarmManager::class.java).canScheduleExactAlarms() } catch (_: Throwable) { false }
@@ -90,6 +96,22 @@ object RoutineAlarms {
         next?.let {
             putExtra(RoutineIntents.EXTRA_SLOT, it.due.first().slot.toString())
             putExtra(RoutineIntents.EXTRA_AT, it.at.toInstant().toEpochMilli())
+        }
+    }
+
+    /** fix-moment-reminders: the end of the car's wait at [at] (or none), kept through the phone's sleep and a restart. */
+    fun armMoment(ctx: Context, at: Long?) {
+        val pi = PendingIntent.getBroadcast(ctx, MOMENT_REQ, Intent(RoutineIntents.ACTION_MOMENT).setClassName(ctx.packageName, RoutineIntents.RECEIVER),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        try {
+            val am = ctx.getSystemService(AlarmManager::class.java)
+            when {
+                at == null -> am.cancel(pi)
+                exact(ctx) -> am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
+                else -> am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
+            }
+        } catch (t: Throwable) {
+            RLog.w("moment_alarm", t)
         }
     }
 

@@ -33,6 +33,8 @@ object BrainProtocol {
      * client drops what came so far.
      */
     const val REQ_ONE_SHOT = 8
+    /** Search by meaning: a batch of texts to vectors with the search model ([BrainMsg.Embed]); answered by EV_VECTORS. */
+    const val REQ_EMBED = 9
 
     // Events (brain -> client).
     const val EV_STATUS = 101
@@ -47,12 +49,14 @@ object BrainProtocol {
      * starts after waiting (position 0). Not terminal.
      */
     const val EV_QUEUED = 108
+    /** REQ_EMBED's answer ([BrainMsg.Vectors]). Terminal. */
+    const val EV_VECTORS = 109
 
     /** The requests :brain answers (anything else gets EV_ERROR BAD_REQUEST). */
-    val REQUESTS = setOf(REQ_STATUS, REQ_LOAD, REQ_UNLOAD, REQ_GENERATE, REQ_TOOL_RESULT, REQ_CANCEL, REQ_CLOSE_CONV, REQ_ONE_SHOT)
-    val EVENTS = setOf(EV_STATUS, EV_LOADED, EV_CHUNK, EV_TOOL_CALLS, EV_DONE, EV_ERROR, EV_UNLOADED, EV_QUEUED)
+    val REQUESTS = setOf(REQ_STATUS, REQ_LOAD, REQ_UNLOAD, REQ_GENERATE, REQ_TOOL_RESULT, REQ_CANCEL, REQ_CLOSE_CONV, REQ_ONE_SHOT, REQ_EMBED)
+    val EVENTS = setOf(EV_STATUS, EV_LOADED, EV_CHUNK, EV_TOOL_CALLS, EV_DONE, EV_ERROR, EV_UNLOADED, EV_QUEUED, EV_VECTORS)
     /** Events that end a request: the client stops listening for its id. */
-    val TERMINAL = setOf(EV_STATUS, EV_LOADED, EV_DONE, EV_ERROR, EV_UNLOADED)
+    val TERMINAL = setOf(EV_STATUS, EV_LOADED, EV_DONE, EV_ERROR, EV_UNLOADED, EV_VECTORS)
 }
 
 /** Why a reply ended. */
@@ -89,7 +93,14 @@ enum class Priority { PANEL, INTERPRETER, TRANSCRIPT, SUMMARY }
  * priority; code checks it strictly before the plan card shows, and nothing in it runs without that card. DRAFT (design §10)
  * writes a skill as a call to its one tool, make_skill (SkillDrafter); only a tap on its save card keeps it.
  */
-enum class OneShotKind { TRANSLATE, SUMMARY_MAP, SUMMARY_REDUCE, WEB_ANSWER, FILE_READ, FILE_ANSWER, LIST_SPLIT, PLAN, DRAFT }
+enum class OneShotKind {
+    TRANSLATE, SUMMARY_MAP, SUMMARY_REDUCE, WEB_ANSWER, FILE_READ, FILE_ANSWER, LIST_SPLIT, PLAN, DRAFT, RECIPE,
+    /** 1.3 (point-and-read-plan.md): one picture's words, read aloud (core read ReadAloud). Carries a picture as FILE_READ does. */
+    READ_ALOUD;
+
+    /** The kinds that may carry a picture: FILE_READ's page and READ_ALOUD's picture; no other. */
+    val takesImage: Boolean get() = this == FILE_READ || this == READ_ALOUD
+}
 
 enum class BrainError {
     NOT_LOADED, NO_VISION, BAD_REQUEST, ENGINE, BUSY,
@@ -196,9 +207,30 @@ sealed class BrainMsg {
      * then is the key written, so every other one-shot's JSON is as before 1.4; any other kind with it isn't a request.
      */
     data class OneShot(val kind: OneShotKind, val priority: Priority, val system: String, val text: String, val maxChunks: Int,
-        val hasImage: Boolean = false) : BrainMsg() {
+        val hasImage: Boolean = false,
+        /** 1.3: READ_ALOUD's tiles, 1 to ReadImages.MAX (packed in KEY_IMAGE's one region, core read ReadImages.pack). */
+        val images: Int = 1) : BrainMsg() {
         override fun toJson() = JSONObject().put("kind", kind.name).put("priority", priority.name).put("system", system).put("text", text)
-            .put("maxChunks", maxChunks).apply { if (hasImage) put("hasImage", true) }
+            .put("maxChunks", maxChunks).apply { if (hasImage) put("hasImage", true); if (images != 1) put("images", images) }
+    }
+
+    /**
+     * REQ_EMBED: [texts] (each with its EmbedRole prefix already) through the search model at [path] (SearchModelStore's
+     * checked file), at most [maxInput] tokens each. At most [MAX_TEXTS] texts of [MAX_CHARS] characters: anything more
+     * isn't a request. 8, so one request holds :brain's work thread (which also serves replies) for well under a second.
+     */
+    data class Embed(val path: String, val texts: List<String>, val maxInput: Int = app.heyrobot.core.SearchModel.MAX_INPUT) : BrainMsg() {
+        override fun toJson() = JSONObject().put("path", path).put("texts", JSONArray(texts)).put("maxInput", maxInput)
+
+        companion object {
+            const val MAX_TEXTS = 8
+            const val MAX_CHARS = 8_000
+        }
+    }
+
+    /** EV_VECTORS: one vector per text, in order; [ok] false (and none) when the model couldn't load or run. */
+    data class Vectors(val vectors: List<FloatArray>, val ok: Boolean = true) : BrainMsg() {
+        override fun toJson() = JSONObject().put("ok", ok).put("vectors", JSONArray(vectors.map { v -> JSONArray(v.map { it.toDouble() }) }))
     }
 
     data object Empty : BrainMsg() {
@@ -338,11 +370,24 @@ sealed class BrainMsg {
                     })
                 }
                 BrainProtocol.REQ_CANCEL -> Cancel(o.getInt("target"))
+                BrainProtocol.REQ_EMBED -> {
+                    val t = o.getJSONArray("texts")
+                    val texts = (0 until t.length()).map { t.getString(it) }
+                    val max = o.optInt("maxInput", app.heyrobot.core.SearchModel.MAX_INPUT)
+                    if (texts.isEmpty() || texts.size > Embed.MAX_TEXTS || texts.any { it.length > Embed.MAX_CHARS } ||
+                        max !in 1..app.heyrobot.core.SearchModel.MAX_INPUT_CHUNK) null else Embed(o.getString("path"), texts, max)
+                }
+                BrainProtocol.EV_VECTORS -> {
+                    val a = o.optJSONArray("vectors") ?: JSONArray()
+                    Vectors((0 until a.length()).map { i -> a.getJSONArray(i).let { v -> FloatArray(v.length()) { v.getDouble(it).toFloat() } } },
+                        o.optBoolean("ok", false))
+                }
                 BrainProtocol.REQ_CLOSE_CONV -> CloseConv(o.getString("convId"))
                 BrainProtocol.REQ_ONE_SHOT -> OneShot(enumValueOf(o.getString("kind")), enumValueOf(o.getString("priority")), o.getString("system"),
                     o.getString("text"), o.optInt("maxChunks", Limits.MAX_REPLY_CHUNKS).coerceIn(1, Limits.MAX_REPLY_CHUNKS),
-                    // 1.4: a picture only with FILE_READ, and only when the key is exactly true.
-                    hasImage = o.opt("hasImage") == true).takeIf { !it.hasImage || it.kind == OneShotKind.FILE_READ }
+                    // 1.4: a picture only with FILE_READ (1.3: or READ_ALOUD), and only when the key is exactly true.
+                    hasImage = o.opt("hasImage") == true, images = o.optInt("images", 1))
+                    .takeIf { (!it.hasImage || it.kind.takesImage) && OneShotRules.imagesOk(it) }
                 BrainProtocol.REQ_STATUS, BrainProtocol.REQ_UNLOAD, BrainProtocol.EV_UNLOADED -> Empty
                 BrainProtocol.EV_STATUS -> Status(o.optBoolean("loaded"), o.optBoolean("vision"), o.optBoolean("constrained"), o.optBoolean("busy"),
                     BrainModel.byId(o.optString("model")), ModelBackend.of(o.optString("backend")), o.optInt("maxTokens", 0).coerceAtLeast(0),

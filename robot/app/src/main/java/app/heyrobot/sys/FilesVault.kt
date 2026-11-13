@@ -162,6 +162,8 @@ class KeystoreFileKeys(private val keystore: FileKeystore = AndroidFileKeystore(
                     is FileKeyException -> return c.problem
                     is KeyPermanentlyInvalidatedException -> return FileKeyProblem.GONE
                     is AEADBadTagException -> return FileKeyProblem.BAD_DATA
+                    // seal-history-fix-b 2: Android 15's getKey rethrows an invalidated key as this, with no cause.
+                    is java.security.UnrecoverableKeyException -> if (c.cause == null) return FileKeyProblem.GONE
                 }
                 c = c.cause
             }
@@ -391,7 +393,10 @@ object RobotFiles {
      * when it can't be read. Every reader that shows, says or counts files goes through this; filing, backups and restores
      * read the whole index.
      */
-    fun shown(ctx: Context): FileIndex? = vault(ctx).load().current?.let { TravelMode.shown(it, FilesSettingsStore.current(ctx), TravelReveal.on()) }
+    fun shown(ctx: Context): FileIndex? = shownLoad(ctx).second
+
+    /** As [shown], with the load it came from (Empty: Files never set up; Locked and the rest: it couldn't be read now). */
+    fun shownLoad(ctx: Context): Pair<IndexLoad, FileIndex?> = vault(ctx).load().let { l -> l to l.current?.let { TravelMode.shown(it, FilesSettingsStore.current(ctx), TravelReveal.on()) } }
 
     /** Main changed Robot Files (Cmd.FILES: Delete them all, Start over, its settings): this process reads them again. */
     fun changed(ctx: Context) {

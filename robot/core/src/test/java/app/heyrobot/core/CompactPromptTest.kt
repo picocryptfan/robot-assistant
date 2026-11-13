@@ -204,7 +204,7 @@ class CompactPromptTest {
         assertEquals("Hour on a 24-hour clock, 0 to 23", d(ToolName.SET_ALARM, "hour"))
         assertEquals("Minute, 0 to 59", d(ToolName.SET_ALARM, "minute"))
         assertEquals("true to turn it on, false to turn it off", d(ToolName.FLASHLIGHT, "on"))
-        assertEquals("storage, battery, memory or all", d(ToolName.PHONE_STATUS, "about"))
+        assertEquals("storage, battery, memory, pickups or all", d(ToolName.PHONE_STATUS, "about"))
         assertEquals("android, apps, files or robot", d(ToolName.FREE_STORAGE, "what"))
         assertEquals("Town, or omit for here", d(ToolName.WEATHER, "place"))
         assertEquals("App to stop; omit to unload Robot's model", d(ToolName.FREE_MEMORY, "app"))

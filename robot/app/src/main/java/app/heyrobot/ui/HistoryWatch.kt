@@ -34,14 +34,23 @@ fun stampChanges(stamp: () -> Long, everyMs: Long = 1_000L): Flow<Long> = flow {
 }.flowOn(Dispatchers.IO)
 
 /**
- * History as the app lists it, newest first: read with [load] while [active] (the app resumed), again when [tick] changes
- * (a delete here) and whenever [changes] says the folder changed (a save or a delete by either process).
+ * seal-history-fix-b 6: a History delete and the panel's word of it together, off the UI thread and never cut part way by
+ * the screen going (Back, a rotation): the panel would keep the deleted conversation and its next save write it back.
+ */
+internal suspend fun deleteAndTell(delete: () -> Unit, tell: () -> Unit) =
+    kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) { delete(); tell() }
+
+/**
+ * History as the app lists it, newest first: read with [load] while [active] (the app's window started), again when [tick]
+ * changes (a delete here) and whenever [changes] says the folder changed (a save or a delete by either process).
+ * seal-history-fix-c 2: null while it isn't active (the list dropped when the window stops: Home, screen off) and until
+ * the first read is done, so History never shows "no conversations" while it loads.
  */
 @Composable
-fun rememberHistory(active: Boolean, tick: Int, changes: Flow<Long>, load: suspend () -> List<StoredConversation>): List<StoredConversation> {
-    var list by remember { mutableStateOf(emptyList<StoredConversation>()) }
+fun rememberHistory(active: Boolean, tick: Int, changes: Flow<Long>, load: suspend () -> List<StoredConversation>): List<StoredConversation>? {
+    var list by remember { mutableStateOf<List<StoredConversation>?>(null) }
     LaunchedEffect(active, tick, changes) {
-        if (!active) return@LaunchedEffect
+        if (!active) { list = null; return@LaunchedEffect }
         list = load()
         changes.collect { list = load() }
     }

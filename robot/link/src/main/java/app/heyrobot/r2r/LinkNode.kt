@@ -135,6 +135,8 @@ class LinkNode(
     private var parseWaiting = 0
     private val io: ExecutorService = Executors.newCachedThreadPool { r -> Thread(r, "robot-link-io").apply { isDaemon = true } } // l10n: not text (a thread's name)
     /** Tor's starts, stops and publications, one at a time. */
+    // fix-bridges-lows-b (review L1): Tor's own starts over your new lines check Robot's network access too, on any thread.
+    init { (tor as? TorRuntime)?.mayStart = { env.networkAllowed() } }
     private val torThread: ExecutorService = Executors.newSingleThreadExecutor { r -> Thread(r, "robot-link-tor").apply { isDaemon = true } } // l10n: not text (a thread's name)
 
     // The link thread's own state.
@@ -161,6 +163,8 @@ class LinkNode(
     @Volatile private var onionStarts = 0
     private val reviving = java.util.concurrent.atomic.AtomicBoolean(false)
     private var stopped = false
+    /** fix-bridges-and-wording-d L3: a pump found Robot's network access off. */
+    private var networkWasOff = false
 
     private fun nowMs() = env.now()
     private fun nowS() = env.now() / 1000
@@ -287,12 +291,37 @@ class LinkNode(
         tor?.let { t ->
             if (awake && !onionClients.isNullOrEmpty() && (t.exited || t.starts != onionStarts) && reviving.compareAndSet(false, true))
                 torThread.execute { try { refreshOnionNow() } catch (_: Exception) {} finally { reviving.set(false) } }
+            // fix-bridges-and-wording-b L1: your own bridge lines removed, edited or switched away from while :link is awake
+            // (Robot to Robot's screens open): Tor starts again without them on this pump, your onion with it. -c L1: only as
+            // every Tor start is, with Robot's network access allowed, and only with an onion to carry or a request waiting;
+            // otherwise it just stops (never plain Tor after Off with nothing to carry), and the next use starts it.
+            else if (awake && t.stale && reviving.compareAndSet(false, true)) {
+                val onion = !onionClients.isNullOrEmpty()
+                // -d L2: an open code's one-time onion is something to carry too, published again with the new start.
+                val codes = st.codes.values.any { it.onionKeyBlob != null && it.open.open(nowS()) }
+                val needed = onion || codes || st.outbox.isNotEmpty()
+                torThread.execute {
+                    // -d L1: a task queued ahead of this one may have started Tor over your new lines already: only a Tor
+                    // still stale when this runs is started again or stopped.
+                    try {
+                        if (t.stale) {
+                            if (needed && env.networkAllowed()) { if (t.up()) { if (onion) refreshOnionNow(); if (codes) post { republishCodes() } } }
+                            else if (env.networkAllowed()) t.letGo() // fix-bridges-lows (review-d L5): checked again under Tor's lock, for a start off this thread
+                            else t.down() // fix-bridges-lows-b (review L1): never kept with network access off
+                        }
+                    } catch (_: Exception) {} finally { reviving.set(false) }
+                }
+            }
         }
         // Robot's network access off (the Network toggle): nothing is tried, nothing counted; the next pump tries again.
         if (!env.networkAllowed()) {
             if (st.outbox.isNotEmpty()) log.add(LinkEvent.NO_NETWORK)
+            networkWasOff = true
             return
         }
+        // fix-bridges-and-wording-d L3: network access back on: your onion and open codes' onions are published again now
+        // (a stale Tor was stopped while it was off), not only at the next wake.
+        if (networkWasOff) { networkWasOff = false; refreshCarriers() }
         val now = nowS()
         for (o in st.outbox.values.sortedBy { it.nextAt }.toList()) {
             if (o.id in inFlight || o.nextAt > now) continue
@@ -1497,8 +1526,13 @@ class LinkNode(
         if (!wantListen && listenPort != 0) { direct?.stopListening(); listenPort = 0; log.add(LinkEvent.LISTEN, 0, 0) }
         if (tor != null && st.pairings.values.any { it.myAuthPub != null }) refreshOnion()
         // Open codes' one-time onions, published again after Tor stopped.
-        val t = tor
-        if (t != null) for (c in st.codes.values.filter { it.onionKeyBlob != null && it.open.open(nowS()) }) {
+        republishCodes()
+    }
+
+    /** Open codes' one-time onions, published (again) on Tor's thread. */
+    private fun republishCodes() {
+        val t = tor ?: return
+        for (c in st.codes.values.filter { it.onionKeyBlob != null && it.open.open(nowS()) }) {
             val slot = c.onionSlot; val blob = c.onionKeyBlob; val id = c.id
             torThread.execute { try { if (t.up()) t.publish(slot, blob, emptyList()) { d -> accepted(d, LinkWay.TOR, id) } } catch (_: Exception) {} }
         }

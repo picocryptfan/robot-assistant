@@ -50,6 +50,8 @@ class BootReceiver : BroadcastReceiver() {
         val locked = intent.action == Intent.ACTION_LOCKED_BOOT_COMPLETED
         if (!locked && intent.action != Intent.ACTION_BOOT_COMPLETED) return
         RLog.i("boot", "locked" to locked)
+        // 1.4: a reboot cleared the sealed reports' alarm; the cache is readable only after the first unlock (sys/ReportOut.kt).
+        if (!locked) app.heyrobot.sys.ReportOut.start(ctx)
         afterRestart(ctx, if (locked) RepairWhen.LOCKED_BOOT else RepairWhen.BOOT)
     }
 }

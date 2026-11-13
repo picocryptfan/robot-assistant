@@ -282,7 +282,14 @@
         <item quantity="many">%d de lignes de pont. Seuls ces ponts voient ton adresse IP.</item>
         <item quantity="other">%d lignes de pont. Seuls ces ponts voient ton adresse IP.</item>
     </plurals>
+    <string name="link_bridges_own_snowflake_skipped">Tes lignes Snowflake ne servent pas tant qu’un de tes ponts est sur ton réseau domestique.</string>
     <string name="link_bridges_edit">Modifier</string>
+    <string name="link_bridges_remove">Retirer</string>
+    <string name="link_bridges_remove_title">Retirer tes lignes de pont ?</string>
+    <string name="link_bridges_remove_text">Robot oublie les lignes de pont que tu as enregistrées.</string>
+    <string name="link_bridges_remove_text_own">Robot oublie les lignes de pont que tu as enregistrées. Tu t’en sers en ce moment, alors les ponts Tor reviennent à Désactivé. Ton réseau peut voir que tu utilises Tor.</string>
+    <string name="link_bridges_removed">Lignes de pont retirées.</string>
+    <string name="link_bridges_removed_off">Lignes de pont retirées. Les ponts Tor sont désactivés.</string>
     <string name="link_bridges_own_field">Lignes de pont</string>
     <string name="link_bridges_own_help">Un pont par ligne, 8 au plus, comme bridges.torproject.org les donne.</string>
     <string name="link_bridges_own_bad">Robot ne peut pas utiliser ça comme ligne de pont. Vérifie-la et colle-la de nouveau.</string>

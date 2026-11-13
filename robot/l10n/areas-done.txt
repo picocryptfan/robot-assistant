@@ -18,6 +18,7 @@ voice
 helpers
 settings
 updates
+feedback
 adb
 guide
 lock

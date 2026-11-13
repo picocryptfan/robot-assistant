@@ -70,6 +70,17 @@ object AppMatcher {
 
     fun best(query: String, apps: List<AppEntry>): AppEntry? = match(query, apps)?.app
 
+    /**
+     * auto-open-plan §2: the apps that match [query] within 10 points of the best, shorter labels first, when there are two or
+     * more ("maps" with Organic Maps and Here Maps): Robot asks which (a PICK card) rather than opening the shorter. Else empty.
+     */
+    fun rivals(query: String, apps: List<AppEntry>): List<AppEntry> {
+        val scored = apps.map { it to score(query, it.label) }.filter { it.second > 0 }
+        val top = scored.maxOfOrNull { it.second } ?: return emptyList()
+        val close = scored.filter { it.second >= top - 10 }.sortedWith(compareByDescending<Pair<AppEntry, Int>> { it.second }.thenBy { it.first.label.length })
+        return if (close.size >= 2) close.map { it.first } else emptyList()
+    }
+
     fun editDistance(a: String, b: String): Int {
         val d = IntArray(b.length + 1) { it }
         for (i in 1..a.length) {

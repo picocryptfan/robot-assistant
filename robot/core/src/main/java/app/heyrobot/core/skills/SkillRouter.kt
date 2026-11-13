@@ -31,6 +31,12 @@ sealed class SkillCommand {
 
     data class ListAll(override val lang: Lang?) : SkillCommand()
 
+    /**
+     * 1.4: "Add to <name>: <what a connection does>" (connections plan §6.4 by voice): [skill] null when "skill" was said and
+     * none is called [said]; [what]: the words after the name.
+     */
+    data class AddStep(val skill: Skill?, val said: String, val what: String, override val lang: Lang) : SkillCommand()
+
     /** "Delete the skill <name>" (always a tap): [skill] null when none is called [said]. */
     data class Delete(val skill: Skill?, val said: String, override val lang: Lang?) : SkillCommand()
 }
@@ -40,13 +46,14 @@ object SkillRouter {
      * The skill command at the start of [text], or null. [skills]: yours (only their names run them). [people]: People's
      * names and aliases, for a person's value after a skill's name. [apps]: the installed apps' names, for an app's value.
      */
-    fun route(text: String, skills: List<Skill>, people: List<String> = emptyList(), apps: List<String> = emptyList()): SkillCommand? {
+    fun route(text: String, skills: List<Skill>, people: List<String> = emptyList(), apps: List<String> = emptyList(), lists: List<String> = emptyList()): SkillCommand? {
         val p = Words(text)
         val i = lead(p)
         if (i >= p.size) return null
         teach(p, i)?.let { return it }
         save(p, i)?.let { return it }
         if (whole(p, i, SkillWords.LIST)) return SkillCommand.ListAll(if (p.at(i, SkillWords.FRENCH_LEAD) > 0) Lang.FR else Lang.EN)
+        addStep(p, i, skills, lists)?.let { return it }
         delete(p, i, skills)?.let { return it }
         about(p, i, skills)?.let { return it }
         return run(p, i, skills, people, apps)
@@ -218,6 +225,39 @@ object SkillRouter {
         if (end - j > SkillCheck.MAX_NAME_WORDS) return null
         return SkillCommand.SaveThat(said(p, j, end).ifEmpty { null }, lang)
     }
+
+    // ------------------------------------------------------------------ add a step
+
+    /** "Add to <name>: …": only a skill of yours (or "skill" said) and words after it; else your words go on as usual. */
+    private fun addStep(p: Words, i: Int, skills: List<Skill>, lists: List<String>): SkillCommand? {
+        val en = p.at(i, SkillWords.ADD_EN)
+        val fr = p.at(i, SkillWords.ADD_FR)
+        if (en == 0 && fr == 0) return null
+        val lang = if (fr > en) Lang.FR else Lang.EN
+        val j = i + maxOf(en, fr)
+        val end = end(p, j)
+        val skillSaid = (i until j).any { p.w(it) in SkillWords.SKILL }
+        val comma = (j until end).firstOrNull { p.w(it) == "," }
+        if (comma != null && comma > j) {
+            val name = said(p, j, comma)
+            val what = said(p, comma + 1, end)
+            // Low 7: a list of that name gets the words ("add to groceries: milk") unless "skill" was said.
+            if (!skillSaid && aList(name, lists)) return null
+            val s = find(name, skills)
+            return if (what.isEmpty() || (s == null && !skillSaid)) null else SkillCommand.AddStep(s, name, what, lang)
+        }
+        // No punctuation: the longest of your skills' names the words start with.
+        for (k in minOf(j + SkillCheck.MAX_NAME_WORDS, end - 1) downTo j + 1) {
+            val s = find(said(p, j, k), skills) ?: continue
+            if (!skillSaid && aList(said(p, j, k), lists)) return null
+            return SkillCommand.AddStep(s, said(p, j, k), said(p, k, end), lang)
+        }
+        return null
+    }
+
+    /** [name] is one of your lists' (Lists' own comparison), or a list by Lists' own resolver (review-c Low 3: "groceries" is Shopping's). */
+    private fun aList(name: String, lists: List<String>): Boolean =
+        lists.any { app.heyrobot.core.lists.ItemText.same(it, name) } || app.heyrobot.core.lists.ListsRouter.isList(name, lists)
 
     // ------------------------------------------------------------------ ask about, delete
 

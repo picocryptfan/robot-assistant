@@ -79,6 +79,7 @@ import app.heyrobot.core.AppCrash
 import app.heyrobot.core.AppExit
 import app.heyrobot.core.DownloadPolicy
 import app.heyrobot.core.readOrNull
+import app.heyrobot.sys.HeadsUpAlarms
 import app.heyrobot.sys.BackupClipboard
 import app.heyrobot.sys.AppPages
 import app.heyrobot.sys.ShowNonces
@@ -149,7 +150,14 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        if (savedInstanceState == null) route.value = routeOf(intent)
+        // fix-bug-card-14-c Low 2: the bug card's hand, kept only when Robot itself launched this (recreated, the one taken stays).
+        app.heyrobot.sys.FeedbackFiles.takeHand(intent, if (savedInstanceState != null) android.os.Process.INVALID_UID
+            else try { launchedFromUid } catch (_: Throwable) { android.os.Process.INVALID_UID })
+        if (savedInstanceState == null) route.value = routeOf(intent, when {
+            android.os.Build.VERSION.SDK_INT >= 35 -> initialCaller.uid
+            android.os.Build.VERSION.SDK_INT >= 34 -> launchedFromUid
+            else -> null
+        })
         if (savedInstanceState == null && CarButton.take(intent)) CarButton.open(this)?.let { route.value = it }
         carPage.value = AppRoutes.fromCar(intent)
         // F115: a tap on Yes, Allow or Delete here must be yours: none goes through while another app's window covers this one.
@@ -164,6 +172,8 @@ class MainActivity : ComponentActivity() {
             } catch (_: Throwable) {}
             // The updater's daily check, scheduled if Settings › Updates has it on.
             try { Updater.onAppOpen(app) } catch (_: Throwable) {}
+            // The calendar heads-up, if it is on and calendar access came from Android's settings since.
+            HeadsUpAlarms.arm(app)
         }, "robot-recognizer").start()
     }
 
@@ -199,16 +209,30 @@ class MainActivity : ComponentActivity() {
         app.heyrobot.ui.settings.PhoneLockPages.left(this)
     }
 
+    /** Low 9: the uid that sent the new intent (Android 15 and up), read once by [onNewIntent]. */
+    private var newCaller: Int? = null
+
     override fun onNewIntent(intent: Intent) {
+        // Android 14 doesn't say who sent it: a hand that comes this way is dropped (the card says the turn isn't included).
+        app.heyrobot.sys.FeedbackFiles.takeHand(intent, android.os.Process.INVALID_UID)
         super.onNewIntent(intent)
         setIntent(intent)
-        route.value = routeOf(intent)
+        route.value = routeOf(intent, newCaller)
+        newCaller = null
         if (CarButton.take(intent)) CarButton.open(this)?.let { route.value = it }
         carPage.value = AppRoutes.fromCar(intent)
     }
 
+    /** fix-bug-card-14-c Low 2: from Android 15, who sent [intent]: the bug card's hand is kept only from Robot itself. */
+    @androidx.annotation.RequiresApi(35)
+    override fun onNewIntent(intent: Intent, caller: android.app.ComponentCaller) {
+        newCaller = caller.uid
+        app.heyrobot.sys.FeedbackFiles.takeHand(intent, try { caller.uid } catch (_: Throwable) { android.os.Process.INVALID_UID })
+        super.onNewIntent(intent, caller)
+    }
+
     /** The pages other screens and apps may open (ui/settings AppRoutes). */
-    private fun routeOf(i: Intent?): String? = AppRoutes.of(i)
+    private fun routeOf(i: Intent?, uid: Int?): String? = AppRoutes.of(i, uid?.let { it == android.os.Process.myUid() })
 
     /**
      * 0.8: opens the panel to run a routine or show a Ready card ([key]: sys RoutineIntents' show argument). 1.0 (ipc-1):
@@ -259,6 +283,8 @@ sealed class Page {
     data class Conversation(val id: String) : Page()
     /** H3: your conversations, from the clock icon, "show my history" and Settings › History (a tab until H3). */
     data object History : Page()
+    /** HS3: Quick access over whichever home you picked, from "show quick access". */
+    data object Quick : Page()
     /** [id] null: a new note (until its first save gives it one). */
     data class NoteEdit(val id: String?) : Page()
     /** 1.4 Lists (LS5): a list's page, by the list's id. */
@@ -306,6 +332,7 @@ sealed class Page {
                     AdbFixes -> "adbfixes"
                     People -> "people"
                     History -> "history"
+                    Quick -> "quick"
                     is PersonEdit -> "person:${p.id.orEmpty()}" // l10n: not text (saved route)
                     Safety -> "safety"
                     Licences -> "licences"
@@ -332,6 +359,7 @@ sealed class Page {
                     v == "adbfixes" -> AdbFixes
                     v == "people" -> People
                     v == "history" -> History
+                    v == "quick" -> Quick
                     v.startsWith("person:") -> PersonEdit(v.removePrefix("person:").ifEmpty { null })
                     v == "safety" -> Safety
                     v == "licences" -> Licences
@@ -479,6 +507,7 @@ fun RobotAppUi(activity: MainActivity) {
     var importTarget by rememberSaveable { mutableStateOf(BrainModel.FAST.id) }
     var notes by remember { mutableStateOf<List<Note>>(emptyList()) }
     var notesTick by remember { mutableIntStateOf(0) }
+    var notesAside by remember { mutableStateOf(app.heyrobot.sys.NotesRead(emptyList())) }
     var calendars by remember { mutableStateOf<List<CalendarInfo>>(emptyList()) }
     var permissionTick by remember { mutableIntStateOf(0) }
 
@@ -499,6 +528,7 @@ fun RobotAppUi(activity: MainActivity) {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val lstate by lifecycle.currentStateFlow.collectAsState()
     val resumed = lstate.isAtLeast(Lifecycle.State.RESUMED)
+    val started = lstate.isAtLeast(Lifecycle.State.STARTED)
 
     fun say(msg: String) { scope.launch { snackbar.showSnackbar(msg) } }
     LaunchedEffect(Unit) { for (x in SettingsStore.saveFailed) say(ctx.getString(R.string.settings_save_failed)) }
@@ -506,7 +536,7 @@ fun RobotAppUi(activity: MainActivity) {
     fun tell(id: Int, vararg args: Any) = say(ctx.getString(id, *args))
     fun android(p: AndroidPath): String = p.render(AppLanguage.langs(ctx).system)
 
-    // 1.0: a download over 200 MB asks first whether to wait for Wi-Fi (core DownloadPolicy: Robot can't see the network).
+    // 1.0: a download over 200 MB asks first whether to wait for Wi-Fi (core DownloadPolicy).
     var bigDownload by remember { mutableStateOf<Pair<Long, (Boolean) -> Unit>?>(null) }
     fun askNetwork(bytes: Long, start: (anyNetwork: Boolean) -> Unit) {
         if (DownloadPolicy.asksFirst(bytes)) bigDownload = bytes to start else start(true)
@@ -632,11 +662,13 @@ fun RobotAppUi(activity: MainActivity) {
     // History follows the folder (0.7.0): the panel's saves while the app stays open behind it, a delete here, any page.
     // FX1: with travel mode's state in the stamp, and its placeholders in place of Robot Files' answers (TravelHistory).
     val historyChanges = remember { stampChanges({ TravelHistory.stamp(ctx, ConversationStore.stamp(ctx)) }) }
-    val history = rememberHistory(resumed, historyTick, historyChanges) { withContext(Dispatchers.IO) { TravelHistory.shown(ctx, ConversationStore.list(ctx)) } }
+    // seal-history-fix-c 2: kept while the window is started (drawn behind the panel too), dropped when it stops.
+    val historyNow = rememberHistory(started, historyTick, historyChanges) { withContext(Dispatchers.IO) { TravelHistory.shown(ctx, ConversationStore.list(ctx)) } }
+    val history = historyNow.orEmpty()
     // The assistant adds (and undoes) notes from the panel, which opens over this window without pausing it: read the
     // folder again when the app comes back and whenever the window gets the focus back from the panel.
     LaunchedEffect(resumed, notesTick) {
-        if (resumed) notes = withContext(Dispatchers.IO) { NotesFiles.store(ctx).list() }
+        if (resumed) withContext(Dispatchers.IO) { NotesFiles.store(ctx).read() }.let { notes = it.notes; notesAside = it.copy(notes = emptyList()) }
     }
     val windowInfo = LocalWindowInfo.current
     LaunchedEffect(windowInfo) {
@@ -670,6 +702,8 @@ fun RobotAppUi(activity: MainActivity) {
     // Contacts and calendar: asked for here only, when you tap Allow or turn a feature on (never at first launch).
     val peoplePermissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
         permissionTick++
+        // Idea 5: a heads-up turned on before the calendar was allowed is scheduled now, not at the next change.
+        if (HeadsUpAlarms.calendarGranted(result)) HeadsUpAlarms.armSoon(activity)
         if (result.values.any { !it }) tell(R.string.home_not_allowed, android(AndroidPath.APP_PERMISSIONS))
     }
     // Photos and videos (0.4.0): "Select photos" grants only READ_MEDIA_VISUAL_USER_SELECTED, which is allowed too.
@@ -726,7 +760,16 @@ fun RobotAppUi(activity: MainActivity) {
         },
         openSetup = { page = Page.Setup() },
         openGuide = ::openGuide,
+        reportTurn = { turns, id, conv ->
+            app.heyrobot.core.feedback.ReportTurn.of(turns, id, null, null, System.currentTimeMillis())?.copy(conv = conv)?.let { t ->
+                scope.launch {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { app.heyrobot.sys.FeedbackFiles.keepTurn(activity, t) }
+                    page = Page.Settings(SettingsRoutes.feedback(FeedbackEntry.TURN, FeedbackKind.BUG))
+                }
+            }
+        },
         openTab = { tab = it; page = null },
+        openNotes = { l -> notesSection = if (l) app.heyrobot.ui.lists.NotesSection.LISTS else app.heyrobot.ui.lists.NotesSection.NOTES; tab = Tab.NOTES; page = null },
         openConversation = { page = Page.Conversation(it) },
         askPermissions = { permissions.launch(arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS)) },
         openAssistantSettings = { if (!Assistant.openSettings(ctx)) tell(R.string.home_open_assistant_settings) },
@@ -769,13 +812,21 @@ fun RobotAppUi(activity: MainActivity) {
             }
         },
         // The panel's live conversation too, or its next save would write a deleted one back.
+        // seal-history-fix: off the UI thread, since History's lock may be held by a whole pass (a first open, an unlock).
         deleteConversation = { id ->
-            ConversationStore.delete(ctx, id); Cmd.send(ctx, Cmd.CONVERSATIONS_DELETED, Bundle().apply { putString(Cmd.EXTRA_ID, id) })
-            historyTick++; page = null
+            scope.launch {
+                deleteAndTell({ ConversationStore.delete(ctx, id) }) { Cmd.send(ctx, Cmd.CONVERSATIONS_DELETED, Bundle().apply { putString(Cmd.EXTRA_ID, id) }) }
+                historyTick++; page = null
+            }
         },
         deleteAllConversations = {
-            ConversationStore.deleteAll(ctx); Cmd.send(ctx, Cmd.CONVERSATIONS_DELETED)
-            historyTick++; tell(R.string.home_history_deleted)
+            scope.launch {
+                deleteAndTell({ ConversationStore.deleteAll(ctx) }) { Cmd.send(ctx, Cmd.CONVERSATIONS_DELETED) }
+                historyTick++; tell(R.string.home_history_deleted)
+            }
+        },
+        deleteUnopenable = {
+            scope.launch { withContext(Dispatchers.IO) { ConversationStore.deleteAside(ctx) }; historyTick++ }
         },
         removeSavedMedia = {
             scope.launch {
@@ -889,7 +940,7 @@ fun RobotAppUi(activity: MainActivity) {
         openTranscriptionCheck = {
             try { ctx.startActivity(Transcripts.checkIntent(ctx)) } catch (_: Exception) { tell(R.string.home_no_transcription_check) }
         },
-        mtDownload = { MtModelStore.startDownload(ctx, MtBundle.FR_EN)?.let(::say) },
+        mtDownload = { askNetwork(MtModelStore.bytesToFetch(ctx, MtBundle.FR_EN)) { any -> MtModelStore.startDownload(ctx, MtBundle.FR_EN, any)?.let(::say) } },
         mtCancel = { MtModelStore.cancelDownload(ctx, MtBundle.FR_EN) },
         mtDelete = { MtModelStore.delete(ctx, MtBundle.FR_EN); tell(R.string.home_mt_deleted) },
         openVoiceprint = {
@@ -971,10 +1022,10 @@ fun RobotAppUi(activity: MainActivity) {
     when (val p = page) {
         // Back goes up one page: to the one under it, or its parent in Settings (ui/settings PageStack).
         is Page.Setup -> SetupScreen(snap.facts, actions, snackbar, onBack = nav::back, peopleFirst = p.people, helpers = settings.helpers)
-        is Page.Conversation -> ConversationScreen(history.firstOrNull { it.id == p.id }, actions, snackbar, settings.helperShowCost, onBack = nav::back)
+        is Page.Conversation -> if (historyNow != null) ConversationScreen(history.firstOrNull { it.id == p.id }, actions, snackbar, settings.helperShowCost, onBack = nav::back)
         // A new note keeps the id its first save gave it; a save as the editor closes (Back, a route) never reopens it.
         is Page.NoteEdit -> NoteScreen(p.id, notesTick, actions, snackbar,
-            onCreated = { id -> if (page == Page.NoteEdit(null)) nav.replace(Page.NoteEdit(id)) }, onBack = { nav.back(); notesTick++ })
+            onCreated = { id -> if (page == Page.NoteEdit(null)) nav.replace(Page.NoteEdit(id)) }, onSaved = { notesTick++ }, onBack = { nav.back(); notesTick++ })
         is Page.ListPage -> app.heyrobot.ui.lists.ListRoute(p.id, actions, snackbar, onBack = nav::back)
         Page.WakePhrases -> WakePhrasesScreen(settings, ::updateSettings, actions, snackbar, onBack = nav::back)
         Page.WakeTest -> WakeTestScreen(settings, snap, onBack = nav::back)
@@ -987,7 +1038,8 @@ fun RobotAppUi(activity: MainActivity) {
         // Back from a notice goes to its part's licence, from a licence to the list.
         is Page.Licence -> LicenceScreen(p.id, p.file, onOpen = { page = it }, onBack = nav::back)
         is Page.Settings -> SettingsNav(p.route, settings, snap, calendars, ::updateSettings, actions, snackbar, onBack = nav::back, busy = busy)
-        Page.History -> HistoryScreen(history, actions, Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing), onBack = nav::back)
+        Page.Quick -> app.heyrobot.ui.today.QuickPage(actions, Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing), onBack = nav::back)
+        Page.History -> HistoryScreen(history, actions, Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing), loading = historyNow == null, onBack = nav::back)
         Page.Transcripts -> TranscriptsScreen(snackbar, onOpen = { id, line -> page = Page.Transcript(id, line) }, onBack = nav::back)
         is Page.Transcript -> TranscriptScreen(p.id, p.line, snackbar, onBack = nav::back)
         Page.ConversationSettings -> ConversationSettingsScreen(settings, snap, ::updateSettings, actions, snackbar, onBack = nav::back)
@@ -1023,7 +1075,9 @@ fun RobotAppUi(activity: MainActivity) {
                 when (tab) {
                     Tab.HOME -> app.heyrobot.ui.today.HomeTab(snap, history.take(3), actions, m, guide = guideState)
                     Tab.NOTES -> app.heyrobot.ui.lists.NotesTab(notesSection, { notesSection = it }, actions, snackbar, m,
-                        port = { app.heyrobot.ui.lists.PhoneListsPort(ctx) }) { mod -> NotesScreen(notes, actions, mod) }
+                        port = { app.heyrobot.ui.lists.PhoneListsPort(ctx) }) { mod ->
+                            NotesScreen(notes, actions, mod, notesAside) { scope.launch { withContext(Dispatchers.IO) { NotesFiles.store(ctx).deleteAside() }; notesTick++ } }
+                        }
                     Tab.CALENDAR -> app.heyrobot.ui.calendar.CalendarTab(actions, m)
                     // 1.4: Robot Files (ui/files), its index read off the main thread only once this tab shows.
                     Tab.FILES -> app.heyrobot.ui.files.FilesRoute(actions, snackbar, m)
@@ -1059,6 +1113,8 @@ class AppActions(
     val allowOwnTpu: (allow: Boolean, sha256: String?) -> Unit = { _, _ -> },
     val deleteConversation: (String) -> Unit,
     val deleteAllConversations: () -> Unit,
+    /** seal-history-fix: History's card, the conversations that can't be opened only. */
+    val deleteUnopenable: () -> Unit = {},
     /** Settings › Safety & privacy: every kept thumbnail and screen text out of the saved conversations. */
     val removeSavedMedia: () -> Unit = {},
     val speakTest: () -> Unit,
@@ -1126,4 +1182,8 @@ class AppActions(
     val askTermux: () -> Unit = {},
     /** 1.0: the setup guide, where Finish later left it or from Welcome (Home, Settings › About). */
     val openGuide: () -> Unit = {},
+    /** HS3: the Notes tab at its Lists section ([lists]) or its notes, from Quick access. */
+    val openNotes: (lists: Boolean) -> Unit = {},
+    /** RP3: a reply pressed and held in History: the card for that turn ([app.heyrobot.core.feedback.ReportTurn.of]). */
+    val reportTurn: (List<app.heyrobot.core.ChatTurn>, String, String) -> Unit = { _, _, _ -> },
 )

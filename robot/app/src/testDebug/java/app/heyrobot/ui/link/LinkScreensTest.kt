@@ -4,6 +4,8 @@ package app.heyrobot.ui.link
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -240,6 +242,39 @@ class LinkScreensTest {
         rule.onNode(hasText("Save") and hasClickAction()).performClick()
         rule.waitUntil(5_000) { port.settings.bridges == app.heyrobot.core.link.BridgeChoice.OWN }
         assertEquals(listOf("obfs4 203.0.113.7:9443 0123456789ABCDEF0123456789ABCDEF01234567 cert=AbCd iat-mode=0"), port.settings.ownBridges.map { it.text })
+    }
+
+    /** fix-bridges-and-wording: your saved lines go without Start over; chosen, Tor bridges fall back to Off and the screen says so. */
+    @Test @Config(qualifiers = "w320dp-h640dp-mdpi")
+    fun removingTheLinesYouUseTurnsBridgesOff() {
+        val own = listOf(BridgeLine.parse("192.0.2.9:443 0123456789ABCDEF0123456789ABCDEF01234567")!!)
+        val port = FakePort(LinkSettings(on = true, name = "Matt", bridges = BridgeChoice.OWN, ownBridges = own)).apply { ready = true }
+        rule.show { BridgesScreen(port, log.actions, SnackbarHostState()) {} }
+        waitFor("Your own bridge")
+        rule.scrollToText("Your own bridge")
+        rule.onNode(hasText("Remove") and hasClickAction()).performClick()
+        waitFor("You're using them now, so Tor bridges go back to Off. Your network can see that you use Tor.")
+        rule.onNode(hasText("Remove") and hasClickAction() and hasAnyAncestor(isDialog())).performClick()
+        rule.waitUntil(5_000) { port.settings.ownBridges.isEmpty() }
+        assertEquals(BridgeChoice.OFF, port.settings.bridges)
+        rule.waitUntil(5_000) { log.contains("say Bridge lines removed. Tor bridges are off.") }
+        waitFor("Paste a bridge line from bridges.torproject.org, or one from someone you trust.")
+    }
+
+    /** fix-bridges-and-wording: lines saved but another choice in use: they go, the choice stays. */
+    @Test @Config(qualifiers = "w320dp-h640dp-mdpi")
+    fun removingLinesYouDontUseKeepsYourChoice() {
+        val own = listOf(BridgeLine.parse("192.0.2.9:443 0123456789ABCDEF0123456789ABCDEF01234567")!!)
+        val port = FakePort(LinkSettings(on = true, name = "Matt", bridges = BridgeChoice.SNOWFLAKE, ownBridges = own)).apply { ready = true }
+        rule.show { BridgesScreen(port, log.actions, SnackbarHostState()) {} }
+        waitFor("Your own bridge")
+        rule.scrollToText("Your own bridge")
+        rule.onNode(hasText("Remove") and hasClickAction()).performClick()
+        waitFor("Robot forgets the bridge lines you saved.")
+        rule.onNode(hasText("Remove") and hasClickAction() and hasAnyAncestor(isDialog())).performClick()
+        rule.waitUntil(5_000) { port.settings.ownBridges.isEmpty() }
+        assertEquals(BridgeChoice.SNOWFLAKE, port.settings.bridges)
+        rule.waitUntil(5_000) { log.contains("say Bridge lines removed.") }
     }
 
     @Test fun aPairingsRobotLinkRaisesAtOnceAndAsksToLower() {

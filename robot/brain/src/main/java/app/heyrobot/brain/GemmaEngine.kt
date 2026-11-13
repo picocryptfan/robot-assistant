@@ -858,9 +858,10 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
             filter = if (plan.stripThinking) ThinkFilter() else null, oneShot = true, maxChunks = OneShotRules.maxChunks(req, max))
         RLog.i("brain_one_shot", "kind" to req.kind, "priority" to req.priority, "tokens" to OneShotRules.tokens(req), "maxChunks" to run.maxChunks)
         // Its system prompt is Robot's own; its one turn (a transcript line, a summary's notes, a file's text) is text from
-        // outside it. 1.4: a FILE_READ's page goes before it, as a panel photo does.
+        // outside it. 1.4: a FILE_READ's page goes before it, as a panel photo does; 1.3: READ_ALOUD's tiles, each a picture
+        // of its own, in their order (each checked by imageCheck above).
         val parts = buildList {
-            image?.let { add(Content.ImageBytes(it)) }
+            image?.let { b -> OneShotRules.images(req, b)?.forEach { add(Content.ImageBytes(it)) } }
             add(Content.Text(controls.defuse(req.text)))
         }
         send(run) { cb -> conv.sendMessageAsync(Message.user(Contents.of(parts)), cb) }

@@ -155,7 +155,7 @@ class ConnectionCodecTest {
             { it["path"] = "/a b" },
             { it["path"] = "/{{nothing}}" },               // a template naming no argument
             { it["path"] = "/webhook/trips" },             // an argument no template uses
-            { it["marks"] = listOf("deletes") },           // marks are money, security, tells people only
+            { it["marks"] = listOf("made_up") },           // an unknown mark is still refused
             { it["outputs"] = mapOf("much_too_long_name_x" to mapOf("pointer" to "/a", "type" to "text")) },
             { it["outputs"] = mapOf("a" to mapOf("pointer" to "a", "type" to "text")) },
             { it["outputs"] = mapOf("a" to mapOf("pointer" to "/a", "type" to "person")) },
@@ -166,6 +166,9 @@ class ConnectionCodecTest {
             { it["id"] = "Log" },
         )
         for ((i, change) in cases.withIndex()) assertEquals("case $i", ConnFile.Ok(emptyList(), 1), opChanged(change))
+        // A mark the app knows is read: deletes is one of the four.
+        val marked = opChanged { it["marks"] = listOf("deletes") }
+        assertTrue(marked.toString(), marked is ConnFile.Ok && marked.dropped == 0 && marked.connections.size == 1)
     }
 
     @Test fun duplicatesAndTheCountAreDropped() {

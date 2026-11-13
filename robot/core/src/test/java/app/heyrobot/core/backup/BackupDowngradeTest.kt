@@ -69,8 +69,8 @@ class BackupDowngradeTest {
     /** Skills from a newer Robot wait for it; a skills.json this Robot reads only in part is refused whole (plan §4). */
     @Test fun skillsNewerOrDroppedAreNotRestored() {
         fun verify(text: String) = BackupKit.verify(BackupKit.encrypt(RawRecords().manifest().entry("skills", "skills.json", BackupKit.text(text)).end().bytes()))
-        // C1 (connections plan D6) moved this pin from 2 to 3 on purpose, and skills 1.3's S3.1 from 3 to 4: this Robot reads v3.
-        assertEquals(listOf(CategorySkip("skills", BackupCategory.SKILLS, SkipWhy.NEWER)), verify("{\"v\":4,\"skills\":[]}").skipped)
+        // C1 (connections plan D6) moved this pin from 2 to 3 on purpose, skills 1.3's S3.1 from 3 to 4, and auto-open (1.4, a skill's `opens`) from 4 to 5: this Robot reads v4.
+        assertEquals(listOf(CategorySkip("skills", BackupCategory.SKILLS, SkipWhy.NEWER)), verify("{\"v\":5,\"skills\":[]}").skipped)
         val home = app.heyrobot.core.skills.SkillCodec.toJson(app.heyrobot.core.skills.SkillFixtures.headingHome()).put("color", "red")
         assertEquals(listOf(CategorySkip("skills", BackupCategory.SKILLS, SkipWhy.REFUSED)), verify("{\"v\":1,\"skills\":[$home]}").skipped)
         assertEquals(listOf(CategorySkip("skills", BackupCategory.SKILLS, SkipWhy.REFUSED)), verify("{\"v\":1}").skipped)

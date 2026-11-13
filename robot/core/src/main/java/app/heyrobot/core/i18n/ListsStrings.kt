@@ -116,6 +116,18 @@ object ListsStrings : Strings("lists", area = "lists") {
     val someoneElse = s("someone_else", "Robot can't change your lists right now.", "Robot ne peut pas changer tes listes en ce moment.")
 
     // LS4, the model's add_to_list (§8.2, D6): its card names the list only (History keeps that line); the items are in the card's body.
+    // recipe-list: the recipe card's line, and its other replies.
+    val recipeGuess = s("recipe_guess", "A usual recipe for {dish}, so a guess. Untick what you have, then tap Add.",
+        "Une recette habituelle de {dish}, donc une supposition. Décoche ce que tu as, puis touche Ajouter.")
+    val recipeShared = s("recipe_shared", "The ingredients from the recipe you shared. Untick what you have, then tap Add.",
+        "Les ingrédients de la recette que tu as partagée. Décoche ce que tu as, puis touche Ajouter.")
+    val recipeUnknown = s("recipe_unknown", "I don't know a usual recipe for {dish}. Share the recipe with me and I'll list its ingredients.",
+        "Je ne connais pas de recette habituelle de {dish}. Partage-moi la recette et j'en listerai les ingrédients.")
+    val recipeNone = s("recipe_none", "I couldn't find the ingredients in what you shared.", "Je n'ai pas trouvé les ingrédients dans ce que tu as partagé.")
+    val recipeNoDish = s("recipe_no_dish", "Which dish? Say its name, or share the recipe with me.", "Quel plat ? Dis son nom, ou partage-moi la recette.")
+    val recipeUnticked = s("recipe_unticked", "Unticked {things}. Tap Add when it's right.", "Décoché : {things}. Touche Ajouter quand c'est bon.")
+    val recipeNoMatch = s("recipe_no_match", "Nothing on the card matches {things}.", "Rien sur la carte ne correspond à {things}.")
+    val recipeNothing = s("recipe_nothing", "Nothing is ticked, so nothing was added.", "Rien n'est coché, donc rien n'a été ajouté.")
     val titleAddToList = s("title_add_to_list", "Adding to your lists", "Ajouts à tes listes")
     val addTo = s("add_to", "Add to {list}", "Ajouter à la liste {list}")
     val addToNew = s("add_to_new", "Add to a new list, {list}", "Ajouter à une nouvelle liste, {list}")

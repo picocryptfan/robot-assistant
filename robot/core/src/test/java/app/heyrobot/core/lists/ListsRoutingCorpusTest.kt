@@ -43,7 +43,9 @@ class ListsRoutingCorpusTest {
     private val helpers = listOf(HelperName.CLAUDE, HelperName("jarvis", listOf(listOf("jarvis")), phonetic = true))
     private val scripts = listOf(TermuxScriptInfo("backup", "Copies my notes to the server", listOf("sauvegarde", "save notes")), TermuxScriptInfo("hello", "Says hello"))
 
+    /** Auto-open gave Routine `opens` (no app ticked by default); left out when empty, so the baseline, written before it, still compares. */
     private fun norm(x: Any?): String = (x?.toString() ?: "-").replace(Regex("@[0-9a-f]{4,}"), "@").replace('\t', ' ').replace('\n', ' ')
+        .replace(", opens=[]", "")
 
     /** Each router's reading of [t], in the panel's order, Files last (RoutingCorpusTest's columns and its files column). */
     private fun row(t: String): List<String> = listOf(

@@ -123,6 +123,7 @@ object PanelStrings : Strings("panel", area = "panel") {
     val feedbackUnlock = s("feedback_unlock", "Unlock your phone, then say it again, or open Robot › {page}.",
         "Déverrouille ton téléphone, puis redis-le, ou ouvre Robot › {page}.")
     val feedbackUnlockSpoken = s("feedback_unlock_spoken", "Unlock your phone, then say it again.", "Déverrouille ton téléphone, puis redis-le.")
+    val feedbackUnlockOpens = s("feedback_unlock_opens", "Unlock your phone and the report opens.", "Déverrouille ton téléphone et le rapport s'ouvre.")
     val openingFeedback = s("opening_feedback", "Opening {page}. Nothing is sent until you choose an app.",
         "J'ouvre {page}. Rien n'est envoyé tant que tu ne choisis pas une appli.")
     val unlockToText = s("unlock_to_text", "Unlock your phone to send a text.", "Déverrouille ton téléphone pour envoyer un texto.")
@@ -135,7 +136,7 @@ object PanelStrings : Strings("panel", area = "panel") {
     val answerWentWrong = s("answer_went_wrong", "(The answer went wrong, so Robot stopped it.)", "(La réponse a déraillé, alors Robot l'a arrêtée.)")
     val noAnswer = s("no_answer", "Robot had no answer. Try asking another way.", "Robot n'avait pas de réponse. Essaie de demander autrement.")
 
-    // The standard look's status line (PanelParts.panelStatus), in the menus' language.
+    // The standard look's status line (PanelUi.statusLine), in the menus' language.
     val listening = s("listening", "Listening…", "À l'écoute…")
     val waitingFor = s("waiting_for", "Waiting for {name}…", "En attente de {name}…")
     val helperAnswering = s("helper_answering", "{name} is answering…", "{name} répond…")
@@ -160,13 +161,16 @@ object PanelStrings : Strings("panel", area = "panel") {
     val gettingReady = s("getting_ready", "Getting ready…", "Je me prépare…")
     val onThisPhonePrivate = s("on_this_phone_private", "On this phone, private", "Privé, sur l'appareil")
 
-    // The field's hint (PanelParts.inputPlaceholder) and the main button's jobs (FabMode).
+    // The listening line (ClassicPanel) and the main button's jobs (FabMode).
     val listeningYesOrNo = s("listening_yes_or_no", "Listening: yes or no?", "À l'écoute : oui ou non ?")
 
-    // A notice's button (PanelParts.noticeAction) and a card's (PanelUi.toTurnUi).
+    // A notice's button (PanelUi.noticeAction) and a card's (PanelUi.toTurnUi).
     val openRobot = s("open_robot", "Open Robot", "Ouvrir Robot")
     val openSettings = s("open_settings", "Open settings", "Ouvrir les paramètres")
     val openModel = s("open_model", "Open Model", "Ouvrir Modèle")
+    /** RP3: under the correction's answer ("that's wrong, ask Robot instead"), the card for the answer it corrects. */
+    val reportWrong = s("report_wrong", "If that answer was a bug, you can report it.", "Si cette réponse était un bogue, tu peux la signaler.")
+    val reportIt = s("report_it", "Report it", "La signaler")
     val openCheogram = s("open_cheogram", "Open Cheogram", "Ouvrir Cheogram")
 
     // MemoryPanel: memory's own words in the panel (the card's in the turn's reply language; the model reads English).

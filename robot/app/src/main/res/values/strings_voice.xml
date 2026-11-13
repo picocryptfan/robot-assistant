@@ -131,4 +131,8 @@
     <string name="voice_saver_channel">Wake word paused</string>
     <string name="voice_saver_paused">Wake word paused by Battery Saver</string>
     <string name="voice_saver_paused_detail">Robot isn\'t listening for its wake phrase while Battery Saver is on. It comes back when Battery Saver goes off. The corner swipe still opens Robot.</string>
+    <!-- Idea 7: the panel keeps listening after an answer (KeepListeningSettings.kt). -->
+    <string name="voice_keep_listening">Keep listening after an answer</string>
+    <string name="voice_keep_listening_on">After a spoken question, a beep and 5 seconds to start the next one, 3 more at most in a row. Stopping an answer, a call, “that’s all” or saying nothing ends it.</string>
+    <string name="voice_keep_listening_off">Off. Robot can’t tell your voice from others, so it could answer a TV or someone nearby.</string>
 </resources>

@@ -52,7 +52,7 @@
     <string name="guide_path_web">Réglages › Recherche web, et Réglages › Termux</string>
     <string name="guide_path_web_only">Réglages › Recherche web</string>
     <string name="guide_path_termux">Réglages › Termux</string>
-    <string name="guide_path_updates">Réglages › À propos › Mises à jour, et Réglages › À propos › Envoyer un commentaire</string>
+    <string name="guide_path_updates">Réglages › À propos › Mises à jour, et Réglages › À propos › Signaler un problème ou proposer une idée</string>
     <string name="guide_path_updates_only">Réglages › À propos › Mises à jour</string>
     <string name="guide_welcome_restore">Tu changes de téléphone&#8239;? Restaure une sauvegarde</string>
     <string name="guide_welcome_restore_detail">Un fichier fait avec Sauvegarder maintenant sur ton autre téléphone</string>
@@ -291,7 +291,7 @@
     <string name="guide_updates_test">Inclure les versions de test</string>
     <string name="guide_updates_test_detail">Des préversions, pour essayer les nouveautés tôt. Elles peuvent avoir des problèmes.</string>
     <string name="guide_feedback">Commentaires</string>
-    <string name="guide_feedback_row">Envoyer un commentaire</string>
+    <string name="guide_feedback_row">Signaler un problème ou proposer une idée</string>
     <string name="guide_feedback_detail">Un bogue ou une idée, envoyé avec l’appli de ton choix. Ou écris à %1$s</string>
     <string name="guide_updates_privacy">La vérification des mises à jour demande à GitHub les publications de Robot&#160;: GitHub voit ton adresse IP et la version de Robot, rien d’autre. Un commentaire quitte le téléphone seulement quand tu l’envoies toi-même.</string>
     <string name="guide_summary_title">Tout est prêt</string>

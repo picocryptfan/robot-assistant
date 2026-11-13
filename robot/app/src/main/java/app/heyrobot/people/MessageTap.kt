@@ -143,6 +143,8 @@ object MessageTap {
         val t = parse(ctx, sbn) ?: return
         val before = buffer.thread(t.key)
         buffer.posted(t)
+        // Ready answers (idea 18): a question someone in People asks may get a draft from your calendar or Files.
+        ReadyAnswerTap.posted(ctx, t)
         t.hidden?.let { log(ctx, VoiceEvent.MSG_HIDDEN, MsgAppCode.of(t.app).id, HiddenCode.of(it).id) }
         if (s.announce && app.heyrobot.core.messages.MessageArrival.isNew(before, t)) {
             Cmd.send(ctx, Cmd.MESSAGE_NEW, android.os.Bundle().apply {

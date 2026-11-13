@@ -189,10 +189,41 @@
     <string name="lock_setup_usage">Open usage access</string>
     <string name="lock_extra_people">Calls to People you choose</string>
     <string name="lock_extra_people_empty">No People yet. Add them in Settings › People.</string>
+    <string name="lock_extra_people_closed">People can\'t be opened just now: unlock your phone, then try again</string>
+    <string name="lock_extra_people_damaged">People can\'t be read: a newer Robot saved it, or it is damaged. Update Robot or use Start over in People</string>
     <string name="lock_extra_maps">Maps</string>
     <string name="lock_extra_maps_on">Your maps app stays open, and Robot can show places and routes.</string>
     <string name="lock_extra_maps_off">Covered during this lock.</string>
     <string name="lock_extra_music">Music</string>
     <string name="lock_extra_music_hint">A music app that stays open during this lock.</string>
     <string name="lock_none">None</string>
+    <!-- App pause (docs/plans/app-pause-plan.md): the cover and Settings › App pause. -->
+    <string name="lock_pause_title">A pause before %1$s</string>
+    <plurals name="lock_pause_opens">
+        <item quantity="one">Opened %1$d time today</item>
+        <item quantity="other">Opened %1$d times today</item>
+    </plurals>
+    <plurals name="lock_pause_minutes">
+        <item quantity="one">%1$d minute</item>
+        <item quantity="other">%1$d minutes</item>
+    </plurals>
+    <string name="lock_pause_count">%1$s, %2$s so far.</string>
+    <string name="lock_pause_ask">Take a breath. Is this what you want to do now?</string>
+    <string name="lock_pause_back">Go back</string>
+    <string name="lock_pause_open">Open %1$s</string>
+    <string name="lock_pause_open_in">Open in %1$d s</string>
+    <string name="lock_pause_dont">Don’t pause %1$s</string>
+    <string name="lock_pause_settings">App pause</string>
+    <string name="lock_pause_off">Off</string>
+    <plurals name="lock_pause_on_apps">
+        <item quantity="one">On for %1$d app</item>
+        <item quantity="other">On for %1$d apps</item>
+    </plurals>
+    <string name="lock_pause_intro">Pick the apps you open out of habit. When one opens, Robot shows how often you opened it today and waits a moment before Open works. Your phone app, emergency calls, Settings, your Home screen and Robot can never be picked. The counts come from Android’s usage history when they’re shown, and Robot keeps none of them.</string>
+    <string name="lock_pause_apps">Apps to pause</string>
+    <string name="lock_pause_none">No apps picked yet.</string>
+    <string name="lock_pause_wait">Wait before Open</string>
+    <string name="lock_pause_seconds">%1$d seconds</string>
+    <string name="lock_pause_needs_access">Needs Phone lock’s service in Android’s accessibility settings. Tap to open them.</string>
+    <string name="lock_pause_needs_usage">Without Usage access the pause still waits, but shows no counts. Tap to turn it on.</string>
 </resources>

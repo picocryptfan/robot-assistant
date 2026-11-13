@@ -4,7 +4,7 @@
 #
 # The first build runs in this checkout; the second in a fresh copy of the committed tree (`git archive HEAD`) in another
 # folder, with the git-ignored inputs Gradle packages hard-linked (or copied) in: local.properties, the native libraries
-# (brain/, mt/ and voice/src/main/jniLibs), voice's models and espeak-ng data, and (1.5) libsignal's local Maven
+# (brain/, mt/, wiki/ and voice/src/main/jniLibs), voice's models and espeak-ng data, and (1.5) libsignal's local Maven
 # repository, third_party/maven-local. So a difference that comes from the
 # folder, the time or leftovers of an earlier build shows up. Both builds use `--offline` and the same Gradle (each
 # tree's own ./gradlew, the version the wrapper pins, unless --gradle names another), JDK and Android SDK, so this
@@ -14,14 +14,15 @@
 # APK it also checks the way F-Droid does: copies the signed APK's signature onto the rebuild and compares.
 #
 # Two modes:
-#   default   the APKs only. Both builds package the same native libraries, librobot_llama.so and librobotmt.so, the
-#             ones already in this checkout (the second build gets hard links to them), so the APKs can match while
-#             the libraries would rebuild differently. Two release builds' time.
-#   --native  also rebuilds both libraries in each build, from their pinned sources with the pinned NDK and CMake
-#             (tools/build_llama.sh, tools/build_robotmt.sh), each in a work folder at another path, compares the two
-#             builds' libraries, and packages each build's own libraries into its APK. The second build starts from the
-#             first one's checked sources (copied, so it needs no network; build_robotmt.sh checks its tars again).
-#             About 9 more minutes on 8 cores; this checkout's libraries are replaced by the ones it builds.
+#   default   the APKs only. Both builds package the same native libraries, librobot_llama.so, librobotmt.so and
+#             (1.4) librobotzim.so, the ones already in this checkout (the second build gets hard links to them), so the
+#             APKs can match while the libraries would rebuild differently. Two release builds' time.
+#   --native  also rebuilds the three libraries in each build, from their pinned sources with the pinned NDK and CMake
+#             (tools/build_llama.sh, tools/build_robotmt.sh, tools/build_libzim.sh), each in a work folder at another
+#             path, compares the two builds' libraries, and packages each build's own libraries into its APK. The second
+#             build starts from the first one's checked sources (copied, so it needs no network; build_robotmt.sh and
+#             build_libzim.sh check their archives again). About 9 more minutes on 8 cores, and libzim's about 20 more
+#             with two jobs each (LIBZIM_JOBS=<n>); this checkout's libraries are replaced by the ones it builds.
 #
 # Usage: tools/repro_check.sh [--native [--libs-only]] [--keep] [--signed Robot-x.y.z.apk] [--gradle /path/to/gradle]
 #   --native     rebuild and compare the native libraries too (above)
@@ -31,7 +32,7 @@
 #   --gradle     the Gradle to use (default: harness/bin/gradle-guard.sh when present, else each tree's ./gradlew, Gradle 8.14.6 checked by its SHA-256)
 # Needs git, unzip, sha256sum and cmp (--native: what the two build scripts need). Run it by hand (no test runs it).
 # The second build goes in a new folder under $TMPDIR (default /tmp; point it at a disk when /tmp is in memory, as
-# --native's builds need about 2 GB). Uncommitted changes are left out of the second build, so commit first: the script
+# --native's builds need about 3 GB). Uncommitted changes are left out of the second build, so commit first: the script
 # stops when the tree isn't clean.
 set -euo pipefail
 
@@ -76,20 +77,25 @@ build() { # dir out.apk
   cp "$apk" "$2"
 }
 
-LIBS="brain/src/main/jniLibs/arm64-v8a/librobot_llama.so mt/src/main/jniLibs/arm64-v8a/librobotmt.so"
-# Both libraries, built in the tree [dir] with its own scripts, in the work folders [llama work] and [mt work]: a fresh
-# CMake build each time (no earlier objects reused).
-native() { # dir llama-work mt-work
+LIBS="brain/src/main/jniLibs/arm64-v8a/librobot_llama.so mt/src/main/jniLibs/arm64-v8a/librobotmt.so
+wiki/src/main/jniLibs/arm64-v8a/librobotzim.so"
+# The libraries, built in the tree [dir] with its own scripts, in the work folders [llama work], [mt work] and [zim
+# work]: a fresh build each time (no earlier objects reused; build_libzim.sh empties all but its src/ itself).
+native() { # dir llama-work mt-work zim-work
+  # Each library is removed first: one hard-linked from another worktree would otherwise be rewritten in place, in every
+  # worktree that shares it (12 Nov 2026: 56 links to one librobot_llama.so).
+  for l in $LIBS; do rm -f "$1/$l"; done
   rm -rf "$2/build"
   ROBOT_LLAMA_WORK="$2" "$1/tools/build_llama.sh" --clean
   ROBOTMT_WORK="$3" "$1/tools/build_robotmt.sh"
+  LIBZIM_WORK="$4" "$1/tools/build_libzim.sh"
 }
 
 DEST="$COPY/$SUB"
 if [ "$NATIVE" = 1 ]; then
-  LW1="${ROBOT_LLAMA_WORK:-$HERE/build-native}"; MW1="${ROBOTMT_WORK:-$HERE/mt/native}"
-  echo "== native 1: $HERE (work folders $LW1, $MW1)"
-  native "$HERE" "$LW1" "$MW1"
+  LW1="${ROBOT_LLAMA_WORK:-$HERE/build-native}"; MW1="${ROBOTMT_WORK:-$HERE/mt/native}"; ZW1="${LIBZIM_WORK:-$HERE/wiki/native}"
+  echo "== native 1: $HERE (work folders $LW1, $MW1, $ZW1)"
+  native "$HERE" "$LW1" "$MW1" "$ZW1"
 fi
 
 echo "== copy: a clean copy of $(git -C "$TOP" rev-parse --short HEAD) in $COPY"
@@ -100,7 +106,7 @@ git -C "$TOP" archive --format=tar HEAD LICENSE | tar -xf - -C "$COPY"
 # 1.5: and libsignal's local Maven repository (tools/fetch_libsignal.sh), Tor's and the push connector's
 # (tools/fetch_link_deps.sh), and lyrebird's executable (tools/build_lyrebird.sh), which the build reads offline.
 inputs="local.properties voice/src/main/jniLibs voice/src/main/assets/espeak-ng-data voice/src/main/assets/vad voice/src/main/assets/kws third_party/maven-local third_party/maven-link third_party/lyrebird"
-[ "$NATIVE" = 1 ] || inputs="$inputs brain/src/main/jniLibs mt/src/main/jniLibs"
+[ "$NATIVE" = 1 ] || inputs="$inputs brain/src/main/jniLibs mt/src/main/jniLibs wiki/src/main/jniLibs"
 for p in $inputs; do
   [ -e "$HERE/$p" ] || continue
   mkdir -p "$(dirname "$DEST/$p")"
@@ -111,12 +117,13 @@ done
 status=0
 if [ "$NATIVE" = 1 ]; then
   # Another path, outside any git repository: the first build's checked sources, copied in.
-  LW2="$OUT/w2/llama"; MW2="$OUT/w2/mt"
-  mkdir -p "$LW2" "$MW2"
+  LW2="$OUT/w2/llama"; MW2="$OUT/w2/mt"; ZW2="$OUT/w2/zim"
+  mkdir -p "$LW2" "$MW2" "$ZW2"
   cp -a "$LW1/src" "$LW2/src"
   cp -a "$MW1/git" "$MW2/git"
-  echo "== native 2: $DEST (work folders $LW2, $MW2)"
-  native "$DEST" "$LW2" "$MW2"
+  cp -a "$ZW1/src" "$ZW2/src"
+  echo "== native 2: $DEST (work folders $LW2, $MW2, $ZW2)"
+  native "$DEST" "$LW2" "$MW2" "$ZW2"
   for l in $LIBS; do
     x=$(sha256sum "$HERE/$l" | cut -d' ' -f1); y=$(sha256sum "$DEST/$l" | cut -d' ' -f1)
     echo "$(basename "$l"): first $x"

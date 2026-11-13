@@ -61,6 +61,23 @@ class PeopleStoreTest {
         assertTrue(read[0].confirmed)
     }
 
+    @Test fun anEntryThatDoesntParseIsCounted() {
+        // fix-seal-14 L4: a skipped entry is counted, so a reader that needs the whole file can tell.
+        val good = """{"id":"6f0c2a3e-0000-4000-8000-000000000012","name":"Ada Lovelace"}"""
+        val f = PeopleCodec.read("""{"v":1,"people":[$good,{"id":"not an id","name":"Bo Quist"},7]}""")!!
+        assertEquals(listOf("Ada Lovelace"), f.people.map { it.name })
+        assertEquals(2, f.skipped)
+        assertEquals(0, PeopleCodec.read("""{"v":1,"people":[$good]}""")!!.skipped)
+    }
+
+    @Test fun aSecondEntryWithTheSameIdIsCounted() {
+        // fix-seal-14-d 4: only a hand-edited or damaged file has two; the second is left out and counted, so it's kept aside.
+        val good = """{"id":"6f0c2a3e-0000-4000-8000-000000000012","name":"Ada Lovelace"}"""
+        val f = PeopleCodec.read("""{"v":1,"people":[$good,{"id":"6f0c2a3e-0000-4000-8000-000000000012","name":"Bo Quist"}]}""")!!
+        assertEquals(listOf("Ada Lovelace"), f.people.map { it.name })
+        assertEquals(1, f.skipped)
+    }
+
     @Test fun theStoreChangesUnderItsLockAndWritesOnlyWhatChanged() {
         val dir = tmp()
         val s = PeopleStore(dir)

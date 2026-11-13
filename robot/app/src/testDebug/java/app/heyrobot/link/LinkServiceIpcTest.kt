@@ -6,6 +6,10 @@ import android.app.KeyguardManager
 import android.os.IBinder
 import android.os.UserManager
 import android.os.Parcel
+import android.os.ParcelFileDescriptor
+import app.heyrobot.core.feedback.FeedbackRef
+import app.heyrobot.core.feedback.ReportFile
+import app.heyrobot.core.feedback.ReportKey
 import android.os.Process
 import app.heyrobot.core.link.DeskChoice
 import app.heyrobot.core.link.DeskNotice
@@ -168,7 +172,7 @@ class LinkServiceIpcTest {
             // Today H7b: news through Tor, refused while Robot to Robot is off (nothing then goes direct either).
             LinkIpcProtocol.FEED_TOR to {}, LinkIpcProtocol.FEED_STREAM to { writeString("news.example.org"); writeInt(443) },
         )
-        assertEquals(((LinkIpcProtocol.CODE_STATE..LinkIpcProtocol.SEND_MOVED) + (LinkIpcProtocol.FOLDER_INVITE..LinkIpcProtocol.GROUPS) + (LinkIpcProtocol.LIST_SEND..LinkIpcProtocol.LAST)).toSet(), good.keys)
+        assertEquals(((LinkIpcProtocol.CODE_STATE..LinkIpcProtocol.SEND_MOVED) + (LinkIpcProtocol.FOLDER_INVITE..LinkIpcProtocol.GROUPS) + (LinkIpcProtocol.LIST_SEND..LinkIpcProtocol.LAST)).toSet() - LinkService.ALLOWED_WHILE_OFF, good.keys)
         for ((code, w) in good) {
             val r = call(b, code, w)
             assertEquals(code.toString(), LinkIpcProtocol.REPLY_REFUSED, r.readInt())
@@ -217,6 +221,51 @@ class LinkServiceIpcTest {
             val r = call(b, code, bad)
             assertEquals(code.toString(), LinkIpcProtocol.REPLY_REFUSED, r.readInt())
             assertEquals(0, r.dataAvail())
+        }
+    }
+
+    /**
+     * RP5: SEAL_REPORT is answered while Robot to Robot is off (LinkService.ALLOWED_WHILE_OFF), since sending a report
+     * needs none of it: sealing opens no node (so no listener, no socket and no Tor), leaves Robot to Robot off, and writes
+     * nothing but its one sealed file in cache/reports/. Another uid is refused, as for every call.
+     */
+    @Test fun sealingWhileOffOpensNothingAndTouchesNoLinkState() {
+        assertEquals(setOf(LinkIpcProtocol.STATUS, LinkIpcProtocol.SET_UP, LinkIpcProtocol.START_OVER, LinkIpcProtocol.SEAL_REPORT), LinkService.ALLOWED_WHILE_OFF)
+        val ctx = RuntimeEnvironment.getApplication()
+        var opened = 0
+        LinkRuntime.opener = { _ -> opened++; null }
+        LinkReports.sealer = { _ -> ReportFile.Sealer { p -> byteArrayOf(7) + p } }
+        try {
+            val b = binder()
+            val ref = FeedbackRef.new()
+            val plain = tmp.newFile().apply { writeBytes(ReportFile.write(ReportFile.Report(ref, "Robot feedback\n"))) }
+            fun files() = ctx.dataDir.walk().filter { it.isFile }.map { it.relativeTo(ctx.dataDir).path }.toSet()
+            val before = files()
+            // Robolectric hands the same descriptor across, which :link closes once read: closed here only if it wasn't.
+            fun seal(): Parcel = ParcelFileDescriptor.open(plain, ParcelFileDescriptor.MODE_READ_ONLY).let { fd ->
+                try { call(b, LinkIpcProtocol.SEAL_REPORT, { writeByteArray(ByteArray(ReportKey.BYTES) { 5 }); writeString(ref); writeFileDescriptor(fd.fileDescriptor) }) }
+                finally { runCatching { fd.close() } }
+            }
+            val r = seal()
+            assertEquals(LinkIpcProtocol.REPLY_OK, r.readInt())
+            assertEquals(plain.length().toInt() + 1, r.readInt())
+            assertEquals(0, r.dataAvail())
+            val sealed = java.io.File(java.io.File(ctx.cacheDir, LinkIpcProtocol.REPORT_DIR), ReportFile.name(ref))
+            assertEquals(setOf(sealed.relativeTo(ctx.dataDir).path), files() - before)
+            assertTrue((before - files()).isEmpty())
+            assertEquals(0, opened)
+            assertEquals(false, LinkRuntime.on(ctx))
+            ShadowBinder.setCallingUid(99_123)
+            try {
+                val no = seal()
+                assertEquals(LinkIpcProtocol.REPLY_REFUSED, no.readInt())
+                assertEquals(0, no.dataAvail())
+            } finally {
+                ShadowBinder.setCallingUid(Process.myUid())
+            }
+        } finally {
+            LinkRuntime.opener = null
+            LinkReports.sealer = LinkReports.LIBSIGNAL
         }
     }
 

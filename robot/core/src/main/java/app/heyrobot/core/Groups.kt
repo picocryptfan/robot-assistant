@@ -93,7 +93,7 @@ object ToolRouter {
 
     /** The phone itself: storage, battery, memory, and freeing them ("free up space", "libérer de la place"). */
     private val PHONE = setOf("storage", "space", "free up", "clean up", "memory", "ram", "battery", "charge", "disk", "gigabytes", "gb",
-        "megabytes", "cache", "phone status", "running out", "taking up", "stockage", "espace", "memoire", "batterie", "liberer", "libere",
+        "megabytes", "cache", "phone status", "pick up my phone", "picked up my phone", "pickups", "unlocked my phone", "pris mon telephone", "running out", "taking up", "stockage", "espace", "memoire", "batterie", "liberer", "libere",
         "de la place", "nettoyer", "nettoie", "delete", "biggest", "largest", "force stop", "kill", "plein", "pleine", "supprime",
         "supprimer", "efface", "effacer", "plus grosses", "plus gros")
     /** 0.7, what you ask Robot to keep about you or drop ("remember that …", "souviens-toi", "oublie ça"). */

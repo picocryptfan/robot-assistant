@@ -153,7 +153,7 @@ object LockEngine {
         for (a in metApps) LockNotices.appDone(ctx, file, a)
         LockAccessibilityService.instance?.onEngine(snap, startedNow = startedNow || started0.isNotEmpty())
         // FA8g: nothing records behind the cover. A conversation session in :voice stops (it checks state.json itself).
-        if (started0.isNotEmpty()) app.heyrobot.sys.Cmd.send(ctx, app.heyrobot.sys.Cmd.PHONE_LOCK)
+        if (started0.isNotEmpty() || startedNow) app.heyrobot.sys.Cmd.send(ctx, app.heyrobot.sys.Cmd.PHONE_LOCK)
         // F116: a Robot to Robot card or answer already in the shade goes as the lock starts, from here so it goes even with :voice down.
         if (started0.isNotEmpty()) app.heyrobot.sys.LinkShade.hide(ctx)
         if (started0.isNotEmpty() && file?.settings?.forWho == LockFor.SOMEONE_ELSE) app.heyrobot.sys.LockShade.hide(ctx)
@@ -198,19 +198,19 @@ object LockEngine {
     }
 
     /**
-     * Phase B (§9.3): :voice says Robot's car mode started or ended. Only car mode your remembered car started counts
-     * ([byCar]); car mode you asked for changes nothing. The lock's time keeps running, and the record notes car mode
-     * during a lock.
+     * Phase B (§9.3): :voice says Robot's car mode started or ended. For the lock only car mode your remembered car started
+     * counts ([byCar]); car mode you asked for changes nothing there, but keeps App pause away (M1). The lock's time keeps
+     * running, and the record notes car mode during a lock.
      */
     fun car(ctx: Context, on: Boolean, byCar: Boolean) {
         val now = System.currentTimeMillis()
-        LockStore.editState(ctx) { st ->
-            when {
-                on && byCar && !st.carOn(now) -> st.copy(car = now).let { if (it.active.isNotEmpty()) it.recording(RecordLine(now, RecordEvent.CAR)) else it }
-                !on && st.car != 0L -> st.copy(car = 0)
-                else -> st
-            }
-        }
+        LockStore.editState(ctx) { it.withCar(on, byCar, now) }
+        refresh(ctx)
+    }
+
+    /** review-develop-14-b L1: BOOT_COMPLETED; car mode from before the boot no longer keeps App pause away. */
+    fun rebooted(ctx: Context) {
+        LockStore.editState(ctx) { it.afterReboot(System.currentTimeMillis() - SystemClock.elapsedRealtime()) }
         refresh(ctx)
     }
 
@@ -351,6 +351,12 @@ object LockEngine {
         if (LockSchedule.limitsArmed(file, st, c.now).isEmpty()) return app.heyrobot.core.lock.Refreshed(st, emptyList(), emptyList())
         val today = today(ctx, c, screen) ?: return app.heyrobot.core.lock.Refreshed(st, emptyList(), emptyList())
         return LockSchedule.startLimits(file, st, c, today)
+    }
+
+    /** App pause: today's pickups for phone_status (LockSignals.pickups), read from Android's usage history here and never kept. */
+    fun pickups(ctx: Context, now: Long = System.currentTimeMillis()): app.heyrobot.core.pause.Pickups? {
+        val day = app.heyrobot.core.pause.PauseCount.dayStart(now, java.time.ZoneId.systemDefault())
+        return UsageReader.events(ctx, day - app.heyrobot.core.pause.PauseCount.LOOK_BACK_MS, now)?.let { app.heyrobot.core.pause.PauseCount.pickups(it, day, now) }
     }
 
     private fun today(ctx: Context, c: Clocks, screen: Screen): Long? {

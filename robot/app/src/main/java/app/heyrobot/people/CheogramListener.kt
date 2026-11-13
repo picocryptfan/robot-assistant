@@ -41,18 +41,26 @@ class CheogramListener : NotificationListenerService() {
 
     override fun onListenerConnected() {
         MessageTap.connected(this)
+        MissedTap.connected(this)
+        HoldTap.connected(this)
         // Turning a switch on asks for this binding before the settings are written: look a little later.
         worker.schedule({ unbindIfIdle() }, OFF_CHECK_S, TimeUnit.SECONDS)
     }
 
     override fun onListenerDisconnected() {
         MessageTap.disconnected(this)
+        HoldTap.disconnected(this)
+        if (!app.heyrobot.sys.NotificationAccess.granted(applicationContext)) { MissedTap.drop(); HoldTap.drop(applicationContext) }
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         val n = sbn ?: return
+        // 1.3: a held app's notification is snoozed until the hold's end (HoldTap) and nothing else reads it.
+        if (HoldTap.posted(this, n, try { currentRanking } catch (_: Throwable) { null })) return
         // 0.7: an app turned on in Settings › Messages, into RAM; every other package is dropped there at once.
         MessageTap.posted(applicationContext, n)
+        // 1.3: an app picked for "What did I miss?", its title and kind into RAM (MissedTap).
+        MissedTap.posted(applicationContext, n, try { currentRanking } catch (_: Throwable) { null })
         if (!learnsFrom(n)) return
         worker.execute {
             if (!on()) return@execute unbindIfIdle()
@@ -66,6 +74,7 @@ class CheogramListener : NotificationListenerService() {
 
     override fun onNotificationRemoved(sbn: StatusBarNotification?) {
         sbn?.let(MessageTap::removed)
+        sbn?.let(MissedTap::removed)
     }
 
     override fun onDestroy() {
@@ -81,7 +90,7 @@ class CheogramListener : NotificationListenerService() {
 
     /** Neither name learning nor reading messages is on: Android may unbind the listener (a switch turned on binds it again). */
     private fun unbindIfIdle() {
-        if (on() || MessageTap.on(applicationContext)) return
+        if (on() || MessageTap.on(applicationContext) || MissedTap.on(applicationContext) || HoldTap.on(applicationContext)) return
         try { requestUnbind() } catch (_: Throwable) {}
     }
 

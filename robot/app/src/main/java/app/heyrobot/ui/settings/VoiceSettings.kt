@@ -148,6 +148,7 @@ fun VoiceSettingsScreen(s: RobotSettings, snap: Snapshot, update: (RobotSettings
             ListPreference(stringResource(R.string.voice_speak_replies), s.speakReplies, SpeakReplies.entries, { res.getString(speakLabel(it)) },
                 { res.getString(speakDetail(it)) }) { update(s.copy(speakReplies = it)) }
             SwitchPreference(stringResource(R.string.voice_show_words), stringResource(R.string.voice_more_battery), s.livePartials) { update(s.copy(livePartials = it)) }
+            KeepListeningPreference()
             ListPreference(stringResource(R.string.voice_wait), s.listenPause, ListenPause.entries, { res.getString(waitLabel(it)) }, { res.getString(waitDetail(it)) },
                 summary = stringResource(R.string.voice_wait_summary, res.getString(waitLabel(s.listenPause)))) { update(s.copy(listenPause = it)) }
         }

@@ -396,4 +396,28 @@ class ApprovalGateTest {
         // A routine never reaches a connection (D9).
         for (t in conn) assertEquals(StepClass.NEVER, RoutineGate.classOf(t))
     }
+    /**
+     * auto-open-plan §2: [named] (the app is in your words) lets open_app skip its card, with content in the conversation too;
+     * never with a helper, a message or words said locked, a loose or picked match, Ask first, a locked phone, Always after reading.
+     */
+    @Test fun namedOpenSkipsTheCardOnlyForYourWords() {
+        val open = ToolName.OPEN_APP
+        val s = defaults
+        assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(open, false, s, content = true, asked = true))
+        assertEquals(GateDecision.RUN, ApprovalGate.decide(open, false, s, content = true, named = true))
+        assertEquals(GateDecision.RUN, ApprovalGate.decide(open, false, s, named = true))
+        assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(open, false, s, content = true, named = true, remote = true))
+        assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(open, false, s, content = true, named = true, messages = true))
+        assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(open, false, s, named = true, saidLocked = true))
+        assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(open, false, s, setOf(AskWhy.WHO), content = true, named = true))
+        assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(open, false, s, setOf(AskWhy.PICK), named = true))
+        assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(open, false, s.copy(approvals = s.approvals + (open to Approval.ASK)), named = true))
+        assertEquals(GateDecision.DISABLED, ApprovalGate.decide(open, false, s.copy(approvals = s.approvals + (open to Approval.OFF)), named = true))
+        assertEquals(GateDecision.NEEDS_UNLOCK, ApprovalGate.decide(open, true, s, named = true))
+        assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(open, true, s.copy(lockedTools = s.lockedTools + open), content = true, named = true))
+        assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(open, false, s.copy(safetyCards = SafetyCards.AFTER_READING), content = true, named = true))
+        assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(ToolName.ADD_NOTE, false, s, content = true, named = true))
+        assertFalse(ApprovalGate.named(open, locked = false, why = emptySet(), remote = false, messages = false, saidLocked = true))
+        assertTrue(ApprovalGate.named(open, locked = false, why = emptySet(), remote = false, messages = false, saidLocked = false))
+    }
 }

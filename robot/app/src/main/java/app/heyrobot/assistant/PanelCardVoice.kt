@@ -64,6 +64,8 @@ internal class PanelCardVoice(
         fun confirm(actionId: String, yes: Boolean)
         /** As a tap on a card's choice [index]. */
         fun choose(actionId: String, index: Int)
+        /** 1.3: [text] rewords the text card [cardId] (PanelTexting.reword): true, and the card is to go. */
+        fun reword(cardId: String, text: String): Boolean = false
         /** fix-car-long-card: a turn with no panel, the car screen up (CarModeController.quietTurn). */
         val carQuiet: Boolean get() = false
         /** The car screen may show and say private words (CarModeController.trusted). */
@@ -319,7 +321,8 @@ internal class PanelCardVoice(
             }
         }
         val r = CardAnswer.reply(text, card.waiting, s.voiceCards, s.voiceYesPersonal, spoken, s.wakePhrases.filter { it.enabled }.map { it.text })
-            ?: return false
+            // 1.3: "warmer, and say I'm bringing dessert": a new draft, and a new card for it (never a send).
+            ?: return (!(spoken && !s.voiceCards) && port.reword(card.id, text)).also { if (it) port.confirm(card.id, false) }
         if (spoken && (r.does == CardAnswer.Does.CONFIRM || r.does == CardAnswer.Does.CHOOSE_ONLY) && carHeld(card)) return true
         RLog.i("card_answer", "yes" to (r.does != CardAnswer.Does.DECLINE), "spoken" to spoken)
         when (r.does) {

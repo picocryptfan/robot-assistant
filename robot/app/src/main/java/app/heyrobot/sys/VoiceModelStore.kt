@@ -92,7 +92,7 @@ object VoiceModelStore {
                     out[c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_ID))] = FileDownload(
                         c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)),
                         c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)),
-                        c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON)),
+                        DownloadNetwork.reason(ctx, c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)), c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON))),
                     )
                 }
                 out
@@ -211,6 +211,7 @@ object VoiceModelStore {
                     .setDestinationInExternalFilesDir(ctx, null, "$STAGING/${b.id}/${f.name}")
                     .addRequestHeader("User-Agent", DownloadPolicy.userAgent(BuildConfig.VERSION_NAME))
                     .setAllowedOverMetered(anyNetwork)
+                    .setAllowedOverRoaming(false)
                 ids[f.name] = dm.enqueue(req)
                 // What went online: handed to Android's download service; its end is recorded once it has ended.
                 NetLog.downloadStarted(ctx, ids.getValue(f.name), NetPurpose.VOICE_DOWNLOAD, b.url(f), f.bytes)

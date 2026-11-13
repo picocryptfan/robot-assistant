@@ -47,6 +47,9 @@
     <string name="settings_status_done">Fait</string>
     <string name="settings_status_todo">À faire</string>
     <!-- Settings › Actions: what each level means, the groups, "Find the nearest place online" and its search server, the footer. -->
+    <string name="actions_open_named">Ouvrir sans carte les applis que tu nommes</string>
+    <string name="actions_open_named_detail">Quand tu dis ou écris le nom d’une appli, elle s’ouvre tout de suite. Jamais pour une appli que Robot a devinée, ni pour une demande venue de ce que Robot a lu. Désactivé : aucune appli ne s’ouvre sans carte, même celle que tu as cochée pour une routine ou une compétence.</string>
+    <string name="actions_open_tick_row_detail">Désactive pour qu’une carte demande avant d’ouvrir cette appli.</string>
     <string name="actions_intro">Ce que Robot peut faire quand tu le demandes.</string>
     <string name="actions_auto_detail">Robot le fait tout de suite (Sécurité et confidentialité peut quand même afficher une carte)</string>
     <string name="actions_ask_detail">D’abord une carte&#160;: tu confirmes ou tu annules</string>

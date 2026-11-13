@@ -142,4 +142,14 @@ class MtBundleTest {
         assertEquals(model.gzBytes - 1_000 + b.bytes, MtModelLogic.pendingBytes(b.files, mapOf(model.name to FileDownload(Download.STATUS_RUNNING, 1_000, 0))))
         assertEquals(0L, MtModelLogic.pendingBytes(b.files, mapOf(model.name to FileDownload(Download.STATUS_SUCCESSFUL, model.gzBytes, 0))))
     }
+
+    /** fix-mt-metered: a translation download held for Wi-Fi (Android's PAUSED_QUEUED_FOR_WIFI) says so, as a voice's does. */
+    @Test fun heldForWifiSaysSo() {
+        val held = MtModelLogic.downloadPhrase(MtBundle.FR_EN, 0, listOf(FileDownload(Download.STATUS_PAUSED, 1_000_000, 3)))
+        assertEquals(-1, held.second)
+        val en = held.first.en()
+        assertTrue(en, en.startsWith("Paused at ") && en.endsWith("waiting for Wi-Fi (too large for mobile data)"))
+        val fr = held.first.render(app.heyrobot.core.i18n.Langs.of(app.heyrobot.core.i18n.Lang.FR))
+        assertTrue(fr, fr.startsWith("En pause à ") && fr.endsWith("en attente du Wi-Fi (trop gros pour les données mobiles)"))
+    }
 }

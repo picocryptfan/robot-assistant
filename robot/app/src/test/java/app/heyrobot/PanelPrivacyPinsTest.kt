@@ -27,6 +27,34 @@ class PanelPrivacyPinsTest {
         assertEquals(true, panel.has("val chatOnly = loaded.chatOnly || app.heyrobot.core.ScreenQuestion.answerOnly(question, attachment)"))
     }
 
+    /**
+     * fix-stage-spoken-log L1: each router's command goes in the reply-language choice it has a language for, and every
+     * router's command keeps the screen out (ScreenQuestion's list), so "when did I last look at this" sent to the Logbook
+     * never also takes the screen.
+     */
+    @Test fun everyRoutersCommandKeepsTheScreenQuestionOff() {
+        val src = File(root, "assistant/PanelController.kt").readText()
+        val routers = Regex("""lastRouter = listOf\((.*?)\)\.firstOrNull""", RegexOption.DOT_MATCHES_ALL).find(src)!!.groupValues[1]
+        val cmds = Regex("""\b(\w+Cmd) to\b""").findAll(routers).map { it.groupValues[1] }.toSet()
+        assertEquals(true, "logbookCmd" in cmds)
+        val screen = Regex("""ScreenQuestion\.asks\(q\).*?listOf\((.*?)\)\.all""", RegexOption.DOT_MATCHES_ALL).find(src)!!.groupValues[1]
+        assertEquals("missing from ScreenQuestion's list in PanelController.send", emptySet<String>(), cmds - Regex("""\w+""").findAll(screen).map { it.value }.toSet())
+        assertEquals(true, flat("assistant/PanelController.kt").body("fun send(text: String, fromVoice: Boolean = false)").has("logbookCmd != null -> logbookCmd.lang"))
+    }
+
+    /**
+     * fix-stage-choice-route: every entry in lastRouter, not only the *Cmd ones, keeps the screen out, so "always ask the
+     * helper for these" (choiceRoute) goes to the helper choice, never also to the screen question.
+     */
+    @Test fun everyRouterInLastRouterKeepsTheScreenQuestionOff() {
+        val src = File(root, "assistant/PanelController.kt").readText()
+        val routers = Regex("""lastRouter = listOf\((.*?)\)\.firstOrNull""", RegexOption.DOT_MATCHES_ALL).find(src)!!.groupValues[1]
+        val all = Regex("""\b(\w+) to\b""").findAll(routers).map { it.groupValues[1] }.toSet()
+        assertEquals(true, "choiceRoute" in all)
+        val screen = Regex("""ScreenQuestion\.asks\(q\).*?listOf\((.*?)\)\.all""", RegexOption.DOT_MATCHES_ALL).find(src)!!.groupValues[1]
+        assertEquals("missing from ScreenQuestion's list in PanelController.send", emptySet<String>(), all - Regex("""\w+""").findAll(screen).map { it.value }.toSet())
+    }
+
     /** fb14: speech cut at the 30 s cap in a car turn with no window: no "text box", and nothing kept for the next window or the lock screen. */
     /** fb14: held words don't wait for the next window, which may be on the lock screen (onHide needs the voice engines; what's held and promised: PanelCutWordsTest). */
     @Test fun closingThePanelTakesHeldWordsWithIt() {

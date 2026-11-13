@@ -82,11 +82,16 @@ object RestoreApply {
                 // Through Phone lock's own writer, which tells :lock to read it again (Cmd.LOCKS, LockSignals.locksChanged).
                 // Null: this phone's file can't be read or is newer (never written over), or the write failed.
                 LockStore.editLocks(ctx) { f } ?: throw CantFinish(LockStore.LOCKS)
+                // seal-people-fix-b 2: the call list from the restored locks (People's restore made it from the old ones).
+                app.heyrobot.sys.PeopleFiles.refreshCalls(ctx)
             }
             // The everyday set: merged over this phone's file as it is now (record of what went online kept on unless the
             // backup is yours; your music app's pin always this phone's), through its store, which tells :voice.
             BackupCategory.EVERYDAY -> if (!EverydaySettingsStore.restore(ctx, readOrNull(File(staging, BackupCategory.EVERYDAY_FILE)) ?: throw CantFinish(BackupCategory.EVERYDAY_FILE),
                 File(staging, BackupCategory.MINE_STAGED).isFile)) throw CantFinish(BackupCategory.EVERYDAY_FILE)
+            // auto-open-plan §4: merged over this phone's switch (someone else's never turns it on), through its store.
+            BackupCategory.OPEN_APPS -> if (!OpenAppsStore.restore(ctx, readOrNull(File(staging, BackupCategory.OPEN_APPS_FILE)) ?: throw CantFinish(BackupCategory.OPEN_APPS_FILE),
+                File(staging, BackupCategory.MINE_STAGED).isFile)) throw CantFinish(BackupCategory.OPEN_APPS_FILE)
             // L12, D14: only from a backup marked yours (the planner and RestoreTaint stopped any other; this is the last gate).
             // Settings merged through their store; links.json left for :link, which reads it when it next opens.
             BackupCategory.LINKS -> {

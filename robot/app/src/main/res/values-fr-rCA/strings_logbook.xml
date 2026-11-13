@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="logbook_title">Carnet</string>
+    <string name="logbook_summary">Ce que tu inscris à voix haute, compté exactement</string>
+    <string name="logbook_use">Utiliser le carnet</string>
+    <string name="logbook_intro">Dis « inscris que j’ai pris mes pilules », puis demande « c’est quand la dernière fois que j’ai pris mes pilules » ou « combien de fois j’ai couru ce mois-ci ». Ton carnet reste sur ce téléphone, scellé, et va dans tes sauvegardes.</string>
+    <string name="logbook_add_locked">Ajouter quand c’est verrouillé</string>
+    <string name="logbook_add_locked_summary">Ce que tu inscris par-dessus l’écran de verrouillage attend, scellé, que tu déverrouilles.</string>
+    <string name="logbook_export">Exporter en tableau</string>
+    <string name="logbook_export_summary">Un fichier CSV, enregistré où tu veux</string>
+    <string name="logbook_exported">Carnet exporté</string>
+    <string name="logbook_export_failed">Impossible d’exporter le carnet</string>
+    <string name="logbook_none">Rien d’inscrit pour l’instant.</string>
+    <string name="logbook_unlock">Déverrouille ton téléphone pour voir ton carnet.</string>
+    <string name="logbook_delete">Effacer</string>
+    <string name="logbook_deleted">Effacé de ton carnet</string>
+    <string name="logbook_undo">Annuler</string>
+    <string name="logbook_delete_all">Tout effacer</string>
+    <string name="logbook_delete_all_text">Toutes les inscriptions de ton carnet sont effacées. C’est définitif.</string>
+    <string name="logbook_not_saved">Pas enregistré. Réessaie.</string>
+</resources>

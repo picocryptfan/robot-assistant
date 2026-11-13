@@ -134,6 +134,8 @@ class PlanTest {
         val log = mutableListOf<String>()
         var result: (Action) -> Executed = { if (it.tool == ToolName.WEATHER) Executed(ActionStatus.DONE, "Sunny, 12 degrees.") else Executed(ActionStatus.DONE, "Done.") }
         override val locked get() = false
+        var named = false
+        override val openNamed get() = named
         override val settings get() = settings0
         override suspend fun prepare(action: Action): Prepared { log += "prepare ${action.tool.id}"; return Prepared.Ready(action) }
         override suspend fun run(action: Action): Executed { log += "run ${action.tool.id}"; return result(action) }
@@ -208,6 +210,30 @@ class PlanTest {
             assertFalse("run set_timer" in phone.log)
             assertTrue(run.line().en().startsWith("The plan stopped at step 2"))
         }
+    }
+
+    /** review-auto-open-c L1: a plan's last open step shows its card at Just do it, Open apps' switch on (auto-open-plan §2
+     *  lets your words, routines and ticked skills skip it, not a plan the model wrote): Step by step, or Do the rest when you
+     *  didn't ask to open an app. Do the rest answers it when you did. At 891aed115 the first two opened with no card. */
+    @Test fun aPlansOpenStepShowsItsCardUnlessDoTheRestAnswersIt() = runBlocking {
+        val p = ok(read(weather, step("open_app", "name" to "Signal")))
+        val just = RobotSettings(approvals = ToolName.entries.associateWith { Approval.AUTO })
+        val cells = buildList {
+            for ((approve, asked) in listOf(PlanApprove.STEP_BY_STEP to setOf(ToolName.WEATHER, ToolName.OPEN_APP),
+                PlanApprove.ALL_AT_ONCE to setOf(ToolName.WEATHER), PlanApprove.ALL_AT_ONCE to setOf(ToolName.WEATHER, ToolName.OPEN_APP))) {
+                val phone = Phone(just).also { it.named = true }
+                val view = View()
+                val conf = Confirmations()
+                val run = planRun(p, phone, view, conf, approve, asked)
+                run.reads(untrusted = false)
+                val job = async { run.rest(stepByStep = false, untrusted = false) }
+                val id = withTimeout(5_000) { kotlinx.coroutines.selects.select<String?> { view.pending.onReceive { it }; job.onAwait { null } } }
+                if (id != null) conf.answer(id, false)
+                withTimeout(5_000) { job.await() }
+                add("$approve ${asked.size}: " + (if (id != null) "card" else "") + (if ("run open_app" in phone.log) "open" else ""))
+            }
+        }
+        assertEquals(listOf("STEP_BY_STEP 2: card", "ALL_AT_ONCE 1: card", "ALL_AT_ONCE 2: open"), cells)
     }
 
     /** Q6 (4 Nov 2026): messages still get their own card. A text to an exact contact has no reason but the level, yet Do the rest leaves it. */

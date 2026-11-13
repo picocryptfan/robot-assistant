@@ -34,6 +34,8 @@ import java.io.File
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class PanelListsSendTest {
+    init { app.heyrobot.sys.HistoryFiles.testKeys(app.heyrobot.sys.SoftHistoryKeys()) }
+
     private companion object {
         val UUID = Regex("[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}")
         val TIME = Regex("""(?<=":)\d{10,}(?=[,}\]])""")

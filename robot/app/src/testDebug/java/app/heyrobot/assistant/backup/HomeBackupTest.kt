@@ -57,6 +57,31 @@ class HomeBackupTest {
         assertEquals(r.toString(), outcome, r.outcomes[BackupCategory.HOME])
     }
 
+    @Test fun a13BackupRestoresOnThisBuild() {
+        // release/1.3's toJson: no home, no quick.
+        HomeSettingsStore.file(ctx).writeText("""{"v":1,"today":true,"offer":"taken","order":["note","calendar","lists"],"lock_summary":false,"weather":false}""")
+        val file = backup()
+        HomeSettingsStore.file(ctx).delete()
+        restore(file)
+        val h = HomeSettingsStore.current(ctx)
+        assertEquals(app.heyrobot.core.HomeChoice.TODAY, h.home)
+        assertEquals(TodayPart.NOTE, h.order.first())
+        assertEquals(app.heyrobot.core.QuickItem.DEFAULT, h.quick)
+    }
+
+    @Test fun quickAccessComesBackOnlyOntoGettingStarted() {
+        val mine = listOf(app.heyrobot.core.QuickItem.CAR, app.heyrobot.core.QuickItem.SKILLS)
+        HomeSettingsStore.update(ctx) { HomeSettings(home = app.heyrobot.core.HomeChoice.QUICK, quick = mine, order = this.mine) }
+        val file = backup()
+        HomeSettingsStore.file(ctx).delete()
+        restore(file)
+        assertEquals(app.heyrobot.core.HomeChoice.QUICK, HomeSettingsStore.current(ctx).home)
+        assertEquals(mine, HomeSettingsStore.current(ctx).quick.take(2))
+        HomeSettingsStore.update(ctx) { HomeSettings().turnedOn() }
+        restore(file)
+        assertEquals(app.heyrobot.core.HomeChoice.TODAY, HomeSettingsStore.current(ctx).home)
+    }
+
     @Test fun theOrderAndTodayComeBackOnANewPhone() {
         HomeSettingsStore.update(ctx) { HomeSettings(order = mine, note = "n1").turnedOn() }
         val file = backup()

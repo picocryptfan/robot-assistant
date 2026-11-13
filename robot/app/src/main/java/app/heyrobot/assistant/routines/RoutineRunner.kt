@@ -12,6 +12,7 @@ import app.heyrobot.assistant.ToolExecutor
 import app.heyrobot.core.Abort
 import app.heyrobot.core.Action
 import app.heyrobot.core.ApprovalGate
+import app.heyrobot.core.AskWhy
 import app.heyrobot.core.Brief
 import app.heyrobot.core.BriefComposer
 import app.heyrobot.core.BriefInput
@@ -271,7 +272,8 @@ object RoutineRunner {
         val langs = BriefSource.langs(ctx, s)
         val briefLang = BriefSource.lang(rs, langs)
         val routine = r.copy(steps = steps, lock = if (someoneElse) RoutineLock.FOLLOW else r.lock)
-        val plan = RoutinePlan.plan(routine, RunOrigin.UNATTENDED, locked, s, rs)
+        // auto-open-plan §3: the screen off counts as locked for an app the routine may open without asking.
+        val plan = RoutinePlan.plan(routine, RunOrigin.UNATTENDED, locked, s, rs, screenOn(ctx))
         // review-quiet-when-silent, 4: on a silenced phone a run whose voice would go to the room is shown, not said; a run
         // started by turning off your alarm still speaks (fix-126-review 2: only then, with the alarm's key; a missed alarm's
         // run at the unlock and a brief's held rest come with none).
@@ -313,7 +315,7 @@ object RoutineRunner {
                         ?.let { say(listOf(part(it, langs.copy(say = briefLang), true, StepCode.REMINDERS, BriefItem.REMINDERS))) }
                     // 0.7's messages, counted by app (never who or what): nothing while Settings › Messages is off.
                     RoutineStep.Messages -> BriefSource.unread(ctx).unread()?.let { say(listOf(part(BriefComposer.messagesText(it), langs.copy(say = briefLang), false, StepCode.MESSAGES))) }
-                    is RoutineStep.Tool -> when (val t = tool(ctx, s, step.action, locked, public = p.go == StepGo.RUN_PUBLIC, langs = langs)) {
+                    is RoutineStep.Tool -> when (val t = tool(ctx, s, step.action, locked, public = p.go == StepGo.RUN_PUBLIC, langs = langs, opens = if (app.heyrobot.sys.OpenAppsStore.named(ctx)) r.opens else emptySet())) {
                         null -> { ready(ctx, r, step); ready++ }
                         else -> { fail = t.second; if (t.first != null) say(listOf(t.first!!)) }
                     }
@@ -385,7 +387,10 @@ object RoutineRunner {
      * spoken result, and whether it failed; null when its card would ask (a name not sure, a choice): a Ready card then.
      * [public]: the weather without the place's name.
      */
-    private fun tool(ctx: Context, s: RobotSettings, a: Action, locked: Boolean, public: Boolean, langs: Langs): Pair<SpokenPart?, Boolean>? {
+    private fun screenOn(ctx: Context): Boolean =
+        try { ctx.getSystemService(android.os.PowerManager::class.java).isInteractive } catch (_: Exception) { false }
+
+    private fun tool(ctx: Context, s: RobotSettings, a: Action, locked: Boolean, public: Boolean, langs: Langs, opens: Set<String> = emptySet()): Pair<SpokenPart?, Boolean>? {
         val ex = ToolExecutor(ctx, s, Abort(if (a.online) WeatherAsk.DEADLINE_MS else Abort.NO_DEADLINE)) { i ->
             // Timers and alarms go to Clock with EXTRA_SKIP_UI: nothing shows.
             try { ctx.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); true } catch (t: Throwable) { RLog.w("routine_launch", t); false }
@@ -396,7 +401,15 @@ object RoutineRunner {
             is Prepared.Refused -> part(p.text.orPlain(p.detail), langs, false, code) to true
             is Prepared.Ready -> {
                 if (ApprovalGate.decide(a.tool, locked, s, p.reasons, content = false, asked = true) != GateDecision.RUN) return null
+                // auto-open-plan §2 and §3: an open step only for the ticked package Robot finds now, never a loose or picked
+                // match; one Android didn't start (a background start refused) gets its Ready card instead.
+                val open = p.action as? Action.OpenApp
+                if (open != null && (p.choices.size > 1 || open.key?.substringBefore('/') !in opens ||
+                        AskWhy.WHO in p.reasons || AskWhy.PICK in p.reasons)) return null
+                // review-auto-open 4: the phone may have locked or its screen gone off since the plan (the brief, earlier steps).
+                if (open != null && (Assistant.keyguard(ctx) || !screenOn(ctx))) return null
                 val r = ex.run(p.choices.firstOrNull()?.action ?: p.action)
+                if (open != null && !(r.launchedApp && r.status.succeeded)) return null
                 // 1.1: in the routine's reply language when the result has its words (core Executed's phrases), else as it is.
                 val words = r.spoken?.let { r.spokenText.orPlain(it) } ?: r.text.orPlain(r.detail)
                 var said = said(words, langs)

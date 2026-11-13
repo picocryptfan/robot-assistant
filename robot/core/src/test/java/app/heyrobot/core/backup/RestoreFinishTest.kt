@@ -90,4 +90,21 @@ class RestoreFinishTest {
         }
         error("should have thrown CantFinish")
     }
+
+    /** moments-backup-c (L5): a reminder added on this phone after the step, before a deferred or replayed finish, stays. */
+    @Test fun momentsMergeAgainInsideTheEdit() {
+        val car = app.heyrobot.core.Moment.entries.first()
+        val here = app.heyrobot.core.MomentReminder("h1", "call the bank", car, 1L)
+        val theirs = app.heyrobot.core.MomentReminder("b1", "buy milk", car, 3L)
+        val staging = tmp.newFolder().also {
+            File(it, RoutineStore.MOMENTS).writeText(app.heyrobot.core.MomentReminders.encode(listOf(theirs)))
+            File(it, RestoreFinish.MOMENTS_MODE).writeText(RestoreMode.ADD.name)
+        }
+        val rs = RoutineStore(tmp.newFolder())
+        rs.editMoments { listOf(here) }
+        RestoreFinish.moments(rs, staging)
+        assertEquals(listOf(here, theirs), rs.moments())
+        RestoreFinish.moments(rs, staging) // replayed: nothing twice
+        assertEquals(listOf(here, theirs), rs.moments())
+    }
 }

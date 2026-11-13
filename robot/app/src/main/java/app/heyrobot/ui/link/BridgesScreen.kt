@@ -24,6 +24,8 @@ import app.heyrobot.R
 import app.heyrobot.core.i18n.UiStrings
 import app.heyrobot.core.link.BridgeChoice
 import app.heyrobot.core.link.BridgeLine
+import androidx.compose.foundation.layout.Row
+import app.heyrobot.core.link.BridgeRelayPlan
 import app.heyrobot.core.link.LinkSettings
 import app.heyrobot.core.link.TorBridges
 import app.heyrobot.ui.AppActions
@@ -63,15 +65,16 @@ fun BridgesScreen(port: LinkPort, a: AppActions, snackbar: SnackbarHostState, on
     var tick by remember { mutableIntStateOf(0) }
     var busy by remember { mutableStateOf(false) }
     var editing by rememberSaveable { mutableStateOf(false) }
+    var removing by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(tick) { settings = withContext(Dispatchers.IO) { port.settings() } }
 
-    fun save(change: (LinkSettings) -> LinkSettings) {
+    fun save(done: String? = null, change: (LinkSettings) -> LinkSettings) {
         if (busy) return
         busy = true
         scope.launch {
             val ok = withContext(Dispatchers.IO) { port.saveSettings(change) }
             busy = false
-            if (!ok) a.say(ctx.getString(R.string.link_not_saved))
+            if (!ok) a.say(ctx.getString(R.string.link_not_saved)) else if (done != null) a.say(done)
             tick++
         }
     }
@@ -92,10 +95,18 @@ fun BridgesScreen(port: LinkPort, a: AppActions, snackbar: SnackbarHostState, on
                 RadioPreference(stringResource(bridgesLabel(c)), stringResource(detail), s.bridges == c) { if (s.bridges != c) save { it.copy(bridges = c) } }
             }
             val own = s.ownBridges
+            // tor-bridge-relay-c L4: beside a home bridge your own Snowflake lines are skipped (lyrebird can't send them through the relay).
+            val skips = remember(own) { BridgeRelayPlan.skipsSnowflake(own) }
             RadioPreference(stringResource(R.string.link_bridges_own),
-                if (own.isEmpty()) stringResource(R.string.link_bridges_own_none) else pluralStringResource(R.plurals.link_bridges_own_count, own.size, own.size),
+                if (own.isEmpty()) stringResource(R.string.link_bridges_own_none) else pluralStringResource(R.plurals.link_bridges_own_count, own.size, own.size) +
+                    (if (skips) "\n" + stringResource(R.string.link_bridges_own_snowflake_skipped) else ""), // l10n: not text (a line break)
                 s.bridges == BridgeChoice.OWN,
-                trailing = if (own.isEmpty()) null else { { TextButton(onClick = { editing = true }, enabled = !busy) { Text(stringResource(R.string.link_bridges_edit)) } } },
+                trailing = if (own.isEmpty()) null else { {
+                    Row {
+                        TextButton(onClick = { editing = true }, enabled = !busy) { Text(stringResource(R.string.link_bridges_edit)) }
+                        TextButton(onClick = { removing = true }, enabled = !busy) { Text(stringResource(R.string.link_bridges_remove)) }
+                    }
+                } },
             ) {
                 if (own.isEmpty()) editing = true else if (s.bridges != BridgeChoice.OWN) save { it.copy(bridges = BridgeChoice.OWN) }
             }
@@ -107,6 +118,28 @@ fun BridgesScreen(port: LinkPort, a: AppActions, snackbar: SnackbarHostState, on
             editing = false
             save { it.copy(bridges = BridgeChoice.OWN, ownBridges = lines) }
         }
+    }
+    // fix-bridges-and-wording: your saved lines go without Start over. Chosen, the choice falls back to Off (never plain
+    // Tor in their place unasked: Off is what Tor bridges start as) and the snackbar says so; :link's TorRuntime stops
+    // using them, and any relay to a home bridge, within half a minute while Robot to Robot's screens are open (the pump,
+    // even for a Tor still connecting), otherwise the next time Robot uses Tor.
+    if (removing && s != null) {
+        val wasOwn = s.bridges == BridgeChoice.OWN
+        AlertDialog(
+            onDismissRequest = { removing = false },
+            properties = SecureDialog,
+            title = { Text(stringResource(R.string.link_bridges_remove_title)) },
+            text = { Text(stringResource(if (wasOwn) R.string.link_bridges_remove_text_own else R.string.link_bridges_remove_text)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    removing = false
+                    save(ctx.getString(if (wasOwn) R.string.link_bridges_removed_off else R.string.link_bridges_removed)) {
+                        it.copy(ownBridges = emptyList(), bridges = if (it.bridges == BridgeChoice.OWN) BridgeChoice.OFF else it.bridges)
+                    }
+                }) { Text(stringResource(R.string.link_bridges_remove)) }
+            },
+            dismissButton = { TextButton(onClick = { removing = false }) { Text(UiStrings.cancel().str()) } },
+        )
     }
 }
 

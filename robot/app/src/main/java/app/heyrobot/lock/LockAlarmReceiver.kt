@@ -58,6 +58,16 @@ class LockAlarmReceiver : BroadcastReceiver() {
                     LockSignals.ACTION_EMERGENCY_OPENED -> LockEngine.emergencyOpened(app, dialer = false)
                     // Phase B: Robot's car mode started or ended (:voice's CarModeController).
                     LockSignals.ACTION_CAR -> LockEngine.car(app, intent.getBooleanExtra(LockSignals.EXTRA_ON, false), intent.getBooleanExtra(LockSignals.EXTRA_BY_CAR, false))
+                    // App pause: phone_status's pickups, counted here and handed back in the ordered broadcast's result; none kept.
+                    LockSignals.ACTION_PICKUPS -> LockEngine.pickups(app)?.let { p ->
+                        done.setResultCode(android.app.Activity.RESULT_OK)
+                        done.setResultExtras(android.os.Bundle().apply {
+                            putInt(LockSignals.EXTRA_COUNT, p.count)
+                            p.glances?.let { putInt(LockSignals.EXTRA_GLANCES, it) }
+                        })
+                    }
+                    // review-develop-14-b L1: car mode from before a reboot is over (then the same refresh).
+                    Intent.ACTION_BOOT_COMPLETED -> LockEngine.rebooted(app)
                     else -> LockEngine.refresh(app)
                 }
             } catch (t: Throwable) {

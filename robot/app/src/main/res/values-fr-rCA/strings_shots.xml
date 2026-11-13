@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<resources>
+    <string name="shots_title">Questions sur tes captures d’écran</string>
+    <string name="shots_summary">Des réponses tirées de tes captures d’écran</string>
+    <string name="shots_intro">Robot lit les captures d’écran que tu prends à partir de maintenant, sur ce téléphone pendant qu’il se recharge, pour que tu puisses lui poser des questions plus tard. Si une capture semble contenir un code, un mot de passe ou un numéro de carte, seule sa date est gardée. Rien ne quitte le téléphone, et les réponses ne sont pas gardées dans l’historique.</string>
+    <string name="shots_switch">Lire les nouvelles captures pendant la recharge</string>
+    <string name="shots_off_summary">Désactivé</string>
+    <string name="shots_status_none">Activé. Rien de lu pour l’instant</string>
+    <string name="shots_status">Activé. %1$d lues, la dernière fois le %2$s</string>
+    <string name="shots_no_access">Autorise l’accès aux photos pour activer ceci.</string>
+    <string name="shots_on_failed">Impossible d’activer ceci. Réessaie.</string>
+    <string name="shots_selected">Tu as donné accès à certaines photos seulement : Robot lit les captures que tu as choisies, peu importe leur date, et les nouvelles seulement une fois que tu les choisis.</string>
+    <string name="shots_graphene">Sur GrapheneOS, les Storage Scopes peuvent donner à Robot le dossier des captures d’écran seulement.</string>
+    <string name="shots_delete">Supprimer l’index</string>
+    <string name="shots_delete_summary">Robot oublie ce qu’il a lu et lit les nouvelles captures à partir de maintenant</string>
+    <string name="shots_delete_summary_selected">Robot oublie ce qu’il a lu, puis relit les captures que tu as choisies</string>
+    <string name="shots_deleted">Index supprimé</string>
+    <string name="shots_off_title">Désactiver et supprimer l’index ?</string>
+    <string name="shots_off_body">Robot oublie tout ce qu’il a lu dans tes captures d’écran.</string>
+    <string name="shots_off_ok">Désactiver</string>
+</resources>

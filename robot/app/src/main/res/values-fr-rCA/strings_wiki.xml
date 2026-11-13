@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- Wikipedia on this phone (P3): Settings › Wikipedia on this phone. -->
+<resources>
+    <string name="wiki_title">Wikipédia sur ce téléphone</string>
+    <string name="wiki_summary">Télécharger une copie par Wi-Fi</string>
+    <string name="wiki_intro">Une copie de Wikipédia sur ce téléphone répond aux questions de faits sans aller en ligne. Tu choisis une copie et tu lances son téléchargement, qui passe seulement par le Wi-Fi.</string>
+    <string name="wiki_set_en_top">Anglais pour commencer, les articles les plus lus</string>
+    <string name="wiki_set_fr_top">Français pour commencer, les articles les plus lus</string>
+    <string name="wiki_set_en_top1m">Anglais, le million d’articles les plus lus</string>
+    <string name="wiki_set_fr_all">Français, tous les articles</string>
+    <string name="wiki_set_info">%1$s · %2$s · %3$s</string>
+    <string name="wiki_state_none">Touche pour télécharger par Wi-Fi</string>
+    <string name="wiki_state_waiting">En attente du Wi-Fi</string>
+    <string name="wiki_state_downloading">Téléchargement, %1$d %%</string>
+    <string name="wiki_state_downloaded">Téléchargée. Touche pour la vérifier et la déplacer</string>
+    <string name="wiki_state_moving">Vérification et déplacement en cours</string>
+    <string name="wiki_state_failed">Le téléchargement s’est arrêté. Touche pour réessayer</string>
+    <string name="wiki_state_on_phone">Sur ce téléphone. Touche pour la supprimer</string>
+    <string name="wiki_started">Le téléchargement commence par Wi-Fi.</string>
+    <string name="wiki_no_room">Pas assez d’espace libre. Cette copie demande %1$s d’espace libre pendant le téléchargement.</string>
+    <string name="wiki_no_room_move">Pas assez d’espace libre pour déplacer la copie. Libère de l’espace, puis touche-la de nouveau.</string>
+    <string name="wiki_no_storage">Le dossier de téléchargement de Robot n’est pas disponible pour le moment.</string>
+    <string name="wiki_download_failed">Le téléchargement n’a pas pu commencer. Réessaie.</string>
+    <string name="wiki_download_title">Wikipédia pour Robot</string>
+    <string name="wiki_ready">Cette copie de Wikipédia est sur ton téléphone.</string>
+    <string name="wiki_wrong_file">Le fichier téléchargé n’était pas celui attendu, alors Robot l’a supprimé. Réessaie.</string>
+    <string name="wiki_move_failed">Robot n’a pas pu déplacer la copie dans son dossier. Réessaie.</string>
+    <string name="wiki_delete_title">Supprimer cette copie ?</string>
+    <string name="wiki_delete_text">Ça libère %1$s. Tu peux la télécharger de nouveau par Wi-Fi.</string>
+    <string name="wiki_delete">Supprimer</string>
+    <string name="wiki_deleted">Copie supprimée.</string>
+    <string name="wiki_stop_title">Arrêter ce téléchargement ?</string>
+    <string name="wiki_stop">Arrêter</string>
+    <string name="wiki_credit">Les copies viennent de Kiwix (kiwix.org), dans le format openZIM (openzim.org). Articles de Wikipédia, CC BY-SA 4.0.</string>
+</resources>

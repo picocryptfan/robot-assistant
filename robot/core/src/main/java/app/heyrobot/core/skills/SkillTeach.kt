@@ -62,6 +62,8 @@ data class SkillDraft(
     val paused: Boolean = false,
     /** 1.3 (design §10.3): a model's draft made after content, and where that content came from (its banner). */
     val source: DraftSource? = null,
+    /** auto-open-plan §1: the packages its save card's boxes ticked; never for one made from content. */
+    val opens: Set<String> = emptySet(),
 ) {
     /** A model wrote it (design §10): only a tap saves it. */
     val drafted: Boolean get() = made == SkillMade.DRAFT_DEVICE || made == SkillMade.DRAFT_HELPER
@@ -91,7 +93,7 @@ data class SkillDraft(
         val key = otherName(name)
         return Skill(id, 1, displayName(name), if (lang == Lang.EN) listOfNotNull(key) else emptyList(), if (lang == Lang.FR) listOfNotNull(key) else emptyList(),
             params, steps, if ((fromContent || drafted) && level == SkillLevel.JUST_DO_IT) SkillLevel.ASK_FIRST else level,
-            SkillProvenance(made, fromContent, now, now))
+            SkillProvenance(made, fromContent, now, now)).copy(opens = if (fromContent) emptySet() else opens)
     }
 
     /** What can't be saved as it is (SkillCheck's lines, before any name check). */

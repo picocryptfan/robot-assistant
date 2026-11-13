@@ -78,6 +78,14 @@ too, so Robot can update it; please also tell its maintainers.
   manifest. (Android grants the network per app, not per process: the separation is in the code, and the tests keep it.
   The same holds for Install unknown apps once you allow it: only the main process's updater installs, and only Robot's
   own update.)
+- ACCESS_NETWORK_STATE is a normal permission, granted at install, that lets Robot see what network the phone is on; it
+  sends nothing and reads no network's name. It has three readers: the scheduled jobs that wait for a network (the
+  update checks, since 1.1, which Android 14 and later won't schedule without it); the downloads (1.4), where Robot asks
+  whether the phone is roaming to say why a held download waits, and where "Wait for Wi-Fi" is Android's own hold, not
+  something Robot reads; and Robot to Robot (`:link`), which looks at the networks the phone is on, and its own
+  addresses on them, to listen only on Wi-Fi, Ethernet or a VPN and to tell a Private pairing your new address.
+  `ProcessIsolationTest` and `verify_apk.sh` check that the permission is declared and that no other network permission
+  than INTERNET sends anything.
 - The model only proposes actions. Robot's approval rules decide, and an action that writes or leaves the phone after
   Robot read untrusted content (the screen, a message, a web page, a command's output) asks you first. Web search and
   Termux are off until you set them up, and every Termux command shows its card first unless you chose otherwise for
@@ -126,6 +134,12 @@ too, so Robot can update it; please also tell its maintainers.
   backup that isn't marked as yours from turning Robot Files, reading text in images or the brief's Files lines back on,
   sends its files to Inbox without tags, people or reminders, and keeps travel mode on with the backup's hidden drawers
   added, even from your own backup. While travel mode is on, backups and restores leave Robot Files out.
+- The logbook is sealed the way Notes are: files/logbook/log.enc, AES-256-GCM by `robot_logbook_v1`, an Android
+  Keystore key usable only while the device is unlocked, with the file's name and header in the additional data
+  (`robot-logbook-v1|<file name>|`, magic "RLOG"). An entry logged while locked is one file, `<id>.locked.enc`, sealed by
+  `robot_logbook_lock_v1` (usable while locked) and merged at the next unlock; the journal is never read to answer. A
+  file that doesn't open is kept aside (`.bad`), never deleted, and a key Android invalidated is replaced. The router
+  takes nothing during a phone lock for someone else, and the voice log keeps only the kind of turn and its result.
 - Lists are sealed the way memory is: one file, AES-256-GCM by `robot_lists_v1`, an Android
   Keystore key made with `setUnlockedDeviceRequired`, in the TEE, never exported, with its own frame and additional data
   (`robot-lists-v1|<file name>`), so a memory file or the journal can't stand in for the lists. Adds said while the phone
@@ -151,6 +165,16 @@ too, so Robot can update it; please also tell its maintainers.
   backups, and come back from Robot's backup only when you mark it as your own. A file Robot can't read is never
   written over: Start over keeps it aside (`events.enc.bad`). Robot changes only private events and the calendar events
   it added itself.
+- Wikipedia on this phone (1.4) is read in `:wiki`, an `android:isolatedProcess` service with no permissions, no network
+  and none of Robot's files. A downloaded ZIM file (checked against its SHA-256 pin before it's used) reaches it only as an
+  open file descriptor, and `librobotzim.so` (libzim with Xapian, Zstandard, liblzma and ICU, built from pinned release
+  archives by `tools/build_libzim.sh`; it exports only its own JNI functions) parses it there. It is 1.4's largest new
+  native surface, so it sits in a process that can reach nothing of yours. `tools/verify_apk.sh` holds the APK to the
+  pinned build and to five isolated services.
+- The report from Report a problem (1.4) is sealed on the phone (HPKE) to the developer's public key, together with its
+  screenshot, into one file only the developer's private key opens. It waits in Robot's cache for up to 24 hours,
+  and nothing is sent until you hand it to the app you pick. The card that shows the turn and the screenshot is a
+  secure window (`FLAG_SECURE`): kept out of screenshots, screen recordings, casting and Recents.
 - News feeds on Today are read in `:feedparse`, an `android:isolatedProcess` service with no permissions, no network and
   none of Robot's files, not exported, bound with `bindIsolatedService`: a fresh instance for each round of fetching and
   after any failure, so a crash or a hostile feed takes down only that feed. It proves an isolated uid before it's sent
@@ -197,10 +221,20 @@ too, so Robot can update it; please also tell its maintainers.
   row for it. A VPN that carries everything and doesn't leave your home network out also carries home addresses:
   plain http to a 192.168.x address goes into the VPN, as it did before 1.3.2. The same holds for helpers on your
   network, feeds on your network and Robot to Robot's direct connections.
-  Three https paths aren't held to this yet and rely on TLS alone: your own nearby-search server, a feed's https
-  address, and a cloud helper whose name resolves to a home address; on mobile data a stranger could see the attempt
-  and the host name, never what's sent. Nor is a Tor bridge of your own at a home address: Tor dials it itself, so on
-  mobile data its connection and Tor's encrypted handshake go to whatever holds that address there.
+  Four https paths aren't held to this yet and rely on TLS alone: your own nearby-search server, a feed's https
+  address, a cloud helper whose name resolves to a home address, and a meek or WebTunnel bridge of your own given by a
+  name that resolves to a home address (only a bridge given as a home address goes through the relay below, so lyrebird
+  reaches that one directly); on mobile data a stranger could see the attempt
+  and the host name, never what's sent. A Tor bridge of your own at a home address is held to it too (1.4): while one
+  is saved, Tor and lyrebird reach every saved bridge except Snowflake ones through a relay inside Robot (a SOCKS5 proxy on a loopback port, with a
+  username and password made fresh at each Tor start, that connects only where your saved bridge lines lead), so the
+  home one goes out under the same rule and on mobile data nothing is sent to it. Every address lyrebird can dial
+  from a line counts (meek's targets list too), and a line Robot can't read for sure (a port given by name, say)
+  starts the relay as well, which lets nothing through for it. Another app on the phone could keep the relay's 16
+  handshake slots full (each is closed after 10 seconds without the password): Tor then reaches no bridge, but nothing
+  is sent anywhere. Snowflake lines among your own bridges
+  aren't used beside it (lyrebird can't send them through the relay), and the bridges screen says so; choosing
+  Snowflake itself is unchanged.
   https may be either, since TLS's name check stops a rebinding. Any connection that holds a secret (a token, a
   password, a header's value, an ntfy topic, a webhook address that is itself the key) is https only, checked when you
   type it, before a client exists and again when the secret is added, last, by the client. A token (an MCP
@@ -242,6 +276,11 @@ too, so Robot can update it; please also tell its maintainers.
   restored from a backup that isn't marked as yours, and a tool file only for a connection that restore brought back. Your
   signing key is never in a backup: it cannot leave the Keystore, so a restored phone signs with a new key. The helper
   budget's spend, helper facts and `skills_state.json` are not in it.
+- The apps a skill may open without asking (1.4). A backup keeps them apart from `skills.json`, in `skill_opens.json`
+  (the `skill_opens` category, on the Skills row; skill ids and package names only, at most the skills' own ticks). A
+  file that breaks a rule is refused whole. They go back onto their skills in the Skills step and only from a backup that
+  is marked as yours: someone else's backup brings none, and its skills arrive off. A 1.3 Robot skips `skill_opens` by
+  name and restores every skill, without the ticks.
 - A connection step is a typed call through the same approval gate as every action, on two internal tools no model is
   ever told about. It never runs on a locked phone or from a routine, and only a skill you run can start one. The first
   request to a new host, anything that locks, unlocks or opens, deletes, can spend money or runs code Robot can't see,
@@ -278,10 +317,56 @@ tells people is marked by you. A token is never sent over plain http, except to 
 self-reported name is a pin, not proof of who it is. A skill signature shows which key signed a file, not that the
 skill is safe: that is why an import always starts off and shows its steps.
 
-Notes, People and History: they're kept in Robot's private storage, which Android's file-based encryption protects,
-but not yet sealed by a key of Robot's own as memory, Lists and Robot Files are, because Robot writes them while the phone
-is locked too (a note or a conversation over the lock screen, a person learned from a notification). The Notes screens
-are `FLAG_SECURE`: kept out of screenshots, screen recordings, casting and Recents.
+History: each conversation is sealed on its own (AES-256-GCM, the file's name and header in the additional data) under an Android
+Keystore key of History's own, `robot_history_v1`, which needs the phone unlocked. A conversation saved while the phone is
+locked (over the lock screen) is sealed under a second key, `robot_history_lock_v1`, which doesn't, and is moved under the
+first at the next unlock, as Lists' journal is; so what was said over the lock screen since the last unlock is protected
+by a key usable while locked. In a conversation started while unlocked, only the turns since the lock go under the
+second key (when Robot can't tell which turns are new, the whole conversation does). Conversations saved by an older Robot are sealed at the first unlock, read back and
+compared, and only then is the plain file removed; a cut at any point leaves one whole copy. A backup holds History as it
+did (its own seal), and a restore stages each conversation already sealed; while a conversation can't be opened, a backup
+stops and says History is why (try again unlocked, or back up without History) and a restore changes none of History and says
+why, rather than leave it out or write over it. A conversation saved by a newer Robot is left where it is, counted in History, and
+removed by its Delete these. Opened conversations are dropped from History's cache when the screen goes off, and the list
+Robot's window shows is dropped when the window stops (Home, screen off). History › Delete all removes every file and
+both keys. If Android removes a key (for example when the screen lock is turned off), what it sealed can never be opened:
+those files are kept aside, never deleted by Robot, History says how many, and its Delete these (or Delete all) removes
+them (Memory, Lists, Robot Files and Link also read Android's invalidated key as gone and keep what it sealed); new conversations
+get a new key.
+
+Conversation transcripts (1.4) are sealed the same way: one under `robot_transcripts_v1`, which needs the phone unlocked, and one written while locked (a session started from the lock screen, or one that goes on after the screen locks) under `robot_transcripts_lock_v1`, re-sealed under the first at the next unlock.
+
+Scam warnings (1.4) are rules in code in `:core` run on a message already in the panel's memory. They use no network and open or fetch no link, block, delete or send nothing, and keep nothing. The warning is fixed text, never the model's words, and a locked phone gets only a count. Patterns can be evaded and a text with no hit is not safe; the warning is a hint.
+
+Notes: each note is sealed on its own the same way (the framing and the folder's handling are History's), under a key of
+Notes' own, `robot_notes_v1`, which needs the phone unlocked. A note taken over the lock screen is sealed under a second key,
+`robot_notes_lock_v1`, which doesn't, and is moved under the first at the next unlock. While the phone is locked Robot opens
+no note: asked for your notes over the lock screen, it says they open once you unlock. Notes saved by an older Robot are sealed
+at the first unlock, read back and compared, and only then is the plain file removed; a cut at any point leaves one whole copy.
+A backup holds notes as it did (its own seal), and a restore stages each note already sealed; while a note can't be opened,
+a backup stops and says Notes is why, and a restore changes none of Notes. If Android removes a key, the notes it sealed
+are kept aside, never deleted by Robot; the Notes list says how many, and its Delete these removes them. New notes get a new
+key. The Notes screens are `FLAG_SECURE`: kept out of screenshots, screen recordings, casting and Recents.
+
+People: sealed whole in one file the same way (the framing and the folder's handling are History's and Notes'), under a key
+of People's own, `robot_people_v1`, which needs the phone unlocked. While the phone is locked Robot opens no one in People:
+over the lock screen it finds people in the phone's contacts only. Phone lock's "Calls to People you choose" then checks a
+third file, `lock_calls.json`: for each person a lock names, one (person id, HMAC-SHA256) pair per number, made with a
+Keystore key, `robot_people_calls_v1`, that never leaves the phone and doesn't need it unlocked. It holds no names and no
+numbers; a number is let through only when its hash matches an entry for someone the locks name now, so a person taken
+off a lock is refused at once. Someone holding the locked phone can learn only whether a number they say is allowed, one
+try at a time, as before. The file is rewritten with every People write, at each unlock and each lock save, and removed
+when that fails. The changes Robot makes while locked (a person learned from a notification, a person a linked computer
+sends) are kept in a second file under a second key, `robot_people_lock_v1`, which doesn't need the phone unlocked; the
+file holds only those changes, never People, and they are made at the next unlock. People saved by an older Robot is
+sealed at the first unlock, read back and compared, and only then is the plain file removed; a cut at any point leaves
+one whole copy. A plain file Robot can't read stays as it is until Start over in People keeps it aside, still plain, as
+`people.json.bad`. A backup holds People as it did (its own seal), and a restore writes it through the sealed store;
+while People can't be opened, Back up now's People row says so (never Empty), a backup with People ticked stops and says
+People is why, and the restore preview leaves People out with its reason and changes none of it. If Android removes the
+key, or a newer Robot saved the file, People shows its "can't read" card, and Start over keeps the file aside. Delete all
+removes the sealed files, every copy kept aside (the plain `people.json.bad` too), the call list and its key, and People's
+keys once nothing is sealed under them.
 
 Skills connections' known limits: its checks have run on a Pixel 8 against stand-in Home Assistant and ntfy servers, but
 not every step has been run by a person: a real routing server, a connection over mobile data and the Termux step are
@@ -293,7 +378,11 @@ when a VPN that doesn't route the address is on, your Wi-Fi or Ethernet holds th
 mobile data anyway (Wi-Fi without internet, say), whatever networks the VPN declares. Robot can't see what
 a Home Assistant switch or button is wired to, or what a webhook does on the server: a switch that opens a garage door
 counts as a change at home, and a GET webhook as a read, unless you make it a cover or a lock in Home Assistant, or
-mark the webhook "It locks, unlocks or opens something". Anyone who can make your Home Assistant's devices' names can
+mark it in its connection's settings. Each Home Assistant operation and each webhook can carry four marks, and a mark
+only ever adds to what Robot found itself: "It can spend money", "It locks, unlocks or opens something" and "It deletes
+something" each take a tap every time, never a spoken yes; "It tells people" is named on the card and takes no spoken
+yes. A Home Assistant domain Robot doesn't know (a switch, a button, a number, a select), a `send_command` in any
+domain, and a script, scene, group or automation count as code Robot can't see: a tap, never a spoken yes. Anyone who can make your Home Assistant's devices' names can
 put words in what Robot shows you; they are shown as information and never act.
 
 Robot's voices for other apps (Robot as the phone's text-to-speech engine, Settings › Voice) read text that any app can
@@ -329,3 +418,7 @@ your newest proven one.
 Every dependency is pinned (versions, and SHA-256 for native libraries, models and data). They are reviewed for security
 advisories at least once a month; a high or critical advisory in a part Robot uses gets a patch release as soon as a fix
 is available.
+
+Wikipedia on this phone (1.4) adds `librobotzim.so`, loaded only by the isolated `:wiki` process: libzim 9.3.0 and Xapian
+1.4.29 (GPL-2.0-or-later) with Zstandard 1.5.7, liblzma 5.8.1 and ICU 77.1, statically linked, built by
+`tools/build_libzim.sh` from release archives pinned by SHA-256. Their licences and sources are in `robot/THIRD_PARTY.md`.

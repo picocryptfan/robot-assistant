@@ -355,6 +355,10 @@
  ],
  "areas": [
   [
+   "read",
+   "^app/src/main/java/app/heyrobot/assistant/read/"
+  ],
+  [
    "language",
    "^app/src/main/java/app/heyrobot/sys/AppLanguage\\.kt$"
   ],
@@ -555,8 +559,16 @@
    "^app/src/main/java/app/heyrobot/sys/(MtSpeedRun|MtModelStore)\\.kt$"
   ],
   [
+   "wiki",
+   "^app/src/main/java/app/heyrobot/ui/settings/WikipediaSettings\\.kt$"
+  ],
+  [
+   "wiki",
+   "^app/src/main/java/app/heyrobot/sys/WikiStore\\.kt$"
+  ],
+  [
    "web",
-   "^core/src/main/java/app/heyrobot/core/web/"
+   "^core/src/main/java/app/heyrobot/core/(web|wiki)/"
   ],
   [
    "web",
@@ -573,6 +585,10 @@
   [
    "termux",
    "^core/src/main/java/app/heyrobot/core/termux/"
+  ],
+  [
+   "shots",
+   "^core/src/main/java/app/heyrobot/core/shots/"
   ],
   [
    "termux",
@@ -688,7 +704,7 @@
   ],
   [
    "files",
-   "^app/src/main/java/app/heyrobot/assistant/(PanelFileAnswer|PanelFileTools|FilingWork|FilingNotices)\\.kt$"
+   "^app/src/main/java/app/heyrobot/assistant/(PanelFileAnswer|PanelFileRead|PanelFileTools|FilingWork|FilingNotices)\\.kt$"
   ],
   [
    "files",
@@ -713,6 +729,22 @@
   [
    "lists",
    "^app/src/main/java/app/heyrobot/ui/settings/ListsSettings\\.kt$"
+  ],
+  [
+   "logbook",
+   "^core/src/main/java/app/heyrobot/core/logbook/"
+  ],
+  [
+   "logbook",
+   "^app/src/main/java/app/heyrobot/assistant/logbook/"
+  ],
+  [
+   "logbook",
+   "^app/src/main/java/app/heyrobot/sys/LogbookVault\\.kt$"
+  ],
+  [
+   "logbook",
+   "^app/src/main/java/app/heyrobot/ui/settings/LogbookSettings\\.kt$"
   ],
   [
    "everyday",
@@ -856,12 +888,14 @@
   "handsfree",
   "conversation",
   "web",
+  "wiki",
   "termux",
   "model",
   "voice",
   "settings",
   "guide",
   "updates",
+  "feedback",
   "adb",
   "backup",
   "lock",
@@ -871,7 +905,10 @@
   "lists",
   "everyday",
   "link",
-  "today"
+  "today",
+  "shots",
+  "read",
+  "logbook"
  ],
  "resource_prefixes": {
   "language": [
@@ -923,6 +960,9 @@
   "termux": [
    "termux_"
   ],
+  "shots": [
+   "shots_"
+  ],
   "model": [
    "model_"
   ],
@@ -944,6 +984,9 @@
    "update_",
    "feedback_"
   ],
+  "feedback": [
+   "report_"
+  ],
   "adb": [
    "adb_",
    "shizuku_"
@@ -961,8 +1004,14 @@
   "files": [
    "files_"
   ],
+  "read": [
+   "read_"
+  ],
   "lists": [
    "lists_"
+  ],
+  "logbook": [
+   "logbook_"
   ],
   "everyday": [
    "everyday_"
@@ -975,6 +1024,9 @@
   ],
   "today": [
    "today_"
+  ],
+  "wiki": [
+   "wiki_"
   ]
  }
 }

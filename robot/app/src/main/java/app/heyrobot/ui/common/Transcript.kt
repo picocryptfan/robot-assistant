@@ -51,6 +51,8 @@ data class TurnUi(
     val reply: ReplyCardView? = null,
     /** 0.9: a web answer's card (sources, what was sent, credits), in the panel only. */
     val web: AnswerCard? = null,
+    /** Wikipedia P4b: a reply from the copy on this phone's card (the articles, their links, the licence), in the panel only. */
+    val wiki: app.heyrobot.core.wiki.WikiCard? = null,
     /** 1.4 Lists: a list read or checked, with tick boxes (ListCard), in the panel only. */
     val list: ListCardView? = null,
 ) {
@@ -74,6 +76,8 @@ class TurnActions(
     val list: ((String, ListCardOp) -> Unit)? = null,
     /** chat-files: a file chip's Save to Robot Files, in the screen's languages; null (History): no button. */
     val saveFile: ((app.heyrobot.core.i18n.Langs) -> Unit)? = null,
+    /** RP3: "Report a problem with this answer", by the reply's id, on press and hold; null: none. */
+    val report: ((String) -> Unit)? = null,
 ) {
     companion object {
         val None = TurnActions()

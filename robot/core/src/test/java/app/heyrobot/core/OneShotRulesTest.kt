@@ -62,7 +62,7 @@ class OneShotRulesTest {
         assertEquals(BrainError.BAD_REQUEST, OneShotRules.imageCheck(read, null, vision = true))
         assertEquals(BrainError.BAD_REQUEST, OneShotRules.imageCheck(read.copy(hasImage = false), jpeg, vision = true))
         // Any other kind with a picture, even one that says so (the wire refuses it before this).
-        for (k in OneShotKind.entries.filter { it != OneShotKind.FILE_READ })
+        for (k in OneShotKind.entries.filter { !it.takesImage })
             assertEquals(k.name, BrainError.BAD_REQUEST, OneShotRules.imageCheck(read.copy(kind = k), jpeg, vision = true))
         // Not a JPEG, or too large: a bad request whatever the model (never NO_VISION, never to the decoder).
         val png = byteArrayOf(0x89.toByte(), 'P'.code.toByte(), 'N'.code.toByte(), 'G'.code.toByte())

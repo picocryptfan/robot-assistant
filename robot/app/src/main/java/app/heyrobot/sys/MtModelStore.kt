@@ -91,7 +91,7 @@ object MtModelStore {
                     out[c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_ID))] = FileDownload(
                         c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)),
                         c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)),
-                        c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON)),
+                        DownloadNetwork.reason(ctx, c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)), c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON))),
                     )
                 }
                 out
@@ -158,8 +158,14 @@ object MtModelStore {
 
     // ------------------------------------------------------------------ download, install, delete
 
-    /** Null when the download started (or goes on), else why not in plain words. */
-    fun startDownload(ctx: Context, b: MtBundle): String? {
+    /** What the download still fetches (the .gz files not installed yet), for MainActivity's askNetwork. */
+    fun bytesToFetch(ctx: Context, b: MtBundle): Long = remaining(ctx, b).sumOf { it.gzBytes }
+
+    /**
+     * Null when the download started (or goes on), else why not in plain words. [anyNetwork] false: the download manager
+     * holds it until an unmetered network (the person chose "Wait for Wi-Fi"), and the status line says so.
+     */
+    fun startDownload(ctx: Context, b: MtBundle, anyNetwork: Boolean): String? {
         val rem = remaining(ctx, b)
         val staged = rem.filter { stagedComplete(ctx, b, it) }.map { it.name }.toSet()
         val pending = VoiceModelStore.pendingBytes(ctx) + ModelStore.pendingBytes(ctx)
@@ -184,6 +190,8 @@ object MtModelStore {
                     .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
                     .setDestinationInExternalFilesDir(ctx, null, "$STAGING/${b.id}/${f.name}.gz")
                     .addRequestHeader("User-Agent", DownloadPolicy.userAgent(BuildConfig.VERSION_NAME))
+                    .setAllowedOverMetered(anyNetwork)
+                    .setAllowedOverRoaming(false)
                 ids[f.name] = dm.enqueue(req)
                 // What went online: handed to Android's download service; its end is recorded once it has ended.
                 NetLog.downloadStarted(ctx, ids.getValue(f.name), NetPurpose.TRANSLATION_DOWNLOAD, b.url(f), f.gzBytes)

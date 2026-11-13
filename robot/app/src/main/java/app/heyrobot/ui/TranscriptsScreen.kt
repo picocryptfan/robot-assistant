@@ -175,7 +175,8 @@ fun TranscriptsScreen(snackbar: SnackbarHostState, onOpen: (String, Int?) -> Uni
         floatingActionButton = {
             ExtendedFloatingActionButton(onClick = {
                 try { ctx.startActivity(Transcripts.startIntent(ctx, app.heyrobot.core.ConvEntry.APP.name)) } catch (_: Exception) {}
-            }, icon = { Icon(RIcons.Mic, null) }, text = { Text(stringResource(R.string.conv_transcribe)) })
+            // Material hides the button's text from TalkBack (it can collapse to the icon), so the icon carries the name.
+            }, icon = { Icon(RIcons.Mic, stringResource(R.string.conv_transcribe)) }, text = { Text(stringResource(R.string.conv_transcribe)) })
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { pad ->
@@ -285,6 +286,8 @@ fun TranscriptScreen(id: String, focusLine: Int?, snackbar: SnackbarHostState, o
     var meta by remember { mutableStateOf<TranscriptMeta?>(null) }
     var t by remember { mutableStateOf<Transcript?>(null) }
     var gone by remember { mutableStateOf(false) }
+    // fix-seal-transcripts-c, Low 5: a transcript that won't open says why, never a blank page.
+    var why by remember { mutableStateOf<app.heyrobot.core.TranscriptStore.Unopened?>(null) }
     var live by remember { mutableStateOf(false) }
     var tick by remember { mutableIntStateOf(0) }
     var menu by remember { mutableStateOf(false) }
@@ -326,16 +329,20 @@ fun TranscriptScreen(id: String, focusLine: Int?, snackbar: SnackbarHostState, o
     LaunchedEffect(id, tick, resumed) {
         while (true) {
             // Read here, written below on the main thread: the list reads summaries while it measures (flakes-2).
+            var w: app.heyrobot.core.TranscriptStore.Unopened? = null
             val (read, sums) = withContext(Dispatchers.IO) {
                 val s = Transcripts.store(ctx)
-                Triple(s.meta(id), s.load(id), Transcripts.live(ctx) == id) to s.summaries(id)
+                val loaded = s.load(id)
+                if (loaded == null) w = s.unopened(id)
+                Triple(s.meta(id), loaded, Transcripts.live(ctx) == id) to s.summaries(id)
             }
             val (m, tr, l) = read
             summaries = sums
             meta = m
             t = tr
             live = l
-            gone = m == null
+            why = w
+            gone = m == null && w == null
             // A transcript being recorded grows: read it again every few seconds while in front.
             if (!l || !resumed) break
             delay(3_000)
@@ -425,7 +432,13 @@ fun TranscriptScreen(id: String, focusLine: Int?, snackbar: SnackbarHostState, o
         val m = meta
         val tr = t
         if (gone || m == null || tr == null) {
-            Box(Modifier.fillMaxSize().padding(pad), contentAlignment = Alignment.Center) { Text(if (gone) stringResource(R.string.conv_deleted) else "") }
+            Box(Modifier.fillMaxSize().padding(pad), contentAlignment = Alignment.Center) { Text(when {
+                gone -> stringResource(R.string.conv_deleted)
+                why == app.heyrobot.core.TranscriptStore.Unopened.NEWER -> stringResource(R.string.conv_too_new)
+                why == app.heyrobot.core.TranscriptStore.Unopened.DAMAGED -> stringResource(R.string.conv_damaged)
+                why != null -> stringResource(R.string.conv_cant_open)
+                else -> ""
+            }) }
             return@Scaffold
         }
         val all = remember(tr) { timeline(tr) }

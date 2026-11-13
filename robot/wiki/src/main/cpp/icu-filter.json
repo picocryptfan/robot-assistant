@@ -1,0 +1,8 @@
+{
+  "strategy": "additive",
+  "featureFilters": {
+    "cnvalias": "include",
+    "normalization": { "includelist": ["nfc"] },
+    "translit": { "includelist": ["root"] }
+  }
+}

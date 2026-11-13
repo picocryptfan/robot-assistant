@@ -286,7 +286,14 @@
         <item quantity="one">%d bridge line. Only that bridge sees your address.</item>
         <item quantity="other">%d bridge lines. Only those bridges see your address.</item>
     </plurals>
+    <string name="link_bridges_own_snowflake_skipped">Your Snowflake lines aren\'t used while one of your bridges is on your home network.</string>
     <string name="link_bridges_edit">Edit</string>
+    <string name="link_bridges_remove">Remove</string>
+    <string name="link_bridges_remove_title">Remove your bridge lines?</string>
+    <string name="link_bridges_remove_text">Robot forgets the bridge lines you saved.</string>
+    <string name="link_bridges_remove_text_own">Robot forgets the bridge lines you saved. You\'re using them now, so Tor bridges go back to Off. Your network can see that you use Tor.</string>
+    <string name="link_bridges_removed">Bridge lines removed.</string>
+    <string name="link_bridges_removed_off">Bridge lines removed. Tor bridges are off.</string>
     <string name="link_bridges_own_field">Bridge lines</string>
     <string name="link_bridges_own_help">One bridge a line, up to 8, as bridges.torproject.org gives them.</string>
     <string name="link_bridges_own_bad">Robot can\'t use that as a bridge line. Check it and paste it again.</string>

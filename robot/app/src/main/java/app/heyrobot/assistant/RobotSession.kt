@@ -26,6 +26,7 @@ import app.heyrobot.core.RLog
 import app.heyrobot.sys.AppLanguage
 import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.LookStore
+import app.heyrobot.ui.common.filterObscuredTouches
 import app.heyrobot.ui.theme.RobotTheme
 
 // VOICE PROCESS. The panel the system shows for the assistant: the corner swipe, the lock-screen
@@ -77,6 +78,9 @@ class RobotSession(ctx: Context) : VoiceInteractionSession(ctx), LifecycleOwner,
             // Compose finds its owners from the window's root view, so they go on the decor view as well.
             w.decorView.setViewTreeLifecycleOwner(this)
             w.decorView.setViewTreeSavedStateRegistryOwner(this)
+            // A tap on the panel (Delete, Yes, Report it) is refused while another window covers that spot, as its popups
+            // and Robot's activities already do; Phone lock still hears the panel come up (Secure.kt, LS13).
+            w.filterObscuredTouches()
         }
         return panelView()
     }
@@ -211,11 +215,15 @@ class RobotSession(ctx: Context) : VoiceInteractionSession(ctx), LifecycleOwner,
 
     override fun launch(intent: Intent): Boolean = try {
         // fix-car-stay: with the car screen up, an app (your maps app's search or route, an app by name) opens beside it, never over it.
-        CarModeController.openBeside(intent) ?: run { context.startActivity(intent); true }
+        CarModeController.openBeside(intent) ?: run { context.startActivity(intent, ownPage(intent)); true }
     } catch (t: Throwable) {
         RLog.w("panel_launch", t)
         false
     }
+
+    /** fix-bug-card-14-c Low 2: Robot's own page learns Robot opened it (the bug card's hand); another app learns nothing new. */
+    private fun ownPage(i: Intent): android.os.Bundle? = if (i.component?.packageName != context.packageName) null
+        else android.app.ActivityOptions.makeBasic().setShareIdentityEnabled(true).toBundle()
 
     override fun secure(on: Boolean) {
         CarModeController.secure(on)

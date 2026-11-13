@@ -100,6 +100,7 @@ object ModelStrings : Strings("model", area = "model") {
     // Why a download paused or failed (Android's download manager).
     val reasonRetry = s("reason_retry", "waiting to retry: couldn't reach the server", "en attente d'un nouvel essai : le serveur était injoignable")
     val reasonNetwork = s("reason_network", "waiting for a network connection", "en attente d'une connexion réseau")
+    val reasonRoaming = s("reason_roaming", "waiting until the phone isn't roaming", "en attente de la fin de l'itinérance")
     val reasonWifi = s("reason_wifi", "waiting for Wi-Fi (too large for mobile data)", "en attente du Wi-Fi (trop gros pour les données mobiles)")
     val reasonPaused = s("reason_paused", "paused", "en pause")
     val reasonHttp = s("reason_http", "the server answered with error {code}", "le serveur a répondu par l'erreur {code}")
@@ -514,14 +515,16 @@ object ModelStrings : Strings("model", area = "model") {
         "Estimé pour un Tensor G4 aux deux tiers ou aux quatre cinquièmes de la mesure de Robot sur un Pixel 10 Pro (environ 70 jetons " +
             "par seconde lus, 8 écrits).")
 
-    // Before a big download: Robot can't see whether the phone is on Wi-Fi.
+    // Before a big download, on any network: a long download can move from Wi-Fi to mobile data before it ends, and "Wait
+    // for Wi-Fi" has Android's download manager hold it for a network that isn't metered (setAllowedOverMetered(false)).
     val downloadQuestion = s("download_question", "Download {size}?", "Télécharger {size} ?")
-    val downloadMobileData = s("download_mobile_data", "Robot can't tell whether you're on Wi-Fi or mobile data. On mobile data, {size} " +
-        "may use up your plan or cost you.\n\nWait for Wi-Fi: the download starts once the phone is on Wi-Fi (or another network that " +
-        "isn't metered).",
-        "Robot ne peut pas savoir si tu es sur le Wi-Fi ou sur les données mobiles. Sur les données mobiles, {size} pourrait épuiser " +
-            "ton forfait ou te coûter de l'argent.\n\nAttendre le Wi-Fi : le téléchargement commence dès que le téléphone est sur le " +
-            "Wi-Fi (ou sur un autre réseau qui n'est pas facturé à l'usage).")
+    val downloadMobileData = s("download_mobile_data", "Robot asks before every download this big: it can take a while, and the phone " +
+        "can move from Wi-Fi to mobile data before it ends. On mobile data, {size} may use up your plan or cost you.\n\nWait for " +
+        "Wi-Fi: Android holds the download until the phone is on Wi-Fi (or another network that isn't metered).",
+        "Robot demande avant chaque téléchargement de cette taille : il peut être long, et le téléphone peut passer du Wi-Fi " +
+            "aux données mobiles avant la fin. Sur les données mobiles, {size} pourrait épuiser ton forfait ou te coûter de " +
+            "l'argent.\n\nAttendre le Wi-Fi : Android retient le téléchargement jusqu'à ce que le téléphone soit sur le Wi-Fi " +
+            "(ou sur un autre réseau qui n'est pas facturé à l'usage).")
     val waitForWifi = s("wait_for_wifi", "Wait for Wi-Fi", "Attendre le Wi-Fi")
     val downloadAnyway = s("download_anyway", "Download anyway", "Télécharger quand même")
 

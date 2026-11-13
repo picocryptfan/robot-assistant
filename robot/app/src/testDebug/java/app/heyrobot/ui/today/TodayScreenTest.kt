@@ -37,6 +37,7 @@ import androidx.compose.ui.test.swipeDown
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import androidx.compose.ui.test.onAllNodesWithText
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.time.ZoneId
@@ -51,6 +52,8 @@ import java.time.ZonedDateTime
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35], qualifiers = PHONE)
 class TodayScreenTest {
+    /** fix-seal-lows-d 2: the quick add is held outside the page; a test that leaves one saving mustn't hold the next. */
+    @org.junit.Before fun freshQuickAdd() { TodayQuickAdd.sent.value = null }
     @get:Rule val rule = createComposeRule()
 
     private val zone = ZoneId.of("America/Halifax")
@@ -64,10 +67,13 @@ class TodayScreenTest {
             NoteGlance("n1", "Parking", listOf("Level 3, row F"), true)))
 
     private val taps = mutableListOf<String>()
+    private var saves = true
+    private var hold = false
+    private var pending: ((Boolean) -> Unit)? = null
     private val actions = TodayActions(
         talk = { taps += "talk" }, openTime = { taps += "time" }, allowCalendar = { taps += "allow" }, openList = { taps += "list:$it" },
         openReminders = { taps += "reminders" }, openFiles = { taps += "files" }, openRobots = { taps += "robots" }, openNote = { taps += "note:$it" },
-        add = { taps += "add:$it" }, pick = { taps += "pick:$it" }, gettingStarted = { taps += "start" },
+        add = { s, done -> taps += "add:$s"; if (hold) pending = done else done(saves) }, pick = { taps += "pick:$it" }, gettingStarted = { taps += "start" },
         reorder = { o -> taps += "order:" + o.joinToString(",") { it.key } },
         fetchWeather = { taps += "weather" }, weatherTown = { taps += "town" },
     )
@@ -178,6 +184,49 @@ class TodayScreenTest {
         rule.onNode(hasSetTextAction()).performScrollTo().performTextInput("Row F, by the lift")
         tap("Add")
         assertEquals(listOf("add:Row F, by the lift"), taps)
+        rule.onAllNodes(hasSetTextAction() and hasText("Row F, by the lift")).assertCountEquals(0)
+    }
+
+    @Test fun aQuickAddNotSavedKeepsYourWords() {
+        saves = false
+        page()
+        rule.onNode(hasSetTextAction()).performScrollTo().performTextInput("Row F, by the lift")
+        tap("Add")
+        assertEquals(listOf("add:Row F, by the lift"), taps)
+        rule.onAllNodes(hasSetTextAction() and hasText("Row F, by the lift")).assertCountEquals(1)
+    }
+
+    @Test fun aSecondTapWhileSavingAddsOnce() {
+        hold = true
+        page()
+        rule.onNode(hasSetTextAction()).performScrollTo().performTextInput("Row F")
+        tap("Add")
+        tap("Add")
+        assertEquals(listOf("add:Row F"), taps)
+        rule.runOnIdle { pending!!(true) }
+        rule.onAllNodes(hasSetTextAction() and hasText("Row F")).assertCountEquals(0)
+        rule.onNode(hasSetTextAction()).performTextInput("Row G")
+        tap("Add")
+        assertEquals(listOf("add:Row F", "add:Row G"), taps)
+    }
+
+    private fun heldShows(held: app.heyrobot.core.NoteHeld, line: String) {
+        page(day().copy(note = null, noteHeld = held))
+        rule.onAllNodesWithText(line).assertCountEquals(1)
+        rule.onAllNodes(hasSetTextAction()).assertCountEquals(0)
+        rule.onAllNodesWithText("Write a note", useUnmergedTree = true).assertCountEquals(0)
+    }
+
+    @Test fun aNoteBusyJustNowSaysSoAndHoldsTheQuickAdd() =
+        heldShows(app.heyrobot.core.NoteHeld.NOT_NOW, "This note can’t be opened just now. Try again in a minute.")
+
+    @Test fun aNewerRobotsNoteSaysSoAndHoldsTheQuickAdd() =
+        heldShows(app.heyrobot.core.NoteHeld.TOO_NEW, "This note was saved by a newer Robot. Update Robot to open it.")
+
+    @Test fun noNotesStillOffersToWriteOne() {
+        page(day().copy(note = null))
+        rule.onAllNodesWithText("Write a note", useUnmergedTree = true).assertCountEquals(1)
+        rule.onAllNodes(hasSetTextAction()).assertCountEquals(1)
     }
 
     @Test fun withoutTheCalendarItAsksWithOneButton() {

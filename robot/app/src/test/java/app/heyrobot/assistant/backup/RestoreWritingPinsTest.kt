@@ -11,6 +11,9 @@ import java.io.File
  * the code (as ProcessIsolationTest does). The rules themselves are tested in core.
  */
 class RestoreWritingPinsTest {
+
+    /** seal-transcripts: Robolectric has no Android Keystore; the transcripts' store takes soft keys. */
+    @org.junit.Before fun transcriptKeys() { app.heyrobot.sys.Transcripts.testKeys(app.heyrobot.sys.SoftListsKeys(setOf(app.heyrobot.core.TranscriptKeyAliases.UNLOCKED))) }
     private val root: File = System.getProperty("robot.rootDir")?.let(::File) ?: File(System.getProperty("user.dir") ?: ".").absoluteFile.parentFile
     private fun code(path: String) = Source.strip(File(root, "app/src/main/java/app/heyrobot/$path").readText(), keepStrings = true, kotlin = true)
     private val writer by lazy { code("assistant/backup/RestoreWriter.kt") }
@@ -21,6 +24,18 @@ class RestoreWritingPinsTest {
         assertTrue("$first is missing", a >= 0)
         assertTrue("$then is missing", b >= 0)
         assertTrue("$first should come before $then", a < b)
+    }
+
+    /** seal-people-fix-b 2: a restored lock's chosen callers can be called before the next unlock; the editor's refresh outlives its page. */
+    @Test fun aRestoredLockRebuildsTheCallList() {
+        val apply = code("sys/RestoreApply.kt")
+        val lock = apply.substring(apply.indexOf("BackupCategory.PHONE_LOCK ->"), apply.indexOf("BackupCategory.EVERYDAY ->"))
+        assertBefore("LockStore.editLocks(ctx) { f }", "PeopleFiles.refreshCalls(ctx)", lock)
+        assertTrue(!code("ui/settings/PhoneLockEditor.kt").contains("PeopleFiles.refreshCalls(ctx)"))
+        // seal-people-fix-b 6: every lock edit, and Start over, rewrite it (Phone lock off: no file).
+        val settings = code("ui/settings/PhoneLockSettings.kt")
+        assertTrue(settings.contains("LockStore.editLocks(ctx, change).also { tick++; if (it != null) PeopleFiles.refreshCallsLater(ctx) }"))
+        assertTrue(settings.contains("LockStore.startOver(ctx); PeopleFiles.refreshCallsLater(ctx)"))
     }
 
     /** F23: :voice's start never recovers over a restore being written in this process. */

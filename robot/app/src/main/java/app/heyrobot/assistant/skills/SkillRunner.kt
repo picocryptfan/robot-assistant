@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.assistant.skills
 
+import app.heyrobot.core.skills.SkillPolicy
 import app.heyrobot.assistant.VoiceHub
 import app.heyrobot.assistant.routines.PanelRoutines
 import app.heyrobot.assistant.routines.RoutineRunner
@@ -67,7 +68,7 @@ object SkillRunner {
         }
         val out = SkillRun(s, values, named, ports.actions, ports.view, ports.confirmations, untrusted || host.untrusted, ports.messages, ports.langs,
             ports.newId, canWait, say = { t -> host.append(replyId, t); host.say(t, personal = true) }, done = done, sources = sources, outputs = outputs,
-            links = withContext(Dispatchers.IO) { PanelSkills.links() },
+            links = withContext(Dispatchers.IO) { PanelSkills.links() }, opens = SkillPolicy.opens(s, s.opens),
             // S3.2: a routine's own steps (the brief, your reminders, the messages count) as an asked routine runs them.
             routineSteps = RoutineSteps { st -> PanelRoutines.skillStep(replyId, s, st, host, l) }).run(from)
         // Settings › Skills' "Today 17:32 · 2 of 2 done": counts and a time only.

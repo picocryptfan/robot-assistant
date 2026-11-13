@@ -22,10 +22,12 @@ import java.time.LocalDate
  * asked and whether the phone was locked, never what the answer named.
  */
 object PanelOnline {
-    fun route(q: String): OnlineCommand? = OnlineRouter.route(q)
+    fun route(q: String): OnlineCommand? = app.heyrobot.assistant.later.PanelLater.route(q) ?: OnlineRouter.route(q)
 
     suspend fun handle(replyId: String, cmd: OnlineCommand, host: PanelRoutines.Host) {
         try {
+            // Signal later (signal-later-plan.md): its phrases share this slot.
+            if (cmd is app.heyrobot.core.online.LaterCommand) return app.heyrobot.assistant.later.PanelLater.handle(replyId, cmd, host)
             val ask = cmd as? OnlineAsk ?: return
             val locked = host.locked
             VoiceLog.add(VoiceEvent.ONLINE_ASKED, if (locked) 1 else 0)

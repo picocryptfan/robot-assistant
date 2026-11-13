@@ -45,7 +45,9 @@ class RestoreSafetyCoverageTest {
             // The everyday set: everyday_settings.json (the EVERYDAY category); the record of what went online guarded, the music app trust.
             app.heyrobot.core.everyday.EverydaySettings::class.java,
             // L12: link_settings.json (the LINKS category): "Answer while locked" guarded, on and the calendars trust.
-            app.heyrobot.core.link.LinkSettings::class.java)
+            app.heyrobot.core.link.LinkSettings::class.java,
+            // auto-open: open_apps.json, "Open apps you name without a card" guarded.
+            app.heyrobot.core.OpenAppsFile::class.java)
         for (c in must) assertTrue(c.simpleName, c in RestoreSafety.RULES)
         // Every nested field names a type that is classified too.
         for ((c, rules) in RestoreSafety.RULES) for ((name, r) in rules) if (r == FieldRule.NESTED) {

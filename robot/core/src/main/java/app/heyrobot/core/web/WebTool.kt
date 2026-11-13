@@ -115,14 +115,16 @@ object WebGate {
      * (the level, the lock, content in the conversation).
      */
     fun prepare(a: Action.WebSearch, s: WebSettings, answer: WebConsentAnswer?, ctx: QueryContext, searchesToday: Int, home: String? = null,
-        question: String = a.query): Prepared {
+        question: String = a.query, helper: Boolean = false): Prepared {
+        // W4 ([helper]: a helper asked): "Let helpers use Robot's search" is read at each call, not only when its session began.
+        if (helper && !s.helpersMayUse) return Prepared.Refused(ActionStatus.DISABLED, HELPERS_OFF)
         // The card says these in the reply language; the model reads their English (Prepared's phrases, 1.1).
         if (!WebConsent.on(s, answer)) return Prepared.Refused(ActionStatus.DISABLED, OFF_TURN_ON)
         val service = s.service ?: return Prepared.Refused(ActionStatus.DISABLED, WebFail.OFF.sentence(null))
         if (searchesToday >= s.dailySearches) return Prepared.Refused(ActionStatus.FAILED, dailyCap(s.dailySearches))
         val why = LinkedHashSet<AskWhy>()
         val notes = ArrayList<Phrase>()
-        val query = when (val v = QueryCheck.check(withTown(a.query, s.addTown, home), ctx)) {
+        val query = when (val v = QueryCheck.check(withTown(a.query, s.addTown && !helper, home.takeUnless { helper }), ctx)) {
             is QueryVerdict.Refuse -> return Prepared.Refused(ActionStatus.FAILED, v.why.textPhrase)
             is QueryVerdict.Card -> {
                 why += if (v.why.tapOnly) AskWhy.SEARCH_PERSONAL else AskWhy.SEARCH
@@ -162,6 +164,8 @@ object WebGate {
     /** The search runs ([consent] null: no card was needed; Allow always or Just this time). "No" and "No, don't ask again" don't. */
     fun searches(consent: WebConsentChoice?): Boolean = consent != WebConsentChoice.NO && consent != WebConsentChoice.NEVER
 
+    /** A helper's search while "Let helpers use Robot's search" is off. */
+    val HELPERS_OFF: Phrase get() = WebStrings.helpersOff("path" to UiStrings.inSettings(UiStrings.webSearch))
     /** "Web search is off: turn it on in Robot's Settings › Web search." */
     val OFF_TURN_ON: Phrase get() = WebStrings.offTurnOn("path" to UiStrings.inSettings(UiStrings.webSearch))
 
@@ -218,7 +222,8 @@ object WebQueryContext {
             if (t.files) personal += t.text
             if (t.actions.any { it.content && it.tool != ToolName.WEB_SEARCH } && !fresh) blindPersonal = true
             val web = t.actions.any { it.tool == ToolName.WEB_SEARCH && it.content }
-            if (t.fromHelper || t.readBack || web) untrusted += t.text
+            // review-wikipedia-p4-c (Low): so are an answer's words from the copy of Wikipedia (ChatTurn.content).
+            if (t.fromHelper || t.readBack || web || t.content) untrusted += t.text
             val read = t.actions.filter { it.content && it.tool != ToolName.WEB_SEARCH }
             if (read.isNotEmpty()) {
                 personal += t.text

@@ -203,6 +203,8 @@ data class Routine(
     val online: Set<OnlineUse> = emptySet(),
     /** 1.3: the skill it runs as (RoutineMigration), or null before the migration. routines.json keeps v1 with it (1.2 reads past it). */
     val skill: String? = null,
+    /** auto-open-plan §1: the apps (package names) its save card let its open steps open without asking (RoutineGate). */
+    val opens: Set<String> = emptySet(),
 ) {
     /** The online services its steps reach. */
     val needsOnline: Set<OnlineUse> get() = steps.mapNotNull { it.online }.toSet()
@@ -389,6 +391,7 @@ object RoutineCodec {
         put("lock", r.lock.id)
         put("online", JSONArray().apply { for (u in OnlineUse.entries) if (u in r.online) put(u.id) })
         r.skill?.let { put("skill", it) }
+        if (r.opens.isNotEmpty()) put("opens", JSONArray().apply { r.opens.sorted().forEach { put(it) } })
     }
 
     /** One routine, or null when anything in it can't be read or it fails [RoutineCheck]. */
@@ -412,6 +415,8 @@ object RoutineCodec {
             lock = if (o.has("lock")) RoutineLock.of(str(o, "lock"))!! else RoutineLock.FOLLOW,
             online = o.optJSONArray("online")?.let { a -> (0 until a.length()).map { OnlineUse.of(a.opt(it) as? String)!! }.toSet() } ?: emptySet(),
             // 1.3: a link that isn't a skill's id is a routine that can't be read, like any other value.
+            // review-auto-open 7: each entry checked with skills.json's package pattern; a bad one drops only itself.
+            opens = o.optJSONArray("opens")?.let { a -> (0 until a.length()).mapNotNull { (a.opt(it) as? String)?.takeIf(app.heyrobot.core.skills.SkillCodec.PACKAGE::matches) }.toSet() } ?: emptySet(),
             skill = if (o.has("skill")) str(o, "skill")!!.also { require(app.heyrobot.core.skills.SkillCheck.validId(it)) } else null,
         )
         r.takeIf { RoutineCheck.valid(it) }

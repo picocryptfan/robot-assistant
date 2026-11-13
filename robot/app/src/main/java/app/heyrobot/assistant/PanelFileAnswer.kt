@@ -123,6 +123,9 @@ internal class PanelFileAnswer(
 
         fun markPrivate(replyId: String) = synchronized(privateReplies) { privateReplies += replyId }
 
+        /** Whether [id] answers from a private file and History hasn't taken it yet: never said aloud (1.3, a Files page read aloud). */
+        fun isPrivate(id: String) = synchronized(privateReplies) { id in privateReplies }
+
         /** FX1: replies Robot Files' router gave: History marks them (ChatTurn.files), for travel mode's placeholder. */
         private val filesReplies = HashSet<String>()
 

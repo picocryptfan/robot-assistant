@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.assistant.routines
 
+import app.heyrobot.sys.HeadsUpAlarms
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import app.heyrobot.core.RLog
+import app.heyrobot.sys.OwnTimerRing
 import app.heyrobot.sys.RoutineIntents
 import java.time.LocalDateTime
 
@@ -12,11 +14,13 @@ import java.time.LocalDateTime
 // time routine (sys RoutineAlarms sets it, by this class's name), a Ready notification's tap, and the broadcasts that
 // make the alarm wrong: BOOT_COMPLETED (after the first unlock: routines.json is in credential-encrypted storage, so not
 // LOCKED_BOOT_COMPLETED), TIME_SET, TIMEZONE_CHANGED and MY_PACKAGE_REPLACED, all exempt from the implicit-broadcast
-// limits. Only the system and Robot's own PendingIntents reach it. The work goes to RoutineHub's thread.
+// limits. Only the system, Robot's own PendingIntents and (1.3) people/HoldTap's explicit broadcast reach it. The work goes to RoutineHub's thread.
 
 class RoutineAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {
         val app = ctx.applicationContext
+        // named-timers: Robot's own timers ring and stop here, before the routines; boot and clock changes reach both.
+        if (OwnTimerRing.receive(app, intent)) return
         val action = intent.action ?: return
         val done = goAsync()
         RLog.i("routine_receiver", "action" to RLog.Code(action.substringAfterLast('.').lowercase()))
@@ -26,9 +30,14 @@ class RoutineAlarmReceiver : BroadcastReceiver() {
                     RoutineIntents.ACTION_FIRE -> RoutineHub.onTimeAlarm(
                         intent.getStringExtra(RoutineIntents.EXTRA_SLOT)?.let { try { LocalDateTime.parse(it) } catch (_: Exception) { null } },
                         intent.getLongExtra(RoutineIntents.EXTRA_AT, 0L))
+                    RoutineIntents.ACTION_MOMENT -> RoutineHub.onMomentAlarm()
+                    HeadsUpAlarms.ACTION -> HeadsUpHub.check(app)
                     RoutineIntents.ACTION_READY -> RoutineHub.openReady(intent.getStringExtra(RoutineIntents.ARG_READY) ?: RoutineIntents.ALL_READY)
+                    RoutineIntents.ACTION_HOLD_OVER -> intent.getStringExtra(RoutineIntents.EXTRA_LINE)?.let {
+                        RoutineVoice.holdOver(it, intent.getBooleanExtra(RoutineIntents.EXTRA_SOMEONE_ELSE, true))
+                    }
                     Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_TIME_CHANGED, Intent.ACTION_TIMEZONE_CHANGED, Intent.ACTION_MY_PACKAGE_REPLACED ->
-                        RoutineHub.onClockChanged()
+                        { RoutineHub.onClockChanged(); HeadsUpAlarms.arm(app) }
                 }
             } finally {
                 done.finish()

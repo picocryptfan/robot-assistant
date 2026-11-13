@@ -76,7 +76,7 @@ object UiStrings : Strings("ui", area = "language") {
 
     // Pages and rows under them that sentences name.
     val updates = s("updates", "Updates", "Mises à jour")
-    val sendFeedback = s("send_feedback", "Send feedback", "Envoyer un commentaire")
+    val sendFeedback = s("send_feedback", "Report a problem or send an idea", "Signaler un problème ou proposer une idée")
     val licences = s("licences", "Licences", "Licences")
     val setupGuide = s("setup_guide", "Setup guide", "Guide de configuration")
     val adbFixes = s("adb_fixes", "ADB fixes", "Correctifs ADB")

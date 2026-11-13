@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.car
 
+import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.messages.ScamCheck
 import app.heyrobot.core.everyday.MusicApp
 import app.heyrobot.core.messages.MessageThread
 import app.heyrobot.core.messages.MessagesStatus
@@ -15,8 +17,24 @@ import org.json.JSONObject
 /** The large panel. [MAP]: your maps app beside the car screen in split screen, once you tap to open it. */
 enum class CarLarge { MAP, MEDIA, MESSAGES }
 
-/** The information panel. */
-enum class CarInfo { MEDIA, DIRECTIONS, LATEST_MESSAGE }
+/** The information panel: the bottom screen's slot above the buttons. [WIDGET]: an app's widget you picked (car-screens-plan.md). */
+enum class CarInfo { MEDIA, DIRECTIONS, LATEST_MESSAGE, WIDGET }
+
+/**
+ * The widget you picked for the bottom screen: its app pinned with its signer, as your music app is, the widget's class
+ * in that app ([provider]), and the id Android gave it when you allowed Robot to add it ([id]).
+ */
+data class CarWidget(val app: MusicApp, val provider: String, val id: Int) {
+    companion object {
+        private val CLASS = Regex("[A-Za-z_][A-Za-z0-9_$]*(\\.[A-Za-z_][A-Za-z0-9_$]*)*")
+
+        /** This host's [ids] to delete: all but [keep] (the saved widget's, a pick still waiting on its answer). */
+        fun leftovers(ids: IntArray, keep: Set<Int>): List<Int> = ids.filter { it !in keep }
+
+        fun valid(app: MusicApp, provider: String, id: Int): Boolean =
+            MusicApp.valid(app.pkg, app.sha256, app.label) && id > 0 && provider.length <= 255 && CLASS.matches(provider)
+    }
+}
 
 /** Robot's own actions for the fourth button. */
 enum class CarAction { MUSIC_APP, MAPS, NAVIGATE_HOME }
@@ -33,18 +51,38 @@ data class CarLayout(
     val fourth: CarFourth = CarFourth.Action(CarAction.MUSIC_APP),
     /** The apps you keep for the car (Settings › Car mode › Apps), each pinned with its signer, at most [MAX_APPS]. */
     val apps: List<MusicApp> = emptyList(),
+    /** The bottom screen's widget when [info] is [CarInfo.WIDGET]; [info] reads as the media player without one. */
+    val widget: CarWidget? = null,
 ) {
     /**
      * What the information panel shows. A panel never shows twice. [beside]: the window is in split screen, the other app
      * holds the large half, and what the large panel held moves here, so media or messages you chose stay on the screen.
      */
     fun infoNow(beside: Boolean): CarInfo = when {
+        info == CarInfo.WIDGET -> if (widget == null) CarInfo.MEDIA else CarInfo.WIDGET
         beside && large == CarLarge.MEDIA -> CarInfo.MEDIA
         beside && large == CarLarge.MESSAGES -> CarInfo.LATEST_MESSAGE
         large == CarLarge.MEDIA && info == CarInfo.MEDIA -> CarInfo.DIRECTIONS
         large == CarLarge.MESSAGES && info == CarInfo.LATEST_MESSAGE -> CarInfo.MEDIA
         else -> info
     }
+
+    /**
+     * What the bottom screen's slot shows now. A widget never shows over the lock screen ([locked]) or while Phone lock
+     * closes its app ([phoneLockCloses]): it would show that app's own data and take taps for it. [swapped]: the bottom
+     * swap has put the media player in the widget's place. In each case the slot shows the media player, or directions
+     * when the large panel already shows media.
+     */
+    fun slotNow(beside: Boolean, locked: Boolean, phoneLockCloses: Boolean, swapped: Boolean = false): CarInfo {
+        val info = infoNow(beside)
+        if (info != CarInfo.WIDGET) return info
+        if (!locked && !phoneLockCloses && !swapped) return CarInfo.WIDGET
+        return if (largeNow(beside) == CarLarge.MEDIA) CarInfo.DIRECTIONS else CarInfo.MEDIA
+    }
+
+    /** Whether the bottom screen has a swap: a widget is set and may show now. */
+    fun swapsBottom(beside: Boolean, locked: Boolean, phoneLockCloses: Boolean): Boolean =
+        infoNow(beside) == CarInfo.WIDGET && !locked && !phoneLockCloses
 
     /** The large panel now: none in split screen, where the other app is the large half. */
     fun largeNow(beside: Boolean): CarLarge? = large.takeUnless { beside }
@@ -60,6 +98,7 @@ data class CarLayout(
             is CarFourth.App -> put("fourthApp", app(fourth.app))
         }
         if (apps.isNotEmpty()) put("apps", JSONArray().apply { apps.forEach { put(app(it)) } })
+        widget?.let { put("widget", app(it.app).put("provider", it.provider).put("id", it.id)) }
     }
 
     private fun app(a: MusicApp) = JSONObject().put("package", a.pkg).put("sha256", a.sha256).put("label", a.label)
@@ -74,21 +113,30 @@ data class CarLayout(
             return if (MusicApp.valid(pkg, sha, label)) MusicApp(pkg, sha, label) else null
         }
 
+        private fun widgetOf(w: JSONObject?): CarWidget? {
+            val app = appOf(w) ?: return null
+            val provider = w?.optString("provider").orEmpty()
+            val id = w?.optInt("id", 0) ?: 0
+            return if (CarWidget.valid(app, provider, id)) CarWidget(app, provider, id) else null
+        }
+
         fun fromJson(o: JSONObject?): CarLayout {
             val d = CarLayout()
             if (o == null) return d
             val app = appOf(o.optJSONObject("fourthApp"))
             val kept = o.optJSONArray("apps")?.let { list -> (0 until list.length()).mapNotNull { appOf(list.optJSONObject(it)) } }.orEmpty()
             val action = CarAction.entries.firstOrNull { it.name == o.optString("fourth") }
-            return CarLayout(o.enumOr("large", d.large), o.enumOr("info", d.info),
+            val widget = widgetOf(o.optJSONObject("widget"))
+            val info = o.enumOr("info", d.info).takeUnless { it == CarInfo.WIDGET && widget == null } ?: d.info
+            return CarLayout(o.enumOr("large", d.large), info,
                 app?.let { CarFourth.App(it) } ?: action?.let { CarFourth.Action(it) } ?: d.fourth,
-                kept.distinctBy { it.pkg }.take(MAX_APPS))
+                kept.distinctBy { it.pkg }.take(MAX_APPS), widget)
         }
     }
 }
 
 /** One conversation's newest message on the car screen, shown only. [text] null: not to be shown, or there's none to show. */
-data class CarMessageLine(val who: String, val text: String?) {
+data class CarMessageLine(val who: String, val text: String?, val scam: Phrase? = null) {
     override fun toString(): String = "CarMessageLine(…)" // l10n: not text (toString, for the logs)
 }
 
@@ -108,7 +156,8 @@ data class CarMessagesNow(val state: State = State.NONE, val lines: List<CarMess
             if (!status.on || !status.access) return CarMessagesNow(State.OFF)
             val lines = threads.mapNotNull { t ->
                 val newest = t.incoming.filter { !it.historic }.maxByOrNull { it.time } ?: return@mapNotNull null
-                newest.time to CarMessageLine(clean(t.name), if (t.hidden != null) null else clean(newest.text).take(MAX_TEXT).ifEmpty { null })
+                newest.time to CarMessageLine(clean(t.name), if (t.hidden != null) null else clean(newest.text).take(MAX_TEXT).ifEmpty { null },
+                    if (t.hidden != null) null else ScamCheck.line(newest.text))
             }.sortedByDescending { it.first }.map { it.second }.take(max.coerceAtLeast(1))
             return when {
                 lines.isNotEmpty() -> CarMessagesNow(State.SHOWN, lines, status.locked)

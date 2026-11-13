@@ -1,0 +1,61 @@
+# Read it to me's phrases (read-it-to-me-plan.md §4): reading state, phrase, what ReadRouter makes of it ("-": nothing).
+none	read me this	Shared
+none	Read this to me, please.	Shared
+none	can you read me this article	Shared
+none	read it out loud	Shared
+none	Hey Robot, read this page to me	Shared
+none	lis-moi ça	Shared
+none	Lis-moi ça, s’il te plaît.	Shared
+none	peux-tu me lire cet article?	Shared
+none	lis-moi l'article	Shared
+none	lis ça à voix haute	Shared
+none	read me my note about the trip	Note:the trip
+none	read my note on the camping gear	Note:the camping gear
+none	read me my last note	Note:
+none	read me the note called packing	Note:packing
+none	lis-moi ma note sur le voyage	Note:le voyage
+none	lis-moi ma dernière note	Note:
+none	lis ma note qui s'appelle épicerie	Note:epicerie
+none	read me the PDF called lease	File:lease
+none	read me my document about the warranty	File:the warranty
+none	lis-moi le PDF du bail	File:bail
+none	lis-moi mon document sur la garantie	File:la garantie
+none	pause reading	Pause
+none	mets la lecture en pause	-
+none	keep reading	Resume
+none	continue reading	Resume
+none	continue la lecture	-
+none	reprends la lecture	-
+none	go back a bit	Back
+none	reviens un peu en arrière	-
+none	recule un peu	-
+none	stop reading	Stop
+none	arrête la lecture	-
+playing	pause	Pause
+playing	attends	Pause
+playing	back	Back
+playing	recule	Back
+paused	continue	Resume
+paused	reprends	Resume
+paused	keep going	Resume
+paused	go back	Back
+none	pause	-
+none	continue	-
+none	go back	-
+paused	pause	Pause
+playing	continue	-
+none	read me my notes	-
+none	read me my packing list	-
+none	read that again	-
+none	read my messages	-
+none	lis-moi mes messages	-
+none	lis-moi ma liste de choses à faire	-
+none	read me the news	-
+none	read me the PDF	-
+none	read me the email	-
+none	mets ça en pause	-
+none	attends	-
+playing	reprends la lecture	Resume
+paused	arrête la lecture	Stop
+paused	mets ça en pause	Pause
+playing	mets ça en pause	Pause

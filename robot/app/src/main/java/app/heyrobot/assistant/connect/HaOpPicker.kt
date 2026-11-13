@@ -57,6 +57,7 @@ fun HaOpPicker(c: Connection, p: HaPickers, onCancel: () -> Unit, onSave: (ConnO
     var service by remember { mutableStateOf<Pair<String, String>?>(null) }
     var picked by remember { mutableStateOf(setOf<String>()) }
     var title by remember { mutableStateOf("") }
+    var marks by remember { mutableStateOf(setOf<app.heyrobot.core.skills.SkillEffect>()) }
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val focus = LocalFocusManager.current
     fun opId(base: String): String {
@@ -67,7 +68,7 @@ fun HaOpPicker(c: Connection, p: HaPickers, onCancel: () -> Unit, onSave: (ConnO
         HaWhat.CALL -> service?.let { (d, sv) -> HaPick.call(opId("${d}_$sv"), title.trim(), d, sv, picked.toList().sorted(), p) }
         HaWhat.READ -> picked.singleOrNull()?.let { HaPick.read(opId("read_" + it.substringAfter('.')), title.trim(), it, p) }
         HaWhat.SCRIPT -> HaPick.script(opId("script_" + (picked.singleOrNull()?.substringAfter('.') ?: "run")), title.trim(), picked.toList().sorted(), p)
-    }
+    }?.let { HaPick.marked(it, marks) }
     Text(stringResource(R.string.conn_pick_title, c.name), style = MaterialTheme.typography.headlineSmall)
     Column {
         for (w in HaWhat.entries) Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).selectable(what == w, role = Role.RadioButton) {
@@ -121,6 +122,9 @@ fun HaOpPicker(c: Connection, p: HaPickers, onCancel: () -> Unit, onSave: (ConnO
     if (made != null) {
         val chips = SkillEditor.chips(HaPick.effects(c, made))
         if (chips.isNotEmpty()) Text(stringResource(R.string.conn_pick_does, Phrase.ListOf(chips).str()), style = MaterialTheme.typography.bodyMedium)
+        // Your marks before you save (L1): an operation picked again after a rename starts with none, so the switches are here.
+        Text(stringResource(R.string.conn_marks), style = MaterialTheme.typography.titleSmall)
+        app.heyrobot.ui.settings.MarkSwitches(marks) { marks = it }
     }
     // A Save that can't save says what it still needs, never nothing.
     val needs = when {

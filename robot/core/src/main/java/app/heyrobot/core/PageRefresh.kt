@@ -47,7 +47,9 @@ class TodayRead(
     val choices: List<Pair<String, String>> = emptyList(),
     /** H6: the weather line at a minute, from the forecast read with the page; null while it is off. */
     val weather: ((ZonedDateTime) -> WeatherGlance)? = null,
+    /** fix-seal-lows: why there is no [note] while some notes can't be opened. */
+    val noteHeld: NoteHeld? = null,
 ) {
     fun view(now: ZonedDateTime): TodayView =
-        TodayPage.view(TodayInput(Today.picture(input.copy(now = now)), week, lists, looseEnds, fromRobots, note, weather?.invoke(now)))
+        TodayPage.view(TodayInput(Today.picture(input.copy(now = now)), week, lists, looseEnds, fromRobots, note, weather?.invoke(now))).copy(noteHeld = noteHeld)
 }

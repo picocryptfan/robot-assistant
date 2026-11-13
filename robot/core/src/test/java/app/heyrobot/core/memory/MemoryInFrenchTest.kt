@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core.memory
 
+import app.heyrobot.core.SearchModel
 import app.heyrobot.core.i18n.Lang
 import app.heyrobot.core.i18n.Langs
 import org.junit.Assert.assertEquals

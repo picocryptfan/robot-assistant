@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.toggleable
+import app.heyrobot.sys.CarWidgets
 import app.heyrobot.ui.common.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Text
@@ -31,12 +32,19 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import app.heyrobot.R
+import android.app.Activity
+import android.content.ComponentName
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import app.heyrobot.core.car.CarWidget
 import app.heyrobot.core.car.CarAction
 import app.heyrobot.core.car.CarFourth
 import app.heyrobot.core.car.CarInfo
@@ -75,6 +83,7 @@ internal fun infoLabel(i: CarInfo): Int = when (i) {
     CarInfo.MEDIA -> R.string.car_panel_media_buttons
     CarInfo.DIRECTIONS -> R.string.car_panel_directions
     CarInfo.LATEST_MESSAGE -> R.string.car_panel_latest
+    CarInfo.WIDGET -> R.string.car_panel_widget
 }
 
 internal fun actionLabel(a: CarAction): Int = when (a) {
@@ -94,6 +103,7 @@ private fun infoIcon(i: CarInfo): ImageVector = when (i) {
     CarInfo.MEDIA -> RIcons.Play
     CarInfo.DIRECTIONS -> RIcons.Maps
     CarInfo.LATEST_MESSAGE -> RIcons.Message
+    CarInfo.WIDGET -> RIcons.Apps
 }
 
 private fun fourthIcon(f: CarFourth): ImageVector = when (f) {
@@ -124,15 +134,112 @@ internal fun CarScreenRows(layout: CarLayout, enabled: Boolean, onChange: (CarLa
             CarLarge.MEDIA -> null
         }
     }, largeIcon(layout.large), enabled = enabled) { onChange(layout.copy(large = it)) }
+    InfoRow(layout, enabled, onChange)
+    FourthRow(layout.fourth, enabled) { onChange(layout.copy(fourth = it)) }
+    CarAppsRow(layout.apps, enabled) { onChange(layout.copy(apps = it)) }
+}
+
+/** A widget in the list: its app, by name, and the widget's own name. */
+internal data class WidgetChoice(val pkg: String, val cls: String, val appLabel: String, val label: String)
+
+/** A pick waiting on Android's question or the widget's setup screen, kept through a recreation: its widget and id. */
+internal val PendingPick = listSaver<Pair<WidgetChoice, Int>?, Any>(
+    save = { p -> p?.let { (c, id) -> listOf(c.pkg, c.cls, c.appLabel, c.label, id) } ?: emptyList() },
+    restore = { l -> if (l.size != 5) null else WidgetChoice(l[0] as String, l[1] as String, l[2] as String, l[3] as String) to (l[4] as Int) },
+)
+
+/** The phone's widgets, by app and then by name. */
+internal fun widgetChoices(ctx: Context): List<WidgetChoice> = CarWidgets.providers(ctx).map {
+    WidgetChoice(it.provider.packageName, it.provider.className, MusicApps.label(ctx, it.provider.packageName), it.loadLabel(ctx.packageManager).orEmpty())
+}.sortedWith(compareBy({ it.appLabel.lowercase() }, { it.label.lowercase() }))
+
+/**
+ * The information panel's row. "An app's widget" opens the phone's widgets by app: Android asks once whether Robot may add
+ * widgets (its own question, with "Always allow"), and a widget with a setup screen shows it. The widget's app is pinned
+ * with its signer; the id of a widget you no longer use is deleted.
+ */
+@Composable
+private fun InfoRow(layout: CarLayout, enabled: Boolean, onChange: (CarLayout) -> Unit) {
+    val ctx = LocalContext.current
+    val app = ctx.applicationContext
+    val scope = rememberCoroutineScope()
+    var picking by remember { mutableStateOf(false) }
+    var found by remember { mutableStateOf<List<WidgetChoice>?>(null) }
+    var pending by rememberSaveable(stateSaver = PendingPick) { mutableStateOf<Pair<WidgetChoice, Int>?>(null) }
+    // Ids a pick cut short left behind: all but the saved widget's and the one still waiting on its answer.
+    LaunchedEffect(Unit) { withContext(Dispatchers.IO) { CarWidgets.sweep(app, setOfNotNull(layout.widget?.id, pending?.second)) } }
+    var note by remember { mutableStateOf<Int?>(null) }
+    var gone by remember { mutableStateOf(false) }
+    LaunchedEffect(layout.widget) {
+        gone = layout.widget?.let { w -> withContext(Dispatchers.IO) { CarWidgets.bound(app, w) == null || MusicApps.check(app, w.app) != MusicApps.PinNow.OK } } ?: false
+    }
+    fun drop(id: Int, why: Int?) { pending = null; CarWidgets.delete(app, id); note = why }
+    fun done(c: WidgetChoice, id: Int) {
+        pending = null
+        scope.launch {
+            val sha = withContext(Dispatchers.IO) { MusicApps.signer(app, c.pkg) }
+            val pin = sha?.let { MusicApp(c.pkg, it, c.appLabel) }
+            if (pin == null || !CarWidget.valid(pin, c.cls, id)) return@launch drop(id, R.string.car_widget_failed)
+            // Swept meanwhile (the car screen starting while this pick waited): saved, it would only show as gone.
+            if (withContext(Dispatchers.IO) { CarWidgets.bound(app, CarWidget(pin, c.cls, id)) } == null) return@launch drop(id, R.string.car_widget_failed)
+            layout.widget?.takeIf { it.id != id }?.let { CarWidgets.delete(app, it.id) }
+            note = null
+            onChange(layout.copy(info = CarInfo.WIDGET, widget = CarWidget(pin, c.cls, id)))
+        }
+    }
+    val setup = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+        val (c, id) = pending ?: return@rememberLauncherForActivityResult
+        if (r.resultCode == Activity.RESULT_OK) done(c, id) else drop(id, null)
+    }
+    fun next(c: WidgetChoice, id: Int) {
+        val i = CarWidgets.setup(app, id) ?: return done(c, id)
+        try { setup.launch(i) } catch (_: Exception) { drop(id, R.string.car_widget_failed) }
+    }
+    val bind = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+        val (c, id) = pending ?: return@rememberLauncherForActivityResult
+        if (r.resultCode == Activity.RESULT_OK) next(c, id) else drop(id, null)
+    }
+    val summary = layout.widget?.takeIf { layout.info == CarInfo.WIDGET }?.let { ctx.getString(R.string.car_widget_of, it.app.label) }
     ListPreference(stringResource(R.string.car_info_title), layout.info, CarInfo.entries, { ctx.getString(infoLabel(it)) }, {
         when (it) {
             CarInfo.DIRECTIONS -> ctx.getString(R.string.car_panel_directions_detail)
             CarInfo.LATEST_MESSAGE -> ctx.getString(R.string.car_panel_messages_detail)
+            CarInfo.WIDGET -> ctx.getString(R.string.car_panel_widget_detail)
             CarInfo.MEDIA -> null
         }
-    }, infoIcon(layout.info), enabled = enabled) { onChange(layout.copy(info = it)) }
-    FourthRow(layout.fourth, enabled) { onChange(layout.copy(fourth = it)) }
-    CarAppsRow(layout.apps, enabled) { onChange(layout.copy(apps = it)) }
+    }, infoIcon(layout.info), enabled = enabled, summary = summary) {
+        if (it == CarInfo.WIDGET) picking = true
+        else {
+            layout.widget?.let { w -> CarWidgets.delete(app, w.id) }
+            onChange(layout.copy(info = it, widget = null))
+        }
+    }
+    (note ?: R.string.car_widget_gone.takeIf { gone })?.let { Text(stringResource(it), Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
+    if (!picking) return
+    LaunchedEffect(Unit) { found = withContext(Dispatchers.IO) { widgetChoices(app) } }
+    val list = found ?: return
+    if (list.isEmpty()) { picking = false; found = null; note = R.string.car_widget_none; return }
+    val now = layout.widget
+    RadioDialog(
+        title = stringResource(R.string.car_widget_pick),
+        selected = list.firstOrNull { now != null && it.pkg == now.app.pkg && it.cls == now.provider } ?: list.first(),
+        entries = list,
+        label = { it.appLabel },
+        detail = { it.label },
+        onDismiss = { picking = false; found = null },
+        onPick = { c ->
+            picking = false
+            found = null
+            val id = CarWidgets.allocate(app)
+            if (id == null) note = R.string.car_widget_failed
+            else {
+                pending = c to id
+                val provider = ComponentName(c.pkg, c.cls)
+                if (CarWidgets.bindNow(app, id, provider)) next(c, id)
+                else try { bind.launch(CarWidgets.ask(id, provider)) } catch (_: Exception) { drop(id, R.string.car_widget_failed) }
+            }
+        },
+    )
 }
 
 /** In :voice, named so this process doesn't load it. */

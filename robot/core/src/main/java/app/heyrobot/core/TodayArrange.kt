@@ -54,12 +54,12 @@ object TodayArrange {
     private val NOUNS_EN = mapOf(
         TodayPart.CALENDAR to listOf("my calendar", "the calendar", "calendar", "my agenda", "my events", "my schedule"),
         TodayPart.LISTS to listOf("my lists", "the lists", "lists", "my list", "my lists and reminders", "my reminders"),
-        TodayPart.NOTE to listOf("my note", "the note", "note", "my pinned note", "my notes"),
+        TodayPart.NOTE to listOf("my note", "the note", "note", "my pinned note", "my notes", "the notes", "notes"),
     )
     private val NOUNS_FR = mapOf(
         TodayPart.CALENDAR to listOf("mon agenda", "l agenda", "agenda", "mon calendrier", "le calendrier", "mes evenements"),
         TodayPart.LISTS to listOf("mes listes", "les listes", "ma liste", "mes listes et rappels", "mes rappels"),
-        TodayPart.NOTE to listOf("ma note", "la note", "ma note epinglee", "mes notes"),
+        TodayPart.NOTE to listOf("ma note", "la note", "ma note epinglee", "mes notes", "les notes"),
     )
     private val MOVES_EN = mapOf(
         TodayMove.FIRST to listOf("put # first", "move # first", "make # first", "put # at the top", "move # to the top", "put # on top"),
@@ -74,7 +74,9 @@ object TodayArrange {
         TodayMove.DOWN to listOf("descends #", "baisse #", "descends # d un cran"),
     )
     private val WHERE_EN = listOf("", " on my day", " on today", " on my page", " on my today page", " on my home page")
-    private val WHERE_FR = listOf("", " sur ma page", " dans ma journee", " sur ma page aujourd hui", " sur aujourd hui")
+    private val WHERE_FR = listOf("", " sur ma page", " dans ma journee", " sur ma page aujourd hui", " sur aujourd hui",
+        // RoutineRouter's words write « aujourd'hui » as one word.
+        " sur ma page aujourdhui", " sur aujourdhui")
 
     private fun table(moves: Map<TodayMove, List<String>>, nouns: Map<TodayPart, List<String>>, where: List<String>) =
         moves.flatMap { (m, forms) -> nouns.flatMap { (p, ns) -> forms.flatMap { f -> ns.flatMap { n -> where.map { w -> f.replace("#", n) + w to (p to m) } } } } }

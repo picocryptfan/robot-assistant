@@ -97,6 +97,10 @@ class RestoreTaintTest {
         val r = BackupKit.routines()[0]
         assertFalse(RestoreTaint.routine(r, mine = false).enabled)
         assertTrue(RestoreTaint.routine(r, mine = true).enabled)
+        // review-auto-open 1: someone else's ticked apps never come; yours do.
+        val ticked = r.copy(opens = setOf("org.example.maps"))
+        assertEquals(emptySet<String>(), RestoreTaint.routine(ticked, mine = false).opens)
+        assertEquals(setOf("org.example.maps"), RestoreTaint.routine(ticked, mine = true).opens)
         val h = HelperConfig.of(Presets.OTHER, "x", "af_heart", "X", "https://x.example").copy(enabled = true, trust = true, locked = true, search = true, actions = true)
         val off = RestoreTaint.newHelper(h, mine = false)
         assertEquals(listOf(false, false, false, false, false), listOf(off.on, off.trust, off.locked, off.search, off.actions))
@@ -126,6 +130,10 @@ class RestoreTaintTest {
         assertEquals(s.copy(level = app.heyrobot.core.skills.SkillLevel.OFF), RestoreTaint.skill(s, mine = false))
         val c = app.heyrobot.core.skills.SkillFixtures.headingHome(fromContent = true)
         assertTrue(RestoreTaint.skill(c, mine = false).provenance.fromContent)
+        // review-auto-open 1: someone else's ticked apps never come; yours do.
+        val ticked = s.copy(opens = setOf("org.example.maps"))
+        assertEquals(emptySet<String>(), RestoreTaint.skill(ticked, mine = false).opens)
+        assertEquals(setOf("org.example.maps"), RestoreTaint.skill(ticked, mine = true).opens)
     }
 
     // ---------------------------------------------------------------------------------------------- 1.4, Robot Files
@@ -217,6 +225,13 @@ class RestoreTaintTest {
         assertTrue(t.items.all { it.by == app.heyrobot.core.lists.ItemBy.BACKUP && it.hist.all { h -> h.by == app.heyrobot.core.lists.ItemBy.BACKUP } })
         // Their words and ticks as they were; only who it came from changes.
         assertEquals(l.items.map { it.text to it.done }, t.items.map { it.text to it.done })
+    }
+
+    /** moments-backup-c (L6): someone else's backup brings no moment reminders, whatever the plan said. */
+    @Test fun momentsOnlyFromYours() {
+        val l = listOf(app.heyrobot.core.MomentReminder("a", "buy milk", app.heyrobot.core.Moment.entries.first(), 1L))
+        org.junit.Assert.assertEquals(l, RestoreTaint.moments(l, mine = true))
+        org.junit.Assert.assertNull(RestoreTaint.moments(l, mine = false))
     }
 }
 

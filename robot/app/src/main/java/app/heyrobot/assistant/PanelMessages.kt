@@ -116,6 +116,8 @@ object PanelMessages {
     /** Robot is reading your messages in this conversation: "next", "stop" and "translate it" count. */
     private var reading = false
     private var taint = MessageTaint.NONE
+    /** [taint]'s mark for "What did I miss?" titles (no conversation key: they come from notifications). */
+    private const val MISSED = "missed"
     /** What Robot read aloud of your messages, and when ([Heard]): a message heard back is the message, never a request. */
     private class Heard(val text: String, val at: Long)
     private val readAloud = ArrayList<Heard>()
@@ -369,6 +371,27 @@ object PanelMessages {
     private fun refused(why: MsgRefusal) = VoiceLog.add(VoiceEvent.MSG_REFUSED, why)
 
     private suspend fun command(replyId: String, cmd: MessageCommand) {
+        // 1.3: "What did I miss?" has its own switch and apps (missed.json); the main process applies the lock.
+        if (cmd is MessageCommand.Missed) {
+            val lang = replyLang(cmd.lang)
+            val a = link().missed() ?: return say(replyId, MessageStrings.couldntReach(), lang)
+            val reply = app.heyrobot.core.messages.MissedSummary.reply(a)
+            app.heyrobot.core.messages.MissedCode.of(a).let { (x, n, u) -> VoiceLog.add(VoiceEvent.MISSED_ANSWER, x, n, u) }
+            // Titles from other apps (a sender, a group, a subject) take the summary's guards: History and later prompts get
+            // the counts only, the conversation holds other people's words, and a title heard back is never a request.
+            app.heyrobot.core.messages.MissedSummary.kept(a)?.let { k ->
+                kept[replyId] = k.render(langs(lang))
+                taint = taint.copy(conversations = taint.conversations + MISSED)
+                saidAloud(reply.render(langs(lang)))
+            }
+            return say(replyId, reply, lang)
+        }
+        // 1.3: a hold (hold.json); the main process plans it against your picked apps and snoozes.
+        if (cmd is MessageCommand.Hold) {
+            val lang = replyLang(cmd.lang)
+            val r = link().hold(cmd.ask) ?: return say(replyId, MessageStrings.couldntReach(), lang)
+            return say(replyId, app.heyrobot.core.messages.HoldLine.reply(r), lang)
+        }
         val f = MessagesStore.current(ctx)
         val s = app.heyrobot.core.lock.SomeoneElseLock.messages(f.settings, app.heyrobot.lock.PhoneLockNow.someoneElse(ctx))
         val lang = replyLang(cmd.lang)
@@ -514,9 +537,11 @@ object PanelMessages {
         reading = true
         val misses = MessageSummaryText.misses(summary, ts, zone)
         kept[replyId] = MessageSummaryText.kept(ts.size, lang)
-        PanelController.messagesReply(replyId, MessageSummaryText.shown(summary, misses, lang, langs(lang)))
+        // Scam texts: a fixed line per conversation before the summary, from code, never from the model, heard first.
+        val scams = MessageReader.scamLines(ts)
+        PanelController.messagesReply(replyId, scams.joinToString("") { it.render(langs(lang)) + "\n\n" } + MessageSummaryText.shown(summary, misses, lang, langs(lang)))
         val french = MessageLanguage.frenchLine(langId)
-        speak(listOf(spoken(MessageSummaries.labelText(), lang)) + summary.lines().map { it.trim().trimStart('-', '*', '•').trim() }.filter { it.isNotEmpty() }
+        speak(listOf(spoken(MessageSummaries.labelText(), lang)) + scams.map { spoken(it, lang) } + summary.lines().map { it.trim().trimStart('-', '*', '•').trim() }.filter { it.isNotEmpty() }
             .map { Spoken(it, french(it)) })
         saidAloud(summary)
         VoiceLog.add(VoiceEvent.MSG_SUMMARY, ts.size, ts.sumOf { MessageReading.toRead(it).size }, ((System.currentTimeMillis() - t0) / 1000).toInt())

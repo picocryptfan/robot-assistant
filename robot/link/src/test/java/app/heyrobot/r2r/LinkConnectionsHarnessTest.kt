@@ -229,6 +229,172 @@ class LinkConnectionsHarnessTest {
         until("delivered once awake") { idle(a, b); b.sink.delivered.any { it.second.id == e.id } }
     }
 
+    /**
+     * fix-bridges-and-wording-c L1, L2: a stale Tor (your own bridge lines changed) is dealt with on the pump while :link is
+     * awake: started again once when your onion is published and Robot's network access is allowed, otherwise stopped
+     * (never plain Tor with nothing to carry); asleep (the screens closed), the pump leaves it to the next use.
+     */
+    @Test fun aStaleTorIsStartedAgainOnThePumpOnlyWhenItHasSomethingToCarry() {
+        val tor = FakeTorNetwork()
+        // No onion published, nothing queued: stopped, not started again.
+        val lone = robot("Alex", null, 3, tor, null)
+        idle(lone)
+        val lt = lone.tor!!
+        val lu = tor.ups(lt)
+        val ld = tor.downs(lt)
+        tor.staleOnes += lt
+        lone.n().pump().get(10, TimeUnit.SECONDS)
+        until("Alex's stale Tor stopped") { tor.downs(lt) > ld }
+        assertEquals("nothing to carry: not started", lu, tor.ups(lt))
+        // Your onion published (a pairing Tor alone carries): started again once on the pump.
+        val a = robot("Matt", null, 1, tor, null)
+        val b = robot("Sam", null, 2, tor, null)
+        val made = a.n().makeCode(LinkMode.PRIVATE, false).get(20, TimeUnit.SECONDS)
+        assertEquals(UseCodeResult.SENT, b.n().useCode(made.code!!.text(), PairCodeForm.PASTED, LinkMode.PRIVATE).get(30, TimeUnit.SECONDS).result)
+        active(a)
+        until("Sam's side active") { views(b).any { it.phase == PairingPhase.ACTIVE } }
+        idle(a, b)
+        val at = a.tor!!
+        val u = tor.ups(at)
+        tor.staleOnes += at
+        a.n().pump().get(10, TimeUnit.SECONDS)
+        until("Matt's stale Tor started again") { at !in tor.staleOnes }
+        idle(a)
+        assertEquals("one start", u + 1, tor.ups(at))
+        // Robot's network access off: stopped, never started.
+        a.env.network.set(false)
+        val u2 = tor.ups(at)
+        val d2 = tor.downs(at)
+        tor.staleOnes += at
+        a.n().pump().get(10, TimeUnit.SECONDS)
+        until("Matt's stale Tor stopped") { tor.downs(at) > d2 }
+        assertEquals("network off: not started", u2, tor.ups(at))
+        a.env.network.set(true)
+        // Asleep: the pump leaves it alone. Tor is already stopped (network access was off), so `running` is false before
+        // the sleep's own stop runs on Tor's thread: wait for that stop's count, or it lands after d3 is read.
+        val d = tor.downs(at)
+        a.n().sleep()
+        until("Matt's Tor stopped") { tor.downs(at) > d && !at.running }
+        val u3 = tor.ups(at)
+        val d3 = tor.downs(at)
+        tor.staleOnes += at
+        a.n().pump().get(10, TimeUnit.SECONDS)
+        Thread.sleep(300)
+        assertEquals("asleep: not started", u3, tor.ups(at))
+        assertEquals("asleep: nothing on the pump", d3, tor.downs(at))
+    }
+
+    /** fix-bridges-and-wording-d L2: an open code's one-time onion is something to carry: a stale Tor starts again for it. */
+    @Test fun aStaleTorStartsAgainForAnOpenCode() {
+        val tor = FakeTorNetwork()
+        val lone = robot("Alex", null, 3, tor, null)
+        val code = lone.n().makeCode(LinkMode.PRIVATE, false).get(20, TimeUnit.SECONDS).code
+        assertNotNull(code)
+        idle(lone)
+        val lt = lone.tor!!
+        val u = tor.ups(lt)
+        val d = tor.downs(lt)
+        tor.staleOnes += lt
+        lone.n().pump().get(10, TimeUnit.SECONDS)
+        until("Alex's stale Tor started again") { tor.ups(lt) > u }
+        assertEquals("not stopped", d, tor.downs(lt))
+        // fix-bridges-lows (review-d L6): the new start dropped the code's onion; it's published again over it.
+        until("the code's onion answers again") { tor.serving(code!!.onion!!) }
+    }
+
+    /** fix-bridges-and-wording-d L3: a stale Tor stopped while network access was off comes back with your onion once it's on. */
+    @Test fun networkAccessBackOnPublishesYourOnionAgain() {
+        val tor = FakeTorNetwork()
+        val a = robot("Matt", null, 1, tor, null)
+        val b = robot("Sam", null, 2, tor, null)
+        val made = a.n().makeCode(LinkMode.PRIVATE, false).get(20, TimeUnit.SECONDS)
+        assertEquals(UseCodeResult.SENT, b.n().useCode(made.code!!.text(), PairCodeForm.PASTED, LinkMode.PRIVATE).get(30, TimeUnit.SECONDS).result)
+        active(a)
+        until("Sam's side active") { views(b).any { it.phase == PairingPhase.ACTIVE } }
+        idle(a, b)
+        val at = a.tor!!
+        a.env.network.set(false)
+        val d = tor.downs(at)
+        tor.staleOnes += at
+        a.n().pump().get(10, TimeUnit.SECONDS)
+        until("Matt's stale Tor stopped") { tor.downs(at) > d && !at.running }
+        a.env.network.set(true)
+        a.n().pump().get(10, TimeUnit.SECONDS)
+        until("Matt's Tor back with his onion") { at.running }
+        until("Matt's onion answers") { a.state.tor?.let { tor.serving(it.onion) } == true } // fix-bridges-lows (review-d L6)
+    }
+
+    /**
+     * review-fix-bridges-and-wording-c L1: a code's start on Tor's thread is still connecting over your old lines when the
+     * pump finds them stale: the pump's task, queued behind it, finds Tor up over the new lines and leaves it, onion and all.
+     */
+    @Test fun aCodesStartThatMovedToYourNewLinesKeepsItsOnion() {
+        val tor = FakeTorNetwork()
+        val a = robot("Alex", null, 3, tor, null)
+        idle(a)
+        val at = a.tor!!
+        val d = tor.downs(at)
+        val gate = java.util.concurrent.CountDownLatch(1)
+        tor.holds[at] = gate
+        val made = a.n().makeCode(LinkMode.PRIVATE, false)
+        until("Alex's start under way") { at in tor.entered }
+        tor.staleOnes += at
+        a.n().pump().get(10, TimeUnit.SECONDS)
+        gate.countDown()
+        val code = made.get(20, TimeUnit.SECONDS).code!!
+        idle(a)
+        assertEquals("not stopped", d, tor.downs(at))
+        assertTrue("the code's onion answers", tor.serving(code.onion!!))
+    }
+
+    /**
+     * review-fix-bridges-and-wording-d L5: a start off Tor's thread (a feed's) is still connecting over your old lines when
+     * the pump finds them stale, with nothing to carry (no pairing, no code, nothing queued): it moves to the new lines and
+     * comes up, and the pump's stop, checked again under Tor's lock (letGo), leaves it running for the feed.
+     */
+    @Test fun aStartOffTorsThreadThatMovedToYourNewLinesKeepsRunning() {
+        val tor = FakeTorNetwork()
+        val a = robot("Alex", null, 3, tor, null)
+        idle(a)
+        val at = a.tor!!
+        val d = tor.downs(at)
+        val gate = java.util.concurrent.CountDownLatch(1)
+        tor.holds[at] = gate
+        Thread { a.n().feedTor() }.apply { isDaemon = true }.start() // a feed waits on that start: off the test's thread
+        until("Alex's feed start under way") { at in tor.entered }
+        tor.staleOnes += at
+        a.n().pump().get(10, TimeUnit.SECONDS)
+        until("the pump's stop waiting on that start") { tor.asks(at) > 0 }
+        gate.countDown()
+        until("Tor up for the feed") { a.n().feedTor() == FeedTorGate.State.UP }
+        idle(a)
+        assertEquals("not stopped", d, tor.downs(at))
+        assertTrue("Alex's Tor still up", at.running)
+    }
+
+    /**
+     * review-fix-bridges-lows L1: as above, but you turn off Robot's network access before the pump: the start that moved
+     * to your new lines is stopped once it ends, never kept with network access off.
+     */
+    @Test fun aStartOffTorsThreadThatMovedToYourNewLinesStopsWithNetworkOff() {
+        val tor = FakeTorNetwork()
+        val a = robot("Alex", null, 3, tor, null)
+        idle(a)
+        val at = a.tor!!
+        val d = tor.downs(at)
+        val gate = java.util.concurrent.CountDownLatch(1)
+        tor.holds[at] = gate
+        Thread { a.n().feedTor() }.apply { isDaemon = true }.start()
+        until("Alex's feed start under way") { at in tor.entered }
+        tor.staleOnes += at
+        a.env.network.set(false)
+        a.n().pump().get(10, TimeUnit.SECONDS)
+        until("the pump's stop waiting on that start") { tor.asks(at) > 0 }
+        gate.countDown()
+        until("stopped with network access off") { tor.downs(at) > d }
+        assertFalse("Alex's Tor not running", at.running)
+    }
+
     @Test fun aCodesOneTimeOnionTakesOnlyAPairingHello() {
         val tor = FakeTorNetwork()
         val a = robot("Matt", null, 1, tor, null)

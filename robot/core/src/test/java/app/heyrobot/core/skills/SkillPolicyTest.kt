@@ -67,4 +67,11 @@ class SkillPolicyTest {
         assertEquals(emptySet<ToolName>(), SkillPolicy.asked(ToolName.SEND_TEXT, named = false))
         assertEquals(setOf(ToolName.SEND_TEXT), SkillPolicy.asked(ToolName.SEND_TEXT, named = true))
     }
+
+    /** auto-open-plan §2: a skill made from content never opens an app without asking, ticked or not. */
+    @Test fun aSkillFromContentOpensNothingWithoutAsking() {
+        val ticked = setOf("app.organicmaps")
+        org.junit.Assert.assertEquals(ticked, SkillPolicy.opens(SkillFixtures.headingHome(), ticked))
+        org.junit.Assert.assertEquals(emptySet<String>(), SkillPolicy.opens(SkillFixtures.headingHome(fromContent = true, level = SkillLevel.OFF), ticked))
+    }
 }

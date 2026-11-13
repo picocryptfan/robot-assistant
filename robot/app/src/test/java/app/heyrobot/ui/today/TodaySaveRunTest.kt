@@ -16,7 +16,7 @@ import java.util.concurrent.TimeUnit
 
 /** fix-126-review 5: a failed Today save shows what the file holds; leaving the page doesn't cancel a queued save. */
 class TodaySaveRunTest {
-    private val file = HomeSettings(today = true)
+    private val file = HomeSettings(home = app.heyrobot.core.HomeChoice.TODAY)
 
     @Test fun aFailedSaveShowsWhatTheFileHolds() = runBlocking {
         val got = CompletableDeferred<HomeSettings?>()

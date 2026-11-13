@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.assistant.car
 
+import app.heyrobot.core.car.CarInfo
+import app.heyrobot.core.car.CarBottomSaid
+import app.heyrobot.core.car.CarHalvesPhrase
 import app.heyrobot.R
 import android.app.ActivityManager
 import android.content.Intent
+import android.content.IntentSender
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.os.Bundle
@@ -27,6 +31,8 @@ import app.heyrobot.core.car.CarBeside
 import app.heyrobot.core.car.CarLineHold
 import app.heyrobot.core.car.CarMusicChoice
 import app.heyrobot.core.car.CarRecents
+import app.heyrobot.core.car.CarWidget
+import app.heyrobot.core.car.CarWidgetNow
 import app.heyrobot.core.car.CarFourth
 import app.heyrobot.core.car.CarLayout
 import app.heyrobot.core.car.CarMessagesNow
@@ -43,6 +49,7 @@ import app.heyrobot.core.output.spoken
 import app.heyrobot.lock.PhoneLockNow
 import app.heyrobot.sys.AppPages
 import app.heyrobot.sys.Assistant
+import app.heyrobot.sys.CarWidgets
 import app.heyrobot.sys.CoarseLocation
 import app.heyrobot.sys.EverydaySettingsStore
 import app.heyrobot.sys.MapsApps
@@ -62,6 +69,15 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
+import android.appwidget.AppWidgetHostView
+import android.view.View
+import android.view.ViewGroup
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.viewinterop.AndroidView
 import app.heyrobot.ui.common.CoveredTouches
 import app.heyrobot.ui.common.filterObscuredTouches
 
@@ -106,6 +122,9 @@ class CarModeActivity : ComponentActivity() {
     /** The app whose session the tile shows, playing or paused: the Maps button's swap opens it when both your apps are set. */
     private var onTile: String? = null
     private var secureNow = false
+    /** The bottom screen's widget, and whether its swap shows the media player instead. */
+    private lateinit var widgets: CarWidgetHost
+    private var swapped = false
     private var messages = CarMessagesNow()
     private var link: MessagesLink? = null
     private val watcher: () -> Unit = { refresh() }
@@ -118,6 +137,8 @@ class CarModeActivity : ComponentActivity() {
         // Its Yes or Send acts at once: a tap through another app's window is refused (review-panel-covered).
         window.filterObscuredTouches()
         CarModeController.watch(watcher)
+        widgets = CarWidgetHost(this) { s -> layout().widget?.let { openApp(it.app, s) } }
+        lifecycleScope.launch(Dispatchers.IO) { CarWidgets.sweep(this@CarModeActivity, setOfNotNull(layout().widget?.id)) }
         setTaskDescription(ActivityManager.TaskDescription.Builder().setLabel(HandsFreeStrings.carMode().render(HandsFreeHub.screen)).setIcon(R.mipmap.ic_launcher).build())
         refresh()
         // The panel's state: with no panel open, this screen shows the turn.
@@ -152,6 +173,8 @@ class CarModeActivity : ComponentActivity() {
                     closeSheet = { sheet = null; refresh() },
                     pick = { from, row -> picked(from, row) },
                     addApps = { sheet = null; openSettings(AppPages.CAR_SETTINGS) },
+                    swapBottom = { swapBottom() },
+                    widget = { m, shown -> WidgetSlot(layout().widget?.let { widgets.view(it) }, m, shown) },
                 ))
             }
         }
@@ -160,6 +183,8 @@ class CarModeActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         CarModeController.screenUp = true
+        widgets.start()
+        CarModeController.bottomScreen = { p -> bottomVoice(p) }
         CarModeController.besideOpener = { i -> CarSplitOpen.start(this, i).also { if (it) openedBeside(i) } }
     }
 
@@ -192,6 +217,8 @@ class CarModeActivity : ComponentActivity() {
     override fun onStop() {
         app.heyrobot.ui.common.RobotToast.down(this)
         CarModeController.screenUp = false
+        widgets.stop()
+        CarModeController.bottomScreen = null
         CarModeController.besideOpener = null
         val since = SystemClock.elapsedRealtime() - besideAt
         besideAt = Long.MIN_VALUE / 2
@@ -306,6 +333,43 @@ class CarModeActivity : ComponentActivity() {
         n.replyId?.let { PanelController.reply(it, if (yes) ReplyOp.Send else ReplyOp.Cancel) }
     }
 
+    /** The bottom screen's swap: the widget you picked, or the media player in its place. */
+    fun swapBottom() {
+        swapped = !swapped
+        refresh()
+    }
+
+    /** "swap the bottom", "put Spotify's widget on the bottom": the widget Robot has, never a new one (only a tap binds one). */
+    private fun bottomVoice(p: CarHalvesPhrase): CarBottomSaid {
+        val l = layout()
+        val w = l.widget?.takeIf { l.info == CarInfo.WIDGET }
+        val named = p !is CarHalvesPhrase.WidgetOnBottom || (w != null && p.means(w.app.label))
+        return when {
+            w == null || !named || widgetGone -> CarBottomSaid.SET_UP
+            Assistant.keyguard(this) -> CarBottomSaid.LOCKED
+            closes(w) -> CarBottomSaid.CLOSED
+            else -> {
+                runOnUiThread { swapped = if (p is CarHalvesPhrase.WidgetOnBottom) false else !swapped; refresh() }
+                CarBottomSaid.DONE
+            }
+        }
+    }
+
+    /** The widget's id no longer holds what you picked (its app reinstalled or re-signed); set by [widgetOff]. */
+    @Volatile private var widgetGone = false
+
+    private fun closes(w: CarWidget): Boolean = PhoneLockNow.on(this).let { on -> CarWidgetNow.closes(on, if (on) PhoneLockNow.apps(this) else emptySet(), w.app.pkg) }
+
+    /** Over the lock screen, while Phone lock closes its app, or when its id is gone, the widget gives way to the media player. */
+    private fun widgetOff(): Boolean {
+        val w = layout().widget ?: return false.also { widgetGone = false }
+        val locked = Assistant.keyguard(this)
+        val closes = !locked && closes(w)
+        // The view is made only once the lock and Phone lock allow it.
+        if (!locked && !closes) widgetGone = widgets.view(w) == null
+        return CarWidgetNow.off(locked, closes, made = locked || closes || !widgetGone)
+    }
+
     /** The fourth button, as you chose it in Settings › Car mode. */
     private fun fourth() {
         when (val t = CarBeside.tap(layout().fourth, ui.value.back, ui.value.swap, CarMusicChoice.of(pinned, podcast))) {
@@ -316,12 +380,16 @@ class CarModeActivity : ComponentActivity() {
     }
 
     /** The app you pinned on the fourth button, beside this screen: through the locks, and only while signed as when you pinned it. */
-    private fun openApp(app: MusicApp) {
+    /** [screen]: a widget tap's own screen, opened beside instead of the launcher entry when CarWidgetScreen allows. */
+    private fun openApp(app: MusicApp, screen: IntentSender? = null) {
         val lockOn = PhoneLockNow.on(this)
         val no = closed(CarOpen.app(app.pkg, Assistant.keyguard(this), CarModeController.trusted, lockOn, if (lockOn) PhoneLockNow.apps(this) else emptySet()))
         val i = if (no == null && MusicApps.check(this, app) == MusicApps.PinNow.OK) packageManager.getLaunchIntentForPackage(app.pkg) else null
-        val opened = i != null && CarSplitOpen.start(this, i)
+        val opened = i != null && (screen != null && CarWidgetScreen.send(this, screen, app.pkg) || CarSplitOpen.start(this, i))
         said = no ?: if (opened) "" else getString(R.string.car_fourth_gone, app.label)
+        // review-car-widget-taps M1: a tap's open arms the covered check as a voice open does (openedBeside), so one
+        // that lands over the car screen instead of beside it brings the car screen back (onStop). On the main thread.
+        if (opened) besideAt = SystemClock.elapsedRealtime()
         CarBeside.appOpen(app.pkg, opened, no != null, CarModeController.lastBeside)?.let { CarModeController.besideOpened(it) }
         refresh()
     }
@@ -488,13 +556,15 @@ class CarModeActivity : ComponentActivity() {
         val turn = turnLines()
         secureNow = CarRecents.secure(c.privateTurn, turn != null, secureNow)
         if (secureNow) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
-        setRecentsScreenshotEnabled(CarRecents.picture(messages.lines.isNotEmpty(), turn != null, trusted))
+        val off = widgetOff()
+        val widget = layout().slotNow(isInMultiWindowMode, off, phoneLockCloses = false, swapped = swapped) == CarInfo.WIDGET
+        setRecentsScreenshotEnabled(CarRecents.picture(messages.lines.isNotEmpty(), turn != null, trusted, widget))
         val directions = CarDirections.tile(c.routeThisDrive, ongoing = false) == CarDirections.Tile.BACK_TO_DIRECTIONS
         val back = if (mapsPkg == null) CarBeside.Back.NONE else CarBeside.back(c.lastBeside, mapsPkg, layout().fourth, layout().large, isInMultiWindowMode)
         val swap = CarBeside.swap(c.lastBeside, mapsPkg, layout().fourth, isInMultiWindowMode, CarBeside.pick(CarMusicChoice.of(pinned, podcast), onTile, c.besideThisDrive))
         ui.value = CarScreenState(CarScreen.titleText(trusted).render(l), trusted, said,
             music.copy(playing = PanelMusic.carPlaying(music.playing)), directions, layout(), isInMultiWindowMode, messages,
-            turn = turn, sheet = sheet, back = back, fourthIcon = fourthIcon, swap = swap, swapIcon = (swap as? CarMusicChoice.Open)?.let { icons[it.app.pkg] })
+            turn = turn, sheet = sheet, back = back, fourthIcon = fourthIcon, widgetOff = off, swapped = swapped, swap = swap, swapIcon = (swap as? CarMusicChoice.Open)?.let { icons[it.app.pkg] })
     }
 
     private companion object {
@@ -508,4 +578,14 @@ class CarModeActivity : ComponentActivity() {
         const val SAID_MS = 5_000L
         const val TURN_LINE_MS = 6_000L
     }
+}
+
+/** The widget's view in the bottom screen: hidden while a turn takes the slot, never dropped, so it doesn't reload. */
+@Composable
+private fun WidgetSlot(view: AppWidgetHostView?, modifier: Modifier, shown: Boolean) {
+    if (view == null) {
+        if (shown) Text(stringResource(R.string.car_widget_setup), modifier, color = MaterialTheme.colorScheme.onSurface)
+        return
+    }
+    AndroidView({ (view.parent as? ViewGroup)?.removeView(view); view }, modifier, update = { it.visibility = if (shown) View.VISIBLE else View.INVISIBLE })
 }

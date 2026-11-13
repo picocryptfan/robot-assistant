@@ -1,0 +1,4 @@
+{
+  global: Java_app_heyrobot_wiki_LibZim_*;
+  local: *;
+};

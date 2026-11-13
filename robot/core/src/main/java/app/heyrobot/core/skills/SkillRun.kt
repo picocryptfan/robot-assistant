@@ -116,6 +116,8 @@ class SkillRun(
     outputs: Map<String, Map<String, SkillValue>> = emptyMap(),
     /** Your connections: whether a connection's step only reads (go on is honoured only after a read). */
     private val links: SkillLinks = SkillLinks.NONE,
+    /** auto-open-plan §1: the apps (package names) this skill's save card let its open step open without asking. */
+    private val opens: Set<String> = emptySet(),
     /** S3.2: how a routine's own steps run here (the brief, your reminders, the messages count); none: they fail. */
     private val routineSteps: RoutineSteps? = null,
 ) {
@@ -232,7 +234,7 @@ class SkillRun(
         }
         val raw = call(i, step, tool)
         val result = TurnRunner(StepCall(raw), a, v, confirmations, taint, asked = SkillPolicy.asked(tool, named), messages = messages, langs = langs,
-            newId = newId).run()
+            opens = SkillPolicy.opens(skill, opens), ticksOnly = true, newId = newId).run()
         val e = ran
         // D5: what a step brought in is content for every later step.
         if (e?.content == true) taint = true

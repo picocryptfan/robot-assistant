@@ -4,11 +4,13 @@ package app.heyrobot.core.net
 import app.heyrobot.core.helpers.LanRule
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
+import java.net.SocketTimeoutException
 import java.net.Socket
 import java.util.Collections
 
@@ -41,6 +43,42 @@ class HomeFactoryTest {
             f.createSocket().use { it.connect(InetSocketAddress(InetAddress.getLoopbackAddress(), 80), 2000) }
             assertEquals(listOf(2L), bound)
             assertEquals(listOf("192.168.1.5", "127.0.0.1"), asked)
+        }
+    }
+
+    /** review-home-net-bind-c L5: an unbound socket's way out is checked before its SYN (a datagram socket, connected, sends nothing). */
+    @Test fun anUnboundSocketIsCheckedBeforeItConnects() {
+        // The phone's own hotspot holds 192.168.43.0/24 (so unbound), but the system would send from loopback: not that link.
+        HomeNets.use(object : HomeNets.Source {
+            override fun nets() = emptyList<HomeRoute.Net>()
+            override fun bind(s: Socket, id: Long) = fail("bound")
+            override fun own() = listOf(p("192.168.43.1/24"))
+        })
+        ServerSocket(0, 5, InetAddress.getLoopbackAddress()).use { server ->
+            server.soTimeout = 500
+            val s = HomeNets.Factory { InetSocketAddress(InetAddress.getLoopbackAddress(), server.localPort) }.createSocket()
+            try { s.connect(InetSocketAddress(InetAddress.getByAddress(a("192.168.43.5")), 80), 2000); fail("sent") } catch (_: OffNetworkException) {}
+            s.close()
+            try { server.accept().close(); fail("its SYN went out") } catch (_: SocketTimeoutException) {}
+        }
+    }
+
+    /**
+     * N2's check after the connect stays (tor-bridge-relay-b): a socket the check before it let through (the system said
+     * it would leave from the hotspot) that left from elsewhere (loopback) is closed before anything is written.
+     */
+    @Test fun anUnboundSocketThatLeftElsewhereIsClosedAfterItsConnect() {
+        HomeNets.use(object : HomeNets.Source {
+            override fun nets() = emptyList<HomeRoute.Net>()
+            override fun bind(s: Socket, id: Long) = fail("bound")
+            override fun own() = listOf(p("192.168.43.1/24"))
+        })
+        ServerSocket(0, 5, InetAddress.getLoopbackAddress()).use { server ->
+            server.soTimeout = 2_000
+            val s = HomeNets.Factory({ InetSocketAddress(InetAddress.getLoopbackAddress(), server.localPort) }, { a("192.168.43.1") }).createSocket()
+            try { s.connect(InetSocketAddress(InetAddress.getByAddress(a("192.168.43.5")), 80), 2000); fail("sent") } catch (_: OffNetworkException) {}
+            assertTrue("left open", s.isClosed)
+            server.accept().use { c -> c.soTimeout = 2_000; assertEquals("written", -1, c.getInputStream().read()) } // it connected, then EOF
         }
     }
 }

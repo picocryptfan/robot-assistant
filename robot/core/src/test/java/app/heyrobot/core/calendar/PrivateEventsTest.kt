@@ -110,8 +110,11 @@ class PrivateEventsTest {
 
     @Test fun backupCategoryIsYoursOnlyAndTakesOnlyItsFile() {
         val c = BackupCategory.CALENDAR
-        // Appended after Robot to Robot's; H5's Today page comes after it, then Skills' trusted keys (skills-backup-b).
-        assertEquals(listOf(BackupCategory.LINKS, c, BackupCategory.HOME, BackupCategory.SKILL_TRUST), BackupCategory.entries.takeLast(4))
+        // Appended after Robot to Robot's, before H5's Today page: its own place in the voice log's category bits
+        // (BackupExport.bits), so a category appended later never moves this pin.
+        assertEquals(18, c.ordinal)
+        assertEquals(BackupCategory.LINKS.ordinal + 1, c.ordinal)
+        assertEquals(BackupCategory.HOME.ordinal - 1, c.ordinal)
         assertTrue(c in BackupCategory.ONLY_YOURS)
         assertFalse(c in BackupCategory.SENSITIVE)
         assertTrue(c.validName(PrivateEventsCodec.FILE))

@@ -104,6 +104,16 @@ sealed class ListsCommand {
 
     /** Undo the last list change of this conversation. */
     data class Undo(override val lang: Lang) : ListsCommand()
+
+    /** recipe-list (core RecipeList): a recipe's ingredients for [list] (your words); [dish] null with a shared [recipe]. */
+    data class Recipe(val dish: String?, val list: String, val drops: List<String>, override val lang: Lang, val recipe: String? = null) : ListsCommand() {
+        override fun toString(): String = "Recipe(dish=${dish != null}, drops=${drops.size}, recipe=${recipe != null}, $lang)" // l10n: not text (never your words in a log)
+    }
+
+    /** recipe-list: untick [words] on the open recipe card ("not the oil"). */
+    data class Drop(val words: List<String>, override val lang: Lang) : ListsCommand() {
+        override fun toString(): String = "Drop(${words.size}, $lang)" // l10n: not text (never your words in a log)
+    }
 }
 
 /**
@@ -155,6 +165,17 @@ object ListsRouter {
     private val LEAD = listOf("hey robot", "robot", "ok robot", "okay robot", "please", "can you", "could you", "would you", "will you", "ok", "okay", // l10n: not text (words Robot hears)
         "s'il te plait", "stp", "peux-tu", "peux tu", "est-ce que tu peux", "tu peux", "pourrais-tu", "veux-tu") // l10n: not text (words Robot hears)
     private val TAIL = listOf("please", "for me", "thanks", "thank you", "s'il te plait", "stp", "pour moi", "merci") // l10n: not text (words Robot hears)
+
+    /**
+     * Review-c Low 3, for SkillRouter: [name] (said after "add to") is a list to Lists' resolver, with [names] your lists'
+     * (none while Lists is off, so never then): one of yours, or Shopping's or To-do's own name said bare ("groceries").
+     */
+    fun isList(name: String, names: List<String>): Boolean {
+        if (names.isEmpty()) return false
+        val s = said(name) ?: return false
+        val heard = ListsHeard(names = names)
+        return (refEn(s.folded, s.words, heard) ?: refFr(s.folded, s.words, heard)) != null
+    }
 
     /** [text] as words: trimmed, the end's punctuation and the fillers around it off. Null when nothing is left. */
     private fun said(text: String): Said? {
@@ -239,8 +260,9 @@ object ListsRouter {
             if (name.size > MAX_NAME_WORDS || name.any { it in NOT_IN_NAME || it in DET_EN || it in NOT_YOURS }) return null
             return Ref(ListRef.Named(s.dropLast(1).joinToString(" ")), s.joinToString(" "))
         }
-        ROLE_BARE_EN[f.joinToString(" ")]?.let { return Ref(ListRef.Role(it), s.joinToString(" ")) }
-        return yours(f, s, heard)
+        // Review Low 3: your own list of that name before Shopping's or To-do's built-in one ("Groceries" beside Shopping).
+        yours(f, s, heard)?.let { return it }
+        return ROLE_BARE_EN[f.joinToString(" ")]?.let { Ref(ListRef.Role(it), s.joinToString(" ")) }
     }
 
     /** One of your lists' own names, said without "list" ("Costco"). */
@@ -399,6 +421,33 @@ object ListsRouter {
     private val ITEMS_EN = setOf("items", "things", "ones", "stuff", "entries") // l10n: not text (words Robot hears)
 
     /** fix-124c: a default list by its bare name after "clear the ticked items from" ("shopping", "the to-do"), where "list" is often left out. */
+    /**
+     * fix-skill-step-voice-lows-b: "add to groceries: milk, eggs", « ajoute à épicerie : lait, œufs »: the list right after
+     * the verb's "to" (« à »), a colon, then the items. Taken only when the words before the colon name a list (a default
+     * list's words or one of yours); else null and the rest of the router reads them as before.
+     */
+    private fun colonAdd(s: Said, n: Int, to: Set<String>, fr: Boolean, heard: ListsHeard): ListsCommand? {
+        if (n + 2 > s.words.size || s.folded[n] !in to) return null
+        // Review Low 4: a colon or a comma (as speech gives it); with neither, the words after "to" start with one of your lists' names.
+        val c = (n + 1 until s.words.size).firstOrNull { s.words[it].endsWith(':') || s.words[it].endsWith(',') } ?: return bareAdd(s, n, fr, heard) // l10n: not text (punctuation)
+        val name = s.words.subList(n + 1, c + 1).map { it.removeSuffix(":").removeSuffix(",") }.filter { it.isNotEmpty() } // l10n: not text (punctuation)
+        val items = s.words.subList(c + 1, s.words.size).joinToString(" ")
+        if (name.isEmpty() || name.size > MAX_NAME_WORDS + 2 || items.isBlank() || !ownItems(items)) return null
+        val w = name.map(MemoryText::fold)
+        val r = (if (fr) refFr(w, name, heard) ?: bareRole(Said(name), 0, DET_FR + setOf("les", "mes"), ROLE_FR) else refEn(w, name, heard)) ?: return bareAdd(s, n, fr, heard) // l10n: not text (words Robot hears)
+        return ListsCommand.Add(items, r.ref, r.said, if (fr) Lang.FR else Lang.EN)
+    }
+
+    /** "add to Costco paper towels": no punctuation, so only one of your lists' own names (the longest) right after "to". */
+    private fun bareAdd(s: Said, n: Int, fr: Boolean, heard: ListsHeard): ListsCommand? {
+        for (k in minOf(s.words.size - 1, n + 1 + MAX_NAME_WORDS) downTo n + 2) {
+            val r = yours(s.folded.subList(n + 1, k), s.words.subList(n + 1, k), heard) ?: continue
+            val items = s.words.subList(k, s.words.size).joinToString(" ")
+            return if (items.isBlank() || !ownItems(items)) null else ListsCommand.Add(items, r.ref, r.said, if (fr) Lang.FR else Lang.EN)
+        }
+        return null
+    }
+
     private fun bareRole(s: Said, from: Int, det: Set<String>, roles: Map<String, ListRole>): Ref? {
         if (from >= s.folded.size) return null
         val at = if (s.folded[from] in det && from + 1 < s.folded.size) from + 1 else from
@@ -419,6 +468,7 @@ object ListsRouter {
         // "put eggs back on the list" is a put back, "add a back scrubber to the list" an add.
         putBackEn(s, heard)?.let { return it }
         startsAny(s, ADD_EN).takeIf { it > 0 }?.let { n ->
+            colonAdd(s, n, TO_EN, fr = false, heard)?.let { return it }
             val f = s.folded
             val trimmed = if (f.size > n + 1 && f.last() in setOf("too", "also")) 1 else if (f.size > n + 2 && f.takeLast(2) == listOf("as", "well")) 2 else 0 // l10n: not text (words Robot hears)
             val core = Said(s.words.dropLast(trimmed))
@@ -744,6 +794,7 @@ object ListsRouter {
 
         // « ajoute du lait d'avoine à la liste d'épicerie »; « ajoute aussi du pain » for the list in focus.
         startsAny(s, ADD_FR).takeIf { it > 0 }?.let { n ->
+            colonAdd(s, n, TO_FR, fr = true, heard)?.let { return it }
             val f = s.folded
             val aussi = f.size > n + 1 && (f.last() == "aussi" || f[n - 1] == "aussi")
             val core = if (f.last() == "aussi") Said(s.words.dropLast(1)) else s

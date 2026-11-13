@@ -279,6 +279,9 @@ object HelperChoice {
         return if (w.robot) Instead(robot = true) else Instead(robot = false, helper = w.id, sure = w.sure)
     }
 
+    /** RP3: [text] says the last answer was wrong ("that's wrong", "not right", « c'est faux »), alone or with a re-send. */
+    fun wrong(text: String): Boolean = WRONG.find(lead(norm(text))) != null
+
     /** Filler off the front, and Robot's name when it's being spoken to ("Robot, ask the helper"), not named ("Robot instead"). */
     private fun lead(t: String): String {
         val a = LEAD.replace(t, "")

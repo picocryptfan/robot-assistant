@@ -80,6 +80,8 @@
     <string name="web_current_info">Current information</string>
     <string name="web_robot_first">The default. News, scores and prices stay with Robot</string>
     <string name="web_helper_first">Only when your helper can search the web itself</string>
+    <string name="web_helpers_search">Let helpers use Robot\'s search</string>
+    <string name="web_helpers_search_summary">For a helper that can\'t search the web itself. Each search goes through your search service, with Robot\'s checks</string>
     <string name="web_keep_sources">Keep sources in history</string>
     <string name="web_keep_domains">The default. “nhl.com, tsn.ca” under the answer</string>
     <string name="web_keep_links">The full addresses</string>

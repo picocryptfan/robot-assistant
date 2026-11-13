@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.ui.settings
 
+import app.heyrobot.core.MomentReminder
+import app.heyrobot.core.MomentReminders
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -117,6 +119,8 @@ data class RoutinesData(
     val runs: Map<String, RunRecord> = emptyMap(),
     val ready: List<ReadyCard> = emptyList(),
     val reminders: List<BriefReminder> = emptyList(),
+    /** moment-reminders: the reminders for a moment, listed with the brief's. */
+    val moments: List<MomentReminder> = emptyList(),
     /** The routines file can't be read, or a newer Robot wrote it. */
     val problem: RoutineFile? = null,
     val facts: RoutineFacts? = null,
@@ -137,6 +141,7 @@ data class RoutinesData(
                 runs = store.state().runs,
                 ready = ReadyCards.live(store.ready(), today),
                 reminders = store.reminders(),
+                moments = store.moments(),
                 problem = file.takeIf { it !is RoutineFile.Ok },
                 facts = RoutineFacts.read(ctx),
                 devices = DeviceKind.entries.associateWith { k -> memory?.devices?.filter { it.role.id == k.id }?.map { it.id to it.name }.orEmpty() },
@@ -159,6 +164,7 @@ class RoutineActions(
     /** A Ready card: the panel opens with it. */
     val openReady: (String) -> Unit = {},
     val removeReminder: (BriefReminder) -> Unit = {},
+    val removeMoment: (MomentReminder) -> Unit = {},
     /** The routines file can't be read: keep it aside and start over. */
     val startOver: () -> Unit = {},
 )
@@ -187,6 +193,7 @@ fun RoutinesRoute(route: String, s: RobotSettings, snap: Snapshot, a: AppActions
         runNow = a.runRoutine,
         openReady = a.openReady,
         removeReminder = { r -> store.editReminders { list -> list.filterNot { it == r } }; tick++ },
+        removeMoment = { r -> store.editMoments { list -> MomentReminders.remove(list, r.id) }; changed() },
         startOver = { store.reset(); changed() },
     )
     when {
@@ -288,6 +295,13 @@ fun RoutinesScreen(d: RoutinesData, s: RobotSettings, facts: AssistantFacts?, ac
                     else -> stringResource(R.string.routine_clock_sound, clockNow.label)
                 },
                     if (f.clock) Mark.OK else if (ClockNeed.unmet(d.routines, d.settings, f.clock)) Mark.WARN else Mark.TODO)
+                // named-timers: Robot keeps your timers itself (sys OwnTimerStore, its own file); off, they go to the clock app.
+                val timerCtx = LocalContext.current
+                var ownTimers by remember { mutableStateOf(app.heyrobot.sys.OwnTimerStore.on(timerCtx)) }
+                SwitchPreference(stringResource(R.string.routine_own_timers), stringResource(R.string.routine_own_timers_summary), ownTimers) {
+                    ownTimers = it
+                    app.heyrobot.sys.OwnTimerStore.setOn(timerCtx, it)
+                }
                 StatusPreference(stringResource(R.string.routine_calendar), stringResource(if (f.calendar) R.string.routine_calendar_ok else R.string.routine_calendar_no),
                     if (f.calendar) Mark.OK else Mark.TODO,
                     action = if (f.calendar) null else ({ TextButton(onClick = a.askCalendar, modifier = Modifier.heightIn(min = 48.dp)) { Text(allow) } }))
@@ -433,10 +447,15 @@ fun BriefSettingsScreen(d: RoutinesData, act: RoutineActions, snackbar: Snackbar
         }
         val reminders = d.reminders.filter { it.readAt == null }
         preferenceGroup(tReminders, "reminders") {
-            if (reminders.isEmpty()) PreferenceItem(stringResource(R.string.brief_none_waiting), stringResource(R.string.brief_none_hint), RIcons.Note)
+            if (reminders.isEmpty() && d.moments.isEmpty()) PreferenceItem(stringResource(R.string.brief_none_waiting), stringResource(R.string.brief_none_hint), RIcons.Note)
             for (r in reminders) {
                 PreferenceItem(r.text, Fmt.day(r.day, langs.say), RIcons.Note, trailing = {
                     IconButton(onClick = { act.removeReminder(r) }) { Icon(RIcons.Delete, stringResource(R.string.brief_remove, r.text)) }
+                })
+            }
+            for (m in d.moments) {
+                PreferenceItem(m.text, MomentReminders.phrase(m).render(langs).replaceFirstChar { it.uppercase() }, RIcons.Note, trailing = {
+                    IconButton(onClick = { act.removeMoment(m) }) { Icon(RIcons.Delete, stringResource(R.string.brief_remove, m.text)) }
                 })
             }
         }
@@ -599,6 +618,7 @@ fun RoutineEditScreen(initial: Routine, isNew: Boolean, d: RoutinesData, act: Ro
                     edit(r.copy(conditions = r.conditions.copy(oncePerDay = it)))
                 }
             }
+            OpenTickRows(r.opens) { edit(r.copy(opens = r.opens - it)) }
         }
         preferenceGroup(tDo, "steps") {
             if (skill != null) PreferenceItem(stringResource(R.string.routine_skill), skill.name, RIcons.Robot, onClick = { act.open(SkillRoutes.skill(skill.id)) })

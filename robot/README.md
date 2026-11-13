@@ -40,6 +40,18 @@ The design documents linked under `docs/` in this file (and `docs/plans/`) are p
 
 Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `THIRD_PARTY.md`.
 
+## What's new in 1.4
+
+Robot 1.4.0 (13 Nov 2026); the notes in docs/release-notes-1.4.0.md are the full list.
+
+- Answers: Ready answers (core `messages/ReadyAnswers`), Wikipedia on this phone (`wiki/`), When did I last (`lasttime/`), summarize a web page (`web/PageSummary`), a helper's web search, Search by meaning (`memory/MeaningSearch`, model pinned in `SearchModel`).
+- Hands busy: questions kept for when there's signal (`online/Later`), Read it to me (`read/`), Step by step (`steps/`, its words in `StepWords`), reminders for a moment (`MomentReminders`), Undo and change (`CorrectRouter`), earbud buttons (`headset/EarbudButtons`), Heads-up before events (`headsup/`).
+- Screens: Home screen pages and Quick access order, an app's widget in car mode's panel, Open apps without a card.
+- Private: History, Notes, People and conversation transcripts sealed (`core/TranscriptSeal`), sealed problem reports, Home Assistant marks.
+- Messages: scam warnings (`messages/ScamCheck`, `i18n/ScamStrings`): four sender rules, one fixed line in every reading, nothing leaves the phone. Car mode's screen link waits until you're parked (`PageSummaryRouter.look`).
+- Tor: a bridge at a home address goes through a relay inside Robot (`link/BridgeRelay`, `core/link/BridgeRelayPlan`) under the home-network rule.
+- No new permission; screenshots ask for photo access.
+
 ## What's new in 1.3
 
 Robot 1.3.0 (8 Nov 2026), 1.3.1 and 1.3.2 (both 10 Nov 2026), Skills, from `release/1.3`. Settings stay at schema 13: each part keeps its own file. No new permission; the
@@ -74,6 +86,9 @@ is reached only over Wi-Fi or Ethernet, or a VPN that reaches it, on a socket bo
   helper keys only with Keys and private codes. The category `skill_trust` (trusted keys and each MCP tool file, on the
   Skills row) is restored only from a backup you mark as your own, and a tool file only for a connection that restore
   brought back. An older Robot skips that category and restores the rest.
+  The apps a skill may open without asking go in their own category, `skill_opens` (Skills row, `skill_opens.json`), so
+  `skills.json` stays readable by a 1.3 Robot: it skips `skill_opens` and keeps every skill without those ticks. 1.4 puts
+  them back with Skills, and only from a backup you mark as your own: someone else's backup brings none.
 
 ## What's new in 1.2
 
@@ -434,11 +449,15 @@ does with your words.
 - **Downloads** (the Model tab, its Voice models, Settings › Conversation): every file Android's download manager
   fetches for Robot carries `User-Agent: Robot/<version>` (core `DownloadPolicy`, the same as the updater's; the version
   as Settings › About shows it, `1.0.0-rc1` with its "-", as in every User-Agent of Robot's since rc1: core
-  `AppId.product`), not Android's default, which names the phone model. Robot still has no network-state permission
-  (`ProcessIsolationTest`, `tools/verify_apk.sh`), so it can't see whether the phone is on mobile data: a download of
-  200 MB or more (the models, speech recognition, the natural voice) first asks "Download 3.11 GB?": **Wait for Wi-Fi**
-  (the download manager holds it until an unmetered network, `setAllowedOverMetered(false)`), **Download anyway** or
-  **Cancel**. Smaller ones (the fallback voice, the speaker model, the fast translation engine) start as before.
+  `AppId.product`), not Android's default, which names the phone model. Every request also sets
+  `setAllowedOverRoaming(false)`: a download of the models, voices, the translation pack, the search model or a
+  Wikipedia copy waits for a network that isn't roaming and says "waiting until the phone isn't roaming" (core
+  `DownloadNetwork`, which reads only Android's NOT_ROAMING flag; the network-state permission Robot already holds since
+  1.1, now also used for this). Whether it is on mobile data, Robot leaves to Android: a download of 200 MB or more (the
+  models, speech recognition, the natural voice, the translation pack if it grows past that) first asks "Download 3.11
+  GB?": **Wait for Wi-Fi** (the download manager holds it until an unmetered network, `setAllowedOverMetered(false)`),
+  **Download anyway** or **Cancel**. Smaller ones (the fallback voice, the speaker model, the search model, the 52 MB
+  French and English translation pack) don't ask and start as before, on mobile data too, but never while you roam.
 - **"Robot closed unexpectedly"**: when you open Robot after the app or the assistant (`:voice`) crashed or stopped
   responding, a window says so once, from Android's records (`ApplicationExitInfo`; core `AppCrash`, `sys/Problems.kt`),
   with **Send feedback** (a bug report with the crash report ticked: Android's record, a native crash's frames as
@@ -716,8 +735,9 @@ connection and a skill you run uses it.
   **Add a step** (Your connections, Travel time, App hand-offs, Your Termux scripts, Say something), a page per step
   (each value a constant, a question, words with a value inside, or an earlier step's value; **Only if…**; **If it
   doesn't work**: Stop, or Go on after a read), and computed lines: Effects, Risk (Simple, Careful, Risky), Needs a model,
-  and **Test** (a dry run: nothing sent, keys as their last 4 characters). Connection steps are added in Settings only;
-  by voice you run, list, ask about and delete skills, as in 1.1.
+  and **Test** (a dry run: nothing sent, keys as their last 4 characters). By voice you run, list, ask about and delete
+  skills, as in 1.1, and add a connection's step ("add to heading home: turn on the porch light"): Robot reads it back
+  and waits for yes; a lock, door or alarm step is added on the screen.
 - `skills.json` stays version 1 until a skill uses something new, then becomes 2 (plan D6): a 1.1 Robot leaves a v2 file
   alone ("Your skills are from a newer Robot") and a 1.1 restore skips Skills as newer.
 
@@ -7358,8 +7378,9 @@ properly", to tell the headset Robot is listening within its 5 s (`BluetoothHead
 devices by their whole address.
 
 **Known gaps:** "Hey robot" through the headset's microphone (`wakeThroughHeadset`) is not built: the wake word listens
-on the phone. The media-button switch ("Headset buttons control Robot while she talks") is not built: Robot holds no
-media session, so a single or double press stays your music app's. Whether a headset accepts the call route, how long
+on the phone. Earbud buttons while Robot talks (on): Robot holds a media session only while she speaks, so a tap stops
+her and a double tap (or the earbud's "next") skips to a brief's next part; once she has been quiet for 0.6 s, or
+anything stops her, the buttons are your music app's again. A long press still opens Robot. Whether a headset accepts the call route, how long
 it takes and how well Robot hears through it are the phone checks below.
 
 ### On the phone (0.8 headset)

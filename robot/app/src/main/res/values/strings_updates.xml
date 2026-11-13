@@ -96,6 +96,7 @@
     <string name="feedback_share_note_text">Share opens Android\'s share sheet: pick your SMS or messaging app, and the developer. Text it opens your SMS app with %1$s filled in; you press Send there.</string>
     <string name="feedback_github">Open a GitHub issue</string>
     <string name="feedback_github_note">Opens a new issue in your browser with the message filled in, cut to about 7,000 characters if it is longer. GitHub receives the message when the page opens, whether or not you submit the issue. A private repository needs you signed in to GitHub there.</string>
+    <string name="feedback_github_card_note">Opens a new issue in your browser with only its title, and puts the report on your clipboard: paste it into the issue before you submit it.</string>
     <string name="feedback_whole">The whole message</string>
     <string name="feedback_nothing">Nothing to add.</string>
     <string name="feedback_close">Close</string>
@@ -106,6 +107,7 @@
     <string name="feedback_no_share">No app on this phone can share text.</string>
     <string name="feedback_copied">Copied. Robot clears it from the clipboard in a minute if nothing else replaced it.</string>
     <string name="feedback_no_sms">No SMS app on this phone.</string>
+    <string name="feedback_turn_missing">I couldn\'t read that turn from History, so it isn\'t in the report.</string>
     <string name="feedback_no_browser">No browser on this phone.</string>
     <string name="feedback_number_removed">The number was removed.</string>
     <string name="feedback_number_saved">Text it now opens your SMS app with %1$s.</string>

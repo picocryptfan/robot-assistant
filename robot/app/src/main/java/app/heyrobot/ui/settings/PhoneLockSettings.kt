@@ -55,6 +55,7 @@ import app.heyrobot.lock.LockAccess
 import app.heyrobot.lock.LockSignals
 import app.heyrobot.lock.LockStore
 import app.heyrobot.sys.NotificationAccess
+import app.heyrobot.sys.PeopleFiles
 import app.heyrobot.ui.AppActions
 import app.heyrobot.ui.Mark
 import app.heyrobot.ui.Page
@@ -243,10 +244,11 @@ fun PhoneLockRoute(route: String, a: AppActions, snackbar: SnackbarHostState, on
     }
     val act = PhoneLockActions(
         open = { a.openPage(Page.Settings(it)) },
-        edit = { change -> LockStore.editLocks(ctx, change).also { tick++ } != null },
+        // seal-people-fix-b 6: every change (Phone lock off, a lock deleted or saved) rewrites the call list, off this page.
+        edit = { change -> LockStore.editLocks(ctx, change).also { tick++; if (it != null) PeopleFiles.refreshCallsLater(ctx) } != null },
         askCode = { purpose -> code.launch(LockSignals.code(ctx, purpose)) },
         removeCode = { removed.launch(LockSignals.code(ctx, LockSignals.PURPOSE_REMOVE)) },
-        startOver = { LockStore.startOver(ctx); tick++ },
+        startOver = { LockStore.startOver(ctx); PeopleFiles.refreshCallsLater(ctx); tick++ },
         askPermission = a.askPermission,
     )
     when {

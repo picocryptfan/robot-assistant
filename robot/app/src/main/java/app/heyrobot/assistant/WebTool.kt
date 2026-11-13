@@ -79,10 +79,11 @@ class WebTool(
     /** What the search is doing, and the question's language, for the panel's status and Robot's voice. */
     private val step: (WebStep, String) -> Unit,
 ) {
-    fun prepare(a: Action.WebSearch): Prepared {
+    /** [helper]: a helper asked (W4): never your town in its query, and only while "Let helpers use Robot's search" is on. */
+    fun prepare(a: Action.WebSearch, helper: Boolean = false): Prepared {
         if (!Assistant.granted(ctx, Manifest.permission.INTERNET)) return Prepared.Refused(ActionStatus.FAILED, WebFail.NO_NETWORK_PERMISSION.sentence(null))
-        return WebGate.prepare(a, WebStore.load(ctx), WebAnswers.load(ctx), context(), WebCounts.today(ctx), settings.weatherHome?.name,
-            question = said?.takeIf { it.isNotBlank() } ?: a.query)
+        return WebGate.prepare(a, WebStore.load(ctx), WebAnswers.load(ctx), context(), WebCounts.today(ctx), settings.weatherHome?.name.takeUnless { helper },
+            question = said?.takeIf { it.isNotBlank() } ?: a.query, helper = helper)
     }
 
     fun run(a: Action.WebSearch): Executed {

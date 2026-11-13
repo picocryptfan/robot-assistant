@@ -43,6 +43,12 @@ sealed class MessageCommand {
 
     /** "Stop", "arrête": no more reading. */
     data class Stop(override val lang: Lang) : MessageCommand()
+
+    /** 1.3, "What did I miss?", « qu'est-ce que j'ai manqué? »: the apps you picked, since you last looked (messages/Missed.kt). */
+    data class Missed(override val lang: Lang) : MessageCommand()
+
+    /** 1.3, "hold my news apps till noon", « mets mes notifications en attente jusqu'à midi »: messages/Hold.kt. */
+    data class Hold(val ask: HoldAsk, override val lang: Lang) : MessageCommand()
 }
 
 object MessagesRouter {
@@ -73,7 +79,7 @@ object MessagesRouter {
      * Otherwise "reply in one word: …", "respond in French: …", "answer her for me" are ordinary questions for the model.
      */
     fun applies(cmd: MessageCommand, on: Boolean, readHere: Boolean, knows: (String) -> Boolean = { false }): Boolean = when (cmd) {
-        is MessageCommand.Read, is MessageCommand.Summarize -> true
+        is MessageCommand.Read, is MessageCommand.Summarize, is MessageCommand.Missed, is MessageCommand.Hold -> true
         is MessageCommand.Mark -> on && (readHere || cmd.kind == MarkKind.READ)
         is MessageCommand.Reply -> on && (readHere || names(cmd, knows))
         else -> on
@@ -117,6 +123,8 @@ object MessagesRouter {
         Regex("^(?:any|are there any|do i have any|did i get any) (?:new )?(?:messages?|texts?) from (.+)$"),
         Regex("^(?:did|has) (.+?) (?:write|written|wrote|text|texted|message|messaged|reply|replied|answer|answered)(?: me| back| to me)?$"),
     )
+    /** "What did I miss (on my phone)?": nothing after it but the phone or while you were away ("… in the meeting" is the model's). */
+    private val MISSED_EN = Regex("^(?:so )?(?:what did i miss|what have i missed|what've i missed|what'?d i miss|did i miss anything|have i missed anything|did i miss something|anything i missed|(?:did i|have i) miss(?:ed)? any notifications|any (?:new )?notifications)(?: on my phone| while i was (?:away|out|gone|busy))?(?: today| this morning| this afternoon| this evening| tonight)?$")
     private val SUMMARY_EN = Regex("^(?:summari[sz]e|sum up|recap|give me a summary of|make a summary of)(?: all)? (?:my |the )?(?:new |unread |latest )?(?:messages|texts)$")
     private val SUMMARY_IT_EN = Regex("^(?:summari[sz]e|sum up|recap)(?: them| it| all| all of them| everything)?$")
     private val TRANSLATE_WHO_EN = listOf(
@@ -138,6 +146,8 @@ object MessagesRouter {
         val f = said.fc
         val o = said.oc
         if (READ_EN.any { it.matches(f) }) return MessageCommand.Read(en)
+        if (MISSED_EN.matches(f)) return MessageCommand.Missed(en)
+        HoldPhrase.english(f)?.let { return MessageCommand.Hold(it, en) }
         if (SUMMARY_EN.matches(f) || (reading && SUMMARY_IT_EN.matches(f))) return MessageCommand.Summarize(en)
         for (r in TRANSLATE_WHO_EN) r.matchEntire(f)?.let { m -> return who(m, o)?.let { MessageCommand.Translate(it, en) } }
         if (reading && TRANSLATE_IT_EN.matches(f)) return MessageCommand.Translate(null, en)
@@ -193,6 +203,8 @@ object MessagesRouter {
 
     // ------------------------------------------------------------------ French (Québec)
 
+    /** « Qu'est-ce que j'ai manqué? », « j'ai-tu manqué quelque chose? » (folded: no accents). */
+    private val MISSED_FR = Regex("^(?:(?:qu'est-ce que|qu'est ce que|quesse que|kesse que) j'ai (?:manque|rate)|j'ai (?:manque|rate) quoi|j'ai(?:-tu| tu)? (?:manque|rate) (?:quelque chose|de quoi)|ai-je (?:manque|rate) quelque chose|qu'ai-je (?:manque|rate)|quoi de neuf sur mon (?:telephone|cell|cellulaire))(?: sur mon (?:telephone|cell|cellulaire)| pendant que j'etais (?:parti|partie|absent|absente|occupe|occupee))?(?: aujourd'hui| ce matin| cet apres-midi| ce soir)?$")
     private val READ_FR = listOf(
         Regex("^(?:lis|lire|lis-moi|lis moi|verifie|verifier|regarde|checke)(?:-moi| moi)? (?:mes|les|tous mes) (?:nouveaux |derniers )?(?:messages|textos|texto|sms)(?: non lus)?$"),
         Regex("^(?:est-ce que j'ai|est ce que j'ai|esque j'ai|j'ai|j'ai-tu|j'ai tu|ai-je|as-tu|tu as|y a-t-il|y a t il|y a-tu|y a tu|y'a-tu|y'a tu|il y a|y'a)(?: des| de| du)?(?: nouveaux)? (?:messages?|textos?|sms)(?: pour moi)?$"),
@@ -223,6 +235,8 @@ object MessagesRouter {
         val f = said.fc
         val o = said.oc
         if (READ_FR.any { it.matches(f) }) return MessageCommand.Read(fr)
+        if (MISSED_FR.matches(f)) return MessageCommand.Missed(fr)
+        HoldPhrase.french(f)?.let { return MessageCommand.Hold(it, fr) }
         if (SUMMARY_FR.matches(f) || (reading && SUMMARY_IT_FR.matches(f))) return MessageCommand.Summarize(fr)
         TRANSLATE_WHO_FR.matchEntire(f)?.let { m -> return who(m, o)?.let { MessageCommand.Translate(it, fr) } }
         if (reading && TRANSLATE_IT_FR.matches(f)) return MessageCommand.Translate(null, fr)

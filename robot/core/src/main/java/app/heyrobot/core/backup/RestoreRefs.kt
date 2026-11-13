@@ -14,6 +14,13 @@ import app.heyrobot.core.messages.MessagesFile
 
 object RestoreRefs {
     /**
+     * seal-people-fix 4: the person links a restore keeps when People itself isn't restored: those to someone People has,
+     * or every link as it is while People can't be opened (it is unchanged, and may open a minute later).
+     */
+    fun peopleHere(load: app.heyrobot.core.PeopleLoad): (String) -> String? =
+        (load as? app.heyrobot.core.PeopleLoad.Ok)?.let { l -> same(l.file.people.map { it.id }.toSet()) } ?: { id -> id }
+
+    /**
      * settings.json's fields that belong to this phone ([FieldRule.PHONE]): the calendar new events go to (an id of this
      * phone's calendars), whether a voiceprint is enrolled here (none is ever restored), the model terms you confirmed
      * before a download here, the reminder before a recording, the one-time safety notice and Home's notice about the

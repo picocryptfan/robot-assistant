@@ -79,12 +79,14 @@ fun onlinePage(p: NetPurpose): Page = when (p.group) {
     NetGroup.DOWNLOADS -> when (p) {
         NetPurpose.VOICE_DOWNLOAD -> Page.Settings(SettingsRoutes.VOICE)
         NetPurpose.TRANSLATION_DOWNLOAD -> Page.ConversationSettings
+        NetPurpose.WIKI_DOWNLOAD -> Page.Settings(SettingsRoutes.WIKIPEDIA)
         else -> Page.Settings(SettingsRoutes.MODEL)
     }
     NetGroup.UPDATES -> if (p == NetPurpose.TERMUX_CHECK) Page.Settings(SettingsRoutes.TERMUX) else Page.Settings(SettingsRoutes.UPDATES)
     NetGroup.SKILLS -> Page.Settings(SettingsRoutes.SKILLS)
     NetGroup.LINK -> Page.Settings(SettingsRoutes.LINK)
     NetGroup.NEWS -> Page.Settings(SettingsRoutes.DISPLAY)
+    NetGroup.REPORTS -> Page.Settings(SettingsRoutes.REPORTS_SENT)
 }
 
 @Composable
@@ -98,6 +100,7 @@ private fun groupName(g: NetGroup): String = stringResource(when (g) {
     NetGroup.SKILLS -> R.string.everyday_online_g_skills
     NetGroup.LINK -> R.string.everyday_online_g_link
     NetGroup.NEWS -> R.string.everyday_online_g_news
+    NetGroup.REPORTS -> R.string.everyday_online_g_reports
 })
 
 @Composable
@@ -146,6 +149,7 @@ fun OnlineScreen(a: AppActions, snackbar: SnackbarHostState, onBack: () -> Unit)
         val todays = v?.rows?.filter { NetFiles.dayOf(it.time) == today }.orEmpty()
         preferenceGroup(null, "online-top") { // l10n: not text (a list key)
             val header = OnlineSummary.header(todays, EverydayStrings.onlineTodayTitle()).str()
+            val handed = OnlineSummary.handedLine(todays)?.str()
             val android = when {
                 v == null -> null
                 !v.androidGiven || v.compare == null -> EverydayStrings.onlineAndroidNone().str()
@@ -153,6 +157,7 @@ fun OnlineScreen(a: AppActions, snackbar: SnackbarHostState, onBack: () -> Unit)
                     if (v.compare.tooMuch) "\n" + EverydayStrings.onlineAndroidMore().str() else ""
             }
             PreferenceItem(header, android)
+            if (handed != null) PreferenceItem(handed) // M1: handed reports, a line of their own under the header
             if (!s.online) PreferenceItem(stringResource(R.string.everyday_online_is_off), null, RIcons.Info)
             if (v?.cut == true) PreferenceItem(stringResource(R.string.everyday_online_cut), null, RIcons.Info)
         }

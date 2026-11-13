@@ -177,4 +177,11 @@
     <string name="today_news_unsaved">Robot n’a pas pu garder cette adresse en sécurité sur ce téléphone, donc elle n’a pas été ajoutée. Réessaie.</string>
     <string name="today_news_plain_http">http simple : sur le Wi-Fi de quelqu’un d’autre, un autre appareil peut avoir cette adresse, et ses manchettes s’afficheraient ici.</string>
     <string name="today_news_token_clear">Non chiffré (sur ce téléphone) : sa clé passe en http simple vers un serveur sur ce téléphone, et nulle part ailleurs.</string>
+    <!-- Quick access (home-screens HS3), on the home pages as Today is. -->
+    <string name="today_quick_name">Accès rapide</string>
+    <string name="today_quick_detail">De grands boutons pour ce que tu utilises le plus</string>
+    <string name="today_quick_start_detail">Parler à Robot, le mode auto et des conseils pour commencer</string>
+    <string name="today_quick_home_screen">Écran d’accueil</string>
+    <string name="today_quick_set_up">Configurer</string>
+    <string name="today_quick_back">Retour à l’Accès rapide</string>
 </resources>

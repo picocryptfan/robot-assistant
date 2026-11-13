@@ -38,7 +38,7 @@ import java.time.format.DateTimeFormatter
 // you've parked (car mode ends: Robot never tells parked from moving, so car mode on counts as driving).
 
 /** What the helper writes: a plan (make_plan's JSON) or a draft (make_skill's). */
-enum class HelpJob { PLAN, DRAFT }
+enum class HelpJob { PLAN, DRAFT, SUMMARY }
 
 /** Exactly what would go to a helper: its instruction ([system]) and one message, your [words]. No history, no tools, no search. */
 data class HelpRequest(val job: HelpJob, val system: String, val words: String) {
@@ -128,7 +128,7 @@ object SkillHelp {
 
     /** The estimate in dollars for [r] to [h], or null when its price isn't known. */
     fun estimate(h: HelperConfig, r: HelpRequest, at: Instant): Double? =
-        Pricing.dollars(h.price, HelperUsage(input = HelperCost.tokens(r.chars), output = OUTPUT_ESTIMATE), at)
+        Pricing.dollars(h.price, HelperUsage(input = HelperCost.tokens(HelperCost.charsOf(r.system) + HelperCost.charsOf(r.words)), output = OUTPUT_ESTIMATE) /* fix-batch-15 L5 */, at)
 
     /** "≈ 1¢ · today: $0.12 of $1 on helpers", in [lang]'s amounts; a home server's "No cost". */
     fun costLine(h: HelperConfig, r: HelpRequest, at: Instant, spend: HelperSpend, today: LocalDate, budgetCents: Int, lang: Lang): Phrase {

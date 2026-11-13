@@ -62,4 +62,52 @@ class AlarmCancelTest {
         assertEquals("Robot doesn't see an alarm set.", AlarmCancel.nextLine(null, now).en())
         assertTrue(AlarmCancel.nextLine(tomorrow, now).render(app.heyrobot.core.i18n.Langs(app.heyrobot.core.i18n.Lang.FR, app.heyrobot.core.i18n.Lang.FR, app.heyrobot.core.i18n.Lang.FR)).startsWith("Ta prochaine alarme sonne demain"))
     }
+
+    // fix-alarm-moved (phone-train-14-b): Turn off tapped, the clock left the 18:45 alarm on; the card mustn't read done.
+    @Test fun theCardReadsDoneOnlyOnceTheAlarmWent() {
+        assertEquals(ActionStatus.DONE, AlarmCancel.cardStatus(gone = true))
+        assertEquals(ActionStatus.FAILED, AlarmCancel.cardStatus(gone = false))
+    }
+
+    @Test fun anAlarmLeftOnSaysToFinishInTheClock() {
+        val en = app.heyrobot.core.i18n.Langs(app.heyrobot.core.i18n.Lang.EN, app.heyrobot.core.i18n.Lang.EN, app.heyrobot.core.i18n.Lang.EN)
+        val fr = app.heyrobot.core.i18n.Langs(app.heyrobot.core.i18n.Lang.FR, app.heyrobot.core.i18n.Lang.FR, app.heyrobot.core.i18n.Lang.FR)
+        val why = app.heyrobot.core.i18n.ToolStrings.alarmStillOn("time" to "6:45 p.m.")
+        val still = LocalTime.of(18, 45)
+        val open = AlarmCancel.openLines(why, opened = true, still = still).map { it.render(en) }
+        assertEquals(2, open.size)
+        assertTrue(open[1], open[1].startsWith("Your clock's alarms are open. Turn off the ") && open[1].endsWith(" alarm there."))
+        assertEquals("Turn it off in your clock app's alarms.", AlarmCancel.openLines(why, opened = false, still = still)[1].render(en))
+        assertTrue(AlarmCancel.openLines(why, opened = true, still = still)[1].render(fr).startsWith("Les alarmes de ton horloge sont ouvertes. Désactive"))
+        // Nothing left on (another time, or none seen): as before.
+        assertEquals("Your clock's alarms are open.", AlarmCancel.openLines(why, opened = true)[1].render(en))
+        assertEquals("Check in your clock app.", AlarmCancel.openLines(why, opened = false)[1].render(en))
+    }
+
+    // fix-batch-15 M1: a move's new alarm read back: seen, hidden behind an earlier one, or missing.
+    @Test fun aMovedAlarmIsSeenHiddenOrMissing() {
+        val z = ZoneId.of("America/Halifax")
+        val ms = { d: Int, h: Int, m: Int -> ZonedDateTime.of(2026, 11, d, h, m, 0, 0, z).toInstant().toEpochMilli() }
+        val at = ms(5, 11, 17)
+        assertEquals(CorrectRouter.Landed.SEEN, CorrectRouter.landed(11, 45, ms(5, 11, 45), at, z))
+        assertEquals(CorrectRouter.Landed.HIDDEN, CorrectRouter.landed(11, 45, ms(5, 11, 30), at, z))
+        assertEquals(CorrectRouter.Landed.MISSING, CorrectRouter.landed(11, 45, null, at, z))
+        assertEquals(CorrectRouter.Landed.MISSING, CorrectRouter.landed(11, 45, ms(6, 7, 0), at, z)) // tomorrow's 7:00 rings after
+        assertEquals(CorrectRouter.Landed.HIDDEN, CorrectRouter.landed(9, 0, ms(6, 7, 0), at, z)) // 9:00 is tomorrow's; 7:00 is first
+        // fix-batch-15-lows a: a weekly 11:45 a week out is another alarm, not the moved one.
+        assertEquals(CorrectRouter.Landed.MISSING, CorrectRouter.landed(11, 45, ms(12, 11, 45), at, z))
+        assertEquals(CorrectRouter.Landed.MISSING, CorrectRouter.landed(11, 45, ms(6, 11, 45), at, z)) // tomorrow's, today's not kept
+    }
+
+    // fix-batch-15 L2 (review-batch-15): a clock slower than 2 s is read once more before the card says it failed.
+    @Test fun theReadBackReadsOnceMoreAfterItsSteps() {
+        var reads = 0
+        val waits = mutableListOf<Long>()
+        assertTrue(AlarmCancel.readBack(100L, pause = { waits += it }, read = { reads++; if (reads == 9) null else 100L }))
+        assertEquals(9, reads)
+        assertEquals(1000L, waits.last())
+        reads = 0
+        assertFalse(AlarmCancel.readBack(100L, pause = {}, read = { reads++; 100L }))
+        assertEquals(9, reads)
+    }
 }

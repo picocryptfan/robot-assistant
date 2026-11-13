@@ -42,6 +42,14 @@
     <string name="car_panel_media_buttons">Boutons multimédias</string>
     <string name="car_panel_messages">Messages</string>
     <string name="car_panel_messages_detail">Affichés sur l’écran de l’auto seulement, comme Réglages › Messages le permet. Pour répondre, touche Parler</string>
+    <string name="car_widget_setup">Configure-le une fois dans Réglages › Mode auto</string>
+    <string name="car_widget_of">Le widget de %1$s</string>
+    <string name="car_widget_pick">Choisis un widget</string>
+    <string name="car_widget_none">Aucune appli de ce téléphone n’a de widget</string>
+    <string name="car_widget_failed">Impossible d’ajouter ce widget. L’écran du bas affiche le lecteur multimédia</string>
+    <string name="car_widget_gone">L’appli du widget a changé ou a été désinstallée depuis que tu l’as choisi. L’écran du bas affiche le lecteur multimédia jusqu’à ce que tu choisisses le widget de nouveau</string>
+    <string name="car_panel_widget">Le widget d’une appli</string>
+    <string name="car_panel_widget_detail">Affiché au-dessus de tes boutons. Le bouton d’échange de l’écran du bas ramène le lecteur multimédia</string>
     <string name="car_panel_directions">Itinéraire</string>
     <string name="car_panel_directions_detail">Un bouton vers ton appli de cartes. Robot ne peut pas encore lire l’itinéraire détaillé</string>
     <string name="car_panel_latest">Dernier message</string>
@@ -51,6 +59,9 @@
     <string name="headset_button">Le bouton des écouteurs ouvre Robot</string>
     <string name="headset_button_on">Un appui long sur le bouton vocal de tes écouteurs ou de ton auto</string>
     <string name="headset_button_off">Désactivé&#160;: les autres applis reçoivent le bouton</string>
+    <string name="headset_earbud_buttons">Boutons des écouteurs pendant que Robot parle</string>
+    <string name="headset_earbud_buttons_on">Touche une fois pour arrêter Robot, deux fois pour passer à la partie suivante</string>
+    <string name="headset_earbud_buttons_off">Désactivé&#160;: ton appli de musique garde les boutons</string>
     <string name="headset_listening">Écoute</string>
     <string name="headset_listen_with">Écouter avec</string>
     <string name="headset_listen_headset_detail">Par défaut. Fonctionne avec le téléphone dans une poche&#8239;; la musique fait une pause pendant que Robot écoute et répond (son de qualité appel).</string>
@@ -198,6 +209,18 @@
     <string name="car_apps_title">Applis pour l’auto</string>
     <string name="car_apps_summary_none">Aucune pour l’instant. Garde-en jusqu’à %1$d, puis touche Applis sur l’écran de l’auto pour en ouvrir une à côté de Robot.</string>
     <string name="car_shortcut">Mode auto</string>
+    <!-- Idée 5 : un rappel avant chaque événement, dans des écouteurs privés seulement (Réglages › Écouteurs). -->
+    <string name="headset_headsup_group">Rappels d’agenda</string>
+    <string name="headset_headsup_switch">Rappel avant les événements</string>
+    <string name="headset_headsup_on">«&#160;Dentiste à 14&#160;h&#160;30, dans 15 minutes.&#160;» Dans des écouteurs privés seulement, jamais sur un haut-parleur ni dans l’auto</string>
+    <string name="headset_headsup_minutes">Combien de temps avant</string>
+    <string name="headset_headsup_minutes_n">%1$d minutes avant</string>
+    <string name="headset_headsup_quiet">Heures de silence</string>
+    <string name="headset_headsup_quiet_off">Aucune</string>
+    <string name="headset_headsup_quiet_21">De 21&#160;h à 7&#160;h</string>
+    <string name="headset_headsup_quiet_22">De 22&#160;h à 7&#160;h</string>
+    <string name="headset_headsup_quiet_23">De 23&#160;h à 8&#160;h</string>
+    <string name="headset_headsup_calendar">Robot ne peut pas lire ton agenda. Touche pour le permettre</string>
     <string name="car_split_refused">Impossible d’ouvrir cette appli à côté de l’écran de l’auto</string>
     <string name="car_covered_voice">Une autre appli s’affiche par-dessus cet écran, alors Robot n’a rien fait. Réponds de vive voix, ou déplace sa fenêtre et touche de nouveau.</string>
     <string name="car_covered_move">Une autre appli s’affiche par-dessus cet écran, alors Robot n’a rien fait. Celle-là se confirme d’une touche. Déplace sa fenêtre et touche de nouveau, ou dis non.</string>

@@ -58,6 +58,10 @@ object Images {
         return c
     }
 
+    /** 1.3 point and read: a JPEG the panel holds in memory, back to a bitmap to cut (PanelRead); null if it can't be read. */
+    fun decodeBytes(jpeg: ByteArray, maxEdge: Int = MAX_EDGE): Bitmap? =
+        try { decode(ImageDecoder.createSource(java.nio.ByteBuffer.wrap(jpeg)), maxEdge) } catch (_: Exception) { null }
+
     /** Decodes an image (EXIF rotation applied by ImageDecoder), already scaled to at most [maxEdge]. */
     fun decode(source: ImageDecoder.Source, maxEdge: Int = MAX_EDGE): Bitmap =
         ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
@@ -82,13 +86,15 @@ class CaptureActivity : Activity() {
     @Volatile private var decoding = false
     /** The photo's own bytes, as the camera or the picker gave them (at most [MAX_ORIGINAL] + 1). */
     @Volatile private var original: ByteArray? = null
+    /** 1.3 point and read: the camera's photo is read aloud (PanelRead), never held for a question. */
+    private val read: Boolean get() = intent.getStringExtra(EXTRA_MODE) == MODE_READ
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (savedInstanceState != null) return
         val ok = try {
             when (intent.getStringExtra(EXTRA_MODE)) {
-                MODE_CAMERA -> {
+                MODE_CAMERA, MODE_READ -> {
                     shot.delete()
                     val uri = FileProvider.getUriForFile(this, AUTHORITY, shot)
                     val i = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
@@ -134,7 +140,8 @@ class CaptureActivity : Activity() {
         Thread({
             val (bmp, error) = try {
                 // 1.4, "file this": the photo's own bytes, read before anything decodes it, kept in RAM with the panel.
-                original = try {
+                // Not for a reading (MODE_READ): nothing files it, so the photo's bytes are never read.
+                original = if (read) null else try {
                     when (requestCode) {
                         REQ_CAMERA -> shot.inputStream().use { it.readNBytes(MAX_ORIGINAL + 1) }
                         else -> data?.data?.let { u -> app.contentResolver.openInputStream(u)?.use { it.readNBytes(MAX_ORIGINAL + 1) } }
@@ -147,7 +154,7 @@ class CaptureActivity : Activity() {
                     REQ_CAMERA -> ImageDecoder.createSource(shot)
                     else -> data?.data?.let { ImageDecoder.createSource(app.contentResolver, it) }
                 }
-                (src?.let { Images.decode(it) }) to (if (src == null) PanelStrings.noPicture().render(AppLanguage.langs(app)) else null)
+                (src?.let { Images.decode(it, if (read) PanelRead.EDGE else Images.MAX_EDGE) }) to (if (src == null) PanelStrings.noPicture().render(AppLanguage.langs(app)) else null)
             } catch (t: Throwable) {
                 RLog.w("capture_decode", t)
                 null to PanelStrings.unreadablePicture().render(AppLanguage.langs(app))
@@ -162,7 +169,10 @@ class CaptureActivity : Activity() {
     private fun done(bmp: Bitmap?, error: String?) {
         // Cancelled, failed or read: the camera's file never outlives the capture.
         if (!decoding) shot.delete()
-        if (bmp != null) {
+        if (bmp != null && read) {
+            // Held only for a panel that shows again; with no service, nothing would ever take it.
+            if (RobotVoiceService.instance != null) PanelController.onReadPicked(bmp)
+        } else if (bmp != null) {
             val o = original
             val tooBig = o != null && o.size > MAX_ORIGINAL
             PanelController.onImagePicked(Images.jpeg(bmp), Images.scaled(bmp, Images.THUMB_EDGE), o?.takeIf { !tooBig }, tooBig)
@@ -180,10 +190,17 @@ class CaptureActivity : Activity() {
     }
 
     companion object {
+        /** L2: :voice starting deletes a photo a process death left behind (every other way out deletes it at once). */
+        fun dropLeftover(ctx: android.content.Context) {
+            try { File(File(ctx.cacheDir, "capture"), "photo.jpg").delete() } catch (t: Throwable) { RLog.w("capture_leftover", t) }
+        }
+
         const val EXTRA_MODE = "mode"
         const val MODE_CAMERA = "camera"
         const val MODE_PHOTOS = "photos"
         const val MODE_FILE = "file"
+        /** 1.3 point and read: the camera, as MODE_CAMERA, its photo read aloud. */
+        const val MODE_READ = "read" // l10n: not text (an extra's value)
         private const val REQ_FILE = 3
         /** The manifest's `${applicationId}.capture` (unique on the phone, so 1.0 installs beside 0.9). */
         const val AUTHORITY = app.heyrobot.BuildConfig.APPLICATION_ID + ".capture"

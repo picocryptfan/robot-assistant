@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.sys
 
+import app.heyrobot.people.HoldTap
 import android.Manifest
 import android.app.NotificationManager
 import android.content.ComponentName
@@ -28,7 +29,6 @@ import app.heyrobot.core.ContactIds
 import app.heyrobot.core.ContactMatch
 import app.heyrobot.core.ContactName
 import app.heyrobot.core.ContactPhone
-import app.heyrobot.core.NoteStore
 import app.heyrobot.core.People
 import app.heyrobot.core.PeopleStore
 import app.heyrobot.core.Person
@@ -70,6 +70,23 @@ object Contacts {
             }
         }
         return names.map { (id, n) -> ContactName(ContactIds.system(id), n, nicknames[id].orEmpty(), lookupKey = keys[id]) }
+    }
+
+    /** Every contact's numbers (as stored and normalized) and postal addresses (whole and street), to hide in a problem report; never sent. */
+    fun numbersAndAddresses(ctx: Context): Pair<List<String>, List<String>> {
+        val numbers = LinkedHashSet<String>()
+        val addresses = LinkedHashSet<String>()
+        val postal = ContactsContract.CommonDataKinds.StructuredPostal.CONTENT_ITEM_TYPE
+        // Phone.NUMBER and StructuredPostal.FORMATTED_ADDRESS are DATA1; Phone.NORMALIZED_NUMBER and StructuredPostal.STREET are DATA4.
+        ctx.contentResolver.query(Data.CONTENT_URI, arrayOf(Data.MIMETYPE, Data.DATA1, Data.DATA4), "${Data.MIMETYPE} IN (?, ?)",
+            arrayOf(Phone.CONTENT_ITEM_TYPE, postal), null)?.use { c ->
+            while (c.moveToNext()) {
+                val into = if (c.getString(0) == Phone.CONTENT_ITEM_TYPE) numbers else addresses
+                for (i in 1..2) c.getString(i)?.trim()?.takeIf { it.isNotEmpty() }?.let { into += it }
+            }
+        }
+        // A number of one or two digits (a speed dial) would hide every 1 in the report.
+        return numbers.filter { n -> n.count(Char::isDigit) >= 3 } to addresses.toList()
     }
 
     /** The numbers, email addresses and XMPP (Jabber) addresses of the [matches], in their order. */
@@ -374,6 +391,8 @@ object AppPages {
     const val NOTES = "notes"
     /** H3: History (behind the clock icon) and the Calendar tab, from "show my history" and "show my calendar". */
     const val HISTORY = "history"
+    /** HS3: Quick access, from "show quick access". */
+    const val QUICK = "quick"
     const val CALENDAR = "calendar"
     /** 0.5.0: the Transcripts library, or one transcript ([EXTRA_TRANSCRIPT]); Settings › Conversation (the tile's long press). */
     const val TRANSCRIPTS = "transcripts"
@@ -439,6 +458,15 @@ object AppPages {
     /** The route for the list [id]. */
     fun listRoute(id: String): String = "$LISTS:$id" // l10n: not text (a route)
 
+    /** 1.4: one skill's page in Settings › Skills ("skill:<its id>"), from a lock, door or alarm step refused by voice. */
+    const val SKILL = "skill"
+
+    /** [r]'s skill id when it is a [SKILL] route, else null: an id only, never a name. */
+    fun skillPage(r: String): String? = r.removePrefix("$SKILL:").takeIf { r.startsWith("$SKILL:") && app.heyrobot.core.skills.SkillCheck.validId(it) }
+
+    /** The route for the skill [id]. */
+    fun skillRoute(id: String): String = "$SKILL:$id" // l10n: not text (a route)
+
     /** 1.4: the "Robot Files" launcher entry (an activity-alias of MainActivity): the Files tab, Back leaving the app. */
     const val FILES_ICON = "files_icon"
     /** 0.7: Settings › Memory (a memory card's "Open Memory" in the panel). */
@@ -452,15 +480,71 @@ object AppPages {
     const val FILES_ALIAS = "app.heyrobot.ui.FilesLauncher"
 }
 
-object NotesFiles {
-    fun dir(ctx: Context): File = File(ctx.filesDir, "notes").apply { mkdirs() }
-    fun store(ctx: Context): NoteStore = NoteStore(dir(ctx))
-}
-
-/** Robot's People (docs/people.md): files/people/people.json, changed under a lock both app processes take. */
+/** Robot's People (docs/people.md): files/people/people.enc, sealed (seal-people, sys/PeopleVault), changed under a lock both app processes take. */
 object PeopleFiles {
+    @Volatile private var made: Pair<PeopleVault, PeopleStore>? = null
+
+    /** Tests only (Robolectric has no Android Keystore): the keys a new vault takes. */
+    @Volatile internal var keys: () -> MemoryKeys = { KeystoreMemoryKeys(unlockOnly = setOf(PeopleKeyAliases.UNLOCKED)) }
+
     fun dir(ctx: Context): File = File(ctx.filesDir, "people").apply { mkdirs() }
-    fun store(ctx: Context): PeopleStore = PeopleStore(dir(ctx))
+
+    /** People in this process (main and :voice): one vault and store, so its cache serves every reader. */
+    fun store(ctx: Context): PeopleStore = vaultAndStore(ctx).second
+
+    private fun vaultAndStore(ctx: Context): Pair<PeopleVault, PeopleStore> = made?.takeIf { it.first.dir == dir(ctx) } ?: synchronized(this) {
+        made?.takeIf { it.first.dir == dir(ctx) } ?: run {
+            val app = ctx.applicationContext
+            val v = PeopleVault(dir(app), keys(), locked = { deviceLocked(app) },
+                written = { f -> HoldTap.peopleChanged(f?.people.orEmpty()); if (f == null) LockCallList.clear(app) else LockCallList.rewrite(app, f.people) })
+            (v to PeopleStore(v)).also { made = it }
+        }
+    }
+
+    /** fix-seal-14-lows-b 1: People's copies kept aside, never read into it nor backed up (PeopleVault.keptAside). */
+    fun keptAside(ctx: Context): Int = vaultAndStore(ctx).first.keptAside()
+
+    /** fix-seal-14-d 1: everyone in those copies that open (PeopleVault.asidePeople), for the bug card to hide. */
+    fun asidePeople(ctx: Context): PeopleVault.Aside = vaultAndStore(ctx).first.asidePeople()
+
+    /** At unlock: the plain file sealed and the lock screen's changes made (ListsVault's hook, as Notes and History). */
+    fun open(ctx: Context) { vaultAndStore(ctx).first.open(); refreshCalls(ctx) }
+
+    /** seal-people-fix 5: Phone lock's call list made again from People as it is (each unlock, each lock save), under People's lock. */
+    fun refreshCalls(ctx: Context) = try {
+        vaultAndStore(ctx).first.let { v -> v.locked { (v.load() as? app.heyrobot.core.PeopleLoad.Ok)?.let { LockCallList.rewrite(ctx.applicationContext, it.file.people) } } }
+    } catch (t: Throwable) { app.heyrobot.core.RLog.w("lock_calls_refresh", t) }
+
+    /** seal-people-fix-b 2: [refreshCalls] on its own thread, so a page closed (its scope cancelled) never drops it. */
+    fun refreshCallsLater(ctx: Context) {
+        val app = ctx.applicationContext
+        callsWorker.execute { refreshCalls(app) }
+    }
+
+    private val callsWorker by lazy { java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "robot-lock-calls").apply { isDaemon = true } } } // l10n: not text (a thread's name)
+
+    /** seal-people: "no contact matches [to]", saying People opens once you unlock while it can't be opened now (over the lock screen). */
+    fun noContact(ctx: Context, to: String): app.heyrobot.core.i18n.Phrase = notFound(store(ctx).notNow(), granted = true, to)!!
+
+    /** seal-people-fix-b 3: no match for [to]: while People can't be opened (over the lock screen), "People opens once you
+     *  unlock" comes first, before asking for the contacts; else "no contact matches", or null (ask for the contacts). */
+    fun notFound(ctx: Context, to: String, granted: Boolean): app.heyrobot.core.i18n.Phrase? = notFound(store(ctx).notNow(), granted, to)
+
+    internal fun notFound(notNow: Boolean, granted: Boolean, to: String): app.heyrobot.core.i18n.Phrase? = when {
+        notNow -> app.heyrobot.core.i18n.ToolStrings.noContactPeopleLocked("name" to to, "people" to app.heyrobot.core.i18n.UiLabel(app.heyrobot.core.i18n.UiStrings.people))
+        granted -> app.heyrobot.core.i18n.InfoStrings.noContact("name" to to)
+        else -> null
+    }
+
+    /** This process forgets the People it opened (screen off). */
+    fun drop() { made?.second?.drop() }
+
+    /** Tests only: the next [store] is made again, with [k]. */
+    internal fun testKeys(k: MemoryKeys) { keys = { k }; made = null }
+
+    /** The device is locked (the unlock-only key can't be used). Unknown counts as locked. */
+    private fun deviceLocked(ctx: Context): Boolean =
+        try { ctx.getSystemService(android.app.KeyguardManager::class.java).isDeviceLocked } catch (_: Exception) { true }
 
     /** Turning learning on trusts the Cheogram installed then: its signer is kept again at its next notification. */
     fun forgetCheogramSigner(ctx: Context) {

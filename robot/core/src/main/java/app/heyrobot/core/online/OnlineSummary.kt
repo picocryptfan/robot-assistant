@@ -32,6 +32,7 @@ enum class OnlineKind(val msg: Msg) {
     CONNECTION(EverydayStrings.onlineKConnection),
     LINK(EverydayStrings.onlineKLink),
     NEWS(EverydayStrings.onlineKNews),
+    REPORT(EverydayStrings.onlineKReport),
 }
 
 /** One time Robot went online: the connections it took, in order. */
@@ -61,13 +62,14 @@ object OnlineSummary {
         NetPurpose.WEB_SEARCH, NetPurpose.ENCYCLOPEDIA, NetPurpose.WEB_PAGE -> OnlineKind.WEB
         NetPurpose.HELPER -> OnlineKind.HELPER
         NetPurpose.HELPER_TEST -> OnlineKind.HELPER_TEST
-        NetPurpose.MODEL_DOWNLOAD, NetPurpose.VOICE_DOWNLOAD, NetPurpose.TRANSLATION_DOWNLOAD -> OnlineKind.DOWNLOAD
+        NetPurpose.MODEL_DOWNLOAD, NetPurpose.VOICE_DOWNLOAD, NetPurpose.TRANSLATION_DOWNLOAD, NetPurpose.WIKI_DOWNLOAD -> OnlineKind.DOWNLOAD
         NetPurpose.UPDATE_CHECK -> if (e.cause == NetCause.SWITCH) OnlineKind.DAILY_CHECK else OnlineKind.UPDATE_CHECK
         NetPurpose.UPDATE_DOWNLOAD -> OnlineKind.UPDATE_DOWNLOAD
         NetPurpose.TERMUX_CHECK -> OnlineKind.TERMUX
         NetPurpose.CONNECTION -> OnlineKind.CONNECTION
         NetPurpose.LINK_DIRECT, NetPurpose.LINK_PUSH, NetPurpose.LINK_TOR -> OnlineKind.LINK
         NetPurpose.FEED -> OnlineKind.NEWS
+        NetPurpose.REPORT_BUG, NetPurpose.REPORT_IDEA, NetPurpose.REPORT_OTHER -> OnlineKind.REPORT
     }
 
     /** The connections: every row but a download's end (its bytes belong to the download it ends). */
@@ -122,7 +124,7 @@ object OnlineSummary {
     fun spoken(entries: List<NetEntry>, day: OnlineDay, today: LocalDate, recording: Boolean, locked: Boolean, zone: ZoneId = ZoneId.systemDefault()): Phrase {
         if (locked) return EverydayStrings.onlineLocked()
         if (!recording) return EverydayStrings.onlineOff("path" to PAGE)
-        val times = lookups(within(entries, days(day, today), zone))
+        val times = lookups(within(entries, days(day, today), zone).filterNot { it.purpose.handed })
         if (times.isEmpty()) return EverydayStrings.onlineNone("day" to dayWords(day))
         val byKind = times.groupingBy { it.kind }.eachCount().entries.sortedWith(compareByDescending<Map.Entry<OnlineKind, Int>> { it.value }.thenBy { it.key.ordinal })
         val named = if (byKind.size <= SAID_KINDS) byKind else byKind.take(SAID_KINDS - 1)
@@ -153,6 +155,7 @@ object OnlineSummary {
         NetPurpose.MODEL_DOWNLOAD -> EverydayStrings.onlinePModel()
         NetPurpose.VOICE_DOWNLOAD -> EverydayStrings.onlinePVoice()
         NetPurpose.TRANSLATION_DOWNLOAD -> EverydayStrings.onlinePTranslation()
+        NetPurpose.WIKI_DOWNLOAD -> EverydayStrings.onlinePWikipedia()
         NetPurpose.UPDATE_CHECK -> EverydayStrings.onlinePUpdateCheck()
         NetPurpose.UPDATE_DOWNLOAD -> EverydayStrings.onlinePUpdateDownload()
         NetPurpose.TERMUX_CHECK -> EverydayStrings.onlinePTermux()
@@ -161,6 +164,9 @@ object OnlineSummary {
         NetPurpose.LINK_PUSH -> EverydayStrings.onlinePLinkPush()
         NetPurpose.LINK_TOR -> EverydayStrings.onlinePLinkTor()
         NetPurpose.FEED -> EverydayStrings.onlinePFeed()
+        NetPurpose.REPORT_BUG -> EverydayStrings.onlinePReportBug()
+        NetPurpose.REPORT_IDEA -> EverydayStrings.onlinePReportIdea()
+        NetPurpose.REPORT_OTHER -> EverydayStrings.onlinePReportOther()
     }
 
     /** The Settings page that controls [p] (a row's details, with a button to open it). */
@@ -172,12 +178,14 @@ object OnlineSummary {
         NetGroup.DOWNLOADS -> when (p) {
             NetPurpose.VOICE_DOWNLOAD -> UiLabel(UiStrings.settings, UiStrings.voice)
             NetPurpose.TRANSLATION_DOWNLOAD -> UiLabel(UiStrings.settings, UiStrings.conversation)
+            NetPurpose.WIKI_DOWNLOAD -> UiLabel(UiStrings.settings, EverydayStrings.wikiOnPhone)
             else -> UiLabel(UiStrings.settings, UiStrings.model)
         }
         NetGroup.UPDATES -> if (p == NetPurpose.TERMUX_CHECK) UiLabel(UiStrings.settings, UiStrings.termux) else UiLabel(UiStrings.settings, UiStrings.about, UiStrings.updates)
         NetGroup.SKILLS -> UiLabel(UiStrings.settings, UiStrings.skills)
         NetGroup.LINK -> UiLabel(UiStrings.settings, EverydayStrings.onlineKLink)
         NetGroup.NEWS -> UiLabel(UiStrings.settings, UiStrings.display)
+        NetGroup.REPORTS -> UiLabel(UiStrings.settings, UiStrings.about, EverydayStrings.onlineSReportsSent)
     }
 
     /** What allowed it: "You asked", "Runs by itself · Settings › About › Updates". */
@@ -202,12 +210,16 @@ object OnlineSummary {
         NetHost.AN_ADDRESS -> EverydayStrings.onlineHIp()
         NetHost.UNKNOWN -> EverydayStrings.onlineHUnknown()
         NetHost.TOR_NETWORK -> EverydayStrings.onlineHTor()
+        NetHost.ANOTHER_APP -> EverydayStrings.onlineHApp()
         else -> Phrase.plain(h)
     }
 
-    /** "Today: 4 connections to 3 servers." [title]: the day's name ("Today", a date). */
+    /** RP6: "1 report handed to another app." for [entries]' handed rows (no connection of Robot's own), or null with none. */
+    fun handedLine(entries: List<NetEntry>): Phrase? = entries.count { it.purpose.handed }.takeIf { it > 0 }?.let { EverydayStrings.onlineHanded(it) }
+
+    /** "Today: 4 connections to 3 servers." [title]: the day's name ("Today", a date). Handed reports are left out ([handedLine]). */
     fun header(entries: List<NetEntry>, title: Phrase): Phrase {
-        val c = connections(entries)
+        val c = connections(entries).filterNot { it.purpose.handed }
         if (c.isEmpty()) return EverydayStrings.onlineHeaderNone("day" to title)
         val servers = c.map { it.host }.toSet().size
         return EverydayStrings.onlineHeader(c.size, "day" to title, "servers" to EverydayStrings.onlineServers(servers))
@@ -219,7 +231,7 @@ object OnlineSummary {
      */
     fun compare(android: Long?, sinceBoot: List<NetEntry>): OnlineCompare? {
         android ?: return null
-        val robot = sinceBoot.filterNot { it.purpose.download }.sumOf { it.out + it.inBytes }
+        val robot = sinceBoot.filterNot { it.purpose.download || it.purpose.handed }.sumOf { it.out + it.inBytes }
         val downloads = sinceBoot.filter { it.downloadEnd }.sumOf { it.inBytes }
         val shown = if (ANDROID_COUNTS_DOWNLOADS) (android - downloads).coerceAtLeast(0) else android
         return OnlineCompare(shown, robot, shown > TOO_MUCH_TIMES * robot && shown - robot > TOO_MUCH_BYTES)
@@ -237,7 +249,8 @@ object OnlineSummary {
      */
     fun reportHost(e: NetEntry): String = when (e.purpose) {
         NetPurpose.WEATHER, NetPurpose.WEATHER_PLACE, NetPurpose.ENCYCLOPEDIA, NetPurpose.MODEL_DOWNLOAD, NetPurpose.VOICE_DOWNLOAD,
-        NetPurpose.TRANSLATION_DOWNLOAD, NetPurpose.UPDATE_CHECK, NetPurpose.UPDATE_DOWNLOAD, NetPurpose.TERMUX_CHECK -> if (NetHost.marker(e.host)) "(server)" else e.host // l10n: not text (the report, a diagnostic: English)
+        NetPurpose.TRANSLATION_DOWNLOAD, NetPurpose.WIKI_DOWNLOAD, NetPurpose.UPDATE_CHECK, NetPurpose.UPDATE_DOWNLOAD, NetPurpose.TERMUX_CHECK -> if (NetHost.marker(e.host)) "(server)" else e.host // l10n: not text (the report, a diagnostic: English)
+        NetPurpose.REPORT_BUG, NetPurpose.REPORT_IDEA, NetPurpose.REPORT_OTHER -> "(another app)" // l10n: not text (the report, a diagnostic: English)
         else -> "(" + e.purpose.group.code + " server)" // l10n: not text (the report, a diagnostic: English)
     }
 

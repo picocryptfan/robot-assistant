@@ -11,7 +11,8 @@ import java.time.ZonedDateTime
 /** Today H4: "put my calendar first" and its kin, the order kept in home_settings.json, the locked phone refused. */
 class TodayArrangeTest {
     private val now = ZonedDateTime.parse("2026-11-03T09:00:00-04:00")
-    private fun route(s: String) = RoutineRouter.route(s, now)
+    // Which Quick access button the words name is QuickPhrasesTest's; here, Today's part and move.
+    private fun route(s: String) = RoutineRouter.route(s, now).let { if (it is RoutineCommand.Arrange) it.copy(quick = null) else it }
     private fun arrange(s: String) = route(s) as? RoutineCommand.Arrange
 
     @Test fun englishTypedAndSpoken() {
@@ -69,11 +70,11 @@ class TodayArrangeTest {
     }
 
     @Test fun theOrderIsKeptInHomeSettings() {
-        val s = HomeSettings(today = true).with(TodayPart.NOTE, TodayMove.FIRST)
+        val s = HomeSettings(home = app.heyrobot.core.HomeChoice.TODAY).with(TodayPart.NOTE, TodayMove.FIRST)
         assertEquals(s, HomeSettings.fromJson(s.toJson()))
         assertEquals(TodayPart.NOTE, HomeSettings.fromJson(s.toJson()).order.first())
         // H2's file, with no order: the default order, and nothing else changes.
-        assertEquals(HomeSettings(today = true, offer = TodayOffer.TAKEN), HomeSettings.fromJson("""{"v":1,"today":true,"offer":"taken"}"""))
+        assertEquals(HomeSettings(home = app.heyrobot.core.HomeChoice.TODAY, offer = TodayOffer.TAKEN), HomeSettings.fromJson("""{"v":1,"today":true,"offer":"taken"}"""))
         assertEquals(TodayPart.DEFAULT, HomeSettings.fromJson("""{"v":1,"today":true,"order":"calendar"}""").order)
     }
 

@@ -1,0 +1,35 @@
+# The logbook's phrases and misfires (LogbookRoutingCorpusTest): phrase<TAB>kind or -.
+log that I took my pills	ADD
+Log that I took my pills yesterday at 8	ADD
+log oil changed at 84,000 km	ADD
+log: ran 5 km	ADD
+logbook: ran 5 km	ADD
+add to my log that I walked the dog	ADD
+add walked the dog to my logbook	ADD
+inscris que j'ai pris mes pilules	ADD
+Inscris dans mon carnet que j'ai couru 5 km	ADD
+note dans mon carnet : vidange d'huile à 84 000 km	ADD
+when did I last take my pills?	LAST
+When was the last time I changed the oil	LAST
+when did I take my pills last	LAST
+c'est quand la dernière fois que j'ai pris mes pilules	LAST
+quand est-ce que j'ai pris mes pilules pour la dernière fois	LAST
+how many runs this month?	COUNT
+how many times did I take my pills this week	COUNT
+combien de fois j'ai pris mes pilules cette semaine	COUNT
+how many km did I run this month	TOTAL
+what's in my log	RECENT
+show me my logbook	RECENT
+qu'est-ce qu'il y a dans mon carnet	RECENT
+delete the last log entry	DELETE_LAST
+efface la dernière entrée du carnet	DELETE_LAST
+log in	-
+log me out	-
+log into my bank	-
+the log file	-
+open the voice log	-
+show me the last 20 lines of the sync logs	-
+what's a logarithm	-
+when did I last see the dentist	-
+how many people live in Canada	-
+how many hours did I sleep last night	-

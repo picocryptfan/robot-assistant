@@ -88,6 +88,10 @@ else
   fail "no zip end record in the last 22 bytes (a zip comment?): the signing block isn't checked"
 fi
 grep -qw 0x504b4453 <<<"$blockids" && fail "dependency-info block 0x504b4453 in the signing block" || pass "no dependency-info block (0x504b4453) in the signing block"
+# RP5: the debug build's throwaway report key (src/debug ReportTestKey) never in a release APK: not its base64, its 33 bytes,
+# its fingerprint or its class, in any entry (tools/report_key_hits.py; main's ReportKeys names the class to look it up).
+keyhits=$(python3 -I "$ROBOT/tools/report_key_hits.py" "$APK" "$ROBOT/app/src/debug/java/app/heyrobot/sys/ReportTestKey.kt"); kv=$?
+[ "$kv" = 0 ] && [ -z "$keyhits" ] && pass "no debug report key in the APK" || fail "the debug report key (or its class) in: ${keyhits:-nothing read}"
 grep -qx 'META-INF/version-control-info.textproto' <<<"$(unzip -Z1 "$APK")" && fail "META-INF/version-control-info.textproto in the APK" || pass "no META-INF/version-control-info.textproto"
 badging=$("$BT/aapt2" dump badging "$APK" 2>/dev/null)
 # The version is app/build.gradle's (tools/bump_version.sh sets it), never repeated here.
@@ -114,8 +118,9 @@ has '="ai.robot_app.scan"' "$idattrs" "scan provider's authority ai.robot_app.sc
 has '="ai.robot_app.files_out"' "$idattrs" "Robot Files' hand-off provider's authority ai.robot_app.files_out"
 has '="ai.robot_app.capture"' "$idattrs" "capture provider's authority ai.robot_app.capture"
 has '="ai.robot_app.androidx-startup"' "$idattrs" "AndroidX Startup's provider named after the ID too (its library's own placeholder)"
-# 1.1: the Phone lock cover's own task (ai.robot_app.lock) makes ten; 1.4 Lists' widget picker (ai.robot_app.widget) eleven.
-[ "$(grep -c 'taskAffinity(' <<<"$idattrs")" = 11 ] && pass "eleven task affinities" || fail "task affinities: $(grep 'taskAffinity(' <<<"$idattrs")"
+# 1.1: the Phone lock cover's own task (ai.robot_app.lock) makes ten; 1.4 Lists' widget picker (ai.robot_app.widget) eleven;
+# the app pause cover's own task (ai.robot_app.pause) twelve.
+[ "$(grep -c 'taskAffinity(' <<<"$idattrs")" = 12 ] && pass "twelve task affinities" || fail "task affinities: $(grep 'taskAffinity(' <<<"$idattrs")"
 [ -z "$(grep -v '="ai\.robot_app\.' <<<"$idattrs")" ] && pass "authorities and task affinities all ai.robot_app.*" || fail "not ai.robot_app: $(grep -v '="ai\.robot_app\.' <<<"$idattrs")"
 hasnt '"app.heyrobot.permission.' "$mf" "no app.heyrobot permission (0.9's)"
 for c in assistant.RobotVoiceService assistant.RobotSessionService assistant.RobotRecognitionService assistant.CaptureActivity brain.BrainService mt.MtService boot.BootReceiver boot.BootCheckReceiver ui.MainActivity \
@@ -218,6 +223,17 @@ for a in 'permission(0x01010006)' allowSharedIsolatedProcess useAppZygote extern
 done
 hasnt 'intent-filter' "$(subtree app.heyrobot.feedparse.FeedParseService)" "FeedParseService has no intent filter"
 [ "$(grep -c 'process(0x01010011)=":feedparse"' <<<"$mf")" = 1 ] && pass "nothing else runs in :feedparse" || fail "components in :feedparse: $(grep -c 'process(0x01010011)=":feedparse"' <<<"$mf")"
+# Wikipedia P1: libzim reads downloaded ZIM files in :wiki, isolated like the parsers above (wikipedia-offline-plan.md §3).
+wks=$(elem app.heyrobot.wiki.WikiService)
+has '"app.heyrobot.wiki.WikiService"' "$mf" "manifest has wiki.WikiService"
+has 'process(0x01010011)=":wiki"' "$wks" "WikiService in :wiki"
+has 'isolatedProcess(0x010103a9)=true' "$wks" "WikiService runs in an isolated process"
+has 'exported(0x01010010)=false' "$wks" "WikiService not exported"
+for a in 'permission(0x01010006)' allowSharedIsolatedProcess useAppZygote externalService foregroundServiceType directBootAware; do
+  hasnt "$a" "$wks" "WikiService has no $a"
+done
+hasnt 'intent-filter' "$(subtree app.heyrobot.wiki.WikiService)" "WikiService has no intent filter"
+[ "$(grep -c 'process(0x01010011)=":wiki"' <<<"$mf")" = 1 ] && pass "nothing else runs in :wiki" || fail "components in :wiki: $(grep -c 'process(0x01010011)=":wiki"' <<<"$mf")"
 # 1.5, Robot to Robot (robot-to-robot-plan.md §5.1, §5.3; job L3): ":link". LinkService, bound by name from main and :voice
 # only (not exported, Robot's signature permission, no filter); the push job's service (only the system binds it); Robot's
 # push receiver, exported with exactly the connector's five actions and nothing else in its filter; the connector's own
@@ -340,6 +356,24 @@ has '"app.heyrobot.sys.FilesOutExpiry"' "$mf" "manifest has sys.FilesOutExpiry"
 hasnt 'process(0x01010011)' "$foe" "FilesOutExpiry in the main process"
 has 'exported(0x01010010)=false' "$foe" "FilesOutExpiry not exported"
 hasnt 'intent-filter' "$(subtree app.heyrobot.sys.FilesOutExpiry)" "FilesOutExpiry has no intent filter"
+# 1.3: the alarm that ends a hold of notifications (main, not exported, no filter).
+hoe=$(elem app.heyrobot.people.HoldEnd)
+has '"app.heyrobot.people.HoldEnd"' "$mf" "manifest has people.HoldEnd"
+hasnt 'process(0x01010011)' "$hoe" "HoldEnd in the main process"
+has 'exported(0x01010010)=false' "$hoe" "HoldEnd not exported"
+hasnt 'intent-filter' "$(subtree app.heyrobot.people.HoldEnd)" "HoldEnd has no intent filter"
+# 1.4, RP6: Send's chooser answers ReportPicked when an app is picked (main, not exported, no filter).
+rpk=$(elem app.heyrobot.sys.ReportPicked)
+has '"app.heyrobot.sys.ReportPicked"' "$mf" "manifest has sys.ReportPicked"
+hasnt 'process(0x01010011)' "$rpk" "ReportPicked in the main process"
+has 'exported(0x01010010)=false' "$rpk" "ReportPicked not exported"
+hasnt 'intent-filter' "$(subtree app.heyrobot.sys.ReportPicked)" "ReportPicked has no intent filter"
+# RP5: AlarmManager's ReportExpiry, the sealed copies' sweep (main, not exported, no filter).
+rex=$(elem app.heyrobot.sys.ReportExpiry)
+has '"app.heyrobot.sys.ReportExpiry"' "$mf" "manifest has sys.ReportExpiry"
+hasnt 'process(0x01010011)' "$rex" "ReportExpiry in the main process"
+has 'exported(0x01010010)=false' "$rex" "ReportExpiry not exported"
+hasnt 'intent-filter' "$(subtree app.heyrobot.sys.ReportExpiry)" "ReportExpiry has no intent filter"
 # 1.4 Lists (LS6; lists-plan.md §7.6, §7.7): the home-screen widget. The provider in the main process, exported (a widget
 # provider must be), one filter of exactly APPWIDGET_UPDATE, the provider meta-data, no permission; the tick receiver in the
 # main process, not exported, no filter; the setup window in the main process, exported for the home-screen app with exactly
@@ -396,9 +430,10 @@ scp=$(elem app.heyrobot.sys.ScanProvider)
 has '"app.heyrobot.sys.ScanProvider"' "$mf" "manifest has sys.ScanProvider"
 hasnt 'process(0x01010011)' "$scp" "ScanProvider in the main process"
 has 'exported(0x01010010)=false' "$scp" "ScanProvider not exported"
-# The four isolated services, and no other isolated component (1.4: FileParseService joined LlamaService; 1.5 L4,
-# deliberately: LinkParseService; Today H7b: FeedParseService).
-[ "$(grep -c 'isolatedProcess(0x010103a9)=true' <<<"$mf")" = 4 ] && pass "LlamaService, FileParseService, LinkParseService and FeedParseService are the only isolated components" || fail "isolated components: $(grep -c 'isolatedProcess(0x010103a9)=true' <<<"$mf")"
+# The five isolated services, and no other isolated component (1.4: FileParseService joined LlamaService; 1.5 L4,
+# deliberately: LinkParseService; Today H7b: FeedParseService; Wikipedia P1: WikiService, so libzim parses downloaded ZIM
+# files with no network, no storage and nothing of Robot's).
+[ "$(grep -c 'isolatedProcess(0x010103a9)=true' <<<"$mf")" = 5 ] && pass "LlamaService, FileParseService, LinkParseService, FeedParseService and WikiService (libzim's ZIM reader) are the only isolated components" || fail "isolated components: $(grep -c 'isolatedProcess(0x010103a9)=true' <<<"$mf")"
 # 0.4.7: LiteRT-LM's GPU backend uses the phone's own OpenCL (a Pixel 9a's Mali), the TPU the phone's own Tensor libraries:
 # each declared, and every declaration optional (required defaults to true), so a phone without one still installs Robot
 # (the native library allowlist below keeps them out of the APK).
@@ -411,10 +446,11 @@ for l in $natives; do
   [ "$(grep -c 'E: uses-native-library' <<<"$nl")" = "$(grep -c 'required(0x0101028e)=false' <<<"$nl")" ] && pass "$l is optional" || fail "$l is required somewhere"
 done
 # Helpers need nothing new: INTERNET stays the only network permission that sends anything (a server on your network too,
-# at targetSdk 36), and nothing reads other apps' screens. ACCESS_NETWORK_STATE, deliberately, for two readers: 1.1's
+# at targetSdk 36), and nothing reads other apps' screens. ACCESS_NETWORK_STATE, deliberately, for 1.1's
 # UpdateJobs (Android 14+ requires it for a job with a network constraint: the update check, the Wi-Fi download, Termux's
 # update check) and 1.5 L3's :link, which notices a new network and gives Private pairings its new address there
-# (robot-to-robot-plan.md §5.2); never changing the network or Wi-Fi, never Wi-Fi's state, never the local network
+# (robot-to-robot-plan.md §5.2); also read by ConnNetwork (Wi-Fi, Ethernet or a VPN) and
+# 1.4's DownloadNetwork (roaming); never changing the network or Wi-Fi, never Wi-Fi's state, never the local network
 # permission (SDK 37's, for the release that targets it).
 has '"android.permission.ACCESS_NETWORK_STATE"' "$mf" "declares ACCESS_NETWORK_STATE (UpdateJobs' network-constrained jobs; :link notices a new network)"
 for p in ACCESS_WIFI_STATE CHANGE_NETWORK_STATE CHANGE_WIFI_STATE ACCESS_LOCAL_NETWORK NEARBY_WIFI_DEVICES CHANGE_WIFI_MULTICAST_STATE; do
@@ -541,8 +577,17 @@ exported=$(echo "$mf" | awk '
 # 1.5 L3: Robot to Robot's push receiver (a distributor app must reach it; it checks the connector's token) and the
 # connector's raise-to-foreground service (a distributor binds it for 5 seconds), both in :link.
 # Today: the home-screen widget's provider, exported as a widget provider must be, taking only the system's broadcasts (BIND_APPWIDGET).
-allow="androidx.profileinstaller.ProfileInstallReceiver app.heyrobot.assistant.RobotRecognitionService app.heyrobot.assistant.RobotSessionService app.heyrobot.assistant.RobotVoiceService app.heyrobot.assistant.ask.AskRobotActivity app.heyrobot.assistant.conversation.ConversationTileService app.heyrobot.assistant.headset.HeadsetEntryActivity app.heyrobot.assistant.listen.ListenSheetActivity app.heyrobot.lock.LockAccessibilityService app.heyrobot.people.CheogramListener app.heyrobot.r2r.LinkPushReceiver app.heyrobot.tts.RobotTtsService app.heyrobot.ui.FilesLauncher app.heyrobot.ui.MainActivity app.heyrobot.ui.NotesLauncher app.heyrobot.ui.files.FilesShareActivity app.heyrobot.ui.lists.ListsWidgetProvider app.heyrobot.ui.lists.ListsWidgetSetup app.heyrobot.ui.today.TodayWidgetProvider app.heyrobot.ui.tts.TtsCheckDataActivity app.heyrobot.ui.tts.TtsInstallDataActivity app.heyrobot.ui.tts.TtsSampleTextActivity "
-[ "$exported" = "$allow" ] && pass "exported components are the allowlist" || fail "exported components: $exported"
+# Caller name: the call screening service, bound by Telecom only (BIND_SCREENING_SERVICE), in the main process.
+allow="androidx.profileinstaller.ProfileInstallReceiver app.heyrobot.assistant.RobotRecognitionService app.heyrobot.assistant.RobotSessionService app.heyrobot.assistant.RobotVoiceService app.heyrobot.assistant.ask.AskRobotActivity app.heyrobot.assistant.conversation.ConversationTileService app.heyrobot.assistant.headset.HeadsetEntryActivity app.heyrobot.assistant.listen.ListenSheetActivity app.heyrobot.calls.CallerNameService app.heyrobot.lock.LockAccessibilityService app.heyrobot.people.CheogramListener app.heyrobot.r2r.LinkPushReceiver app.heyrobot.tts.RobotTtsService app.heyrobot.ui.FilesLauncher app.heyrobot.ui.MainActivity app.heyrobot.ui.NotesLauncher app.heyrobot.ui.files.FilesShareActivity app.heyrobot.ui.lists.ListsWidgetProvider app.heyrobot.ui.lists.ListsWidgetSetup app.heyrobot.ui.today.TodayWidgetProvider app.heyrobot.ui.tts.TtsCheckDataActivity app.heyrobot.ui.tts.TtsInstallDataActivity app.heyrobot.ui.tts.TtsSampleTextActivity"
+cns=$(elem app.heyrobot.calls.CallerNameService)
+cnsub=$(subtree app.heyrobot.calls.CallerNameService)
+has 'permission(0x01010006)="android.permission.BIND_SCREENING_SERVICE"' "$cns" "CallerNameService takes BIND_SCREENING_SERVICE only"
+# The filter is a child element, so it is read from the subtree (elem holds only the service's own attributes).
+has '"android.telecom.CallScreeningService"' "$cnsub" "CallerNameService has the screening filter"
+[ "$(grep -c 'E: intent-filter' <<<"$cnsub") $(grep -c 'E: action' <<<"$cnsub") $(grep -cE 'E: (category|data)' <<<"$cnsub")" = "1 1 0" ] && pass "CallerNameService has one filter of one action, nothing else" || fail "CallerNameService's filters: $(grep -E 'E: |0x01010003' <<<"$cnsub" | tr -s ' ' | tr '\n' ' ')"
+hasnt 'process(0x01010011)' "$cns" "CallerNameService in the main process"
+# Compared word for word (unquoted echo), so a trailing space on either side can't fail it; names and order stay exact.
+[ "$(echo $exported)" = "$(echo $allow)" ] && pass "exported components are the allowlist" || fail "exported components: $exported"
 # The updater: Robot installs only its own updates (Install unknown apps, a special access you turn on), and asks Android to
 # skip its confirmation only with "Install updates without asking". It never installs or deletes other apps.
 has '"android.permission.REQUEST_INSTALL_PACKAGES"' "$mf" "declares REQUEST_INSTALL_PACKAGES (the updater installs Robot's own update)"
@@ -704,8 +749,12 @@ other_abis=$(grep -v '^lib/arm64-v8a/' <<<"$libs")
 # 1.5 (robot-to-robot-r0.md §2.6, job L2): and libsignal_jni.so, Robot to Robot's sessions (:link only); L3: libtor.so, Tor's
 # executable (:link starts it as its child process); L-bridges: liblyrebird.so, Tor's bridges (Tor starts it, only while a
 # bridge is in use).
-extra=$(sed 's|^lib/arm64-v8a/||' <<<"$libs" | grep -vxE 'libsherpa-onnx-jni\.so|libonnxruntime\.so|liblitertlm_jni\.so|libLiteRtDispatch_GoogleTensor\.so|libandroidx\.graphics\.path\.so|librobot_llama\.so|librobotmt\.so|libsignal_jni\.so|libtor\.so|liblyrebird\.so' | tr '\n' ' ')
+extra=$(sed 's|^lib/arm64-v8a/||' <<<"$libs" | grep -vxE 'libsherpa-onnx-jni\.so|libonnxruntime\.so|liblitertlm_jni\.so|libLiteRtDispatch_GoogleTensor\.so|libandroidx\.graphics\.path\.so|librobot_llama\.so|librobotmt\.so|librobotzim\.so|libsignal_jni\.so|libtor\.so|liblyrebird\.so' | tr '\n' ' ')
 [ -z "$extra" ] && pass "native libraries are the allowlist" || fail "native libraries not on the allowlist: $extra"
+# Wikipedia P3: librobotzim.so's size per ABI, as information (suites.sh deletes the build folders, so this run is the
+# only place to read it): its size unpacked and as stored in the APK.
+zimlist=$(unzip -Zl "$APK" | awk '$NF ~ /^lib\/[^\/]+\/librobotzim\.so$/ {split($NF, p, "/"); print p[2] ": " $4 " bytes, " $6 " in the APK"}')
+if [ -n "$zimlist" ]; then while IFS= read -r l; do echo "INFO  librobotzim.so $l"; done <<<"$zimlist"; else echo "INFO  librobotzim.so: not in the APK"; fi
 # Every library the APK ships has its source named in the release's source bundle.
 if named=$(bash "$(dirname "$0")/make_source_bundle.sh" --check-apk "$APK" 2>&1); then pass "$named"; else fail "$named"; fi
 # libsignal's library is the stripped one its pin names (third_party/libsignal-0.105.2.sha256: 9.4 MB, not the AAR's 123 MB
@@ -780,6 +829,26 @@ if grep -qx 'lib/arm64-v8a/librobotmt.so' <<<"$libs"; then
   rm -rf "$mtdir"
 else
   fail "no librobotmt.so: 0.6.0 ships the fast translation engine (tools/build_robotmt.sh builds it before the APK)"
+fi
+# P1 (wikipedia-offline-plan.md §3): librobotzim.so, Wikipedia on this phone's reader (:wiki only, isolated), the build
+# tools/build_libzim.sh pins: nothing but libc, libdl, libm and zlib, its JNI functions only.
+if grep -qx 'lib/arm64-v8a/librobotzim.so' <<<"$libs"; then
+  zimdir=$(mktemp -d)
+  unzip -q -o "$APK" lib/arm64-v8a/librobotzim.so -d "$zimdir"
+  zimso="$zimdir/lib/arm64-v8a/librobotzim.so"
+  zimpin=$(sed -n 's/^BUILT_SHA=\([0-9a-f]\{64\}\).*/\1/p' "$(dirname "$0")/build_libzim.sh")
+  zimgot=$(sha256sum "$zimso" | cut -d' ' -f1)
+  [ -n "$zimpin" ] && [ "$zimgot" = "$zimpin" ] && pass "librobotzim.so is tools/build_libzim.sh's build" || fail "librobotzim.so is $zimgot, not the pinned build '$zimpin'"
+  RE="$NDK_BIN/llvm-readelf"
+  [ -x "$RE" ] || RE=$(ls "${ANDROID_HOME:-/opt/android-sdk}"/ndk/*/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf 2>/dev/null | head -1)
+  [ -n "$RE" ] || RE=readelf
+  needed=$("$RE" -d "$zimso" 2>/dev/null | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p' | sort | tr '\n' ' ')
+  [ "$needed" = "libc.so libdl.so libm.so libz.so " ] && pass "librobotzim.so needs only libc, libdl, libm and libz" || fail "librobotzim.so needs: $needed"
+  exports=$("$RE" --dyn-syms "$zimso" 2>/dev/null | awk '$5 == "GLOBAL" && $7 != "UND" { print $8 }' | grep -v '^Java_app_heyrobot_wiki_LibZim_native' | tr '\n' ' ')
+  [ -z "$exports" ] && pass "librobotzim.so exports only its JNI functions" || fail "librobotzim.so exports: $(echo $exports | head -c 200)"
+  rm -rf "$zimdir"
+else
+  fail "no librobotzim.so: this build carries Wikipedia on this phone (tools/build_libzim.sh builds it before the APK)"
 fi
 grep -q CompilerPlugin <<<"$libs" && fail "compiler plugin packaged" || pass "no compiler plugin"
 # sherpa-onnx's JNI calls the TTS callback through GetMethodID(cls, "invoke", "([F)Ljava/lang/Integer;")

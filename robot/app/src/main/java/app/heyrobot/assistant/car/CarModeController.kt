@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.assistant.car
 
+import app.heyrobot.core.car.CarBottomSaid
+import app.heyrobot.core.car.CarHalvesPhrase
 import app.heyrobot.assistant.Phase
 import app.heyrobot.assistant.PanelController
 import app.heyrobot.core.car.CarGate
@@ -397,6 +399,12 @@ object CarModeController {
      * the car screen when Android allows it. Phone lock first, as the spoken one: only when every active lock has Maps on.
      * Off the main thread (it reads files and package signers).
      */
+    /** The car screen's answer to "swap the bottom" and its kin, while it's up (set from onStart to onStop). */
+    @Volatile var bottomScreen: ((CarHalvesPhrase) -> CarBottomSaid)? = null
+
+    fun bottom(p: CarHalvesPhrase): CarBottomSaid =
+        bottomScreen?.invoke(p) ?: CarBottomSaid.NOT_SHOWN
+
     fun navigateHome(ctx: Context, here: Pair<Double, Double>?): String {
         val lang = HandsFreeHub.lang
         val s = settings

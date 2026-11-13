@@ -12,6 +12,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -182,14 +184,16 @@ fun ClassicHeader(
     onConversation: () -> Unit = {},
     /** Not while a turn runs or something waits to go with your next question (it would go with this instead). */
     conversationEnabled: Boolean = true,
+    /** RP3: the bug button, the card for the newest turn; null (no turn yet, or one running): no button. */
+    onReport: (() -> Unit)? = null,
 ) {
     // 1.0: the status line runs under the name and the buttons, so its words are read whole ("On this phone, private",
     // "Waiting for you: tap the card, or answer yes or no"); before, it shared the row with four buttons and was cut.
-    Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().testTag("classic-header").padding(start = 20.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         StatusOrb(mood, face)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            // 1.2.1: five buttons; where they don't fit beside "Robot" (a narrow phone, large text) they take the line under it.
+            // 1.2.1: five buttons (RP3: Settings went into a menu with the bug report); where they don't fit beside "Robot" (a narrow phone, large text) they take the line under it.
             FlowRow(Modifier.fillMaxWidth()) {
                 Text("Robot", style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).align(Alignment.CenterVertically))
                 // A row of its own that wraps too: at Android's narrowest width five don't fit even alone.
@@ -201,7 +205,19 @@ fun ClassicHeader(
                 }
                 IconButton(onClick = onConversation, enabled = conversationEnabled, modifier = Modifier.size(48.dp)) { Icon(RIcons.Conversation, stringResource(R.string.panel_conversation_mode)) }
                 IconButton(onClick = onNew, modifier = Modifier.size(48.dp)) { Icon(RIcons.Add, stringResource(R.string.panel_new_conversation)) }
-                IconButton(onClick = onSettings, modifier = Modifier.size(48.dp)) { Icon(RIcons.Settings, stringResource(R.string.panel_settings)) }
+                // RP3: a sixth 48 dp button left "Robot" 39 dp of a 411 dp phone's row, so it took a line of its own and the
+                // panel grew 28 dp. Settings and the bug report share a menu instead: the panel keeps its height.
+                Box {
+                    var menu by remember { mutableStateOf(false) }
+                    IconButton(onClick = { menu = true }, modifier = Modifier.size(48.dp)) { Icon(RIcons.MoreVert, stringResource(R.string.conv_more_options)) }
+                    app.heyrobot.ui.common.DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        androidx.compose.material3.DropdownMenuItem(text = { Text(stringResource(R.string.panel_settings)) }, leadingIcon = { Icon(RIcons.Settings, null) },
+                            onClick = { menu = false; onSettings() })
+                        // No turn yet, or one running: there's no answer to report, so the line is there but dimmed.
+                        androidx.compose.material3.DropdownMenuItem(text = { Text(stringResource(R.string.report_bug_button)) }, leadingIcon = { Icon(RIcons.BugReport, null) },
+                            enabled = onReport != null, onClick = { menu = false; onReport?.invoke() })
+                    }
+                }
                 IconButton(onClick = onClose, modifier = Modifier.size(48.dp)) { Icon(RIcons.Close, stringResource(R.string.panel_close)) }
                 }
             }
@@ -376,11 +392,13 @@ fun ClassicContextRow(draft: Attachment?, thumb: Bitmap?, readClaude: Boolean, o
 }
 
 @Composable
-fun ClassicAttachRow(locked: Boolean, onDone: () -> Unit, onCamera: () -> Unit, onPhotos: () -> Unit, onFile: (() -> Unit)? = null) {
+fun ClassicAttachRow(locked: Boolean, onDone: () -> Unit, onCamera: () -> Unit, onPhotos: () -> Unit, onFile: (() -> Unit)? = null, onRead: (() -> Unit)? = null) {
     val choices = buildList {
         add(AttachChoice(RIcons.Camera, stringResource(R.string.panel_camera)) { onDone(); onCamera() })
         add(AttachChoice(RIcons.Image, stringResource(R.string.panel_photos)) { onDone(); onPhotos() })
         if (onFile != null) add(AttachChoice(RIcons.Folder, stringResource(R.string.panel_file)) { onDone(); onFile() })
+        // 1.3 point and read: the camera, its photo read aloud.
+        if (onRead != null) add(AttachChoice(RIcons.RecordVoiceOver, stringResource(R.string.panel_read_aloud)) { onDone(); onRead() })
     }
     // 1.2.1: each icon and its word stay on one line ("Camera" broke over two beside "Photos"): side by side when the longest
     // word fits its button, otherwise one under the other (French, large text).
@@ -571,18 +589,30 @@ private fun MicButton(listening: Boolean, hint: String?, actions: ClassicInputAc
 fun ClassicBubbleTurn(t: TurnUi, actions: TurnActions, modifier: Modifier = Modifier) {
     if (t.user) UserBubble(t.text, t.attachment, t.thumb, modifier, screenText = t.screenText, fileName = t.fileName, shared = t.shared,
         onSaveFile = actions.saveFile?.takeIf { t.attachment == Attachment.FILE && t.canSaveFile }?.let { f -> val l = LocalLangs.current; { f(l) } })
-    else Column(modifier) {
+    else {
+    // RP3: press and hold a reply (in the panel or History) for "Report a problem with this answer"; not while it's written.
+    var menu by remember { mutableStateOf(false) }
+    val reportLabel = stringResource(R.string.report_this_answer)
+    val report = actions.report?.takeIf { !t.streaming }
+    // A long press only, and TalkBack's own action with its words: no tap to do nothing.
+    Column(if (report != null) modifier.pointerInput(Unit) { detectTapGestures(onLongPress = { menu = true }) }
+        .semantics { onLongClick(reportLabel) { menu = true; true } } else modifier) {
+        if (report != null) app.heyrobot.ui.common.DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            androidx.compose.material3.DropdownMenuItem(text = { Text(reportLabel) }, onClick = { menu = false; report(t.id) })
+        }
         AssistantBubble(
             text = t.text, streaming = t.streaming, stopped = t.stopped, error = t.error, actions = t.cards, announce = t.announce,
             onConfirm = actions.confirm, cardActions = actions.card,
             fromHelper = t.helper, readBack = t.readBack, footer = t.footer, by = t.by, home = t.home,
         )
         t.web?.let { app.heyrobot.ui.common.WebAnswerCard(it, onOpen = { url -> actions.openSource(t.id, url) }, modifier = Modifier.padding(top = 6.dp)) }
+        t.wiki?.let { app.heyrobot.ui.common.WikiAnswerCard(it, onOpen = { url -> actions.openSource(t.id, url) }, modifier = Modifier.padding(top = 6.dp)) }
         t.list?.let { v -> app.heyrobot.ui.common.ListCard(v, actions.list?.let { f -> { op: app.heyrobot.ui.common.ListCardOp -> f(t.id, op) } }, Modifier.padding(top = 8.dp)) }
         t.offer?.let { ClassicOfferCard(it, onDismiss = { actions.dismissOffer(t.id) }, onAccept = { actions.acceptOffer(t.id) }) }
         // 0.7: the reply card, in the same tonal colours.
         t.reply?.let { r -> app.heyrobot.ui.common.ReplyCard(r, actions.reply?.let { f -> { op: app.heyrobot.ui.common.ReplyOp -> f(t.id, op) } },
             Modifier.padding(top = 8.dp)) }
+    }
     }
 }
 

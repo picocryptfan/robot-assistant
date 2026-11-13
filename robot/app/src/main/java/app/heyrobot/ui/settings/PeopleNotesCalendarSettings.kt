@@ -14,6 +14,7 @@ import app.heyrobot.core.CalendarPick
 import app.heyrobot.core.EmailApp
 import app.heyrobot.core.PhoneNumbers
 import app.heyrobot.core.RobotSettings
+import app.heyrobot.core.calls.CallerNameSettings
 import app.heyrobot.core.TextApp
 import app.heyrobot.sys.Phones
 import app.heyrobot.ui.AppActions
@@ -92,6 +93,7 @@ fun PeopleNotesCalendarScreen(s: RobotSettings, snap: Snapshot, calendars: List<
     val email = stringResource(R.string.people_email)
     val calendar = stringResource(R.string.people_calendar)
     val footer = stringResource(R.string.people_settings_footer)
+    val calls = stringResource(R.string.people_caller_group)
     PreferenceScreen(UiStrings.peopleNotesCalendar().str(), onBack, snackbar = snackbar) {
         preferenceGroup(texts, "texts") {
             val cheogram = f?.cheogramInstalled == true
@@ -136,6 +138,7 @@ fun PeopleNotesCalendarScreen(s: RobotSettings, snap: Snapshot, calendars: List<
                 { eventLengthText(it).render(langs) }, icon = RIcons.Timer,
                 summary = eventLengthText(s.eventMinutes).str()) { update(s.copy(eventMinutes = it)) }
         }
+        if (CallerNameSettings.AVAILABLE) preferenceGroup(calls, "calls") { CallerNamePreference() } // hidden in 1.4
         preferenceGroup(null, "links") {
             PreferenceItem(UiStrings.people().str(), stringResource(R.string.people_people_detail), RIcons.Person, onClick = { a.openPage(Page.People) })
             PreferenceItem(stringResource(R.string.notes_name), stringResource(R.string.people_notes_detail), RIcons.Note, onClick = { a.openTab(Tab.NOTES) })

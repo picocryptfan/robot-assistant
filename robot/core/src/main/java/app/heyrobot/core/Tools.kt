@@ -232,7 +232,7 @@ object ToolSpecs {
             ToolParam("place", "string", "Town, or omit for here", false),
         )),
         ToolSpec(ToolName.PHONE_STATUS, "Read this phone's storage, battery and memory.", listOf(
-            ToolParam("about", "string", "storage, battery, memory or all", false),
+            ToolParam("about", "string", "storage, battery, memory, pickups or all", false),
         )),
         ToolSpec(ToolName.FREE_MEMORY, "Free memory: unload Robot's model, or open an app's info to force stop it.", listOf(
             ToolParam("app", "string", "App to stop; omit to unload Robot's model", false),

@@ -119,6 +119,12 @@ class LinkClient(private val ctx: Context) {
         if (r.readInt() != 1) null else android.os.ParcelFileDescriptor.CREATOR.createFromParcel(r)
     }
 
+    /** RP5: the report in [plain] (a pipe) sealed to [key] by :link; the sealed file's size, or null. */
+    fun sealReport(key: ByteArray, ref: String, plain: android.os.ParcelFileDescriptor): Int? =
+        call(LinkIpcProtocol.SEAL_REPORT, { writeByteArray(key); writeString(ref); writeFileDescriptor(plain.fileDescriptor) }) { r ->
+            r.readInt().takeIf { it in 1..app.heyrobot.core.feedback.ReportFile.MAX_BYTES }
+        }
+
     /** Turning Robot to Robot on: the keys and your identity (link_settings.json must already say on). */
     fun setUp(): Boolean = flag(LinkIpcProtocol.SET_UP) {}
 

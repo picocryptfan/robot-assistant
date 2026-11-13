@@ -46,6 +46,8 @@ class AskChipTest {
     private class Asked(val rec: RecordingActions = RecordingActions()) : PanelActions by rec {
         val asked = ArrayList<String>()
         override fun askShared(request: Phrase) { asked += request.render(Langs.EN) }
+        var read = 0
+        override fun readShared() { read++ }
     }
 
     private fun draft(item: SharedItem) = PanelState("c1", draft = Draft(if (item.kind == SharedKind.PHOTO) Attachment.PHOTO else Attachment.SCREEN, item.thumb, shared = item),
@@ -78,6 +80,23 @@ class AskChipTest {
         rule.showPanel(draft(SharedItem(SharedKind.TEXT, "hi")).copy(phase = Phase.THINKING), Asked())
         rule.onNodeWithText("Shared text: “hi”").assertExists()
         rule.onNodeWithText("Explain").assertDoesNotExist()
+    }
+
+    /** 1.3 point and read (P3): a shared photo's chip reads it aloud (PanelRead's turn); text and voice have no such button. */
+    @Test fun aSharedPhotoCanBeReadAloud() {
+        val a = Asked()
+        val thumb = android.graphics.Bitmap.createBitmap(8, 8, android.graphics.Bitmap.Config.ARGB_8888)
+        rule.showPanel(draft(SharedItem(SharedKind.PHOTO, jpeg = byteArrayOf(1), thumb = thumb)), a)
+        rule.onNodeWithText("Shared photo").assertExists()
+        rule.onNodeWithText("Read aloud").performClick()
+        assertEquals(1, a.read)
+        assertEquals(emptyList<String>(), a.asked)
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
+    }
+
+    @Test fun textHasNoReadAloud() {
+        rule.showPanel(draft(SharedItem(SharedKind.TEXT, "hi")), Asked())
+        rule.onNodeWithText("Read aloud").assertDoesNotExist()
     }
 
     @Test fun theQuestionIsTaggedShared() {

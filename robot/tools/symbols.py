@@ -50,6 +50,7 @@ SYMBOLS = [
     ("Checklist", "checklist", "1.4 Lists: Settings › Lists and the lists' screens."),
     ("Unchecked", "radio_button_unchecked", "Still to do (a status)."),
     ("Error", "error", "A problem (a status)."),
+    ("BugReport", "bug_report", "Report a problem, in the panel's menu."),
     ("Warning", "warning", "A risk to know about first."),
     ("Info", "info", ""),
     ("Lock", "lock", ""),

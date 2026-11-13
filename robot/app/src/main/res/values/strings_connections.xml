@@ -141,6 +141,7 @@
     <string name="conn_mark_money">It can spend money</string>
     <string name="conn_mark_security">It locks, unlocks or opens something</string>
     <string name="conn_mark_tells">It tells people</string>
+    <string name="conn_mark_deletes">It deletes something</string>
     <string name="conn_field_bad">Robot can\'t use this as written.</string>
     <!-- A hand-off's app and what it opens (C7's picker). -->
     <string name="conn_hand_off_title">App hand-off</string>

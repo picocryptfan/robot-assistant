@@ -3,8 +3,8 @@ package app.heyrobot.assistant.backup
 
 import android.content.Context
 import app.heyrobot.core.ConversationCodec
-import app.heyrobot.core.NoteStore
 import app.heyrobot.core.PeopleCodec
+import app.heyrobot.core.NoteCodec
 import app.heyrobot.core.RLog
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.RoutineCodec
@@ -86,7 +86,7 @@ internal object BackupSources {
     }
 
     /** What a category holds now, for Back up now's list: [count] its items, [bytes] about its size, [extra] its sub-count. */
-    data class Summary(val count: Int, val bytes: Long, val extra: Int = 0, val extraBytes: Long = 0, val names: List<String> = emptyList()) {
+    data class Summary(val count: Int, val bytes: Long, val extra: Int = 0, val extraBytes: Long = 0, val names: List<String> = emptyList(), val aside: Int = 0) {
         val empty: Boolean get() = count == 0
     }
 
@@ -102,10 +102,18 @@ internal object BackupSources {
     private fun transcriptsDir(ctx: Context) = File(ctx.filesDir, TranscriptFiles.DIR)
 
     private fun settingsFiles(ctx: Context): List<File> = BackupCategory.SETTINGS_FILES.keys.map { File(dir(ctx), it) }.filter { it.isFile }
-    private fun files(d: File, valid: (String) -> Boolean): List<File> =
-        d.listFiles { f -> f.isFile && BackupCategory.idOf(f.name)?.let(valid) == true }.orEmpty().sortedBy { it.name }
-    private fun notes(ctx: Context) = files(NotesFiles.dir(ctx), NoteStore::validId)
-    private fun conversations(ctx: Context) = files(Paths.conversations(ctx), BackupCategory::conversationId)
+    /** seal-notes: every note, opened through Notes' vault, or [NotesUnreadable] while one can't be opened (BackupJob says Notes is why). */
+    fun notesWhole(ctx: Context): List<app.heyrobot.core.Note> = notesWhole(NotesFiles.store(ctx))
+
+    /** fix-seal-lows-c 3: any other failure (the lock file, a key) is [NotesUnreadable] too, so the backup names Notes, not FAILED. */
+    fun notesWhole(v: app.heyrobot.sys.NotesVault): List<app.heyrobot.core.Note> = try {
+        v.whole()
+    } catch (e: app.heyrobot.sys.NotesNotWhole) {
+        throw NotesUnreadable(tooNew = e.tooNew > 0)
+    } catch (e: Exception) {
+        RLog.w("backup_notes", e)
+        throw NotesUnreadable()
+    }
 
     /**
      * FX3: History stays out of Back up now, whole, while travel mode hides drawers and any conversation holds Robot Files'
@@ -113,13 +121,24 @@ internal object BackupSources {
      * itself: a backup without some conversations would delete them on this phone at a Replace restore, and one without
      * History leaves History as it is. The next backup after travel mode is off carries it.
      */
+    /** seal-history-fix-b 1: every conversation, or [HistoryUnreadable] while one can't be opened (BackupJob says History is why). */
+    fun historyWhole(ctx: Context): List<app.heyrobot.core.StoredConversation> = try {
+        app.heyrobot.sys.ConversationStore.whole(ctx)
+    } catch (e: app.heyrobot.sys.HistoryNotWhole) {
+        throw HistoryUnreadable(tooNew = e.tooNew > 0)
+    }
+
     fun historyHidden(ctx: Context): Boolean =
-        app.heyrobot.core.files.TravelMode.hidesAny(FilesSettingsStore.current(ctx)) && conversations(ctx).any { f ->
-            readOrNull(f)?.let(ConversationCodec::fromJson)?.let { app.heyrobot.core.files.TravelMode.holdsFiles(it.turns) } ?: false
-        }
+        app.heyrobot.core.files.TravelMode.hidesAny(FilesSettingsStore.current(ctx)) && app.heyrobot.sys.ConversationStore.list(ctx).any { app.heyrobot.core.files.TravelMode.holdsFiles(it.turns) }
     private fun transcripts(ctx: Context): List<File> = transcriptsDir(ctx).listFiles { f -> f.isDirectory && TranscriptIds.valid(f.name) &&
         File(f, TranscriptFiles.META).isFile }.orEmpty().sortedBy { it.name }
-    private fun peopleFile(ctx: Context) = File(PeopleFiles.dir(ctx), BackupCategory.PEOPLE_FILE)
+    /** seal-people: People and its ignored addresses, opened through its vault, or [PeopleUnreadable] while it can't be (BackupJob says People is why). */
+    fun peopleWhole(ctx: Context): app.heyrobot.core.PeopleFile = try {
+        PeopleFiles.store(ctx).whole()
+    } catch (e: app.heyrobot.core.PeopleNotWhole) {
+        // seal-people-fix 1: damaged gets the same words as a newer Robot's (Start over in People), not "just now".
+        throw PeopleUnreadable(tooNew = e.load is app.heyrobot.core.PeopleLoad.TooNew || e.load == app.heyrobot.core.PeopleLoad.Unreadable)
+    }
     private fun lockFile(ctx: Context) = File(LockStore.dir(ctx), LockStore.LOCKS)
     private fun connectionsFile(ctx: Context) = File(dir(ctx), BackupCategory.CONNECTIONS_FILE)
 
@@ -151,14 +170,58 @@ internal object BackupSources {
         null
     }
 
+    /** spoken-log: the Logbook as it is now through its vault (the journal merged), or null when it can't be opened now. */
+    fun logbook(ctx: Context): List<app.heyrobot.core.logbook.LogEntry>? = try {
+        (app.heyrobot.sys.LogbookFiles.store(ctx).read() as? app.heyrobot.sys.LogbookRead.Ok)?.entries
+    } catch (t: Throwable) {
+        RLog.w("backup_logbook", t)
+        null
+    }
+
+    /** seal-people-fix 1: [Summary.extra] on People's line when it can't be read (damaged, a newer Robot's), not just not now. */
+    const val PEOPLE_DAMAGED = 1
+
+    /**
+     * seal-people-fix 1: People's line. Never Empty when it can't be opened (count -1, [PEOPLE_DAMAGED] when damaged or a
+     * newer Robot's), and not Empty while it holds ignored addresses: [Summary.extra] is how many people.
+     */
+    fun peopleSummary(load: app.heyrobot.core.PeopleLoad, aside: Int = 0): Summary = when (load) {
+        // fix-seal-14-lows-b 1: [aside], People's copies kept aside, never in a backup: the line says how many.
+        is app.heyrobot.core.PeopleLoad.Ok -> load.file.let { f ->
+            if (f.people.isEmpty() && f.ignored.isEmpty()) Summary(0, 0, aside = aside)
+            else Summary(maxOf(f.people.size, 1), PeopleCodec.toJson(f.people, f.ignored).length.toLong(), extra = f.people.size, aside = aside)
+        }
+        app.heyrobot.core.PeopleLoad.NotNow -> Summary(-1, 0)
+        else -> Summary(-1, 0, extra = PEOPLE_DAMAGED)
+    }
+
+    /**
+     * seal-people-fix 1: whether a row on Back up now's list can be ticked, and counts as chosen when ticked. A row that
+     * can't be read is off, except People: it stays as you set it, and Back up now then says why it stopped
+     * (PEOPLE_UNREADABLE, PEOPLE_TOO_NEW) rather than leave People out without a word.
+     */
+    fun choosable(c: BackupCategory, s: Summary?): Boolean = s != null && (if (s.count < 0) c == BackupCategory.PEOPLE || c == BackupCategory.NOTES else !s.empty)
+
+    /** fix-seal-lows-c 1: [Summary.extra] on Notes' line when some are a newer Robot's, not just not now. */
+    const val NOTES_NEWER = 1
+
+    /**
+     * fix-seal-lows-c 1: Notes' line, from what read() holds back too. Never Empty while a note can't be opened (locked, a
+     * newer Robot's, a read that failed): count -1, and Notes stays as you set it, so Back up now stops with
+     * NOTES_UNREADABLE or NOTES_TOO_NEW rather than leave your notes out without a word.
+     */
+    fun notesSummary(r: app.heyrobot.sys.NotesRead): Summary =
+        if (r.notNow + r.tooNew > 0) Summary(-1, 0, extra = if (r.tooNew > 0) NOTES_NEWER else 0)
+        else Summary(r.notes.size, r.notes.sumOf { NoteCodec.toJson(it).length.toLong() })
+
     /** What each category holds now (background thread). Memory's line is null-count when it can't be opened now. */
     fun survey(ctx: Context, s: RobotSettings, lists: () -> ListsVault = { ListsFiles.vault(ctx) },
                files: () -> FilesVault = { RobotFiles.vault(ctx) }): Map<BackupCategory, Summary> {
         val out = LinkedHashMap<BackupCategory, Summary>()
         val settings = settingsFiles(ctx)
         out[BackupCategory.SETTINGS] = Summary(settings.size, settings.sumOf { it.length() })
-        val people = peopleFile(ctx)
-        out[BackupCategory.PEOPLE] = Summary(PeopleCodec.read(readOrNull(people))?.people?.size ?: 0, if (people.isFile) people.length() else 0)
+        out[BackupCategory.PEOPLE] = peopleSummary(try { PeopleFiles.store(ctx).load() } catch (t: Throwable) {
+            RLog.w("backup_people", t); app.heyrobot.core.PeopleLoad.NotNow }, aside = try { PeopleFiles.keptAside(ctx) } catch (_: Throwable) { 0 })
         val m = memory(ctx)
         val split = m?.let(BackupExport::memory)
         out[BackupCategory.MEMORY] = if (split == null) Summary(-1, 0) else
@@ -179,14 +242,17 @@ internal object BackupSources {
         val lock = lockFile(ctx)
         out[BackupCategory.PHONE_LOCK] = Summary(if (lock.isFile) ((LockCodec.decode(readOrNull(lock) ?: "") as? LockFileRead.Ok)?.file?.locks?.size ?: 0).coerceAtLeast(1) else 0,
             if (lock.isFile) lock.length() else 0)
-        val notes = notes(ctx)
-        out[BackupCategory.NOTES] = Summary(notes.size, notes.sumOf { it.length() })
-        val conv = conversations(ctx)
-        out[BackupCategory.HISTORY] = if (historyHidden(ctx)) Summary(-1, 0) else Summary(conv.size, conv.sumOf { it.length() })
-        val tr = transcripts(ctx)
+        out[BackupCategory.NOTES] = notesSummary(NotesFiles.store(ctx).read())
+        val conv = app.heyrobot.sys.ConversationStore.list(ctx)
+        out[BackupCategory.HISTORY] = if (historyHidden(ctx)) Summary(-1, 0) else Summary(conv.size, conv.sumOf { ConversationCodec.toJson(it).length.toLong() })
+        // fix-seal-transcripts-d, Low 1: a newer Robot's transcripts are in no backup: counted with the kept-aside ones.
+        val newer = try { app.heyrobot.sys.Transcripts.store(ctx).newer() } catch (_: Throwable) { emptySet() }
+        val tr = transcripts(ctx).filter { it.name !in newer }
         val audio = tr.map { File(it, TranscriptFiles.AUDIO) }.filter { it.isFile }
         out[BackupCategory.TRANSCRIPTS] = Summary(tr.size, tr.sumOf { d -> d.listFiles().orEmpty().filter { it.isFile && it.name != TranscriptFiles.AUDIO }.sumOf { it.length() } },
-            extra = audio.size, extraBytes = audio.sumOf { it.length() })
+            extra = audio.size, extraBytes = audio.sumOf { it.length() },
+            // fix-seal-transcripts-c, Medium 1: transcripts kept aside are never in a backup: the line says how many, as People's does.
+            aside = (try { app.heyrobot.sys.Transcripts.store(ctx).asideCount() } catch (_: Throwable) { 0 }) + newer.size)
         val keys = BackupSecrets.keyNames(ctx, s)
         // C10: your connections' keys are shown in this row too ("Home Assistant, ntfy"), and go in with its tick.
         val connKeys = BackupSecrets.connectionsWithKeys(ctx).map { it.name }
@@ -202,9 +268,19 @@ internal object BackupSources {
         // H5: the Today page's home_settings.json, once Today was offered, turned on or arranged.
         val home = app.heyrobot.sys.HomeSettingsStore.file(ctx)
         out[BackupCategory.HOME] = Summary(if (home.isFile) 1 else 0, if (home.isFile) home.length() else 0)
+        // earbud-headsup-c: headsup.json once the heads-up was set (never headsup-said.json, the events already handled).
+        val headsUp = app.heyrobot.sys.HeadsUpStore.file(ctx)
+        out[BackupCategory.HEADSUP] = Summary(if (headsUp.isFile) 1 else 0, if (headsUp.isFile) headsUp.length() else 0)
+        // moments-backup: moments.json, reminders for a moment (shown in Routines' row).
+        val moments = File(dir(ctx), BackupCategory.MOMENTS_FILE)
+        out[BackupCategory.MOMENTS] = if (moments.isFile) Summary(maxOf(app.heyrobot.core.MomentReminders.decode(readOrNull(moments)).size, 1), moments.length()) else Summary(0, 0)
+        out[BackupCategory.LOGBOOK] = logbook(ctx)?.let { l -> Summary(l.size, if (l.isEmpty()) 0 else app.heyrobot.core.logbook.LogbookCodec.toJson(l).length.toLong()) } ?: Summary(-1, 0)
         // The everyday set: everyday_settings.json, once you changed one of its switches.
         val everyday = EverydaySettingsStore.file(ctx)
         out[BackupCategory.EVERYDAY] = Summary(if (everyday.isFile) 1 else 0, if (everyday.isFile) everyday.length() else 0)
+        // auto-open-plan §4: open_apps.json, once you changed the switch (shown in Settings' row).
+        val openApps = app.heyrobot.sys.OpenAppsStore.file(ctx)
+        out[BackupCategory.OPEN_APPS] = Summary(if (openApps.isFile) 1 else 0, if (openApps.isFile) openApps.length() else 0)
         // L12: how many pairings would go (F132: off, :link holds them closed and they stay out; on but locked or out of reach: can't be read now).
         out[BackupCategory.LINKS] = if (!linksOn(ctx)) Summary(-1, 0, extra = LINKS_OFF) else linkBackup(ctx)?.let { b ->
             val n = (app.heyrobot.core.link.LinkBackupCodec.decode(b.toString(Charsets.UTF_8)) as? app.heyrobot.core.link.LinkBackupRead.Ok)?.file?.pairings?.size
@@ -220,6 +296,8 @@ internal object BackupSources {
         // skills-backup-b: skill_keys.json and each MCP connection's tools file (shown in Skills' row).
         val trust = skillTrustFiles(ctx).map { it.second }
         out[BackupCategory.SKILL_TRUST] = Summary(trust.size, trust.sumOf { it.length() })
+        val ticked = (SkillCodec.decode(readOrNull(File(dir(ctx), SkillStore.SKILLS))) as? SkillFile.Ok)?.skills.orEmpty().count { it.opens.isNotEmpty() }
+        out[BackupCategory.SKILL_OPENS] = Summary(ticked, 0)
         return out
     }
 
@@ -250,7 +328,9 @@ internal object BackupSources {
                    /** R4: asked once the entries are written: how many of Robot Files' files couldn't be read. */
                    val filesLeftOut: () -> Int = { 0 }, val codesLeftOut: Boolean = false,
                    /** Today fix: private events Robot can't open on this phone (key gone, damaged): left out, and Done says so. */
-                   val privateLeftOut: Boolean = false)
+                   val privateLeftOut: Boolean = false,
+                   /** fix-seal-transcripts-c, Medium 1: transcripts that never opened during the gather (kept aside, or a newer Robot's): left out, and Done says so. */
+                   val transcriptsLeftOut: Int = 0)
 
     /** Memory couldn't be opened now while Memory was chosen ("Back up without Memory, or unlock and try again"). */
     class MemoryUnreadable : Exception()
@@ -260,9 +340,21 @@ internal object BackupSources {
 
     /** 1.4: the lists couldn't be opened now while Lists was chosen ("Back up without Lists, or unlock and try again"). */
     class ListsUnreadable : Exception()
+    /** spoken-log: the Logbook couldn't be opened now while it was chosen. */
+    class LogbookUnreadable : Exception()
+
+    /** History couldn't be opened whole while History was chosen: [tooNew], a newer Robot's files (update, or Delete these); else not now. */
+    class HistoryUnreadable(val tooNew: Boolean) : Exception()
+    /** seal-notes: Notes was chosen and a note can't be opened now (or is a newer Robot's). */
+    class NotesUnreadable(val tooNew: Boolean = false) : Exception()
+    /** seal-people: People was chosen and can't be opened now, or holds a newer Robot's file ([tooNew]). */
+    class PeopleUnreadable(val tooNew: Boolean = false) : Exception()
 
     /** H3: private events couldn't be opened now while they were chosen ("Back up without them, or unlock and try again"). */
     class PrivateUnreadable : Exception()
+    /** fix-seal-transcripts 6: a transcript can't be opened now (sealed under the unlock key, the phone locked). */
+    /** [fault]: the phone is unlocked and the Keystore still failed (fix-seal-transcripts-b, Medium 1). */
+    class TranscriptsLocked(val fault: Boolean = false) : Exception()
 
     /** H3: private events as they are now (an empty file when there are none), or null when they can't be opened now. */
     fun privateEvents(ctx: Context): app.heyrobot.core.calendar.PrivateEventsFile? =
@@ -382,6 +474,7 @@ internal object BackupSources {
         var filesLeft: () -> Int = { 0 }
         var codesLeftOut = false
         var privateLeftOut = false
+        var transcriptsLeft = 0
         var codes: MemoryFile? = null
         fun small(c: BackupCategory, f: File, name: String = f.name, change: ((String) -> String?)? = null) {
             if (!f.isFile) return
@@ -396,7 +489,10 @@ internal object BackupSources {
                 "termux.json" -> BackupExport::termux // l10n: not text (a file name)
                 else -> null
             })
-            BackupCategory.PEOPLE -> small(c, peopleFile(ctx))
+            BackupCategory.PEOPLE -> peopleWhole(ctx).takeIf { it.people.isNotEmpty() || it.ignored.isNotEmpty() }?.let { f ->
+                val json = PeopleCodec.toJson(f.people, f.ignored).toByteArray(Charsets.UTF_8)
+                out += Source.bytes(c, BackupCategory.PEOPLE_FILE, json.size.toLong()) { json }
+            }
             BackupCategory.MEMORY -> {
                 val m = memory(ctx) ?: throw MemoryUnreadable()
                 val split = BackupExport.memory(m)
@@ -408,21 +504,36 @@ internal object BackupSources {
             }
             BackupCategory.HANDSFREE -> for (name in BackupCategory.HANDSFREE_FILES.keys) small(c, File(dir(ctx), name))
             BackupCategory.ROUTINES -> for (name in BackupCategory.ROUTINE_FILES.keys) small(c, File(dir(ctx), name))
-            BackupCategory.SKILLS -> for (name in BackupCategory.SKILL_FILES.keys) small(c, File(dir(ctx), name))
+            // auto-open-i: skills.json without its ticks (1.3 reads it whole), the ticks in skill_opens.json (SKILL_OPENS).
+            BackupCategory.SKILLS -> for (name in BackupCategory.SKILL_FILES.keys) small(c, File(dir(ctx), name), name,
+                if (name == SkillStore.SKILLS) { t -> app.heyrobot.core.skills.SkillOpensFile.split(t).first } else null)
+            BackupCategory.SKILL_OPENS -> readOrNull(File(dir(ctx), SkillStore.SKILLS))?.let { app.heyrobot.core.skills.SkillOpensFile.split(it).second }
+                ?.toByteArray(Charsets.UTF_8)?.let { b -> out += Source.bytes(c, BackupCategory.SKILL_OPENS_FILE, b.size.toLong()) { b } }
             BackupCategory.PHONE_LOCK -> small(c, lockFile(ctx), BackupCategory.LOCK_FILE)
-            BackupCategory.NOTES -> for (f in notes(ctx)) small(c, f)
-            // FX3: never while travel mode keeps it out (historyHidden; the list already showed it off), so it is in no manifest.
-            BackupCategory.HISTORY -> if (!historyHidden(ctx)) for (f in conversations(ctx)) {
-                if (pictures) small(c, f) else small(c, f) { text ->
-                    ConversationCodec.fromJson(text)?.let { conv -> ConversationCodec.withoutMedia(conv)?.let(ConversationCodec::toJson) } ?: text
-                }
+            // seal-notes: each note opened through Notes' vault; the backup holds it as JSON inside its own seal, as before.
+            BackupCategory.NOTES -> for (n in notesWhole(ctx)) {
+                val json = NoteCodec.toJson(n).toByteArray(Charsets.UTF_8)
+                out += Source.bytes(c, n.id + ".json", json.size.toLong()) { json } // l10n: not text (a file name)
             }
-            BackupCategory.TRANSCRIPTS -> for (d in transcripts(ctx)) {
+            // FX3: never while travel mode keeps it out (historyHidden; the list already showed it off), so it is in no manifest.
+            // seal-history: each conversation opened through History's vault; the backup holds it as JSON inside its own seal.
+            // seal-history-fix: one that can't be opened now fails the backup with LOCKED, as Robot Files does.
+            BackupCategory.HISTORY -> if (!historyHidden(ctx)) for (conv in historyWhole(ctx)) {
+                val json = ConversationCodec.toJson((if (pictures) null else ConversationCodec.withoutMedia(conv)) ?: conv).toByteArray(Charsets.UTF_8)
+                out += Source.bytes(c, conv.id + ".json", json.size.toLong()) { json } // l10n: not text (a file name)
+            }
+            BackupCategory.TRANSCRIPTS -> for (d in run { app.heyrobot.sys.Transcripts.store(ctx).settle(); transcripts(ctx) }) {
                 val files = d.listFiles { f -> f.isFile && c.validName(d.name + "/" + f.name) }.orEmpty().sortedBy { if (it.name == TranscriptFiles.META) "" else it.name }
+                // seal-transcripts: text opened through the transcripts' seal (the bundle holds it plain inside its own); one
+                // that can't be opened now fails the backup rather than leave it out, with its own words when the phone is
+                // unlocked (fix-seal-transcripts-b, Medium 1). One that never opens is kept aside and left out (Medium 2).
+                val texts = try { app.heyrobot.sys.Transcripts.store(ctx).backupFolder(d, files.map { it.name }.filter { it != TranscriptFiles.AUDIO }) }
+                    catch (e: app.heyrobot.core.memory.MemoryKeyException) { throw TranscriptsLocked(fault = e is app.heyrobot.core.TranscriptKeyFault) }
+                if (texts == null) { transcriptsLeft++; continue }
                 for (f in files) {
                     if (f.name == TranscriptFiles.AUDIO && !recordings) continue
                     val name = d.name + "/" + f.name
-                    if (f.name == TranscriptFiles.AUDIO || f.name == TranscriptFiles.LOG) out += Source.file(c, name, f) else small(c, f, name)
+                    if (f.name == TranscriptFiles.AUDIO) out += Source.file(c, name, f) else texts[f.name]?.let { b -> out += Source.bytes(c, name, b.size.toLong()) { b } }
                 }
             }
             BackupCategory.KEYS -> {
@@ -459,10 +570,24 @@ internal object BackupSources {
                     out += Source.bytes(c, BackupCategory.CALENDAR_FILE, json.size.toLong()) { json }
                 }
             }
+            // spoken-log: logbook.json (the journal merged, never the sealed file), then Settings › Logbook.
+            BackupCategory.LOGBOOK -> {
+                val l = logbook(ctx) ?: throw LogbookUnreadable()
+                if (l.isNotEmpty()) {
+                    val json = app.heyrobot.core.logbook.LogbookCodec.toJson(l).toByteArray()
+                    out += Source.bytes(c, BackupCategory.LOGBOOK_FILE, json.size.toLong()) { json }
+                }
+                small(c, app.heyrobot.sys.LogbookFiles.settingsFile(ctx), BackupCategory.LOGBOOK_SETTINGS)
+            }
             // Your music app's pin stays on this phone (trust is never in a backup).
             BackupCategory.EVERYDAY -> small(c, EverydaySettingsStore.file(ctx), BackupCategory.EVERYDAY_FILE, BackupExport::everyday)
             // H5: the Today page's order, pinned note and whether it is your home page, as written.
             BackupCategory.HOME -> small(c, app.heyrobot.sys.HomeSettingsStore.file(ctx), BackupCategory.HOME_FILE)
+            // earbud-headsup-c: the heads-up's settings as written.
+            BackupCategory.HEADSUP -> small(c, app.heyrobot.sys.HeadsUpStore.file(ctx), BackupCategory.HEADSUP_FILE)
+            // moments-backup: reminders for a moment as written.
+            BackupCategory.MOMENTS -> small(c, File(dir(ctx), BackupCategory.MOMENTS_FILE), BackupCategory.MOMENTS_FILE)
+            BackupCategory.OPEN_APPS -> small(c, app.heyrobot.sys.OpenAppsStore.file(ctx), BackupCategory.OPEN_APPS_FILE)
             // L12: what :link hands over (never a key: core LinkBackupCodec), then Settings › Robot to Robot. Off, none of the first.
             // U1: on, but :link wouldn't say (the export refused or timed out): the whole category stays out and Done says so.
             BackupCategory.LINKS -> {
@@ -484,6 +609,6 @@ internal object BackupSources {
                 unreadable += k.unreadable
             }
         }
-        return Gathered(out, secrets, unreadable, linksLeftOut, filesLeft, codesLeftOut, privateLeftOut)
+        return Gathered(out, secrets, unreadable, linksLeftOut, filesLeft, codesLeftOut, privateLeftOut, transcriptsLeft)
     }
 }

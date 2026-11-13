@@ -20,10 +20,13 @@ class SoftMemoryKeys : MemoryKeys {
     val keys = HashMap<String, SecretKey>()
     var locked = false
     var busy = false
+    /** Thrown by the key fetch itself, as AndroidKeyStoreSpi.engineGetKey does. */
+    var refuse: Throwable? = null
     var created = 0
 
     override fun cipher(alias: String, create: Boolean): MemoryCipher? {
         if (busy) throw IllegalStateException("keystore busy")
+        refuse?.let { throw it }
         val k = keys[alias] ?: if (create) KeyGenerator.getInstance("AES").apply { init(256) }.generateKey().also { keys[alias] = it; created++ } else return null
         return object : MemoryCipher {
             override val alias = alias

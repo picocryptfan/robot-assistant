@@ -49,6 +49,17 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35], qualifiers = PHONE)
 class PeopleScreenTest {
+    init { app.heyrobot.sys.PeopleFiles.testKeys(app.heyrobot.sys.SoftHistoryKeys()) }
+
+    // seal-people: over the lock screen People can't be opened, so "no contact matches" says it opens once you unlock.
+    @Test fun noContactSaysPeopleOpensOnceYouUnlockWhileLocked() {
+        val kg = org.robolectric.Shadows.shadowOf(ctx.getSystemService(android.app.KeyguardManager::class.java))
+        assertEquals("No contact matches “aunt”.", PeopleFiles.noContact(ctx, "aunt").en())
+        kg.setIsDeviceLocked(true)
+        try {
+            assertEquals("No contact matches “aunt”, and People opens once you unlock.", PeopleFiles.noContact(ctx, "aunt").en())
+        } finally { kg.setIsDeviceLocked(false) }
+    }
     @get:Rule val rule = createComposeRule()
     private val ctx: Context = ApplicationProvider.getApplicationContext()
     private val log = ActionLog()
@@ -114,6 +125,23 @@ class PeopleScreenTest {
         rule.onNodeWithText("Delete all People?").assertExists()
         rule.onNodeWithText("Cancel").performClick()
         assertEquals(2, PeopleFiles.store(ctx).list().size)
+    }
+
+    // fix-seal-14-f 1: copies kept aside get one card, the count and where they are, never a name; none, no card.
+    // Its only wait is open()'s waitUntil (5 s), bounded; no Timeout rule, since Robolectric runs the test on its main looper.
+    @Test fun copiesKeptAsideHaveOneCardWithoutNames() {
+        val bad = java.io.File(PeopleFiles.dir(ctx), "people.enc.bad").apply { writeBytes(byteArrayOf(1, 2, 3)) }
+        try {
+            open()
+            rule.scrollToText("1 copy of People is kept aside")
+            rule.onNodeWithText("so it keeps it whole, on this phone only", substring = true).assertExists()
+            rule.onNodeWithText("Delete all People, in the menu, removes it", substring = true).assertExists()
+        } finally { bad.delete() }
+    }
+
+    @Test fun noCopyKeptAsideNoCard() {
+        open()
+        assertEquals(0, rule.onAllNodes(hasText("kept aside", substring = true)).fetchSemanticsNodes().size)
     }
 
     @Test fun theNotificationAccessPageHasTheSteps() {

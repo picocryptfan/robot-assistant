@@ -39,8 +39,8 @@
   "otherAppStarts": {"en": ["play", "google", "resume"], "fr": ["joue", "reprends"]},
   "settings": {"speakReplies": ["VOICE", "ALWAYS", "NEVER"], "voiceCards": "boolean", "wakeWord": "boolean", "livePartials": "boolean",
     "directAnswers": "boolean", "saveHistory": "boolean", "speechRate": "number", "voice": "string"},
-  "routers": ["BrowserRouter", "ConversationRouter", "FeedbackRouter", "FilesRouter", "HandsFreeRouter", "HelperRouter", "LinkRouter", "ListsRouter",
-    "LockRouter", "MessagesRouter", "MusicRouter", "OnlineRouter", "PlanRouter", "PreRouter", "RoutineRouter", "SkillRouter", "SumsRouter",
+  "routers": ["BrowserRouter", "ConversationRouter", "FeedbackRouter", "FilesRouter", "HandsFreeRouter", "HelperRouter", "LaterRouter", "LinkRouter", "ListsRouter", "CorrectRouter",
+    "LockRouter", "LogbookRouter", "MessagesRouter", "MusicRouter", "OnlineRouter", "PageSummaryRouter", "PlanRouter", "PreRouter", "ReadRouter", "RoutineRouter", "SkillRouter", "StepRouter", "SumsRouter", "LastTimeRouter",
     "TermuxRouter", "ToolRouter", "WebRouter", "model"],
   "routersOff": ["MusicRouter"],
   "routersNoTurn": ["PreRouter", "ToolRouter"]

@@ -63,6 +63,15 @@ class AppRoutesTest {
         assertEquals(AppRoutes.Target(page = Page.Settings("about/feedback?e=voice")), open(main().putExtra(AppPages.EXTRA, AppPages.FEEDBACK)))
     }
 
+    /** 1.4: a lock, door or alarm step refused by voice opens its skill's own page (an id only, never a name). */
+    @Test fun aSkillsOwnPage() {
+        assertEquals(AppRoutes.Target(tab = Tab.SETTINGS, page = Page.Settings(SkillRoutes.skill("s-abc123"))),
+            open(HandOffApps.robotPage(ctx, AppPages.skillRoute("s-abc123"))))
+        assertNull(AppRoutes.of(main().putExtra(AppPages.EXTRA, AppPages.skillRoute("Porch light"))))
+        assertNull(AppRoutes.of(main().putExtra(AppPages.EXTRA, AppPages.skillRoute("s-abc123/0"))))
+        assertNull(AppRoutes.of(main().putExtra(AppPages.EXTRA, AppPages.SKILL)))
+    }
+
     @Test fun conversationModesLinks() {
         // The transcript screen's settings and Open, the summary screen's Helpers and its [14:03] link, the tile's long press.
         assertEquals(AppRoutes.Target(page = Page.ConversationSettings), open(main().putExtra(AppPages.EXTRA, AppPages.CONVERSATION_SETTINGS)))

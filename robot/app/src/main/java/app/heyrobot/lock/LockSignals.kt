@@ -89,6 +89,38 @@ object LockSignals {
 
     fun locksChanged(ctx: Context) = send(ctx, ACTION_LOCKS)
 
+    /** App pause: phone_status asks :lock for today's pickups (an ordered broadcast to [RECEIVER], not exported). */
+    const val ACTION_PICKUPS = "app.heyrobot.lock.PICKUPS"
+    const val EXTRA_COUNT = "count"
+    const val EXTRA_GLANCES = "glances"
+
+    /**
+     * Today's pickups, counted in :lock and handed back in the broadcast's result, kept nowhere. Null when :lock doesn't
+     * answer within [waitMs], usage access is off, or on the main thread (it waits, so never there).
+     */
+    fun pickups(ctx: Context, waitMs: Long = 3_000L): app.heyrobot.core.pause.Pickups? {
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) return null
+        val thread = android.os.HandlerThread("robot-pickups").apply { start() }
+        return try {
+            val got = java.util.concurrent.CountDownLatch(1)
+            var out: app.heyrobot.core.pause.Pickups? = null
+            ctx.sendOrderedBroadcast(Intent(ACTION_PICKUPS).setClassName(ctx.packageName, RECEIVER), null, object : android.content.BroadcastReceiver() {
+                override fun onReceive(c: Context, i: Intent) {
+                    val e = getResultExtras(false)
+                    if (resultCode == android.app.Activity.RESULT_OK && e != null && e.containsKey(EXTRA_COUNT))
+                        out = app.heyrobot.core.pause.Pickups(e.getInt(EXTRA_COUNT), if (e.containsKey(EXTRA_GLANCES)) e.getInt(EXTRA_GLANCES) else null)
+                    got.countDown()
+                }
+            }, android.os.Handler(thread.looper), 0, null, null)
+            if (got.await(waitMs, java.util.concurrent.TimeUnit.MILLISECONDS)) out else null
+        } catch (t: Throwable) {
+            RLog.w("lock_signal", t)
+            null
+        } finally {
+            thread.quitSafely()
+        }
+    }
+
     /** [VOICE] Car mode started or ended. */
     fun car(ctx: Context, on: Boolean, byCar: Boolean) {
         try {

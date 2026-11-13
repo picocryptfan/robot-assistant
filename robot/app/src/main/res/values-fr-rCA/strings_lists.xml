@@ -148,6 +148,8 @@
     <string name="lists_changed">Cette liste a changé entre-temps. Réessaie.</string>
     <string name="lists_gone">Cette liste n’est plus là.</string>
     <string name="lists_card_open">Ouvrir la liste %s</string>
+    <!-- recipe-list: the recipe card's button, with how many ingredients are ticked. -->
+    <string name="lists_recipe_add">Ajouter (%d)</string>
     <string name="lists_card_tick">Cocher %s</string>
     <string name="lists_card_untick">Remettre %s</string>
     <!-- LS6 : le widget de l’écran d’accueil, « Liste Robot », et la fenêtre qui choisit sa liste. -->

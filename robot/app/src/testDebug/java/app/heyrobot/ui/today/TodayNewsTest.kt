@@ -74,7 +74,7 @@ class TodayNewsTest {
         shadowOf(cm).setNetworkCapabilities(cm.activeNetwork, caps)
     }
 
-    private fun page(news: NewsSettings, today: Boolean = true) = rule.show { TodayNews(HomeSettings(today = today, news = news), Lang.EN) }
+    private fun page(news: NewsSettings, today: Boolean = true) = rule.show { TodayNews(HomeSettings(home = app.heyrobot.core.HomeChoice.of(today), news = news), Lang.EN) }
     private fun shows(text: String) = rule.onAllNodes(hasText(text)).fetchSemanticsNodes().isNotEmpty()
     private fun waitFor(id: Int) = rule.waitUntil(10_000) { shows(ctx.getString(id)) }
 

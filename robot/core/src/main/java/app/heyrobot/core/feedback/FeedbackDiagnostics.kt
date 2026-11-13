@@ -50,8 +50,9 @@ object FeedbackDiagnostics {
         clock.format(Instant.ofEpochMilli(e.time).atZone(zone)) + "  " + e.event.name + " " + e.a + " " + e.b + " " + e.c + "  " + VoiceLogText.describe(e)
 
     /** The last [LOG_EVENTS] events of [newestFirst], wake phrases by number only (VoiceLogText without names). */
-    fun voiceLog(newestFirst: List<VoiceLogEntry>, zone: ZoneId = ZoneId.systemDefault()): DiagnosticBlock {
-        val events = newestFirst.take(LOG_EVENTS)
+    fun voiceLog(newestFirst: List<VoiceLogEntry>, zone: ZoneId = ZoneId.systemDefault(), since: Long? = null): DiagnosticBlock {
+        // 1.4: the card's window (ReportCard.LOG_MS), when [since] is given.
+        val events = newestFirst.filter { since == null || it.time >= since }.take(LOG_EVENTS)
         return DiagnosticBlock(Diagnostic.VOICE_LOG, "Voice log, last ${events.size} events, newest first (codes and numbers only):",
             events.map { logLine(it, zone) }.ifEmpty { listOf("(no events)") })
     }

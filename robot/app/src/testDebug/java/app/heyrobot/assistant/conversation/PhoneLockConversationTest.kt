@@ -54,6 +54,8 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import java.io.File
 import java.time.DayOfWeek
+import app.heyrobot.core.TranscriptKeyAliases
+import app.heyrobot.sys.SoftListsKeys
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.temporal.ChronoUnit
@@ -70,6 +72,9 @@ import java.time.temporal.ChronoUnit
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class PhoneLockConversationTest {
+
+    /** seal-transcripts: Robolectric has no Android Keystore; the transcripts' store takes soft keys. */
+    @org.junit.Before fun transcriptKeys() { Transcripts.testKeys(SoftListsKeys(setOf(TranscriptKeyAliases.UNLOCKED))) }
     private val ctx: Context = ApplicationProvider.getApplicationContext()
     private val app get() = ctx as Application
     private val notices get() = ctx.getSystemService(NotificationManager::class.java)

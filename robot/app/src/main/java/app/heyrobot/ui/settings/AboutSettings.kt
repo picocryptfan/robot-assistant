@@ -32,6 +32,9 @@ fun AboutSettingsScreen(a: AppActions, onBack: () -> Unit) {
             // 0.7: a bug report or an idea, as plain text you send with the app you choose.
             PreferenceItem(UiStrings.sendFeedback().str(), stringResource(R.string.about_feedback_detail),
                 onClick = { a.openPage(Page.Settings(SettingsRoutes.feedback(FeedbackEntry.ABOUT))) })
+            // RP5: each report Send handed on, by its reference.
+            PreferenceItem(stringResource(R.string.report_sent_title), stringResource(R.string.report_sent_detail),
+                onClick = { a.openPage(Page.Settings(SettingsRoutes.REPORTS_SENT)) })
             // 1.1: the donation addresses.
             PreferenceItem(stringResource(R.string.about_support_title), stringResource(R.string.about_support_detail),
                 onClick = { a.openPage(Page.Settings(SettingsRoutes.SUPPORT)) })

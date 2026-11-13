@@ -134,6 +134,14 @@ class TranscriptPayloadTest {
         assertTrue(ConsentCard.apiFits(card().blocks, 1_000))
     }
 
+    // fix-batch-15-lows e: a Japanese page counts about a token a character, for the card's price and the API's limit alike.
+    @Test fun aJapanesePageIsCountedByItsScript() {
+        val page = listOf(HelperBlock.Text("\u3042".repeat(30_000)))
+        assertEquals(105_000, HelperCost.charsOf(page))
+        assertFalse(ConsentCard.apiFits(page, 20_000)) // by raw length, about 8,800 tokens: it passed
+        assertTrue(ConsentCard.apiFits(page, 40_000))
+    }
+
     @Test fun theCostEstimate() {
         // About 6,000 words (36,000 characters): about 9 cents on Opus.
         assertEquals("≈ 9¢", CostText.line(HelperCost.estimate(AnthropicModel.OPUS, 36_000)))

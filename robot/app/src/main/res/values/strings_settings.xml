@@ -47,6 +47,9 @@
     <string name="settings_status_done">Done</string>
     <string name="settings_status_todo">To do</string>
     <!-- Settings › Actions: what each level means, the groups, "Find the nearest place online" and its search server, the footer. -->
+    <string name="actions_open_named">Open apps you name without a card</string>
+    <string name="actions_open_named_detail">When you say or type an app\'s name, it opens right away. Never for an app Robot guessed, or for a request that came from something Robot read. Off: no app opens without a card, not even one you ticked for a routine or skill.</string>
+    <string name="actions_open_tick_row_detail">Turn off to have a card ask before this app opens.</string>
     <string name="actions_intro">What Robot may do when you ask.</string>
     <string name="actions_auto_detail">Robot does it at once (Safety &amp; privacy may still show a card)</string>
     <string name="actions_ask_detail">A card first: you confirm or cancel</string>

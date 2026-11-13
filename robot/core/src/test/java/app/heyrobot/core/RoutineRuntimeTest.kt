@@ -325,7 +325,9 @@ class RoutineRuntimeTest {
             RoutineCommand.Remind("x", false), RoutineCommand.RemindOn("x", "on the 20th"), RoutineCommand.RemindWhat,
             RoutineCommand.CantCancel(timer = false, french = false), RoutineCommand.TimerLeft(french = false),
             RoutineCommand.DeleteNote("x", french = false), RoutineCommand.NextAlarm(french = false), RoutineCommand.Today,
-            RoutineCommand.Show(ShowPage.CALENDAR), RoutineCommand.Arrange(TodayPart.CALENDAR, TodayMove.FIRST), RoutineCommand.News)
+            RoutineCommand.Show(ShowPage.CALENDAR), RoutineCommand.Arrange(TodayPart.CALENDAR, TodayMove.FIRST), RoutineCommand.News,
+            RoutineCommand.Timer(TimerCommand.Stop("", french = false)),
+            RoutineCommand.RemindWhen("x", Moment.UNLOCK, Lang.EN))
         assertEquals(RoutineCommandCode.entries.toList(), all.map(RoutineCommandCode::of))
     }
 }

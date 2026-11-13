@@ -93,6 +93,8 @@ data class LockState(
      * so a restart of :lock while you drive never puts the cover over a map.
      */
     val car: Long = 0,
+    /** review-develop-14 M1: since when Robot's car mode is on, whatever started it (0: off); App pause stays away while it is. */
+    val carMode: Long = 0,
     /** The app that handled geo: when the first of the active locks started, kept until none is on (F24; [LockSchedule.mapsKept]). */
     val mapsApp: String? = null,
     /**
@@ -109,6 +111,30 @@ data class LockState(
 
     /** The car's car mode is on at [now] (for 12 hours at most, should its end never come). */
     fun carOn(now: Long): Boolean = car in 1..now && now - car < CAR_MAX_MS
+
+    /** Robot's car mode is on at [now], whatever started it (for 12 hours at most, should its end never come). */
+    fun carModeOn(now: Long): Boolean = carMode in 1..now && now - carMode < CAR_MAX_MS
+
+    /**
+     * :voice said car mode started ([on]) or ended. Only car mode your remembered car started ([byCar]) counts for the lock
+     * ([car], noted in the record during a lock); any car mode counts for App pause ([carMode]).
+     */
+    fun withCar(on: Boolean, byCar: Boolean, now: Long): LockState {
+        if (!on) return if (car == 0L && carMode == 0L) this else copy(car = 0, carMode = 0)
+        var st = if (carModeOn(now)) this else copy(carMode = now)
+        if (byCar && !st.carOn(now)) st = st.copy(car = now).let { if (it.active.isNotEmpty()) it.recording(RecordLine(now, RecordEvent.CAR)) else it }
+        return st
+    }
+
+    /**
+     * review-develop-14-b L1: BOOT_COMPLETED. Car mode from before the boot at [bootAt] (wall-clock ms) is over: Robot's car
+     * session doesn't outlive a restart. Car mode your car started since the boot keeps both.
+     */
+    fun afterReboot(bootAt: Long): LockState {
+        if (car >= bootAt) return this
+        val m = if (carMode in 1 until bootAt) 0L else carMode
+        return if (car == 0L && m == carMode) this else copy(car = 0, carMode = m)
+    }
 
     /** With [line] added, and lines older than 30 days or beyond the newest [RECORD_MAX] left out. */
     fun recording(vararg line: RecordLine): LockState {

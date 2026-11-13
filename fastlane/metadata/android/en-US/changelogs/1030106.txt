@@ -1,0 +1,1 @@
+Second test build of sealed storage, now 1.3.0: History, your notes and People are kept encrypted, with keys that stay in your phone's keystore. It has 1.3.0's Skills and 1.2.7's fixes. New: Today's quick add adds your words once when you turn the phone mid-save, and deleting a note by voice says when your notes need the phone unlocked or a newer Robot.

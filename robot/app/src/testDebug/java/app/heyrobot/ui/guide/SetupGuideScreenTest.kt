@@ -701,8 +701,8 @@ class SetupGuideScreenTest {
         heading("Updates and feedback")
         rule.onRow("Include test builds").performClick()
         rule.onRow("Check for updates automatically").performClick()
-        rule.scrollToText("Send feedback")
-        rule.onRow("Send feedback").assert(hasText("hey@robot-app.ai", substring = true))
+        rule.scrollToText("Report a problem or send an idea")
+        rule.onRow("Report a problem or send an idea").assert(hasText("hey@robot-app.ai", substring = true))
         assertEquals(listOf("headset button=false", "updates auto=true test=true", "updates auto=false test=true"), stores.events)
         assertEquals(listOf("openPage ${Page.Settings(SettingsRoutes.CAR)}"), log)
     }

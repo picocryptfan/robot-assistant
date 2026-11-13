@@ -56,6 +56,8 @@ enum class FeedbackEntry(override val id: Int, override val title: String, val k
     VOICE(5, "a voice command in the panel", "voice"),
     /** 1.0: "Robot closed unexpectedly" when you opened Robot after a crash (core AppCrash). */
     CRASH(6, "the notice that Robot closed unexpectedly", "crash"),
+    /** RP3: a reply pressed and held in History. */
+    TURN(7, "a reply pressed and held in History", "turn"),
     ;
 
     companion object {
@@ -207,7 +209,7 @@ object FeedbackRef {
  * ([GITHUB_MAX], measured URL-encoded) your words are cut last, saying so.
  */
 object FeedbackReport {
-    const val HEADER = "ROBOT FEEDBACK v1" // l10n: not text (the report, a diagnostic: English)
+    const val HEADER = ReportHeader.V1
     const val MAX_CHARS = 12_000
     const val GITHUB_MAX = 7_000
     const val SEPARATOR = "---"
@@ -234,14 +236,20 @@ object FeedbackReport {
         limit: Int = MAX_CHARS,
         measure: (String) -> Int = { it.length },
         cutText: Boolean = false,
+        /** 1.4: a v2 header with the feature, the problem and the parts (the ticked diagnostics join them); null writes v1. */
+        sorted: ReportHeader.V2? = null,
+        /** 1.4: the card's turn section (ReportCard.section), after your words; null leaves it out. */
+        turn: String? = null,
     ): Composed {
+        val v2 = sorted?.let { it.copy(parts = it.parts + draft.ticked.map { d -> ReportPart.of(d) }) }
         val ticked = Diagnostic.entries.mapNotNull { d -> if (d in draft.ticked) blocks.firstOrNull { it.diagnostic == d } else null }
             .map { b -> b.copy(lines = b.lines.map { FeedbackPrivacy.redact(it, secrets) }) }
         val keep = ticked.associate { it.diagnostic to it.lines.size }.toMutableMap()
         var text = draft.text
+        val turnLines = turn?.lines()?.joinToString("\n") { FeedbackPrivacy.redact(it, secrets) }
         fun build(): Pair<String, Map<Diagnostic, String>> {
             val parts = ticked.associate { b -> b.diagnostic to block(b, keep.getValue(b.diagnostic)) }
-            return render(draft, text, ref, facts, parts) to parts
+            return render(draft, text, ref, facts, parts, v2, turnLines) to parts
         }
         var (out, parts) = build()
         for (d in CUT_ORDER) {
@@ -286,15 +294,9 @@ object FeedbackReport {
 
     private fun clean(s: String): String = s.replace("\r\n", "\n").replace('\r', '\n').trim()
 
-    private fun render(draft: FeedbackDraft, text: String, ref: String, facts: FeedbackFacts, parts: Map<Diagnostic, String>): String = buildString {
-        append(HEADER).append('\n')
-        append("Kind: ").append(draft.kind.header).append('\n') // l10n: not text (the report, a diagnostic: English)
-        append("Ref: ").append(ref).append('\n') // l10n: not text (the report, a diagnostic: English)
-        append("Robot: ").append(FeedbackFacts.line(facts.robot, 120)).append('\n') // l10n: not text (the report, a diagnostic: English)
-        append("Phone: ").append(FeedbackFacts.line(facts.phone, 200)).append('\n') // l10n: not text (the report, a diagnostic: English)
-        if (facts.chip.isNotEmpty()) append("Chip: ").append(FeedbackFacts.line(facts.chip, 120)).append('\n') // l10n: not text (the report, a diagnostic: English)
-        append("Model: ").append(FeedbackFacts.line(facts.model, 200)).append('\n') // l10n: not text (the report, a diagnostic: English)
-        append("Look: ").append(FeedbackFacts.line(facts.look, 20)).append(" · Language: ").append(FeedbackFacts.line(facts.language, 24)).append('\n') // l10n: not text (the report, a diagnostic: English)
+    private fun render(draft: FeedbackDraft, text: String, ref: String, facts: FeedbackFacts, parts: Map<Diagnostic, String>,
+        v2: ReportHeader.V2?, turn: String? = null): String = buildString {
+        append(ReportHeader.write(draft.kind, ref, facts, v2))
         append(SEPARATOR).append('\n')
         append(draft.kind.section).append(":\n")
         append(clean(text).ifEmpty { "(nothing written)" }).append('\n') // l10n: not text (the report, a diagnostic: English)
@@ -305,6 +307,7 @@ object FeedbackReport {
             append("Steps:\n").append(steps.ifEmpty { "(none written)" }).append('\n') // l10n: not text (the report, a diagnostic: English)
             append("Expected:\n").append(expected.ifEmpty { "(none written)" }).append('\n') // l10n: not text (the report, a diagnostic: English)
         }
+        if (turn != null) append(SEPARATOR).append('\n').append(clean(turn)).append('\n')
         append(SEPARATOR).append('\n')
         if (parts.isEmpty()) append("Diagnostics: none ticked by the tester\n") // l10n: not text (the report, a diagnostic: English)
         else {
@@ -332,6 +335,13 @@ object FeedbackReport {
         }
         return IssueLink(link, c.text.length, c.cut.isNotEmpty() || c.textCut)
     }
+
+    /**
+     * The bug card's new-issue link: the title only (the kind and the report's ref), never your words or the report, which
+     * the card puts on the clipboard to paste there, exactly what Show shows.
+     */
+    fun cardIssue(repo: GitHubRepo, ref: String): String =
+        repo.newIssueUrl(FeedbackKind.BUG.header + ": " + ref, null, "bug_report.yml", "report", "bug")
 
     /** A GitHub issue's title: the kind and the start of your first line (the whole report is the body). */
     fun issueTitle(draft: FeedbackDraft, ref: String): String {

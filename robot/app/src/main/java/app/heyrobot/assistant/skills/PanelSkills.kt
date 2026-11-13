@@ -1,11 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.assistant.skills
 
+import app.heyrobot.core.OpenTicks
+import app.heyrobot.core.OpenTick
+import app.heyrobot.assistant.LauncherApps
 import android.os.Bundle
+import app.heyrobot.assistant.PanelLists
 import app.heyrobot.assistant.VoiceHub
+import app.heyrobot.sys.AppLanguage
 import app.heyrobot.assistant.routines.PanelRoutines
 import app.heyrobot.assistant.routines.RoutineRunner
 import app.heyrobot.core.ActionStatus
+import app.heyrobot.assistant.car.CarModeController
 import app.heyrobot.core.Card
 import app.heyrobot.core.CardAnswer
 import app.heyrobot.core.Confirmations
@@ -62,7 +68,14 @@ import app.heyrobot.core.skills.SkillTool
 import app.heyrobot.core.skills.SkillWarnCode
 import app.heyrobot.core.BrainModel
 import app.heyrobot.core.connect.ConnLimits
+import app.heyrobot.assistant.PanelController
+import app.heyrobot.core.skills.SkillEdit
+import app.heyrobot.core.connect.ArgSlot
+import app.heyrobot.core.connect.StepOffer
+import app.heyrobot.core.connect.SkillEditor
+import app.heyrobot.core.connect.StepByVoice
 import app.heyrobot.core.connect.ConnLinks
+import app.heyrobot.core.skills.MultiAsk
 import app.heyrobot.core.skills.PlanRouter
 import app.heyrobot.core.termux.ScriptLinks
 import app.heyrobot.core.connect.SkillLimitCode
@@ -115,6 +128,8 @@ object PanelSkills {
         val source: DraftSource?
         /** 1.3 (S3.9): the helpers a plan or a draft may go to (the panel gives SkillHelperLink); null: none. */
         val helpers: SkillHelpers? get() = null
+        /** The panel is on screen, so a card can wait for a tap even in a wake-word turn (fix-routing-1.4-b). */
+        val onScreen: Boolean get() = false
     }
 
     /** 1.3 (S3.9): a chip after the save card's own ([chip]); its tap closes the card ([instead]) and runs [go]. */
@@ -134,8 +149,17 @@ object PanelSkills {
         data class Value(val edit: Edit, val words: String) : Routed() { override val lang get() = edit.lang }
         /** 1.3 (S3.7): your words asked for two or more actions, or "plan this" (core PlanRouter): PanelPlans. */
         data class Plan(val ask: PlanRouter.Ask) : Routed() { override val lang get() = ask.lang }
+        /** Idea 6: several requests, each one Robot does without a model (core MultiAsk): PanelMulti. */
+        data class Multi(val parts: List<MultiAsk.Part>, override val lang: Lang) : Routed()
         /** 1.3 (S3.8): "make a skill that …" (core SkillDrafter): PanelDrafts. */
         data class Draft(val ask: SkillDrafter.Ask) : Routed() { override val lang get() = ask.lang }
+        /** 1.4: your words after "What should {value} be?" while a step is added by voice. */
+        data class StepValue(val adding: Adding, val words: String) : Routed() { override val lang get() = adding.lang }
+    }
+
+    /** 1.4: a connection's step being added by voice to [skillId]: the skill with it ([skill], step [i]), the values left to ask. */
+    class Adding(val skillId: String, val skill: Skill, val i: Int, val title: String, val left: List<ArgSlot>, val lang: Lang) {
+        override fun toString(): String = "Adding(…)" // l10n: not text (toString, for the logs)
     }
 
     /**
@@ -202,8 +226,9 @@ object PanelSkills {
 
     // ------------------------------------------------------------------ what waits for your next words (D8)
 
-    private enum class Waits { STEPS, NAME, VALUE }
-    private class Pending(val waits: Waits, val name: String, val lang: Lang, val draft: SkillDraft?, val at: Long, val edit: Edit? = null)
+    private enum class Waits { STEPS, NAME, VALUE, STEP_VALUE }
+    private class Pending(val waits: Waits, val name: String, val lang: Lang, val draft: SkillDraft?, val at: Long, val edit: Edit? = null,
+        val adding: Adding? = null)
 
     /** "Teach a skill called heading home" and a pause, or "Change the name": your next words, within 2 minutes. */
     @Volatile private var pending: Pending? = null
@@ -237,6 +262,14 @@ object PanelSkills {
     // ------------------------------------------------------------------ routing
 
     /** The skill phrase [q] is, or null (the rest of the panel answers). */
+    /** Idea 6: [q]'s requests when each is one Robot does without a model (core MultiAsk); lists only while Lists is on. */
+    fun multi(q: String): List<MultiAsk.Part>? = try {
+        MultiAsk.split(q, ZonedDateTime.now(), lists = PanelLists.on(VoiceHub.app))
+    } catch (t: Throwable) {
+        RLog.w("multi_route", t)
+        null
+    }
+
     fun route(q: String): Routed? = try {
         val p = pending
         pending = null
@@ -250,10 +283,15 @@ object PanelSkills {
                     return Routed.Rename(p.draft!!, w)
                 // Phase B: the value you change on a model fill's card: any words but a yes or a no.
                 Waits.VALUE -> if (CardAnswer.of(q) == null && w.isNotBlank()) return Routed.Value(p.edit!!, w)
+                // Review Low 5: in a choice wait, words that fit no option end the wait and go on as usual.
+                Waits.STEP_VALUE -> if (CardAnswer.of(q) == null && w.isNotBlank() && StepByVoice.fits(p.adding!!.left.first(), w)) return Routed.StepValue(p.adding!!, w)
+                    // Review-c Low 2: the wait ends, and Robot says the step wasn't added.
+                    else PanelController.notify(SkillStrings.addLeft("step" to p.adding!!.title).render(AppLanguage.langs(VoiceHub.app)))
             }
         }
         SkillDrafter.route(SkillRouter.withoutLead(q))?.let { Routed.Draft(it) }
-            ?: SkillRouter.route(q, skills(), people(), emptyList())?.let { Routed.Command(it) }
+            ?: SkillRouter.route(q, skills(), people(), emptyList(), PanelLists.listNames())?.let { Routed.Command(it) }
+            ?: multi(q)?.let { Routed.Multi(it, MultiAsk.lang(q)) }
             ?: PlanRouter.route(q)?.let { Routed.Plan(it) }
     } catch (t: Throwable) {
         RLog.w("skill_route", t)
@@ -293,7 +331,9 @@ object PanelSkills {
                 is Routed.Value -> edited(replyId, r, host, l)
                 is Routed.Command -> command(replyId, r.cmd, host, l)
                 is Routed.Plan -> PanelPlans.handle(replyId, r.ask, host, said, l)
+                is Routed.Multi -> PanelMulti.handle(replyId, r.parts, host, l)
                 is Routed.Draft -> PanelDrafts.handle(replyId, r.ask, host, l, newSkillId())
+                is Routed.StepValue -> if (lockedOut(replyId, host, l, change = true)) Unit else stepValue(replyId, r, host, l)
             }
         } finally {
             host.finish(replyId)
@@ -340,7 +380,105 @@ object PanelSkills {
                 if (lockedOut(replyId, host, l, change = true)) return
                 delete(replyId, c.skill, c.said, host, l)
             }
+            // 1.4: as teaching (a change): never on a locked phone or under a phone lock.
+            is SkillCommand.AddStep -> {
+                if (lockedOut(replyId, host, l, change = true)) return
+                addStep(replyId, c, host, l)
+            }
         }
+    }
+
+    // ------------------------------------------------------------------ 1.4: add a connection's step by voice
+
+    private suspend fun addStep(replyId: String, c: SkillCommand.AddStep, host: Host, l: Langs) {
+        val s = c.skill?.let { k -> withContext(Dispatchers.IO) { store().get(k.id) } } ?: return reply(replyId, host, SkillStrings.noSuch("name" to c.said), l)
+        val conns = withContext(Dispatchers.IO) { connections() }
+        when (val f = StepByVoice.find(c.what, conns)) {
+            StepByVoice.Found.None -> reply(replyId, host, SkillStrings.addNone("words" to c.what), l)
+            is StepByVoice.Found.Several -> reply(replyId, host, SkillStrings.addSeveral("list" to f.titles.joinToString(", ")), l)
+            is StepByVoice.Found.One -> {
+                val step = SkillEditor.step(StepOffer.Operation(f.conn, f.op))
+                // A lock, a door or an alarm, and whatever else a spoken yes never approves (D14): on the screen only.
+                val why = StepByVoice.screenOnly(s, step, conns)
+                if (why != null) return refuse(replyId, s, why, f.shown, f.conn.name, host, l)
+                val added = SkillEditor.add(s, step)
+                    ?: return reply(replyId, host, SkillStrings.addFull("name" to s.name, "max" to SkillCheck.MAX_STEPS.toString()), l)
+                nextValue(replyId, Adding(s.id, added, added.steps.size - 1, f.shown, StepByVoice.missing(step, f.conn, f.op), c.lang), host, l)
+            }
+        }
+    }
+
+    /** A step a spoken yes never approves, found at once or (review Low 1) at "which one": the line, and its skill's page. */
+    private suspend fun refuse(replyId: String, s: Skill, why: StepByVoice.ScreenOnly, title: String, conn: String, host: Host, l: Langs) {
+        // In Car mode it opens nothing on the phone and leaves nothing to open later: you add it once parked.
+        val r = StepByVoice.refusal(why, title, conn, driving = CarModeController.on)
+        // Low 8: "I opened its page" only once it has launched, else why not; said after the page opens.
+        val after = if (r.opens) PanelController.openSkill(s.id) ?: SkillStrings.addOpened() else null
+        reply(replyId, host, after?.let { Phrase.join(r.line, it) } ?: r.line, l)
+    }
+
+    /** The next value the form would leave for you (your next words, within 2 minutes), then the card. */
+    private suspend fun nextValue(replyId: String, a: Adding, host: Host, l: Langs) {
+        // Low 6: the say-back names the entity asked for.
+        val slot = a.left.firstOrNull() ?: return confirmAdd(replyId, Adding(a.skillId, a.skill, a.i, StepByVoice.named(a.title, a.skill.steps[a.i]), a.left, a.lang), host, l)
+        pending = Pending(Waits.STEP_VALUE, a.title, a.lang, null, System.currentTimeMillis(), adding = a)
+        reply(replyId, host, StepByVoice.ask(slot, a.title), l)
+    }
+
+    private suspend fun stepValue(replyId: String, r: Routed.StepValue, host: Host, l: Langs) {
+        val a = r.adding
+        val slot = a.left.first()
+        val conns = withContext(Dispatchers.IO) { connections() }
+        when (val v = StepByVoice.value(a.skill, a.i, slot, r.words, conns)) {
+            StepByVoice.Value.Bad -> {
+                pending = Pending(Waits.STEP_VALUE, a.title, a.lang, null, System.currentTimeMillis(), adding = a)
+                reply(replyId, host, StepByVoice.again(slot, a.title), l)
+            }
+            // Review Low 1: a lock or a garage door picked at "which one" is refused there, before the say-back.
+            is StepByVoice.Value.Refused -> refuse(replyId, a.skill, v.why, a.title, v.conn, host, l)
+            is StepByVoice.Value.Filled -> nextValue(replyId, Adding(a.skillId, v.skill, a.i, a.title, a.left.drop(1), a.lang), host, l)
+        }
+    }
+
+    /** Robot says the step and the skill back and waits for yes (or a tap); only then is the skill saved. */
+    private suspend fun confirmAdd(replyId: String, a: Adding, host: Host, l: Langs) {
+        val id = "skill-card-" + random.nextLong().toString(16)
+        val title = SkillStrings.addConfirm("step" to a.title, "name" to a.skill.name)
+        val body = SkillCards.steps(a.skill).joinToString("\n") { it.shown(l) }
+        host.text(replyId, title.shown(l))
+        host.say(title.said(l))
+        val pick = host.pick(replyId, Card(id, null, title.shown(l), ActionStatus.PENDING, null, body = body, confirm = UiStrings.save().button(l),
+            cancel = UiStrings.cancel().button(l)), null)
+        if (pick != Confirmations.YES) {
+            host.show(replyId, Card(id, null, title.shown(l), ActionStatus.DECLINED, SkillStrings.addNot().shown(l), body = body))
+            return
+        }
+        // The phone may have locked while the card waited.
+        if (host.locked) {
+            host.show(replyId, Card(id, null, title.shown(l), ActionStatus.NEEDS_UNLOCK, SkillPolicy.lockedLine(true, host.phoneLock).shown(l)))
+            return
+        }
+        // The step goes on the skill as saved now (a touch edit made meanwhile stays), checked again with your connections now.
+        val old = withContext(Dispatchers.IO) { store().get(a.skillId) }
+        val conns = withContext(Dispatchers.IO) { connections() }
+        val saved = when (val r = StepByVoice.onYes(old, a.skill, a.i, a.title, conns)) {
+            is StepByVoice.OnYes.Not -> {
+                host.show(replyId, Card(id, null, title.shown(l), ActionStatus.FAILED, r.line.shown(l), body = body))
+                return reply(replyId, host, r.line, l)
+            }
+            is StepByVoice.OnYes.Save -> r.skill
+        }
+        val base = old ?: return
+        val ok = withContext(Dispatchers.IO) { RoutineSkills.saveSkill(RoutineFiles.store(app), store(), SkillEdit.saved(base, saved, System.currentTimeMillis())) }
+        if (!ok) {
+            host.show(replyId, Card(id, null, title.shown(l), ActionStatus.FAILED, SkillStrings.couldntSave().shown(l)))
+            return
+        }
+        reload()
+        SkillFiles.changed(app)
+        val done = SkillStrings.addDone("step" to a.title, "name" to saved.name)
+        host.show(replyId, Card(id, null, title.shown(l), ActionStatus.DONE, done.shown(l), body = body))
+        reply(replyId, host, done, l)
     }
 
     /** A new skill's id: "s-" and 6 lowercase letters or digits, not one of yours. */
@@ -370,11 +508,14 @@ object PanelSkills {
         var draft = draft0
         val id = "skill-card-" + random.nextLong().toString(16)
         val ctx = nameContext()
+        val apps = withContext(Dispatchers.IO) { LauncherApps.of(app) }
+        var ticks = emptyList<OpenTick>()
         while (true) {
             val skill = draft.skill()
             val nameProblem = SkillNames.check(skill.name, null, ctx, ZonedDateTime.now()) ?: skill.namesEn.plus(skill.namesFr)
                 .firstNotNullOfOrNull { SkillNames.check(it, null, ctx, ZonedDateTime.now(), other = true) }
-            val c = SkillCards.save(draft, nameProblem)
+            val c = SkillCards.save(draft, nameProblem, apps)
+            ticks = c.ticks
             val body = (c.body + c.lines).joinToString("\n") { it.shown(l) }
             if (draft.problems.isNotEmpty()) {
                 host.text(replyId, SkillStrings.couldntSave().shown(l))
@@ -409,12 +550,15 @@ object PanelSkills {
                     draft = when {
                         i < draft.slots.size -> draft.toggle(draft.slots[i])
                         c.levelChip && i == draft.slots.size -> draft.copy(level = if (draft.level == SkillLevel.JUST_DO_IT) SkillLevel.ASK_FIRST else SkillLevel.JUST_DO_IT)
+                        i - draft.slots.size - (if (c.levelChip) 1 else 0) in c.ticks.indices ->
+                            draft.copy(opens = OpenTicks.toggle(draft.opens, c.ticks[i - draft.slots.size - (if (c.levelChip) 1 else 0)]))
                         else -> return rename(replyId, id, draft, c.title, host, l)
                     }
                 }
             }
         }
-        // The phone may have locked while the card waited.
+        // The phone may have locked while the card waited. A box ticked, then its app made a question: not kept.
+        draft = draft.copy(opens = OpenTicks.kept(draft.opens, ticks))
         val skill = draft.skill()
         val title = SkillStrings.cardNew("name" to skill.name).shown(l)
         if (host.locked) {

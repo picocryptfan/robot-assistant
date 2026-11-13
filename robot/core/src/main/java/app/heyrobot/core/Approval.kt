@@ -50,8 +50,12 @@ object ApprovalGate {
      */
     fun decide(tool: ToolName, locked: Boolean, settings: RobotSettings, why: Set<AskWhy> = emptySet(), content: Boolean = false,
         asked: Boolean = false, remote: Boolean = false, online: Boolean = tool.online, trusted: Boolean = false, messages: Boolean = false,
-        saidLocked: Boolean = false): GateDecision {
+        saidLocked: Boolean = false, named: Boolean = false): GateDecision {
         val level = settings.approval(tool)
+        // auto-open-plan §2: the app you named in your own words counts as asked, and its card no longer waits for content in
+        // the conversation (the app came from you), only where [named] says so.
+        val yours = named && named(tool, locked, why, remote, messages, saidLocked)
+        val asked = asked || yours
         return when {
             // 0.9: TermuxPolicy decided when the action was prepared (Settings › Termux, the lock, rules 2 to 5): only a
             // Termux reason ([AskWhy.TERMUX], COMMAND, FROM_CONTENT) shows the card; none means it runs (your script set to
@@ -79,16 +83,25 @@ object ApprovalGate {
             remote && settings.helperActionCards -> GateDecision.CONFIRM
             // What a read tool finds for a helper goes to it: "Share with …" unless personal content may go by itself (for
             // every helper, or this one: [trusted], "Trusted with personal content"). So does what an online lookup finds (the
-            // nearest pharmacy says where you are).
+            // nearest pharmacy says where you are). web_search too (W4): a helper's query leaves the phone for the search
+            // engine and its results go back to the helper, so it waits for a yes even with helper cards off.
             remote && (tool.reads || online) && !settings.personalToHelpers && !trusted -> GateDecision.CONFIRM
             level == Approval.ASK -> GateDecision.CONFIRM
             asks(why, settings) -> GateDecision.CONFIRM
             messages && !(tool.reads && !online) -> GateDecision.CONFIRM
             saidLocked && !asked && !(tool.reads && !online) -> GateDecision.CONFIRM
-            content && !(tool.reads && !online) && contentAsks(settings.safetyCards, asked, writes(tool)) -> GateDecision.CONFIRM
+            content && !(tool.reads && !online) && contentAsks(settings.safetyCards, asked, writes(tool) && !yours) -> GateDecision.CONFIRM
             else -> GateDecision.RUN
         }
     }
+
+    /**
+     * auto-open-plan §2: may an app you named skip open_app's card? Only open_app, unlocked, with no helper or other robot
+     * asking ([remote]), no message ([messages]) or words said locked ([saidLocked]) in the conversation, and a match that
+     * isn't loose ([AskWhy.WHO]) or one of several ([AskWhy.PICK]). Ask first and Off still win in [decide].
+     */
+    fun named(tool: ToolName, locked: Boolean, why: Set<AskWhy>, remote: Boolean, messages: Boolean, saidLocked: Boolean): Boolean =
+        tool == ToolName.OPEN_APP && !locked && !remote && !messages && !saidLocked && AskWhy.WHO !in why && AskWhy.PICK !in why
 
     /**
      * What acts on the phone and just happens by default: when your words this turn didn't ask for it ([ToolRouter.asked]),

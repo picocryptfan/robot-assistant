@@ -33,6 +33,9 @@ import java.util.concurrent.CopyOnWriteArrayList
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35], qualifiers = PHONE)
 class TranscriptScreenWritesTest {
+
+    /** seal-transcripts: Robolectric has no Android Keystore; the transcripts' store takes soft keys. */
+    @org.junit.Before fun transcriptKeys() { app.heyrobot.sys.Transcripts.testKeys(app.heyrobot.sys.SoftListsKeys(setOf(app.heyrobot.core.TranscriptKeyAliases.UNLOCKED))) }
     @get:Rule val rule = createComposeRule()
 
     @Test fun thePageWritesWhatItReadOnTheMainThread() {

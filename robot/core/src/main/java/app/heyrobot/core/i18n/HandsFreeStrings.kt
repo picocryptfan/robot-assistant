@@ -137,6 +137,8 @@ object HandsFreeStrings : Strings("handsfree", area = "handsfree") {
     val carOffInSettings = s("car_off_in_settings", "Car mode is off in {page}.", "Le mode auto est désactivé dans {page}.")
     val carAlreadyOn = s("car_already_on", "Car mode is already on.", "Le mode auto est déjà activé.")
     val startingCar = s("starting_car", "Starting car mode…", "Démarrage du mode auto…")
+    val carScreenHidden = s("car_screen_hidden", "The car screen isn't showing.", "L'écran de l'auto n'est pas affiché.")
+    val widgetSetUpOnce = s("widget_set_up_once", "Set it up once in Settings › Car mode.", "Configure-le une fois dans Réglages › Mode auto.")
     val carNotOn = s("car_not_on", "Car mode isn't on.", "Le mode auto n'est pas activé.")
     val endingCar = s("ending_car", "Ending car mode.", "Fin du mode auto.")
     val noOrganicMaps = s("no_organic_maps", "Your maps app isn't installed.", "Ton appli de cartes n'est pas installée.")
@@ -154,7 +156,43 @@ object HandsFreeStrings : Strings("handsfree", area = "handsfree") {
     val headphones = plural("headphones", "n", Plural(one = "{n} headphone", other = "{n} headphones"),
         Plural(one = "{n} paire d'écouteurs", other = "{n} paires d'écouteurs"))
 
+    // Idea 5's heads-up in private headphones (headsup/HeadsUp.kt).
+    val headsUpAt = plural("headsup_at", "n", Plural("{title} at {time}, in {n} minute.", "{title} at {time}, in {n} minutes."),
+        Plural("{title} à {time}, dans {n} minute.", "{title} à {time}, dans {n} minutes."))
+    val headsUpUnnamed = plural("headsup_unnamed", "n", Plural("Something on your calendar in {n} minute.", "Something on your calendar in {n} minutes."),
+        Plural("Un événement à ton agenda dans {n} minute.", "Un événement à ton agenda dans {n} minutes."))
+    val headsUpName = s("headsup_name", "Calendar heads-up", "Rappel d'agenda")
+
     // The one-time notice after 0.8 (output/HandsFree.kt).
     val notice = s("notice", "New: routines, the morning brief, the headset button and car mode. Nothing runs until you turn it on; your headset's voice button opens Robot from now on.",
         "Nouveau : les routines, le résumé du matin, le bouton des écouteurs et le mode auto. Rien ne se fait tant que tu ne l'actives pas; le bouton vocal de tes écouteurs ouvre Robot à partir de maintenant.")
+
+    // Read it to me (read/ReadSession.kt).
+    val readUnlockRest = s("read_unlock_rest", "Unlock to hear the rest.", "Déverrouille pour entendre la suite.")
+    val readUnlockFirst = s("read_unlock_first", "Unlock your phone, then ask me again.", "Déverrouille ton téléphone, puis redemande-moi.")
+    val readEnd = s("read_end", "That's the end.", "C'est la fin.")
+    /** The share door's "Read it to me" button, said for you: ReadRouter hears it as a shared text's reading. */
+    val readThisAsk = s("read_this_ask", "Read it to me.", "Lis-le-moi.")
+    val readNothing = s("read_nothing", "There's nothing to read.", "Il n'y a rien à lire.")
+    val readNothingOn = s("read_nothing_on", "Nothing is being read.", "Rien n'est en lecture.")
+    val readPickUp = s("read_pick_up", "Picking up where you left off.", "Je reprends là où tu en étais.")
+    val readStarting = s("read_starting", "Reading it to you.", "Je te le lis.")
+    val readPaused = s("read_paused", "Paused.", "En pause.")
+    val readStopped = s("read_stopped", "Stopped reading.", "J'arrête la lecture.")
+    val readNoNote = s("read_no_note", "I didn't find that note.", "Je n'ai pas trouvé cette note.")
+    val readNotHere = s("read_not_here", "I can't read it aloud here right now.", "Je ne peux pas le lire à voix haute ici pour l'instant.")
+    val readNoText = s("read_no_text", "I couldn't find any text to read in that file.", "Je n'ai trouvé aucun texte à lire dans ce fichier.")
+    val readNoFile = s("read_no_file", "I didn't find that file in Robot Files.", "Je n'ai pas trouvé ce fichier dans les Fichiers de Robot.")
+
+    // Step by step (steps/StepSession.kt).
+    val stepsNone = s("steps_none", "I can't find steps here.", "Je ne trouve pas d'étapes ici.")
+    val stepsStarting = s("steps_starting", "Here are the steps. Say next, back, again or stop.", "Voici les étapes. Dis suivant, retour, encore ou arrête.")
+    val stepLine = s("step_line", "Step {n} of {total}. {text}", "Étape {n} sur {total}. {text}")
+    val stepsLast = s("steps_last", "That was the last step.", "C'était la dernière étape.")
+    val stepsFirst = s("steps_first", "This is the first step.", "C'est la première étape.")
+    val stepsTimerOffer = s("steps_timer_offer", "Want a timer for {duration}?", "Veux-tu une minuterie de {duration} ?")
+    val stepsPageSilent = s("steps_page_silent", "The page doesn't say.", "La page ne le dit pas.")
+    val stepsEnded = s("steps_ended", "Steps stopped.", "J'ai arrêté les étapes.")
+    val stepsCar = s("steps_car", "Step by step stays off in Car mode.", "Les étapes restent désactivées en mode auto.")
+    val stepsIdle = s("steps_idle", "No word for 30 minutes, so I stopped the steps.", "Aucun mot depuis 30 minutes, alors j'ai arrêté les étapes.")
 }

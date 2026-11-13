@@ -85,7 +85,7 @@ class SkillEffectsTest {
 
     @Test fun homeAssistantDomainsUnionsAndAll() {
         fun ha(domain: String, vararg entities: String, classes: Map<String, String> = emptyMap()) =
-            SkillEffects.homeAssistant(HaCall(domain, "x", deviceClasses = classes), entities.toList())
+            SkillEffects.homeAssistant(HaCall(domain, "turn_on", deviceClasses = classes), entities.toList())
         assertEquals(setOf(SkillEffect.CHANGES_HOME), ha("light", "light.kitchen"))
         for (d in listOf("lock", "alarm_control_panel", "siren", "camera", "valve")) assertEquals(d, setOf(SkillEffect.SECURITY), ha(d, "$d.front"))
         for (d in listOf("script", "automation", "shell_command", "python_script", "hassio", "scene", "group", "rest_command", "pyscript"))
@@ -130,11 +130,57 @@ class SkillEffectsTest {
             assertFalse(e.toString(), e.all { it in app.heyrobot.core.connect.ConnStep.SPOKEN_YES })
     }
 
+    /**
+     * review-batch-14-rest's M1: a domain Robot doesn't know fails closed. A button may open a garage, a switch drive a
+     * door's relay: no spoken yes for them (D14), as for code Robot can't see; the plain domains keep theirs.
+     */
+    @Test fun anUnknownDomainNeedsATap() {
+        fun ha(domain: String, service: String, vararg entities: String) = SkillEffects.homeAssistant(HaCall(domain, service), entities.toList())
+        val spoken = app.heyrobot.core.connect.ConnStep.SPOKEN_YES
+        for ((d, sv) in listOf("button" to "press", "switch" to "turn_on", "remote" to "send_command", "select" to "select_option",
+            "update" to "install", "input_boolean" to "turn_on", "input_button" to "press", "made_up" to "do_it",
+            "number" to "set_value", "input_number" to "set_value")) {
+            val e = ha(d, sv, "$d.garage")
+            assertEquals(d, setOf(SkillEffect.RUNS_CODE), e)
+            assertFalse(d, e.all { it in spoken })
+            assertFalse(d, SkillEffects.haAll(d))
+        }
+        // homeassistant.turn_on takes each entity's domain: a switch in it needs the tap too.
+        assertFalse(ha("homeassistant", "turn_on", "light.kitchen", "switch.garage").all { it in spoken })
+        // homeassistant's other services (restart, stop) are code.
+        assertTrue(SkillEffect.RUNS_CODE in ha("homeassistant", "restart"))
+        for (d in listOf("light", "fan", "climate", "humidifier", "media_player", "vacuum", "water_heater"))
+            assertEquals(d, setOf(SkillEffect.CHANGES_HOME), ha(d, "turn_on", "$d.x"))
+        // review-batch-14-rest-b's Medium: a number may be a lock's relock delay or an alarm's entry delay; a tap.
+        for (d in listOf("number", "input_number")) assertEquals(d, setOf(SkillEffect.RUNS_CODE), ha(d, "set_value", "$d.relock_delay"))
+        // review-batch-14-rest-b's Low: a send_command is code in any domain, a vacuum's too (a map reset, say).
+        val vacuum = ha("vacuum", "send_command", "vacuum.downstairs")
+        assertTrue(SkillEffect.RUNS_CODE in vacuum)
+        assertFalse(vacuum.all { it in spoken })
+        assertTrue(ha("homeassistant", "toggle", "light.kitchen").all { it in spoken })
+    }
+
+    /** M2: a service that removes, deletes, purges or clears is DELETES (Risky, a tap), never a spoken yes (D14). */
+    @Test fun aServiceThatRemovesDeletes() {
+        fun ha(domain: String, service: String, vararg entities: String) = SkillEffects.homeAssistant(HaCall(domain, service), entities.toList())
+        for ((d, sv) in listOf("todo" to "remove_item", "todo" to "remove_completed_items", "shopping_list" to "remove_item",
+            "shopping_list" to "clear_completed_items", "recorder" to "purge", "media_player" to "clear_playlist", "made_up" to "delete_all"))
+            assertTrue("$d.$sv", SkillEffect.DELETES in ha(d, sv, "todo.groceries"))
+        assertEquals(setOf(SkillEffect.CHANGES_HOME), ha("todo", "add_item", "todo.groceries"))
+        assertEquals(setOf(SkillEffect.CHANGES_HOME), ha("shopping_list", "add_item"))
+        assertFalse(SkillEffect.DELETES in ha("light", "turn_off", "light.x"))
+    }
+
     /** C12's M2: `entity_id: all` never runs every script, automation or scene you have, nor tells everyone. */
     @Test fun allNeverRunsEveryScript() {
         for (d in listOf("script", "automation", "scene", "notify", "group", "shell_command", "rest_command", "pyscript", "python_script", "hassio"))
             assertFalse(d, SkillEffects.haAll(d))
-        for (d in listOf("light", "switch", "fan", "media_player")) assertTrue(d, SkillEffects.haAll(d))
+        for (d in listOf("light", "fan", "media_player")) assertTrue(d, SkillEffects.haAll(d))
+        // A switch may be a pump, a heater or a garage door: "all" is never allowed there, and it counts as risky.
+        assertFalse(SkillEffects.haAll("switch"))
+        val allSwitches = SkillEffects.homeAssistant(HaCall("switch", "turn_off"), listOf("all"))
+        assertTrue(allSwitches.toString(), allSwitches.any { it in SkillEffect.RISKY })
+        assertFalse(allSwitches.toString(), allSwitches.all { it in app.heyrobot.core.connect.ConnStep.SPOKEN_YES })
         val all = app.heyrobot.core.connect.ConnFixtures.homeAssistant("c-ha0001", app.heyrobot.core.connect.ConnOp("all", "Run every script",
             app.heyrobot.core.connect.OpSpec.HaCall("script", "turn_on"), mapOf("entity" to app.heyrobot.core.connect.ConnFixtures.entity("all"))))
         assertFalse(app.heyrobot.core.connect.ConnCheck.valid(all))

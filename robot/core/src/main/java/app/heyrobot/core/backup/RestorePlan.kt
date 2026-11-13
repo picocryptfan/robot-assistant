@@ -82,8 +82,23 @@ enum class PlanSkip {
      * never writes over: Connections and Connection keys are left out.
      */
     CONNECTIONS_UNREADABLE,
+    /** seal-people-fix 1: People on this phone can't be opened just now (busy, or the phone locked): left as it is. */
+    PEOPLE_NOT_NOW,
+    /** seal-people-fix 1: People on this phone is damaged, or a newer Robot's: never written over, until People's Start over. */
+    PEOPLE_UNREADABLE,
     /** H3: Robot can't read the private events on this phone (their key gone, damaged, a newer Robot's): never written over. */
     CALENDAR_UNREADABLE,
+}
+
+/** seal-people-fix 1: whether this phone's People can take a restore ([PeopleLoad] in three words). */
+enum class PeopleHere { OK, NOT_NOW, UNREADABLE;
+    companion object {
+        fun of(load: app.heyrobot.core.PeopleLoad): PeopleHere = when (load) {
+            is app.heyrobot.core.PeopleLoad.Ok -> OK
+            app.heyrobot.core.PeopleLoad.NotNow -> NOT_NOW
+            else -> UNREADABLE
+        }
+    }
 }
 
 /**
@@ -111,7 +126,9 @@ data class PhoneHas(val counts: Map<BackupCategory, Int>, val historyOn: Boolean
     /** 1.4, Lists: whether this phone's lists can take a restore ([ListsHere]); its count is the lists here (1 when unreadable). */
     val lists: ListsHere = ListsHere.OK,
     /** C10: this phone's connections.json can take a restore (false: damaged or a newer Robot's, never written over). */
-    val connections: Boolean = true) {
+    val connections: Boolean = true,
+    /** seal-people-fix 1: this phone's People can take a restore; its count is 1 when it can't (something is here). */
+    val people: PeopleHere = PeopleHere.OK) {
     fun empty(c: BackupCategory): Boolean = (counts[c] ?: 0) == 0
 }
 
@@ -161,7 +178,7 @@ object RestorePlanner {
                 // A pairing here is never replaced by one from a file (LinkBackupStore.restore).
                 c == BackupCategory.LINKS -> RestoreMode.ADD
                 // The everyday set's one settings file is merged field by field over this phone's, as Settings' are.
-                c == BackupCategory.SETTINGS || c == BackupCategory.EVERYDAY || c == BackupCategory.HOME || choice.replace -> RestoreMode.REPLACE
+                c == BackupCategory.SETTINGS || c == BackupCategory.EVERYDAY || c == BackupCategory.HOME || c == BackupCategory.OPEN_APPS || c == BackupCategory.HEADSUP || choice.replace -> RestoreMode.REPLACE
                 // Files whose key is gone can't take anything added to them: Replace is the only way.
                 c == BackupCategory.FILES && phone.files == FilesHere.KEY_GONE -> RestoreMode.REPLACE
                 // Lists whose key is gone: the same; the file here is kept aside.
@@ -184,6 +201,8 @@ object RestorePlanner {
                 c == BackupCategory.FILES && phone.files == FilesHere.TRAVEL -> PlanSkip.FILES_TRAVEL
                 c == BackupCategory.LISTS && phone.lists == ListsHere.UNREADABLE -> PlanSkip.LISTS_UNREADABLE
                 (c == BackupCategory.CONNECTIONS || c == BackupCategory.CONN_KEYS) && !phone.connections -> PlanSkip.CONNECTIONS_UNREADABLE
+                c == BackupCategory.PEOPLE && phone.people == PeopleHere.NOT_NOW -> PlanSkip.PEOPLE_NOT_NOW
+                c == BackupCategory.PEOPLE && phone.people == PeopleHere.UNREADABLE -> PlanSkip.PEOPLE_UNREADABLE
                 else -> null
             }
             CategoryPlan(c, mode, skip, inBackup)
@@ -305,6 +324,27 @@ object RestoreMerge {
     private fun settled(mode: RestoreMode, emptyNow: Boolean): RestoreMode = if (mode == RestoreMode.FRESH && !emptyNow) RestoreMode.ADD else mode
 
     /**
+     * moments-backup: reminders for a moment. Replace (or Fresh while still empty) writes the backup's; Add keeps this phone's
+     * and adds the backup's not here yet (the same words for the same moment once, an id taken here given a new one) up to
+     * [app.heyrobot.core.MomentReminders.MAX]. A wait held on the old phone (a car-off's two minutes) starts over.
+     */
+    fun moments(have: List<app.heyrobot.core.MomentReminder>, file: List<app.heyrobot.core.MomentReminder>, mode: RestoreMode,
+                newId: () -> String = { UUID.randomUUID().toString() }): List<app.heyrobot.core.MomentReminder> {
+        val max = app.heyrobot.core.MomentReminders.MAX
+        // moments-backup-c: Replace goes through the same loop, so the same words for the same moment come once there too.
+        val out = if (settled(mode, have.isEmpty()) == RestoreMode.ADD) ArrayList(have) else ArrayList()
+        val ids = out.mapTo(HashSet()) { it.id }
+        for (r in file.map { it.copy(heldUntil = null) }) {
+            if (out.size >= max) break
+            if (out.any { it.moment == r.moment && it.text.equals(r.text, ignoreCase = true) }) continue
+            val named = if (r.id in ids) r.copy(id = generateSequence(newId).first { it !in ids }) else r
+            ids += named.id
+            out += named
+        }
+        return out
+    }
+
+    /**
      * settings.json and the other settings files: each file the backup has, decoded by its store's
      * codec (which migrates an older one), the guarded fields kept at this phone's values unless [mine], trust dropped,
      * this phone's own values kept, the wake phrases cleaned, and messages.json's People ids pointed where each landed
@@ -416,9 +456,10 @@ object RestoreMerge {
     fun transcriptsWait(mode: RestoreMode, heartbeat: String?, now: Long, freshMs: Long): Boolean =
         mode == RestoreMode.REPLACE && app.heyrobot.core.SessionHeartbeat.fromJson(heartbeat)?.let { now - it.beatAt < freshMs } == true
 
-    fun transcripts(have: Set<String>, file: Set<String>, mode: RestoreMode): FilesPlan = when (mode) {
+    // fix-seal-transcripts-d, Low 1: [keep] (a newer Robot's, TranscriptStore.newer) is never deleted or written over by Replace.
+    fun transcripts(have: Set<String>, file: Set<String>, mode: RestoreMode, keep: Set<String> = emptySet()): FilesPlan = when (mode) {
         RestoreMode.ADD, RestoreMode.FRESH -> FilesPlan(file - have, emptySet(), have.size)
-        RestoreMode.REPLACE -> FilesPlan(file, have, 0)
+        RestoreMode.REPLACE -> FilesPlan(file - keep, have - keep, have.count { it in keep })
     }
 
     /**

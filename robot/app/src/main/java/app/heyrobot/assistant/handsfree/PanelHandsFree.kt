@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.assistant.handsfree
 
+import app.heyrobot.core.car.CarBottomSaid
 import app.heyrobot.core.i18n.LockStrings
+import app.heyrobot.sys.PeopleFiles
 import app.heyrobot.sys.Assistant
 import app.heyrobot.lock.PhoneLockNow
 import app.heyrobot.core.i18n.HandsFreeStrings
@@ -111,6 +113,10 @@ object PanelHandsFree {
     private var carSaid = 0
     private val more = mutableListOf<String>()
     private var awaitingMore = false
+    /** fix-wikipedia-l4-b: the copy's month line, said in the car after the facts it heard, not held behind "Want more?". */
+    private var creditLine: String? = null
+
+    fun credit(line: String) { creditLine = line.trim() }
     /** Personal sentences held until you say whether the headset is private, and the question's device. */
     private val heldPrivate = mutableListOf<String>()
     private var askPrivate = false
@@ -199,7 +205,7 @@ object PanelHandsFree {
     }
 
     private fun reset() {
-        spoken.clear(); carSaid = 0; more.clear(); awaitingMore = false; heldPrivate.clear(); askPrivate = false; pendingPrivate = null
+        spoken.clear(); carSaid = 0; more.clear(); awaitingMore = false; creditLine = null; heldPrivate.clear(); askPrivate = false; pendingPrivate = null
         unlockSaid = false; endAfterReply = false; callFlow = null; intro = null; callPrefix = false
     }
 
@@ -269,6 +275,11 @@ object PanelHandsFree {
 
     /** The car's spoken style: two sentences, each cut to the car's length, the rest after "Want more?". */
     private fun car(sentence: String): Boolean {
+        creditLine?.takeIf { !awaitingMore && sentence.isNotBlank() && sentence.trim() in it }?.let { line ->
+            if (line.endsWith(sentence.trim())) creditLine = null
+            spoken += sentence
+            return true
+        }
         if (awaitingMore || carSaid >= CarSpeech.MAX_SENTENCES) { more += sentence; return false }
         carSaid++
         if (sentence.length <= OutputGuard.DRIVING_MAX_CHARS) { spoken += sentence; return true }
@@ -381,6 +392,13 @@ object PanelHandsFree {
             is HandsFreeCommand.Reply -> if (!HandsFreeMessages.reply(replyId, c.text, host)) PanelMessages.handsFreeCommand(replyId,
                 MessageCommand.Reply(null, c.text, if (fr) Lang.FR else Lang.EN))
             is HandsFreeCommand.Music -> music(replyId, c.action, host)
+            is HandsFreeCommand.Bottom -> reply(replyId, host, said(when (CarModeController.bottom(c.phrase)) {
+                CarBottomSaid.DONE -> HandsFreeStrings.okay()
+                CarBottomSaid.SET_UP -> HandsFreeStrings.widgetSetUpOnce()
+                CarBottomSaid.LOCKED -> HandsFreeStrings.unlockOnce()
+                CarBottomSaid.CLOSED -> LockStrings.appClosed()
+                CarBottomSaid.NOT_SHOWN -> HandsFreeStrings.carScreenHidden()
+            }))
         }
     }
 
@@ -403,16 +421,21 @@ object PanelHandsFree {
         // the lock screen is up (car mode's trusted session calls from there too). The keyguard decides only [lockOn] below.
         val phoneLock = PhoneLockNow.on(app)
         val lockOn = phoneLock && !Assistant.keyguard(app)
-        val allowed = if (phoneLock) PhoneLockNow.callKeys(app) else null
-        val candidates = withContext(Dispatchers.IO) { CallPlacer.candidates(app, c.who, s) }.let { all ->
+        // seal-people-fix 4: People is decrypted (and may wait on :voice's merge) off the panel's main thread.
+        val allowed = if (phoneLock) withContext(Dispatchers.IO) { PhoneLockNow.calls(app) } else null
+        val found = withContext(Dispatchers.IO) { CallPlacer.candidates(app, c.who, s) }
+        val candidates = found.let { all ->
             // "on her cell", "au bureau": the numbers of that kind first, when there are some.
             val label = c.label?.let { l -> PhoneLabel.entries.firstOrNull { it.en == l || it.name.lowercase() == l } }
             all.filter { label == null || it.label == label }.ifEmpty { all }
-        }.filter { allowed == null || PhoneLockNow.callKey(it.number) in allowed || CallPlacer.isEmergency(app, it.number, region) }
+        }.filter { allowed == null || allowed(it.number) || CallPlacer.isEmergency(app, it.number, region) }
         // A number said aloud is called as said (core CallTarget.plan): during a lock, only one of those People's or an
         // emergency number, which the plan sends to the dialer first.
         val spoken = c.who.takeIf { w -> w.none { it.isLetter() } }?.let(CallTarget::dialable)?.takeIf { it.count(Char::isDigit) >= 2 }
-        if (allowed != null && (if (spoken != null) PhoneLockNow.callKey(spoken) !in allowed && !CallPlacer.isEmergency(app, spoken, region) else candidates.isEmpty()))
+        // seal-people-fix-b 3: a name only People knows while People can't be opened (over the lock screen): it opens once you unlock.
+        if (spoken == null && found.isEmpty() && withContext(Dispatchers.IO) { PeopleFiles.store(app).notNow() })
+            return reply(replyId, host, said(PeopleFiles.noContact(app, c.who)))
+        if (allowed != null && (if (spoken != null) !allowed(spoken) && !CallPlacer.isEmergency(app, spoken, region) else candidates.isEmpty()))
             return reply(replyId, host, said(LockStrings.callClosed()))
         // The screen is unlocked during a phone lock: the call's own rules, not the lock screen's.
         val phone = HandsFreeHub.phone().let { if (lockOn) it.copy(locked = false) else it }

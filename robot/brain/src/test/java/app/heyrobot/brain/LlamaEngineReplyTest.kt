@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.brain
 
+import app.heyrobot.core.read.ReadAloud
 import android.os.Binder
 import android.os.Parcel
 import app.heyrobot.core.ArrayByteSource
@@ -95,6 +96,9 @@ internal class LlamaEngineReplyTest : LlamaBench() {
         generate(ask(), image = ByteArray(8))
         assertEquals(BrainError.NO_VISION, untilEnd().error().code)
         oneShot(BrainMsg.OneShot(OneShotKind.FILE_READ, Priority.SUMMARY, "READ", "page", 120, hasImage = true), image = jpeg)
+        assertEquals(BrainError.NO_VISION, untilEnd().error().code)
+        // 1.3: a reading aloud too (its caller says "Reading needs Fast or Smarter.").
+        oneShot(ReadAloud.request(), image = jpeg)
         assertEquals(BrainError.NO_VISION, untilEnd().error().code)
         // What isn't a picture at all is a bad request, not a question for a model that sees.
         oneShot(BrainMsg.OneShot(OneShotKind.FILE_READ, Priority.SUMMARY, "READ", "page", 120, hasImage = true), image = ByteArray(8))

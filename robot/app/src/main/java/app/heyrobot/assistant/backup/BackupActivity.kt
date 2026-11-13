@@ -190,6 +190,15 @@ class BackupActivity : ComponentActivity() {
         BackupCode.MEMORY_UNREADABLE -> BackupStrings.memoryUnreadable().str()
         BackupCode.FILES_UNREADABLE -> BackupStrings.filesUnreadable().str()
         BackupCode.LISTS_UNREADABLE -> BackupStrings.listsUnreadable().str()
+        BackupCode.LOGBOOK_UNREADABLE -> BackupStrings.logbookUnreadable().str()
+        BackupCode.HISTORY_UNREADABLE -> BackupStrings.historyNotNow().str()
+        BackupCode.HISTORY_TOO_NEW -> BackupStrings.historyTooNew().str()
+        BackupCode.TRANSCRIPTS_LOCKED -> BackupStrings.transcriptsLocked().str()
+        BackupCode.TRANSCRIPTS_UNREADABLE -> BackupStrings.transcriptsUnreadable().str()
+        BackupCode.NOTES_UNREADABLE -> BackupStrings.notesUnreadable().str()
+        BackupCode.NOTES_TOO_NEW -> BackupStrings.notesTooNew().str()
+        BackupCode.PEOPLE_UNREADABLE -> BackupStrings.peopleUnreadable().str()
+        BackupCode.PEOPLE_TOO_NEW -> BackupStrings.peopleTooNew().str()
         BackupCode.CALENDAR_UNREADABLE -> BackupStrings.calendarUnreadable().str()
         BackupCode.TOO_BIG -> BackupWords.tooBigToSave(tooBig).str()
         BackupCode.WRITE_FAILED -> BackupStrings.cantWrite().str()
@@ -208,7 +217,7 @@ class BackupActivity : ComponentActivity() {
         var ask by remember { mutableStateOf<BackupCategory?>(null) }
         val never = stringResource(R.string.backup_never)
         val whatTitle = stringResource(R.string.backup_choose_title)
-        val included = chosen.filter { survey?.get(it)?.let { s -> !s.empty && s.count >= 0 } == true }
+        val included = chosen.filter { BackupSources.choosable(it, survey?.get(it)) }
         val total = included.sumOf { survey?.get(it)?.bytes ?: 0 } +
             (if (recordings && BackupCategory.TRANSCRIPTS in included) survey?.get(BackupCategory.TRANSCRIPTS)?.extraBytes ?: 0 else 0) +
             (if (videos && BackupCategory.FILES in included) survey?.get(BackupCategory.FILES)?.extraBytes ?: 0 else 0)
@@ -223,10 +232,9 @@ class BackupActivity : ComponentActivity() {
                 // C10: one row per category, Connection keys inside Keys and private codes' (one tick covers both).
                 for (c in BackupCategory.ROWS) {
                     val sum = survey?.get(c)
-                    val unreadable = sum != null && sum.count < 0
-                    val empty = sum == null || sum.empty
-                    val on = c in chosen && !empty && !unreadable
-                    SwitchPreference(BackupWords.category(c)().str(), summary(ctx, c, sum), on, enabled = !empty && !unreadable) { now ->
+                    val choosable = BackupSources.choosable(c, sum)
+                    val on = c in chosen && choosable
+                    SwitchPreference(BackupWords.category(c)().str(), summary(ctx, c, sum), on, enabled = choosable) { now ->
                         if (now && c in BackupCategory.SENSITIVE) ask = c else onChosen(if (now) chosen + BackupCategory.covers(c) else chosen - BackupCategory.covers(c))
                     }
                     if (c == BackupCategory.HISTORY && on) SwitchPreference(stringResource(R.string.backup_pictures), null, pictures, onCheckedChange = onPictures)
@@ -271,20 +279,27 @@ class BackupActivity : ComponentActivity() {
             BackupCategory.FILES -> R.string.backup_files_cant
             BackupCategory.LISTS -> R.string.backup_lists_cant
             BackupCategory.CALENDAR -> R.string.backup_calendar_cant
+            BackupCategory.LOGBOOK -> R.string.backup_logbook_cant
             // FX3: travel mode keeps History out while it holds Robot Files' answers (BackupSources.historyHidden).
             BackupCategory.HISTORY -> R.string.backup_history_travel
             // C10: connections.json damaged, or a newer Robot's.
             BackupCategory.CONNECTIONS -> R.string.conn_backup_cant
             BackupCategory.LINKS -> if (s.extra == BackupSources.LINKS_OFF) R.string.backup_links_off else R.string.backup_links_cant
+            BackupCategory.PEOPLE -> if (s.extra == BackupSources.PEOPLE_DAMAGED) R.string.backup_people_damaged else R.string.backup_people_cant
+            BackupCategory.NOTES -> if (s.extra == BackupSources.NOTES_NEWER) R.string.backup_notes_too_new else R.string.backup_notes_cant
             else -> R.string.backup_memory_cant
         })
+        if (s.empty && s.aside > 0) return pluralStringResource(if (c == BackupCategory.TRANSCRIPTS) R.plurals.backup_n_transcripts_aside else R.plurals.backup_n_people_aside, s.aside, s.aside)
         if (s.empty) return stringResource(R.string.backup_empty)
         val what = when (c) {
             BackupCategory.SETTINGS -> stringResource(R.string.backup_sum_settings)
             BackupCategory.EVERYDAY -> stringResource(R.string.backup_sum_everyday)
             BackupCategory.HOME -> stringResource(R.string.backup_sum_home)
+            BackupCategory.HEADSUP -> stringResource(R.string.backup_sum_headsup)
             BackupCategory.LINKS -> pluralStringResource(R.plurals.backup_sum_links, s.count, s.count)
-            BackupCategory.PEOPLE -> pluralStringResource(R.plurals.backup_n_people, s.count, s.count)
+            BackupCategory.PEOPLE -> pluralStringResource(R.plurals.backup_n_people, s.extra, s.extra).let { p ->
+                if (s.aside > 0) stringResource(R.string.backup_two, p, pluralStringResource(R.plurals.backup_n_people_aside, s.aside, s.aside)) else p
+            }
             BackupCategory.MEMORY -> pluralStringResource(R.plurals.backup_n_items, s.count, s.count).let { items ->
                 if (s.extra > 0) stringResource(R.string.backup_two, items, pluralStringResource(R.plurals.backup_n_private, s.extra, s.extra)) else items
             }
@@ -294,7 +309,9 @@ class BackupActivity : ComponentActivity() {
             BackupCategory.PHONE_LOCK -> pluralStringResource(R.plurals.backup_n_locks, s.count, s.count)
             BackupCategory.NOTES -> pluralStringResource(R.plurals.backup_n_notes, s.count, s.count)
             BackupCategory.HISTORY -> pluralStringResource(R.plurals.backup_n_conversations, s.count, s.count)
-            BackupCategory.TRANSCRIPTS -> pluralStringResource(R.plurals.backup_n_transcripts, s.count, s.count)
+            BackupCategory.TRANSCRIPTS -> pluralStringResource(R.plurals.backup_n_transcripts, s.count, s.count).let { p ->
+                if (s.aside > 0) stringResource(R.string.backup_two, p, pluralStringResource(R.plurals.backup_n_transcripts_aside, s.aside, s.aside)) else p
+            }
             BackupCategory.KEYS -> {
                 val names = s.names.joinToString(", ")
                 val codes = s.extra
@@ -308,11 +325,16 @@ class BackupActivity : ComponentActivity() {
             BackupCategory.FILES -> pluralStringResource(R.plurals.backup_n_files, s.count, s.count)
             BackupCategory.LISTS -> pluralStringResource(R.plurals.backup_n_lists, s.count, s.count)
             BackupCategory.CALENDAR -> pluralStringResource(R.plurals.backup_n_private_events, s.count, s.count)
+            BackupCategory.LOGBOOK -> pluralStringResource(R.plurals.backup_n_items, s.count, s.count)
             BackupCategory.CONNECTIONS -> pluralStringResource(R.plurals.conn_backup_n, s.count, s.count)
             // Shown in Keys and private codes' row, never on its own.
             BackupCategory.CONN_KEYS -> s.names.joinToString(", ")
             // skills-backup-b: shown in Skills' row, never on its own.
-            BackupCategory.SKILL_TRUST -> s.count.toString()
+            BackupCategory.SKILL_TRUST, BackupCategory.SKILL_OPENS -> s.count.toString()
+            // moments-backup: shown in Routines' row, never on its own.
+            BackupCategory.MOMENTS -> s.count.toString()
+            // auto-open-plan §4: shown in Settings' row, never on its own.
+            BackupCategory.OPEN_APPS -> stringResource(R.string.backup_sum_settings)
         }
         return if (s.bytes > 0 && c != BackupCategory.KEYS && c != BackupCategory.VOICEPRINT) stringResource(R.string.backup_line, what, size(ctx, s.bytes)) else what
     }
@@ -444,6 +466,7 @@ class BackupActivity : ComponentActivity() {
                     d?.filesLeftOut?.takeIf { it > 0 }?.let { n -> Text(pluralStringResource(R.plurals.backup_files_left_out, n, n), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
                     if (d?.codesLeftOut == true) Text(stringResource(R.string.backup_codes_left_out), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                     if (d?.privateLeftOut == true) Text(stringResource(R.string.backup_private_left_out), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    d?.transcriptsLeftOut?.takeIf { it > 0 }?.let { n -> Text(pluralStringResource(R.plurals.backup_transcripts_left_out, n, n), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
                 }
             }
         }

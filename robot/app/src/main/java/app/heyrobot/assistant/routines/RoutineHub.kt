@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.assistant.routines
 
+import app.heyrobot.core.MomentReminder
+import app.heyrobot.core.MomentReminders
+import app.heyrobot.lock.PhoneLockNow
 import app.heyrobot.core.AlarmClocks
 import app.heyrobot.core.AlarmSoundEdge
 import app.heyrobot.core.SkipWhy
@@ -80,6 +83,10 @@ object RoutineHub {
     /** What waits for the unlock: the rest of a brief, steps held while locked, a missed alarm's whole routine. */
     private val waits = mutableListOf<RoutineRunner.Waiting>()
     private var presence = Presence()
+    /** moment-reminders: the reminders for a moment (the file keeps the car's waits with them). */
+    private var moments: List<MomentReminder> = emptyList()
+    /** fix-moment-reminders: the first device list after the callback is registered is what was already connected. */
+    private var devicesFirst = false
 
     @Synchronized
     fun init(ctx: Context) {
@@ -117,6 +124,7 @@ object RoutineHub {
         val store = RoutineFiles.store(app)
         routines = store.all()
         rs = store.settings()
+        moments = store.moments()
         // week-fixes: another Clock is chosen, or the one in use has gone: listen again, for that one (reconcile).
         if (TriggerKind.ALARM in registered && AlarmClocks.watched(RoutineFacts.currentClock(app, rs.clockApp)) != watchedClock) {
             unregister(TriggerKind.ALARM)
@@ -126,6 +134,7 @@ object RoutineHub {
         store.editState { it.keep(routines.map { r -> r.id }.toSet()) }
         reconcile()
         RoutineAlarms.arm(app, log = true)
+        scheduleMoments()
     }
 
     /** The routines as the hub knows them now (the panel's "run my evening routine" reads them fresh from the file). */
@@ -134,7 +143,7 @@ object RoutineHub {
     // ------------------------------------------------------------------ receivers, only what is needed
 
     private fun reconcile() {
-        val need = if (running) TriggerNeeds.of(routines, waits.isNotEmpty()) else emptySet()
+        val need = if (running) TriggerNeeds.of(routines, waits.isNotEmpty(), moments) else emptySet()
         for (k in registered.keys.toList()) if (k !in need) unregister(k)
         for (k in need) if (k !in registered) register(k)
     }
@@ -171,7 +180,7 @@ object RoutineHub {
                 TriggerKind.DEVICE -> object : AudioDeviceCallback() {
                     override fun onAudioDevicesAdded(added: Array<out AudioDeviceInfo>?) = devicesChanged()
                     override fun onAudioDevicesRemoved(removed: Array<out AudioDeviceInfo>?) = devicesChanged()
-                }.also { app.getSystemService(AudioManager::class.java).registerAudioDeviceCallback(it, worker) }
+                }.also { devicesFirst = true; app.getSystemService(AudioManager::class.java).registerAudioDeviceCallback(it, worker) }
                 TriggerKind.TIME, TriggerKind.ASKED -> null
             }
             if (r != null) registered[k] = r
@@ -316,7 +325,10 @@ object RoutineHub {
         } catch (_: Throwable) { return }
         val (p, events) = DevicePresence.onDevices(presence, memory, seen, System.currentTimeMillis())
         presence = p
-        events.mapNotNull(DeviceTriggers::event).forEach(::fire)
+        // Android lists what is connected as soon as the callback is registered: that isn't "put on" for a moment reminder.
+        val already = devicesFirst
+        devicesFirst = false
+        events.mapNotNull(DeviceTriggers::event).forEach { fire(it, already = already) }
         scheduleTick(memory)
     }
 
@@ -342,7 +354,7 @@ object RoutineHub {
     // ------------------------------------------------------------------ firing
 
     /** [event] at [now]: the routines it starts run (once per occurrence), the others are logged with why not. */
-    private fun fire(event: TriggerEvent, now: ZonedDateTime = ZonedDateTime.now()) {
+    private fun fire(event: TriggerEvent, now: ZonedDateTime = ZonedDateTime.now(), already: Boolean = false) {
         val store = RoutineFiles.store(app)
         routines = store.all()
         rs = store.settings()
@@ -361,6 +373,49 @@ object RoutineHub {
                 else -> RoutineRunner.run(app, f.routine, kind, f.key)
             }
         }
+        momentsOn(event, now, already)
+    }
+
+    // ------------------------------------------------------------------ reminders for a moment
+
+    private val momentTick: Runnable = Runnable { momentsStep { l -> MomentReminders.ripe(l, MomentReminders.held(l), System.currentTimeMillis()) } }
+
+    /** fix-moment-reminders: the alarm at the end of the car's wait (the phone slept, or Robot was stopped meanwhile). */
+    fun onMomentAlarm() {
+        if (::worker.isInitialized) momentTick.run()
+    }
+
+    private fun momentsOn(event: TriggerEvent, now: ZonedDateTime, already: Boolean = false) {
+        moments = RoutineFiles.store(app).moments()
+        if (moments.isEmpty()) return
+        momentsStep { l -> MomentReminders.onEvent(l, event, now, MomentReminders.held(l), already) }
+    }
+
+    /**
+     * One step on the file, under its lock: what goes off leaves it once and the car's waits are written into it, then the
+     * notices. In a lock for someone else nothing goes off: a wait that ended is dropped and the reminder waits for the next time.
+     */
+    private fun momentsStep(step: (List<MomentReminder>) -> MomentReminders.Step) {
+        val blocked = PhoneLockNow.someoneElse(app)
+        var gone: List<MomentReminder> = emptyList()
+        RoutineFiles.store(app).editMoments { l ->
+            val s = step(l)
+            gone = if (blocked) emptyList() else s.now
+            MomentReminders.apply(l, s.copy(now = gone))
+        }?.let { moments = it }
+        scheduleMoments()
+        if (gone.isEmpty()) return
+        for (r in gone) RoutineNotices.moment(app, r)
+        RLog.i("moment_fired", "count" to gone.size)
+        reconcile()
+    }
+
+    /** The next wait's end: a delay while awake, and an allow-while-idle alarm for the phone's sleep and a restart. */
+    private fun scheduleMoments() {
+        worker.removeCallbacks(momentTick)
+        val next = MomentReminders.nextRipe(MomentReminders.held(moments))
+        RoutineAlarms.armMoment(app, next)
+        next?.let { worker.postDelayed(momentTick, (it - System.currentTimeMillis()).coerceAtLeast(0) + 50) }
     }
 
     private fun kindOf(e: TriggerEvent): TriggerKind = when (e) {

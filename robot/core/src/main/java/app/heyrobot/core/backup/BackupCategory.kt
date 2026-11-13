@@ -148,7 +148,44 @@ enum class BackupCategory(
      * yours ([ONLY_YOURS]): someone else's trusted key is never trusted here. A tools file comes back only for a connection
      * the same restore brought (RestoreMerge.skillTrust). Appended last: the voice log's category bits follow this order.
      */
-    SKILL_TRUST("skill_trust", true, RestoreProcess.VOICE, 1 + app.heyrobot.core.connect.ConnCheck.MAX_CONNECTIONS);
+    SKILL_TRUST("skill_trust", true, RestoreProcess.VOICE, 1 + app.heyrobot.core.connect.ConnCheck.MAX_CONNECTIONS),
+    /**
+     * auto-open-plan §4: open_apps.json only ([OPEN_APPS_FILE]), Settings › Actions' "Open apps you name without a card". Never
+     * one of Settings' 8 files (a ninth would make an older reader refuse that whole category); shown in Settings' row
+     * ([coveredBy]). Appended after the chain's last category: the voice log's category bits follow this order, and a Robot
+     * without it skips "open_apps" by name. Staged by :voice and written by the main app (RestoreApply, OpenAppsStore.restore);
+     * someone else's backup never turns it on here (RestoreSafety.openApps).
+     */
+    OPEN_APPS("open_apps", true, RestoreProcess.MAIN, 1),
+    /**
+     * auto-open-i: the skills' ticked apps ("skill_opens.json", SkillOpensFile), kept out of skills.json in a backup: 1.3 reads
+     * skills.json up to v3 and refuses an unknown key, so a v4 file would make it skip every skill, and it skips "skill_opens"
+     * by name. Shown in Skills' row ([coveredBy]); put back on the skills in Skills' own step (RestoreWriter), and only from
+     * a backup that is yours ([ONLY_YOURS]; RestoreTaint.skill drops them too). Appended last: the voice log's category bits.
+     */
+    SKILL_OPENS("skill_opens", true, RestoreProcess.VOICE, 1),
+    /**
+     * earbud-headsup-c: the calendar heads-up's settings ("headsup.json", core HeadsUpSettings), never the events already
+     * handled (headsup-said.json). Its own category, not inside Settings: Settings keeps its 8 files, since a ninth makes an
+     * older Robot refuse the whole category, and a Robot without this one skips "headsup" by name. From a backup that isn't
+     * yours the heads-up never comes back on (RestoreSafety.headsUp). Appended last: the voice log's category bits follow
+     * this order.
+     */
+    HEADSUP("headsup", true, RestoreProcess.VOICE, 1),
+    /**
+     * moments-backup (review-develop-14 L3): reminders for a moment ("moments.json", MomentReminders), shown in Routines' row
+     * ([coveredBy]). Its own category, not in [ROUTINE_FILES]: 1.3 refuses a known category whole when it holds a name it
+     * doesn't know, and skips "moments" by name. Only from a backup that is yours ([ONLY_YOURS]), as the brief's reminders.
+     * Appended last: the voice log's category bits follow this order.
+     */
+    MOMENTS("moments", true, RestoreProcess.VOICE, 1),
+    /**
+     * spoken-log: the Logbook's entries in plain JSON ([LOGBOOK_FILE], logbook v1, the journal's adds merged in first,
+     * inside the backup's own encryption, never sealed with the old phone's key) and Settings › Logbook
+     * ([LOGBOOK_SETTINGS]). Appended after the chain's last category: the voice log's category bits follow this order, and
+     * a Robot without it skips "logbook" by name. Sealed again under this phone's key on restore.
+     */
+    LOGBOOK("logbook", true, RestoreProcess.VOICE, 2);
 
     /** Whether [name] is one of this category's entry names. */
     fun validName(name: String): Boolean = rule(name) != null
@@ -193,7 +230,11 @@ enum class BackupCategory(
             VOICEPRINT -> if (name == VOICEPRINT_FILE) NameRule(BackupCaps.VOICEPRINT, 0) else null
             CALENDAR -> if (name == CALENDAR_FILE) NameRule(app.heyrobot.core.calendar.PrivateEventsCodec.MAX_FILE, app.heyrobot.core.calendar.PrivateEventsCodec.VERSION) else null
             HOME -> if (name == HOME_FILE) NameRule(BackupCaps.SMALL_FILE, app.heyrobot.core.HomeSettings.VERSION) else null
+            HEADSUP -> if (name == HEADSUP_FILE) NameRule(BackupCaps.SMALL_FILE, app.heyrobot.core.headsup.HeadsUpSettings.VERSION) else null
+            MOMENTS -> if (name == MOMENTS_FILE) NameRule(BackupCaps.SMALL_FILE, app.heyrobot.core.MomentReminders.VERSION) else null
             EVERYDAY -> if (name == EVERYDAY_FILE) NameRule(BackupCaps.SMALL_FILE, app.heyrobot.core.everyday.EverydaySettingsCodec.VERSION) else null
+            SKILL_OPENS -> if (name == SKILL_OPENS_FILE) NameRule(BackupCaps.SMALL_FILE, app.heyrobot.core.skills.SkillOpensFile.VERSION) else null
+            OPEN_APPS -> if (name == OPEN_APPS_FILE) NameRule(BackupCaps.SMALL_FILE, app.heyrobot.core.OpenAppsFile.VERSION) else null
             FILES -> when {
                 name == FilesBackup.INDEX -> NameRule(app.heyrobot.core.files.FileLimits.MAX_INDEX, app.heyrobot.core.files.FileIndexCodec.VERSION)
                 name == FilesBackup.SETTINGS -> NameRule(BackupCaps.SMALL_FILE, app.heyrobot.core.files.FilesSettingsCodec.VERSION)
@@ -203,6 +244,11 @@ enum class BackupCategory(
             LISTS -> when (name) {
                 LISTS_FILE -> NameRule(app.heyrobot.core.lists.ListsLimits.MAX_FILE.toLong(), app.heyrobot.core.lists.ListsCodec.VERSION)
                 LISTS_SETTINGS -> NameRule(BackupCaps.SMALL_FILE, app.heyrobot.core.lists.ListsSettingsCodec.VERSION)
+                else -> null
+            }
+            LOGBOOK -> when (name) {
+                LOGBOOK_FILE -> NameRule(app.heyrobot.core.logbook.LogbookLimits.MAX_FILE, app.heyrobot.core.logbook.LogbookCodec.VERSION)
+                LOGBOOK_SETTINGS -> NameRule(BackupCaps.SMALL_FILE, app.heyrobot.core.logbook.LogbookSettingsCodec.VERSION)
                 else -> null
             }
             LINKS -> when (name) {
@@ -259,12 +305,23 @@ enum class BackupCategory(
         const val LISTS_SETTINGS = app.heyrobot.core.lists.ListsSettingsCodec.FILE
         /** The everyday set's one entry: files/robot/everyday_settings.json. */
         const val EVERYDAY_FILE = app.heyrobot.core.everyday.EverydaySettingsCodec.FILE
+        /** auto-open-plan §4: open_apps.json's one entry. */
+        const val OPEN_APPS_FILE = app.heyrobot.core.OpenAppsFile.NAME
+        /** auto-open-i: skill_opens.json's one entry. */
+        const val SKILL_OPENS_FILE = app.heyrobot.core.skills.SkillOpensFile.NAME
         /** H3: private events' one entry. */
         const val CALENDAR_FILE = app.heyrobot.core.calendar.PrivateEventsCodec.FILE
         /** H5: the Today page's one entry. */
         const val HOME_FILE = app.heyrobot.core.HomeSettings.FILE
+        /** earbud-headsup-c: the heads-up's one entry. */
+        const val HEADSUP_FILE = app.heyrobot.core.headsup.HeadsUpSettings.FILE
+        /** moments-backup: reminders for a moment, one entry. */
+        const val MOMENTS_FILE = app.heyrobot.core.RoutineStore.MOMENTS
         /** Robot to Robot: what :link hands over (no key is ever in it) and Settings › Robot to Robot. */
         const val LINKS_FILE = app.heyrobot.core.link.LinkBackupCodec.FILE
+        /** spoken-log: the Logbook's plain JSON (at most 4 MiB) and Settings › Logbook. */
+        const val LOGBOOK_FILE = "logbook.json"
+        const val LOGBOOK_SETTINGS = app.heyrobot.core.logbook.LogbookSettingsCodec.FILE
         const val LINK_SETTINGS = app.heyrobot.core.link.LinkSettingsCodec.FILE
         /** Connections' one entry: files/robot/connections.json (never skills_state.json's counts, never Test's facts). */
         const val CONNECTIONS_FILE = app.heyrobot.core.connect.ConnStore.FILE
@@ -279,7 +336,7 @@ enum class BackupCategory(
          * their own and a passphrase of any strength: they hold no key. Private events, and (today-fix-b) the Today page: someone
          * else's backup never turns your Today on or off or pins a note from their phone.
          */
-        val ONLY_YOURS: Set<BackupCategory> get() = SENSITIVE + LINKS + CALENDAR + HOME + SKILL_TRUST
+        val ONLY_YOURS: Set<BackupCategory> get() = SENSITIVE + LINKS + CALENDAR + HOME + SKILL_TRUST + SKILL_OPENS + MOMENTS
 
         /** The categories whose entries are keys, saved as they are read and deleted again when a restore is cut short. */
         val KEY_CATEGORIES: Set<BackupCategory> get() = setOf(KEYS, CONN_KEYS)
@@ -290,7 +347,9 @@ enum class BackupCategory(
          */
         fun coveredBy(c: BackupCategory): BackupCategory = when (c) {
             CONN_KEYS -> KEYS
-            SKILL_TRUST -> SKILLS
+            SKILL_TRUST, SKILL_OPENS -> SKILLS
+            OPEN_APPS -> SETTINGS
+            MOMENTS -> ROUTINES
             else -> c
         }
 

@@ -421,7 +421,9 @@ object MemoryPanel {
         // is given again rather than taken as already there.
         val secrets = f.items.filter { it.secret }.mapTo(HashSet()) { it.id }
         // 1.2: a slow path's compact prompt packs less (core MemoryRecall.budget).
-        val r = MemoryRecall.forTurn(question, f, s, locked, now, given - secrets, maxTokens, zone = z, compact = compact)
+        // Search by meaning when its model is there (MeaningMemory), else words only.
+        val (retriever, vector) = MeaningMemory.forQuestion(question, f.items)
+        val r = MemoryRecall.forTurn(question, f, s, locked, now, given - secrets, maxTokens, retriever, z, compact, vector)
         if (r.packed.retrievedIds.isNotEmpty()) {
             VoiceLog.add(VoiceEvent.MEM_RECALL, r.packed.retrievedIds.size, r.by.code, ((System.nanoTime() - t0) / 1_000_000).toInt())
             remember(used = r.packed.retrievedIds)
@@ -432,6 +434,21 @@ object MemoryPanel {
         // A past question's ids are the items retrieved for it; the pinned ones go on the reply (PanelController), which never
         // renders notes, so the history the model gets is as before and an item unpinned later never comes back as a note.
         return MemoryTurn(r, { ids -> PromptPacking.notesFor(ids, f.items, now, z) }, tools = true, quiet = quiet, content = content)
+    }
+
+    /**
+     * H1 (review-wikipedia-p4): memory has an item for [question] (as [forTurn] would retrieve it; nothing logged or marked
+     * used), so the copy of Wikipedia leaves the question to memory. Background thread.
+     */
+    fun recalls(question: String, locked: Boolean): Boolean {
+        val s = settings()
+        if (!s.on || locked && !s.onLockScreen) return false
+        val f = (load() as? MemoryLoad.Loaded)?.file ?: return false
+        val (retriever, vector) = MeaningMemory.forQuestion(question, f.items)
+        val ids = MemoryRecall.forTurn(question, f, s, locked, clock(), emptySet(), app.heyrobot.core.ContextWindow.MAX_TOKENS, retriever, zone(), false, vector)
+            .packed.retrievedIds
+        // review-wikipedia-p4-b: an item that holds the question's whole subject, never one shared word (core WikiRoute.covers).
+        return f.items.any { it.id in ids && app.heyrobot.core.wiki.WikiRoute.covers(question, it.text) }
     }
 
     /**

@@ -45,10 +45,19 @@ class NoticeIdsTest {
         Call("ConversationService", "code", "5_020", "the resume notice's open"),
         Call("ConversationTileService", "code", "5_030", "the tile's open"),
         Call("FilesOut", "notice", "alarm", "AlarmManager.cancel, not a notice"),
+        Call("HeadsUpStore", "notice", "it", "AlarmManager.cancel, not a notice"),
+        Call("HoldTap", "notice", "alarm(ctx)", "AlarmManager.cancel, not a notice"),
+        Call("HoldTap", "code", "0", "its one alarm, the hold's end"),
         Call("FilesOut", "code", "0", "its one alarm"),
+        Call("ReportOut", "code", "0", "the chooser's one-shot pick (ReportPicked)"),
+        Call("ReportOut", "notice", "pi", "AlarmManager.cancel, not a notice"),
+        Call("ReadingService", "code", "req", "action(): 8,561 (pause or resume) and 8,562 (stop)"),
         Call("FilingNotices", "notice", "id", "FILED_ID, ASK_ID"),
         Call("FilingNotices", "code", "id", "a filing notice's action, its own id"),
         Call("FilingNotices", "code", "id + 100", "a filing notice's open: 8,860 and 8,861"),
+        Call("LaterNotices", "notice", "id(it)", "a kept question's notice: BASE_ID plus its id's hash, 0 to 0xFFF"),
+        Call("LaterNotices", "notice", "id(item)", "a kept question's notice: BASE_ID plus its id's hash, 0 to 0xFFF"),
+        Call("LaterNotices", "code", "id(item)", "a kept question's notice's open, its own id"),
         Call("LinkNotices", "notice", "id", "HANDLED_ID, the LIST_ ids, newsId"),
         Call("LinkNotices", "code", "id", "a pairing notice's open, its own id"),
         Call("LinkNotices", "code", "id * 10 + i", "a pairing notice's buttons, ten per id"),
@@ -56,8 +65,20 @@ class NoticeIdsTest {
         Call("LockAlarmReceiver", "notice", "pi", "AlarmManager.cancel, not a notice"),
         Call("LockShade", "notice", "id", "hide(): READY to SILENT, read from LockShade"),
         Call("LockShade", "notice", "SKILL_BASE + slot", "the skills' slots, SKILL_SLOTS of them"),
+        Call("LockShade", "notice", "READY_ANSWER_BASE + slot", "ready answers' slots, READY_ANSWER_SLOTS of them"),
         Call("LockShade", "notice", "SILENT_BASE + slot", "the quiet runs' slots, SILENT_SLOTS of them"),
+        Call("LockShade", "notice", "n.tag", "cancel(tag, id): MOMENT_ID's notices, one per tag"),
+        Call("OwnTimerRing", "notice", "OwnTimerIntents.NOTE_BASE + it", "an own timer's notice: NOTE_BASE plus its id"),
+        Call("OwnTimerRing", "notice", "OwnTimerIntents.NOTE_BASE + t.id", "an own timer's notice: NOTE_BASE plus its id"),
+        Call("OwnTimerRing", "code", "OwnTimerIntents.NOTE_BASE + t.id", "an own timer's stop, its notice's id"),
+        Call("OwnTimerStore", "notice", "intent(ctx)", "AlarmManager.cancel, not a notice"),
+        Call("ReadyAnswerTap", "notice", "id", "a draft's notice: LockShade.READY_ANSWER_BASE's slots"),
+        Call("ReadyAnswerTap", "notice", "h.id", "a draft's notice, cancelled or replaced: its own id"),
+        Call("ReadyAnswerTap", "code", "code", "build(): a draft's Send and dismiss, id * 10 + 1 and + 2"),
+        Call("ReadyAnswerTap", "code", "id * 10 + 3", "a draft's Edit"),
+        Call("ReadyAnswerTap", "notice", "LockShade.READY_ANSWER_BASE + slot", "clear(): every draft's slot, under the gate (Low D, and at the main process's start)"),
         Call("RoutineSpeakingService", "notice", "id", "RoutineNotices and LockShade ids"),
+        Call("RoutineSpeakingService", "notice", "tag", "notify(tag, id, n): the id is the next argument, MOMENT_ID by its tag"),
         Call("RoutineSpeakingService", "code", "req", "service(): 8,401 to 8,403"),
         Call("RoutineSpeakingService", "code", "8_420 + (key.hashCode() and 0xff)", "a routine's ready card, by its key"),
         Call("RoutineSpeakingService", "code", "8_430", "the speaking notice's open"),
@@ -80,10 +101,14 @@ class NoticeIdsTest {
             one("app.heyrobot.sys.BootCheck", "REQ_DROP", "Assistant"),
             one("app.heyrobot.lock.LockAlarms", "REQ", "LockAlarmReceiver"),
             one("app.heyrobot.sys.RoutineAlarms", "REQ", "Routines"),
+            one("app.heyrobot.sys.RoutineAlarms", "MOMENT_REQ", "Routines"),
+            one("app.heyrobot.sys.HeadsUpAlarms", "REQ", "HeadsUpStore"),
+            one("app.heyrobot.sys.OwnTimerAlarms", "REQ", "OwnTimerStore"),
             one("app.heyrobot.update.UpdateNotices", "REQ_OPEN"),
             one("app.heyrobot.update.UpdateNotices", "REQ_CONFIRM"),
             one("app.heyrobot.update.UpdateInstaller", "REQ_STATUS"),
             one("app.heyrobot.update.BackupReminders", "REQ_OPEN"),
+            one("app.heyrobot.sys.ReportOut", "REQ_EXPIRY"),
         )
     }
 
@@ -97,6 +122,8 @@ class NoticeIdsTest {
         "MessageWire.REQ_MARK_READ" to "the messages helper's request kinds",
         "MessageWire.REQ_CLEAR" to "the messages helper's request kinds",
         "MessageWire.REQ_REPLY_LANG" to "the messages helper's request kinds",
+        "MessageWire.REQ_MISSED" to "the messages helper's request kinds",
+        "MessageWire.REQ_HOLD" to "the messages helper's request kinds",
         "MessageWire.REQ_UNREAD" to "the messages helper's request kinds",
     )
 
@@ -178,6 +205,11 @@ class NoticeIdsTest {
             one("$a.LinkNotices", "LIST_TAKEN_ID"),
             one("$a.LinkNotices", "LIST_FULL_ID"),
             one("app.heyrobot.update.BackupReminders", "ID"),
+            one("app.heyrobot.people.HoldTap", "ID"),
+            one("$a.read.ReadingService", "NOTICE_ID"),
+            one("app.heyrobot.calls.CallerNotice", "ID", "CallerNameService"),
+            span("app.heyrobot.sys.OwnTimerIntents", "NOTE_BASE", 1_000, "OwnTimerStore"), // plus the timer's id, 1 to 999
+            span("$a.later.LaterNotices", "BASE_ID", 0x1000), // signal-later: plus its id's hash and 0xFFF
         ) + lockShade + DeskNoticeKind.entries.filter { it != DeskNoticeKind.CARDS && it != DeskNoticeKind.HANDLED && it != DeskNoticeKind.REPLIED }
             .map { k ->
                 val id = LinkNotices.newsId(k)

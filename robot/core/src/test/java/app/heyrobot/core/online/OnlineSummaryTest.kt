@@ -88,6 +88,19 @@ class OnlineSummaryTest {
         assertEquals("Today: no connections.", say(OnlineSummary.header(emptyList(), app.heyrobot.core.i18n.EverydayStrings.onlineTodayTitle()), Lang.EN))
     }
 
+    @Test fun aReportHandedOnIsNoConnectionAndNoServer() {
+        val sent = row(at(15, 0), NetPurpose.REPORT_BUG, NetHost.ANOTHER_APP, NetCause.TAP, 4096, 0)
+        val title = app.heyrobot.core.i18n.EverydayStrings.onlineTodayTitle()
+        assertEquals("Today: no connections.", say(OnlineSummary.header(listOf(sent), title), Lang.EN))
+        assertEquals("1 report handed to another app.", say(OnlineSummary.handedLine(listOf(sent))!!, Lang.EN))
+        assertEquals("2 rapports remis à une autre appli.", say(OnlineSummary.handedLine(listOf(sent, sent))!!, Lang.FR))
+        assertEquals(null, OnlineSummary.handedLine(day))
+        val todays = OnlineSummary.within(day + sent, today..today, zone)
+        assertEquals("Today: 8 connections to 7 servers.", say(OnlineSummary.header(todays, title), Lang.EN))
+        assertEquals("Robot hasn't gone online today.", say(OnlineSummary.spoken(listOf(sent), OnlineDay.TODAY, today, true, false, zone), Lang.EN))
+        assertTrue(say(OnlineSummary.spoken(day + sent, OnlineDay.TODAY, today, true, false, zone), Lang.EN).startsWith("Robot went online 5 times today:"))
+    }
+
     @Test fun aRowInWords() {
         val check = day.first()
         assertEquals("Runs by itself · Settings › About › Updates", say(OnlineSummary.cause(check), Lang.EN))

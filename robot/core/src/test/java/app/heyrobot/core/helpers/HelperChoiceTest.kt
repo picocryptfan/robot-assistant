@@ -223,4 +223,12 @@ class HelperChoiceTest {
         assertEquals(Gate.SAME, HelperChoice.gate(toHelper, asked(helper = "claude"), false, false, false, "claude"))
         assertEquals(Gate.SAME, HelperChoice.gate(Instead(true), asked(), false, false, false, null))
     }
+
+    /** RP3: "that's wrong" with the correction marks it, so its answer can offer Report it; a plain "ask Robot instead" doesn't. */
+    @Test fun aCorrection_saysItWasWrong() {
+        assertEquals(true, HelperChoice.wrong("that's wrong, ask Robot instead"))
+        assertEquals(true, HelperChoice.wrong("c'est faux, essaie ici"))
+        assertEquals(true, HelperChoice.wrong("No, that's not right"))
+        assertEquals(false, HelperChoice.wrong("ask Robot instead"))
+    }
 }

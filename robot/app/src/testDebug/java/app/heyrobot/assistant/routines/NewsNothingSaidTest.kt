@@ -64,7 +64,7 @@ class NewsNothingSaidTest {
 
     private fun ask(news: NewsSettings, linkOn: Boolean = false): String {
         LinkSettingsStore.update(ctx) { it.copy(on = linkOn) }
-        HomeSettingsStore.update(ctx) { it.copy(today = true, news = news) }
+        HomeSettingsStore.update(ctx) { it.copy(home = app.heyrobot.core.HomeChoice.TODAY, news = news) }
         val host = Fake()
         runBlocking { PanelRoutines.handle("reply", RoutineCommand.News, host, "read me the news") }
         return host.said.joinToString(" ")

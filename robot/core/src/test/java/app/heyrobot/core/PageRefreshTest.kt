@@ -51,6 +51,12 @@ class PageRefreshTest {
         }
     }
 
+    @Test fun todayReadKeepsWhyTheNoteIsHeld() {
+        val read = TodayRead(DayInput(at(9), emptyList()), emptyList(), emptyList(), 0, 0, null, noteHeld = NoteHeld.NOT_NOW)
+        assertEquals(NoteHeld.NOT_NOW, read.view(at(9, 1)).noteHeld)
+        assertNull(TodayRead(DayInput(at(9), emptyList()), emptyList(), emptyList(), 0, 0, null).view(at(9, 1)).noteHeld)
+    }
+
     @Test fun todayReadShowsTheNextMinuteFromWhatWasRead() {
         val begin = at(10).toInstant().toEpochMilli()
         val ev = CalendarEvent(begin, begin + 3_600_000L, false, "Dentist", "12 Main St")

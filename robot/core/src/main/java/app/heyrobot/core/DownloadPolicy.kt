@@ -6,9 +6,10 @@ import app.heyrobot.core.i18n.Phrase
 import app.heyrobot.core.update.GitHubHosts
 
 // Pure (1.0). What every file Robot asks Android's download manager for carries, and when Robot asks about mobile data
-// first. Robot has no network-state permission (ProcessIsolationTest and tools/verify_apk.sh keep it out), so it can't see
-// whether the phone is on Wi-Fi or mobile data: before a big download it asks, and "Wait for Wi-Fi" lets the download
-// manager, which can see the network, hold the download until an unmetered one.
+// first. Robot declares ACCESS_NETWORK_STATE (1.1, for UpdateJobs' network-constrained jobs; ProcessIsolationTest and
+// tools/verify_apk.sh), but the network now says nothing about the rest of a long download: before a big download it asks,
+// and "Wait for Wi-Fi" lets the download manager hold the download until an unmetered network
+// (setAllowedOverMetered(false)). A smaller one goes on any network; none goes over roaming (sys DownloadNetwork).
 
 object DownloadPolicy {
     /** A download of at least this many bytes asks first (the models, speech recognition, the natural voice). */

@@ -2,6 +2,7 @@
 package app.heyrobot.assistant.routines
 
 import app.heyrobot.lock.PhoneLockNow
+import app.heyrobot.core.messages.HoldVoice
 import app.heyrobot.core.output.VolumePolicy
 import app.heyrobot.core.BriefItem
 import android.content.Context
@@ -93,6 +94,9 @@ object RoutineVoice {
     private val queue = ArrayDeque<Session>()
     private var paused = false
     private var gen = 0
+
+    /** A run is speaking, not paused (EarbudSession: a double tap skips to its next part). */
+    val speakingRun: Boolean get() = current?.let { !paused && !it.stopped } == true
     private var wakeLock: PowerManager.WakeLock? = null
 
     private val main get() = VoiceHub.main
@@ -284,6 +288,8 @@ object RoutineVoice {
      * minute, waiting for "next", "repeat" or "stop"; anything else ("stop", a tap, the panel closed, a volume key) ends it.
      */
     fun onVoiceStopped(why: TtsStop) {
+        // L1 (review-wikipedia-l4): the copy's answer cut short by Robot isn't a stop of the routine it paused.
+        if (why == TtsStop.COPY) return
         val s = current ?: return
         if (why == TtsStop.WAKE || why == TtsStop.NEW_QUESTION) {
             if (paused) return
@@ -350,6 +356,9 @@ object RoutineVoice {
         return QuietAnswer.routine(kind, output, ringer, dnd, route(), key)
     }
 
+    /** The phone and the route now, for the heads-up in earbuds (HeadsUpHub). */
+    internal fun phoneAndRoute(): Pair<PhoneState, RoutineRoute> = phone() to route()
+
     private fun phone(): PhoneState {
         val am = app.getSystemService(AudioManager::class.java)
         val mode = try { am.mode } catch (_: Throwable) { AudioManager.MODE_NORMAL }
@@ -367,6 +376,17 @@ object RoutineVoice {
      * Where Robot's voice would play now (0.8 review): the output Android routes assistant speech to, as a SeenDevice with
      * its name (so DeviceMemory knows a remembered headset), and car mode's car while it runs with it connected.
      */
+    /**
+     * 1.3 notify-hold: a hold's end line, from people/HoldTap in the main process by way of RoutineAlarmReceiver (Robot's
+     * voice is this process's). Said once, only where HoldVoice lets it by the same phone and route checks as a routine's
+     * parts; someone else's lock counts if either process saw it. Anything not ready here: quiet.
+     */
+    fun holdOver(line: String, someoneElse: Boolean) {
+        val nm = app.getSystemService(android.app.NotificationManager::class.java)
+        val dndAllows = nm.currentInterruptionFilter == android.app.NotificationManager.INTERRUPTION_FILTER_ALL
+        if (HoldVoice.speaks(line.length, phone(), route(), dndAllows, someoneElse || PhoneLockNow.someoneElse(app))) main.post { say(line) }
+    }
+
     private fun route(): RoutineRoute {
         val memory = (DeviceMemory.decode(readOrNull(File(Paths.dir(app), "devices.json"))) as? DeviceFile.Ok)?.memory ?: DeviceMemory()
         val routed = try {

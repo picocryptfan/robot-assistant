@@ -63,9 +63,11 @@ import app.heyrobot.core.NoteSearch
 import androidx.compose.ui.res.stringResource
 import app.heyrobot.R
 import app.heyrobot.sys.NotesFiles
+import app.heyrobot.sys.NotesRead
 import app.heyrobot.ui.common.RIcons
 import app.heyrobot.ui.common.SecureWindow
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
@@ -73,7 +75,7 @@ import kotlinx.coroutines.withContext
 // Share. The assistant adds notes from the panel; this screen re-reads the folder whenever it is shown.
 
 @Composable
-fun NotesScreen(notes: List<Note>, a: AppActions, modifier: Modifier) {
+fun NotesScreen(notes: List<Note>, a: AppActions, modifier: Modifier, kept: NotesRead = NotesRead(emptyList()), onDeleteAside: () -> Unit = {}) {
     SecureWindow()  // A note is what you told Robot: out of screenshots, casting and Recents.
     var query by rememberSaveable { mutableStateOf("") }
     // Search: the same ranking find_notes uses, or every note (newest first) while the field is empty.
@@ -88,7 +90,10 @@ fun NotesScreen(notes: List<Note>, a: AppActions, modifier: Modifier) {
                 shape = RoundedCornerShape(20.dp),
                 modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
             )
-            if (shown.isEmpty()) {
+            // seal-notes: notes kept aside (their key gone, or damaged) are counted here, never hidden; seal-notes-b: with a
+            // newer Robot's (Delete these reaches them) and those not openable now, so a backup's refusal has its why here.
+            if (kept.aside + kept.tooNew + kept.notNow > 0) NotesAsideCard(kept, onDeleteAside)
+            if (shown.isEmpty() && notesEmptyShown(notes, kept)) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(RIcons.Note, null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -104,8 +109,9 @@ fun NotesScreen(notes: List<Note>, a: AppActions, modifier: Modifier) {
                 }
             }
         }
+        // Material hides the button's text from TalkBack (it can collapse to the icon), so the icon carries the name.
         ExtendedFloatingActionButton(
-            onClick = { a.openNote(null) }, icon = { Icon(RIcons.Add, null) }, text = { Text(stringResource(R.string.notes_new)) },
+            onClick = { a.openNote(null) }, icon = { Icon(RIcons.Add, stringResource(R.string.notes_new)) }, text = { Text(stringResource(R.string.notes_new)) },
             modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
         )
     }
@@ -133,11 +139,13 @@ private fun NoteRow(n: Note, onClick: () -> Unit) {
  * note back by itself, nor blanks what is shown. Share goes through the system chooser (Easy Notes or anything else).
  */
 @Composable
-fun NoteScreen(noteId: String?, version: Int, a: AppActions, snackbar: SnackbarHostState, onCreated: (String) -> Unit, onBack: () -> Unit) {
+fun NoteScreen(noteId: String?, version: Int, a: AppActions, snackbar: SnackbarHostState, onCreated: (String) -> Unit, onBack: () -> Unit, onSaved: () -> Unit = {}) {
     SecureWindow()
     val ctx = LocalContext.current
     val store = remember { NotesFiles.store(ctx) }
     var id by rememberSaveable { mutableStateOf(noteId) }
+    // seal-notes-b: a new note's id is chosen before its first write, which runs off the main thread (NoteWriter).
+    val target = rememberSaveable { noteId ?: java.util.UUID.randomUUID().toString() }
     // After the id: a note too big for saved state comes back with its id and is read again.
     val words = rememberSaveable(saver = NoteWordsSaver) { NoteWords(loaded = id == null) }
     var title by words::title
@@ -147,49 +155,56 @@ fun NoteScreen(noteId: String?, version: Int, a: AppActions, snackbar: SnackbarH
     var saved by words::saved
     var loaded by words::loaded
     var deleted by rememberSaveable { mutableStateOf(false) }
+    // seal-notes-b: an existing note that can't be opened now (locked, a newer Robot's): no Restore, nothing written over it.
+    var notNow by remember { mutableStateOf(false) }
+    var tooNew by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     val created1 by rememberUpdatedState(onCreated)
+    val saved1 by rememberUpdatedState(onSaved)
+    val writer = remember { NoteWriter.of(store, target, id != null, created, saved) }
+    // seal-notes-c: set as the page goes; a write landing after it never takes over a New note page opened since.
+    val closed = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
 
     fun key(t: String, x: String) = noteKey(t, x)
 
-    /** Writes the note now if it changed (a small file: on the main thread, also from onDispose and onStop). */
-    fun save() {
-        if (!loaded || deleted) return
-        val k = key(title, text)
-        if (k == saved) return
-        val cur = id
-        if (cur == null && title.isBlank() && text.isBlank()) return
-        val now = System.currentTimeMillis()
-        if (cur == null) {
-            val n = store.add(text.trim(), title.trim(), now) ?: return
-            id = n.id
-            created = now
-            created1(n.id)
-        } else {
+    fun wrote(r: NoteWriter.Result) {
+        when (r) {
+            is NoteWriter.Result.Saved -> {
+                saved = r.key; created = r.created; updated = r.updated; deleted = false
+                val l = NoteWriter.landed(first = id == null, closed = closed.get())
+                if (id == null) id = target
+                if (l.created) created1(target)
+                if (l.refresh) saved1()
+            }
             // Gone underneath (Undo in the panel): never written back silently.
-            if (store.get(cur) == null) { deleted = true; return }
-            if (!store.save(Note(cur, title.trim(), text.trim(), if (created > 0) created else now, now))) return
+            NoteWriter.Result.Gone -> deleted = true
+            NoteWriter.Result.Failed -> {}
         }
-        saved = k
-        updated = now
     }
 
-    LaunchedEffect(Unit) {
+    /** Asks for the note to be written if it changed (also from onDispose and onStop); the write itself runs off the main thread. */
+    fun save() {
+        if (!loaded || deleted) return
+        if (key(title, text) == saved) return
+        writer.save(title, text, done = ::wrote)
+    }
+
+    // Read at first and again each time the app comes back to the front (the panel may have undone this note).
+    LaunchedEffect(version) {
         val cur = id
+        if (loaded && !deleted && cur != null && withContext(Dispatchers.IO) { store.gone(cur) }) deleted = true
         if (!loaded && cur != null) {
             val n = withContext(Dispatchers.IO) { store.get(cur) }
-            if (n == null) deleted = true
-            else {
+            if (n == null) { if (withContext(Dispatchers.IO) { store.gone(cur) }) deleted = true else { notNow = true; tooNew = withContext(Dispatchers.IO) { store.tooNew(cur) } }; return@LaunchedEffect }
+            notNow = false
+            tooNew = false
+            run {
                 title = n.title; text = n.text; created = n.created; updated = n.updated
                 saved = key(n.title, n.text)
+                writer.loaded(n)
             }
             loaded = true
         }
-    }
-    // The app came back to the front (the panel may have undone this note): is it still there?
-    LaunchedEffect(version) {
-        val cur = id
-        if (loaded && !deleted && cur != null && withContext(Dispatchers.IO) { store.get(cur) } == null) deleted = true
     }
     LaunchedEffect(title, text) {
         delay(AUTOSAVE_MS)
@@ -197,10 +212,11 @@ fun NoteScreen(noteId: String?, version: Int, a: AppActions, snackbar: SnackbarH
     }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle) {
-        val observer = LifecycleEventObserver { _, e -> if (e == Lifecycle.Event.ON_PAUSE || e == Lifecycle.Event.ON_STOP) save() }
+        val observer = LifecycleEventObserver { _, e -> if (e in NoteWriter.SAVES_ON) save() }
         lifecycle.addObserver(observer)
         onDispose {
             lifecycle.removeObserver(observer)
+            closed.set(true)
             save()
         }
     }
@@ -225,7 +241,7 @@ fun NoteScreen(noteId: String?, version: Int, a: AppActions, snackbar: SnackbarH
                 }) { Icon(RIcons.Share, stringResource(R.string.notes_share)) }
                 // 1.4 Lists (LS5): the note's lines as a new list's items; the note is kept.
                 if (!deleted) app.heyrobot.ui.lists.MakeListButton(title, text, a, snackbar)
-                if (!deleted) IconButton(onClick = { confirmDelete = true }) { Icon(RIcons.Delete, stringResource(R.string.notes_delete)) }
+                if (NoteWriter.offersDelete(deleted, loaded)) IconButton(onClick = { confirmDelete = true }) { Icon(RIcons.Delete, stringResource(R.string.notes_delete)) }
             }
         },
         snackbarHost = { SnackbarHost(snackbar) },
@@ -239,15 +255,15 @@ fun NoteScreen(noteId: String?, version: Int, a: AppActions, snackbar: SnackbarH
                         shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
                         Row(Modifier.padding(start = 14.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text(stringResource(R.string.notes_deleted_banner), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                            TextButton(onClick = {
-                                val cur = id
-                                val now = System.currentTimeMillis()
-                                val ok = if (cur == null) false else store.save(Note(cur, title.trim(), text.trim(), if (created > 0) created else now, now))
-                                if (ok) { deleted = false; saved = key(title, text); updated = now } else a.say(ctx.getString(R.string.notes_not_restored))
+                            // Never for a note whose words were never read: Restore would write an empty note over it.
+                            if (loaded) TextButton(onClick = {
+                                if (id == null) a.say(ctx.getString(R.string.notes_not_restored))
+                                else writer.save(title, text, restore = true) { r -> if (r is NoteWriter.Result.Saved) wrote(r) else a.say(ctx.getString(R.string.notes_not_restored)) }
                             }, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.notes_restore)) }
                         }
                     }
                 }
+                if (notNow && !deleted) Text(stringResource(if (tooNew) R.string.notes_too_new_banner else R.string.notes_not_now_banner), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 OutlinedTextField(
                     value = title, onValueChange = { title = it }, singleLine = true, label = { Text(stringResource(R.string.notes_title_field)) }, enabled = loaded,
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
@@ -275,7 +291,9 @@ fun NoteScreen(noteId: String?, version: Int, a: AppActions, snackbar: SnackbarH
                 TextButton(onClick = {
                     confirmDelete = false
                     deleted = true
-                    id?.let { store.delete(it) }
+                    // seal-notes: off the main thread (it waits for Notes' lock), and finished even as this page closes;
+                    // seal-notes-b: after any save still waiting, so none brings the note back.
+                    writer.delete()
                     a.say(ctx.getString(R.string.notes_deleted))
                     onBack()
                 }) { Text(stringResource(R.string.notes_delete)) }
@@ -316,3 +334,32 @@ internal val NoteWordsSaver: Saver<NoteWords, Any> = listSaver(
     },
     restore = { l -> NoteWords(l[0] as String, l[1] as String, if (l[2] as Boolean) noteKey(l[0] as String, l[1] as String) else null, l[3] as Boolean) },
 )
+
+/** seal-notes: the notes that can't be opened again, and Delete these (with a confirm) for them alone. */
+@Composable
+private fun NotesAsideCard(kept: NotesRead, onDeleteAside: () -> Unit) {
+    val aside = kept.aside
+    val newer = kept.tooNew
+    var confirm by remember { mutableStateOf(false) }
+    Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+        Column(Modifier.padding(16.dp)) {
+            if (aside > 0) {
+                Text(androidx.compose.ui.res.pluralStringResource(R.plurals.notes_aside, aside, aside), style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.notes_aside_detail), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (newer > 0) Text(androidx.compose.ui.res.pluralStringResource(R.plurals.notes_too_new, newer, newer), style = MaterialTheme.typography.bodyMedium)
+            if (kept.notNow > 0) Text(androidx.compose.ui.res.pluralStringResource(R.plurals.notes_not_now, kept.notNow, kept.notNow), style = MaterialTheme.typography.bodyMedium)
+            if (aside + newer > 0) TextButton(onClick = { confirm = true }, modifier = Modifier.align(Alignment.End)) { Text(stringResource(R.string.home_delete_these)) }
+        }
+    }
+    if (confirm) AlertDialog(
+        onDismissRequest = { confirm = false },
+        title = { Text(stringResource(R.string.notes_delete_aside_title)) },
+        text = { Text(stringResource(R.string.notes_delete_aside_detail)) },
+        confirmButton = { TextButton(onClick = { confirm = false; onDeleteAside() }) { Text(stringResource(R.string.home_delete_these)) } },
+        dismissButton = { TextButton(onClick = { confirm = false }) { Text(stringResource(R.string.notes_cancel)) } },
+    )
+}
+
+/** fix-seal-lows-c 5: no "no notes yet" while notes are held (locked, a newer Robot's): the card above says why. */
+internal fun notesEmptyShown(notes: List<Note>, kept: NotesRead): Boolean = notes.isNotEmpty() || kept.notNow + kept.tooNew == 0

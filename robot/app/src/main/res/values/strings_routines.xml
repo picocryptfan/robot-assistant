@@ -162,6 +162,8 @@
     <string name="routine_time_problem">A time such as 07:30.</string>
     <string name="routine_clock_app">Clock app</string>
     <string name="routine_clock_default">Phone\'s default: %1$s</string>
+    <string name="routine_own_timers">Robot keeps your timers</string>
+    <string name="routine_own_timers_summary">Name them, ask how long is left, cancel one, or say stop when it rings. They ring on the alarm volume. Off: timers go to your clock app.</string>
     <string name="routine_clock_sound">%1$s is your Clock: Robot goes by when the alarm\'s sound stops</string>
     <string name="routine_clock_doesnt_tell">%1$s doesn\'t tell other apps when an alarm ends</string>
     <string name="routine_clock_sound_detail">Robot goes by when the alarm\'s sound stops, without using the microphone, so an alarm that only vibrates won\'t start anything.</string>

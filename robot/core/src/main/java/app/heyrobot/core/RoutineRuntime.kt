@@ -132,8 +132,8 @@ object RoutineStateFile {
 data class PlannedStep(val index: Int, val step: RoutineStep, val go: StepGo)
 
 object RoutinePlan {
-    fun plan(r: Routine, origin: RunOrigin, locked: Boolean, settings: RobotSettings, rs: RoutineSettings): List<PlannedStep> =
-        r.steps.mapIndexed { i, s -> PlannedStep(i, s, RoutineGate.decide(s, origin, locked, r, settings, rs)) }
+    fun plan(r: Routine, origin: RunOrigin, locked: Boolean, settings: RobotSettings, rs: RoutineSettings, screenOn: Boolean = false): List<PlannedStep> =
+        r.steps.mapIndexed { i, s -> PlannedStep(i, s, RoutineGate.decide(s, origin, locked, r, settings, rs, screenOn)) }
 
     /** A step that runs now (all of it, or its public part). */
     fun runs(go: StepGo): Boolean = go == StepGo.RUN || go == StepGo.RUN_PUBLIC
@@ -256,9 +256,9 @@ object TriggerNeeds {
      * The trigger kinds the enabled [routines] wait for; [waitingForUnlock]: a held part or a run waits for the unlock, so
      * USER_PRESENT is needed too. The time kind is the exact alarm; ASKED needs nothing.
      */
-    fun of(routines: List<Routine>, waitingForUnlock: Boolean = false): Set<TriggerKind> =
+    fun of(routines: List<Routine>, waitingForUnlock: Boolean = false, moments: List<MomentReminder> = emptyList()): Set<TriggerKind> =
         routines.filter { it.enabled }.map { it.trigger.kind }.toSet() - TriggerKind.ASKED +
-            (if (waitingForUnlock) setOf(TriggerKind.UNLOCK) else emptySet())
+            (if (waitingForUnlock) setOf(TriggerKind.UNLOCK) else emptySet()) + MomentReminders.kinds(moments)
 
     /**
      * "Get ready while the alarm rings": a routine after an alarm speaks the brief with its weather, and the brief's
@@ -365,26 +365,32 @@ enum class RoutineCommandCode(override val id: Int, override val title: String) 
     /** H4: "put my calendar first", the Today page's order. */
     ARRANGE(15, "Today arranged"),
     /** H7b: "read me the news". */
-    NEWS(16, "the news read");
+    NEWS(16, "the news read"),
+    /** named-timers: a phrase for Robot's own timers (set, time left, cancel, stop). */
+    OWN_TIMER(17, "Robot's own timer"),
+    /** moment-reminders: "remind me to … when I get out of the car". */
+    REMIND_WHEN(18, "a reminder for a moment");
 
     companion object {
         fun of(c: RoutineCommand): RoutineCommandCode = when (c) {
             RoutineCommand.BriefNow -> BRIEF_NOW
             RoutineCommand.Today -> TODAY
             is RoutineCommand.Show -> SHOW
-            is RoutineCommand.Arrange -> ARRANGE
+            is RoutineCommand.Arrange, is RoutineCommand.ArrangeQuick -> ARRANGE
             RoutineCommand.News -> NEWS
             is RoutineCommand.Create -> CREATE
             is RoutineCommand.Run -> RUN
             RoutineCommand.ListAll -> LIST
             is RoutineCommand.Delete -> DELETE
             is RoutineCommand.Remind -> REMIND
+            is RoutineCommand.RemindWhen -> REMIND_WHEN
             is RoutineCommand.RemindOn -> REMIND_ON
             RoutineCommand.RemindWhat -> REMIND_WHAT
             is RoutineCommand.CantCancel -> CANT_CANCEL
             is RoutineCommand.TimerLeft -> TIMER_LEFT
             is RoutineCommand.NextAlarm -> NEXT_ALARM
             is RoutineCommand.DeleteNote -> NOTE_DELETE
+            is RoutineCommand.Timer -> OWN_TIMER
         }
     }
 }

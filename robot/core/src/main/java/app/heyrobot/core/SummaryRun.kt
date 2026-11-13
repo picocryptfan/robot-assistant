@@ -62,11 +62,12 @@ class LocalSummary(private val transport: OneShotTransport, private val budget: 
 
     /**
      * Summarizes [lines] (SummaryPlanner.lines) in [lang] for a model with a context of [maxTokens]. [cached]: notes of a
-     * stopped run of the same plan (SummaryDraft), by part. [onNote] gets each part's new note (to keep it).
+     * stopped run of the same plan (SummaryDraft), by part. [onNote] gets each part's new note (to keep it). [plan] and
+     * [reduce]: another text's map calls and merge prompt (a web page's, core PageSummaryPlanner).
      */
     suspend fun run(lines: List<String>, lang: String, maxTokens: Int, cached: List<String?> = emptyList(), onProgress: (Progress) -> Unit = {},
-        onNote: (Int, String) -> Unit = { _, _ -> }): Outcome {
-        val plan = SummaryPlanner.plan(lines, lang, maxTokens)
+        onNote: (Int, String) -> Unit = { _, _ -> }, plan: SummaryPlan = SummaryPlanner.plan(lines, lang, maxTokens),
+        reduce: String = Prompt.summaryReduce(lang)): Outcome {
         if (plan.parts == 0) return Outcome.Failed(ConversationStrings.nothingToSummarize(), 0)
         val steps = plan.parts + plan.reduceCalls
         val notes = ArrayList<String>()
@@ -84,13 +85,13 @@ class LocalSummary(private val transport: OneShotTransport, private val budget: 
         var spans = plan.ranges.indices.map { it to it }
         var step = plan.parts
         while (true) {
-            val system = Prompt.summaryReduce(lang)
+            val system = reduce
             val groups = SummaryPlanner.reduceGroups(level, system, maxTokens)
             val merged = ArrayList<String>()
             val mergedSpans = ArrayList<Pair<Int, Int>>()
             for (g in groups) {
                 onProgress(Progress(minOf(step, steps - 1), steps, merging = true))
-                val call = SummaryPlanner.reduceCall(g.map { level[it] }, lang, maxTokens)
+                val call = SummaryPlanner.reduceCall(g.map { level[it] }, lang, maxTokens, system)
                 val text = when (val r = ask(OneShotKind.SUMMARY_REDUCE, call)) {
                     is Step.Ok -> r.text
                     is Step.No -> return Outcome.Failed(r.why, step)

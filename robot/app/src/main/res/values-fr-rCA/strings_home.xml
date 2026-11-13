@@ -42,6 +42,30 @@
     <string name="home_saved_here">Enregistré sur ce téléphone seulement.</string>
     <string name="home_delete_all">Tout supprimer</string>
     <string name="home_no_conversations">Aucune conversation pour l’instant</string>
+    <plurals name="home_history_too_new">
+        <item quantity="one">%1$d conversation a été enregistrée par un Robot plus récent. Mets Robot à jour pour l’ouvrir, ou supprime-la.</item>
+        <item quantity="many">%1$d conversations ont été enregistrées par un Robot plus récent. Mets Robot à jour pour les ouvrir, ou supprime-les.</item>
+        <item quantity="other">%1$d conversations ont été enregistrées par un Robot plus récent. Mets Robot à jour pour les ouvrir, ou supprime-les.</item>
+    </plurals>
+    <plurals name="home_history_not_now">
+        <item quantity="one">Impossible d’ouvrir %1$d conversation pour l’instant. Réessaie dans une minute.</item>
+        <item quantity="many">Impossible d’ouvrir %1$d conversations pour l’instant. Réessaie dans une minute.</item>
+        <item quantity="other">Impossible d’ouvrir %1$d conversations pour l’instant. Réessaie dans une minute.</item>
+    </plurals>
+    <plurals name="home_history_aside">
+        <item quantity="one">Impossible d’ouvrir %1$d conversation</item>
+        <item quantity="many">Impossible d’ouvrir %1$d conversations</item>
+        <item quantity="other">Impossible d’ouvrir %1$d conversations</item>
+    </plurals>
+    <string name="home_history_aside_detail">Android a retiré la clé qui les protégeait, ce qui peut arriver quand tu désactives le verrouillage de l’écran, ou elles sont endommagées. Elles ne pourront plus être ouvertes, même si tu réactives le verrouillage de l’écran, et elles ne sont pas dans les sauvegardes. Une conversation avec une partie que cette version de Robot ne peut pas lire garde ici une copie complète, telle quelle, scellée sur ce téléphone comme tes conversations. La conversation elle-même s’ouvre quand même. Robot ne les supprime jamais de lui-même. Les nouvelles conversations sont enregistrées comme d’habitude.</string>
+    <string name="home_delete_these">Supprimer celles-ci</string>
+    <string name="home_delete_aside_title">Supprimer les conversations impossibles à ouvrir ?</string>
+    <string name="home_delete_aside_detail">Seules celles-ci sont retirées. Tes autres conversations restent. C’est irréversible.</string>
+    <plurals name="home_delete_aside_detail_newer">
+        <item quantity="one">La %1$d conversation enregistrée par un Robot plus récent est retirée aussi, même si une mise à jour l’ouvrirait. Tes autres conversations restent. C’est irréversible.</item>
+        <item quantity="many">Les %1$d conversations enregistrées par un Robot plus récent sont retirées aussi, même si une mise à jour les ouvrirait. Tes autres conversations restent. C’est irréversible.</item>
+        <item quantity="other">Les %1$d conversations enregistrées par un Robot plus récent sont retirées aussi, même si une mise à jour les ouvrirait. Tes autres conversations restent. C’est irréversible.</item>
+    </plurals>
     <string name="home_no_conversations_detail">Elles apparaissent ici quand tu demandes quelque chose à Robot.</string>
     <string name="home_delete_all_title">Supprimer toutes les conversations&#8239;?</string>
     <string name="home_delete_all_detail">Ça retire toutes les conversations enregistrées de ce téléphone. C’est impossible à annuler.</string>

@@ -62,6 +62,9 @@ data class EverydaySettings(
     val onlineDays: Int = DEFAULT_DAYS,
     /** Your maps app: null is Automatic. Every route Robot opens goes there. */
     val mapsApp: MapsApp? = null,
+    /** 1.3 point and read: a reading sends the photo's four corner tiles, not the whole of it (core read ReadImages). Off
+     *  until P0's numbers say tiles read small print better; written only when on. Settings › Actions › Point and read. */
+    val readTiles: Boolean = false,
 ) {
     init {
         require(onlineDays in MIN_DAYS..MAX_DAYS)
@@ -89,7 +92,7 @@ sealed class EverydaySettingsFile {
 object EverydaySettingsCodec {
     const val FILE = "everyday_settings.json"
     const val VERSION = 1
-    private val FLAGS = listOf("music", "listen", "voices", "askRobot", "online")
+    private val FLAGS = listOf("music", "listen", "voices", "askRobot", "online", "readTiles")
     private val KNOWN = setOf("v", "musicApp", "podcastApp", "mapsApp", "onlineDays") + FLAGS
 
     fun encode(s: EverydaySettings, extra: Map<String, Any?> = emptyMap()): String {
@@ -104,6 +107,7 @@ object EverydaySettingsCodec {
             .put("onlineDays", s.onlineDays)
         s.musicApp?.let { a -> o.put("musicApp", JSONObject().put("package", a.pkg).put("sha256", a.sha256).put("label", a.label)) }
         s.podcastApp?.let { a -> o.put("podcastApp", JSONObject().put("package", a.pkg).put("sha256", a.sha256).put("label", a.label)) }
+        if (s.readTiles) o.put("readTiles", true)
         s.mapsApp?.let { a -> o.put("mapsApp", JSONObject().put("package", a.pkg).put("sha256", a.sha256).put("label", a.label)) }
         return o.toString()
     }
@@ -134,6 +138,7 @@ object EverydaySettingsCodec {
             online = flag("online", d.online) ?: return EverydaySettingsFile.Damaged,
             onlineDays = days ?: return EverydaySettingsFile.Damaged,
             mapsApp = (maps ?: return EverydaySettingsFile.Damaged).value?.let { MapsApp(it.pkg, it.sha256, it.label) },
+            readTiles = flag("readTiles", d.readTiles) ?: return EverydaySettingsFile.Damaged,
         )
         val extra = o.keys().asSequence().filter { it !in KNOWN }.associateWith { o.opt(it) }
         return EverydaySettingsFile.Ok(s, extra)

@@ -114,6 +114,8 @@ internal object PanelLists {
          * loaded (a list never loads one), busy past the start deadline, or over ListSplit.TOTAL_MS. A background thread.
          */
         fun split(piece: String): String? = null
+        /** recipe-list: the model's RECIPE answer for [dish] (core RecipeList.request), or null when it can't answer now. A background thread. */
+        fun recipe(dish: String, lang: Lang): String? = null
         /** 1.5: another person's words were read out: the conversation holds them (core LinkTaint). */
         fun heardPeers(ids: Set<String>) {}
     }
@@ -129,6 +131,13 @@ internal object PanelLists {
             if (!BrainKeeper.ready) return null
             val budget = app.heyrobot.core.OneShotBudget(ListSplit.START_MS, ListSplit.TOTAL_MS - ListSplit.START_MS, waitForLoad = false)
             return ListSplit.answer(kotlinx.coroutines.runBlocking { BrainOneShots.run(ListSplit.request(piece), budget) {} })
+        }
+        override fun recipe(dish: String, lang: Lang): String? {
+            // The whole answer is the model's, so it loads for this (plan's question 2), within RecipeList's deadlines.
+            val budget = app.heyrobot.core.OneShotBudget(app.heyrobot.core.lists.RecipeList.START_MS,
+                app.heyrobot.core.lists.RecipeList.TOTAL_MS - app.heyrobot.core.lists.RecipeList.START_MS, waitForLoad = true)
+            return app.heyrobot.core.lists.RecipeList.answer(kotlinx.coroutines.runBlocking {
+                BrainOneShots.run(app.heyrobot.core.lists.RecipeList.request(dish, lang), budget) {} })
         }
     }
 
@@ -169,6 +178,9 @@ internal object PanelLists {
     @Volatile private var lastTurn = false
     @Volatile private var seen: ListsSeen? = null
     @Volatile private var names: List<String> = emptyList()
+
+    /** Low 7: your lists' names as last read, and the roles' (Shopping, To-do), for skills' "add to <name>" to leave them to Lists; none while Lists is off. */
+    fun listNames(): List<String> = app.heyrobot.core.lists.ListRole.forSkills(names, on(VoiceHub.app))
     private val undos = LinkedHashMap<String, Undo>()
     @Volatile private var lastUndo: String? = null
     private val empties = HashMap<String, ListsId>()
@@ -178,6 +190,15 @@ internal object PanelLists {
     /** LS5: each "Open …" hand-off's list name, for its button; each list card's Undo, by its reply. */
     private val opens = HashMap<String, Phrase>()
     private val cardUndos = HashMap<String, String>()
+
+    /**
+     * recipe-list: the open recipe card, in RAM only (gone with the conversation, like Undo): its [key], the ingredients read
+     * by code ([items]), which are ticked ([picks], row indexes as text), the list you named ([list]) and how it is called,
+     * whether the rows are a shared recipe's ([content]) and the language you asked in.
+     */
+    private class RecipeCard(val key: String, val items: List<NewItem>, @Volatile var picks: Set<String>, val list: String, val label: Phrase,
+        val content: Boolean, val lang: Lang, val line: Phrase)
+    @Volatile private var recipe: RecipeCard? = null
     private val random = SecureRandom()
     private val ids: () -> ListsId = { ListsId.new(random) }
 
@@ -186,9 +207,15 @@ internal object PanelLists {
     // ------------------------------------------------------------------ the panel's life
 
     /** Your words, when they are about your lists; null with Lists off (they reach the model as before). Main thread: no vault here. */
-    fun route(ctx: Context, q: String): ListsCommand? {
+    fun route(ctx: Context, q: String, shared: String? = null): ListsCommand? {
         val s = try { env(ctx).settings() } catch (t: Exception) { RLog.w("lists_route", t); return null }
         if (!s.on) return null
+        // recipe-list: a dish named, or a recipe shared with the ask; "the ingredients" alone stays the model's (add_to_list).
+        app.heyrobot.core.lists.RecipeList.ask(q)?.let { r -> if (r.dish != null || shared != null) return r.copy(recipe = shared) }
+        if (shared != null) return null
+        recipe?.let { c -> app.heyrobot.core.lists.RecipeList.drops(q)?.let { d ->
+            if (app.heyrobot.core.lists.RecipeList.match(c.items.map { it.text }, d).isNotEmpty()) return ListsCommand.Drop(d, c.lang)
+        } }
         return ListsRouter.route(q, ListsHeard(names = names, focus = focus != null, undo = lastUndo != null, seen = seen, lastTurn = lastTurn))
     }
 
@@ -235,6 +262,8 @@ internal object PanelLists {
     /** The panel hid: what was seen of your items goes (the list in focus and the cards' Undo stay with the conversation). */
     fun drop() {
         seen = null
+        // recipe-list: the open recipe card goes with the panel too (the plan); its Add then does nothing.
+        recipe = null
     }
 
     /**
@@ -259,6 +288,7 @@ internal object PanelLists {
             opens.clear()
             cardUndos.clear()
         }
+        recipe = null
         focus = null
         seen = null
         lastUndo = null
@@ -336,6 +366,8 @@ internal object PanelLists {
                 is ListsCommand.Make, is ListsCommand.ClearDone, is ListsCommand.Empty, is ListsCommand.Undo ->
                     return lockedLine(ListLockedCode.UNLOCK_TO_CHANGE, if (cmd is ListsCommand.Undo) ListsStrings.unlockToUndo() else ListsStrings.unlockToChange())
                 is ListsCommand.Add -> if (!s.addLocked) return lockedLine(ListLockedCode.UNLOCK_TO_CHANGE, ListsStrings.unlockToChange())
+                // recipe-list: no recipe card on the lock screen (§5: nothing the model suggests is added there).
+                is ListsCommand.Recipe, is ListsCommand.Drop -> return lockedLine(ListLockedCode.UNLOCK_TO_CHANGE, ListsStrings.unlockToChange())
                 else -> {}
             }
             VoiceLog.add(VoiceEvent.LIST_LOCKED, ListLockedCode.LOCK_SCREEN.id, 0)
@@ -356,6 +388,86 @@ internal object PanelLists {
             is ListsCommand.Empty -> empty(file, cmd, langs)
             is ListsCommand.MyLists -> myLists(file)
             is ListsCommand.Undo -> undoLast(e, how)
+            is ListsCommand.Recipe -> recipe(e, file, cmd, langs)
+            is ListsCommand.Drop -> dropRows(cmd, langs)
+        }
+    }
+
+    // ------------------------------------------------------------------ recipe-list
+
+    /**
+     * "Add what I need for lemon chicken to the grocery list": a card of the ingredients, each ticked, and nothing added until
+     * its Add. The rows are a shared recipe's own lines (core RecipeList.fromRecipe) or the model's usual recipe (a guess, and
+     * the card's line says so); each read by code as an item is (ItemText: caps, quantities, secrets off).
+     */
+    private fun recipe(e: Env, file: ListsFile, cmd: ListsCommand.Recipe, langs: Langs): Reply {
+        val shared = cmd.recipe
+        val (rows, line) = if (shared != null) {
+            val r = app.heyrobot.core.lists.RecipeList.fromRecipe(shared)
+            if (r.isEmpty()) return Reply(ListsStrings.recipeNone())
+            r to ListsStrings.recipeShared()
+        } else {
+            val dish = cmd.dish ?: return Reply(ListsStrings.recipeNoDish())
+            val names = app.heyrobot.core.lists.RecipeList.parse(e.recipe(dish, cmd.lang)) ?: return Reply(ListsStrings.notNow())
+            if (names.isEmpty()) return Reply(ListsStrings.recipeUnknown("dish" to dish))
+            names to ListsStrings.recipeGuess("dish" to dish)
+        }
+        val items = rows.flatMap { (ItemText.read(it) as? ItemsRead.Ok)?.items.orEmpty() }.distinctBy { app.heyrobot.core.lists.RecipeList.fold(it.text) }
+            .take(app.heyrobot.core.lists.RecipeList.MAX_ROWS)
+        if (items.isEmpty()) return Reply(if (shared != null) ListsStrings.recipeNone() else ListsStrings.notNow())
+        val ref = ListsRouter.named(cmd.list)
+        val label = findOrShopping(file, ref)?.let(::label) ?: newName(ref)
+        val dropped = app.heyrobot.core.lists.RecipeList.match(items.map { it.text }, cmd.drops)
+        val c = RecipeCard(CARD + "recipe-" + token(), items, items.indices.filter { it !in dropped }.map { it.toString() }.toSet(), cmd.list, label,
+            content = shared != null, lang = cmd.lang, line = line)
+        recipe = c
+        val text = if (dropped.isEmpty()) line else Phrase.Join(listOf(line, ListsStrings.recipeUnticked("things" to shownOf(c, dropped))), " ")
+        return Reply(text, list = recipeView(c, langs, text))
+    }
+
+    /** "Not the oil, I have it": those rows of the open recipe card unticked, and the card again. */
+    private fun dropRows(cmd: ListsCommand.Drop, langs: Langs): Reply {
+        val c = recipe ?: return Reply(ListsStrings.notNow())
+        val hit = app.heyrobot.core.lists.RecipeList.match(c.items.map { it.text }, cmd.words)
+        if (hit.isEmpty()) return Reply(ListsStrings.recipeNoMatch("things" to cmd.words.joinToString(", ")))
+        c.picks = c.picks - hit.map { it.toString() }.toSet()
+        val text = ListsStrings.recipeUnticked("things" to shownOf(c, hit))
+        return Reply(text, list = recipeView(c, langs, text))
+    }
+
+    private fun shownOf(c: RecipeCard, rows: Set<Int>): String = rows.sorted().joinToString(", ") { ItemText.shown(c.items[it].text) }
+
+    private fun recipeView(c: RecipeCard, langs: Langs, line: Phrase): ListCardView =
+        ListCardView(c.key, c.label.render(langs), c.items.mapIndexed { i, x -> ListCardRow(i.toString(), ItemText.shown(x.text), x.qty) }, emptyList(),
+            line.render(langs), label = c.label, picks = c.picks)
+
+    /** A tap on a recipe card: a tick changes what Add adds; Add adds what the card shows ticked, through add_to_list's own add. */
+    private fun recipeTap(ctx: Context, e: Env, replyId: String, v: ListCardView, op: ListCardOp, langs: Langs): ListCardView {
+        val c = recipe?.takeIf { it.key == v.list } ?: return v.copy(line = ListsStrings.notNow().render(langs))
+        if (e.someoneElse()) return v.copy(line = ListsStrings.someoneElse().render(langs))
+        if (e.locked()) return v.copy(line = ListsStrings.unlockToChange().render(langs))
+        val picks = v.picks.orEmpty()
+        return when (op) {
+            is ListCardOp.Tick -> (if (op.done) picks + op.item else picks - op.item).let { p -> c.picks = p; v.copy(picks = p) }
+            ListCardOp.Add -> {
+                val chosen = picks.mapNotNull { it.toIntOrNull() }.sorted().mapNotNull { c.items.getOrNull(it) }
+                if (chosen.isEmpty()) return v.copy(line = ListsStrings.recipeNothing().render(langs))
+                val ex = try {
+                    modelAdd(e, Action.AddToList("", c.list, news = chosen, listName = c.label, made = true, content = c.content), if (c.content) ItemBy.CONTENT else ItemBy.YOU)
+                } catch (t: Exception) {
+                    RLog.w("lists_recipe", t)
+                    return v.copy(line = ListsStrings.notNow().render(langs))
+                }
+                refresh(ctx)
+                LinkNotices.kick()
+                if (ex.status != ActionStatus.DONE) return v.copy(line = ex.detail)
+                recipe = null
+                ex.undo?.let { u -> synchronized(this) { cardUndos[replyId] = u } }
+                val l = focus?.id?.let { id -> (e.vault().load(firstUse = false) as? ListsLoad.Loaded)?.value?.list(id) }
+                    ?: return v.copy(line = ex.detail, picks = null, open = emptyList())
+                view(l, langs, Phrase.plain(ex.detail), undo = ex.undo != null)
+            }
+            ListCardOp.Undo, ListCardOp.Open -> v
         }
     }
 
@@ -1024,6 +1136,7 @@ internal object PanelLists {
      */
     fun cardTap(ctx: Context, replyId: String, v: ListCardView, op: ListCardOp, langs: Langs): ListCardView {
         val e = env(ctx)
+        if (v.picks != null) return recipeTap(ctx, e, replyId, v, op, langs)
         val list = ListsId.of(v.list) ?: return v
         if (e.someoneElse()) return v.copy(line = ListsStrings.someoneElse().render(langs), undo = false)
         if (e.locked()) return v.copy(line = ListsStrings.unlockToChange().render(langs), undo = false)
@@ -1031,7 +1144,7 @@ internal object PanelLists {
             when (op) {
                 is ListCardOp.Tick -> cardTick(e, replyId, list, op, langs)
                 ListCardOp.Undo -> cardUndo(e, replyId, list, langs)
-                ListCardOp.Open -> v
+                ListCardOp.Open, ListCardOp.Add -> v
             }
         } catch (t: Exception) {
             RLog.w("lists_card", t)

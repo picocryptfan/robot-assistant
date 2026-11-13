@@ -21,7 +21,8 @@ import kotlinx.coroutines.withContext
 
 // Pure (coroutines, no Android). One question and its answer, as the assistant panel runs it: the model's reply,
 // the tool calls it asks for, the approval gate, the confirmation cards, the tool results going back. The panel
-// (PanelController) supplies the ports: the model link, the actions and the view. Kept here so the approval flow,
+// supplies the ports: the model link (PanelStream, or a helper's PanelHelperTurn), the actions and the view
+// (PanelController). Kept here so the approval flow,
 // the limits and the "one turn at a time" rule are unit-tested.
 
 object TurnRules {
@@ -38,6 +39,9 @@ object TurnRules {
      */
     const val HELPER_MAX_ROUNDS = 3
 
+    /** W4: a helper's searches through Robot's web search in one answer at most (each counts toward today's cap); more are skipped. */
+    const val HELPER_WEB_SEARCHES = 1
+
     /**
      * Robot asks before any action in a conversation that carries screen text or a picture (this turn's or an
      * earlier one's: the live conversation still holds it). A page or a photo is content, never a command.
@@ -53,7 +57,18 @@ object TurnRules {
         untrusted(turns.map { it.attachment }) || turns.any { t -> t.actions.any { it.content } } ||
             // A helper's answers (and one read off the Claude app's screen) are content Robot didn't write either; so are
             // the messages Robot read you (0.7), and what was said while the phone was locked (1.0, ChatTurn.locked).
-            turns.any { it.fromHelper || it.readBack || it.messages || it.locked }
+            // 1.4 (review-wikipedia-p4 M3): so is an answer from the copy of Wikipedia on this phone (ChatTurn.content).
+            // summarize-page-c (review L3): so is a page summary's reply (ChatTurn.page).
+            turns.any { it.fromHelper || it.readBack || it.messages || it.locked || it.content || it.page }
+
+    /**
+     * 1.4 (review-wikipedia-p4-b H): the same for the copy of Wikipedia itself (PanelWiki): its own answers don't keep the
+     * next question of fact from it; anything else Robot didn't write still does. L3 (review-wikipedia-p4): nor do words
+     * said on the lock screen, since the copy is public text and reads nothing personal; every other rule still holds, a page
+     * summary's reply ([ChatTurn.page]) included (summarize-page-c, review-summarize-page L3).
+     */
+    fun untrustedForCopy(turns: List<ChatTurn>): Boolean =
+        untrusted(turns.map { if (it.content || it.locked) it.copy(content = false, locked = false) else it })
 }
 
 /** How a request to the model ended, as the turn sees it. */
@@ -201,6 +216,10 @@ interface TurnActions {
     /** 1.1: a phone lock is on, during which [locked] is true with the screen unlocked: what it refuses says the lock closes it. */
     val phoneLock: Boolean get() = false
     val settings: RobotSettings
+    /** auto-open-plan §1: "Open apps you name without a card" (files/robot/open_apps.json); off unless the panel says so. */
+    val openNamed: Boolean get() = false
+    /** review-auto-open 6: true only the first time an app opens with no card (named or ticked), so that card says where to turn it off. */
+    fun firstOpenWithoutCard(): Boolean = false
     /** May read the contacts or the calendar: suspends, so the panel does that off its main thread. */
     suspend fun prepare(action: Action): Prepared
     /**
@@ -445,6 +464,16 @@ class TurnRunner(
      * rings. Null: not checked (the panel's own calls, a routine's step, a skill, a helper).
      */
     private val heard: TurnWords? = null,
+    /**
+     * auto-open-plan §2: the apps (package names) a routine's or skill's save card let open without asking, for its own
+     * open steps only. Never set for a skill made from content.
+     */
+    private val opens: Set<String> = emptySet(),
+    /**
+     * auto-open-m: a skill's step (no [heard]): an app opens with no card only for a package in [opens], with the switch on;
+     * any other open_app shows its card at Just do it too, as a routine's open step does (RoutineRunner).
+     */
+    private val ticksOnly: Boolean = false,
     /** The time the cards' days are read at (an alarm's ring day, ReplyFacts); [heard]'s when there is one. */
     private val clock: () -> java.time.ZonedDateTime = { java.time.ZonedDateTime.now() },
     private val newId: () -> String,
@@ -452,6 +481,9 @@ class TurnRunner(
     private fun now(): java.time.ZonedDateTime = heard?.now ?: clock()
 
     private var budget = TurnRules.MAX_CALLS
+
+    /** W4: the helper's web searches this turn ([TurnRules.HELPER_WEB_SEARCHES]). */
+    private var helperSearches = 0
 
     /** 1.1: the actions that happened in this turn and their cards' words ([cardWords]), for [scrubbed]. */
     private val doneCards = mutableListOf<Pair<Action, String>>()
@@ -732,9 +764,10 @@ class TurnRunner(
         // A tool the model is never told about stays out of its reach (0.8's call tool: "call Mom" is the panel's, not the model's).
         if (!model.appCalls && ToolName.of(raw.name)?.forModel == false) return ParsedCall.Invalid(raw.name.take(40), ToolStrings.unknownTool())
         if (!remote) return ToolCalls.parse(raw)
-        val tool = ToolName.of(raw.name)?.takeIf { it in HelperTools.OFFERED } ?: return ParsedCall.Invalid(raw.name.take(40), ToolStrings.unknownTool())
+        val tool = ToolName.of(raw.name)?.takeIf { it in HelperTools.OFFERED || it == ToolName.WEB_SEARCH }
+            ?: return ParsedCall.Invalid(raw.name.take(40), ToolStrings.unknownTool())
         if (tool !in offered) return ParsedCall.Invalid(tool.id, ToolStrings.notOffered())
-        HelperTools.check(ToolSpecs.of(tool), raw.args)?.let { return ParsedCall.Invalid(tool.id, it) }
+        HelperTools.check(HelperTools.spec(tool), raw.args)?.let { return ParsedCall.Invalid(tool.id, it) }
         return ToolCalls.parse(raw)
     }
 
@@ -759,6 +792,11 @@ class TurnRunner(
             // read_file, whose answer comes from the file.
             answersFirst?.let {
                 out += notRun(parsed, ActionStatus.SKIPPED, it, raw)
+                continue
+            }
+            // W4: a helper's web searches have their own cap per answer, before the calls' limit counts them.
+            if (remote && parsed is ParsedCall.Ok && parsed.action.tool == ToolName.WEB_SEARCH && helperSearches++ >= TurnRules.HELPER_WEB_SEARCHES) {
+                out += notRun(parsed, ActionStatus.SKIPPED, TurnStrings.helperWebCap(), raw)
                 continue
             }
             if (budget <= 0) {
@@ -911,9 +949,18 @@ class TurnRunner(
         // A message in the conversation: a tap for anything that leaves for someone else (the card says why).
         val fromMessage = MessageQuarantine.why(a.action, messages, origin)
         val reasons = a.reasons + fromMessage
+        // auto-open-plan §2: the app Robot will open is in your own words this turn (with the setting on), or a package the
+        // routine's or skill's save card let open; never a guess, a pick, a locked phone, a helper, a message (ApprovalGate.named).
+        // auto-open-g: the switch off, no app opens without a card, ticked ones included; review-auto-open-c M1: an asked
+        // "open Signal" at Just do it too (Settings, plan §2, the CHANGELOG and the one-time line say so).
+        val open = a.action as? Action.OpenApp
+        val named = open != null && a.choices.size <= 1 && actions.openNamed &&
+            ApprovalGate.named(open.tool, actions.locked, reasons, remote, messages.active, messages.saidLocked) &&
+            (open.key?.substringBefore('/')?.let { it in opens } == true ||
+                (heard != null && !model.appCalls && AppWords.named(heard.words, open.name, open.tool in this.asked)))
         val decision = ApprovalGate.decide(a.action.tool, actions.locked, actions.settings, reasons, content = untrusted,
             asked = a.action.tool in this.asked, remote = remote, online = a.action.online, trusted = trusted, messages = messages.active,
-            saidLocked = messages.saidLocked).let { if ((unnamed || unsaid) && it == GateDecision.RUN) GateDecision.CONFIRM else it }
+            saidLocked = messages.saidLocked, named = named).let { if ((unnamed || ((unsaid || (ticksOnly && open != null)) && !named) || (open != null && !actions.openNamed)) && it == GateDecision.RUN) GateDecision.CONFIRM else it }
             .let { if (emergency && (it == GateDecision.NEEDS_UNLOCK || it == GateDecision.DISABLED)) GateDecision.RUN else it }
         if (messages.active && decision == GateDecision.CONFIRM) VoiceLog.add(VoiceEvent.MSG_GUARD,
             if (fromMessage.isEmpty()) app.heyrobot.core.messages.GuardCode.ASKED else app.heyrobot.core.messages.GuardCode.TAP_REQUIRED)
@@ -929,7 +976,15 @@ class TurnRunner(
         if (!emergency && ApprovalGate.lockedOut(chosen, actions.locked, actions.settings)) {
             return done(chosen, ActionStatus.NEEDS_UNLOCK, unlockText(chosen.tool))
         }
-        fun finish(r: Executed): Pair<Pair<String, Map<String, Any?>>, Boolean> {
+        fun finish(ran: Executed): Pair<Pair<String, Map<String, Any?>>, Boolean> {
+            // W4: a helper's web search answers the helper (its results as the call's result); only Gemma's ends the turn.
+            val r0 = if (remote) HelperTools.forHelper(ran) else ran
+            // review-auto-open 6: the first app that opened with no card says, on its card, where that is turned off (once).
+            // The card shows text only when its English is the detail (orEn), so both change; the model still gets r0's detail.
+            val r = if (named && decision == GateDecision.RUN && r0.status.succeeded && actions.firstOpenWithoutCard())
+                Phrase.join(r0.text ?: Phrase.plain(r0.detail), TurnStrings.openNamedTip("page" to app.heyrobot.core.i18n.UiStrings.inSettings(app.heyrobot.core.i18n.UiStrings.actions)))
+                    .let { r0.copy(detail = it.en(), text = it) }
+            else r0
             // What a read tool found is content: from now on every action in this conversation asks first.
             if (r.content) untrusted = true
             if (r.web != null && r.status != ActionStatus.DECLINED) web = r.web
@@ -938,7 +993,7 @@ class TurnRunner(
             val launched = r.launchedApp && r.status.succeeded
             if (speak && !launched && r.web == null && r.file == null && r.calc == null) view.say(said(r))
             if (!launched) spokenThisRound += said(r)
-            return done(chosen, r.status, r.text.orEn(r.detail, langs), launched, r, model = r.detail, text = r.text)
+            return done(chosen, r.status, r.text.orEn(r.detail, langs), launched, r, model = r0.detail, text = r.text)
         }
         // An online lookup (the weather, the nearest place for the maps, 0.4.0) changes nothing until it is found and may
         // wait seconds on the network: Stop ends it at once, and its card says it was stopped. So does a Termux run (0.9).

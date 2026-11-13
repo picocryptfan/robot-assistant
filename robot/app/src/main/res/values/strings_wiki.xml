@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- Wikipedia on this phone (P3): Settings › Wikipedia on this phone. -->
+<resources>
+    <string name="wiki_title">Wikipedia on this phone</string>
+    <string name="wiki_summary">Download a copy on Wi-Fi</string>
+    <string name="wiki_intro">A copy of Wikipedia on this phone answers questions of fact without going online. You choose a copy and start its download, which uses Wi-Fi only.</string>
+    <string name="wiki_set_en_top">English starter, the most read articles</string>
+    <string name="wiki_set_fr_top">French starter, the most read articles</string>
+    <string name="wiki_set_en_top1m">English, the top million articles</string>
+    <string name="wiki_set_fr_all">French, all articles</string>
+    <string name="wiki_set_info">%1$s · %2$s · %3$s</string>
+    <string name="wiki_state_none">Tap to download on Wi-Fi</string>
+    <string name="wiki_state_waiting">Waiting for Wi-Fi</string>
+    <string name="wiki_state_downloading">Downloading, %1$d%%</string>
+    <string name="wiki_state_downloaded">Downloaded. Tap to check it and move it in</string>
+    <string name="wiki_state_moving">Checking it and moving it in</string>
+    <string name="wiki_state_failed">The download stopped. Tap to try again</string>
+    <string name="wiki_state_on_phone">On this phone. Tap to delete it</string>
+    <string name="wiki_started">The download starts on Wi-Fi.</string>
+    <string name="wiki_no_room">Not enough free space. This copy needs %1$s free while it downloads.</string>
+    <string name="wiki_no_room_move">Not enough free space to move the copy in. Free some space, then tap it again.</string>
+    <string name="wiki_no_storage">Robot\'s download folder isn\'t available right now.</string>
+    <string name="wiki_download_failed">The download couldn\'t start. Try again.</string>
+    <string name="wiki_download_title">Wikipedia for Robot</string>
+    <string name="wiki_ready">This copy of Wikipedia is on your phone.</string>
+    <string name="wiki_wrong_file">The downloaded file wasn\'t the expected one, so Robot deleted it. Try again.</string>
+    <string name="wiki_move_failed">Robot couldn\'t move the copy into its folder. Try again.</string>
+    <string name="wiki_delete_title">Delete this copy?</string>
+    <string name="wiki_delete_text">It frees %1$s. You can download it again on Wi-Fi.</string>
+    <string name="wiki_delete">Delete</string>
+    <string name="wiki_deleted">Copy deleted.</string>
+    <string name="wiki_stop_title">Stop this download?</string>
+    <string name="wiki_stop">Stop</string>
+    <string name="wiki_credit">The copies come from Kiwix (kiwix.org), in the openZIM format (openzim.org). Articles from Wikipedia, CC BY-SA 4.0.</string>
+</resources>

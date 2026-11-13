@@ -273,6 +273,7 @@ private fun count(v: VerifiedBackup, c: BackupCategory): Int? = when (c) {
     BackupCategory.KEYS -> v.keys.size + (v.memoryCodes?.items?.size ?: 0) + v.connKeys.size
     BackupCategory.FILES -> v.files?.entries?.size
     BackupCategory.LISTS -> v.lists?.lists?.size
+    BackupCategory.LOGBOOK -> v.logbook?.size
     BackupCategory.CONNECTIONS -> v.connections?.size
     BackupCategory.LINKS -> v.links?.pairings?.size
     BackupCategory.CALENDAR -> v.privateEvents?.events?.size
@@ -291,6 +292,7 @@ private fun countText(c: BackupCategory, n: Int): String? = when (c) {
     BackupCategory.PHONE_LOCK -> pluralStringResource(R.plurals.backup_n_locks, n, n)
     BackupCategory.FILES -> pluralStringResource(R.plurals.backup_n_files, n, n)
     BackupCategory.LISTS -> pluralStringResource(R.plurals.backup_n_lists, n, n)
+    BackupCategory.LOGBOOK -> pluralStringResource(R.plurals.backup_n_items, n, n)
     BackupCategory.CONNECTIONS -> pluralStringResource(R.plurals.conn_backup_n, n, n)
     BackupCategory.LINKS -> pluralStringResource(R.plurals.backup_n_links, n, n)
     BackupCategory.CALENDAR -> pluralStringResource(R.plurals.backup_n_private_events, n, n)
@@ -342,10 +344,11 @@ private fun Preview(v: VerifiedBackup, phone: PhoneHas, choices: Map<BackupCateg
             line.mode == RestoreMode.REPLACE -> stringResource(R.string.backup_restore_mode_replace)
             line.mode == RestoreMode.ADD -> stringResource(R.string.backup_restore_mode_add)
             else -> what
-        }
+        }.let { s -> if (c == BackupCategory.PEOPLE) BackupWords.peopleSetAside(v)?.let { listOfNotNull(s, it.str()).joinToString(" ") } ?: s else s }
         Row5(c, BackupWords.category(c)().str(), summary, choice, line.restores || line.skip == PlanSkip.NEEDS_CODE,
-            canReplace = choice.restore && !phone.empty(c) && c !in setOf(BackupCategory.SETTINGS, BackupCategory.KEYS, BackupCategory.VOICEPRINT, BackupCategory.EVERYDAY, BackupCategory.HOME, BackupCategory.LINKS) &&
-                !(c == BackupCategory.FILES && phone.files != FilesHere.OK) && !(c == BackupCategory.LISTS && phone.lists != ListsHere.OK),
+            canReplace = choice.restore && !phone.empty(c) && c !in setOf(BackupCategory.SETTINGS, BackupCategory.KEYS, BackupCategory.VOICEPRINT, BackupCategory.EVERYDAY, BackupCategory.HOME, BackupCategory.HEADSUP, BackupCategory.LINKS, BackupCategory.OPEN_APPS) &&
+                !(c == BackupCategory.FILES && phone.files != FilesHere.OK) && !(c == BackupCategory.LISTS && phone.lists != ListsHere.OK) &&
+                !(c == BackupCategory.PEOPLE && phone.people != app.heyrobot.core.backup.PeopleHere.OK),
             needsCode = c == BackupCategory.PHONE_LOCK && phone.lockCode && choice.restore && !choice.codeOk,
             selectable = BackupCategory.covers(c).any(v::has))
     }

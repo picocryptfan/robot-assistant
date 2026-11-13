@@ -13,6 +13,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 import java.io.IOException
+import java.net.InetAddress
+import java.net.Socket
 import java.util.Collections
 
 /**
@@ -154,6 +156,138 @@ class TorRuntimeBridgesTest {
         assertEquals(listOf("plain", "plain"), starts)
     }
 
+    /**
+     * tor-bridge-relay: a bridge you saved at a home address sends Tor and lyrebird through Robot's relay, on a loopback
+     * port with a password made at this start, stopped with Tor; a bridge elsewhere leaves the torrc as it was.
+     */
+    @Test fun aBridgeAtAHomeAddressGoesThroughTheRelayStoppedWithTor() {
+        val fp = "0123456789ABCDEF0123456789ABCDEF01234567"
+        works = setOf("obfs4", "own")
+        val t = tor({ plan(BridgeChoice.OWN, listOf(BridgeLine.parse("obfs4 10.0.0.5:443 $fp cert=x iat-mode=0")!!)) })
+        assertTrue(t.up())
+        val lo = InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1))
+        val m = Regex("""\nSocks5Proxy ${Regex.escape(lo.hostAddress!!)}:(\d+)\nSocks5ProxyUsername ([0-9a-f]{32})\nSocks5ProxyPassword ([0-9a-f]{32})\nUseBridges 1\nClientTransportPlugin obfs4 exec """)
+            .find(torrcs.single())
+        assertTrue(torrcs.single(), m != null)
+        val port = m!!.groupValues[1].toInt()
+        Socket(lo, port).close()
+        t.down()
+        assertTrue(portShut(port))
+        // Started again: a new password.
+        assertTrue(t.up())
+        assertFalse(torrcs.last().contains(m.groupValues[3]))
+        t.down()
+        // A bridge elsewhere: no relay, no proxy.
+        val far = tor({ plan(BridgeChoice.OWN, listOf(BridgeLine.parse("obfs4 192.0.2.5:443 $fp cert=x iat-mode=0")!!)) })
+        assertTrue(far.up())
+        assertFalse(torrcs.last().contains("Socks5"))
+    }
+
+    /**
+     * fix-bridges-and-wording: your own lines removed while Tor runs over them through the relay: the next use starts Tor
+     * again without them and the relay stops; lines unchanged, Tor keeps running.
+     */
+    @Test fun removingYourOwnLinesStopsTheRelayOnTheNextUse() {
+        val fp = "0123456789ABCDEF0123456789ABCDEF01234567"
+        // The fake names a start by the transport in its torrc: your own obfs4 line reads as "obfs4".
+        works = setOf("obfs4", "plain")
+        val home = listOf(BridgeLine.parse("obfs4 10.0.0.5:443 $fp cert=x iat-mode=0")!!)
+        var p = plan(BridgeChoice.OWN, home)
+        val t = tor({ p })
+        assertTrue(t.up())
+        val n = torrcs.size
+        assertTrue(t.up())
+        assertEquals("lines unchanged: Tor not started again", n, torrcs.size)
+        val lo = InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1))
+        val port = Regex("""\nSocks5Proxy [^\n]*:(\d+)\n""").find(torrcs.last())!!.groupValues[1].toInt()
+        Socket(lo, port).close()
+        // Your own bridge still chosen, no line left: Tor stops (never plain Tor in its place) and so does the relay.
+        p = plan(BridgeChoice.OWN)
+        assertFalse(t.up())
+        assertTrue("relay still open", runCatching { Socket(lo, port).close() }.isFailure)
+        // Fallen back to Off: plain Tor, no proxy.
+        p = plan(BridgeChoice.OFF)
+        assertTrue(t.up())
+        assertFalse(torrcs.last().contains("Socks5"))
+    }
+
+    /**
+     * fix-bridges-and-wording-b L1, L3: each of ownLinesChanged's checks on its own: your own lines edited (still chosen), and
+     * another choice with the lines still saved. [TorRuntime.stale] says so before any start, and up() starts Tor again.
+     */
+    @Test fun editingYourOwnLinesOrChoosingAnotherStartsTorAgain() {
+        val fp = "0123456789ABCDEF0123456789ABCDEF01234567"
+        works = setOf("obfs4", "plain")
+        val saved = listOf(BridgeLine.parse("obfs4 192.0.2.5:443 $fp cert=x iat-mode=0")!!)
+        val edited = listOf(BridgeLine.parse("obfs4 192.0.2.6:443 $fp cert=x iat-mode=0")!!)
+        var p = plan(BridgeChoice.OWN, saved)
+        val t = tor({ p })
+        assertTrue(t.up())
+        assertFalse("lines unchanged", t.stale)
+        // Edited, your own bridge still chosen: the lines check alone.
+        p = plan(BridgeChoice.OWN, edited)
+        assertTrue("edited", t.stale)
+        val n = torrcs.size
+        assertTrue(t.up())
+        assertEquals(n + 1, torrcs.size)
+        assertTrue(torrcs.last(), torrcs.last().contains("192.0.2.6:443") && !torrcs.last().contains("192.0.2.5:443"))
+        assertFalse(t.stale)
+        // Another choice, the edited lines still saved: the route check alone.
+        p = plan(BridgeChoice.OFF, edited)
+        assertTrue("switched away", t.stale)
+        assertTrue(t.up())
+        assertFalse(torrcs.last(), torrcs.last().contains("\nBridge "))
+        assertFalse("plain Tor: none of your lines in use", t.stale)
+    }
+
+    /** fix-bridges-and-wording-b L2: your own lines edited while a start was still connecting: Tor never comes up over the old ones. */
+    @Test fun linesEditedWhileTorConnectsAreNeverUsed() {
+        val fp = "0123456789ABCDEF0123456789ABCDEF01234567"
+        works = setOf("obfs4")
+        val saved = listOf(BridgeLine.parse("obfs4 192.0.2.5:443 $fp cert=x iat-mode=0")!!)
+        val edited = listOf(BridgeLine.parse("obfs4 192.0.2.6:443 $fp cert=x iat-mode=0")!!)
+        var reads = 0
+        val t = tor({ if (reads++ == 0) plan(BridgeChoice.OWN, saved) else plan(BridgeChoice.OWN, edited) })
+        assertTrue(t.up())
+        assertEquals(2, torrcs.size)
+        assertTrue(torrcs.first(), torrcs.first().contains("192.0.2.5:443"))
+        assertTrue(torrcs.last(), torrcs.last().contains("192.0.2.6:443") && !torrcs.last().contains("192.0.2.5:443"))
+        assertFalse(t.stale)
+    }
+
+    /** tor-bridge-relay-c H1: a relay that can't start (any exception) is Tor not starting, with its reason, never a crash. */
+    @Test fun aRelayThatCannotStartIsTorNotStartingWithItsReason() {
+        val fp = "0123456789ABCDEF0123456789ABCDEF01234567"
+        works = setOf("obfs4", "own")
+        val why = ArrayList<TorProblem>()
+        for (x in listOf(IllegalArgumentException(), java.io.IOException())) {
+            why.clear()
+            val t = TorRuntime(exe, paths, FakeSockets(), 1, bootstrapTimeoutMs = 3_000, lyrebird = lyrebird, stallPlainMs = 300, stallBridgeMs = 300, pollMs = 20,
+                plan = { plan(BridgeChoice.OWN, listOf(BridgeLine.parse("obfs4 10.0.0.5:443 $fp cert=x iat-mode=0")!!)) }, onFailed = { why += it }, relays = { throw x })
+            runtimes += t
+            assertFalse(t.up())
+            assertEquals(listOf(TorProblem.RELAY), why)
+        }
+        assertTrue(torrcs.isEmpty())
+    }
+
+    /** review-tor-bridge-relay-b L4: Tor that can't start (here, no executable) leaves no relay open. */
+    @Test fun torThatCannotStartLeavesNoRelay() {
+        val fp = "0123456789ABCDEF0123456789ABCDEF01234567"
+        works = setOf("obfs4", "own")
+        val made = Collections.synchronizedList(ArrayList<BridgeRelay>())
+        val why = ArrayList<TorProblem>()
+        val t = TorRuntime(File(root, "missing.sh"), paths, FakeSockets(), 1, bootstrapTimeoutMs = 3_000, lyrebird = lyrebird, stallPlainMs = 300, stallBridgeMs = 300, pollMs = 20,
+            plan = { plan(BridgeChoice.OWN, listOf(BridgeLine.parse("obfs4 10.0.0.5:443 $fp cert=x iat-mode=0")!!)) }, onFailed = { why += it },
+            relays = { BridgeRelay.start(it).also(made::add) })
+        runtimes += t
+        assertFalse(t.up())
+        assertTrue(why.toString(), TorProblem.START in why)
+        assertTrue(made.isNotEmpty())
+        val lo = InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1))
+        for (r in made) assertTrue("relay still open", portShut(r.auth.port))
+    }
+
     @Test fun offIsPlainTorAlone() {
         val t = tor({ plan(BridgeChoice.OFF) })
         assertFalse(t.up())
@@ -212,6 +346,132 @@ class TorRuntimeBridgesTest {
         // Your own bridge with no line: no route, so no Tor.
         assertFalse(tor({ TorPlan(TorBridges.routes(BridgeChoice.OWN, emptyList())) }).up())
         assertEquals(listOf("own"), starts)
+    }
+
+    /**
+     * review-fix-bridges-and-wording-b M1: your own bridge doesn't connect, so you edit it: the Tor still connecting over the
+     * old line reads as [TorRuntime.stale] and the next up() starts it over the new one; removed (back to Off), the same.
+     */
+    @Test fun aTorStillConnectingOverYourOwnLinesLetsGoOfThem() {
+        val fp = "0123456789ABCDEF0123456789ABCDEF01234567"
+        works = emptySet()
+        val first = listOf(BridgeLine.parse("192.0.2.7:443 $fp")!!)
+        val edited = listOf(BridgeLine.parse("obfs4 192.0.2.8:443 $fp cert=x iat-mode=0")!!)
+        var p = plan(BridgeChoice.OWN, first)
+        val t = tor({ p })
+        assertFalse(t.up())
+        assertEquals(listOf("own"), starts)
+        assertFalse("lines unchanged", t.stale)
+        p = plan(BridgeChoice.OWN, edited)
+        assertTrue("still connecting over the old line", t.stale)
+        works = setOf("obfs4")
+        assertTrue(t.up())
+        assertEquals(listOf("own", "obfs4"), starts)
+        assertTrue(torrcs.last(), torrcs.last().contains("192.0.2.8:443") && !torrcs.last().contains("192.0.2.7:443"))
+        assertFalse(t.stale)
+        // Removed while a start over them still can't connect: stale too, so the pump lets it go.
+        t.down()
+        works = emptySet()
+        assertFalse(t.up())
+        p = plan(BridgeChoice.OFF)
+        assertTrue("removed while connecting", t.stale)
+        t.down()
+        assertFalse(t.stale)
+    }
+
+    /**
+     * review-fix-bridges-and-wording-c M1: you edit your own line while a start over the old one is still connecting (your
+     * own route has no stall cut): that start lets go of it at once and connects over the new one, well before its timeout.
+     */
+    @Test fun aStartStillConnectingOverYourOldLinesMovesToTheNewOnes() {
+        val fp = "0123456789ABCDEF0123456789ABCDEF01234567"
+        works = emptySet()
+        val first = listOf(BridgeLine.parse("192.0.2.7:443 $fp")!!)
+        val edited = listOf(BridgeLine.parse("obfs4 192.0.2.8:443 $fp cert=x iat-mode=0")!!)
+        val p = java.util.concurrent.atomic.AtomicReference(plan(BridgeChoice.OWN, first))
+        val t = TorRuntime(exe, paths, FakeSockets(), 1, bootstrapTimeoutMs = 20_000, lyrebird = lyrebird, plan = { p.get() },
+            stallPlainMs = 20_000, stallBridgeMs = 20_000, pollMs = 20).also { runtimes += it }
+        val result = java.util.concurrent.CompletableFuture.supplyAsync { t.up() }
+        val until = System.nanoTime() + 5_000_000_000L
+        while (starts.isEmpty() && System.nanoTime() < until) Thread.sleep(20)
+        assertEquals(listOf("own"), starts)
+        works = setOf("obfs4")
+        p.set(plan(BridgeChoice.OWN, edited))
+        assertTrue("up over the new line well before the old start's 20 s", result.get(5, java.util.concurrent.TimeUnit.SECONDS))
+        assertEquals(listOf("own", "obfs4"), starts)
+        assertTrue(torrcs.last(), torrcs.last().contains("192.0.2.8:443") && !torrcs.last().contains("192.0.2.7:443"))
+        assertFalse(t.stale)
+    }
+
+    /**
+     * review-fix-bridges-and-wording-d L4: your own line edited during every start: [TorRuntime.up] gives up after a few
+     * starts, and says why (the link log's TOR row 5), as every other start that fails does.
+     */
+    @Test fun linesEditedThroughEveryStartGiveUpWithTheirReason() {
+        val fp = "0123456789ABCDEF0123456789ABCDEF01234567"
+        works = emptySet()
+        val reads = java.util.concurrent.atomic.AtomicInteger()
+        val why = Collections.synchronizedList(ArrayList<TorProblem>())
+        val t = TorRuntime(exe, paths, FakeSockets(), 1, bootstrapTimeoutMs = 20_000, lyrebird = lyrebird,
+            plan = { plan(BridgeChoice.OWN, listOf(BridgeLine.parse("192.0.2.${reads.incrementAndGet() % 200 + 1}:443 $fp")!!)) },
+            stallPlainMs = 20_000, stallBridgeMs = 20_000, pollMs = 20, onFailed = { why += it }).also { runtimes += it }
+        assertFalse(t.up())
+        assertEquals(listOf("own", "own", "own"), starts)
+        assertEquals(listOf(TorProblem.START), why)
+    }
+
+    /**
+     * review-fix-bridges-lows L1: you edit your own line and turn off Robot's network access while a start connects over
+     * the old one: that start lets go of it and starts no new Tor over the new one.
+     */
+    @Test fun aStartWithNetworkOffNeverMovesToYourNewLines() {
+        val fp = "0123456789ABCDEF0123456789ABCDEF01234567"
+        works = emptySet()
+        val first = listOf(BridgeLine.parse("192.0.2.7:443 $fp")!!)
+        val edited = listOf(BridgeLine.parse("obfs4 192.0.2.8:443 $fp cert=x iat-mode=0")!!)
+        val p = java.util.concurrent.atomic.AtomicReference(plan(BridgeChoice.OWN, first))
+        val net = java.util.concurrent.atomic.AtomicBoolean(true)
+        val t = TorRuntime(exe, paths, FakeSockets(), 1, bootstrapTimeoutMs = 20_000, lyrebird = lyrebird, plan = { p.get() },
+            stallPlainMs = 20_000, stallBridgeMs = 20_000, pollMs = 20).also { runtimes += it }
+        t.mayStart = { net.get() }
+        val result = java.util.concurrent.CompletableFuture.supplyAsync { t.up() }
+        val until = System.nanoTime() + 5_000_000_000L
+        while (starts.isEmpty() && System.nanoTime() < until) Thread.sleep(20)
+        assertEquals(listOf("own"), starts)
+        works = setOf("obfs4")
+        net.set(false)
+        p.set(plan(BridgeChoice.OWN, edited))
+        assertFalse("no start over the new line", result.get(5, java.util.concurrent.TimeUnit.SECONDS))
+        assertEquals(listOf("own"), starts)
+        assertFalse(t.running)
+        assertFalse(t.stale)
+    }
+
+    /**
+     * review-fix-bridges-lows L2: the pump's stop ([TorRuntime.letGo], from another thread) while a start moves to your new
+     * lines waits on Tor's lock and checks again under it: the Tor that came up over the new lines keeps running.
+     */
+    @Test fun letGoDuringAStartThatMovesToYourNewLinesKeepsTheNewTor() {
+        val fp = "0123456789ABCDEF0123456789ABCDEF01234567"
+        works = emptySet()
+        val first = listOf(BridgeLine.parse("192.0.2.7:443 $fp")!!)
+        val edited = listOf(BridgeLine.parse("obfs4 192.0.2.8:443 $fp cert=x iat-mode=0")!!)
+        val p = java.util.concurrent.atomic.AtomicReference(plan(BridgeChoice.OWN, first))
+        val t = TorRuntime(exe, paths, FakeSockets(), 1, bootstrapTimeoutMs = 20_000, lyrebird = lyrebird, plan = { p.get() },
+            stallPlainMs = 20_000, stallBridgeMs = 20_000, pollMs = 1_000).also { runtimes += it }
+        val result = java.util.concurrent.CompletableFuture.supplyAsync { t.up() }
+        val until = System.nanoTime() + 5_000_000_000L
+        while (starts.isEmpty() && System.nanoTime() < until) Thread.sleep(20)
+        Thread.sleep(200) // the start is in its 1 s wait between bootstrap reads
+        assertEquals(listOf("own"), starts)
+        works = setOf("obfs4")
+        p.set(plan(BridgeChoice.OWN, edited))
+        val stop = Thread { t.letGo() }.apply { isDaemon = true; start() }
+        assertTrue("up over the new line", result.get(10, java.util.concurrent.TimeUnit.SECONDS))
+        stop.join(10_000)
+        assertFalse("letGo returned", stop.isAlive)
+        assertEquals(listOf("own", "obfs4"), starts)
+        assertTrue("the new Tor still running", t.running)
     }
 
     @Test fun aChangeWhileTorIsStillConnectingStartsItAgain() {

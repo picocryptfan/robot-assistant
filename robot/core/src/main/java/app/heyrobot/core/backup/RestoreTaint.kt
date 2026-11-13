@@ -28,15 +28,19 @@ object RestoreTaint {
     /** L12, D14: someone else's backup never restores pairings, permissions or what passed between Robots (RestorePlanner too). */
     fun links(f: app.heyrobot.core.link.LinkBackupFile, mine: Boolean): app.heyrobot.core.link.LinkBackupFile? = if (mine) f else null
 
+    /** moments-backup-c (L6): reminders for a moment only from a backup that is yours (the plan's ONLY_YOURS guard, again here). */
+    fun moments(l: List<app.heyrobot.core.MomentReminder>, mine: Boolean): List<app.heyrobot.core.MomentReminder>? = if (mine) l else null
+
     fun memory(i: MemoryItem, mine: Boolean): MemoryItem = if (mine) i else i.copy(imported = MemoryImported.CONTENT)
 
     fun person(p: Person, mine: Boolean): Person = if (mine) p else p.copy(confirmed = false)
 
-    /** Off, until you turn it on after reading it ("Turn each on after reading it"). */
-    fun routine(r: Routine, mine: Boolean): Routine = if (mine) r else r.copy(enabled = false)
+    /** Off, until you turn it on after reading it ("Turn each on after reading it"); review-auto-open 1: no ticked apps. */
+    fun routine(r: Routine, mine: Boolean): Routine = if (mine) r else r.copy(enabled = false, opens = emptySet())
 
     /** 1.1, Skills (plan §4): someone else's skill arrives off; turning it on in Settings sets Ask first. Yours, as saved. */
-    fun skill(s: Skill, mine: Boolean): Skill = if (mine) s else s.copy(level = SkillLevel.OFF)
+    /** review-auto-open 1: and without its ticked apps (auto-open-plan §4), which you tick again on its save card. */
+    fun skill(s: Skill, mine: Boolean): Skill = if (mine) s else s.copy(level = SkillLevel.OFF, opens = emptySet())
 
     /**
      * A helper this phone doesn't have: off, untrusted, not on the lock screen, no web search and no actions (turning it on

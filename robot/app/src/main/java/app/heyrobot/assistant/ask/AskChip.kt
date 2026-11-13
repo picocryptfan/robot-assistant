@@ -73,7 +73,7 @@ val QUICK: List<Pair<Int, Msg>> = listOf(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun AskChip(item: SharedItem, busy: Boolean, onRemove: () -> Unit, onAsk: (Phrase) -> Unit) {
+fun AskChip(item: SharedItem, busy: Boolean, onRemove: () -> Unit, onAsk: (Phrase) -> Unit, onRead: () -> Unit = {}) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).testTag("ask-chip")) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             val thumb = item.thumb
@@ -96,9 +96,14 @@ fun AskChip(item: SharedItem, busy: Boolean, onRemove: () -> Unit, onAsk: (Phras
         }
         if (!busy) {
             FlowRow(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // 1.3 point and read (P3): a shared photo's words, read aloud as the panel's Read aloud reads one (PanelRead).
+                if (item.kind == SharedKind.PHOTO) OutlinedButton(onClick = onRead, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.panel_read_aloud)) }
                 for ((label, request) in QUICK) {
                     OutlinedButton(onClick = { onAsk(request()) }, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(label)) }
                 }
+                // Read it to me (read-it-to-me-plan.md §1): a shared text only, read whole by PanelRead, nothing kept after.
+                if (item.kind == SharedKind.TEXT) OutlinedButton(onClick = { onAsk(app.heyrobot.core.i18n.HandsFreeStrings.readThisAsk()) },
+                    modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.read_it_to_me)) }
             }
         }
     }

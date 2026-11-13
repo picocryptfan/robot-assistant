@@ -126,7 +126,7 @@ enum class KeyProblem {
     BAD_DATA,
 }
 
-class MemoryKeyException(val problem: KeyProblem, cause: Throwable? = null) : Exception(problem.name, cause)
+open class MemoryKeyException(val problem: KeyProblem, cause: Throwable? = null) : Exception(problem.name, cause)
 
 /**
  * The cipher the vault implements in app/sys: AES-256-GCM with a Keystore key ("robot_memory_v1", or

@@ -19,6 +19,7 @@ import app.heyrobot.core.skills.SkillRouter
 import app.heyrobot.core.termux.ScriptRegistry
 import app.heyrobot.core.termux.TermuxScriptInfo
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 import java.time.ZonedDateTime
@@ -44,10 +45,10 @@ class RoutingCorpusTest {
 
     /**
      * Skills connections C1 gave Skill, SkillParam and SkillStep new fields (skills-connections-plan.md §5.1); a 1.1 skill
-     * holds their defaults, left out here so the baseline, written before them, still compares every router's reading.
+     * holds their defaults (and a routine auto-open's empty `opens`), left out here so the baseline, written before them, still compares every router's reading.
      */
     private val C1_DEFAULTS = listOf(", options=[], min=null, max=null, unit=null", ", id=null, conn=null, op=null, cond=null, check=null, onFail=STOP",
-        ", perHour=null")
+        ", perHour=null", ", opens=[]")
 
     /** Each router's reading of [t], in the panel's order (files apart, in [files]). */
     private fun row(t: String): List<String> = listOf(
@@ -356,6 +357,81 @@ class RoutingCorpusTest {
             for (c in 1 until aa.size) if (bb[c] != aa[c]) changed[aa.first() + " | " + COLUMNS[c - 1]] = bb[c] + " -> " + aa[c]
         }
         assertEquals(changedPhoneFix, changed)
+    }
+
+    /**
+     * 1.3, "What did I miss?" (what-did-i-miss-plan.md): routing/corpus-missed.txt holds its phrases in both languages and
+     * their misfires ("… in the meeting", "did I miss the bus", « j'ai manqué l'autobus »); routing/baseline-missed.tsv is
+     * what every router made of each before MessagesRouter knew them. Only the messages column changes, for [changedMissed].
+     */
+    @Test fun everyRouterReadsTheMissedPhrasesAsRecorded() {
+        val phrases = javaClass.getResourceAsStream("/routing/corpus-missed.txt")!!.bufferedReader().readLines().filter { it.isNotBlank() }
+        val lines = phrases.map { t -> (listOf(t) + row(t) + files(t)).joinToString("\t") }
+        val base = javaClass.getResourceAsStream("/routing/baseline-missed.tsv")
+        if (base == null) {
+            // build/reports: a remote build (beelink-gradle) brings it back.
+            File("build/reports/routing").mkdirs()
+            File("build/reports/routing/baseline-missed.tsv").writeText(lines.joinToString("\n") + "\n")
+            return
+        }
+        val before = base.bufferedReader().readLines().filter { it.isNotBlank() }
+        assertEquals(before.size, lines.size)
+        val changed = sortedMapOf<String, String>()
+        for ((b, a) in before.zip(lines)) {
+            val bb = b.split('\t')
+            val aa = a.split('\t')
+            assertEquals(bb.first(), aa.first())
+            for (c in 1 until aa.size) if (bb[c] != aa[c]) changed[aa.first() + " | " + COLUMNS[c - 1]] = bb[c] + " -> " + aa[c]
+        }
+        assertEquals(changedMissed, changed)
+    }
+
+    private val changedMissed: Map<String, String> = sortedMapOf<String, String>().apply {
+        val en = listOf("What did I miss?", "what did I miss", "What have I missed?", "what'd I miss", "Did I miss anything?", "Have I missed anything?",
+            "did I miss something", "what did I miss on my phone", "What did I miss while I was away?", "Robot, what did I miss?", "what did I miss please",
+            // fix-what-did-i-miss, finding 5: a time tail, notifications by name, « qu'ai-je manqué ».
+            "did I miss any notifications", "Any notifications?", "anything I missed")
+        val fr = listOf("Qu'est-ce que j'ai manqué?", "Qu’est-ce que j’ai manqué ?", "j'ai-tu manqué quelque chose?", "J'ai manqué quoi?",
+            "ai-je manqué quelque chose", "qu'est-ce que j'ai manqué pendant que j'étais parti", "quoi de neuf sur mon téléphone", "qu'est-ce que j'ai raté",
+            "Qu'ai-je manqué ?")
+        for (t in en) put("$t | messages", "- -> Missed(lang=EN)")
+        for (t in fr) put("$t | messages", "- -> Missed(lang=FR)")
+    }
+
+    /**
+     * 1.3, notifications held until a time (notify-hold-plan.md): routing/corpus-hold.txt holds its phrases in both
+     * languages and their misfires ("hold on", "hold the door", "put a hold on my library book"); routing/baseline-hold.tsv
+     * is what every router made of each before MessagesRouter knew them. Only the messages column changes, for [changedHold].
+     */
+    @Test fun everyRouterReadsTheHoldPhrasesAsRecorded() {
+        val phrases = javaClass.getResourceAsStream("/routing/corpus-hold.txt")!!.bufferedReader().readLines().filter { it.isNotBlank() }
+        val lines = phrases.map { t -> (listOf(t) + row(t) + files(t)).joinToString("\t") }
+        val base = javaClass.getResourceAsStream("/routing/baseline-hold.tsv")
+        if (base == null) {
+            File("build/reports/routing").mkdirs()
+            File("build/reports/routing/baseline-hold.tsv").writeText(lines.joinToString("\n") + "\n")
+            return
+        }
+        val before = base.bufferedReader().readLines().filter { it.isNotBlank() }
+        assertEquals(before.size, lines.size)
+        val changed = sortedMapOf<String, String>()
+        for ((b, a) in before.zip(lines)) {
+            val bb = b.split('\t')
+            val aa = a.split('\t')
+            assertEquals(bb.first(), aa.first())
+            for (c in 1 until aa.size) if (bb[c] != aa[c]) changed[aa.first() + " | " + COLUMNS[c - 1]] = bb[c] + " -> " + aa[c]
+        }
+        assertEquals(changedHold.keys, changed.keys)
+        for ((k, v) in changed) assertTrue(k, v.startsWith("- -> Hold(") && v.endsWith(changedHold[k]!!))
+    }
+
+    private val HOLD_EN = listOf("Hold my shopping and news apps till noon.", "hold my notifications until noon", "pause my apps for an hour", "snooze my news notifications until 3:30 pm", "I'm off my phone till three", "I'm away from my phone for 2 hours", "Robot, hold my apps till 6", "hold all my notifications for 30 minutes")
+    private val HOLD_FR = listOf("Mets mes notifications en attente jusqu'à midi.", "mets mes applis de magasinage et de nouvelles en attente jusqu'à 18 h", "suspends mes notifications pendant une heure", "je suis loin de mon téléphone jusqu'à trois heures", "mets mes notifs en pause jusqu’à 14 h 30")
+
+    /** Each phrase now Robot's, "phrase | messages" to the end of its new reading (its language). */
+    private val changedHold: Map<String, String> = sortedMapOf<String, String>().apply {
+        for (t in HOLD_EN) put("$t | messages", "lang=EN)")
+        for (t in HOLD_FR) put("$t | messages", "lang=FR)")
     }
 
     /** What the phone fixes changed in corpus-phonefix.txt's reading: "phrase | column" to "before -> after". */

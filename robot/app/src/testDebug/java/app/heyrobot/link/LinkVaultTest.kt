@@ -302,6 +302,8 @@ class LinkVaultTest {
         assertEquals(KeyProblem.BAD_DATA, problemOf(AEADBadTagException()))
         assertEquals(KeyProblem.BAD_DATA, problemOf(BadPaddingException()))
         assertEquals(KeyProblem.LOCKED, problemOf(KeyStoreException("busy")))
+        assertEquals(KeyProblem.GONE, problemOf(UnrecoverableKeyException("Key algorithm unknown")))
+        assertEquals(KeyProblem.LOCKED, problemOf(UnrecoverableKeyException("x").apply { initCause(KeyStoreException("busy")) }))
         assertEquals(KeyProblem.LOCKED, problemOf(IllegalStateException()))
         assertEquals(KeyProblem.GONE, problemOf(KeyException(KeyProblem.GONE)))
         // robot_link_v1's own wrap: no key and not asked to make one is GONE; a wrong tag BAD_DATA.

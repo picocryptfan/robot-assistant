@@ -44,7 +44,7 @@ class NewsStoreTest {
     }
     private val zone0 = java.util.TimeZone.getDefault()
     private fun jobs() = ctx.getSystemService(android.app.job.JobScheduler::class.java)
-    private fun home(today: Boolean, news: NewsSettings) = HomeSettingsStore.update(ctx) { app.heyrobot.core.HomeSettings(today = today, news = news) }
+    private fun home(today: Boolean, news: NewsSettings) = HomeSettingsStore.update(ctx) { app.heyrobot.core.HomeSettings(home = app.heyrobot.core.HomeChoice.of(today), news = news) }
     private fun reply(url: String, body: ByteArray?, etag: String? = null, at: String = url) = FeedClient.Reply(if (body == null) 304 else 200, body, at, etag, null)
 
     /** today-h7-fix 1 and 3a: Today off cancels the daily job and deletes the headlines; an app open never schedules it then. */
@@ -112,7 +112,7 @@ class NewsStoreTest {
             assertTrue(inside.await(5, java.util.concurrent.TimeUnit.SECONDS))
             val second = pool.submit<NewsStore.Fetched> { NewsStore.fetch(ctx, NewsMoment.TAP, daily, { _, _, _, _ -> error("one round at a time") }, now) }
             assertEquals(NewsStore.Fetched.Waited, second.get(2, java.util.concurrent.TimeUnit.SECONDS))
-            NewsStore.settled(ctx, app.heyrobot.core.HomeSettings(today = true, news = daily))
+            NewsStore.settled(ctx, app.heyrobot.core.HomeSettings(home = app.heyrobot.core.HomeChoice.TODAY, news = daily))
             release.countDown()
             assertTrue(first.get(5, java.util.concurrent.TimeUnit.SECONDS) is NewsStore.Fetched.Done)
         } finally {
@@ -191,8 +191,8 @@ class NewsStoreTest {
 
     /** H7b: with Today off nothing shows the news, so the daily job fetches none. */
     @Test fun withTodayOffTheDailyJobFetchesNothing() {
-        assertEquals(false, NewsStore.dailyNews(app.heyrobot.core.HomeSettings(today = false, news = daily)).on)
-        assertEquals(daily, NewsStore.dailyNews(app.heyrobot.core.HomeSettings(today = true, news = daily)))
+        assertEquals(false, NewsStore.dailyNews(app.heyrobot.core.HomeSettings(home = app.heyrobot.core.HomeChoice.START, news = daily)).on)
+        assertEquals(daily, NewsStore.dailyNews(app.heyrobot.core.HomeSettings(home = app.heyrobot.core.HomeChoice.TODAY, news = daily)))
     }
 
     /** H7b: with Tor chosen and down, Find sends nothing either. */

@@ -21,7 +21,7 @@ import app.heyrobot.core.RLog
 // :BRAIN PROCESS ONLY (android:process=":brain"). A native crash in LiteRT-LM or the TPU stack kills
 // this process alone; the assistant in :voice sees the binder die and reloads on the next question (or, when the model
 // you chose is the one that keeps failing, falls back to Fast: BrainKeeper).
-// No LiteRT import here: GemmaEngine.kt is the only file that touches it. llama.cpp (0.4.5, your own GGUF file) never
+// No LiteRT import here: GemmaEngine.kt and EmbedEngine.kt (search by meaning) are the only files that touch it. llama.cpp (0.4.5, your own GGUF file) never
 // runs in this process: LlamaEngine runs it in LlamaService's isolated process (":llama"). Engines picks one of the two
 // for each load; one engine holds a model at a time.
 
@@ -30,6 +30,7 @@ class BrainService : Service() {
     private lateinit var handler: Handler
     private lateinit var messenger: Messenger
     private lateinit var engine: Engines
+    private lateinit var embedder: EmbedEngine
 
     override fun onCreate() {
         super.onCreate()
@@ -37,6 +38,7 @@ class BrainService : Service() {
         handler = Handler(work.looper) { m -> handle(m); true }
         messenger = Messenger(handler)
         engine = Engines(this, handler)
+        embedder = EmbedEngine(handler, java.io.File(cacheDir, "embed"))
         RLog.i("brain_service", "op" to RLog.Code("create"))
     }
 
@@ -75,6 +77,7 @@ class BrainService : Service() {
                 BrainProtocol.REQ_ONE_SHOT -> engine.oneShot(key, payload as BrainMsg.OneShot, BrainWire.takeImage(msg), sink)
                 BrainProtocol.REQ_CANCEL -> engine.cancel(BrainScheduler.Key(reply.binder, (payload as BrainMsg.Cancel).target))
                 BrainProtocol.REQ_CLOSE_CONV -> engine.closeConv((payload as BrainMsg.CloseConv).convId)
+                BrainProtocol.REQ_EMBED -> sink.emit(BrainProtocol.EV_VECTORS, embedder.embed(payload as BrainMsg.Embed))
             }
         } catch (t: Throwable) {
             RLog.w("brain_request", t, "what" to msg.what)
@@ -89,6 +92,7 @@ class BrainService : Service() {
         // while an engine is parked: LiteRT posts the callback that closes it there (quitting at once, as 0.1.2 did,
         // dropped that callback and kept the model's memory and the TPU until :brain died). If LiteRT never lets go, :brain ends.
         handler.post {
+            embedder.close("destroy")
             try {
                 engine.shutdown { step ->
                     if (step == EngineTeardown.Step.END_PROCESS) Process.killProcess(Process.myPid()) else work.quitSafely()

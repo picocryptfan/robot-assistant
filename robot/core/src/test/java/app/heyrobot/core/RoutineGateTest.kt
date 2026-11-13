@@ -122,6 +122,33 @@ class RoutineGateTest {
         assertEquals(all.size - 6, linked)
     }
 
+    /** auto-open-plan §3: a ticked app opens from a trigger only unlocked with the screen on, at Just do it, for its package. */
+    @Test fun aTickedAppOpensUnlockedWithTheScreenOn() {
+        val step = RoutineStep.Tool(Action.OpenApp("Organic Maps", "app.organicmaps/.SplashActivity"))
+        val ticked = routine(step).copy(opens = setOf("app.organicmaps"))
+        val auto = defaults.copy(approvals = defaults.approvals + (ToolName.OPEN_APP to Approval.AUTO))
+        assertEquals(StepGo.RUN, RoutineGate.decide(step, RunOrigin.UNATTENDED, false, ticked, auto, rs, screenOn = true))
+        assertEquals(StepGo.READY, RoutineGate.decide(step, RunOrigin.UNATTENDED, false, ticked, auto, rs))
+        assertEquals(StepGo.READY, RoutineGate.decide(step, RunOrigin.UNATTENDED, true, ticked, auto, rs, screenOn = true))
+        assertEquals(StepGo.READY, RoutineGate.decide(step, RunOrigin.UNATTENDED, false, routine(step), auto, rs, screenOn = true))
+        assertEquals(StepGo.READY, RoutineGate.decide(step, RunOrigin.UNATTENDED, false, ticked.copy(opens = setOf("net.osmand")), auto, rs, screenOn = true))
+        assertEquals(StepGo.READY, RoutineGate.decide(step, RunOrigin.UNATTENDED, false, ticked, auto.copy(approvals = auto.approvals + (ToolName.OPEN_APP to Approval.ASK)), rs, screenOn = true))
+        val byName = RoutineStep.Tool(Action.OpenApp("Organic Maps"))
+        // As saved (routines.json keeps no key): the runner opens it only if the app it finds is the ticked package.
+        assertEquals(StepGo.RUN, RoutineGate.decide(byName, RunOrigin.UNATTENDED, false, routine(byName).copy(opens = setOf("app.organicmaps")), auto, rs, screenOn = true))
+        assertEquals(StepGo.READY, RoutineGate.decide(byName, RunOrigin.UNATTENDED, false, routine(byName), auto, rs, screenOn = true))
+        // Open apps off in Settings › Actions: never, whatever the tick says.
+        assertEquals(StepGo.DISABLED, RoutineGate.decide(byName, RunOrigin.UNATTENDED, false, routine(byName).copy(opens = setOf("app.organicmaps")),
+            auto.copy(approvals = auto.approvals + (ToolName.OPEN_APP to Approval.OFF)), rs, screenOn = true))
+        // The save card's box: one per open step, and the routine keeps the tick when saved.
+        assertEquals(listOf("Organic Maps"), OpenTicks.names(routine(byName)))
+        assertEquals(setOf("app.organicmaps"), RoutineDraft(routine(byName).copy(opens = setOf("app.organicmaps")), app.heyrobot.core.i18n.Lang.EN).save(5L)!!.opens)
+        // Saved and read back with its consent; one without any writes no key (1.2 reads past it either way).
+        val back = RoutineCodec.fromJson(RoutineCodec.toJson(ticked))!!
+        assertEquals(setOf("app.organicmaps"), back.opens)
+        assertFalse(RoutineCodec.toJson(routine(step)).has("opens"))
+    }
+
     @Test fun stepClasses() {
         val expected = mapOf(
             StepClass.SPEAK to listOf("brief", "say"),

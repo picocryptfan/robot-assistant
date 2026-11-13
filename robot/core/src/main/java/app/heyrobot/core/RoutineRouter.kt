@@ -36,7 +36,10 @@ sealed class RoutineCommand {
     /** H3: "show my history", "show my calendar" (and French): the main app at that page, on an unlocked phone. */
     data class Show(val page: ShowPage) : RoutineCommand()
     /** H4: "put my calendar first" and its kin (TodayArrange): the Today page's order, on an unlocked phone. */
-    data class Arrange(val part: TodayPart, val move: TodayMove) : RoutineCommand()
+    /** [quick]: the Quick access button the same words name ("my notes"), null when they name Today or no button. */
+    data class Arrange(val part: TodayPart, val move: TodayMove, val quick: QuickItem? = null) : RoutineCommand()
+    /** HS3: "put car mode first" and its kin (QuickArrange): a button only Quick access has, on an unlocked phone. */
+    data class ArrangeQuick(val item: QuickItem, val move: TodayMove) : RoutineCommand()
     /** H7b: "read me the news" (as a whole utterance): Today's headlines, said and shown, on an unlocked phone. */
     data object News : RoutineCommand()
 
@@ -54,6 +57,9 @@ sealed class RoutineCommand {
 
     /** "remind me in the morning to …", "add to my brief: …": a brief reminder ([tomorrow]: "tomorrow morning" was said). */
     data class Remind(val text: String, val tomorrow: Boolean) : RoutineCommand()
+
+    /** "remind me to … when I get out of the car", « quand je branche mon téléphone, rappelle-moi de … » (MomentReminders). */
+    data class RemindWhen(val text: String, val moment: Moment, val lang: Lang, val between: TimeWindow? = null) : RoutineCommand()
 
     /**
      * 1.1, a dated reminder: "remind me to call the bank on the twentieth of November", « rappelle-moi d'appeler le dentiste
@@ -85,6 +91,9 @@ sealed class RoutineCommand {
      * timers Robot set (core TimerAsk), never the model's to guess ([french]: a French timer word was said).
      */
     data class TimerLeft(val french: Boolean) : RoutineCommand()
+
+    /** named-timers: a phrase for Robot's own timers (core OwnTimerPhrases), routed before the rest while they are on. */
+    data class Timer(val ask: TimerCommand) : RoutineCommand()
 
     /**
      * fix-cancel-alarm (phone-1.2.4: "what alarms do I have" was the model's, an "Open Clock" card that then held the next
@@ -285,6 +294,9 @@ object RoutineRouter {
     private val SHOW_CALENDAR = listOf("show my calendar", "show me my calendar", "open my calendar", "show calendar", "open calendar",
         "show my agenda", "open my agenda", "montre moi mon agenda", "montre mon agenda", "ouvre mon agenda", "affiche mon agenda",
         "montre moi mon calendrier", "ouvre mon calendrier", "affiche mon calendrier")
+    /** HS3: Quick access as a page, whichever home you picked. */
+    private val SHOW_QUICK = listOf("show quick access", "show me quick access", "open quick access", "show my quick access", "open my quick access",
+        "montre l acces rapide", "montre moi l acces rapide", "ouvre l acces rapide", "affiche l acces rapide")
     private val LIST = listOf("list my routines", "list routines", "list the routines", "what are my routines", "what routines do i have",
         "which routines do i have", "show my routines", "show me my routines", "my routines", "tell me my routines", "liste mes routines",
         "quelles sont mes routines", "c est quoi mes routines", "montre moi mes routines", "mes routines", "quelles routines j ai")
@@ -309,6 +321,7 @@ object RoutineRouter {
             i += f
         }
         if (i >= p.size) return null
+        moment(p, i)?.let { return it }
         create(p, i, now, names, id, fromContent, alarmWindow)?.let { return RoutineCommand.Create(it) }
         remind(p, i)?.let { return it }
         remindOn(p, i, now)?.let { return it }
@@ -319,7 +332,9 @@ object RoutineRouter {
         if (whole(p, i, LIST)) return RoutineCommand.ListAll
         if (whole(p, i, SHOW_HISTORY)) return RoutineCommand.Show(ShowPage.HISTORY)
         if (whole(p, i, SHOW_CALENDAR)) return RoutineCommand.Show(ShowPage.CALENDAR)
-        TodayArrange.PHRASES.firstOrNull { whole(p, i, listOf(it.first)) }?.let { (_, a) -> return RoutineCommand.Arrange(a.first, a.second) }
+        TodayArrange.PHRASES.firstOrNull { whole(p, i, listOf(it.first)) }?.let { (t, a) -> return RoutineCommand.Arrange(a.first, a.second, QuickArrange.named(t)) }
+        if (whole(p, i, SHOW_QUICK)) return RoutineCommand.Show(ShowPage.QUICK)
+        QuickArrange.PHRASES.firstOrNull { whole(p, i, listOf(it.first)) }?.let { (_, a) -> return RoutineCommand.ArrangeQuick(a.first, a.second) }
         deleteNote(p, i)?.let { return it }
         named(p, i, DELETE, names)?.let { return RoutineCommand.Delete(it) }
         named(p, i, RUN, names)?.let { return RoutineCommand.Run(it) }
@@ -337,7 +352,7 @@ object RoutineRouter {
         "quoi d autre aujourdhui", "ma journee", "montre moi mon", "montre mon", "ouvre mon", "affiche mon", "ouvre l historique",
         "montre moi mes conversations", "ouvre mes conversations", "affiche mes conversations", "lis moi les nouvelles", "lis les nouvelles",
         "lis moi mes nouvelles", "lis moi les manchettes", "c est quoi les nouvelles", "quelles sont les nouvelles", "quoi de neuf dans les nouvelles",
-        "les nouvelles", "mes nouvelles") + TodayArrange.FRENCH_LEAD
+        "les nouvelles", "mes nouvelles", "montre l acces rapide", "montre moi l acces rapide", "ouvre l acces rapide", "affiche l acces rapide") + TodayArrange.FRENCH_LEAD
 
     /**
      * 1.0: [cmd], routed from [text], was said in French, so Robot answers it in French (the locked phone's "Unlock first"
@@ -349,11 +364,13 @@ object RoutineRouter {
      * [french] says so, English for a new routine read in English, else null (not sure: LangId decides).
      */
     fun lang(text: String, cmd: RoutineCommand): Lang? = when {
+        cmd is RoutineCommand.RemindWhen -> cmd.lang
         french(text, cmd) -> Lang.FR
         cmd is RoutineCommand.Create -> Lang.EN
         // 1.1: "remind me …", "set a reminder …" (the French leads are French's).
         cmd is RoutineCommand.CantCancel -> if (cmd.french) Lang.FR else Lang.EN
         cmd is RoutineCommand.TimerLeft -> if (cmd.french) Lang.FR else Lang.EN
+        cmd is RoutineCommand.Timer -> if (cmd.ask.french) Lang.FR else Lang.EN
         cmd is RoutineCommand.NextAlarm -> if (cmd.french) Lang.FR else Lang.EN
         cmd is RoutineCommand.DeleteNote -> if (cmd.french) Lang.FR else Lang.EN
         cmd is RoutineCommand.RemindOn || cmd is RoutineCommand.RemindWhat -> Lang.EN
@@ -362,6 +379,7 @@ object RoutineRouter {
 
     fun french(text: String, cmd: RoutineCommand): Boolean {
         if (cmd is RoutineCommand.Create) return cmd.draft.lang == Lang.FR
+        if (cmd is RoutineCommand.RemindWhen) return cmd.lang == Lang.FR
         val p = Words(text)
         var i = 0
         while (true) {
@@ -488,6 +506,44 @@ object RoutineRouter {
         // "add bring the passport to my brief".
         if (p.at(i, "add", "ajoute", "put", "mets") > 0) {
             for (k in p.size - 1 downTo i + 2) if (p.at(k, TO_MY_BRIEF) > 0 && k + p.at(k, TO_MY_BRIEF) == p.size) return reminder(p.span(i + 1, k), false)
+        }
+        return null
+    }
+
+    // ------------------------------------------------------------------ reminders for a moment
+
+    /**
+     * "remind me to take the groceries in when I get out of the car", "when I plug in tonight, remind me to put out the
+     * recycling", and in French: a routine's event trigger (eventTrigger) with "remind me to" and your words.
+     */
+    private fun moment(p: Words, i: Int): RoutineCommand.RemindWhen? {
+        fun made(text: String, t: TriggerRead, lang: Lang): RoutineCommand.RemindWhen? {
+            val m = Moment.of(t.trigger) ?: return null
+            val words = text.trim().trimStart(',', ':', ' ').trimEnd(',', '.', '!', '?', ' ').trim()
+            if (words.isEmpty() || words.equals("it", true) || words.equals("ça", true) || words.equals("ca", true)) return null
+            return RoutineCommand.RemindWhen(words, m, lang, t.conditions.between)
+        }
+        // "when I plug in tonight, remind me to …".
+        eventTrigger(p, i, TimeWindow.ALARM)?.let { t ->
+            val j = pastCommas(p, t.end)
+            val lead = p.at(j, REMIND_LEAD)
+            if (lead == 0) return null
+            val k = pastCommas(p, j + lead)
+            val to = p.at(k, "to", "de", "d")
+            if (to == 0 || k + to >= p.size) return null
+            return made(p.span(k + to, p.size), t, if (p.at(j, "rappelle moi") > 0) Lang.FR else t.lang)
+        }
+        // "remind me to … when I get out of the car".
+        val lead = p.at(i, REMIND_LEAD)
+        if (lead == 0) return null
+        val j = pastCommas(p, i + lead)
+        val to = p.at(j, "to", "de", "d")
+        if (to == 0) return null
+        for (k in j + to + 1 until p.size) {
+            val t = eventTrigger(p, k, TimeWindow.ALARM) ?: continue
+            if (t.end != p.size) continue
+            val lang = if (p.at(i, "rappelle moi") > 0) Lang.FR else Lang.EN
+            return made(p.span(j + to, if (p.w(k - 1) == ",") k - 1 else k), t, lang)
         }
         return null
     }
@@ -1024,18 +1080,20 @@ object RoutineLockedPhone {
     fun refuseText(cmd: RoutineCommand, locked: Boolean): Phrase? = if (!locked) null else when (cmd) {
         is RoutineCommand.Create, is RoutineCommand.Delete -> RoutineStrings.unlockChange()
         is RoutineCommand.Remind -> RoutineStrings.unlockRemind()
+        is RoutineCommand.RemindWhen -> RoutineStrings.unlockMoment()
         is RoutineCommand.RemindOn -> RoutineStrings.unlockRemindOn()
         is RoutineCommand.DeleteNote -> app.heyrobot.core.i18n.ToolStrings.noteDeleteUnlock()
         RoutineCommand.ListAll -> RoutineStrings.unlockList()
         is RoutineCommand.Show -> RoutineStrings.unlockShow()
         is RoutineCommand.Arrange -> RoutineStrings.unlockArrange()
+        is RoutineCommand.ArrangeQuick -> RoutineStrings.unlockQuick()
         // H7b: which feeds you read is personal, as the brief's news waits for the unlock.
         RoutineCommand.News -> RoutineStrings.unlockNews()
         // 1.1: Robot only asks what and when.
         RoutineCommand.BriefNow, RoutineCommand.Today, is RoutineCommand.Run, RoutineCommand.RemindWhat, is RoutineCommand.CantCancel, is RoutineCommand.TimerLeft,
-        is RoutineCommand.NextAlarm -> null
+        is RoutineCommand.NextAlarm, is RoutineCommand.Timer -> null
     }
 }
 
 /** H3: a page "show my …" opens. */
-enum class ShowPage { HISTORY, CALENDAR }
+enum class ShowPage { HISTORY, CALENDAR, QUICK }

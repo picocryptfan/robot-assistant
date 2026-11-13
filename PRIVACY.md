@@ -1,6 +1,6 @@
 # Robot's privacy policy
 
-This policy applies to Robot 1.0.0 and later. Last changed 8 Nov 2026 (the timers record, 1.2.3; every permission and notice now listed, and the alarms for routines and temporary copies; 1.1: the car screen's message panels, Robot Files and travel mode, files in backups, the speeds and GPU check kept on the phone, the chip in reports, Phone lock, backups, skills and what Robot's model is told about them, the Support page, the two new permissions, the date and country a helper's first message carries, up to 5 result pages for a web search, when GitHub receives a feedback issue, and the Phone permission during a phone lock; since then: Lists, the journal of what you add while the phone is locked, the list widget and what your home-screen app sees, and what History keeps of a list; Skills connections, what each kind sends and when, the first-use card, connections and their keys in backups, and the network type Robot reads for them; Robot to Robot; what "What went online" keeps of a web search; files you attach that hold something private; and what History keeps after a list is read; Today, the Calendar tab and private events, what the calendar is read for, and what the morning brief says of your lists and note; Today and private events restore only from your own backup; Today's weather card, which goes online when you tap it, the Robot today widget and the day summary on the lock screen; news on Today, feeds on your own server and token feed addresses; 1.3: MCP servers, plans and drafts with a helper, and what stays on the phone when you export, import or sign a skill).
+This policy applies to Robot 1.0.0 and later. Last changed 12 Nov 2026 (what the network-state permission reads: downloads wait while you roam, and Robot to Robot's look at your networks, 1.4; earlier, 11 Nov 2026: the sealed History, Notes, People and transcripts, ready answers, scam warnings and Tor bridges on your home network, 1.4; earlier, 8 Nov 2026: the timers record, 1.2.3; every permission and notice now listed, and the alarms for routines and temporary copies; 1.1: the car screen's message panels, Robot Files and travel mode, files in backups, the speeds and GPU check kept on the phone, the chip in reports, Phone lock, backups, skills and what Robot's model is told about them, the Support page, the two new permissions, the date and country a helper's first message carries, up to 5 result pages for a web search, when GitHub receives a feedback issue, and the Phone permission during a phone lock; since then: Lists, the journal of what you add while the phone is locked, the list widget and what your home-screen app sees, and what History keeps of a list; Skills connections, what each kind sends and when, the first-use card, connections and their keys in backups, and the network type Robot reads for them; Robot to Robot; what "What went online" keeps of a web search; files you attach that hold something private; and what History keeps after a list is read; Today, the Calendar tab and private events, what the calendar is read for, and what the morning brief says of your lists and note; Today and private events restore only from your own backup; Today's weather card, which goes online when you tap it, the Robot today widget and the day summary on the lock screen; news on Today, feeds on your own server and token feed addresses; 1.3: MCP servers, plans and drafts with a helper, and what stays on the phone when you export, import or sign a skill; 1.4: History, Notes and People sealed with keys of Robot's own).
 
 ## The short version
 
@@ -19,8 +19,8 @@ connections it keeps with the Robots you've paired with (below).
   ask a helper (below).
 - What you keep. Your conversations (Settings › History › Save conversations, on by default; screenshots, photos and
   screen text only if you turn on "Keep screenshots and photos in history" in Settings › Safety & privacy), your notes,
-  the people you add or let Robot learn, and your settings. They are kept in Robot's private storage on the phone. Robot
-  turns off Android backup and device-to-device transfer, so nothing is copied to a cloud, and uninstalling Robot deletes
+  the people you add or let Robot learn, and your settings. They are kept in Robot's private storage on the phone, and
+  from Robot 1.4, History (your conversations), Notes, People and conversation transcripts are also sealed there with keys of Robot's own, kept in the phone's secure hardware. Robot turns off Android backup and device-to-device transfer, so nothing is copied to a cloud, and uninstalling Robot deletes
   them. You can delete conversations in Settings › History.
 - Private events (Calendar tab › Add an event › Private event). A private event is kept only in Robot, never in the
   phone's calendar or in Android's backups. It is sealed on the phone with a key in Android's Keystore that
@@ -52,6 +52,13 @@ connections it keeps with the Robots you've paired with (below).
   shows what it would add before anything is written, keeps nothing of the file but the memories you import (encrypted
   as the rest), and then offers to delete it. History keeps which items an answer used (their ids), never their words.
   Nothing from a message becomes memory by itself.
+- Search by meaning (Settings › Memory, off until you download the search model): Robot turns each memory item into a
+  list of numbers (a vector) on the phone, so a question finds an item by what it means, not only by its words. The
+  vectors are kept beside memory, in a file sealed with memory's own key, so they can't be read on a locked phone
+  either. Private items get no vector. Deleting an item drops its vector the next time
+  Robot looks in memory; deleting the search model deletes every
+  vector. Backups don't include them: Robot makes them again from your items. Nothing of this leaves the phone.
+- Scam warnings (1.4, part of reading your messages): when a text Robot reads to you looks like a scam, Robot says a fixed line first. Code on the phone decides, on text already in working memory: no network is used, no link is opened or fetched, and nothing is blocked, deleted, sent or kept. No model writes the line. Locked, Robot says only how many conversations look like a scam.
 - Your messages (off unless you turn on Settings › Messages, and then only for the apps you choose there): Robot
   reads the messages in those apps' notifications, through Android's notification access, to read them to you,
   summarize, translate or answer them. It needs no SMS permission and reads no message history. Their words stay in the
@@ -169,6 +176,15 @@ connections it keeps with the Robots you've paired with (below).
   on the lock screen" on (off by default), your lists are encrypted with the second key instead, so Robot can read them
   aloud and tick items on the lock screen: anyone who can talk to your locked phone can then hear them. That key exists
   only while one of the two switches is on. During a phone lock for someone else, Robot reads and changes no list.
+- Your logbook (Settings › Logbook, on, empty until you log something). What you log by voice ("log that I took my
+  pills"), when it happened, and a number and unit if you said one are kept in one file in Robot's private storage,
+  encrypted with a key in your phone's secure hardware (Android Keystore, AES-256-GCM) that works only while the phone
+  is unlocked. Robot counts and answers from it on the phone; it never goes online. What you log while the phone is
+  locked ("Add while locked", on by default) waits in a small journal encrypted with a second Keystore key that works
+  while locked, and joins your logbook at unlock; questions about your logbook are answered only while the phone is
+  unlocked, and during a phone lock for someone else Robot neither adds to it nor reads it. Your logbook leaves the
+  phone only when you tap Export as a table on its page (a CSV file saved where you choose). A backup that includes the Logbook holds its entries inside the backup's own
+  encryption, never sealed with this phone's key, and a restore seals them again on the phone it lands on.
 - The list widget (Robot list, only if you add it to your home screen). It shows one list's open items, with tick
   boxes. Your home-screen app draws it, so that app and Android's widget service receive the text of those items.
   Robot takes the items off the widget when the screen goes off and puts them back when you unlock, unless "Hear and
@@ -274,12 +290,75 @@ connections it keeps with the Robots you've paired with (below).
   helpers' names, addresses or keys, the updater's repository or token, Wi-Fi or Bluetooth names, or where you are. Robot sends nothing: you send the message with
   the app you pick (below), or copy it (the clipboard copy is marked sensitive and cleared after a minute if nothing
   replaced it). The phone number you may set for "Text it" stays on the phone.
+  A screenshot goes only if you tap "Add a screenshot" on the report card: of Robot's own page, or of the app behind it,
+  from the screenshot Android already gave Robot with "Use screenshot" on (never a new one; it waits for the card in
+  Robot's own folder at most 10 minutes, and not while the phone is locked). You crop it and cover parts with solid black
+  boxes; it goes as a fresh picture holding no time, place or other details, and nothing of it is kept once the report
+  goes or the card closes.
+  Send seals the report and its screenshot into one RFB-XXXXXXXX.robotreport file that only Robot's developer can open
+  (libsignal's HPKE to the developer's public key; its fingerprint is on the card) and hands it to the app you pick: an
+  email app sees the sealed file, the subject "Robot report RFB-…" and the address hey@robot-app.ai, never what's inside.
+  The sealed copy waits in Robot's cache for that app at most 24 hours (if your phone is off then, until you next
+  unlock it). Copy, Text it, GitHub and "Send as plain text"
+  (in the card's menu) take the words only, never the screenshot. Until Robot carries the developer's key, the card
+  offers plain text only, with no screenshot.
+  Before Send, the card's Hide names and numbers switch replaces long numbers, your contacts' numbers, dates with their
+  month, times said in words, emails and addresses (your contacts' too) with [number] and [address], and the names of
+  your contacts with [name], in what you said and Robot's answer, and the card shows what will go. Places, and what Robot
+  read from your other apps, go as shown, and so do words you typed. Contacts only for now: when People is checked too,
+  this line says so. Nothing is sent until you press Send and pick an app.
+  Reports you sent (Settings › About) lists each report you handed to an app with Send: its reference, when, its kind and
+  the parts ticked, never what it said, and never which app you picked. The last 50 stay in Robot's own storage in
+  `reports_sent.json` and are not in a backup. Delete all empties the list.
+
+- Sealed History, Notes and People (1.4): each is sealed in Robot's private storage with its own key in the phone's
+  secure hardware (Android Keystore, AES-256-GCM); a second key, which works while the phone is locked, holds only what
+  is saved on the lock screen until your next unlock. Copies Robot can't open (the key removed, or damaged) are kept
+  whole on the phone, never in a backup, until you delete them. A backup holds the same things as before, inside its own
+  passphrase encryption. Robot's log carries codes and counts, never your words.
+- Ready answers (1.4): off by default. When someone in People asks when a flight lands or leaves, or when an appointment
+  or booking is, Robot reads your phone's calendar and filed tickets in Robot Files on the phone and offers a draft in a
+  notification. The question and draft stay in memory at most 30 minutes; nothing is sent until you tap Send, and never
+  while the phone is locked. Medical files, memory, notes and History are never read for it. The switch isn't in a backup.
+- Wikipedia on this phone (1.4): a copy you download in Settings › Wikipedia on this phone is kept in Robot's own
+  storage, with a small file (`wikipedia.json`) saying which copies are there. Neither is in a backup. A question is
+  answered from the copy in a part of Robot that has no internet access; the question and the articles it read are not
+  saved or logged (the log keeps numbers, check names and error names only). Delete removes the copy. An answer's card links to the
+  article online; nothing is fetched until you tap a link, and your browser opens it.
+- When did I last (1.4): the answer is made on the phone from your filed receipts and bills, your calendar (the last 3
+  years) and your notes. Nothing is sent, and your words, titles and dates are not logged. A locked phone reads none of it.
+- Undo and change (1.4): Robot remembers its last action for 2 minutes, in memory only. It is never written to a file or a
+  log (the log gets the kind only), and it is gone when Robot restarts.
+- Questions kept for when there's signal (1.4): the question's words, its search words, its language, when you asked, and
+  once it comes, the answer, are kept in one file (`later.enc`) sealed with a key in the phone's secure hardware that
+  needs the phone unlocked. It is not in a backup. At most 5 wait, each for at most 24 hours; an answer you've been shown or
+  a question you cancel is deleted. The voice log keeps codes only (kept, ran, expired, cancelled), never the words.
+- Add a step by voice (1.4): your words are matched to your connections' steps on the phone, and the step is saved only
+  when you say yes. Nothing is sent when you add it.
+- Step by step (1.4): while the steps are open it listens for "next", "back", "again", "stop" and a question about the
+  page without "hey robot", until you say stop, leave it, a call or car mode starts, or 30 minutes pass without a
+  word. A microphone mark shows only while it listens. Audio is not saved and nothing leaves the phone.
+- Read it to me (1.4): reads an article, a note or a PDF on the phone in Robot's voice and sends nothing. Its
+  notification shows Robot's own words, never the text being read.
+- Reminders for a moment (1.4): kept on the phone with your routines and in a backup; restored only from a backup
+  marked as yours.
+- Report a problem (1.4): seals your report and its screenshot into one file only Robot's developer can open, and
+  hands it to the app you pick. Nothing is sent until you send it there.
+- Ask about your screenshots (1.4): off by default. While the phone charges, Robot's model reads the new screenshots in
+  your screenshots folders on the phone and keeps a short note of each (the app or kind, what it shows, the names, dates
+  and numbers), never over the network. A screenshot that looks like it holds a code, a password or a card number is
+  skipped whole; only that it's there and its date are kept. No rule catches everything. The notes are sealed with a
+  key in the phone's secure hardware (they are added while locked, and open only unlocked), are not in a backup, and are
+  deleted when you delete the index or switch it off. An answer is not kept in History or a bug report, and never goes
+  to a helper. The voice log keeps counts only.
 
 ## When Robot goes online, and what is sent
 
-1. Downloading a model or a voice, when you tap Download (Settings › Model, Voice or Conversation). The files come
+1. Downloading a model or a voice, when you tap Download (Settings › Model, Voice or Conversation, or the search model
+   in Settings › Memory, which waits for Wi-Fi unless you turn on "Download on mobile data"). The files come
    from Hugging Face (huggingface.co and its download servers), and the fast translation engine's from Mozilla's
-   storage (storage.googleapis.com), through Android's download manager. They see your IP address and the request, whose
+   storage (storage.googleapis.com), through Android's download manager; a copy of Wikipedia you choose in Settings › Wikipedia on this phone comes from Kiwix
+   (download.kiwix.org and its mirrors), on Wi-Fi only, and is checked against its fingerprint the same way. For a copy of Wikipedia Robot asks each hop of the address (a HEAD request, no body) and downloads from the mirror it names. Kiwix sees your IP address, the file you chose and Robot's name and version, nothing about you, your questions or your phone; each address asked is listed in What went online They see your IP address and the request, whose
    User-Agent names only Robot and its version ("Robot/1.1.0"). Nothing you say or type is sent. Before a download over
    200 MB Robot asks whether to wait for Wi-Fi or download anyway. Robot checks every file against a fingerprint
    (SHA-256) before using it.
@@ -471,6 +550,27 @@ connections it keeps with the Robots you've paired with (below).
     the plan card or the draft card, after your tap. It counts against the helpers' daily budget, and the helper's own
     policy applies to what it receives. Never sent on a locked phone: Robot asks you to unlock first.
 
+15. Summarizing a web page (1.4), each time you ask, or share a link with Robot and ask for a summary; a link taken from
+    your screen waits for a tap on a card first. Robot requests the page from its own site, from the phone, so that site
+    sees your IP address; no search service is asked. The summary is made on the phone and the page's text is not saved.
+    Only when the phone's model can't make the summary (it isn't ready, or it failed), and not in Car mode or hands-free,
+    Robot may offer a helper you added. An instruction, the site's name (never the page's full address) and up to 40,000
+    characters of the page's text go to that helper only after you tap Send on a card that shows them, and the helper's
+    own policy applies to them.
+
+16. A helper searching the web through Robot (1.4; Settings › Web search › Helpers and history, "Let helpers use
+    Robot's search", on by default for a helper that can't search itself, and only while web search is set up and you
+    agreed to it, as in 7). When a helper you asked wants current facts, it calls Robot's search. The search words the
+    helper wrote go to your search service, once per answer, after the first-search card and under the checks your own
+    searches have; with "Card when a helper asks Robot to do something" on, a card shows the words first. As in 7,
+    Robot may read the result pages from the phone, so those sites see your IP address. Back to the helper go up to 2 of
+    the search service's short answers, up to 5 results (title, address, snippet) and up to 6 page passages, each
+    answer, snippet or passage cut to 1,200 characters. That web text is then the helper's company's to handle under its
+    own policy. Nothing from memory or notes is ever sent, and your conversation is not part of the search.
+
+17. Questions kept for when there's signal (1.4): up to 5 are kept on the phone, each for up to 24 hours. When you're
+    back online one search runs, as in 7, and Robot deletes its copy once you've seen the answer.
+
 Robot to Robot, off until you turn it on (Settings › Robot to Robot). Your Robot and the Robots of people you pair with
 can ask each other things, end-to-end encrypted, with no Robot server in between. While it's on, Robot stays reachable and
 connects to those Robots without you starting anything, so it can deliver requests and answer the ones you set to Answer on
@@ -498,6 +598,7 @@ of a public relay. What each sees:
   line, see your IP address too: they tell your phone its own public address.
 - Built-in obfs4, or a bridge of your own: the bridge sees your IP address and that you use Tor, as a first relay does.
   Your network sees only random-looking bytes.
+- A bridge of your own at an address on your home network (1.4): Robot reaches it only over Wi-Fi, Ethernet or a VPN that reaches it, and sends nothing to it over mobile data. While such a bridge, or a bridge line Robot can't read for sure, is saved, a relay inside Robot, on the phone only, carries Tor's connection to every saved bridge except Snowflake ones (your Snowflake lines aren't used beside it). It lets Tor through only to where your saved lines lead, and nothing for a line it can't read for sure; it keeps nothing; and the bridge Tor uses sees your IP address, as any bridge does. When you remove or change those lines, or choose another kind of bridge, the relay stops with Tor: at once while Tor is still connecting, within half a minute while Robot to Robot's screens are open, otherwise the next time Robot uses Tor.
 - Automatic: Tor on its own first, so your network can see Tor being tried; then Snowflake, the built-in obfs4 bridges,
   and last meek, where a large web service (CDN77) sees your IP address and that you use meek.
 
@@ -571,9 +672,22 @@ network permissions are granted at install; GrapheneOS lets you turn the network
 - Network (at install): the online features above.
 - Network state (at install, 1.1): lets an app see whether the phone is online. Android requires it before a scheduled
   job can wait for the network, as the daily update check, the download on Wi-Fi and Termux's weekly check do. Robot
-  uses it for those jobs and for one thing more: before a skill reaches a connection on your home
-  network, Robot checks only whether the phone is on Wi-Fi, Ethernet or a VPN, so it can say "Robot can't reach your
-  Home Assistant off your home network." instead of trying. It never reads the network's name or address.
+  uses it for those jobs and for three things more:
+  - Before a skill reaches a connection on your home network, Robot checks only whether the phone is on Wi-Fi, Ethernet
+    or a VPN, so it can say "Robot can't reach your Home Assistant off your home network." instead of trying.
+  - Downloads wait while you roam (1.4). Every file Robot downloads (models, voices, the translation pack, the search
+    model, Wikipedia) tells Android not to use a roaming network, even with "Download on mobile data" on. Android holds
+    such a download, and while it is held Robot asks whether the network now is roaming, only to write "waiting until
+    the phone isn't roaming" on that screen instead of a bare wait. The answer is a yes or no, used for that line and
+    not logged, kept or sent. Whether a download waits for Wi-Fi is not read by Robot at all: "Wait for Wi-Fi" asks
+    Android to hold the download until a network that isn't metered.
+  - Robot to Robot (1.4). The part of Robot that pairs with another phone asks Android which networks the phone is on
+    (Wi-Fi, Ethernet, a VPN, mobile data) and the phone's own addresses on them, and is told when the network changes.
+    It listens for the other phone only on Wi-Fi, Ethernet or a VPN, never on mobile data. These addresses are the
+    only network addresses Robot reads, and they leave the phone in one case: in a Private pairing, your current
+    addresses on a shared network go to the person you paired with (Robot to Robot, below). Nothing is logged or kept.
+  Robot never reads the network's name. Apart from Robot to Robot, it reads no address, and nothing about the
+  network leaves the phone.
 - Biometric prompt (at install, 1.1): so travel mode can ask for your PIN, pattern or password on Android's own confirm
   screen. Robot accepts only those there, never a fingerprint or face, and never sees what you enter.
 - Hide overlay windows (at install, no prompt): so the sheet Robot opens to listen hides other apps' floating windows while it
@@ -581,6 +695,8 @@ network permissions are granted at install; GrapheneOS lets you turn the network
 - Install unknown apps (optional, in Android's settings, which Settings › About › Updates opens): so Robot can install its own
   updates. It installs nothing else. "Install updates without asking" (off by default) uses a permission granted at
   install that lets Robot ask Android to skip its confirmation for Robot's own update.
+
+1.4 adds no permission to the manifest. Ask about your screenshots asks for access to your photos, only when you switch it on.
 
 ## Children
 

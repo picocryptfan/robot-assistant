@@ -78,4 +78,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = 'robot'
-include ':core', ':brain', ':voice', ':helpers', ':mt', ':link', ':app'
+include ':core', ':brain', ':voice', ':helpers', ':mt', ':link', ':wiki', ':app'

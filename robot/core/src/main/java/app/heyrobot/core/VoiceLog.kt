@@ -21,6 +21,8 @@ import app.heyrobot.core.output.AnswerCode
 import app.heyrobot.core.output.CardVoiceCode
 import app.heyrobot.core.output.HoldWhy
 import app.heyrobot.core.output.SessionKind
+import app.heyrobot.core.web.PageSumEnd
+import app.heyrobot.core.web.PageSummaryRouter
 import app.heyrobot.core.web.WebLogNumbers
 import app.heyrobot.core.termux.TermuxExitBucket
 import app.heyrobot.core.termux.TermuxFailure
@@ -387,6 +389,8 @@ enum class VoiceEvent(val id: Int) {
     MUSIC_NOW(323),
     /** E2: a sum worked out by code from your words. a = [app.heyrobot.core.sums.SumKind], b = [app.heyrobot.core.sums.SumResult]. */
     SUMS(324),
+    /** Spoken log: a logbook turn. a = [app.heyrobot.core.logbook.LogbookKind], b = [app.heyrobot.core.logbook.LogbookResult]. */
+    LOGBOOK(390),
     /** E2: the model's calculate tool, worked out by code. a = [app.heyrobot.core.sums.SumResult]. */
     CALC_TOOL(325),
     /** E3: Settings › Safety & privacy › What went online opened. a = 1 while its record is on. */
@@ -421,6 +425,11 @@ enum class VoiceEvent(val id: Int) {
      * used: a = their characters (never the words), b = audio ms of the last pass, c = audio ms behind the words shown.
      */
     STT_USED_SHOWN(350),
+    /**
+     * 1.3, point and read: a reading ended. a = [app.heyrobot.core.read.ReadCode], b = pictures sent (1, or 4 tiles),
+     * c = seconds. Never a word read, its kind or its language.
+     */
+    READ_ALOUD(360),
     // Conversation mode (0.5.0, docs/conversation-mode.md 8): 100 to 119. Counts and codes only, never a word said.
     /** A conversation session started: a = [ConvMode], b = [ConvEntry], c = 1 if the phone was locked. */
     CONV_START(100),
@@ -486,6 +495,8 @@ enum class VoiceEvent(val id: Int) {
     MSG_GUARD(198),
     /** Robot didn't read your messages: a = [app.heyrobot.core.messages.MsgRefusal]. */
     MSG_REFUSED(199),
+    /** 1.3, "What did I miss?" answered (190 to 199 are full): a = [app.heyrobot.core.messages.MissedCode], b and c as it says. */
+    MISSED_ANSWER(353),
     /** Settings › Model (0.4.1; events 130 to 139): you chose a model. a = [ModelCode] now, b = [ModelCode] before. */
     MODEL_CHOSEN(130),
     /** A model loaded: a = [ModelCode], b = [BackendCode], c = ms the load took. */
@@ -604,6 +615,8 @@ enum class VoiceEvent(val id: Int) {
     WEB_FAILED(163),
     /** 1.0: a search opened in your browser: a = core web BrowserEngine.code, b = 1 your words or 2 the model's, c = 1 when Robot's own was off. */
     BROWSER_SEARCH(164),
+    /** "Summarize this page" (W4): a = core web PageSumEnd, b = where the page came from (PageSummaryRouter.From ordinal + 1, 0 none) × 10 + parts summarized, c = seconds. */
+    PAGE_SUMMARY(165),
     /** 0.9, the Termux agent (events 170 to 179, core termux TermuxLog): a run sent. a = [TermuxRunKind], b = its time limit in s. */
     TERMUX_SENT(170),
     /** A run ended: a = [TermuxExitBucket], b = ms, c = TermuxLog.doneC (the output's size bucket in KB × 2, + 1 when it was cut). */
@@ -779,6 +792,7 @@ enum class PlaybackCode(override val id: Int, override val title: String) : LogC
 enum class TtsStop(override val id: Int, override val title: String) : LogCode {
     DONE(1, "done"), STOP_WORD(2, "“stop”"), TAP(3, "tap"), VOLUME_KEY(4, "volume key"), NEW_QUESTION(5, "new question"),
     BUTTON(6, "stop button"), CLOSED(7, "panel closed"), WAKE(8, "wake word"), TEST(9, "test"), OTHER(10, "other"), MUTED(11, "spoken replies turned off"),
+    EARBUD(12, "earbud button"), COPY(13, "copy's answer cut short"),
 }
 
 enum class NoQuestion(override val id: Int, override val title: String) : LogCode {
@@ -893,6 +907,7 @@ enum class LangCode(override val id: Int, override val title: String) : LogCode 
 /** Why a transcript record couldn't be saved. */
 enum class IoCode(override val id: Int, override val title: String) : LogCode {
     NO_SPACE(1, "storage full"), WRITE(2, "the write failed"), MISSING(3, "the folder was missing"), OTHER(4, "another error"),
+    KEY(5, "the transcripts' key couldn't be used"),
 }
 
 /** The microphone during a conversation. */
@@ -1295,6 +1310,7 @@ object VoiceLogText {
                 (if (c == 1) " · in Settings" else "")
             VoiceEvent.MUSIC_NOW -> "What's playing: " + code(app.heyrobot.core.music.MusicNowCode.entries, a)
             VoiceEvent.SUMS -> "Sums: " + code(app.heyrobot.core.sums.SumKind.entries, a) + " · " + code(app.heyrobot.core.sums.SumResult.entries, b)
+            VoiceEvent.LOGBOOK -> "Logbook: " + code(app.heyrobot.core.logbook.LogbookKind.entries, a) + " · " + code(app.heyrobot.core.logbook.LogbookResult.entries, b)
             VoiceEvent.CALC_TOOL -> "Sums, the model's calculate: " + code(app.heyrobot.core.sums.SumResult.entries, a)
             VoiceEvent.ONLINE_PAGE -> "What went online: the page opened" + (if (a == 1) "" else " · record off")
             VoiceEvent.ONLINE_ASKED -> "What went online: asked by voice" + (if (a == 1) " · locked" else "")
@@ -1306,6 +1322,7 @@ object VoiceLogText {
                 code(app.heyrobot.core.tts.LoadBucket.entries, b)
             VoiceEvent.ASK_SHARED -> "Ask Robot: " + code(app.heyrobot.core.ask.SharedKind.entries, a) + " · " + code(app.heyrobot.core.ask.AskShown.entries, b)
             VoiceEvent.ASK_TRANSCRIBE -> "Ask Robot: a voice message " + ASK_SECONDS.getOrElse(a) { "?" } + " · " + code(app.heyrobot.core.ask.AskHeard.entries, b)
+            VoiceEvent.READ_ALOUD -> "Point and read: " + code(app.heyrobot.core.read.ReadCode.entries, a) + " · " + count(b, "picture") + " · " + secs(c * 1000)
             VoiceEvent.ASK_REFUSED -> "Ask Robot took nothing: " + code(app.heyrobot.core.ask.AskRefusal.entries, a) +
                 (if (b > 0) " · " + code(app.heyrobot.core.ask.SharedKind.entries, b) else "")
             VoiceEvent.SKILL_PICK -> "Skills and the model: " + code(app.heyrobot.core.skills.SkillPickCode.entries, a) + " · $b" + (if (c == 1) " · named" else "")
@@ -1364,7 +1381,7 @@ object VoiceLogText {
             VoiceEvent.MT_LOAD -> if (b == 1) "Fast translation loaded in $a ms ($c directions)" else "Fast translation didn't load ($a ms): " + code(MtError.entries, c)
             VoiceEvent.CONV_REHEARD -> "Segment heard again in two halves (" + secs(a) + " of speech): $b words, then $c"
             VoiceEvent.MSG_READ, VoiceEvent.MSG_SUMMARY, VoiceEvent.MSG_TRANSLATE, VoiceEvent.MSG_REPLY, VoiceEvent.MSG_REPLY_CARD, VoiceEvent.MSG_MARK,
-            VoiceEvent.MSG_HIDDEN, VoiceEvent.MSG_LISTENER, VoiceEvent.MSG_GUARD, VoiceEvent.MSG_REFUSED -> app.heyrobot.core.messages.MessageLog.describe(e)
+            VoiceEvent.MSG_HIDDEN, VoiceEvent.MSG_LISTENER, VoiceEvent.MSG_GUARD, VoiceEvent.MSG_REFUSED, VoiceEvent.MISSED_ANSWER -> app.heyrobot.core.messages.MessageLog.describe(e)
             VoiceEvent.FEEDBACK_OPENED -> "Send feedback opened from " + code(FeedbackEntry.entries, a) + ": " + code(FeedbackKind.entries, b)
             VoiceEvent.FEEDBACK_SHARED -> "Feedback (" + code(FeedbackKind.entries, a) + ") handed to the share sheet: " + sent(b, c)
             VoiceEvent.FEEDBACK_COPIED -> "Feedback (" + code(FeedbackKind.entries, a) + ") copied: " + sent(b, c)
@@ -1412,6 +1429,9 @@ object VoiceLogText {
             VoiceEvent.WEB_FAILED -> "Web search failed: " + WebLogNumbers.fail(a) + (if (b > 0) " (" + WebLogNumbers.service(b) + ")" else "")
             VoiceEvent.BROWSER_SEARCH -> "Search opened in your browser: " + WebLogNumbers.engine(a) + (if (b == 2) " · the model's words" else " · your words") +
                 if (c == 1) " · web search off" else ""
+            VoiceEvent.PAGE_SUMMARY -> "Page summary: " + (PageSumEnd.entries.firstOrNull { it.code == a }?.name?.lowercase()?.replace('_', ' ') ?: "code $a") +
+                (if (b / 10 > 0) " · from " + (PageSummaryRouter.From.entries.getOrNull(b / 10 - 1)?.name?.lowercase()?.replace('_', ' ') ?: "?") else "") +
+                " · ${b % 10} parts · $c s"
         }
     }
 

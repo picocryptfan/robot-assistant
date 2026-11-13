@@ -160,6 +160,19 @@ object RoutineGate {
         ToolName.ASK_ROBOT -> StepClass.NEVER
     }
 
+    /**
+     * auto-open-plan §3: a triggered open step runs without its Ready card only for an app its save card ticked ([Routine.opens],
+     * by package), at Just do it, on an unlocked phone with the screen on: nothing opens over the lock screen or in a pocket.
+     * The runner checks again that the app it finds is still that package.
+     */
+    fun opens(step: RoutineStep, locked: Boolean, screenOn: Boolean, routine: Routine, settings: RobotSettings): Boolean {
+        val open = (step as? RoutineStep.Tool)?.action as? Action.OpenApp ?: return false
+        // routines.json keeps no key: a step as saved goes on with any tick, and the runner opens only a ticked package it finds.
+        val pkg = open.key?.substringBefore('/')?.takeIf { it.isNotBlank() }
+        val ticked = if (open.key == null) routine.opens.isNotEmpty() else pkg != null && pkg in routine.opens
+        return !locked && screenOn && ticked && settings.approval(ToolName.OPEN_APP) == Approval.AUTO
+    }
+
     /** The steps the editor offers ("Do"): everything but [StepClass.NEVER]. */
     fun offered(tool: ToolName): Boolean = classOf(tool) != StepClass.NEVER
 
@@ -177,13 +190,13 @@ object RoutineGate {
      *   the brief follows the lock level, a fixed sentence counts as personal.
      */
     fun decide(step: RoutineStep, origin: RunOrigin, locked: Boolean, routine: Routine, settings: RobotSettings,
-        rs: RoutineSettings = RoutineSettings()): StepGo {
+        rs: RoutineSettings = RoutineSettings(), screenOn: Boolean = false): StepGo {
         val cls = classOf(step)
         if (cls == StepClass.NEVER) return StepGo.NEVER
         val tool = step.tool
         if (tool != null && settings.approval(tool) == Approval.OFF) return StepGo.DISABLED
         if (origin != RunOrigin.UNATTENDED) return asked(step, locked, settings, rs)
-        if (cls == StepClass.NEEDS_YOU) return StepGo.READY
+        if (cls == StepClass.NEEDS_YOU) return if (opens(step, locked, screenOn, routine, settings)) StepGo.RUN else StepGo.READY
         if (locked && (!rs.runLocked || routine.lock == RoutineLock.WAIT_FOR_UNLOCK)) return StepGo.WAIT_UNLOCK
         if (tool != null && settings.approval(tool) == Approval.ASK) return StepGo.READY
         return when (cls) {

@@ -5,6 +5,9 @@ import android.content.Context
 import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
 import app.heyrobot.core.feedback.FeedbackCommand
+import app.heyrobot.core.feedback.FeedbackKind
+import app.heyrobot.core.feedback.ReportTurn
+import app.heyrobot.ui.settings.toReportShot
 import app.heyrobot.core.i18n.PanelStrings
 import app.heyrobot.core.i18n.Phrase
 import app.heyrobot.core.i18n.UiLabel
@@ -32,6 +35,14 @@ internal class PanelFeedback(private val port: Port) {
         fun unlockFirst(p: Phrase): Phrase
         /** Robot's own words as the reply, in its bubble and voice ([spoken]: as the voice says it), and the reply ends. */
         fun localReply(replyId: String, text: Phrase, spoken: Phrase)
+        /** 1.4: the newest finished turn, not [replyId] (the one being answered now), for the report card. */
+        fun lastTurn(replyId: String): ReportTurn?
+        /** RP4: "Use screenshot", read now (null: Android wouldn't say). */
+        fun useScreenshot(): Boolean? = null
+        /** RP4: the assist screenshot held while the panel is open, and the app it shows; never a new one. */
+        fun heldShot(): Pair<android.graphics.Bitmap, String?>? = null
+        /** RP3: a notice in the panel (a tap has no reply to answer in). */
+        fun notify(p: Phrase)
         /** The turn opened an app: the panel goes. */
         suspend fun leaveForApp()
     }
@@ -48,10 +59,42 @@ internal class PanelFeedback(private val port: Port) {
         val ctx = port.ctx
         val locked = port.locked()
         VoiceLog.add(VoiceEvent.FEEDBACK_ASKED, c.kind, if (c.text != null) 1 else 0, if (locked) 1 else 0)
-        if (locked) return localReply(replyId, port.unlockFirst(PanelStrings.feedbackUnlock("page" to UiStrings.inSettings(UiStrings.about, UiStrings.sendFeedback))),
-            port.unlockFirst(PanelStrings.feedbackUnlockSpoken()))
-        withContext(Dispatchers.IO) { FeedbackFiles.prefill(ctx, c.kind, c.text) }
+        // 1.4: a bug keeps the turn before it for the card, 10 minutes (where to find it in History, fix-seal-14). Locked, Phone lock's sentence, and
+        // the card waits under the lock screen (Robot's page never shows over it): it opens once you unlock.
+        val turn = if (c.kind == FeedbackKind.BUG) port.lastTurn(replyId) else null
+        // Your words after the phrase stay unkept while locked, as before.
+        withContext(Dispatchers.IO) { FeedbackFiles.keepTurn(ctx, turn); if (!locked) FeedbackFiles.prefill(ctx, c.kind, c.text) }
+        if (locked) {
+            // With a turn kept, the card waits under the lock screen once it's launched: unlocking opens it, so nothing to say again.
+            val waits = turn != null && host?.launch(FeedbackFiles.openIntent(ctx, c.kind, turn)) == true
+            if (waits) localReply(replyId, port.unlockFirst(PanelStrings.feedbackUnlockOpens()))
+            else localReply(replyId, port.unlockFirst(PanelStrings.feedbackUnlock("page" to UiStrings.inSettings(UiStrings.about, UiStrings.sendFeedback))),
+                port.unlockFirst(PanelStrings.feedbackUnlockSpoken()))
+            return
+        }
         localReply(replyId, PanelStrings.openingFeedback("page" to UiLabel(UiStrings.sendFeedback)))
-        if (host?.launch(FeedbackFiles.openIntent(ctx, c.kind)) == true) port.leaveForApp()
+        if (host?.launch(FeedbackFiles.openIntent(ctx, c.kind, turn)) == true) port.leaveForApp()
+    }
+
+    /**
+     * RP3: the bug button or "Report a problem with this answer": the card opens with [turn]. Locked, as the phrases: the
+     * turn waits 10 minutes, the card under the lock screen, and Phone lock's sentence is said once, in a notice.
+     */
+    suspend fun report(turn: ReportTurn) {
+        val ctx = port.ctx
+        val locked = port.locked()
+        VoiceLog.add(VoiceEvent.FEEDBACK_ASKED, FeedbackKind.BUG, 0, if (locked) 1 else 0)
+        // RP4: the screenshot already held waits for the card beside the turn, only with "Use screenshot" on and unlocked.
+        val shot = if (app.heyrobot.core.feedback.ReportShot.mayKeep(port.useScreenshot(), locked)) port.heldShot() else null
+        // fix-bug-card-14-b: it goes with the turn's hand, in memory only (never a file).
+        val png = withContext(Dispatchers.IO) {
+            FeedbackFiles.keepTurn(ctx, turn)
+            if (!locked) FeedbackFiles.prefill(ctx, FeedbackKind.BUG, null)
+            shot?.first?.toReportShot()?.png()
+        }
+        val opened = host?.launch(FeedbackFiles.openIntent(ctx, FeedbackKind.BUG, turn, png, shot?.second)) == true
+        if (locked) port.notify(port.unlockFirst(if (opened) PanelStrings.feedbackUnlockOpens()
+            else PanelStrings.feedbackUnlock("page" to UiStrings.inSettings(UiStrings.about, UiStrings.sendFeedback))))
+        else if (opened) port.leaveForApp()
     }
 }

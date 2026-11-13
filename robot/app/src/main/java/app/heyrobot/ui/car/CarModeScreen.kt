@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.ui.car
 
+import androidx.compose.ui.platform.LocalContext
+import app.heyrobot.sys.AppLanguage
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -132,6 +134,10 @@ data class CarScreenState(
     val back: CarBeside.Back = CarBeside.Back.NONE,
     /** The fourth button's app's own icon, when it's set to an app. */
     val fourthIcon: Bitmap? = null,
+    /** The bottom screen may not show its widget now: the phone is locked, or Phone lock closes the widget's app. */
+    val widgetOff: Boolean = false,
+    /** The bottom screen's swap has put the media player in the widget's place. */
+    val swapped: Boolean = false,
     /** The Maps button's swap (CarBeside.swap): your music app, while your map is beside this screen; null: Maps. */
     val swap: CarMusicChoice? = null,
     /** The icon of the app [swap] opens. */
@@ -159,6 +165,10 @@ class CarScreenActions(
     val pick: (CarSheet, CarAppRow) -> Unit = { _, _ -> },
     /** Settings › Car mode, from the Apps list with none kept. */
     val addApps: () -> Unit = {},
+    /** The bottom screen's swap: the widget or the media player. */
+    val swapBottom: () -> Unit = {},
+    /** The widget's own view, filling [Modifier]; hidden, not dropped, while [Boolean] is false (a turn takes the slot). */
+    val widget: @Composable (Modifier, Boolean) -> Unit = { _, _ -> },
 )
 
 /** The page's edge, the gap between areas and a panel's own padding; the corner is Settings' group corner. */
@@ -260,23 +270,32 @@ private fun LargePanel(large: CarLarge, s: CarScreenState, a: CarScreenActions, 
 
 @Composable
 private fun InfoPanel(s: CarScreenState, a: CarScreenActions, modifier: Modifier) {
-    val info = s.layout.infoNow(s.beside)
+    val info = s.layout.slotNow(s.beside, s.widgetOff, phoneLockCloses = false, swapped = s.swapped)
+    val swaps = s.layout.swapsBottom(s.beside, s.widgetOff, phoneLockCloses = false)
     val media = info == CarInfo.MEDIA && s.turn == null && s.said.isEmpty()
     BoxWithConstraints(modifier) {
     Panel(Modifier.fillMaxSize(), s.music.art.takeIf { media }, if (media && s.beside && maxHeight < PanelStacks + Inner * 2) InnerTight else Inner) {
         Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(Gap), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.CenterStart) {
                 val turn = s.turn
+                // Your words, Robot's reply and a question's Yes and Cancel take the slot; the widget waits under them.
+                if (info == CarInfo.WIDGET) a.widget(Modifier.fillMaxSize(), turn == null && s.said.isEmpty())
                 when {
                     turn != null -> TurnLines(turn, a)
                     s.said.isNotEmpty() -> WholeWords(s.said, MaterialTheme.colorScheme.onSurface, BodySize, BodyLine, 2, weight = FontWeight.Medium)
                     info == CarInfo.MEDIA -> MediaSmall(s.music, a, s.beside)
                     info == CarInfo.DIRECTIONS -> DirectionsInfo(s, a)
+                    info == CarInfo.WIDGET -> {}
                     else -> LatestMessage(s.messages, a)
                 }
             }
             // The way back to your map joins this panel when the fourth button isn't the one that can become it.
             if (s.back == CarBeside.Back.INFO && (info != CarInfo.DIRECTIONS || s.turn != null || s.said.isNotEmpty())) Tile(mapLabel(s), RIcons.Maps, a.maps, Modifier.width(Target))
+            // The bottom screen's swap names what it brings back: the media player, or the widget's app.
+            if (swaps) {
+                val toWidget = info != CarInfo.WIDGET
+                Tile(if (toWidget) s.layout.widget?.app?.label.orEmpty() else stringResource(R.string.car_panel_media), if (toWidget) RIcons.Apps else RIcons.Play, a.swapBottom, Modifier.width(Target))
+            }
         }
     }
     }
@@ -625,6 +644,8 @@ private fun MessageLine(l: CarMessageLine, locked: Boolean, lines: Int) {
     val c = MaterialTheme.colorScheme
     Text(l.who, color = c.onSurface, fontSize = BodySize, lineHeight = BodyLine, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
     val text = l.text
+    val scam = l.scam?.render(AppLanguage.langs(LocalContext.current)) // the same scam line as every other reading
+    if (text != null && scam != null) Text(scam, color = c.error, fontSize = SmallSize, lineHeight = BodyLine, maxLines = 2, overflow = TextOverflow.Ellipsis)
     if (text != null) WholeWords(text, c.onSurface, BodySize, BodyLine, lines)
     else Text(stringResource(if (locked) R.string.car_message_locked else R.string.car_message_no_text), color = c.onSurfaceVariant, fontSize = SmallSize, lineHeight = BodyLine, maxLines = 1, overflow = TextOverflow.Ellipsis)
 }

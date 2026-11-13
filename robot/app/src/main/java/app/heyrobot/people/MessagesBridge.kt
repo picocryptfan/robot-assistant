@@ -70,6 +70,10 @@ class MessagesBridge : Service() {
                 // 0.8, the brief: counts by app, locked or not (never who or what); nothing while Settings › Messages is off.
                 MessagesProtocol.REQ_UNREAD -> app.heyrobot.core.messages.MessageUnread.toJson(
                     app.heyrobot.core.messages.MessageUnread.count(MessageTap.buffer.threads(System.currentTimeMillis()), MessagesStore.current(applicationContext).settings))
+                MessagesProtocol.REQ_MISSED -> missed()
+                MessagesProtocol.REQ_HOLD -> app.heyrobot.core.messages.HoldPlan.askOf(req)?.let { ask ->
+                    app.heyrobot.core.messages.HoldPlan.toJson(HoldTap.start(applicationContext, ask, app.heyrobot.lock.PhoneLockNow.someoneElse(applicationContext)))
+                } ?: return
                 else -> return
             }
         } catch (t: Throwable) {
@@ -82,6 +86,16 @@ class MessagesBridge : Service() {
     }
 
     private fun locked(): Boolean = Assistant.locked(applicationContext)
+
+    /** 1.3, "What did I miss?": counts only while locked or someone else uses the phone (then the mark stays). */
+    private fun missed(): String {
+        val ctx = applicationContext
+        val access = NotificationAccess.granted(ctx)
+        if (!access) MissedTap.drop()
+        val countsOnly = locked() || app.heyrobot.lock.PhoneLockNow.someoneElse(ctx)
+        return app.heyrobot.core.messages.MissedSummary.toJson(app.heyrobot.core.messages.MissedSummary.answer(
+            MissedTap.held, app.heyrobot.sys.MissedStore.current(ctx), access, countsOnly, System.currentTimeMillis()) { if (MissedTap.installed(ctx, it)) MissedTap.label(ctx, it) else "" })
+    }
 
     private fun replyLang(person: String, lang: app.heyrobot.core.i18n.Lang?) = setReplyLang(applicationContext, person, lang)
 

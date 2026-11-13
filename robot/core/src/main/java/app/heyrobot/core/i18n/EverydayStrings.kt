@@ -205,6 +205,8 @@ object EverydayStrings : Strings("everyday", area = "everyday") {
     val onlineKConnection = s("online_k_connection", "one of your connections", "une de tes connexions")
     val onlineKLink = s("online_k_link", "Robot to Robot", "Robot à Robot")
     val onlineKNews = s("online_k_news", "the news", "les nouvelles")
+    val onlineKReport = s("online_k_report", "a report you sent", "un rapport que tu as envoyé")
+    val onlineSReportsSent = s("online_s_reports_sent", "Reports you sent", "Rapports que tu as envoyés")
     // What a row was for (NetPurpose), on the page.
     val onlinePWeather = s("online_p_weather", "Weather forecast", "Prévisions météo")
     val onlinePWeatherPlace = s("online_p_weather_place", "Finding the place you named, for the weather", "Trouver le lieu nommé, pour la météo")
@@ -217,6 +219,8 @@ object EverydayStrings : Strings("everyday", area = "everyday") {
     val onlinePModel = s("online_p_model", "Model download", "Téléchargement du modèle")
     val onlinePVoice = s("online_p_voice", "Voice download", "Téléchargement de voix")
     val onlinePTranslation = s("online_p_translation", "Translation engine download", "Téléchargement du moteur de traduction")
+    val onlinePWikipedia = s("online_p_wikipedia", "Wikipedia download", "Téléchargement de Wikipédia")
+    val wikiOnPhone = s("wiki_on_phone", "Wikipedia on this phone", "Wikipédia sur ce téléphone")
     val onlinePUpdateCheck = s("online_p_update_check", "Update check", "Vérification des mises à jour")
     val onlinePUpdateDownload = s("online_p_update_download", "Update download", "Téléchargement de la mise à jour")
     val onlinePTermux = s("online_p_termux", "Termux update check", "Vérification des mises à jour de Termux")
@@ -224,6 +228,9 @@ object EverydayStrings : Strings("everyday", area = "everyday") {
     val onlinePLinkDirect = s("online_p_link_direct", "Another phone on your network (Robot to Robot)", "Un autre téléphone sur ton réseau (Robot à Robot)")
     val onlinePLinkPush = s("online_p_link_push", "A push server (Robot to Robot)", "Un serveur push (Robot à Robot)")
     val onlinePFeed = s("online_p_feed", "A news feed you added", "Un fil de nouvelles que tu as ajouté")
+    val onlinePReportBug = s("online_p_report_bug", "A bug report handed to another app", "Un rapport de bogue remis à une autre appli")
+    val onlinePReportIdea = s("online_p_report_idea", "An idea handed to another app", "Une idée remise à une autre appli")
+    val onlinePReportOther = s("online_p_report_other", "A message handed to another app", "Un message remis à une autre appli")
     val onlinePLinkTor = s("online_p_link_tor", "Tor network (Robot to Robot)", "Réseau Tor (Robot à Robot)")
     // What allowed it (NetCause).
     val onlineCAsked = s("online_c_asked", "You asked", "Tu l'as demandé")
@@ -241,10 +248,13 @@ object EverydayStrings : Strings("everyday", area = "everyday") {
     val onlineHIp = s("online_h_ip", "an address typed as numbers", "une adresse en chiffres")
     val onlineHUnknown = s("online_h_unknown", "a server", "un serveur")
     val onlineHTor = s("online_h_tor", "the Tor network", "le réseau Tor")
+    val onlineHApp = s("online_h_app", "another app", "une autre appli")
     // The page's lines with counts (§5.4, §5.5).
     val onlineHeader = plural("online_header", "n", Plural("{day}: {n} connection to {servers}.", "{day}: {n} connections to {servers}."),
         Plural("{day} : {n} connexion vers {servers}.", "{day} : {n} connexions vers {servers}."))
     val onlineServers = plural("online_servers", "n", Plural("{n} server", "{n} servers"), Plural("{n} serveur", "{n} serveurs"))
+    val onlineHanded = plural("online_handed", "n", Plural("{n} report handed to another app.", "{n} reports handed to another app."),
+        Plural("{n} rapport remis à une autre appli.", "{n} rapports remis à une autre appli."))
     val onlineHeaderNone = s("online_header_none", "{day}: no connections.", "{day} : aucune connexion.")
     val onlineTodayTitle = s("online_today_title", "Today", "Aujourd'hui")
     val onlineBytes = s("online_bytes", "{out} out · {in} in", "{out} envoyés · {in} reçus")
@@ -314,4 +324,34 @@ object EverydayStrings : Strings("everyday", area = "everyday") {
     val mapsPage = s("maps_page", "Maps", "Cartes")
     val mapsReplaced = s("maps_replaced", "Your maps app was replaced by an app signed by someone else. Pick it again in {page}.",
         "Ton appli de cartes a été remplacée par une appli signée par quelqu'un d'autre. Choisis-la de nouveau dans {page}.")
+
+    // Signal later (docs/plans/signal-later-plan.md): a web search kept for when there's a connection.
+    val laterKept = s("later_kept", "No connection for that now: I'll keep it and look it up once there's one, if that's within a day.",
+        "Pas de connexion pour \u00e7a en ce moment : je garde ta question et je chercherai d\u00e8s qu'il y en aura une, si c'est d'ici un jour.")
+    val laterFull = s("later_full", "{n} questions are already waiting for a connection: cancel one first.",
+        "{n} questions attendent d\u00e9j\u00e0 une connexion : annules-en une d'abord.")
+    val laterNotKept = s("later_not_kept", "I couldn't keep that question on the phone just now.", "Je n'ai pas pu garder cette question sur le t\u00e9l\u00e9phone pour l'instant.")
+    val laterNone = s("later_none", "Nothing is waiting for a connection.", "Rien n'attend de connexion.")
+    val laterHead = plural("later_head", "n", Plural("{n} question is waiting for a connection:", "{n} questions are waiting for a connection:"),
+        Plural("{n} question attend une connexion :", "{n} questions attendent une connexion :"))
+    val laterItem = s("later_item", "{q}, asked at {t}", "{q}, demand\u00e9e \u00e0 {t}")
+    val laterItemReady = s("later_item_ready", "{q}, asked at {t}: back online, it needs your OK", "{q}, demand\u00e9e \u00e0 {t} : de retour en ligne, elle attend ton accord")
+    val laterCancelled = plural("later_cancelled", "n", Plural("Cancelled {n} question.", "Cancelled {n} questions."),
+        Plural("J'ai annul\u00e9 {n} question.", "J'ai annul\u00e9 {n} questions."))
+    val laterNoMatch = s("later_no_match", "No waiting question matches that.", "Aucune question en attente ne correspond.")
+    val laterChannel = s("later_channel", "Questions kept for a connection", "Questions gard\u00e9es pour une connexion")
+    val laterAnswerTitle = s("later_answer_title", "Answer to your question from {t}", "R\u00e9ponse \u00e0 ta question de {t}")
+    val laterAskTitle = s("later_ask_title", "Back online: your question from {t} needs your OK", "De retour en ligne : ta question de {t} attend ton accord")
+    val laterAskText = s("later_ask_text", "Open Robot to send it: {q}", "Ouvre Robot pour l'envoyer : {q}")
+    val laterPublic = s("later_public", "Robot has news about your question", "Robot a du nouveau pour ta question")
+    val laterLabel = s("later_label", "While you were out of range", "Pendant que tu \u00e9tais hors r\u00e9seau")
+    val laterAsked = s("later_asked", "You asked at {t}: {q}", "Tu as demand\u00e9 \u00e0 {t} : {q}")
+    val laterExpired = s("later_expired", "Your question from {t} waited a day, so I dropped it.",
+        "Ta question de {t} a attendu un jour, alors je l'ai abandonn\u00e9e.")
+    val laterUnlock = s("later_unlock", "Unlock your phone first: questions kept for a connection stay private.",
+        "D\u00e9verrouille ton t\u00e9l\u00e9phone d'abord : les questions gard\u00e9es pour une connexion restent priv\u00e9es.")
+    val laterCant = s("later_cant", "I can only keep a web search for when there's a connection, so I can't hold that one. To keep it, start with “look up”.",
+        "Je peux seulement garder une recherche web pour quand il y aura une connexion, alors je ne peux pas garder celle-l\u00e0. Pour la garder, commence par « cherche ».")
+    val laterUnfinished = s("later_unfinished", "The search couldn't finish.", "La recherche n'a pas pu finir.")
+    val laterNothingFound = s("later_nothing_found", "The search found nothing.", "La recherche n'a rien trouv\u00e9.")
 }

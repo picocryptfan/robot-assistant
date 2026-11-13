@@ -190,4 +190,39 @@ object MessageStrings : Strings("msg", area = "messages") {
     val chatDidntOpen = s("chat_didnt_open", "The chat didn't open in {appName}.", "La conversation ne s'est pas ouverte dans {appName}.")
     val draftOpened = s("draft_opened", "Opened a draft: nothing is sent until you press {send} there.",
         "Brouillon ouvert : rien n'est envoyé tant que tu ne touches pas {send} là-bas.")
+
+    // 1.3, "What did I miss?" (messages/Missed.kt): counts by app, newest app first, and at most two "latest" lines.
+    val missedNone = s("missed_none", "Nothing new since you last looked.", "Rien de nouveau depuis la dernière fois que tu as regardé.")
+    val missedSince = plural("missed_since", "n",
+        Plural(one = "Since you last looked, {n} notification: {list}.", other = "Since you last looked, {n} notifications: {list}."),
+        Plural(one = "Depuis la dernière fois que tu as regardé, {n} notification : {list}.",
+            other = "Depuis la dernière fois que tu as regardé, {n} notifications : {list}."))
+    val missedIn = s("missed_in", "{n} in {appName}", "{n} dans {appName}")
+    val missedElsewhere = s("missed_elsewhere", "{n} in other apps", "{n} dans d'autres applis")
+    val missedLatestPerson = s("missed_latest_person", "The latest in {appName} is from {who}.", "La plus récente dans {appName} vient de {who}.")
+    val missedLatestGroup = s("missed_latest_group", "The latest in {appName} is in {group}.", "La plus récente dans {appName} est dans {group}.")
+    val missedLatestApp = s("missed_latest_app", "The latest in {appName}: {title}.", "La plus récente dans {appName} : {title}.")
+    val missedUnheard = s("missed_unheard",
+        "Nothing has come from {names} yet. If it isn't a messaging app, allow “Notifications” for Robot: {page} shows how.",
+        "Rien n'est encore venu de {names}. Si ce n'est pas une appli de messagerie, autorise « Notifications » pour Robot : {page} montre comment.")
+    val missedUnlock = s("missed_unlock", "Unlock your phone to hear more.", "Déverrouille le téléphone pour en entendre plus.")
+    val missedOff = s("missed_off", "What did I miss is off. Turn it on in {page}.", "Le résumé de ce que tu as manqué est désactivé. Active-le dans {page}.")
+    val missedNoApps = s("missed_no_apps", "No app is picked for What did I miss in {page}.", "Aucune appli n'est choisie pour le résumé de ce que tu as manqué dans {page}.")
+    // 1.3, notifications held until a time (messages/Hold.kt): the reply to a hold, and the one line at its end.
+    val holdStarted = s("hold_started", "Holding {list} until {time}.", "Je mets {list} en attente jusqu'à {time}.")
+    val holdOff = s("hold_off", "Holding notifications is off. Turn it on in {page}.", "La mise en attente des notifications est désactivée. Active-la dans {page}.")
+    val holdNoApps = s("hold_no_apps", "No app is picked for holding in {page}.", "Aucune appli n'est choisie pour la mise en attente dans {page}.")
+    val holdUnknown = s("hold_unknown", "{names} isn't picked for holding. Pick it in {page}.", "{names} n'est pas choisie pour la mise en attente. Choisis-la dans {page}.")
+    val holdTooLong = s("hold_too_long", "I can hold notifications for 12 hours at most.", "Je peux mettre les notifications en attente 12 heures au plus.")
+    val holdSomeoneElse = s("hold_someone_else", "Notifications can't be held while someone else is using the phone.",
+        "Les notifications ne peuvent pas être mises en attente pendant que quelqu'un d'autre utilise le téléphone.")
+    val holdOver = plural("hold_over", "n",
+        Plural(one = "Your hold is over. {n} notification came in: {list}.", other = "Your hold is over. {n} notifications came in: {list}."),
+        Plural(one = "Ton attente est finie. {n} notification est arrivée : {list}.", other = "Ton attente est finie. {n} notifications sont arrivées : {list}."))
+    val holdOverCount = plural("hold_over_count", "n",
+        Plural(one = "Your hold is over. {n} notification came in.", other = "Your hold is over. {n} notifications came in."),
+        Plural(one = "Ton attente est finie. {n} notification est arrivée.", other = "Ton attente est finie. {n} notifications sont arrivées."))
+    val holdOverNone = s("hold_over_none", "Your hold is over. Nothing came in.", "Ton attente est finie. Rien n'est arrivé.")
+    val holdChannel = s("hold_channel", "Held notifications", "Notifications en attente")
+    val holdOverPublic = s("hold_over_public", "Your hold is over.", "Ton attente est finie.")
 }

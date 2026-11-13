@@ -36,7 +36,7 @@ object BrainOneShots : OneShotTransport {
      * and the caller keeps the file for one that sees. A request that doesn't say it carries a picture isn't sent.
      */
     suspend fun runWithImage(req: BrainMsg.OneShot, jpeg: ByteArray, budget: OneShotBudget, onText: (String) -> Unit = {}): OneShotResult =
-        if (!req.hasImage || req.kind != OneShotKind.FILE_READ) OneShotResult.Failed(BrainError.BAD_REQUEST) else send(req, jpeg, budget, onText)
+        if (!req.hasImage || !req.kind.takesImage) OneShotResult.Failed(BrainError.BAD_REQUEST) else send(req, jpeg, budget, onText)
 
     private suspend fun send(req: BrainMsg.OneShot, image: ByteArray?, budget: OneShotBudget, onText: (String) -> Unit): OneShotResult {
         if (image == null && req.hasImage) return OneShotResult.Failed(BrainError.BAD_REQUEST)

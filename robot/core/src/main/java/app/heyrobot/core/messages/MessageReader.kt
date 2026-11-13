@@ -11,6 +11,7 @@ import app.heyrobot.core.i18n.Lang
 import app.heyrobot.core.i18n.Langs
 import app.heyrobot.core.i18n.MessageStrings
 import app.heyrobot.core.i18n.Phrase
+import app.heyrobot.core.i18n.ScamStrings
 import app.heyrobot.core.i18n.UiLabel
 import app.heyrobot.core.i18n.UiStrings
 import java.time.Instant
@@ -99,13 +100,20 @@ object MessageReader {
         if (namesOnly) {
             val unlock = MessageStrings.unlockToHear()
             val kept = MessageStrings.keptNames("n" to threads.size)
-            return ReadPage(Phrase.join(count, unlock).render(l), listOf(frame(count, l), frame(unlock, l)), emptyList(), null, kept.render(l), false)
+            // Scam texts: locked, how many look like a scam, never which one or why.
+            val scams = threads.count { ScamCheck.of(it) != null }
+            val parts = listOfNotNull(count, if (scams > 0) ScamStrings.locked(scams) else null, unlock)
+            return ReadPage(Phrase.join(*parts.toTypedArray()).render(l), parts.map { frame(it, l) }, emptyList(), null, kept.render(l), false)
         }
         val first = thread(threads.first(), lang, more = threads.size > 1, translations = translations, french = french, langs = langs)
         val head = listOfNotNull(count, hintText ?: hint?.let(Phrase::plain))
         return ReadPage(head.joinToString(" ") { it.render(l) } + "\n\n" + first.shown, head.map { frame(it, l) } + first.spoken, first.ids, first.thread,
             first.kept, first.more, first.heard)
     }
+
+    /** "Summarize my messages": a fixed line per conversation that looks like a scam, said before the summary. */
+    fun scamLines(threads: List<MessageThread>): List<Phrase> =
+        threads.mapNotNull { t -> ScamCheck.of(t)?.let { ScamStrings.inSummary("name" to t.name, "why" to it.text()) } }
 
     /**
      * One conversation: "Mom, in Cheogram, 2 messages:", the messages, what hides one, then the prompt. [french] tells a
@@ -120,6 +128,8 @@ object MessageReader {
         val intro = introText.render(l)
         val shown = StringBuilder(intro.replaceFirst(t.name, "**${t.name}**"))
         val spoken = arrayListOf(frame(introText, l))
+        // Scam texts: the reason in one line before the words, from the newest message read that has one.
+        shownMsgs.asReversed().firstNotNullOfOrNull { ScamCheck.line(it.text) }?.let { shown.append('\n').append(it.render(l)); spoken += frame(it, l) }
         MessageReading.earlierText(all.size, shownMsgs.size)?.let { shown.append('\n').append(it.render(l)); spoken += frame(it, l) }
         val ids = ArrayList<String>()
         val heard = ArrayList<String>()

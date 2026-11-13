@@ -9,7 +9,7 @@ import app.heyrobot.core.BriefReminders
 import app.heyrobot.core.ConversationCodec
 import app.heyrobot.core.LookSettings
 import app.heyrobot.core.NoteCodec
-import app.heyrobot.core.NoteStore
+import app.heyrobot.core.SealedEnvelope
 import app.heyrobot.core.PeopleFile
 import app.heyrobot.core.RLog
 import app.heyrobot.core.RobotSettings
@@ -71,6 +71,10 @@ import app.heyrobot.sys.MemoryFiles
 import app.heyrobot.sys.MemorySettingsStore
 import app.heyrobot.sys.NotesFiles
 import app.heyrobot.sys.Paths
+import app.heyrobot.sys.ConversationStore
+import app.heyrobot.sys.HistoryFiles
+import app.heyrobot.core.HistoryEnvelope
+import app.heyrobot.core.writeAtomicBytes
 import app.heyrobot.sys.PeopleFiles
 import app.heyrobot.sys.RestoreFiles
 import app.heyrobot.sys.RoutineFiles
@@ -243,35 +247,39 @@ internal class RestoreSession(private val ctx: Context,
     // ------------------------------------------------------------------------------------------------- this phone now
 
     private fun transcriptsDir() = File(ctx.filesDir, TranscriptFiles.DIR)
-    private fun ids(dir: File, valid: (String) -> Boolean): List<File> =
-        dir.listFiles { f -> f.isFile && BackupCategory.idOf(f.name)?.let(valid) == true }.orEmpty().toList()
-    private fun haveNotes(): Map<String, Long> = ids(NotesFiles.dir(ctx), NoteStore::validId)
-        .mapNotNull { f -> readOrNull(f)?.let(NoteCodec::fromJson)?.let { it.id to it.updated } }.toMap()
-    private fun haveHistory(): Map<String, Long> = ids(Paths.conversations(ctx), BackupCategory::conversationId)
-        .mapNotNull { f -> readOrNull(f)?.let(ConversationCodec::fromJson)?.let { it.id to it.updated } }.toMap()
+    private fun haveNotes(): Map<String, Long> = BackupSources.notesWhole(ctx).associate { it.id to it.updated }
+    private fun haveHistory(): Map<String, Long> = BackupSources.historyWhole(ctx).associate { it.id to it.updated }
     private fun haveTranscripts(): Set<String> = transcriptsDir().listFiles { f -> f.isDirectory && TranscriptIds.valid(f.name) }.orEmpty().map { it.name }.toSet()
+    /** fix-seal-transcripts-d, Low 1: a newer Robot's transcripts, which Replace keeps; when that can't be told, every one here (fail closed). */
+    private fun newerTranscripts(): Set<String> = try { app.heyrobot.sys.Transcripts.store(ctx).newer() } catch (t: Throwable) { RLog.w("restore_transcripts_newer", t); haveTranscripts() } // l10n: not text (a log code)
 
     /** What this phone has now, by category, and its History and Memory switches and lock code (the preview's PhoneHas). */
     fun phone(): PhoneHas {
+        // seal-people-fix 1: People that can't be opened is something here (1), never "nobody", and takes no restore.
+        val peopleLoad = try { PeopleFiles.store(ctx).load() } catch (t: Throwable) { RLog.w("restore_people_here", t); app.heyrobot.core.PeopleLoad.NotNow }
+        val peopleCount = (peopleLoad as? app.heyrobot.core.PeopleLoad.Ok)?.file?.people?.size ?: 1
         val s = SettingsStore.load(ctx)
         val memory = BackupSources.memory(ctx)
         val hf = HandsFreeFiles.store(ctx)
         val counts = mapOf(
             BackupCategory.SETTINGS to if (File(Paths.dir(ctx), "settings.json").isFile) 1 else 0, // l10n: not text (a file name)
-            BackupCategory.PEOPLE to PeopleFiles.store(ctx).list().size,
+            BackupCategory.PEOPLE to peopleCount,
             BackupCategory.MEMORY to (memory?.items?.size ?: 1),
             BackupCategory.HANDSFREE to hf.devices().devices.size + listOfNotNull(hf.places().home, hf.places().work).size,
             BackupCategory.ROUTINES to RoutineFiles.store(ctx).routines().size,
             BackupCategory.SKILLS to SkillFiles.store(ctx).skills().size,
             BackupCategory.PHONE_LOCK to (LockStore.read(ctx).ok?.locks?.size ?: 0),
-            BackupCategory.NOTES to ids(NotesFiles.dir(ctx), NoteStore::validId).size,
-            BackupCategory.HISTORY to ids(Paths.conversations(ctx), BackupCategory::conversationId).size,
+            BackupCategory.NOTES to NotesFiles.store(ctx).list().size,
+            BackupCategory.HISTORY to ConversationStore.list(ctx).size,
             BackupCategory.TRANSCRIPTS to haveTranscripts().size,
             BackupCategory.VOICEPRINT to if (VoiceprintFiles.saved(ctx)) 1 else 0,
             BackupCategory.EVERYDAY to if (EverydaySettingsStore.file(ctx).isFile) 1 else 0,
             BackupCategory.LINKS to if (app.heyrobot.sys.LinkSettingsStore.file(ctx).isFile) 1 else 0,
             BackupCategory.CALENDAR to app.heyrobot.sys.PrivateEventsFiles.events(ctx).size,
             BackupCategory.HOME to if (app.heyrobot.sys.HomeSettingsStore.file(ctx).isFile) 1 else 0,
+            BackupCategory.HEADSUP to if (app.heyrobot.sys.HeadsUpStore.file(ctx).isFile) 1 else 0,
+            BackupCategory.MOMENTS to RoutineFiles.store(ctx).moments().size,
+            BackupCategory.OPEN_APPS to if (app.heyrobot.sys.OpenAppsStore.file(ctx).isFile) 1 else 0,
         )
         // 1.4, Robot Files: its files (counted from their sealed sizes when the list can't be read: no key needed), and
         // whether it can take a restore (its key gone: Replace only; its list unreadable: left out until Start over).
@@ -302,14 +310,16 @@ internal class RestoreSession(private val ctx: Context,
             ListsLoad.Empty, ListsLoad.Locked -> 0
             else -> 1
         }
+        // spoken-log: the Logbook's entries (one when it can't be read: something is here).
+        val logbookCount = BackupSources.logbook(ctx)?.size ?: 1
         // C10: your connections (a damaged or newer connections.json takes no restore: it is never written over) and their keys.
         val conn = ConnFiles.store(ctx).file()
         val connCounts = mapOf(BackupCategory.CONNECTIONS to ((conn as? ConnFile.Ok)?.connections?.size ?: 1),
             BackupCategory.CONN_KEYS to BackupSecrets.connectionsWithKeys(ctx).size)
         // Phone lock's code is verified by :lock's code pad only (CategoryChoice.codeOk); this only says whether one is set.
-        return PhoneHas(counts + connCounts + (BackupCategory.FILES to filesCount) + (BackupCategory.LISTS to listsCount), historyOn = s.saveHistory,
+        return PhoneHas(counts + connCounts + (BackupCategory.FILES to filesCount) + (BackupCategory.LISTS to listsCount) + (BackupCategory.LOGBOOK to logbookCount), historyOn = s.saveHistory,
             memoryOn = MemorySettingsStore.current(ctx).on, lockCode = LockStore.readState(ctx).codeSet, files = filesHere, lists = listsHere,
-            connections = conn is ConnFile.Ok)
+            connections = conn is ConnFile.Ok, people = app.heyrobot.core.backup.PeopleHere.of(peopleLoad))
     }
 
     private fun settingsNow(): SettingsNow {
@@ -351,7 +361,11 @@ internal class RestoreSession(private val ctx: Context,
             val links = of(BackupCategory.LINKS) { if (mine) v.linkSettings?.let { RestoreSafety.link(app.heyrobot.sys.LinkSettingsStore.current(ctx), it.read).kept.size } else 0 }
             // Today H6: the weather line stays off.
             val home = of(BackupCategory.HOME) { v.home?.let { RestoreSafety.home(app.heyrobot.sys.HomeSettingsStore.current(ctx), it, mine).kept.size } }
-            settings + files + lists + everyday + conns + links + home + keptSaferVoice(v, plan, restoring)
+            // auto-open-plan §4: someone else's never turns "Open apps you name without a card" on.
+            val openApps = of(BackupCategory.OPEN_APPS) { v.openApps?.let { RestoreSafety.openApps(app.heyrobot.sys.OpenAppsStore.current(ctx), it, mine).kept.size } }
+            // earbud-headsup-c: the heads-up stays off.
+            val headsUp = of(BackupCategory.HEADSUP) { v.headsUp?.let { RestoreSafety.headsUp(app.heyrobot.sys.HeadsUpStore.settings(ctx), it, mine).kept.size } }
+            settings + files + lists + everyday + conns + links + home + openApps + headsUp + keptSaferVoice(v, plan, restoring)
         } catch (t: Throwable) {
             RLog.w("restore_kept", t)
             null
@@ -435,8 +449,14 @@ internal class RestoreSession(private val ctx: Context,
 
         // People first in memory: the other categories point at where each person landed.
         val peopleStore = PeopleFiles.store(ctx)
-        val people = if (BackupCategory.PEOPLE in restoring) RestoreMerge.people(peopleStore.list(), v.people!!.people, mode(BackupCategory.PEOPLE), mine, now, SettingsStore.load(ctx).smsGateway) else null
-        val peopleLanded: (String) -> String? = people?.let { p -> { id: String -> p.landed[id] } } ?: RestoreRefs.same(peopleStore.list().map { it.id }.toSet())
+        // seal-people: while People here can't be opened whole, it changes nothing (Locked while the phone is locked; a newer
+        // Robot's or damaged file says why), and never plans from "nobody".
+        val peopleNow = if (BackupCategory.PEOPLE in restoring) try { peopleStore.whole().people } catch (e: app.heyrobot.core.PeopleNotWhole) {
+            out[BackupCategory.PEOPLE] = if (e.load == app.heyrobot.core.PeopleLoad.NotNow) outcome(e) else CategoryOutcome.PeopleTooNew
+            null
+        } else null
+        val people = if (peopleNow != null) RestoreMerge.people(peopleNow, v.people!!.people, mode(BackupCategory.PEOPLE), mine, now, SettingsStore.load(ctx).smsGateway) else null
+        val peopleLanded: (String) -> String? = people?.let { p -> { id: String -> p.landed[id] } } ?: RestoreRefs.peopleHere(try { peopleStore.load() } catch (t: Throwable) { RLog.w("restore_people_links", t); app.heyrobot.core.PeopleLoad.NotNow })
         // Settings in memory too: which helpers exist after it (keys), its History switch (decided by the plan).
         // updates.json is the updater's: staged as it is, merged by the main app (sys/RestoreApply), never read here.
         val settings = if (BackupCategory.SETTINGS in restoring) RestoreMerge.settings(settingsNow(), v.settings - BackupCategory.UPDATES_FILE, mine, peopleLanded) else null
@@ -518,10 +538,29 @@ internal class RestoreSession(private val ctx: Context,
             CategoryOutcome.Done
         }
 
+        // moments-backup: reminders for a moment, after routines, merged with this phone's (only from a backup that is yours).
+        step(BackupCategory.MOMENTS) {
+            // moments-backup-c (L6): only from a backup that is yours, checked again here as links and skills are.
+            val file = RestoreTaint.moments(v.moments ?: return@step CategoryOutcome.Failed, mine) ?: return@step CategoryOutcome.Skipped(PlanSkip.NOT_YOURS)
+            val rs = RoutineFiles.store(ctx)
+            if (rs.momentsNewer()) return@step CategoryOutcome.Failed
+            j.begin(BackupCategory.MOMENTS, RestoreProcess.VOICE)
+            val st = j.staging(BackupCategory.MOMENTS).apply { mkdirs() }
+            // moments-backup-c (L5): the backup's own and the mode, merged at the finish inside the store's edit.
+            writeAtomic(File(st, BackupCategory.MOMENTS_FILE), app.heyrobot.core.MomentReminders.encode(file))
+            writeAtomic(File(st, RestoreFinish.MOMENTS_MODE), mode(BackupCategory.MOMENTS).name)
+            j.commit(BackupCategory.MOMENTS, RestoreProcess.VOICE)
+            finishVoice(ctx, BackupCategory.MOMENTS, st)
+            j.done(BackupCategory.MOMENTS)
+            CategoryOutcome.Done
+        }
+
         // 1.1, Skills (plan §4): after routines; someone else's arrive off; :voice reads them again (Cmd.SKILLS).
         step(BackupCategory.SKILLS) {
             val ss = SkillFiles.store(ctx)
-            val m = RestoreMerge.skills(ss.skills(), v.skills.orEmpty(), mode(BackupCategory.SKILLS), mine, newId = { SkillIds.make() },
+            // auto-open-i: the ticks from skill_opens.json put back first (RestoreMerge and RestoreTaint then apply as before).
+            val file = app.heyrobot.core.skills.SkillOpensFile.attach(v.skills.orEmpty(), v.skillOpens.takeIf { BackupCategory.SKILL_OPENS in restoring })
+            val m = RestoreMerge.skills(ss.skills(), file, mode(BackupCategory.SKILLS), mine, newId = { SkillIds.make() },
                 langs = AppLanguage.langs(ctx), haveSettings = ss.settings(), fileSettings = v.skillSettings)
             kept += m.kept.size
             j.begin(BackupCategory.SKILLS, RestoreProcess.VOICE)
@@ -533,6 +572,8 @@ internal class RestoreSession(private val ctx: Context,
             j.done(BackupCategory.SKILLS)
             CategoryOutcome.Done
         }
+        // auto-open-i: the ticks went back with Skills, above; this line ends as Skills did.
+        step(BackupCategory.SKILL_OPENS) { out[BackupCategory.SKILLS] ?: CategoryOutcome.Failed }
 
         // Phone lock: staged for the main app, which writes locks.json and tells :lock (§12 of the phone lock design).
         step(BackupCategory.PHONE_LOCK) {
@@ -584,13 +625,31 @@ internal class RestoreSession(private val ctx: Context,
         }
 
         // Notes, History, Transcripts, keys and the voiceprint come from one more pass over the file (every chunk checked again).
-        val notes = if (BackupCategory.NOTES in restoring) RestoreMerge.byUpdated(haveNotes(), v.notes, mode(BackupCategory.NOTES), replaceYours = mine) else null
-        val history = if (BackupCategory.HISTORY in restoring) RestoreMerge.byUpdated(haveHistory(), v.history, mode(BackupCategory.HISTORY)) else null
+        // seal-notes: while a note here can't be opened, Notes changes nothing (Locked while the phone is locked, else Failed).
+        val notes = if (BackupCategory.NOTES in restoring) try {
+            RestoreMerge.byUpdated(haveNotes(), v.notes, mode(BackupCategory.NOTES), replaceYours = mine)
+        } catch (t: Throwable) {
+            RLog.w("restore_notes", t)
+            // seal-notes-c: a newer Robot's note says why (update, or Delete these in Notes).
+            out[BackupCategory.NOTES] = if ((t as? BackupSources.NotesUnreadable)?.tooNew == true) CategoryOutcome.NotesTooNew else outcome(t)
+            null
+        } else null
+        // seal-history-fix: while a conversation here can't be opened, History changes nothing; fix-c: it says why (Locked only
+        // while the phone is locked; a newer Robot's file or one that can't be opened now has the backup's words, 15 and 14).
+        val history = if (BackupCategory.HISTORY in restoring) try {
+            RestoreMerge.byUpdated(haveHistory(), v.history, mode(BackupCategory.HISTORY))
+        } catch (t: Throwable) {
+            RLog.w("restore_history", t)
+            out[BackupCategory.HISTORY] = (t as? BackupSources.HistoryUnreadable)?.let {
+                if (!it.tooNew && Assistant.locked(ctx)) CategoryOutcome.Locked else CategoryOutcome.HistoryUnreadable(it.tooNew)
+            } ?: outcome(t)
+            null
+        } else null
         // F45: the first check was when the file was copied in, minutes ago; again here, before anything is staged, and before the move.
         fun transcriptsWait() = BackupCategory.TRANSCRIPTS in restoring && RestoreMerge.transcriptsWait(mode(BackupCategory.TRANSCRIPTS),
             readOrNull(File(transcriptsDir(), SessionHeartbeat.FILE)), System.currentTimeMillis(), HEARTBEAT_MS)
         if (transcriptsWait()) out[BackupCategory.TRANSCRIPTS] = CategoryOutcome.Skipped(PlanSkip.RECORDING)
-        val transcripts = if (BackupCategory.TRANSCRIPTS in restoring) RestoreMerge.transcripts(haveTranscripts(), v.transcripts.keys, mode(BackupCategory.TRANSCRIPTS)) else null
+        val transcripts = if (BackupCategory.TRANSCRIPTS in restoring) RestoreMerge.transcripts(haveTranscripts(), v.transcripts.keys, mode(BackupCategory.TRANSCRIPTS), newerTranscripts()) else null
         val keys = if (BackupCategory.KEYS in restoring) RestoreMerge.keys(v.keys, robot.helpers.map { it.id }.toSet(), { BackupSecrets.hasKey(ctx, it) }, mine) else null
         // C10: connection keys, for the connections here now (after the Connections step), each to the address it was saved for.
         val connKeys = if (BackupCategory.CONN_KEYS in restoring) RestoreMerge.connectionKeys(v.connKeys, v.connections, connStore.connections(),
@@ -619,12 +678,21 @@ internal class RestoreSession(private val ctx: Context,
             try {
                 RestoreReader.read(::open, v, k, streamed) { c, name, data ->
                     when (c) {
-                        BackupCategory.NOTES -> if (BackupCategory.idOf(name) in notes!!.write) copy(data, File(j.staging(c), name))
+                        // seal-notes: staged sealed, under the name it will have in Notes, never as plain text.
+                        BackupCategory.NOTES -> if (BackupCategory.idOf(name) in notes!!.write) {
+                            val id = BackupCategory.idOf(name)
+                            val n = NoteCodec.fromJson(String(data.readBytes(), Charsets.UTF_8))
+                            if (n != null && n.id == id) writeAtomicBytes(File(j.staging(c).apply { mkdirs() }, id + SealedEnvelope.SEALED), NotesFiles.store(ctx).sealForRestore(n))
+                        }
                         BackupCategory.HISTORY -> if (BackupCategory.idOf(name) in history!!.write) {
                             val conv = ConversationCodec.fromJson(String(data.readBytes(), Charsets.UTF_8))
                             // From someone else's file, each conversation carries its content mark.
-                            if (conv != null) writeAtomic(File(j.staging(c).apply { mkdirs() }, name),
-                                ConversationCodec.toJson(RestoreRefs.conversation(RestoreTaint.conversation(conv, mine), memoryLanded)))
+                            // seal-history: staged sealed, under the name it will have in History, never as plain text.
+                            val id = BackupCategory.idOf(name)
+                            if (conv != null && id != null && ConversationStore.validId(id)) {
+                                val staged = RestoreRefs.conversation(RestoreTaint.conversation(conv, mine), memoryLanded).copy(id = id)
+                                writeAtomicBytes(File(j.staging(c).apply { mkdirs() }, id + HistoryEnvelope.SEALED), HistoryFiles.vault(ctx).sealForRestore(staged))
+                            }
                         }
                         BackupCategory.TRANSCRIPTS -> if (BackupCategory.transcriptOf(name) in transcripts!!.write) copy(data, File(j.staging(c), name))
                         BackupCategory.KEYS -> if (name in keys!!.save) keyBytes[name] = data.readBytes()
@@ -654,10 +722,10 @@ internal class RestoreSession(private val ctx: Context,
                 for (c in streamed) out[c] = CategoryOutcome.Failed
             }
         }
-        step(BackupCategory.NOTES) { files(j, BackupCategory.NOTES, notes!!.delete.map { "$it.json" }, NotesFiles.dir(ctx)) }
+        step(BackupCategory.NOTES) { files(j, BackupCategory.NOTES, notes!!.delete.flatMap { NotesFiles.store(ctx).namesOf(it) }, NotesFiles.store(ctx).dir) }
         step(BackupCategory.HISTORY) {
             if (mode(BackupCategory.HISTORY) == RestoreMode.REPLACE) RobotTimers.clear(ctx)
-            files(j, BackupCategory.HISTORY, history!!.delete.map { "$it.json" }, Paths.conversations(ctx))
+            files(j, BackupCategory.HISTORY, history!!.delete.flatMap { HistoryFiles.vault(ctx).namesOf(it) }, HistoryFiles.vault(ctx).dir)
         }
         step(BackupCategory.TRANSCRIPTS) {
             // Left STAGED: the recovery below undoes it, nothing of yours changed.
@@ -768,6 +836,23 @@ internal class RestoreSession(private val ctx: Context,
             CategoryOutcome.Done
         }
 
+        // spoken-log: the entries sealed again under this phone's key by the vault's own write (Replace takes them whole, Add
+        // puts those not here yet); then Settings › Logbook, where a backup never turns "Add while locked" on.
+        step(BackupCategory.LOGBOOK) {
+            j.begin(BackupCategory.LOGBOOK, RestoreProcess.VOICE)
+            v.logbook?.let { back ->
+                val vault = app.heyrobot.sys.LogbookFiles.store(ctx)
+                if (!vault.fromBackup(back, replace = mode(BackupCategory.LOGBOOK) == RestoreMode.REPLACE))
+                    return@step if (vault.read() == app.heyrobot.sys.LogbookRead.Locked) CategoryOutcome.Locked else CategoryOutcome.Failed
+            }
+            v.logbookSettings?.let { fs ->
+                val here = app.heyrobot.sys.LogbookFiles.settings(ctx)
+                if (!app.heyrobot.sys.LogbookFiles.saveSettings(ctx, fs.copy(addLocked = fs.addLocked && here.addLocked))) return@step CategoryOutcome.Failed
+            }
+            j.done(BackupCategory.LOGBOOK)
+            CategoryOutcome.Done
+        }
+
         var voiceprintSaved = false
         step(BackupCategory.VOICEPRINT) {
             val b = voiceprint ?: return@step CategoryOutcome.Failed
@@ -818,6 +903,18 @@ internal class RestoreSession(private val ctx: Context,
             CategoryOutcome.Done
         }
 
+        // earbud-headsup-c: the heads-up's settings (off unless the backup is yours), then its next check set again.
+        step(BackupCategory.HEADSUP) {
+            val h = v.headsUp ?: return@step CategoryOutcome.Failed
+            j.begin(BackupCategory.HEADSUP, RestoreProcess.VOICE)
+            val g = RestoreSafety.headsUp(app.heyrobot.sys.HeadsUpStore.settings(ctx), h, mine)
+            if (!app.heyrobot.sys.HeadsUpStore.save(ctx, g.value)) return@step CategoryOutcome.Failed
+            kept += g.kept.size
+            app.heyrobot.sys.HeadsUpAlarms.arm(ctx)
+            j.done(BackupCategory.HEADSUP)
+            CategoryOutcome.Done
+        }
+
         step(BackupCategory.EVERYDAY) {
             val e = v.everyday ?: return@step CategoryOutcome.Failed
             kept += RestoreSafety.everyday(EverydaySettingsStore.current(ctx), e.read, mine).kept.size
@@ -826,6 +923,17 @@ internal class RestoreSession(private val ctx: Context,
             writeAtomic(File(st, BackupCategory.EVERYDAY_FILE), EverydaySettingsCodec.encode(e.read, e.extra))
             if (mine) writeAtomic(File(st, BackupCategory.MINE_STAGED), "1")
             j.commit(BackupCategory.EVERYDAY, RestoreProcess.MAIN)
+            CategoryOutcome.Done
+        }
+        // auto-open-plan §4: staged here, merged by the main app over this phone's switch (OpenAppsStore.restore).
+        step(BackupCategory.OPEN_APPS) {
+            val o = v.openApps ?: return@step CategoryOutcome.Failed
+            kept += RestoreSafety.openApps(app.heyrobot.sys.OpenAppsStore.current(ctx), o, mine).kept.size
+            j.begin(BackupCategory.OPEN_APPS, RestoreProcess.VOICE)
+            val st = j.staging(BackupCategory.OPEN_APPS).apply { mkdirs() }
+            writeAtomic(File(st, BackupCategory.OPEN_APPS_FILE), app.heyrobot.core.OpenAppsFile.write(o))
+            if (mine) writeAtomic(File(st, BackupCategory.MINE_STAGED), "1")
+            j.commit(BackupCategory.OPEN_APPS, RestoreProcess.MAIN)
             CategoryOutcome.Done
         }
         // L12, D14: staged here, in :voice, and only when the backup is yours. The main app merges the settings (RestoreSafety.link)
@@ -944,6 +1052,7 @@ internal class RestoreSession(private val ctx: Context,
                 }
                 BackupCategory.HANDSFREE -> RestoreFinish.handsfree(HandsFreeFiles.store(ctx), staging)
                 BackupCategory.ROUTINES -> RestoreFinish.routines(RoutineFiles.store(ctx), staging)
+                BackupCategory.MOMENTS -> RestoreFinish.moments(RoutineFiles.store(ctx), staging)
                 BackupCategory.SKILLS -> {
                     RestoreFinish.skills(SkillFiles.store(ctx), staging)
                     SkillFiles.changed(ctx)
@@ -961,9 +1070,11 @@ internal class RestoreSession(private val ctx: Context,
                         }
                     }
                 }
-                BackupCategory.NOTES -> StagedFiles.moveIn(staging, live ?: NotesFiles.dir(ctx))
-                BackupCategory.HISTORY -> StagedFiles.moveIn(staging, live ?: Paths.conversations(ctx))
-                BackupCategory.TRANSCRIPTS -> StagedFiles.moveIn(staging, live ?: File(ctx.filesDir, TranscriptFiles.DIR))
+                BackupCategory.NOTES -> NotesFiles.store(ctx).moveIn(staging)
+                BackupCategory.HISTORY -> HistoryFiles.vault(ctx).moveIn(staging)
+                // seal-transcripts: the staged text sealed where it is before it moves in (unlocked; else it can't finish).
+                BackupCategory.TRANSCRIPTS -> if (!app.heyrobot.sys.Transcripts.store(ctx).sealStaged(staging)) throw CantFinish(TranscriptFiles.DIR)
+                    else StagedFiles.moveIn(staging, live ?: File(ctx.filesDir, TranscriptFiles.DIR))
                 else -> {}
             }
         }

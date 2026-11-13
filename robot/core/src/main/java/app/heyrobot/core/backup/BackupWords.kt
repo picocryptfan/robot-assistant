@@ -15,7 +15,8 @@ object BackupWords {
         BackupCategory.PEOPLE -> BackupStrings.people
         BackupCategory.MEMORY -> BackupStrings.memory
         BackupCategory.HANDSFREE -> BackupStrings.handsfree
-        BackupCategory.ROUTINES -> BackupStrings.routines
+        // moments-backup: reminders for a moment are shown in Routines' row.
+        BackupCategory.ROUTINES, BackupCategory.MOMENTS -> BackupStrings.routines
         BackupCategory.SKILLS -> BackupStrings.skills
         BackupCategory.PHONE_LOCK -> BackupStrings.phoneLock
         BackupCategory.NOTES -> BackupStrings.notes
@@ -25,16 +26,23 @@ object BackupWords {
         BackupCategory.VOICEPRINT -> BackupStrings.voiceprint
         BackupCategory.FILES -> BackupStrings.files
         BackupCategory.LISTS -> BackupStrings.lists
+        BackupCategory.LOGBOOK -> BackupStrings.logbook
         BackupCategory.EVERYDAY -> BackupStrings.everyday
         BackupCategory.LINKS -> BackupStrings.links
         BackupCategory.CALENDAR -> BackupStrings.calendar
         BackupCategory.HOME -> BackupStrings.home
+        BackupCategory.HEADSUP -> BackupStrings.headsUp
         // skills-backup-b: shown in Skills' row, never on its own.
-        BackupCategory.SKILL_TRUST -> BackupStrings.skills
+        BackupCategory.SKILL_TRUST, BackupCategory.SKILL_OPENS -> BackupStrings.skills
+        // auto-open-plan §4: shown in Settings' row, never on its own.
+        BackupCategory.OPEN_APPS -> BackupStrings.settings
         // C10: English until C11's French (the connections area); Connection keys is shown in Keys and private codes' row.
         BackupCategory.CONNECTIONS -> app.heyrobot.core.i18n.ConnStrings.title
         BackupCategory.CONN_KEYS -> app.heyrobot.core.i18n.ConnStrings.backupKeys
     }
+
+    /** fix-seal-14-e 1: how many of People's entries in [v] don't read and won't come back, or null when none. */
+    fun peopleSetAside(v: VerifiedBackup): Phrase? = v.people?.skipped?.takeIf { it > 0 }?.let { BackupStrings.peopleSetAside(it.toLong()) }
 
     /** Why a file can't be opened or restored. */
     fun problem(p: OpenProblem): Phrase = when (p) {
@@ -69,6 +77,8 @@ object BackupWords {
             PlanSkip.FILES_TRAVEL -> BackupStrings.filesTravelHere("page" to Arg.Ui(app.heyrobot.core.i18n.UiStrings.inSettings(app.heyrobot.core.i18n.UiStrings.files)))
             PlanSkip.LISTS_UNREADABLE -> BackupStrings.listsUnreadableHere("page" to Arg.Ui(app.heyrobot.core.i18n.UiStrings.inSettings(app.heyrobot.core.i18n.UiStrings.lists)))
             PlanSkip.CONNECTIONS_UNREADABLE -> app.heyrobot.core.i18n.ConnStrings.backupUnreadableHere()
+            PlanSkip.PEOPLE_NOT_NOW -> BackupStrings.peopleNotNowHere()
+            PlanSkip.PEOPLE_UNREADABLE -> BackupStrings.peopleUnreadableHere()
             PlanSkip.CALENDAR_UNREADABLE -> BackupStrings.calendarUnreadableHere()
         }
     }

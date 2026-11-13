@@ -146,6 +146,16 @@ interface TorNet {
     val starts: Int get() = 0
     /** Tor was started and its process has ended on its own (Robot didn't stop it). */
     val exited: Boolean get() = false
+    /**
+     * fix-bridges-and-wording-b L1: Tor is up over your own bridge lines that you've since removed, edited or switched away
+     * from; [up] starts it again without them. Never waits on a start.
+     */
+    val stale: Boolean get() = false
+    /**
+     * fix-bridges-lows (review-d L5): stops Tor only if it's still [stale] once no start is under way, so a start that moved
+     * to your new lines meanwhile keeps running.
+     */
+    fun letGo() { if (stale) down() }
     /** :link sleeps: Tor stops, and no [up] starts it again until [wake]. */
     fun sleep() = down()
     fun wake() {}

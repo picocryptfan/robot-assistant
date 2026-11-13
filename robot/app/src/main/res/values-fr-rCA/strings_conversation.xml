@@ -34,6 +34,9 @@
     <string name="conv_running_stop_first">Une transcription est en cours. Arrête-la d’abord.</string>
     <string name="conv_no_mic">Robot ne peut pas utiliser le micro (autorise-le dans l’appli Robot, ou ferme l’appli qui enregistre).</string>
     <string name="conv_deleted">Cette transcription a été supprimée.</string>
+    <string name="conv_cant_open">Je n’ai pas pu ouvrir cette transcription. Redémarre le téléphone, puis réessaie.</string>
+    <string name="conv_damaged">Cette transcription est endommagée, alors je ne peux pas l’ouvrir.</string>
+    <string name="conv_too_new">Une version plus récente de Robot a écrit cette transcription, alors je ne peux pas l’ouvrir. Je la laisse telle quelle.</string>
     <plurals name="conv_lines">
         <item quantity="one">%1$d ligne</item>
         <item quantity="many">%1$d lignes</item>

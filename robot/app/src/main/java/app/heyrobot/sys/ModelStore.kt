@@ -296,6 +296,7 @@ object ModelStore {
             .setDestinationInExternalFilesDir(ctx, null, m.file)
             .addRequestHeader("User-Agent", DownloadPolicy.userAgent(BuildConfig.VERSION_NAME))
             .setAllowedOverMetered(anyNetwork)
+            .setAllowedOverRoaming(false)
         return try {
             val id = ctx.getSystemService(DownloadManager::class.java).enqueue(req)
             // What went online: handed to Android's download service; its end is recorded once it has ended.
@@ -331,7 +332,7 @@ object ModelStore {
             if (!c.moveToFirst()) null else Dl(
                 c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)),
                 c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)),
-                c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON)))
+                DownloadNetwork.reason(ctx, c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)), c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON))))
         }
     } catch (_: Exception) { null }
 

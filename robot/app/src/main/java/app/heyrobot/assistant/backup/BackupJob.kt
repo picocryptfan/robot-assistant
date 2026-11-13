@@ -58,7 +58,9 @@ internal class BackupJob(private val ctx: Context, private val chosen: Set<Backu
         /** Saved and checked: [bytes] long, [categories] in it; [unreadableKeys]: helpers whose key couldn't be read now. */
         class Done(val bytes: Long, val categories: Set<BackupCategory>, val unreadableKeys: List<String>, val linksLeftOut: Boolean = false,
                    /** R4: files of Robot Files that couldn't be read, and private codes left out because Memory couldn't be. */
-                   val filesLeftOut: Int = 0, val codesLeftOut: Boolean = false, val privateLeftOut: Boolean = false) : Outcome()
+                   val filesLeftOut: Int = 0, val codesLeftOut: Boolean = false, val privateLeftOut: Boolean = false,
+                   /** fix-seal-transcripts-c, Medium 1: transcripts left out because they never opened. */
+                   val transcriptsLeftOut: Int = 0) : Outcome()
         class Failed(val code: BackupCode) : Outcome()
         data object Cancelled : Outcome()
     }
@@ -91,8 +93,18 @@ internal class BackupJob(private val ctx: Context, private val chosen: Set<Backu
             return failed(BackupCode.FILES_UNREADABLE, uri)
         } catch (_: BackupSources.ListsUnreadable) {
             return failed(BackupCode.LISTS_UNREADABLE, uri)
+        } catch (_: BackupSources.LogbookUnreadable) {
+            return failed(BackupCode.LOGBOOK_UNREADABLE, uri)
+        } catch (e: BackupSources.PeopleUnreadable) {
+            return failed(if (e.tooNew) BackupCode.PEOPLE_TOO_NEW else BackupCode.PEOPLE_UNREADABLE, uri)
+        } catch (e: BackupSources.NotesUnreadable) {
+            return failed(if (e.tooNew) BackupCode.NOTES_TOO_NEW else BackupCode.NOTES_UNREADABLE, uri)
+        } catch (e: BackupSources.HistoryUnreadable) {
+            return failed(if (e.tooNew) BackupCode.HISTORY_TOO_NEW else BackupCode.HISTORY_UNREADABLE, uri)
         } catch (_: BackupSources.PrivateUnreadable) {
             return failed(BackupCode.CALENDAR_UNREADABLE, uri)
+        } catch (e: BackupSources.TranscriptsLocked) {
+            return failed(if (e.fault) BackupCode.TRANSCRIPTS_UNREADABLE else BackupCode.TRANSCRIPTS_LOCKED, uri)
         } catch (t: Throwable) {
             RLog.w("backup_gather", t)
             return failed(BackupCode.FAILED, uri)
@@ -125,7 +137,7 @@ internal class BackupJob(private val ctx: Context, private val chosen: Set<Backu
                 }
                 // LS12: each category's name in words too, so a Robot that doesn't know one can say which part it leaves out.
                 val manifest = BackupManifest(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE.toLong(), System.currentTimeMillis(), counts,
-                    keys = categories.any { it in BackupCategory.KEY_CATEGORIES }, names = categories.filter { it != BackupCategory.SKILL_TRUST }.associate { it.id to app.heyrobot.core.backup.BackupWords.names(it) })
+                    keys = categories.any { it in BackupCategory.KEY_CATEGORIES }, names = categories.filter { it != BackupCategory.SKILL_TRUST && it != BackupCategory.OPEN_APPS && it != BackupCategory.SKILL_OPENS && it != BackupCategory.MOMENTS }.associate { it.id to app.heyrobot.core.backup.BackupWords.names(it) })
                 val total = gathered.sources.size + gathered.secrets.size
                 var written = 0
                 val wrote = HashSet<BackupCategory>()
@@ -188,7 +200,7 @@ internal class BackupJob(private val ctx: Context, private val chosen: Set<Backu
                 BackupFiles.saveState(ctx, BackupFiles.state(ctx).after(now, wrote, bytes, checked = true)
                     .copy(chosen = remember, recordings = recordings, pictures = pictures, videos = videos))
                 log(BackupCode.DONE_CHECKED, wrote, bytes)
-                Outcome.Done(bytes, wrote, gathered.unreadableKeys, gathered.linksLeftOut, gathered.filesLeftOut(), gathered.codesLeftOut, gathered.privateLeftOut)
+                Outcome.Done(bytes, wrote, gathered.unreadableKeys, gathered.linksLeftOut, gathered.filesLeftOut(), gathered.codesLeftOut, gathered.privateLeftOut, gathered.transcriptsLeftOut)
             }
         } finally {
             gathered.secrets.forEach { it.close() }

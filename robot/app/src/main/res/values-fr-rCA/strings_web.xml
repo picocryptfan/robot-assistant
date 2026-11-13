@@ -81,6 +81,8 @@
     <string name="web_current_info">Information récente</string>
     <string name="web_robot_first">Par défaut. Les nouvelles, les résultats sportifs et les prix restent avec Robot</string>
     <string name="web_helper_first">Seulement quand ton IA externe peut chercher sur le web elle-même</string>
+    <string name="web_helpers_search">Laisser les IA externes utiliser la recherche de Robot</string>
+    <string name="web_helpers_search_summary">Pour une IA externe qui ne peut pas chercher sur le web elle-même. Chaque recherche passe par ton service de recherche, avec les vérifications de Robot</string>
     <string name="web_keep_sources">Garder les sources dans l’historique</string>
     <string name="web_keep_domains">Par défaut. «&#160;nhl.com, tsn.ca&#160;» sous la réponse</string>
     <string name="web_keep_links">Les adresses complètes</string>

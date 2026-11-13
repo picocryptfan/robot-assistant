@@ -45,6 +45,29 @@ object AlarmCancel {
         }
     }
 
+    /** fix-alarm-moved (phone-train-14-b): the card reads done only once the read-back shows the alarm went. */
+    fun cardStatus(gone: Boolean): ActionStatus = if (gone) ActionStatus.DONE else ActionStatus.FAILED
+
+    /**
+     * fix-alarm-moved: the lines after [why] once Robot opened your clock's alarms ([opened]) or couldn't. [still], the alarm
+     * your clock left on: you finish there, so the line says so.
+     */
+    fun openLines(why: Phrase, opened: Boolean, still: LocalTime? = null): List<Phrase> = listOf(why, when {
+        still == null -> if (opened) ToolStrings.alarmsOpened() else ToolStrings.alarmsInClock()
+        opened -> ToolStrings.alarmFinishThere("time" to EventText.clock(still.hour, still.minute))
+        else -> ToolStrings.alarmFinishInClock()
+    })
+
+    /**
+     * fix-batch-15 L2 (review-batch-15): the dismiss read back [steps] times [stepMs] apart, then once more after [lastMs]
+     * (a slow clock); true once the next alarm moved on from [before].
+     */
+    inline fun readBack(before: Long, steps: Int = 8, stepMs: Long = 250, lastMs: Long = 1000, pause: (Long) -> Unit, read: () -> Long?): Boolean {
+        for (i in 0 until steps) { pause(stepMs); if (gone(before, read())) return true }
+        pause(lastMs)
+        return gone(before, read())
+    }
+
     /** After the dismiss: the next alarm Android shows moved on, or none is left, so the one asked about went. */
     fun gone(before: Long, after: Long?): Boolean = after != before
 }

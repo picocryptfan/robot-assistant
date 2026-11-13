@@ -181,6 +181,28 @@ object RoutineStrings : Strings("routine", area = "routines") {
     val arrangedListsDown = s("arranged_lists_down", "Your lists moved down.", "Tes listes sont descendues d’un cran.")
     val arrangeFailed = s("arrange_failed", "I couldn't change your Today page.", "Je n’ai pas pu changer ta page Aujourd’hui.")
     val arrangedNoteDown = s("arranged_note_down", "Your note moved down.", "Ta note est descendue d’un cran.")
+    /** HS3: Quick access's buttons by name (the page shows them, Robot's replies name them). */
+    val quickTalk = s("quick_talk", "Talk to Robot", "Parler à Robot")
+    val quickCar = s("quick_car", "Car mode", "Mode auto")
+    val quickLink = s("quick_link", "Robot to Robot", "Robot à Robot")
+    val quickSkills = s("quick_skills", "Skills", "Compétences")
+    val quickLists = s("quick_lists", "Lists", "Listes")
+    val quickNotes = s("quick_notes", "Notes", "Notes")
+    val quickFiles = s("quick_files", "Files", "Fichiers")
+    val quickCalendar = s("quick_calendar", "Calendar", "Agenda")
+    val quickHistory = s("quick_history", "History", "Historique")
+    val quickTranscribe = s("quick_transcribe", "Transcribe", "Transcrire")
+    val quickInterpreter = s("quick_interpreter", "Interpreter", "Interprète")
+    val quickRoutines = s("quick_routines", "Routines", "Routines")
+    /** HS3: "put car mode first" on Quick access; « le bouton » keeps the French the same for every name. */
+    val quickFirst = s("quick_first", "The {name} button is first on Quick access now.", "Le bouton {name} est en premier dans l’Accès rapide maintenant.")
+    val quickLast = s("quick_last", "The {name} button is last on Quick access now.", "Le bouton {name} est en dernier dans l’Accès rapide maintenant.")
+    val quickUp = s("quick_up", "The {name} button moved up on Quick access.", "Le bouton {name} est monté d’un cran dans l’Accès rapide.")
+    val quickDown = s("quick_down", "The {name} button moved down on Quick access.", "Le bouton {name} est descendu d’un cran dans l’Accès rapide.")
+    val quickFailed = s("quick_failed", "I couldn't change Quick access.", "Je n’ai pas pu changer l’Accès rapide.")
+    val unlockQuick = s("unlock_quick", "Unlock first: Quick access changes with the phone unlocked.",
+        "Déverrouille d’abord : l’Accès rapide change quand le téléphone est déverrouillé.")
+    val showQuick = s("show_quick", "Here's Quick access.", "Voici l’Accès rapide.")
     val unlockList = s("unlock_list", "Unlock first: your routines are only listed with the phone unlocked.",
         "Déverrouille d'abord : la liste de tes routines n'est donnée que téléphone déverrouillé.")
     val unlockRemind = s("unlock_remind", "Unlock first: reminders for your brief are only added with the phone unlocked.",
@@ -310,6 +332,26 @@ object RoutineStrings : Strings("routine", area = "routines") {
     val deletedTitle = s("deleted_title", "Deleted “{name}”", "« {name} » supprimée")
     val couldntChange = s("couldnt_change", "Robot couldn't change the file.", "Robot n'a pas pu modifier le fichier.")
     val couldntKeepReminder = s("couldnt_keep_reminder", "Robot couldn't keep that reminder.", "Robot n'a pas pu garder ce rappel.")
+    // moment-reminders: a reminder for a moment (core MomentReminders), the card and Settings › Routines.
+    val momentCarOff = s("moment_car_off", "when you get out of the car", "quand tu sors de l'auto")
+    val momentCarOn = s("moment_car_on", "when you get in the car", "quand tu embarques dans l'auto")
+    val momentHeadsetOff = s("moment_headset_off", "when you take your headphones off", "quand tu enlèves tes écouteurs")
+    val momentHeadsetOn = s("moment_headset_on", "when you put your headphones on", "quand tu mets tes écouteurs")
+    val momentCharging = s("moment_charging", "when you plug in your phone", "quand tu branches ton téléphone")
+    val momentChargingNight = s("moment_charging_night", "when you plug in your phone tonight", "quand tu branches ton téléphone ce soir")
+    val momentUnplugged = s("moment_unplugged", "when you unplug your phone", "quand tu débranches ton téléphone")
+    val momentUnlock = s("moment_unlock", "the next time you unlock your phone", "la prochaine fois que tu déverrouilles ton téléphone")
+    val momentSet = s("moment_set", "I'll remind you {moment}: {text}.", "Je vais te le rappeler {moment} : {text}.")
+    val momentNoCar = s("moment_no_car", "I don't remember a car yet, so this can't go off until headset mode remembers yours.",
+        "Je ne connais pas encore d'auto : ce rappel ne peut pas partir tant que le mode écouteurs n'a pas retenu la tienne.")
+    val momentNoHeadset = s("moment_no_headset", "I don't remember any headphones yet, so this can't go off until headset mode remembers yours.",
+        "Je ne connais pas encore d'écouteurs : ce rappel ne peut pas partir tant que le mode écouteurs n'a pas retenu les tiens.")
+    val unlockMoment = s("unlock_moment", "Unlock first: reminders are only added with the phone unlocked.",
+        "Déverrouille d'abord : les rappels s'ajoutent seulement avec le téléphone déverrouillé.")
+    val momentsNewer = s("moments_newer", "Your reminders for a moment are from a newer Robot, so this one can't change them. Update Robot to add one.",
+        "Tes rappels pour un moment viennent d'un Robot plus récent et ne peuvent pas être modifiés ici. Mets Robot à jour pour en ajouter un.")
+    val momentTitle = s("moment_title", "Reminder", "Rappel")
+    val momentPublic = s("moment_public", "A reminder from Robot", "Un rappel de Robot")
     val remindThisMorning = s("remind_this_morning", "I'll remind you in this morning's brief: {text}.", "C'est noté pour ton résumé de ce matin : {text}.")
     val remindTomorrow = s("remind_tomorrow", "I'll remind you in tomorrow's brief: {text}.", "C'est noté pour ton résumé de demain matin : {text}.")
     val turnOnBrief = s("turn_on_brief", "Turn on the morning brief in Robot › {page} to hear it.",

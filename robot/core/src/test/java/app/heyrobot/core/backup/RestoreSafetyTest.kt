@@ -298,6 +298,9 @@ class RestoreSafetyTest {
         assertFalse(RestoreSafety.updates(u, u.copy(autoCheck = false), false).value.autoCheck)
         val gf: (FeedbackPrefs, FeedbackPrefs, Boolean) -> Guarded<FeedbackPrefs> = RestoreSafety::feedback
         check(Case(SaferField.FEEDBACK_SEND_TO, FeedbackPrefs(), FeedbackPrefs("+15145550199"), { it.sendTo }, gf))
+        // auto-open: on opens apps you name without a card, the looser side; off is the stricter.
+        val go: (app.heyrobot.core.OpenAppsFile, app.heyrobot.core.OpenAppsFile, Boolean) -> Guarded<app.heyrobot.core.OpenAppsFile> = RestoreSafety::openApps
+        check(Case(SaferField.OPEN_APPS_NAMED, app.heyrobot.core.OpenAppsFile(named = false), app.heyrobot.core.OpenAppsFile(named = true), { it.named }, go))
         // Display: as saved.
         assertEquals(LookSettings(wallpaperColors = false), RestoreSafety.look(LookSettings(), LookSettings(wallpaperColors = false)).value)
     }
@@ -307,6 +310,7 @@ class RestoreSafetyTest {
         val gh: (HeadsetFile, HeadsetFile, Boolean) -> Guarded<HeadsetFile> = RestoreSafety::headset
         listOf(
             Case(SaferField.HEADSET_ANNOUNCE_LOCKED, h, h.copy(settings = HeadsetSettings(announceLocked = true)), { it.settings.announceLocked }, gh),
+            Case(SaferField.HEADSET_PANEL_FOLLOW_UP, h, h.copy(settings = HeadsetSettings(panelFollowUp = true)), { it.settings.panelFollowUp }, gh),
             Case(SaferField.HANDSFREE_PRIVATE, h, h.copy(safety = HandsFreeSafety(personalOnlyPrivate = false)), { it.safety.personalOnlyPrivate }, gh),
             Case(SaferField.HANDSFREE_REPLY, h.copy(safety = HandsFreeSafety(replyAfterSpokenYes = false)), h, { it.safety.replyAfterSpokenYes }, gh),
             Case(SaferField.HANDSFREE_CALL, h.copy(safety = HandsFreeSafety(callAfterSpokenYes = false)), h, { it.safety.callAfterSpokenYes }, gh),
@@ -601,7 +605,8 @@ class RestoreSafetyTest {
         val file = app.heyrobot.core.HomeSettings(weather = true).turnedOn()
         val theirs = RestoreSafety.home(here, file, mine = false)
         assertFalse(theirs.value.weather)
-        assertTrue(theirs.value.today)
+        // Review L4: someone else's backup never changes which page is your home (HomeRestoreOthersTest).
+        assertFalse(theirs.value.today)
         assertEquals(app.heyrobot.core.TodayPart.DEFAULT, theirs.value.order)
         assertEquals(SaferField.HOME_WEATHER, theirs.kept.single())
         val yours = RestoreSafety.home(here, file, mine = true)
@@ -617,8 +622,8 @@ class RestoreSafetyTest {
     private val feedB = app.heyrobot.core.news.NewsFeed("https://b.example.org/rss", "B")
 
     @Test fun someoneElsesBackupAddsNoFeedsAndFetchesNoMore() {
-        val here = app.heyrobot.core.HomeSettings(today = true, news = app.heyrobot.core.news.NewsSettings(listOf(feedA), app.heyrobot.core.news.NewsMode.ASKED, app.heyrobot.core.news.NewsVia.TOR))
-        val file = app.heyrobot.core.HomeSettings(today = true, news = app.heyrobot.core.news.NewsSettings(listOf(feedA, feedB), app.heyrobot.core.news.NewsMode.OPEN, app.heyrobot.core.news.NewsVia.DIRECT, mobileData = true))
+        val here = app.heyrobot.core.HomeSettings(home = app.heyrobot.core.HomeChoice.TODAY, news = app.heyrobot.core.news.NewsSettings(listOf(feedA), app.heyrobot.core.news.NewsMode.ASKED, app.heyrobot.core.news.NewsVia.TOR))
+        val file = app.heyrobot.core.HomeSettings(home = app.heyrobot.core.HomeChoice.TODAY, news = app.heyrobot.core.news.NewsSettings(listOf(feedA, feedB), app.heyrobot.core.news.NewsMode.OPEN, app.heyrobot.core.news.NewsVia.DIRECT, mobileData = true))
         val theirs = RestoreSafety.home(here, file, mine = false)
         assertEquals(here.news, theirs.value.news)
         assertTrue(theirs.kept.containsAll(listOf(SaferField.HOME_FEEDS, SaferField.HOME_NEWS_MODE,
@@ -628,6 +633,20 @@ class RestoreSafetyTest {
         val stricter = app.heyrobot.core.HomeSettings(news = app.heyrobot.core.news.NewsSettings(emptyList(), app.heyrobot.core.news.NewsMode.ASKED, app.heyrobot.core.news.NewsVia.TOR))
         assertEquals(stricter.news, RestoreSafety.home(file, stricter, mine = false).value.news)
     }
+    @Test fun someoneElsesBackupNeverTurnsTheHeadsUpOn() {
+        val here = app.heyrobot.core.headsup.HeadsUpSettings(on = false)
+        val file = app.heyrobot.core.headsup.HeadsUpSettings(on = true, minutes = 30)
+        val theirs = RestoreSafety.headsUp(here, file, mine = false)
+        assertFalse(theirs.value.on)
+        assertEquals(30, theirs.value.minutes)
+        assertEquals(listOf(SaferField.HEADSUP_ON, ), theirs.kept)
+        val yours = RestoreSafety.headsUp(here, file, mine = true)
+        assertTrue(yours.value.on)
+        assertEquals(emptyList<SaferField>(), yours.kept)
+        // Off from anyone's: stricter always comes back.
+        assertFalse(RestoreSafety.headsUp(file, here, mine = false).value.on)
+    }
+
     @Test fun everySaferFieldIsCovered() {
         val src = java.io.File("src/test/java/app/heyrobot/core/backup/RestoreSafetyTest.kt").readText() +
             java.io.File("src/test/java/app/heyrobot/core/backup/RestoreHostileFieldsTest.kt").readText()

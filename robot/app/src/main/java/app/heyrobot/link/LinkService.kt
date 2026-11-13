@@ -106,9 +106,9 @@ class LinkService : Service() {
 
     private fun answer(code: Int, f: IpcFrame, reply: Parcel?) {
         val out = reply ?: return
-        // L5-fix: Off means off. While Robot to Robot is off, only its state, turning it on (SET_UP) and Start over are
-        // answered; everything else is refused before its frame is read, and no node is opened for it.
-        if (code != LinkIpcProtocol.STATUS && code != LinkIpcProtocol.SET_UP && code != LinkIpcProtocol.START_OVER && !LinkRuntime.on(this)) return refused(out)
+        // L5-fix: Off means off. While Robot to Robot is off, only ALLOWED_WHILE_OFF is answered; everything else is
+        // refused before its frame is read, and no node is opened for it.
+        if (code !in ALLOWED_WHILE_OFF && !LinkRuntime.on(this)) return refused(out)
         // L5-fix: the phone locked: only what makes things stricter, or reads them.
         if (code in LOCKED_REFUSED && !LinkPolicy.canPair(locked())) return refused(out)
         // L16: a phone lock stops what goes out to another Robot on your word, as the desk does.
@@ -183,6 +183,12 @@ class LinkService : Service() {
                 val ok = (pkg.isEmpty() || connector.apps().any { it.pkg == pkg }) &&
                     try { n.choosePush(pkg.isNotEmpty()) { connector.use(pkg) }.get(CODE_WAIT_S, TimeUnit.SECONDS) } catch (_: Exception) { false }
                 out.writeInt(LinkIpcProtocol.REPLY_OK); out.writeInt(if (ok) 1 else 0)
+            }
+            LinkIpcProtocol.SEAL_REPORT -> {
+                // RP5: a report sealed for the share sheet; no node, no vault, no network (LinkReports).
+                val key = f.bytes(app.heyrobot.core.feedback.ReportKey.BYTES); val ref = f.string(LinkIpcProtocol.REF_CHARS); val pipe = f.fd(); f.end()
+                val n = LinkReports.seal(this, key, ref, pipe) ?: return refused(out)
+                out.writeInt(LinkIpcProtocol.REPLY_OK); out.writeInt(n)
             }
             LinkIpcProtocol.FEED_TOR -> {
                 f.end()
@@ -554,8 +560,14 @@ class LinkService : Service() {
         out.writeInt(LinkIpcProtocol.REPLY_REFUSED)
     }
 
-    private companion object {
+    internal companion object {
         /** L5-fix: refused whole while the phone is locked (the lock rules, §4.4). */
+        /**
+         * L5-fix: answered while Robot to Robot is off: its state, turning it on (SET_UP) and Start over; and RP5's
+         * SEAL_REPORT, since sealing a report needs nothing of Robot to Robot: LinkReports opens no node (no listener, no
+         * socket, no Tor), reads no vault, and writes only cache/reports/ (LinkServiceIpcTest checks all three).
+         */
+        val ALLOWED_WHILE_OFF = setOf(LinkIpcProtocol.STATUS, LinkIpcProtocol.SET_UP, LinkIpcProtocol.START_OVER, LinkIpcProtocol.SEAL_REPORT)
         val PHONE_LOCK_REFUSED = setOf(LinkIpcProtocol.SEND, LinkIpcProtocol.FILE_SEND, LinkIpcProtocol.LIST_SEND, LinkIpcProtocol.LIST_LEAVE)
         val LOCKED_REFUSED = setOf(LinkIpcProtocol.MAKE_CODE, LinkIpcProtocol.USE_CODE, LinkIpcProtocol.VERIFY, LinkIpcProtocol.LOWER, LinkIpcProtocol.UNBLOCK,
             // L6: cards, your answers to them and Undo show or change what another Robot asked: only unlocked (§4.4).
@@ -620,6 +632,9 @@ internal class IpcFrame(private val p: Parcel) {
         if (s.length > maxChars) throw IllegalArgumentException()
         return s
     }
+
+    /** A file descriptor (RP5's pipe). */
+    fun fd(): ParcelFileDescriptor { need(4); return p.readFileDescriptor() ?: throw IllegalArgumentException() }
 
     fun end() { if (p.dataAvail() != 0) throw IllegalArgumentException() }
 

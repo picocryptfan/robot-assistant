@@ -39,6 +39,10 @@ object SkillWords {
     val WHEN_I_SAY_FR = listOf("quand je dis", "lorsque je dis", "si je dis")
 
     // "Save that as a skill" (plan §5, D12), with or without a name after it.
+    /** 1.4: "add to <skill>: <what a connection does>". */
+    val ADD_EN = listOf("add to the skill", "add to my skill", "add a step to the skill", "add a step to my skill", "add a step to", "add to") // l10n: not text (words Robot hears)
+    val ADD_FR = listOf("ajoute a la competence", "ajoute a ma competence", "ajoute une etape a la competence", "ajoute une etape a", "ajoute a") // l10n: not text (words Robot hears)
+
     val SAVE_EN = listOf("save that as a skill called", "save that as a skill named", "save that as a skill", "save this as a skill called",
         "save this as a skill", "save those as a skill called", "save those as a skill", "save these as a skill called", "save these as a skill",
         "save it as a skill called", "save it as a skill", "make that a skill called", "make that a skill named", "make that a skill",

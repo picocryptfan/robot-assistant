@@ -18,13 +18,16 @@ import kotlin.math.roundToLong
 
 /** What the person asked about. */
 enum class PhonePart {
-    STORAGE, BATTERY, MEMORY, ALL;
+    /** App pause: [PICKUPS] is today's pickups, never part of [ALL]. */
+    STORAGE, BATTERY, MEMORY, PICKUPS, ALL;
 
     companion object {
         /** "storage", "space", "battery", "RAM", "mémoire"…; anything else (or nothing) is all of it. */
         fun of(text: String?): PhonePart {
             val t = Normalizer.normalize(text.orEmpty(), Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "").lowercase(Locale.ROOT)
             fun any(vararg w: String) = w.any { Regex("\\b$it").containsMatchIn(t) }
+            // App pause: "how many times did I pick up my phone", "combien de fois j'ai déverrouillé mon téléphone".
+            if (any("pick", "unlock", "deverrouill", "prise", "pris en main", "pris mon")) return PICKUPS
             val parts = buildSet {
                 if (any("storage", "space", "disk", "stockage", "espace", "apps", "files", "photos")) add(STORAGE)
                 if (any("battery", "batterie", "charg", "power")) add(BATTERY)
@@ -72,6 +75,8 @@ data class PhoneFacts(
     val robotModelLoaded: Boolean? = null,
     /** What the loaded model holds, about (0.4.1: 2 GB for Fast, 4 GB for the E4B models). */
     val robotModelBytes: Long = PhoneStatus.ROBOT_MODEL_BYTES,
+    /** App pause: today's pickups (Usage access; never stored). */
+    val pickups: app.heyrobot.core.pause.Pickups? = null,
 )
 
 /** The pages of Android's settings a card can open (Executed.handOff), with the card button's words. */
@@ -143,6 +148,7 @@ object PhoneStatus {
         if (storage) f.storage?.let { m["storage"] = storageText(it) }
         if (part == PhonePart.BATTERY || part == PhonePart.ALL) f.battery?.let { m["battery"] = batteryText(it, units) }
         if (part == PhonePart.MEMORY || part == PhonePart.ALL) f.memory?.let { m["memory"] = memoryText(it, f.robotModelLoaded, f.robotModelBytes) }
+        if (part == PhonePart.PICKUPS) m["pickups"] = f.pickups?.let(::pickupsText) ?: InfoStrings.pickupsUnknown()
         if (storage) {
             if (f.usageAccess) {
                 f.apps?.takeIf { it.isNotEmpty() }?.let { m["largest_apps"] = appsText(it) }
@@ -164,7 +170,13 @@ object PhoneStatus {
         Phrase.Join(entries(f, part, units).map { (k, v) -> InfoStrings.statusLine("title" to (TITLES[k]?.invoke() ?: Phrase.plain(k)), "value" to v) }, sep)
 
     private val TITLES = mapOf("storage" to InfoStrings.storage, "battery" to InfoStrings.battery, "memory" to InfoStrings.memory,
-        "largest_apps" to InfoStrings.largestApps, "media" to InfoStrings.media)
+        "largest_apps" to InfoStrings.largestApps, "media" to InfoStrings.media, "pickups" to InfoStrings.pickups)
+
+    /** "12 times today; my guess: 5 of those were only a look at the lock screen": counts only, never an app's name. */
+    fun pickupsText(p: app.heyrobot.core.pause.Pickups): Phrase = InfoStrings.pickupsCount(p.count.toLong(), "n" to p.count).let { c ->
+        val g = p.glances ?: return c
+        InfoStrings.pickupsLine("count" to c, "glances" to InfoStrings.pickupsGlances(g.toLong(), "g" to g))
+    }
 
     /** "57 GB free of 238 GB (76% used)". */
     fun storageLine(s: StorageFacts): String = storageText(s).en()
@@ -217,6 +229,7 @@ object PhoneStatus {
         PhonePart.STORAGE -> InfoStrings.checkStorage()
         PhonePart.BATTERY -> InfoStrings.checkBattery()
         PhonePart.MEMORY -> InfoStrings.checkMemory()
+        PhonePart.PICKUPS -> InfoStrings.checkPickups()
         PhonePart.ALL -> InfoStrings.checkAll()
     }
 }

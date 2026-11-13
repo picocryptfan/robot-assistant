@@ -18,7 +18,7 @@ import java.time.ZonedDateTime
 
 /** The save card: [chips] in order are the slots', then the level's (when it may change), then "Change the name". */
 data class SaveCard(val title: Phrase, val body: List<Phrase>, val chips: List<Phrase>, val lines: List<Phrase>, val footer: Phrase?,
-    val levelChip: Boolean, val nameProblem: Phrase?)
+    val levelChip: Boolean, val nameProblem: Phrase?, val ticks: List<app.heyrobot.core.OpenTick> = emptyList())
 
 object SkillCards {
     /** A level's words (Settings › Actions' own). */
@@ -70,8 +70,10 @@ object SkillCards {
      * The save card of [d]. [nameProblem]: why its name can't be used (SkillNames), or null. [paused]: D8, the steps came
      * after a pause (the card suggests a longer wait).
      */
-    fun save(d: SkillDraft, nameProblem: Phrase?): SaveCard {
+    fun save(d: SkillDraft, nameProblem: Phrase?, apps: List<app.heyrobot.core.AppEntry> = emptyList()): SaveCard {
         val s = d.skill()
+        // auto-open-plan §1: a box per app its open step names, after the level and before the name.
+        val ticks = app.heyrobot.core.OpenTicks.of(app.heyrobot.core.OpenTicks.names(s), apps, d.fromContent)
         val title = when {
             d.drafted -> SkillStrings.cardDraft("name" to s.name)
             d.made == SkillMade.DEMO -> SkillStrings.cardSave("name" to s.name)
@@ -83,6 +85,7 @@ object SkillCards {
         // D13: made from content, it stays at Ask first; otherwise Just do it takes a tap (D14).
         val levelChip = !d.fromContent && !d.drafted
         if (levelChip) chips += SkillStrings.level("level" to level(d.level))
+        for (t in ticks) chips += app.heyrobot.core.OpenTicks.chip(t, t.pkg in d.opens)
         chips += SkillStrings.rename()
         val lines = buildList {
             // 1.3 (design §10): a model's draft says so first, and where the content it came after was from.
@@ -113,7 +116,7 @@ object SkillCards {
             d.tapLine != null -> d.tapLine
             else -> SkillStrings.sayYesOrSave("save" to UiLabel(UiStrings.save))
         }
-        return SaveCard(title, steps(s), chips, lines, footer, levelChip, nameProblem)
+        return SaveCard(title, steps(s), chips, lines, footer, levelChip, nameProblem, ticks)
     }
 
     /** The run card's body: the steps with the values this run uses, a connection's step named as [links] knows it (C4). */

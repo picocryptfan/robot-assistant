@@ -84,6 +84,7 @@ fun SettingsRoot(s: RobotSettings, snap: Snapshot, a: AppActions, modifier: Modi
             PreferenceItem(UiStrings.skills().str(), skillsSummary(ctx), RIcons.Robot, onClick = { go(SettingsRoutes.SKILLS) })
             // 1.1: files/robot/lock (LockStore), not settings.json.
             PreferenceItem(UiStrings.phoneLock().str(), phoneLockRow, RIcons.Lock, onClick = { go(SettingsRoutes.PHONE_LOCK) })
+            PreferenceItem(stringResource(R.string.lock_pause_settings), appPauseSummary(ctx), RIcons.Lock, onClick = { go(SettingsRoutes.APP_PAUSE) })
             // 0.8: headset.json, car.json and devices.json (HandsFreeFiles), not settings.json.
             PreferenceItem(UiStrings.headset().str(), headsetRow, RIcons.Headset, onClick = { go(SettingsRoutes.HEADSET) })
             PreferenceItem(UiStrings.carMode().str(), carRow, RIcons.Car, onClick = { go(SettingsRoutes.CAR) })
@@ -94,6 +95,10 @@ fun SettingsRoot(s: RobotSettings, snap: Snapshot, a: AppActions, modifier: Modi
             PreferenceItem(UiStrings.messages().str(), messagesSummaryText(messagesFile()).str(), RIcons.Message, onClick = { go(SettingsRoutes.MESSAGES) })
             PreferenceItem(UiStrings.weather().str(), weather, RIcons.Sunny, onClick = { go(SettingsRoutes.WEATHER) })
             PreferenceItem(UiStrings.webSearch().str(), webSummaryText(web, null).str(), RIcons.Search, onClick = { go(SettingsRoutes.WEB_SEARCH) })
+            // Wikipedia P3: wikipedia.json (sys/WikiStore.kt), not settings.json.
+            PreferenceItem(stringResource(R.string.wiki_title), stringResource(R.string.wiki_summary), RIcons.Download, onClick = { go(SettingsRoutes.WIKIPEDIA) })
+            // Ask about your screenshots: shots/state.json (sys/ShotsVault.kt), not settings.json.
+            PreferenceItem(stringResource(R.string.shots_title), stringResource(R.string.shots_summary), RIcons.Search, onClick = { go(SettingsRoutes.SCREENSHOTS) })
             PreferenceItem(UiStrings.helpers().str(), helpersSummaryText(s, snap.facts).str(), RIcons.Cloud, onClick = { a.openPage(Page.Helpers) })
             PreferenceItem(UiStrings.conversation().str(), conversationSummaryText(s).str(), RIcons.Transcribe, onClick = { a.openPage(Page.ConversationSettings) })
             PreferenceItem(UiStrings.termux().str(), termux.str(), RIcons.Terminal, onClick = { go(SettingsRoutes.TERMUX) })
@@ -104,6 +109,7 @@ fun SettingsRoot(s: RobotSettings, snap: Snapshot, a: AppActions, modifier: Modi
             PreferenceItem(UiStrings.files().str(), files ?: filesSummary(), RIcons.Folder, onClick = { go(SettingsRoutes.FILES) })
             // 1.4 Lists: files/lists and lists_settings.json (sys/ListsVault.kt), not settings.json; counted only while unlocked.
             PreferenceItem(stringResource(R.string.lists_title), lists ?: listsSummary(), RIcons.Checklist, onClick = { go(SettingsRoutes.LISTS) })
+            PreferenceItem(stringResource(R.string.logbook_title), stringResource(R.string.logbook_summary), RIcons.Checklist, onClick = { go(SettingsRoutes.LOGBOOK) })
             // 1.5: link_settings.json (sys/LinkSettingsStore), not settings.json; :link isn't asked here.
             PreferenceItem(stringResource(R.string.link_title), stringResource(if (linkOn) R.string.link_on else R.string.link_off), RIcons.Share, onClick = { go(SettingsRoutes.LINK) })
             PreferenceItem(UiStrings.history().str(), history, RIcons.History, onClick = { go(SettingsRoutes.HISTORY) })

@@ -114,7 +114,10 @@ enum class SaferField(val file: String, val field: String) {
     UPDATES_TEST_BUILDS("updates.json", "testBuilds"),
     UPDATES_INSTALL("updates.json", "installWithoutAsking"),
     FEEDBACK_SEND_TO("feedback.json", "sendTo"),
+    /** "Open apps you name without a card": on, Robot opens an app without asking, so someone else's backup never turns it on. */
+    OPEN_APPS_NAMED("open_apps.json", "named"),
     HEADSET_ANNOUNCE_LOCKED("headset.json", "announceLocked"),
+    HEADSET_PANEL_FOLLOW_UP("headset.json", "panelFollowUp"),
     HANDSFREE_PRIVATE("headset.json", "personalOnlyPrivate"),
     HANDSFREE_REPLY("headset.json", "replyAfterSpokenYes"),
     HANDSFREE_CALL("headset.json", "callAfterSpokenYes"),
@@ -236,6 +239,8 @@ enum class SaferField(val file: String, val field: String) {
     HOME_NEWS_VIA("home_settings.json", "via"),
     /** fix-today-review 2: mobile data for news, off here, stays off unless the backup is yours. */
     HOME_NEWS_MOBILE("home_settings.json", "mobileData"),
+    /** earbud-headsup-c: the calendar heads-up, which speaks in your earbuds by itself, stays off unless the backup is yours. */
+    HEADSUP_ON("headsup.json", "on"),
 }
 
 /** A file's value after the restore's rules, with the guarded settings kept at this phone's value. */
@@ -310,11 +315,13 @@ object RestoreSafety {
             G to listOf("autoCheck", "testBuilds", "installWithoutAsking", "repo", "skipped"),
         ),
         FeedbackPrefs::class.java to rules(G to listOf("sendTo")),
+        // auto-open: a restored "named" lets Robot open apps you name without a card, so only your own backup turns it on.
+        app.heyrobot.core.OpenAppsFile::class.java to rules(G to listOf("named")),
         HeadsetFile::class.java to rules(N to listOf("settings", "safety"), A to listOf("noticeSeen")),
         HeadsetSettings::class.java to rules(
             A to listOf("buttonOpensRobot", "listenWith", "fallbackToPhoneMic", "speakInHeadset", "followUpSeconds", "stopOnDisconnect",
-                "wakeThroughHeadset", "announceMessages", "announceFrom", "announceRead", "answerVoiceButton", "buttonsWhileTalking"),
-            G to listOf("announceLocked"),
+                "wakeThroughHeadset", "announceMessages", "announceFrom", "announceRead", "answerVoiceButton", "earbudButtons"),
+            G to listOf("announceLocked", "panelFollowUp"),
         ),
         HandsFreeSafety::class.java to rules(G to listOf("personalOnlyPrivate", "replyAfterSpokenYes", "callAfterSpokenYes")),
         CarFile::class.java to rules(G to listOf("on"), N to listOf("settings")),
@@ -353,21 +360,36 @@ object RestoreSafety {
         // restored, as Messages' signer pins aren't; you pick it again the first time you play something by name. Your maps
         // app's pin likewise: on a new phone routes go to Automatic until you pick it again.
         app.heyrobot.core.everyday.EverydaySettings::class.java to rules(
-            A to listOf("music"),
+            // 1.3 point and read's tiles: how a reading is sent, not a door or a record; as the file has it.
+            A to listOf("music", "readTiles"),
             G to listOf("listen", "voices", "askRobot", "online", "onlineDays"),
             T to listOf("musicApp", "podcastApp", "mapsApp"),
         ),
         // Today (home_settings.json, the HOME category): the page as you arranged it; H6's weather line guarded, since it
         // is the part that goes online (home-design §3: a backup from somewhere else shouldn't start connections). H9's lock
         // screen summary (counts and times only) as is: HOME comes only from your own backup (today-fix-b, ONLY_YOURS).
+        // HS2: the home page picked (a closed choice, taken only while this phone is on Getting started) and Quick access's
+        // order (known buttons only, none added or dropped, each shown only if this phone has it, none starts on its own) as is.
         app.heyrobot.core.HomeSettings::class.java to rules(
-            A to listOf("today", "offer", "note", "order", "lockSummary"),
+            A to listOf("home", "offer", "note", "order", "lockSummary", "quick"),
             G to listOf("weather", "news"),
         ),
         // Today H7: your feeds, how often and through what (home_settings.json's "news"): a backup that isn't yours adds no
         // feed and never fetches more often or by a weaker route (HOME_FEEDS, HOME_NEWS_MODE, HOME_NEWS_VIA).
         app.heyrobot.core.news.NewsSettings::class.java to rules(
             G to listOf("feeds", "mode", "via", "mobileData"),
+        ),
+        // moments-backup (moments.json, the MOMENTS category, only from a backup that is yours): each reminder as the file has
+        // it, but a wait held on the old phone, which starts over here (RestoreMerge.moments).
+        app.heyrobot.core.MomentReminder::class.java to rules(
+            A to listOf("id", "text", "moment", "created", "between"),
+            P to listOf("heldUntil"),
+        ),
+        // earbud-headsup-c (headsup.json, the HEADSUP category): how long before and the quiet hours as the file has them;
+        // the switch guarded, so a backup that isn't yours never turns on a voice in your earbuds.
+        app.heyrobot.core.headsup.HeadsUpSettings::class.java to rules(
+            A to listOf("minutes", "quiet"),
+            G to listOf("on"),
         ),
         // C10, Skills connections (connections.json): what a connection reaches comes as the file has it; what trusts it
         // (first-use answers, a spoken yes, Test's facts, the requests a minute, a hand-off's signer) is kept safer, and so
@@ -649,12 +671,19 @@ object RestoreSafety {
         return k.done(file.copy(sendTo = k.place(phone.sendTo, file.sendTo, null, SaferField.FEEDBACK_SEND_TO)))
     }
 
+    /** auto-open-plan §4: someone else's backup never turns "Open apps you name without a card" on here. */
+    fun openApps(phone: app.heyrobot.core.OpenAppsFile, file: app.heyrobot.core.OpenAppsFile, mine: Boolean): Guarded<app.heyrobot.core.OpenAppsFile> {
+        val k = Keep(mine)
+        return k.done(file.copy(named = k.flag(phone.named, file.named, SaferField.OPEN_APPS_NAMED)))
+    }
+
     fun look(@Suppress("UNUSED_PARAMETER") phone: LookSettings, file: LookSettings): Guarded<LookSettings> = Guarded(file, emptyList())
 
     fun headset(phone: HeadsetFile, file: HeadsetFile, mine: Boolean): Guarded<HeadsetFile> {
         val k = Keep(mine)
         return k.done(file.copy(
-            settings = file.settings.copy(announceLocked = k.flag(phone.settings.announceLocked, file.settings.announceLocked, SaferField.HEADSET_ANNOUNCE_LOCKED)),
+            settings = file.settings.copy(announceLocked = k.flag(phone.settings.announceLocked, file.settings.announceLocked, SaferField.HEADSET_ANNOUNCE_LOCKED),
+                panelFollowUp = k.flag(phone.settings.panelFollowUp, file.settings.panelFollowUp, SaferField.HEADSET_PANEL_FOLLOW_UP)),
             safety = HandsFreeSafety(
                 personalOnlyPrivate = k.flag(phone.safety.personalOnlyPrivate, file.safety.personalOnlyPrivate, SaferField.HANDSFREE_PRIVATE, onLooser = false),
                 replyAfterSpokenYes = k.flag(phone.safety.replyAfterSpokenYes, file.safety.replyAfterSpokenYes, SaferField.HANDSFREE_REPLY),
@@ -809,8 +838,15 @@ object RestoreSafety {
     fun filesSettingsExtra(phone: Map<String, Any?>, file: Map<String, Any?>, mine: Boolean): Map<String, Any?> = if (mine) file else phone
 
     /**
-     * Today H6: [file]'s page over [phone]'s (HomeSettings.restored); unless [mine], a weather line off here stays off.
+     * Today H6: [file]'s page over [phone]'s (HomeSettings.restored); unless [mine], a weather line off here stays off, and
+     * (review L4) this phone's home page, Quick access order and Today's offer stay as they are.
      */
+    /** earbud-headsup-c: [file]'s heads-up; unless [mine], a heads-up off here stays off. */
+    fun headsUp(phone: app.heyrobot.core.headsup.HeadsUpSettings, file: app.heyrobot.core.headsup.HeadsUpSettings, mine: Boolean): Guarded<app.heyrobot.core.headsup.HeadsUpSettings> {
+        val k = Keep(mine)
+        return k.done(file.copy(on = k.flag(phone.on, file.on, SaferField.HEADSUP_ON)))
+    }
+
     fun home(phone: app.heyrobot.core.HomeSettings, file: app.heyrobot.core.HomeSettings, mine: Boolean): Guarded<app.heyrobot.core.HomeSettings> {
         val k = Keep(mine)
         val pn = phone.news
@@ -818,7 +854,8 @@ object RestoreSafety {
         val feeds = k.pick(pn.feeds, fn.feeds, !pn.feeds.map { it.url }.containsAll(fn.feeds.map { it.url }), SaferField.HOME_FEEDS)
         val mode = k.rank(pn.mode, fn.mode, listOf(app.heyrobot.core.news.NewsMode.ASKED, app.heyrobot.core.news.NewsMode.DAILY, app.heyrobot.core.news.NewsMode.OPEN), SaferField.HOME_NEWS_MODE)
         val via = k.rank(pn.via, fn.via, listOf(app.heyrobot.core.news.NewsVia.TOR, app.heyrobot.core.news.NewsVia.DIRECT), SaferField.HOME_NEWS_VIA)
-        return k.done(phone.restored(file).copy(weather = k.flag(phone.weather, file.weather, SaferField.HOME_WEATHER), news = app.heyrobot.core.news.NewsSettings(feeds, mode, via,
+        val r = phone.restored(file).let { if (mine) it else it.copy(home = phone.home, quick = phone.quick, offer = phone.offer) }
+        return k.done(r.copy(weather = k.flag(phone.weather, file.weather, SaferField.HOME_WEATHER), news = app.heyrobot.core.news.NewsSettings(feeds, mode, via,
             k.flag(pn.mobileData, fn.mobileData, SaferField.HOME_NEWS_MOBILE))))
     }
 

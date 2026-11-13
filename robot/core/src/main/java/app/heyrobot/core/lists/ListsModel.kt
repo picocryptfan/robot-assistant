@@ -70,6 +70,15 @@ enum class ListRole(val names: List<String>) {
     TODO(listOf("To-do", "À faire")); // l10n: not text (names compared, never shown: ListsStrings says them)
 
     val json: String get() = name.lowercase(java.util.Locale.ROOT)
+
+    companion object {
+        /**
+         * Review Low 7: the names a skill's "add to <name>" leaves to Lists: your lists' and the roles', only while Lists is
+         * on (off, Lists hears none of them, so a skill called "Shopping" gets its step).
+         */
+        fun forSkills(yours: List<String>, listsOn: Boolean): List<String> =
+            if (listsOn) yours + entries.flatMap { it.names } else emptyList()
+    }
 }
 
 /** Whose a list is: yours, or from someone else's backup (§6). UNKNOWN: a newer Robot's, never taken for yours. */

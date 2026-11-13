@@ -187,6 +187,21 @@ class FakeTorNetwork {
     val refused = AtomicInteger()
     private val random = java.util.Random(1502)
     var push: FakePushServer? = null
+    /** fix-bridges-and-wording-c L2: carriers whose Tor reads as stale (your own bridge lines changed) until their next up() or down(). */
+    val staleOnes: MutableSet<TorNet> = ConcurrentHashMap.newKeySet()
+    private val ups = ConcurrentHashMap<TorNet, AtomicInteger>()
+    private val downs = ConcurrentHashMap<TorNet, AtomicInteger>()
+    fun ups(t: TorNet): Int = ups[t]?.get() ?: 0
+    /**
+     * fix-bridges-lows: a carrier's up() waits on its latch here (holding the carrier's lock, as TorRuntime holds its own
+     * across a start) until the test counts it down; [entered] has each carrier whose up() is waiting or has waited.
+     */
+    val holds = ConcurrentHashMap<TorNet, java.util.concurrent.CountDownLatch>()
+    val entered: MutableSet<TorNet> = ConcurrentHashMap.newKeySet()
+    private val asks = ConcurrentHashMap<TorNet, AtomicInteger>()
+    /** Calls to down() or letGo(), counted before they take the carrier's lock. */
+    fun asks(t: TorNet): Int = asks[t]?.get() ?: 0
+    fun downs(t: TorNet): Int = downs[t]?.get() ?: 0
 
     /** link-flake-1.2.1: true once [onion] answers dials. */
     fun serving(onion: OnionKey): Boolean = services.containsKey(OnionAddress.of(onion))
@@ -195,9 +210,21 @@ class FakeTorNetwork {
         private val auth = ConcurrentHashMap<String, ByteArray>()
         private val mine = ConcurrentHashMap<Int, String>()
         @Volatile private var up = false
-        override fun up(): Boolean { up = true; return true }
-        override fun down() { up = false; for (o in mine.values) services.remove(o); mine.clear() }
+        private val lock = Any()
+        override fun up(): Boolean = synchronized(lock) {
+            holds[this]?.let { entered += this; it.await(20, java.util.concurrent.TimeUnit.SECONDS) }
+            // fix-bridges-lows (review-d L6): a stale Tor that's up starts again, and drops the onions it carried, as restart() does.
+            if (up && staleOnes.remove(this)) { for (o in mine.values) services.remove(o); mine.clear() }
+            staleOnes.remove(this); ups.getOrPut(this) { AtomicInteger() }.incrementAndGet(); up = true; true
+        }
+        override fun down() { asks.getOrPut(this) { AtomicInteger() }.incrementAndGet(); synchronized(lock) { stop() } }
+        override fun letGo() { asks.getOrPut(this) { AtomicInteger() }.incrementAndGet(); synchronized(lock) { if (this in staleOnes) stop() } }
+        private fun stop() {
+            staleOnes.remove(this); downs.getOrPut(this) { AtomicInteger() }.incrementAndGet()
+            up = false; for (o in mine.values) services.remove(o); mine.clear()
+        }
         override val running: Boolean get() = up
+        override val stale: Boolean get() = this in staleOnes
         override fun publish(slot: Int, keyBlob: String?, clients: List<ByteArray>, accept: (Duplex) -> Unit): PublishedOnion {
             if (!up) throw TorException(TorProblem.NOT_READY)
             if (publishDelayMs > 0) Thread.sleep(publishDelayMs)

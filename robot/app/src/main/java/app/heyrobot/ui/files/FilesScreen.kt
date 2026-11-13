@@ -1132,6 +1132,7 @@ private fun FilePage(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun Pages(e: FileEntry, port: FilesPort) {
+    val ctx = LocalContext.current
     val type = FileOut.typeOf(e)
     val shows = !e.damaged && type != null && (type.group == FileGroup.IMAGE || type.group == FileGroup.PDF)
     var page by remember(e.id) { mutableIntStateOf(0) }
@@ -1163,8 +1164,22 @@ private fun Pages(e: FileEntry, port: FilesPort) {
                         OutlinedButton(onClick = { page++ }, enabled = page + 1 < s.second) { Text(stringResource(R.string.files_next)) }
                     }
                 }
+                // 1.3 point and read (P3): this page read aloud in the panel, which opens the file itself (core FileRead).
+                OutlinedButton(onClick = { readAloud(ctx, e.id, page) }, modifier = Modifier.heightIn(min = 48.dp)) {
+                    Text(stringResource(R.string.panel_read_aloud))
+                }
             }
         }
+    }
+}
+
+/** 1.3 point and read (P3): the panel (:voice, by class name) reads [id]'s page [page]; it is given the id and the page alone. */
+private fun readAloud(ctx: android.content.Context, id: FileId, page: Int) {
+    try {
+        ctx.startActivity(android.content.Intent().setClassName(ctx.packageName, "app.heyrobot.assistant.PanelLaunchActivity")
+            .putExtra(app.heyrobot.core.read.FileRead.ARG, app.heyrobot.core.read.FileRead.arg(id, page)))
+    } catch (t: Exception) {
+        RLog.w("files_read", t) // l10n: not text (a log code)
     }
 }
 

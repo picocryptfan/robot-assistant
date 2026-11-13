@@ -58,6 +58,8 @@ data class ListCardView(
     val line: String? = null,
     val undo: Boolean = false,
     val label: Phrase = Phrase.plain(name),
+    /** recipe-list: a recipe's card ([list] is its key, not a list): the rows' ids ticked to add, and an Add button. */
+    val picks: Set<String>? = null,
 )
 
 /** A tap on the card. */
@@ -66,6 +68,8 @@ sealed class ListCardOp {
     data class Tick(val item: String, val done: Boolean) : ListCardOp()
     data object Undo : ListCardOp()
     data object Open : ListCardOp()
+    /** recipe-list: add the ticked rows. */
+    data object Add : ListCardOp()
 }
 
 /** The card; [onOp] null (no buttons): drawn only. */
@@ -75,8 +79,8 @@ fun ListCard(v: ListCardView, onOp: ((ListCardOp) -> Unit)?, modifier: Modifier 
     PanelCard(modifier) {
         CardHeader(v.name, supporting = v.line, leading = { CardIcon(RIcons.Checklist) }, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
         Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-            for (r in v.open) Item(r, done = false, onOp)
-            if (v.done.isNotEmpty()) {
+            for (r in v.open) Item(r, done = v.picks?.contains(r.id) ?: false, onOp)
+            if (v.picks == null && v.done.isNotEmpty()) {
                 Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(role = Role.Button) { showDone = !showDone }.padding(horizontal = 4.dp),
                     verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.lists_done_count, v.done.size), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
@@ -85,7 +89,9 @@ fun ListCard(v: ListCardView, onOp: ((ListCardOp) -> Unit)?, modifier: Modifier 
                 if (showDone) for (r in v.done) Item(r, done = true, onOp)
             }
         }
-        if (onOp != null) CardButtons {
+        if (onOp != null && v.picks != null) CardButtons {
+            TextButton(onClick = { onOp(ListCardOp.Add) }, enabled = v.picks.isNotEmpty()) { Text(stringResource(R.string.lists_recipe_add, v.picks.size)) }
+        } else if (onOp != null) CardButtons {
             if (v.undo) TextButton(onClick = { onOp(ListCardOp.Undo) }) { Text(stringResource(R.string.lists_undo)) }
             TextButton(onClick = { onOp(ListCardOp.Open) }) { Text(stringResource(R.string.lists_card_open, v.label.str())) }
         }

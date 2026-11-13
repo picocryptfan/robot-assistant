@@ -124,7 +124,11 @@ class PanelWebSearchTest {
     private val savedClock = MemoryPanel.clock
     private val savedZone = MemoryPanel.zone
 
+    private val savedOnline = app.heyrobot.assistant.later.PanelLater.onlineNow
+
     @Before fun setUp() {
+        // Signal later: these turns are online; the JVM has no validated network, so a direct search would be kept.
+        app.heyrobot.assistant.later.PanelLater.onlineNow = { true }
         MemoryPanel.vaultFor = { vault }
         MemoryPanel.settingsFor = { memory }
         MemoryPanel.lockedNow = { false }
@@ -137,6 +141,7 @@ class PanelWebSearchTest {
     @Suppress("UNCHECKED_CAST")
     @After fun end() {
         scope.cancel()
+        app.heyrobot.assistant.later.PanelLater.onlineNow = savedOnline
         MemoryPanel.drop()
         MemoryPanel.newConversation()
         MemoryPanel.vaultFor = saved[0] as () -> app.heyrobot.core.memory.MemoryVault

@@ -54,7 +54,10 @@ class SpokenBuildTest {
         for (no in listOf("SpokenReceiver", "SpokenRecorder", "ai.robot_app.spoken")) assertFalse(no, release.contains(no))
         // AndroidX's profile installer is guarded by DUMP in every build (as verify_apk.sh knows); nothing else may be.
         val dump = Regex("""<\w+\b[^>]*"android\.permission\.DUMP"[^>]*>""").findAll(release).map { it.value }.toList()
-        assertEquals(dump.toString(), emptyList<String>(), dump.filter { "androidx.profileinstaller.ProfileInstallReceiver" !in it })
+        // P1: and, in a debug build only, the Wikipedia reader's phone check (wiki/src/debug), sent by the shell alone.
+        val debugOnly = if (variant() == "release") emptyList() else listOf("app.heyrobot.wiki.WikiCheckReceiver")
+        assertEquals(dump.toString(), emptyList<String>(), dump.filter { d -> "androidx.profileinstaller.ProfileInstallReceiver" !in d && debugOnly.none { it in d } })
+        if (variant() == "release") assertFalse(release.contains("WikiCheckReceiver"))
         val builds = gradle.substringAfter("buildTypes {").substringBefore("\n    }\n")
         assertEquals(listOf(".spoken"), Regex("""applicationIdSuffix\s+'([^']+)'""").findAll(gradle).map { it.groupValues[1] }.toList())
         assertTrue(builds.substringAfter("spoken {").substringBefore('}').contains("applicationIdSuffix '.spoken'"))
@@ -107,7 +110,9 @@ class SpokenBuildTest {
         assertFalse(names(spoken, "uses-permission").contains("android.permission.DUMP"))
         // Its only window more than Robot's. It isn't in LockGate, so no name of it reaches a release; this build never has a Phone lock on.
         assertEquals(setOf("app.heyrobot.spoken.SpokenRecorderActivity"), names(spoken, "activity") - names(other, "activity"))
-        assertEquals(setOf("app.heyrobot.spoken.SpokenReceiver"), names(spoken, "receiver") - names(other, "receiver"))
+        // P1: a debug build's Wikipedia check (wiki/src/debug) is the test build's too, never a release's.
+        val wikiCheck = if (variant() == "release") setOf("app.heyrobot.wiki.WikiCheckReceiver") else emptySet()
+        assertEquals(setOf("app.heyrobot.spoken.SpokenReceiver") + wikiCheck, names(spoken, "receiver") - names(other, "receiver"))
     }
 
     @Test fun theTestBuildsShortcutsAreMainsWithItsId() {

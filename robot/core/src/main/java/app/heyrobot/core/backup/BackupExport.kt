@@ -73,4 +73,22 @@ enum class BackupCode(override val id: Int, override val title: String) : LogCod
     OVER_CAP(12, "a part over what a restore takes"),
     /** H3: private events were chosen and couldn't be opened (locked, their key gone, damaged, a newer Robot's). */
     CALENDAR_UNREADABLE(13, "private events couldn't be opened"),
+    /** seal-history-fix-b: History was chosen and a conversation can't be opened now (the key says not now, or a read failed). */
+    HISTORY_UNREADABLE(14, "history couldn't be opened"),
+    /** seal-history-fix-b: History was chosen and holds a newer Robot's file. */
+    HISTORY_TOO_NEW(15, "history holds a newer Robot's file"),
+    /** seal-notes: Notes was chosen and a note can't be opened now, or was saved by a newer Robot. */
+    NOTES_UNREADABLE(16, "notes couldn't be opened"),
+    /** seal-notes-b: Notes was chosen and holds a newer Robot's note. */
+    NOTES_TOO_NEW(17, "notes hold a newer Robot's file"),
+    /** seal-people: People was chosen and can't be opened now (the phone locked, the key busy, a read failed). */
+    PEOPLE_UNREADABLE(18, "people couldn't be opened"),
+    /** seal-people: People was chosen and is a newer Robot's file, or one that can't be read (Start over in People). */
+    PEOPLE_TOO_NEW(19, "people is a newer Robot's file"),
+    /** spoken-log: the Logbook was chosen and can't be opened now (the key says not now, a newer Robot's log, a read failed). */
+    LOGBOOK_UNREADABLE(20, "the logbook couldn't be opened"),
+    /** fix-seal-transcripts 6: Transcripts was chosen and one sealed under the unlock key can't be opened (the phone locked). */
+    TRANSCRIPTS_LOCKED(21, "transcripts need the phone unlocked"),
+    /** fix-seal-transcripts-b, Medium 1: Transcripts was chosen and the Keystore failed while the phone is unlocked. */
+    TRANSCRIPTS_UNREADABLE(22, "transcripts couldn't be opened"),
 }

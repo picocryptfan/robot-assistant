@@ -21,6 +21,8 @@ class RobotApp : Application() {
         // 1.1: a restore's settings files and locks.json, staged by :voice, written by their one writer (sys/RestoreApply).
         if (!p.contains(':')) app.heyrobot.sys.RestoreApply.recover(this)
         if (!p.contains(':')) dropOldRestoredLinks()
+        // Ready answers (Low C): drafts from before this process have nothing behind their Send, so they go (people/ReadyAnswerTap.kt).
+        if (!p.contains(':')) app.heyrobot.people.ReadyAnswerTap.start(this)
         // 1.4: Robot Files' recovery and its screen-off and unlock hooks, in main and :voice only (sys/FilesVault.kt).
         app.heyrobot.sys.RobotFiles.start(this)
         // 1.4 Lists: the RAM copy dropped at screen-off and, in :voice, the journal merged after each unlock (sys/ListsVault.kt).
@@ -33,6 +35,10 @@ class RobotApp : Application() {
         app.heyrobot.lock.LockFrontWatch.start(this)
         // The everyday set: What went online's writer, in main, :voice and :link only (sys/NetLog.kt).
         app.heyrobot.sys.NetLog.start(this)
+        // 1.4: sealed reports' copies that are due and their next alarm, in main and :voice (sys/ReportOut.kt).
+        app.heyrobot.sys.ReportOut.start(this)
+        // 1.4: the report card's kept turn, deleted once stale, so a reboot or a page that never opened leaves none (sys/Feedback.kt).
+        if (!p.contains(':') || p.endsWith(":voice")) app.heyrobot.sys.FeedbackFiles.dropStaleTurn(this)
         // Skills 1.3 (S3.2): routines become skills, once, in main and :voice, whichever starts first (sys/Routines.kt).
         app.heyrobot.sys.RoutineSkillsStart.start(this, p)
         strictMode()

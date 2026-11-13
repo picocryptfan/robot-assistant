@@ -11,7 +11,12 @@ import android.content.Intent
 // the app never showed (phone-1.2.1, fix-car-1.2.1). CarScreenStartsTest keeps anything here from starting the car screen.
 
 object CarSplitOpen {
-    /** Opens [app] beside [ctx] (the car screen, when it's up); false when Android found nothing to open. */
+    /**
+     * Opens [app] beside [ctx] (the car screen, when it's up); false when Android found nothing to open. A start Android
+     * refuses with a result code rather than an exception (a blocked background start, screen pinning) returns true: no
+     * public API on Android 14 to 16 returns that code (review-car-widget-taps L3). The car screen's onStop check
+     * covers an open that lands over it, not one that never opened.
+     */
     fun start(ctx: Context, app: Intent): Boolean = try {
         ctx.startActivity(app.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT))
         true

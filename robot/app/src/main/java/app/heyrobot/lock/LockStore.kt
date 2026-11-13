@@ -9,6 +9,7 @@ import android.provider.Settings
 import android.view.accessibility.AccessibilityManager
 import app.heyrobot.core.car.CarOpen
 import app.heyrobot.core.RLog
+import app.heyrobot.core.lock.CallKeys
 import app.heyrobot.core.lock.Clocks
 import app.heyrobot.core.lock.LockCodec
 import app.heyrobot.core.lock.LockFile
@@ -213,17 +214,23 @@ object PhoneLockNow {
     fun people(ctx: Context): Set<String> = if (on(ctx)) current(ctx).people else emptySet()
 
     /**
-     * The numbers you may call during a lock (Calls to People you choose), as [callKey] compares them: those People's
-     * numbers in People. Empty outside a lock.
+     * Whether a number may be called during a lock (Calls to People you choose): one of those People's numbers, from People,
+     * or while People is sealed from Phone lock's call list (seal-people-fix 5). Nobody outside a lock.
      */
-    fun callKeys(ctx: Context): Set<String> = people(ctx).let { ids ->
-        if (ids.isEmpty()) emptySet() else try {
-            app.heyrobot.sys.PeopleFiles.store(ctx).list().filter { it.id in ids }.flatMap { it.phones }.map { callKey(it.number) }.toSet()
-        } catch (t: Throwable) { RLog.w("lock_people", t); emptySet() }
+    fun calls(ctx: Context): (String) -> Boolean {
+        val ids = people(ctx)
+        if (ids.isEmpty()) return { false }
+        val load = try { app.heyrobot.sys.PeopleFiles.store(ctx).load() } catch (t: Throwable) { RLog.w("lock_people", t); app.heyrobot.core.PeopleLoad.NotNow }
+        return when (load) {
+            is app.heyrobot.core.PeopleLoad.Ok -> load.file.people.filter { it.id in ids }.flatMap { it.phones }.flatMap { CallKeys.chosen(it.number) }.toSet().let { keys -> ({ n: String -> CallKeys.asked(n).any { it in keys } }) }
+            // seal-people-fix 5: People sealed (the phone locked): the call list, numbers only, checked against these ids.
+            app.heyrobot.core.PeopleLoad.NotNow -> ({ n: String -> app.heyrobot.sys.LockCallList.allows(ctx, ids, n) })
+            else -> ({ _: String -> false })
+        }
     }
 
-    /** A phone number as Phone lock compares them: its last 10 digits (so +1 418… and 418… match). */
-    fun callKey(n: String): String = n.filter { it.isDigit() }.takeLast(10)
+    /** A phone number as Phone lock compares them (seal-small 2: in full when both have a country code). */
+    fun callKeys(n: String): List<String> = CallKeys.asked(n)
 
     /** Every active lock has Maps on. */
     fun maps(ctx: Context): Boolean = on(ctx) && current(ctx).maps

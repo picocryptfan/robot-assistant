@@ -31,6 +31,26 @@ object SkillEffects {
      */
     val HA_CODE: Set<String> = setOf("script", "automation", "shell_command", "python_script", "hassio", "scene", "group", "rest_command", "pyscript")
 
+    /**
+     * Domains whose services only change something plain at home, which D14 lets a spoken yes approve. Any other domain
+     * fails closed (review-batch-14-rest's M1): a `button` may open a garage, a `switch` drive a door's relay, a `remote`,
+     * `select`, `update` or `input_boolean` start what Robot can't see, so they count as [HA_CODE]'s: a tap, never a
+     * spoken yes. A `number` is often a device's setting (a lock's relock delay, an alarm's entry delay) and an
+     * `input_number` feeds automations (review-batch-14-rest-b's Medium), so they count the same. Mark one security
+     * (ConnOp.MARKS) to say why.
+     */
+    val HA_PLAIN: Set<String> = setOf("light", "fan", "climate", "humidifier", "media_player", "vacuum", "water_heater",
+        "todo", "shopping_list", "weather", "homeassistant")
+
+    /** The service that sends a device's raw command, in any domain (review-batch-14-rest-b's Low): code. */
+    const val HA_SEND_COMMAND: String = "send_command" // l10n: not text (a Home Assistant service id)
+
+    /** `homeassistant`'s services that act on each entity in its own domain; any other (restart, stop, reload) is code. */
+    val HA_GENERIC: Set<String> = setOf("turn_on", "turn_off", "toggle")
+
+    /** Words in a service's name that delete (M2): `todo.remove_item`, `shopping_list.clear_completed_items`, `recorder.purge`. */
+    val HA_DELETE_WORDS: Set<String> = setOf("remove", "delete", "purge", "clear")
+
     /** Covers that only shade or air a room. Any other device class, or none (garage, gate, door, unknown), is security. */
     val COVER_SAFE: Set<String> = setOf("awning", "blind", "curtain", "damper", "shade", "shutter", "window")
 
@@ -89,6 +109,10 @@ object SkillEffects {
         entities ?: return setOf(SkillEffect.SECURITY)
         // A cover service's effect is its covers' (a blind's or the garage's); with none named, it counts as a door.
         val out = if (ha.domain == "cover" && entities.isNotEmpty()) mutableSetOf() else domain(ha.domain, null).toMutableSet()
+        if (ha.domain == "homeassistant" && ha.service !in HA_GENERIC) out += SkillEffect.RUNS_CODE
+        // A vendor's raw command (a vacuum's map reset, a remote's codes) in any domain: Robot can't see what it does.
+        if (ha.service == HA_SEND_COMMAND) out += SkillEffect.RUNS_CODE
+        if (ha.service.split('_').any { it in HA_DELETE_WORDS }) out += SkillEffect.DELETES
         for (e in entities) {
             if (e == ALL) {
                 if (haAll(ha.domain)) out += domain(ha.domain, null) else out += SkillEffect.SECURITY
@@ -114,7 +138,8 @@ object SkillEffects {
         domain == "cover" -> if (deviceClass in COVER_SAFE) setOf(SkillEffect.CHANGES_HOME) else setOf(SkillEffect.SECURITY)
         domain in HA_CODE -> setOf(SkillEffect.RUNS_CODE)
         domain == "notify" -> setOf(SkillEffect.MESSAGES_SOMEONE)
-        else -> setOf(SkillEffect.CHANGES_HOME)
+        domain in HA_PLAIN -> setOf(SkillEffect.CHANGES_HOME)
+        else -> setOf(SkillEffect.RUNS_CODE)
     }
 
     /**

@@ -7,6 +7,18 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class RestoreResultTest {
+    // seal-notes-c 5: Restore with a newer Robot's note keeps its reason, not just Failed.
+    @Test fun notesTooNewKeepsItsReason() {
+        val r = RestoreResult(1_760_270_000_000L, mine = true, outcomes = linkedMapOf(BackupCategory.NOTES to CategoryOutcome.NotesTooNew), keptSafer = 0, madeBy = "1.2.0")
+        assertEquals(CategoryOutcome.NotesTooNew, RestoreResult.fromJson(r.toJson())!!.outcomes[BackupCategory.NOTES])
+    }
+
+    // seal-people: Restore over a People file this Robot can't read keeps its reason, not just Failed.
+    @Test fun peopleTooNewKeepsItsReason() {
+        val r = RestoreResult(1_760_270_000_000L, mine = true, outcomes = linkedMapOf(BackupCategory.PEOPLE to CategoryOutcome.PeopleTooNew), keptSafer = 0, madeBy = "1.2.0")
+        assertEquals(CategoryOutcome.PeopleTooNew, RestoreResult.fromJson(r.toJson())!!.outcomes[BackupCategory.PEOPLE])
+    }
+
     @Test fun roundTrip() {
         val r = RestoreResult(1_760_270_000_000L, mine = false, outcomes = linkedMapOf(
             BackupCategory.PEOPLE to CategoryOutcome.Done,
@@ -15,6 +27,9 @@ class RestoreResultTest {
             BackupCategory.NOTES to CategoryOutcome.Failed,
             // FX1: Robot Files' commit waiting for the next unlock: not done yet.
             BackupCategory.FILES to CategoryOutcome.AfterUnlock,
+            // seal-history-fix-c 1: History that can't be opened whole keeps its reason.
+            BackupCategory.HISTORY to CategoryOutcome.HistoryUnreadable(tooNew = true),
+            BackupCategory.TRANSCRIPTS to CategoryOutcome.HistoryUnreadable(tooNew = false),
         ), keptSafer = 4, madeBy = "1.1.0")
         assertEquals(r, RestoreResult.fromJson(r.toJson()))
         assertEquals(setOf(BackupCategory.PEOPLE), r.done)

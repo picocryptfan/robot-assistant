@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- ":wiki" (wikipedia-offline-plan.md §3, P1): the Wikipedia reader, librobotzim.so (libzim), isolated as :files
+             is: an isolated uid of its own (no permission, no network, none of Robot's files), not exported, no intent
+             filter. It reads only the ZIM file the caller hands it as a read-only descriptor, and ends itself after a
+             minute idle or when the caller lets go, so nothing stays beside Gemma. -->
+        <service
+            android:name="app.heyrobot.wiki.WikiService"
+            android:process=":wiki"
+            android:isolatedProcess="true"
+            android:exported="false" />
+    </application>
+</manifest>

@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.r2r
 
+import app.heyrobot.core.helpers.LanRule
 import app.heyrobot.core.link.BridgeLine
+import app.heyrobot.core.link.BridgeRelayPlan
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
@@ -40,6 +42,8 @@ enum class TorProblem(val code: Int) {
     PROTOCOL(4),
     /** The network is off (DisableNetwork), or Tor hasn't finished bootstrapping in time. */
     NOT_READY(5),
+    /** tor-bridge-relay-c H1: the relay a home bridge needs (BridgeRelay) couldn't start, or its address isn't loopback. */
+    RELAY(6),
 }
 
 class TorException(val problem: TorProblem) : IOException() {
@@ -84,10 +88,17 @@ object TorConfig {
      * transport a Bridge line uses, and ends it when it ends; lyrebird listens on a loopback TCP port Tor picks (the
      * pluggable transport protocol has no unix: socket for a client; ProcessIsolationTest pins it as a deliberate change).
      * Without bridges the torrc is exactly as before: no bridge line, no lyrebird.
+     *
+     * tor-bridge-relay: with [relay] (a bridge that leads to a home address, core BridgeRelayPlan), Socks5Proxy and its
+     * username and password send Tor through link BridgeRelay, and lyrebird too (Tor gives it the same proxy as
+     * TOR_PT_PROXY); ClientTransportPlugin then names only the transports the lines use, and Snowflake's lines are left
+     * out (lyrebird refuses a proxy for Snowflake unless it carries UDP, which the relay doesn't). Without it, as before.
      */
-    fun torrc(p: TorPaths, bridges: List<BridgeLine> = emptyList(), lyrebird: File? = null): String {
+    fun torrc(p: TorPaths, bridges: List<BridgeLine> = emptyList(), lyrebird: File? = null, relay: RelayAuth? = null): String {
         for (f in listOf(p.dir, p.data, p.control, p.socks)) require(pathOk(f))
-        val transports = bridges.mapNotNull { it.transport }.distinct()
+        require(relay == null || relayOk(relay))
+        val used = if (relay == null) bridges else BridgeRelayPlan.relayed(bridges)
+        val transports = used.mapNotNull { it.transport }.distinct()
         require(transports.isEmpty() || (lyrebird != null && exeOk(lyrebird)))
         return buildString {
             line("DataDirectory", p.data.path)
@@ -101,13 +112,24 @@ object TorConfig {
             line("Log", "notice stdout") // l10n: not text (torrc)
             line("GeoIPFile", "\"\"")
             line("GeoIPv6File", "\"\"")
-            if (bridges.isNotEmpty()) {
+            if (relay != null) {
+                line("Socks5Proxy", "${relay.host}:${relay.port}")
+                line("Socks5ProxyUsername", relay.user)
+                line("Socks5ProxyPassword", relay.pass)
+            }
+            if (used.isNotEmpty()) {
                 line("UseBridges", "1")
-                if (transports.isNotEmpty()) line("ClientTransportPlugin", "${BridgeLine.TRANSPORTS.joinToString(",")} exec ${lyrebird!!.path}") // l10n: not text (torrc)
-                for (b in bridges) line("Bridge", b.text) // l10n: not text (torrc)
+                if (transports.isNotEmpty()) line("ClientTransportPlugin", "${(if (relay == null) BridgeLine.TRANSPORTS else transports).joinToString(",")} exec ${lyrebird!!.path}") // l10n: not text (torrc)
+                for (b in used) line("Bridge", b.text) // l10n: not text (torrc)
             }
         }
     }
+
+    /** The relay as Tor reads it: a loopback IPv4 address, a port, and a username and password of 32 hex digits each. */
+    private fun relayOk(r: RelayAuth): Boolean = LanRule.literal(r.host)?.let { it.size == 4 && it[0].toInt() == 127 } == true &&
+        r.port in 1..65_535 && RELAY_TOKEN.matches(r.user) && RELAY_TOKEN.matches(r.pass)
+
+    private val RELAY_TOKEN = Regex("[0-9a-f]{32}") // l10n: not text (a pattern)
 
     /** An absolute path to an executable Tor reads as one word (the native library folder can be longer than a socket's path). */
     fun exeOk(f: File): Boolean = f.isAbsolute && f.path.length <= 255 && f.path.none { it <= ' ' || it == '"' || it == '\\' || it == '#' || it.code >= 0x7F }

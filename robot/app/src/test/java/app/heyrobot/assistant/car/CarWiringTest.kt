@@ -20,6 +20,18 @@ class CarWiringTest {
         has(controller, "CarEffect.ClearLockCar -> LockSignals.car(app, false, false)")
     }
 
+    @Test fun carModeFromBeforeARebootOrAKillIsCleared() {
+        // review-develop-14-b L1: :lock clears car mode from before the boot at BOOT_COMPLETED...
+        val receiver = code("lock/LockAlarmReceiver.kt")
+        has(receiver, "Intent.ACTION_BOOT_COMPLETED -> LockEngine.rebooted(app)")
+        has(code("lock/LockEngine.kt").substringAfter("fun rebooted("), "it.afterReboot(System.currentTimeMillis() - SystemClock.elapsedRealtime())")
+        // ...and :voice's start sends the leftovers' car-off whatever the car mode setting (no car session lives past a restart).
+        val hub = code("assistant/handsfree/HandsFreeHub.kt")
+        has(hub.substringAfter("fun start()").substringBefore("fun stop()"), "running = true reload()")
+        has(hub.substringAfter("fun reload()").substringBefore("fun editDevices("), "if (running) CarModeController.reload()")
+        assertTrue(app.heyrobot.core.car.CarEffect.ClearLockCar in app.heyrobot.core.car.CarModeMachine.leftovers(app.heyrobot.core.car.CarState()))
+    }
+
     @Test fun devicesAndTheScreenWakeTheTimers() {
         has(controller.substringAfter("fun devicesChanged()"), "tickIfDue() CarModeMachine.forgotten(state, HandsFreeHub.memory, now())")
         has(controller, "ProtectedBroadcasts.filter(Intent.ACTION_USER_PRESENT, Intent.ACTION_SCREEN_ON)")

@@ -18,14 +18,20 @@
     <string name="backup_two">%1$s, %2$s</string>
     <string name="backup_empty">Nothing yet</string>
     <string name="backup_memory_cant">Can\'t be opened just now: unlock your phone, or leave Memory out</string>
+    <string name="backup_people_cant">Can\'t be opened just now: unlock your phone, or leave People out</string>
+    <string name="backup_notes_cant">Can\'t be opened just now: unlock your phone, or leave Notes out</string>
+    <string name="backup_notes_too_new">Some can\'t be read: a newer Robot saved them. Update Robot or use Delete these in Notes, or leave Notes out</string>
+    <string name="backup_people_damaged">Can\'t be read: a newer Robot saved it, or it is damaged. Update Robot or use Start over in People, or leave People out</string>
     <string name="backup_files_cant">Can\'t be read now: Settings › Files says why</string>
     <!-- 1.4: Lists that can't be opened now (their key gone, damaged, a newer Robot's). -->
     <string name="backup_lists_cant">Can\'t be read now: Settings › Lists says why</string>
     <string name="backup_calendar_cant">Can\'t be read now: unlock your phone, or open the Calendar tab to see why</string>
+    <string name="backup_logbook_cant">Can\'t be opened now: unlock and try again</string>
     <string name="backup_history_travel">Left out while travel mode is on: it holds answers from Robot Files</string>
     <string name="backup_sum_settings">Voice, wake phrases, actions, safety, helpers (without keys), web search, Termux, display, updates</string>
     <string name="backup_sum_voiceprint">Made on this phone</string>
     <string name="backup_sum_home">Your Today page\'s order and whether it\'s your home page</string>
+    <string name="backup_sum_headsup">Whether your calendar heads-up is on, how long before and its quiet hours</string>
     <string name="backup_sum_everyday">Music by voice, Robot\'s listening and voices for other apps, Ask Robot, What went online</string>
     <string name="backup_vp_warning">Biometric: it needs a strong passphrase, and comes back only from a backup you mark as your own.</string>
     <string name="backup_pictures">Saved screenshots and photos</string>
@@ -107,6 +113,10 @@
     <string name="backup_restore_result_earlier">not restored, and nothing of it changed: an earlier restore of it hasn\'t finished (short of free space, or a storage error). Free up space, then restore again.</string>
     <string name="backup_restore_result_others">From a backup not marked as yours: memories show Imported, restored routines and skills are off, and keys were left out.</string>
     <string name="backup_restore_result_cut">not restored, and nothing of it changed: the restore stopped first. Restore again.</string>
+    <string name="backup_restore_result_history_not_now">not restored, and nothing of it changed: Robot couldn\'t open part of your History just now. Unlock, wait a minute and restore again, or restore without History.</string>
+    <string name="backup_restore_result_history_too_new">not restored, and nothing of it changed: part of your History was saved by a newer Robot, and this one can\'t read it. Update Robot, or delete those conversations with Delete these in History, then restore again. Or restore without History.</string>
+    <string name="backup_restore_result_people_too_new">not restored, and nothing of it changed: Robot can\'t read your People file (a newer Robot saved it, or it is damaged). Update Robot, or use Start over in People, then restore again. Or restore without People.</string>
+    <string name="backup_restore_result_notes_too_new">not restored, and nothing of it changed: some of your notes were saved by a newer Robot, and this one can\'t read them. Update Robot, or delete those notes with Delete these in Notes, then restore again. Or restore without Notes.</string>
     <string name="backup_restore_result_refused">not restored, and nothing of it changed: this phone\'s own file for it can\'t be read or written. Check it in Settings, then restore again.</string>
     <string name="backup_restore_stopped">This restore stopped part way, so this phone is part backup, part as it was. Lines that say restored are whole. For the rest, nothing changed: restore again to finish.</string>
     <string name="backup_restore_result_links">Robot to Robot: your pairings come back paused once Robot to Robot is on. Answering while your phone is locked is off and each person\'s levels start over, until you set them again.</string>
@@ -134,6 +144,11 @@
         <item quantity="one">%1$d person</item>
         <item quantity="other">%1$d people</item>
     </plurals>
+    <!-- fix-seal-14-lows-b: People's copies kept aside (an entry that couldn't be read, or Start over); never backed up. -->
+    <plurals name="backup_n_people_aside">
+        <item quantity="one">%1$d copy kept aside left out</item>
+        <item quantity="other">%1$d copies kept aside left out</item>
+    </plurals>
     <plurals name="backup_n_items">
         <item quantity="one">%1$d item</item>
         <item quantity="other">%1$d items</item>
@@ -157,6 +172,15 @@
     <plurals name="backup_n_transcripts">
         <item quantity="one">%1$d transcript</item>
         <item quantity="other">%1$d transcripts</item>
+    </plurals>
+    <!-- fix-seal-transcripts-c, Medium 1: transcripts kept aside (their key lost, or damaged) are never in a backup. -->
+    <plurals name="backup_n_transcripts_aside">
+        <item quantity="one">%1$d transcript kept aside left out</item>
+        <item quantity="other">%1$d transcripts kept aside left out</item>
+    </plurals>
+    <plurals name="backup_transcripts_left_out">
+        <item quantity="one">Transcripts: %1$d transcript couldn\'t be opened, so it isn\'t in this backup.</item>
+        <item quantity="other">Transcripts: %1$d transcripts couldn\'t be opened, so they aren\'t in this backup.</item>
     </plurals>
     <plurals name="backup_n_skills">
         <item quantity="one">%1$d skill</item>

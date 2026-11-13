@@ -189,10 +189,44 @@
     <string name="lock_setup_usage">Ouvrir l’accès aux données d’utilisation</string>
     <string name="lock_extra_people">Appels aux Personnes que tu choisis</string>
     <string name="lock_extra_people_empty">Aucune personne pour l’instant. Ajoute-les dans Réglages › Personnes.</string>
+    <string name="lock_extra_people_closed">Les Personnes ne peuvent pas être ouvertes pour l’instant&#160;: déverrouille ton téléphone, puis réessaie</string>
+    <string name="lock_extra_people_damaged">Les Personnes ne peuvent pas être lues&#160;: un Robot plus récent les a enregistrées, ou elles sont endommagées. Mets Robot à jour ou utilise Recommencer dans les Personnes</string>
     <string name="lock_extra_maps">Cartes</string>
     <string name="lock_extra_maps_on">Ton appli de cartes reste ouverte, et Robot peut montrer des lieux et des itinéraires.</string>
     <string name="lock_extra_maps_off">Couverte pendant ce blocage.</string>
     <string name="lock_extra_music">Musique</string>
     <string name="lock_extra_music_hint">Une appli de musique qui reste ouverte pendant ce blocage.</string>
     <string name="lock_none">Aucune</string>
+    <!-- App pause (docs/plans/app-pause-plan.md): the cover and Settings › App pause. -->
+    <string name="lock_pause_title">Une pause avant %1$s</string>
+    <plurals name="lock_pause_opens">
+        <item quantity="one">Ouverte %1$d fois aujourd’hui</item>
+        <item quantity="many">Ouverte %1$d fois aujourd’hui</item>
+        <item quantity="other">Ouverte %1$d fois aujourd’hui</item>
+    </plurals>
+    <plurals name="lock_pause_minutes">
+        <item quantity="one">%1$d minute</item>
+        <item quantity="many">%1$d minutes</item>
+        <item quantity="other">%1$d minutes</item>
+    </plurals>
+    <string name="lock_pause_count">%1$s, %2$s jusqu’ici.</string>
+    <string name="lock_pause_ask">Prends une respiration. C’est ce que tu veux faire maintenant ?</string>
+    <string name="lock_pause_back">Retour</string>
+    <string name="lock_pause_open">Ouvrir %1$s</string>
+    <string name="lock_pause_open_in">Ouvrir dans %1$d s</string>
+    <string name="lock_pause_dont">Plus de pause pour %1$s</string>
+    <string name="lock_pause_settings">Pause avant les applis</string>
+    <string name="lock_pause_off">Désactivée</string>
+    <plurals name="lock_pause_on_apps">
+        <item quantity="one">Activée pour %1$d appli</item>
+        <item quantity="many">Activée pour %1$d applis</item>
+        <item quantity="other">Activée pour %1$d applis</item>
+    </plurals>
+    <string name="lock_pause_intro">Choisis les applis que tu ouvres par habitude. Quand l’une d’elles s’ouvre, Robot montre combien de fois tu l’as ouverte aujourd’hui et attend un moment avant qu’Ouvrir fonctionne. Ton appli Téléphone, les appels d’urgence, les Paramètres, ton écran d’accueil et Robot ne peuvent jamais être choisis. Les comptes viennent de l’historique d’utilisation d’Android au moment où ils s’affichent, et Robot n’en garde aucun.</string>
+    <string name="lock_pause_apps">Applis à mettre en pause</string>
+    <string name="lock_pause_none">Aucune appli choisie pour l’instant.</string>
+    <string name="lock_pause_wait">Attente avant Ouvrir</string>
+    <string name="lock_pause_seconds">%1$d secondes</string>
+    <string name="lock_pause_needs_access">Le service du blocage du téléphone doit être activé dans les paramètres d’accessibilité d’Android. Touche pour les ouvrir.</string>
+    <string name="lock_pause_needs_usage">Sans l’accès aux données d’utilisation, la pause attend quand même, mais sans les comptes. Touche pour l’activer.</string>
 </resources>

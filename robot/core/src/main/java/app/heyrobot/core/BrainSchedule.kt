@@ -238,7 +238,8 @@ object OneShotRules {
     /** The estimate of what [req] sends: its system prompt, the template and its one turn (with its picture, 1.4's FILE_READ). */
     fun tokens(req: BrainMsg.OneShot): Int =
         TokenEstimate.text(req.system) + TEMPLATE_TOKENS + TokenEstimate.turn(PromptTurn(PromptRole.USER, req.text, req.hasImage)) +
-            (forcedTool(req.kind)?.let(TokenEstimate::text) ?: 0)
+            (forcedTool(req.kind)?.let(TokenEstimate::text) ?: 0) +
+            (if (req.hasImage) (req.images - 1) * TokenEstimate.IMAGE_TOKENS else 0)
 
     /**
      * 1.4 (Robot Files, plan §4.2): the largest picture a one-shot takes. `:files` sends a page as a JPEG of at most 1,024
@@ -255,11 +256,24 @@ object OneShotRules {
      */
     fun imageCheck(req: BrainMsg.OneShot, image: ByteArray?, vision: Boolean): BrainError? = when {
         image == null && !req.hasImage -> null
-        image == null || !req.hasImage || req.kind != OneShotKind.FILE_READ -> BrainError.BAD_REQUEST
-        image.size > MAX_IMAGE_BYTES || !isJpeg(image) -> BrainError.BAD_REQUEST
+        image == null || !req.hasImage || !req.kind.takesImage -> BrainError.BAD_REQUEST
+        image.size > MAX_IMAGE_BYTES || !imagesOk(req) -> BrainError.BAD_REQUEST
+        images(req, image).let { it == null || it.any { p -> !isJpeg(p) } } -> BrainError.BAD_REQUEST
         !vision -> BrainError.NO_VISION
         else -> null
     }
+
+    /**
+     * 1.3: more than one picture only for READ_ALOUD's tiles, at most ReadImages.MAX; and READ_ALOUD only with ReadAloud's own
+     * prompt, so no Robot process sends its own prompt with pictures at the panel's priority.
+     */
+    fun imagesOk(req: BrainMsg.OneShot): Boolean =
+        (req.kind != OneShotKind.READ_ALOUD || req.system == app.heyrobot.core.read.ReadAloud.PROMPT) &&
+            (req.images == 1 || (req.hasImage && req.kind == OneShotKind.READ_ALOUD && req.images in 2..app.heyrobot.core.read.ReadImages.MAX))
+
+    /** The pictures [image] holds for [req]: itself for one, else its [req.images] packed parts (null if they aren't). */
+    fun images(req: BrainMsg.OneShot, image: ByteArray): List<ByteArray>? =
+        if (req.images == 1) listOf(image) else app.heyrobot.core.read.ReadImages.unpack(image, req.images)
 
     /** A JPEG's start of image and the next marker's first byte (FF D8 FF), nothing more. */
     private fun isJpeg(b: ByteArray): Boolean = b.size >= 3 && b[0] == 0xFF.toByte() && b[1] == 0xD8.toByte() && b[2] == 0xFF.toByte()

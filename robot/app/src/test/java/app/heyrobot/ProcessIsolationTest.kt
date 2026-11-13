@@ -37,7 +37,7 @@ class ProcessIsolationTest {
     private fun java(module: String) = File(main(module), "java")
     /** Kotlin and Java (the TTS callback sherpa's JNI calls is Java), so every scan below covers both. */
     private fun sources(dir: File) = dir.walkTopDown().filter { it.isFile && (it.name.endsWith(".kt") || it.name.endsWith(".java")) }.toList()
-    private val modules = listOf("core", "brain", "voice", "helpers", "mt", "link", "app")
+    private val modules = listOf("core", "brain", "voice", "helpers", "mt", "link", "wiki", "app")
     /** Our code (not the copied sherpa-onnx API), as "module/relative/path.kt". */
     private val ours: Map<String, File> by lazy {
         modules.flatMap { m -> sources(File(java(m), "app/heyrobot")).map { "$m/${it.relativeTo(File(java(m), "app/heyrobot")).path}" to it } }.toMap()
@@ -140,8 +140,9 @@ class ProcessIsolationTest {
     @Test fun termuxRunsOnlyFromTheVoiceProcess() {
         assertEquals(listOf("app/assistant/TermuxResultReceiver.kt"), usersOf(Regex("""\bTermuxIntents\.ACTION_RUN_COMMAND\b""")))
         // (0.8: routines' speaking service starts itself the same way; 1.2.4: the app's Car mode button starts it in :voice.)
-        assertEquals(listOf("app/assistant/TermuxResultReceiver.kt", "app/assistant/conversation/ConversationService.kt", "app/assistant/routines/RoutineSpeakingService.kt",
-            "app/ui/car/CarButton.kt"),
+        // (Read it to me's reading service starts itself in :voice the same way.)
+        assertEquals(listOf("app/assistant/TermuxResultReceiver.kt", "app/assistant/conversation/ConversationService.kt", "app/assistant/read/ReadingService.kt",
+            "app/assistant/routines/RoutineSpeakingService.kt", "app/ui/car/CarButton.kt"),
             usersOf(Regex("""\bstartForegroundService\(""")))
         assertEquals(listOf("app/assistant/TermuxResultReceiver.kt", "app/assistant/TermuxTool.kt"), usersOf(Regex("""\bTermuxSend\b""")))
         // The result PendingIntent: explicit to the receiver, one-shot and mutable (Termux fills the result in), made there only.
@@ -224,7 +225,10 @@ class ProcessIsolationTest {
     }
 
     @Test fun liteRtOnlyInTheBrainEngineFile() {
-        assertEquals(listOf("brain/brain/GemmaEngine.kt"), usersOf(Regex("""\bcom\.google\.ai\.edge\.litert""")))
+        // Search by meaning (meaning-search-plan.md), deliberately: EmbedEngine loads the checked search model (the path
+        // :voice sends with REQ_EMBED) into LiteRT-LM's embedding engine, in :brain beside GemmaEngine; it opens no other file
+        // and has no network.
+        assertEquals(listOf("brain/brain/EmbedEngine.kt", "brain/brain/GemmaEngine.kt"), usersOf(Regex("""\bcom\.google\.ai\.edge\.litert""")))
     }
 
     @Test fun sherpaOnlyInTheVoiceModule() {
@@ -239,7 +243,7 @@ class ProcessIsolationTest {
         for (f in listOf("Speaker.kt", "SpeakerEmbeddingExtractorConfig.kt")) assertTrue(f, File(java("voice"), "com/k2fsa/sherpa/onnx/$f").isFile)
         // Only the copied sherpa-onnx API loads its native library (and, 0.4.5, llama.cpp's bridge loads Robot's own, in
         // the isolated :llama process, and, 0.5.0, the :mt module the fast engine's JNI).
-        assertEquals(listOf("brain/brain/LlamaNative.kt", "mt/mt/Slimt.kt"), usersOf(Regex("""System\.load(Library)?\s*\(""")))
+        assertEquals(listOf("brain/brain/LlamaNative.kt", "mt/mt/Slimt.kt", "wiki/wiki/LibZim.kt"), usersOf(Regex("""System\.load(Library)?\s*\(""")))
         val sherpa = sources(File(java("voice"), "com/k2fsa"))
         assertTrue(sherpa.any { Regex("""System\.loadLibrary\s*\(\s*"sherpa-onnx-jni"\s*\)""").containsMatchIn(withoutComments(it)) })
         for (m in listOf("core", "brain", "mt", "app")) assertTrue("$m has sherpa sources", !File(java(m), "com/k2fsa").exists())
@@ -251,6 +255,36 @@ class ProcessIsolationTest {
      * reaches no other engine, depends on :core only and never builds native code in Gradle (tools/build_robotmt.sh does).
      * Clients reach it by class name through core MtProtocol.
      */
+    @Test fun wikiReadsOnlyInIsolation() {
+        // P1 (wikipedia-offline-plan.md §3): librobotzim.so is loaded by one file of the :wiki module, whose reader runs
+        // only in the isolated :wiki process; the module depends on nothing of Robot's, has no network code, opens no
+        // file by name (it is handed a descriptor) and never builds native code in Gradle (tools/build_libzim.sh does).
+        val wiki = ours.filterKeys { it.startsWith("wiki/") }
+        assertEquals(setOf("wiki/wiki/LibZim.kt", "wiki/wiki/WikiIpc.kt", "wiki/wiki/WikiLink.kt", "wiki/wiki/WikiReader.kt", "wiki/wiki/WikiService.kt"), wiki.keys)
+        val lib = flatText(kt("wiki", "wiki/LibZim.kt"))
+        assertHas(lib, "System.loadLibrary(\"robotzim\")")
+        assertEquals(1, lib.count(Regex("""System\.load""")))
+        assertEquals(emptySet<String>(), projectRefs("wiki"))
+        assertTrue(!gradleRaw("wiki").contains("externalNativeBuild"))
+        // Only the service holds the library and the reader; callers have WikiLink alone.
+        assertEquals(listOf("wiki/wiki/LibZim.kt", "wiki/wiki/WikiReader.kt", "wiki/wiki/WikiService.kt"), usersOf(Regex("""\b(LibZim|ZimNative)\b""")))
+        assertEquals(emptyList<String>(), usersOf(Regex("""\b(WikiReader|WikiService)\s*\("""), ours.filterKeys { !it.startsWith("wiki/") }))
+        // No network, no file opened or written by name in the process; the link opens the one file it hands over, read-only.
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bjava\.net\b|\bokhttp3\b|\bURL\s*\(|\bSocket\b|\bFileOutputStream\b|\bFileInputStream\b|\bRandomAccessFile\b|\bwriteText\b|\bwriteBytes\b"""), wiki))
+        assertEquals(listOf("wiki/wiki/WikiLink.kt"), usersOf(Regex("""ParcelFileDescriptor\.open\b"""), wiki))
+        assertHas(flatText(kt("wiki", "wiki/WikiLink.kt")), "ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)")
+        // The service checks its isolation before anything of a call is read, then the caller's uid, then the token.
+        val svc = flatCode(kt("wiki", "wiki/WikiService.kt"))
+        assertInOrder(svc, "if (!Process.isIsolated())", "Binder.getCallingUid()", "data.enforceInterface(WikiIpc.DESCRIPTOR)")
+        // The library is the module's alone and never in git.
+        for (m in listOf("brain", "voice", "mt", "app")) assertTrue(m, !File(main(m), "jniLibs/arm64-v8a/librobotzim.so").exists())
+        assertTrue(File(root.parentFile, ".gitignore").readLines().any { it.trim() == "robot/wiki/src/main/jniLibs/" })
+        val cpp = File(main("wiki"), "cpp")
+        assertEquals(setOf("icu-filter.json", "icu_check.cpp", "libzim_fd_check.cpp", "robotzim.map", "robotzim_jni.cpp"), cpp.list()!!.toSet())
+        val jni = File(cpp, "robotzim_jni.cpp").readText()
+        for (bad in listOf("open(", "fopen", "__android_log", "socket", "connect(", "write(")) assertTrue(bad, !jni.contains(bad))
+    }
+
     @Test fun fastEngineOnlyInTheMtProcess() {
         val mt = ours.filterKeys { it.startsWith("mt/") }
         assertEquals(setOf("mt/mt/BergamotEngine.kt", "mt/mt/MtService.kt", "mt/mt/Slimt.kt"), mt.keys)
@@ -404,13 +438,57 @@ class ProcessIsolationTest {
 
     /**
      * The everyday set's music (everyday-set-plan.md §3.4, §3.7, D5): Robot sends media keys and asks your music app by
-     * name, and that's all. It holds no MediaSession and no media button receiver, so your headset's button stays your
-     * music app's (the car design's rule); it reads no other app's sessions (no MediaSessionManager, so the notification
+     * name, and that's all. Its one MediaSession is EarbudSession's, held only while Robot speaks (the headset design's
+     * §3.7 rule 3 as changed on 7 Nov 2026, earbudButtonsGoBack), and it has no media button receiver, so your headset's
+     * button is your music app's whenever Robot is quiet; it reads no other app's sessions (no MediaSessionManager, so the notification
      * listener isn't used for it); it connects a MediaBrowser only in MusicDoor, only to the pinned package's service after
      * its signer was checked; and it logs codes only.
      */
+    /**
+     * Earbud buttons (earbud-buttons-plan.md): Robot's media session exists only while she speaks. Every way an answer
+     * ends gives it back: quiet (VoiceHub.onSpeakingChanged), stopped (VoiceHub.stopVoice, which a tap goes through too),
+     * an error (caught in EarbudSession.step) and the voice service's shutdown (VoiceHub.onShutdown); a killed process
+     * loses it with the process. It carries no metadata, so nothing of the answer shows in media controls.
+     */
+    @Test fun earbudButtonsGoBack() {
+        val hub = flatCode(kt("app", "assistant/VoiceHub.kt"))
+        assertHas(hub.body("private fun onSpeakingChanged("), "EarbudSession.speaking(on)")
+        assertHas(hub.body("fun stopVoice("), "EarbudSession.ended(EarbudButtons.End.STOPPED)")
+        assertHas(hub.body("fun onShutdown("), "EarbudSession.ended(EarbudButtons.End.KILLED)")
+        val es = flatCode(kt("app", "assistant/EarbudSession.kt"))
+        assertInOrder(es.body("private fun step("), "if (s.take) take()", "catch (t: Throwable)", "End.ERROR", "giveBack()", "if (s.giveBack) giveBack()")
+        assertInOrder(es.body("private fun giveBack("), "session = null", "isActive = false", "s.release()")
+        assertHas(es.body("private fun take("), "giveBack()", "isActive = true")
+        assertHasNot(es, "setMetadata", "setSessionActivity", "Notification")
+        assertEquals(listOf("app/assistant/EarbudSession.kt"), usersOf(Regex("""\bEarbudButtons\.(speaking|key|tick)\(""")))
+    }
+
+    /**
+     * Read it to me (read-it-to-me-plan.md §4 to §6): every piece goes through OutputGuard (core ReadOutput.mayPlay) before
+     * Robot's voice says it; the reading's MediaSession exists only while a reading is on, in :voice, and goes before the
+     * service does, so the headset's button goes back to your music app; the focus is let go as the reading ends.
+     */
+    @Test fun readingHoldsItsMediaSessionOnlyWhileOn() {
+        val voice = flatCode(kt("app", "assistant/read/ReadingVoice.kt"))
+        assertInOrder(voice.body("private fun speak("), "ReadOutput.mayPlay(", "run(s.held())", "VoiceHub.tts.speak(a.piece.text)")
+        assertEquals(listOf("app/assistant/read/ReadingVoice.kt"), usersOf(Regex("""\bReadOutput\.mayPlay\(""")))
+        assertInOrder(voice.body("private fun end("), "TurnFocus.reading(app, false)", "ReadingService.instance?.done()")
+        val svc = flatCode(kt("app", "assistant/read/ReadingService.kt"))
+        assertEquals(1, Regex("""\bMediaSession\(""").findAll(svc.text).count())
+        assertInOrder(svc.body("override fun onStartCommand("), "ACTION_START", "goForeground()", "holdMedia()")
+        assertInOrder(svc.body("fun done("), "releaseMedia()", "stopSelf()")
+        assertHas(svc.body("override fun onDestroy("), "releaseMedia()")
+        assertHas(svc.body("private fun releaseMedia("), "m.isActive = false", "m.release()")
+        val read = components(parse(mergedManifest())).getValue("app.heyrobot.assistant.read.ReadingService")
+        assertEquals(":voice", read.getAttributeNS(ns, "process"))
+        assertEquals("false", read.getAttributeNS(ns, "exported"))
+        assertEquals("mediaPlayback", read.getAttributeNS(ns, "foregroundServiceType"))
+    }
+
     @Test fun musicSendsKeysAndAsksOnlyThePinnedApp() {
-        assertEquals(emptyList<String>(), usersOf(Regex("""\bMediaSession\b|MediaSessionCompat|setMediaButtonReceiver|\bMediaBrowserService\(\)|: MediaBrowserService\b""")))
+        assertEquals(emptyList<String>(), usersOf(Regex("""MediaSessionCompat|setMediaButtonReceiver|\bMediaBrowserService\(\)|: MediaBrowserService\b""")))
+        // Read it to me holds its own MediaSession, only while a reading is on (readingHoldsItsMediaSessionOnlyWhileOn).
+        assertEquals(listOf("app/assistant/EarbudSession.kt", "app/assistant/read/ReadingService.kt"), usersOf(Regex("""\bMediaSession\b""")).sorted())
         // Only car mode's reader sees other apps' sessions (the user's word, 30 Oct 2026; carSessionsReachNoLogOrStore).
         assertEquals(listOf("app/assistant/car/CarSessions.kt"), usersOf(Regex("""MediaSessionManager|getActiveSessions""")))
         assertEquals(listOf("app/assistant/music/MusicDoor.kt"), usersOf(Regex("""\bMediaBrowser\(""")))
@@ -487,7 +565,7 @@ class ProcessIsolationTest {
         assertEquals("\${applicationId}.car", car.getAttributeNS(ns, "taskAffinity"))
         val a = flatCode(kt("app", "assistant/car/CarModeActivity.kt"))
         assertHas(a.body("override fun onCreate("), "setTaskDescription(", "HandsFreeStrings.carMode()", "R.mipmap.ic_launcher")
-        assertHas(a.body("private fun refresh("), "finishAndRemoveTask()", "setRecentsScreenshotEnabled(CarRecents.picture(messages.lines.isNotEmpty(), turn != null, trusted))")
+        assertHas(a.body("private fun refresh("), "finishAndRemoveTask()", "setRecentsScreenshotEnabled(CarRecents.picture(messages.lines.isNotEmpty(), turn != null, trusted, widget))", "slotNow(isInMultiWindowMode, off")
         assertHasNot(a.body("override fun onDestroy("), "CarModeController.end(")
         assertFalse(code(ours.getValue("app/assistant/car/CarModeActivity.kt")).contains(" finish()"))
     }
@@ -659,9 +737,11 @@ class ProcessIsolationTest {
             // 0.5.0, phase 5.6: summaries reach Robot's model and the Claude key, both only from :voice.
             "app.heyrobot.assistant.conversation.SummaryActivity",
             // 0.8, routines: the exact alarm's receiver and the speaking service, where the voice and the trigger hub are.
-            "app.heyrobot.assistant.routines.RoutineAlarmReceiver", "app.heyrobot.assistant.routines.RoutineSpeakingService",
+            "app.heyrobot.assistant.routines.RoutineAlarmReceiver", "app.heyrobot.assistant.routines.RoutineSpeakingService", "app.heyrobot.assistant.read.ReadingService",
             // 0.8, headset and car mode: the headset button's trampoline and the car screen, where the sessions are.
             "app.heyrobot.assistant.headset.HeadsetEntryActivity", "app.heyrobot.assistant.car.CarModeActivity",
+            // 1.4, step by step: the steps' window, beside StepVoice, its ear and Robot's voice.
+            "app.heyrobot.assistant.steps.StepsActivity",
             // 0.9: web search's set-up window, where a search key is pasted and Test runs; Termux's results come back where its
             // commands were sent from.
             "app.heyrobot.assistant.WebSearchActivity", "app.heyrobot.assistant.TermuxResultReceiver",
@@ -680,7 +760,11 @@ class ProcessIsolationTest {
             "app.heyrobot.tts.RobotTtsService",
             // The everyday set's Ask Robot (E7): the text menu's and the share sheet's door, where the panel and the speech model
             // are (askRobotOnlyCopies).
-            "app.heyrobot.assistant.ask.AskRobotActivity")
+            "app.heyrobot.assistant.ask.AskRobotActivity",
+            // Signal later: the job that runs a kept web search, beside web search and its gate (webSearchStaysInTheVoiceProcessBehindItsChecks).
+            "app.heyrobot.assistant.later.LaterJobService",
+            // Ask about your screenshots: the charging pass, beside the model's one-shot client (theFileOneShotsAreToolFreeFramedAndSendOnlyAJpeg).
+            "app.heyrobot.assistant.shots.ShotsJobService")
         for (n in voice) assertEquals(n, ":voice", proc(n))
         assertEquals("false", exported("app.heyrobot.assistant.PanelLaunchActivity"))
         assertEquals(0, c("app.heyrobot.assistant.PanelLaunchActivity").getElementsByTagName("intent-filter").length)
@@ -748,8 +832,18 @@ class ProcessIsolationTest {
         assertEquals(0, feedParse.getElementsByTagName("intent-filter").length)
         // No other component is isolated (1.4: the two isolated services; 1.5 L4: and :linkparse's, deliberately), nothing
         // else runs in :llama, nothing else in :files, and nothing else in :linkparse.
+        // P1 (wikipedia-offline-plan.md §3): the Wikipedia reader, :wiki, set up as :feedparse is (wikiReadsOnlyInIsolation
+        // checks its code).
+        val wiki = c("app.heyrobot.wiki.WikiService")
+        assertEquals(":wiki", proc("app.heyrobot.wiki.WikiService"))
+        assertEquals("true", wiki.getAttributeNS(ns, "isolatedProcess"))
+        assertEquals("false", exported("app.heyrobot.wiki.WikiService"))
+        assertEquals("", perm("app.heyrobot.wiki.WikiService"))
+        for (a in listOf("allowSharedIsolatedProcess", "useAppZygote", "externalService", "foregroundServiceType", "directBootAware")) assertEquals(a, "", wiki.getAttributeNS(ns, a))
+        assertEquals(0, wiki.getElementsByTagName("intent-filter").length)
+        assertEquals(listOf("app.heyrobot.wiki.WikiService"), comps.filter { it.value.getAttributeNS(ns, "process") == ":wiki" }.keys.toList())
         assertEquals(listOf("app.heyrobot.brain.LlamaService", "app.heyrobot.feedparse.FeedParseService", "app.heyrobot.linkparse.LinkParseService",
-            "app.heyrobot.parse.FileParseService"), comps.filter { it.value.getAttributeNS(ns, "isolatedProcess") == "true" }.keys.sorted())
+            "app.heyrobot.parse.FileParseService", "app.heyrobot.wiki.WikiService"), comps.filter { it.value.getAttributeNS(ns, "isolatedProcess") == "true" }.keys.sorted())
         assertEquals(listOf("app.heyrobot.brain.LlamaService"), comps.filter { it.value.getAttributeNS(ns, "process") == ":llama" }.keys.toList())
         assertEquals(listOf("app.heyrobot.parse.FileParseService"), comps.filter { it.value.getAttributeNS(ns, "process") == ":files" }.keys.toList())
         assertEquals(listOf("app.heyrobot.linkparse.LinkParseService"), comps.filter { it.value.getAttributeNS(ns, "process") == ":linkparse" }.keys.toList())
@@ -763,6 +857,8 @@ class ProcessIsolationTest {
             "app.heyrobot.update.InstallStatusReceiver",
             // 0.7: the panel's way to your messages, beside the listener that holds them.
             "app.heyrobot.people.MessagesBridge",
+            // Caller name: the call screening service, beside the messages' buffer it reads.
+            "app.heyrobot.calls.CallerNameService",
             // 1.4, Robot Files: the share target and scanning's camera hand-off (theShareTargetOnlyCopies); F7: the copies
             // handed to another app (filesHandOutACopyAndTakeItBack).
             "app.heyrobot.ui.files.FilesShareActivity", "app.heyrobot.sys.ScanProvider", "app.heyrobot.sys.FilesOutProvider",
@@ -772,12 +868,18 @@ class ProcessIsolationTest {
             "app.heyrobot.ui.today.TodayWidgetProvider", "app.heyrobot.ui.today.TodayRefresh",
             // F55: the alarm that ends a copy's 15 minutes (filesHandOutACopyAndTakeItBack).
             "app.heyrobot.sys.FilesOutExpiry",
+            // 1.3: the alarm that ends a hold of notifications (HoldTap).
+            "app.heyrobot.people.HoldEnd",
+            // 1.4, RP5: the alarm that ends a sealed report's 24 hours (sys/ReportOut.kt).
+            "app.heyrobot.sys.ReportExpiry",
+            // 1.4, RP6: the answer of Send's chooser, an app picked (sys/ReportOut.kt).
+            "app.heyrobot.sys.ReportPicked",
             // The everyday set, E6: the text-to-speech engine's three small activities (no engine loads there).
             "app.heyrobot.ui.tts.TtsCheckDataActivity", "app.heyrobot.ui.tts.TtsSampleTextActivity", "app.heyrobot.ui.tts.TtsInstallDataActivity")
         for (n in main) assertEquals(n, "", proc(n))
         // 1.1, Phone lock: its own small process, :lock (docs/plans/phone-lock-design.md §4, §13), and nothing else runs there.
         val lock = listOf("app.heyrobot.lock.LockAccessibilityService", "app.heyrobot.lock.LockCoverActivity", "app.heyrobot.lock.LockCodeActivity",
-            "app.heyrobot.lock.LockAlarmReceiver")
+            "app.heyrobot.lock.LockAlarmReceiver", "app.heyrobot.lock.PauseCoverActivity")
         for (n in lock) assertEquals(n, ":lock", proc(n))
         assertEquals(lock.toSet(), comps.filter { it.value.getAttributeNS(ns, "process") == ":lock" }.keys)
         // 1.5, Robot to Robot (robot-to-robot-plan.md §5.1, §5.3, R0 §5.1; job L3, deliberately): ":link", where Robot to
@@ -819,12 +921,18 @@ class ProcessIsolationTest {
         // The connector's component is exactly that one, and no other library's component is new with Robot to Robot.
         assertEquals(listOf("org.unifiedpush.android.connector.internal.LinkActivity"),
             comps.keys.filter { it.startsWith("org.unifiedpush.") }.sorted())
-        // Every Robot component is accounted for (a new one must be placed deliberately).
+        // Every Robot component is accounted for (a new one must be placed deliberately). P1: a debug build also has the
+        // Wikipedia reader's phone check, exported to the shell alone (DUMP), in the main process; a release never has it.
+        val debugOnly = if ((System.getProperty("robot.variant") ?: "debug") == "release") emptySet() else setOf("app.heyrobot.wiki.WikiCheckReceiver")
+        if (debugOnly.isNotEmpty()) {
+            assertEquals("android.permission.DUMP", perm("app.heyrobot.wiki.WikiCheckReceiver"))
+            assertEquals("", proc("app.heyrobot.wiki.WikiCheckReceiver"))
+        } else assertTrue(comps.keys.none { it.endsWith("WikiCheckReceiver") })
         val ourComps = comps.keys.filter { it.startsWith("app.heyrobot.") }.toSet()
         assertEquals(main.toSet() + "app.heyrobot.brain.BrainService" + "app.heyrobot.brain.LlamaService" + "app.heyrobot.mt.MtService" +
             voice.filter { it.startsWith("app.heyrobot.") } + lock + "app.heyrobot.parse.FileParseService" +
             linkProc.filter { it.startsWith("app.heyrobot.") } + "app.heyrobot.linkparse.LinkParseService" +
-            "app.heyrobot.feedparse.FeedParseService", ourComps)
+            "app.heyrobot.feedparse.FeedParseService" + "app.heyrobot.wiki.WikiService" + debugOnly, ourComps)
         // Exported components are guarded: the system-only BIND_VOICE_INTERACTION, or nothing to guard.
         assertEquals("android.permission.BIND_VOICE_INTERACTION", perm("app.heyrobot.assistant.RobotVoiceService"))
         assertEquals("android.permission.BIND_VOICE_INTERACTION", perm("app.heyrobot.assistant.RobotSessionService"))
@@ -845,7 +953,8 @@ class ProcessIsolationTest {
             "app.heyrobot.assistant.backup.BackupActivity", "app.heyrobot.assistant.skills.SkillContinueReceiver",
             "app.heyrobot.assistant.GpuCheckService", "app.heyrobot.sys.ScanProvider", "app.heyrobot.sys.FilesOutProvider",
             "app.heyrobot.ui.lists.ListsTickReceiver", "app.heyrobot.assistant.connect.ConnectionWindow", "app.heyrobot.sys.FilesOutExpiry",
-            "app.heyrobot.ui.today.TodayRefresh"))
+            "app.heyrobot.ui.today.TodayRefresh", "app.heyrobot.people.HoldEnd", "app.heyrobot.sys.ReportExpiry",
+            "app.heyrobot.sys.ReportPicked"))
             assertEquals(n, "false", exported(n))
         // Today H9 (home-design §6.3, deliberately): its widget's provider is exported as a widget provider must be, with
         // exactly the APPWIDGET_UPDATE filter and its meta-data, the system's broadcasts only (BIND_APPWIDGET, today-fix-c 8);
@@ -876,6 +985,11 @@ class ProcessIsolationTest {
         assertEquals(0, c("app.heyrobot.ui.lists.ListsTickReceiver").getElementsByTagName("intent-filter").length)
         assertEquals(0, c("app.heyrobot.sys.FilesOutExpiry").getElementsByTagName("intent-filter").length)
         assertEquals("", perm("app.heyrobot.sys.FilesOutExpiry"))
+        assertEquals(0, c("app.heyrobot.people.HoldEnd").getElementsByTagName("intent-filter").length)
+        assertEquals(0, c("app.heyrobot.sys.ReportExpiry").getElementsByTagName("intent-filter").length)
+        assertEquals("", perm("app.heyrobot.sys.ReportExpiry"))
+        assertEquals(0, c("app.heyrobot.sys.ReportPicked").getElementsByTagName("intent-filter").length)
+        assertEquals("", perm("app.heyrobot.sys.ReportPicked"))
         assertEquals("", perm("app.heyrobot.ui.lists.ListsTickReceiver"))
         val setup = c("app.heyrobot.ui.lists.ListsWidgetSetup")
         assertEquals("true", exported("app.heyrobot.ui.lists.ListsWidgetSetup"))
@@ -970,9 +1084,12 @@ class ProcessIsolationTest {
         val paths = xml(File(main("app"), "res/xml/export_paths.xml"))
         assertEquals("paths", paths.tagName)
         val shared = (0 until paths.childNodes.length).map { paths.childNodes.item(it) }.filterIsInstance<Element>()
-        assertEquals(listOf("cache-path" to ("exports" to "exports/")), shared.map { it.tagName to (it.getAttribute("name") to it.getAttribute("path")) })
+        assertEquals(listOf("cache-path" to ("exports" to "exports/"), "cache-path" to ("reports" to "reports/")), shared.map { it.tagName to (it.getAttribute("name") to it.getAttribute("path")) })
         // The updater: only the system binds its job service; Android tells Robot alone that it was updated.
         assertEquals("android.permission.BIND_JOB_SERVICE", perm("app.heyrobot.update.UpdateJobService"))
+        // Signal later: so is its job's, in :voice.
+        assertEquals("android.permission.BIND_JOB_SERVICE", perm("app.heyrobot.assistant.later.LaterJobService"))
+        assertEquals("false", exported("app.heyrobot.assistant.later.LaterJobService"))
         fun actions(n: String) = c(n).getElementsByTagName("action").let { nl -> (0 until nl.length).map { (nl.item(it) as Element).getAttributeNS(ns, "name") } }.toSet()
         assertEquals(setOf("android.intent.action.MY_PACKAGE_REPLACED"), actions("app.heyrobot.boot.UpdatedReceiver"))
         assertEquals(emptySet<String>(), actions("app.heyrobot.update.InstallStatusReceiver"))
@@ -1032,7 +1149,7 @@ class ProcessIsolationTest {
         assertEquals(listOf("app.heyrobot.lock.LockAccessibilityService"), comps.filter { (_, e) ->
             e.getElementsByTagName("action").let { nl -> (0 until nl.length).any { (nl.item(it) as Element).getAttributeNS(ns, "name") == "android.accessibilityservice.AccessibilityService" } }
         }.keys.toList())
-        for (n in listOf("app.heyrobot.lock.LockCoverActivity", "app.heyrobot.lock.LockCodeActivity", "app.heyrobot.lock.LockAlarmReceiver")) {
+        for (n in listOf("app.heyrobot.lock.LockCoverActivity", "app.heyrobot.lock.LockCodeActivity", "app.heyrobot.lock.LockAlarmReceiver", "app.heyrobot.lock.PauseCoverActivity")) {
             assertEquals(n, "false", exported(n))
             assertEquals(n, "", c(n).getAttributeNS(ns, "showWhenLocked"))
             assertEquals(n, "", c(n).getAttributeNS(ns, "directBootAware"))
@@ -1083,7 +1200,8 @@ class ProcessIsolationTest {
         assertEquals(listOf("app.heyrobot.tts.RobotTtsService"), comps.filter { (_, e) ->
             elements(e, "action").any { it.getAttributeNS(ns, "name") == "android.intent.action.TTS_SERVICE" } }.keys.toList())
         // Every Robot component class exists in the sources.
-        for (n in ourComps) assertTrue(n, ours.values.any { Regex("""class ${n.substringAfterLast('.')}\b""").containsMatchIn(code(it)) })
+        for (n in ourComps - debugOnly) assertTrue(n, ours.values.any { Regex("""class ${n.substringAfterLast('.')}\b""").containsMatchIn(code(it)) })
+        for (n in debugOnly) assertTrue(n, File(root, "wiki/src/debug/java/app/heyrobot/wiki/${n.substringAfterLast('.')}.kt").isFile)
     }
 
     /**
@@ -1094,7 +1212,8 @@ class ProcessIsolationTest {
     @Test fun aJobWithANetworkConstraintHasItsPermission() {
         val net = Regex("""\.setRequiredNetwork(?:Type)?\s*\(""")
         // 1.5 L3 (met at the merge of release/1.1, L7): :link's push job also runs only with a network (it answers by sending).
-        assertEquals(listOf("app/update/UpdateJobs.kt", "link/r2r/LinkPush.kt"), usersOf(net))
+        // Signal later: its job in :voice runs only on a network (it runs a kept web search).
+        assertEquals(listOf("app/assistant/later/SignalLater.kt", "app/update/UpdateJobs.kt", "link/r2r/LinkPush.kt"), usersOf(net))
         val doc = parse(mergedManifest())
         val used = doc.getElementsByTagName("uses-permission").let { nl -> (0 until nl.length).map { (nl.item(it) as Element).getAttributeNS(ns, "name") } }
         assertTrue("a job with a network constraint needs ACCESS_NETWORK_STATE (Android 14+)", "android.permission.ACCESS_NETWORK_STATE" in used)
@@ -1120,8 +1239,18 @@ class ProcessIsolationTest {
             app.heyrobot.core.AdbFixes.ALL.flatMap { it.commands }.single { "pm grant" in it }.removePrefix("adb shell "))
         // Every explicit task affinity is the application ID's, never 0.9's, so 1.0's windows never join 0.9's tasks.
         val affinities = comps.values.map { it.getAttributeNS(ns, "taskAffinity") }.filter { it.isNotEmpty() }
-        // 1.1: the cover's own task (ai.robot_app.lock) makes 10; 1.4 Lists' widget picker (ai.robot_app.widget, LS12) 11.
-        assertEquals(11, affinities.size)
+        // 1.1: the cover's own task (ai.robot_app.lock) makes 10; 1.4 Lists' widget picker (ai.robot_app.widget, LS12) 11;
+        // App pause's cover (ai.robot_app.pause) 12: in :lock, not exported, no intent filter, no new permission, in
+        // LockGate.ROBOT_COVERED, its own task so a pause never joins the lock cover's singleTask task. Step by step's window
+        // takes none (fix-step-by-step-b, verify_apk's twelve): in :voice, not exported, out of recents, in
+        // LockGate.ROBOT_COVERED, a new task of its own each time (documentLaunchMode always, launchMode standard, as Android
+        // asks) so Stop or the idle end lands on the page it reads, not on Robot's last screen.
+        assertEquals(12, affinities.size)
+        comps.getValue("app.heyrobot.assistant.steps.StepsActivity").let { s ->
+            assertEquals("always", s.getAttributeNS(ns, "documentLaunchMode"))
+            for (a in listOf("taskAffinity", "launchMode")) assertEquals(a, "", s.getAttributeNS(ns, a))
+            assertEquals("true", s.getAttributeNS(ns, "excludeFromRecents"))
+        }
         for (a in affinities) assertTrue(a, a.startsWith("ai.robot_app."))
         // The launcher shortcuts target this package (a resource can't take the placeholder) and classes that exist.
         val shortcuts = parse(File(main("app"), "res/xml/shortcuts.xml")).getElementsByTagName("intent")
@@ -1291,10 +1420,15 @@ class ProcessIsolationTest {
     @Test fun modelsDownloadOnlyFromTheMainApp() {
         // The everyday set, deliberately: What went online's writer (sys/NetLog) reads the rows of the downloads the stores
         // started, to record how each ended; it enqueues and removes nothing (everyNetworkPathIsRecorded).
-        assertEquals(listOf("app/sys/ModelStore.kt", "app/sys/MtModelStore.kt", "app/sys/NetLog.kt", "app/sys/VoiceModelStore.kt"), usersOf(Regex("""\bDownloadManager\b""")))
+        // Search by meaning, deliberately: SearchModelStore downloads the pinned EmbeddingGemma file (the network, Wi-Fi only
+        // unless you allow any network), only from Settings › Memory; :voice only asks for its checked path.
+        // Wikipedia P3, a deliberate change: sys/WikiStore downloads a copy you chose in Settings, in the main app only (its
+        // only callers are Settings' page), Wi-Fi only (core WikiDownload.request) and recorded (everyNetworkPathIsRecorded).
+        assertEquals(listOf("app/sys/ModelStore.kt", "app/sys/MtModelStore.kt", "app/sys/NetLog.kt", "app/sys/SearchModelStore.kt", "app/sys/VoiceModelStore.kt", "app/sys/WikiStore.kt"), usersOf(Regex("""\bDownloadManager\b""")))
         assertFalse(Regex("""\.(enqueue|remove)\(""").containsMatchIn(code(kt("app", "sys/NetLog.kt")).replace(Regex("""e\.remove\(|\.edit\(\)"""), "")))
         assertEquals(listOf("app/ui/MainActivity.kt"), usersOf(Regex("""\bModelStore\.(startDownload|import|verify|delete|allowOwnTpu|cancelDownload)\(""")))
         assertEquals(listOf("app/assistant/BrainLink.kt"), usersOf(Regex("""\bModelStore\.plan\(""")))
+        assertEquals(listOf("app/ui/settings/MeaningSearchSettings.kt"), usersOf(Regex("""\bSearchModelStore\.(startDownload|install|delete|cancelDownload)\(""")))
         assertEquals(listOf("brain/brain/GemmaEngine.kt", "app/sys/ModelStore.kt").sorted(), usersOf(Regex("""\bLiteRtLmCheck\.check\(""")))
     }
 
@@ -1394,7 +1528,7 @@ class ProcessIsolationTest {
         // The library loads only after the process proved isolated.
         assertHas(native, "if (!android.os.Process.isIsolated()) LlamaIpc.NOT_ISOLATED else try { System.loadLibrary(LIB)")
         // (0.5.0: the fast translation engine's JNI class in :mt is the other one: fastEngineOnlyInTheMtProcess.)
-        assertEquals(listOf("brain/brain/LlamaNative.kt", "mt/mt/Slimt.kt"), usersOf(Regex("""\bexternal\s+fun\b""")))
+        assertEquals(listOf("brain/brain/LlamaNative.kt", "mt/mt/Slimt.kt", "wiki/wiki/LibZim.kt"), usersOf(Regex("""\bexternal\s+fun\b""")))
         assertEquals(listOf("brain/brain/LlamaNative.kt", "brain/brain/LlamaService.kt"), usersOf(Regex("""\bLlamaNative\b""")))
         // The service's class: referred to by nothing but itself (bound by name, LlamaIpc.SERVICE_CLASS, as in the manifest).
         assertEquals(listOf("brain/brain/LlamaService.kt"), usersOf(Regex("""\bLlamaService\b""")))
@@ -1409,10 +1543,11 @@ class ProcessIsolationTest {
         assertHas(flatCode(kt("brain", "brain/LlamaLink.kt")), "IsolatedUid.of(from)", "Binder.getCallingUid()")
         // The GGUF content check runs where LiteRT-LM's does: the main app's import check and :brain before a load.
         assertEquals(listOf("app/sys/ModelStore.kt", "brain/brain/LlamaEngine.kt"), usersOf(Regex("""\bGgufCheck\.check\(""")))
-        // The native sources are :brain's (and, 0.5.0, the fast engine's in :mt); no module builds native code through Gradle.
+        // The native sources are :brain's (and, 0.5.0, the fast engine's in :mt; P1, the Wikipedia reader's in :wiki); no module
+        // builds native code through Gradle.
         for (m in modules) {
             assertTrue(m, !gradleRaw(m).contains("externalNativeBuild"))
-            if (m != "brain" && m != "mt") assertTrue(m, !File(main(m), "cpp").exists())
+            if (m != "brain" && m != "mt" && m != "wiki") assertTrue(m, !File(main(m), "cpp").exists())
         }
         val cpp = File(main("brain"), "cpp")
         assertEquals(setOf("CMakeLists.txt", "exports.map", "robot_llama.cpp"), cpp.list()!!.toSet())
@@ -1468,6 +1603,8 @@ class ProcessIsolationTest {
         assertInOrder(flatCode(kt("app", "lock/LockEngine.kt")), "Cmd.send(ctx, app.heyrobot.sys.Cmd.PHONE_LOCK)", "app.heyrobot.sys.LinkShade.hide(ctx)")
         // F115: the main window refuses a tap under another app's window.
         assertInOrder(flatCode(kt("app", "ui/MainActivity.kt")).body("override fun onCreate("), "window.filterObscuredTouches()", "setContent {")
+        // fix-panel-filter: the panel's own window too, once it exists (onCreateContentView; not yet in onCreate).
+        assertInOrder(flatCode(kt("app", "assistant/RobotSession.kt")).body("override fun onCreateContentView("), "window?.window?.let { w ->", "w.filterObscuredTouches()", "return panelView()")
         assertEquals(listOf("app/sys/Problems.kt"), usersOf(Regex("""\bProblemReport\.text\(""")))
         val problemsCode = code(kt("app", "sys/Problems.kt"))
         val problems = Flat(problemsCode)
@@ -1634,9 +1771,35 @@ class ProcessIsolationTest {
      * panel's words reach it through Robot's own file, read only by the page. No permission is added for it (the identity
      * test's list is unchanged), and its GitHub link is built in core's GitHub.kt with every other GitHub address.
      */
+    // 1.4, RP6: Reports you sent and What went online's line are written only when the chooser says an app was picked:
+    // its PendingIntent is explicit to ReportPicked, one-shot, mutable only for the system's EXTRA_CHOSEN_COMPONENT, the
+    // report fixed in its data (fill-in may not change it); the receiver never reads which app (none is kept).
+    @Test fun aSentReportIsWrittenOnlyWhenAnAppIsPicked() {
+        assertEquals(listOf("app/sys/ReportOut.kt"), usersOf(Regex("""FeedbackFiles\.addSent\(""")))
+        val out = flatCode(kt("app", "sys/ReportOut.kt"))
+        val picked = out.body("class ReportPicked").body("override fun onReceive(")
+        assertHas(picked, "FeedbackFiles.addSent(", "NetRecord.handed(h.kind, h.size)", "HandedReports.of(intent?.dataString)")
+        assertHasNot(picked, "EXTRA_CHOSEN_COMPONENT", "getParcelableExtra", "extras")
+        val send = out.body("fun sendIntent(")
+        assertHas(send, "Intent(ctx, ReportPicked::class.java)", ".setData(Uri.parse(HandedReports.data(", "PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_ONE_SHOT",
+            "Intent.createChooser(send, title, pi.intentSender)")
+        assertHasNot(send, "FILL_IN")
+    }
+
+    /** fix-bug-card-14 M4: History's other ways in since the seals (its vault, files, envelope, keys and folder), never feedback's. */
+    private val HISTORY_WAYS = """\bHistory(Files|Vault|Envelope|KeyAliases|Keys)\b|\bSoftHistoryKeys\b|\bPaths\.conversations\b"""
+
     @Test fun feedbackSendsNothingItself() {
-        val feedback = ours.filterKeys { it.startsWith("core/core/feedback/") || it == "app/sys/Feedback.kt" || it == "app/ui/settings/FeedbackSettings.kt" }
-        assertEquals(5, feedback.size)
+        val feedback = ours.filterKeys { it.startsWith("core/core/feedback/") || it == "app/sys/Feedback.kt" || it == "app/ui/settings/FeedbackSettings.kt" ||
+            it == "app/ui/settings/ReportShotCard.kt" || it == "app/sys/ReportOut.kt" || it == "app/sys/ReportKeys.kt" ||
+            it == "app/ui/settings/SentReportsSettings.kt" || it == "app/ui/settings/ReportPeople.kt" }
+        // 1.4, report a problem (RP1): core ReportSort, ReportHeader, ReportFile, ReportHide and ReportWords join the scan.
+        // 1.4, RP2: core ReportCard (the card's turn, parts and facts; org.json and core's own types only) joins the scan.
+        // 1.4, RP4: core ReportShot (the screenshot's pixels, its PNG and reading it back) and the card's ReportShotCard join the scan.
+        // 1.4, RP5: core ReportKey, and the main app's ReportOut (Send's sealed file, sealed by :link) and ReportKeys join the scan.
+        // 1.4, RP5: core SentReports (Reports you sent: reference, date, kind, parts) and its page SentReportsSettings join the scan.
+        // fix-bug-card-14 L5: ReportPeople (People's names for the hide list, read through PeopleFiles) joins the scan.
+        assertEquals(19, feedback.size)
         assertEquals(emptyList<String>(), usersOf(Regex("""\bjava\.net\.(URL\b|HttpURLConnection|Socket)|HttpsURLConnection|openConnection|\bokhttp3\b|DownloadManager|""" +
             """\bWebView\b|ConnectivityManager|\bURL\("""), feedback))
         assertEquals(emptyList<String>(), usersOf(Regex("""\bandroid\.util\.Log\b|\bLog\.[a-z]\(|\bprintln\(|System\.(out|err)"""), feedback))
@@ -1648,7 +1811,22 @@ class ProcessIsolationTest {
         // History, or touches the messages the main process (MessageTap) or the panel (PanelMessages) hold in RAM. Only
         // Settings › Memory's and Settings › Messages' switches go into the settings summary (core FeedbackSources).
         assertEquals(emptyList<String>(), usersOf(Regex("""\bMessageTap\b|\bMessageBuffer\b|\bMessageThread\b|\bPanelMessages\b|\bMessagesLink\b|""" +
-            """\bMessagesBridge\b|\bMemory(Panel|Files|Vault|Recall|Search|Edits|Codec|Envelope|File|Item)\b|\bFileMemoryVault\b|\bConversation(Store|Codec)\b"""), feedback))
+            """\bMessagesBridge\b|\bMemory(Panel|Files|Vault|Recall|Search|Edits|Codec|Envelope|File|Item)\b|\bFileMemoryVault\b|\bConversation(Store|Codec)\b|""" +
+            HISTORY_WAYS), feedback - "app/sys/Feedback.kt"))
+        // fix-seal-14 M1: Feedback.kt reads History once, for the one turn the card was opened on (report_turn.json keeps only
+        // where it is, not its words): a single ConversationStore.load, nothing else of History or the rest.
+        val fb = code(feedback.getValue("app/sys/Feedback.kt"))
+        assertEquals(listOf("ConversationStore.load"), Regex("""\bConversation(Store|Codec)\b(\.\w+)?""").findAll(fb).map { it.value }.toList())
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bMessageTap\b|\bMessageBuffer\b|\bMessageThread\b|\bPanelMessages\b|\bMessagesLink\b|""" +
+            """\bMessagesBridge\b|\bMemory(Panel|Files|Vault|Recall|Search|Edits|Codec|Envelope|File|Item)\b|\bFileMemoryVault\b|""" + HISTORY_WAYS), feedback))
+        // fix-bug-card-14 M2: the turn's words never go into the card's saved state (rememberSaveable): only where it is. L-d: by
+        // pattern, not one name: the card's saved names are these (your draft, ticks, flags, where the turn is), and every
+        // rememberSaveable in it is one of them.
+        val card = code(feedback.getValue("app/ui/settings/FeedbackSettings.kt"))
+        val saved = Regex("""\b(?:val|var)\s+(\w+)\s*(?:by|=)\s*rememberSaveable\b""").findAll(card).map { it.groupValues[1] }.toList()
+        assertEquals(setOf("kindName", "text", "steps", "expected", "ticks", "ref", "sent", "preview", "numberOpen", "prefilled",
+            "cardTicks", "hide", "featureName", "problemName", "prefill", "refJson", "turnMissing", "opened"), saved.toSet())
+        assertEquals(saved.size, Regex("""\brememberSaveable\s*[({<]""").findAll(card).count())
         // The ways out are the page's, one tap each.
         assertEquals(listOf("app/sys/Feedback.kt", "app/ui/settings/FeedbackSettings.kt"), usersOf(Regex("""\bFeedback(Send|Clipboard)\b""")) - "app/ui/MainActivity.kt")
         assertEquals(listOf("app/ui/MainActivity.kt", "app/ui/settings/FeedbackSettings.kt"),
@@ -1658,7 +1836,7 @@ class ProcessIsolationTest {
         assertEquals(listOf("app/assistant/PanelFeedback.kt"), usersOf(Regex("""\bFeedbackFiles\.(prefill|openIntent)\(""")))
         assertEquals(listOf("app/ui/settings/FeedbackSettings.kt"), usersOf(Regex("""\bFeedbackFiles\.takePrefill\(""")))
         val route = flatCode(kt("app", "assistant/PanelFeedback.kt")).body("suspend fun run(replyId: String, c: FeedbackCommand)")
-        assertHas(route, "host?.launch(FeedbackFiles.openIntent(ctx, c.kind))")
+        assertHas(route, "host?.launch(FeedbackFiles.openIntent(ctx, c.kind, turn))")
         assertHas(flatCode(kt("app", "assistant/PanelFeedback.kt")), "private val host: PanelHost? get() = port.host")
         assertHas(flatCode(kt("app", "assistant/PanelController.kt")), "override val host get() = this@PanelController.host")
         for (bad in listOf("ACTION_SEND", "SENDTO", "Clipboard", "startActivity", "FeedbackSend", "Share")) assertTrue(bad, !route.text.contains(bad))
@@ -1672,7 +1850,8 @@ class ProcessIsolationTest {
     @Test fun onlyTheMainAppAsksForPermissions() {
         val askers = usersOf(Regex("""RequestMultiplePermissions|RequestPermission\b|requestPermissions\("""))
         // today-fix-c 3: Settings › Display's lock screen summary asks for notifications (main process, ui/today).
-        assertEquals(listOf("app/ui/MainActivity.kt", "app/ui/today/TodaySettings.kt"), askers)
+        // Ask about your screenshots: its page asks for photo access as it switches on (main process, ui/settings).
+        assertEquals(listOf("app/ui/MainActivity.kt", "app/ui/settings/ShotsSettings.kt", "app/ui/today/TodaySettings.kt"), askers)
     }
 
     /** The main app opens the panel with Activity.showAssist and plain string keys (it may not import the assistant's constants). */
@@ -1728,8 +1907,9 @@ class ProcessIsolationTest {
         val tramp = flatCode(kt("app", "assistant/PanelLaunchActivity.kt"))
         assertHas(tramp, "RobotVoiceService.instance?.show(source, extras)",
             "val source = if (extras.containsKey(RobotVoiceService.ARG_SHARED)) RobotVoiceService.SRC_SHARE else RobotVoiceService.SRC_APP",
-            "if (k != RobotVoiceService.ARG_SHARED || sharedId(it)) extras.putString(k, it)",
-            "val KEYS = listOf(RoutineIntents.ARG_ROUTINE, RoutineIntents.ARG_READY, RobotVoiceService.ARG_CONVERSATION, RobotVoiceService.ARG_SHARED)")
+            "if ((k != RobotVoiceService.ARG_SHARED || sharedId(it)) && (k != FileRead.ARG || FileRead.parse(it) != null)) extras.putString(k, it)",
+            "val KEYS = listOf(RoutineIntents.ARG_ROUTINE, RoutineIntents.ARG_READY, RobotVoiceService.ARG_CONVERSATION, RobotVoiceService.ARG_SHARED, FileRead.ARG)")
+        assertTrue(app.heyrobot.core.read.FileRead.ARG.startsWith(app.heyrobot.core.ShowTrust.PREFIX))
         assertTrue(app.heyrobot.assistant.RobotVoiceService.ARG_SHARED.startsWith(app.heyrobot.core.ShowTrust.PREFIX))
         // The panel: a "capture" show counts only while hidden for the camera, and the lock-screen rule has no exception.
         val panel = flatText(kt("app", "assistant/PanelController.kt"))
@@ -1792,6 +1972,14 @@ class ProcessIsolationTest {
         for (f in listOf("fun ready(ctx: Context, cards: List<ReadyCard>)", "fun silent(ctx: Context, r: Routine, text: String)", "fun summary(ctx: Context, text: String?)")) {
             val body = notices.body(f)
             assertTrue(f, body.has(".setVisibility(Notification.VISIBILITY_SECRET)") && !body.text.contains("VISIBILITY_PRIVATE"))
+        }
+        // review-develop-14 L2, review-develop-14-b M1: a moment reminder is secret (PRIVATE showed your words under Android's
+        // default); while locked a separate public notice says "Reminder" only, no words and no person, gone at the unlock.
+        notices.body("fun moment(ctx: Context, r: MomentReminder)").let { m ->
+            assertTrue(m.text, m.has("Notification.Builder(ctx, CHANNEL)") && m.has(".setVisibility(Notification.VISIBILITY_SECRET)") && m.has(".setPublicVersion(publicVersion(ctx, CHANNEL,") && !m.text.contains("VISIBILITY_PRIVATE") && m.has("if (!unlocked(ctx)) lockedMoment(ctx, l)"))
+        }
+        notices.body("private fun lockedMoment(ctx: Context, l: Langs)").let { p ->
+            assertTrue(p.text, p.has("notify(ctx, LockShade.MOMENT_LOCKED,") && p.has(".setVisibility(Notification.VISIBILITY_PUBLIC)") && p.has("RoutineStrings.momentPublic().render(l)") && !p.text.contains("r.text") && !p.text.contains("setContentText") && p.has("cancel(app, LockShade.MOMENT_LOCKED)"))
         }
         // Car mode's notifications hold no words of yours (1.0: the "From your drive" list is gone, only ever cancelled).
         val car = flatCode(kt("app", "assistant/car/CarNotices.kt"))
@@ -2088,10 +2276,20 @@ class ProcessIsolationTest {
         assertTrue(lockFiles.size >= 9)
         assertEquals(emptyList<String>(), usersOf(Regex("""\bapp\.heyrobot\.(assistant|voice|brain|mt|helpers)\b|\b(GemmaEngine|BrainService|BrainLink|LlamaService|HelperKeys|WebKeys|MemoryVault|VoiceHub|PanelController)\b|MemoryFiles\.vault|\bjava\.net\b|HttpURLConnection"""), lockFiles))
         // Phase B: a lock by voice reaches :lock only from the panel's card (PanelLock, after Lock), car mode only from car
-        // mode's own start and end; usage events are read only in :lock; and the voice path never handles a code (the code pad does).
+        // mode's own start and end; usage events are read only in :lock (its engine, its clock and the app pause cover, which reads
+        // today's opens of the paused app when it shows and keeps none); and the voice path never handles a code (the code pad does).
         assertEquals(listOf("app/assistant/PanelLock.kt"), usersOf(Regex("""\bLockSignals\.startVoice\(""")))
         assertEquals(listOf("app/assistant/car/CarModeController.kt"), usersOf(Regex("""\bLockSignals\.car\(""")))
-        assertEquals(listOf("app/lock/LockClock.kt", "app/lock/LockEngine.kt"), usersOf(Regex("""\b(UsageReader|queryEvents)\b""")).filter { it.startsWith("app/lock/") || it == "app/assistant/PanelLock.kt" })
+        // Every reader of usage events in every module (fix-app-pause): :lock's three, and outside it only PhoneInfo's two
+        // older free-up reads (the app in front, apps with a foreground service), which count nothing. phone_status's
+        // pickups are counted in :lock (LockEngine.pickups) and asked for through LockSignals.pickups; a new reader fails here.
+        assertEquals(listOf("app/lock/LockClock.kt", "app/lock/LockEngine.kt", "app/lock/PauseCoverActivity.kt", "app/sys/PhoneInfo.kt"),
+            usersOf(Regex("""\b(UsageReader|queryEvents|queryEventStats|queryEventsForSelf)\b""")))
+        val phoneInfo = code(kt("app", "sys/PhoneInfo.kt"))
+        assertEquals(2, Regex("""\bqueryEvents\b""").findAll(phoneInfo).count())
+        assertFalse(Regex("""\b(UsageReader|PauseCount)\b""").containsMatchIn(phoneInfo))
+        assertHas(flatCode(kt("app", "sys/PhoneInfo.kt")), "app.heyrobot.lock.LockSignals.pickups(ctx)")
+        assertHas(flatCode(kt("app", "lock/LockAlarmReceiver.kt")), "LockSignals.ACTION_PICKUPS -> LockEngine.pickups(app)")
         // Car mode your car started, during your own lock: the service's own cover paths (a lock starting, the unlock) skip it too.
         assertHas(flatText(kt("app", "lock/LockAccessibilityService.kt")), "if (facts.carOwnLock) return removeCurtain()", "!facts.carOwnLock) showCover()")
         // §8.2: the edit session ends when you leave: Robot's app leaving the screen (not a rotation, not its own code pad over
@@ -2133,7 +2331,7 @@ class ProcessIsolationTest {
      */
     @Test fun noNetworkNoAudioFilesNoRawLogs() {
         // java.net.IDN only spells a host name in ASCII, like URLEncoder and URI (core web WebUrl).
-        assertEquals(listOf("app/sys/FeedClient.kt", "app/sys/NominatimClient.kt", "app/sys/OpenMeteoClient.kt", "app/update/GitHubClient.kt",
+        assertEquals(listOf("app/sys/FeedClient.kt", "app/sys/NominatimClient.kt", "app/sys/OpenMeteoClient.kt", "app/sys/WikiStore.kt", "app/update/GitHubClient.kt",
             // review-link-net M1: makes the unconnected sockets home addresses use, bound to their network; sends nothing itself.
             "core/core/net/HomeNet.kt"),
             usersOf(Regex("""\bjava\.net\.(?!URLEncoder|URI\b|IDN\b)|HttpURLConnection|HttpsURLConnection|\bSocket\b|okhttp|\bWebView\b|\bopenConnection\("""),
@@ -2201,12 +2399,19 @@ class ProcessIsolationTest {
         // Today H7: FeedClient checks a feed's address is https, core news Feeds.kt makes "example.com" https://example.com/ and
         // keeps only https feed links, and TodayNews.kt links the public list of feeds (opened in your browser on your tap).
         // H7b: core news FeedWire keeps only the https links of what :feedparse answers.
+        // Search by meaning: the search model's pinned Hugging Face file (core SearchModel.kt, beside the other models'
+        // descriptors), fetched by DownloadManager from Settings › Memory (sys/SearchModelStore.kt), recorded like theirs.
+        // Wikipedia P3: core wiki WikiSets.kt pins each copy's https address at download.kiwix.org, which only WikiStore
+        // hands to Android's download manager (Wi-Fi only, recorded; modelsDownloadOnlyFromTheMainApp).
+        // Wikipedia L1, a deliberate change: core wiki WikiHops.kt holds no address, only the "https://" its checks need: it
+        // decides each redirect hop WikiStore's HEAD (Wi-Fi only, recorded as WIKI_DOWNLOAD; everyNetworkPathIsRecorded) asks,
+        // https only, a plain-http hop refused at any host (core WikiHopsTest). It fetches nothing itself (pure).
         assertEquals(listOf("app/sys/FeedClient.kt", "app/ui/HelpersScreens.kt", "app/ui/settings/WebSearchSettings.kt",
             "app/ui/today/TodayNews.kt", "core/core/ClaudeApp.kt", "core/core/Licences.kt",
-            "core/core/ModelState.kt", "core/core/MtBundle.kt", "core/core/Nearby.kt", "core/core/VoiceModels.kt", "core/core/Weather.kt",
+            "core/core/ModelState.kt", "core/core/MtBundle.kt", "core/core/Nearby.kt", "core/core/SearchModel.kt", "core/core/VoiceModels.kt", "core/core/Weather.kt",
             "core/core/helpers/Helpers.kt", "core/core/link/TorBridges.kt", "core/core/news/FeedWire.kt", "core/core/news/Feeds.kt", "core/core/termux/TermuxSetup.kt", "core/core/termux/TermuxUpdates.kt",
             "core/core/update/GitHub.kt", "core/core/web/DuckDuckGo.kt", "core/core/web/Engines.kt", "core/core/web/OpenLibrary.kt", "core/core/web/SearchWire.kt",
-            "core/core/web/Wikipedia.kt"),
+            "core/core/web/Wikipedia.kt", "core/core/wiki/WikiHops.kt", "core/core/wiki/WikiSets.kt"),
             ours.filter { withoutComments(it.value).contains("https://") }.keys.sorted())
         val audio = ours.filterKeys { it.startsWith("voice/") || it.startsWith("app/assistant/") }
         assertEquals(emptyList<String>(), usersOf(Regex("""MediaRecorder\(|\.wav\b|\.pcm\b|AudioRecord[^\n]*(FileOutputStream|write\()"""), audio))
@@ -2236,7 +2441,10 @@ class ProcessIsolationTest {
     @Test fun everyNetworkPathIsRecorded() {
         // The java.net clients: one request function each, which records each request in its finally block.
         for ((file, fn) in listOf("sys/OpenMeteoClient.kt" to "private fun get(", "sys/NominatimClient.kt" to "private fun get(",
-            "update/GitHubClient.kt" to "private fun <T> request(", "sys/FeedClient.kt" to "private fun get(")) {
+            "update/GitHubClient.kt" to "private fun <T> request(", "sys/FeedClient.kt" to "private fun get(",
+            // Wikipedia L1, a deliberate change: WikiStore's HEAD on Wi-Fi follows a copy's redirects before the download
+            // manager is given the https address they end at (core WikiHops), recorded as WIKI_DOWNLOAD.
+            "sys/WikiStore.kt" to "private fun head(")) {
             val whole = flatCode(kt("app", file))
             val body = whole.body(fn)
             // Every connection the file opens is opened there (GitHubClient's: on the job's network, or the default one).
@@ -2244,7 +2452,7 @@ class ProcessIsolationTest {
             assertEquals(file, whole.count("openConnection("), body.count("openConnection("))
             assertInOrder(body, "openConnection(", "finally {", "NetRecord.record(")
         }
-        assertEquals(listOf("app/sys/FeedClient.kt", "app/sys/NominatimClient.kt", "app/sys/OpenMeteoClient.kt", "app/update/GitHubClient.kt"),
+        assertEquals(listOf("app/sys/FeedClient.kt", "app/sys/NominatimClient.kt", "app/sys/OpenMeteoClient.kt", "app/sys/WikiStore.kt", "app/update/GitHubClient.kt"),
             usersOf(Regex("""\bopenConnection\(""")))
         // Today H7: the news feeds' one client, https only and to public addresses, recorded as FEED; only NewsStore uses it.
         // H7b, through Tor: no connection of its own and no lookup on the phone; :link gives the stream (LinkClient.feedStream),
@@ -2300,20 +2508,23 @@ class ProcessIsolationTest {
         // DownloadManager: each enqueue is recorded right after it; each store settles ends and records a stop before removing.
         val enqueue = Regex("""\.enqueue\(""")
         val dm = usersOf(Regex("""\bDownloadManager\b""")).filter { f -> enqueue.containsMatchIn(code(ours.getValue(f))) }
-        assertEquals(listOf("app/sys/ModelStore.kt", "app/sys/MtModelStore.kt", "app/sys/VoiceModelStore.kt"), dm)
+        // Wikipedia P3: WikiStore's enqueue is recorded like the models'; its stop is delete() (Settings' Stop and Delete).
+        assertEquals(listOf("app/sys/ModelStore.kt", "app/sys/MtModelStore.kt", "app/sys/SearchModelStore.kt", "app/sys/VoiceModelStore.kt", "app/sys/WikiStore.kt"), dm)
         for (f in dm) {
             val code = flatCode(ours.getValue(f))
             val after = code.text.split(Regex("""\.enqueue\(""")).drop(1)
             assertTrue(f, after.isNotEmpty())
             for (part in after) assertTrue("$f: an enqueue without NetLog.downloadStarted", part.substringBefore(".enqueue(").contains("NetLog.downloadStarted("))
             assertHas(code, "NetLog.settleDownloads(ctx)")
-            assertInOrder(code.body("fun cancelDownload("), "NetLog.downloadsStopped(", ".remove(")
+            assertInOrder(code.body(if (f.endsWith("/WikiStore.kt")) "fun delete(" else "fun cancelDownload("), "NetLog.downloadsStopped(", ".remove(")
         }
         // E4, Robot to Robot's carriers. Every socket :link opens is in one of these functions, each of which records; a new
         // carrier (a class that implements one of the three, a socket anywhere else in the module) fails here.
         val carriers = flatCode(kt("link", "r2r/Carriers.kt"))
         // L16: AndroidUnixSockets is Tor's control and SOCKS on this phone (a unix socket: nothing leaves through it, so it isn't recorded).
-        assertEquals(listOf("link/r2r/AndroidUnixSockets.kt", "link/r2r/Carriers.kt"), usersOf(Regex("""\b(Server|Datagram|SSL|Local|LocalServer)?Socket\(|\bcreateSocket\(|\bopenConnection\("""), ours.filterKeys { it.startsWith("link/") || it.startsWith("app/link/") }))
+        // tor-bridge-relay, a deliberate change: BridgeRelay, Tor's SOCKS5 proxy on loopback while a bridge leads to a home
+        // address, asks its own password and connects only where the saved lines lead, through HomeNets (pinned below).
+        assertEquals(listOf("link/r2r/AndroidUnixSockets.kt", "link/r2r/BridgeRelay.kt", "link/r2r/Carriers.kt"), usersOf(Regex("""\b(Server|Datagram|SSL|Local|LocalServer)?Socket\(|\bcreateSocket\(|\bopenConnection\("""), ours.filterKeys { it.startsWith("link/") || it.startsWith("app/link/") }))
         val dialBody = carriers.body("override fun dial(")
         val listenBody = carriers.body("override fun listen(")
         val posterSend = carriers.body("private fun send(")
@@ -2322,7 +2533,11 @@ class ProcessIsolationTest {
         assertEquals(1, dialBody.count("HomeNets.socket("))
         assertEquals(1, posterSend.count("Socket()"))
         assertEquals("a socket outside the carriers' recorded functions", 1 + 1, carriers.count("Socket()") - carriers.count("ServerSocket()") + carriers.count("HomeNets.socket("))
-        assertEquals(listOf("link/r2r/Carriers.kt"), usersOf(Regex("""\bHomeNets\b"""), ours.filterKeys { it.startsWith("link/") || it.startsWith("app/link/") }))
+        val relay = flatCode(kt("link", "r2r/BridgeRelay.kt"))
+        assertEquals(1, relay.count("ServerSocket(")); assertHas(relay, "ServerSocket(0, BACKLOG, InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1)))", "MessageDigest.isEqual(u, auth.user",
+            "if (!ok) return", "if (!BridgeRelayPlan.allows(targets, host, port)) { reply(o, NOT_ALLOWED); return }", "val s = HomeNets.socket(a)", "SecureRandom()")
+        assertEquals(1, relay.count("HomeNets.socket(")); assertHasNot(relay, "= Socket(", "Socket()")
+        assertEquals(listOf("link/r2r/BridgeRelay.kt", "link/r2r/Carriers.kt"), usersOf(Regex("""\bHomeNets\b"""), ours.filterKeys { it.startsWith("link/") || it.startsWith("app/link/") }))
         assertEquals("a listener outside the recorded function", carriers.count("ServerSocket("), listenBody.count("ServerSocket("))
         assertHas(dialBody, "DirectRecord.dialled(SocketDuplex(s))", "DirectRecord.failed()")
         assertHas(listenBody, "accept(DirectRecord.accepted(SocketDuplex(c)))")
@@ -2429,7 +2644,16 @@ class ProcessIsolationTest {
         val jsoup = usersOf(Regex("""\borg\.jsoup\b"""))
         assertTrue(jsoup.toString(), jsoup.isNotEmpty() && jsoup.all { it.startsWith("helpers/helpers/web/") })
         val webUsers = usersOf(Regex("""\bapp\.heyrobot\.helpers\.web\b"""), ours.filterKeys { !it.startsWith("helpers/") })
-        assertEquals(listOf("app/assistant/PanelWebSearch.kt", "app/assistant/ToolExecutor.kt", "app/assistant/WebSearchActivity.kt", "app/assistant/WebTool.kt"), webUsers)
+        // (Signal later: its job, in :voice, takes web search's deadline for a kept search.)
+        // (Summarize this page, W4: its page read is a web answer's, behind the same checks: web search set up, pages read
+        // from this phone, never locked, the strict PageFetcher under OnlineRun's one-shot.)
+        assertEquals(listOf("app/assistant/PanelPageSummary.kt", "app/assistant/PanelWebSearch.kt", "app/assistant/ToolExecutor.kt", "app/assistant/WebSearchActivity.kt",
+            "app/assistant/WebTool.kt", "app/assistant/later/SignalLater.kt"), webUsers)
+        val pageSum = flatCode(kt("app", "assistant/PanelPageSummary.kt"))
+        assertHas(pageSum, "OnlineRun.run(abort, READ_MS) { a -> PageGet.get(PageFetcher(), url, lang, a) }")
+        assertInOrder(pageSum.body("suspend fun handle("), "if (host.locked) return endWith(PageSumEnd.LOCKED, WebStrings.pageUnlock())",
+            "if (s.service == null) return endWith(PageSumEnd.WEB_OFF", "if (WebGate.pagesFromPhone(s) <= 0) return endWith(PageSumEnd.NOT_FROM_PHONE",
+            "val got = read(abort, picked.url, lang)")
         assertTrue(gradle("helpers").text.contains("org.jsoup:jsoup:1.23.2"))
         for (m in listOf("core", "brain", "voice", "mt", "app")) assertTrue(m, !gradleRaw(m).contains("org.jsoup"))
         // Its readability copy logs nothing (no slf4j, no Log).
@@ -2584,8 +2808,9 @@ class ProcessIsolationTest {
         // (listsStayOnThePhone). LS6, deliberately: Lists' widgets, drawn again at unlock (theWidgetOnlyTicks).
         // F68, deliberately: the speaking service, whose notification names the routine again after the unlock.
         // Today H9, deliberately: its widget, the day line again after the unlock (todayOutsideTheApp).
+        // Named timers, deliberately: a named ring still up, posted again with its name after the unlock (off at screen off).
         assertEquals(listOf("app/assistant/FilingWork.kt", "app/assistant/LinkNotices.kt", "app/assistant/car/CarModeController.kt", "app/assistant/conversation/ConversationActivity.kt",
-            "app/assistant/routines/RoutineHub.kt", "app/assistant/routines/RoutineSpeakingService.kt", "app/lock/LockAccessibilityService.kt", "app/sys/FilesVault.kt", "app/sys/ListsVault.kt", "app/sys/ProtectedBroadcasts.kt",
+            "app/assistant/routines/RoutineHub.kt", "app/assistant/routines/RoutineSpeakingService.kt", "app/lock/LockAccessibilityService.kt", "app/sys/FilesVault.kt", "app/sys/ListsVault.kt", "app/sys/OwnTimerRing.kt", "app/sys/ProtectedBroadcasts.kt",
             "app/ui/lists/ListsWidget.kt", "app/ui/today/TodayWidget.kt"), present)
         for (f in present) {
             val c = Flat(code(ours.getValue(f)))
@@ -2596,7 +2821,10 @@ class ProcessIsolationTest {
         // One exact allow-while-idle alarm, never setAlarmClock (it would become Android's "next alarm").
         assertEquals(emptyList<String>(), usersOf(Regex("""\.setAlarmClock\(""")))
         // 1.1: Phone lock keeps its own one alarm in :lock, by the same rule (LockAlarms).
-        assertEquals(listOf("app/lock/LockAlarmReceiver.kt", "app/sys/Assistant.kt", "app/sys/FilesOut.kt", "app/sys/Routines.kt"), usersOf(Regex("""\.setExactAndAllowWhileIdle\(""")))
+        // named-timers, deliberately: Robot's own timers (OwnTimerAlarms), one exact alarm to the same non-exported :voice
+        // receiver by its class name in Robot's own package, immutable, its own request code (8406; 8402 is the moment alarm's).
+        // Idea 5: the heads-up in earbuds keeps its own one alarm (sys HeadsUpAlarms), by the same rule.
+        assertEquals(listOf("app/lock/LockAlarmReceiver.kt", "app/people/HoldTap.kt", "app/sys/Assistant.kt", "app/sys/FilesOut.kt", "app/sys/HeadsUpStore.kt", "app/sys/OwnTimerStore.kt", "app/sys/Routines.kt"), usersOf(Regex("""\.setExactAndAllowWhileIdle\(""")))
         // The main app and :voice reach :lock's receiver and windows by their class names, which must be the real ones.
         assertHas(flatText(kt("app", "lock/LockSignals.kt")), "\"app.heyrobot.lock.LockAlarmReceiver\"", "\"app.heyrobot.lock.LockCoverActivity\"",
             "\"app.heyrobot.lock.LockCodeActivity\"")
@@ -2613,9 +2841,10 @@ class ProcessIsolationTest {
         val panel = flatCode(kt("app", "assistant/routines/PanelRoutines.kt"))
         assertEquals(1, panel.count("draft.save("))
         // The card's question, with "tap only" for a routine from content, is asked before the one save.
-        val ask = panel.calls(Regex("""(?<![\w$])val yes=host\.ask\("""))
-        assertTrue(ask.toString(), ask.any { it.contains("tapOnly=if(draft.fromContent)") })
-        assertInOrder(panel, "val yes = host.ask(", "tapOnly = if (draft.fromContent)", "draft.save(")
+        // auto-open-plan §1: the card is a pick (its box per app), with the same tap-only line, before the one save.
+        val ask = panel.calls(Regex("""(?<![\w$])val pick=host\.pick\("""))
+        assertTrue(ask.toString(), ask.any { it.endsWith(",tapOnly") })
+        assertInOrder(panel, "val tapOnly = if (draft.fromContent) RoutineStrings.tapSaveFromScreen(", "val pick = host.pick(", "draft.save(")
         // 1.2 (every-android-phone, Step 6): a routine made to start after an alarm, on a phone without GrapheneOS Clock,
         // says so on its card before the yes, never silently.
         assertInOrder(panel, "ClockNeed.unmet(draft.routine.trigger", "host.append(replyId, RoutineStrings.clockMissing()",
@@ -2652,8 +2881,19 @@ class ProcessIsolationTest {
         val panel = flatCode(kt("app", "assistant/skills/PanelSkills.kt"))
         // S3.2: through core RoutineSkills, so a routine's skill and its routine change together, under both locks.
         assertEquals(0, panel.count("store().save("))
-        assertEquals(1, panel.count("RoutineSkills.saveSkill("))
+        assertEquals(2, panel.count("RoutineSkills.saveSkill("))
         assertInOrder(panel, "val pick = host.pick(", "RoutineSkills.saveSkill(RoutineFiles.store(app), store(), skill)")
+        // 1.4: a connection's step added by voice is saved the same way, only after its card's answer.
+        assertInOrder(panel, "SkillStrings.addConfirm(", "val pick = host.pick(", "RoutineSkills.saveSkill(RoutineFiles.store(app), store(), SkillEdit.saved(")
+        // A lock, door or alarm step (or a scene, a delete, money, a first use) refused by voice opens its skill's own page, through the panel's locked-phone rule.
+        assertEquals(0, panel.count("PanelController.openSettings("))
+        assertInOrder(panel, "val why = StepByVoice.screenOnly(", "driving = CarModeController.on)", "if (r.opens) PanelController.openSkill(s.id) ?: SkillStrings.addOpened() else null",
+            "reply(replyId, host, after?.let { Phrase.join(r.line, it) } ?: r.line, l)")
+        // Review Low 8: the line is said after the page opens, so nothing stops the voice there.
+        val openSkill = flatCode(kt("app", "assistant/PanelController.kt")).body("fun openSkill(")
+        assertInOrder(openSkill, "if (Assistant.locked(VoiceHub.app)) return unlockFirst(", "val h = host ?: return SkillStrings.addNoPage()",
+            "return if (leaveForRobot(h, HandOffApps.robotPage(VoiceHub.app, AppPages.skillRoute(id)), keepVoice = true)) null else SkillStrings.addNoPage()")
+        assertEquals(0, openSkill.count("stopVoice") + openSkill.count("stopGenerating"))
         assertEquals(0, panel.count("store().delete("))
         assertEquals(1, panel.count("RoutineSkills.deleteSkill("))
         assertInOrder(panel, "val yes = host.ask(replyId, Card(id, null, title, ActionStatus.PENDING, null, body = body, confirm = UiStrings.delete()",
@@ -2721,7 +2961,7 @@ class ProcessIsolationTest {
         assertHas(flatCode(kt("app", "link/LinkRuntime.kt")), "override fun phoneLock(): Boolean = try { PhoneLockNow.on(app) } catch (_: Exception) { true }")
         // review-lock 10: a lock for someone else takes Robot's own words out of the shade, and none goes up during one.
         assertHas(flatCode(kt("app", "lock/LockEngine.kt")), "file?.settings?.forWho == LockFor.SOMEONE_ELSE) app.heyrobot.sys.LockShade.hide(ctx)")
-        assertHas(flatCode(kt("app", "assistant/routines/RoutineSpeakingService.kt")).body("private fun notify(ctx: Context, id: Int, n: Notification) {"), "PhoneLockNow.someoneElse(ctx)")
+        assertHas(flatCode(kt("app", "assistant/routines/RoutineSpeakingService.kt")).body("private fun notify(ctx: Context, id: Int, n: Notification, tag: String? = null) {"), "PhoneLockNow.someoneElse(ctx)")
         assertHas(flatCode(kt("app", "assistant/skills/SkillContinue.kt")), "if (!app.heyrobot.lock.PhoneLockNow.someoneElse(ctx))")
         // review-lock 9: a restart of :lock leaves an emergency dialer that was opened alone, with or without usage access.
         assertHas(flatCode(kt("app", "lock/LockAccessibilityService.kt")).body("override fun onServiceConnected() {"), "LockState.emergencyHeld(s.state.emergencyUntil,")
@@ -2737,7 +2977,7 @@ class ProcessIsolationTest {
         assertHas(flatCode(kt("app", "lock/LockEngine.kt")).body("private fun readFixed(ctx: Context): Fixed {"), "LockSignals.emergencyDialer(ctx)")
         assertHasNot(flatCode(kt("app", "lock/LockEngine.kt")), "EMERGENCY_DIAL")
         // review-lock 3: a lock starting with the panel open clears what was said before it, and a lock by voice leaves the panel.
-        assertHas(flatCode(kt("app", "assistant/VoiceHub.kt")), "Cmd.PHONE_LOCK -> PanelController.lockStarted()")
+        assertHas(flatCode(kt("app", "assistant/VoiceHub.kt")), "Cmd.PHONE_LOCK -> { ReadingVoice.lockStarted(); PanelController.lockStarted() }")
         assertHas(flatCode(kt("app", "assistant/PanelController.kt")).body("fun lockStarted() {"), "newConversation(locked = true)", "stopGenerating(")
         assertHas(Flat(code(kt("app", "assistant/PanelLock.kt")).substringAfter("LockSignals.startVoice(").substringBefore("private fun refusal")), "host.leave()")
         // review-lock 1: the turn's first check of an emergency number knows where the phone is, not just 112 and 911.
@@ -3018,8 +3258,9 @@ class ProcessIsolationTest {
         // The only ciphers in those files are KeystoreSecret's (the updater's token in the main process, the helpers' keys in
         // :voice), 0.7 memory's vault (app/sys/MemoryVault.kt, memoryStaysOnThePhone) and 1.4 Robot Files' key, which wraps
         // only each sealed stream's key (app/sys/FilesVault.kt, filesStayOnThePhone); none of them sees a voiceprint.
-        assertEquals(listOf("app/sys/FilesVault.kt", "app/sys/KeystoreSecret.kt", "app/sys/MemoryVault.kt"), usersOf(Regex("""\bCipher\b"""), main))
-        for (f in listOf("FilesVault.kt", "KeystoreSecret.kt", "MemoryVault.kt")) {
+        // Ask about your screenshots' key (app/sys/ShotsVault.kt) seals and opens only the screenshots index's key.
+        assertEquals(listOf("app/sys/FilesVault.kt", "app/sys/KeystoreSecret.kt", "app/sys/MemoryVault.kt", "app/sys/ShotsVault.kt"), usersOf(Regex("""\bCipher\b"""), main))
+        for (f in listOf("FilesVault.kt", "KeystoreSecret.kt", "MemoryVault.kt", "ShotsVault.kt")) {
             assertTrue(f, !Regex("""\bVoiceprint""").containsMatchIn(code(File(java("app"), "app/heyrobot/sys/$f"))))
         }
         // Its Keystore key is its own, never a helper's (0.6.0: Claude's key is a helper's key, under its old alias).
@@ -3065,8 +3306,12 @@ class ProcessIsolationTest {
             ".setUnlockedDeviceRequired(alias in unlockOnly)", "FileMemoryVault(dir(app), KeystoreMemoryKeys(), lockScreen =", "File(ctx.filesDir, \"memory\")",
             "writeAtomicBytes(file, out)", "if (load != MemoryLoad.Unreadable && load != MemoryLoad.KeyGone) return@locked false")
         assertEquals(1, flatCode(kt("app", "sys/MemoryVault.kt")).count(".setUnlockedDeviceRequired("))
+        // seal-notes, deliberately: Notes' vault makes memory's key class with its own aliases, as History's does.
+        // seal-people, deliberately: and People's (PeopleFiles, with robot_people_v1 unlock-only).
         // H3, deliberately: private events' vault passes robot_calendar_v1 as unlock-only, as Lists does (home-design §6.3).
-        assertEquals(listOf("app/sys/ListsVault.kt", "app/sys/MemoryVault.kt", "app/sys/PrivateEventsVault.kt"), usersOf(Regex("""\bKeystoreMemoryKeys\(""")))
+        // Signal later, deliberately: the kept questions' vault passes robot_later_v1 as unlock-only too (signal-later-plan.md).
+        // seal-transcripts, deliberately: Conversation mode's transcripts (sys/Transcripts.kt) pass their own unlock-only alias too.
+        assertEquals(listOf("app/sys/HistoryVault.kt", "app/sys/LaterVault.kt", "app/sys/ListsVault.kt", "app/sys/LogbookVault.kt", "app/sys/MemoryVault.kt", "app/sys/NotesVault.kt", "app/sys/People.kt", "app/sys/PrivateEventsVault.kt", "app/sys/Transcripts.kt"), usersOf(Regex("""\bKeystoreMemoryKeys\(""")))
         // Two deletes only: Delete all's, and Start over's older memory.enc.bad (the file itself is renamed, never deleted there).
         val vaultCode = flatCode(kt("app", "sys/MemoryVault.kt"))
         assertEquals(2, vaultCode.count(Regex("""\.delete\(\)""")))
@@ -3076,7 +3321,9 @@ class ProcessIsolationTest {
         // (And the main app's part of a restore, RestoreApply, seals it again with the key the restored memory.json names.)
         // 1.4 F8, deliberately: Robot Files' filing rules (files-1.4-plan.md §4.5), through sys/FilingMemory alone, in both
         // processes: :voice reads them for filing and saves one from your words; the Files screens save one from your move or tags.
-        assertEquals(listOf("app/assistant/MemoryPanel.kt", "app/assistant/backup/BackupSources.kt", "app/assistant/backup/RestoreWriter.kt",
+        // Search by meaning (meaning-search-plan.md), deliberately: MeaningMemory opens memory's vault (memory's key) in :voice,
+        // where recall already runs, only to read and write memory's sealed vectors (index.enc) beside the items they index.
+        assertEquals(listOf("app/assistant/MeaningMemory.kt", "app/assistant/MemoryPanel.kt", "app/assistant/backup/BackupSources.kt", "app/assistant/backup/RestoreWriter.kt",
             "app/sys/FilingMemory.kt", "app/sys/RestoreApply.kt", "app/ui/settings/MemorySettings.kt"),
             usersOf(Regex("""\bMemoryFiles\.vault\(""")))
         // What it does with memory: reads the rules (FilingRules.of), adds one (MemoryEdits.addRule), undoes it, follows a
@@ -3109,15 +3356,31 @@ class ProcessIsolationTest {
         // own aliases and frame (lists-plan.md §4.2 D1); it never opens memory (listsStayOnThePhone).
         // LS10, deliberately: the panel's lists use memory's SecretDetector and MemoryHygiene's private placeholder for a secret
         // a list refused (PanelLists.question); they never open memory.
+        // seal-notes, deliberately: Notes' vault and the helper it shares with History (SealedDir) do the same; neither opens memory.
+        // seal-people, deliberately: People's vault (sys/PeopleVault) too, with its own aliases and frame; it never opens memory.
+        // spoken-log, deliberately: the Logbook's vault (sys/LogbookVault) too, with its own aliases and frame; it never opens memory.
+        // seal-history, deliberately: History's vault implements MemoryCipher through memory's key class with its own aliases
+        // and frame (core HistoryEnvelope); it never opens memory.
         // F39, deliberately: the restore preview asks MemoryRestore.keepsPrivate about the backup it shows; it never opens memory.
         // H3, deliberately: private events' vault, as Lists': memory's key class and its exceptions, never memory itself.
-        assertEquals(listOf("app/assistant/MemoryPanel.kt", "app/assistant/PanelController.kt", "app/assistant/PanelEscalation.kt", "app/assistant/PanelFiles.kt",
-            "app/assistant/PanelHelperChoice.kt", "app/assistant/PanelHelperTurn.kt", "app/assistant/PanelLists.kt",
-            "app/assistant/PanelMemoryCommand.kt", "app/assistant/PanelWebSearch.kt",
+        // Search by meaning (meaning-search-plan.md), deliberately: MeaningMemory (:voice, beside MemoryPanel) ranks memory with
+        // core memory's retrievers and its sealed index, embedding through :brain's IPC (no network); SearchModelStore (main,
+        // app/sys) fetches only the pinned SearchModel.URL and keeps the switch in its own file (MeaningSettings); Settings ›
+        // Memory's MeaningSearchSettings (main) shows that switch and the model's state. None opens memory's items for the network.
+        // Signal later, deliberately: the kept questions' vault, as Lists': memory's key class with its own alias, never memory itself.
+        // Wikipedia P4, deliberately: a yes or no from MemoryPanel.recalls, never memory's words (PanelWiki keeps a question
+        // memory answers from the copy); only the question reaches :wiki.
+        val wikiMemory = memory.findAll(flatCode(kt("app", "assistant/PanelWiki.kt")).text).map { it.value }.toList()
+        assertEquals(listOf("MemoryPanel"), wikiMemory)
+        assertEquals(1, flatCode(kt("app", "assistant/PanelWiki.kt")).count("MemoryPanel.recalls("))
+        assertEquals(listOf("app/assistant/MeaningMemory.kt", "app/assistant/MemoryPanel.kt", "app/assistant/PanelController.kt", "app/assistant/PanelEscalation.kt", "app/assistant/PanelFiles.kt",
+            "app/assistant/PanelHelperChoice.kt", "app/assistant/PanelHelperTurn.kt", "app/assistant/PanelLastTime.kt", "app/assistant/PanelLists.kt",
+            "app/assistant/PanelMemoryCommand.kt", "app/assistant/PanelWebSearch.kt", "app/assistant/PanelWiki.kt",
             "app/assistant/backup/BackupSources.kt", "app/assistant/backup/RestoreFlow.kt",
-            "app/assistant/backup/RestoreWriter.kt", "app/sys/FilingMemory.kt", "app/sys/ListsVault.kt", "app/sys/MemoryVault.kt", "app/sys/PrivateEventsVault.kt", "app/sys/RestoreApply.kt",
+            "app/assistant/backup/RestoreWriter.kt", "app/sys/FilingMemory.kt", "app/sys/HistoryVault.kt", "app/sys/LaterVault.kt", "app/sys/ListsVault.kt", "app/sys/LogbookVault.kt", "app/sys/MemoryVault.kt",
+            "app/sys/NotesVault.kt", "app/sys/PeopleVault.kt", "app/sys/PrivateEventsVault.kt", "app/sys/RestoreApply.kt", "app/sys/SealedDir.kt", "app/sys/SearchModelStore.kt",
             "app/ui/files/FilesPort.kt", "app/ui/files/FilesScreen.kt", "app/ui/guide/GuideStores.kt", "app/ui/settings/FilesSettings.kt",
-            "app/ui/settings/MemoryImportScreen.kt", "app/ui/settings/MemorySettings.kt", "app/ui/settings/SettingsRoot.kt"), usersOf(memory, appFiles))
+            "app/ui/settings/MeaningSearchSettings.kt", "app/ui/settings/MemoryImportScreen.kt", "app/ui/settings/MemorySettings.kt", "app/ui/settings/SettingsRoot.kt"), usersOf(memory, appFiles))
         // Into a model's prompt only from the panel's chat turn: once, in PanelController; never the one-shot client, conversation
         // mode (translations, summaries) or a helper's request.
         assertEquals(listOf("app/assistant/PanelController.kt"), usersOf(Regex("""\bMemoryPanel\.forTurn\(""")))
@@ -3133,7 +3396,9 @@ class ProcessIsolationTest {
         // 1.4 F9, deliberately: wrapped by PanelFileAnswer.forHistory, which keeps a private file's answer as its placeholder too.
         // E1, deliberately (everyday-set-plan.md §3.7): wrapped by PanelMusic.forHistory too, which keeps what was playing (a
         // song's tags, content) as its placeholder.
-        assertHas(panel, "chat += app.heyrobot.assistant.music.PanelMusic.forHistory(PanelFileAnswer.forHistory(MemoryPanel.forHistory(ChatTurn(")
+        // Ask about your screenshots, deliberately: wrapped by PanelShots.forHistory too, which keeps an answer from your
+        // screenshots as its placeholder (ShotAsk.forHistory).
+        assertHas(panel, "chat += PanelShots.forHistory(app.heyrobot.assistant.music.PanelMusic.forHistory(PanelFileAnswer.forHistory(MemoryPanel.forHistory(ChatTurn(")
         // A private item never stays in the live conversation: it closes after that answer (rebuilt with History's line).
         assertInOrder(panel, "MemoryPanel.mark(replyId, mem.recall.ids, secret = mem.recall.secret)", "if (mem.recall.secret) { closeConvAfterTurn = true")
         // A helper: memory only through its card (trusted helpers too, unless Settings › Memory says otherwise), never its tools.
@@ -3337,7 +3602,7 @@ class ProcessIsolationTest {
         // LS3: the panel's router runs on the main thread and never opens the vault (what it knows was read at a show or after a
         // turn, off the main thread); a list read aloud is kept in History as a placeholder, never its items (D17).
         val panelLists = panelListsCode()
-        assertHasNot(panelLists.body("fun route(ctx: Context, q: String): ListsCommand?"), "vault(", "load(")
+        assertHasNot(panelLists.body("fun route(ctx: Context, q: String, shared: String? = null): ListsCommand?"), "vault(", "load(")
         assertHas(flatCode(kt("app", "assistant/PanelController.kt")), "chat[chat.lastIndex] = PanelLists.followUp(PanelLists.forHistory(chat.last(), turnLangs), chat.dropLast(1), turnLangs)",
             "scope.launch(Dispatchers.IO) { PanelLists.refresh(VoiceHub.app) }", "PanelLists.drop()",
             // LS10 (L1): "undo that" only right after a list change: any other turn forgets the voice's Undo.
@@ -3581,8 +3846,10 @@ class ProcessIsolationTest {
         // minute shows the last read at the new time, and :link is asked once per open.
         val todayUi = flatCode(kt("app", "ui/today/TodayScreen.kt"))
         assertEquals(0, todayUi.count("TodaySource.page("))
-        assertHas(todayUi.body("private fun TodayHome("), "refresh.get(at, TodaySource.stamp(ctx, now) + listOf(home.note, lang, changes)) { last, fresh ->",
+        assertHas(todayUi.body("private fun TodayHome("), "refresh.get(at, TodaySource.stamp(ctx, now) + listOf(home.note, lang, changes, landed)) { last, fresh ->",
             "TodaySource.read(ctx, lang, home, now, robots = if (fresh) null else last?.fromRobots, choices = NOTE_CHOICES)", "r.view(now) to r.choices")
+        // fix-seal-lows-e 1: the quick add saves through TodayQuickAdd.adder (its own scope, TodayQuickAddTest), never the page's.
+        assertHas(todayUi.body("private fun TodayHome("), "add = ctx.applicationContext.let { app -> TodayQuickAdd.adder { quickAdd(app, home, it) } },")
         val calendarUi = flatCode(kt("app", "ui/calendar/CalendarScreen.kt"))
         assertHas(calendarUi.body("fun CalendarTab("), "refresh.get(at, CalendarSource.stamp(ctx, now) + listOf(from, changes)) { _, _ -> CalendarSource.read(ctx, from, now) }.view(now)")
         assertEquals(0, calendarUi.body("fun CalendarTab(").count("CalendarSource.view("))
@@ -3734,12 +4001,19 @@ class ProcessIsolationTest {
         // files ShareRules) and reaches nothing else of Robot Files (askRobotOnlyCopies).
         // chat-files, deliberately: the file attached to one conversation (PanelAttach: read by :files, held for its question,
         // never put in Robot Files).
+        // Read it to me: PanelRead reads a File's text to you, only unlocked and with Robot Files open (FilesIntake's gate);
+        // ReadingVoice asks that gate again before a paused File resumes, nothing else.
         // L8: LinkNotices, what another Robot sent, filed once the phone is unlocked (§3.6); FilesToRobot, a stripped copy for one.
+        // 1.3 point and read (P3), deliberately: PanelFileRead opens the one page Files asked to read, behind the gate.
+        // Ready answers (idea 18), deliberately: a ticket's name and date for a draft, in the main process, as travel mode shows
+        // them (RobotFiles.shown); its receiver is registered RECEIVER_NOT_EXPORTED.
         assertEquals(listOf("app/RobotApp.kt", "app/assistant/FilingNotices.kt", "app/assistant/FilingWork.kt", "app/assistant/LinkNotices.kt",
-            "app/assistant/PanelAttach.kt", "app/assistant/PanelFileAnswer.kt",
-            "app/assistant/PanelFileTools.kt", "app/assistant/PanelFiles.kt", "app/assistant/ToolExecutor.kt", "app/assistant/VoiceHub.kt", "app/assistant/ask/AskRobotActivity.kt",
-            "app/assistant/backup/BackupJob.kt", "app/assistant/backup/BackupSources.kt", "app/assistant/backup/RestoreWriter.kt", "app/assistant/routines/RoutineRunner.kt",
-            "app/sys/FileDeletes.kt", "app/sys/FilesExport.kt", "app/sys/FilesIntake.kt", "app/sys/FilesOut.kt", "app/sys/FilesToRobot.kt", "app/sys/FilesVault.kt", "app/sys/FilingMemory.kt",
+            "app/assistant/PanelAttach.kt", "app/assistant/PanelFileAnswer.kt", "app/assistant/PanelFileRead.kt",
+            "app/assistant/PanelFileTools.kt", "app/assistant/PanelFiles.kt", "app/assistant/PanelLastTime.kt", "app/assistant/ToolExecutor.kt", "app/assistant/VoiceHub.kt", "app/assistant/ask/AskRobotActivity.kt",
+            "app/assistant/backup/BackupJob.kt", "app/assistant/backup/BackupSources.kt", "app/assistant/backup/RestoreWriter.kt", "app/assistant/read/PanelRead.kt", "app/assistant/read/ReadingVoice.kt", "app/assistant/routines/RoutineRunner.kt",
+            // Caller name: reads the index (names, fields, text) in the main process to name a caller; nothing leaves the phone.
+            "app/calls/CallerNameService.kt",
+            "app/people/ReadyAnswerTap.kt", "app/sys/FileDeletes.kt", "app/sys/FilesExport.kt", "app/sys/FilesIntake.kt", "app/sys/FilesOut.kt", "app/sys/FilesToRobot.kt", "app/sys/FilesVault.kt", "app/sys/FilingMemory.kt",
             "app/sys/TodaySource.kt", "app/ui/HistoryWatch.kt", "app/ui/TranscriptsScreen.kt", "app/ui/files/FilesPack.kt", "app/ui/files/FilesPort.kt", "app/ui/files/FilesScreen.kt", "app/ui/files/FilesShare.kt", "app/ui/files/Scan.kt",
             "app/ui/settings/FilesSettings.kt", "app/ui/settings/MemorySettings.kt"),
             usersOf(filesCode, ours.filterKeys { it.startsWith("app/") }))
@@ -3809,9 +4083,10 @@ class ProcessIsolationTest {
         // never over the lock screen and refuses during a phone lock and while locked first (askRobotOnlyCopies).
         // chat-files, deliberately: the attached file (PanelAttach), whose every way in starts with the lock check
         // (anAttachedFileBelongsToItsConversation) and which never reaches Robot Files.
-        assertEquals(listOf("app/assistant/FilingNotices.kt", "app/assistant/FilingWork.kt", "app/assistant/LinkNotices.kt", "app/assistant/PanelAttach.kt", "app/assistant/PanelFileAnswer.kt",
-            "app/assistant/PanelFileTools.kt", "app/assistant/PanelFiles.kt", "app/assistant/ToolExecutor.kt", "app/assistant/VoiceHub.kt",
-            "app/assistant/ask/AskRobotActivity.kt", "app/assistant/backup/BackupJob.kt", "app/assistant/backup/BackupSources.kt", "app/assistant/backup/RestoreWriter.kt", "app/assistant/routines/RoutineRunner.kt"),
+        // Read it to me, deliberately: ReadingVoice asks FilesIntake's gate before a paused File resumes, failing closed.
+        assertEquals(listOf("app/assistant/FilingNotices.kt", "app/assistant/FilingWork.kt", "app/assistant/LinkNotices.kt", "app/assistant/PanelAttach.kt", "app/assistant/PanelFileAnswer.kt", "app/assistant/PanelFileRead.kt",
+            "app/assistant/PanelFileTools.kt", "app/assistant/PanelFiles.kt", "app/assistant/PanelLastTime.kt", "app/assistant/ToolExecutor.kt", "app/assistant/VoiceHub.kt",
+            "app/assistant/ask/AskRobotActivity.kt", "app/assistant/backup/BackupJob.kt", "app/assistant/backup/BackupSources.kt", "app/assistant/backup/RestoreWriter.kt", "app/assistant/read/PanelRead.kt", "app/assistant/read/ReadingVoice.kt","app/assistant/routines/RoutineRunner.kt"),
             usersOf(filesCode, ours.filterKeys { it.startsWith("app/assistant/") || it.startsWith("app/lock/") }))
         assertInOrder(flatCode(kt("app", "assistant/backup/BackupJob.kt")).body("fun run(uri: Uri, passphrase: CharSequence, progress: (Progress) -> Unit): Outcome"),
             "if (Assistant.locked(ctx)) return failed(BackupCode.LOCKED, null)", "BackupSources.gather(")
@@ -3871,7 +4146,7 @@ class ProcessIsolationTest {
         assertEquals(2, gemma.count("Content.ImageBytes("))
         assertInOrder(gemma.body("override fun oneShot("), "OneShotRules.imageCheck(req, image, vision)", "submit(key, req.priority, sink) { job -> startOneShot(job, req, image, sink) }")
         assertInOrder(gemma.body("private fun startOneShot("), "OneShotRules.imageCheck(req, image, vision)", "OneShotRules.conversation(req)",
-            "image?.let { add(Content.ImageBytes(it)) }", "add(Content.Text(controls.defuse(req.text)))")
+            "image?.let { b -> OneShotRules.images(req, b)?.forEach { add(Content.ImageBytes(it)) } }", "add(Content.Text(controls.defuse(req.text)))")
         // llama.cpp: text only, the picture refused before it waits, never kept.
         val llama = flatCode(kt("brain", "brain/LlamaEngine.kt"))
         assertInOrder(llama.body("override fun oneShot("), "OneShotRules.imageCheck(req, image, vision = false)", "submit(key, req.priority, sink) { job -> startOneShot(job, req, sink) }")
@@ -3879,16 +4154,65 @@ class ProcessIsolationTest {
         // Nothing in :brain's own code decodes a picture or a document: LiteRT-LM's encoder does, as for the panel's photos.
         assertEquals(emptyList<String>(), usersOf(Regex("""\bImageDecoder\b|\bBitmapFactory\b|\bPdfRenderer\b|\bPdfDocument\b|\bandroid\.graphics\.Bitmap\b"""),
             ours.filterKeys { it.startsWith("brain/") }))
-        // The rule itself: only a FILE_READ that says it has one, a JPEG under the cap; NO_VISION only after that.
+        // The rule itself: only a FILE_READ (1.3: or a READ_ALOUD) that says it has one, a JPEG under the cap; NO_VISION
+        // only after that.
+        assertEquals(setOf(app.heyrobot.core.OneShotKind.FILE_READ, app.heyrobot.core.OneShotKind.READ_ALOUD), app.heyrobot.core.OneShotKind.entries.filter { it.takesImage }.toSet())
         val rules = flatCode(kt("core", "core/BrainSchedule.kt"))
-        assertInOrder(rules.body("fun imageCheck("), "req.kind != OneShotKind.FILE_READ -> BrainError.BAD_REQUEST", "!isJpeg(image) -> BrainError.BAD_REQUEST", "!vision -> BrainError.NO_VISION")
-        assertHas(flatCode(kt("core", "core/BrainProtocol.kt")), ".takeIf { !it.hasImage || it.kind == OneShotKind.FILE_READ }")
+        assertInOrder(rules.body("fun imageCheck("), "!req.kind.takesImage -> BrainError.BAD_REQUEST", "!imagesOk(req) -> BrainError.BAD_REQUEST", "!isJpeg(p)", "!vision -> BrainError.NO_VISION")
+        assertHas(flatCode(kt("core", "core/BrainProtocol.kt")), ".takeIf { (!it.hasImage || it.kind.takesImage) && OneShotRules.imagesOk(it) }")
+        // More than one picture: READ_ALOUD's tiles alone (core read ReadImages), each checked as one.
+        assertHas(rules, "req.hasImage && req.kind == OneShotKind.READ_ALOUD && req.images in 2..")
         // The voice process sends a picture with a one-shot from one place, BrainOneShots.runWithImage, and F6's filing is its
         // one caller (FilingWork's port, for FilingRun's FILE_READ of a page's picture: the panel's "file this" goes through
         // it too). Filing never sends a file to a helper: FilingWork names no helper's code.
         assertEquals(listOf("app/assistant/OneShots.kt"), usersOf(Regex("""\bREQ_ONE_SHOT\b""")).filter { it.startsWith("app/") })
         assertEquals(1, flatCode(kt("app", "assistant/OneShots.kt")).count("c.request(BrainProtocol.REQ_ONE_SHOT, req, image)"))
-        assertEquals(listOf("app/assistant/FilingWork.kt"), usersOf(Regex("""\.runWithImage\(""")))
+        // Ask about your screenshots' charging pass is the third caller (after point and read's PanelRead): one FILE_READ per
+        // screenshot, and it names no helper's code either.
+        assertEquals(1, flatCode(kt("app", "assistant/shots/ShotsWork.kt")).count(".runWithImage("))
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bHelper[A-Z]\w*|\bapp\.heyrobot\.helpers\b|\bAnthropic\w*|\bOpenAiSession\b"""),
+            ours.filterKeys { it == "app/assistant/shots/ShotsWork.kt" }))
+        // 1.3 point and read (P2): the panel's reading is the second caller (PanelRead): ReadAloud's request alone, its parts
+        // packed, and nothing written to a file (the camera's own file is CaptureActivity's, deleted on every way out).
+        assertEquals(listOf("app/assistant/FilingWork.kt", "app/assistant/PanelRead.kt", "app/assistant/shots/ShotsWork.kt"), usersOf(Regex("""\.runWithImage\(""")))
+        val reading = flatCode(kt("app", "assistant/PanelRead.kt"))
+        assertEquals(1, reading.count(".runWithImage("))
+        assertHas(reading.body("suspend fun send("), "BrainOneShots.runWithImage(ReadAloud.request(jpegs.size), ReadImages.pack(jpegs), BUDGET, onText)")
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bFile\b|\bFileOutputStream\b|\bcacheDir\b|\bopenFileOutput\b|\bcompress\("""),
+            ours.filterKeys { it == "app/assistant/PanelRead.kt" }))
+        // P3: Ask Robot's shared photo is read through the same turn (no sender of its own), and never once the phone locked.
+        assertHas(flatCode(kt("app", "assistant/PanelController.kt")).body("fun readShared("),
+            "if (Assistant.locked(VoiceHub.app)) return removeDraft()", "readPicture(Phrase.M(ReadStrings.asked).render(screenLangs()), bmp)")
+        // P3: a Files page is read in the panel from its id and page alone (the main app sends no content), behind Robot Files'
+        // gate there, from Robot's own show; its bytes are wiped and nothing is written; its pixels go through PanelRead's turn.
+        val fileRead = flatCode(kt("app", "assistant/PanelFileRead.kt"))
+        assertHas(fileRead, "if (source == RobotVoiceService.SRC_APP) FileRead.parse(args?.getString(FileRead.ARG)) else null",
+            "if (locked() || RobotFiles.locked(ctx)) return Got.Locked", "TravelMode.shown(idx, FilesSettingsStore.current(ctx)).entry(p.id)", "bytes?.fill(0)")
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bFileOutputStream\b|\bcacheDir\b|\bopenFileOutput\b|\bcompress\(|\bVoiceLog\b"""),
+            ours.filterKeys { it == "app/assistant/PanelFileRead.kt" }))
+        assertHas(flatCode(kt("app", "assistant/PanelController.kt")).body("private fun readFile("),
+            "if (locked) return notify(unlockFirst(PanelStrings.unlockForFile()))", "PanelFileRead.load(ctx, p) { Assistant.locked(ctx) ||")
+        // Review finding 1: a Files page read aloud follows read_file's rules (PanelFileAnswer's own): marked for travel mode,
+        // and a private file's words never said, a placeholder in History, the conversation closed after, no screenshot.
+        assertHas(fileRead, "val private = FilesForHelper.private(e)", "Got.Words(it, private)", "Got.Picture(it, private)")
+        assertHas(flatCode(kt("app", "assistant/PanelController.kt")).body("private fun readPicture("),
+            "if (file) PanelFileAnswer.markFiles(replyId)", "if (file && private) fileAnswer.port.privateAnswer(replyId)",
+            "if (handsFree == null) _state.update { it.copy(speak = ReadAloud.speaks(VoiceHub.settings.speakReplies, it.speak)) }")
+        // Review finding 7: a reading's camera never opens for a loaded model that can't see.
+        assertHas(flatCode(kt("app", "assistant/PanelController.kt")).body("fun openCapture("),
+            "if (st.readiness == BrainKeeper.Readiness.READY && (!st.vision || st.textOnly)) return notify(Phrase.M(ReadStrings.needsVision))")
+        // Review finding 6: the file is read inside the try, so running out of memory is "can't read", never a crash.
+        assertTrue(fileRead.at("var bytes: ByteArray? = null") >= 0 && fileRead.at("val b = try { vault.open(e.id)") > fileRead.at("var bytes: ByteArray? = null"))
+        // Review finding 5: a reading reads no original bytes, and holds no picture no panel will take.
+        assertHas(flatCode(kt("app", "assistant/Capture.kt")), "original = if (read) null else try {",
+            "if (RobotVoiceService.instance != null) PanelController.onReadPicked(bmp)")
+        // Review finding 4: a letter's "Call: 902-555-0123" is said; the model-reply filters are for the model's own words.
+        assertHas(flatCode(kt("app", "assistant/PanelController.kt")).body("private fun speakSentence("),
+            "if (!byHelper && words == null && (s.contains(", "&& words == null && claimsHeld", "SpeechText.clean(if (byHelper || words != null) s else")
+        assertHas(flatCode(kt("app", "assistant/PanelController.kt")), "readPicture(asked, null, got.text, file = true, private = got.private)",
+            "readPicture(asked, got.bmp, file = true, private = got.private)", "voice.say(replyId, line, _state.value.speak && !PanelFileAnswer.isPrivate(replyId))")
+        assertHas(flatCode(kt("app", "ui/files/FilesScreen.kt")).body("private fun readAloud("),
+            ".putExtra(app.heyrobot.core.read.FileRead.ARG, app.heyrobot.core.read.FileRead.arg(id, page))")
         val filing = flatCode(kt("app", "assistant/FilingWork.kt"))
         assertEquals(1, filing.count(".runWithImage("))
         assertHas(filing.body("override fun read(req: BrainMsg.OneShot, jpeg: ByteArray?): OneShotResult"),
@@ -3909,7 +4233,12 @@ class ProcessIsolationTest {
         // FileQuote's frame, in its quotes.
         assertEquals(listOf("core/core/files/FilePrompt.kt"), usersOf(Regex("""\bOneShotKind\.FILE_ANSWER\b|\bREAD_(PICTURE|TEXT)\b""")))
         val fp = flatCode(kt("core", "core/files/FilePrompt.kt"))
-        assertEquals(4, fp.count(Regex("""BrainMsg\.OneShot\(""")))
+        assertEquals(6, fp.count(Regex("""BrainMsg\.OneShot\(""")))
+        // Ask about your screenshots: its question and its charging pass's read are FilePrompt's too, framed as a file's words.
+        assertHas(fp.body("fun shots("), "val q = question(question) ?: return null", "BrainMsg.OneShot(OneShotKind.FILE_ANSWER, Priority.PANEL, SHOTS,")
+        assertHas(flatText(kt("core", "core/files/FilePrompt.kt")).body("fun shots("), "\"\${FileQuote.block(FileQuote.SHOTS_FRAME, quoted)}\\nQuestion: \$q\"")
+        assertHas(fp.body("fun readShot("), "BrainMsg.OneShot(OneShotKind.FILE_READ, Priority.SUMMARY, SHOT_READ, FileQuote.SHOT_PICTURE_FRAME, SHOT_READ_CHUNKS, hasImage = true)")
+        assertEquals(listOf("core/core/files/FilePrompt.kt"), usersOf(Regex("""\bBrainMsg\.OneShot\(OneShotKind\.FILE_READ\b""")).filter { it.startsWith("core/core/files/") || it.startsWith("core/core/shots/") })
         // chat-files: a file attached in the panel, framed and quoted as any other file's words, asked about by PanelAttach alone.
         assertHas(fp.body("fun attached("), "FileQuote.frame(FileKind.UNKNOWN, FileSource.SHARE) ?: return null", "val q = question(question) ?: return null",
             "BrainMsg.OneShot(OneShotKind.FILE_ANSWER, Priority.PANEL, ATTACHED,")
@@ -4178,10 +4507,17 @@ class ProcessIsolationTest {
         // The everyday set's Ask Robot (E7), deliberately: a shared photo is decoded here too (assistant/ask SharedPhoto, in
         // :voice), one link for the photo, ended when it is read (askRobotOnlyCopies).
         // chat-files: the panel's attached file, one link a file, read off the main thread and ended when it's read.
-        assertEquals(listOf("app/assistant/FilingWork.kt", "app/assistant/PanelAttach.kt", "app/assistant/ask/SharedPhoto.kt", "app/sys/FileParseLink.kt", "app/ui/files/FilesPort.kt", "app/ui/files/Scan.kt", "app/ui/link/LinkPort.kt"),
+        // Read it to me: a File's text with PAGE_BREAKS (PanelRead), one link, ended in a finally, the bytes wiped.
+        // 1.3 point and read (P3): a Files page read aloud, one link, ended when it's read (PanelFileRead).
+        assertEquals(listOf("app/assistant/FilingWork.kt", "app/assistant/PanelAttach.kt", "app/assistant/PanelFileRead.kt", "app/assistant/ask/SharedPhoto.kt", "app/assistant/read/PanelRead.kt", "app/sys/FileParseLink.kt", "app/ui/files/FilesPort.kt", "app/ui/files/Scan.kt", "app/ui/link/LinkPort.kt"),
             usersOf(Regex("""\bFileParseLink\b""")))
         assertInOrder(flatCode(kt("app", "assistant/PanelAttach.kt")).body("private fun read("), "val link = FileParseLink(ctx) try {", "if (!link.start())",
             "} finally { link.end(")
+        val reads = flatCode(kt("app", "assistant/read/PanelRead.kt"))
+        assertInOrder(reads.body("private suspend fun file("), "if (keyguard(ctx)) return", "FilesIntake.gateText(FilesIntake.gate(ctx))?.let { return it }", "fileRead(ctx, query)")
+        // The lock screen check fails closed (Assistant.keyguard fails open).
+        assertHas(reads, "private fun keyguard(ctx: Context): Boolean = try { ctx.getSystemService(KeyguardManager::class.java).isKeyguardLocked } catch (_: Throwable) { true }")
+        assertInOrder(reads.body("private fun fileRead("), "val link = FileParseLink(ctx) try {", "if (!link.start()) return e.id.hex to null", "} finally { bytes.fill(0) link.end(")
         val pairPort = flatCode(kt("app", "ui/link/LinkPort.kt"))
         assertEquals(1, pairPort.count("FileParseLink(app)"))
         assertInOrder(pairPort.body("override fun readQr(photo: ByteArray): String?"), "if (!link.start()) null else (link.qr(photo)", "} finally {", "link.end(")
@@ -4198,7 +4534,7 @@ class ProcessIsolationTest {
         assertHas(filingLink.body("fun endBatch()"), "link?.end(")
         // E7, deliberately: Ask Robot's shared photo shows its thumbnail from :files' pixels too (assistant/ask SharedPhoto).
         // chat-files: an attached picture's or scanned page's pixels, from :files, become the JPEG the model sees (PanelAttach).
-        assertEquals(listOf("app/assistant/FilingWork.kt", "app/assistant/PanelAttach.kt", "app/assistant/ask/SharedPhoto.kt", "app/sys/FilePixels.kt", "app/ui/files/FilesScreen.kt", "app/ui/files/Scan.kt"), usersOf(Regex("""\bFilePixels\b""")))
+        assertEquals(listOf("app/assistant/FilingWork.kt", "app/assistant/PanelAttach.kt", "app/assistant/PanelFileRead.kt", "app/assistant/ask/SharedPhoto.kt", "app/sys/FilePixels.kt", "app/ui/files/FilesScreen.kt", "app/ui/files/Scan.kt"), usersOf(Regex("""\bFilePixels\b""")))
         val tab = flatCode(kt("app", "ui/files/FilesScreen.kt"))
         assertEquals(1, tab.count("FilePixels.bitmap(it, thumb = true)"))
         assertEquals(1, tab.count("FilePixels.bitmap(p.pixels, thumb = false)"))
@@ -4338,12 +4674,12 @@ class ProcessIsolationTest {
             "AskInbox.take(args?.getString(RobotVoiceService.ARG_SHARED), now) ?: return null", "phoneLock() -> AskRefusal.PHONE_LOCK", "locked -> AskRefusal.LOCKED")
         val panel = flatCode(kt("app", "assistant/PanelController.kt"))
         assertInOrder(panel.body("fun onShow(args: Bundle?, locked: Boolean, showFlags: Int = 0)"), "val shared = AskPanel.take(source, args, locked)",
-            "if (shared != null) newConversation(locked) else when (open)", "shared?.let(::attachShared)")
+            "if (shared != null || (fileRead != null && !locked)) newConversation(locked) else when (open)", "shared?.let(::attachShared)")
         // As content: SCREEN or PHOTO (untrusted, saved only with Keep), framed as shared text, marked shared (Personal.SHARED).
         val send = panel.body("fun send(text: String, fromVoice: Boolean = false): Boolean")
         assertHas(send, "Attachment.SCREEN -> if (sharedNow != null) null else screenShare.shot?.let { Images.jpeg(it) }",
             "val sText = if (attachment == Attachment.SCREEN) sharedNow?.text ?: screenShare.text else null", "shared = sharedNow != null, messages = heardBack,",
-            "val keep = if ((marked == Attachment.SCREEN || sharedNow != null) && !keptByUser) false else st.keep", "turnShared = sharedNow != null",
+            "val keep = if ((marked == Attachment.SCREEN || sharedNow != null || pagePick?.from == app.heyrobot.core.web.PageSummaryRouter.From.SCREEN) && !keptByUser) false else st.keep", "turnShared = sharedNow != null",
             "fromAnotherApp = sharedNow != null || Personal.SHARED in HelperContext.personal(history))")
         assertHas(panel.body("private fun attachShared("), "val kind = if (item.kind == app.heyrobot.core.ask.SharedKind.PHOTO) Attachment.PHOTO else Attachment.SCREEN",
             "PanelFiles.picked(null, false)")
@@ -4541,8 +4877,10 @@ class ProcessIsolationTest {
             e.getAttributeNS(ns, "name") to e.getAttributeNS(ns, "value") } } }
         assertEquals("conversations", meta["android.service.notification.default_filter_types"])
         assertEquals("ongoing", meta["android.service.notification.disabled_filter_types"])
-        // Main process only: the tap, the buffer and the bridge; the bridge checks each sender's uid.
-        assertEquals(listOf("app/people/CheogramListener.kt", "app/people/MessageTap.kt", "app/people/MessagesBridge.kt"), usersOf(Regex("""\bMessageTap\b""")))
+        // Main process only: the tap, the buffer and the bridge; the bridge checks each sender's uid. Ready answers reads the
+        // tap's thread for Send (its receiver registered RECEIVER_NOT_EXPORTED). Caller name reads the buffer in the main process
+        // too, to name a caller (nothing leaves the phone, nothing is logged).
+        assertEquals(listOf("app/calls/CallerNameService.kt", "app/people/CheogramListener.kt", "app/people/MessageTap.kt", "app/people/MessagesBridge.kt", "app/people/ReadyAnswerTap.kt"), usersOf(Regex("""\bMessageTap\b""")))
         // A package is read only while signed as when you turned its app on (core MessageSigners): every notification the
         // tap reads goes through its check, and the signers are read in the main process only (Settings, the tap).
         val tap = flatCode(kt("app", "people/MessageTap.kt"))
@@ -4592,8 +4930,8 @@ class ProcessIsolationTest {
         assertHas(pc, "val heardBack = msgCmd is PanelMessages.Routed.Echo",
             "messages = heardBack, kept = if (heardBack) app.heyrobot.core.messages.MessageReading.HEARD_BACK else null, fileName = chatFile?.name)")
         // A reply: fired only by the bridge, after ReplySend read the notification again; the panel names a conversation by its key, and
-        // its words, never an address.
-        assertEquals(listOf("app/people/MessageTap.kt", "app/people/MessagesBridge.kt"), usersOf(Regex("""\bMessageTap\.fire\(|\bfun fire\(ctx""")))
+        // its words, never an address. Ready answers' Send fires only on ReplyGuard.recheck's Ready, the notification read again.
+        assertEquals(listOf("app/people/MessageTap.kt", "app/people/MessagesBridge.kt", "app/people/ReadyAnswerTap.kt"), usersOf(Regex("""\bMessageTap\.fire\(|\bfun fire\(ctx""")))
         // A mark-as-read the app wants only from an unlocked phone is never fired while it is locked, as a reply isn't.
         assertHas(flatCode(kt("app", "people/MessageTap.kt")), "if (!app.heyrobot.core.messages.ReplyGuard.markable(ref, app.heyrobot.sys.Assistant.locked(ctx))) return false")
         assertHas(flatCode(kt("app", "people/MessagesBridge.kt")), "ReplySend.check(held, fresh?.second, req, s, locked)", "MessageTap.fire(ctx, fresh!!.first, c.target, c.text)")
@@ -4623,8 +4961,9 @@ class ProcessIsolationTest {
         // (Seven: the chat turn, a helper's, the Claude app's hand-off, texting without the model, 0.7 memory's "remember
         // that …" in a conversation that holds a message, 0.7.0's "free up memory" card, 0.8's routine steps and calls, and 0.9's
         // "search the web for …" and "run <script>"; 1.4 F10's Add to calendar from a file's date; 1.5 L7's words to another Robot;
-        // 1.1.2's timer without the model, ClockAsk; fix-123-d's dictated note, NoteDictation.direct.)
-        assertEquals(13, pc.count("messages = PanelMessages.taint(chat)"))
+        // 1.1.2's timer without the model, ClockAsk; fix-123-d's dictated note, NoteDictation.direct; summary-todos' Add to
+        // calendar from a summary's to-do.)
+        assertEquals(14, pc.count("messages = PanelMessages.taint(chat)"))
         assertEquals(pc.count(Regex("""TurnRunner\(""")), pc.count("messages = PanelMessages.taint(chat)"))
         // (1.1: a helper's turn and the hand-off to its app are PanelHelperTurn's; their TurnRunners stay here, untrusted and
         // remote with only what HelperTrust lets a read share and the tools the session offered, and the shared port hands
@@ -4741,28 +5080,32 @@ class ProcessIsolationTest {
                 "!_state.value.inHelperMode) PanelFiles.route(q) else null",
             // 1.5 L7: your words to another Robot (LinkRouter, D15) after Robot Files and before headset and car mode.
             "val linkCmd = if (q.isNotEmpty() && !hfWaits && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && lockCmd == null && routineCmd == null && " +
-                "skillCmd == null && fileCmd == null && listCmd == null && !_state.value.inHelperMode) PanelLinkAsk.route(VoiceHub.app, q) else null",
+                "skillCmd == null && fileCmd == null && readCmd == null && listCmd == null && !_state.value.inHelperMode) PanelLinkAsk.route(VoiceHub.app, q) else null",
             // The everyday set (everyday-set-plan.md §2.1, D1), deliberately: music, sums and What went online after Files and before
             // headset and car mode, under Lists' conditions and without an attachment, each only when the one before took nothing.
             "val everydayOpen = q.isNotEmpty() && !hfWaits && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && lockCmd == null && " +
-                "routineCmd == null && skillCmd == null && fileCmd == null && listCmd == null && linkCmd == null && !_state.value.inHelperMode",
+                "routineCmd == null && skillCmd == null && fileCmd == null && readCmd == null && listCmd == null && linkCmd == null && !_state.value.inHelperMode",
             "val musicCmd = if (everydayOpen) app.heyrobot.assistant.music.PanelMusic.route(q) else null",
             "val sumsCmd = if (everydayOpen && musicCmd == null) app.heyrobot.assistant.sums.PanelSums.route(q) else null",
             "val onlineCmd = if (everydayOpen && musicCmd == null && sumsCmd == null) app.heyrobot.assistant.online.PanelOnline.route(q) else null",
             "val everydayCmd = musicCmd != null || sumsCmd != null || onlineCmd != null",
             "val handsFreeCmd = if (q.isNotEmpty() && !textWaits && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && routineCmd == null && skillCmd == null && " +
-                "fileCmd == null && linkCmd == null && !everydayCmd && !_state.value.inHelperMode) PanelHandsFree.route(q) else null",
-            "val routineOrHandsFree = routineCmd != null || skillCmd != null || handsFreeCmd != null || fileCmd != null || listCmd != null || linkCmd != null || everydayCmd",
+                "fileCmd == null && readCmd == null && linkCmd == null && !everydayCmd && !_state.value.inHelperMode) PanelHandsFree.route(q) else null",
+            // correct-last: "no, 6:45" must keep the helper choice (first in the when) and "no" declines away, so fixCmd joins.
+            "val routineOrHandsFree = routineCmd != null || skillCmd != null || handsFreeCmd != null || fileCmd != null || readCmd != null || listCmd != null || fixCmd != null || linkCmd != null || everydayCmd",
+            // W4: "summarize this page" before a search in your browser, and every route after it waits for it.
+            "val pageAsk = if ((q.isNotEmpty() && st.draft == null || st.draft?.shared != null) && !textWaits && msgCmd == null && convCmd == null && fbCmd == null && " +
+                "!routineOrHandsFree && !_state.value.inHelperMode) PanelPageSummary.route(q, st.draft?.shared, PanelPageSummary::pagesOn) else null",
             "val webQuery = if (q.isNotEmpty() && !textWaits && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && !routineOrHandsFree && " +
-                "!_state.value.inHelperMode) BrowserRouter.route(q) else null",
+                "pageAsk == null && !_state.value.inHelperMode) BrowserRouter.route(q) else null",
             "val termux = if (q.isNotEmpty() && !textWaits && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && !routineOrHandsFree && webQuery == null && " +
-                "!_state.value.inHelperMode) TermuxTool.direct(VoiceHub.app, q, typed = !fromVoice) else null",
+                "pageAsk == null && !_state.value.inHelperMode) TermuxTool.direct(VoiceHub.app, q, typed = !fromVoice) else null",
             "val memRoute = if (q.isNotEmpty() && !textWaits && st.draft == null && convCmd == null && msgCmd == null && fbCmd == null && !routineOrHandsFree && webQuery == null && " +
-                "termux == null && choiceRoute == null) MemoryPanel.route(q, Assistant.locked(VoiceHub.app)) else null",
+                "pageAsk == null && termux == null && choiceRoute == null) MemoryPanel.route(q, Assistant.locked(VoiceHub.app)) else null",
             "val freeAsk = if (q.isNotEmpty() && !textWaits && st.draft == null && convCmd == null && msgCmd == null && fbCmd == null && !routineOrHandsFree && webQuery == null && " +
-                "termux == null && memRoute == null && choiceRoute == null) FreeUp.asked(q) else null",
+                "pageAsk == null && termux == null && memRoute == null && choiceRoute == null) FreeUp.asked(q) else null",
             "var cmd = if (q.isNotEmpty() && !textWaits && convCmd == null && msgCmd == null && fbCmd == null && !routineOrHandsFree && webQuery == null && " +
-                "termux == null && memRoute == null && freeAsk == null && choiceRoute == null) HelperRouter.route(q, names) else null")
+                "pageAsk == null && termux == null && memRoute == null && freeAsk == null && choiceRoute == null) HelperRouter.route(q, names) else null")
         assertInOrder(pc, "msgCmd != null -> PanelMessages.run(replyId, msgCmd)", "convCmd != null -> conversationMode.run(", "fbCmd != null -> feedback.run(replyId, fbCmd)",
             "routineCmd != null -> PanelRoutines.handle(", "skillCmd != null -> {", "PanelSkills.handle(replyId, skillCmd, skillHost",
             "fileCmd != null -> withContext(Dispatchers.IO) { PanelFiles.file(VoiceHub.app, fileCmd, fileWhat!!, turnLangs, spoken = fromVoice) }",
@@ -4990,13 +5333,17 @@ class ProcessIsolationTest {
         // line that names a transport.
         assertHas(flatText(kt("app", "link/LinkRuntime.kt")), "lyrebird = File(app.applicationInfo.nativeLibraryDir, \"liblyrebird.so\")",
             "plan = { TorPlan.of(LinkSettingsStore.current(app)) }")
-        assertInOrder(torCfg.body("fun torrc(p: TorPaths"), "val transports = bridges.mapNotNull { it.transport }.distinct()",
-            "require(transports.isEmpty() || (lyrebird != null && exeOk(lyrebird)))", "line(\"GeoIPv6File\"", "if (bridges.isNotEmpty()) {",
-            "line(\"UseBridges\", \"1\")", "if (transports.isNotEmpty()) line(\"ClientTransportPlugin\", \"${'$'}{BridgeLine.TRANSPORTS.joinToString(\",\")} exec ${'$'}{lyrebird!!.path}\")",
-            "for (b in bridges) line(\"Bridge\", b.text)")
+        // tor-bridge-relay: with the relay (a bridge that leads to a home address), Socks5Proxy, its username and password,
+        // the transports the lines use and no Snowflake line; without it, as before.
+        assertInOrder(torCfg.body("fun torrc(p: TorPaths"), "require(relay == null || relayOk(relay))", "val used = if (relay == null) bridges else BridgeRelayPlan.relayed(bridges)",
+            "val transports = used.mapNotNull { it.transport }.distinct()",
+            "require(transports.isEmpty() || (lyrebird != null && exeOk(lyrebird)))", "line(\"GeoIPv6File\"", "if (relay != null) {", "line(\"Socks5Proxy\"", "if (used.isNotEmpty()) {",
+            "line(\"UseBridges\", \"1\")", "if (transports.isNotEmpty()) line(\"ClientTransportPlugin\", \"${'$'}{(if (relay == null) BridgeLine.TRANSPORTS else transports).joinToString(\",\")} exec ${'$'}{lyrebird!!.path}\")",
+            "for (b in used) line(\"Bridge\", b.text)")
         assertEquals(1, torCfg.count("line(\"Bridge\""))
         assertHas(flatCode(kt("link", "r2r/TorRuntime.kt")).body("private fun start(r: TorRoute, p: TorPlan)"),
-            "paths.torrc.writeText(TorConfig.torrc(paths, p.lines(r), lyrebird.takeIf { p.needsLyrebird(r) }))")
+            "relay = if (BridgeRelayPlan.needed(lines)) try { relays(BridgeRelayPlan.targets(lines)) }", "paths.torrc.writeText(TorConfig.torrc(paths, lines, lyrebird.takeIf { p.needsLyrebird(r) }, relay?.auth))")
+        assertHas(flatCode(kt("link", "r2r/TorRuntime.kt")), "private val relays: (List<BridgeTarget>) -> BridgeRelay = { BridgeRelay.start(it) }")
         // Every bridge line Tor reads passed core BridgeLine.parse: the built-in ones, and yours as link_settings.json keeps them.
         assertEquals(listOf("core/core/link/LinkSettings.kt", "core/core/link/TorBridges.kt"), usersOf(Regex("""\bBridgeLine\.parse\(""")))
         val node = flatCode(kt("link", "r2r/LinkNode.kt"))
@@ -5150,7 +5497,8 @@ class ProcessIsolationTest {
         assertHasNot(rest, "LinkVCard.read(", "BrainMsg", "OneShot", "BrainOneShots", "ToolName", "RawToolCall", "TurnRunner", "Calendar")
         val stores = flatCode(kt("app", "link/LinkDeskStores.kt"))
         assertHas(stores.body("override fun add(pairing: String, text: String, whenAt: Long)"), "RoutineFiles.store(app).editReminders { BriefReminders.addFromOthers(it, line, day) }")
-        assertHas(stores, "override fun add(p: Person): Boolean = PeopleFiles.store(app).update { all -> if (all.any { it.id == p.id }) all else all + p } != null")
+        // seal-people: added unless someone has its id, or kept for the next unlock while People is locked (PeopleStore.add).
+        assertHas(stores, "override fun add(p: Person): Boolean = PeopleFiles.store(app).add(p)")
         assertHasNot(stores, "CalendarContract", "LinkCalendar", "Events.CONTENT_URI", "BrainMsg", "ToolName")
         // The translation one-shot.
         val lr = flatCode(kt("core", "core/link/LinkRest.kt"))

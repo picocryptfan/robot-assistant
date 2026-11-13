@@ -209,10 +209,11 @@ class CarDriveTest {
     }
 
     @Test fun recentsShowNoPictureOfWordsOrOverTheLockScreen() {
-        assertTrue(CarRecents.picture(showsMessage = false, showsTurn = false, trusted = false))
-        assertFalse(CarRecents.picture(showsMessage = true, showsTurn = false, trusted = false))
-        assertFalse(CarRecents.picture(showsMessage = false, showsTurn = true, trusted = false))
-        assertFalse(CarRecents.picture(showsMessage = false, showsTurn = false, trusted = true))
+        assertTrue(CarRecents.picture(showsMessage = false, showsTurn = false, trusted = false, showsWidget = false))
+        assertFalse(CarRecents.picture(showsMessage = true, showsTurn = false, trusted = false, showsWidget = false))
+        assertFalse(CarRecents.picture(showsMessage = false, showsTurn = true, trusted = false, showsWidget = false))
+        assertFalse(CarRecents.picture(showsMessage = false, showsTurn = false, trusted = true, showsWidget = false))
+        assertFalse(CarRecents.picture(showsMessage = false, showsTurn = false, trusted = false, showsWidget = true))
     }
 
     @Test fun keptAppsRoundTripAtMostEightAndNoTwice() {

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- Ask about your screenshots: Settings › Ask about your screenshots (docs/plans/screenshots-plan.md). -->
+<resources>
+    <string name="shots_title">Ask about your screenshots</string>
+    <string name="shots_summary">Answers from screenshots you take</string>
+    <string name="shots_intro">Robot reads the screenshots you take from now on, on this phone while it charges, so you can ask about them later. If one looks like it holds a code, password or card number, only its date is kept. Nothing leaves the phone, and answers aren\'t kept in History.</string>
+    <string name="shots_switch">Read new screenshots while charging</string>
+    <string name="shots_off_summary">Off</string>
+    <string name="shots_status_none">On. Nothing read yet</string>
+    <string name="shots_status">On. %1$d read, last on %2$s</string>
+    <string name="shots_no_access">Allow access to photos to switch this on.</string>
+    <string name="shots_on_failed">Couldn\'t switch this on. Try again.</string>
+    <string name="shots_selected">You gave access to selected photos only: Robot reads the screenshots you picked, whatever their date, and new ones only once you pick them.</string>
+    <string name="shots_graphene">On GrapheneOS, Storage Scopes can give Robot just the screenshots folder.</string>
+    <string name="shots_delete">Delete the index</string>
+    <string name="shots_delete_summary">Robot forgets what it read and reads new screenshots from now on</string>
+    <string name="shots_delete_summary_selected">Robot forgets what it read, then reads the screenshots you picked again</string>
+    <string name="shots_deleted">Index deleted</string>
+    <string name="shots_off_title">Switch off and delete the index?</string>
+    <string name="shots_off_body">Robot forgets everything it read from your screenshots.</string>
+    <string name="shots_off_ok">Switch off</string>
+</resources>

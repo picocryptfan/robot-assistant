@@ -6,7 +6,7 @@
     <!-- The panel (1.0): the turns of a conversation begun on the lock screen, continued unlocked -->
     <string name="panel_said_locked">Said while the phone was locked</string>
 
-    <!-- The standard look's parts (assistant/PanelParts.kt, PanelUi.kt). -->
+    <!-- The standard look's parts (assistant/PanelUi.kt, ui/classic/ClassicPanel.kt). -->
     <string name="panel_close">Close</string>
     <string name="panel_keep">Keep</string>
     <string name="panel_speak_replies">Speak replies</string>
@@ -39,6 +39,7 @@
     <string name="panel_listening_state">Listening</string>
     <string name="panel_unlock_for_your_photos">Unlock to use the camera, your photos or your files.</string>
     <string name="panel_camera">Camera</string>
+    <string name="panel_read_aloud">Read aloud</string>
     <string name="panel_photos">Photos</string>
     <string name="panel_yes_or_no">Yes or no…</string>
     <string name="panel_ask_about_it">Ask about it…</string>

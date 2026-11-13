@@ -167,7 +167,7 @@ internal class FileParser(private val decoders: Decoders) {
                 for (i in 0 until minOf(count, ParseLimits.TEXT_PAGES)) {
                     val t = pdf.text(i)
                     if (t == null) { api = false; break }
-                    if (sb.isNotEmpty()) sb.append("\n\n")
+                    if (req.has(ParseRequest.PAGE_BREAKS)) { if (i > 0) sb.append(ParseRequest.PAGE_BREAK) } else if (sb.isNotEmpty()) sb.append("\n\n")
                     // Never more of a page than the cap: a page's text may be far larger than anything kept.
                     sb.append(t, 0, minOf(t.length, ParseLimits.MAX_TEXT))
                     if (sb.length > ParseLimits.MAX_TEXT) break

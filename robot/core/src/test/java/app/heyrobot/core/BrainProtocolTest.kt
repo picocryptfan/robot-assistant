@@ -226,7 +226,7 @@ class BrainProtocolTest {
      */
     @Test fun fileOneShotsCrossAndOnlyAFileReadCarriesAPicture() {
         // LS4, deliberately: LIST_SPLIT appended (lists-plan.md §8.3), the others unchanged and in their order.
-        assertEquals(listOf("TRANSLATE", "SUMMARY_MAP", "SUMMARY_REDUCE", "WEB_ANSWER", "FILE_READ", "FILE_ANSWER", "LIST_SPLIT", "PLAN", "DRAFT"), OneShotKind.entries.map { it.name })
+        assertEquals(listOf("TRANSLATE", "SUMMARY_MAP", "SUMMARY_REDUCE", "WEB_ANSWER", "FILE_READ", "FILE_ANSWER", "LIST_SPLIT", "PLAN", "DRAFT", "RECIPE", "READ_ALOUD"), OneShotKind.entries.map { it.name })
         val keys = setOf("kind", "priority", "system", "text", "maxChunks")
         val translate = BrainMsg.OneShot(OneShotKind.TRANSLATE, Priority.INTERPRETER, Prompt.TRANSLATE_FR_EN, "Salut", 120)
         assertEquals(keys, translate.toJson().keys().asSequence().toSet())
@@ -243,7 +243,7 @@ class BrainProtocolTest {
         // An older one-shot's JSON has no picture.
         assertEquals(false, (BrainMsg.decode(BrainProtocol.REQ_ONE_SHOT, """{"kind":"FILE_READ","priority":"SUMMARY","system":"s","text":"t"}""") as BrainMsg.OneShot).hasImage)
         // A picture with any other kind isn't a request; and only JSON's true says there is one.
-        for (k in OneShotKind.entries.filter { it != OneShotKind.FILE_READ })
+        for (k in OneShotKind.entries.filter { !it.takesImage })
             assertNull(k.name, BrainMsg.decode(BrainProtocol.REQ_ONE_SHOT, """{"kind":"${k.name}","priority":"PANEL","system":"s","text":"t","hasImage":true}"""))
         for (v in listOf("\"true\"", "1", "false", "null"))
             assertEquals(v, false, (BrainMsg.decode(BrainProtocol.REQ_ONE_SHOT, """{"kind":"FILE_READ","priority":"SUMMARY","system":"s","text":"t","hasImage":$v}""") as BrainMsg.OneShot).hasImage)
@@ -258,5 +258,19 @@ class BrainProtocolTest {
         assertEquals(split, roundTrip(BrainProtocol.REQ_ONE_SHOT, split))
         assertNull(BrainMsg.decode(BrainProtocol.REQ_ONE_SHOT, """{"kind":"LIST_SPLIT","priority":"PANEL","system":"s","text":"t","hasImage":true}"""))
     }
-}
 
+    @Test fun embedRoundTripsAndRefusesTooMuch() {
+        val e = BrainMsg.Embed("/data/m.litertlm", listOf("title: none | text: pho", "b"), 512)
+        assertEquals(e, BrainMsg.decode(BrainProtocol.REQ_EMBED, e.toJson().toString()))
+        assertTrue(BrainProtocol.REQ_EMBED in BrainProtocol.REQUESTS)
+        assertTrue(BrainProtocol.EV_VECTORS in BrainProtocol.EVENTS && BrainProtocol.EV_VECTORS in BrainProtocol.TERMINAL)
+        assertNull(BrainMsg.decode(BrainProtocol.REQ_EMBED, BrainMsg.Embed("p", emptyList()).toJson().toString()))
+        assertNull(BrainMsg.decode(BrainProtocol.REQ_EMBED, BrainMsg.Embed("p", List(BrainMsg.Embed.MAX_TEXTS + 1) { "x" }).toJson().toString()))
+        assertNull(BrainMsg.decode(BrainProtocol.REQ_EMBED, BrainMsg.Embed("p", listOf("x".repeat(BrainMsg.Embed.MAX_CHARS + 1))).toJson().toString()))
+        assertNull(BrainMsg.decode(BrainProtocol.REQ_EMBED, BrainMsg.Embed("p", listOf("x"), 5_000).toJson().toString()))
+        val v = BrainMsg.decode(BrainProtocol.EV_VECTORS, BrainMsg.Vectors(listOf(floatArrayOf(0.5f, -1f))).toJson().toString()) as BrainMsg.Vectors
+        assertTrue(v.ok)
+        assertEquals(listOf(0.5f, -1f), v.vectors.single().toList())
+        assertEquals(false, (BrainMsg.decode(BrainProtocol.EV_VECTORS, "{}") as BrainMsg.Vectors).ok)
+    }
+}

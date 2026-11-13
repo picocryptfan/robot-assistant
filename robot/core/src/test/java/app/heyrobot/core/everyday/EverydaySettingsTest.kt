@@ -27,6 +27,14 @@ class EverydaySettingsTest {
         assertEquals("everyday_settings.json", EverydaySettingsCodec.FILE)
     }
 
+    @Test fun pointAndReadsTilesAreOffByDefaultAndWrittenOnlyWhenOn() {
+        assertEquals(false, EverydaySettings().readTiles)
+        assertEquals(false, JSONObject(EverydaySettingsCodec.encode(EverydaySettings())).has("readTiles"))
+        val on = EverydaySettings(readTiles = true)
+        assertEquals(EverydaySettingsFile.Ok(on), EverydaySettingsCodec.decode(EverydaySettingsCodec.encode(on)))
+        assertEquals(EverydaySettingsFile.Damaged, EverydaySettingsCodec.decode("""{"v":1,"readTiles":"yes"}"""))
+    }
+
     @Test fun everyValueRoundTrips() {
         val s = EverydaySettings(music = false, musicApp = app, listen = false, voices = false, askRobot = false, online = false, onlineDays = 7)
         assertEquals(EverydaySettingsFile.Ok(s), EverydaySettingsCodec.decode(EverydaySettingsCodec.encode(s)))

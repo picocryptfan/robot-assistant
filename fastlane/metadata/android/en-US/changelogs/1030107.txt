@@ -1,0 +1,1 @@
+Third test build of sealed storage on 1.3.0: History, your notes and People are kept encrypted, with keys that stay in your phone's keystore. Fixed since the second: Today's quick add keeps its save when the page closes, and the French lines for History, Notes and backups say a newer Robot saved them.

@@ -46,6 +46,27 @@
     <string name="home_saved_here">Saved on this phone only.</string>
     <string name="home_delete_all">Delete all</string>
     <string name="home_no_conversations">No conversations yet</string>
+    <!-- seal-history: History's conversations sealed under a key Android removed; kept aside, never deleted by Robot. -->
+    <plurals name="home_history_too_new">
+        <item quantity="one">%1$d conversation was saved by a newer Robot. Update Robot to open it, or delete it.</item>
+        <item quantity="other">%1$d conversations were saved by a newer Robot. Update Robot to open them, or delete them.</item>
+    </plurals>
+    <plurals name="home_history_not_now">
+        <item quantity="one">%1$d conversation can’t be opened just now. Try again in a minute.</item>
+        <item quantity="other">%1$d conversations can’t be opened just now. Try again in a minute.</item>
+    </plurals>
+    <plurals name="home_history_aside">
+        <item quantity="one">%1$d conversation can’t be opened</item>
+        <item quantity="other">%1$d conversations can’t be opened</item>
+    </plurals>
+    <string name="home_history_aside_detail">Android removed the key that locked them, which can happen when the screen lock is turned off, or they’re damaged. They can’t be opened again, even if you turn the screen lock back on, and they aren’t in backups. A conversation with a part this version of Robot can’t read keeps a whole copy here, as it was, sealed on this phone as your conversations are. The conversation itself still opens. Robot never deletes them by itself. New conversations are saved as usual.</string>
+    <string name="home_delete_these">Delete these</string>
+    <string name="home_delete_aside_title">Delete the conversations that can’t be opened?</string>
+    <string name="home_delete_aside_detail">Only these are removed. Your other conversations stay. It can’t be undone.</string>
+    <plurals name="home_delete_aside_detail_newer">
+        <item quantity="one">The %1$d conversation saved by a newer Robot is removed too, though an update would open it. Your other conversations stay. It can’t be undone.</item>
+        <item quantity="other">The %1$d conversations saved by a newer Robot are removed too, though an update would open them. Your other conversations stay. It can’t be undone.</item>
+    </plurals>
     <string name="home_no_conversations_detail">They appear here after you ask Robot something.</string>
     <string name="home_delete_all_title">Delete all conversations?</string>
     <string name="home_delete_all_detail">This removes every saved conversation from this phone. It can\'t be undone.</string>

@@ -7,6 +7,7 @@ import android.net.NetworkCapabilities
 import android.net.RouteInfo
 import app.heyrobot.core.helpers.LanRule
 import java.io.IOException
+import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.NetworkInterface
@@ -198,23 +199,30 @@ object HomeNets {
     /**
      * review-home-net-bind L1: a socket that is bound or refused when it connects, for the address it connects to (the
      * route OkHttp picked), never for a lookup made before: refused, nothing is sent. [toward]: where it really connects
-     * (tests: a local server).
+     * (tests: a local server). [way]: where it would leave from (tests only: [wayOut] else).
      */
-    class HomeSocket internal constructor(private val toward: (InetSocketAddress) -> SocketAddress) : Socket() {
+    class HomeSocket internal constructor(
+        private val toward: (InetSocketAddress) -> SocketAddress,
+        private val way: (SocketAddress) -> ByteArray? = { wayOut(it) },
+    ) : Socket() {
         override fun connect(endpoint: SocketAddress?, timeout: Int) {
             val e = endpoint as? InetSocketAddress
             val a = e?.address?.address ?: throw OffNetworkException()
             val (src, p) = choose(a)
             if (p == HomeRoute.Pick.Refused) throw OffNetworkException()
             if (p is HomeRoute.Pick.Bind) bind(src, this, p.id)
+            // review-home-net-bind-c L5: the way out is checked before the SYN too (the check after it stays).
+            if (p == HomeRoute.Pick.Unbound) leftHome(src, a, way(toward(e)), this)
             super.connect(toward(e), timeout)
-            if (p == HomeRoute.Pick.Unbound) leftHome(src, a, this)
+            if (p == HomeRoute.Pick.Unbound) leftHome(src, a, localAddress?.address, this)
         }
     }
 
-    /** N2: [s], connected unbound to [a], left on a network that holds [a]; else closed before anything is written (only its SYN went out) and refused. */
-    private fun leftHome(src: Source?, a: ByteArray, s: Socket) {
-        val from = s.localAddress?.address
+    /**
+     * N2: [s], unbound, to [a]: [from], where it leaves (L5: before its connect, where it would), is on a network that
+     * holds [a]; else [s] is closed before anything is written (after its connect, only its SYN went out) and refused.
+     */
+    private fun leftHome(src: Source?, a: ByteArray, from: ByteArray?, s: Socket) {
         val nets = try { src?.nets().orEmpty() } catch (_: Exception) { emptyList() }
         val own = if (src == null) emptyList() else try { src.own() } catch (_: Exception) { emptyList() }
         if (from == null || !HomeRoute.leftFrom(a, from, nets, own)) {
@@ -223,9 +231,21 @@ object HomeNets {
         }
     }
 
-    /** OkHttp's sockets: each a [HomeSocket]. [toward]: tests only, where sockets really connect. */
-    class Factory(private val toward: (InetSocketAddress) -> SocketAddress = { it }) : SocketFactory() {
-        override fun createSocket(): Socket = HomeSocket(toward)
+    /**
+     * L5: the address the system would send from to [to]: an unbound datagram socket connected there (a connect sends
+     * nothing over UDP; it only picks the route). Null when there is no route.
+     */
+    private fun wayOut(to: SocketAddress): ByteArray? = try {
+        DatagramSocket().use { d -> d.connect(to); d.localAddress?.address?.takeIf { _ -> !d.localAddress.isAnyLocalAddress } }
+    } catch (_: Exception) { null }
+
+    /** OkHttp's sockets: each a [HomeSocket]. [toward]: tests only, where sockets really connect; [way]: as [HomeSocket]'s. */
+    class Factory internal constructor(
+        private val toward: (InetSocketAddress) -> SocketAddress,
+        private val way: (SocketAddress) -> ByteArray?,
+    ) : SocketFactory() {
+        constructor(toward: (InetSocketAddress) -> SocketAddress = { it }) : this(toward, { wayOut(it) })
+        override fun createSocket(): Socket = HomeSocket(toward, way)
         override fun createSocket(host: String?, port: Int): Socket = throw UnsupportedOperationException()
         override fun createSocket(host: String?, port: Int, localHost: InetAddress?, localPort: Int): Socket = throw UnsupportedOperationException()
         override fun createSocket(host: InetAddress?, port: Int): Socket = throw UnsupportedOperationException()

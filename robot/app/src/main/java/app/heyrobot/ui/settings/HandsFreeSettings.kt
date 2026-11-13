@@ -9,6 +9,11 @@ import app.heyrobot.core.i18n.UiStrings
 import app.heyrobot.ui.theme.LocalLangs
 import app.heyrobot.ui.theme.str
 import android.Manifest
+import app.heyrobot.core.headsup.HeadsUpQuiet
+import app.heyrobot.core.headsup.HeadsUpSettings
+import app.heyrobot.sys.Calendars
+import app.heyrobot.sys.HeadsUpAlarms
+import app.heyrobot.sys.HeadsUpStore
 import android.content.Context
 import android.content.Intent
 import android.provider.Settings
@@ -226,10 +231,22 @@ fun HeadsetSettingsScreen(d: HeadsetPageData, act: HandsFreeActions, snackbar: S
     val tYours = stringResource(R.string.headset_yours)
     val tNearby = stringResource(R.string.headset_nearby)
     val footer = stringResource(R.string.headset_footer)
+    val tHeadsUp = stringResource(R.string.headset_headsup_group)
+    var hu by remember { mutableStateOf(HeadsUpStore.settings(ctx)) }
+    fun setHu(n: HeadsUpSettings) {
+        if (!HeadsUpStore.save(ctx, n)) return
+        hu = n
+        val app = ctx.applicationContext
+        Thread { HeadsUpAlarms.arm(app) }.start()
+    }
     PreferenceScreen(UiStrings.headset().str(), onBack, snackbar = snackbar) {
         preferenceGroup(null, "button") {
             SwitchPreference(stringResource(R.string.headset_button), stringResource(if (s.buttonOpensRobot) R.string.headset_button_on else R.string.headset_button_off),
                 s.buttonOpensRobot, icon = RIcons.Headset) { set(s.copy(buttonOpensRobot = it)) }
+            SwitchPreference(stringResource(R.string.headset_earbud_buttons),
+                stringResource(if (s.earbudButtons) R.string.headset_earbud_buttons_on else R.string.headset_earbud_buttons_off), s.earbudButtons) {
+                set(s.copy(earbudButtons = it))
+            }
             val row = HeadsetSetup.row(s.buttonOpensRobot, d.facts?.buttonHandlers.orEmpty())
             val title = row.titleText.str()
             if (d.facts != null && row.ok != null) StatusPreference(title, row.textPhrase.str().removePrefix("$title "), if (row.ok == true) Mark.OK else Mark.TODO)
@@ -274,6 +291,21 @@ fun HeadsetSettingsScreen(d: HeadsetPageData, act: HandsFreeActions, snackbar: S
                 set(s.copy(announceLocked = it))
             }
         }
+        // Idea 5: a heads-up before each event, in private headphones only (assistant/routines HeadsUpHub).
+        preferenceGroup(tHeadsUp, "headsup") {
+            val granted = Calendars.readGranted(ctx)
+            SwitchPreference(stringResource(R.string.headset_headsup_switch), stringResource(if (hu.on) R.string.headset_headsup_on else R.string.headset_off), hu.on,
+                icon = RIcons.Headset) { on ->
+                if (on && !granted) act.ask(Manifest.permission.READ_CALENDAR)
+                setHu(hu.copy(on = on))
+            }
+            if (hu.on && !granted) PreferenceItem(stringResource(R.string.headset_headsup_calendar), null, RIcons.Shield,
+                onClick = { act.ask(Manifest.permission.READ_CALENDAR) })
+            ListPreference(stringResource(R.string.headset_headsup_minutes), hu.minutes, HeadsUpSettings.MINUTES, { ctx.getString(R.string.headset_headsup_minutes_n, it) },
+                enabled = hu.on) { setHu(hu.copy(minutes = it)) }
+            ListPreference(stringResource(R.string.headset_headsup_quiet), hu.quiet, HeadsUpQuiet.entries, { ctx.getString(quietTitle(it)) },
+                enabled = hu.on) { setHu(hu.copy(quiet = it)) }
+        }
         preferenceGroup(tYours, "devices") {
             val list = HeadsetSetup.headphones(d.memory)
             if (list.isEmpty()) PreferenceItem(stringResource(R.string.headset_none), stringResource(R.string.headset_none_hint), RIcons.Headset)
@@ -294,6 +326,13 @@ fun HeadsetSettingsScreen(d: HeadsetPageData, act: HandsFreeActions, snackbar: S
         preferenceFooter(footer)
     }
     device?.let { n -> d.memory.byNumber(n)?.let { h -> DeviceDialog(h, onDismiss = { device = null }, act = act, car = false) } }
+}
+
+private fun quietTitle(q: HeadsUpQuiet): Int = when (q) {
+    HeadsUpQuiet.OFF -> R.string.headset_headsup_quiet_off
+    HeadsUpQuiet.FROM_21 -> R.string.headset_headsup_quiet_21
+    HeadsUpQuiet.FROM_22 -> R.string.headset_headsup_quiet_22
+    HeadsUpQuiet.FROM_23 -> R.string.headset_headsup_quiet_23
 }
 
 /** A remembered device: private or not (a headset), on or off (a car), Forget. */

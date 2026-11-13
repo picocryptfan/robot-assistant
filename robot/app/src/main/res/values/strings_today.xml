@@ -175,4 +175,11 @@
     <string name="today_news_unsaved">Robot couldn\'t keep this address safely on this phone, so it wasn\'t added. Try again.</string>
     <string name="today_news_plain_http">Plain http: on someone else\'s Wi-Fi, another device can have this address, and its headlines would show here.</string>
     <string name="today_news_token_clear">Not encrypted (on this phone): its key goes over plain http to a server on this phone, and nowhere else.</string>
+    <!-- Quick access (home-screens HS3), on the home pages as Today is. -->
+    <string name="today_quick_name">Quick access</string>
+    <string name="today_quick_detail">Big buttons for what you use most</string>
+    <string name="today_quick_start_detail">Talk to Robot, car mode and tips to get going</string>
+    <string name="today_quick_home_screen">Home screen</string>
+    <string name="today_quick_set_up">Set up</string>
+    <string name="today_quick_back">Back to Quick access</string>
 </resources>

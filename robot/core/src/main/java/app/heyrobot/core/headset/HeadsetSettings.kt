@@ -90,11 +90,16 @@ data class HeadsetSettings(
      */
     val answerVoiceButton: Boolean = false,
     /**
-     * "Headset buttons control Robot while she talks" (off; not in the design, which takes no media keys, §3.7 rule 3):
-     * while Robot speaks or listens she holds a media session, so a tap stops her and a double tap repeats; it is released
-     * the moment she is quiet, so play and pause go back to your music app.
+     * "Earbud buttons while Robot talks" (on; §3.7 rule 3 as changed on 7 Nov 2026, EarbudButtons): while Robot speaks she
+     * holds a media session, so a tap stops her and a double tap skips to the next part; it is released once she is
+     * quiet, so play and pause go back to your music app. Replaces "buttonsWhileTalking", which was never shown.
      */
-    val buttonsWhileTalking: Boolean = false,
+    val earbudButtons: Boolean = true,
+    /**
+     * "Keep listening after an answer" (idea 7, off): the panel on the phone listens [PanelFollowUp.WINDOW_MS] after the
+     * answer to a spoken question, as a headset session does. Here, in headset.json, as settings.json stays at schema 13.
+     */
+    val panelFollowUp: Boolean = false,
 ) {
     /** What OutputGuard reads from here, with Safety & privacy's row and car mode's read-aloud choice. */
     fun guard(safety: HandsFreeSafety, carReadAloud: ReadAloud = ReadAloud.ASK): GuardSettings =
@@ -115,7 +120,8 @@ data class HeadsetSettings(
         put("announceRead", announceRead.name)
         put("announceLocked", announceLocked)
         put("answerVoiceButton", answerVoiceButton)
-        put("buttonsWhileTalking", buttonsWhileTalking)
+        put("earbudButtons", earbudButtons)
+        put("panelFollowUp", panelFollowUp)
     }
 
     companion object {
@@ -139,7 +145,8 @@ data class HeadsetSettings(
                 announceRead = o.enumOr("announceRead", d.announceRead),
                 announceLocked = o.optBoolean("announceLocked", d.announceLocked),
                 answerVoiceButton = o.optBoolean("answerVoiceButton", d.answerVoiceButton),
-                buttonsWhileTalking = o.optBoolean("buttonsWhileTalking", d.buttonsWhileTalking),
+                earbudButtons = o.optBoolean("earbudButtons", d.earbudButtons),
+                panelFollowUp = o.optBoolean("panelFollowUp", d.panelFollowUp),
             )
         }
     }

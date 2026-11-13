@@ -104,6 +104,14 @@
   "GPL-3.0-or-later AND BSD-2-Clause AND BSD-3-Clause": {
    "name": "GNU General Public License v3.0 or later, with BSD 2-Clause and BSD 3-Clause parts",
    "url": "https://opensource.org/license/bsd-2-clause"
+  },
+  "0BSD": {
+   "name": "BSD Zero Clause License",
+   "url": "https://spdx.org/licenses/0BSD.html"
+  },
+  "Unicode-3.0": {
+   "name": "Unicode License v3",
+   "url": "https://www.unicode.org/license.txt"
   }
  },
  "components": [
@@ -971,6 +979,16 @@
    "note": "Settings › Model › Smarter, slower."
   },
   {
+   "id": "embeddinggemma-2-270m",
+   "name": "EmbeddingGemma 2 270M",
+   "version": "litert-community, 9be6e8b9",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright Google LLC",
+   "url": "https://huggingface.co/litert-community/embeddinggemma-2-text-270m-litert-lm",
+   "where": "download",
+   "note": "Settings › Memory › Search by meaning."
+  },
+  {
    "id": "gemma-4-e4b-abliterated",
    "name": "Gemma 4 E4B abliterated",
    "version": "olekk, a4eecccd",
@@ -1246,6 +1264,78 @@
    "url": "https://github.com/material-foundation/material-color-utilities",
    "where": "build",
    "note": "Computed Robot's own colour scheme (RobotColors.kt) from Robot's blue on a computer; no code of it is in the app."
+  },
+  {
+   "id": "libzim",
+   "name": "libzim",
+   "version": "9.3.0",
+   "licence": "GPL-2.0-or-later",
+   "copyright": "Copyright (C) 2006-2025 the openZIM and Kiwix authors",
+   "url": "https://github.com/openzim/libzim",
+   "where": "app",
+   "text": "licenses/GPL-2.0-libzim-xapian.txt",
+   "match": [
+    "openZIM",
+    "librobotzim"
+   ],
+   "note": "openZIM's reader of ZIM files, the format Kiwix publishes Wikipedia in. GPL-2.0 or later, used here under GPL-3.0. Statically linked into librobotzim.so, Wikipedia on this phone's reader (the isolated :wiki process only), built by tools/build_libzim.sh from the pinned release archive with Robot's own JNI (wiki/src/main/cpp)."
+  },
+  {
+   "id": "xapian",
+   "name": "Xapian",
+   "version": "1.4.29 (xapian-core)",
+   "licence": "GPL-2.0-or-later",
+   "copyright": "Copyright (C) 1999-2025 the Xapian authors",
+   "url": "https://xapian.org",
+   "where": "app",
+   "text": "licenses/GPL-2.0-libzim-xapian.txt",
+   "match": [
+    "xapian-core"
+   ],
+   "note": "The search engine of a ZIM file's title and full-text indexes. GPL-2.0 or later, used here under GPL-3.0. Statically linked into librobotzim.so, Wikipedia on this phone's reader (the isolated :wiki process only), built by tools/build_libzim.sh from the pinned release archive with Robot's own JNI (wiki/src/main/cpp)."
+  },
+  {
+   "id": "zstd",
+   "name": "Zstandard",
+   "version": "1.5.7",
+   "licence": "BSD-3-Clause",
+   "copyright": "Copyright (c) Meta Platforms, Inc. and affiliates. All rights reserved.",
+   "url": "https://github.com/facebook/zstd",
+   "where": "app",
+   "text": "licenses/BSD-3-Clause-zstd.txt",
+   "match": [
+    "zstd"
+   ],
+   "note": "Decompresses a ZIM file's clusters (dual-licensed BSD-3-Clause or GPL-2.0; used under BSD-3-Clause). Statically linked into librobotzim.so, Wikipedia on this phone's reader (the isolated :wiki process only), built by tools/build_libzim.sh from the pinned release archive with Robot's own JNI (wiki/src/main/cpp)."
+  },
+  {
+   "id": "liblzma",
+   "name": "liblzma (XZ Utils)",
+   "version": "5.8.1",
+   "licence": "0BSD",
+   "copyright": "Copyright (C) The XZ Utils authors and contributors",
+   "url": "https://tukaani.org/xz/",
+   "where": "app",
+   "text": "licenses/0BSD-xz.txt",
+   "match": [
+    "liblzma",
+    "XZ Utils"
+   ],
+   "note": "Decompresses a ZIM file's older clusters. Statically linked into librobotzim.so, Wikipedia on this phone's reader (the isolated :wiki process only), built by tools/build_libzim.sh from the pinned release archive with Robot's own JNI (wiki/src/main/cpp)."
+  },
+  {
+   "id": "icu",
+   "name": "ICU",
+   "version": "77.1",
+   "licence": "Unicode-3.0",
+   "copyright": "Copyright © 2016-2025 Unicode, Inc.",
+   "url": "https://icu.unicode.org",
+   "where": "app",
+   "text": "licenses/Unicode-3.0-icu.txt",
+   "match": [
+    "ICU4C"
+   ],
+   "note": "International Components for Unicode: libzim folds accents with it. Its data is cut to what libzim reads (wiki/src/main/cpp/icu-filter.json). Statically linked into librobotzim.so, Wikipedia on this phone's reader (the isolated :wiki process only), built by tools/build_libzim.sh from the pinned release archive with Robot's own JNI (wiki/src/main/cpp)."
   }
  ]
 }

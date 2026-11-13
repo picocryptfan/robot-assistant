@@ -100,6 +100,34 @@ enum class MsgRefusal(override val id: Int, override val title: String) : LogCod
     NO_APPS(5, "no app turned on"),
 }
 
+/**
+ * 1.3, "What did I miss?" (event MISSED_ANSWER): how it was answered. [of] gives the event's numbers: a = this code, b =
+ * notifications counted, c = picked apps nothing has come from yet × 2, + 1 when it was counts only (locked). Never an
+ * app's name, a sender or a title.
+ */
+enum class MissedCode(override val id: Int, override val title: String) : LogCode {
+    OFF(1, "What did I miss? is off"),
+    NO_APPS(2, "no app picked"),
+    NO_ACCESS(3, "no notification access"),
+    NOTHING_NEW(4, "nothing new"),
+    NEW(5, "new notifications"),
+    ;
+
+    companion object {
+        fun of(a: MissedAnswer): Triple<Int, Int, Int> {
+            val n = a.list.sumOf { it.n }
+            val code = when {
+                !a.on -> OFF
+                a.apps == 0 -> NO_APPS
+                !a.access -> NO_ACCESS
+                n == 0 -> NOTHING_NEW
+                else -> NEW
+            }
+            return Triple(code.id, n, a.unheard.size * 2 + if (a.countsOnly) 1 else 0)
+        }
+    }
+}
+
 object MessageLog {
     private fun <E> code(entries: List<E>, id: Int): String where E : Enum<E>, E : LogCode = entries.firstOrNull { it.id == id }?.title ?: "#$id"
 
@@ -123,11 +151,13 @@ object MessageLog {
             }
             VoiceEvent.MSG_GUARD -> "Messages guard: " + code(GuardCode.entries, a) // l10n: not text (voice log)
             VoiceEvent.MSG_REFUSED -> "Messages not read: " + code(MsgRefusal.entries, a) // l10n: not text (voice log)
+            VoiceEvent.MISSED_ANSWER -> "What did I miss?: " + code(MissedCode.entries, a) + (if (b > 0) " · $b notification${if (b == 1) "" else "s"}" else "") + // l10n: not text (voice log)
+                (if (c / 2 > 0) " · ${c / 2} picked app${if (c / 2 == 1) "" else "s"} nothing has come from" else "") + if (c % 2 == 1) " (phone locked)" else "" // l10n: not text (voice log)
             else -> "#${e.event.id}" // l10n: not text (voice log)
         }
     }
 
     /** Every code list here, for VoiceLogTest's uniqueness check. */
     val codes: List<List<LogCode>> = listOf(MsgAppCode.entries, ReplyRouteCode.entries, ReplyEnd.entries, CardEnd.entries, MarkKind.entries,
-        HiddenCode.entries, ListenerEvent.entries, GuardCode.entries, MsgRefusal.entries)
+        HiddenCode.entries, ListenerEvent.entries, GuardCode.entries, MsgRefusal.entries, MissedCode.entries)
 }

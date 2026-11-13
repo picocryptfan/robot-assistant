@@ -56,6 +56,13 @@ class CarStaysTest {
     }
 
     /** fix-car-stay-b: the time an app opened beside is read once (a second stop doesn't pull the car screen back again), on the main thread. */
+    /** review-car-widget-taps M1: the fourth button and a widget's screen arm the covered check too, not only voice. */
+    @Test fun anAppOpenedByATapBringsTheCarScreenBackWhenItCoversIt() {
+        val open = code("car/CarModeActivity.kt").substringAfter("private fun openApp(").substringBefore("\n    }\n")
+        assertTrue(open.contains("if (opened) besideAt = SystemClock.elapsedRealtime()"))
+        assertTrue(open.indexOf("val opened = ") in 0 until open.indexOf("if (opened) besideAt"))
+    }
+
     @Test fun theBesideTimeIsReadOnceOnTheMainThread() {
         val a = code("car/CarModeActivity.kt")
         assertTrue(a.contains("runOnUiThread { besideAt = t }") && a.contains("@Volatile private var besideAt"))

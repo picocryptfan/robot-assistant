@@ -81,7 +81,7 @@ data class EverydayRows(
  * (EverydaySettingsStore.update).
  */
 class EverydayState(val settings: EverydaySettings, val rows: EverydayRows, val titles: Titles, val change: ((EverydaySettings) -> EverydaySettings) -> Unit) {
-    class Titles(val music: String, val otherApps: String, val online: String, val maps: String = "")
+    class Titles(val music: String, val otherApps: String, val online: String, val maps: String = "", val read: String = "")
 }
 
 /** Reads everyday_settings.json off the main thread; each change is written there too, then read back. */
@@ -92,7 +92,7 @@ fun rememberEveryday(rows: EverydayRows = EverydayRows()): EverydayState {
     var s by remember { mutableStateOf(EverydaySettings()) }
     LaunchedEffect(Unit) { s = withContext(Dispatchers.IO) { EverydaySettingsStore.current(app) } }
     val titles = EverydayState.Titles(stringResource(R.string.everyday_group_music), stringResource(R.string.everyday_group_other_apps),
-        stringResource(R.string.everyday_group_online), stringResource(R.string.everyday_group_maps))
+        stringResource(R.string.everyday_group_online), stringResource(R.string.everyday_group_maps), stringResource(R.string.everyday_group_read))
     return EverydayState(s, rows, titles) { change ->
         scope.launch {
             s = withContext(Dispatchers.IO) {
@@ -117,6 +117,10 @@ fun LazyListScope.everydayActionRows(e: EverydayState) {
     }
     if (e.rows.ask) preferenceGroup(e.titles.otherApps, "everyday-ask") { // l10n: not text (a list key)
         SwitchPreference(stringResource(R.string.everyday_ask), stringResource(R.string.everyday_ask_summary), s.askRobot) { on -> e.change { it.copy(askRobot = on) } }
+    }
+    // 1.3 point and read: small print in four parts (off by default).
+    preferenceGroup(e.titles.read.ifEmpty { null }, "everyday-read") { // l10n: not text (a list key)
+        SwitchPreference(stringResource(R.string.everyday_read_tiles), stringResource(R.string.everyday_read_tiles_summary), s.readTiles) { on -> e.change { it.copy(readTiles = on) } }
     }
 }
 

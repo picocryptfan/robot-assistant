@@ -18,6 +18,8 @@
     <string name="notes_share">Share</string>
     <string name="notes_delete">Delete</string>
     <string name="notes_deleted_banner">This note was deleted.</string>
+    <string name="notes_not_now_banner">This note can’t be opened just now. Try again in a minute.</string>
+    <string name="notes_too_new_banner">This note was saved by a newer Robot. Update Robot to open it.</string>
     <string name="notes_not_restored">The note couldn\'t be restored.</string>
     <string name="notes_restore">Restore</string>
     <string name="notes_title_field">Title</string>
@@ -92,7 +94,7 @@
     <string name="people_delete_all">Delete all People</string>
     <string name="people_intro">People Robot knows besides your contacts: who to text or email, and what you call them. Kept on this phone only, never sent to a helper, and not in Android\'s backups.</string>
     <string name="people_damaged">Robot can\'t read its People file</string>
-    <string name="people_damaged_detail">It may be damaged. Robot changes nothing in it, and knows no one here, until you start over. Starting over keeps the old file aside (people.json.bad, in Robot\'s files) and begins an empty list; import your last export to get everyone back.</string>
+    <string name="people_damaged_detail">A newer Robot saved it, or it is damaged. Robot changes nothing in it, and knows no one here, until you start over. Starting over keeps the old file aside (people.enc.bad or people.json.bad, in Robot\'s files) and begins an empty list; import your last export to get everyone back.</string>
     <string name="people_start_over">Start over</string>
     <string name="people_add">Add person</string>
     <string name="people_add_detail">Type a name, numbers, emails and XMPP addresses</string>
@@ -169,11 +171,11 @@
     <string name="people_a_number">A number</string>
     <string name="people_an_email">An email</string>
     <string name="people_start_over_title">Start over?</string>
-    <string name="people_start_over_text">Robot keeps the file it can\'t read aside, as people.json.bad, and starts an empty People list.</string>
+    <string name="people_start_over_text">Robot keeps the file it can\'t read aside, as people.enc.bad or people.json.bad, and starts an empty People list.</string>
     <string name="people_empty_now">People is empty now.</string>
     <string name="people_not_set_aside">Robot couldn\'t set the file aside.</string>
     <string name="people_delete_all_title">Delete all People?</string>
-    <string name="people_delete_all_text">Robot forgets everyone here and what you call them, and may learn anyone you removed again. The phone\'s contacts aren\'t touched. This can\'t be undone.</string>
+    <string name="people_delete_all_text">Robot forgets everyone here and what you call them, and may learn anyone you removed again. Copies kept aside go too. The phone\'s contacts aren\'t touched. This can\'t be undone.</string>
     <string name="people_all_deleted">People deleted.</string>
     <string name="people_not_deleted">People couldn\'t be deleted.</string>
     <string name="people_delete_all_button">Delete all</string>
@@ -241,4 +243,35 @@
     <string name="people_not_deleted_one">Robot couldn\'t delete them.</string>
     <string name="people_save_changes">Save your changes?</string>
     <string name="people_discard">Discard</string>
+    <!-- Caller name (idea 13, docs/plans/caller-name-plan.md): Settings › People, notes and calendar › Calls. -->
+    <string name="people_caller_group">Calls</string>
+    <string name="people_caller_name">Caller name</string>
+    <string name="people_caller_name_detail">Robot shows who\'s probably calling from a number you don\'t have, using your texts, calendar and Robot Files, on this phone only. If an app screens your calls for spam now, Robot takes its place, and turning this off doesn\'t give it back. You pick that app again in Android\'s Default apps.</string>
+    <string name="people_caller_name_still">Robot still holds call screening, showing nothing. To give it back, pick another app in Default apps.</string>
+    <string name="people_caller_name_refused">Android didn\'t give Robot call screening. You can choose it in Default apps.</string>
+    <!-- seal-notes: the Notes list's card for notes kept aside (their key gone, or damaged). -->
+    <plurals name="notes_aside">
+        <item quantity="one">%1$d note can’t be opened</item>
+        <item quantity="other">%1$d notes can’t be opened</item>
+    </plurals>
+    <string name="notes_aside_detail">Android removed the key that locked them, which can happen when the screen lock is turned off, or they’re damaged. They can’t be opened again, even if you turn the screen lock back on, and they aren’t in backups. Robot never deletes them by itself. New notes are saved as usual.</string>
+    <plurals name="notes_too_new">
+        <item quantity="one">%1$d note was saved by a newer Robot. Update Robot to open it, or delete it.</item>
+        <item quantity="other">%1$d notes were saved by a newer Robot. Update Robot to open them, or delete them.</item>
+    </plurals>
+    <plurals name="notes_not_now">
+        <item quantity="one">%1$d note can’t be opened just now. Try again in a minute.</item>
+        <item quantity="other">%1$d notes can’t be opened just now. Try again in a minute.</item>
+    </plurals>
+    <string name="notes_delete_aside_title">Delete the notes that can’t be opened?</string>
+    <string name="notes_delete_aside_detail">Only these are removed. Your other notes stay. It can’t be undone.</string>
+    <!-- fix-seal-14-f: People's card for its copies kept aside, how many and where, never a name. -->
+    <plurals name="people_aside">
+        <item quantity="one">%1$d copy of People is kept aside</item>
+        <item quantity="other">%1$d copies of People are kept aside</item>
+    </plurals>
+    <plurals name="people_aside_detail">
+        <item quantity="one">Robot couldn\'t read all of it into your list, so it keeps it whole, on this phone only. It isn\'t in your list or in backups. Delete all People, in the menu, removes it along with everyone else.</item>
+        <item quantity="other">Robot couldn\'t read all of them into your list, so it keeps them whole, on this phone only. They aren\'t in your list or in backups. Delete all People, in the menu, removes them along with everyone else.</item>
+    </plurals>
 </resources>

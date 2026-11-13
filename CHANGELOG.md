@@ -4,6 +4,106 @@ What changed in each version of Robot, newest first. Each version's full notes, 
 [`robot/README.md`](robot/README.md) ("What's new in …" and the feature sections). Versions before 1.0 were test
 builds.
 
+## 1.4.0 (2026-11-13)
+
+- History, Notes, People and conversation transcripts are sealed on the phone with keys of Robot's own, as Memory and Lists are. The first unlock
+  after the update seals what you have; what you save on the lock screen is sealed under a second key and moved at your
+  next unlock. A backup holds the same things inside its own encryption. Copies Robot can't open are kept aside, never
+  deleted by Robot, and left out of backups: a card on Notes, History and People says how many, and Delete these
+  removes them.
+- Settings › Messages › Ready answers: off by default. When someone in People asks when your flight lands or leaves, or
+  when an appointment or booking is, Robot offers a draft from your calendar (or a filed ticket) in a quiet notification.
+  Nothing is sent until you tap Send, only while the phone is unlocked. Appointments come from the calendar only.
+- Settings › Actions › Open apps: a new switch, "Open apps you name without a card", on by default (also after an update).
+  When you say or type an app's name, it opens right away ("open", "pull up", "bring up" or "switch to"; the last three
+  count only at the start of what you said). A question that only mentions an app ("what's on my Google Calendar?") keeps
+  its card, and "can you open ..." still opens it. The first app opened this way ends its card with "Opened without a card.
+  Settings › Actions turns this off.", once. The card still
+  asks when Robot guessed the app, when two apps match about as well, or when the request came from something Robot read. A routine or skill opens an app by itself only if you
+  ticked "Open (app) without asking when this runs" on its save card, and only while the phone is unlocked with the
+  screen on. Each ticked app shows as a row on that routine's or skill's page in Settings; turn the row off to have a card
+  ask again. With the switch off, no app opens without a card, ticked ones included. A skill made before 1.4 that opens an app now shows
+  that app's card first, where 1.3 opened it right away. So does a plan's last step that opens an app, under Step by step
+  or when you didn't ask to open one; Do the rest still answers it when you did.
+- Report a problem: Send seals your report and its screenshot into one file only Robot's developer can open, and hands
+  it to the email or messaging app you pick; plain text stays in the card's menu.
+- Report a problem: Hide names and numbers on the card replaces long numbers, your contacts' numbers, dates, times said in
+  words, emails and addresses, and your contacts' names, before anything is sealed. Settings › About › Reports you sent
+  lists each report you handed on (its reference, when, kind and parts, never what it said), the last 50, kept on the
+  phone and left out of a backup.
+- Settings › Display › Home screen: Getting started, Today or Quick access, a page of big buttons for Robot's features
+  that opens each one itself, in the order you drag or say ("put car mode first"). Today stays Today after the update.
+- Car mode: the information panel can show an app's widget, with a swap to the media player, by tap or by voice ("swap
+  the bottom", « change l'écran du bas »). The widget never shows over the lock screen or while Phone lock closes its app.
+- Headset: Settings › Headset › Heads-up before events says what's next a few minutes ahead, in private headphones only,
+  with quiet hours.
+- Headset: Settings › Headset › Earbud buttons while Robot talks, on by default (also after an update). While Robot is
+  speaking, a tap on your earbuds stops it and a double tap skips to the next part, instead of reaching your music app.
+  The rest of the time your music app keeps the buttons. Turn the switch off there to leave the buttons to your music app.
+- Back up and restore carries the new Open apps switch and the apps a routine or skill ticked.
+- Wikipedia on this phone: Settings › Wikipedia on this phone downloads a copy of Wikipedia on Wi-Fi only (from 0.15 GB to 3.6 GB,
+  English or French). A question of fact ("who was Louis Riel?") is then answered from it offline, with a card that names the
+  article and links its page and licence. “Which ...” and “what ...” questions (« quel ... ») are answered from it, except those that start with one of
+  your phone's things (“which app uses the most battery?”, « quelle note a le code ? »): Robot answers those from the phone. Robot
+  judges a title it finds by the article it leads to, so a name that fits several articles (Halifax) puts the likelier one
+  first (the English copy's “Halifax” gives Nova Scotia's, then West Yorkshire's), and a word found only inside a title's brackets doesn't make an article a match.
+- Questions kept for when there's signal: with no connection, "look up ..." is kept (at most 5, for up to a day) and runs once you're
+  back online; the answer comes as a silent notice and in the chat. "What's waiting?" and "cancel the ferry one" manage them.
+- Undo and change: "undo that" or "no, 6:45" after an alarm, an event, a note, a memory, a list change or a filed file puts it back or
+  changes the time, for 2 minutes. A timer, a text or a call can't be taken back, and Robot says so.
+- When did I last: "when did I last get the oil changed?" is answered from your receipts in Files, your calendar and your notes, with the
+  date and how long ago. A calendar entry is called a plan, not something you did.
+- Skills: "add to heading home: turn on the porch light" adds a step from your connections by voice, after a yes; a lock, door or
+  alarm step, or one that can delete or spend, is added on the screen.
+- Settings › Ask about your screenshots: off by default. While the phone charges, Robot reads the screenshots you take after
+  switching it on, on the phone, so you can ask "what was the confirmation number in the hotel screenshot?". A screenshot that
+  looks like it holds a password, code or card number is skipped whole, and so is a number beside a PIN label; a receipt that only says “verified by PIN” is still read. Not answered on the lock screen, not kept in History.
+- Summarize a web page: "summarize this page" (a link in your words, shared into Robot, on your screen, or the source of
+  Robot's last web answer) opens the page and summarizes it on the phone, under a line naming the site. It needs web
+  search set up with pages read from this phone. If the phone's model can't, a helper that is ready is offered, and a
+  card shows what would go (the site name and up to 40,000 characters of the page) before Send. Never offered in car
+  mode or hands-free. A link taken from your screen waits for a tap on a card first. Nothing in Settings is new.
+- A helper can search the web through Robot: Settings › Web search › Helpers and history › "Let helpers use Robot's
+  search", on by default, for a helper that can't search itself. Your search service gets the helper's words under
+  Robot's checks (the first-search card, the daily cap, nothing from memory or notes, one search per answer); up to 5
+  results and 6 page passages go back to the helper, with up to 2 of the search service's short answers, each item cut to 1,200
+  characters; the result pages are read from the phone as in web search, so each page's site sees your IP address. With "Card when a helper asks Robot to do something" on, each
+  search shows its words first.
+- Search by meaning: Settings › Memory › Better search downloads a 165 MB search model; a question then finds what you
+  asked Robot to remember by what it means, in English or French. Without it Robot matches words as before.
+- Read it to me: "read me this article", "read me my note about the trip" or "read me the PDF called lease" reads it in
+  Robot's voice, with a notification, and your headset's button pauses and plays while it runs. "Pause reading", "keep
+  reading", "go back a bit" and "stop reading" work too. A call pauses it, and a locked phone says "Unlock to hear the
+  rest."
+- Step by step: "walk me through this" shows a recipe's or instructions' steps one at a time in large text with the
+  screen kept on. Next, back, again and stop by voice or tap, with no wake word while it runs. A step with a time offers
+  a timer, set only after a yes. A question about the page stays on it when a line answers it, and gets “The page doesn't say.” when none does; a call or car mode ends it,
+  and 30 minutes without a word.
+- Reminders for a moment: "remind me to take the groceries in when I get out of the car" (or when you plug in or
+  unplug, take your headphones off or put them on, or next unlock) gives one quiet notification, once. Backed up with
+  your routines, and restored only from a backup that is yours.
+- Moving an alarm ("no, 6:45") now checks the next alarm before it says "Changed it", and says what it saw when it
+  can't be sure. "Cancel my alarm" reads done only after the next alarm has moved on.
+- Home Assistant operations carry the four marks a webhook did (spends money, locks or opens something, deletes
+  something, tells people). A mark only adds to what Robot found itself. A domain Robot doesn't know, `number` and
+  `input_number`, `send_command` in any domain, and a script, scene, group or automation take a tap, never a spoken yes.
+- TalkBack names the New note and Transcribe buttons.
+- A transcript Robot can't open says “This transcript is damaged, so I can't open it.” when it is damaged. A backup counts the transcripts kept aside and those a newer Robot wrote, and restoring never deletes the newer Robot's.
+- Scam texts: when a text that Robot reads to you looks like a scam, Robot says one line first, in the panel, Car mode, your headset and the car screen: "This looks like a scam: that link's address imitates Canada Post." (« Ça ressemble à une arnaque : … »). It warns in four cases, all about a sender it knows (Canadian banks and carriers, Canada Post, Interac, the government and a few big brands and stores). A link whose address imitates the sender or a brand, such as canadapost-redelivery.top. A text that opens as that sender's does and links to such an address. A short link under that sender's name, since Robot can't see where it goes. A government text that threatens arrest or court and gives a number to call. In "summarize my messages" the lines come before the summary, from fixed text, never from the model. On a locked phone Robot says only how many conversations look like a scam. A warning is a hint, not a verdict, and no warning doesn't mean a text is safe. Nothing is blocked, deleted or sent, no link is opened, and nothing leaves the phone.
+- Downloads wait while you roam: models, voices, the translation pack and the search model now wait for a network that isn't roaming, and the screen says "waiting until the phone isn't roaming". Robot checks for roaming only to show that line, with the network-state permission it already has; the answer isn't logged or sent. Wikipedia downloads already waited.
+- Translation downloads now go through the same Wait for Wi-Fi question as voices and models. It comes before a download of 200 MB or more; the French and English pack is 52 MB, so it doesn't ask and downloads on mobile data as before, but never while you roam.
+- Tor bridges on your home network (Settings › Robot to Robot › Tor bridges): a bridge of your own at a home address (10.x, 192.168.x, 100.64.x and the like) now follows the home-network rule: Robot reaches it only over Wi-Fi, Ethernet or a VPN that reaches it, never over mobile data. Tor dials bridges itself, so while such a bridge, or a bridge line Robot can't read for sure, is saved, Robot runs a small relay on the phone that Tor uses for its bridge connections to every saved bridge except Snowflake ones. It listens on the phone only, asks a password made fresh at each Tor start, connects only where your saved bridge lines lead, and keeps nothing. Beside a home bridge your own Snowflake lines aren't used, and the screen says so. With no such bridge and no such line saved, nothing changes.
+- Tor bridges: Remove, beside Edit on Your own bridge, deletes the bridge lines you saved, after asking; before, only Start
+  over cleared them. If you were using them, Tor bridges go back to Off, plain Tor your network can see, and the confirm
+  says so. Tor stops using them (and the relay for a home bridge) at once while it's still connecting, within half a minute
+  while Robot to Robot's screens are open, otherwise the next time Robot uses Tor. Editing your own lines, or switching from them to another choice, starts
+  Tor again the same way; before, a Tor that was up kept them until it stopped. While Robot isn't allowed to use the network, it
+  doesn't start Tor for them.
+- The question before a download of 200 MB or more no longer says Robot can't tell Wi-Fi from mobile data. It says why it
+  asks on any network: a long download can move from Wi-Fi to mobile data before it ends.
+- Car mode, a link from your screen: asking for a summary of a link taken from your screen needs a tap on its card, so in Car mode Robot says "That link came from your screen, so it needs a tap. Ask me again once you're parked." (« Redemande-le-moi quand tu seras stationné. »), each time, and never tells you to look at your phone.
+- Report a problem: the card is hidden from Recents, and forgets the turn and the screenshot after 10 minutes, sent or not.
+
 ## 1.3.2 (2026-11-10)
 
 - Car mode's Yes and the summary's Send also refuse a tap while another app's window covers part of the screen, even
@@ -190,6 +290,14 @@ Skills 1.3. Nothing new runs by itself and no new permission is asked.
 
 ## 1.2.3 (2026-11-05)
 
+- People is encrypted on the phone the way Notes are, under an Android Keystore key that needs the phone unlocked. A
+  person Robot learns from a notification while the phone is locked waits in its own encrypted file and joins People
+  when you unlock. While the phone is locked, Robot finds people in your contacts only, and a backup or restore that
+  can't open People says why.
+- Notes are encrypted on the phone the way Lists are, under an Android Keystore key that needs the phone unlocked. A
+  note you take over the lock screen waits in its own encrypted file and joins the rest when you unlock. Notes that
+  can't be opened again, or that a newer Robot saved, are counted at the top of Notes with Delete these, and a backup
+  or restore that can't include them says why. Saving a note no longer holds up the screen while it's encrypted.
 - A fact you asked Robot to remember is found when you ask about it in other words ("what do I like to eat most" for
   "my favourite food is pad thai"), while memory holds 8 items or fewer. Before, the two shared no word and the model
   answered without the note.

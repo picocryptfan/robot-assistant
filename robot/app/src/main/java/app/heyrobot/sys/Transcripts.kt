@@ -6,6 +6,9 @@ import android.content.Intent
 import android.os.Bundle
 import app.heyrobot.core.ConsentRecord
 import app.heyrobot.core.RLog
+import app.heyrobot.core.TranscriptFiles
+import app.heyrobot.core.TranscriptKeyAliases
+import app.heyrobot.core.TranscriptSeal
 import app.heyrobot.core.TranscriptStore
 import app.heyrobot.core.readOrNull
 import app.heyrobot.core.writeAtomic
@@ -20,10 +23,28 @@ import java.io.File
 object Transcripts {
     @Volatile private var store: TranscriptStore? = null
 
-    /** One store per process (it remembers what this process deleted). */
+    /** Tests only (Robolectric has no Android Keystore): the keys a new store takes. */
+    @Volatile internal var keys: () -> MemoryKeys = { KeystoreMemoryKeys(unlockOnly = setOf(TranscriptKeyAliases.UNLOCKED)) }
+
+    /** One store per process (it remembers what this process deleted), sealed (seal-transcripts, core TranscriptSeal). */
     fun store(ctx: Context): TranscriptStore = store ?: synchronized(this) {
-        store ?: TranscriptStore(File(ctx.applicationContext.filesDir, app.heyrobot.core.TranscriptFiles.DIR)).also { store = it }
+        store ?: run {
+            val app = ctx.applicationContext
+            val dir = File(app.filesDir, TranscriptFiles.DIR)
+            val k = keys()
+            TranscriptStore(dir, TranscriptSeal(dir, k::cipher, k::delete) { deviceLocked(app) })
+        }.also { store = it }
     }
+
+    /** The screen went off: the data keys' copies in RAM forgotten, and the last shared export (fix-seal-transcripts-b, Low 6). */
+    fun drop(ctx: Context? = null) { store?.seal?.drop(); ctx?.let { try { Exports.clear(it) } catch (_: Exception) {} } }
+
+    /** Tests only: the next [store] is made again, with [k]. */
+    internal fun testKeys(k: MemoryKeys) { keys = { k }; store = null }
+
+    /** The device is locked (the unlock-only key can't be used). Unknown counts as locked. */
+    private fun deviceLocked(ctx: Context): Boolean =
+        try { ctx.getSystemService(android.app.KeyguardManager::class.java).isDeviceLocked } catch (_: Exception) { true }
 
     /** [MAIN] Deletes one transcript ([id]) or all of them (null), any exported copy, and tells the voice process. */
     fun delete(ctx: Context, id: String?): Int {

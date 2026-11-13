@@ -27,6 +27,7 @@ import app.heyrobot.ui.common.toolIcon
 import app.heyrobot.ui.pref.IntroPreference
 import app.heyrobot.ui.pref.ListPreference
 import app.heyrobot.ui.pref.PreferenceItem
+import app.heyrobot.ui.pref.SwitchPreference
 import app.heyrobot.ui.pref.PreferenceScreen
 import app.heyrobot.ui.pref.TextPreference
 import app.heyrobot.ui.pref.preferenceFooter
@@ -66,6 +67,8 @@ fun ActionsSettingsScreen(s: RobotSettings, snap: Snapshot, update: (RobotSettin
     val details = Approval.entries.associateWith { approvalDetail(it) }
     val titles = GROUPS.associate { (key, title, _) -> key to stringResource(title) }
     val nearest = stringResource(R.string.actions_nearest)
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val openNamed = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(app.heyrobot.sys.OpenAppsStore.named(ctx)) }
     val nearestTitles = NearestOnline.entries.associateWith { it.titleText.str() }
     val nearestDetails = NearestOnline.entries.associateWith { (if (it == NearestOnline.ASK) SettingsStrings.theDefault("detail" to it.detailText) else it.detailText).str() }
     val searchServer = UiStrings.searchServer().str()
@@ -92,6 +95,12 @@ fun ActionsSettingsScreen(s: RobotSettings, snap: Snapshot, update: (RobotSettin
                     val level = s.approval(t)
                     ListPreference(t.titleText.str(), level, Approval.entries, { it.titleText.render(langs) }, { details.getValue(it) }, toolIcon(t),
                         summary = approvalSummaryText(t, level, t in s.lockedTools).str()) { lvl -> update(s.copy(approvals = s.approvals + (t to lvl))) }
+                    // auto-open-plan §1: shown while Open apps is Just do it.
+                    if (t == ToolName.OPEN_APP && level == Approval.AUTO) {
+                        SwitchPreference(stringResource(R.string.actions_open_named), stringResource(R.string.actions_open_named_detail), openNamed.value) { on ->
+                            try { app.heyrobot.sys.OpenAppsStore.set(ctx, on); openNamed.value = on } catch (_: Exception) { openNamed.value = app.heyrobot.sys.OpenAppsStore.named(ctx) }
+                        }
+                    }
                     // Part of the maps actions (0.4.0): "the nearest …" found online, asked the first time by default.
                     if (t == ToolName.MAPS_NAVIGATE) {
                         ListPreference(nearest, Nearby.mode(s, snap.nearestAnswer), NearestOnline.entries, { nearestTitles.getValue(it) },

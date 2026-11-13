@@ -29,7 +29,7 @@ import java.util.concurrent.TimeUnit
 /**
  * review-home-net-bind-b N2 for Robot to Robot's direct carrier (home-net-bind-f): a dial to a peer's home address on an
  * unbound socket (Wi-Fi holds it, a VPN is up) goes ahead only when its local address is that Wi-Fi's; otherwise it is
- * closed before anything is written and no failed dial is recorded. The peer listens on this machine's own private
+ * refused before its connect (review-home-net-bind-c L5), so nothing reaches the peer, and no failed dial is recorded. The peer listens on this machine's own private
  * address, so the socket's local address is it.
  */
 class DirectHomeCheckTest {
@@ -75,13 +75,12 @@ class DirectHomeCheckTest {
     @Test fun aDialThatLeftOffTheNetworkHoldingThePeerIsClosedBeforeAnythingIsWritten() {
         assumeTrue("no private IPv4 address on this machine", at != null)
         ServerSocket(0, 5, InetAddress.getByAddress(at)).use { server ->
-            server.soTimeout = 3_000
+            server.soTimeout = 500
             leftFrom(other)
-            val got = serve(server)
             val d = runCatching { SocketDirectNet({ emptyList() }, 2_000).dial(LocalAddress(at!!, server.localPort)) }
             d.getOrNull()?.let { it.output.write(byteArrayOf(1, 2)); it.output.flush(); it.close() }
             assertTrue("dialled", d.isFailure)
-            assertEquals(0, got.get(5, TimeUnit.SECONDS)) // it connected, and nothing was written
+            try { server.accept().close(); fail("it connected") } catch (_: SocketTimeoutException) {} // not even a SYN (L5)
         }
         assertEquals(emptyList<NetEntry>(), rows.toList()) // no failed dial
     }

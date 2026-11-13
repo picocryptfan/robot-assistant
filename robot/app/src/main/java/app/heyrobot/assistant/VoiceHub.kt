@@ -24,6 +24,7 @@ import app.heyrobot.core.car.CarHearing
 import app.heyrobot.core.car.CarSettings
 import app.heyrobot.core.LockScreen
 import app.heyrobot.core.ToolName
+import app.heyrobot.core.read.ReadState
 import app.heyrobot.lock.PhoneLockNow
 import app.heyrobot.core.BargeRun
 import app.heyrobot.core.EchoVoice
@@ -40,6 +41,7 @@ import app.heyrobot.core.RLog
 import app.heyrobot.core.RepairWhen
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.TtsStop
+import app.heyrobot.core.headset.EarbudButtons
 import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
 import app.heyrobot.core.WakeAction
@@ -50,6 +52,8 @@ import app.heyrobot.core.writeAtomic
 import app.heyrobot.assistant.conversation.ConversationSession
 import app.heyrobot.assistant.routines.RoutineHub
 import app.heyrobot.assistant.routines.RoutineVoice
+import app.heyrobot.assistant.read.ReadingVoice
+import app.heyrobot.sys.HistoryFiles
 import app.heyrobot.sys.HelperSpendStore
 import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.Cmd
@@ -189,6 +193,8 @@ object VoiceHub {
         FilingWork.start(app)
         // 1.5 L6: Robot to Robot's notifications (cards, what Robot handled, a pairing's news), said only unlocked.
         LinkNotices.start(app)
+        // Search by meaning for memory (assistant/MeaningMemory.kt): the panel's memory turn runs here only.
+        MeaningMemory.init(app)
         // 1.1: a restore cut short in this process is finished or undone.
         Thread({ RestoreSession.recoverAtStart(app) }, "robot-restore-recover").apply { isDaemon = true; start() }
         // Whether each helper's key is saved and today's spend, read off the main thread before the panel needs them.
@@ -255,6 +261,9 @@ object VoiceHub {
         PanelController.onSpeakingChanged(on)
         BargeTest.onSpeaking(on)
         RoutineVoice.onSpeakingChanged(on)
+        // fix-stage-reading M2: while a reading is on, the headset's buttons are its own session's (ReadingService).
+        if (ReadingVoice.state == ReadState.NONE) EarbudSession.speaking(on) else EarbudSession.ended(EarbudButtons.End.STOPPED)
+        ReadingVoice.onSpeakingChanged(on)
     }
 
     private fun BargeIn.wantsCommunication() = this != BargeIn.OFF
@@ -263,8 +272,13 @@ object VoiceHub {
     fun stopVoice(why: TtsStop) {
         // A routine speaking (0.8) ends, or waits for "next" or "repeat" after "hey robot".
         RoutineVoice.onVoiceStopped(why)
+        // The earbud buttons go back to your music app at once (EarbudSession).
+        EarbudSession.ended(EarbudButtons.End.STOPPED)
+        // Keep listening (idea 7): an answer you stopped opens no window after it.
+        PanelController.voiceStopped(why)
         // fix-car-long-card-b: a card or reply read out in the car and cut off isn't read out whole.
         if (tts.isSpeaking) { PanelController.voiceStopped(); PanelMessages.voiceStopped() }
+        ReadingVoice.onVoiceStopped(why)
         if (tts.isSpeaking && !stopLogged) {
             stopLogged = true
             VoiceLog.add(VoiceEvent.TTS_STOP, why, (SystemClock.elapsedRealtime() - speakStartE).toInt())
@@ -331,6 +345,8 @@ object VoiceHub {
         // Robot is the running assistant: keep the speech recognizer setting that keeps it so after a restart.
         worker.post { try { RecognizerKeeper.check(app, RepairWhen.ASSISTANT_READY) } catch (t: Throwable) { RLog.w("recognizer", t) } }
         // 0.8: routines' triggers, and what a reboot made them miss; headset and car mode.
+        // fix-stage-reading L2: a camera photo left by a process death mid-read goes.
+        worker.post { CaptureActivity.dropLeftover(app) }
         RoutineHub.start(app)
         HandsFreeHub.start()
     }
@@ -352,6 +368,9 @@ object VoiceHub {
         BrainKeeper.release("shutdown")
         RoutineHub.stop()
         HandsFreeHub.stop()
+        // fix-stage-reading M1: a reading ends with Robot's voice: its notice, its headset button and its text go.
+        ReadingVoice.stopNow()
+        EarbudSession.ended(EarbudButtons.End.KILLED)
     }
 
     private fun unregisterAll() {
@@ -595,7 +614,7 @@ object VoiceHub {
                 }, "robot-helper-key").apply { isDaemon = true; start() }
             }
             Cmd.MEDIA_REMOVED -> PanelController.forgetKeptMedia()
-            Cmd.CONVERSATIONS_DELETED -> PanelController.forgetDeleted(i.getStringExtra(Cmd.EXTRA_ID))
+            Cmd.CONVERSATIONS_DELETED -> { PanelController.forgetDeleted(i.getStringExtra(Cmd.EXTRA_ID)); HistoryFiles.forgetDeleted(i.getStringExtra(Cmd.EXTRA_ID)) }
             // 0.5.0: a session recording a deleted transcript stops without writing it back; a Resume offer for one goes.
             Cmd.TRANSCRIPTS_DELETED -> ConversationSession.transcriptsDeleted(app, i.getStringExtra(Cmd.EXTRA_ID))
             Cmd.VOICEPRINT_DELETED -> ConversationSession.voiceprintDeleted()
@@ -608,7 +627,7 @@ object VoiceHub {
             Cmd.EVERYDAY -> EverydaySettingsStore.forget()
             // 1.5 L6: :link's desk changed (nothing in the broadcast), and a card notification's Yes or Decline.
             Cmd.LINK_DESK -> LinkNotices.kick()
-            Cmd.PHONE_LOCK -> PanelController.lockStarted()
+            Cmd.PHONE_LOCK -> { ReadingVoice.lockStarted(); PanelController.lockStarted() }
             Cmd.LINK_ANSWER -> LinkNotices.act(i.getStringExtra(Cmd.EXTRA_KEY))
             Cmd.SPEAK_TEST -> {
                 stopVoice(TtsStop.TEST)

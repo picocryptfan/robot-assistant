@@ -105,6 +105,18 @@ object Calendars {
         return try { ctx.contentResolver.update(ContentUris.withAppendedId(Events.CONTENT_URI, id), v, null, null) > 0 } catch (t: Exception) { app.heyrobot.core.RLog.w("calendar_update", t); false }
     }
 
+    /** correct-last: event [id] as it is now, only one Robot added; null when it's gone or can't be read. */
+    fun row(ctx: Context, id: Long): app.heyrobot.core.CalendarEvent? {
+        if (id !in PrivateEventsFiles.added(ctx) || !readGranted(ctx)) return null
+        val cols = arrayOf(Events.TITLE, Events.DTSTART, Events.DTEND, Events.ALL_DAY, Events.EVENT_LOCATION, Events.DELETED)
+        return try {
+            ctx.contentResolver.query(ContentUris.withAppendedId(Events.CONTENT_URI, id), cols, null, null, null)?.use { c ->
+                if (!c.moveToFirst() || c.getInt(5) != 0) null
+                else app.heyrobot.core.CalendarEvent(c.getLong(1), c.getLong(2), c.getInt(3) != 0, c.getString(0).orEmpty(), c.getString(4), id = id)
+            }
+        } catch (t: Exception) { app.heyrobot.core.RLog.w("calendar_row", t); null }
+    }
+
     /** H3: an event Robot added, deleted from the Calendar tab's form; any other id is refused. */
     fun delete(ctx: Context, id: Long): Boolean {
         if (id !in PrivateEventsFiles.added(ctx) || !writeGranted(ctx)) return false

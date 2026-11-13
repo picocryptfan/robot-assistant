@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- Read it to me in Québec French (tu): the ids of values/strings_read.xml. -->
+<resources>
+    <string name="read_channel">Lecture à voix haute</string>
+    <string name="read_reading">Je te fais la lecture</string>
+    <string name="read_paused">Lecture en pause</string>
+    <string name="read_pause">Pause</string>
+    <string name="read_resume">Continuer la lecture</string>
+    <string name="read_stop">Arrêter</string>
+    <string name="read_it_to_me">Lis-le-moi</string>
+    <string name="read_steps_count">Étape %1$d sur %2$d</string>
+    <string name="read_steps_listening">Dis suivant, retour, encore ou arrête</string>
+    <string name="read_steps_timer">Lancer la minuterie</string>
+    <string name="read_steps_back">Retour</string>
+    <string name="read_steps_again">Encore</string>
+    <string name="read_steps_next">Suivant</string>
+    <string name="read_steps_stop">Arrêter</string>
+</resources>

@@ -48,6 +48,20 @@ object RestoreFinish {
         staged(staging, "reminders.json", BriefReminders::decode)?.let { l -> rs.editReminders { l }.written("reminders") } // l10n: not text (a file name)
     }
 
+    /**
+     * moments-backup: the backup's moments.json merged inside the store's own edit with this phone's as they are then, so a
+     * reminder added or fired since the step isn't lost (moments-backup-c, L5); [MOMENTS_MODE] holds the mode (none: Add,
+     * which keeps this phone's). Left alone when this phone's is from a newer Robot.
+     */
+    fun moments(rs: RoutineStore, staging: File) {
+        val file = staged(staging, RoutineStore.MOMENTS) { app.heyrobot.core.MomentReminders.decodeAll(it) } ?: return
+        val mode = readOrNull(File(staging, MOMENTS_MODE))?.trim()?.let { m -> RestoreMode.entries.firstOrNull { it.name == m } } ?: RestoreMode.ADD
+        rs.editMoments { RestoreMerge.moments(it, file, mode) }.written("moments")
+    }
+
+    /** The mode a moments restore applies, staged beside moments.json. */
+    const val MOMENTS_MODE = "moments_mode.txt" // l10n: not text (a file name)
+
     fun skills(ss: SkillStore, staging: File) {
         staged(staging, SkillStore.SKILLS) { (SkillCodec.decode(it) as? SkillFile.Ok)?.skills }?.let { l -> ss.edit { l }.written("skills") }
         staged(staging, SkillStore.SETTINGS) { (SkillSettingsCodec.decode(it) as? SkillSettingsFile.Ok)?.read }?.let { if (!ss.saveSettings(it)) throw CantFinish("skill settings") } // l10n: not text (a log's reason)

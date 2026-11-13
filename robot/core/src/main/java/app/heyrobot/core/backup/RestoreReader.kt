@@ -111,12 +111,23 @@ class VerifiedBackup internal constructor(
     val lists: app.heyrobot.core.lists.ListsFile? = null,
     /** 1.4, Lists: Settings › Lists (lists_settings.json) when the file had it, with the keys this Robot doesn't know. */
     val listsSettings: app.heyrobot.core.lists.ListsSettingsFile.Ok? = null,
+    /** spoken-log: logbook.json's entries, read whole (one this Robot can't read whole is refused), and Settings › Logbook. */
+    val logbook: List<app.heyrobot.core.logbook.LogEntry>? = null,
+    val logbookSettings: app.heyrobot.core.logbook.LogbookSettings? = null,
     /** The everyday set: everyday_settings.json when the file had it, with the keys this Robot doesn't know. */
     val everyday: app.heyrobot.core.everyday.EverydaySettingsFile.Ok? = null,
+    /** auto-open-plan §4: open_apps.json when the file had it. */
+    val openApps: app.heyrobot.core.OpenAppsFile? = null,
+    /** auto-open-i: the skills' ticks by skill id (skill_opens.json) when the file had them. */
+    val skillOpens: Map<String, Set<String>>? = null,
     /** H3: private events when the file had them. */
     val privateEvents: app.heyrobot.core.calendar.PrivateEventsFile? = null,
     /** H5: the Today page's settings when the file had them. */
     val home: app.heyrobot.core.HomeSettings? = null,
+    /** earbud-headsup-c: the heads-up's settings when the file had them. */
+    val headsUp: app.heyrobot.core.headsup.HeadsUpSettings? = null,
+    /** moments-backup: reminders for a moment when the file had them. */
+    val moments: List<app.heyrobot.core.MomentReminder>? = null,
     /** L12: links.json as read, whole or refused, or null when the backup has none ([toString] counts). */
     val links: app.heyrobot.core.link.LinkBackupFile? = null,
     /** L12: Settings › Robot to Robot when the file had it, with the keys this Robot doesn't know. */
@@ -248,9 +259,15 @@ object RestoreReader {
         var filesSettings: app.heyrobot.core.files.FilesSettingsFile.Ok? = null
         var lists: app.heyrobot.core.lists.ListsFile? = null
         var listsSettings: app.heyrobot.core.lists.ListsSettingsFile.Ok? = null
+        var logbook: List<app.heyrobot.core.logbook.LogEntry>? = null
+        var logbookSettings: app.heyrobot.core.logbook.LogbookSettings? = null
         var everyday: app.heyrobot.core.everyday.EverydaySettingsFile.Ok? = null
+        var openApps: app.heyrobot.core.OpenAppsFile? = null
+        var skillOpens: Map<String, Set<String>>? = null
         var privateEvents: app.heyrobot.core.calendar.PrivateEventsFile? = null
         var home: app.heyrobot.core.HomeSettings? = null
+        var headsUp: app.heyrobot.core.headsup.HeadsUpSettings? = null
+        var moments: List<app.heyrobot.core.MomentReminder>? = null
         var links: app.heyrobot.core.link.LinkBackupFile? = null
         var linkSettings: app.heyrobot.core.link.LinkSettingsFile.Ok? = null
         var connections: List<app.heyrobot.core.connect.Connection>? = null
@@ -350,7 +367,10 @@ object RestoreReader {
                     is app.heyrobot.core.lists.ListsSettingsFile.TooNew -> SkipWhy.NEWER
                     is app.heyrobot.core.lists.ListsSettingsFile.Damaged -> SkipWhy.REFUSED
                 }
-                // L12: each by its own codec; newer is left for a newer Robot, damaged refused (the whole category).
+                // spoken-log: logbook.json by its strict codec (refused whole when any entry can't be read), its settings by theirs.
+                BackupCategory.LOGBOOK -> if (e.name == BackupCategory.LOGBOOK_FILE) {
+                    when (val l = app.heyrobot.core.logbook.LogbookCodec.fromJson(text)) { null -> SkipWhy.REFUSED; else -> { logbook = l; null } }
+                } else { logbookSettings = app.heyrobot.core.logbook.LogbookSettingsCodec.decode(text); null }
                 BackupCategory.LINKS -> if (e.name == BackupCategory.LINKS_FILE) when (val r = app.heyrobot.core.link.LinkBackupCodec.decode(text)) {
                     is app.heyrobot.core.link.LinkBackupRead.Ok -> { links = r.file; null }
                     is app.heyrobot.core.link.LinkBackupRead.TooNew -> SkipWhy.NEWER
@@ -366,11 +386,41 @@ object RestoreReader {
                     is app.heyrobot.core.everyday.EverydaySettingsFile.TooNew -> SkipWhy.NEWER
                     app.heyrobot.core.everyday.EverydaySettingsFile.Damaged -> SkipWhy.REFUSED
                 }
+                // auto-open-plan §4: open_apps.json; newer left for a newer Robot, no version or not JSON refused.
+                BackupCategory.OPEN_APPS -> when (val n = app.heyrobot.core.OpenAppsFile.version(text)) {
+                    app.heyrobot.core.OpenAppsFile.VERSION -> { openApps = app.heyrobot.core.OpenAppsFile.read(text); null }
+                    null -> SkipWhy.REFUSED
+                    else -> if (n > app.heyrobot.core.OpenAppsFile.VERSION) SkipWhy.NEWER else SkipWhy.REFUSED
+                }
                 // H5: the Today page's settings; newer left for a newer Robot, no version or not JSON refused.
                 BackupCategory.HOME -> when (val n = app.heyrobot.core.HomeSettings.version(text)) {
                     null -> SkipWhy.REFUSED
                     else -> if (n > app.heyrobot.core.HomeSettings.VERSION) SkipWhy.NEWER else if (n < app.heyrobot.core.HomeSettings.VERSION) SkipWhy.REFUSED
                         else { home = app.heyrobot.core.HomeSettings.fromJson(text); null }
+                }
+                // earbud-headsup-c: headsup.json; newer left for a newer Robot, no version or not JSON refused.
+                BackupCategory.HEADSUP -> when (val n = app.heyrobot.core.headsup.HeadsUpSettings.version(text)) {
+                    null -> SkipWhy.REFUSED
+                    else -> if (n > app.heyrobot.core.headsup.HeadsUpSettings.VERSION) SkipWhy.NEWER else if (n < app.heyrobot.core.headsup.HeadsUpSettings.VERSION) SkipWhy.REFUSED
+                        else { headsUp = app.heyrobot.core.headsup.HeadsUpSettings.decode(text); null }
+                }
+                // moments-backup: moments.json; newer left for a newer Robot, no version, not JSON or any entry damaged refused whole.
+                BackupCategory.MOMENTS -> when (val n = momentsVersion(text)) {
+                    null -> SkipWhy.REFUSED
+                    else -> if (n > app.heyrobot.core.MomentReminders.VERSION) SkipWhy.NEWER else if (n < app.heyrobot.core.MomentReminders.VERSION) SkipWhy.REFUSED
+                        else when (val l = app.heyrobot.core.MomentReminders.decodeAll(text)) {
+                            null -> SkipWhy.REFUSED
+                            else -> { moments = l; null }
+                        }
+                }
+                // auto-open-i: the skills' ticks; newer left for a newer Robot, no version or a broken file refused.
+                BackupCategory.SKILL_OPENS -> when (val n = app.heyrobot.core.skills.SkillOpensFile.version(text)) {
+                    app.heyrobot.core.skills.SkillOpensFile.VERSION -> when (val m = app.heyrobot.core.skills.SkillOpensFile.decode(text)) {
+                        null -> SkipWhy.REFUSED
+                        else -> { skillOpens = m; null }
+                    }
+                    null -> SkipWhy.REFUSED
+                    else -> if (n > app.heyrobot.core.skills.SkillOpensFile.VERSION) SkipWhy.NEWER else SkipWhy.REFUSED
                 }
                 // skills-backup-b: the keys you trust (an older file refused); an MCP tools file read whole, or the category refused.
                 BackupCategory.SKILL_TRUST -> if (e.name == BackupCategory.SKILL_KEYS_FILE) {
@@ -452,6 +502,13 @@ object RestoreReader {
             }
             handsfree[name] = text
             return null
+        }
+
+        /** moments-backup: moments.json's schema, or null when it isn't a JSON object with a number "v" and a "moments" list. */
+        private fun momentsVersion(text: String): Int? = try {
+            org.json.JSONObject(text).let { o -> if (o.opt("moments") is org.json.JSONArray) (o.opt("v") as? Number)?.toInt() else null }
+        } catch (_: Exception) {
+            null
         }
 
         private fun routines(name: String, text: String): SkipWhy? {
@@ -563,9 +620,15 @@ object RestoreReader {
                 filesSettings = ok(BackupCategory.FILES, filesSettings),
                 lists = ok(BackupCategory.LISTS, lists),
                 listsSettings = ok(BackupCategory.LISTS, listsSettings),
+                logbook = ok(BackupCategory.LOGBOOK, logbook),
+                logbookSettings = ok(BackupCategory.LOGBOOK, logbookSettings),
                 everyday = ok(BackupCategory.EVERYDAY, everyday),
+                openApps = ok(BackupCategory.OPEN_APPS, openApps),
+                skillOpens = ok(BackupCategory.SKILL_OPENS, skillOpens),
                 privateEvents = ok(BackupCategory.CALENDAR, privateEvents),
                 home = ok(BackupCategory.HOME, home),
+                headsUp = ok(BackupCategory.HEADSUP, headsUp),
+                moments = ok(BackupCategory.MOMENTS, moments),
                 links = ok(BackupCategory.LINKS, links),
                 linkSettings = ok(BackupCategory.LINKS, linkSettings),
                 connections = ok(BackupCategory.CONNECTIONS, connections),

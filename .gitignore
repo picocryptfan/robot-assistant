@@ -50,6 +50,8 @@ robot/third_party/maven-link/
 robot/mt/native/
 robot/voice/native/
 robot/mt/src/main/jniLibs/
+robot/wiki/native/
+robot/wiki/src/main/jniLibs/
 
 # Python bytecode (tools/*.py run from a script)
 __pycache__/

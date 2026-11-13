@@ -30,7 +30,7 @@ sealed class SkillFile {
 
 object SkillCodec {
     /** The newest file this Robot reads; it writes [version]'s, the lowest that holds what it saves. */
-    const val VERSION = 3
+    const val VERSION = 4
 
     private val TOP = setOf("v", "skills")
     private val SKILL = setOf("id", "rev", "name", "names", "params", "steps", "level", "provenance")
@@ -47,6 +47,9 @@ object SkillCodec {
     // v3's (1.3): a provenance's `import`, and SkillMade's and StepKind's since-3 values.
     private val PROVENANCE_3 = setOf("import")
     private val IMPORT = setOf("file_sha256", "signer")
+    // v4's (1.4, auto-open): the apps its save card ticked, by package.
+    private val SKILL_4 = setOf("opens")
+    internal val PACKAGE = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+")
     private const val IS = "is" // l10n: not text (a key in the skills file)
     private const val LESS = "less_than" // l10n: not text (a key in the skills file)
     private const val MORE = "more_than" // l10n: not text (a key in the skills file)
@@ -58,6 +61,7 @@ object SkillCodec {
 
     /** The lowest file version that holds [s]: 2 when it uses anything 1.1 doesn't read. */
     fun needs(s: Skill): Int {
+        if (s.opens.isNotEmpty()) return 4
         // 3: a routine's skill, a draft or an import (1.3), or a routine's own step. Nothing else changes from v2.
         if (s.provenance.made.since > 2 || s.provenance.imported != null || s.steps.any { it.kind.since > 2 }) return 3
         if (s.perHour != null || s.params.any { it.type.since > 1 || it.options.isNotEmpty() || it.min != null || it.max != null || it.unit != null }) return 2
@@ -124,6 +128,7 @@ object SkillCodec {
             s.provenance.imported?.let { put("import", JSONObject().put("file_sha256", it.fileSha256).put("signer", it.signer ?: JSONObject.NULL)) }
         })
         s.perHour?.let { put("limits", JSONObject().put("per_hour", it)) }
+        if (s.opens.isNotEmpty()) put("opens", JSONArray(s.opens.sorted()))
     }
 
     private fun param(p: SkillParam): JSONObject = JSONObject().apply {
@@ -172,7 +177,7 @@ object SkillCodec {
     /** One skill of a [version] file, or null when anything in it can't be read, it fails [SkillCheck], or a v1 file holds what needs v2. */
     fun fromJson(o: JSONObject, version: Int = VERSION): Skill? = try {
         val v2 = version >= 2
-        within(o, SKILL, if (v2) SKILL_2 else emptySet())
+        within(o, SKILL, (if (v2) SKILL_2 else emptySet()) + (if (version >= 4) SKILL_4 else emptySet()))
         val names = langs(o, "names")
         val prov = (o.get("provenance") as JSONObject).also { within(it, PROVENANCE, if (version >= 3) PROVENANCE_3 else emptySet()) }
         val s = Skill(
@@ -188,6 +193,7 @@ object SkillCodec {
                 if (prov.has("import")) imported(obj(prov, "import", IMPORT)) else null),
             namesMore = (keys(names) - LANGS).associateWith { strings(names, it) },
             perHour = if (o.has("limits")) int(obj(o, "limits", LIMITS), "per_hour") else null,
+            opens = if (o.has("opens")) strings(o, "opens").also { p -> require(p.isNotEmpty() && p.all(PACKAGE::matches)) }.toSet() else emptySet(),
         )
         s.takeIf { needs(it) <= version && SkillCheck.valid(it) }
     } catch (_: Exception) { null }

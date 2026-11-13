@@ -325,6 +325,15 @@ class FileParserTest {
         assertEquals(listOf(0), dec.pdf.textRead)
     }
 
+    /** Read it to me: with PAGE_BREAKS a PDF's pages come joined by a form feed, a blank page too, so they can be told apart. */
+    @Test fun aPdfsPagesJoinedByAFormFeed() {
+        val pdf = "%PDF-1.7\n".toByteArray()
+        dec.pdf = FakePdf(3, texts = { if (it == 1) "" else "Lease\npage $it" })
+        val r = ok(run(readReq(ParseRequest.TEXT or ParseRequest.PAGE_BREAKS, pdf.size), pdf))
+        assertEquals("Lease\npage 0\u000C\u000CLease\npage 2", r.text)
+        assertEquals(listOf("Lease\npage 0", "", "Lease\npage 2"), r.text!!.split(ParseRequest.PAGE_BREAK))
+    }
+
     @Test fun aTextFileIsReadAsUtf8CutOnACharacter() {
         val t = "﻿Reçu Costco\nTOTAL 84,12 $\n".toByteArray()
         assertEquals("Reçu Costco\nTOTAL 84,12 $\n", ok(run(readReq(ParseRequest.TEXT, t.size), t)).text)

@@ -43,10 +43,17 @@ object FeedbackRouter {
         p("report|file|send|submit|log|make|open|write", "?a|an|the|this", "bug|bogue", "?report"),
         p("report", "?a|an|this", "problem|issue|crash"),
         p("bug", "report"),
+        // RP3: "that's a bug", "this is a bug", « c'est un bogue »: only alone (see [ALONE]).
+        p("thats", "a", "bug|bogue"),
+        p("that|this", "is", "a", "bug|bogue"),
+        p("cest", "un", "bogue|bug"),
         p("signaler|signale|signalez|rapporter|rapporte|rapportez", "?un|le|ce", "bogue|bug|probleme|plantage"),
         p("faire|fais|faites|envoyer|envoie|envoyez", "un", "rapport", "de", "bogue|bug"),
         p("rapport", "de", "bogue|bug"),
     )
+    /** Statements, not requests: they count only alone, with [TAIL] words, or with ":" before your text; "that's a bug
+     *  in my code, how do I fix it" is a question for Robot, said with or without a "?". */
+    private val ALONE: Set<List<Place>> = BUG.subList(3, 6).toSet()
     private val IDEA = listOf(
         p("i", "have|got", "an", "idea"),
         p("ive", "got", "an", "idea"),
@@ -115,6 +122,7 @@ object FeedbackRouter {
                 if (e < 0) continue
                 val rest = ws.drop(e)
                 if (rest.all { it.w in TAIL }) return FeedbackCommand(kind, null)
+                if (pattern in ALONE && ':' !in text.substring(ws[e - 1].end, rest.first().start)) continue
                 // Words after it in a question: a question about that ("can you report a bug in Excel?").
                 if (text.trimEnd().endsWith("?")) return null
                 val first = rest.dropWhile { it.w in LINKS }.firstOrNull() ?: return FeedbackCommand(kind, null)

@@ -21,6 +21,25 @@ class FeedbackRouterTest {
             assertEquals(s, other(), FeedbackRouter.route(s))
     }
 
+    /** RP3: "report a problem", "that's a bug", « signaler un problème », « c'est un bogue » open the card; "that's not right" stays a correction. */
+    @Test fun moreWaysToReportAProblem() {
+        for (s in listOf("report a problem", "That's a bug", "that's a bug!", "this is a bug", "that is a bug", "hey robot, that's a bug",
+            "signaler un problème", "Signale un problème", "c'est un bogue", "C’est un bug")) assertEquals(s, bug(), FeedbackRouter.route(s))
+        assertEquals(bug("The timer didn't ring"), FeedbackRouter.route("that's a bug: the timer didn't ring"))
+        for (s in listOf("that's not right", "is that a bug?", "that's a bug in Excel?", "c'est pas correct", "that's wrong"))
+            assertNull(s, FeedbackRouter.route(s))
+    }
+
+    /** Review M1: "that's a bug" opens the card only alone, with tail words, or with ":" text; with words after it, it goes to the model. */
+    @Test fun thatsABugWithWordsAfterItIsForTheModel() {
+        for (s in listOf("that's a bug robot", "that's a bug, please", "this is a bug, thanks", "c'est un bogue s'il te plaît", "C'est un bogue, Robot"))
+            assertEquals(s, bug(), FeedbackRouter.route(s))
+        assertEquals(bug("Le minuteur n'a pas sonné"), FeedbackRouter.route("c'est un bogue : le minuteur n'a pas sonné"))
+        for (s in listOf("that's a bug in my code, how do I fix it", "it's a bug on my wall what is it", "this is a bug in my code",
+            "that is a bug I found in Excel", "that was a bug", "it's a bug", "c'est un bogue dans mon code comment le régler", "c'était un bogue"))
+            assertNull(s, FeedbackRouter.route(s))
+    }
+
     @Test fun quebecFrenchPhrases() {
         for (s in listOf("signaler un bogue", "Signaler un bug", "je veux signaler un bogue", "Robot, signale un bogue s'il te plaît",
             "signaler un problème", "rapport de bogue", "faire un rapport de bug")) assertEquals(s, bug(), FeedbackRouter.route(s))

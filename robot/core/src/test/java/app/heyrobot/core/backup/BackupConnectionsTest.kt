@@ -72,7 +72,8 @@ class BackupConnectionsTest {
         assertEquals(setOf(BackupCategory.KEYS, BackupCategory.CONN_KEYS), BackupCategory.covers(BackupCategory.KEYS))
         assertEquals(setOf(BackupCategory.CONNECTIONS), BackupCategory.covers(BackupCategory.CONNECTIONS))
         // skills-backup-b: Skills' row covers the keys you trust and the MCP tool choices too.
-        assertEquals(BackupCategory.entries - BackupCategory.CONN_KEYS - BackupCategory.SKILL_TRUST, BackupCategory.ROWS)
+        // auto-open-plan §4: Settings' row covers open_apps.json.
+        assertEquals(BackupCategory.entries - BackupCategory.CONN_KEYS - BackupCategory.SKILL_TRUST - BackupCategory.OPEN_APPS - BackupCategory.SKILL_OPENS - BackupCategory.MOMENTS, BackupCategory.ROWS)
     }
 
     @Test fun aBackupWithConnectionsVerifiesKeepingOnlyEachKeysParts() {

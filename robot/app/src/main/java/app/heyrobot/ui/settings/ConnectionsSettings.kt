@@ -409,11 +409,15 @@ fun ConnectionPageScreen(c: Connection, d: ConnData, act: ConnSettingsActions, s
         }
         when (c.kind) {
             ConnKind.HOME_ASSISTANT -> preferenceGroup(res.getString(R.string.conn_operations), "ops") {
-                for (op in c.ops) PreferenceItem(op.title, ConnStepWords.effects(HaPick.effects(c, op)), trailing = {
-                    androidx.compose.material3.IconButton(onClick = { save(c.copy(ops = c.ops - op)) }) {
-                        androidx.compose.material3.Icon(RIcons.Delete, stringResource(R.string.conn_remove_op, op.title))
-                    }
-                })
+                for (op in c.ops) {
+                    PreferenceItem(op.title, ConnStepWords.effects(HaPick.effects(c, op)), trailing = {
+                        androidx.compose.material3.IconButton(onClick = { save(c.copy(ops = c.ops - op)) }) {
+                            androidx.compose.material3.Icon(RIcons.Delete, stringResource(R.string.conn_remove_op, op.title))
+                        }
+                    })
+                    // Your marks, as the webhook form has them: a switch to a door's motor marked security asks every time.
+                    MarkSwitches(op.marks) { m -> HaPick.withMarks(c, op.id, m)?.let { save(it) } }
+                }
                 PreferenceItem(stringResource(R.string.conn_add_op), stringResource(R.string.conn_add_op_summary), RIcons.Add,
                     onClick = { act.window(c.id, ConnWindow.MODE_PICK, null) })
             }
@@ -627,12 +631,7 @@ fun WebhookFormScreen(c: Connection, act: ConnSettingsActions, snackbar: Snackba
                 if (checkPointer.isNotBlank()) Field(stringResource(R.string.conn_hook_check_equals), checkEquals) { checkEquals = it }
             }
         }
-        preferenceGroup(res.getString(R.string.conn_marks), "marks") {
-            for ((m, label) in listOf(SkillEffect.MONEY to R.string.conn_mark_money, SkillEffect.SECURITY to R.string.conn_mark_security,
-                SkillEffect.MESSAGES_SOMEONE to R.string.conn_mark_tells)) {
-                SwitchPreference(stringResource(label), null, m in marks) { on -> marks = if (on) marks + m else marks - m }
-            }
-        }
+        preferenceGroup(res.getString(R.string.conn_marks), "marks") { MarkSwitches(marks) { marks = it } }
         preferenceGroup(null, "save") {
             // Beside Save, not under Arguments: that section is gone when nothing names one.
             err(WebhookForm.Field.ARGUMENTS)?.let { StatusPreference(it, null, Mark.WARN) }
@@ -748,6 +747,15 @@ internal val ARG_TYPES_SAVER = androidx.compose.runtime.saveable.Saver<Map<Strin
 internal val ARG_LIMITS_SAVER = androidx.compose.runtime.saveable.Saver<Map<String, String>, ArrayList<String>>(
     save = { m -> ArrayList(m.flatMap { (k, v) -> listOf(k, v) }) },
     restore = { l -> l.chunked(2).associate { (k, v) -> k to v } })
+/** Your marks (money, security, tells people, deletes): the webhook form's, each Home Assistant operation's and the pick window's. */
+@Composable
+internal fun MarkSwitches(marks: Set<SkillEffect>, onChange: (Set<SkillEffect>) -> Unit) {
+    for ((m, label) in listOf(SkillEffect.MONEY to R.string.conn_mark_money, SkillEffect.SECURITY to R.string.conn_mark_security,
+        SkillEffect.MESSAGES_SOMEONE to R.string.conn_mark_tells, SkillEffect.DELETES to R.string.conn_mark_deletes)) {
+        SwitchPreference(stringResource(label), null, m in marks) { on -> onChange(if (on) marks + m else marks - m) }
+    }
+}
+
 internal val MARKS_SAVER = androidx.compose.runtime.saveable.Saver<Set<SkillEffect>, ArrayList<String>>(
     save = { s -> ArrayList(s.map { it.name }) },
     restore = { l -> l.mapNotNull { n -> SkillEffect.entries.firstOrNull { it.name == n } }.toSet() })

@@ -19,6 +19,8 @@
     <string name="notes_share">Partager</string>
     <string name="notes_delete">Supprimer</string>
     <string name="notes_deleted_banner">Cette note a été supprimée.</string>
+    <string name="notes_not_now_banner">Impossible d’ouvrir cette note pour l’instant. Réessaie dans une minute.</string>
+    <string name="notes_too_new_banner">Cette note a été enregistrée par un Robot plus récent. Mets Robot à jour pour l’ouvrir.</string>
     <string name="notes_not_restored">La note n’a pas pu être restaurée.</string>
     <string name="notes_restore">Restaurer</string>
     <string name="notes_title_field">Titre</string>
@@ -94,7 +96,7 @@
     <string name="people_delete_all">Supprimer toutes les personnes</string>
     <string name="people_intro">Les personnes que Robot connaît en plus de tes contacts&#160;: à qui texter ou écrire un courriel, et comment tu les appelles. Gardées sur ce téléphone seulement, jamais envoyées à une IA externe, et absentes des sauvegardes d’Android.</string>
     <string name="people_damaged">Robot ne peut pas lire son fichier de personnes</string>
-    <string name="people_damaged_detail">Il est peut-être endommagé. Robot n’y change rien, et ne connaît personne ici, tant que tu ne recommences pas. Recommencer met l’ancien fichier de côté (people.json.bad, dans les fichiers de Robot) et commence une liste vide&#8239;; importe ta dernière exportation pour retrouver tout le monde.</string>
+    <string name="people_damaged_detail">Un Robot plus récent l’a enregistré, ou il est endommagé. Robot n’y change rien, et ne connaît personne ici, tant que tu ne recommences pas. Recommencer met l’ancien fichier de côté (people.enc.bad ou people.json.bad, dans les fichiers de Robot) et commence une liste vide&#8239;; importe ta dernière exportation pour retrouver tout le monde.</string>
     <string name="people_start_over">Recommencer</string>
     <string name="people_add">Ajouter une personne</string>
     <string name="people_add_detail">Tape un nom, des numéros, des courriels et des adresses XMPP</string>
@@ -179,11 +181,11 @@
     <string name="people_a_number">Un numéro</string>
     <string name="people_an_email">Un courriel</string>
     <string name="people_start_over_title">Recommencer&#8239;?</string>
-    <string name="people_start_over_text">Robot met de côté le fichier qu’il ne peut pas lire, sous le nom people.json.bad, et commence une liste de personnes vide.</string>
+    <string name="people_start_over_text">Robot met de côté le fichier qu’il ne peut pas lire, sous le nom people.enc.bad ou people.json.bad, et commence une liste de personnes vide.</string>
     <string name="people_empty_now">La liste de personnes est maintenant vide.</string>
     <string name="people_not_set_aside">Robot n’a pas pu mettre le fichier de côté.</string>
     <string name="people_delete_all_title">Supprimer toutes les personnes&#8239;?</string>
-    <string name="people_delete_all_text">Robot oublie tout le monde ici et comment tu les appelles, et peut réapprendre quelqu’un que tu as retiré. Les contacts du téléphone ne sont pas touchés. C’est irréversible.</string>
+    <string name="people_delete_all_text">Robot oublie tout le monde ici et comment tu les appelles, et peut réapprendre quelqu’un que tu as retiré. Les copies mises de côté sont aussi supprimées. Les contacts du téléphone ne sont pas touchés. C’est irréversible.</string>
     <string name="people_all_deleted">Personnes supprimées.</string>
     <string name="people_not_deleted">Les personnes n’ont pas pu être supprimées.</string>
     <string name="people_delete_all_button">Tout supprimer</string>
@@ -251,4 +253,40 @@
     <string name="people_not_deleted_one">Robot n’a pas pu la supprimer.</string>
     <string name="people_save_changes">Enregistrer tes changements&#8239;?</string>
     <string name="people_discard">Abandonner</string>
+    <!-- Caller name (idea 13, docs/plans/caller-name-plan.md): Settings › People, notes and calendar › Calls. -->
+    <string name="people_caller_group">Appels</string>
+    <string name="people_caller_name">Nom de l’appelant</string>
+    <string name="people_caller_name_detail">Robot montre qui t’appelle probablement d’un numéro que tu n’as pas, à partir de tes textos, de ton agenda et des Fichiers de Robot, sur ce téléphone seulement. Si une appli filtre tes appels indésirables en ce moment, Robot prend sa place, et le désactiver ne la lui redonne pas. Tu choisis cette appli de nouveau dans Applications par défaut d’Android.</string>
+    <string name="people_caller_name_still">Robot garde le filtrage des appels, sans rien afficher. Pour le redonner, choisis une autre appli dans Applications par défaut.</string>
+    <string name="people_caller_name_refused">Android n’a pas donné le filtrage des appels à Robot. Tu peux le choisir dans Applications par défaut.</string>
+    <!-- seal-notes: the Notes list's card for notes kept aside (their key gone, or damaged). -->
+    <plurals name="notes_aside">
+        <item quantity="one">Impossible d’ouvrir %1$d note</item>
+        <item quantity="many">Impossible d’ouvrir %1$d notes</item>
+        <item quantity="other">Impossible d’ouvrir %1$d notes</item>
+    </plurals>
+    <string name="notes_aside_detail">Android a retiré la clé qui les protégeait, ce qui peut arriver quand tu désactives le verrouillage de l’écran, ou elles sont endommagées. Elles ne pourront plus être ouvertes, même si tu réactives le verrouillage de l’écran, et elles ne sont pas dans les sauvegardes. Robot ne les supprime jamais de lui-même. Les nouvelles notes sont enregistrées comme d’habitude.</string>
+    <plurals name="notes_too_new">
+        <item quantity="one">%1$d note a été enregistrée par un Robot plus récent. Mets Robot à jour pour l’ouvrir, ou supprime-la.</item>
+        <item quantity="many">%1$d notes ont été enregistrées par un Robot plus récent. Mets Robot à jour pour les ouvrir, ou supprime-les.</item>
+        <item quantity="other">%1$d notes ont été enregistrées par un Robot plus récent. Mets Robot à jour pour les ouvrir, ou supprime-les.</item>
+    </plurals>
+    <plurals name="notes_not_now">
+        <item quantity="one">Impossible d’ouvrir %1$d note pour l’instant. Réessaie dans une minute.</item>
+        <item quantity="many">Impossible d’ouvrir %1$d notes pour l’instant. Réessaie dans une minute.</item>
+        <item quantity="other">Impossible d’ouvrir %1$d notes pour l’instant. Réessaie dans une minute.</item>
+    </plurals>
+    <string name="notes_delete_aside_title">Supprimer les notes impossibles à ouvrir ?</string>
+    <string name="notes_delete_aside_detail">Seules celles-ci sont retirées. Tes autres notes restent. C’est irréversible.</string>
+    <!-- fix-seal-14-f: People's card for its copies kept aside, how many and where, never a name. -->
+    <plurals name="people_aside">
+        <item quantity="one">%1$d copie de ta liste de personnes est mise de côté</item>
+        <item quantity="many">%1$d copies de ta liste de personnes sont mises de côté</item>
+        <item quantity="other">%1$d copies de ta liste de personnes sont mises de côté</item>
+    </plurals>
+    <plurals name="people_aside_detail">
+        <item quantity="one">Robot n’a pas pu tout en lire dans ta liste, alors il la garde entière, sur ce téléphone seulement. Elle n’est ni dans ta liste ni dans les sauvegardes. Supprimer toutes les personnes, dans le menu, la retire avec tout le reste.</item>
+        <item quantity="many">Robot n’a pas pu tout en lire dans ta liste, alors il les garde entières, sur ce téléphone seulement. Elles ne sont ni dans ta liste ni dans les sauvegardes. Supprimer toutes les personnes, dans le menu, les retire avec tout le reste.</item>
+        <item quantity="other">Robot n’a pas pu tout en lire dans ta liste, alors il les garde entières, sur ce téléphone seulement. Elles ne sont ni dans ta liste ni dans les sauvegardes. Supprimer toutes les personnes, dans le menu, les retire avec tout le reste.</item>
+    </plurals>
 </resources>

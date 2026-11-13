@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Spoken log: Settings › Logbook (docs/plans/spoken-log-plan.md). What Robot says is in core LogbookStrings. -->
+<resources>
+    <string name="logbook_title">Logbook</string>
+    <string name="logbook_summary">What you log by voice, counted exactly</string>
+    <string name="logbook_use">Use the logbook</string>
+    <string name="logbook_intro">Say “log that I took my pills”, then ask “when did I last take my pills?” or “how many runs this month?”. Your logbook stays on this phone, sealed, and goes in your backups.</string>
+    <string name="logbook_add_locked">Add while locked</string>
+    <string name="logbook_add_locked_summary">What you log over the lock screen waits, sealed, until you unlock.</string>
+    <string name="logbook_export">Export as a table</string>
+    <string name="logbook_export_summary">A CSV file, saved where you choose</string>
+    <string name="logbook_exported">Logbook exported</string>
+    <string name="logbook_export_failed">Couldn\'t export the logbook</string>
+    <string name="logbook_none">Nothing logged yet.</string>
+    <string name="logbook_unlock">Unlock your phone to see your logbook.</string>
+    <string name="logbook_delete">Delete</string>
+    <string name="logbook_deleted">Deleted from your logbook</string>
+    <string name="logbook_undo">Undo</string>
+    <string name="logbook_delete_all">Delete all</string>
+    <string name="logbook_delete_all_text">Every entry in your logbook is deleted. This can\'t be undone.</string>
+    <string name="logbook_not_saved">Not saved. Try again.</string>
+</resources>

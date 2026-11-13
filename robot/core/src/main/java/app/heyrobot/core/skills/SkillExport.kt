@@ -193,7 +193,7 @@ object SkillExport {
         val keys = HashSet<String>()
         var refusedCount = 0
         for (i in 0 until a.length()) {
-            val s = skill(a.opt(i), newId(), now, SkillImport(sha, signer))?.let { k -> k.copy(steps = k.steps.map { st -> st.conn?.let(renamed::get)?.let { st.copy(conn = it) } ?: st }) }
+            val s = skill(a.opt(i), newId(), now, SkillImport(sha, signer))?.let { k -> k.copy(opens = emptySet(), steps = k.steps.map { st -> st.conn?.let(renamed::get)?.let { st.copy(conn = it) } ?: st }) }
             if (s == null || s.keys.any { it in keys } || !linked(s, needs)) {
                 refusedCount++
                 continue

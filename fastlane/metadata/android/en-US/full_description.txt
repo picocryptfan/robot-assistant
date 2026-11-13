@@ -4,7 +4,7 @@ I built it because there wasn't one. My phone runs GrapheneOS with no Google acc
 
 WHAT IT DOES
 • Timers and alarms, also from the lock screen, and your calendar
-• Today: a home page for your day (off until you turn it on), a Calendar tab, a widget, news feeds you add, and encrypted private events kept in Robot
+• Today: a home page for your day (off until you turn it on), a Calendar tab, a widget, news feeds you add, private events
 • Drafts texts and emails in the apps you choose; you press Send
 • Opens your maps app with a search or route ready
 • Keeps notes and finds them
@@ -16,6 +16,7 @@ WHAT IT DOES
 • Your own wake words, voice speed, and a People list for the names you use
 • Skills: teach routines by voice, plan many things at once, share them signed
 • Lists by voice, files in a question, car screen, Robot to Robot
+• New in 1.4: a ready reply to "what time do you land?"; web pages summarized; articles, notes and PDFs read aloud; recipe steps one at a time; Wikipedia on the phone; undo; scam warnings
 • Phone lock: covers other apps for times you set, by voice or in Settings. Off until you set it up
 • Robot Files: receipts, bills and documents filed on the phone, encrypted. Ask what you spent or what's due
 • An encrypted backup in one file you keep, files included; never uploaded
@@ -34,7 +35,7 @@ PRIVATE BY DEFAULT
 • Phone lock's accessibility service sees only which app is in front
 
 OPTIONAL: HELPERS
-For a question that needs a bigger model, Robot can pass that one question to an AI you choose: a paid service with your API key, another AI's app on your phone (you press Send there), or your own server. Nothing is set up until you add one.
+For a question that needs a bigger model, Robot can pass that one question to an AI you choose: a paid service with your API key, another AI's app on your phone (you press Send there), or your own server.
 
 REQUIREMENTS
 • Pixel 10, 10 Pro, 10 Pro XL and 10 Pro Fold run the model on the TPU (tested on the Pixel 10 Pro)
@@ -46,10 +47,10 @@ REQUIREMENTS
 • The model uses about 2 GB of memory while loaded
 
 SETUP
-Robot becomes your default digital assistant (Settings › Apps › Default apps). Its setup screen checks everything and explains an optional step that keeps it the assistant after a restart.
+Robot becomes your default digital assistant (Settings › Apps › Default apps). Its setup screen checks everything.
 
 FREE AND OPEN SOURCE
-Robot is GPL-3.0 and I make it alone. Nothing is locked. If it's useful to you, you can donate in Bitcoin, Lightning, Monero or Ethereum: https://robot-app.ai/#donate
+Robot is GPL-3.0 and I make it alone. If it's useful to you, you can donate in Bitcoin, Lightning, Monero or Ethereum: https://robot-app.ai/#donate
 
 Source code, issues and model hashes: https://github.com/picocryptfan/robot-assistant
 Contact: hey@robot-app.ai

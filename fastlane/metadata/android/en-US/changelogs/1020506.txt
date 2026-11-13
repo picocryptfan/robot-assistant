@@ -1,0 +1,1 @@
+Test build of sealed storage: History, your notes and People are kept encrypted, with keys that stay in your phone's keystore. It has 1.2.4's fixes.

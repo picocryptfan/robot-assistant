@@ -22,6 +22,10 @@ object SkillStrings : Strings("skill", area = "skills") {
     val commonWord = s("common_word", "“{name}” alone will run this skill.", "« {name} » tout seul lancera cette compétence.")
     val moreApps = s("more_apps", "You'll tap a notification to go on after the first app opens.",
         "Tu toucheras une notification pour continuer après l'ouverture de la première appli.")
+    // auto-open-plan §1: the save card's box per app (a routine's card too), unticked until you tap it.
+    val openTick = s("open_tick", "Open {name} without asking when this runs", "Ouvrir {name} sans demander quand elle s'exécute")
+    val ticked = s("ticked", "ticked", "coché")
+    val notTicked = s("not_ticked", "not ticked", "non coché")
     val waitTip = s("wait_tip", "Long pauses? In {page}, set Wait before answering to Long.",
         "De longues pauses ? Dans {page}, mets Attendre avant de répondre à Long.")
     val cardNew = s("card_new", "New skill: {name}", "Nouvelle compétence : {name}")
@@ -259,6 +263,15 @@ object SkillStrings : Strings("skill", area = "skills") {
         "Le plan s'est arrêté à l'étape {n} : {why}. Pas fait : {left}.")
     val planStoppedLast = s("plan_stopped_last", "The plan stopped at step {n}: {why}.", "Le plan s'est arrêté à l'étape {n} : {why}.")
     val planCancelled = s("plan_cancelled", "Plan cancelled. Nothing else ran.", "Plan annulé. Rien d'autre ne s'est fait.")
+
+    // Idea 6, several requests in one sentence (core MultiAsk, PanelMulti).
+    val multiTitle = s("multi_title", "{n} things at once", "{n} choses d'un coup")
+    val multiLine = s("multi_line", "{n}. {step}", "{n}. {step}")
+    val multiDoAll = s("multi_do_all", "Do all", "Fais tout")
+    val multiRemove = s("multi_remove", "Remove {n}", "Enlève {n}")
+    val multiSayYes = s("multi_say_yes", "Say yes or tap {go}. Tap Remove to take a line off.", "Dis oui ou touche {go}. Touche Enlève pour retirer une ligne.")
+    val multiCancelled = s("multi_cancelled", "Cancelled. Nothing ran.", "Annulé. Rien ne s'est fait.")
+    val multiDone = s("multi_done", "Done: {done} of {total}.", "Fait : {done} sur {total}.")
     val planFailed = s("plan_failed", "I couldn't make a plan for that. Ask me one thing at a time.",
         "Je n'ai pas pu faire de plan pour ça. Demande-moi une chose à la fois.")
     val planAppLast = s("plan_app_last", "A plan can open an app only as its last step. Ask me one thing at a time.",
@@ -319,6 +332,42 @@ object SkillStrings : Strings("skill", area = "skills") {
     val helpPark = s("help_park", "Car mode is on: I'll show what would go to {name} once you're parked.",
         "Le mode auto est actif : je te montrerai ce qui irait à {name} quand tu seras stationné.")
     val helpPlanFailed = s("help_plan_failed", "{name}'s plan didn't check out, so nothing ran.", "Le plan de {name} n'était pas valide, alors rien ne s'est fait.")
+    // 1.4: "add to <skill>: <what a connection does>".
+    val addNone = s("add_none", "None of your connections does “{words}”. Add the step on the skill's page in Settings.",
+        "Aucune de tes connexions ne fait « {words} ». Ajoute l'étape sur la page de la compétence dans les paramètres.")
+    val addSeveral = s("add_several", "More than one of your connections fits: {list}. Say it again with its name or its connection's name.",
+        "Plus d'une de tes connexions convient : {list}. Redis-le avec son nom ou celui de sa connexion.")
+    val addValue = s("add_value", "What should “{value}” be for “{step}”?", "Que doit être « {value} » pour « {step} » ?")
+    val addWhich = s("add_which", "Which one for “{step}”: {list}?", "Lequel pour « {step} » : {list} ?")
+    val addBadValue = s("add_bad_value", "That doesn't fit “{value}”. What should it be?", "Ça ne convient pas pour « {value} ». Que doit-il être ?")
+    val addConfirm = s("add_confirm", "Add “{step}” to “{name}”?", "Ajouter « {step} » à « {name} » ?")
+    val addSecurity = s("add_security", "“{step}” touches a lock, a door or an alarm, so add it on the screen.",
+        "« {step} » touche une serrure, une porte ou une alarme, alors ajoute-la à l'écran.")
+    val addDone = s("add_done", "Added “{step}” to “{name}”.", "« {step} » ajoutée à « {name} ».")
+    val addFull = s("add_full", "“{name}” has {max} steps already.", "« {name} » a déjà {max} étapes.")
+    val addNot = s("add_not", "Not added.", "Pas ajoutée.")
+    /** Review-c Low 2: a choice wait ended by words that fit no option. */
+    val addLeft = s("add_left", "Not added: “{step}”.", "Pas ajoutée : « {step} ».")
+    val addRisky = s("add_risky", "“{step}” can delete something or spend money, so add it on the screen.",
+        "« {step} » peut supprimer quelque chose ou dépenser de l'argent, alors ajoute-la à l'écran.")
+    val addCode = s("add_code", "“{step}” runs something on {name} that I can't see, so add it on the screen.",
+        "« {step} » lance sur {name} quelque chose que je ne vois pas, alors ajoute-la à l'écran.")
+    // Review Low 6: what a spoken yes may not run (a webhook's post, a message, or the connection's switch off).
+    val addTap = s("add_tap", "A spoken yes can't approve “{step}”, so add it on the screen.",
+        "Un oui à voix haute ne peut pas approuver « {step} », alors ajoute-la à l'écran.")
+    val addFirst = s("add_first", "You haven't allowed {name} yet, so add “{step}” on the screen.",
+        "Tu n'as pas encore autorisé {name}, alors ajoute « {step} » à l'écran.")
+    // Low 8: said after one of the five above, only once the skill's page has launched; else why it didn't.
+    val addOpened = s("add_opened", "I opened its page.", "J'ai ouvert sa page.")
+    val addNoPage = s("add_no_page", "I couldn't open its page from here: it's in Settings, under Skills.",
+        "Je n'ai pas pu ouvrir sa page d'ici : elle est dans les paramètres, sous Compétences.")
+    val addPark = s("add_park", "Car mode is on: add “{step}” on the skill's page in Settings once you're parked.",
+        "Le mode auto est actif : ajoute « {step} » sur la page de la compétence dans les paramètres quand tu seras stationné.")
+    val addGone = s("add_gone", "“{name}” isn't there any more, so nothing was added.", "« {name} » n'existe plus, alors rien n'a été ajouté.")
+    val addConnGone = s("add_conn_gone", "The connection for “{step}” is gone, so nothing was added.",
+        "La connexion de « {step} » n'existe plus, alors rien n'a été ajouté.")
+    val addNowScreen = s("add_now_screen", "“{step}” now has to be added on the screen, so nothing was added: add it on the skill's page.",
+        "« {step} » doit maintenant être ajoutée à l'écran, alors rien n'a été ajouté : ajoute-la sur la page de la compétence.")
     val helpDraftFailed = s("help_draft_failed", "{name}'s draft didn't check out, so nothing was saved.",
         "Le brouillon de {name} n'était pas valide, alors rien n'a été enregistré.")
 }

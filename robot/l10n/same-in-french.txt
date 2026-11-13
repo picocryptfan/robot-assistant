@@ -19,6 +19,7 @@ Pause
 Notifications
 Date
 %1$d min
+%1$d minute
 %1$d minutes
 %1$d s
 Licence

@@ -43,6 +43,8 @@ object SettingsRoutes {
     const val BARGE_IN = "voice/barge-in"
     const val ACTIONS = "actions"
     const val PEOPLE_NOTES_CALENDAR = "people-notes-calendar"
+    /** Spoken log: Settings › Logbook (its own file, logbook_settings.json). */
+    const val LOGBOOK = "logbook"
     const val WEATHER = "weather"
     /** 0.9: Settings › Web search (its own file, web.json). */
     const val WEB_SEARCH = "web-search"
@@ -54,6 +56,10 @@ object SettingsRoutes {
     const val FILES = "files"
     /** 1.4 Lists: Settings › Lists (sys/ListsVault.kt), beside Settings › Files. */
     const val LISTS = "lists"
+    /** Wikipedia P3: Settings › Wikipedia on this phone (sys/WikiStore.kt). */
+    const val WIKIPEDIA = "wikipedia"
+    /** Settings › Ask about your screenshots (sys/ShotsVault.kt). */
+    const val SCREENSHOTS = "screenshots"
     /** 1.4: Settings › Files › Scan a document (F5; the Files screen's Scan button from F7). */
     const val FILES_SCAN = "files/scan"
     const val ADVANCED = "advanced"
@@ -79,12 +85,16 @@ object SettingsRoutes {
         FEEDBACK + "?e=" + entry.key + (kind?.let { "&k=" + it.name.lowercase() } ?: "") + (problem?.let { "&p=$it" } ?: "")
     /** 1.1: Settings › About › Support Robot (Back goes to About). */
     const val SUPPORT = "about/support"
+    /** RP5: Settings › About › Reports you sent (Back goes to About; the card's menu opens it too). */
+    const val REPORTS_SENT = "about/reports-sent"
     /** 0.9: Settings › Termux, the Termux agent's set-up and settings. */
     const val TERMUX = "termux"
     /** 1.1: Settings › Language (the menus' language and the one Robot answers in). */
     const val LANGUAGE = "language"
     /** 1.1: Settings › Phone lock and its pages (files/robot/lock, not settings.json). */
     const val PHONE_LOCK = "phone-lock"
+    /** App pause (files/robot/app_pause.json, not settings.json). */
+    const val APP_PAUSE = "app-pause"
     /** 1.1: Settings › Back up and restore (backup.json and backup_state.json, not settings.json). */
     const val BACKUP = "backup"
     /** The everyday set: Settings › Safety & privacy › What went online (sys/NetLog's record; everyday_settings.json's switch). */
@@ -115,6 +125,7 @@ fun SettingsNav(
     if (route == SettingsRoutes.SKILLS || route.startsWith(SettingsRoutes.SKILLS + "/")) return SkillsRoute(route, a, snackbar, onBack)
     // 1.1: Settings › Phone lock and its pages.
     if (route == SettingsRoutes.PHONE_LOCK || route.startsWith(SettingsRoutes.PHONE_LOCK + "/")) return PhoneLockRoute(route, a, snackbar, onBack)
+    if (route == SettingsRoutes.APP_PAUSE) return AppPauseScreen(onBack)
     // 0.8: Settings › Headset, Settings › Car mode and Add your car.
     if (route == SettingsRoutes.HEADSET || route == SettingsRoutes.CAR || route.startsWith(SettingsRoutes.CAR + "/")) return HandsFreeRoute(route, a, snackbar, onBack)
     // 1.5: Settings › Robot to Robot, pairing, and each pairing's pages.
@@ -134,10 +145,14 @@ fun SettingsNav(
         SettingsRoutes.MEMORY -> MemorySettingsRoute(a, snackbar, onBack)
         SettingsRoutes.FILES -> FilesSettingsRoute(a, snackbar, onBack)
         SettingsRoutes.LISTS -> ListsSettingsRoute(a, snackbar, onBack)
+        SettingsRoutes.WIKIPEDIA -> WikipediaSettingsRoute(a, snackbar, onBack)
+        SettingsRoutes.SCREENSHOTS -> ShotsSettingsRoute(a, snackbar, onBack)
+        SettingsRoutes.LOGBOOK -> LogbookSettingsScreen(a, snackbar, onBack)
         SettingsRoutes.FILES_SCAN -> app.heyrobot.ui.files.ScanRoute(snackbar, onBack)
         SettingsRoutes.ADVANCED -> AdvancedSettingsScreen(a, onBack)
         SettingsRoutes.ABOUT -> AboutSettingsScreen(a, onBack)
         SettingsRoutes.SUPPORT -> SupportRoute(snackbar, onBack)
+        SettingsRoutes.REPORTS_SENT -> SentReportsRoute(snackbar, onBack)
         SettingsRoutes.BACKUP -> BackupSettingsScreen(onBack)
         SettingsRoutes.UPDATES -> UpdatesRoute(snackbar, onBack,
             onReport = { a.openPage(Page.Settings(SettingsRoutes.feedback(FeedbackEntry.UPDATER, FeedbackKind.BUG))) })
@@ -151,7 +166,7 @@ fun SettingsNav(
         SettingsRoutes.ONLINE -> OnlineScreen(a, snackbar, onBack)
         else -> when {
             route.startsWith("adb/") -> AdbFixScreen(route.removePrefix("adb/"), snackbar, onBack)
-            route.startsWith(SettingsRoutes.FEEDBACK) -> FeedbackRoute(route, snap, snackbar, onBack)
+            route.startsWith(SettingsRoutes.FEEDBACK) -> FeedbackRoute(route, snap, snackbar, onBack) { a.openPage(Page.Settings(SettingsRoutes.REPORTS_SENT)) }
             else -> LaunchedEffect(route) { onBack() }
         }
     }
@@ -253,7 +268,7 @@ object AppRoutes {
         ?.takeIf { it == AppPages.CAR_SETTINGS || it == AppPages.MESSAGES_SETTINGS }
 
     /** What [i] asks for, as a route [target] understands, or null. */
-    fun of(i: Intent?): String? = when {
+    fun of(i: Intent?, own: Boolean? = null): String? = when {
         i == null -> null
         i.component?.className == AppPages.NOTES_ALIAS -> AppPages.NOTES
         // 1.4: the "Robot Files" icon.
@@ -274,6 +289,8 @@ object AppRoutes {
         i.getStringExtra(AppPages.EXTRA)?.let(AppPages::filesPack) != null -> i.getStringExtra(AppPages.EXTRA)
         // 1.4 Lists (LS5): a list's page, from a list card's "Open Shopping" (an id only).
         i.getStringExtra(AppPages.EXTRA)?.let(AppPages::listPage) != null -> i.getStringExtra(AppPages.EXTRA)
+        // 1.4: one skill's page, from a lock, door or alarm step refused by voice (an id only).
+        skillFrom(i.getStringExtra(AppPages.EXTRA), own) != null -> i.getStringExtra(AppPages.EXTRA)
         // 0.7: Send feedback from a feedback phrase in the panel, with its kind only (the words come in a file of Robot's own).
         i.getStringExtra(AppPages.EXTRA) == AppPages.FEEDBACK ->
             AppPages.FEEDBACK + (FeedbackKind.of(i.getStringExtra(AppPages.EXTRA_FEEDBACK_KIND))?.let { ":" + it.name.lowercase() } ?: "")
@@ -284,12 +301,18 @@ object AppRoutes {
      * The plain pages an intent's [AppPages.EXTRA] may open: [r] if it's one, else null. today-fix-d: with History and the
      * Calendar tab ("show my history", "show my calendar"), which were missing, so the panel's hand-off opened nothing.
      */
+    /**
+     * Low 9: a skill's page route [r], only when the launch came from Robot itself ([own]); null, when Android can't say
+     * (below 14, or a new intent below 15), is taken as for a list's page, never weaker.
+     */
+    fun skillFrom(r: String?, own: Boolean?): String? = r?.takeIf { own != false && AppPages.skillPage(it) != null }
+
     fun byExtra(r: String?): String? = r?.takeIf { it in BY_EXTRA }
 
     private val BY_EXTRA = setOf(AppPages.NOTES, AppPages.PERMISSIONS, AppPages.CONVERSATION_SETTINGS, AppPages.MODEL, AppPages.HELPERS,
         AppPages.ROUTINES, AppPages.CAR_SETTINGS, AppPages.MESSAGES_SETTINGS, AppPages.UPDATES, AppPages.MEMORY, AppPages.SETTINGS,
         AppPages.PHONE_LOCK, AppPages.BACKUP, AppPages.FILES, AppPages.VOICE, AppPages.SETUP, AppPages.LINK_REQUESTS,
-        AppPages.HISTORY, AppPages.CALENDAR, AppPages.SKILL_IMPORT)
+        AppPages.HISTORY, AppPages.CALENDAR, AppPages.SKILL_IMPORT, AppPages.QUICK)
 
     /**
      * What a route opens: a [tab] (every page closed), or a [page] over the one showing; [notesIcon]: from Robot Notes'
@@ -317,6 +340,7 @@ object AppRoutes {
         r == AppPages.UPDATES -> Target(page = Page.Settings(SettingsRoutes.UPDATES))
         r == AppPages.SETTINGS -> Target(tab = Tab.SETTINGS)
         r == AppPages.HISTORY -> Target(page = Page.History)
+        r == AppPages.QUICK -> Target(tab = Tab.HOME, page = Page.Quick)
         r == AppPages.CALENDAR -> Target(tab = Tab.CALENDAR)
         r == AppPages.MEMORY -> Target(page = Page.Settings(SettingsRoutes.MEMORY))
         r == AppPages.PHONE_LOCK -> Target(page = Page.Settings(SettingsRoutes.PHONE_LOCK))
@@ -331,6 +355,7 @@ object AppRoutes {
         r == AppPages.FILES_ICON -> Target(tab = Tab.FILES, filesIcon = true)
         AppPages.filesPack(r) != null -> Target(tab = Tab.FILES, filesPack = r)
         AppPages.listPage(r) != null -> Target(tab = Tab.NOTES, page = Page.ListPage(AppPages.listPage(r)!!), lists = true)
+        AppPages.skillPage(r) != null -> Target(tab = Tab.SETTINGS, page = Page.Settings(SkillRoutes.skill(AppPages.skillPage(r)!!)))
         r == AppPages.FEEDBACK || r.startsWith(AppPages.FEEDBACK + ":") ->
             Target(page = Page.Settings(SettingsRoutes.feedback(FeedbackEntry.VOICE, FeedbackKind.of(r.substringAfter(':', "")))))
         else -> null

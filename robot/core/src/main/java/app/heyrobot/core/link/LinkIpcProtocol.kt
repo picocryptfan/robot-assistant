@@ -189,7 +189,15 @@ object LinkIpcProtocol {
      */
     const val FEED_STREAM = FIRST + 68
 
-    const val LAST = FEED_STREAM
+    /**
+     * RP5, Report a problem: in, the report key (33 bytes), the reference (12 characters) and a pipe with ReportFile's bytes;
+     * out, the sealed file's size, once :link wrote [REPORT_DIR]/<reference>.robotreport. Answered with Robot to Robot off too.
+     */
+    const val SEAL_REPORT = FIRST + 69
+    const val LAST = SEAL_REPORT
+    /** The cache folder the sealed reports wait in for the share sheet (24 hours at most). */
+    const val REPORT_DIR = "reports" // l10n: not text (a folder name)
+    const val REF_CHARS = 12
 
     const val VAULT_OFF = 0
     const val VAULT_READY = 1

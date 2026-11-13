@@ -169,9 +169,12 @@ class BackupStreamPinTest {
          * The everyday set's E2 the same: calculate's approval is one more (internal, AUTO), so backup-content's input changed and only it.
          * 1.5 L7 the same way: ask_robot's approval is one more.
          * F122 the same way: settings.json always holds listenPause now, so backup-content's input changed and only it.
+         * Earbud buttons the same way: headset.json's never-shown "buttonsWhileTalking" (false) became "earbudButtons" (on),
+         * so a stored false is never read (RestoreOldHeadsetKeyTest); backup-content's input changed and only it.
+         * Keep listening (idea 7) the same way: headset.json always holds panelFollowUp now, so backup-content's input changed and only it.
          */
         val PINNED = """
-backup-content c478ea1d9e7a0d6f7343cc4160a6d9066023e783a66349cb94cff694b6ad160e
+backup-content ef6ff01afeae31190b1fb3f9542558f495214109f3044dc46c6c77e66aeb05a8
 stream-1 5735a2f3c7e66c08f62acf11eb714629700b308bd26850bb0966d20084b23083
 stream-65535 433cc4ff3f8e3014028baa16af4ec09c07c14a2d45b70aca2c0e3b7e414fec8f
 stream-65536 4537ca2f42d664368994346ad30c2f132e3b0a3563f8e879dfcc29abbb9808cf

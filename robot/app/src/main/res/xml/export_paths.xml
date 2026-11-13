@@ -3,4 +3,6 @@
      next export or when transcripts are deleted. Nothing else is ever served. -->
 <paths>
     <cache-path name="exports" path="exports/" />
+    <!-- 1.4, Report a problem: a sealed RFB-XXXXXXXX.robotreport for Send, deleted 24 hours on (sys/ReportOut.kt). -->
+    <cache-path name="reports" path="reports/" />
 </paths>

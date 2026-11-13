@@ -17,13 +17,19 @@
     <string name="backup_two">%1$s, %2$s</string>
     <string name="backup_empty">Rien pour l’instant</string>
     <string name="backup_memory_cant">Ne peut pas être ouverte pour l’instant&#160;: déverrouille ton téléphone, ou laisse la Mémoire de côté</string>
+    <string name="backup_people_cant">Ne peut pas être ouvert pour l’instant&#160;: déverrouille ton téléphone, ou laisse les Personnes de côté</string>
+    <string name="backup_notes_cant">Ne peuvent pas être ouvertes pour l’instant&#160;: déverrouille ton téléphone, ou laisse les Notes de côté</string>
+    <string name="backup_notes_too_new">Certaines ne peuvent pas être lues&#160;: un Robot plus récent les a enregistrées. Mets Robot à jour ou utilise Supprimer celles-ci dans Notes, ou laisse les Notes de côté</string>
+    <string name="backup_people_damaged">Ne peut pas être lu&#160;: un Robot plus récent l’a enregistré, ou il est endommagé. Mets Robot à jour ou utilise Recommencer dans les Personnes, ou laisse les Personnes de côté</string>
     <string name="backup_files_cant">Ne peuvent pas être lus pour l’instant&#160;: Réglages › Fichiers dit pourquoi</string>
     <string name="backup_lists_cant">Ne peuvent pas être lues pour l’instant&#160;: Réglages › Listes dit pourquoi</string>
     <string name="backup_calendar_cant">Illisible pour l’instant : déverrouille ton téléphone, ou ouvre l’onglet Agenda pour savoir pourquoi</string>
+    <string name="backup_logbook_cant">Ne peut pas être ouvert pour l’instant&#160;: déverrouille et réessaie</string>
     <string name="backup_history_travel">Laissé de côté pendant que le mode voyage est activé&#160;: il contient des réponses des Fichiers de Robot</string>
     <string name="backup_sum_settings">Voix, mots d’éveil, actions, sécurité, IA externes (sans les clés), recherche Web, Termux, affichage, mises à jour</string>
     <string name="backup_sum_voiceprint">Faite sur ce téléphone</string>
     <string name="backup_sum_home">L’ordre de ta page Aujourd’hui et si c’est ta page d’accueil</string>
+    <string name="backup_sum_headsup">Si tes rappels d’agenda sont activés, combien de temps avant et les heures de silence</string>
     <string name="backup_sum_everyday">Musique à la voix, écoute et voix de Robot pour les autres applis, Demander à Robot, Ce qui est allé en ligne</string>
     <string name="backup_vp_warning">Biométrique&#160;: elle demande une phrase de passe forte et revient seulement d’une sauvegarde que tu marques comme la tienne.</string>
     <string name="backup_pictures">Captures d’écran et photos gardées</string>
@@ -104,6 +110,10 @@
     <string name="backup_restore_result_earlier">pas restauré, et rien n’a changé&#160;: une restauration précédente n’est pas terminée (manque d’espace libre, ou erreur de stockage). Libère de l’espace, puis restaure de nouveau.</string>
     <string name="backup_restore_result_others">D’une sauvegarde qui n’est pas marquée comme la tienne&#160;: les souvenirs indiquent Importé, les routines et les compétences restaurées sont désactivées, et les clés ont été laissées de côté.</string>
     <string name="backup_restore_result_cut">pas restauré, et rien n’a changé&#160;: la restauration s’est arrêtée avant. Restaure de nouveau.</string>
+    <string name="backup_restore_result_history_not_now">pas restauré, et rien n’a changé&#160;: Robot n’a pas pu ouvrir une partie de ton historique pour l’instant. Déverrouille, attends une minute et restaure de nouveau, ou restaure sans l’Historique.</string>
+    <string name="backup_restore_result_history_too_new">pas restauré, et rien n’a changé&#160;: une partie de ton historique a été enregistrée par un Robot plus récent et ne peut pas être lue ici. Mets Robot à jour, ou supprime ces conversations avec Supprimer celles-ci dans Historique, puis restaure de nouveau. Ou restaure sans l’Historique.</string>
+    <string name="backup_restore_result_people_too_new">pas restauré, et rien n’a changé&#160;: Robot ne peut pas lire ton fichier de Personnes (un Robot plus récent l’a enregistré, ou il est endommagé). Mets Robot à jour, ou utilise Recommencer dans les Personnes, puis restaure de nouveau. Ou restaure sans les Personnes.</string>
+    <string name="backup_restore_result_notes_too_new">pas restauré, et rien n’a changé&#160;: certaines de tes notes ont été enregistrées par un Robot plus récent et ne peuvent pas être lues ici. Mets Robot à jour, ou supprime ces notes avec Supprimer celles-ci dans Notes, puis restaure de nouveau. Ou restaure sans les Notes.</string>
     <string name="backup_restore_result_refused">pas restauré, et rien n’a changé&#160;: le fichier de ce téléphone pour cet élément ne peut pas être lu ou écrit. Vérifie-le dans les Réglages, puis restaure de nouveau.</string>
     <string name="backup_restore_stopped">Cette restauration s’est arrêtée en cours de route&#160;: ce téléphone est en partie restauré, en partie comme avant. Ce qui est indiqué comme restauré est complet. Pour le reste, rien n’a changé&#160;: restaure de nouveau pour terminer.</string>
     <string name="backup_restore_result_links">Robot à Robot&#160;: tes personnes jumelées reviennent en pause une fois Robot à Robot activé. Répondre quand ton téléphone est verrouillé est désactivé et les niveaux de chaque personne recommencent, jusqu’à ce que tu les règles de nouveau.</string>
@@ -136,6 +146,12 @@
         <item quantity="many">%1$d personnes</item>
         <item quantity="other">%1$d personnes</item>
     </plurals>
+    <!-- fix-seal-14-lows-b: People's copies kept aside (an entry that couldn't be read, or Start over); never backed up. -->
+    <plurals name="backup_n_people_aside">
+        <item quantity="one">%1$d copie mise de côté exclue</item>
+        <item quantity="many">%1$d copies mises de côté exclues</item>
+        <item quantity="other">%1$d copies mises de côté exclues</item>
+    </plurals>
     <plurals name="backup_n_items">
         <item quantity="one">%1$d élément</item>
         <item quantity="many">%1$d éléments</item>
@@ -165,6 +181,16 @@
         <item quantity="one">%1$d transcription</item>
         <item quantity="many">%1$d transcriptions</item>
         <item quantity="other">%1$d transcriptions</item>
+    </plurals>
+    <plurals name="backup_n_transcripts_aside">
+        <item quantity="one">%1$d transcription mise de côté exclue</item>
+        <item quantity="many">%1$d transcriptions mises de côté exclues</item>
+        <item quantity="other">%1$d transcriptions mises de côté exclues</item>
+    </plurals>
+    <plurals name="backup_transcripts_left_out">
+        <item quantity="one">Transcriptions&#160;: %1$d transcription n’a pas pu être ouverte, donc elle n’est pas dans cette sauvegarde.</item>
+        <item quantity="many">Transcriptions&#160;: %1$d de transcriptions n’ont pas pu être ouvertes, donc elles ne sont pas dans cette sauvegarde.</item>
+        <item quantity="other">Transcriptions&#160;: %1$d transcriptions n’ont pas pu être ouvertes, donc elles ne sont pas dans cette sauvegarde.</item>
     </plurals>
     <plurals name="backup_n_skills">
         <item quantity="one">%1$d compétence</item>

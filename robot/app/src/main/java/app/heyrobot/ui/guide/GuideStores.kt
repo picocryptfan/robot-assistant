@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.ui.guide
 
+import app.heyrobot.sys.ConversationStore
 import app.heyrobot.sys.AppLanguage
 import app.heyrobot.sys.Menus
 import android.content.Context
@@ -105,8 +106,8 @@ class PhoneGuideStores(ctx: Context) : GuideStores {
             termuxOn = TermuxStore.load(app).enabled,
             browserEngine = WebStore.current(app).browserEngine,
             backupRemind = BackupFiles.prefs(app).remind,
-            freshPhone = PeopleFiles.store(app).list().isEmpty() && NotesFiles.dir(app).list().isNullOrEmpty() &&
-                Paths.conversations(app).list().isNullOrEmpty() && !File(MemoryFiles.dir(app), MemoryEnvelope.FILE).isFile,
+            freshPhone = PeopleFiles.store(app).list().isEmpty() && NotesFiles.store(app).none() &&
+                ConversationStore.none(app) && !File(MemoryFiles.dir(app), MemoryEnvelope.FILE).isFile,
         )
     }
 

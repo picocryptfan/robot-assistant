@@ -45,6 +45,14 @@
     <string name="car_panel_messages_detail">Shown on the car screen only, as Settings › Messages allows. To reply, tap Talk</string>
     <string name="car_panel_directions">Directions</string>
     <string name="car_panel_directions_detail">A button to your maps app. Robot can\'t read turn-by-turn text yet</string>
+    <string name="car_widget_setup">Set it up once in Settings › Car mode</string>
+    <string name="car_widget_of">%1$s\'s widget</string>
+    <string name="car_widget_pick">Choose a widget</string>
+    <string name="car_widget_none">No app on this phone has a widget</string>
+    <string name="car_widget_failed">That widget couldn\'t be added. The bottom screen shows the media player</string>
+    <string name="car_widget_gone">The widget\'s app has changed or been removed since you picked it. The bottom screen shows the media player until you pick the widget again</string>
+    <string name="car_panel_widget">An app\'s widget</string>
+    <string name="car_panel_widget_detail">Shown above your buttons. The bottom screen\'s swap button brings back the media player</string>
     <string name="car_panel_latest">Latest message</string>
     <string name="car_fourth_replaced">%1$s, replaced by an app signed by someone else. Pick it again.</string>
 
@@ -52,6 +60,9 @@
     <string name="headset_button">Headset button opens Robot</string>
     <string name="headset_button_on">A long press of your headset\'s or car\'s voice button</string>
     <string name="headset_button_off">Off: other apps get the button</string>
+    <string name="headset_earbud_buttons">Earbud buttons while Robot talks</string>
+    <string name="headset_earbud_buttons_on">Tap once to stop Robot, twice to skip to the next part</string>
+    <string name="headset_earbud_buttons_off">Off: your music app keeps the buttons</string>
     <string name="headset_listening">Listening</string>
     <string name="headset_listen_with">Listen with</string>
     <string name="headset_listen_headset_detail">The default. Works with the phone in a pocket; music pauses while Robot listens and answers (call-quality sound).</string>
@@ -198,6 +209,18 @@
     <string name="car_apps_title">Apps for the car</string>
     <string name="car_apps_summary_none">None yet. Keep up to %1$d, then tap Apps on the car screen to open one beside Robot.</string>
     <string name="car_shortcut">Car mode</string>
+    <!-- Idea 5: a heads-up before each event, in private headphones only (Settings › Headset). -->
+    <string name="headset_headsup_group">Calendar heads-up</string>
+    <string name="headset_headsup_switch">Heads-up before events</string>
+    <string name="headset_headsup_on">“Dentist at 2:30, in 15 minutes.” Only in private headphones, never on a speaker or in the car</string>
+    <string name="headset_headsup_minutes">How long before</string>
+    <string name="headset_headsup_minutes_n">%1$d minutes before</string>
+    <string name="headset_headsup_quiet">Quiet hours</string>
+    <string name="headset_headsup_quiet_off">None</string>
+    <string name="headset_headsup_quiet_21">9 pm to 7 am</string>
+    <string name="headset_headsup_quiet_22">10 pm to 7 am</string>
+    <string name="headset_headsup_quiet_23">11 pm to 8 am</string>
+    <string name="headset_headsup_calendar">Robot can’t read your calendar. Tap to allow it</string>
     <string name="car_split_refused">Couldn\'t open that app beside the car screen</string>
     <string name="car_covered_voice">Another app is showing over this screen, so Robot did nothing. Answer by voice, or move its window and tap again.</string>
     <string name="car_covered_move">Another app is showing over this screen, so Robot did nothing. This one needs a tap. Move its window and tap again, or say no.</string>

@@ -41,6 +41,8 @@ sealed class HandsFreeCommand {
     /** "Reply I'm on my way", "dis-lui que j'arrive": [text] without its lead-in (ReplyWords). */
     data class Reply(val text: String) : HandsFreeCommand()
     data object WhatsNext : HandsFreeCommand()
+    /** The car screen's bottom: "swap the bottom", "put Spotify's widget on the bottom" (car-screens-plan.md). */
+    data class Bottom(val phrase: app.heyrobot.core.car.CarHalvesPhrase) : HandsFreeCommand()
     data class Music(val action: MusicAction) : HandsFreeCommand()
 }
 
@@ -158,6 +160,7 @@ object HandsFreeRouter {
         if (!carMode) return null
         if (whole(READ_MESSAGES)) return HandsFreeCommand.ReadMessages
         if (whole(WHATS_NEXT)) return HandsFreeCommand.WhatsNext
+        app.heyrobot.core.car.CarHalvesPhrase.of(core)?.let { return HandsFreeCommand.Bottom(it) }
         if (carMusic) (MUSIC[core] ?: MUSIC[full])?.let { return HandsFreeCommand.Music(it) }
         navigate(core) { a, b -> stripped.substring(toks[i + a].start, toks[i + b - 1].end) }?.let { return it }
         // Reply: its words as said (the original text after the lead).

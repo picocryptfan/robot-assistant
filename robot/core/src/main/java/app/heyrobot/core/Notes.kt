@@ -31,7 +31,7 @@ object NoteCodec {
     } catch (_: Exception) { null }
 }
 
-class NoteStore(private val dir: File) {
+class NoteStore(private val dir: File) : NoteDelete.Store {
     private fun file(id: String): File? = if (validId(id)) File(dir, "$id.json") else null
 
     /** Newest change first. */
@@ -47,12 +47,12 @@ class NoteStore(private val dir: File) {
         return if (save(n)) n else null
     }
 
-    fun save(n: Note): Boolean {
+    override fun save(n: Note): Boolean {
         val f = file(n.id) ?: return false
         return try { writeAtomic(f, NoteCodec.toJson(n)); true } catch (_: Exception) { false }
     }
 
-    fun delete(id: String): Boolean = file(id)?.delete() == true
+    override fun delete(id: String): Boolean = file(id)?.delete() == true
 
     companion object {
         private val ID = Regex("^[A-Za-z0-9-]{1,64}$")
@@ -118,4 +118,19 @@ object NoteSearch {
         val t = s.replace(Regex("[ \\t]+"), " ").trim()
         return if (t.length <= max) t else ToolCalls.safeTake(t, max - 1).trimEnd() + "…"
     }
+}
+
+/**
+ * seal-notes: one note sealed on its own, framed as History's conversations are (core SealedEnvelope): "RNOT", and the
+ * additional data "robot-notes-v1|<file name>|" with the header. The app's sys/NotesVault says which key seals what.
+ */
+object NoteEnvelope {
+    const val VERSION = 1
+    val frame = SealedEnvelope("RNOT", "notes", VERSION) // l10n: not text (the file's magic and the additional data's kind)
+
+    fun seal(n: Note, cipher: app.heyrobot.core.memory.MemoryCipher, fileName: String): ByteArray =
+        frame.seal(NoteCodec.toJson(n).toByteArray(Charsets.UTF_8), cipher, fileName)
+
+    fun open(bytes: ByteArray?, cipherFor: (String) -> app.heyrobot.core.memory.MemoryCipher?, fileName: String): SealedOpen<Note> =
+        frame.open(bytes, cipherFor, fileName) { NoteCodec.fromJson(String(it, Charsets.UTF_8)) }
 }
