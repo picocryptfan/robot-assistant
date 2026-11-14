@@ -224,7 +224,12 @@ class TranscriptionCheckActivity : ComponentActivity() {
         if (HandsFreeHub.callActive()) { problem.value = getString(R.string.conv_check_call_on); return false }
         plan.communication?.let { c ->
             val out = AudioDevices.info(this, c, outputs = true)
-            if (out == null || !SessionRoute.take(this, routeOwner, out)) { problem.value = getString(R.string.conv_check_no_headset_mic); return false }
+            if (out == null || !SessionRoute.take(this, routeOwner, out)) {
+                // 1.4.2: a refused take holds nothing; let go anyway, so no path leaves the phone in call mode.
+                SessionRoute.release(this, routeOwner)
+                problem.value = getString(R.string.conv_check_no_headset_mic)
+                return false
+            }
         }
         routeHeld = true
         CaptureRoute.set(plan.capture == CaptureSource.VOICE_COMMUNICATION, headsetInput(plan))

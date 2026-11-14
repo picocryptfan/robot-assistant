@@ -392,7 +392,7 @@
   ],
   [
    "cards",
-   "^core/src/main/java/app/heyrobot/core/(Tools|Approval|Turn|Safety|ScreenAccess|ScreenQuestion|Tips|ChatOnly|Conversation|ConversationState|Weather|Nearby|Calendar|PhoneStatus|FreeUp|Maps\\w*|People|PeopleStore|Texting|VCard|HandOff|Cheogram|BrowserActions|Quoted|When|Groups|Notes|Secrets)\\.kt$"
+   "^core/src/main/java/app/heyrobot/core/(Tools|Approval|Turn|Safety|ScreenAccess|ScreenQuestion|Tips|ChatOnly|Conversation|ConversationState|Weather|Nearby|Calendar|Repeat|PhoneStatus|FreeUp|Maps\\w*|People|PeopleStore|Texting|VCard|HandOff|Cheogram|BrowserActions|Quoted|When|Groups|Notes|Secrets)\\.kt$"
   ],
   [
    "cards",

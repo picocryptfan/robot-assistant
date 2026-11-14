@@ -112,6 +112,17 @@ object ApprovalGate {
     val ASKS_WHEN_UNSAID: Set<ToolName> = setOf(ToolName.OPEN_APP, ToolName.SET_TIMER, ToolName.FLASHLIGHT,
         ToolName.MAPS_SEARCH, ToolName.MAPS_NAVIGATE, ToolName.ADD_NOTE)
 
+    /**
+     * fix-hands-free-route (rc3, 14 Nov: typed "start hands free" raised "Turn the flashlight on"): what only your words can
+     * ask for. The flashlight takes nothing from them but on or off, so a call when they name no light (Groups.asked) is the
+     * model's guess: no card, nothing runs, and the model answers your words ([NOT_ASKED]). The rest of [ASKS_WHEN_UNSAID]
+     * keeps its card: a timer's minutes, an app's or a place's name and a note's words can ask without the tool's own word.
+     */
+    val NEEDS_ITS_WORDS: Set<ToolName> = setOf(ToolName.FLASHLIGHT)
+
+    /** What the model reads for a [NEEDS_ITS_WORDS] call your words didn't ask for (English, for the model). */
+    const val NOT_ASKED = "Their words didn't ask for this. Nothing was done or shown. Answer what they said in words, without a tool." // l10n: not text (the model reads it, never shown or spoken)
+
     /** remember and forget change memory: never on the lock screen. */
     fun memoryWrite(tool: ToolName): Boolean = tool == ToolName.REMEMBER || tool == ToolName.FORGET
 

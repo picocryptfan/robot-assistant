@@ -262,7 +262,8 @@ class TurnTest {
             heard = TurnWords.of(said, java.time.ZonedDateTime.now(), app.heyrobot.core.i18n.Lang.EN))
 
     @Test fun anActionYourWordsDidNotAskForWaitsForYourYes() = runBlocking {
-        for ((c, ran) in listOf(call("open_app", "name" to "Settings") to Action.OpenApp("Settings"), call("flashlight", "on" to true) to null,
+        // fix-hands-free-route: not the flashlight, which your words must name (theFlashlightOnlyWhenYourWordsNameIt).
+        for ((c, ran) in listOf(call("open_app", "name" to "Settings") to Action.OpenApp("Settings"),
             call("add_note", "text" to "x") to null, timer to null)) {
             val actions = FakeActions(justOpen)
             val view = FakeView()
@@ -275,6 +276,52 @@ class TurnTest {
             turn.await()
             assertEquals(c.name, 1, actions.ran.size)
             if (ran != null) assertEquals(ran, actions.ran.single())
+        }
+    }
+
+    /**
+     * fix-hands-free-route (rc3, 14 Nov): typed "start hands free" raised "Turn the flashlight on". The flashlight only when
+     * your words name it, in English or French: else no card, nothing runs, and the model is told to answer your words.
+     */
+    @Test fun theFlashlightOnlyWhenYourWordsNameIt() = runBlocking {
+        val torch = ModelOutcome.Calls(listOf(call("flashlight", "on" to true)))
+        for (said in listOf("start hands free", "Démarre le mode mains libres", "active les mains libres", "How tall is the CN Tower?")) {
+            val actions = FakeActions(justOpen)
+            val view = FakeView()
+            val model = FakeModel(torch)
+            heardRunner(said, model, actions, view, Confirmations()).run()
+            assertTrue(said, actions.ran.isEmpty())
+            assertTrue(said, view.cards.isEmpty())
+            assertEquals(said, 1, model.answers.size)
+            assertTrue(said, model.answers.single().toString().contains(ApprovalGate.NOT_ASKED))
+            // fix-hands-free-route-b: the model's second reply is blank here, and what you see never names the light.
+            assertFalse(said, Regex("(?i)flash|light|torch|torche|lamp|lumi").containsMatchIn(view.text))
+            // review-fix-hands-free-route-b: and the line you see is "Nothing was done.", not an empty reply.
+            assertTrue(said, Regex("Nothing was done\\.|Rien n'a été fait\\.").containsMatchIn(view.text))
+        }
+        for (said in listOf("turn on the flashlight", "Allume la lampe de poche", "torch on", "Éteins la lampe de poche",
+            "allume la torche", "lights on", "allume les lampes", "turn on the torchlight", "allume la lumière")) {
+            val actions = FakeActions(justOpen)
+            val view = FakeView()
+            heardRunner(said, FakeModel(torch), actions, view, Confirmations()).run()
+            assertEquals(said, 1, actions.ran.size)
+            assertEquals(said, ActionStatus.DONE, view.cards.values.single().status)
+        }
+    }
+
+    /** fix-hands-free-route-b: "turn it off" after "turn on the flashlight" names no light, so its off call keeps its yes/no card. */
+    @Test fun aFlashlightOffYourWordsDidNotNameWaitsForYourYes() = runBlocking {
+        for (said in listOf("turn it off", "éteins-la")) {
+            val actions = FakeActions(justOpen)
+            val view = FakeView()
+            val conf = Confirmations()
+            val turn = async { heardRunner(said, FakeModel(ModelOutcome.Calls(listOf(call("flashlight", "on" to false)))), actions, view, conf).run() }
+            val id = withTimeout(5_000) { view.pending.receive() }
+            assertTrue(said, actions.ran.isEmpty())
+            assertEquals(said, ActionStatus.PENDING, view.cards[id]!!.status)
+            conf.answer(id, true)
+            turn.await()
+            assertEquals(said, listOf<Action>(Action.Flashlight(false)), actions.ran)
         }
     }
 

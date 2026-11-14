@@ -690,12 +690,16 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
 
     private fun prepareEvent(a: Action.AddEvent): Prepared {
         val now = ZonedDateTime.now()
-        val span = when (val r = Events.times(a, now, settings.eventMinutes, lang)) {
-            is Read.Unreadable -> return Prepared.Refused(ActionStatus.INVALID, r.why)
+        // 1.4.2: a repeat in the words ("every second Friday") is read by Robot and written as the event's RRULE.
+        val (span, repeat) = when (val r = app.heyrobot.core.RepeatWords.eventTimes(a, now, settings.eventMinutes, lang)) {
+            is Read.Unreadable -> return Prepared.Refused(app.heyrobot.core.RepeatWords.status(r), r.why)
             is Read.Ok -> r.value
         }
         // Robot adds it itself when it may write to a calendar; otherwise the calendar app's editor opens prefilled.
-        val cal = if (Calendars.readGranted(ctx) && Calendars.writeGranted(ctx)) CalendarPick.choose(Calendars.writable(ctx), settings.eventCalendar) else null
+        val calendars = if (Calendars.readGranted(ctx) && Calendars.writeGranted(ctx)) Calendars.writable(ctx) else null
+        val cal = calendars?.let { CalendarPick.choose(it, settings.eventCalendar) }
+        // fix-calendar-repeat-f: the calendar chosen in Settings is gone: the card says where the event goes instead.
+        val gone = if (calendars != null && cal != null && CalendarPick.gone(calendars, settings.eventCalendar)) ToolStrings.chosenCalendarGone("calendar" to cal.name) else null
         if (cal == null && !HandOffApps.resolves(ctx, Calendars.editorIntent())) {
             return if (!Calendars.writeGranted(ctx)) Prepared.Refused(ActionStatus.NEEDS_PERMISSION, ToolStrings.allowCalendarWrite())
             else Prepared.Refused(ActionStatus.NO_APP, ToolStrings.noCalendarApp())
@@ -703,10 +707,10 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         // 1.1, a dated reminder: its alert (9:00 on an all-day one's day, else at its time; none once that has passed), and
         // always its card. Without a calendar Robot may write to, the editor can't take the alert: the card says to add it there.
         val alertAt = if (a.alert) EventAlert.at(span, now) else null
-        val plan = EventPlan(span.start, span.end!!, span.allDay, cal?.id, cal?.name, now.year, alertAt)
-        if (!a.alert) return Prepared.Ready(a.copy(plan = plan))
-        return Prepared.Ready(a.copy(plan = plan), why = setOf(AskWhy.REMINDER), noteText = if (cal == null && alertAt != null) ToolStrings.addAlertInApp() else null,
-            note = if (cal == null && alertAt != null) ToolStrings.addAlertInApp().en() else null)
+        val plan = EventPlan(span.start, span.end!!, span.allDay, cal?.id, cal?.name, now.year, alertAt, repeat)
+        if (!a.alert) return Prepared.Ready(a.copy(plan = plan), noteText = gone, note = gone?.en())
+        return Prepared.Ready(a.copy(plan = plan), why = setOf(AskWhy.REMINDER), noteText = if (cal == null && alertAt != null) ToolStrings.addAlertInApp() else gone,
+            note = if (cal == null && alertAt != null) ToolStrings.addAlertInApp().en() else gone?.en())
     }
 
     private fun addEvent(a: Action.AddEvent): Executed {

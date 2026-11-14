@@ -167,7 +167,7 @@ class WhenParserTest {
     }
 
     @Test fun whatCannotBeReadSaysHow() {
-        assertEquals("say the date like \"tomorrow 3pm\" or \"October 14 at 9\"", WhenParser.SAY_DATE)
+        assertEquals("Say the date like \"tomorrow 3pm\" or \"October 14 at 9\"", WhenParser.SAY_DATE)
         unreadable("")
         unreadable("whenever")
         unreadable("soon")

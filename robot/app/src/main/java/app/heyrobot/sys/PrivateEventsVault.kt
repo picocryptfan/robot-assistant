@@ -178,5 +178,21 @@ object PrivateEventsFiles {
         try { writeAtomic(addedFile(ctx), JSONArray((added(ctx) - id).toList()).toString()) } catch (t: Throwable) { RLog.w("calendar_added", t) }
     }
 
+    /** fix-calendar-lows: each event Robot split off a series, with the series' id (core SeriesSplits); out of every backup, as [addedFile]. */
+    fun splitsFile(ctx: Context) = File(ctx.noBackupFilesDir, "calendar_splits.txt")
+
+    fun splits(ctx: Context): Map<Long, Long> = try {
+        splitsFile(ctx).let { if (it.isFile) app.heyrobot.core.calendar.SeriesSplits.decode(it.readText()) else emptyMap() }
+    } catch (t: Throwable) { RLog.w("calendar_splits", t); emptyMap() }
+
+    @Synchronized fun recordSplit(ctx: Context, split: Long, series: Long) {
+        try { writeAtomic(splitsFile(ctx), app.heyrobot.core.calendar.SeriesSplits.encode(app.heyrobot.core.calendar.SeriesSplits.add(splits(ctx), split, series))) }
+        catch (t: Throwable) { RLog.w("calendar_splits", t) }
+    }
+
+    @Synchronized fun forgetSplits(ctx: Context, ids: Collection<Long>) {
+        try { writeAtomic(splitsFile(ctx), app.heyrobot.core.calendar.SeriesSplits.encode(splits(ctx) - ids.toSet())) } catch (t: Throwable) { RLog.w("calendar_splits", t) }
+    }
+
     private const val MAX_ADDED = 2_000
 }

@@ -373,4 +373,21 @@ class EscalationTest {
         assertTrue(ClaudeSettings.enabled(claudeSettings(), keySaved = true))
         assertTrue(ClaudeSettings.enabled(claudeSettings(claudeEnabled = true), keySaved = false))
     }
+
+    // fix-calendar-row7 (1.4.2): Gemma handed over, its own second answer said nothing, and AUTO had no helper to ask: the
+    // reply was dropped and the turn ended with no reply at all. Now Robot says it couldn't answer.
+    @Test fun anAskNeverEndsWithNoReply() {
+        val after = EscalationPolicy.afterOwnAnswer(EscalationDecision.AUTO, answered = false, hedged = false)
+        assertEquals(EscalationDecision.AUTO, after)
+        assertEquals(EmptyEnd.NO_ANSWER, EscalationPolicy.emptyEnd(saidNothing = true, helperAnswers = false, failed = false))
+        assertEquals(EmptyEnd.FAILED, EscalationPolicy.emptyEnd(saidNothing = true, helperAnswers = false, failed = true))
+        // Only a helper's own answer replaces an empty reply.
+        assertEquals(EmptyEnd.DROP, EscalationPolicy.emptyEnd(saidNothing = true, helperAnswers = true, failed = false))
+        for (h in listOf(true, false)) for (f in listOf(true, false))
+            assertEquals(EmptyEnd.FINISH, EscalationPolicy.emptyEnd(saidNothing = false, helperAnswers = h, failed = f))
+        for (h in listOf(true, false)) for (f in listOf(true, false)) {
+            val end = EscalationPolicy.emptyEnd(saidNothing = true, helperAnswers = h, failed = f)
+            assertTrue("$h $f", end != EmptyEnd.FINISH && (end == EmptyEnd.DROP) == h)
+        }
+    }
 }

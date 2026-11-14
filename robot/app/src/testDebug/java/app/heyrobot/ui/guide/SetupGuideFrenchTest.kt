@@ -102,7 +102,7 @@ class SetupGuideFrenchTest {
         val stores = Stores(GuideStep.WELCOME)
         guide(stores)
         rule.onNode(hasText("Bienvenue dans Robot™") and isHeading()).assertExists()
-        rule.onNodeWithText("Étape 1 sur 18").assertExists()
+        rule.onNodeWithText("Étape 1 sur 22").assertExists()
         rule.onNode(hasText("Suivant") and hasClickAction()).assertExists()
         rule.scrollToText("Menus")
         rule.onRow("Menus").assert(hasStateDescription("Français (Canada)")).performClick()

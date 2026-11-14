@@ -442,6 +442,46 @@ class ListsRouterTest {
         assertEquals(ListsCommand.Check("le lait", ListRef.It, Lang.FR), r("est-ce que le lait est dessus", ListsHeard(focus = true, lastTurn = true)))
     }
 
+    // fix-list-remove-142 (rc6 on the Pixel 8): a spoken remove ticks (D8, "voice never deletes an item"), and the reply
+    // is the tick's. « enlève le lait de la liste Épicerie » named Shopping by its French name after « liste » and wasn't
+    // heard, so the model answered « Je viens de retirer le lait » with nothing done; a bare "remove milk" wasn't heard either.
+    @Test fun aSpokenRemoveIsATickOfTheListItNames() {
+        val sh = ListsList(id(1), role = ListRole.SHOPPING, made = 0, items = listOf(item(2, "Bread"), item(3, "Apples"), item(4, "Coffee"), item(5, "Lait")))
+        val td = ListsList(id(6), role = ListRole.TODO, made = 0, items = emptyList())
+        val fr = ListsHeard(seen = ListsSeen.of(ListsFile(listOf(sh, td)), null))
+        assertEquals(ListsCommand.Tick("le lait", shopping, Lang.FR), r("enlève le lait de la liste Épicerie", fr))
+        assertEquals(ListsCommand.Tick("le lait", shopping, Lang.FR), r("enlève le lait de la liste épicerie"))
+        assertEquals(ListsCommand.Tick("le lait", ListRef.Named("Chalet"), Lang.FR), r("retire le lait de la liste Chalet", ListsHeard(names = listOf("Chalet"))))
+        assertEquals(ListsCommand.Tick("le lait", ListRef.Unnamed, Lang.FR), r("retire le lait", fr))
+        val en = ListsHeard(seen = ListsSeen.of(ListsFile(listOf(sh.copy(items = sh.items.dropLast(1) + item(5, "Milk")), td)), null))
+        assertEquals(ListsCommand.Tick("milk", ListRef.Unnamed, Lang.EN), r("remove milk", en))
+        assertEquals(ListsCommand.Tick("milk", shopping, Lang.EN), r("take milk off my shopping list", en))
+        assertEquals(ListsCommand.Tick("milk", ListRef.Unnamed, Lang.EN), r("remove milk from the list", en))
+        // Not a list's: nothing on a list by those words, or a list you don't have.
+        assertNull(r("remove the reminder", en))
+        assertNull(r("delete the alarm", en))
+        assertNull(r("remove eggs", en))
+        assertNull(r("enlève le nom de la liste Gagnants", fr))
+    }
+
+    // fix-list-remove-142-b: with a list in focus and the phone locked (no items seen), a bare remove fell back to that list,
+    // so the alarm, reminder, event or group member asked for was never removed. Only an item you can see claims the turn.
+    @Test fun aBareRemoveNeverFallsBackToTheListInFocus() {
+        val sh = ListsList(id(1), role = ListRole.SHOPPING, made = 0, items = listOf(item(2, "Bread"), item(3, "Milk")))
+        val td = ListsList(id(6), role = ListRole.TODO, made = 0, items = emptyList())
+        val locked = ListsHeard(focus = true)
+        val unlocked = ListsHeard(focus = true, seen = ListsSeen.of(ListsFile(listOf(sh, td)), sh.id))
+        for (t in listOf("remove the alarm", "delete the reminder", "remove the last event", "remove Sam from the group")) {
+            assertNull("locked: $t", r(t, locked))
+            assertNull("unlocked: $t", r(t, unlocked))
+        }
+        val one = ListsHeard(seen = ListsSeen.of(ListsFile(listOf(sh, td)), null))
+        assertEquals(ListsCommand.Tick("milk", ListRef.Unnamed, Lang.EN), r("remove milk", one))
+        assertEquals(ListsCommand.Tick("milk", ListRef.Unnamed, Lang.EN), r("remove milk", unlocked))
+        // Your own list by a built-in name: « la liste Courses » is your Courses list, as in English.
+        assertEquals(ListsCommand.Tick("le lait", ListRef.Named("Courses"), Lang.FR), r("enlève le lait de la liste Courses", ListsHeard(names = listOf("Courses"))))
+    }
+
     private fun id(n: Int): ListsId = ListsId.of("%032x".format(n))!!
     private fun item(n: Int, text: String, done: Boolean = false) = ListItem(id(100 + n), text, done = done, pos = n * 1000L, at = 0, upd = 0, by = ItemBy.YOU, how = ItemHow.VOICE)
 }

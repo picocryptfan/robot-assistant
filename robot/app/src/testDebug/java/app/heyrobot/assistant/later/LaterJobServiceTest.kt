@@ -28,7 +28,7 @@ class LaterJobServiceTest {
     @Test fun aStopReachesOnlyItsOwnStart() {
         val stops = LinkedBlockingQueue<() -> Boolean>()
         val go = CountDownLatch(1)
-        LaterJobService.runner = { _, _, stopped -> stops.put(stopped); go.await(5, SECONDS); true }
+        LaterJobService.runner = { _, _, _, stopped -> stops.put(stopped); go.await(5, SECONDS); true }
         val finished = LinkedBlockingQueue<Boolean>()
         val s = Robolectric.setupService(LaterJobService::class.java)
         assertTrue(s.start(null) { finished.put(it) })
@@ -41,5 +41,16 @@ class LaterJobServiceTest {
         go.countDown()
         // The stopped one doesn't ask to run again; the running one does.
         assertEquals(setOf(false, true), setOf(finished.poll(5, SECONDS), finished.poll(5, SECONDS)))
+    }
+
+    // review-fix-later-job-fire-b M1: after an unlock replace, the run finds only the VPN and sets the retry; Wi-Fi joining
+    // within the minute must still replace it, so a start clears the gap.
+    @Test fun aStartEndsTheReplaceGap() {
+        LaterJobService.runner = { _, _, _, _ -> false }
+        SignalLater.lastReplace = System.currentTimeMillis()
+        val finished = LinkedBlockingQueue<Boolean>()
+        assertTrue(Robolectric.setupService(LaterJobService::class.java).start(null) { finished.put(it) })
+        assertEquals(0L, SignalLater.lastReplace)
+        assertEquals(false, finished.poll(5, SECONDS))
     }
 }

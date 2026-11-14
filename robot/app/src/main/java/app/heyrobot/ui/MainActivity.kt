@@ -113,6 +113,7 @@ import app.heyrobot.ui.guide.PhoneGuideStores
 import app.heyrobot.ui.guide.SetupGuideScreen
 import app.heyrobot.sys.SetupGuideStore
 import app.heyrobot.core.guide.SetupGuide
+import app.heyrobot.core.guide.GuideStep
 import app.heyrobot.ui.settings.AppRoutes
 import app.heyrobot.ui.settings.HandsFreeNoticeLine
 import app.heyrobot.ui.settings.SettingsNav
@@ -315,6 +316,8 @@ sealed class Page {
     data object AddHelper : Page()
     /** 1.0: the setup guide (where it is, in setup_guide.json). */
     data object Guide : Page()
+    /** 1.5: the features added after [from] (Settings › About: every version's). */
+    data class WhatsNew(val from: String) : Page()
 
     companion object {
         /** The open page survives a recreation (rotation, dark mode, the process killed): "note:<id>", "setup:1"... */
@@ -345,6 +348,7 @@ sealed class Page {
                     is Helper -> "helper:${p.id}" // l10n: not text (saved route)
                     AddHelper -> "addhelper"
                     Guide -> "guide"
+                    is WhatsNew -> "whatsnew:${p.from}" // l10n: not text (saved route)
                 }
             },
             restore = { v ->
@@ -372,6 +376,7 @@ sealed class Page {
                     v.startsWith("helper:") -> Helper(v.removePrefix("helper:"))
                     v == "addhelper" -> AddHelper
                     v == "guide" -> Guide
+                    v.startsWith("whatsnew:") -> WhatsNew(v.removePrefix("whatsnew:"))
                     else -> null
                 }
             },
@@ -519,10 +524,38 @@ fun RobotAppUi(activity: MainActivity) {
         SetupGuideStore.save(ctx, SetupGuide.open(SetupGuideStore.current(ctx)))
         page = Page.Guide
     }
+    /** 1.5, from What's new: the guide on [step] (null: where it was left, or from Welcome). */
+    fun openGuideAt(step: GuideStep?) {
+        val now = SetupGuideStore.current(ctx)
+        SetupGuideStore.save(ctx, if (step == null) SetupGuide.open(now) else SetupGuide.openAt(now, step))
+        page = Page.Guide
+    }
+    /** 1.5, from What's new's notice: the list a launch would have shown, recorded as shown; nothing once it was. */
+    fun openWhatsNewNotice() {
+        val now = SetupGuideStore.current(ctx)
+        val v = app.heyrobot.BuildConfig.VERSION_NAME
+        if (app.heyrobot.core.guide.WhatsNew.atLaunch(now, v) != app.heyrobot.core.guide.GuideLaunch.WHATS_NEW) return
+        SetupGuideStore.save(ctx, app.heyrobot.core.guide.WhatsNew.launched(now, v, app.heyrobot.core.guide.GuideLaunch.WHATS_NEW))
+        page = Page.WhatsNew(app.heyrobot.core.guide.WhatsNew.from(now) ?: app.heyrobot.core.guide.WhatsNew.FIRST)
+    }
     // Once per guide version, by itself: at a launch that no link opened a page for (a new install, or an update with a new guide).
     val launchRoute = remember { activity.route.value }
     LaunchedEffect(Unit) {
-        if (launchRoute == null && page == null && SetupGuide.opensAtLaunch(SetupGuideStore.current(ctx))) openGuide()
+        // 1.5: after an update that added features, What's new instead, once (core WhatsNew).
+        if (launchRoute == null && page == null) {
+            val now = SetupGuideStore.current(ctx)
+            val shown = app.heyrobot.core.guide.WhatsNew.atLaunch(now, app.heyrobot.BuildConfig.VERSION_NAME)
+            val next = app.heyrobot.core.guide.WhatsNew.launched(now, app.heyrobot.BuildConfig.VERSION_NAME, shown)
+            if (next != now) SetupGuideStore.save(ctx, next) // written only when something changed
+            when (shown) {
+                app.heyrobot.core.guide.GuideLaunch.GUIDE -> openGuide()
+                app.heyrobot.core.guide.GuideLaunch.WHATS_NEW -> {
+                    page = Page.WhatsNew(app.heyrobot.core.guide.WhatsNew.from(now) ?: app.heyrobot.core.guide.WhatsNew.FIRST)
+                    app.heyrobot.update.UpdateNotices.cancelWhatsNew(ctx) // its notice, if one was posted, has done its job
+                }
+                app.heyrobot.core.guide.GuideLaunch.NOTHING -> Unit
+            }
+        }
     }
 
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -680,6 +713,7 @@ fun RobotAppUi(activity: MainActivity) {
     val route by activity.route
     // An open note editor saves when it closes (its onDispose), so switching pages here never loses text.
     LaunchedEffect(route) {
+        if (route == AppPages.WHATS_NEW) openWhatsNewNotice()
         route?.let(AppRoutes::target)?.let { t ->
             if (t.tab != null) { tab = t.tab; page = null }
             if (t.page != null) page = t.page
@@ -1045,6 +1079,7 @@ fun RobotAppUi(activity: MainActivity) {
         Page.ConversationSettings -> ConversationSettingsScreen(settings, snap, ::updateSettings, actions, snackbar, onBack = nav::back)
         Page.Helpers -> HelpersScreen(settings, snap, ::updateSettings, actions, snackbar, onBack = nav::back)
         is Page.Helper -> HelperScreen(p.id, settings, snap, ::updateSettings, actions, snackbar, onBack = nav::back)
+        is Page.WhatsNew -> app.heyrobot.ui.guide.WhatsNewScreen(p.from, actions, ::openGuideAt, onClose = nav::back)
         Page.Guide -> SetupGuideScreen(settings, snap, ::updateSettings, actions, guideStores, snackbar, onClose = nav::back)
         Page.AddHelper -> AddHelperScreen(settings, ::updateSettings, actions, snackbar, onAdded = { nav.replace(Page.Helper(it)) }, onBack = nav::back)
         null -> Scaffold(

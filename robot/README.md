@@ -42,7 +42,7 @@ Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `
 
 ## What's new in 1.4
 
-Robot 1.4.1 (13 Nov 2026) fixes 1.4.0; the notes in docs/release-notes-1.4.1.md are its list, and docs/release-notes-1.4.0.md is the full list of 1.4.
+Robot 1.4.2 (14 Nov 2026) fixes dictated notes in 1.4.0 and 1.4.1 and adds repeating events, a spoken remove that ticks a list item off, and fixes to Later, car mode, the flashlight and helpers; the notes in docs/release-notes-1.4.2.md are its list, docs/release-notes-1.4.1.md is 1.4.1's, and docs/release-notes-1.4.0.md is the full list of 1.4.
 
 - Answers: Ready answers (core `messages/ReadyAnswers`), Wikipedia on this phone (`wiki/`), When did I last (`lasttime/`), summarize a web page (`web/PageSummary`), a helper's web search, Search by meaning (`memory/MeaningSearch`, model pinned in `SearchModel`).
 - Hands busy: questions kept for when there's signal (`online/Later`), Read it to me (`read/`), Step by step (`steps/`, its words in `StepWords`), reminders for a moment (`MomentReminders`), Undo and change (`CorrectRouter`), earbud buttons (`headset/EarbudButtons`), Heads-up before events (`headsup/`).

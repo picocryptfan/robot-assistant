@@ -297,7 +297,13 @@ object ListsRouter {
                 rest[0] in setOf("de", "des", "du", "pour") && rest.size > 1 -> { rest = rest.drop(1).toMutableList(); restSaid = restSaid.drop(1).toMutableList() } // l10n: not text (words Robot hears)
                 rest[0].startsWith("d'") && rest[0].length > 2 -> { rest[0] = rest[0].substring(2); restSaid[0] = restSaid[0].substring(2) }
                 rest[0] == "a" && rest.size > 1 -> {}
-                else -> return null
+                // fix-list-remove-142: « la liste Épicerie », « la liste Chalet »: a list by its name right after « liste ».
+                else -> {
+                    // Your own lists' names first, as in English: your « Courses » list beside Shopping.
+                    val said = restSaid.joinToString(" ")
+                    if (rest.size <= MAX_NAME_WORDS && heard.names.any { ListsText.key(it) == ListsText.key(said) }) return Ref(ListRef.Named(said), s.joinToString(" "))
+                    return ROLE_FR[rest.joinToString(" ")]?.let { Ref(ListRef.Role(it), s.joinToString(" ")) }
+                }
             }
             if (rest.isNotEmpty() && rest[0].startsWith("l'") && rest[0].length > 2) {
                 rest[0] = rest[0].substring(2)
@@ -609,6 +615,12 @@ object ListsRouter {
         }
         // "remove eggs from the shopping list": a tick, never a delete (D8).
         if (v in REMOVE_EN) split(s, 1, setOf("from"), fr = false, heard)?.let { (items, r) -> return if (ownItems(items)) ListsCommand.Tick(items, r.ref, en) else null }
+        // fix-list-remove-142: a bare "remove milk": a tick only when an item you can see (unlocked, or "Hear and tick on the
+        // lock screen" on) has those words; never the list in focus alone, so "remove the alarm" keeps its own route, locked too.
+        if (v in REMOVE_EN && v != "take") {
+            val items = s.words.drop(1).joinToString(" ")
+            if (ownItems(items) && heard.seen?.has(items, en) == true) return ListsCommand.Tick(items, ListRef.Unnamed, en)
+        }
         return null
     }
 

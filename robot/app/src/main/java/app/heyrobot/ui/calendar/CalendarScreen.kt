@@ -160,6 +160,8 @@ data class EventDraft(
     val start: LocalTime = LocalTime.of(9, 0),
     val end: LocalTime = LocalTime.of(10, 0),
     val allDay: Boolean = false,
+    /** fix-calendar-repeat-b: a phone event's occurrence begin (Instances.BEGIN): a change to a series' occurrence is to it alone. */
+    val instance: Long? = null,
 ) {
     val isNew: Boolean get() = key == null && phoneId == 0L
 
@@ -177,7 +179,8 @@ data class EventDraft(
             val b = if (e.allDay) Instant.ofEpochMilli(e.begin).atZone(ZoneOffset.UTC) else Instant.ofEpochMilli(e.begin).atZone(zone)
             val en = Instant.ofEpochMilli(e.end).atZone(zone)
             return EventDraft(e.key, if (e.kind == EventKind.PHONE) e.id else 0, e.title, e.location.orEmpty(), b.toLocalDate(),
-                b.toLocalTime().withSecond(0).withNano(0), en.toLocalTime().withSecond(0).withNano(0), e.allDay)
+                b.toLocalTime().withSecond(0).withNano(0), en.toLocalTime().withSecond(0).withNano(0), e.allDay,
+                if (e.kind == EventKind.PHONE) e.begin else null)
         }
     }
 }
@@ -220,7 +223,7 @@ fun CalendarTab(a: AppActions, modifier: Modifier) {
         addInApp = { CalendarSource.start(ctx, Calendars.editorIntent()) },
         directions = { p -> CalendarSource.start(ctx, Intent(Intent.ACTION_VIEW, Uri.parse(LeaveBy.geo(p)))) },
         save = { d -> CalendarSource.save(ctx, d, zone).also { if (it == null) changes++ } },
-        delete = { d -> scope.launch { withContext(Dispatchers.IO) { CalendarSource.delete(ctx, d) }; changes++ } },
+        delete = { d -> scope.launch { val r = withContext(Dispatchers.IO) { CalendarSource.delete(ctx, d) }; if (r == PrivateRefusal.SERIES_CHANGED_IN_APP) a.say(ctx.getString(refusalText(r))); changes++ } },
         startOver = {
             scope.launch {
                 val ok = withContext(Dispatchers.IO) { CalendarSource.startOver(ctx) }
@@ -258,7 +261,7 @@ object CalendarSource {
         if (d.phoneId > 0) {
             if (d.title.isBlank()) return PrivateRefusal.NO_TITLE
             if (e < b || (d.allDay && e <= b)) return PrivateRefusal.ENDS_BEFORE
-            return if (Calendars.update(ctx, d.phoneId, d.title.trim(), d.place.trim(), b, e, d.allDay, zone)) null else PrivateRefusal.NOT_FOUND
+            return Calendars.update(ctx, d.phoneId, d.title.trim(), d.place.trim(), b, e, d.allDay, zone, d.instance)
         }
         val ev = PrivateEvent(d.key ?: PrivateEdits.newId(), d.title, b, e, d.allDay, d.place)
         val (load, edit) = PrivateEventsFiles.vault(ctx).update { f, now -> PrivateEdits.save(f, ev, now) }
@@ -268,10 +271,12 @@ object CalendarSource {
     /** Private events Robot can't open, kept aside so new ones can be saved (PrivateEventsVault.startOver). */
     fun startOver(ctx: Context): Boolean = PrivateEventsFiles.vault(ctx).startOver()
 
-    fun delete(ctx: Context, d: EventDraft) {
-        if (d.phoneId > 0) { if (Calendars.delete(ctx, d.phoneId)) PrivateEventsFiles.forgetAdded(ctx, d.phoneId); return }
-        val key = d.key ?: return
+    /** fix-calendar-lows-b: null when deleted (or a private event), else why the phone's event wasn't. */
+    fun delete(ctx: Context, d: EventDraft): PrivateRefusal? {
+        if (d.phoneId > 0) return Calendars.delete(ctx, d.phoneId, d.instance).also { if (it == null && Calendars.row(ctx, d.phoneId) == null) PrivateEventsFiles.forgetAdded(ctx, d.phoneId) }
+        val key = d.key ?: return null
         PrivateEventsFiles.vault(ctx).update { f, _ -> PrivateEdits.delete(f, key) }
+        return null
     }
 
     /** Your calendar app at the event (or at its time when it has no id). */
@@ -538,6 +543,9 @@ private fun refusalText(r: PrivateRefusal): Int = when (r) {
     PrivateRefusal.ENDS_BEFORE -> R.string.today_calendar_ends_before
     PrivateRefusal.FULL -> R.string.today_calendar_full
     PrivateRefusal.NOT_FOUND -> R.string.today_calendar_not_saved_gone
+    PrivateRefusal.REFUSED -> R.string.today_calendar_not_saved_refused
+    PrivateRefusal.CHANGED_IN_APP -> R.string.today_calendar_not_saved_elsewhere
+    PrivateRefusal.SERIES_CHANGED_IN_APP -> R.string.today_calendar_not_saved_series_changed
     PrivateRefusal.LOCKED -> R.string.today_calendar_not_saved
     PrivateRefusal.UNREADABLE -> R.string.today_calendar_not_saved_unreadable
 }

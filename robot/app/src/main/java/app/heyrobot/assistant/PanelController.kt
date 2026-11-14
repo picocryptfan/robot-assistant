@@ -387,6 +387,7 @@ object PanelController {
         override fun useScreenshot() = Assistant.screenSharing(VoiceHub.app).second
         override fun heldShot() = screenShare.shot?.let { it to screenShare.pkg }
         override fun finishReply(replyId: String, reason: DoneReason) = this@PanelController.finishReply(replyId, reason)
+        override fun finishHandedOver(replyId: String) = this@PanelController.finishReply(replyId, DoneReason.END, noReply = NoReply.HANDED_OVER)
         override fun failReply(replyId: String, message: String) = this@PanelController.failReply(replyId, message)
         override suspend fun leaveForApp() = this@PanelController.leaveForApp()
         override val buttonLangs get() = this@PanelController.buttonLangs
@@ -421,6 +422,7 @@ object PanelController {
             fallBack: Boolean): Boolean = helperTurn.escalate(replyId, question, blocks, voiceAsked, reuseBubble, h, fallBack)
         override suspend fun budgetReached(s: RobotSettings, h: HelperConfig?) = HelperLink.budgetReached(VoiceHub.app, s, h)
         override val helperDeclined get() = this@PanelController.helperDeclined
+        override fun stopAsked() = this@PanelController.stopAsked
         override fun personalNow(replyId: String?) = this@PanelController.personalNow(replyId)
         override fun finishOrDrop(replyId: String) = this@PanelController.finishOrDrop(replyId)
         override suspend fun webAnswer(replyId: String, question: String, history: List<ChatTurn>, found: WebOutcome) = webSearch.answer(replyId, question, history, found)
@@ -1629,8 +1631,12 @@ object PanelController {
         // Screen text, a picture, a read tool's findings or a helper's words anywhere in this conversation: every action asks first.
         val untrusted = TurnRules.untrusted(chat)
         // fix-123-d: a note you dictate is add_note's call in your words, never left to the model to call (core NoteDictation.direct).
-        val dictated = if (way == FastPath.Way.MODEL && cmd == null && attachment == Attachment.NONE && !untrusted && !_state.value.inHelperMode)
-            app.heyrobot.core.NoteDictation.direct(q) else null
+        val dictated = app.heyrobot.core.NoteDictation.forTurn(q, way, cmd, attachment, untrusted, _state.value.inHelperMode)
+        // fix-note-answer: "write down how to say thank you in French" is answered, then saved with its answer (NoteDictation.Answered).
+        val noted = if (dictated != null) null else app.heyrobot.core.NoteDictation.questionForTurn(q, way, cmd, attachment, _state.value.inHelperMode)
+        // fix-calendar-row7-c: "every second Friday starting the 20th timesheet" is add_event's call in your words (core EventDictation).
+        val evented = if (dictated != null || noted != null) null
+            else app.heyrobot.core.EventDictation.forTurn(q, way, cmd, attachment, untrusted, _state.value.inHelperMode, java.time.ZonedDateTime.now(), turnLangs.say)
         // The helper this turn goes to: the one named, or the one whose conversation is on. 1.0.0: "ask the helper …" names
         // none (HelperName.ANY_ID): one that can take it now, the one you chose first (HelperSettings.askTarget); none, and
         // PanelHelperTurn.run says what's missing.
@@ -1738,7 +1744,25 @@ object PanelController {
                 }
                 // A plain request to text someone (or the answer to "what should it say?") goes straight to send_text.
                 way == FastPath.Way.TEXT && texting.direct(replyId, q, textingFor, fromVoice, untrusted) -> {}
-                dictated != null -> noteTurn(replyId, dictated)
+                dictated != null -> {
+                    // review-fix-jot-down-after-note L1, L2: as the model path, a held correction and the ask for a helper stay.
+                    lastRouter = "NoteDictation" // l10n: not text
+                    PanelCorrect.keep(heldFix)
+                    helperChoice.asked(asked)
+                    noteTurn(replyId, dictated)
+                }
+                evented != null -> {
+                    lastRouter = "EventDictation" // l10n: not text
+                    PanelCorrect.keep(heldFix)
+                    helperChoice.asked(asked)
+                    noteTurn(replyId, evented, ToolName.ADD_EVENT)
+                }
+                noted != null -> {
+                    lastRouter = "NoteAnswer" // l10n: not text
+                    PanelCorrect.keep(heldFix)
+                    helperChoice.asked(asked)
+                    runTurn(replyId, noted, attachment, sText, image, history, untrusted, guard, fromVoice, noteAnswer = true)
+                }
                 else -> {
                     PanelCorrect.keep(heldFix)
                     helperChoice.asked(asked)
@@ -1803,6 +1827,7 @@ object PanelController {
      */
     private fun startTurn(replyId: String, block: suspend () -> Unit) = slot.start {
         claimsHeld = false
+        stopAsked = false
         try {
             block()
         } catch (e: CancellationException) {
@@ -1833,7 +1858,7 @@ object PanelController {
 
     private suspend fun runTurn(
         replyId: String, question: String, attachment: Attachment, screen: String?, image: ByteArray?, history: List<ChatTurn>, untrusted: Boolean,
-        guard: EscalationGuard, voiceAsked: Boolean,
+        guard: EscalationGuard, voiceAsked: Boolean, noteAnswer: Boolean = false,
     ) {
         val s = VoiceHub.settings
         val target = target(s)
@@ -1867,7 +1892,7 @@ object PanelController {
         // offer to open Settings › Model, never a switch made for you. (Texting and the helpers' phrases went their own way
         // before the model was ever asked, as always.)
         // A question about the screen only wants an answer: no tools, so no card can come of it (core ScreenQuestion).
-        val chatOnly = loaded.chatOnly || app.heyrobot.core.ScreenQuestion.answerOnly(question, attachment)
+        val chatOnly = loaded.chatOnly || app.heyrobot.core.ScreenQuestion.answerOnly(question, attachment) || noteAnswer
         // 1.4 Lists: while Lists is on, "add … to my list" is the list tool's (PanelLists.on), as for the full model.
         val listsOn = PanelLists.on(VoiceHub.app)
         if (loaded.chatOnly) ChatOnly.actionAsked(question, listsOn)?.let { asked ->
@@ -1908,7 +1933,7 @@ object PanelController {
         // What you asked for in your own words this turn (never the screen's text or a photo): Safety cards' "asked for".
         // fix-everyday-c: "and tomorrow?" also asks for what the turn before asked for (its read tools: core ToolRouter.asked).
         val askedNow = ToolRouter.asked(question, chat.filter { it.role == TurnRole.USER }.map { it.text }.let { u ->
-            u.getOrNull(u.size - if (u.lastOrNull() == question) 2 else 1) }, listsOn)
+            u.getOrNull(u.size - if (u.lastOrNull() == question) 2 else 1) }, listsOn).let { if (noteAnswer) it + ToolName.ADD_NOTE else it }
         // The loaded model's context: every budget below is made from it (4,096, or a short-context file's own).
         val maxTokens = loaded.contextTokens
         // 0.7: what Robot remembers goes with this panel chat question (pinned preferences, found items), within that context;
@@ -2009,7 +2034,9 @@ object PanelController {
             val budget = reading.history(fixedTokens, TokenEstimate.turn(PromptTurn(PromptRole.USER, fitted.text, img != null)), maxTokens)
             toolRoom = budget - ContextWindow.fit(gen.history, budget).sumOf(TokenEstimate::turn) - TOOL_CALL_TOKENS
             // Chat only: whatever the model emits, no call reaches the approval gate (core ChatOnlyTurn; :brain drops them too).
-            val model = stream.turn(c, convId, replyId, gen, img).let { if (chatOnly) ChatOnlyTurn(it) else it }
+            val model = stream.turn(c, convId, replyId, gen, img).let { if (chatOnly && !noteAnswer) ChatOnlyTurn(it) else it }.let { if (!noteAnswer) it
+                else app.heyrobot.core.NoteDictation.Answered(it, question, { replies.text(replyId).orEmpty() }, app.heyrobot.core.i18n.ToolStrings.noteNoAnswer().render(turnLangs),
+                    turnLangs.say) { t -> replies.setText(replyId, t) } }
             controlRefused = null
             // 0.7: notes kept from content (not your own words) make the turn content too (MemoryTurn.content).
             // 1.1, Skills phase B: a skill the model calls runs through PanelSkills (its card when the rule wants one, then each
@@ -2358,9 +2385,9 @@ object PanelController {
     }
 
     /** fix-123-d: a dictated note (core NoteDictation.direct) as add_note's call in your words, without the model. */
-    private suspend fun noteTurn(replyId: String, call: RawToolCall) {
+    private suspend fun noteTurn(replyId: String, call: RawToolCall, tool: ToolName = ToolName.ADD_NOTE) {
         val r = TurnRunner(app.heyrobot.core.NoteDictation.Direct(call), PanelActions, PanelView(replyId), slot.confirmations, false,
-            asked = setOf(ToolName.ADD_NOTE), messages = PanelMessages.taint(chat), langs = turnLangs, newId = ::newId).run()
+            asked = setOf(tool), messages = PanelMessages.taint(chat), langs = turnLangs, newId = ::newId).run()
         r.failure?.let { failReply(replyId, it) } ?: finishReply(replyId, r.reason ?: DoneReason.END)
     }
 
@@ -2861,11 +2888,15 @@ object PanelController {
 
     // ------------------------------------------------------------------ ending a reply
 
+    /** fix-calendar-row7-d: this turn was stopped by the person (stopGenerating), not cancelled by anything else. */
+    @Volatile private var stopAsked = false
+
     /**
      * Stop button: stops the reply (or the model load) and its voice; a waiting card is declined. [forApp]
      * (fix-car-stay-g): a tap that opens an app leaves a reply in its 3 seconds to send when they end.
      */
     fun stopGenerating(why: TtsStop = TtsStop.BUTTON, forApp: Boolean = false) {
+        stopAsked = true
         cardVoice.stop()
         msgListenAfterSpeech = false
         PanelMessages.stop(forApp)
@@ -2929,7 +2960,7 @@ object PanelController {
     }
 
     /** [costMicros]: a helper's reply's estimated price, kept with it in the history. */
-    private fun finishReply(replyId: String, reason: DoneReason, costMicros: Long = 0) {
+    private fun finishReply(replyId: String, reason: DoneReason, costMicros: Long = 0, noReply: NoReply = NoReply.EMPTY) {
         if (!current(replyId)) return
         val ui = replies.turn(replyId)
         val byHelper = ui?.fromHelper == true
@@ -2943,7 +2974,7 @@ object PanelController {
         // The model finished without a word or an action: say so rather than leave an empty bubble.
         if (text.isEmpty() && actions.isEmpty() && !stopped) {
             text = PanelStrings.noAnswer().render(turnLangs)
-            VoiceLog.add(VoiceEvent.NO_REPLY, NoReply.EMPTY)
+            VoiceLog.add(VoiceEvent.NO_REPLY, noReply)
             if (spokenTurn) cue(Cue.SORRY_NO_ANSWER)
         }
         // 0.7: a turn with messages in it, or after one, is saved as a placeholder (core ChatTurn.messages); memory's History

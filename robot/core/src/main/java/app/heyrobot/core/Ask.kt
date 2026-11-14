@@ -540,11 +540,31 @@ object EscalationPolicy {
 
     /** Robot's own answer, its [text] and whether it [acted] (a card): hedged as the HEDGE trigger counts a reply ([Hedge.detect]). */
     fun ownAnswerHedged(text: String, acted: Boolean): Boolean = !acted && Hedge.detect(text)
+
+    /**
+     * How Robot's reply ends after an escalation that brings no helper into it (1.4.2): [saidNothing] it holds no word and
+     * no card, [helperAnswers] a helper answers next in a bubble of its own, [failed] Robot's own second answer failed.
+     * Never no reply at all: an empty reply goes only for a helper's answer; otherwise Robot says why, or that it couldn't
+     * answer (an AUTO decision with no helper to ask, after its own answer said nothing, was dropped).
+     */
+    fun emptyEnd(saidNothing: Boolean, helperAnswers: Boolean, failed: Boolean): EmptyEnd = when {
+        !saidNothing -> EmptyEnd.FINISH
+        helperAnswers -> EmptyEnd.DROP
+        failed -> EmptyEnd.FAILED
+        else -> EmptyEnd.NO_ANSWER
+    }
 }
+
+/** [EscalationPolicy.emptyEnd]: finish the reply as it is, drop it for the helper's, say why it failed, or say Robot couldn't answer. */
+enum class EmptyEnd { FINISH, DROP, FAILED, NO_ANSWER }
 
 /** At most one escalation per turn, and never one from a helper's answer (the "no loops" rule). */
 class EscalationGuard {
     var used = false; private set
+    /** A helper's bubble landed in this turn (not only tried: one that couldn't be reached gave the question back). */
+    var helperAnswered = false; private set
+
+    fun answered() { helperAnswered = true }
 
     /** True the first time only; false for a helper's answer. */
     fun take(fromHelper: Boolean): Boolean {

@@ -83,6 +83,9 @@
     <string name="today_calendar_ends_before">It ends before it starts.</string>
     <string name="today_calendar_not_saved">Robot couldn\'t save that. Try again with your phone unlocked.</string>
     <string name="today_calendar_not_saved_gone">Robot couldn\'t save that: the event isn\'t there anymore.</string>
+    <string name="today_calendar_not_saved_refused">Your calendar didn\'t take that change, so nothing was saved. You can change it in your calendar app.</string>
+    <string name="today_calendar_not_saved_series_changed">One day of this repeating event was already changed in your calendar app, so Robot left it as it is. You can make this change there.</string>
+    <string name="today_calendar_not_saved_elsewhere">This day was changed in your calendar app, so change it there.</string>
     <string name="today_calendar_not_saved_unreadable">Robot can\'t open your private events, so this wasn\'t saved. Choose Start over at the top of Calendar first.</string>
     <string name="today_calendar_full">You have as many private events as Robot keeps. Delete some to add more.</string>
     <string name="today_calendar_start_over">Start over</string>

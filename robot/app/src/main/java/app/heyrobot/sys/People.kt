@@ -434,6 +434,8 @@ object AppPages {
     const val LINK_REQUESTS = "link_requests"
     /** 1.3 S3.4: the import screen, for a `.robotskill` Robot Files' share target read and holds (sys SkillShareFiles). */
     const val SKILL_IMPORT = "skill_import"
+    /** 1.5: What's new, from its notice after an update (update WhatsNewNotice). */
+    const val WHATS_NEW = "whats_new"
 
     /** [r]'s pack ("tax" or "expenses") and year when it is a [FILES_PACK] route, else null. */
     fun filesPack(r: String): Pair<String, Int>? {

@@ -13,6 +13,8 @@ import app.heyrobot.core.EscalationTrigger
 import app.heyrobot.core.Hedge
 import app.heyrobot.core.HelperBlock
 import app.heyrobot.core.HelperContext
+import app.heyrobot.core.EmptyEnd
+import app.heyrobot.core.NoReply
 import app.heyrobot.core.Personal
 import app.heyrobot.core.PreRouter
 import app.heyrobot.core.RLog
@@ -82,11 +84,15 @@ internal class PanelEscalation(private val state: MutableStateFlow<PanelState>, 
         /** Robot's own sentence into its empty reply, shown and said in its voice. */
         fun sayInto(replyId: String, text: Phrase)
         fun finishReply(replyId: String, reason: DoneReason)
+        /** [finishReply] for an empty reply nobody answered: its line and cue, logged once as handed over. */
+        fun finishHandedOver(replyId: String)
         /** Finishes Robot's reply [replyId]; an empty one with no card is dropped instead. */
         fun finishOrDrop(replyId: String)
         fun failReply(replyId: String, message: String)
         /** The turn opened an app: the panel goes. */
         suspend fun leaveForApp()
+        /** The person stopped this turn (Stop, a tap, "stop"): a CANCELLED stays stopped, with nothing after it. */
+        fun stopAsked(): Boolean
         /** Robot answers from what its own web search found (PanelWebSearch.answer). */
         suspend fun webAnswer(replyId: String, question: String, history: List<ChatTurn>, found: WebOutcome)
         /** The offer [o] under reply [replyId] (PanelOffers.show). */
@@ -176,7 +182,7 @@ internal class PanelEscalation(private val state: MutableStateFlow<PanelState>, 
                 else HelperContext.escalation(question, history, ZonedDateTime.now(), port.userRegion, personal = personal,
                     includePersonal = HelperTrust.conversation(s, asked, personal, MemoryPanel.toTrusted()))
                 // A helper that can't be reached (a server that's off, no connection): Robot answers itself instead.
-                if (!port.escalate(replyId, question, blocks, voiceAsked, reuseBubble = true, h = asked, fallBack = true)) return null
+                if (!port.escalate(replyId, question, blocks, voiceAsked, reuseBubble = true, h = asked, fallBack = true)) return null.also { guard.answered() }
                 RLog.i("helper_fallback", "kind" to asked.kind)
                 Before(null, false)
             }
@@ -209,6 +215,7 @@ internal class PanelEscalation(private val state: MutableStateFlow<PanelState>, 
                     RLog.i("helper_fallback", "kind" to h.kind)
                     return Before(null, false)
                 }
+                guard.answered()
                 if (state.value.turns.firstOrNull { it.id == replyId }?.text?.isNotBlank() == true) port.keepOffer(replyId, KeepChoice(kind, robot = false, helper = h.id, name = h.name, tapOnly = true))
                 null
             }
@@ -242,6 +249,9 @@ internal class PanelEscalation(private val state: MutableStateFlow<PanelState>, 
         needsSearch: Boolean = false, helper: HelperConfig? = null, hold: Boolean = false) {
         // A turn that already escalated decides NONE here.
         var decision = decide(attachment, guardFree = !guard.used, needsSearch = needsSearch, asked = helper).held(hold)
+        // review-fix-calendar-row7 M2: a helper's answer landed in this turn and stands for an empty Robot bubble; one that
+        // couldn't be reached (Robot answered itself) is no answer (-c item 1).
+        val escalated = guard.helperAnswered
         guard.take(fromHelper = false)
         val s = port.settings
         val target = helper ?: target(s)
@@ -266,7 +276,8 @@ internal class PanelEscalation(private val state: MutableStateFlow<PanelState>, 
                 port.finishReply(replyId, DoneReason.END)
                 return port.leaveForApp()
             }
-            if (r.reason == DoneReason.CANCELLED) return port.finishReply(replyId, DoneReason.CANCELLED)
+            // review-fix-calendar-row7 H1: cancelled with no stop asked and nothing said is never an empty bubble; a stop stays a stop.
+            if (r.reason == DoneReason.CANCELLED) return if (saidNothing(replyId) && !port.stopAsked()) endOwn(replyId, ownFailure, trigger) else port.finishReply(replyId, DoneReason.CANCELLED)
             // Automatic, and the model looked it up on the web itself (Robot searches first): Robot answers from what it found.
             if (decision == EscalationDecision.AUTO) r.web?.let { found ->
                 RLog.i("helper_escalation", "trigger" to trigger, "decision" to EscalationDecision.NONE)
@@ -295,7 +306,7 @@ internal class PanelEscalation(private val state: MutableStateFlow<PanelState>, 
         // A personal conversation (this reply's read included): Robot sends only the question.
         val personal = port.personalNow(replyId)
         when (decision) {
-            EscalationDecision.AUTO -> if (offerOnly || target == null) port.finishOrDrop(replyId) else {
+            EscalationDecision.AUTO -> if (offerOnly || target == null) endOwn(replyId, ownFailure, trigger) else {
                 // A screen or photo question gets here only with personal content allowed to go by itself: it goes along.
                 val shared = if (attachment != Attachment.NONE && attachment != Attachment.FILE && HelperTrust.attachments(s, personal)) Shared(screenText = screen, image = image) else Shared()
                 val blocks = HelperContext.escalation(question, history, ZonedDateTime.now(), port.userRegion, shared, personal = personal,
@@ -330,12 +341,25 @@ internal class PanelEscalation(private val state: MutableStateFlow<PanelState>, 
             }
             // Asked again and still nothing: why, or "Robot had no answer", rather than no reply at all.
             EscalationDecision.NONE -> when {
-                !ranOwn -> port.finishOrDrop(replyId)
+                !ranOwn -> endOwn(replyId, ownFailure, trigger, helperAnswers = escalated)
                 ownFailure != null && saidNothing(replyId) -> port.failReply(replyId, ownFailure)
                 else -> port.finishReply(replyId, DoneReason.END)
             }
         }
         RLog.i("helper_escalation", "trigger" to trigger, "decision" to decision)
+    }
+
+    /** Robot's reply [replyId] ends with no helper answering in it: never with no reply at all (EscalationPolicy.emptyEnd). */
+    private fun endOwn(replyId: String, ownFailure: String?, trigger: EscalationTrigger, helperAnswers: Boolean = false) {
+        when (EscalationPolicy.emptyEnd(saidNothing(replyId), helperAnswers = helperAnswers, failed = ownFailure != null)) {
+            EmptyEnd.FINISH, EmptyEnd.DROP -> port.finishOrDrop(replyId)
+            EmptyEnd.FAILED -> port.failReply(replyId, ownFailure.orEmpty())
+            EmptyEnd.NO_ANSWER -> {
+                RLog.i("helper_no_answer", "trigger" to trigger)
+                // review-fix-calendar-row7 L3: finishReply fills an empty reply itself (its line, and the cue on a spoken turn) and logs it once.
+                port.finishHandedOver(replyId)
+            }
+        }
     }
 
     private fun EscalationDecision.held(hold: Boolean) = if (hold && this == EscalationDecision.AUTO) EscalationDecision.OFFER else this

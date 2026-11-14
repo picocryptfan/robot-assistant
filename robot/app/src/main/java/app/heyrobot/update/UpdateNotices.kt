@@ -29,6 +29,8 @@ object UpdateNotices {
     private const val ID = 78
     private const val REQ_OPEN = 7_802
     private const val REQ_CONFIRM = 7_803
+    private const val REQ_WHATS_NEW = 7_804
+    private const val SILENT = "silent" // l10n: not text (a group key)
 
     private fun manager(ctx: Context): NotificationManager? = ctx.getSystemService(NotificationManager::class.java)
 
@@ -45,7 +47,7 @@ object UpdateNotices {
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
 
     /** Posts [title] and [text] in the menus' language (the channel's name too, set again each time). */
-    private fun post(ctx: Context, title: Phrase, text: Phrase, open: PendingIntent): Boolean {
+    private fun post(ctx: Context, title: Phrase, text: Phrase, open: PendingIntent, silent: Boolean = false): Boolean {
         val nm = manager(ctx) ?: return false
         val langs = AppLanguage.langs(ctx)
         if (!Assistant.granted(ctx, Manifest.permission.POST_NOTIFICATIONS) || !nm.areNotificationsEnabled()) return false
@@ -60,6 +62,8 @@ object UpdateNotices {
                 .setCategory(Notification.CATEGORY_RECOMMENDATION)
                 .setContentIntent(open)
                 .setAutoCancel(true)
+                // Silent as NotificationCompat.setSilent: a group whose summary alone may alert, and none is posted.
+                .apply { if (silent) setGroup(SILENT).setGroupAlertBehavior(Notification.GROUP_ALERT_SUMMARY) } // l10n: not text (a group key)
                 .build())
             true
         } catch (t: Throwable) {
@@ -73,6 +77,13 @@ object UpdateNotices {
     fun ready(ctx: Context, version: String) = post(ctx, UpdateText.readyTitleText(version), UpdateText.readyText, openUpdates(ctx))
 
     fun updated(ctx: Context, version: String) = post(ctx, UpdateText.updatedTitleText(version), UpdateStrings.updatedText(), openUpdates(ctx))
+
+    /** 1.5: "Robot updated to …", tap for What's new (WhatsNewNotice), silent whatever the channel's sound. */
+    fun whatsNew(ctx: Context, version: String) = post(ctx, UpdateText.updatedTitleText(version), UpdateStrings.whatsNewText(),
+        PendingIntent.getActivity(ctx, REQ_WHATS_NEW,
+            Intent().setClassName(ctx.packageName, "app.heyrobot.ui.MainActivity").putExtra(AppPages.EXTRA, AppPages.WHATS_NEW)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT), silent = true)
 
     fun failed(ctx: Context, text: Phrase) = post(ctx, UpdateStrings.failedTitle(), text, openUpdates(ctx))
 
@@ -96,6 +107,14 @@ object UpdateNotices {
         return if (channelOnly) Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
             .putExtra(Settings.EXTRA_APP_PACKAGE, ctx.packageName).putExtra(Settings.EXTRA_CHANNEL_ID, CHANNEL)
         else Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, ctx.packageName)
+    }
+
+    /** What's new's own notice (the only silent one), never an "update available" or "ready" posted after it in its place. */
+    fun cancelWhatsNew(ctx: Context) {
+        try {
+            val nm = manager(ctx) ?: return
+            if (nm.activeNotifications.any { it.id == ID && it.notification.group == SILENT }) nm.cancel(ID)
+        } catch (_: Throwable) {}
     }
 
     fun cancel(ctx: Context) {

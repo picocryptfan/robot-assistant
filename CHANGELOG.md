@@ -4,6 +4,31 @@ What changed in each version of Robot, newest first. Each version's full notes, 
 [`robot/README.md`](robot/README.md) ("What's new in …" and the feature sections). Versions before 1.0 were test
 builds.
 
+## 1.4.2 (2026-11-14)
+
+- Notes: a note you dictate ("take a note that the plumber comes Thursday", "jot down call the bank", « prends en note
+  que … ») is saved on the phone in your words, every time. In 1.4.0 and 1.4.1 Robot sent it to the model, which saved it
+  only some of the time, so a second note in one conversation could end with "Nothing was done."
+- Notes: "take a note of my parking spot" saves only what follows: "my parking spot". "Make a note of", "take note of" and the French
+  « prends note de », « prends une note de » and « fais une note de » work the same way.
+- Notes: a question after the note phrase ("write down how to say thank you in French") is answered, and
+  the note keeps the question with its answer. "Jot down where I parked: level 3" is still a note.
+- Calendar: an event that repeats ("add every Friday at 9 team meeting to my calendar", « chaque vendredi à 9 h réunion
+  d'équipe »), typed or said, shows on its card in your words before it's added. When the words after the repeat start
+  another command ("every Friday at 9 call Sam"), there is no card: Robot doesn't make an event of a command. A change to one date changes only that date, or Robot tells you it can't. Dates you cancelled
+  don't show, and if its calendar was removed, Robot names it.
+- Lists: « enlève le lait de la liste Épicerie » and "remove milk" tick the item off, as the card says. A spoken remove
+  never deletes an item: delete it in Lists.
+- Flashlight: Robot turns it on or off only when your words name it, like "flashlight", "torch" or "light". Anything
+  else goes to the model.
+- Car mode and headsets: when the phone refuses Robot's call audio, Robot lets go of it, so music and other apps play
+  again.
+- Helpers: when a helper can't answer, Robot says so instead of leaving a blank reply. A stop you asked for stays
+  stopped.
+- Questions kept for when there's signal: a kept question runs as soon as a real connection is back, or when you
+  unlock. A VPN with no network under it doesn't count as signal.
+- The user guide in the app covers every feature, and What's new shows the 1.4.2 rows, in English and French.
+
 ## 1.4.1 (2026-11-13)
 
 - Wikipedia on this phone: the card shows an article only when its own opening sentence answers your question. A question

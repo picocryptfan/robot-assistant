@@ -109,15 +109,23 @@ fun PreferenceScreen(
     snackbar: SnackbarHostState? = null,
     actions: @Composable RowScope.() -> Unit = {},
     bottomBar: @Composable () -> Unit = {},
+    small: Boolean = false,
     content: LazyListScope.() -> Unit,
 ) {
     val bg = settingsBackground()
-    val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val scroll = if (small) TopAppBarDefaults.pinnedScrollBehavior() else TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     Scaffold(
         modifier = modifier.nestedScroll(scroll.nestedScrollConnection),
         containerColor = bg,
         topBar = {
-            LargeTopAppBar(
+            // [small]: the title beside Back, for a page opened by itself (What's new), with no tall band above its first line.
+            if (small) androidx.compose.material3.TopAppBar(
+                title = { Text(title) },
+                navigationIcon = { if (onBack != null) IconButton(onClick = onBack) { Icon(RIcons.Back, stringResource(R.string.settings_back)) } },
+                actions = actions,
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = bg, scrolledContainerColor = bg),
+                scrollBehavior = scroll,
+            ) else LargeTopAppBar(
                 title = { Text(title) },
                 navigationIcon = { if (onBack != null) IconButton(onClick = onBack) { Icon(RIcons.Back, stringResource(R.string.settings_back)) } },
                 actions = actions,

@@ -84,7 +84,13 @@ import java.util.Locale
 // MAIN PROCESS (1.0). The setup guide's pages (SetupGuideScreen draws the frame): each says what the feature does, a
 // privacy line, its choices as Settings' rows with what is set now, and where Settings has it.
 
-internal fun LazyListScope.guidePage(step: GuideStep, g: GuideCtx) = when (step) {
+internal fun LazyListScope.guidePage(step: GuideStep, g: GuideCtx) {
+    page(step, g)
+    // 1.5: every feature since 1.1 has its row on a page (core GuideFeature); the new pages are nothing but theirs.
+    if (step !in FEATURE_PAGES) featureRows(step, g, R.string.guide_more)
+}
+
+private fun LazyListScope.page(step: GuideStep, g: GuideCtx) = when (step) {
     GuideStep.WELCOME -> welcome(g)
     GuideStep.CAN_DO -> canDo()
     GuideStep.PHONE -> phone(g)
@@ -94,6 +100,7 @@ internal fun LazyListScope.guidePage(step: GuideStep, g: GuideCtx) = when (step)
     GuideStep.PEOPLE -> people(g)
     GuideStep.MESSAGES -> messages(g)
     GuideStep.MEMORY -> memory(g)
+    GuideStep.FILES_LISTS, GuideStep.YOUR_DAY, GuideStep.SKILLS, GuideStep.LINK -> featurePage(step, g)
     GuideStep.WEATHER -> weather(g)
     GuideStep.CONVERSATION -> conversation(g)
     GuideStep.ROUTINES -> routines(g)

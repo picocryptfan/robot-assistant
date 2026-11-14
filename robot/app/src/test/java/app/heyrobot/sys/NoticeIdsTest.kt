@@ -106,6 +106,7 @@ class NoticeIdsTest {
             one("app.heyrobot.sys.OwnTimerAlarms", "REQ", "OwnTimerStore"),
             one("app.heyrobot.update.UpdateNotices", "REQ_OPEN"),
             one("app.heyrobot.update.UpdateNotices", "REQ_CONFIRM"),
+            one("app.heyrobot.update.UpdateNotices", "REQ_WHATS_NEW"),
             one("app.heyrobot.update.UpdateInstaller", "REQ_STATUS"),
             one("app.heyrobot.update.BackupReminders", "REQ_OPEN"),
             one("app.heyrobot.sys.ReportOut", "REQ_EXPIRY"),

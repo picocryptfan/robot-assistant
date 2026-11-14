@@ -902,6 +902,13 @@ class TurnRunner(
             record(Outcome(asked.tool, ActionStatus.INVALID, why))
             return (asked.tool.id to ActionStatus.INVALID.toolResponse(why)) to false
         }
+        // fix-hands-free-route: an action only your words can ask for, when they didn't (ApprovalGate.NEEDS_ITS_WORDS): no card, and it answers.
+        // fix-hands-free-route-b: not a flashlight off ("turn it off" after turning it on names no light): that one keeps its yes/no card.
+        if (asked.tool in ApprovalGate.NEEDS_ITS_WORDS && asked.tool !in this.asked && (asked as? Action.Flashlight)?.on != false &&
+            heard != null && !remote && !model.appCalls) {
+            record(Outcome(asked.tool, ActionStatus.INVALID, ApprovalGate.NOT_ASKED))
+            return (asked.tool.id to ActionStatus.INVALID.toolResponse(ApprovalGate.NOT_ASKED)) to false
+        }
         // 1.1: an alarm only for a time you said, on the day it rings (core AlarmWords); a day it won't ring on is offered
         // as a dated reminder instead, on add_event's card.
         if (asked is Action.SetAlarm && heard != null && !remote && !model.appCalls) when (val fit = AlarmWords.check(asked, heard)) {

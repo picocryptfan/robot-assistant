@@ -71,6 +71,7 @@ import app.heyrobot.voice.SpeechToText
 import app.heyrobot.sys.HandsFreeFiles
 import app.heyrobot.voice.SpeechTuning
 import app.heyrobot.assistant.car.CarModeController
+import app.heyrobot.assistant.later.SignalLater
 import app.heyrobot.voice.TextToSpeech
 import app.heyrobot.voice.VoiceEngines
 import app.heyrobot.voice.VoiceOutput
@@ -193,6 +194,8 @@ object VoiceHub {
         FilingWork.start(app)
         // 1.5 L6: Robot to Robot's notifications (cards, what Robot handled, a pairing's news), said only unlocked.
         LinkNotices.start(app)
+        // Signal later: after an unlock, a question held back by the lock goes now (assistant/later/SignalLater.kt).
+        SignalLater.start(app)
         // Search by meaning for memory (assistant/MeaningMemory.kt): the panel's memory turn runs here only.
         MeaningMemory.init(app)
         // 1.1: a restore cut short in this process is finished or undone.

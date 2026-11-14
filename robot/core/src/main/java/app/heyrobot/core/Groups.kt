@@ -213,7 +213,7 @@ object ToolRouter {
     /** "Remind me in 20 minutes …": a timer is what the model may rightly set. */
     private val REMIND_IN = setOf("remind", "rappelle")
     private val ALARM = setOf("alarm", "wake me", "wake up", "alarme", "reveil", "reveille", "reveiller")
-    private val LIGHT = setOf("flashlight", "torch", "light", "lamp", "lampe", "lumiere", "flash")
+    private val LIGHT = setOf("flashlight", "torch", "torchlight", "torche", "light", "lamp", "lampe", "lumiere", "flash") // plurals by inflects
     private val OPEN = setOf("open", "launch", "start", "ouvre", "ouvrir", "lance", "lancer", "demarre")
     private val OPEN_LEAD = setOf("please", "you", "to", "and", "then", "just", "now", "robot", "hey", "ok", "okay", "lets",
         "tu", "vous", "svp", "plait", "et", "puis", "alors", "pour", "peux", "veux")

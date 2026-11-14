@@ -99,9 +99,11 @@ class PanelEscalationTest {
         override fun speakRobot(text: String) {}
         override fun sayInto(replyId: String, text: Phrase) { calls += "say ${text.render(Langs.EN)}" }
         override fun finishReply(replyId: String, reason: DoneReason) { calls += "finish $replyId $reason" }
+        override fun finishHandedOver(replyId: String) { calls += "finish $replyId END" }
         override fun finishOrDrop(replyId: String) { calls += "drop $replyId" }
         override fun failReply(replyId: String, message: String) { calls += "fail $replyId $message" }
         override suspend fun leaveForApp() { calls += "leave" }
+        override fun stopAsked() = stopAsked
         override suspend fun webAnswer(replyId: String, question: String, history: List<ChatTurn>, found: WebOutcome) {
             calls += "web"
             webFound += found
@@ -531,6 +533,9 @@ class PanelEscalationTest {
     private val chatgpt = HelperConfig("h1", "openai", "ChatGPT", "m")
 
     /** The model handed over (ask_claude) with r1 still empty; [own]: Robot's own answer, if it runs one. */
+    /** The fake turn's stop: the person stopped it, unless a test says a CANCELLED came from elsewhere. */
+    private var stopAsked = true
+
     private fun handedOver(own: (suspend () -> TurnResult)? = null) = runBlocking {
         escalation.afterLocal("r1", question, emptyList(), Attachment.NONE, null, null, false, EscalationGuard(), EscalationTrigger.LOCAL_TOOL, ownAnswer = own)
     }
@@ -622,6 +627,49 @@ class PanelEscalationTest {
         assertTrue(calls.toString(), calls.isEmpty())
         assertTrue(offered.isEmpty() && asked.isEmpty())
         assertTrue(VoiceLog.entries().none { it.event == VoiceEvent.OWN_ANSWER })
+    }
+
+    @Test fun aCancelNobodyAskedForSaysRobotCouldntAnswer() {
+        // review-fix-calendar-row7 H1: the own answer came back CANCELLED with nothing said, and no stop was asked.
+        stopAsked = false
+        handedOver(own("", TurnResult(DoneReason.CANCELLED)))
+        assertEquals(listOf("finish r1 END"), calls)
+        assertTrue(offered.isEmpty() && asked.isEmpty())
+        // Something said before the cancel stays as it is, stopped.
+        calls.clear()
+        handedOver(own("Half an answer", TurnResult(DoneReason.CANCELLED)))
+        assertEquals(listOf("finish r1 CANCELLED"), calls)
+    }
+
+    @Test fun aTurnAHelperAlreadyAnsweredDropsTheEmptyBubbleWithNoCouldntAnswer() {
+        // review-fix-calendar-row7 M2: the helper's answer landed in this turn (the pre-router's GO, reached), so it stands and Robot's empty bubble goes.
+        val guard = EscalationGuard()
+        assertNull(runBlocking { escalation.beforeModel("r1", "explain why the sky is blue step by step", emptyList(), Attachment.NONE, false, guard,
+            settings, server, false, false) })
+        assertTrue(guard.used && guard.helperAnswered)
+        calls.clear()
+        asked.clear()
+        replies.setText("r1", "")
+        runBlocking { escalation.afterLocal("r1", question, emptyList(), Attachment.NONE, null, null, false, guard, EscalationTrigger.LOCAL_TOOL, ownAnswer = null) }
+        assertEquals(listOf("drop r1"), calls)
+        assertTrue(offered.isEmpty() && asked.isEmpty())
+    }
+
+    @Test fun aHelperThatCouldntBeReachedLeavesAnEmptyOwnAnswerSayingRobotCouldntAnswer() {
+        // review-fix-calendar-row7 -c item 1: the GO step took the guard, the helper was offline and gave the question back, Robot's own answer was empty.
+        fellBack = true
+        val guard = EscalationGuard()
+        assertNotNull(runBlocking { escalation.beforeModel("r1", "explain why the sky is blue step by step", emptyList(), Attachment.NONE, false, guard,
+            settings, server, false, false) })
+        assertTrue(guard.used && !guard.helperAnswered)
+        calls.clear()
+        replies.setText("r1", "")
+        VoiceLog.resetForTests()
+        runBlocking { escalation.afterLocal("r1", question, emptyList(), Attachment.NONE, null, null, false, guard, EscalationTrigger.LOCAL_TOOL, ownAnswer = null) }
+        assertEquals(listOf("finish r1 END"), calls)
+        assertTrue(offered.isEmpty())
+        // L3: the reply's end logs the empty reply, once; this path logs none of its own.
+        assertTrue(VoiceLog.entries().none { it.event == VoiceEvent.NO_REPLY })
     }
 
     @Test fun anOwnAnswerThatNeedsTodaysSourcesIsOfferedWhenTheHelperCantSearch() {

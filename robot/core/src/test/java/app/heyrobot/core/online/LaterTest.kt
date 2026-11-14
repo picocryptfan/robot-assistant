@@ -169,7 +169,7 @@ class LaterTest {
         assertFalse(Later.mustAsk(item("a", asks = false), asksNow = false))
         val ready = Later.settle(listOf(item("a", asks = true)), "a", LaterState.READY)
         assertNull(Later.next(ready))
-        assertEquals(Later.Send(setOf("a"), ready.single()), Later.toSend(ready) { LaterGate.Asks })
+        assertEquals(Later.Send(setOf("a"), ready.single()), Later.toSend(ready, online = true) { LaterGate.Asks })
     }
 
     // review-signal-later 2: web search off or no service keeps nothing and sends nothing; it says how to turn it on.
@@ -182,9 +182,9 @@ class LaterTest {
 
     @Test fun aReadyQuestionIsDroppedNotSentWhileWebSearchIsOff() {
         val ready = listOf(item("a", at = 1, state = LaterState.READY), item("b", at = 2, state = LaterState.READY), item("w"))
-        assertEquals(Later.Send(setOf("a", "b"), null), Later.toSend(ready) { LaterGate.Off(WebGate.OFF_TURN_ON) })
-        assertEquals(Later.Send(setOf("a"), ready[0]), Later.toSend(ready) { LaterGate.Goes })
-        assertEquals(Later.Send(emptySet(), null), Later.toSend(listOf(item("w"))) { LaterGate.Goes })
+        assertEquals(Later.Send(setOf("a", "b"), null), Later.toSend(ready, online = true) { LaterGate.Off(WebGate.OFF_TURN_ON) })
+        assertEquals(Later.Send(setOf("a"), ready[0]), Later.toSend(ready, online = true) { LaterGate.Goes })
+        assertEquals(Later.Send(emptySet(), null), Later.toSend(listOf(item("w")), online = true) { LaterGate.Goes })
     }
 
     @Test fun cancelMatchesItsWords() {

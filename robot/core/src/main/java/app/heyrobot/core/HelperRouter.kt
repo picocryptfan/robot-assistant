@@ -845,6 +845,29 @@ object Hedge {
         return n <= POINTER_SHORT || p.range.first < POINTER_LEAD
     }
 
+    /**
+     * fix-142-lows: [detect] on [reply] less the hedge words [besides] (the question) holds, and their twin in the other
+     * language ("how to say I don't know in French": « Je ne sais pas. » is the answer). A reply that is only the question's
+     * own words back is no answer; any other hedge still counts.
+     */
+    fun detect(reply: String, besides: String): Boolean {
+        val q = words(besides)
+        val own = PHRASES.findAll(q).map { it.value }.toList()
+        if (own.isEmpty()) return detect(reply)
+        val echo = own.fold(words(reply)) { s, p -> s.replace(Regex("\\b" + Regex.escape(p) + "\\b"), " ") }.replace(GAPS, " ").trim()
+        if (echo.isEmpty()) return true
+        val rest = TWINS.filter { it.containsMatchIn(q) }.fold(echo) { s, r -> r.replace(s, " ") }.replace(GAPS, " ").trim()
+        return rest.isNotEmpty() && detect(rest)
+    }
+
+    private val GAPS = Regex(" +")
+    /** The same hedge in English and in French (as [words] leaves them). */
+    private val TWINS = listOf(
+        """\bi (do not|dont) know\b|\bje (ne )?sais pas\b|\b(chais|jsais|chsais) pas\b""",
+        """\b(i am|im) not (sure|certain)\b|\bje (ne )?suis pas (sur|sure|certain|certaine)\b""",
+        """\bi (cant|cannot|can not)\b|\bje (ne )?(peux|peut|pourrai|pourrais|pourrait) pas\b""",
+    ).map(::Regex) // l10n: not text (patterns)
+
     /** A pointer starting within this many characters of the reply leads it (about its first seven words). */
     private const val POINTER_LEAD = 40
     /** A reply of this many words or fewer that sends you elsewhere has no room for an answer of its own. */

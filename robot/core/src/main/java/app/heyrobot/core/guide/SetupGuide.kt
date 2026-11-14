@@ -29,18 +29,26 @@ enum class GuideStep(val id: String) {
     PEOPLE("people"),
     MESSAGES("messages"),
     MEMORY("memory"),
+    /** 2 (1.5): Robot Files, lists, files in a question, screenshots, "when did I last". */
+    FILES_LISTS("files-lists"),
+    /** 2 (1.5): Today, the Calendar tab, the home screen, widgets, Read it to me and Step by step. */
+    YOUR_DAY("your-day"),
     WEATHER("weather"),
     CONVERSATION("conversation"),
     ROUTINES("routines"),
+    /** 2 (1.5): skills, connections, plans, drafts and sharing. */
+    SKILLS("skills"),
     /** 1.1: Phone lock, optional and off ("Skip this step" leaves it off); the setup itself is in Settings › Phone lock. */
     PHONE_LOCK("phone-lock"),
     HEADSET_CAR("headset-car"),
     HELPERS("helpers"),
     WEB_TERMUX("web-termux"),
+    /** 2 (1.5): Robot to Robot, its Tor bridges, and a paired Robot on a person's page. */
+    LINK("link"),
     UPDATES("updates"),
     SUMMARY("summary");
 
-    /** 1 to [SetupGuide.COUNT]: "Step 3 of 17". */
+    /** 1 to [SetupGuide.COUNT]: "Step 3 of 22". */
     val number: Int get() = ordinal + 1
 
     val next: GuideStep? get() = entries.getOrNull(ordinal + 1)
@@ -54,13 +62,17 @@ enum class GuideStep(val id: String) {
 /**
  * What setup_guide.json holds. [seen]: the guide version last opened (at launch, from Home or from Settings); [at]: the
  * page Finish later (or the app closing) left it on, null when it isn't under way; [finished]: the version you went
- * through to Done (0: never); [skipped]: the pages skipped on the way.
+ * through to Done (0: never); [skipped]: the pages skipped on the way; [app] (1.5): the app version (versionName) Robot last
+ * launched as, for What's new (null: a new install, or an update from a version that didn't keep it); [told] (1.5): the
+ * version What's new's notice was posted for after an update.
  */
 data class GuideState(
     val seen: Int = 0,
     val at: GuideStep? = null,
     val finished: Int = 0,
     val skipped: Set<GuideStep> = emptySet(),
+    val app: String? = null,
+    val told: String? = null,
 ) {
     fun toJson(): String = JSONObject()
         .put("v", SetupGuide.FILE_VERSION)
@@ -68,6 +80,8 @@ data class GuideState(
         .put("at", at?.id ?: JSONObject.NULL)
         .put("finished", finished)
         .put("skipped", JSONArray().apply { GuideStep.entries.filter { it in skipped }.forEach { put(it.id) } })
+        .apply { if (app != null) put("app", app) }
+        .apply { if (told != null) put("told", told) }
         .toString()
 
     companion object {
@@ -80,6 +94,8 @@ data class GuideState(
                 at = if (o.isNull("at")) null else GuideStep.of(o.optString("at")),
                 finished = o.optInt("finished", 0).coerceAtLeast(0),
                 skipped = skipped,
+                app = o.optString("app", "").ifBlank { null },
+                told = o.optString("told", "").ifBlank { null },
             )
         }
     }
@@ -90,7 +106,7 @@ enum class HomeGuide { CONTINUE, RUN_AGAIN }
 
 object SetupGuide {
     /** The guide's version: a new one (new pages worth a look) opens by itself once more after an update. */
-    const val VERSION = 1
+    const val VERSION = 2
     const val FILE = "setup_guide.json"
     const val FILE_VERSION = 1
     val COUNT: Int get() = GuideStep.entries.size
@@ -101,6 +117,9 @@ object SetupGuide {
     /** Opened (at launch, from Home or Settings): where it shows. Under way, it resumes; otherwise it starts again from Welcome. */
     fun open(s: GuideState): GuideState =
         if (s.at != null) s.copy(seen = VERSION) else s.copy(seen = VERSION, at = GuideStep.WELCOME, skipped = emptySet())
+
+    /** 2 (1.5): opened on [step] (a What's new row with no Settings page of its own). */
+    fun openAt(s: GuideState, step: GuideStep): GuideState = s.copy(seen = VERSION, at = step)
 
     /** Next or Back moved to [to]; a page you came back to and went on from is no longer skipped. */
     fun moved(s: GuideState, from: GuideStep, to: GuideStep): GuideState =

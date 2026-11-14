@@ -802,6 +802,7 @@ enum class NoQuestion(override val id: Int, override val title: String) : LogCod
 
 enum class NoReply(override val id: Int, override val title: String) : LogCode {
     BUSY(1, "still on the last question"), FAILED(2, "the model failed"), EMPTY(3, "empty answer"), STOPPED(4, "stopped"),
+    HANDED_OVER(5, "handed over with no helper to answer"),
 }
 
 enum class RepairWhen(override val id: Int, override val title: String) : LogCode {

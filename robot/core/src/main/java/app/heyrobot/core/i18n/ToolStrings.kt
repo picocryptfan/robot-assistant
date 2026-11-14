@@ -94,6 +94,8 @@ object ToolStrings : Strings("tool", area = "cards") {
         "Ajouter **{title}** le {when} dans ton appli d'agenda, avec une alerte à {alert}")
     val addAlertInApp = s("add_alert_in_app", "Your calendar app opens with the event. Robot can't set the alert there: add it before you save.",
         "Ton appli d'agenda s'ouvre avec l'événement. Robot ne peut pas y régler l'alerte : ajoute-la avant d'enregistrer.")
+    val chosenCalendarGone = s("chosen_calendar_gone", "The calendar chosen in Settings is gone, so the event goes in {calendar} instead.",
+        "L'agenda choisi dans Réglages n'existe plus, alors l'événement va plutôt dans {calendar}.")
     val openCalendarApp = s("open_calendar_app", "Open the calendar app", "Ouvrir l'appli d'agenda")
     val addTo = s("add_to", "Add to {calendar}", "Ajouter à {calendar}")
     // 1.0.0: any helper's app ({app}: theNamedApp or theHelpersApp).
@@ -152,6 +154,8 @@ object ToolStrings : Strings("tool", area = "cards") {
     val emailBody = s("email_body", "give the email a body", "donne un corps au courriel")
     val durationRange = s("duration_range", "duration_minutes must be a whole number from 1 to {max}",
         "duration_minutes doit être un nombre entier de 1 à {max}")
+    val titleIsQuestion = s("title_is_question", "the title reads as a question about the calendar, not an event's name: answer it from the calendar instead",
+        "le titre se lit comme une question sur l'agenda, pas comme le nom d'un événement : réponds plutôt à partir de l'agenda")
     val dayText = s("day_text", "day must be text like today or Friday", "day doit être du texte comme today ou Friday")
     val engineOneOf = s("engine_one_of", "engine must be one of {engines}", "engine doit être l'un de ceux-ci : {engines}")
 
@@ -293,6 +297,8 @@ object ToolStrings : Strings("tool", area = "cards") {
         Plural(one = "{n} contact trouvé.", other = "{n} contacts trouvés."))
     val noteNotSaved = s("note_not_saved", "The note couldn't be saved.", "La note n'a pas pu être enregistrée.")
     val savedToNotes = s("saved_to_notes", "Saved to Robot Notes.", "Enregistré dans Notes de Robot.")
+    // fix-note-answer: "write down how to say …" with no answer from the model (core NoteDictation.Answered).
+    val noteNoAnswer = s("note_no_answer", "I didn't find an answer, so I kept your note as you said it.", "Je n'ai pas trouvé de réponse, alors j'ai gardé ta note telle que tu l'as dite.")
     /** seal-notes: over the lock screen the notes are sealed under a key that needs the phone unlocked. */
     val notesLocked = s("notes_locked", "Your notes open once you unlock the phone.", "Tes notes s'ouvrent une fois le téléphone déverrouillé.")
     /** fix-seal-lows-d 1: every note is a newer Robot's, so unlocking won't open them. */
@@ -389,4 +395,33 @@ object ToolStrings : Strings("tool", area = "cards") {
         "Le modèle de Robot n'a pas pu répondre à partir des résultats web. Réessaie.")
     val browserOpened = s("browser_opened", "Opened {engine} in your browser.", "J'ai ouvert {engine} dans ton navigateur.")
     val noBrowser = s("no_browser", "No browser opened the search.", "Aucun navigateur n'a ouvert la recherche.")
+
+    // 1.4.2 (fix-calendar-repeat): a repeating event's card and line, and the repeat Robot can't write.
+    val addRepeatTo = s("add_repeat_to", "Add **{title}** to *{calendar}*: {when}", "Ajouter **{title}** à *{calendar}* : {when}")
+    val addRepeatInApp = s("add_repeat_in_app", "Add **{title}** in your calendar app: {when}", "Ajouter **{title}** dans ton appli d'agenda : {when}")
+    val eventAddedRepeat = s("event_added_repeat", "Added to {calendar}: “{title}”. {when}.", "Ajouté à {calendar} : « {title} ». {when}.")
+    val eventAddedRepeatNoAlert = s("event_added_repeat_no_alert", "Added to {calendar}: “{title}”. {when}. Its alert couldn't be set: add one in your calendar app.", "Ajouté à {calendar} : « {title} ». {when}. Son alerte n'a pas pu être réglée : ajoute-la dans ton appli d'agenda.")
+    val repeatFrom = s("repeat_from", "{repeat}, from {first}", "{repeat}, à partir du {first}")
+    val repeatDaily = s("repeat_daily", "Every day", "Tous les jours")
+    val repeatWeekdays = s("repeat_weekdays", "Every weekday", "En semaine")
+    val repeatWeekly = s("repeat_weekly", "Every {days}", "Chaque {days}")
+    val repeatWeeks = s("repeat_weeks", "Every {n} weeks on {days}", "Toutes les {n} semaines le {days}")
+    val repeatMonthNth = s("repeat_month_nth", "The {nth} {day} of every month", "Le {nth} {day} de chaque mois")
+    val repeatMonthDay = s("repeat_month_day", "Every month on day {day}", "Le {day} de chaque mois")
+    val repeatYearly = s("repeat_yearly", "Every year on {month} {day}", "Chaque année le {day} {month}")
+    val repeatAnd = s("repeat_and", "{a} and {b}", "{a} et {b}")
+    val repeatUnsupported = s("repeat_unsupported", "I can't add that repeat, so nothing was added. I can do every day, weekdays, every Friday, every other Friday, every 3 weeks, the 15th of every month, the first Monday of every month, or every year on a date.",
+        "Je ne peux pas ajouter cette répétition, alors rien n'a été ajouté. Je sais faire tous les jours, en semaine, chaque vendredi, un vendredi sur deux, toutes les 3 semaines, le 15 de chaque mois, le premier lundi du mois ou chaque année à une date.")
+    val dayMonday = s("day_monday", "Monday", "lundi")
+    val dayTuesday = s("day_tuesday", "Tuesday", "mardi")
+    val dayWednesday = s("day_wednesday", "Wednesday", "mercredi")
+    val dayThursday = s("day_thursday", "Thursday", "jeudi")
+    val dayFriday = s("day_friday", "Friday", "vendredi")
+    val daySaturday = s("day_saturday", "Saturday", "samedi")
+    val daySunday = s("day_sunday", "Sunday", "dimanche")
+    val nthFirst = s("nth_first", "first", "premier")
+    val nthSecond = s("nth_second", "second", "deuxième")
+    val nthThird = s("nth_third", "third", "troisième")
+    val nthFourth = s("nth_fourth", "fourth", "quatrième")
+    val nthLast = s("nth_last", "last", "dernier")
 }

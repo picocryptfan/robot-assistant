@@ -19,6 +19,10 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Rule
+import org.junit.rules.TemporaryFolder
+import app.heyrobot.sys.LaterVault
+import app.heyrobot.sys.SoftMemoryKeys
 import org.junit.Test
 
 // The panel's side of Signal later (review-signal-later): what is kept, with which ask-first rule, and never while off.
@@ -26,6 +30,8 @@ class PanelLaterTest {
     private val savedGate = PanelLater.gate
     private val savedKeeper = PanelLater.keeper
     private val savedOnline = PanelLater.onlineNow
+    private val savedVault = PanelLater.vault
+    @get:Rule val tmp = TemporaryFolder()
     private val kept = mutableListOf<Boolean>()
 
     @Before fun seams() {
@@ -37,6 +43,21 @@ class PanelLaterTest {
         PanelLater.gate = savedGate
         PanelLater.keeper = savedKeeper
         PanelLater.onlineNow = savedOnline
+        PanelLater.vault = savedVault
+    }
+
+    // review-fix-later-ready-offline M3: a question made READY on a connection that has since gone is neither sent (its
+    // search would fail, off the queue) nor dropped; it stays listed for a show with a connection.
+    @Test fun aShowWithNoConnectionSendsNoReadyQuestion() {
+        val v = LaterVault(tmp.newFolder("later"), SoftMemoryKeys())
+        val ready = LaterItem("a", "Look up the ferry times to Digby", "ferry times to Digby", Lang.EN, System.currentTimeMillis(), true, LaterState.READY, null)
+        v.update { listOf(ready) }
+        PanelLater.vault = { v }
+        PanelLater.gate = { _, _ -> LaterGate.Asks }
+        val sent = mutableListOf<String>()
+        runBlocking { PanelLater.onShow(this, { _, _ -> error("nothing to show") }) { sent += it } }
+        assertEquals(emptyList<String>(), sent)
+        assertEquals(listOf(ready), v.load())
     }
 
     @Test fun webSearchOffKeepsNothingAndSaysHowToTurnItOn() {

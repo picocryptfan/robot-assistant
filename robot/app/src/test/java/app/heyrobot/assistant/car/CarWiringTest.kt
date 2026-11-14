@@ -14,6 +14,20 @@ class CarWiringTest {
 
     private fun has(text: String, part: String) = assertTrue(part, text.contains(part))
 
+    @Test fun carModesOwnLinesNeverLeaveTheCallRouteHeld() {
+        // 1.4.2, the 8 Nov car report: a refused take still lets go (CallModeOwnersTest has the mode itself)...
+        val say = controller.substringAfter("object CarVoice").substringAfter("fun say(").substringBefore("VoiceHub.tts.speak(text)")
+        has(say, "VoiceHub.main.postDelayed(release, 400) } else if (sco != null) {")
+        has(say.substringAfter("} else if (sco != null) {"), "SessionRoute.release(app, owner)")
+        // ...and car mode's end, whichever way it ends (CarMode.end always sends CarModeFlag(false)), releases it.
+        has(controller.substringAfter("is CarEffect.CarModeFlag ->").substringBefore("is CarEffect.SetDnd"), "if (!e.on) CarVoice.letGo()")
+        val letGo = controller.substringAfter("fun letGo()").substringBefore("private val release")
+        has(letGo, "if (held) VoiceHub.main.post(release) else SessionRoute.release(VoiceHub.app, owner)")
+        // The hands-free check lets go of a refused take too.
+        val check = code("assistant/conversation/TranscriptionCheckActivity.kt").substringAfter("private fun takeHeadset(").substringBefore("routeHeld = true")
+        has(check.substringAfter("!SessionRoute.take(this, routeOwner, out)) {"), "SessionRoute.release(this, routeOwner)")
+    }
+
     @Test fun leftoversClearOnceBeforeTheDevicesAreRead() {
         val reload = controller.substringAfter("fun reload()").substringBefore("fun stop()")
         assertTrue(reload.indexOf("CarModeMachine.leftovers(state)") in 0 until reload.indexOf("devicesChanged()"))

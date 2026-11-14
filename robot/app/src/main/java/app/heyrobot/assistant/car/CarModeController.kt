@@ -317,6 +317,7 @@ object CarModeController {
             CarEffect.ShowCarScreen -> if (screenOn()) openScreen()
             is CarEffect.CarModeFlag -> {
                 if (!e.on) HandsFreeHub.session?.takeIf { it.kind == SessionKind.CAR }?.cancel()
+                if (!e.on) CarVoice.letGo()
                 VoiceHub.listenTuning()
             }
             is CarEffect.SetDnd -> CarDnd.set(app, e.on)
@@ -449,9 +450,19 @@ object CarVoice {
                 held = true
                 VoiceHub.tts.setPlayback(Playback.CALL)
                 VoiceHub.main.postDelayed(release, 400)
+            } else if (sco != null) {
+                // 1.4.2: refused (the car's call route not ready yet): nothing of it is held, and the line goes through
+                // the car's media as usual.
+                SessionRoute.release(app, owner)
             }
         }
         VoiceHub.tts.speak(text)
+    }
+
+    /** Car mode ended: nothing of car mode's own lines holds the call route once the one being said is done. */
+    fun letGo() {
+        VoiceHub.main.removeCallbacks(release)
+        if (held) VoiceHub.main.post(release) else SessionRoute.release(VoiceHub.app, owner)
     }
 
     private val release: Runnable = object : Runnable {

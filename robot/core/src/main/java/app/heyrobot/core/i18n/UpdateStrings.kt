@@ -19,6 +19,7 @@ object UpdateStrings : Strings("update", area = "updates") {
     val updatedTitle = s("updated_title", "Robot updated to {version}", "Robot a été mis à jour vers {version}")
     val updatedLine = s("updated_line", "Robot updated to {version}.", "Robot a été mis à jour vers {version}.")
     val updatedText = s("updated_text", "Robot restarted its services after the update.", "Robot a redémarré ses services après la mise à jour.")
+    val whatsNewText = s("whats_new_text", "Tap to see what's new in this version.", "Touche pour voir ce qui est nouveau dans cette version.")
     val confirmTitle = s("confirm_title", "Finish updating Robot", "Terminer la mise à jour de Robot")
     val confirmText = s("confirm_text", "Tap to confirm the update in Android's window.", "Touche pour confirmer la mise à jour dans la fenêtre d'Android.")
     val failedTitle = s("failed_title", "Robot's update wasn't installed", "La mise à jour de Robot n'a pas été installée")

@@ -17,7 +17,7 @@ import org.junit.Test
 /** 1.0: the setup guide's order and moves, its file, when it opens by itself, what Home offers, and what the summary lists. */
 class SetupGuideTest {
     @Test fun seventeenPagesFromWelcomeToSummary() {
-        assertEquals(18, SetupGuide.COUNT)
+        assertEquals(22, SetupGuide.COUNT)
         assertEquals(GuideStep.WELCOME, GuideStep.entries.first())
         assertEquals(GuideStep.CAN_DO, GuideStep.WELCOME.next)
         assertEquals(GuideStep.SUMMARY, GuideStep.entries.last())
@@ -42,7 +42,7 @@ class SetupGuideTest {
     }
 
     @Test fun resumesWhereItWasLeftElseStartsOver() {
-        val under = GuideState(seen = 1, at = GuideStep.MEMORY, skipped = setOf(GuideStep.VOICE))
+        val under = GuideState(seen = SetupGuide.VERSION, at = GuideStep.MEMORY, skipped = setOf(GuideStep.VOICE))
         assertEquals(under, SetupGuide.open(under))
         val done = SetupGuide.finish(under)
         assertNull(done.at)
@@ -84,17 +84,20 @@ class SetupGuideTest {
      */
     @Test fun aFileFrom101CarriesOver() {
         val finished = GuideState.fromJson("""{"v":1,"seen":1,"at":null,"finished":1,"skipped":[]}""")
-        assertFalse(SetupGuide.opensAtLaunch(finished))
+        // 1.5: guide version 2 (the pages for every feature) opens it once more after the update.
+        assertTrue(SetupGuide.opensAtLaunch(finished))
+        assertFalse(SetupGuide.opensAtLaunch(SetupGuide.open(finished)))
         assertEquals(HomeGuide.RUN_AGAIN, SetupGuide.home(finished))
         val leftOnWelcome = GuideState.fromJson("""{"v":1,"seen":1,"at":"welcome","finished":0,"skipped":[]}""")
         assertEquals(HomeGuide.CONTINUE, SetupGuide.home(leftOnWelcome))
         assertEquals(1, leftOnWelcome.at!!.number)
-        assertEquals(18, SetupGuide.COUNT)
-        // Left on Routines in 1.0.1 (page 12 of 17): still Routines, page 12 of 18, the new Phone lock page after it.
+        assertEquals(22, SetupGuide.COUNT)
+        // Left on Routines in 1.0.1 (page 12 of 17): still Routines, page 14 of 22 (1.5's Files and lists and Your day
+        // before it), 1.5's Skills page after it.
         val leftOnRoutines = GuideState.fromJson("""{"v":1,"seen":1,"at":"routines","finished":0,"skipped":["people"]}""")
         assertEquals(GuideStep.ROUTINES, leftOnRoutines.at)
-        assertEquals(12, leftOnRoutines.at!!.number)
-        assertEquals(GuideStep.PHONE_LOCK, leftOnRoutines.at!!.next)
+        assertEquals(14, leftOnRoutines.at!!.number)
+        assertEquals(GuideStep.SKILLS, leftOnRoutines.at!!.next)
         assertEquals(setOf(GuideStep.PEOPLE), leftOnRoutines.skipped)
     }
 

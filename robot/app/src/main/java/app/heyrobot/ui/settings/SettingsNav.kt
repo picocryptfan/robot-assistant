@@ -312,7 +312,7 @@ object AppRoutes {
     private val BY_EXTRA = setOf(AppPages.NOTES, AppPages.PERMISSIONS, AppPages.CONVERSATION_SETTINGS, AppPages.MODEL, AppPages.HELPERS,
         AppPages.ROUTINES, AppPages.CAR_SETTINGS, AppPages.MESSAGES_SETTINGS, AppPages.UPDATES, AppPages.MEMORY, AppPages.SETTINGS,
         AppPages.PHONE_LOCK, AppPages.BACKUP, AppPages.FILES, AppPages.VOICE, AppPages.SETUP, AppPages.LINK_REQUESTS,
-        AppPages.HISTORY, AppPages.CALENDAR, AppPages.SKILL_IMPORT, AppPages.QUICK)
+        AppPages.HISTORY, AppPages.CALENDAR, AppPages.SKILL_IMPORT, AppPages.QUICK, AppPages.WHATS_NEW)
 
     /**
      * What a route opens: a [tab] (every page closed), or a [page] over the one showing; [notesIcon]: from Robot Notes'

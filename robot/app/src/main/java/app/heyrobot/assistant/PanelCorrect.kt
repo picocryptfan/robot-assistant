@@ -191,10 +191,10 @@ object PanelCorrect {
                 if (r.status.succeeded) Reply(CorrectRouter.setSaid(landed(hands, plan.hour, plan.minute, zone), plan.from, plan.hour, plan.minute))
                 else { last = null; Reply(CorrectRouter.offNotSet(plan.from, plan.hour, plan.minute)) }
             }
-            is Plan.DeleteEvent -> if (Calendars.delete(ctx(), plan.id)) { last = null; app.heyrobot.sys.TodaySource.changed(ctx()); Reply(CorrectStrings.eventUndone()) } else Reply(CorrectStrings.failed())
+            is Plan.DeleteEvent -> if (Calendars.delete(ctx(), plan.id) == null) { last = null; app.heyrobot.sys.TodaySource.changed(ctx()); Reply(CorrectStrings.eventUndone()) } else Reply(CorrectStrings.failed())
             is Plan.MoveEvent -> {
                 val e = plan.row
-                if (!Calendars.update(ctx(), e.id, e.title, e.location.orEmpty(), plan.begin, plan.end, e.allDay, zone)) return Reply(CorrectStrings.failed())
+                if (Calendars.update(ctx(), e.id, e.title, e.location.orEmpty(), plan.begin, plan.end, e.allDay, zone) != null) return Reply(CorrectStrings.failed())
                 app.heyrobot.sys.TodaySource.changed(ctx())
                 Calendars.row(ctx(), e.id)?.let { event(it) } ?: forget()
                 Reply(movedSaid(e.begin, plan.begin, zone))

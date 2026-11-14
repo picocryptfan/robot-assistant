@@ -70,7 +70,7 @@ class SpokenBuildTest {
     @Test fun theRouterNameStaysInThePanelAndOutOfEveryLogAndFile() {
         assertEquals(listOf("PanelController.kt"), users(Regex("""\blastRouter\b""")))
         val panel = code(shipped.getValue(shipped.keys.first { it.endsWith("assistant/PanelController.kt") }))
-        assertEquals("declared and set, never read: the test build reads it", 2, Regex("""\blastRouter\b""").findAll(panel).count())
+        assertEquals("declared and set, never read: the test build reads it", 0, Regex("""\blastRouter\b(?!\s*=[^=])""").findAll(panel).count())
     }
 
     /** ToolRouter and PreRouter don't take a turn for themselves: what they pass on is the model's, in the list as `model`. */

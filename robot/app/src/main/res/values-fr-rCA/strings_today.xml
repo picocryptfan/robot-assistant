@@ -15,7 +15,7 @@
         <item quantity="other">%1$s, %2$d événements</item>
     </plurals>
     <string name="today_day_none">%1$s, rien à l’agenda</string>
-    <string name="today_open_calendar">Ouvrir dans ton application d’agenda</string>
+    <string name="today_open_calendar">Ouvrir dans ton appli d’agenda</string>
     <string name="today_calendar_allow_text">Ton agenda peut s’afficher ici.</string>
     <string name="today_calendar_allow">Autoriser</string>
     <string name="today_list_left">%1$s, encore %2$d</string>
@@ -84,6 +84,9 @@
     <string name="today_calendar_no_title">Donne-lui d’abord un nom.</string>
     <string name="today_calendar_ends_before">Il finit avant de commencer.</string>
     <string name="today_calendar_not_saved">Robot n’a pas pu l’enregistrer. Réessaie avec ton téléphone déverrouillé.</string>
+    <string name="today_calendar_not_saved_refused">Ton agenda n’a pas accepté ce changement, donc rien n’est enregistré. Tu peux le changer dans ton appli d’agenda.</string>
+    <string name="today_calendar_not_saved_series_changed">Un jour de cet événement qui se répète a déjà été changé dans ton appli d’agenda, donc Robot n’y a pas touché. Tu peux faire ce changement là-bas.</string>
+    <string name="today_calendar_not_saved_elsewhere">Ce jour a été changé dans ton appli d’agenda, alors change-le là.</string>
     <string name="today_calendar_not_saved_gone">Robot n’a pas pu l’enregistrer : l’événement n’est plus là.</string>
     <string name="today_calendar_not_saved_unreadable">Robot ne peut pas ouvrir tes événements privés, donc ce n’est pas enregistré. Choisis d’abord Recommencer en haut de l’agenda.</string>
     <string name="today_calendar_full">Tu as autant d’événements privés que Robot en garde. Supprimes-en pour en ajouter.</string>

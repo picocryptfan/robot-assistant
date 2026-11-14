@@ -40,6 +40,9 @@ object CalendarPick {
             .sortedBy { if (it.primary) 0 else if (it.owner != null && it.owner == it.account) 1 else 2 }
             .firstOrNull()
     }
+
+    /** fix-calendar-repeat-f: the calendar chosen in Settings ([chosen]) is gone from [calendars], so [choose] fell back. */
+    fun gone(calendars: List<CalendarInfo>, chosen: Long): Boolean = chosen != AUTO && calendars.none { it.id == chosen }
 }
 
 /** One event (an instance of it) as CalendarContract.Instances has it. All-day events are midnight to midnight UTC. */
@@ -114,6 +117,12 @@ object EventText {
     /** "Tue Oct 14, 15:00–16:00", "Tue Oct 14 (all day)", "Tue Oct 14, 23:00 – Wed Oct 15, 01:00". */
     fun span(start: ZonedDateTime, end: ZonedDateTime, allDay: Boolean, currentYear: Int): String = spanText(start, end, allDay, currentYear).en()
 
+    /** 1.4.2: [plan]'s when: its [spanText], or how it repeats and its first occurrence ("Every 2 weeks on Friday, from Fri Nov 13 (all day)"). */
+    fun whenText(plan: EventPlan): Phrase {
+        val span = spanText(plan.start, plan.end, plan.allDay, plan.currentYear)
+        return plan.repeat?.let { ToolStrings.repeatFrom("repeat" to it.text(), "first" to span) } ?: span
+    }
+
     /** [span] in words without a language yet. */
     fun spanText(start: ZonedDateTime, end: ZonedDateTime, allDay: Boolean, currentYear: Int): Phrase {
         val first = dayText(start.toLocalDate(), currentYear)
@@ -131,6 +140,9 @@ object EventText {
      * alert when one was asked for ([alert]: it went in; otherwise the line says to add it in the calendar app).
      */
     fun added(title: String, plan: EventPlan, alert: Boolean): Phrase {
+        // fix-calendar-repeat-c: a series' line too says when its alert couldn't be set.
+        if (plan.repeat != null) return (if (plan.alertAt != null && !alert) ToolStrings.eventAddedRepeatNoAlert else ToolStrings.eventAddedRepeat)(
+            "calendar" to plan.calendarName.orEmpty(), "title" to title, "when" to whenText(plan))
         val span = spanText(plan.start, plan.end, plan.allDay, plan.currentYear)
         val calendar = plan.calendarName.orEmpty()
         val at = plan.alertAt

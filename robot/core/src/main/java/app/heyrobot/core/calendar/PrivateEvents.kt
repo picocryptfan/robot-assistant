@@ -97,7 +97,9 @@ object PrivateEventsCodec {
 }
 
 /** Why an edit was refused; the form says it. */
-enum class PrivateRefusal { NO_TITLE, ENDS_BEFORE, FULL, NOT_FOUND, LOCKED, UNREADABLE }
+/** fix-calendar-repeat-d: REFUSED, the calendar provider refused the write; CHANGED_IN_APP, an occurrence changed in your calendar app;
+ * SERIES_CHANGED_IN_APP (fix-calendar-lows-b), one occurrence of a series that already has one changed there. */
+enum class PrivateRefusal { NO_TITLE, ENDS_BEFORE, FULL, NOT_FOUND, LOCKED, UNREADABLE, REFUSED, CHANGED_IN_APP, SERIES_CHANGED_IN_APP }
 
 data class PrivateEdit(val file: PrivateEventsFile, val refused: PrivateRefusal? = null)
 

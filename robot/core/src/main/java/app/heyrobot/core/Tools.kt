@@ -476,6 +476,8 @@ sealed class Action {
         override val tool get() = ToolName.ADD_EVENT
         override fun summary(): Phrase {
             val p = plan ?: return ToolStrings.addEventAsSaid("title" to title, "when" to whenText)
+            if (p.repeat != null) return if (p.calendarName != null) ToolStrings.addRepeatTo("title" to title, "when" to EventText.whenText(p), "calendar" to p.calendarName)
+                else ToolStrings.addRepeatInApp("title" to title, "when" to EventText.whenText(p))
             val span = EventText.spanText(p.start, p.end, p.allDay, p.currentYear)
             val alertAt = p.alertAt?.let { EventText.clock(it.hour, it.minute) }
             return when {
@@ -759,6 +761,8 @@ data class EventPlan(
     val currentYear: Int,
     /** 1.1, a dated reminder ([Action.AddEvent.alert]): when its alert rings (EventAlert); null: no alert. */
     val alertAt: ZonedDateTime? = null,
+    /** 1.4.2: how it repeats (RepeatWords); null: once. [start] is its first occurrence. */
+    val repeat: Repeat? = null,
 )
 
 sealed class ParsedCall {
@@ -876,9 +880,10 @@ object ToolCalls {
                 ?: required("query")
             ToolName.ADD_EVENT -> {
                 val title = textArg(a, MAX_TITLE, "title", "name", "event", "what") ?: return required("title")
+                if (EventDictation.questionTitle(title)) return bad(ToolStrings.titleIsQuestion()) // fix-calendar-fr-daily-142
                 // Small models split the date and the time ({date: Tuesday, time: 3pm}, {start, end}): all of it counts,
                 // in the order date, day, when, start, time, then "to <end>".
-                val parts = listOf("date", "day", "when", "start", "time").filter { a.containsKey(it) }.map { text(a[it], MAX_NAME) ?: return bad(ToolStrings.mustBeText("arg" to it)) }
+                val parts = listOf("date", "day", "when", "start", "time", "repeat", "recurrence").filter { a.containsKey(it) && !(it in REPEAT_ARGS && noRepeat(a[it])) }.map { text(a[it], MAX_NAME) ?: return bad(ToolStrings.mustBeText("arg" to it)) }
                 if (parts.isEmpty()) return required("when")
                 val endPart = if (a.containsKey("end")) text(a["end"], MAX_NAME) ?: return bad(ToolStrings.mustBeText("arg" to "end")) else null
                 val whenText = (parts.joinToString(" ") + (endPart?.let { " to $it" } ?: "")).take(MAX_NAME)
@@ -1035,6 +1040,13 @@ object ToolCalls {
             .replace(Regex("\n{3,}"), "\n\n").trim().let(::unquote).trim()
         return s.takeIf { it.isNotEmpty() }?.let { safeTake(it, max) }
     }
+
+    /** fix-calendar-repeat-c: a model's "repeat" or "recurrence" that says once (null, blank, "none", an empty list): a one-off, as in 1.4.1. */
+    private val REPEAT_ARGS = setOf("repeat", "recurrence") // l10n: not text (argument names)
+    private val NO_REPEAT = setOf("none", "no", "once", "never", "false", "null", "one time", "one-off", "aucun", "aucune", "non", "jamais", "une fois",
+        "no repeat", "does not repeat", "doesn't repeat", "doesn’t repeat", "not repeating", "non-repeating", "not recurring", "non-recurring",
+        "ne se répète pas", "pas de répétition") // l10n: not text (words read)
+    private fun noRepeat(v: Any?): Boolean = v == null || v == false || (v is Collection<*> && v.isEmpty()) || raw(v)?.trim()?.let(::unquote)?.trim()?.lowercase(Locale.ROOT)?.let { it.isEmpty() || it in NO_REPEAT } == true
 
     /** Text, or a number written out in full (a phone number sent as 5.145550101E9 is "5145550101"). */
     private fun raw(v: Any?): String? = when (v) {

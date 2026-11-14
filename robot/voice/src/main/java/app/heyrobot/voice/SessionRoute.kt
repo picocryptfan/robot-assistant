@@ -3,6 +3,7 @@ package app.heyrobot.voice
 
 import android.content.Context
 import android.media.AudioDeviceInfo
+import android.media.AudioManager
 
 // VOICE PROCESS (0.8). A headset or car session's call route for the app's :voice code, sharing call audio's rule and owners (CallAudio): never during another app's call, the last owner
 // out puts the phone back in its normal mode.
@@ -13,8 +14,9 @@ object SessionRoute {
     /** Lets go of [owner]'s hold: music comes back once nothing else of Robot's holds the call route. */
     fun release(ctx: Context, owner: Any) = CallAudio.end(ctx, owner)
 
-    /** Robot may take the communication mode now: the phone is in its normal mode, or the mode is already Robot's. */
-    fun mayTake(mode: Int): Boolean = CallAudio.mayTake(mode, CallAudio.held)
+    /** Robot may take the communication mode now: the phone is in its normal mode, or the mode is already Robot's (never a call's, even while Robot holds). */
+    fun mayTake(mode: Int): Boolean =
+        CallAudio.mayTake(mode, CallAudio.held && (mode == AudioManager.MODE_IN_COMMUNICATION || mode == -1))
 
     /** The communication mode is Robot's now (so a mode change to it is no other app's call). */
     val held: Boolean get() = CallAudio.held

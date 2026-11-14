@@ -141,8 +141,9 @@ class SetupGuideScreenTest {
 
     private val titles = listOf(
         "Welcome to Robot™", "What Robot can do", "Your phone and Robot's brain", "Voice", "Opening Robot", "How Robot asks first",
-        "People, texts, email, calendar and notes", "Messages", "Memory", "Weather and places", "Conversation mode", "Routines and the morning brief",
-        "Phone lock (optional)", "Headset and car", "Helpers (optional)", "Web search and Termux (optional)", "Updates and feedback", "You're set up",
+        "People, texts, email, calendar and notes", "Messages", "Memory", "Files, lists and screenshots", "Your day", "Weather and places",
+        "Conversation mode", "Routines and the morning brief", "Skills and plans", "Phone lock (optional)", "Headset and car", "Helpers (optional)",
+        "Web search and Termux (optional)", "Robot to Robot", "Updates and feedback", "You're set up",
     )
 
     @Test fun nextGoesThroughEveryPageAndDoneFinishes() {
@@ -697,7 +698,7 @@ class SetupGuideScreenTest {
         guide(stores)
         rule.onRow("Headset button opens Robot").performClick()
         rule.onRow("Car mode").performClick()
-        repeat(3) { next() }
+        repeat(4) { next() }
         heading("Updates and feedback")
         rule.onRow("Include test builds").performClick()
         rule.onRow("Check for updates automatically").performClick()
@@ -783,7 +784,7 @@ class SetupGuideScreenTest {
     @Test fun homeOffersToContinueOrRunItAgain() {
         var g by mutableStateOf(GuideState(seen = 1, at = GuideStep.MEMORY))
         rule.show { HomeScreen(fresh, emptyList(), log.actions, androidx.compose.ui.Modifier, guide = g) }
-        rule.onNode(hasText("Step 9 of 18: pick up where you left off")).assertExists()
+        rule.onNode(hasText("Step 9 of 22: pick up where you left off")).assertExists()
         rule.onNode(hasText("Continue the setup guide") and hasClickAction()).performClick()
         rule.onNode(hasText("Run the setup guide again")).assertDoesNotExist()
         g = SetupGuide.finish(g)
@@ -823,5 +824,72 @@ class SetupGuideScreenTest {
     @Test fun summaryLight() {
         guide(Stores(GuideStep.SUMMARY))
         rule.shot("guide_summary_light")
+    }
+
+    /** Each page with features shows every one of their rows (the core check of this was always true). */
+    @Test fun everyPageShowsItsRows() {
+        val ctx = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        guide(Stores())
+        for (step in GuideStep.entries) {
+            rule.scrollToText(titles[step.ordinal])
+            heading(titles[step.ordinal])
+            for (f in app.heyrobot.core.guide.GuideFeature.on(step)) {
+                val d = ctx.getString(featureText(f).second)
+                rule.scrollToText(d)
+                rule.onNode(hasText(d)).assertExists()
+            }
+            if (step.next != null) next()
+        }
+    }
+
+    private fun shotPage(step: GuideStep, name: String) {
+        guide(Stores(step))
+        heading(titles[step.ordinal])
+        rule.shot(name)
+    }
+
+    @Test fun filesListsPage() = shotPage(GuideStep.FILES_LISTS, "guide_files_lists")
+
+    @Test fun yourDayPage() = shotPage(GuideStep.YOUR_DAY, "guide_your_day")
+
+    @Test fun skillsPage() = shotPage(GuideStep.SKILLS, "guide_skills")
+
+    @Test fun linkPage() = shotPage(GuideStep.LINK, "guide_link")
+
+    private fun shotPrivacy(step: GuideStep, box: Int, name: String) {
+        val text = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>().getString(box)
+        guide(Stores(step))
+        heading(titles[step.ordinal])
+        rule.scrollToText(text)
+        rule.onNode(hasText(text)).assertExists()
+        rule.shot(name)
+    }
+
+    @Test fun filesListsPrivacyBox() = shotPrivacy(GuideStep.FILES_LISTS, app.heyrobot.R.string.guide_files_lists_privacy, "guide_files_lists_privacy")
+
+    @Test fun yourDayPrivacyBox() = shotPrivacy(GuideStep.YOUR_DAY, app.heyrobot.R.string.guide_day_privacy, "guide_your_day_privacy")
+
+    @Test fun skillsPrivacyBox() = shotPrivacy(GuideStep.SKILLS, app.heyrobot.R.string.guide_skills_privacy, "guide_skills_privacy")
+
+    @Test fun linkPrivacyBox() = shotPrivacy(GuideStep.LINK, app.heyrobot.R.string.guide_link_privacy, "guide_link_privacy")
+
+    @Test fun whatsNewAfterAnUnkeptVersionEndsWithTheWholeGuide() {
+        val opened = mutableListOf<GuideStep?>()
+        rule.show { WhatsNewScreen(app.heyrobot.core.guide.WhatsNew.UNKEPT, log.actions, { opened += it }, {}) }
+        rule.scrollToText("Everything Robot can do")
+        rule.onNode(hasText("Everything Robot can do") and hasClickAction()).performClick()
+        assertEquals(listOf<GuideStep?>(GuideStep.entries.first()), opened)
+        rule.shot("guide_whats_new_unkept")
+    }
+
+    @Test fun whatsNewAfterAKeptVersionHasNoWholeGuideRow() {
+        rule.show { WhatsNewScreen("1.4.2", log.actions, {}, {}) }
+        rule.scrollToText("Done")
+        rule.onNode(hasText("Everything Robot can do")).assertDoesNotExist()
+    }
+
+    @Test fun whatsNewLight() {
+        rule.show { WhatsNewScreen("1.2.7", log.actions, {}, {}) }
+        rule.shot("guide_whats_new")
     }
 }

@@ -16,7 +16,24 @@ import app.heyrobot.core.RLog
 // earpiece otherwise). Android resets the mode itself if the :voice process dies.
 
 internal object CallAudio {
-    private val owners = HashSet<Any>()
+    private val owners = CallModeOwners<AudioDeviceInfo>()
+
+    /** Android's AudioManager, for [CallModeOwners]. */
+    private class Manager(ctx: Context) : CallModeOwners.Port<AudioDeviceInfo> {
+        private val am = ctx.getSystemService(AudioManager::class.java)
+        override fun mode(): Int = try { am.mode } catch (_: Throwable) { -1 }
+        override fun setMode(m: Int) { am.mode = m }
+        override fun setDevice(d: AudioDeviceInfo): Boolean = am.setCommunicationDevice(d)
+        override fun speakerUnlessHeadset() {
+            // A headset or car stays the call device; the earpiece gives way to the loudspeaker.
+            val cur = am.communicationDevice
+            if (cur == null || cur.type == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE) {
+                am.availableCommunicationDevices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }?.let { am.setCommunicationDevice(it) }
+            }
+        }
+        override fun clearDevice() = am.clearCommunicationDevice()
+        override fun warn(where: String, t: Throwable?) = RLog.w(where, t)
+    }
 
     fun attributes(p: Playback): AudioAttributes = AudioAttributes.Builder()
         .setUsage(if (p == Playback.CALL) AudioAttributes.USAGE_VOICE_COMMUNICATION else AudioAttributes.USAGE_ASSISTANT)
@@ -30,61 +47,22 @@ internal object CallAudio {
 
     /**
      * [owner] starts speaking with call audio: communication mode and the loudspeaker, from the first owner on. False
-     * when the phone is in another mode (a call): the caller then plays as assistant audio.
+     * when the phone is in another mode (a call) or Android refused it: the caller then plays as assistant audio.
      */
-    @Synchronized
-    fun begin(ctx: Context, owner: Any): Boolean {
-        if (owner in owners) return true
-        val am = ctx.getSystemService(AudioManager::class.java)
-        if (!mayTake(try { am.mode } catch (_: Throwable) { -1 }, owners.isNotEmpty())) return false
-        owners += owner
-        if (owners.size > 1) return true
-        try {
-            am.mode = AudioManager.MODE_IN_COMMUNICATION
-            // A headset or car stays the call device; the earpiece gives way to the loudspeaker.
-            val cur = am.communicationDevice
-            if (cur == null || cur.type == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE) {
-                am.availableCommunicationDevices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }?.let { am.setCommunicationDevice(it) }
-            }
-        } catch (t: Throwable) {
-            RLog.w("call_audio", t)
-        }
-        return true
-    }
+    fun begin(ctx: Context, owner: Any): Boolean = owners.begin(Manager(ctx), owner)
 
     /**
      * 0.8: [owner] (a headset or car session) takes the communication mode with [device] as the call device: SCO or LE
      * Audio for its microphone and Robot's voice (setCommunicationDevice needs only MODIFY_AUDIO_SETTINGS). False during
-     * another app's call (that call is never touched) or when Android refused the device. Released with [end], the last
+     * another app's call (that call is never touched) or when Android refused the device; a refusal holds nothing (1.4.2:
+     * it used to keep the phone in communication mode, so no other app's sound played). Released with [end], the last
      * owner out putting the phone back in its normal mode; Android does it too if :voice dies.
      */
-    @Synchronized
-    fun route(ctx: Context, owner: Any, device: AudioDeviceInfo): Boolean {
-        val am = ctx.getSystemService(AudioManager::class.java)
-        if (owner !in owners && !mayTake(try { am.mode } catch (_: Throwable) { -1 }, owners.isNotEmpty())) return false
-        owners += owner
-        return try {
-            if (am.mode != AudioManager.MODE_IN_COMMUNICATION) am.mode = AudioManager.MODE_IN_COMMUNICATION
-            am.setCommunicationDevice(device)
-        } catch (t: Throwable) {
-            RLog.w("call_audio_route", t)
-            false
-        }
-    }
+    fun route(ctx: Context, owner: Any, device: AudioDeviceInfo): Boolean = owners.route(Manager(ctx), owner, device)
 
     /** Robot holds the communication mode now (its own call audio or a session's route), so a mode change isn't another call. */
-    val held: Boolean @Synchronized get() = owners.isNotEmpty()
+    val held: Boolean get() = owners.held
 
     /** [owner] stopped speaking; the last one out puts the phone back in its normal mode. */
-    @Synchronized
-    fun end(ctx: Context, owner: Any) {
-        if (!owners.remove(owner) || owners.isNotEmpty()) return
-        val am = ctx.getSystemService(AudioManager::class.java)
-        try {
-            am.clearCommunicationDevice()
-            am.mode = AudioManager.MODE_NORMAL
-        } catch (t: Throwable) {
-            RLog.w("call_audio", t)
-        }
-    }
+    fun end(ctx: Context, owner: Any) = owners.end(Manager(ctx), owner)
 }

@@ -19,6 +19,7 @@ import app.heyrobot.core.online.LaterKeep
 import app.heyrobot.core.online.LaterList
 import app.heyrobot.core.online.LaterRouter
 import app.heyrobot.core.online.LaterState
+import app.heyrobot.sys.LaterVault
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -87,7 +88,8 @@ object PanelLater {
         return keepNow(said, query, lang, untrusted)
     }
 
-    /** Web search's gate now, and the queue's keep: seams for the JVM tests. */
+    /** The queue, web search's gate now and the queue's keep: seams for the JVM tests. */
+    internal var vault: () -> LaterVault = { SignalLater.vault(VoiceHub.app) }
     internal var gate: (String, String) -> LaterGate = { said, query -> SignalLater.gate(VoiceHub.app, VoiceHub.settings, said, query) }
     internal var keeper: (String, String, Lang, Boolean) -> SignalLater.Kept = { said, query, lang, asks -> SignalLater.keep(VoiceHub.app, said, query, lang, asks) }
 
@@ -103,8 +105,7 @@ object PanelLater {
      */
     fun onShow(scope: CoroutineScope, turn: (String, suspend (String, PanelRoutines.Host) -> Unit) -> Unit, send: (String) -> Unit) {
         scope.launch {
-            val app = VoiceHub.app
-            val items = try { withContext(Dispatchers.IO) { SignalLater.vault(app).update { Later.expire(it, System.currentTimeMillis()) } } } catch (t: Throwable) {
+            val items = try { withContext(Dispatchers.IO) { vault().update { Later.expire(it, System.currentTimeMillis()) } } } catch (t: Throwable) {
                 RLog.w("later_show", t)
                 null
             } ?: return@launch
@@ -114,19 +115,19 @@ object PanelLater {
                 val first = Langs.of(show.first().lang)
                 turn(EverydayStrings.laterLabel().render(first)) { replyId, host ->
                     val l = host.langs(null, show.first().lang)
-                    withContext(Dispatchers.IO) { SignalLater.vault(app).update { Later.drop(it, show.map { i -> i.id }.toSet()) } }
-                    LaterNotices.cancel(app, show)
+                    withContext(Dispatchers.IO) { vault().update { Later.drop(it, show.map { i -> i.id }.toSet()) } }
+                    LaterNotices.cancel(VoiceHub.app, show)
                     host.text(replyId, show.joinToString("\n\n") { shown(it).render(l) })
                     host.finish(replyId)
                 }
                 return@launch
             }
-            // Web search off now: each READY one is dropped and nothing is sent.
-            val next = withContext(Dispatchers.IO) { Later.toSend(items) { gate(it.said, it.query) } }
+            // Web search off now: each READY one is dropped and nothing is sent; no connection now: they stay, listed.
+            val next = withContext(Dispatchers.IO) { Later.toSend(items, onlineNow()) { gate(it.said, it.query) } }
             if (next.drop.isEmpty()) return@launch
             var sent: LaterItem? = null
-            val left = withContext(Dispatchers.IO) { SignalLater.vault(app).update { all -> takeOff(all, next).also { sent = it.second }.first } } ?: return@launch
-            LaterNotices.cancel(app, items.filter { it.id in next.drop })
+            val left = withContext(Dispatchers.IO) { vault().update { all -> takeOff(all, next).also { sent = it.second }.first } } ?: return@launch
+            LaterNotices.cancel(VoiceHub.app, items.filter { it.id in next.drop })
             waiting = Later.waiting(left).size
             sent?.let { send(it.said) }
         }

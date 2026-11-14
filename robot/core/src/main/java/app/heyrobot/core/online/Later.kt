@@ -118,13 +118,19 @@ object Later {
 
     /**
      * The oldest question back online that needs your OK, sent from the panel; while web search is off ([gate] says
-     * [LaterGate.Off]) each is dropped instead and nothing is sent (never a browser search in its place).
+     * [LaterGate.Off]) each is dropped instead and nothing is sent (never a browser search in its place). With no
+     * connection now (not [online]) nothing is sent and the rest stay, listed, for a show with one.
      */
-    fun toSend(items: List<LaterItem>, gate: (LaterItem) -> LaterGate): Send {
+    fun toSend(items: List<LaterItem>, online: Boolean, gate: (LaterItem) -> LaterGate): Send {
         val drop = LinkedHashSet<String>()
         for (i in items.filter { it.state == LaterState.READY }.sortedBy { it.askedAt }) {
+            if (gate(i) is LaterGate.Off) {
+                drop += i.id
+                continue
+            }
+            if (!online) continue
             drop += i.id
-            if (gate(i) !is LaterGate.Off) return Send(drop, i)
+            return Send(drop, i)
         }
         return Send(drop, null)
     }

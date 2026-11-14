@@ -27,6 +27,9 @@ fun AboutSettingsScreen(a: AppActions, onBack: () -> Unit) {
             PreferenceItem(stringResource(R.string.about_version), "Robot™ ${BuildConfig.VERSION_NAME}") // l10n: not text (the app's name and version)
             // 1.0: the setup guide again, where Finish later left it or from Welcome.
             PreferenceItem(stringResource(R.string.guide_about_row), stringResource(R.string.guide_about_detail), onClick = a.openGuide)
+            // 1.5: what each version added, each opening its page.
+            PreferenceItem(stringResource(R.string.guide_whats_new_title), stringResource(R.string.guide_whats_new_about_detail),
+                onClick = { a.openPage(Page.WhatsNew("1.0.0")) }) // l10n: not text (a version)
             // The built-in updater (0.6.0): an update on offer, or when Robot last checked.
             UpdatesEntry(a)
             // 0.7: a bug report or an idea, as plain text you send with the app you choose.

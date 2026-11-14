@@ -72,7 +72,7 @@ object InfoStrings : Strings("info", area = "cards") {
     val showingFrom = s("showing_from", "Showing {shown} of {total} events from {from} – {to}.", "{shown} événements affichés sur {total} du {from} au {to}.")
 
     // When.kt and Calendar.kt: what the model is told when a date can't be read (the card shows it too).
-    val sayDate = s("say_date", "say the date like \"tomorrow 3pm\" or \"October 14 at 9\"", "dis la date comme « demain 15 h » ou « 14 octobre à 9 h »")
+    val sayDate = s("say_date", "Say the date like \"tomorrow 3pm\" or \"October 14 at 9\"", "Dis la date comme « demain 15 h » ou « 14 octobre à 9 h »")
     val sayMonth = s("say_month", "say the month's name, like \"October 11\"", "dis le nom du mois, comme « 11 octobre »")
     val timePassed = s("time_passed", "that time has passed", "cette heure est passée")
 

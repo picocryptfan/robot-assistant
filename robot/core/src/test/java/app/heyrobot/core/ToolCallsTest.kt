@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.heyrobot.core
 
+import app.heyrobot.core.i18n.ToolStrings
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -143,6 +144,10 @@ class ToolCallsTest {
 
     @Test fun addEventTakesWordsForWhenAndAnOptionalWholeLength() {
         assertEquals(Action.AddEvent("Dentist", "Tuesday at 3"), ok("add_event", "title" to "Dentist", "when" to "Tuesday at 3"))
+        // fix-calendar-fr-daily-142 (rc7): the model's own add for "every Friday at 9 anything on" is a question, never a card.
+        for (t in listOf("anything on", "what's on", "Anything going on?", "quelque chose de prévu", "rien de prévu", "qu'est-ce qu'il y a"))
+            assertEquals(t, ToolStrings.titleIsQuestion().en(), bad("add_event", "title" to t, "when" to "every Friday at 9"))
+        assertEquals(Action.AddEvent("Team meeting", "every Friday at 9"), ok("add_event", "title" to "Team meeting", "when" to "every Friday at 9"))
         assertEquals(Action.AddEvent("Dentist", "Tuesday at 3", 30), ok("add_event", "title" to "Dentist", "when" to "Tuesday at 3", "duration_minutes" to 30))
         assertEquals(Action.AddEvent("Dentist", "Tuesday at 3", 45), ok("add_event", "title" to "Dentist", "when" to "Tuesday at 3", "duration_minutes" to "45"))
         bad("add_event", "when" to "Tuesday")

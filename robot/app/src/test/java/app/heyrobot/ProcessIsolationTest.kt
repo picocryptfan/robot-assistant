@@ -2812,7 +2812,9 @@ class ProcessIsolationTest {
         // F68, deliberately: the speaking service, whose notification names the routine again after the unlock.
         // Today H9, deliberately: its widget, the day line again after the unlock (todayOutsideTheApp).
         // Named timers, deliberately: a named ring still up, posted again with its name after the unlock (off at screen off).
+        // Signal later, deliberately: in :voice, a question the lock held back goes after the unlock (SignalLater.unlocked).
         assertEquals(listOf("app/assistant/FilingWork.kt", "app/assistant/LinkNotices.kt", "app/assistant/car/CarModeController.kt", "app/assistant/conversation/ConversationActivity.kt",
+            "app/assistant/later/SignalLater.kt",
             "app/assistant/routines/RoutineHub.kt", "app/assistant/routines/RoutineSpeakingService.kt", "app/lock/LockAccessibilityService.kt", "app/sys/FilesVault.kt", "app/sys/ListsVault.kt", "app/sys/OwnTimerRing.kt", "app/sys/ProtectedBroadcasts.kt",
             "app/ui/lists/ListsWidget.kt", "app/ui/today/TodayWidget.kt"), present)
         for (f in present) {

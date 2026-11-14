@@ -337,6 +337,7 @@ class VoiceLogTest {
         assertEquals("Robot stopped talking: volume key · after 3.2 s", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.TTS_STOP, TtsStop.VOLUME_KEY.id, 3200)))
         assertEquals("Panel opened but no question heard: nothing heard", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.NO_QUESTION, NoQuestion.NO_SPEECH.id)))
         assertEquals("Question heard but no reply: the model failed", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.NO_REPLY, NoReply.FAILED.id)))
+        assertEquals("Question heard but no reply: handed over with no helper to answer", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.NO_REPLY, NoReply.HANDED_OVER.id)))
         assertEquals("Stopped listening: #99", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.LISTEN_STOP, 99)))
         // Ask Claude kept out, and the model asked again for its own answer: codes and flags only.
         assertEquals("No helper offered to the model: you turned the helper down in this conversation",

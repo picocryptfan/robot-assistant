@@ -381,7 +381,7 @@ object Updater {
         }
         UpdateJobs.ensure(ctx, UpdateStore.settings(ctx))
         UpdateNotices.cancel(ctx)
-        if (UpdateNotices.updated(ctx, v.text)) UpdateStore.update(ctx) { it.copy(updatedTo = null) }
+        if (WhatsNewNotice.post(ctx) || UpdateNotices.updated(ctx, v.text)) UpdateStore.update(ctx) { it.copy(updatedTo = null) }
         RLog.i("update_done", "op" to RLog.Code("replaced"))
     }
 
