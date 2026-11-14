@@ -87,6 +87,7 @@ New in 1.4:
 - History, Notes, People and conversation transcripts sealed on the phone; Home Assistant marks; earbud buttons while Robot talks.
 - A warning before a text that looks like a scam, on the phone and a hint only. In Car mode, a link from your screen waits until you're parked.
 - A Tor bridge on your home network, reached only over Wi-Fi, Ethernet or a VPN, never over mobile data.
+- Since 1.4.2: events that repeat ("every Friday at 9 team meeting"), typed or said, and a spoken remove that ticks a list item off.
 
 - Robot answers by voice or text, on the phone, and about a photo or the screen you're on (once the phone is
   unlocked). You can choose a smarter, slower model, or your own `.litertlm` or `.gguf` file.
