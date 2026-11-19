@@ -208,9 +208,14 @@ too, so Robot can update it; please also tell its maintainers.
   http may reach only home addresses, on every call, so a name that starts pointing outside your network is refused.
   Since 1.3.2 a home address (other than this phone's own) goes only over Wi-Fi or Ethernet, or over a VPN that is up
   and whose routes cover it, on a socket bound to that network so it can't fall back to mobile data; a 100.64/10
-  address only through such a VPN, and only by a route at least as long as /10 (a VPN that carries everything doesn't
-  count for 100.64/10, even written as shorter routes such as 0.0.0.0/1 and 128.0.0.0/1, so a full tunnel on mobile
-  data doesn't take plain http to the VPN provider's network). Only the VPN that applies to Robot counts, not a work
+  address only through such a VPN, and over plain http only by a route at least as long as /10 (a VPN that carries
+  everything doesn't count for plain http's 100.64/10, even written as shorter routes such as 0.0.0.0/1 and
+  128.0.0.0/1, so a full tunnel on mobile data doesn't take plain http to the VPN provider's network). Over **https** a
+  full tunnel carries 100.64/10 too (review-home-net-secure A1): a VPN carrying everything, which is the shape a
+  Tailscale exit node makes of the tunnel by replacing the mesh's own 100.64/10 route with a default one, would
+  otherwise refuse every https call to a Tailscale address unsent. The name in the certificate is what the /10 rule
+  guarded for plain http: a VPN provider's own machine at that address has no certificate for your name, so the
+  connection can't be it. Only the VPN that applies to Robot counts, not a work
   profile's or one that leaves Robot out. When that VPN doesn't route a home address and Wi-Fi or Ethernet holds it,
   the call goes unbound and the phone sends it outside the VPN, as before 1.3.2 (most VPN apps can't be bypassed, so a
   bound call would fail); once it connects, Robot checks it left from that Wi-Fi or Ethernet network's own address,

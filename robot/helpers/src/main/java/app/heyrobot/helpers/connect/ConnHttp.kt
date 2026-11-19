@@ -240,7 +240,8 @@ class ConnHttp internal constructor(
         .cache(null)
         .proxy(Proxy.NO_PROXY)
         // review-link-net M1, M2: a home address only over the network that holds it, its socket bound there (core HomeNets).
-        .socketFactory(HomeNets.Factory(toward))
+        // review-home-net-secure A1: https there too, so a Tailscale exit node's full tunnel carries 100.64/10.
+        .socketFactory(HomeNets.Factory(toward, secure = place.https))
         .connectionSpecs(listOf(if (place.https) ConnectionSpec.MODERN_TLS else ConnectionSpec.CLEARTEXT))
         .dns(ConnDns(dns, place))
         .addInterceptor(NetCount(NetPurpose.CONNECTION))
