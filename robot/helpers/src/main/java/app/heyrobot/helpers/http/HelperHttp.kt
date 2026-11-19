@@ -120,7 +120,8 @@ class HelperHttp private constructor(val client: OkHttpClient, val base: HttpUrl
                 https -> {
                     b.connectionSpecs(listOf(ConnectionSpec.MODERN_TLS))
                     // review-link-net M1: a home helper over https too, only over the network that holds its address (core HomeNets).
-                    if (home) b.dns(dns).socketFactory(HomeNets.Factory())
+                    // review-home-net-secure A1: https, so a Tailscale exit node's full tunnel carries 100.64/10.
+                    if (home) b.dns(dns).socketFactory(HomeNets.httpsFactory())
                 }
                 home -> {
                     // review-link-net M1: only over the network that holds the address, its socket bound there (core HomeNets).

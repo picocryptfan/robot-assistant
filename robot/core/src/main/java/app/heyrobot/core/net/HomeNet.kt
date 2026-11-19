@@ -20,9 +20,18 @@ import javax.net.SocketFactory
 // over the network that holds it. On mobile data, or a stranger's network with no VPN up, the same address can be anyone's
 // machine (the carrier's or the hotel's), so Robot never sends to one there: a home address goes only over Wi-Fi or
 // Ethernet, or over a VPN that is up and whose routes cover it, on a socket bound to that network (Network.bindSocket), so
-// it can't fall back to mobile data; 100.64/10 only through such a VPN. No network qualifies: refused, nothing sent
-// ([OffNetworkException]). Loopback and public addresses are not home addresses: unbound, as before (their own rules
+// it can't fall back to mobile data; 100.64/10 only through such a VPN, and (review-home-net-secure A1) on https even
+// through one that carries everything. No network qualifies: refused, nothing sent ([OffNetworkException]). Loopback and
+// public addresses are not home addresses: unbound, as before (their own rules
 // stand: LanRule, ConnRules). Nothing here names a VPN product: any VPN whose routes hold the address counts.
+//
+// Why https may ride a full tunnel to 100.64/10 (review-home-net-secure A1): the /10 rule exists so plain http can't reach
+// a VPN provider's own machine that answers at the same address (SECURITY.md). A full tunnel is also how a Tailscale exit
+// node is configured, and an exit node replaces the mesh's own 100.64/10 route with the default one, so before this every
+// https call to a Tailscale address on a phone using an exit node was refused unsent ("Robot sent nothing"). On https the
+// TLS name check does the job the /10 rule did: the provider's machine has no certificate for your ts.net name, so the
+// connection can't be it. Plain http keeps the /10 rule, and the socket is still bound to the VPN, so nothing falls back
+// to mobile data.
 
 /** Pure: which network a home address may use. */
 object HomeRoute {
@@ -83,9 +92,10 @@ object HomeRoute {
      * data alone, the socket then checked to have left from that network ([leftFrom], review-home-net-bind-b N2, N4); else
      * refused. A VPN that doesn't apply to Robot never counts (M3: a bind to it fails too). No VPN
      * applies: Wi-Fi or Ethernet that isn't the mobile network (DirectPlaces' rule) with a route that covers [a], the
-     * longest route winning. 100.64/10 only through the VPN.
+     * longest route winning. 100.64/10 only through the VPN, and a route shorter than /10 there only for [secure] (review-home-net-secure A1:
+     * https, where the certificate's name stands in for the /10 rule, and an exit node's full tunnel is the normal shape).
      */
-    fun pick(a: ByteArray, nets: List<Net>, own: List<Prefix> = emptyList()): Pick {
+    fun pick(a: ByteArray, nets: List<Net>, own: List<Prefix> = emptyList(), secure: Boolean = false): Pick {
         if (!home(a)) return Pick.Direct
         val cgnat = LanRule.classify(a) == LanRule.Range.CGNAT
         val local = if (cgnat) null else nets.filter { !it.vpn && (it.wifi || it.ethernet) && !it.cellular }
@@ -94,8 +104,10 @@ object HomeRoute {
         val r = vpn?.let { longest(it, a) }
         // M2, review-home-net-bind-b N1: for 100.64/10 only a route at least as long as /10 counts (a mesh VPN adds 100.64/10
         // itself); a default route, or a full tunnel written as shorter routes (0.0.0.0/1 with 128.0.0.0/1, 64.0.0.0/2),
-        // would carry plain http to the VPN provider's network. Private ranges keep them (a full tunnel to home).
-        if (vpn != null && r != null && r.sends) return if (cgnat && r.length < 10) Pick.Refused else Pick.Bind(vpn.id)
+        // would carry plain http to the VPN provider's network. review-home-net-secure A1: on https the name in the
+        // certificate says whose machine answered, so a full tunnel carries 100.64/10 too (a Tailscale exit node's shape);
+        // private ranges keep them (a full tunnel to home).
+        if (vpn != null && r != null && r.sends) return if (cgnat && r.length < 10 && !secure) Pick.Refused else Pick.Bind(vpn.id)
         // N3: an unreachable route (the system adds one when a VPN blocks a family) sends nothing anywhere: refused, even
         // on the phone's own hotspot link (review-home-net-bind-c L3; the connect would fail with ENETUNREACH).
         if (r != null && r.blocks) return Pick.Refused
@@ -168,22 +180,22 @@ object HomeNets {
     /** Tests: the networks to see (null: none). */
     fun use(s: Source?) { source = s }
 
-    /** A new unconnected socket from [make] for [a]: bound to the network that holds a home address, or refused. */
-    fun socket(a: ByteArray, toward: (InetSocketAddress) -> SocketAddress = { it }, make: () -> Socket = ::Socket): Socket {
-        val (src, p) = choose(a)
+    /** A new unconnected socket from [make] for [a]: bound to the network that holds a home address, or refused. [secure]: https (review-home-net-secure A1). */
+    fun socket(a: ByteArray, secure: Boolean = false, toward: (InetSocketAddress) -> SocketAddress = { it }, make: () -> Socket = ::Socket): Socket {
+        val (src, p) = choose(a, secure)
         if (p == HomeRoute.Pick.Refused) throw OffNetworkException()
         // review-home-net-bind-b N2: unbound, it is checked once it connects ([HomeSocket] picks again then). [toward]: tests.
-        if (p == HomeRoute.Pick.Unbound) return HomeSocket(toward)
+        if (p == HomeRoute.Pick.Unbound) return HomeSocket(toward, secure = secure)
         val s = make()
         if (p is HomeRoute.Pick.Bind) bind(src, s, p.id)
         return s
     }
 
-    private fun choose(a: ByteArray): Pair<Source?, HomeRoute.Pick> {
+    private fun choose(a: ByteArray, secure: Boolean): Pair<Source?, HomeRoute.Pick> {
         val src = source
         val nets = try { src?.nets().orEmpty() } catch (_: Exception) { emptyList() }
         val own = if (src == null || !HomeRoute.home(a)) emptyList() else try { src.own() } catch (_: Exception) { emptyList() }
-        return src to HomeRoute.pick(a, nets, own)
+        return src to HomeRoute.pick(a, nets, own, secure)
     }
 
     /** Binds [s] to [id], or closes it and refuses (a VPN's EPERM, a network gone). */
@@ -204,11 +216,13 @@ object HomeNets {
     class HomeSocket internal constructor(
         private val toward: (InetSocketAddress) -> SocketAddress,
         private val way: (SocketAddress) -> ByteArray? = { wayOut(it) },
+        /** https (review-home-net-secure A1): a full tunnel's shorter route carries 100.64/10 for it. */
+        private val secure: Boolean = false,
     ) : Socket() {
         override fun connect(endpoint: SocketAddress?, timeout: Int) {
             val e = endpoint as? InetSocketAddress
             val a = e?.address?.address ?: throw OffNetworkException()
-            val (src, p) = choose(a)
+            val (src, p) = choose(a, secure)
             if (p == HomeRoute.Pick.Refused) throw OffNetworkException()
             if (p is HomeRoute.Pick.Bind) bind(src, this, p.id)
             // review-home-net-bind-c L5: the way out is checked before the SYN too (the check after it stays).
@@ -239,13 +253,19 @@ object HomeNets {
         DatagramSocket().use { d -> d.connect(to); d.localAddress?.address?.takeIf { _ -> !d.localAddress.isAnyLocalAddress } }
     } catch (_: Exception) { null }
 
+    /** Sockets for https (review-home-net-secure A1): [Factory]'s rules, and a VPN that carries everything carries 100.64/10 too. */
+    fun httpsFactory(toward: (InetSocketAddress) -> SocketAddress = { it }): SocketFactory = Factory(toward, secure = true)
+
     /** OkHttp's sockets: each a [HomeSocket]. [toward]: tests only, where sockets really connect; [way]: as [HomeSocket]'s. */
     class Factory internal constructor(
         private val toward: (InetSocketAddress) -> SocketAddress,
         private val way: (SocketAddress) -> ByteArray?,
+        private val secure: Boolean = false,
     ) : SocketFactory() {
         constructor(toward: (InetSocketAddress) -> SocketAddress = { it }) : this(toward, { wayOut(it) })
-        override fun createSocket(): Socket = HomeSocket(toward, way)
+        /** A factory for https sockets (review-home-net-secure A1): a full tunnel's shorter route carries 100.64/10 for them. */
+        constructor(toward: (InetSocketAddress) -> SocketAddress, secure: Boolean) : this(toward, { wayOut(it) }, secure)
+        override fun createSocket(): Socket = HomeSocket(toward, way, secure)
         override fun createSocket(host: String?, port: Int): Socket = throw UnsupportedOperationException()
         override fun createSocket(host: String?, port: Int, localHost: InetAddress?, localPort: Int): Socket = throw UnsupportedOperationException()
         override fun createSocket(host: InetAddress?, port: Int): Socket = throw UnsupportedOperationException()

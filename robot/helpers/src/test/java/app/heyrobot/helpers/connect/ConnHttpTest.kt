@@ -250,6 +250,29 @@ class ConnHttpTest {
         assertEquals(listOf(4L), vpn.bound)
     }
 
+    /**
+     * review-home-net-secure A1: a Tailscale exit node makes the VPN a full tunnel (its own 100.64/10 route gone), and
+     * https still carries a Tailscale address on a socket bound to it; plain http keeps the /10 rule and is refused.
+     */
+    @Test fun anHttpsCallToATailscaleAddressGoesThroughAFullTunnel() {
+        httpsServer()
+        server.enqueue(ok())
+        val sockets = ToServer { port }
+        val full = Nets(net(4, vpn = true, routes = listOf("0.0.0.0/0")))
+        app.heyrobot.core.net.HomeNets.use(full)
+        // https, a name that answers at a Tailscale address (the test's certificate names home.test).
+        val c = conn("https://home.test:$port")
+        assertEquals(ConnWhere.HOME, answered(http(FakeDns(listOf("100.100.1.1")), trusted = true, sockets = sockets).call(c, get(c), ConnSecrets())).where)
+        assertEquals(listOf(4L), full.bound)
+        // The same shape over plain http: refused before a socket, and nothing asked for.
+        val plain = ToServer { port }
+        val h = conn("http://100.100.1.1:$port", kind = ConnKind.ROUTING).copy(routing = app.heyrobot.core.connect.RoutingKind.OSRM)
+        assertEquals(ConnFailure.OFF_NETWORK, (http(sockets = plain).call(h, get(h), ConnSecrets()) as ConnCall.Failed).why)
+        assertEquals(emptyList<String>(), plain.asked)
+        assertEquals(listOf(4L), full.bound)
+        assertEquals(1, server.requestCount)
+    }
+
     /** D2: a key over http is refused before a request exists; the server hears nothing. */
     @Test fun aKeyOverHttpIsRefusedBeforeAnyRequest() {
         val c = conn("http://127.0.0.1:$port", auth = ConnAuth.Bearer, kind = ConnKind.HOME_ASSISTANT)

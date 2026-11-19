@@ -73,9 +73,10 @@ class WebTransport(private val dns: Dns = Dns.SYSTEM, private val connectMs: Lon
 
     private val cloud: OkHttpClient by lazy { builder().connectionSpecs(listOf(ConnectionSpec.MODERN_TLS)).dns(dns).build() }
     // review-link-net M1: your SearXNG only over the network that holds its address, each socket bound there for where it
-    // connects (core HomeNets, review-home-net-bind L1), else refused unsent.
+    // connects (core HomeNets, review-home-net-bind L1), else refused unsent. review-home-net-secure A1: https, so a
+    // Tailscale exit node's full tunnel carries 100.64/10.
     private val homeTls: OkHttpClient by lazy {
-        builder().connectionSpecs(listOf(ConnectionSpec.MODERN_TLS)).dns(dns).proxy(Proxy.NO_PROXY).socketFactory(HomeNets.Factory()).build()
+        builder().connectionSpecs(listOf(ConnectionSpec.MODERN_TLS)).dns(dns).proxy(Proxy.NO_PROXY).socketFactory(HomeNets.httpsFactory()).build()
     }
     private val homeClear: OkHttpClient by lazy {
         builder().connectionSpecs(listOf(ConnectionSpec.CLEARTEXT)).dns(LanDns(dns)).addNetworkInterceptor(LanGuard).proxy(Proxy.NO_PROXY)

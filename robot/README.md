@@ -762,7 +762,10 @@ never a host, a path, an entity, a topic, a script's name or an operation's titl
   among them) are dropped from a lookup; it is refused only when none is left (C12-fix M3), so an IPv4-only https server
   works on IPv6-only mobile data. A lookup with both kinds keeps the home ones (`ConnRules.lookupHomeWins`). **http** is
   home only, on every call ("…now points outside your network. Test it again"); **https** may be either kind and may
-  change between calls (split DNS), since TLS's name check stops a rebinding.
+  change between calls (split DNS), since TLS's name check stops a rebinding. A 100.64/10 address (Tailscale) over
+  **https** also goes through a VPN that carries everything, the shape a Tailscale exit node makes of the tunnel
+  (review-home-net-secure A1); plain http still needs the VPN's own 100.64/10 route, so it never reaches a VPN
+  provider's machine at that address.
 - **D2, secrets.** Any secret (a token, a header you marked, Basic's password, an ntfy topic, a webhook address that
   holds a secret) makes the connection https only: refused when typed, before a client is built, and when the secrets
   go in (`ConnWire`). 1.0.1's sentence: "Robot won't send your … key over plain http: use an https address."
